@@ -1,55 +1,339 @@
-// Minimal dev mount for PlotlineScene. The real viewer UI replaces this.
-import { useEffect, useRef, useState } from 'react'
-import type { Unit } from '../core'
+/**
+ * Buyer-facing viewer (PRODUCT_SPEC §3): routing, load screen, HUD, finishes,
+ * sun, comment pins, share, VR. No router lib, no state lib.
+ * Routes: `/` → replaceState `/u/<first unit>`; `/u/preview` ← localStorage
+ * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as core from '../core'
+import type { Configuration, Id, Pt, Room, Unit } from '../core'
+import { furnish } from '../furnish/presets'
 import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
+import FinishesPanel from './FinishesPanel'
+import Hud from './Hud'
+import { NotesList, PinLayer, type Draft } from './Notes'
+import SunPill from './SunPill'
+import { decodeConfig, encodeConfig } from './share'
+import { appendPin, readPins, removePin, type Pin } from './storage'
+import './viewer.css'
 
-const units = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
-const unit = Object.values(units)[0] ?? TEST_UNIT
+const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
+const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
+if (!UNITS.length) UNITS.push({ stem: TEST_UNIT.id, unit: TEST_UNIT }) // dev only: no unit JSON on disk yet
+
+const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh link."
+const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
+const DEFAULT_HOUR = 15.5
+
+function resolveUnit(): Unit | null {
+  const m = location.pathname.match(/^\/u\/([^/]+)/)
+  if (!m) {
+    history.replaceState(null, '', `/u/${UNITS[0].stem}${location.search}`)
+    return UNITS[0].unit
+  }
+  const id = decodeURIComponent(m[1])
+  if (id === 'preview') {
+    try {
+      return JSON.parse(localStorage.getItem('plotline.preview') ?? 'null')
+    } catch {
+      return null
+    }
+  }
+  return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? null
+}
+
+const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
+
+/** 1.2 m inside the first door on a wall bordering the outer face, facing in; else the largest living room's centroid. */
+function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
+  for (const w of unit.walls) {
+    const door = w.openings.find((o) => o.kind === 'door')
+    if (!door) continue
+    const f = core.wallFrame(w, unit.vertices)
+    const mid = add(f.origin, f.dir, f.lengthM / 2)
+    const off = w.thicknessM / 2 + 0.05
+    const front = core.roomAt(add(mid, f.normal, off), rooms, unit)
+    const back = core.roomAt(add(mid, f.normal, -off), rooms, unit)
+    if (!!front === !!back) continue // interior wall (or floating): not the entry
+    const inward = front ? 1 : -1
+    const n = { x: f.normal.x * inward, y: f.normal.y * inward }
+    const at = add(f.origin, f.dir, door.offsetM + door.widthM / 2)
+    return { p: add(at, n, w.thicknessM / 2 + 1.2), face: n }
+  }
+  const living = rooms.filter((r) => r.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0] ?? rooms[0]
+  return living ? { p: living.centroid, face: { x: 0, y: -1 } } : null
+}
+
+/** Centroid, facing the midpoint of the room's longest wall. */
+function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
+  const poly = core.roomPolygon(room, unit)
+  let best = { len: -1, mid: poly[0] }
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (len > best.len) best = { len, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } }
+  })
+  const c = room.centroid
+  const d = Math.hypot(best.mid.x - c.x, best.mid.y - c.y) || 1
+  return { p: c, face: { x: (best.mid.x - c.x) / d, y: (best.mid.y - c.y) / d } }
+}
+
+// ponytail: PlotlineScene has no spawnAt(); set its private walker/yaw and let setMode('walk') apply them.
+// Upgrade path: a public spawnAt(p, yaw) on the engine. Camera yaw 0 looks along −Z (plan −y).
+function spawn(scene: PlotlineScene, p: Pt, face: Pt): void {
+  const s = scene as unknown as { walker: Pt; yaw: number }
+  s.walker = { ...p }
+  s.yaw = Math.atan2(-face.x, -face.y)
+  scene.setMode('walk')
+}
+const walkerOf = (scene: PlotlineScene): Pt => (scene as unknown as { walker: Pt }).walker
 
 export default function ViewerApp() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const vrRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<PlotlineScene | null>(null)
-  const [hit, setHit] = useState<PickHit | null>(null)
-  const [mode, setMode] = useState<SceneMode>('walk')
-  const [hour, setHour] = useState(13)
-
-  useEffect(() => {
-    const scene = new PlotlineScene(canvasRef.current!)
-    sceneRef.current = scene
-    scene.onPick(setHit)
-    try {
-      scene.setUnit(unit)
-    } catch (e) {
-      console.error('[plotline] setUnit failed (core not implemented yet?)', e)
-    }
-    vrRef.current?.replaceChildren(scene.enableXR())
-    return () => scene.dispose()
+  const unit = useMemo(() => {
+    const u = resolveUnit()
+    return u && !u.furniture.length ? { ...u, furniture: furnish(u, core.deriveRooms(u)) } : u
   }, [])
+  if (!unit) return <div className="boot">{NOT_FOUND}</div>
+  if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
+  return <Viewer unit={unit} />
+}
 
-  const switchMode = (m: SceneMode) => {
-    setMode(m)
-    sceneRef.current?.setMode(m)
+function Viewer({ unit }: { unit: Unit }) {
+  const rooms = useMemo(() => core.deriveRooms(unit), [unit])
+  const listedRooms = useMemo(() => rooms.filter((r) => r.kind !== 'shaft' && r.areaSqm >= 2), [rooms])
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [scene, setScene] = useState<PlotlineScene | null>(null)
+  const [loaded, setLoaded] = useState(0)
+  const [entered, setEntered] = useState(false)
+  const [mode, setMode] = useState<SceneMode>('walk')
+  const [hour, setHour] = useState(DEFAULT_HOUR)
+  const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots))
+  const [room, setRoom] = useState<Room | null>(null)
+  const [finishesOpen, setFinishesOpen] = useState(false)
+  const [commenting, setCommenting] = useState(false)
+  const [locked, setLocked] = useState(false)
+  const [vrButton, setVrButton] = useState<HTMLElement | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
+  const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
+  const commentingRef = useRef(commenting)
+  commentingRef.current = commenting
+
+  // engine
+  useEffect(() => {
+    const s = new PlotlineScene(canvasRef.current!)
+    s.setUnit(unit)
+    s.setTimeOfDay(DEFAULT_HOUR)
+    s.onPick((hit) => {
+      if (!hit || !commentingRef.current) return
+      const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
+      setDraft({ hit: { ...hit, roomId }, point: hit.point })
+    })
+    void navigator.xr?.isSessionSupported('immersive-vr').then((ok) => {
+      if (!ok) return
+      const el = s.enableXR()
+      el.removeAttribute('style')
+      el.className = 'btn'
+      el.textContent = 'Enter VR'
+      setVrButton(el)
+    })
+    setScene(s)
+    return () => s.dispose()
+  }, [unit, rooms])
+
+  useEffect(() => scene?.setConfiguration(cfg), [scene, cfg])
+
+  // load progress: a room counts once every placement it owns is in the scene graph
+  useEffect(() => {
+    if (!scene) return
+    const need = new Map<Id, Id[]>()
+    for (const p of unit.furniture) need.set(p.roomId, [...(need.get(p.roomId) ?? []), p.id])
+    const poll = setInterval(() => {
+      const seen = new Set<string>()
+      scene.scene.traverse((o) => {
+        if (o.userData.kind === 'furniture') seen.add(o.userData.id as string)
+      })
+      const k = rooms.filter((r) => (need.get(r.id) ?? []).every((id) => seen.has(id))).length
+      setLoaded(k)
+      if (k === rooms.length) clearInterval(poll)
+    }, 150)
+    const cap = setTimeout(() => setLoaded(rooms.length), 20000) // a stuck download must not block Enter
+    return () => {
+      clearInterval(poll)
+      clearTimeout(cap)
+    }
+  }, [scene, unit, rooms])
+
+  // room chip + pointer lock state
+  useEffect(() => {
+    if (!scene) return
+    const t = setInterval(() => {
+      const id = scene.currentRoomId()
+      if (id) setRoom((prev) => (prev?.id === id ? prev : (rooms.find((r) => r.id === id) ?? prev)))
+    }, 100)
+    const onLock = () => setLocked(!!document.pointerLockElement)
+    document.addEventListener('pointerlockchange', onLock)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('pointerlockchange', onLock)
+    }
+  }, [scene, rooms])
+
+  const ready = loaded >= rooms.length
+
+  const enter = () => {
+    if (!scene || !ready) return
+    setEntered(true)
+    const e = entrySpawn(unit, rooms)
+    if (e) spawn(scene, e.p, e.face)
+    scene.lockPointer()
   }
 
+  const toggleMode = () => {
+    const m: SceneMode = mode === 'walk' ? 'orbit' : 'walk'
+    setMode(m)
+    scene?.setMode(m)
+  }
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const share = () => {
+    const url = `${location.origin}${location.pathname}?c=${encodeConfig(cfg)}`
+    history.replaceState(null, '', url)
+    void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
+  }
+
+  // keys: Enter (load screen), O, F, C, Esc
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (!entered) {
+        if (e.key === 'Enter') enter()
+        return
+      }
+      const k = e.key.toLowerCase()
+      if (k === 'o') toggleMode()
+      else if (k === 'f') setFinishesOpen((v) => !v)
+      else if (k === 'c') setCommenting((v) => !v)
+      else if (k === 'escape') {
+        setCommenting(false)
+        setDraft(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  const savePin = (text: string) => {
+    if (!draft) return
+    const { hit } = draft
+    const pin: Pin = {
+      id: core.newId(),
+      anchor: { kind: hit.kind, entityId: hit.id, offset: hit.localOffset },
+      point: hit.point,
+      roomId: hit.roomId,
+      text,
+      createdAt: new Date().toISOString(),
+    }
+    appendPin(unit.id, pin)
+    setPins(readPins(unit.id))
+    setDraft(null)
+    setCommenting(false)
+    setFinishesOpen(true)
+  }
+
+  const focusPin = (pin: Pin) => {
+    if (!scene) return
+    const target = { x: pin.point.x, y: pin.point.z }
+    let from = walkerOf(scene)
+    const r = pin.roomId && rooms.find((x) => x.id === pin.roomId)
+    if (r && core.roomAt(from, rooms, unit)?.id !== r.id) from = r.centroid
+    const d = Math.hypot(target.x - from.x, target.y - from.y) || 1
+    spawn(scene, from, { x: (target.x - from.x) / d, y: (target.y - from.y) / d })
+    setMode('walk')
+  }
+
+  const sqm = Math.round(unit.areaSqft * 0.09290304)
   return (
-    <>
-      <canvas ref={canvasRef} style={{ width: '100vw', height: '100vh', display: 'block' }} />
-      <div style={{ position: 'fixed', top: 12, left: 12, display: 'grid', gap: 8, background: 'var(--surface)', padding: 12, borderRadius: 'var(--radius)', fontSize: 13 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => switchMode('walk')} disabled={mode === 'walk'}>Walk</button>
-          <button onClick={() => switchMode('orbit')} disabled={mode === 'orbit'}>Orbit</button>
-          <div ref={vrRef} style={{ position: 'relative' }} />
+    <div className={`viewer${commenting ? ' commenting' : ''}`}>
+      <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
+
+      {!entered && (
+        <div className="load">
+          <div className="project">{unit.projectName}</div>
+          <div className="unit-name">{unit.name}</div>
+          <div className="muted">
+            {unit.floor !== undefined && `Floor ${unit.floor} · `}
+            {unit.areaSqft} sqft · {sqm} m²
+          </div>
+          <div className="progress">
+            <div className="bar" style={{ width: `${rooms.length ? (loaded / rooms.length) * 100 : 100}%` }} />
+          </div>
+          <div className="muted small">
+            Loading… {loaded} of {rooms.length} rooms
+          </div>
+          <button className="btn primary enter" disabled={!ready} onClick={enter}>
+            Enter
+          </button>
         </div>
-        <label>
-          Hour {hour}
-          <input type="range" min={6} max={18} step={0.5} value={hour} style={{ width: '100%' }}
-            onChange={(e) => { const h = Number(e.target.value); setHour(h); sceneRef.current?.setTimeOfDay(h) }} />
-        </label>
-        <div style={{ color: 'var(--muted)' }}>WASD/arrows walk · shift run · double-click = mouse look (Esc frees) · click floor = go there</div>
-        <pre style={{ margin: 0, maxWidth: 320, whiteSpace: 'pre-wrap' }}>{hit ? JSON.stringify(hit, null, 1) : 'click something'}</pre>
-      </div>
-    </>
+      )}
+
+      {entered && scene && (
+        <>
+          <Hud
+            room={room}
+            rooms={listedRooms}
+            mode={mode}
+            finishesOpen={finishesOpen}
+            commenting={commenting}
+            locked={locked}
+            vrButton={vrButton}
+            toast={toast}
+            onJump={(r) => {
+              const v = roomView(r, unit)
+              spawn(scene, v.p, v.face)
+              setMode('walk')
+            }}
+            onToggleMode={toggleMode}
+            onToggleFinishes={() => setFinishesOpen((v) => !v)}
+            onToggleComment={() => setCommenting((v) => !v)}
+            onShare={share}
+          />
+          {finishesOpen && (
+            <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>
+              <FinishesPanel
+                slots={unit.finishSlots}
+                cfg={cfg}
+                onSelect={(slotId, optionId) => setCfg((c) => ({ ...c, [slotId]: optionId }))}
+                onReset={() => setCfg({})}
+              />
+              <NotesList
+                pins={pins}
+                rooms={rooms}
+                onFocus={focusPin}
+                onRemove={(p) => {
+                  removePin(unit.id, p.id)
+                  setPins(readPins(unit.id))
+                }}
+              />
+            </aside>
+          )}
+          <SunPill
+            hour={hour}
+            northDeg={unit.northDeg}
+            onChange={(h) => {
+              setHour(h)
+              scene.setTimeOfDay(h)
+            }}
+          />
+          <PinLayer scene={scene} pins={pins} draft={draft} onSave={savePin} onCancel={() => setDraft(null)} />
+        </>
+      )}
+    </div>
   )
 }

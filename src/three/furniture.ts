@@ -6,7 +6,8 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { FurniturePlacement } from '../core'
-import { KIT } from '../furnish/kit'
+import { kitAsset } from '../furnish/kit'
+import { buildProcedural } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
 const gltfCache = new Map<string, Promise<THREE.Group>>()
@@ -38,23 +39,28 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * rotationDeg is CLOCKWISE in plan (x right, y down = world X right, Z "down"
  * when viewed from +Y). Seen from +Y, a positive rotation about +Y is
  * counter-clockwise, so clockwise-in-plan = NEGATIVE angle about Y.
+ * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM,
+ * 'wall' centres it at 1.5 m; 'procedural:<id>' urls come from buildProcedural.
  */
-export async function buildFurniture(p: FurniturePlacement): Promise<THREE.Group> {
+export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): Promise<THREE.Group> {
   const pivot = new THREE.Group()
   pivot.position.set(p.x, 0, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
   pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId }
 
-  const asset = KIT[p.assetId]
+  const asset = kitAsset(p.assetId)
   let model: THREE.Object3D | null = null
   if (asset) {
     try {
-      model = (await loadModel(asset.url)).clone()
+      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id) : (await loadModel(asset.url)).clone()
+      if (!model) throw new Error('no procedural builder')
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)
       const c = box.getCenter(new THREE.Vector3())
       model.position.set(-c.x, -box.min.y, -c.z)
+      if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)
+      else if (asset.mount === 'wall') pivot.position.y = 1.5 - (box.max.y - box.min.y) / 2
       model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
           o.castShadow = true

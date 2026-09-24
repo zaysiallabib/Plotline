@@ -384,8 +384,13 @@ export class PlotlineScene {
     const byDistance = [...unit.furniture].sort(
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
+    const heights = new Map(unit.walls.map((w) => [w.id, w.heightM]))
+    const ceilingOf = (roomId: Id) => {
+      const hs = this.rooms.find((r) => r.id === roomId)?.wallIds.map((id) => heights.get(id) ?? 3.048) ?? []
+      return hs.length ? Math.max(...hs) : 3.048
+    }
     for (const p of byDistance) {
-      const obj = await buildFurniture(p)
+      const obj = await buildFurniture(p, ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
       this.furnitureGroup.add(obj)
     }
