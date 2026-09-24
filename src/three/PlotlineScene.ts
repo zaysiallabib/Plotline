@@ -19,10 +19,12 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
 import * as core from '../core'
-import type { Configuration, FinishSlot, Id, Opening, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
 import { HDRI } from '../furnish/textures'
+import { buildSkirting, cornerFills, dressOpening } from './details'
 import { buildFurniture } from './furniture'
 import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
+import { meterUVs } from './openings'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -324,8 +326,10 @@ export class PlotlineScene {
         g.translate((p.u0 + p.u1) / 2, (p.v0 + p.v1) / 2, 0)
         return meterUVs(g)
       })
-      const merged = mergeGeometries(geoms)
+      const fills = cornerFills(wall, unit) // L-corner notch, same material groups as this wall
+      const merged = mergeGeometries([...geoms, ...fills.map((c) => c.geometry)])
       geoms.forEach((g) => g.dispose())
+      fills.forEach((c) => c.geometry.dispose())
       if (merged) {
         // BoxGeometry index layout: px,nx,py,ny,pz,nz × 6 → groups: 0 = front (+n), 1 = back, 2 = edges/reveals
         merged.clearGroups()
@@ -333,6 +337,10 @@ export class PlotlineScene {
           merged.addGroup(i * 36, 24, 2)
           merged.addGroup(i * 36 + 24, 6, 0)
           merged.addGroup(i * 36 + 30, 6, 1)
+        })
+        fills.forEach((c, k) => {
+          merged.addGroup(pieces.length * 36 + k * 18, 12, c.side)
+          merged.addGroup(pieces.length * 36 + k * 18 + 12, 6, 2)
         })
         const mesh = new THREE.Mesh(merged)
         mesh.castShadow = mesh.receiveShadow = true
@@ -344,7 +352,7 @@ export class PlotlineScene {
         })
       }
     }
-    for (const o of wall.openings) local.add(buildOpening(o, wall))
+    for (const o of wall.openings) local.add(...dressOpening(o, wall, unit, this.rooms))
   }
 
   private buildRoom(room: Room, unit: Unit): void {
@@ -374,6 +382,8 @@ export class PlotlineScene {
     this.staticGroup.add(floor)
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
+    const skirting = buildSkirting(room, unit)
+    if (skirting) this.staticGroup.add(skirting)
 
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
@@ -569,69 +579,4 @@ export class PlotlineScene {
     }
     this.renderer.render(this.scene, this.camera)
   }
-}
-
-// ───────────────────────────── helpers ─────────────────────────────
-
-/** Rewrites BoxGeometry UVs so each face maps its own plane in metres (positions must already be in metres). */
-function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
-  const p = g.attributes.position
-  const n = g.attributes.normal
-  const uv = g.attributes.uv
-  for (let i = 0; i < p.count; i++) {
-    const nx = Math.abs(n.getX(i))
-    const nz = Math.abs(n.getZ(i))
-    if (nz > 0.5) uv.setXY(i, p.getX(i), p.getY(i))
-    else if (nx > 0.5) uv.setXY(i, p.getZ(i), p.getY(i))
-    else uv.setXY(i, p.getX(i), p.getZ(i))
-  }
-  uv.needsUpdate = true
-  return g
-}
-
-const DOOR_WOOD = { kind: 'color', color: '#3a2a20', roughness: 0.55 } as const
-const LEAF_WOOD = { kind: 'color', color: '#5b3f2e', roughness: 0.5 } as const
-const ALU = { kind: 'color', color: '#d6d6d6', roughness: 0.35, metalness: 0.7 } as const
-let glass: THREE.MeshPhysicalMaterial | null = null
-
-function box(w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
-  mesh.position.set(x, y, z)
-  mesh.castShadow = mesh.receiveShadow = true
-  return mesh
-}
-
-/** Door/passage/window dressing in wall-local coordinates (u, v, w). Exported for engine.test.ts. */
-export function buildOpening(o: Opening, wall: Wall): THREE.Group {
-  const g = new THREE.Group()
-  g.userData = { kind: 'opening', id: o.id, wallId: wall.id }
-  const d = wall.thicknessM + 0.02
-  const cu = o.offsetM + o.widthM / 2
-  const frame = materialFor(o.kind === 'window' ? ALU : DOOR_WOOD)
-  // jambs + head
-  g.add(box(0.06, o.heightM + 0.03, d, o.offsetM - 0.03, o.sillM + (o.heightM + 0.03) / 2, 0, frame))
-  g.add(box(0.06, o.heightM + 0.03, d, o.offsetM + o.widthM + 0.03, o.sillM + (o.heightM + 0.03) / 2, 0, frame))
-  g.add(box(o.widthM + 0.12, 0.06, d, cu, o.sillM + o.heightM + 0.03, 0, frame))
-
-  if (o.kind === 'door') {
-    // leaf hinged on the 'hinge' side, ajar 20°. Leaf extends +u from hinge a, −u from hinge b.
-    const hingeB = o.hinge === 'b'
-    const pivot = new THREE.Group()
-    pivot.position.set(hingeB ? o.offsetM + o.widthM : o.offsetM, o.sillM, 0)
-    const sx = hingeB ? -1 : 1
-    pivot.add(box(o.widthM - 0.02, o.heightM - 0.02, 0.04, (sx * (o.widthM - 0.02)) / 2, (o.heightM - 0.02) / 2, 0, materialFor(LEAF_WOOD)))
-    // rotating +u about Y by +φ moves it toward −w. Unit JSON convention: 'in' = leaf on the
-    // LEFT of a→b in image coords = −normal side (normal = (−dir.y, dir.x) is the right-hand side on screen).
-    pivot.rotation.y = sx * (o.swing === 'in' ? 1 : -1) * THREE.MathUtils.degToRad(20)
-    g.add(pivot)
-  } else if (o.kind === 'window') {
-    glass ??= new THREE.MeshPhysicalMaterial({ transmission: 0.9, roughness: 0.05, thickness: 0.01, ior: 1.5 })
-    g.add(box(o.widthM + 0.12, 0.06, d, cu, o.sillM - 0.03, 0, frame)) // bottom rail
-    g.add(box(o.widthM + 0.2, 0.03, d + 0.1, cu, o.sillM - 0.075, 0, materialFor({ kind: 'color', color: '#e9e6df', roughness: 0.4 }))) // sill
-    const pane = box(o.widthM, o.heightM, 0.008, cu, o.sillM + o.heightM / 2, 0, glass)
-    pane.castShadow = false
-    g.add(pane)
-    if (o.widthM > 1.2) g.add(box(0.04, o.heightM, 0.04, cu, o.sillM + o.heightM / 2, 0, frame)) // mullion
-  }
-  return g
 }
