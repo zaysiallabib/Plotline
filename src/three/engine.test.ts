@@ -40,7 +40,8 @@ describe('resolveFinishRef on type-a.json', () => {
 
   test('exterior side of a wall is plaster, unslotted room floor is the flat default', () => {
     expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'color' })
-    expect(resolveFinishRef(unit.finishSlots, {}, 'r_closet', 'floor')).toMatchObject({ kind: 'color' })
+    expect(resolveFinishRef(unit.finishSlots, {}, 'r_lifts', 'floor')).toMatchObject({ kind: 'color' })
+    expect(resolveFinishRef(unit.finishSlots, {}, 'r_closet', 'floor')).toMatchObject({ kind: 'pbr', textureId: 'wood_floor_oak' })
   })
 })
 
