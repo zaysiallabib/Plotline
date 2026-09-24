@@ -1,0 +1,237 @@
+/**
+ * Look: tone mapping, post-processing (GTAO), interior lights and the exterior
+ * context (sky, ground, floor slab, shadow catcher). Owned by PlotlineScene,
+ * which calls setUnit / setHour / setSize / render / dispose.
+ *
+ * Tone: Khronos PBR Neutral keeps albedo ≈ displayed colour below ~0.76, so
+ * white plaster stays white and oak keeps its hue; only highlights (sun
+ * patches, fixtures) compress. ACES greyed and hue-shifted the whites, AgX
+ * desaturated wood and marble.
+ *
+ * VR renders directly (no composer): renderer.toneMapping then applies on the
+ * XR framebuffer, so the look matches minus AO.
+ */
+import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import * as core from '../core'
+import type { Room, RoomKind, Unit } from '../core'
+import { kitAsset } from '../furnish/kit'
+import { EXTERIOR_PLASTER, materialFor } from './materials'
+
+export type Quality = 'high' | 'low'
+
+const STOREY_M = 3.2
+const SLAB_M = 0.15
+const EXPOSURE = 1
+const HEMI = 0.6
+const ENV = 0.7
+/** 3000 K blackbody (Mitchell Charity table) */
+const WARM = '#ffb46b'
+/** point-light candela per m² of room at full daylight; ×DUSK_BOOST at dusk */
+const LIGHT_CD_PER_M2 = 0.06
+const DUSK_BOOST = 4
+/** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
+const MAX_ROOM_LIGHTS = 8
+const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
+
+export class Look {
+  private readonly composer: EffectComposer | null = null
+  private readonly ao: GTAOPass | null = null
+  private readonly hemi = new THREE.HemisphereLight('#e6eeff', '#d8cab6', HEMI)
+  private readonly unitGroup = new THREE.Group()
+  /** fixtures + the slab above: exist only while the camera is under the ceiling (walk / VR) */
+  private readonly indoor = new THREE.Group()
+  private readonly catcher = new THREE.Mesh(
+    new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2),
+    new THREE.ShadowMaterial({ color: '#2a2018', opacity: 0.35, depthWrite: false }),
+  )
+  private readonly ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: '#a39e94', roughness: 0.95 }), // paving; a tiled texture reads as carpet from 20 m up
+  )
+  private readonly fixtureMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#fff0dc', emissiveIntensity: 2.5, roughness: 0.6 })
+  private lights: { light: THREE.SpotLight; base: number }[] = []
+  private readonly fitBox = new THREE.Box3()
+  private topY = 3
+  private readonly v = new THREE.Vector3()
+
+  constructor(
+    private readonly renderer: THREE.WebGLRenderer,
+    private readonly scene: THREE.Scene,
+    private readonly camera: THREE.PerspectiveCamera,
+    private readonly sun: THREE.DirectionalLight,
+    quality: Quality,
+  ) {
+    renderer.toneMapping = THREE.NeutralToneMapping
+    renderer.toneMappingExposure = EXPOSURE
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFShadowMap
+    sun.castShadow = true
+    sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
+    sun.shadow.bias = -0.0005
+    sun.shadow.normalBias = 0.02
+    sun.shadow.radius = 3
+    scene.environmentIntensity = ENV
+    scene.background = new THREE.Color('#cfdcea') // until the sky HDRI arrives
+
+    this.ground.receiveShadow = true
+    this.catcher.receiveShadow = true
+    scene.add(this.hemi, this.ground, this.catcher, this.unitGroup)
+
+    if (quality === 'high') {
+      const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) })
+      this.composer = new EffectComposer(renderer, rt)
+      this.composer.addPass(new RenderPass(scene, camera))
+      const ao = (this.ao = new GTAOPass(scene, camera, 1, 1))
+      ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1, scale: 1, samples: 16 })
+      ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
+      ao.blendIntensity = 0.9
+      this.composer.addPass(ao)
+      this.composer.addPass(new OutputPass())
+    }
+    if (import.meta.env.DEV) (window as unknown as { __look: unknown }).__look = this // TEMP tuning hook
+  }
+
+  /** Per-unit: slab + roof, catcher, ground level, ceiling fixtures and their lights. */
+  setUnit(unit: Unit, rooms: Room[]): void {
+    this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
+    this.unitGroup.clear()
+    this.indoor.clear()
+    this.lights = []
+
+    const heights = new Map(unit.walls.map((w) => [w.id, w.heightM]))
+    const ceilingOf = (r: Room) => Math.max(...r.wallIds.map((id) => heights.get(id) ?? 3)) // as buildRoom
+    this.topY = Math.max(0, ...heights.values())
+
+    // slab: room undersides (centreline polygons) + a box under every wall to reach the outer face
+    const parts: THREE.BufferGeometry[] = rooms.map((r) =>
+      new THREE.ShapeGeometry(new THREE.Shape(core.roomPolygon(r, unit).map((p) => new THREE.Vector2(p.x, p.y))))
+        .rotateX(Math.PI / 2) // plan (x, y) → world (x, 0, z=y), facing down
+        .translate(0, -SLAB_M, 0),
+    )
+    for (const w of unit.walls) {
+      const f = core.wallFrame(w, unit.vertices)
+      const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
+      m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, -(SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
+      parts.push(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m))
+    }
+    const slabGeo = mergeGeometries(parts)
+    parts.forEach((g) => g.dispose())
+    const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
+    slab.castShadow = slab.receiveShadow = true
+    // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
+    const roof = new THREE.Mesh(slabGeo, slab.material)
+    roof.position.y = this.topY + SLAB_M + 0.005 // underside 5 mm above the ceiling plane: no z-fight
+    roof.castShadow = true
+    this.indoor.add(roof)
+
+    const b = core.unitBounds(unit)
+    this.catcher.position.set((b.minX + b.maxX) / 2, -SLAB_M - 0.01, (b.minY + b.maxY) / 2)
+    this.ground.position.y = -(unit.floor ?? 0) * STOREY_M - 0.2
+    this.fitBox.set(new THREE.Vector3(b.minX - 0.5, -SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
+
+    // ceiling fixtures: lights to the biggest non-bath rooms first, then baths, up to the cap
+    const lit = rooms
+      .filter((r) => LIT_KINDS.includes(r.kind))
+      .sort((a, b) => Number(a.kind === 'bath') - Number(b.kind === 'bath') || b.areaSqm - a.areaSqm)
+    for (const room of lit) {
+      const h = ceilingOf(room)
+      const hung = unit.furniture.find((p) => p.roomId === room.id && kitAsset(p.assetId)?.mount === 'ceiling')
+      const at = hung ? { x: hung.x, y: hung.y } : room.centroid
+      if (!core.pointInPolygon(at, core.roomPolygon(room, unit))) continue // concave room: centroid outside
+      let lightY = h - 0.12
+      if (hung) lightY = h - 0.8 * (kitAsset(hung.assetId)?.sizeM.y ?? 0.5) // the fan's light kit / the pendant's globe
+      else {
+        const r = room.areaSqm > 12 ? 0.25 : 0.19
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.92, 0.05, 40), this.fixtureMat)
+        disc.position.set(at.x, h - 0.025, at.y)
+        this.indoor.add(disc)
+      }
+      if (this.lights.length >= MAX_ROOM_LIGHTS) continue
+      const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
+      // a point light 5 cm under the ceiling burns a hotspot into it; a 90° spot with full penumbra is a
+      // downward cosine-ish lobe, like a real diffuser/pendant with an opaque top. Same per-fragment cost.
+      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2, 1, 2)
+      light.position.set(at.x, lightY, at.y)
+      light.target.position.set(at.x, 0, at.y)
+      this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm) })
+      this.unitGroup.add(light, light.target)
+    }
+    this.unitGroup.add(slab, this.indoor)
+  }
+
+  /** Call after the sun has been placed for `hour`. */
+  setHour(hour: number): void {
+    // 0 by day → 1 at 18:00 (and before 07:30): sky light fades, the fixtures take over
+    const dusk = Math.max(THREE.MathUtils.smoothstep(hour, 16.5, 18), 1 - THREE.MathUtils.smoothstep(hour, 6, 7.5))
+    this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
+    this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
+    this.scene.backgroundIntensity = 1 - 0.45 * dusk
+    for (const { light, base } of this.lights) light.intensity = base * (1 + (DUSK_BOOST - 1) * dusk)
+    this.fitShadow()
+  }
+
+  /** Orthographic shadow frustum fitted to the unit box (and its shadow on the catcher) in light space. */
+  private fitShadow(): void {
+    const cam = this.sun.shadow.camera
+    cam.position.copy(this.sun.position)
+    cam.lookAt(this.sun.target.position) // same orientation DirectionalLightShadow.updateMatrices uses
+    cam.updateMatrixWorld()
+    const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position).normalize()
+    const drop = (this.fitBox.max.y - this.fitBox.min.y) / Math.max(toSun.y, 0.05) // top corner → its shadow on the catcher
+    const lo = new THREE.Vector3(Infinity, Infinity, Infinity)
+    const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+    const p = new THREE.Vector3()
+    for (let i = 0; i < 8; i++) {
+      p.set(i & 1 ? this.fitBox.max.x : this.fitBox.min.x, i & 2 ? this.fitBox.max.y : this.fitBox.min.y, i & 4 ? this.fitBox.max.z : this.fitBox.min.z)
+      if (i & 2) {
+        const q = p.clone().addScaledVector(toSun, -drop).applyMatrix4(cam.matrixWorldInverse)
+        lo.min(q)
+        hi.max(q)
+      }
+      p.applyMatrix4(cam.matrixWorldInverse)
+      lo.min(p)
+      hi.max(p)
+    }
+    cam.left = lo.x
+    cam.right = hi.x
+    cam.bottom = lo.y
+    cam.top = hi.y
+    cam.near = Math.max(0.1, -hi.z - 1)
+    cam.far = -lo.z + 1
+    cam.updateProjectionMatrix()
+  }
+
+  setSize(w: number, h: number): void {
+    this.composer?.setSize(w, h)
+  }
+
+  render(): void {
+    const under = this.camera.getWorldPosition(this.v).y < this.topY
+    this.indoor.visible = under
+    this.catcher.visible = !under
+    if (this.composer && !this.renderer.xr.isPresenting) {
+      // AO from the depth RenderPass is about to write (normals reconstructed): no second geometry pass, and
+      // alpha-tested leaves occlude as drawn. Re-pointed per frame so GTAO never samples the target it writes.
+      this.ao!.setGBuffer(this.composer.readBuffer.depthTexture!)
+      this.composer.render()
+    } else this.renderer.render(this.scene, this.camera)
+  }
+
+  dispose(): void {
+    this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
+    for (const m of [this.ground, this.catcher]) {
+      m.geometry.dispose()
+      ;(m.material as THREE.Material).dispose()
+    }
+    this.fixtureMat.dispose()
+    if (this.composer) {
+      for (const p of this.composer.passes) p.dispose()
+      this.composer.dispose()
+    }
+  }
+}
