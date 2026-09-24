@@ -5,14 +5,17 @@
  * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, Id, Pt, Room, Unit } from '../core'
 import { furnish } from '../furnish/presets'
+import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, type Draft } from './Notes'
+import { entrySpawn, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
 import { decodeConfig, encodeConfig } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
@@ -35,7 +38,8 @@ function resolveUnit(): Unit | null {
   const id = decodeURIComponent(m[1])
   if (id === 'preview') {
     try {
-      return JSON.parse(localStorage.getItem('plotline.preview') ?? 'null')
+      const u = JSON.parse(localStorage.getItem('plotline.preview') ?? 'null')
+      return isUnit(u) ? normalizeUnit(u) : null // a stale/garbage preview must not crash deriveRooms
     } catch {
       return null
     }
@@ -43,51 +47,16 @@ function resolveUnit(): Unit | null {
   return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? null
 }
 
-const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
-
-/** 1.2 m inside the first door on a wall bordering the outer face, facing in; else the largest living room's centroid. */
-function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
-  for (const w of unit.walls) {
-    const door = w.openings.find((o) => o.kind === 'door')
-    if (!door) continue
-    const f = core.wallFrame(w, unit.vertices)
-    const mid = add(f.origin, f.dir, f.lengthM / 2)
-    const off = w.thicknessM / 2 + 0.05
-    const front = core.roomAt(add(mid, f.normal, off), rooms, unit)
-    const back = core.roomAt(add(mid, f.normal, -off), rooms, unit)
-    if (!!front === !!back) continue // interior wall (or floating): not the entry
-    const inward = front ? 1 : -1
-    const n = { x: f.normal.x * inward, y: f.normal.y * inward }
-    const at = add(f.origin, f.dir, door.offsetM + door.widthM / 2)
-    return { p: add(at, n, w.thicknessM / 2 + 1.2), face: n }
-  }
-  const living = rooms.filter((r) => r.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0] ?? rooms[0]
-  return living ? { p: living.centroid, face: { x: 0, y: -1 } } : null
+const spawn = (scene: PlotlineScene, p: Pt, face: Pt): void => scene.spawnAt(p, yawFor(face))
+/** Plan-space eye position (rig + camera): the walker in walk mode, the orbit camera in dollhouse. */
+const eyeOf = (scene: PlotlineScene): Pt => {
+  const w = scene.camera.getWorldPosition(new THREE.Vector3())
+  return { x: w.x, y: w.z }
 }
-
-/** Centroid, facing the midpoint of the room's longest wall. */
-function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
-  const poly = core.roomPolygon(room, unit)
-  let best = { len: -1, mid: poly[0] }
-  poly.forEach((a, i) => {
-    const b = poly[(i + 1) % poly.length]
-    const len = Math.hypot(b.x - a.x, b.y - a.y)
-    if (len > best.len) best = { len, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } }
-  })
-  const c = room.centroid
-  const d = Math.hypot(best.mid.x - c.x, best.mid.y - c.y) || 1
-  return { p: c, face: { x: (best.mid.x - c.x) / d, y: (best.mid.y - c.y) / d } }
+const headingOf = (scene: PlotlineScene): Pt => {
+  const d = scene.camera.getWorldDirection(new THREE.Vector3())
+  return { x: d.x, y: d.z }
 }
-
-// ponytail: PlotlineScene has no spawnAt(); set its private walker/yaw and let setMode('walk') apply them.
-// Upgrade path: a public spawnAt(p, yaw) on the engine. Camera yaw 0 looks along −Z (plan −y).
-function spawn(scene: PlotlineScene, p: Pt, face: Pt): void {
-  const s = scene as unknown as { walker: Pt; yaw: number }
-  s.walker = { ...p }
-  s.yaw = Math.atan2(-face.x, -face.y)
-  scene.setMode('walk')
-}
-const walkerOf = (scene: PlotlineScene): Pt => (scene as unknown as { walker: Pt }).walker
 
 export default function ViewerApp() {
   const unit = useMemo(() => {
@@ -119,6 +88,13 @@ function Viewer({ unit }: { unit: Unit }) {
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  /** every slot resolved (selection or its default) — what the engine and the share link get */
+  const fullCfg = useMemo<Configuration>(
+    () => Object.fromEntries(unit.finishSlots.map((s) => [s.id, cfg[s.id] ?? s.defaultOptionId])),
+    [unit.finishSlots, cfg],
+  )
 
   // engine
   useEffect(() => {
@@ -126,13 +102,20 @@ function Viewer({ unit }: { unit: Unit }) {
     s.setUnit(unit)
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
-      if (!hit || !commentingRef.current) return
-      const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
-      setDraft({ hit: { ...hit, roomId }, point: hit.point })
+      if (!hit) return
+      if (commentingRef.current) {
+        const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
+        setDraft({ hit: { ...hit, roomId }, point: hit.point })
+      } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
+        // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
+        s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
+        setMode('walk')
+      }
     })
     void navigator.xr?.isSessionSupported('immersive-vr').then((ok) => {
       if (!ok) return
       const el = s.enableXR()
+      s.renderer.xr.addEventListener('sessionstart', () => setMode('walk')) // engine forces walk in VR; keep the button label honest
       el.removeAttribute('style')
       el.className = 'btn'
       el.textContent = 'Enter VR'
@@ -142,7 +125,9 @@ function Viewer({ unit }: { unit: Unit }) {
     return () => s.dispose()
   }, [unit, rooms])
 
-  useEffect(() => scene?.setConfiguration(cfg), [scene, cfg])
+  useEffect(() => {
+    scene?.setConfiguration(fullCfg)
+  }, [scene, fullCfg])
 
   // load progress: a room counts once every placement it owns is in the scene graph
   useEffect(() => {
@@ -202,7 +187,7 @@ function Viewer({ unit }: { unit: Unit }) {
   }
 
   const share = () => {
-    const url = `${location.origin}${location.pathname}?c=${encodeConfig(cfg)}`
+    const url = `${location.origin}${location.pathname}?c=${encodeConfig(fullCfg)}`
     history.replaceState(null, '', url)
     void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
   }
@@ -250,8 +235,8 @@ function Viewer({ unit }: { unit: Unit }) {
   const focusPin = (pin: Pin) => {
     if (!scene) return
     const target = { x: pin.point.x, y: pin.point.z }
-    let from = walkerOf(scene)
-    const r = pin.roomId && rooms.find((x) => x.id === pin.roomId)
+    let from = eyeOf(scene)
+    const r = (pin.roomId && rooms.find((x) => x.id === pin.roomId)) || core.roomAt(target, rooms, unit)
     if (r && core.roomAt(from, rooms, unit)?.id !== r.id) from = r.centroid
     const d = Math.hypot(target.x - from.x, target.y - from.y) || 1
     spawn(scene, from, { x: (target.x - from.x) / d, y: (target.y - from.y) / d })

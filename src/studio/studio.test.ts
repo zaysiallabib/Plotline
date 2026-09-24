@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRooms, roomAt } from '../core'
+import { deriveRooms, roomAt, validate } from '../core'
 import type { Unit } from '../core'
-import { EXTERIOR_M, PARTITION_M, guessKind, initialState, reducer, studioIssues, type Action, type StudioState } from './model'
+import typeA from '../data/units/type-a.json'
+import { EXTERIOR_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, studioIssues, type Action, type Draft, type StudioState } from './model'
+import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -151,6 +153,69 @@ describe('studio reducer', () => {
     expect(rooms[0].kind).toBe('bed')
     expect(roomAt({ x: 1, y: 1 }, rooms, s.unit)?.id).toBe(s.unit.roomLabels[0].id)
     expect(studioIssues(s.unit, rooms).map((i) => i.code)).toEqual(['no-entry-door'])
+  })
+
+  it('restores a draft that is only { unit } (no planImage / view / timer)', () => {
+    expect(isUnit(typeA)).toBe(true)
+    const s = reducer(initialState(), { type: 'restore', draft: { unit: typeA as unknown as Unit } as Draft })
+    expect(s.unit.walls).toHaveLength(90)
+    expect(s.unit.vertices).toHaveLength(64)
+    expect(s.unit.name).toBe('Type A · 2703 sft')
+    expect(s.unit.planImage).toEqual({ src: '/assets/plan-2nd-floor.webp', pxPerM: 74, originPx: { x: 246, y: 806 } })
+    expect(s.planImage).toBeNull()
+    expect(s.view).toEqual({ panX: 0, panY: 0, zoom: 1 })
+    expect(s.timer.started).toBe(false)
+    expect(deriveRooms(s.unit)).toHaveLength(27)
+    expect(validate(s.unit).filter((i) => i.level === 'error')).toHaveLength(0)
+    // a bare unit also survives load-unit (Import)
+    expect(reducer(initialState(), { type: 'load-unit', unit: typeA as unknown as Unit }).unit.walls).toHaveLength(90)
+  })
+
+  it('isUnit rejects JSON that would crash deriveRooms; normalizeUnit fills gaps', () => {
+    expect(isUnit(null)).toBe(false)
+    expect(isUnit('{}')).toBe(false)
+    expect(isUnit({ name: 'x', vertices: [], walls: [] })).toBe(true)
+    expect(isUnit({ name: 'x', vertices: [{ id: 'a', x: 0 }], walls: [] })).toBe(false) // vertex without y
+    expect(isUnit({ name: 'x', vertices: [{ id: 'a', x: 0, y: 0 }], walls: [{ id: 'w', a: 'a', b: 'zzz' }] })).toBe(false) // missing vertex
+    expect(isUnit({ name: 'x', vertices: [], walls: [], roomLabels: [{ id: 'l', name: 'r' }] })).toBe(false) // label without x/y
+    const raw = {
+      name: 'x',
+      vertices: [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 3, y: 0 },
+      ],
+      walls: [{ id: 'w', a: 'a', b: 'b' }],
+      planImage: { src: 'img.webp' }, // no pxPerM → unusable → dropped
+    }
+    expect(isUnit(raw)).toBe(true)
+    const u = normalizeUnit(raw as unknown as Unit)
+    expect(u.walls[0]).toMatchObject({ thicknessM: PARTITION_M, openings: [] })
+    expect(u.planImage).toBeUndefined()
+    expect(u.roomLabels).toEqual([])
+    expect(() => deriveRooms(u)).not.toThrow()
+    expect(() => validate(u)).not.toThrow()
+  })
+
+  it('re-setting the scale keeps originPx; transforms round-trip through originPx', () => {
+    const s0 = reducer(initialState(), { type: 'restore', draft: { unit: typeA as unknown as Unit } as Draft })
+    const s1 = reducer(s0, { type: 'set-scale', pxPerM: 80 })
+    expect(s1.unit.planImage).toMatchObject({ pxPerM: 80, originPx: { x: 246, y: 806 } })
+    expect(reducer(initialState(), { type: 'set-scale', pxPerM: 80 }).unit.planImage?.originPx).toEqual({ x: 0, y: 0 })
+
+    const f = frameOf({ panX: 33, panY: -17, zoom: 0.4 }, s1.unit.planImage)
+    expect(mToPx(f, { x: 0, y: 0 })).toEqual({ x: 246, y: 806 }) // metre origin sits on the image's originPx
+    expect(mToPx(f, { x: 1, y: 2 })).toEqual({ x: 326, y: 966 })
+    for (const m of [{ x: 0, y: 0 }, { x: 6.515, y: 1.308 }, { x: -3.2, y: 12.75 }]) {
+      const back = screenToM(f, mToScreen(f, m))
+      expect(back.x).toBeCloseTo(m.x, 9)
+      expect(back.y).toBeCloseTo(m.y, 9)
+      const px = mToPx(f, m)
+      expect(pxToM(f, px).x).toBeCloseTo(m.x, 9)
+      expect(pxToM(f, px).y).toBeCloseTo(m.y, 9)
+    }
+    // no scale yet: 100 px/m, origin (0,0)
+    const g = frameOf({ panX: 0, panY: 0, zoom: 2 }, undefined)
+    expect(mToScreen(g, { x: 1, y: 1 })).toEqual({ x: 200, y: 200 })
   })
 
   it('guesses room kinds from names', () => {

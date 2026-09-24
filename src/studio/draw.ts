@@ -1,8 +1,9 @@
-/** Imperative canvas rendering. Transform: meters → screen via s = zoom * pxPerM. */
+/** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room } from '../core'
 import type { StudioState } from './model'
 import type { Snap } from './snap'
+import { mToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
 
@@ -23,15 +24,15 @@ export interface DrawArgs {
   rooms: Room[]
   hover: Hover | null
   scaleStart: Pt | null // plan px
-  pxPerM: number
+  frame: Frame
 }
 
 export function draw(a: DrawArgs): void {
-  const { ctx, state, dpr, pxPerM, width, height } = a
-  const { panX, panY, zoom } = state.view
+  const { ctx, state, dpr, frame, width, height } = a
+  const { panX, panY, zoom, pxPerM } = frame
   const s = zoom * pxPerM
   const px = (n: number) => n / s // screen px → meters
-  const toScreen = (m: Pt): Pt => ({ x: m.x * s + panX, y: m.y * s + panY })
+  const toScreen = (m: Pt): Pt => mToScreen(frame, m)
   const sel = new Set(state.selection)
   const chainIds = new Set(state.chain?.ids ?? [])
   const vs = state.unit.vertices
@@ -47,8 +48,9 @@ export function draw(a: DrawArgs): void {
     ctx.globalAlpha = 1
   }
 
-  // meters space
-  ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * panX, dpr * panY)
+  // meters space: metre (0,0) sits at plan px originPx
+  const m0 = mToScreen(frame, { x: 0, y: 0 })
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * m0.x, dpr * m0.y)
   ctx.lineJoin = 'round'
 
   for (const r of a.rooms) {
@@ -66,8 +68,7 @@ export function draw(a: DrawArgs): void {
     ctx.setLineDash([px(4), px(4)])
     ctx.strokeStyle = C.muted
     ctx.lineWidth = px(1)
-    const x0 = px(-panX)
-    const y0 = px(-panY)
+    const { x: x0, y: y0 } = screenToM(frame, { x: 0, y: 0 })
     for (const g of guides) {
       ctx.beginPath()
       if (g.axis === 'x') {

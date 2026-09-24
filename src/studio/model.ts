@@ -297,9 +297,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return { ...s, planImage: a.image, unit: { ...s.unit, planImage } }
     }
     case 'set-scale':
+      // originPx stays put: re-scaling only changes the image mapping (spec §2.2 step 2)
       return commit(s, {
         ...s.unit,
-        planImage: { src: s.planImage?.name ?? s.unit.planImage?.src ?? '', pxPerM: a.pxPerM, originPx: { x: 0, y: 0 } },
+        planImage: { src: s.planImage?.name ?? s.unit.planImage?.src ?? '', pxPerM: a.pxPerM, originPx: s.unit.planImage?.originPx ?? { x: 0, y: 0 } },
       })
     case 'set-meta':
       return { ...s, unit: { ...s.unit, ...a.patch } }
@@ -475,9 +476,19 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
 
     case 'load-unit':
-      return { ...initialState(), unit: a.unit, planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }
-    case 'restore':
-      return { ...initialState(), unit: a.draft.unit, planImage: a.draft.planImage, view: a.draft.view, timer: { ...a.draft.timer, lastTickAt: 0 } }
+      return { ...initialState(), unit: normalizeUnit(a.unit), planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }
+    case 'restore': {
+      // a draft may be just `{ unit }` (older drafts, hand-injected JSON): every other field is optional
+      const init = initialState()
+      const d = a.draft as Partial<Draft>
+      return {
+        ...init,
+        unit: normalizeUnit(a.draft.unit),
+        planImage: d.planImage ?? null,
+        view: d.view ?? init.view,
+        timer: { ...init.timer, ...d.timer, lastTickAt: 0 },
+      }
+    }
     case 'reset':
       return initialState()
 
@@ -573,17 +584,58 @@ export const slug = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'unit'
 
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const str = (v: unknown): v is string => typeof v === 'string' && v.length > 0
+
+/**
+ * Structural check strict enough that deriveRooms/validate cannot throw on what passes:
+ * every vertex has an id and finite x/y, every wall has an id and references existing
+ * vertices, every opening (if any) has an id and finite offset/width. Optional fields
+ * (planImage, roomLabels, furniture, finishSlots) are only checked when present.
+ */
 export const isUnit = (x: unknown): x is Unit => {
   const u = x as Partial<Unit> | null
-  return !!u && typeof u === 'object' && Array.isArray(u.vertices) && Array.isArray(u.walls) && typeof u.name === 'string'
+  if (!u || typeof u !== 'object' || !Array.isArray(u.vertices) || !Array.isArray(u.walls) || typeof u.name !== 'string') return false
+  const vs = new Set<Id>()
+  for (const v of u.vertices as Partial<Vertex>[]) {
+    if (!v || !str(v.id) || !num(v.x) || !num(v.y)) return false
+    vs.add(v.id)
+  }
+  for (const w of u.walls as Partial<Wall>[]) {
+    if (!w || !str(w.id) || !str(w.a) || !str(w.b) || !vs.has(w.a) || !vs.has(w.b)) return false
+    if (w.openings !== undefined) {
+      if (!Array.isArray(w.openings)) return false
+      for (const o of w.openings as Partial<Opening>[]) if (!o || !str(o.id) || !num(o.offsetM) || !num(o.widthM)) return false
+    }
+  }
+  if (u.roomLabels !== undefined) {
+    if (!Array.isArray(u.roomLabels)) return false
+    for (const l of u.roomLabels as Partial<RoomLabel>[]) if (!l || !str(l.id) || !num(l.x) || !num(l.y)) return false
+  }
+  return true
 }
 
-/** Fill any arrays a hand-edited JSON left out. */
-export const normalizeUnit = (u: Unit): Unit => ({
-  ...emptyUnit(),
-  ...u,
-  roomLabels: u.roomLabels ?? [],
-  furniture: u.furniture ?? [],
-  finishSlots: u.finishSlots ?? [],
-  walls: u.walls.map((w) => ({ ...w, openings: w.openings ?? [] })),
-})
+/** Fill any fields a hand-edited JSON left out; drop a planImage without a usable scale. */
+export const normalizeUnit = (u: Unit): Unit => {
+  const pi = u.planImage
+  const planImage =
+    pi && num(pi.pxPerM) && pi.pxPerM > 0 ? { src: typeof pi.src === 'string' ? pi.src : '', pxPerM: pi.pxPerM, originPx: pi.originPx ?? { x: 0, y: 0 } } : undefined
+  return {
+    ...emptyUnit(),
+    ...u,
+    id: str(u.id) ? u.id : newId(),
+    projectName: u.projectName ?? '',
+    northDeg: num(u.northDeg) ? u.northDeg : 0,
+    areaSqft: num(u.areaSqft) ? u.areaSqft : 0,
+    roomLabels: u.roomLabels ?? [],
+    furniture: u.furniture ?? [],
+    finishSlots: u.finishSlots ?? [],
+    walls: u.walls.map((w) => ({
+      ...w,
+      thicknessM: num(w.thicknessM) && w.thicknessM > 0 ? w.thicknessM : PARTITION_M,
+      heightM: num(w.heightM) && w.heightM > 0 ? w.heightM : WALL_HEIGHT_M,
+      openings: (w.openings ?? []).map((o) => ({ ...o, heightM: num(o.heightM) ? o.heightM : 7 * FT, sillM: num(o.sillM) ? o.sillM : 0 })),
+    })),
+    planImage,
+  }
+}

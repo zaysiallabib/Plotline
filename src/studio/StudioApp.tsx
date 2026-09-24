@@ -20,6 +20,7 @@ import {
 } from './model'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapPoint } from './snap'
+import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
 const DRAFT_KEY = 'plotline.studio.draft'
@@ -75,8 +76,10 @@ function init(): StudioState {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (raw) {
-      const d = JSON.parse(raw) as Draft
-      if (isUnit(d.unit)) return reducer(s, { type: 'restore', draft: { ...d, unit: normalizeUnit(d.unit) } })
+      const parsed = JSON.parse(raw) as unknown
+      // a full Draft, a bare `{ unit }`, or a Unit JSON pasted straight in — all restore
+      const d = (isUnit(parsed) ? { unit: parsed } : parsed) as Partial<Draft> | null
+      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: d as Draft })
     }
   } catch {
     /* corrupt draft: start clean */
@@ -123,7 +126,8 @@ export default function StudioApp() {
   const fitOnLoad = useRef(false)
 
   const { unit, view, tool, chain } = state
-  const pxPerM = unit.planImage?.pxPerM ?? 100
+  const frame = useMemo(() => frameOf(view, unit.planImage), [view, unit.planImage])
+  const { pxPerM } = frame
   const s = view.zoom * pxPerM
   const tolM = SNAP_PX / s
   const scaleSet = !!unit.planImage
@@ -132,9 +136,9 @@ export default function StudioApp() {
   const errors = issues.filter((i) => i.level === 'error').length
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
-  const toM = useCallback((sx: number, sy: number): Pt => ({ x: (sx - view.panX) / s, y: (sy - view.panY) / s }), [view, s])
-  const toPx = useCallback((sx: number, sy: number): Pt => ({ x: (sx - view.panX) / view.zoom, y: (sy - view.panY) / view.zoom }), [view])
-  const toScreen = useCallback((m: Pt): Pt => ({ x: m.x * s + view.panX, y: m.y * s + view.panY }), [view, s])
+  const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
+  const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
+  const toScreen = useCallback((m: Pt): Pt => mToScreen(frame, m), [frame])
   const now = () => Date.now()
 
   // ----- reducer toasts → note
@@ -174,12 +178,14 @@ export default function StudioApp() {
       const { w, h } = size
       if (!w || !h) return
       let bx: { minX: number; minY: number; maxX: number; maxY: number } | null = null
-      const ppm = st.unit.planImage?.pxPerM ?? 100
       if (bounds) bx = bounds
       else if (st.planImage) bx = { minX: 0, minY: 0, maxX: st.planImage.naturalW, maxY: st.planImage.naturalH }
       else if (st.unit.vertices.length) {
+        const f = frameOf(st.view, st.unit.planImage)
         const b = unitBounds(st.unit)
-        bx = { minX: b.minX * ppm, minY: b.minY * ppm, maxX: b.maxX * ppm, maxY: b.maxY * ppm }
+        const lo = mToPx(f, { x: b.minX, y: b.minY })
+        const hi = mToPx(f, { x: b.maxX, y: b.maxY })
+        bx = { minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y }
       }
       if (!bx) return
       const bw = Math.max(bx.maxX - bx.minX, 1)
@@ -213,10 +219,10 @@ export default function StudioApp() {
     if (canvas.height !== Math.round(size.h * dpr)) canvas.height = Math.round(size.h * dpr)
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, hover, scaleStart, pxPerM })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, hover, scaleStart, frame })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, hover, scaleStart, size, pxPerM])
+  }, [state, img, rooms, hover, scaleStart, size, frame])
 
   // ----- draft persistence
   const saveDraft = useCallback(() => {
@@ -273,6 +279,26 @@ export default function StudioApp() {
     [toast],
   )
 
+  /** Exported JSON names its image (`img_3.webp` → /plans/, or an absolute public path); load it or show the "not found" prompt. */
+  const loadPlanSrc = useCallback(
+    (src: string) => {
+      const url = src.startsWith('/') || /^(https?:|data:)/.test(src) ? src : `/plans/${src}`
+      const im = new Image()
+      im.onload = () => {
+        setMissingPlan(null)
+        fitOnLoad.current = true
+        dispatch({ type: 'set-plan-image', image: { dataUrl: url, naturalW: im.naturalWidth, naturalH: im.naturalHeight, name: src } })
+      }
+      im.onerror = () => {
+        dispatch({ type: 'set-plan-image', image: null })
+        setMissingPlan(src)
+        fitView()
+      }
+      im.src = url
+    },
+    [fitView],
+  )
+
   const importJson = useCallback(
     async (file: File) => {
       let parsed: unknown
@@ -285,24 +311,17 @@ export default function StudioApp() {
       const u = normalizeUnit(parsed)
       dispatch({ type: 'load-unit', unit: u })
       const src = u.planImage?.src
-      if (src && src !== stateRef.current.planImage?.name) {
-        const im = new Image()
-        const url = `/plans/${src}`
-        im.onload = () => {
-          setMissingPlan(null)
-          fitOnLoad.current = true
-          dispatch({ type: 'set-plan-image', image: { dataUrl: url, naturalW: im.naturalWidth, naturalH: im.naturalHeight, name: src } })
-        }
-        im.onerror = () => {
-          dispatch({ type: 'set-plan-image', image: null })
-          setMissingPlan(src)
-          fitView()
-        }
-        im.src = url
-      } else if (!src) fitView()
+      if (src && src !== stateRef.current.planImage?.name) loadPlanSrc(src)
+      else if (!src) fitView()
     },
-    [toast, fitView],
+    [toast, fitView, loadPlanSrc],
   )
+  // a restored draft that carries the exported `planImage.src` but no data URL: try the deployed image
+  useEffect(() => {
+    const st = stateRef.current
+    if (!st.planImage && st.unit.planImage?.src) loadPlanSrc(st.unit.planImage.src)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const onFiles = useCallback(
     (files: FileList | null) => {
@@ -690,16 +709,11 @@ export default function StudioApp() {
     const selectable = i.ids.filter((id) => !id.startsWith('space-'))
     dispatch({ type: 'select', ids: selectable })
     if (!pts.length) return
-    const pad = 2 / pxPerM
     const xs = pts.map((p) => p.x)
     const ys = pts.map((p) => p.y)
-    const b = {
-      minX: (Math.min(...xs) - 2 - pad) * pxPerM,
-      minY: (Math.min(...ys) - 2 - pad) * pxPerM,
-      maxX: (Math.max(...xs) + 2 + pad) * pxPerM,
-      maxY: (Math.max(...ys) + 2 + pad) * pxPerM,
-    }
-    fitView(b)
+    const lo = mToPx(frame, { x: Math.min(...xs) - 2, y: Math.min(...ys) - 2 }) // 2 m of context around the issue
+    const hi = mToPx(frame, { x: Math.max(...xs) + 2, y: Math.max(...ys) + 2 })
+    fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
   }
 
   const savePopover = () => {
