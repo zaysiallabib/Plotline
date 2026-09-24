@@ -9,3 +9,7 @@ dist
 
 .vercel
 .env*
+
+# local tooling
+.claude/worktrees
+.vscode
