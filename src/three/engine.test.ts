@@ -12,7 +12,7 @@ import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { resolveFinishRef } from './materials'
-import { buildOpening } from './PlotlineScene'
+import { buildOpening } from './openings'
 
 // TextureLoader → ImageLoader wants a DOM element; the tests never await a load.
 ;(globalThis as { document?: unknown }).document ??= { createElementNS: () => ({ addEventListener() {}, removeEventListener() {} }) }
