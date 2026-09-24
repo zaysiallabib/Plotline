@@ -12,6 +12,7 @@ import { furnish } from '../furnish/presets'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
+import type { XRControls } from '../three/xr'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, type Draft } from './Notes'
@@ -28,6 +29,20 @@ if (!UNITS.length) UNITS.push({ stem: TEST_UNIT.id, unit: TEST_UNIT }) // dev on
 const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh link."
 const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
 const DEFAULT_HOUR = 15.5
+const VR_FAILED = "Couldn't start VR. Is the headset connected?"
+
+/**
+ * Dev only (stripped from production builds): `?xr=emulate` installs Meta's IWER as an emulated Quest 3 before the
+ * viewer asks isSessionSupported, and exposes it as window.__xrDevice so Playwright can pose the headset/controllers.
+ */
+const xrEmulation =
+  import.meta.env.DEV && new URLSearchParams(location.search).get('xr') === 'emulate'
+    ? import('iwer').then(({ XRDevice, metaQuest3 }) => {
+        const device = new XRDevice(metaQuest3, { stereoEnabled: true })
+        device.installRuntime({ forceInstall: true }) // Chromium ships a native navigator.xr
+        Object.assign(window, { __xrDevice: device })
+      })
+    : null
 
 function resolveUnit(): Unit | null {
   const m = location.pathname.match(/^\/u\/([^/]+)/)
@@ -82,7 +97,8 @@ function Viewer({ unit }: { unit: Unit }) {
   const [finishesOpen, setFinishesOpen] = useState(false)
   const [commenting, setCommenting] = useState(false)
   const [locked, setLocked] = useState(false)
-  const [vrButton, setVrButton] = useState<HTMLElement | null>(null)
+  const [xr, setXr] = useState<XRControls | null>(null)
+  const [inVR, setInVR] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
@@ -112,17 +128,24 @@ function Viewer({ unit }: { unit: Unit }) {
         setMode('walk')
       }
     })
-    void navigator.xr?.isSessionSupported('immersive-vr').then((ok) => {
-      if (!ok) return
-      const el = s.enableXR()
-      s.renderer.xr.addEventListener('sessionstart', () => setMode('walk')) // engine forces walk in VR; keep the button label honest
-      el.removeAttribute('style')
-      el.className = 'btn'
-      el.textContent = 'Enter VR'
-      setVrButton(el)
-    })
+    let alive = true // StrictMode/HMR dispose this scene before the promise settles
+    void Promise.resolve(xrEmulation)
+      .then(() => navigator.xr?.isSessionSupported('immersive-vr'))
+      .then((ok) => {
+        if (!ok || !alive) return
+        setXr(s.enableXR())
+        s.renderer.xr.addEventListener('sessionstart', () => {
+          setMode('walk') // engine forces walk in VR; keep the button label honest
+          setInVR(true)
+        })
+        s.renderer.xr.addEventListener('sessionend', () => setInVR(false))
+      })
+    if (import.meta.env.DEV) Object.assign(window, { __plotline: s })
     setScene(s)
-    return () => s.dispose()
+    return () => {
+      alive = false
+      s.dispose()
+    }
   }, [unit, rooms])
 
   useEffect(() => {
@@ -192,6 +215,8 @@ function Viewer({ unit }: { unit: Unit }) {
     void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
   }
 
+  const toggleVR = () => void xr?.toggle().catch(() => showToast(VR_FAILED))
+
   // keys: Enter (load screen), O, F, C, Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -201,6 +226,7 @@ function Viewer({ unit }: { unit: Unit }) {
         if (e.key === 'Enter') enter()
         return
       }
+      if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
       if (k === 'o') toggleMode()
       else if (k === 'f') setFinishesOpen((v) => !v)
@@ -268,7 +294,15 @@ function Viewer({ unit }: { unit: Unit }) {
         </div>
       )}
 
-      {entered && scene && (
+      {entered && inVR && (
+        <div className="hud-tr">
+          <button className="btn" onClick={toggleVR}>
+            Exit VR
+          </button>
+        </div>
+      )}
+
+      {entered && scene && !inVR && (
         <>
           <Hud
             room={room}
@@ -277,7 +311,7 @@ function Viewer({ unit }: { unit: Unit }) {
             finishesOpen={finishesOpen}
             commenting={commenting}
             locked={locked}
-            vrButton={vrButton}
+            onEnterVR={xr ? toggleVR : null}
             toast={toast}
             onJump={(r) => {
               const v = roomView(r, unit)

@@ -1,5 +1,5 @@
 /** Room chip + Rooms list (top-left), the button row (top-right), comment hint, pointer-lock hint, toast, footer. */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { sqmToSqft, type Room } from '../core'
 import type { SceneMode } from '../three/PlotlineScene'
 
@@ -10,7 +10,8 @@ interface Props {
   finishesOpen: boolean
   commenting: boolean
   locked: boolean
-  vrButton: HTMLElement | null
+  /** set when immersive-vr is supported: shows "Enter VR" */
+  onEnterVR: (() => void) | null
   toast: string | null
   onJump: (room: Room) => void
   onToggleMode: () => void
@@ -23,11 +24,6 @@ const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
 
 export default function Hud(p: Props) {
   const [roomsOpen, setRoomsOpen] = useState(false)
-  const vrHost = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (p.vrButton && vrHost.current) vrHost.current.replaceChildren(p.vrButton)
-  }, [p.vrButton])
 
   return (
     <>
@@ -76,7 +72,11 @@ export default function Hud(p: Props) {
         <button className="btn" onClick={p.onShare}>
           Share
         </button>
-        {p.vrButton && <span ref={vrHost} className="vr-host" />}
+        {p.onEnterVR && (
+          <button className="btn" onClick={p.onEnterVR}>
+            Enter VR
+          </button>
+        )}
       </div>
 
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
