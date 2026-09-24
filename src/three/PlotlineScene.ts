@@ -17,7 +17,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { VRButton } from 'three/addons/webxr/VRButton.js'
+import { XRControls } from './xr'
 import * as core from '../core'
 import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
 import { HDRI } from '../furnish/textures'
@@ -231,22 +231,24 @@ export class PlotlineScene {
     if (this.mode === 'walk') this.plc.lock()
   }
 
-  /** Returns the VRButton to append somewhere. Controller "select" teleports to the floor hit. */
-  enableXR(): HTMLElement {
-    this.renderer.xr.enabled = true
-    this.renderer.xr.addEventListener('sessionstart', () => this.setMode('walk'))
-    for (let i = 0; i < 2; i++) {
-      const c = this.renderer.xr.getController(i)
-      c.addEventListener('selectstart', () => {
-        const m = new THREE.Matrix4().extractRotation(c.matrixWorld)
-        this.raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld)
-        this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(m)
-        const hit = this.raycaster.intersectObjects(this.floors, false)[0]
-        if (hit) this.walker = { x: hit.point.x, y: hit.point.z }
-      })
-      this.rig.add(c)
-    }
-    return VRButton.createButton(this.renderer)
+  private xr: XRControls | null = null
+
+  /** Turns WebXR on (once isSessionSupported('immersive-vr') is true). Rays, teleport, snap turn, room chip: xr.ts. */
+  enableXR(): XRControls {
+    this.xr ??= new XRControls({
+      renderer: this.renderer,
+      scene: this.scene,
+      camera: this.camera,
+      rig: this.rig,
+      sun: this.sun,
+      targets: this.staticGroup,
+      canStand: (p) => !!this.unit && !!core.roomAt(p, this.rooms, this.unit) && !this.blocked(p),
+      roomAt: (p) => (this.unit ? core.roomAt(p, this.rooms, this.unit) : null),
+      start: () => this.setMode('walk'),
+      moved: (p) => (this.walker = p),
+      exit: (p, yaw) => this.spawnAt(p, yaw),
+    })
+    return this.xr
   }
 
   resize(): void {
@@ -532,6 +534,7 @@ export class PlotlineScene {
   }
 
   private tick = (): void => {
+    this.xr?.update()
     this.timer.update()
     const dt = Math.min(this.timer.getDelta(), 0.1)
     if (this.mode === 'orbit') {
