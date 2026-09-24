@@ -213,6 +213,8 @@ export class XRControls {
     this.raycaster.ray.origin.setFromMatrixPosition(m)
     this.raycaster.ray.direction.set(0, 0, -1).transformDirection(m)
     this.hits.length = 0
+    // ponytail: rays ignore furniture, so a ring can land under a table; add the furniture group to targets
+    // (while selecting only: its meshes are dense) if headset testing shows buyers teleporting into furniture.
     this.raycaster.intersectObject(this.h.targets, true, this.hits)
     const hit = this.hits[0]
     hand.line.scale.z = hit ? hit.distance : RAY_M
