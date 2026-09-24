@@ -421,7 +421,8 @@ export class PlotlineScene {
   // ───────────────────────────── controls ─────────────────────────────
 
   private onKey = (e: KeyboardEvent): void => {
-    if ((e.target as HTMLElement)?.tagName === 'INPUT') return
+    const t = e.target as HTMLElement | null
+    if (t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable)) return
     if (e.type === 'keydown') this.keys.add(e.key.toLowerCase())
     else this.keys.delete(e.key.toLowerCase())
   }
