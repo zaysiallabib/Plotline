@@ -94,21 +94,30 @@ const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
  * with roomIds 'all'; chosen option = cfg[slot.id] ?? slot.defaultOptionId.
  * roomId null = exterior side of a wall.
  */
-export function resolveFinish(
+export function resolveFinishRef(
   slots: FinishSlot[],
   cfg: Configuration,
   roomId: Id | null,
   target: FinishSlot['target'],
-): THREE.MeshStandardMaterial {
-  if (roomId === null) return materialFor(target === 'wall' ? EXTERIOR_PLASTER : DEFAULTS[target])
+): MaterialRef {
+  if (roomId === null) return target === 'wall' ? EXTERIOR_PLASTER : DEFAULTS[target]
   let slot: FinishSlot | undefined
   for (const s of slots) {
     if (s.target !== target) continue
     if (s.roomIds === 'all') slot ??= s
     else if (s.roomIds.includes(roomId)) slot = s
   }
-  if (!slot) return materialFor(DEFAULTS[target])
+  if (!slot) return DEFAULTS[target]
   const chosen = cfg[slot.id] ?? slot.defaultOptionId
   const opt = slot.options.find((o) => o.id === chosen) ?? slot.options.find((o) => o.id === slot.defaultOptionId)
-  return materialFor(opt?.material ?? DEFAULTS[target])
+  return opt?.material ?? DEFAULTS[target]
+}
+
+export function resolveFinish(
+  slots: FinishSlot[],
+  cfg: Configuration,
+  roomId: Id | null,
+  target: FinishSlot['target'],
+): THREE.MeshStandardMaterial {
+  return materialFor(resolveFinishRef(slots, cfg, roomId, target))
 }

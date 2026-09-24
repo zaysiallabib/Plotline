@@ -1599,7 +1599,8 @@
         "r_bed1",
         "r_bed2",
         "r_bed3",
-        "r_study"
+        "r_study",
+        "r_closet"
       ],
       "defaultOptionId": "fo_beds_oak",
       "options": [

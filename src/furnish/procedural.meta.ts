@@ -24,6 +24,6 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   kitchen_counter: P('kitchen_counter', 'Kitchen counter module (1 m)', 'kitchen', 1.0, 0.9, 0.62),
   fridge: P('fridge', 'Fridge (brushed steel)', 'kitchen', 0.7, 1.8, 0.7),
   toilet: P('toilet', 'Toilet (white ceramic)', 'bath', 0.4, 0.75, 0.7),
-  basin: P('basin', 'Pedestal basin', 'bath', 0.5, 0.85, 0.45),
+  basin: P('basin', 'Pedestal basin', 'bath', 0.5, 0.97, 0.45), // rim 0.85, tap spout 0.97
   wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 2 doors)', 'wardrobe', 1.8, 2.2, 0.6),
 }

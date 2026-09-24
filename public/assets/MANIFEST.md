@@ -35,14 +35,14 @@ Models: 1k-texture glTF variant (.gltf + .bin + textures/). Textures: 1k JPG
 | ceramic_vase_01 | model (other) | https://polyhaven.com/a/ceramic_vase_01 | James Ray Cock | CC0 | 2026-09-24 | models/ceramic_vase_01/ (5 files) | 418457 |
 | wood_floor_oak | texture | https://polyhaven.com/a/laminate_floor_03 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-09-24 | textures/wood_floor_oak/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1980643 |
 | marble_floor_white | texture | https://polyhaven.com/a/marble_01 | Rob Tuytel | CC0 | 2026-09-24 | textures/marble_floor_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 703651 |
-| tile_floor_ceramic | texture | https://polyhaven.com/a/floor_tiles_04 | Rob Tuytel | CC0 | 2026-09-24 | textures/tile_floor_ceramic/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 776025 |
+| tile_floor_ceramic | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | shares textures/tile_wall_white/ (floor_tiles_04 removed 2026-09-25: tan limestone read as wood) | 0 |
 | tile_floor_outdoor | texture | https://polyhaven.com/a/grey_tiles | Amal Kumar | CC0 | 2026-09-24 | textures/tile_floor_outdoor/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1368127 |
 | plaster_white | texture | https://polyhaven.com/a/white_stucco | Amal Kumar | CC0 | 2026-09-24 | textures/plaster_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2314644 |
 | tile_wall_white | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | textures/tile_wall_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2258996 |
 | studio_small_09 | hdri | https://polyhaven.com/a/studio_small_09 | Sergej Majboroda | CC0 | 2026-09-24 | hdri/interior.hdr | 1615248 |
 | kloofendal_43d_clear_puresky | hdri | https://polyhaven.com/a/kloofendal_43d_clear_puresky | Greg Zaal | CC0 | 2026-09-24 | hdri/sky.hdr | 1184531 |
 
-**Total: 49623264 bytes (47.3 MB)** across 24 models, 6 texture sets, 2 HDRIs.
+**Total: 48847239 bytes (46.6 MB)** across 24 models, 5 texture sets (6 ids), 2 HDRIs.
 
 ## Notes
 

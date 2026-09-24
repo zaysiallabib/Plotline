@@ -29,16 +29,18 @@ export const TEXTURES: Record<string, TextureSet> = {
     author: "Rob Tuytel",
     license: 'CC0',
   },
+  // Poly Haven has no white ceramic FLOOR tile; floor_tiles_04 (tan limestone, 1 m tiles) read as
+  // oak in the viewer. long_white_tiles is categorised "floor" there too, so share tile_wall_white's files.
   tile_floor_ceramic: {
     id: "tile_floor_ceramic",
-    label: "Light stone/ceramic floor tiles",
-    albedo: "/assets/textures/tile_floor_ceramic/albedo.jpg",
-    normal: "/assets/textures/tile_floor_ceramic/normal.jpg",
-    roughness: "/assets/textures/tile_floor_ceramic/roughness.jpg",
-    ao: "/assets/textures/tile_floor_ceramic/ao.jpg",
-    repeatM: 4,
-    source: "https://polyhaven.com/a/floor_tiles_04",
-    author: "Rob Tuytel",
+    label: "White ceramic floor tiles",
+    albedo: "/assets/textures/tile_wall_white/albedo.jpg",
+    normal: "/assets/textures/tile_wall_white/normal.jpg",
+    roughness: "/assets/textures/tile_wall_white/roughness.jpg",
+    ao: "/assets/textures/tile_wall_white/ao.jpg",
+    repeatM: 1.27,
+    source: "https://polyhaven.com/a/long_white_tiles",
+    author: "Jenelle van Heerden, Sergej Majboroda",
     license: 'CC0',
   },
   tile_floor_outdoor: {

@@ -209,6 +209,14 @@ export class PlotlineScene {
     this.setMode('walk')
   }
 
+  /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left). Switches to walk mode. */
+  spawnAt(p: Pt, yawRad: number): void {
+    this.walker = { ...p }
+    this.yaw = yawRad
+    this.moveTarget = null
+    this.setMode('walk')
+  }
+
   onPick(cb: (hit: PickHit | null) => void): void {
     this.pickCb = cb
   }
@@ -580,8 +588,8 @@ function box(w: number, h: number, d: number, x: number, y: number, z: number, m
   return mesh
 }
 
-/** Door/passage/window dressing in wall-local coordinates (u, v, w). */
-function buildOpening(o: Opening, wall: Wall): THREE.Group {
+/** Door/passage/window dressing in wall-local coordinates (u, v, w). Exported for engine.test.ts. */
+export function buildOpening(o: Opening, wall: Wall): THREE.Group {
   const g = new THREE.Group()
   g.userData = { kind: 'opening', id: o.id, wallId: wall.id }
   const d = wall.thicknessM + 0.02
@@ -599,8 +607,9 @@ function buildOpening(o: Opening, wall: Wall): THREE.Group {
     pivot.position.set(hingeB ? o.offsetM + o.widthM : o.offsetM, o.sillM, 0)
     const sx = hingeB ? -1 : 1
     pivot.add(box(o.widthM - 0.02, o.heightM - 0.02, 0.04, (sx * (o.widthM - 0.02)) / 2, (o.heightM - 0.02) / 2, 0, materialFor(LEAF_WOOD)))
-    // rotating +u about Y by −φ moves it toward +w; 'in' = swing toward +normal
-    pivot.rotation.y = sx * (o.swing === 'in' ? -1 : 1) * THREE.MathUtils.degToRad(20)
+    // rotating +u about Y by +φ moves it toward −w. Unit JSON convention: 'in' = leaf on the
+    // LEFT of a→b in image coords = −normal side (normal = (−dir.y, dir.x) is the right-hand side on screen).
+    pivot.rotation.y = sx * (o.swing === 'in' ? 1 : -1) * THREE.MathUtils.degToRad(20)
     g.add(pivot)
   } else if (o.kind === 'window') {
     glass ??= new THREE.MeshPhysicalMaterial({ transmission: 0.9, roughness: 0.05, thickness: 0.01, ior: 1.5 })

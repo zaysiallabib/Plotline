@@ -11,6 +11,7 @@ import { buildProcedural } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
 const gltfCache = new Map<string, Promise<THREE.Group>>()
+const warned = new Set<string>()
 
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
@@ -57,6 +58,20 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)
+      // Some Poly Haven exports carry vertex data in the wrong unit (steel_frame_shelves_01 is 10×).
+      // Largest extent is axis-swap-proof; if it is off by > 25 % scale so the height matches the kit.
+      const size = box.getSize(new THREE.Vector3())
+      const want = asset.sizeM
+      const ratio = Math.max(size.x, size.y, size.z) / Math.max(want.x, want.y, want.z)
+      if (Math.abs(ratio - 1) > 0.25 && size.y > 1e-6) {
+        if (!warned.has(asset.id)) {
+          warned.add(asset.id)
+          console.warn(`[plotline] "${asset.id}" loads at ${ratio.toFixed(2)}× its kit size — rescaling to sizeM.y`)
+        }
+        model.scale.multiplyScalar(want.y / size.y)
+        model.updateMatrixWorld(true)
+        box.setFromObject(model)
+      }
       const c = box.getCenter(new THREE.Vector3())
       model.position.set(-c.x, -box.min.y, -c.z)
       if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)

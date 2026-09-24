@@ -56,8 +56,16 @@ const MOUNT: Record<string, KitAsset['mount']> = {
   hanging_picture_frame_01: 'wall',
 }
 
-/** Poly Haven kit + procedural assets (src/furnish/procedural.meta.ts), with mount applied. */
+// kit.data.ts guesses '+z' for every model; these two have their width (sizeM.x) along glTF z,
+// measured from the accessor bounds. Both are symmetric front/back, so the sign is cosmetic.
+const FRONT: Record<string, KitAsset['frontAxis']> = {
+  wooden_display_shelves_01: '+x',
+  modern_coffee_table_01: '+x',
+}
+
+/** Poly Haven kit + procedural assets (src/furnish/procedural.meta.ts), with mount/front overrides applied. */
 export function kitAsset(id: string): KitAsset | undefined {
   const a = KIT[id] ?? PROCEDURAL[id]
-  return a && MOUNT[id] ? { ...a, mount: MOUNT[id] } : a
+  if (!a || !(MOUNT[id] || FRONT[id])) return a
+  return { ...a, mount: MOUNT[id] ?? a.mount, frontAxis: FRONT[id] ?? a.frontAxis }
 }
