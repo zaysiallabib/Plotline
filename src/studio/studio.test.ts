@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRooms, roomAt, validate } from '../core'
+import { deriveRooms, roomAt, validate, wallFrame } from '../core'
 import type { Unit } from '../core'
 import typeA from '../data/units/type-a.json'
-import { EXTERIOR_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, studioIssues, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 
 const TOL = 0.05
@@ -216,6 +216,35 @@ describe('studio reducer', () => {
     // no scale yet: 100 px/m, origin (0,0)
     const g = frameOf({ panX: 0, panY: 0, zoom: 2 }, undefined)
     expect(mToScreen(g, { x: 1, y: 1 })).toEqual({ x: 200, y: 200 })
+  })
+
+  it('wall length labels sit outside the loop; open-chain walls get none', () => {
+    let s = traceRect()
+    s = reducer(s, { type: 'add-label', label: { name: 'Bed-1', kind: 'bed', x: 2, y: 1.5 } })
+    const rooms = deriveRooms(s.unit)
+    const sides = wallLabelSides(s.unit, rooms)
+    expect(sides.size).toBe(4)
+    for (const w of s.unit.walls) {
+      const f = wallFrame(w, s.unit.vertices)
+      const side = sides.get(w.id)!
+      const probe = { x: f.origin.x + (f.dir.x * f.lengthM) / 2 + f.normal.x * side * 0.3, y: f.origin.y + (f.dir.y * f.lengthM) / 2 + f.normal.y * side * 0.3 }
+      expect(roomAt(probe, rooms, s.unit), w.id).toBeNull()
+    }
+    // a partition splitting the room: both sides have rooms → label goes toward the farther centroid, still a side
+    s = run(s, { type: 'chain-start', at: { x: 2, y: 0, tolM: TOL } }, { type: 'chain-typed', lengthM: 3, dirDeg: 90, tolM: TOL })
+    const rooms2 = deriveRooms(s.unit)
+    expect(rooms2).toHaveLength(2)
+    expect(wallLabelSides(s.unit, rooms2).size).toBe(s.unit.walls.length)
+    // an unclosed chain wall has no label side
+    s = run(s, { type: 'chain-start', at: { x: 6, y: 6, tolM: TOL } }, { type: 'chain-typed', lengthM: 2, dirDeg: 0, tolM: TOL })
+    const open = s.unit.walls[s.unit.walls.length - 1]
+    expect(wallLabelSides(s.unit, deriveRooms(s.unit)).has(open.id)).toBe(false)
+  })
+
+  it('export name: empty unit name → "Untitled unit" → untitled-unit.plotline.json', () => {
+    expect(slug('Untitled unit')).toBe('untitled-unit')
+    expect(slug('Type A · 2703 sft')).toBe('type-a-2703-sft')
+    expect(slug('')).toBe('unit')
   })
 
   it('guesses room kinds from names', () => {

@@ -140,4 +140,13 @@ describe('furnish', () => {
     expect(ps.length).toBeGreaterThanOrEqual(25)
     expectInsideAndDisjoint(ps, rooms, typeA)
   })
+
+  test.skipIf(!typeA)('type-a.json living room: sofa + coffee table + a TV unit or shelves on some other wall', () => {
+    const rooms = deriveRooms(typeA)
+    const living = rooms.find((r) => r.id === 'r_living')!
+    const ids = furnish(typeA, rooms).filter((p) => p.roomId === living.id).map((p) => p.assetId)
+    expect(ids).toContain('sofa_02')
+    expect(ids).toContain('modern_coffee_table_01')
+    expect(ids.some((a) => a === 'modern_wooden_cabinet' || a === 'wooden_display_shelves_01')).toBe(true)
+  })
 })

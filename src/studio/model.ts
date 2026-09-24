@@ -573,6 +573,30 @@ export function printedSizeOf(room: Room, unit: Unit): string {
   return `${formatFeetInches(Math.max(...xs) - Math.min(...xs))} × ${formatFeetInches(Math.max(...ys) - Math.min(...ys))}`
 }
 
+/**
+ * Which side of each closed wall its length label goes on: the side with no room (outside the
+ * loop), else the side whose room centroid is farther from the wall. +1 = along wallFrame.normal.
+ * Walls in no room (an open chain) are absent — their length is live in the status bar.
+ */
+export function wallLabelSides(unit: Unit, rooms: Room[]): Map<Id, 1 | -1> {
+  const walls = new Map(unit.walls.map((w) => [w.id, w]))
+  const near = new Map<Id, [number, number]>() // wallId → [distance to room centroid on −normal side, on +normal side]
+  for (const r of rooms) {
+    r.wallIds.forEach((id, i) => {
+      const w = walls.get(id)
+      if (!w) return
+      const f = wallFrame(w, unit.vertices)
+      const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+      // positive loops: a wall traversed a→b has its room on the +normal side
+      const side = w.a === r.loop[i] ? 1 : 0
+      const d = near.get(id) ?? [Infinity, Infinity]
+      d[side] = Math.min(d[side], Math.hypot(r.centroid.x - mid.x, r.centroid.y - mid.y))
+      near.set(id, d)
+    })
+  }
+  return new Map([...near].map(([id, [neg, pos]]) => [id, neg > pos ? -1 : 1]))
+}
+
 export const formatTimer = (ms: number): string => {
   const s = Math.floor(ms / 1000)
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`

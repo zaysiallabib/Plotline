@@ -15,7 +15,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VRButton } from 'three/addons/webxr/VRButton.js'
 import * as core from '../core'
@@ -64,9 +64,10 @@ export class PlotlineScene {
   private readonly plc: PointerLockControls
   private readonly ro: ResizeObserver
   private readonly keys = new Set<string>()
-  private readonly clock = new THREE.Clock()
+  private readonly timer = new THREE.Timer()
   private readonly raycaster = new THREE.Raycaster()
 
+  private disposed = false
   private unit: Unit | null = null
   private rooms: Room[] = []
   private cfg: Configuration = {}
@@ -89,7 +90,7 @@ export class PlotlineScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.type = THREE.PCFShadowMap // PCFSoftShadowMap is gone in r186; radius below keeps the penumbra soft
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
     this.camera = new THREE.PerspectiveCamera(65, 1, 0.05, 300)
@@ -102,10 +103,13 @@ export class PlotlineScene {
     this.sun.shadow.mapSize.set(2048, 2048)
     this.sun.shadow.bias = -0.0004
     this.sun.shadow.normalBias = 0.02
+    this.sun.shadow.radius = 3
     this.scene.add(this.sun, this.sun.target, new THREE.HemisphereLight('#dfe8ff', '#6b5a48', 0.35))
     void this.loadEnvironment()
 
-    this.orbit = new OrbitControls(this.camera, canvas)
+    // no domElement: the orbit listeners are attached only while in orbit mode (setMode), so a click that
+    // reaches the canvas in walk mode never hits OrbitControls' setPointerCapture
+    this.orbit = new OrbitControls(this.camera, null)
     this.orbit.enableDamping = true
     this.orbit.maxPolarAngle = Math.PI / 2 - 0.05
     this.plc = new PointerLockControls(this.camera, canvas)
@@ -187,6 +191,8 @@ export class PlotlineScene {
     this.mode = mode
     this.ceilingGroup.visible = mode === 'walk'
     this.orbit.enabled = mode === 'orbit'
+    if (mode === 'orbit') this.orbit.connect(this.canvas)
+    else if (this.orbit.domElement) this.orbit.disconnect()
     if (mode === 'orbit') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
@@ -259,6 +265,7 @@ export class PlotlineScene {
   }
 
   dispose(): void {
+    this.disposed = true
     this.renderer.setAnimationLoop(null)
     this.ro.disconnect()
     window.removeEventListener('keydown', this.onKey)
@@ -266,9 +273,12 @@ export class PlotlineScene {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
-    this.orbit.dispose()
+    if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.clearStatic()
+    // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
+    // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.
+    this.renderer.state.reset()
     this.renderer.dispose()
   }
 
@@ -405,15 +415,16 @@ export class PlotlineScene {
   }
 
   private async loadEnvironment(): Promise<void> {
-    const pmrem = new THREE.PMREMGenerator(this.renderer)
+    let hdr: THREE.DataTexture | null = null
     try {
-      const hdr = await new RGBELoader().loadAsync(HDRI.interior)
-      this.scene.environment = pmrem.fromEquirectangular(hdr).texture
-      hdr.dispose()
+      hdr = await new HDRLoader().loadAsync(HDRI.interior)
     } catch {
       console.warn('[plotline] HDRI missing, using RoomEnvironment')
-      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     }
+    if (this.disposed) return // a disposed renderer must not touch the shared GL context again
+    const pmrem = new THREE.PMREMGenerator(this.renderer)
+    this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    hdr?.dispose()
     this.scene.environmentIntensity = 0.5
     pmrem.dispose()
   }
@@ -514,7 +525,8 @@ export class PlotlineScene {
   }
 
   private tick = (): void => {
-    const dt = Math.min(this.clock.getDelta(), 0.1)
+    this.timer.update()
+    const dt = Math.min(this.timer.getDelta(), 0.1)
     if (this.mode === 'orbit') {
       this.orbit.update()
     } else if (this.ready) {

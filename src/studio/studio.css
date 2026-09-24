@@ -52,7 +52,7 @@
 
 .main { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
 .canvas-wrap { position: relative; overflow: hidden; background: var(--bg); }
-.canvas-wrap canvas { display: block; touch-action: none; }
+.canvas-wrap canvas { display: block; touch-action: none; outline: none; }
 
 .tools {
   position: absolute;

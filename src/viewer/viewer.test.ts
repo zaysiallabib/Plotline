@@ -4,7 +4,8 @@ import type { Unit } from '../core'
 import typeA from '../data/units/type-a.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
-import { entrySpawn, roomView, yawFor } from './spawn'
+import { furnish } from '../furnish/presets'
+import { VIEW_INSET, entrySpawn, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -96,10 +97,35 @@ describe('viewer', () => {
     expect(e.p).toEqual(living.centroid)
   })
 
-  it('roomView faces the longest wall from the centroid', () => {
-    const r = rooms.find((x) => x.name === 'Bed-1')!
-    const v = roomView(r, unit)
-    expect(v.p).toEqual(r.centroid)
+  it('roomView: far corner from the furniture centroid, inset from both walls, facing the furniture', () => {
+    const furnished: Unit = { ...unit, furniture: furnish(unit, rooms) }
+    const segDist = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
+      return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
+    }
+    for (const name of ['Kitchen', 'Bed-1', 'Living room', 'Bath-1']) {
+      const r = rooms.find((x) => x.name === name)!
+      const v = roomView(r, furnished)
+      const inner = core.roomInnerPolygon(r, furnished)
+      const items = furnished.furniture.filter((f) => f.roomId === r.id)
+      const target = { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
+      expect(core.pointInPolygon(v.p, inner), name).toBe(true)
+      // never nose-to-wall: at least VIEW_INSET (minus a hair for acute corners) from every inner edge
+      const nearest = Math.min(...inner.map((a, i) => segDist(v.p, a, inner[(i + 1) % inner.length])))
+      expect(nearest, name).toBeGreaterThanOrEqual(VIEW_INSET - 0.02)
+      // facing the furniture centroid
+      const d = Math.hypot(target.x - v.p.x, target.y - v.p.y)
+      expect(v.face.x * (target.x - v.p.x) + v.face.y * (target.y - v.p.y), name).toBeCloseTo(d, 6)
+      // the chosen corner is the farthest one from the furniture
+      const farthest = Math.max(...inner.map((c) => Math.hypot(c.x - target.x, c.y - target.y)))
+      expect(d, name).toBeGreaterThan(farthest - 2 * VIEW_INSET)
+    }
+    // no furniture: still inside, faces the longest wall's midpoint
+    const bare = rooms.find((x) => x.name === 'Lift lobby')!
+    const v = roomView(bare, unit)
+    expect(core.pointInPolygon(v.p, core.roomInnerPolygon(bare, unit))).toBe(true)
     expect(Math.hypot(v.face.x, v.face.y)).toBeCloseTo(1)
   })
 })

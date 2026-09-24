@@ -13,6 +13,7 @@ import {
   reducer,
   slug,
   studioIssues,
+  wallLabelSides,
   type Draft,
   type StudioIssue,
   type StudioState,
@@ -133,6 +134,7 @@ export default function StudioApp() {
   const scaleSet = !!unit.planImage
   const rooms = useMemo(() => deriveRooms(unit), [unit])
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
+  const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
@@ -219,10 +221,10 @@ export default function StudioApp() {
     if (canvas.height !== Math.round(size.h * dpr)) canvas.height = Math.round(size.h * dpr)
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, hover, scaleStart, frame })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, hover, scaleStart, size, frame])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame])
 
   // ----- draft persistence
   const saveDraft = useCallback(() => {
@@ -339,8 +341,9 @@ export default function StudioApp() {
     const n = issues.filter((i) => i.level === 'error').length
     if (n && !window.confirm(`This unit has ${n} error${n === 1 ? '' : 's'}. Export anyway?\n${traced}`)) return
     console.log(`[plotline] ${traced} (${st.timer.elapsedMs} ms)`)
-    const out = st.unit.planImage ? { ...st.unit, planImage: { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src } } : st.unit
-    download(`${slug(st.unit.name)}.plotline.json`, JSON.stringify(out, null, 2))
+    const name = st.unit.name.trim() || 'Untitled unit'
+    const out = { ...st.unit, name, planImage: st.unit.planImage && { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src } }
+    download(`${slug(name)}.plotline.json`, JSON.stringify(out, null, 2))
     dispatch({ type: 'exported' })
     toast(traced)
   }, [issues, toast])
@@ -436,6 +439,9 @@ export default function StudioApp() {
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const { sx, sy } = local(e)
     canvasRef.current?.setPointerCapture(e.pointerId)
+    // take focus off the top-bar inputs; the field/popover effects below re-focus their input after render.
+    // The canvas's onMouseDown preventDefault keeps the browser from moving focus back to <body>.
+    canvasRef.current?.focus()
     if (e.button === 1 || spaceRef.current) {
       panRef.current = { sx, sy, panX: view.panX, panY: view.panY }
       return
@@ -445,13 +451,15 @@ export default function StudioApp() {
     if (popover) setPopover(null)
     dispatch({ type: 'timer-input', now: now() })
     const m = toM(sx, sy)
+    // Recompute from the event: the `hover` state may still be the previous position when a
+    // click follows the move within the same frame (React defers pointermove renders).
+    const h = computeHover(sx, sy, e.shiftKey)
     switch (tool) {
       case 'scale': {
         if (!state.planImage) return toast('Load a plan image first')
         dispatch({ type: 'timer-start', now: now() })
-        const px = toPx(sx, sy)
-        if (!scaleStart) return setScaleStart(px)
-        const end = hover?.px ?? px
+        if (!scaleStart) return setScaleStart(h.px)
+        const end = h.px
         const pxLen = Math.hypot(end.x - scaleStart.x, end.y - scaleStart.y)
         if (pxLen < 2) return
         setScaleStart(null)
@@ -460,7 +468,7 @@ export default function StudioApp() {
       }
       case 'wall': {
         if (!scaleSet) return toast('Set the scale first (S)')
-        const snap = hover?.snap ?? snapPoint(m, unit, { tolM, free: e.shiftKey })
+        const snap = h.snap ?? snapPoint(m, unit, { tolM, free: e.shiftKey })
         const at = { x: snap.x, y: snap.y, tolM }
         dispatch(chain ? { type: 'chain-add', at } : { type: 'chain-start', at })
         return
@@ -801,12 +809,13 @@ export default function StudioApp() {
         <div className="canvas-wrap" ref={wrapRef}>
           <canvas
             ref={canvasRef}
+            tabIndex={-1}
             style={{ width: size.w, height: size.h, cursor: tool === 'select' ? 'default' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerLeave={() => setHover(null)}
-            onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()} // no middle-click autoscroll, no focus steal from a field opened by this click
             onDoubleClick={onDoubleClick}
             onContextMenu={(e) => e.preventDefault()}
           />

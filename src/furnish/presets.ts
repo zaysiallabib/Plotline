@@ -260,8 +260,11 @@ function living(ctx: Ctx): void {
     const { side, c, rot } = sofa
     const tc = add(c, side.n, size('sofa_02').z / 2 + 0.5 + size('modern_coffee_table_01').z / 2)
     tryPlace(ctx, 'modern_coffee_table_01', tc, rot)
+    // TV unit: the wall facing the sofa first, then every other wall by length (a door clear zone often blocks the facing wall)
     const opp = opposite(ctx, side)
-    onSides(ctx, opp, opp[0] && clearSpan(opp[0]) >= 2.7 ? 'modern_wooden_cabinet' : 'wooden_display_shelves_01')
+    const walls = [...opp, ...others(ctx, [side, ...opp])]
+    onSides(ctx, walls, opp[0] && clearSpan(opp[0]) >= 2.7 ? 'modern_wooden_cabinet' : 'wooden_display_shelves_01') ??
+      onSides(ctx, walls, 'wooden_display_shelves_01')
     // arm chair at the sofa's end, turned 30° toward it (positive θ turns the front toward −d, see header)
     const chair = size('modern_arm_chair_01')
     placeChair: for (const s of [1, -1]) {

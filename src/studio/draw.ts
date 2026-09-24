@@ -1,11 +1,13 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { roomPolygon, wallFrame } from '../core'
+import { formatFeetInches, roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room } from '../core'
 import type { StudioState } from './model'
 import type { Snap } from './snap'
 import { mToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
+/** Wall length labels only when the wall is at least this long on screen. */
+export const MIN_LABEL_PX = 40
 
 export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label'; id: Id }
 export interface Hover {
@@ -22,6 +24,8 @@ export interface DrawArgs {
   state: StudioState
   img: HTMLImageElement | null
   rooms: Room[]
+  /** closed walls → side (±wallFrame.normal) for the length label; see model.wallLabelSides */
+  labelSides: Map<Id, 1 | -1>
   hover: Hover | null
   scaleStart: Pt | null // plan px
   frame: Frame
@@ -186,8 +190,24 @@ export function draw(a: DrawArgs): void {
     ctx.stroke()
   }
 
-  // screen space: labels, scale line
+  // screen space: wall lengths, labels, scale line
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.font = '300 10px Inter, system-ui, sans-serif'
+  ctx.fillStyle = C.muted
+  for (const [id, side] of a.labelSides) {
+    const w = state.unit.walls.find((x) => x.id === id)
+    if (!w) continue
+    const f = wallFrame(w, vs)
+    if (f.lengthM * s < MIN_LABEL_PX) continue
+    const mid = toScreen({ x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 })
+    const nx = f.normal.x * side
+    const ny = f.normal.y * side
+    const off = w.thicknessM * s * 0.5 + 5
+    ctx.textAlign = Math.abs(nx) < 0.3 ? 'center' : nx > 0 ? 'left' : 'right'
+    ctx.textBaseline = Math.abs(ny) < 0.3 ? 'middle' : ny > 0 ? 'top' : 'bottom'
+    ctx.fillText(formatFeetInches(f.lengthM), mid.x + nx * off, mid.y + ny * off)
+  }
+  ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'center'
   for (const l of state.unit.roomLabels) {
     const p = toScreen(l)

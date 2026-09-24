@@ -291,12 +291,7 @@ function Viewer({ unit }: { unit: Unit }) {
           />
           {finishesOpen && (
             <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>
-              <FinishesPanel
-                slots={unit.finishSlots}
-                cfg={cfg}
-                onSelect={(slotId, optionId) => setCfg((c) => ({ ...c, [slotId]: optionId }))}
-                onReset={() => setCfg({})}
-              />
+              {/* Notes first: a just-saved note must be visible without scrolling past the finishes */}
               <NotesList
                 pins={pins}
                 rooms={rooms}
@@ -305,6 +300,12 @@ function Viewer({ unit }: { unit: Unit }) {
                   removePin(unit.id, p.id)
                   setPins(readPins(unit.id))
                 }}
+              />
+              <FinishesPanel
+                slots={unit.finishSlots}
+                cfg={cfg}
+                onSelect={(slotId, optionId) => setCfg((c) => ({ ...c, [slotId]: optionId }))}
+                onReset={() => setCfg({})}
               />
             </aside>
           )}

@@ -76,7 +76,7 @@ export default function Hud(p: Props) {
         <button className="btn" onClick={p.onShare}>
           Share
         </button>
-        <span ref={vrHost} className="vr-host" />
+        {p.vrButton && <span ref={vrHost} className="vr-host" />}
       </div>
 
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
