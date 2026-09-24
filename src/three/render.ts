@@ -26,9 +26,11 @@ export type Quality = 'high' | 'low'
 
 const STOREY_M = 3.2
 const SLAB_M = 0.15
+// Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
+// ENV 1.4/HEMI 1.2 → walls 221–231, ceiling 235, marble 193. Exposure stays 1 so sun patches and sky keep headroom.
 const EXPOSURE = 1
-const HEMI = 0.6
-const ENV = 0.7
+const HEMI = 1.2
+const ENV = 1.4
 /** 3000 K blackbody (Mitchell Charity table) */
 const WARM = '#ffb46b'
 /** point-light candela per m² of room at full daylight; ×DUSK_BOOST at dusk */
@@ -93,7 +95,6 @@ export class Look {
       this.composer.addPass(ao)
       this.composer.addPass(new OutputPass())
     }
-    if (import.meta.env.DEV) (window as unknown as { __look: unknown }).__look = this // TEMP tuning hook
   }
 
   /** Per-unit: slab + roof, catcher, ground level, ceiling fixtures and their lights. */
