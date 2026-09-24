@@ -1,0 +1,26 @@
+/* ── Fullscreen button ── */
+.fs-btn{position:absolute;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.88);border:1px solid var(--line,#ddd);border-radius:9px;padding:8px 12px;font:600 10px Inter,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#222;cursor:pointer;backdrop-filter:blur(10px);z-index:10;transition:background .15s}
+.fs-btn:hover{background:#fff}
+#view3d-container:fullscreen .fs-btn{display:none}
+
+/* ── Crosshair (shown when pointer locked) ── */
+#crosshair{display:none;position:absolute;left:50%;top:50%;width:10px;height:10px;transform:translate(-50%,-50%);pointer-events:none;z-index:5}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.9)}
+#crosshair::before{left:50%;top:0;width:1.5px;height:100%;transform:translateX(-50%)}
+#crosshair::after{top:50%;left:0;height:1.5px;width:100%;transform:translateY(-50%)}
+
+/* ── HUD fades when locked ── */
+.viewhud{transition:opacity .3s}
+
+/* ── Room HUD — bottom-right corner label, replaces floating sprites ── */
+.room-hud{position:absolute;right:18px;bottom:18px;background:rgba(17,17,17,.75);border-radius:10px;padding:10px 14px;color:#fff;font-size:11px;line-height:1.5;pointer-events:none;backdrop-filter:blur(12px);opacity:0;transition:opacity .4s;max-width:220px;z-index:6}
+.room-hud strong{display:block;font-size:13px;font-weight:700;margin-bottom:2px}
+.room-hud span{color:#bbb;font-family:'IBM Plex Mono',monospace;font-size:10px}
+
+/* ── Pointer lock overlay hint ── */
+#view3d-container:not(:fullscreen) #threeCanvas{cursor:crosshair}
+#view3d-container.pointer-locked #threeCanvas{cursor:none}
+
+/* ── Fullscreen: fill viewport properly ── */
+#view3d-container:fullscreen{background:#e2e2de}
+#view3d-container:fullscreen #threeCanvas{width:100%;height:100%}

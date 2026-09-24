@@ -1,0 +1,1 @@
+export class ModalFactory{static field(label,placeholder=''){return `<label class="field"><span>${label}</span><input data-field="${label.toLowerCase().replace(/[^a-z]+/g,'')}" placeholder="${placeholder}"></label>`}}
