@@ -86,13 +86,10 @@ export type MaterialRef =
   | { kind: 'color'; color: string; roughness?: number; metalness?: number }
   | {
       kind: 'pbr'
-      /** public/ paths, e.g. "/assets/textures/wood_floor/albedo.jpg" */
-      albedo: string
-      normal?: string
-      roughness?: string
-      ao?: string
-      /** real-world size of one texture tile, meters */
-      repeatM: number
+      /** key into src/furnish/textures.ts TEXTURES registry (paths + repeatM live there) */
+      textureId: string
+      /** optional multiply color, e.g. "#f3ead9" — one plaster texture, many paint colors */
+      tint?: string
     }
 
 export interface FinishOption {
