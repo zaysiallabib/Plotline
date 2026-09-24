@@ -98,7 +98,7 @@ function Viewer({ unit }: { unit: Unit }) {
 
   // engine
   useEffect(() => {
-    const s = new PlotlineScene(canvasRef.current!)
+    const s = new PlotlineScene(canvasRef.current!, { quality: new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high' })
     s.setUnit(unit)
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {

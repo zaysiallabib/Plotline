@@ -25,6 +25,7 @@ import { buildSkirting, cornerFills, dressOpening } from './details'
 import { buildFurniture } from './furniture'
 import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
 import { meterUVs } from './openings'
+import { Look, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -62,6 +63,7 @@ export class PlotlineScene {
   private readonly surfaces: Surface[] = []
   private readonly wallFrames = new Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>()
 
+  private readonly look: Look
   private readonly orbit: OrbitControls
   private readonly plc: PointerLockControls
   private readonly ro: ResizeObserver
@@ -85,28 +87,23 @@ export class PlotlineScene {
   private pickCb: ((hit: PickHit | null) => void) | null = null
   private pointerDown: { x: number; y: number } | null = null
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    opts: { quality?: Quality } = {},
+  ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1
-    this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFShadowMap // PCFSoftShadowMap is gone in r186; radius below keeps the penumbra soft
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
     this.camera = new THREE.PerspectiveCamera(65, 1, 0.05, 300)
     this.camera.position.y = EYE
     this.rig.add(this.camera)
     this.scene.add(this.rig, this.staticGroup, this.ceilingGroup, this.furnitureGroup)
-    this.scene.background = new THREE.Color('#bfd4ea')
 
-    this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(2048, 2048)
-    this.sun.shadow.bias = -0.0004
-    this.sun.shadow.normalBias = 0.02
-    this.sun.shadow.radius = 3
-    this.scene.add(this.sun, this.sun.target, new THREE.HemisphereLight('#dfe8ff', '#6b5a48', 0.35))
+    // tone mapping, shadows, hemisphere, post, exterior: see render.ts
+    this.look = new Look(this.renderer, this.scene, this.camera, this.sun, opts.quality ?? 'high')
+    this.scene.add(this.sun, this.sun.target)
     void this.loadEnvironment()
 
     // no domElement: the orbit listeners are attached only while in orbit mode (setMode), so a click that
@@ -143,13 +140,7 @@ export class PlotlineScene {
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.applyMaterials()
-
-    const s = this.sun.shadow.camera
-    s.left = s.bottom = -this.radius
-    s.right = s.top = this.radius
-    s.near = 1
-    s.far = 4 * this.radius + 60
-    s.updateProjectionMatrix()
+    this.look.setUnit(unit, this.rooms) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
 
     const first = this.rooms[0]
@@ -184,6 +175,7 @@ export class PlotlineScene {
     this.sun.target.position.copy(this.center)
     this.sun.intensity = 3.5 * Math.min(1, alt * 3)
     this.sun.color.set('#ffb070').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
+    this.look.setHour(hour)
   }
 
   setMode(mode: SceneMode): void {
@@ -262,6 +254,7 @@ export class PlotlineScene {
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
+    this.look.setSize(w, h)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }
@@ -278,6 +271,7 @@ export class PlotlineScene {
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.clearStatic()
+    this.look.dispose()
     // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
     // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.
     this.renderer.state.reset()
@@ -425,18 +419,21 @@ export class PlotlineScene {
   }
 
   private async loadEnvironment(): Promise<void> {
-    let hdr: THREE.DataTexture | null = null
-    try {
-      hdr = await new HDRLoader().loadAsync(HDRI.interior)
-    } catch {
-      console.warn('[plotline] HDRI missing, using RoomEnvironment')
-    }
+    const load = (url: string) =>
+      new HDRLoader().loadAsync(url).catch(() => {
+        console.warn(`[plotline] HDRI missing: ${url}`)
+        return null
+      })
+    const [hdr, sky] = await Promise.all([load(HDRI.interior), load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
     const pmrem = new THREE.PMREMGenerator(this.renderer)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
-    this.scene.environmentIntensity = 0.5
     pmrem.dispose()
+    if (sky) {
+      sky.mapping = THREE.EquirectangularReflectionMapping // windows + dollhouse see a real sky; lighting stays on the interior HDRI
+      this.scene.background = sky
+    }
   }
 
   // ───────────────────────────── controls ─────────────────────────────
@@ -577,6 +574,6 @@ export class PlotlineScene {
       }
       this.rig.position.set(this.walker.x, 0, this.walker.y)
     }
-    this.renderer.render(this.scene, this.camera)
+    this.look.render()
   }
 }
