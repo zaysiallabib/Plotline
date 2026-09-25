@@ -355,14 +355,13 @@ function bed(ctx: Ctx): void {
  * Sofa group: sofa on the first side that takes it (centred on `toward`'s projection), pillows on
  * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair.
  */
-function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01', pillows = 'throw_pillows_01') {
+function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01') {
   let sofa: ReturnType<typeof onSide> = null
   for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
   if (!sofa) return null
   const { side, c, rot } = sofa
   const sz = size('sofa_3seat')
-  const scale = pillows === 'throw_pillows_01' ? 0.7 : undefined
-  for (const s of [-1, 1]) tryPlace(ctx, pillows, add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free', scale)
+  for (const s of [-1, 1]) tryPlace(ctx, 'cushions_plain', add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free')
   rug: for (const rug of ['rug_rect_large', 'rug_rect_small'])
     for (const du of [0, -0.25, 0.25, -0.5, 0.5])
       if (tryPlace(ctx, rug, add(add(c, side.d, du), side.n, sz.z / 2 - 0.25 + size(rug).z / 2), rot, 'flat')) break rug
@@ -473,7 +472,7 @@ function dining(ctx: Ctx): void {
   const family = split ? ends.find((e) => e !== end) : undefined
   if (family) {
     // a different table and chair from the living room's: the two zones are seen together through the passage
-    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair', 'cushions_plain')
+    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')

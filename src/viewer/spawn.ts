@@ -49,6 +49,11 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
 export const VIEW_INSET = 0.4
 /** Minimum distance from a stand point to a door/passage (a door needs max(this, widthM + 0.3) from its whole span). */
 export const DOOR_CLEAR = 1.2
+/** Anything reaching above 1.2 m (wall cabinets, wardrobe, TV) stays this far from the eye; glass only must not enclose it. */
+const EYE_CLEAR = 0.5
+const GLASS = new Set(['shower_screen'])
+/** The piece the first view frames, by room kind; other rooms (and rooms without it) face the furniture centroid. */
+const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(vanity|basin)$/, kitchen: /^kitchen_sink$/ }
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
 /** …so that candidate loses this much of its distance-to-target score. */
@@ -73,11 +78,13 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
 /**
  * Rooms-list jump. Candidates: every convex inner corner (VIEW_INSET from both walls), then every wall
  * midpoint (VIEW_INSET in). A candidate is out when it is outside the inner polygon, crowded by a third
- * edge, inside the footprint of anything reaching eye level (cabinets, wardrobe, TV), or near a door:
+ * edge, within EYE_CLEAR of anything reaching above 1.2 m (wall cabinets, wardrobe, TV), or near a door:
  * a door's whole span must be max(DOOR_CLEAR, widthM + 0.3) away — that covers its centre, its hinge
  * and the leaf's swing arc (radius widthM around the hinge); a passage (no leaf, may be a whole open
- * wall) only needs its centre DOOR_CLEAR away. Best = farthest from the furniture centroid (fallback:
- * the longest wall's midpoint), minus SLAB_PENALTY when a wardrobe/shelf/tall piece is within SLAB_NEAR.
+ * wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
+ * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
+ * (a bed from its foot, a kitchen run from across the room) — minus SLAB_PENALTY when a wardrobe/shelf/tall
+ * piece is within SLAB_NEAR.
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
 export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
@@ -85,7 +92,11 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
   const n = inner.length
   const items = unit.furniture.filter((f) => f.roomId === room.id)
   let target: Pt
-  if (items.length) {
+  const hero = HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId))
+  // presets.ts convention: rotation θ (clockwise, y-down) faces (−sin θ, cos θ)
+  const front = hero && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
+  if (hero) target = hero
+  else if (items.length) {
     target = { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
   } else {
     let best = { len: -1, mid: room.centroid }
@@ -132,17 +143,26 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
     candidates.push(add({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, inward(a, b), VIEW_INSET))
   })
 
-  let best: { p: Pt; score: number } | null = null
-  for (const p of candidates) {
-    if (!core.pointInPolygon(p, inner)) continue
-    if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) continue // a third edge (wall-thickness step) crowds it
-    if (!clearOfDoors(p)) continue
-    if (pieces.some(({ f, k, top }) => top > 1.2 && footprintDist(p, f, k.sizeM) < 0.15)) continue // eye (1.6 m) inside a cabinet/wardrobe/TV
+  let best = null as { p: Pt; score: number } | null // set inside consider(): no narrowing to null
+  const consider = (p: Pt) => {
+    if (!core.pointInPolygon(p, inner)) return
+    if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) return // a third edge (wall-thickness step) crowds it
+    if (!clearOfDoors(p)) return
+    if (pieces.some(({ f, k, top }) => top > 1.2 && footprintDist(p, f, k.sizeM) < (GLASS.has(f.assetId) ? 0.15 : EYE_CLEAR))) return // eye (1.6 m) in or against a cabinet/wardrobe/TV
     const d = Math.hypot(target.x - p.x, target.y - p.y)
-    if (d < 0.2) continue // target sits here: faces nothing useful
+    if (d < 0.2) return // target sits here: faces nothing useful
     const slab = pieces.some(({ f, k }) => (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6) && footprintDist(p, f, k.sizeM) < SLAB_NEAR)
-    const score = d - (slab ? SLAB_PENALTY : 0)
+    const score = (front ? (p.x - target.x) * front.x + (p.y - target.y) * front.y : d) - (slab ? SLAB_PENALTY : 0)
     if (!best || score > best.score) best = { p, score }
+  }
+  candidates.forEach(consider)
+  if (!best || hero) {
+    // a hero wants the best spot in front of it, not just a corner or wall midpoint (a door or wardrobe often takes
+    // those); a small room whose door clearance eats every corner and midpoint (Bath-1) needs one at all: 0.25 m grid
+    const xs = inner.map((p) => p.x)
+    const ys = inner.map((p) => p.y)
+    for (let x = Math.min(...xs) + VIEW_INSET; x <= Math.max(...xs) - VIEW_INSET; x += 0.25)
+      for (let y = Math.min(...ys) + VIEW_INSET; y <= Math.max(...ys) - VIEW_INSET; y += 0.25) consider({ x, y })
   }
   if (best) return look(best.p, target)
 

@@ -4,6 +4,7 @@ import type { Unit } from '../core'
 import typeA from '../data/units/type-a.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
+import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
 import { DOOR_CLEAR, VIEW_INSET, entrySpawn, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
@@ -97,7 +98,7 @@ describe('viewer', () => {
     expect(e.p).toEqual(living.centroid)
   })
 
-  it('roomView: clear of doors and slabs, inset from every wall, facing the furniture', () => {
+  it('roomView: clear of doors and slabs, inset from every wall, facing the hero piece or the furniture', () => {
     const furnished: Unit = { ...unit, furniture: furnish(unit, rooms) }
     const segDist = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
       const dx = b.x - a.x
@@ -110,7 +111,8 @@ describe('viewer', () => {
       const v = roomView(r, furnished)
       const inner = core.roomInnerPolygon(r, furnished)
       const items = furnished.furniture.filter((f) => f.roomId === r.id)
-      const target = { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
+      const hero = items.find((f) => /^(bed_|vanity$|kitchen_sink$)/.test(f.assetId))
+      const target = hero ?? { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
       expect(core.pointInPolygon(v.p, inner), name).toBe(true)
       // never nose-to-wall: at least VIEW_INSET (minus a hair for acute corners) from every inner edge
       const nearest = Math.min(...inner.map((a, i) => segDist(v.p, a, inner[(i + 1) % inner.length])))
@@ -123,7 +125,9 @@ describe('viewer', () => {
           expect(Math.hypot(v.p.x - c.x, v.p.y - c.y), `${name} ${o.id}`).toBeGreaterThanOrEqual(DOOR_CLEAR)
         }
       }
-      // facing the furniture centroid
+      // facing the bed / vanity / sink (else the furniture centroid), from ≥ 0.5 m off anything at eye level
+      for (const f of items.filter((f) => f.assetId !== 'shower_screen' && (kitAsset(f.assetId)?.sizeM.y ?? 0) + (kitAsset(f.assetId)?.mountY ?? 0) > 1.2))
+        expect(Math.hypot(v.p.x - f.x, v.p.y - f.y), `${name} ${f.id}`).toBeGreaterThan(0.5)
       const d = Math.hypot(target.x - v.p.x, target.y - v.p.y)
       expect(v.face.x * (target.x - v.p.x) + v.face.y * (target.y - v.p.y), name).toBeCloseTo(d, 6)
     }
