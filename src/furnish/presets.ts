@@ -484,8 +484,7 @@ function dining(ctx: Ctx): void {
       }
     }
   }
-  const at = table ?? c0
-  for (const s of nearest(ctx, at)) if (onSide(ctx, s, 'wall_clock', projU(s, at), FLUSH)) break
+  clockOver(ctx, table ?? c0)
   const family = split ? ends.find((e) => e !== end) : undefined
   if (family) {
     // a different table and chair from the living room's: the two zones are seen together through the passage
@@ -494,6 +493,28 @@ function dining(ctx: Ctx): void {
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH, 'solid', 1)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
+}
+
+/**
+ * Wall clock high (kit.ts: centre 2.4 m) on the wall nearest `at`, over bare wall: no door or window within AC_CLEAR
+ * of it, nothing taller than 1.8 m beneath it — and the wall below it stays reserved (0.6 m deep, from 1.8 m up) so
+ * no later wardrobe or shelf slides under it.
+ */
+function clockOver(ctx: Ctx, at: Pt): void {
+  const hw = size('wall_clock').x / 2
+  for (const s of nearest(ctx, at)) {
+    const spans = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1])]
+    for (let k = 0, u0 = projU(s, at); k * 0.25 <= s.len; k++) {
+      for (const u of k ? [u0 - k * 0.25, u0 + k * 0.25] : [u0]) {
+        if (u - hw < AC_CLEAR || u + hw > s.len - AC_CLEAR || spans.some(([a, b]) => u - hw - AC_CLEAR < b && a < u + hw + AC_CLEAR)) continue
+        const below = spanQuad(s, u - hw, u + hw, 0.6)
+        if (ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, below))) continue
+        if (!tryPlace(ctx, 'wall_clock', againstSide(s, 'wall_clock', u, FLUSH), rotationFacing(s.n))) continue
+        ctx.quads.push({ q: below, y0: 1.8, y1: 3 })
+        return
+      }
+    }
+  }
 }
 
 function study(ctx: Ctx): void {
