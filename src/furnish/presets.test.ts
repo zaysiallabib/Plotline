@@ -485,4 +485,23 @@ describe('furnish', () => {
         expect(quadsOverlap(quad(p), below), `${p.id} under the clock`).toBe(false)
     }
   })
+
+  // Type C = Type A's layout on floors 3/5/7: its rule breaks, reproduced on the real plan
+  const typeC = (Object.values(import.meta.glob('../data/units/type-c*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test.skipIf(!typeA || !typeB || !typeC)('planters get plants only; a balcony under 1.2 m deep gets no seat', () => {
+    for (const u of [typeA, typeB, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      for (const r of rooms.filter((r) => r.kind === 'balcony' && /planter/i.test(r.name))) {
+        const ids = ps.filter((p) => p.roomId === r.id).map((p) => p.assetId)
+        expect(ids.every((a) => a.startsWith('potted_plant_')), `${u.id} ${r.name}: ${ids}`).toBe(true)
+      }
+    }
+    const planters = (u: Unit) => furnish(u, deriveRooms(u)).filter((p) => /planter/.test(p.roomId))
+    expect(planters(typeC).length, 'type C planters are dressed').toBeGreaterThanOrEqual(2)
+    const ledge = rect('balcony', 4, 1.1) // 4.4 m², 0.97 m clear
+    const ids = furnish(ledge, deriveRooms(ledge)).map((p) => p.assetId)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids.every((a) => a.startsWith('potted_plant_')), `${ids}`).toBe(true)
+  })
 })

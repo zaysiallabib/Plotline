@@ -304,6 +304,21 @@ function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = [], gap = GAP) {
   return null
 }
 
+/**
+ * The inner polygon's minimum-area bounding box, trying the walls' directions only: its long axis, long and short
+ * extents. Ties keep the longest side's direction. (The true minimum may lie along a hull edge that bridges a notch.)
+ */
+function bounds(ctx: Ctx) {
+  const ext = (a: Pt) => Math.max(...ctx.inner.map((p) => dot(p, a))) - Math.min(...ctx.inner.map((p) => dot(p, a)))
+  let best = { axis: ctx.sides[0].d, long: 0, short: 0 }
+  for (const s of rankLongest(ctx)) {
+    const [a, b] = [ext(s.d), ext(s.n)]
+    if (best.long && a * b >= best.long * best.short - 1e-6) continue
+    best = a >= b ? { axis: s.d, long: a, short: b } : { axis: s.n, long: b, short: a }
+  }
+  return best
+}
+
 /** Sides ranked: fewest openings (doors + windows) first, then longest, then farthest from doors. */
 const rankNoOpenings = (ctx: Ctx) =>
   [...ctx.sides].sort(
@@ -588,7 +603,9 @@ function bath(ctx: Ctx): void {
 
 function balcony(ctx: Ctx): void {
   const plant = inCorner(ctx, 'potted_plant_02')
-  if (ctx.room.areaSqm >= 3) {
+  // a planter is for plants; a ledge under 1.2 m deep is no place to sit
+  if (/planter/i.test(ctx.room.name)) inCorner(ctx, 'potted_plant_01', plant ? [plant.corner] : [])
+  else if (ctx.room.areaSqm >= 3 && bounds(ctx).short >= 1.2) {
     inCorner(ctx, 'mid_century_lounge_chair', plant ? [plant.corner] : []) ??
       tryPlace(ctx, 'ottoman_01', polygonCentroid(ctx.inner), 0)
   }
