@@ -7,6 +7,10 @@ Live: https://plotline-flax.vercel.app — **deployed 2026-09-25 ~12:00 with wav
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
 
+## How to open it (founder got a blank page from VS Code "Go Live" on 2026-09-26)
+
+VS Code "Go Live" serves raw files and cannot run this app (Vite must build it): blank page. Use `npm run dev` in the VS Code terminal, then open http://localhost:5173. The load screen now has links to every unit (Type A / B / C) and to the Studio; the Studio's "Plotline" brand links back to the viewer. Direct routes: `/u/type-a`, `/u/type-b`, `/u/type-c`, `/studio`. The Enter button reads "Loading…" until all rooms are in (~15 s on a real connection), then "Enter".
+
 ## Commands you will forget
 
 ```
