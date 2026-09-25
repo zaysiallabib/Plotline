@@ -314,19 +314,15 @@ describe('viewer', () => {
           expect(items.filter((f) => deg(v.face, sub(f, v.p)) <= 40 + 1e-6).length, `${name}: another fitting in frame`).toBeGreaterThanOrEqual(2)
       }
     }
-    // no spot 1.5 m from the basin: the 1.8 m powder rooms, the WC; A Bath-3 / B Bath-1 fill their far end with the shower and WC
-    expect(fallback).toEqual([
-      'unit_type_a_2703 Bath-3',
-      'unit_type_a_2703 Powder room',
-      'unit_type_a_2703 H. toilet',
-      'unit_type_b_1747 Bath-1',
-      'unit_type_b_1747 Powder room',
-      'unit_type_c_2254 Powder room',
-    ])
+    // no spot 1.5 m from the basin: the 1.8 m powder rooms, the WC; A Bath-3 / B Bath-1 (and C Bath-3 once it has its
+    // shower) fill their far end with the shower and WC. The art director's A Bath-1 and B Bath-3 are framed from inside.
+    const tight = ['a_2703 Bath-3', 'a_2703 Powder room', 'a_2703 H. toilet', 'b_1747 Bath-1', 'b_1747 Powder room', 'c_2254 Powder room', 'c_2254 Bath-3']
+    for (const name of fallback) expect(tight.map((t) => `unit_type_${t}`), name).toContain(name)
+    for (const name of ['unit_type_a_2703 Bath-1', 'unit_type_a_2703 Bath-2', 'unit_type_b_1747 Bath-3', 'unit_type_c_2254 Bath-1']) expect(fallback).not.toContain(name)
   })
 
-  it('help room with a cot: from just inside the door at eye level, the cot centre in the lower third of the frame (B); a tiny empty room from its door (A help bed, WC)', () => {
-    const [a, b] = both
+  it('help room with a cot (cot or the short cot_s): from just inside the door at eye level, the cot centre in the lower third of the frame; a tiny room from its door (A help bed, WC)', () => {
+    const [a] = both
     for (const name of ['Help bed', 'H. toilet']) {
       const r = a.rs.find((x) => x.name === name)!
       const v = roomView(r, a.u)
@@ -334,16 +330,19 @@ describe('viewer', () => {
       expect(n, name).not.toBeNull()
       expect(deg(v.face, n!), name).toBeLessThanOrEqual(70 + 1e-6)
     }
-    const help = b.rs.find((x) => x.name === 'Help room')!
-    const cot = b.u.furniture.find((f) => f.roomId === help.id && f.assetId === 'cot')!
-    const v = roomView(help, b.u)
-    expect(doorSpot(b.u, help, v.p)).not.toBeNull()
-    expect(deg(v.face, sub(cot, v.p)), 'cot in frame').toBeLessThanOrEqual(40 + 1e-6)
-    // screen height of the cot centre (0.23 m up): tan(angle below the view axis) / tan(half the 65° vertical FOV)
-    const depth = (cot.x - v.p.x) * v.face.x + (cot.y - v.p.y) * v.face.y
-    const ndc = Math.tan(Math.atan2(0.23 - 1.6, depth) - (v.pitch ?? 0)) / Math.tan((32.5 * Math.PI) / 180)
-    expect(ndc, 'cot centre in the lower third').toBeLessThan(-1 / 3)
-    expect(ndc, 'cot centre on screen').toBeGreaterThan(-1)
+    const cots = both.flatMap(({ u, rs }) => listedRooms(u, rs).flatMap((r) => u.furniture.filter((f) => f.roomId === r.id && f.assetId.startsWith('cot')).map((cot) => ({ u, r, cot }))))
+    expect(cots.map(({ u, r }) => `${u.id} ${r.name}`)).toContain('unit_type_b_1747 Help room')
+    for (const { u, r, cot } of cots) {
+      const name = `${u.id} ${r.name}`
+      const v = roomView(r, u)
+      expect(doorSpot(u, r, v.p), name).not.toBeNull()
+      expect(deg(v.face, sub(cot, v.p)), `${name}: cot in frame`).toBeLessThanOrEqual(40 + 1e-6)
+      // screen height of the cot centre (0.23 m up): tan(angle below the view axis) / tan(half the 65° vertical FOV)
+      const depth = (cot.x - v.p.x) * v.face.x + (cot.y - v.p.y) * v.face.y
+      const ndc = Math.tan(Math.atan2(0.23 - 1.6, depth) - (v.pitch ?? 0)) / Math.tan((32.5 * Math.PI) / 180)
+      expect(ndc, `${name}: cot centre in the lower third`).toBeLessThan(-1 / 3)
+      expect(ndc, `${name}: cot centre on screen`).toBeGreaterThan(-1)
+    }
   })
 
   it('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW with a corner within ±40° of the view; B Bed-2 keeps 1.4 m off its wardrobe (A, B, C)', () => {

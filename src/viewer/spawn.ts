@@ -242,7 +242,8 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   const items = unit.furniture.filter((f) => f.roomId === room.id && kitAsset(f.assetId)?.mount !== 'ceiling')
   let target: Pt
   // a cot (help room) is the hero wherever it stands
-  const hero = items.find((f) => f.assetId === 'cot') ?? (HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId)))
+  const hero = items.find((f) => f.assetId.startsWith('cot')) ?? (HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId)))
+  const cot = !!hero && hero.assetId.startsWith('cot') // cot, cot_s (a help room under 1.9 m)
   // presets.ts convention: rotation θ (clockwise, y-down) faces (−sin θ, cos θ)
   const front = hero && room.kind !== 'dining' && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
   if (hero) target = hero
@@ -339,12 +340,12 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   // door whose spot sees farthest, looking down DOOR_PITCH (at a cot: down to put it in the lower third). It looks in (≤ 70°
   // off the door's normal, never along the door wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other
   // pieces in frame, then the deepest sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
-  if (room.kind === 'bath' || hero?.assetId === 'cot' || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
+  if (room.kind === 'bath' || cot || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
     // …but a bath (or tiny room) with a vanity/basin is framed from inside first (the wave-7 Bath-3 frame): the spot — a
     // corner, wall midpoint or 0.25 m grid point, clear of the fittings and the ajar leaves — BATH_BACK or more from the
     // hero that frames the most fittings (hero included, each ≥ 1 m off so it is in the frame at BATH_PITCH), farthest
     // from the hero, the fittings centred; the door view only when no spot is that far.
-    if (hero && hero.assetId !== 'cot') {
+    if (hero && !cot) {
       const xs = inner.map((q) => q.x)
       const ys = inner.map((q) => q.y)
       const spots = [...candidates]
@@ -386,7 +387,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
         const score = (hero && framed(hero) ? 1000 : 0) + items.filter((f) => f !== hero && framed(f)).length * 100 + depth
         if (score > pick.score) pick = { score, face }
       }
-      if (hero?.assetId !== 'cot') return { p, face: pick.face, pitch: DOOR_PITCH }
+      if (!hero || !cot) return { p, face: pick.face, pitch: DOOR_PITCH }
       // a cot: its centre in the middle of the frame's lower third, from its depth along the view and the eye height
       const [y0, y1] = heightRange(kitAsset(hero.assetId)!)
       const depth = (hero.x - p.x) * pick.face.x + (hero.y - p.y) * pick.face.y
