@@ -286,10 +286,10 @@ function Viewer({ unit }: { unit: Unit }) {
             <div className="bar" style={{ width: `${rooms.length ? (loaded / rooms.length) * 100 : 100}%` }} />
           </div>
           <div className="muted small">
-            Loading… {loaded} of {rooms.length} rooms
+            {ready ? 'Ready' : `Loading… ${loaded} of ${rooms.length} rooms`}
           </div>
           <button className="btn primary enter" disabled={!ready} onClick={enter}>
-            Enter
+            {ready ? 'Enter' : 'Loading…'}
           </button>
         </div>
       )}
