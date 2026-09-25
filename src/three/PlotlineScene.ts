@@ -68,6 +68,58 @@ export function evenBearings(t: THREE.DataTexture): void {
   }
 }
 
+/**
+ * sky.hdr has the sun baked in: a 2 × 2-texel disc at ~7·10⁴ (half-float stops at 65504) inside a diffraction star
+ * whose rays reach ~8°. The dome showed it at one fixed spot whatever the hour, and the window glass (the sky's PMREM)
+ * would mirror it as a hot spot. Within 9° of the brightest texel each channel gets a grey-scale opening by a 21-texel
+ * disc (min, then max): whatever is thinner than the disc (the sun, the rays) takes the sky around it, the broad glow
+ * stays; feathered over the outer 30 %. Everything else, sunlit clouds included, is untouched. A global ceiling can't
+ * do it: clouds 12–20° off reach 6, rays 4–8° off 2–4, and a ceiling at the 99.5th percentile (2.0) left the rays and
+ * turned those clouds orange at dusk. Half-float RGBA equirect, in place.
+ */
+export function clampSun(t: THREE.DataTexture): void {
+  const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
+  const { fromHalfFloat: f, toHalfFloat: t16 } = THREE.DataUtils
+  let sun = 0
+  for (let i = 0, best = 0; i < w * h; i++) {
+    const l = 0.2126 * f(data[4 * i]) + 0.7152 * f(data[4 * i + 1]) + 0.0722 * f(data[4 * i + 2])
+    if (l > best) [best, sun] = [l, i]
+  }
+  const K = 10 // disc radius, texels
+  const ry = Math.ceil(h / 20) // 9°; rx: the same angle across at the sun's latitude
+  const rx = Math.ceil(ry / Math.max(0.2, Math.cos(Math.PI * (0.5 - (Math.floor(sun / w) + 0.5) / h))))
+  // box around the sun: ±(r + 2K), as the max pass reads the min pass K out, which reads K further
+  const W = 2 * (rx + 2 * K) + 1
+  const H = 2 * (ry + 2 * K) + 1
+  const x0 = (sun % w) - rx - 2 * K
+  const y0 = Math.floor(sun / w) - ry - 2 * K
+  const at = (i: number, j: number) => 4 * (THREE.MathUtils.clamp(y0 + j, 0, h - 1) * w + ((((x0 + i) % w) + w) % w))
+  const disc: number[] = []
+  for (let dy = -K; dy <= K; dy++) for (let dx = -K; dx <= K; dx++) if (dx * dx + dy * dy <= K * K) disc.push(dy * W + dx)
+  for (let c = 0; c < 3; c++) {
+    const v = new Float32Array(W * H)
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) v[j * W + i] = f(data[at(i, j) + c])
+    const ero = v.slice()
+    for (let j = K; j < H - K; j++) {
+      for (let i = K; i < W - K; i++) {
+        let m = Infinity
+        for (const o of disc) m = Math.min(m, v[j * W + i + o])
+        ero[j * W + i] = m
+      }
+    }
+    for (let j = 2 * K; j < H - 2 * K; j++) {
+      for (let i = 2 * K; i < W - 2 * K; i++) {
+        const d = Math.hypot((i - rx - 2 * K) / rx, (j - ry - 2 * K) / ry) // 0 at the sun, 1 at 9°
+        if (d >= 1) continue
+        let m = 0
+        for (const o of disc) m = Math.max(m, ero[j * W + i + o])
+        const k = j * W + i
+        if (m < v[k]) data[at(i, j) + c] = t16(m + (v[k] - m) * THREE.MathUtils.smoothstep(d, 0.7, 1))
+      }
+    }
+  }
+}
+
 interface Surface {
   mesh: THREE.Mesh
   /** one entry per material slot; null = fixed material (edges/reveals) */
@@ -447,8 +499,11 @@ export class PlotlineScene {
     if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
+    if (sky) {
+      clampSun(sky)
+      this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
+    }
     pmrem.dispose()
-    if (sky) this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
   }
 
   /** The PMREM environment lives only on the GPU: after a context loss it comes back empty and every room goes dark. */
