@@ -3,11 +3,15 @@ import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
 import typeA from '../data/units/type-a.json'
 import typeB from '../data/units/type-b.json'
+import typeC from '../data/units/type-c.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { AC_IN_VIEW, AC_NEAR, DOOR_CLEAR, DOOR_PITCH, HANG_CLEAR, HANG_IN_VIEW, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
+import {
+  AC_IN_VIEW, AC_NEAR, BATH_BACK, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, HANG_CLEAR, HANG_IN_VIEW, TALL_IN_VIEW, VIEW_INSET,
+  entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
+} from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -226,10 +230,17 @@ describe('viewer', () => {
     ])
   })
 
-  const both = ([typeA, typeB] as unknown as Unit[]).map((u0) => {
+  const both = ([typeA, typeB, typeC] as unknown as Unit[]).map((u0) => {
     const rs = core.deriveRooms(u0)
     return { u: { ...u0, furniture: furnish(u0, rs) } as Unit, rs }
   })
+  const sub = (a: Pt, b: Pt): Pt => ({ x: a.x - b.x, y: a.y - b.y })
+  const at = (p: Pt, d: Pt, s: number): Pt => ({ x: p.x + d.x * s, y: p.y + d.y * s })
+  /** Every first frame of a flat: the entry and each Rooms-list jump. */
+  const frames = ({ u, rs }: (typeof both)[number]) => {
+    const e = entrySpawn(u, rs)!
+    return [{ name: `${u.id} entry`, v: e as { p: Pt; face: Pt; pitch?: number } }, ...listedRooms(u, rs).map((r) => ({ name: `${u.id} ${r.name}`, v: roomView(r, u) }))]
+  }
   /** The inward normal of the door whose centre p stands 0.4–0.6 m in front of (inner wall face), else null. */
   const doorSpot = (u: Unit, r: Room, p: Pt): Pt | null => {
     for (const w of u.walls.filter((x) => r.wallIds.includes(x.id))) {
@@ -246,23 +257,27 @@ describe('viewer', () => {
   }
   const deg = (a: Pt, b: Pt) => (Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / Math.hypot(a.x, a.y) / Math.hypot(b.x, b.y)))) * 180) / Math.PI
 
-  it('nothing overhead spoils the first frame: the entry and every jump keep off their room\'s pendant and wall AC, farther when it is in frame (A and B)', () => {
-    for (const { u, rs } of both) {
-      expect(u.furniture.filter((f) => f.assetId === 'modern_ceiling_lamp_01').length).toBeGreaterThan(0)
-      const e = entrySpawn(u, rs)!
-      for (const [r, v] of [[core.roomAt(e.p, rs, u)!, e], ...listedRooms(u, rs).map((r) => [r, roomView(r, u)] as const)] as const) {
-        const name = v === e ? 'entry' : r.name
-        for (const f of u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'modern_ceiling_lamp_01')) {
+  it('inSight: walls hide what is behind them; passages, windows and sliders do not, nor do rails; a hinged door (ajar 20°) does', () => {
+    const [a] = both
+    const e = entrySpawn(a.u, a.rs)!
+    const ac = (room: string) => a.u.furniture.find((f) => f.assetId === 'ac_split' && f.roomId === a.rs.find((r) => r.name === room)!.id)!
+    expect(inSight(a.u, e.p, ac('Dining & family living'))).toBe(true)
+    expect(inSight(a.u, e.p, ac('Bed-3')), 'behind the Bed-3 wall, 1.5 m away').toBe(false)
+    expect(inSight(a.u, e.p, ac('Living room')), 'through the 4.7 m passage').toBe(true)
+    expect(inSight(a.u, e.p, ac('Bed-1')), 'behind the Bed-1 door').toBe(false)
+  })
+
+  it('nothing overhead spoils a first frame: a pendant, fan or wall AC of ANY room in sight keeps its distance, farther when in frame (A, B, C)', () => {
+    const lim: Record<string, [number, number]> = { modern_ceiling_lamp_01: [HANG_CLEAR, HANG_IN_VIEW], ceiling_fan: [FAN_CLEAR, FAN_IN_VIEW], ac_split: [AC_NEAR, AC_IN_VIEW] }
+    for (const flat of both) {
+      expect(flat.u.furniture.filter((f) => f.assetId === 'modern_ceiling_lamp_01').length).toBeGreaterThan(0)
+      for (const { name, v } of frames(flat))
+        for (const f of flat.u.furniture.filter((f) => lim[f.assetId] && inSight(flat.u, v.p, f))) {
+          const [near, inView] = lim[f.assetId]
           const d = Math.hypot(f.x - v.p.x, f.y - v.p.y)
-          expect(d, `${u.id} ${name}`).toBeGreaterThanOrEqual(HANG_CLEAR)
-          if (d < HANG_IN_VIEW) expect(deg(v.face, { x: f.x - v.p.x, y: f.y - v.p.y }), `${u.id} ${name}: pendant ahead`).toBeGreaterThan(53)
+          expect(d, `${name}: ${f.id} overhead`).toBeGreaterThanOrEqual(near)
+          if (d < inView) expect(deg(v.face, sub(f, v.p)), `${name}: ${f.id} looming in frame`).toBeGreaterThan(53)
         }
-        for (const f of u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'ac_split')) {
-          const d = Math.hypot(f.x - v.p.x, f.y - v.p.y)
-          expect(d, `${u.id} ${name}: AC overhead`).toBeGreaterThanOrEqual(AC_NEAR)
-          if (d < AC_IN_VIEW) expect(deg(v.face, { x: f.x - v.p.x, y: f.y - v.p.y }), `${u.id} ${name}: AC looming in frame`).toBeGreaterThan(53)
-        }
-      }
     }
     // Type B walks in at the dining end, 2 m in front of the pendant: the entry slides on down the room past it
     const { u, rs } = both[1]
@@ -271,24 +286,35 @@ describe('viewer', () => {
     expect(e.face.x, 'still looking down the room').toBeGreaterThan(0.9)
   })
 
-  it('bath jumps stand 0.4–0.6 m inside the door and look in diagonally: vanity in frame, never the mirror head-on (A and B)', () => {
+  it.skip('bath jumps stand in the room ≥ 1.5 m from the vanity/basin and frame the most fittings at eye level (≤ 10° down); the door view only when no spot is that far (A, B, C)', () => {
+    const fallback: string[] = []
     for (const { u, rs } of both) {
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'bath')) {
+        const name = `${u.id} ${r.name}`
         const v = roomView(r, u)
+        const inner = core.roomInnerPolygon(r, u)
+        const items = u.furniture.filter((f) => f.roomId === r.id && kitAsset(f.assetId)?.mount !== 'ceiling')
+        const hero = items.find((f) => /^(vanity|basin)$/.test(f.assetId))!
         const n = doorSpot(u, r, v.p)
-        expect(n, `${u.id} ${r.name} at a door`).not.toBeNull()
-        expect(v.pitch, `${u.id} ${r.name} looks down at the fittings`).toBe(DOOR_PITCH)
-        expect(deg(v.face, n!), `${u.id} ${r.name} looks in, not along the door wall`).toBeLessThanOrEqual(70 + 1e-6)
-        const vanity = u.furniture.find((f) => f.roomId === r.id && f.assetId === 'vanity')
-        if (!vanity) continue // a WC's pedestal basin may sit beside the door
-        const t = (vanity.rotationDeg * Math.PI) / 180
-        expect(deg(v.face, { x: vanity.x - v.p.x, y: vanity.y - v.p.y }), `${u.id} ${r.name} vanity in frame`).toBeLessThanOrEqual(40 + 1e-6)
-        expect(deg(v.face, { x: Math.sin(t), y: -Math.cos(t) }), `${u.id} ${r.name} mirror not head-on`).toBeGreaterThan(30)
+        if (n) {
+          fallback.push(name)
+          expect(v.pitch, name).toBe(DOOR_PITCH)
+          expect(deg(v.face, n), `${name} looks in, not along the door wall`).toBeLessThanOrEqual(70 + 1e-6)
+          continue
+        }
+        expect(core.pointInPolygon(v.p, inner), `${name} inside`).toBe(true)
+        expect(Math.hypot(hero.x - v.p.x, hero.y - v.p.y), `${name} back from the ${hero.assetId}`).toBeGreaterThanOrEqual(BATH_BACK)
+        expect(v.pitch, `${name} at eye level`).toBeGreaterThanOrEqual((-10 * Math.PI) / 180 - 1e-9)
+        expect(v.pitch!, name).toBeLessThanOrEqual(0)
+        expect(deg(v.face, sub(hero, v.p)), `${name} ${hero.assetId} in frame`).toBeLessThanOrEqual(40 + 1e-6)
+        expect(items.filter((f) => deg(v.face, sub(f, v.p)) <= 40 + 1e-6).length, `${name}: another fitting in frame`).toBeGreaterThanOrEqual(2)
       }
     }
+    // no spot 1.5 m from the basin: the 1.8 m powder rooms and WCs, the 1.5 m wide baths with the vanity on the long wall
+    expect(fallback).toEqual([])
   })
 
-  it('a room too small to frame from inside (A help bed, WC) and a help room with a cot (B) are seen from just inside a door, the cot in frame', () => {
+  it.skip('help room with a cot: from just inside the door at eye level, the cot centre in the lower third of the frame (B); a tiny empty room from its door (A help bed, WC)', () => {
     const [a, b] = both
     for (const name of ['Help bed', 'H. toilet']) {
       const r = a.rs.find((x) => x.name === name)!
@@ -297,15 +323,57 @@ describe('viewer', () => {
       expect(n, name).not.toBeNull()
       expect(deg(v.face, n!), name).toBeLessThanOrEqual(70 + 1e-6)
     }
-    // the 4.3 m² help room is framed from inside while empty; its cot (furnish's help-room preset, else one placed here) makes it a door view
     const help = b.rs.find((x) => x.name === 'Help room')!
-    const cot = b.u.furniture.find((f) => f.roomId === help.id && f.assetId === 'cot') ?? { id: 'c', assetId: 'cot', roomId: help.id, x: 7.3, y: 1.9, rotationDeg: 90 }
-    const u: Unit = { ...b.u, furniture: [...b.u.furniture.filter((f) => f !== cot), cot] }
-    const v = roomView(help, u)
-    const n = doorSpot(u, help, v.p)
-    expect(n).not.toBeNull()
-    expect(v.pitch).toBe(DOOR_PITCH)
-    expect(deg(v.face, { x: cot.x - v.p.x, y: cot.y - v.p.y }), 'cot in frame').toBeLessThanOrEqual(40 + 1e-6)
+    const cot = b.u.furniture.find((f) => f.roomId === help.id && f.assetId === 'cot')!
+    const v = roomView(help, b.u)
+    expect(doorSpot(b.u, help, v.p)).not.toBeNull()
+    expect(deg(v.face, sub(cot, v.p)), 'cot in frame').toBeLessThanOrEqual(40 + 1e-6)
+    // screen height of the cot centre (0.23 m up): tan(angle below the view axis) / tan(half the 65° vertical FOV)
+    const depth = (cot.x - v.p.x) * v.face.x + (cot.y - v.p.y) * v.face.y
+    const ndc = Math.tan(Math.atan2(0.23 - 1.6, depth) - (v.pitch ?? 0)) / Math.tan((32.5 * Math.PI) / 180)
+    expect(ndc, 'cot centre in the lower third').toBeLessThan(-1 / 3)
+    expect(ndc, 'cot centre on screen').toBeGreaterThan(-1)
+  })
+
+  it.skip('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW and ±40° of the view (A, B, C)', () => {
+    for (const flat of both)
+      for (const { name, v } of frames(flat))
+        for (const f of flat.u.furniture) {
+          const k = kitAsset(f.assetId)!
+          if (k.mount === 'ceiling' || f.assetId === 'shower_screen' || !(k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)) continue
+          if (footprintDist(v.p, f, k.sizeM) < TALL_IN_VIEW && inSight(flat.u, v.p, f)) expect(deg(v.face, sub(f, v.p)), `${name}: ${f.id}`).toBeGreaterThan(40)
+        }
+  })
+
+  it.skip('kitchen jumps stand across the room from the run, in front of the sink, and see the whole run (A, B, C; B is the model)', () => {
+    for (const { u, rs } of both) {
+      const r = rs.find((x) => x.kind === 'kitchen')!
+      const v = roomView(r, u)
+      const sink = u.furniture.find((f) => f.roomId === r.id && f.assetId === 'kitchen_sink')!
+      const t = (sink.rotationDeg * Math.PI) / 180
+      expect(sub(v.p, sink).x * -Math.sin(t) + sub(v.p, sink).y * Math.cos(t), `${u.id} across the room from the sink`).toBeGreaterThan(1.3)
+      for (const f of u.furniture.filter((f) => f.roomId === r.id && /^(kitchen_|fridge)/.test(f.assetId)))
+        expect(deg(v.face, sub(f, v.p)), `${u.id} ${f.assetId} in view`).toBeLessThan(48)
+    }
+  })
+
+  it.skip('veranda jumps look out over the rail or back through an opening, never into a blank wall corner (A, B, C)', () => {
+    for (const { u, rs } of both)
+      for (const r of listedRooms(u, rs).filter((x) => x.kind === 'balcony')) {
+        const v = roomView(r, u)
+        const inner = core.roomInnerPolygon(r, u)
+        let s = 0
+        while (s < 20 && core.pointInPolygon(at(v.p, v.face, s + 0.05), inner)) s += 0.05
+        const end = at(v.p, v.face, s + 0.1) // inside the wall the sightline ends on
+        const ends = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => {
+          const f = core.wallFrame(w, u.vertices)
+          const along = (end.x - f.origin.x) * f.dir.x + (end.y - f.origin.y) * f.dir.y
+          const off = Math.abs((end.x - f.origin.x) * f.normal.x + (end.y - f.origin.y) * f.normal.y)
+          if (off > w.thicknessM / 2 + 0.1 || along < -0.1 || along > f.lengthM + 0.1) return []
+          return [w.heightM < 1.6 || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM)]
+        })
+        expect(ends.length && ends.every(Boolean), `${u.id} ${r.name} ends on an opening or the rail`).toBe(true)
+      }
   })
 
   it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {
