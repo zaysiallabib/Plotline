@@ -559,7 +559,8 @@ function bath(ctx: Ctx): void {
       const first = onSides(ctx, rankNoOpenings(ctx), a, FLUSH)
       return !!first && !!(onSides(ctx, others(ctx, [first.side]), b, FLUSH) ?? onSide(ctx, first.side, b, first.side.len / 2, FLUSH))
     })
-  if (pair('toilet', 'vanity') || pair('vanity', 'toilet')) return
+  // a WC under 2.5 m² gets a pedestal basin: a vanity + mirror there leaves nowhere to stand in front of it
+  if (ctx.room.areaSqm >= 2.5 && (pair('toilet', 'vanity') || pair('vanity', 'toilet'))) return
   const t = onSides(ctx, rankNoOpenings(ctx), 'toilet', FLUSH)
   onSides(ctx, t ? others(ctx, [t.side]) : rankLongest(ctx), 'basin') ?? onSides(ctx, rankLongest(ctx), 'basin')
 }

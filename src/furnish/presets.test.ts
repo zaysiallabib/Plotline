@@ -177,6 +177,8 @@ describe('furnish', () => {
     for (const a of ['shower_screen', 'toilet', 'vanity']) expect(ids, a).toContain(a)
     const wc = rect('bath', 1.4, 1.6, { wall: 0, offsetM: 0.3 })
     expect(furnish(wc, deriveRooms(wc)).map((p) => p.assetId)).not.toContain('shower_screen')
+    const wcIds = furnish(wc, deriveRooms(wc)).map((p) => p.assetId)
+    expect(wcIds, 'a WC under 2.5 m² gets no vanity').not.toContain('vanity')
   })
 
   test('a shower tray sits flush in its corner, so it still fits beside a door zone with centimetres to spare', () => {
@@ -286,6 +288,7 @@ describe('furnish', () => {
     expect(ids('r_dining'), 'family sofa cushions').toContain('cushions_plain')
     expect(ids('r_bed1').filter((a) => a.startsWith('art_')), 'diptych').toHaveLength(2)
     for (const a of ['vanity', 'shower_screen', 'toilet']) expect(ids('r_bath1'), a).toContain(a)
+    expect(ids('r_htoilet').sort(), 'the 2.1 m² WC: toilet + pedestal basin').toEqual(['basin', 'toilet'])
   })
 
   // the second plan (system proof): same rules, no per-unit code

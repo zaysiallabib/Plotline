@@ -64,7 +64,7 @@ export const DOOR_CLEAR = 1.2
 const EYE_CLEAR = 0.5
 const GLASS = new Set(['shower_screen'])
 /** The piece the first view frames, by room kind; other rooms (and rooms without it) face the furniture centroid. */
-const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(vanity|basin)$/, kitchen: /^kitchen_sink$/ }
+const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(vanity|basin)$/, kitchen: /^kitchen_sink$/, dining: /^dining_table$/ }
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
 /** …so that candidate loses this much of its distance-to-target score. */
@@ -94,7 +94,7 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * and the leaf's swing arc (radius widthM around the hinge); a passage or a sliding door (no swinging leaf,
  * may be a whole glazed wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
- * (a bed from its foot, a kitchen run from across the room) — minus SLAB_PENALTY when a wardrobe/shelf/tall
+ * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece is within SLAB_NEAR.
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
@@ -105,7 +105,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
   let target: Pt
   const hero = HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId))
   // presets.ts convention: rotation θ (clockwise, y-down) faces (−sin θ, cos θ)
-  const front = hero && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
+  const front = hero && room.kind !== 'dining' && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
   if (hero) target = hero
   else if (items.length) {
     target = { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }

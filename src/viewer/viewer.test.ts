@@ -136,12 +136,12 @@ describe('viewer', () => {
       const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
       return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
     }
-    for (const name of ['Bed-1', 'Bed-2', 'Kitchen', 'Bath-1', 'Living room']) {
+    for (const name of ['Bed-1', 'Bed-2', 'Kitchen', 'Bath-1', 'Living room', 'Dining & family living']) {
       const r = rooms.find((x) => x.name === name)!
       const v = roomView(r, furnished)
       const inner = core.roomInnerPolygon(r, furnished)
       const items = furnished.furniture.filter((f) => f.roomId === r.id)
-      const hero = items.find((f) => /^(bed_|vanity$|kitchen_sink$)/.test(f.assetId))
+      const hero = items.find((f) => /^(bed_|vanity$|kitchen_sink$|dining_table$)/.test(f.assetId))
       const target = hero ?? { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
       expect(core.pointInPolygon(v.p, inner), name).toBe(true)
       // never nose-to-wall: at least VIEW_INSET (minus a hair for acute corners) from every inner edge
