@@ -44,6 +44,21 @@ Done and merged on `feat/phase-0` (152 tests + tsc + build green, 2026-09-25 ~15
   - **Realism (9eca27d), items 4a/4b/4f:** sun patches — root cause was a weak sun (5.5 → 10) plus curtains covering 60 % of each window (now 18 % per side); tone mapping and ambient unchanged. Contact shadows under every floor piece (`src/three/context.ts`, one draw call, not pickable). Plain neighbour blocks (≈33, 6–10 storeys, 8–60 m out) + road + time-of-day haze, never shading the unit, hidden in the dollhouse. New chimney hood (canopy + duct to 3.0 m) and a real fridge (doors, handles, plinth). The "brown sliver" is the kitchen door's teak casing seen between the ajar door and the fridge — left as is (fix = lighter casing, or a tall-piece-off-door-frame rule that would drop Type A's fridge).
   - Manager fix at merge: room jumps ignore ceiling-mounted pieces (lights/ACs) when aiming (`spawn.ts`).
 
+## Wave 8 — IN FLIGHT (started 2026-09-25 ~22:15, manager Fable 5.1, four Opus 5.5 agents in worktrees)
+
+Founder said 2026-09-25 evening: keep tuning the engine as planned; Fable manages, Opus codes, Sonnet for trivia; HANDOFF must stay current.
+Demo drawings checked: img_1 rooftop, img_4 basement, img_5 ground floor — no third apartment. Third plan = the LOWER flat of img_2 (printed 2662 sft) = Type C.
+
+| Agent | Branch / worktree | Scope | Status |
+|---|---|---|---|
+| views | wave8-views | HANDOFF 3a (entry ≥ 1.5 m from a pendant, clock over nothing), 3c (bath jump from the door, diagonal like b-bath-3), 3g (Rooms list order), help-room jump from the doorway | running |
+| furnish | wave8-furnish | 3b (stair model, cot preset for help room, hide common-core rooms), 3d (AC on longest windowless wall), 3e (curtain rod brackets/finials), 4 (closed wardrobe/bookcase instead of steel rack, art pool of 8+ by room id) | running |
+| typec | wave8-typec | Type C = lower flat of img_2 via the Studio import path (Playwright round-trip: import → issues → Preview 3D), type-c.test.ts, north-rose re-read for A/B/C, rule breaks REPORTED not patched into Type-C code | running |
+| render | wave8-render | 3f (sun patch on living floor at 15:30, glazing moiré), 5 (blown whites in baths/windows, dark dining lintel, Bed-2 speckle), 4 (neighbour facade variants, hazier ground) | running |
+
+Merge order when done: typec (data only) → views → furnish → render. After merge: shots at 15:30 for A/B/C, blind art-director score (Fable), HANDOFF update, founder deploys.
+Shots: E:devplotline-shotswave8<agent>. Dev ports: views 5211, furnish 5212, typec 5213, render 5214.
+
 ## Open work
 
 Parked by founder decision (PC first, VR later): #1 desktop canvas black when WebXR enabled, #10 VR window glass opaque.
