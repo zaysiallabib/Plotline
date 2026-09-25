@@ -113,6 +113,7 @@ export const VIEW_INSET = 0.4
 export const DOOR_CLEAR = 1.2
 /** A kitchen's run faces its door wall across a narrow galley, a veranda is 2 m deep: there a stand point only keeps this far from a swinging door (out of the doorway and the leaf, ajar 20°, ≤ 0.26 m in); a slider or passage just VIEW_INSET, like a wall. */
 export const GALLEY_DOOR_CLEAR = 0.6
+const GALLEY_DEPTH = 2.5
 /** Anything reaching above 1.2 m (wall cabinets, wardrobe, TV) stays this far from the eye; glass only must not enclose it. */
 const EYE_CLEAR = 0.5
 const GLASS = new Set(['shower_screen'])
@@ -265,7 +266,10 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
       .filter((o) => o.kind !== 'window')
       .map((o) => ({ o, w, f, a: add(f.origin, f.dir, o.offsetM), b: add(f.origin, f.dir, o.offsetM + o.widthM), c: add(f.origin, f.dir, o.offsetM + o.widthM / 2) }))
   })
-  const tight = room.kind === 'kitchen' || room.kind === 'balcony'
+  // a galley: less than GALLEY_DEPTH of floor in front of its sink (A/C 2.0 m; B's 3.2 m keeps the full door zone and its diagonal)
+  let ahead = 0
+  if (front && room.kind === 'kitchen') while (ahead < GALLEY_DEPTH && core.pointInPolygon(add(target, front, ahead + 0.05), inner)) ahead += 0.05
+  const tight = room.kind === 'balcony' || (room.kind === 'kitchen' && ahead < GALLEY_DEPTH)
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
       tight ? !swings(o) || segDist(p, a, b) >= GALLEY_DOOR_CLEAR

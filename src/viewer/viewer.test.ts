@@ -375,6 +375,14 @@ describe('viewer', () => {
       for (const f of u.furniture.filter((f) => f.roomId === r.id && /^(kitchen_|fridge)/.test(f.assetId)))
         expect(deg(v.face, sub(f, v.p)), `${u.id} ${f.assetId} in view`).toBeLessThan(48)
     }
+    // B has 3.2 m in front of its sink, no galley: it keeps the full door zone and its wave-8 diagonal
+    const { u, rs } = both[1]
+    const v = roomView(rs.find((x) => x.kind === 'kitchen')!, u)
+    for (const w of u.walls.filter((x) => rs.find((r) => r.kind === 'kitchen')!.wallIds.includes(x.id)))
+      for (const o of w.openings.filter((x) => x.kind !== 'window')) {
+        const f = core.wallFrame(w, u.vertices)
+        expect(Math.hypot(v.p.x - f.origin.x - f.dir.x * (o.offsetM + o.widthM / 2), v.p.y - f.origin.y - f.dir.y * (o.offsetM + o.widthM / 2)), o.id).toBeGreaterThanOrEqual(DOOR_CLEAR)
+      }
   })
 
   it('veranda jumps look out over the rail or back through an opening, never into a blank wall corner (A, B, C)', () => {
