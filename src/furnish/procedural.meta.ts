@@ -23,12 +23,23 @@ const P = (id: string, label: string, category: KitAsset['category'], x: number,
 
 /**
  * Framed prints, ART_W × ART_H, hung alone or as a 0.77 m diptych (`<set>_l` left, `<set>_r` right as you face
- * them): crops of Poly Haven tonemapped HDRIs (CC0), public/assets/art/<id>.jpg. Bottom at 1.25 m clears a
- * headboard / sofa back.
+ * them). ART_PHOTO sets are crops of Poly Haven tonemapped HDRIs (CC0), public/assets/art/<id>.jpg; the rest are
+ * painted at runtime (procedural.ts paintArt), one calm palette. Bottom at 1.25 m clears a headboard / sofa back.
  */
-export const ART_SETS = ['art_sea', 'art_dawn'] as const
+const ART_LABEL = {
+  art_sea: 'sea at sunrise',
+  art_dawn: 'mountains at dawn',
+  art_blocks: 'abstract colour blocks',
+  art_botanical: 'botanical line drawing',
+  art_city: 'city in grey',
+  art_stripes: 'warm stripes',
+  art_arches: 'terracotta arches',
+  art_hills: 'layered hills',
+  art_sun: 'low sun over still water',
+} as const
+export const ART_SETS = Object.keys(ART_LABEL) as (keyof typeof ART_LABEL)[]
+export const ART_PHOTO: readonly string[] = ['art_sea', 'art_dawn']
 export const ART = ART_SETS.flatMap((s) => [`${s}_l`, `${s}_r`])
-const ART_LABEL: Record<(typeof ART_SETS)[number], string> = { art_sea: 'sea at sunrise', art_dawn: 'mountains at dawn' }
 export const ART_W = 0.36
 export const ART_H = 0.5
 

@@ -13,7 +13,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
+import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -288,6 +288,140 @@ function print(url: string): THREE.MeshStandardMaterial {
     printCache.set(url, m)
   }
   return m
+}
+
+/**
+ * A painted print (ART_SETS not in ART_PHOTO): a diptych is one 720 × 504 canvas, `_l` shows its left half and `_r`
+ * its right (clones share one GPU upload). Without a DOM (Vitest) it stays a flat paper tone.
+ */
+function painted(id: string): THREE.MeshStandardMaterial {
+  let m = printCache.get(id)
+  if (m) return m
+  m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 })
+  m.userData.ownUV = true
+  if (typeof globalThis.document?.createElement === 'function') {
+    const set = id.slice(0, -2)
+    const whole = (canvases[set] ??= new THREE.CanvasTexture(paintArt(set)))
+    whole.colorSpace = THREE.SRGBColorSpace
+    whole.anisotropy = 8
+    const t = whole.clone()
+    t.repeat.set(0.5, 1)
+    t.offset.set(id.endsWith('_r') ? 0.5 : 0, 0)
+    m.map = t
+  } else m.color.set('#e9e3d8')
+  printCache.set(id, m)
+  return m
+}
+const canvases: Record<string, THREE.CanvasTexture> = {}
+
+/** The painted sets, one calm palette (founder: "calmer" staging): paper, sand, clay, terracotta, ochre, sage, mist, slate. */
+function paintArt(set: string): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  const [W, H] = [(c.width = 720), (c.height = 504)]
+  const g = c.getContext('2d')!
+  const fill = (color: string | CanvasGradient) => ((g.fillStyle = color), g)
+  const grad = (y0: number, y1: number, a: string, b: string) => {
+    const l = g.createLinearGradient(0, y0, 0, y1)
+    l.addColorStop(0, a)
+    l.addColorStop(1, b)
+    return l
+  }
+  fill('#efe9df').fillRect(0, 0, W, H)
+  const halves = [0, 360]
+  if (set === 'art_blocks') {
+    // soft colour fields, two to a print
+    ;[['#b9785a', '#d9c7a7'], ['#9ea58c', '#c9a27f']].forEach(([a, b], i) => {
+      g.filter = 'blur(1.5px)'
+      fill(a).fillRect(halves[i] + 48, 56, 264, 214)
+      fill(b).fillRect(halves[i] + 48, 286, 264, 162)
+      g.filter = 'none'
+    })
+  } else if (set === 'art_botanical') {
+    // a leafy stem per print in fine ink, leaves washed in pale sage
+    g.lineWidth = 2.2
+    g.strokeStyle = '#3b3a36'
+    halves.forEach((x0, h) => {
+      const P = (s: number) => ({ x: x0 + 180 + (h ? -1 : 1) * 60 * s * s - 20 * s, y: 460 - 390 * s })
+      g.beginPath()
+      for (let s = 0; s <= 1.001; s += 0.05) g.lineTo(P(s).x, P(s).y)
+      g.stroke()
+      for (let i = 1; i <= 9; i++) {
+        const s = i / 10
+        const p = P(s)
+        const side = i % 2 ? 1 : -1
+        const len = 62 - 30 * s
+        g.save()
+        g.translate(p.x, p.y)
+        g.rotate(side * (0.9 - 0.3 * s))
+        g.beginPath()
+        g.ellipse(0, -len / 2, len * 0.3, len / 2, 0, 0, Math.PI * 2)
+        fill('rgba(158,165,140,0.35)').fill()
+        g.stroke()
+        g.beginPath()
+        g.moveTo(0, 0)
+        g.lineTo(0, -len * 0.85)
+        g.stroke()
+        g.restore()
+      }
+    })
+  } else if (set === 'art_city') {
+    // a grey skyline in three planes of haze
+    fill(grad(0, H, '#e2e5e3', '#c8cdcc')).fillRect(0, 0, W, H)
+    ;['#bcc2c3', '#9aa2a5', '#6f7b82'].forEach((color, l) => {
+      fill(color)
+      for (let x = -10, i = 0; x < W; i++) {
+        const w = 26 + 50 * rnd(i, l + 1)
+        const top = 170 + l * 70 + 110 * rnd(l + 1, i)
+        g.fillRect(x, top, w - 3, H - top)
+        x += w
+      }
+    })
+    fill(grad(H - 140, H, 'rgba(226,229,227,0)', 'rgba(226,229,227,0.55)')).fillRect(0, H - 140, W, 140)
+  } else if (set === 'art_stripes') {
+    const cols = ['#b9785a', '#cfa35a', '#e4d3b8', '#c99a7b', '#d9c7a7', '#efe9df']
+    for (let y = 0, i = 0; y < H; i++) {
+      const h = 18 + 52 * rnd(i, 4)
+      fill(cols[i % cols.length]).fillRect(0, y, W, h + 1)
+      y += h
+    }
+  } else if (set === 'art_arches') {
+    // nested arches on paper, the second print in reverse order
+    const cols = ['#b9785a', '#d9c7a7', '#9ea58c', '#c99a7b']
+    halves.forEach((x0, h) => {
+      g.lineWidth = 24
+      ;(h ? [...cols].reverse() : cols).forEach((color, i) => {
+        const r = 132 - i * 30
+        g.strokeStyle = color
+        g.beginPath()
+        g.moveTo(x0 + 180 - r, 430)
+        g.arc(x0 + 180, 300, r, Math.PI, 0)
+        g.lineTo(x0 + 180 + r, 430)
+        g.stroke()
+      })
+    })
+  } else if (set === 'art_hills') {
+    fill(grad(0, 300, '#ebe6dc', '#d6dcd9')).fillRect(0, 0, W, H)
+    ;['#c3cbc9', '#a9b8bf', '#9ea58c', '#7d816f', '#5f6557'].forEach((color, l) => {
+      g.beginPath()
+      g.moveTo(0, H)
+      for (let x = 0; x <= W; x += 8) g.lineTo(x, 200 + l * 55 + 28 * Math.sin(x / (90 + 25 * l) + l * 1.7) + 12 * Math.sin(x / 37 + l))
+      g.lineTo(W, H)
+      fill(color).fill()
+    })
+  } else if (set === 'art_sun') {
+    // low sun over still water, reflection broken into strokes
+    fill(grad(0, 300, '#efe3d3', '#e6c9ad')).fillRect(0, 0, W, 300)
+    fill(grad(300, H, '#cbc4b8', '#b5afa4')).fillRect(0, 300, W, H - 300)
+    fill('#c9774f')
+    g.beginPath()
+    g.arc(540, 236, 52, 0, Math.PI * 2)
+    g.fill()
+    fill('#a39c90').fillRect(0, 294, 250, 6)
+    for (let i = 0; i < 14; i++) fill(`rgba(217,150,110,${0.55 - i * 0.035})`).fillRect(540 - 50 + 30 * rnd(i, 9) - i * 2, 312 + i * 11, 70 + i * 4 - 40 * rnd(9, i), 3)
+  }
+  // paper grain
+  for (let i = 0; i < 5000; i++) fill(`rgba(70,60,50,${0.03 * rnd(i, 1)})`).fillRect(rnd(i, 2) * W, rnd(i, 3) * H, 2, 2)
+  return c
 }
 
 // ───────────────────────────── builders ─────────────────────────────
@@ -697,7 +831,7 @@ function acSplit(): THREE.Mesh[] {
 }
 
 /** ART_W × ART_H oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
-function artFrame(url: string): THREE.Mesh[] {
+function artFrame(printMat: THREE.Material): THREE.Mesh[] {
   const m = M()
   const W = ART_W
   const H = ART_H
@@ -708,7 +842,7 @@ function artFrame(url: string): THREE.Mesh[] {
     box(b, H - 2 * b, 0.03, m.oak, -W / 2 + b / 2, H / 2, 0),
     box(b, H - 2 * b, 0.03, m.oak, W / 2 - b / 2, H / 2, 0),
     box(W - 2 * b, H - 2 * b, 0.01, m.mat, 0, H / 2, -0.005),
-    box(W * 0.68, W * 0.952, 0.002, print(url), 0, H / 2 + 0.007, 0.001),
+    box(W * 0.68, W * 0.952, 0.002, printMat, 0, H / 2 + 0.007, 0.001),
   ]
 }
 
@@ -854,7 +988,7 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   cot,
   hook_rail: hookRail,
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
-  ...Object.fromEntries(ART.map((id) => [id, () => artFrame(`/assets/art/${id}.jpg`)])),
+  ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 
 export function buildProcedural(id: string): THREE.Group | null {

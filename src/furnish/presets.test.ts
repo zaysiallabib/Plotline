@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
 import { AC_KINDS, doorClearZones, footprint, furnish, isCommonCore, LIT_KINDS, quadsOverlap } from './presets'
+import { ART_SETS } from './procedural.meta'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
 function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offsetM: number }): Unit {
@@ -418,6 +419,24 @@ describe('furnish', () => {
     expect(ps[0].rotationDeg).toBe(270) // front faces +x: backed onto the left wall
     expect(4.4 - 0.0635 - Math.max(...quad(ps[0]).map((p) => p.x))).toBeGreaterThanOrEqual(1)
     expectInsideAndDisjoint(ps, rooms, unit)
+  })
+
+  test('art: 8+ print sets, a diptych set picked by room id; every bedroom and living room of a unit hangs a different one', () => {
+    expect(ART_SETS.length).toBeGreaterThanOrEqual(8)
+    const setOf = (ps: FurniturePlacement[], roomId: string) => [...new Set(ps.filter((p) => p.roomId === roomId && p.assetId.startsWith('art_')).map((p) => p.assetId.slice(0, -2)))]
+    const a = rect('bed', 4, 3.5, { wall: 1, offsetM: 0.3 })
+    const b = structuredClone(a)
+    b.roomLabels[0].id = 'r2'
+    const [sa, sb] = [setOf(furnish(a, deriveRooms(a)), 'r'), setOf(furnish(b, deriveRooms(b)), 'r2')]
+    expect(sa).toHaveLength(1)
+    expect(sa, 'same id, same print').toEqual(setOf(furnish(a, deriveRooms(a)), 'r'))
+    expect(sa, 'another id, another print').not.toEqual(sb)
+    for (const u of [typeA, typeB].filter(Boolean)) {
+      const ps = furnish(u, deriveRooms(u))
+      const sets = [...new Set(ps.filter((p) => p.assetId.startsWith('art_')).map((p) => p.roomId))].map((r) => setOf(ps, r)[0])
+      expect(sets.length, u.id).toBeGreaterThanOrEqual(3)
+      expect(new Set(sets).size, `${u.id}: ${sets}`).toBe(sets.length)
+    }
   })
 
   test.skipIf(!typeB)('type-b.json rooms get their staging, inside and disjoint', () => {
