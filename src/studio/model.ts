@@ -541,7 +541,7 @@ export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
   if (rooms.length) {
     const count = new Map<Id, number>()
     for (const r of rooms) for (const id of r.wallIds) count.set(id, (count.get(id) ?? 0) + 1)
-    const outer = unit.walls.filter((w) => (count.get(w.id) ?? 0) < 2)
+    const outer = unit.walls.filter((w) => (count.get(w.id) ?? 0) < 2 || rooms.some((r) => r.kind === 'other' && r.wallIds.includes(w.id))) // a traced lobby is still outside
     if (!outer.some((w) => w.openings.some((o) => o.kind === 'door'))) {
       out.push({ level: 'warning', code: 'no-entry-door', message: 'No entry door on an outer wall', ids: [] })
     }
