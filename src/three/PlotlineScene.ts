@@ -408,9 +408,9 @@ export class PlotlineScene {
     for (const p of byDistance) {
       const obj = await buildFurniture(p, ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
-      // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it
+      // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
       const a = kitAsset(p.assetId)
-      ;(a?.mount === 'ceiling' && !a.dropM ? this.ceilingGroup : this.furnitureGroup).add(obj)
+      ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
     }
   }
 

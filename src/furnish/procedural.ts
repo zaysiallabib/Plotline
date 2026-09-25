@@ -13,7 +13,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_W, BED_STYLES } from './procedural.meta'
+import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -288,6 +288,140 @@ function print(url: string): THREE.MeshStandardMaterial {
     printCache.set(url, m)
   }
   return m
+}
+
+/**
+ * A painted print (ART_SETS not in ART_PHOTO): a diptych is one 720 × 504 canvas, `_l` shows its left half and `_r`
+ * its right (clones share one GPU upload). Without a DOM (Vitest) it stays a flat paper tone.
+ */
+function painted(id: string): THREE.MeshStandardMaterial {
+  let m = printCache.get(id)
+  if (m) return m
+  m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 })
+  m.userData.ownUV = true
+  if (typeof globalThis.document?.createElement === 'function') {
+    const set = id.slice(0, -2)
+    const whole = (canvases[set] ??= new THREE.CanvasTexture(paintArt(set)))
+    whole.colorSpace = THREE.SRGBColorSpace
+    whole.anisotropy = 8
+    const t = whole.clone()
+    t.repeat.set(0.5, 1)
+    t.offset.set(id.endsWith('_r') ? 0.5 : 0, 0)
+    m.map = t
+  } else m.color.set('#e9e3d8')
+  printCache.set(id, m)
+  return m
+}
+const canvases: Record<string, THREE.CanvasTexture> = {}
+
+/** The painted sets, one calm palette (founder: "calmer" staging): paper, sand, clay, terracotta, ochre, sage, mist, slate. */
+function paintArt(set: string): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  const [W, H] = [(c.width = 720), (c.height = 504)]
+  const g = c.getContext('2d')!
+  const fill = (color: string | CanvasGradient) => ((g.fillStyle = color), g)
+  const grad = (y0: number, y1: number, a: string, b: string) => {
+    const l = g.createLinearGradient(0, y0, 0, y1)
+    l.addColorStop(0, a)
+    l.addColorStop(1, b)
+    return l
+  }
+  fill('#efe9df').fillRect(0, 0, W, H)
+  const halves = [0, 360]
+  if (set === 'art_blocks') {
+    // soft colour fields, two to a print
+    ;[['#b9785a', '#d9c7a7'], ['#9ea58c', '#c9a27f']].forEach(([a, b], i) => {
+      g.filter = 'blur(1.5px)'
+      fill(a).fillRect(halves[i] + 48, 56, 264, 214)
+      fill(b).fillRect(halves[i] + 48, 286, 264, 162)
+      g.filter = 'none'
+    })
+  } else if (set === 'art_botanical') {
+    // a leafy stem per print in fine ink, leaves washed in pale sage
+    g.lineWidth = 2.2
+    g.strokeStyle = '#3b3a36'
+    halves.forEach((x0, h) => {
+      const P = (s: number) => ({ x: x0 + 180 + (h ? -1 : 1) * 60 * s * s - 20 * s, y: 460 - 390 * s })
+      g.beginPath()
+      for (let s = 0; s <= 1.001; s += 0.05) g.lineTo(P(s).x, P(s).y)
+      g.stroke()
+      for (let i = 1; i <= 9; i++) {
+        const s = i / 10
+        const p = P(s)
+        const side = i % 2 ? 1 : -1
+        const len = 62 - 30 * s
+        g.save()
+        g.translate(p.x, p.y)
+        g.rotate(side * (0.9 - 0.3 * s))
+        g.beginPath()
+        g.ellipse(0, -len / 2, len * 0.3, len / 2, 0, 0, Math.PI * 2)
+        fill('rgba(158,165,140,0.35)').fill()
+        g.stroke()
+        g.beginPath()
+        g.moveTo(0, 0)
+        g.lineTo(0, -len * 0.85)
+        g.stroke()
+        g.restore()
+      }
+    })
+  } else if (set === 'art_city') {
+    // a grey skyline in three planes of haze
+    fill(grad(0, H, '#e2e5e3', '#c8cdcc')).fillRect(0, 0, W, H)
+    ;['#bcc2c3', '#9aa2a5', '#6f7b82'].forEach((color, l) => {
+      fill(color)
+      for (let x = -10, i = 0; x < W; i++) {
+        const w = 26 + 50 * rnd(i, l + 1)
+        const top = 170 + l * 70 + 110 * rnd(l + 1, i)
+        g.fillRect(x, top, w - 3, H - top)
+        x += w
+      }
+    })
+    fill(grad(H - 140, H, 'rgba(226,229,227,0)', 'rgba(226,229,227,0.55)')).fillRect(0, H - 140, W, 140)
+  } else if (set === 'art_stripes') {
+    const cols = ['#b9785a', '#cfa35a', '#e4d3b8', '#c99a7b', '#d9c7a7', '#efe9df']
+    for (let y = 0, i = 0; y < H; i++) {
+      const h = 18 + 52 * rnd(i, 4)
+      fill(cols[i % cols.length]).fillRect(0, y, W, h + 1)
+      y += h
+    }
+  } else if (set === 'art_arches') {
+    // nested arches on paper, the second print in reverse order
+    const cols = ['#b9785a', '#d9c7a7', '#9ea58c', '#c99a7b']
+    halves.forEach((x0, h) => {
+      g.lineWidth = 24
+      ;(h ? [...cols].reverse() : cols).forEach((color, i) => {
+        const r = 132 - i * 30
+        g.strokeStyle = color
+        g.beginPath()
+        g.moveTo(x0 + 180 - r, 430)
+        g.arc(x0 + 180, 300, r, Math.PI, 0)
+        g.lineTo(x0 + 180 + r, 430)
+        g.stroke()
+      })
+    })
+  } else if (set === 'art_hills') {
+    fill(grad(0, 300, '#ebe6dc', '#d6dcd9')).fillRect(0, 0, W, H)
+    ;['#c3cbc9', '#a9b8bf', '#9ea58c', '#7d816f', '#5f6557'].forEach((color, l) => {
+      g.beginPath()
+      g.moveTo(0, H)
+      for (let x = 0; x <= W; x += 8) g.lineTo(x, 200 + l * 55 + 28 * Math.sin(x / (90 + 25 * l) + l * 1.7) + 12 * Math.sin(x / 37 + l))
+      g.lineTo(W, H)
+      fill(color).fill()
+    })
+  } else if (set === 'art_sun') {
+    // low sun over still water, reflection broken into strokes
+    fill(grad(0, 300, '#efe3d3', '#e6c9ad')).fillRect(0, 0, W, 300)
+    fill(grad(300, H, '#cbc4b8', '#b5afa4')).fillRect(0, 300, W, H - 300)
+    fill('#c9774f')
+    g.beginPath()
+    g.arc(540, 236, 52, 0, Math.PI * 2)
+    g.fill()
+    fill('#a39c90').fillRect(0, 294, 250, 6)
+    for (let i = 0; i < 14; i++) fill(`rgba(217,150,110,${0.55 - i * 0.035})`).fillRect(540 - 50 + 30 * rnd(i, 9) - i * 2, 312 + i * 11, 70 + i * 4 - 40 * rnd(9, i), 3)
+  }
+  // paper grain
+  for (let i = 0; i < 5000; i++) fill(`rgba(70,60,50,${0.03 * rnd(i, 1)})`).fillRect(rnd(i, 2) * W, rnd(i, 3) * H, 2, 2)
+  return c
 }
 
 // ───────────────────────────── builders ─────────────────────────────
@@ -697,7 +831,7 @@ function acSplit(): THREE.Mesh[] {
 }
 
 /** ART_W × ART_H oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
-function artFrame(url: string): THREE.Mesh[] {
+function artFrame(printMat: THREE.Material): THREE.Mesh[] {
   const m = M()
   const W = ART_W
   const H = ART_H
@@ -708,15 +842,114 @@ function artFrame(url: string): THREE.Mesh[] {
     box(b, H - 2 * b, 0.03, m.oak, -W / 2 + b / 2, H / 2, 0),
     box(b, H - 2 * b, 0.03, m.oak, W / 2 - b / 2, H / 2, 0),
     box(W - 2 * b, H - 2 * b, 0.01, m.mat, 0, H / 2, -0.005),
-    box(W * 0.68, W * 0.952, 0.002, print(url), 0, H / 2 + 0.007, 0.001),
+    box(W * 0.68, W * 0.952, 0.002, printMat, 0, H / 2 + 0.007, 0.001),
   ]
 }
 
-function wardrobe(): THREE.Mesh[] {
+/** Oak wardrobe of n 0.6 m doors (3 mm shadow gaps) on a recessed plinth; bar handles either side of the first split. */
+function wardrobe(n: number): THREE.Mesh[] {
   const m = M()
-  const out = [box(1.8, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(1.76, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
-  for (const x of [-0.6, 0, 0.6]) out.push(box(0.596, 2.12, 0.02, m.oak, x, 1.13, 0.29))
-  for (const x of [-0.33, -0.27, 0.33]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, 0.31))
+  const W = 0.6 * n
+  const out = [box(W, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(W - 0.04, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
+  for (let i = 0; i < n; i++) out.push(box(0.596, 2.12, 0.02, m.oak, -W / 2 + 0.3 + 0.6 * i, 1.13, 0.29))
+  for (const x of n === 3 ? [-0.33, -0.27, 0.33] : [-0.03, 0.03]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, 0.31))
+  return out
+}
+
+/**
+ * Open closet unit W wide: oak end panels, cap and shoe shelf, a top shelf with folded stacks, a steel rail with
+ * clothes hanging end-on (shirts and dresses in the linen palette, a few gaps). Back open to the wall.
+ */
+function closetRail(W: number): THREE.Mesh[] {
+  const m = M()
+  const D = 0.55
+  const fab = [m.linen, m.cushionOat, m.cushionTaupe, m.chair]
+  const out = [box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 2.091, 0), box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 1.79, 0)]
+  out.push(box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 0.14, 0), box(W - 0.036, 0.13, 0.018, m.dark, 0, 0.065, D / 2 - 0.05))
+  for (const s of [-1, 1]) out.push(box(0.018, 2.1, D, m.oak, s * (W / 2 - 0.009), 1.05, 0))
+  out.push(cyl(0.012, W - 0.04, m.steel, 0, 1.7, 0).rotateZ(Math.PI / 2))
+  for (let x = -W / 2 + 0.08, i = 0; x < W / 2 - 0.06; x += 0.075, i++) {
+    if (rnd(i, W) > 0.82) continue
+    const L = 0.62 + 0.4 * rnd(W, i) // shirt … dress
+    const d = 0.38 + 0.08 * rnd(i, 2)
+    const g = rbox(0.03 + 0.03 * rnd(3, i), L, d, 0.012, fab[Math.floor(rnd(i, 7) * fab.length)], x, 1.64 - L / 2, 0)
+    g.rotation.y = 0.16 * (rnd(i, 11) - 0.5)
+    // oak hanger: a bar across the shoulders, a steel hook over the rail
+    const h = box(0.012, 0.018, d - 0.04, m.oak, x, 1.65, 0)
+    h.rotation.y = g.rotation.y
+    out.push(g, h, cyl(0.004, 0.06, m.steel, x, 1.69, 0))
+  }
+  for (let x = -W / 2 + 0.22; x < W / 2 - 0.15; x += 0.42) {
+    const h = 0.08 + 0.1 * rnd(x, 3)
+    out.push(rbox(0.32, h, 0.3, 0.02, fab[Math.floor(rnd(x, 5) * fab.length)], x, 1.8 + h / 2, 0))
+  }
+  return out
+}
+
+/** A 1.9 × 0.7 oak cot (chouki), long side along x: legs, rails, plank top, an 8 cm mattress, a flat pillow, a folded blanket. */
+function cot(): THREE.Mesh[] {
+  const m = M()
+  const out = [box(1.9, 0.03, 0.7, m.oak, 0, 0.315, 0), box(1.86, 0.08, 0.66, m.mattress, 0, 0.37, 0)]
+  for (const z of [-0.32, 0.32]) {
+    out.push(box(1.9, 0.08, 0.04, m.oak, 0, 0.26, z))
+    for (const x of [-0.9, 0.9]) out.push(box(0.05, 0.3, 0.05, m.oak, x, 0.15, z))
+  }
+  out.push(rbox(0.3, 0.05, 0.46, 0.02, m.linen, -0.72, 0.435, 0), rbox(0.34, 0.04, 0.6, 0.015, m.throwSage, 0.68, 0.43, 0))
+  return out
+}
+
+/** Oak hook rail (top at 0.55) with four steel hooks and a gamchha-style towel on the second; y = 0 is the towel's hem. */
+function hookRail(): THREE.Mesh[] {
+  const m = M()
+  const out = [box(0.6, 0.07, 0.02, m.oak, 0, 0.515, -0.03)]
+  for (const x of [-0.21, -0.07, 0.07, 0.21]) out.push(tilt(cyl(0.006, 0.05, m.steel, x, 0.5, -0.005), Math.PI / 2), cyl(0.007, 0.025, m.steel, x, 0.51, 0.02))
+  // folded over the hook: a long back layer and a shorter front one, hems falling back toward the wall
+  out.push(tilt(rbox(0.26, 0.5, 0.008, 0.004, m.throw, -0.07, 0.25, 0.012), 0.06), tilt(rbox(0.26, 0.34, 0.008, 0.004, m.throw, -0.07, 0.33, 0.03), 0.08))
+  return out
+}
+
+/** Dog-leg stair W wide (see STAIR_* in procedural.meta.ts): marble treads with 2 cm nosings, white risers and soffits, steel rail on the well. */
+function stair(W: number): THREE.Mesh[] {
+  const m = M()
+  const fw = (W - 0.1) / 2
+  const [xA, xB] = [-W / 2 + fw / 2, W / 2 - fw / 2]
+  const r = STAIR_RISE / 18
+  const t = 0.25
+  const zL = -STAIR_D / 2 + 1.1 // front edge of the half landing
+  const k = r / t
+  const yL = 9 * r
+  const out: THREE.Mesh[] = []
+  // marble tread, its 2 cm nosing toward the approaching foot (dir = −1 on flight A, which climbs toward −z)
+  const tread = (x: number, y: number, z: number, dir: number) => out.push(box(fw, 0.03, t + 0.02, m.stone, x, y - 0.015, z - dir * 0.01))
+  // balusters from the tread to a 0.9 m rail over the nosings: at a tread centre that is 0.5 r above the tread
+  const baluster = (x: number, y: number, z: number) => out.push(box(0.02, 0.9 + r / 2, 0.02, m.blackSteel, x, y + (0.9 + r / 2) / 2, z))
+  const rail = (x: number, z0: number, y0: number, z1: number, y1: number) =>
+    out.push(tilt(box(0.04, 0.04, Math.hypot(z1 - z0, y1 - y0), m.blackSteel, x, (y0 + y1) / 2, (z0 + z1) / 2), -Math.atan2(y1 - y0, z1 - z0)))
+  // flight A: solid steps up from the floor, front to back
+  for (let i = 1; i <= 8; i++) {
+    const z = STAIR_D / 2 - (i - 0.5) * t
+    out.push(box(fw, i * r - 0.03, t, m.whitePaint, xA, (i * r - 0.03) / 2, z))
+    tread(xA, i * r, z, -1)
+    baluster(-0.05, i * r, z)
+  }
+  rail(-0.05, STAIR_D / 2, r + 0.9, zL, yL + 0.9)
+  // half landing across both flights, 0.15 m slab; a newel post where the rail turns
+  out.push(box(W, 0.15, 1.1, m.whitePaint, 0, yL - 0.105, zL - 0.55), box(W, 0.03, 1.1, m.stone, 0, yL - 0.015, zL - 0.55))
+  out.push(box(0.14, 0.04, 0.04, m.blackSteel, 0, yL + 0.9, zL), box(0.05, r + 0.95, 0.05, m.blackSteel, 0, yL + (r + 0.95) / 2, zL))
+  // flight B: back to front on a sloped waist slab (its top 2 r under the nosing line), up into the ceiling
+  const a = Math.atan2(r, t)
+  const run = 8 * t
+  out.push(tilt(box(fw, 0.15, run / Math.cos(a), m.whitePaint, xB, yL - r + (run / 2) * k - 0.075 / Math.cos(a), zL + run / 2), -a))
+  const zTop = zL + (STAIR_RISE - 0.05 - yL - r - 0.9) / k // where its rail meets the ceiling
+  for (let j = 1; j <= 8; j++) {
+    const y = yL + j * r
+    const z = zL + (j - 0.5) * t
+    out.push(box(fw, 2 * r - 0.03, t, m.whitePaint, xB, y - r - 0.015, z))
+    tread(xB, y, z, 1)
+    if (z < zTop) baluster(0.05, y, z)
+  }
+  out.push(box(fw, r, 0.02, m.whitePaint, xB, yL + 8.5 * r, STAIR_D / 2 - 0.01)) // last riser, to the floor above
+  rail(0.05, zL, yL + r + 0.9, zTop, STAIR_RISE - 0.05)
   return out
 }
 
@@ -748,8 +981,14 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   ceiling_light: () => ceilingLight(0.38, 0.085),
   ceiling_light_large: () => ceilingLight(0.5, 0.09),
   ac_split: acSplit,
-  wardrobe_tall: wardrobe,
-  ...Object.fromEntries(ART.map((id) => [id, () => artFrame(`/assets/art/${id}.jpg`)])),
+  wardrobe_tall: () => wardrobe(3),
+  wardrobe_2door: () => wardrobe(2),
+  closet_rail: () => closetRail(1.8),
+  closet_rail_s: () => closetRail(1.2),
+  cot,
+  hook_rail: hookRail,
+  ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
+  ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 
 export function buildProcedural(id: string): THREE.Group | null {

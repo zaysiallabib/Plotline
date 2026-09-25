@@ -28,7 +28,7 @@
 import type { FurniturePlacement, Room, RoomKind, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
-import { ART_SETS, ART_W, BED_STYLES } from './procedural.meta'
+import { ART_SETS, ART_W, BED_STYLES, STAIR_W, stairId } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -351,8 +351,8 @@ function bed(ctx: Ctx): void {
     for (const out of [L / 3, L / 4])
       for (const du of [0, -0.25, 0.25, -0.5, 0.5]) if (tryPlace(ctx, rug, againstSide(b.side, rug, b.u + du, out), b.rot, 'flat')) break rug
   frames(ctx, b.side, b.u)
-  const wardrobe = onSides(ctx, others(ctx, [b.side]), 'wardrobe_tall') ?? onSides(ctx, others(ctx, [b.side]), 'drawer_cabinet')
-  if (!wardrobe) onSides(ctx, [b.side], 'drawer_cabinet')
+  // closed oak wardrobes only (the kit's steel-framed drawer_cabinet read as garage shelving): 3 doors, else 2, else beside the bed
+  onSides(ctx, others(ctx, [b.side]), 'wardrobe_tall') ?? onSides(ctx, others(ctx, [b.side]), 'wardrobe_2door') ?? onSides(ctx, [b.side], 'wardrobe_2door')
   if (ctx.room.areaSqm >= 18) inCorner(ctx, 'modern_arm_chair_01')
   inCorner(ctx, 'potted_plant_02')
   // ponytail: no potted_plant_04 on a side table — placements carry no per-instance elevation (mountY is per asset).
@@ -492,7 +492,7 @@ function dining(ctx: Ctx): void {
     // across from the sofa or not at all: slid further along a long room it faces the dining table instead
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH, 'solid', 1)) break
   }
-  onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
+  onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
 }
 
 /**
@@ -594,9 +594,42 @@ function balcony(ctx: Ctx): void {
   }
 }
 
+/** Walk-in closet: an open rail + shelf unit (1.8 m, else 1.2 m) on each of its two blankest walls. */
 function closet(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 3) onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01')
+  if (ctx.room.areaSqm >= 3) for (const s of rankNoOpenings(ctx).slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
 }
+
+/** Help / servant room: a cot along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */
+function helpRoom(ctx: Ctx): void {
+  const cot = onSides(ctx, rankNoOpenings(ctx), 'cot')
+  onSides(ctx, cot ? others(ctx, [cot.side]) : rankLongest(ctx), 'hook_rail', FLUSH) ?? (cot && onSide(ctx, cot.side, 'hook_rail', cot.u, FLUSH))
+}
+
+/**
+ * Stair room (common core): the widest dog-leg stair (STAIR_W) whose half landing backs onto a wall — the one farthest
+ * from the door first — with its flights clear of every door zone and a 1 m floor landing in front of it inside the
+ * room. It may stand in front of a window (stairwell windows light the landing), so it is placed 'free' after these checks.
+ */
+function stairwell(ctx: Ctx): void {
+  const sides = [...ctx.sides].sort((a, b) => sideDoorDist(ctx, b) - sideDoorDist(ctx, a))
+  for (const w of STAIR_W)
+    for (const s of sides)
+      for (const du of [0, -0.25, 0.25, -0.5, 0.5]) {
+        const id = stairId(w)
+        const c = againstSide(s, id, s.len / 2 + du, FLUSH)
+        const rot = rotationFacing(s.n)
+        const q = footprint(c, rot, size(id))
+        if (ctx.clear.some((z) => quadsOverlap(z, q)) || !footprint(add(c, s.n, 1), rot, size(id)).every((p) => pointInPolygon(p, ctx.inner))) continue
+        if (tryPlace(ctx, id, c, rot, 'free')) return
+      }
+}
+
+/** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat: the viewer leaves them out of the Rooms list; they stay in 3D. */
+export const isCommonCore = (room: Pick<Room, 'name'>): boolean => /\b(stair|lift|elevator|lobby)/i.test(room.name)
+const isStair = (room: Room) => /\bstair/i.test(room.name)
+/** A servant's room: a bedroom under 4 m², or a bed/utility/other room named help, servant or maid. */
+export const isHelpRoom = (room: Room): boolean =>
+  (room.kind === 'bed' && room.areaSqm < 4) || (['bed', 'utility', 'other'].includes(room.kind) && /\b(help|servant|maid)/i.test(room.name))
 
 // ───────────────────────────── ceiling light, AC (every room kind) ─────────────────────────────
 
@@ -604,8 +637,8 @@ function closet(ctx: Ctx): void {
 export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
 /** Rooms that get a wall-mounted split AC. */
 export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study']
-/** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of its ends. */
-const AC_CLEAR = 0.3
+/** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of the room's corners. */
+const AC_CLEAR = 0.5
 
 const segDist = (p: Pt, a: Pt, b: Pt) => {
   const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1e-9
@@ -635,32 +668,36 @@ function ceilingLight(ctx: Ctx): void {
 }
 
 /**
- * Split AC high on a wall: never over a door/window (AC_CLEAR either side), in a door's clear zone (swing) or over
- * anything taller than 1.8 m (wardrobe, shelves, larder). Walls ranked by the room's main piece (bed, sofa, desk,
- * table): the wall it faces first, then those beside it, its own (the headboard's) last; on each, the spot across from
- * the piece first, sliding in 0.25 m steps.
+ * Split AC 2.3 m up (its mountY), centred on the longest clear stretch of wall: every side is cut at its doors and
+ * windows, and the AC must keep AC_CLEAR from those cuts and from the room's corners. A stretch behind a bed's
+ * headboard comes last (cold air on the sleeper); one over anything taller than 1.8 m (wardrobe, shelves, larder) is
+ * out. No stretch qualifies: no AC.
  */
 function wallAC(ctx: Ctx): void {
   const id = 'ac_split'
-  const main = ctx.out.find((p) => /^(bed_|sofa_3seat$|desk_oak$|dining_table$)/.test(p.assetId))
-  const t = ((main?.rotationDeg ?? 0) * Math.PI) / 180
-  const f = { x: -Math.sin(t), y: Math.cos(t) } // main's front (see header)
-  const sides = main ? [...ctx.sides].sort((a, b) => dot(a.n, f) - dot(b.n, f)) : rankNoOpenings(ctx)
   const hw = size(id).x / 2
-  for (const s of sides) {
-    const uPref = main ? projU(s, main) : s.len / 2
-    const spans = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1])]
-    const rot = rotationFacing(s.n)
-    for (let k = 0; k * 0.25 <= s.len; k++) {
-      for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
-        if (u - hw < AC_CLEAR || u + hw > s.len - AC_CLEAR) continue
-        if (spans.some(([u0, u1]) => u - hw - AC_CLEAR < u1 && u0 < u + hw + AC_CLEAR)) continue
-        const c = againstSide(s, id, u, FLUSH)
-        const q = footprint(c, rot, size(id))
-        if (ctx.clear.some((z) => quadsOverlap(z, q)) || ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue
-        if (tryPlace(ctx, id, c, rot, 'free')) return
-      }
+  const bed = ctx.out.find((p) => p.assetId.startsWith('bed_'))
+  const t = ((bed?.rotationDeg ?? 0) * Math.PI) / 180
+  const behindBed = (s: Side) => !!bed && dot(s.n, { x: -Math.sin(t), y: Math.cos(t) }) > 0.9
+  const stretches = ctx.sides.flatMap((s) => {
+    const cuts = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1]), [s.len, s.len]].sort((a, b) => a[0] - b[0])
+    const out: { s: Side; u: number; len: number }[] = []
+    let u0 = 0
+    for (const [a, b] of cuts) {
+      if (a - u0 > 0) out.push({ s, u: (u0 + a) / 2, len: a - u0 })
+      u0 = Math.max(u0, b)
     }
+    return out
+  })
+  stretches.sort((a, b) => Number(behindBed(a.s)) - Number(behindBed(b.s)) || b.len - a.len)
+  for (const { s, u, len } of stretches) {
+    const c = againstSide(s, id, u, FLUSH)
+    const rot = rotationFacing(s.n)
+    const q = footprint(c, rot, size(id))
+    // openings: by the stretch's length; corners: AC_CLEAR past each end must still be in the room
+    if (len < 2 * (hw + AC_CLEAR) || ![-1, 1].every((k) => pointInPolygon(add(c, s.d, k * (hw + AC_CLEAR)), ctx.inner))) continue
+    if (ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue
+    if (tryPlace(ctx, id, c, rot, 'free')) return
   }
 }
 
@@ -682,13 +719,14 @@ export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const k = rooms.find((r) => r.kind === 'kitchen')
   const kitchenAt = k && k.loop.length >= 3 ? polygonCentroid(roomInnerPolygon(k, unit)) : null
   for (const room of rooms) {
-    const fn = BY_KIND[room.kind]
+    const help = isHelpRoom(room)
+    const fn = isStair(room) ? stairwell : help ? helpRoom : BY_KIND[room.kind]
     if (!fn || room.loop.length < 3) continue
     const ctx = makeCtx(room, unit, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
     // after the room's own pieces, so their ids stay put; 'free' placements, so they move nothing
     if (LIT_KINDS.includes(room.kind)) ceilingLight(ctx)
-    if (AC_KINDS.includes(room.kind)) wallAC(ctx)
+    if (AC_KINDS.includes(room.kind) && !help) wallAC(ctx)
     out.push(...ctx.out)
   }
   return out

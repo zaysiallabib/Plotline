@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
-import { AC_KINDS, doorClearZones, footprint, furnish, LIT_KINDS, quadsOverlap } from './presets'
+import { AC_KINDS, doorClearZones, footprint, furnish, isCommonCore, LIT_KINDS, quadsOverlap } from './presets'
+import { ART_SETS } from './procedural.meta'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
 function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offsetM: number }): Unit {
@@ -370,6 +371,74 @@ describe('furnish', () => {
 
   // the second plan (system proof): same rules, no per-unit code
   const typeB = (Object.values(import.meta.glob('../data/units/type-b*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test('AC: 2.3 m up, centred on the longest clear stretch of wall, 0.5 m off corners and openings; none if no stretch qualifies', () => {
+    expect(heightRange(kitAsset('ac_split')!)[0], 'bottom 2.3 m above the floor').toBe(2.3)
+    // 5 × 3.4 study: door at the left end of the top wall (x 0.2–1.1), a window in the bottom wall; stretches: top 3.9, sides 3.4, bottom 2.5
+    const unit = rect('study', 5, 3.4, { wall: 0, offsetM: 0.2 })
+    unit.walls[2].openings.push({ id: 'win', kind: 'window', offsetM: 1.0, widthM: 1.5, heightM: 1.4, sillM: 0.9 })
+    const rooms = deriveRooms(unit)
+    const ac = furnish(unit, rooms).find((p) => p.assetId === 'ac_split')!
+    expect(ac.x, 'centred between the door and the corner').toBeCloseTo((1.1 + 5) / 2, 6)
+    expect(ac.y, 'on the top wall, 5 mm off its face').toBeCloseTo(0.0635 + 0.005 + kitAsset('ac_split')!.sizeM.z / 2, 6)
+    expectACClearOfOpenings(ac, rooms[0], unit)
+    // a wall that is all windows, four times over: nowhere to hang it
+    const glassy = rect('study', 2.4, 2.4)
+    glassy.walls.forEach((w, i) => w.openings.push({ id: `w${i}`, kind: 'window', offsetM: 0.7, widthM: 1.0, heightM: 1.4, sillM: 0.9 }))
+    expect(furnish(glassy, deriveRooms(glassy)).map((p) => p.assetId)).not.toContain('ac_split')
+  })
+
+  test('a help room (help/servant/maid, or a bedroom under 4 m²) gets a cot along a wall and a hook rail, nothing else', () => {
+    const tiny = rect('bed', 2.4, 1.6)
+    const ids = furnish(tiny, deriveRooms(tiny)).map((p) => p.assetId)
+    expect(ids.sort()).toEqual(['ceiling_light', 'cot', 'hook_rail'])
+    const help = rect('utility', 1.6, 3.1, { wall: 0, offsetM: 0.35 })
+    help.roomLabels[0].name = 'Help room'
+    const rooms = deriveRooms(help)
+    const ps = furnish(help, rooms)
+    expect(ps.map((p) => p.assetId).sort()).toEqual(['cot', 'hook_rail'])
+    const cot = ps.find((p) => p.assetId === 'cot')!
+    expect([90, 270], 'long side against a long wall').toContain(cot.rotationDeg)
+    expectInsideAndDisjoint(ps, rooms, help)
+    // a WC named for the help is still a WC; a normal bedroom still gets a bed
+    const wc = rect('bath', 1.4, 1.6)
+    wc.roomLabels[0].name = 'Help toilet'
+    expect(furnish(wc, deriveRooms(wc)).map((p) => p.assetId)).not.toContain('cot')
+    expect(furnish(rect('bed', 3, 2.6), deriveRooms(rect('bed', 3, 2.6))).map((p) => p.assetId)).not.toContain('cot')
+  })
+
+  test('common-core rooms are flagged for the viewer; a stair room gets the widest dog-leg that fits, clear of its door', () => {
+    for (const n of ['Stair', 'Staircase', 'Lift lobby', 'Lift core', 'LIFT', 'Lift machine room']) expect(isCommonCore({ name: n }), n).toBe(true)
+    for (const n of ['Bed-1', 'Living, dining & family', 'Help room', 'H. toilet', 'Kitchen', 'Walk-in closet']) expect(isCommonCore({ name: n }), n).toBe(false)
+    const unit = rect('other', 4.4, 3.7, { wall: 2, offsetM: 0.3 }) // bottom wall runs right to left: the door is at its right end
+    unit.roomLabels[0].name = 'Stair'
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    expect(ps.map((p) => p.assetId)).toEqual(['stair_32']) // the 3.7 m wall is 3.57 m inside: 3.6 does not fit
+    for (const z of doorClearZones(rooms[0], unit)) expect(quadsOverlap(quad(ps[0]), z), 'flights clear of the door').toBe(false)
+    // the half landing backs onto the wall farthest from the door, a floor landing ≥ 1 m in front
+    expect(ps[0].rotationDeg).toBe(270) // front faces +x: backed onto the left wall
+    expect(4.4 - 0.0635 - Math.max(...quad(ps[0]).map((p) => p.x))).toBeGreaterThanOrEqual(1)
+    expectInsideAndDisjoint(ps, rooms, unit)
+  })
+
+  test('art: 8+ print sets, a diptych set picked by room id; every bedroom and living room of a unit hangs a different one', () => {
+    expect(ART_SETS.length).toBeGreaterThanOrEqual(8)
+    const setOf = (ps: FurniturePlacement[], roomId: string) => [...new Set(ps.filter((p) => p.roomId === roomId && p.assetId.startsWith('art_')).map((p) => p.assetId.slice(0, -2)))]
+    const a = rect('bed', 4, 3.5, { wall: 1, offsetM: 0.3 })
+    const b = structuredClone(a)
+    b.roomLabels[0].id = 'r2'
+    const [sa, sb] = [setOf(furnish(a, deriveRooms(a)), 'r'), setOf(furnish(b, deriveRooms(b)), 'r2')]
+    expect(sa).toHaveLength(1)
+    expect(sa, 'same id, same print').toEqual(setOf(furnish(a, deriveRooms(a)), 'r'))
+    expect(sa, 'another id, another print').not.toEqual(sb)
+    for (const u of [typeA, typeB].filter(Boolean)) {
+      const ps = furnish(u, deriveRooms(u))
+      const sets = [...new Set(ps.filter((p) => p.assetId.startsWith('art_')).map((p) => p.roomId))].map((r) => setOf(ps, r)[0])
+      expect(sets.length, u.id).toBeGreaterThanOrEqual(3)
+      expect(new Set(sets).size, `${u.id}: ${sets}`).toBe(sets.length)
+    }
+  })
+
   test.skipIf(!typeB)('type-b.json rooms get their staging, inside and disjoint', () => {
     const rooms = deriveRooms(typeB)
     const ps = furnish(typeB, rooms)
@@ -384,6 +453,11 @@ describe('furnish', () => {
     expect(ids('r_bed1')).toContain('bed_queen')
     expect(ids('r_bed2')).toContain('bed_queen_c')
     expect(ids('r_bed3')).toContain('bed_queen_b')
+    expect(ids('r_help'), 'help room: cot + hook rail').toEqual(['cot', 'hook_rail'])
+    expect(ids('r_stair')).toEqual(['stair_32'])
+    expect(ids('r_lobby'), 'common core stays empty').toEqual([])
+    // closed oak wardrobes, never the steel-framed shelving, in either unit
+    for (const u of [typeA, typeB]) for (const p of furnish(u, deriveRooms(u))) expect(['steel_frame_shelves_01', 'drawer_cabinet'], p.id).not.toContain(p.assetId)
   })
 
   test.skipIf(!typeA || !typeB)('the wall clock hangs at 2.4 m over bare wall: no door/window within 0.3 m, nothing over 1.8 m beneath (A and B)', () => {

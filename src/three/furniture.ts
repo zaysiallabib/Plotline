@@ -40,7 +40,7 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * rotationDeg is CLOCKWISE in plan (x right, y down = world X right, Z "down"
  * when viewed from +Y). Seen from +Y, a positive rotation about +Y is
  * counter-clockwise, so clockwise-in-plan = NEGATIVE angle about Y.
- * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM (dropM below it),
+ * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM,
  * 'wall' centres it at 1.5 m; `mountY` puts its bottom at that height instead
  * (TV on its unit, pillows on the sofa); 'procedural:<id>' urls come from buildProcedural.
  */
@@ -76,7 +76,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
       const c = box.getCenter(new THREE.Vector3())
       model.position.set(-c.x, -box.min.y, -c.z)
       if (asset.mountY !== undefined) pivot.position.y = asset.mountY
-      else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (asset.dropM ?? 0) - (box.max.y - box.min.y)
+      else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)
       else if (asset.mount === 'wall') pivot.position.y = 1.5 - (box.max.y - box.min.y) / 2
       model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
