@@ -185,7 +185,7 @@ const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
   })
 
 
-/** A swinging door (hinged, or narrower than a slider); it renders ajar 20°, so it blocks the view and the leaf takes room. */
+/** A swinging door (hinged, or narrower than a slider as openings.ts builds it); it renders ajar 20°, so it blocks the view and the leaf takes room. */
 const swings = (o: Opening) => o.kind === 'door' && (!!o.hinge || o.widthM < 1.2)
 
 /** Nothing at eye height between p and q: p→q crosses full-height walls only through a passage, window or slider (rails and curbs are lower). */
@@ -202,7 +202,7 @@ export const inSight = (unit: Unit, p: Pt, q: Pt): boolean =>
   })
 
 /** Distance from p to a placement's plan footprint (0 inside). rotationDeg is clockwise in y-down plan space. */
-export const footprintDist =(p: Pt, f: FurniturePlacement, size: { x: number; z: number }): number => {
+export const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z: number }): number => {
   const r = (f.rotationDeg * Math.PI) / 180
   const s = f.scale ?? 1
   const dx = p.x - f.x
@@ -230,7 +230,8 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`).
  * A room with no hero that is empty or under SIGHT_MAX_SQM, and every balcony, has no target: each stand point faces the farthest
  * inner corner it can see (a balcony: rail or opening) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
- * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: they are seen from just inside a door (see below).
+ * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: a vanity/basin is framed from BATH_BACK inside the
+ * room, else they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
 export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: number } {
@@ -267,7 +268,6 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   const tight = room.kind === 'kitchen' || room.kind === 'balcony'
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
-      // slider as openings.ts builds it: no hinge, ≥ 1.2 m
       tight ? !swings(o) || segDist(p, a, b) >= GALLEY_DOOR_CLEAR
       : swings(o) ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3)
       : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
@@ -325,9 +325,9 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
 
   // A bath, a help room (its cot is the hero) or an enclosed room too small to frame from inside (no spot VIEW_INSET off
   // the walls sees TINY_SIGHT): from just inside a door (DOOR_STEP; from outside, the leaf ajar 20° hides the room), the
-  // door whose spot sees farthest, looking down DOOR_PITCH. It looks in (≤ 70° off the door's normal, never along the door
-  // wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other pieces in frame, then the deepest
-  // sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
+  // door whose spot sees farthest, looking down DOOR_PITCH (at a cot: down to put it in the lower third). It looks in (≤ 70°
+  // off the door's normal, never along the door wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other
+  // pieces in frame, then the deepest sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
   if (room.kind === 'bath' || hero?.assetId === 'cot' || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
     // …but a bath (or tiny room) with a vanity/basin is framed from inside first (the wave-7 Bath-3 frame): the spot — a
     // corner, wall midpoint or 0.25 m grid point, clear of the fittings and the ajar leaves — BATH_BACK or more from the
