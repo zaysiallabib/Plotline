@@ -560,7 +560,7 @@ export function guessKind(name: string): RoomKind {
   if (has('living', 'family', 'drawing')) return 'living'
   if (has('study')) return 'study'
   if (has('closet', 'walk in', 'walk-in')) return 'closet'
-  if (has('lift', 'stair', 'shaft', 'aod', 'duct')) return 'shaft'
+  if (has('shaft', 'aod', 'duct')) return 'shaft' // lift lobby / stair / lift core stay 'other': 'shaft' renders open to the sky
   if (has('utility', 'store', 'help')) return 'utility'
   return 'other'
 }
