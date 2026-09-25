@@ -50,10 +50,10 @@ const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
 /**
  * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
  * +Z 0.81, −Z 1.03, so a room's walls went light or dark with their compass bearing, not with their windows
- * (Bed-1 ≈ 163 vs living ≈ 200 sRGB). Averaged over four quarter turns about the vertical (half-float RGBA
- * equirect, in place), every wall bearing gets the same fill; floor vs ceiling stays, gloss reflects a softer studio.
+ * (Type A at 15:30: Bed-1 walls 214–225 sRGB, living 186–193). Averaged over four quarter turns about the
+ * vertical (half-float RGBA equirect, in place), every wall bearing gets the same fill; floor vs ceiling stays.
  */
-function evenBearings(t: THREE.DataTexture): void {
+export function evenBearings(t: THREE.DataTexture): void {
   const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
   const q = Math.floor(w / 4)
   const { fromHalfFloat: f, toHalfFloat: t16 } = THREE.DataUtils

@@ -13,6 +13,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { resolveFinishRef } from './materials'
 import { buildOpening } from './openings'
+import { evenBearings } from './PlotlineScene'
 
 // TextureLoader → ImageLoader wants a DOM element; the tests never await a load.
 ;(globalThis as { document?: unknown }).document ??= { createElementNS: () => ({ addEventListener() {}, removeEventListener() {} }) }
@@ -140,5 +141,25 @@ describe('clickable parts', () => {
       'w/glass': 'window-glass',
     })
     door.traverse((o) => o.userData.kind && expect(o.userData.wallId).toBe('w')) // parts anchor in the wall's frame
+  })
+})
+
+describe('evenBearings', () => {
+  test('each texel becomes the mean of its four quarter turns about the vertical; rows and alpha stay', () => {
+    const [w, h] = [8, 3]
+    const { toHalfFloat: t16, fromHalfFloat: f } = THREE.DataUtils
+    const src = Array.from({ length: w * h * 4 }, (_, i) => (i % 4 === 3 ? 1 : (i * 7) % 5))
+    const tex = new THREE.DataTexture(new Uint16Array(src.map(t16)), w, h)
+    evenBearings(tex)
+    const out = tex.image.data as Uint16Array
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        for (let c = 0; c < 4; c++) {
+          const at = (xx: number) => (y * w + (xx % w)) * 4 + c
+          const want = c === 3 ? 1 : [0, 2, 4, 6].reduce((s, k) => s + src[at(x + k)], 0) / 4
+          expect(f(out[at(x)])).toBeCloseTo(want, 2)
+        }
+      }
+    }
   })
 })
