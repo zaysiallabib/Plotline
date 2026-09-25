@@ -291,6 +291,15 @@ function Viewer({ unit }: { unit: Unit }) {
           <button className="btn primary enter" disabled={!ready} onClick={enter}>
             {ready ? 'Enter' : 'Loading…'}
           </button>
+          {/* ponytail: plain links until Phase A gives each developer a project list */}
+          <nav className="load-nav muted small">
+            {UNITS.map((u) => (
+              <a key={u.stem} href={`/u/${u.stem}`} className={u.unit.id === unit.id ? 'current' : ''}>
+                {u.unit.name}
+              </a>
+            ))}
+            <a href="/studio">Studio</a>
+          </nav>
         </div>
       )}
 

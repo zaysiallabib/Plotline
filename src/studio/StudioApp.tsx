@@ -779,7 +779,7 @@ export default function StudioApp() {
     >
       <header className="topbar">
         <span className="brand">
-          Plotline <span className="muted">/ Studio</span>
+          <a href="/" title="Open the buyer viewer">Plotline</a> <span className="muted">/ Studio</span>
         </span>
         <input className="meta wide" placeholder="Unit name" value={unit.name} onChange={meta('name')} />
         <input className="meta" placeholder="Project" value={unit.projectName} onChange={meta('projectName')} />

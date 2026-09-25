@@ -43,6 +43,7 @@
   border-bottom: 1px solid var(--line);
 }
 .topbar .brand { font-size: 15px; margin-right: 8px; white-space: nowrap; }
+.topbar .brand a { color: inherit; text-decoration: none; }
 .topbar .meta { width: 120px; }
 .topbar .meta.wide { width: 180px; }
 .topbar .meta.narrow { width: 90px; }

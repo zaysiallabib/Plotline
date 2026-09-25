@@ -46,6 +46,10 @@
 .load .unit-name { font-size: 22px; font-weight: 300; }
 .load .progress { width: 220px; height: 1px; background: var(--line); margin-top: 18px; }
 .load .bar { height: 100%; background: var(--accent); transition: width 200ms; }
+.load-nav { display: flex; gap: 18px; margin-top: 36px; }
+.load-nav a { color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
+.load-nav a:hover { color: var(--ink); }
+.load-nav a.current { color: var(--ink); border-bottom-color: var(--accent); }
 .load .enter { margin-top: 22px; padding: 10px 36px; font-size: 14px; }
 
 /* HUD */
