@@ -1,6 +1,6 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
-import type { FurniturePlacement, Opening, Pt, Room, Unit } from '../core'
+import type { FurniturePlacement, Opening, Pt, Room, Unit, Wall } from '../core'
 import { heightRange, kitAsset, objectKind, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
 
@@ -230,7 +230,7 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
  * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`).
  * A room with no hero that is empty or under SIGHT_MAX_SQM, and every balcony, has no target: each stand point faces the farthest
- * inner corner it can see (a balcony: rail or opening) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
+ * inner corner it can see (a balcony: its rail, slider or a corner of two open walls) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
  * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: a vanity/basin is framed from BATH_BACK inside the
  * room, else they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
@@ -309,16 +309,22 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   // a sightline ends on an inner corner; a balcony's on its rail/curb (a wall below the eye: the street) or its slider /
   // passage (back into the flat), on the inner face — never a blank corner, a hinged door (ajar 20°) or a window (a
   // neighbour room's)
+  const wallOf = (id: string) => unit.walls.find((x) => x.id === id)!
+  const open = (w: Wall) => w.heightM < EYE || w.openings.some((o) => !swings(o))
   const ends =
     room.kind !== 'balcony'
       ? inner
-      : room.wallIds.flatMap((id) => {
-          const w = unit.walls.find((x) => x.id === id)!
-          const f = core.wallFrame(w, unit.vertices)
-          const s = core.pointInPolygon(add(add(f.origin, f.dir, f.lengthM / 2), f.normal, w.thicknessM / 2 + 0.05), inner) ? 1 : -1
-          const on = (u: number) => add(add(f.origin, f.dir, u), f.normal, s * (w.thicknessM / 2 + 0.02))
-          return [...(w.heightM < EYE ? [on(f.lengthM / 2)] : []), ...w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => on(o.offsetM + o.widthM / 2))]
-        })
+      : [
+          // …or a corner where two open walls meet (the slider and the rail: the flat and the street in one frame)
+          ...inner.filter((_, i) => open(wallOf(room.wallIds[(i - 1 + n) % n])) && open(wallOf(room.wallIds[i]))),
+          ...room.wallIds.flatMap((id) => {
+            const w = wallOf(id)
+            const f = core.wallFrame(w, unit.vertices)
+            const s = core.pointInPolygon(add(add(f.origin, f.dir, f.lengthM / 2), f.normal, w.thicknessM / 2 + 0.05), inner) ? 1 : -1
+            const on = (u: number) => add(add(f.origin, f.dir, u), f.normal, s * (w.thicknessM / 2 + 0.02))
+            return [...(w.heightM < EYE ? [on(f.lengthM / 2)] : []), ...w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => on(o.offsetM + o.widthM / 2))]
+          }),
+        ]
   const farthest = (p: Pt): Pt =>
     ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
   // eye (1.6 m) in or against a cabinet/wardrobe/TV

@@ -385,22 +385,24 @@ describe('viewer', () => {
       }
   })
 
-  it('veranda jumps look out over the rail or back through an opening, never into a blank wall corner (A, B, C)', () => {
+  it('veranda jumps look out over the rail, back through an opening or into a corner of two open walls, never into a blank wall corner (A, B, C)', () => {
     for (const { u, rs } of both)
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'balcony')) {
         const v = roomView(r, u)
         const inner = core.roomInnerPolygon(r, u)
         let s = 0
         while (s < 20 && core.pointInPolygon(at(v.p, v.face, s + 0.05), inner)) s += 0.05
-        const end = at(v.p, v.face, s + 0.1) // inside the wall the sightline ends on
-        const ends = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => {
+        const end = at(v.p, v.face, s + 0.1) // inside the wall(s) the sightline ends on
+        const hit = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => {
           const f = core.wallFrame(w, u.vertices)
           const along = (end.x - f.origin.x) * f.dir.x + (end.y - f.origin.y) * f.dir.y
           const off = Math.abs((end.x - f.origin.x) * f.normal.x + (end.y - f.origin.y) * f.normal.y)
-          if (off > w.thicknessM / 2 + 0.1 || along < -0.1 || along > f.lengthM + 0.1) return []
-          return [w.heightM < 1.6 || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM)]
+          if (off > w.thicknessM / 2 + 0.2 || along < -0.2 || along > f.lengthM + 0.2) return []
+          const low = w.heightM < 1.6
+          return [{ on: low || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM), open: low || w.openings.some((o) => o.kind !== 'door' || (!o.hinge && o.widthM >= 1.2)) }]
         })
-        expect(ends.length && ends.every(Boolean), `${u.id} ${r.name} ends on an opening or the rail`).toBe(true)
+        const ok = hit.length > 0 && (hit.every((h) => h.on) || (hit.length > 1 && hit.every((h) => h.open)))
+        expect(ok, `${u.id} ${r.name} ends on an opening, the rail or an open corner`).toBe(true)
       }
   })
 
