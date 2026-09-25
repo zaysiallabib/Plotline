@@ -3,8 +3,51 @@ import { describe, expect, test } from 'vitest'
 import typeA from '../data/units/type-a.json'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { skirtingSpans } from './details'
+import { skirtingSpans, wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
+
+test('type-a wall faces are crack-free: a corner on a coplanar face edge is that edge’s end, bit for bit', () => {
+  const unit = typeA as unknown as Unit
+  const geos = new Map(unit.walls.map((w) => [w, wallGeometry(w, unit)!]))
+  const segDist = (r: number[], a: number[], b: number[]) => {
+    const ab = b.map((c, j) => c - a[j])
+    const t = Math.min(1, Math.max(0, ab.reduce((s, c, j) => s + c * (r[j] - a[j]), 0) / ab.reduce((s, c) => s + c * c, 0)))
+    return Math.hypot(...r.map((c, j) => c - a[j] - t * ab[j]))
+  }
+  let checked = 0
+  const bad: string[] = []
+  for (const v of unit.vertices) {
+    // room-facing triangles (groups 0/1) of every wall at v, near v, by plane normal
+    const planes = new Map<string, number[][][]>()
+    for (const w of unit.walls.filter((w) => w.a === v.id || w.b === v.id)) {
+      const g = geos.get(w)!
+      const [p, n] = [g.attributes.position, g.attributes.normal]
+      for (const gr of g.groups.filter((gr) => gr.materialIndex! < 2)) {
+        for (let i = gr.start; i < gr.start + gr.count; i += 3) {
+          const tri = [0, 1, 2].map((k) => [p.getX(i + k), p.getY(i + k), p.getZ(i + k)])
+          if (!tri.some((q) => Math.hypot(q[0] - v.x, q[2] - v.y) < 0.3)) continue
+          const key = [n.getX(i), n.getY(i), n.getZ(i)].join()
+          planes.set(key, [...(planes.get(key) ?? []), tri])
+        }
+      }
+    }
+    for (const tris of planes.values()) {
+      const pts = tris.flat()
+      for (const t of tris) {
+        for (let k = 0; k < 3; k++) {
+          const [a, b] = [t[k], t[(k + 1) % 3]]
+          for (const r of pts) {
+            if (r.every((c, j) => c === a[j]) || r.every((c, j) => c === b[j])) continue
+            if (segDist(r, a, b) < 1e-6) bad.push(`${v.id}: ${r}`) // T-junction, or a corner off by float noise
+            checked++
+          }
+        }
+      }
+    }
+  }
+  expect(bad).toEqual([])
+  expect(checked).toBeGreaterThan(1000)
+})
 
 describe('skirtingSpans', () => {
   const rooms = core.deriveRooms(TEST_UNIT)

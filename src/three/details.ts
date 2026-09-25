@@ -1,6 +1,6 @@
 /**
- * Architectural finishing: skirting, thresholds (via buildOpening), curtains, and the corner fill
- * that closes the notch two box walls leave at an L-corner. Plan (x, y) → world (X, Z), Y up.
+ * Architectural finishing: the wall solids (crack-free faces, reveals, L-corner fill), skirting,
+ * thresholds (via buildOpening), curtains. Plan (x, y) → world (X, Z), Y up.
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
@@ -180,15 +180,73 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
   return mesh
 }
 
+type V3 = [number, number, number]
+
 /**
- * Two box walls meeting at a degree-2, non-collinear vertex leave a notch on the outside of the turn.
- * Returns the prism that fills it (its two outer faces + top) in `wall`'s local frame (u along a→b, v up,
- * w along the normal), emitted only by the earlier of the two walls in unit order. Index layout:
- * 12 indices of outer faces (material group `side`: 0 = +normal face, 1 = −normal), then 6 of top.
+ * World point (plan x, y → X, Z) at u along `wall` from vertex a, height v, w along its normal. (1 − t)·a + t·b
+ * is exact at both ends, so every wall at a shared vertex computes that corner from the same numbers.
  */
-export function cornerFills(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>): { geometry: THREE.BufferGeometry; side: 0 | 1 }[] {
-  const out: { geometry: THREE.BufferGeometry; side: 0 | 1 }[] = []
+function wallPoint(wall: Wall, graph: Pick<Unit, 'vertices'>): (u: number, v: number, w: number) => V3 {
   const f = core.wallFrame(wall, graph.vertices)
+  const [a, b] = [core.vertexById(graph.vertices, wall.a), core.vertexById(graph.vertices, wall.b)]
+  return (u, v, w) => {
+    const t = u / f.lengthM
+    return [(1 - t) * a.x + t * b.x + w * f.normal.x, v, (1 - t) * a.y + t * b.y + w * f.normal.y]
+  }
+}
+
+/**
+ * One wall's solid in WORLD space, crack-free where it meets itself and its neighbours: faces are a grid over
+ * the wall's opening edges (u) × every sill/head/wall height in the unit (v), so no cell corner ever sits
+ * mid-edge of another cell (T-junction) — within the wall or across a shared vertex — and corners are
+ * bit-identical between walls (wallPoint; all walls share the identity transform). A per-piece box in a
+ * per-wall frame left sub-pixel gaps that showed the end caps behind as hairlines.
+ * Also: reveals/soffits, end caps, top, and the prism closing the notch two walls leave at an L-corner
+ * (emitted by the earlier wall). UVs in metres, world-aligned, so textures run on across walls.
+ * Non-indexed; groups: 0 = +normal face, 1 = −normal face, 2 = edges/reveals/tops.
+ */
+export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>): THREE.BufferGeometry | null {
+  const f = core.wallFrame(wall, graph.vertices)
+  const pieces = core.wallPieces(wall, f.lengthM)
+  if (!pieces.length) return null
+  const H = wall.heightM
+  const T2 = wall.thicknessM / 2
+  const at = wallPoint(wall, graph)
+  const levels = graph.walls.flatMap((w) => [w.heightM, ...w.openings.flatMap((o) => [o.sillM, o.sillM + o.heightM])])
+  const cuts = (top: number) => [...new Set([0, top, ...levels.filter((v) => v > 0 && v < top)])].sort((a, b) => a - b)
+  const us = [...new Set(pieces.flatMap((p) => [p.u0, p.u1]))].sort((a, b) => a - b)
+  const vs = cuts(H)
+  const pos: number[][] = [[], [], []]
+  const nor: number[][] = [[], [], []]
+  const quad = (g: number, m: V3, ...q: V3[]) => {
+    const [e, k] = [0, 1].map((i) => q[i + 1].map((c, j) => c - q[0][j]))
+    if ((e[1] * k[2] - e[2] * k[1]) * m[0] + (e[2] * k[0] - e[0] * k[2]) * m[1] + (e[0] * k[1] - e[1] * k[0]) * m[2] < 0) q.reverse()
+    for (const i of [0, 1, 2, 0, 2, 3]) {
+      pos[g].push(...q[i])
+      nor[g].push(...m)
+    }
+  }
+  const solid = (i: number, j: number) => {
+    const u = (us[i] + us[i + 1]) / 2
+    const v = (vs[j] + vs[j + 1]) / 2
+    return i >= 0 && j >= 0 && i < us.length - 1 && j < vs.length - 1 && pieces.some((p) => p.u0 < u && u < p.u1 && p.v0 < v && v < p.v1)
+  }
+  const [n, d]: V3[] = [[f.normal.x, 0, f.normal.y], [f.dir.x, 0, f.dir.y]]
+  const neg = (m: V3): V3 => [-m[0], -m[1], -m[2]]
+  for (let i = 0; i + 1 < us.length; i++) {
+    for (let j = 0; j + 1 < vs.length; j++) {
+      if (!solid(i, j)) continue
+      const [u0, u1, v0, v1] = [us[i], us[i + 1], vs[j], vs[j + 1]]
+      quad(0, n, at(u0, v0, T2), at(u1, v0, T2), at(u1, v1, T2), at(u0, v1, T2))
+      quad(1, neg(n), at(u0, v0, -T2), at(u1, v0, -T2), at(u1, v1, -T2), at(u0, v1, -T2))
+      if (!solid(i - 1, j)) quad(2, neg(d), at(u0, v0, T2), at(u0, v0, -T2), at(u0, v1, -T2), at(u0, v1, T2))
+      if (!solid(i + 1, j)) quad(2, d, at(u1, v0, T2), at(u1, v0, -T2), at(u1, v1, -T2), at(u1, v1, T2))
+      if (!solid(i, j - 1) && v0 > 0) quad(2, [0, -1, 0], at(u0, v0, T2), at(u1, v0, T2), at(u1, v0, -T2), at(u0, v0, -T2))
+      if (!solid(i, j + 1)) quad(2, [0, 1, 0], at(u0, v1, T2), at(u1, v1, T2), at(u1, v1, -T2), at(u0, v1, -T2))
+    }
+  }
+
+  // L-corner notch: two box walls meeting at a degree-2, non-collinear vertex leave it open on the outside of the turn
   const me = graph.walls.indexOf(wall)
   for (const end of ['a', 'b'] as const) {
     const vid = wall[end]
@@ -213,28 +271,41 @@ export function cornerFills(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>)
     const t = ((P3.x - P1.x) * dB.y - (P3.y - P1.y) * dB.x) / cr
     if (Math.abs(t) > 1) continue // hairpin angle: the mitre would spike
     const P2 = { x: P1.x + t * dA.x, y: P1.y + t * dA.y }
-    const h = Math.min(wall.heightM, other.heightM)
-    const pos: number[] = []
-    const nor: number[] = []
-    const quad = (P: Pt, Q: Pt, m: Pt) => {
-      // vertical face P→Q facing m; triangle (P0, Q0, Q1) faces (−e.w, e.u)
-      if (-(Q.y - P.y) * m.x + (Q.x - P.x) * m.y < 0) [P, Q] = [Q, P]
-      pos.push(P.x, 0, P.y, Q.x, 0, Q.y, Q.x, h, Q.y, P.x, h, P.y)
-      for (let i = 0; i < 4; i++) nor.push(m.x, 0, m.y)
+    // world: P1 on this wall's face, P3 on the other's (its own wallPoint, nB = away · its normal): exact seams
+    const atB = wallPoint(other, graph)
+    const uB = other.a === vid ? 0 : g.lengthM
+    const wB = (sB * away * other.thicknessM) / 2
+    const side = sA * nA.y > 0 ? 0 : 1
+    const mA: V3 = [sA * nA.y * f.normal.x, 0, sA * nA.y * f.normal.y]
+    const mB: V3 = [sB * away * g.normal.x, 0, sB * away * g.normal.y]
+    const fv = cuts(Math.min(H, other.heightM))
+    for (let j = 0; j + 1 < fv.length; j++) {
+      const [v0, v1] = [fv[j], fv[j + 1]]
+      quad(side, mA, at(P1.x, v0, P1.y), at(P2.x, v0, P2.y), at(P2.x, v1, P2.y), at(P1.x, v1, P1.y))
+      quad(side, mB, at(P2.x, v0, P2.y), atB(uB, v0, wB), atB(uB, v1, wB), at(P2.x, v1, P2.y))
     }
-    quad(P1, P2, { x: sA * nA.x, y: sA * nA.y })
-    quad(P2, P3, { x: sB * nB.x, y: sB * nB.y })
-    // top (V, P1, P2, P3), wound to face +v
-    const ring = [V, P1, P2, P3]
-    const up = (P1.y - V.y) * (P2.x - V.x) - (P1.x - V.x) * (P2.y - V.y) > 0
-    for (const P of up ? ring : [...ring].reverse()) pos.push(P.x, h, P.y)
-    for (let i = 0; i < 4; i++) nor.push(0, 1, 0)
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Array(24).fill(0), 2))
-    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11])
-    out.push({ geometry: meterUVs(geometry), side: sA * nA.y > 0 ? 0 : 1 })
+    const h = fv[fv.length - 1]
+    quad(2, [0, 1, 0], at(V.x, h, 0), at(P1.x, h, P1.y), at(P2.x, h, P2.y), atB(uB, h, wB))
   }
-  return out
+
+  const geo = new THREE.BufferGeometry()
+  const P = pos.flat()
+  const N = nor.flat()
+  const uv: number[] = []
+  for (let i = 0; i < P.length; i += 3) {
+    // horizontal faces map plan (X, Z); vertical ones (along-face axis · plan, Y), axis sign fixed so coplanar faces agree
+    let [ax, az] = [-N[i + 2], N[i]]
+    if (ax < 0 || (ax === 0 && az < 0)) [ax, az] = [-ax, -az]
+    if (Math.abs(N[i + 1]) > 0.5) uv.push(P[i], P[i + 2])
+    else uv.push(ax * P[i] + az * P[i + 2], P[i + 1])
+  }
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  let start = 0
+  pos.forEach((p, g) => {
+    geo.addGroup(start, p.length / 3, g)
+    start += p.length / 3
+  })
+  return geo
 }

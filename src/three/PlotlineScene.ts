@@ -16,15 +16,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import * as core from '../core'
 import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
 import { HDRI } from '../furnish/textures'
-import { buildSkirting, cornerFills, dressOpening } from './details'
+import { buildSkirting, dressOpening, wallGeometry } from './details'
 import { buildFurniture } from './furniture'
 import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
-import { meterUVs } from './openings'
 import { Look, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
@@ -61,6 +59,7 @@ export class PlotlineScene {
   private readonly furnitureGroup = new THREE.Group()
   private readonly floors: THREE.Mesh[] = []
   private readonly surfaces: Surface[] = []
+  private edgeMat: THREE.MeshStandardMaterial | null = null
   private readonly wallFrames = new Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>()
 
   private readonly look: Look
@@ -317,38 +316,18 @@ export class PlotlineScene {
     const front = side(1)
     const back = side(-1)
 
-    const pieces = core.wallPieces(wall, f.lengthM)
-    if (pieces.length) {
-      const geoms = pieces.map((p) => {
-        const g = new THREE.BoxGeometry(p.u1 - p.u0, p.v1 - p.v0, wall.thicknessM)
-        g.translate((p.u0 + p.u1) / 2, (p.v0 + p.v1) / 2, 0)
-        return meterUVs(g)
+    // world space, groups 0 = front (+n), 1 = back, 2 = edges/reveals: every wall shares the identity transform,
+    // so a corner two walls share reaches the GPU as the same numbers (no hairline crack between them)
+    const geo = wallGeometry(wall, unit)
+    if (geo) {
+      const mesh = new THREE.Mesh(geo)
+      mesh.castShadow = mesh.receiveShadow = true
+      mesh.userData = { kind: 'wall', id: wall.id, front, back }
+      this.staticGroup.add(mesh)
+      this.surfaces.push({
+        mesh,
+        sides: [{ roomId: front, target: 'wall' }, { roomId: back, target: 'wall' }, null],
       })
-      const fills = cornerFills(wall, unit) // L-corner notch, same material groups as this wall
-      const merged = mergeGeometries([...geoms, ...fills.map((c) => c.geometry)])
-      geoms.forEach((g) => g.dispose())
-      fills.forEach((c) => c.geometry.dispose())
-      if (merged) {
-        // BoxGeometry index layout: px,nx,py,ny,pz,nz × 6 → groups: 0 = front (+n), 1 = back, 2 = edges/reveals
-        merged.clearGroups()
-        pieces.forEach((_, i) => {
-          merged.addGroup(i * 36, 24, 2)
-          merged.addGroup(i * 36 + 24, 6, 0)
-          merged.addGroup(i * 36 + 30, 6, 1)
-        })
-        fills.forEach((c, k) => {
-          merged.addGroup(pieces.length * 36 + k * 18, 12, c.side)
-          merged.addGroup(pieces.length * 36 + k * 18 + 12, 6, 2)
-        })
-        const mesh = new THREE.Mesh(merged)
-        mesh.castShadow = mesh.receiveShadow = true
-        mesh.userData = { kind: 'wall', id: wall.id, front, back }
-        local.add(mesh)
-        this.surfaces.push({
-          mesh,
-          sides: [{ roomId: front, target: 'wall' }, { roomId: back, target: 'wall' }, null],
-        })
-      }
     }
     for (const o of wall.openings) local.add(...dressOpening(o, wall, unit, this.rooms))
   }
@@ -396,7 +375,9 @@ export class PlotlineScene {
 
   private applyMaterials(): void {
     if (!this.unit) return
-    const plaster = materialFor(EXTERIOR_PLASTER)
+    // wall ends, reveals, tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
+    // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
+    const plaster = (this.edgeMat ??= Object.assign(materialFor(EXTERIOR_PLASTER).clone(), { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }))
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
         side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target) : plaster,
