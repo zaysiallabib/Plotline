@@ -65,6 +65,8 @@ const EYE_CLEAR = 0.5
 const GLASS = new Set(['shower_screen'])
 /** The piece the first view frames, by room kind; other rooms (and rooms without it) face the furniture centroid. */
 const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(vanity|basin)$/, kitchen: /^kitchen_sink$/, dining: /^dining_table$/ }
+/** No hero and empty or smaller than this (closet, help room, lobby, small veranda): look along the longest clear sightline. */
+const SIGHT_MAX_SQM = 8
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
 /** …so that candidate loses this much of its distance-to-target score. */
@@ -96,6 +98,8 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece is within SLAB_NEAR.
+ * A room with no hero that is empty or under SIGHT_MAX_SQM has no target: each stand point faces the farthest inner
+ * corner it can see and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
 export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
@@ -158,17 +162,27 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
     candidates.push(add({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, inward(a, b), VIEW_INSET))
   })
 
-  let best = null as { p: Pt; score: number } | null // set inside consider(): no narrowing to null
+  const sight = !hero && (!items.length || room.areaSqm < SIGHT_MAX_SQM)
+  // p→q stays inside the room, checked every 5 cm (an L-shaped room's far corner may be round the bend)
+  const visible = (p: Pt, q: Pt) => {
+    const L = Math.hypot(q.x - p.x, q.y - p.y)
+    for (let s = 0.05; s < L - 0.05; s += 0.05) if (!core.pointInPolygon(add(p, { x: q.x - p.x, y: q.y - p.y }, s / L), inner)) return false
+    return true
+  }
+  const farthest = (p: Pt): Pt =>
+    inner.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
+  let best = null as { p: Pt; t: Pt; score: number } | null // set inside consider(): no narrowing to null
   const consider = (p: Pt) => {
     if (!core.pointInPolygon(p, inner)) return
     if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) return // a third edge (wall-thickness step) crowds it
     if (!clearOfDoors(p)) return
     if (pieces.some(({ f, k, top }) => top > 1.2 && footprintDist(p, f, k.sizeM) < (GLASS.has(f.assetId) ? 0.15 : EYE_CLEAR))) return // eye (1.6 m) in or against a cabinet/wardrobe/TV
-    const d = Math.hypot(target.x - p.x, target.y - p.y)
+    const t = sight ? farthest(p) : target
+    const d = Math.hypot(t.x - p.x, t.y - p.y)
     if (d < 0.2) return // target sits here: faces nothing useful
     const slab = pieces.some(({ f, k }) => (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6) && footprintDist(p, f, k.sizeM) < SLAB_NEAR)
-    const score = (front ? (p.x - target.x) * front.x + (p.y - target.y) * front.y : d) - (slab ? SLAB_PENALTY : 0)
-    if (!best || score > best.score) best = { p, score }
+    const score = (front ? (p.x - t.x) * front.x + (p.y - t.y) * front.y : d) - (slab ? SLAB_PENALTY : 0)
+    if (!best || score > best.score) best = { p, t, score }
   }
   candidates.forEach(consider)
   if (!best || hero) {
@@ -179,12 +193,12 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
     for (let x = Math.min(...xs) + VIEW_INSET; x <= Math.max(...xs) - VIEW_INSET; x += 0.25)
       for (let y = Math.min(...ys) + VIEW_INSET; y <= Math.max(...ys) - VIEW_INSET; y += 0.25) consider({ x, y })
   }
-  if (best) return look(best.p, target)
+  if (best) return look(best.p, best.t)
 
   for (const { w, f, c } of doors) {
     for (const s of [1, -1]) {
       const p = add(c, f.normal, s * (w.thicknessM / 2 + 0.9))
-      if (core.pointInPolygon(p, inner)) return look(p, target)
+      if (core.pointInPolygon(p, inner)) return look(p, sight ? farthest(p) : target)
     }
   }
   return look(room.centroid, target)

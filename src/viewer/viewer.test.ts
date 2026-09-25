@@ -173,6 +173,22 @@ describe('viewer', () => {
     expect(Math.hypot(v.face.x, v.face.y)).toBeCloseTo(1)
   })
 
+  it('roomView: an empty or small room without a hero piece looks along its longest sightline, not at the near wall', () => {
+    const b = typeB as unknown as Unit
+    for (const [u, names] of [[unit, ['Lift lobby', 'Help bed', 'Walk-in closet']], [b, ['Lift lobby', 'Help room', 'Stair']]] as const) {
+      const rs = core.deriveRooms(u)
+      const furnished: Unit = { ...u, furniture: furnish(u, rs) }
+      for (const name of names) {
+        const r = rs.find((x) => x.name === name)!
+        const inner = core.roomInnerPolygon(r, furnished)
+        const v = roomView(r, furnished)
+        let ray = 0 // clear distance along the view before it leaves the room
+        while (ray < 20 && core.pointInPolygon({ x: v.p.x + v.face.x * (ray + 0.05), y: v.p.y + v.face.y * (ray + 0.05) }, inner)) ray += 0.05
+        expect(ray, name).toBeGreaterThan(1.2) // a 3 m² help room tops out near 1.5 m
+      }
+    }
+  })
+
   it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {
     const bath = rooms.find((x) => x.name === 'Bath-1')!
     // a room-filling tall wardrobe blocks every corner and wall midpoint
