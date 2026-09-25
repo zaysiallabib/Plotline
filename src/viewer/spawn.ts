@@ -3,6 +3,12 @@ import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
+const segDist = (p: Pt, a: Pt, b: Pt): number => {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
+}
 
 /**
  * PlotlineScene.spawnAt yaw for a plan-space facing direction: 0 = plan −y (world −Z),
@@ -74,6 +80,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
     }
     const p = add(add(v, inward(prev, v), VIEW_INSET), inward(v, next), VIEW_INSET)
     if (!core.pointInPolygon(p, inner)) continue
+    if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) continue // a third edge (wall-thickness step) crowds it
     const face = { x: target.x - p.x, y: target.y - p.y }
     const d = Math.hypot(face.x, face.y)
     if (d < 0.2) continue // target sits in this corner: face nothing useful, try the next
