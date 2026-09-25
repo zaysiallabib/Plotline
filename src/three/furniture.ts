@@ -6,7 +6,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { FurniturePlacement } from '../core'
-import { kitAsset } from '../furnish/kit'
+import { kitAsset, objectKind } from '../furnish/kit'
 import { buildProcedural } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
@@ -40,7 +40,7 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * rotationDeg is CLOCKWISE in plan (x right, y down = world X right, Z "down"
  * when viewed from +Y). Seen from +Y, a positive rotation about +Y is
  * counter-clockwise, so clockwise-in-plan = NEGATIVE angle about Y.
- * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM,
+ * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM (dropM below it),
  * 'wall' centres it at 1.5 m; `mountY` puts its bottom at that height instead
  * (TV on its unit, pillows on the sofa); 'procedural:<id>' urls come from buildProcedural.
  */
@@ -48,9 +48,9 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
   const pivot = new THREE.Group()
   pivot.position.set(p.x, 0, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
-  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId }
-
   const asset = kitAsset(p.assetId)
+  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: asset?.label ?? p.assetId, objectKind: asset ? objectKind(asset) : 'decor' }
+
   let model: THREE.Object3D | null = null
   if (asset) {
     try {
@@ -76,13 +76,18 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
       const c = box.getCenter(new THREE.Vector3())
       model.position.set(-c.x, -box.min.y, -c.z)
       if (asset.mountY !== undefined) pivot.position.y = asset.mountY
-      else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)
+      else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (asset.dropM ?? 0) - (box.max.y - box.min.y)
       else if (asset.mount === 'wall') pivot.position.y = 1.5 - (box.max.y - box.min.y) / 2
       model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
-          o.castShadow = true
+          // ceiling pieces (lights, fan, pendant, AC) sit in the roof's sun shadow and the room lights cast none:
+          // out of the shadow pass (a draw call per material per fixture)
+          o.castShadow = asset.mount !== 'ceiling'
           o.receiveShadow = true
         }
+        // a sub-part (procedural.ts part()): picked on its own as `${placementId}/${name}`
+        const t = o.userData.part
+        if (t) o.userData = { kind: 'furniture', id: `${p.id}/${t.name}`, roomId: p.roomId, label: t.label, objectKind: t.kind }
       })
     } catch (e) {
       console.warn(`[plotline] furniture "${p.assetId}" failed to load`, e)

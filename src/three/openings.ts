@@ -1,11 +1,12 @@
 /**
  * Door / window / passage joinery in wall-local coordinates (u along a→b from vertex a, v up,
  * w along the wall normal; the wall solid spans w ∈ [−t/2, t/2]). Everything static is merged
- * per opening and per material, so a door is 3–4 draw calls and a window 3.
+ * per clickable part (leaf, handle, frame, glass) and material, so a door is 3–5 draw calls and a window 3.
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { MaterialRef, Opening, Wall } from '../core'
+import type { ObjectKind } from '../furnish/kit'
 import { materialFor } from './materials'
 
 /** Rewrites UVs so each face maps its own plane in metres (positions must already be in metres). Any geometry with normals. */
@@ -43,13 +44,6 @@ const REV = 0.005 // casing set back from the lining face
 const GAP = 0.003 // leaf-to-lining clearance
 const THRESHOLD_H = 0.02
 
-function box(w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material): THREE.Mesh {
-  const mesh = new THREE.Mesh(meterUVs(new THREE.BoxGeometry(w, h, d)), m)
-  mesh.position.set(x, y, z)
-  mesh.castShadow = mesh.receiveShadow = true
-  return mesh
-}
-
 /** Axis-aligned box between two corners, UVs in metres. */
 function slab(u0: number, u1: number, v0: number, v1: number, w0: number, w1: number): THREE.BufferGeometry {
   const g = new THREE.BoxGeometry(Math.abs(u1 - u0), Math.abs(v1 - v0), Math.abs(w1 - w0))
@@ -84,10 +78,23 @@ export interface OpeningOpts {
   threshold?: boolean
 }
 
-/** Door/passage/window joinery in wall-local coordinates (u, v, w). The group is picked as the opening. */
+/**
+ * A separately clickable piece of opening `g` (leaf, handle, frame, glass): picked as `${openingId}/${name}`, with the
+ * opening's wall-local offset.
+ */
+function part(g: THREE.Group, name: string, label: string, objectKind: ObjectKind, ...meshes: THREE.Object3D[]): THREE.Group {
+  const p = new THREE.Group()
+  p.userData = { kind: 'opening', id: `${g.userData.id}/${name}`, wallId: g.userData.wallId, label, objectKind }
+  return p.add(...meshes)
+}
+
+/** Door/passage/window joinery in wall-local coordinates (u, v, w). The group is picked as the opening; parts on their own. */
 export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): THREE.Group {
   const g = new THREE.Group()
-  g.userData = { kind: 'opening', id: o.id, wallId: wall.id }
+  const slider = o.kind === 'door' && !o.hinge && o.widthM >= 1.2
+  const [label, objectKind]: [string, ObjectKind] =
+    o.kind === 'window' ? ['Window', 'window'] : o.kind === 'passage' ? ['Cased opening', 'passage'] : [slider ? 'Sliding door' : opts.main ? 'Main door' : 'Door', 'door']
+  g.userData = { kind: 'opening', id: o.id, wallId: wall.id, label, objectKind }
   const T2 = wall.thicknessM / 2
   const u0 = o.offsetM
   const u1 = o.offsetM + o.widthM
@@ -105,7 +112,7 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
     g.add(merged(casings(u0, u1, s, s + H, T2, 0), DOOR_WOOD))
-  } else if (!o.hinge && o.widthM >= 1.2) {
+  } else if (slider) {
     buildSlider(g, o, T2, th)
   } else {
     buildDoor(g, o, T2, th, !!opts.main)
@@ -164,10 +171,9 @@ function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boo
   const x0 = sx * (J + GAP) // hinge edge of the leaf, pivot-local
   const xc = sx * (J + GAP + lw / 2)
   const zc = (-sw * LT) / 2 // leaf's swing face is flush with the wall face (pivot z = 0)
-  pivot.add(box(lw, lh, LT, xc, bottom + lh / 2, zc, materialFor(main ? MAIN_WOOD : LEAF_WOOD)))
+  const leaf = meterUVs(new THREE.BoxGeometry(lw, lh, LT).translate(xc, bottom + lh / 2, zc))
 
-  // leaf relief, baked into the frame mesh: V-grooves on an interior flush door, bolection-moulded panels on the main door
-  pivot.updateMatrix()
+  // leaf relief, pivot-local: V-grooves on an interior flush door, bolection-moulded panels on the main door
   const relief: THREE.BufferGeometry[] = []
   const faces = [
     [0, sw], // swing face (pivot-local z) and its outward direction
@@ -209,8 +215,10 @@ function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boo
       }
     }
   }
-  for (const r of relief) frame.push(r.applyMatrix4(pivot.matrix))
-  g.add(merged(frame, wood))
+  // the main door's mouldings are its leaf's timber: one mesh; an interior leaf's grooves are the darker frame teak
+  const leafMeshes = main ? [merged([leaf, ...relief], MAIN_WOOD, true)] : [merged([leaf], LEAF_WOOD, true), merged(relief, DOOR_WOOD)]
+  pivot.add(part(g, 'leaf', 'Door leaf', 'door-leaf', ...leafMeshes))
+  g.add(part(g, 'frame', 'Door frame', 'door-frame', merged(frame, wood)))
 
   // hardware, pivot-local: lever handle on both faces at 1.0 m, backset 60 mm; three butt-hinge knuckles
   const steel: THREE.BufferGeometry[] = []
@@ -230,7 +238,8 @@ function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boo
     }
   }
   for (const y of [bottom + 0.22, bottom + lh / 2 + 0.1, bottom + lh - 0.22]) steel.push(cyl(0.008, 0.1, 'y', x0 - sx * 0.002, y, sw * 0.004, 10))
-  pivot.add(merged(steel, STEEL))
+  // ponytail: the hinge knuckles ride in the handle part (one steel draw call per door); split them if hinges get their own catalog slot
+  pivot.add(part(g, 'handle', 'Door handle', 'door-handle', merged(steel, STEEL)))
   g.add(pivot)
 }
 
@@ -267,8 +276,8 @@ function buildSlider(g: THREE.Group, o: Opening, T2: number, th: number): void {
     const hv = o.sillM + 0.95
     alu.push(slab(hu - 0.007, hu + 0.007, hv, hv + 0.2, z1, z1 + 0.012), slab(hu - 0.007, hu + 0.007, hv, hv + 0.2, z0 - 0.012, z0))
   })
-  g.add(merged(alu, ALU, true))
-  g.add(glassMesh(panes))
+  g.add(part(g, 'frame', 'Sliding door frame', 'door-frame', merged(alu, ALU, true)))
+  g.add(part(g, 'glass', 'Sliding door glass', 'window-glass', glassMesh(panes)))
 }
 
 /** Slim aluminium sliding window: 50 mm outer frame, 2 sashes (3 over 1.8 m) alternately offset in depth. */
@@ -300,8 +309,8 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
     alu.push(slab(a + st, b - st, s + F, s + F + st, z0, z1), slab(a + st, b - st, top - F - st, top - F, z0, z1))
     panes.push(slab(a + st, b - st, s + F + st, top - F - st, zc - 0.003, zc + 0.003))
   }
-  g.add(merged(alu, ALU, true))
-  g.add(glassMesh(panes))
+  g.add(part(g, 'frame', 'Window frame', 'window-frame', merged(alu, ALU, true)))
+  g.add(part(g, 'glass', 'Window glass', 'window-glass', glassMesh(panes)))
 }
 
 function glassMesh(panes: THREE.BufferGeometry[]): THREE.Mesh {

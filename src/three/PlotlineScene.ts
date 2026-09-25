@@ -19,6 +19,7 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { XRControls } from './xr'
 import * as core from '../core'
 import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
+import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
 import { buildFurniture } from './furniture'
@@ -27,8 +28,13 @@ import { Look, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
+  /** the anchor frame (see localOffset); what the thing IS is objectKind */
   kind: PickKind
+  /** placement / wall / room / opening id; a part of one (vanity mirror, door handle, window glass) is `${parentId}/${part}` */
   id: Id
+  /** buyer-facing name tag: "3-seat fabric sofa", "Bed-1 floor", "Door handle" */
+  label: string
+  objectKind: ObjectKind
   roomId?: Id
   point: { x: number; y: number; z: number }
   /** wall/opening: (u along wall from vertex a, v height); floor/ceiling: plan (x, y); furniture: local (x, z) */
@@ -322,7 +328,7 @@ export class PlotlineScene {
     if (geo) {
       const mesh = new THREE.Mesh(geo)
       mesh.castShadow = mesh.receiveShadow = true
-      mesh.userData = { kind: 'wall', id: wall.id, front, back }
+      mesh.userData = { kind: 'wall', id: wall.id, front, back, label: 'Wall', objectKind: 'wall' }
       this.staticGroup.add(mesh)
       this.surfaces.push({
         mesh,
@@ -355,7 +361,7 @@ export class PlotlineScene {
     floorGeo.computeVertexNormals()
     const floor = new THREE.Mesh(floorGeo)
     floor.receiveShadow = true
-    floor.userData = { kind: 'floor', id: room.id, roomId: room.id }
+    floor.userData = { kind: 'floor', id: room.id, roomId: room.id, label: `${room.name} floor`, objectKind: 'floor' }
     this.staticGroup.add(floor)
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
@@ -368,7 +374,7 @@ export class PlotlineScene {
     ceilGeo.translate(0, height, 0)
     ceilGeo.computeVertexNormals()
     const ceiling = new THREE.Mesh(ceilGeo)
-    ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id }
+    ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id, label: `${room.name} ceiling`, objectKind: 'ceiling' }
     this.ceilingGroup.add(ceiling)
     this.surfaces.push({ mesh: ceiling, sides: [{ roomId: room.id, target: 'ceiling' }] })
   }
@@ -399,7 +405,9 @@ export class PlotlineScene {
     for (const p of byDistance) {
       const obj = await buildFurniture(p, ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
-      this.furnitureGroup.add(obj)
+      // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it
+      const a = kitAsset(p.assetId)
+      ;(a?.mount === 'ceiling' && !a.dropM ? this.ceilingGroup : this.furnitureGroup).add(obj)
     }
   }
 
@@ -454,23 +462,29 @@ export class PlotlineScene {
 
   private pick(ndc: THREE.Vector2): PickHit | null {
     this.raycaster.setFromCamera(ndc, this.camera)
-    const hits = this.raycaster.intersectObjects([this.staticGroup, this.ceilingGroup, this.furnitureGroup], true)
+    // three's raycaster ignores `visible`: skip the hidden ceilings (and what hangs from them) in the dollhouse
+    const targets = [this.staticGroup, this.ceilingGroup, this.furnitureGroup].filter((g) => g.visible)
+    const hits = this.raycaster.intersectObjects(targets, true)
     for (const h of hits) {
       let o: THREE.Object3D | null = h.object
       while (o && !o.userData.kind) o = o.parent
       if (!o) continue
-      const { kind, id, roomId, wallId, front, back } = o.userData as {
-        kind: PickKind; id: Id; roomId?: Id; wallId?: Id; front?: Id | null; back?: Id | null
+      const { kind, id, roomId, wallId, front, back, label, objectKind } = o.userData as {
+        kind: PickKind; id: Id; roomId?: Id; wallId?: Id; front?: Id | null; back?: Id | null; label: string; objectKind: ObjectKind
       }
       const P = h.point
-      const hit: PickHit = { kind, id, point: { x: P.x, y: P.y, z: P.z } }
+      const hit: PickHit = { kind, id, label, objectKind, point: { x: P.x, y: P.y, z: P.z } }
       if (roomId) hit.roomId = roomId
       const f = this.wallFrames.get(kind === 'wall' ? id : (wallId ?? ''))
       if (f) {
         const dx = P.x - f.origin.x
         const dz = P.z - f.origin.y
         hit.localOffset = { u: dx * f.dir.x + dz * f.dir.y, v: P.y }
-        if (kind === 'wall') hit.roomId = (dx * f.normal.x + dz * f.normal.y >= 0 ? front : back) ?? undefined
+        if (kind === 'wall') {
+          hit.roomId = (dx * f.normal.x + dz * f.normal.y >= 0 ? front : back) ?? undefined
+          const room = this.rooms.find((r) => r.id === hit.roomId)
+          if (room) hit.label = `${room.name} wall`
+        }
       } else if (kind === 'furniture') {
         const l = o.worldToLocal(P.clone())
         hit.localOffset = { u: l.x, v: l.z }

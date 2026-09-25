@@ -176,7 +176,7 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
   const mesh = new THREE.Mesh(mergeGeometries(geoms)!, mat)
   geoms.forEach((g) => g.dispose())
   mesh.castShadow = mesh.receiveShadow = true
-  mesh.userData = { kind: 'furniture', id: `${o.id}:curtain`, roomId: room.id }
+  mesh.userData = { kind: 'furniture', id: `${o.id}:curtain`, roomId: room.id, label: 'Curtains', objectKind: 'curtain' }
   return mesh
 }
 

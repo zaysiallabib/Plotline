@@ -4,13 +4,18 @@
  * (CLAUDE.md invariant 6). The Supabase `events` table replaces this later.
  */
 import type { Id } from '../core'
+import type { ObjectKind } from '../furnish/kit'
 import type { PickKind } from '../three/PlotlineScene'
 
 export interface PinAnchor {
   kind: PickKind
+  /** a part of a piece (vanity mirror, door handle) is `${parentId}/${part}` */
   entityId: Id
   /** hit point in the entity's local frame (see PickHit.localOffset) */
   offset?: { u: number; v: number }
+  /** what was clicked, as the buyer saw it then (PickHit.label / objectKind); absent on pins saved before 2026-09-25 */
+  label?: string
+  objectKind?: ObjectKind
 }
 
 export interface Pin {
