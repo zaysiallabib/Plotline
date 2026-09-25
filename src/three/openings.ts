@@ -37,7 +37,7 @@ const ALU: MaterialRef = { kind: 'color', color: '#d5d7d6', roughness: 0.45, met
 const STEEL: MaterialRef = { kind: 'color', color: '#c4c4c2', roughness: 0.3, metalness: 1 }
 /** Window sills and thresholds: polished white marble. Flat on purpose: the tiled floor-marble texture reads as wood on a 30 mm edge. */
 const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
-let glass: THREE.MeshPhysicalMaterial | null = null
+let glass: THREE.MeshStandardMaterial | null = null
 
 const J = 0.03 // door lining (jamb) thickness
 const CW = 0.07 // casing width
@@ -316,6 +316,10 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
 }
 
 function glassMesh(panes: THREE.BufferGeometry[]): THREE.Mesh {
-  glass ??= new THREE.MeshPhysicalMaterial({ transmission: 0.9, roughness: 0.05, thickness: 0.01, ior: 1.5 })
+  // A plain 10 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white plaster (a milky veil that
+  // blew out in the sun), and its sample of the blurred transmission target showed a lattice of blobs (the moiré) where
+  // a pane was seen at an angle. A flat pane doesn't refract, and no pane means no second scene render per frame.
+  // No env reflection: the interior HDRI is a photo studio.
+  glass ??= new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, envMapIntensity: 0, transparent: true, opacity: 0.1, depthWrite: false })
   return merged(panes, glass)
 }
