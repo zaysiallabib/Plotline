@@ -583,8 +583,8 @@ function closet(ctx: Ctx): void {
 export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
 /** Rooms that get a wall-mounted split AC. */
 export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study']
-/** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of its ends. */
-const AC_CLEAR = 0.3
+/** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of the room's corners. */
+const AC_CLEAR = 0.5
 
 const segDist = (p: Pt, a: Pt, b: Pt) => {
   const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1e-9
@@ -614,32 +614,36 @@ function ceilingLight(ctx: Ctx): void {
 }
 
 /**
- * Split AC high on a wall: never over a door/window (AC_CLEAR either side), in a door's clear zone (swing) or over
- * anything taller than 1.8 m (wardrobe, shelves, larder). Walls ranked by the room's main piece (bed, sofa, desk,
- * table): the wall it faces first, then those beside it, its own (the headboard's) last; on each, the spot across from
- * the piece first, sliding in 0.25 m steps.
+ * Split AC 2.3 m up (its mountY), centred on the longest clear stretch of wall: every side is cut at its doors and
+ * windows, and the AC must keep AC_CLEAR from those cuts and from the room's corners. A stretch behind a bed's
+ * headboard comes last (cold air on the sleeper); one over anything taller than 1.8 m (wardrobe, shelves, larder) is
+ * out. No stretch qualifies: no AC.
  */
 function wallAC(ctx: Ctx): void {
   const id = 'ac_split'
-  const main = ctx.out.find((p) => /^(bed_|sofa_3seat$|desk_oak$|dining_table$)/.test(p.assetId))
-  const t = ((main?.rotationDeg ?? 0) * Math.PI) / 180
-  const f = { x: -Math.sin(t), y: Math.cos(t) } // main's front (see header)
-  const sides = main ? [...ctx.sides].sort((a, b) => dot(a.n, f) - dot(b.n, f)) : rankNoOpenings(ctx)
   const hw = size(id).x / 2
-  for (const s of sides) {
-    const uPref = main ? projU(s, main) : s.len / 2
-    const spans = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1])]
-    const rot = rotationFacing(s.n)
-    for (let k = 0; k * 0.25 <= s.len; k++) {
-      for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
-        if (u - hw < AC_CLEAR || u + hw > s.len - AC_CLEAR) continue
-        if (spans.some(([u0, u1]) => u - hw - AC_CLEAR < u1 && u0 < u + hw + AC_CLEAR)) continue
-        const c = againstSide(s, id, u, FLUSH)
-        const q = footprint(c, rot, size(id))
-        if (ctx.clear.some((z) => quadsOverlap(z, q)) || ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue
-        if (tryPlace(ctx, id, c, rot, 'free')) return
-      }
+  const bed = ctx.out.find((p) => p.assetId.startsWith('bed_'))
+  const t = ((bed?.rotationDeg ?? 0) * Math.PI) / 180
+  const behindBed = (s: Side) => !!bed && dot(s.n, { x: -Math.sin(t), y: Math.cos(t) }) > 0.9
+  const stretches = ctx.sides.flatMap((s) => {
+    const cuts = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1]), [s.len, s.len]].sort((a, b) => a[0] - b[0])
+    const out: { s: Side; u: number; len: number }[] = []
+    let u0 = 0
+    for (const [a, b] of cuts) {
+      if (a - u0 > 0) out.push({ s, u: (u0 + a) / 2, len: a - u0 })
+      u0 = Math.max(u0, b)
     }
+    return out
+  })
+  stretches.sort((a, b) => Number(behindBed(a.s)) - Number(behindBed(b.s)) || b.len - a.len)
+  for (const { s, u, len } of stretches) {
+    const c = againstSide(s, id, u, FLUSH)
+    const rot = rotationFacing(s.n)
+    const q = footprint(c, rot, size(id))
+    // openings: by the stretch's length; corners: AC_CLEAR past each end must still be in the room
+    if (len < 2 * (hw + AC_CLEAR) || ![-1, 1].every((k) => pointInPolygon(add(c, s.d, k * (hw + AC_CLEAR)), ctx.inner))) continue
+    if (ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue
+    if (tryPlace(ctx, id, c, rot, 'free')) return
   }
 }
 

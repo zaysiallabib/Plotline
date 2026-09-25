@@ -370,6 +370,22 @@ describe('furnish', () => {
 
   // the second plan (system proof): same rules, no per-unit code
   const typeB = (Object.values(import.meta.glob('../data/units/type-b*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test('AC: 2.3 m up, centred on the longest clear stretch of wall, 0.5 m off corners and openings; none if no stretch qualifies', () => {
+    expect(heightRange(kitAsset('ac_split')!)[0], 'bottom 2.3 m above the floor').toBe(2.3)
+    // 5 × 3.4 study: door at the left end of the top wall (x 0.2–1.1), a window in the bottom wall; stretches: top 3.9, sides 3.4, bottom 2.5
+    const unit = rect('study', 5, 3.4, { wall: 0, offsetM: 0.2 })
+    unit.walls[2].openings.push({ id: 'win', kind: 'window', offsetM: 1.0, widthM: 1.5, heightM: 1.4, sillM: 0.9 })
+    const rooms = deriveRooms(unit)
+    const ac = furnish(unit, rooms).find((p) => p.assetId === 'ac_split')!
+    expect(ac.x, 'centred between the door and the corner').toBeCloseTo((1.1 + 5) / 2, 6)
+    expect(ac.y, 'on the top wall, 5 mm off its face').toBeCloseTo(0.0635 + 0.005 + kitAsset('ac_split')!.sizeM.z / 2, 6)
+    expectACClearOfOpenings(ac, rooms[0], unit)
+    // a wall that is all windows, four times over: nowhere to hang it
+    const glassy = rect('study', 2.4, 2.4)
+    glassy.walls.forEach((w, i) => w.openings.push({ id: `w${i}`, kind: 'window', offsetM: 0.7, widthM: 1.0, heightM: 1.4, sillM: 0.9 }))
+    expect(furnish(glassy, deriveRooms(glassy)).map((p) => p.assetId)).not.toContain('ac_split')
+  })
+
   test.skipIf(!typeB)('type-b.json rooms get their staging, inside and disjoint', () => {
     const rooms = deriveRooms(typeB)
     const ps = furnish(typeB, rooms)

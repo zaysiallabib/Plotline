@@ -71,10 +71,10 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   vanity: { ...P('vanity', 'Vanity, vessel basin + mirror', 'bath', 0.8, 1.5, 0.5, 0.45), kind: 'vanity' }, // cabinet 0.45, mirror top 1.95
   basin: { ...P('basin', 'Pedestal basin', 'bath', 0.5, 0.97, 0.45), kind: 'basin' }, // rim 0.85, tap spout 0.97
   shower_screen: { ...P('shower_screen', 'Shower tray, glass screen, rain head', 'bath', 0.9, 2.05, 0.9), kind: 'shower' },
-  // flush ceiling lights by room size (presets.ts); a split AC whose top hangs 0.2 m under the ceiling
+  // flush ceiling lights by room size (presets.ts); a split AC 2.3 m up ('ceiling': overhead, casts no sun shadow)
   ceiling_light: { ...P('ceiling_light', 'Flush ceiling light, opal diffuser Ø38 cm', 'lamp', 0.38, 0.085, 0.38), mount: 'ceiling' },
   ceiling_light_large: { ...P('ceiling_light_large', 'Flush ceiling light, opal diffuser Ø50 cm', 'lamp', 0.5, 0.09, 0.5), mount: 'ceiling' },
-  ac_split: { ...P('ac_split', 'Split AC, wall-mounted indoor unit', 'other', 0.9, 0.3, 0.22), mount: 'ceiling', dropM: 0.2, kind: 'ac' },
+  ac_split: { ...P('ac_split', 'Split AC, wall-mounted indoor unit', 'other', 0.9, 0.3, 0.22, 2.3), mount: 'ceiling', kind: 'ac' },
   wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 3 doors)', 'wardrobe', 1.8, 2.2, 0.6),
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>

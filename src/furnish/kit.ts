@@ -55,12 +55,10 @@ export interface KitAsset {
   license: 'CC0'
   /** approx bytes of the .glb, for the loader's budgeting */
   bytes?: number
-  /** where the engine hangs it: floor (default, grounded), ceiling (top touches the ceiling), wall (centre at 1.5 m) */
+  /** where the engine hangs it: floor (default, grounded), ceiling (top touches the ceiling; overhead: no sun shadow, not a view target), wall (centre at 1.5 m) */
   mount?: 'floor' | 'ceiling' | 'wall'
   /** height of the asset's BOTTOM above the floor, m; overrides `mount` (a TV on its unit, a frame on the wall) */
   mountY?: number
-  /** ceiling mount: its top hangs this far below the ceiling (a wall AC just under it) */
-  dropM?: number
   /** what it is (see ObjectKind); default from category */
   kind?: ObjectKind
 }
