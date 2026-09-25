@@ -522,4 +522,22 @@ describe('furnish', () => {
       for (const r of rs.filter((r) => /powder/i.test(r.name))) expect(all.filter((p) => p.roomId === r.id).map((p) => p.assetId), `${u.id} ${r.name}`).not.toContain('shower_screen')
     }
   })
+
+  test.skipIf(!typeA || !typeC)('the irregular 33 m² dining (C) gets two zones like A: table at the kitchen end, lounge at the other; a square room never splits', () => {
+    for (const u of [typeA, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      const mine = ps.filter((p) => p.roomId === 'r_dining')
+      const table = mine.find((p) => p.assetId === 'dining_table')!
+      const sofa = mine.find((p) => p.assetId === 'sofa_3seat')
+      expect(sofa, `${u.id}: ${mine.map((p) => p.assetId)}`).toBeDefined()
+      const k = roomInnerPolygon(rooms.find((r) => r.kind === 'kitchen')!, u)
+      const kc = { x: k.reduce((t, p) => t + p.x, 0) / k.length, y: k.reduce((t, p) => t + p.y, 0) / k.length }
+      expect(Math.hypot(table.x - kc.x, table.y - kc.y), `${u.id} table nearer the kitchen`).toBeLessThan(Math.hypot(sofa!.x - kc.x, sofa!.y - kc.y))
+      expect(Math.hypot(table.x - sofa!.x, table.y - sofa!.y), `${u.id} two zones`).toBeGreaterThan(2)
+      expectInsideAndDisjoint(ps, rooms, u)
+    }
+    const square = rect('dining', 5.4, 5.4, { wall: 0, offsetM: 0.4 }) // 29 m², but no end to put a lounge at
+    expect(furnish(square, deriveRooms(square)).map((p) => p.assetId)).not.toContain('sofa_3seat')
+  })
 })

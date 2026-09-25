@@ -454,10 +454,10 @@ function diningSet(ctx: Ctx, c: Pt, rot: number, seats: number): boolean {
   })
 }
 
-/** Centroid, main axis (the longest side) and the inner polygon's extent along it. */
+/** Centroid, main axis (the bounding box's long side: an irregular room's longest wall may run across it) and the inner polygon's extent along it. */
 function mainAxis(ctx: Ctx) {
   const c0 = polygonCentroid(ctx.inner)
-  const axis = rankLongest(ctx)[0].d
+  const axis = bounds(ctx).axis
   const along = ctx.inner.map((p) => dot({ x: p.x - c0.x, y: p.y - c0.y }, axis))
   return { c0, axis, lo: Math.min(...along), hi: Math.max(...along) }
 }
