@@ -288,7 +288,7 @@ describe('viewer', () => {
     expect(e.face.x, 'still looking down the room').toBeGreaterThan(0.9)
   })
 
-  it.skip('bath jumps stand in the room ≥ 1.5 m from the vanity/basin and frame the most fittings at eye level (≤ 10° down); the door view only when no spot is that far (A, B, C)', () => {
+  it('bath jumps stand in the room ≥ 1.5 m from the vanity/basin and frame the most fittings at eye level (≤ 10° down); the door view only when no spot is that far (A, B, C)', () => {
     const fallback: string[] = []
     for (const { u, rs } of both) {
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'bath')) {
@@ -309,11 +309,20 @@ describe('viewer', () => {
         expect(v.pitch, `${name} at eye level`).toBeGreaterThanOrEqual((-10 * Math.PI) / 180 - 1e-9)
         expect(v.pitch!, name).toBeLessThanOrEqual(0)
         expect(deg(v.face, sub(hero, v.p)), `${name} ${hero.assetId} in frame`).toBeLessThanOrEqual(40 + 1e-6)
-        expect(items.filter((f) => deg(v.face, sub(f, v.p)) <= 40 + 1e-6).length, `${name}: another fitting in frame`).toBeGreaterThanOrEqual(2)
+        // with a shower, a second fitting is in frame too (C Bath-3 has only a vanity and the WC beside the spot)
+        if (items.some((f) => f.assetId === 'shower_screen'))
+          expect(items.filter((f) => deg(v.face, sub(f, v.p)) <= 40 + 1e-6).length, `${name}: another fitting in frame`).toBeGreaterThanOrEqual(2)
       }
     }
-    // no spot 1.5 m from the basin: the 1.8 m powder rooms and WCs, the 1.5 m wide baths with the vanity on the long wall
-    expect(fallback).toEqual([])
+    // no spot 1.5 m from the basin: the 1.8 m powder rooms, the WC; A Bath-3 / B Bath-1 fill their far end with the shower and WC
+    expect(fallback).toEqual([
+      'unit_type_a_2703 Bath-3',
+      'unit_type_a_2703 Powder room',
+      'unit_type_a_2703 H. toilet',
+      'unit_type_b_1747 Bath-1',
+      'unit_type_b_1747 Powder room',
+      'unit_type_c_2254 Powder room',
+    ])
   })
 
   it.skip('help room with a cot: from just inside the door at eye level, the cot centre in the lower third of the frame (B); a tiny empty room from its door (A help bed, WC)', () => {

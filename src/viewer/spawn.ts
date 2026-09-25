@@ -143,6 +143,8 @@ export const FAN_IN_VIEW = 2.5
 export const TALL_IN_VIEW = 1
 /** A bath is framed from a spot this far from its vanity/basin, else from its door. */
 export const BATH_BACK = 1.5
+/** …with its back to a wall (in a 1.5 m bath VIEW_INSET leaves a 0.7 m band). */
+const BATH_INSET = 0.3
 /** A spot with a pendant in its frame (or an AC over it) loses to every spot without (only when all have one does the best win). */
 const HANG_PENALTY = 100
 /** An enclosed room whose best spot 0.4 m off the walls sees less than this (help bed, WC, store) is framed from its door. */
@@ -154,6 +156,8 @@ const FRAME_DEG = 40
 const inFrame = (p: Pt, face: Pt, q: Pt) => (q.x - p.x) * face.x + (q.y - p.y) * face.y > Math.cos((FRAME_DEG * Math.PI) / 180) * Math.hypot(q.x - p.x, q.y - p.y)
 /** Door views look down 20°: 1 m ahead the frame then reaches down to 0.3 m, so the vanity, WC or cot of a small room shows. */
 export const DOOR_PITCH = (-20 * Math.PI) / 180
+/** A bath framed from inside looks down 10°: 1.5 m off, the vanity top and the WC bowl are in the frame. */
+export const BATH_PITCH = (-10 * Math.PI) / 180
 
 /**
  * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
@@ -323,6 +327,33 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   // wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other pieces in frame, then the deepest
   // sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
   if (room.kind === 'bath' || hero?.assetId === 'cot' || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
+    // …but a bath (or tiny room) with a vanity/basin is framed from inside first (the wave-7 Bath-3 frame): the spot — a
+    // corner, wall midpoint or 0.25 m grid point, clear of the fittings and the ajar leaves — BATH_BACK or more from the
+    // hero that frames the most fittings (hero included, each ≥ 1 m off so it is in the frame at BATH_PITCH), farthest
+    // from the hero, the fittings centred; the door view only when no spot is that far.
+    if (hero && hero.assetId !== 'cot') {
+      const xs = inner.map((q) => q.x)
+      const ys = inner.map((q) => q.y)
+      const spots = [...candidates]
+      for (let x = Math.min(...xs) + BATH_INSET; x <= Math.max(...xs) - BATH_INSET; x += 0.25)
+        for (let y = Math.min(...ys) + BATH_INSET; y <= Math.max(...ys) - BATH_INSET; y += 0.25) spots.push({ x, y })
+      let pick = null as { p: Pt; face: Pt; count: number; back: number; spread: number } | null
+      for (const p of spots) {
+        const back = Math.hypot(hero.x - p.x, hero.y - p.y)
+        if (back < BATH_BACK || !core.pointInPolygon(p, inner) || inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < BATH_INSET - 0.02)) continue
+        if (pieces.some(({ f, k }) => footprintDist(p, f, k.sizeM) < 0.2) || doors.some(({ o, a, b }) => swings(o) && segDist(p, a, b) < DOOR_STEP[2])) continue
+        for (let deg = 0; deg < 360; deg += 5) {
+          const face = { x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) }
+          const framed = items.filter((f) => Math.hypot(f.x - p.x, f.y - p.y) >= 1 && inFrame(p, face, f))
+          if (!framed.includes(hero)) continue
+          const off = (f: Pt) => Math.abs(Math.atan2((f.x - p.x) * face.y - (f.y - p.y) * face.x, (f.x - p.x) * face.x + (f.y - p.y) * face.y))
+          const spread = Math.max(...framed.map(off))
+          const better = !pick || framed.length > pick.count || (framed.length === pick.count && (back > pick.back + 1e-9 || (back > pick.back - 1e-9 && spread < pick.spread)))
+          if (better) pick = { p, face, count: framed.length, back, spread }
+        }
+      }
+      if (pick) return { p: pick.p, face: pick.face, pitch: BATH_PITCH }
+    }
     let door = null as { p: Pt; n: Pt; d: number } | null
     for (const { w, f, c } of doors) {
       const s = core.pointInPolygon(add(c, f.normal, w.thicknessM / 2 + 0.1), inner) ? 1 : -1
