@@ -14,17 +14,34 @@
  *   p0 + d·u + n·(thickness/2 + GAP + depth/2).
  *
  * Every candidate footprint (4 rotated corners) must lie inside the room's
- * inner polygon, must not cross any door/passage clear zone (opening width ×
- * 1 m into the room) and must not overlap an earlier footprint (SAT on quads).
- * Ceiling-mounted items only need the inside test.
+ * inner polygon. Beyond that, by placement mode:
+ *  - 'solid' (default): must not cross a door/passage clear zone (opening width ×
+ *    1 m into the room); must not overlap an earlier solid footprint whose height
+ *    range [bottom, top] overlaps its own (a frame above a sofa is fine, a frame
+ *    behind a wardrobe is not); must not stand in front of a window it would cover
+ *    (top > sill + 0.35 m, e.g. a wardrobe, a mirror, upper cabinets).
+ *  - 'stack' (wall cabinets / hood over a base module): 'solid' minus the furniture overlap test.
+ *  - 'flat' (rugs): only the door clear zones and other rugs; furniture stands on them.
+ *  - 'free' (ceiling fixtures, cushions on a sofa): the inside test only.
+ * Plants and the glass shower screen may stand in front of a window.
  */
 import type { FurniturePlacement, Room, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
-import { kitAsset } from './kit'
+import { heightRange, kitAsset } from './kit'
+import { ART_SETS } from './procedural.meta'
 
 export const GAP = 0.05
+/** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
+const FLUSH = -GAP + 0.005
 const DOOR_CLEAR = 1.0
+/** How far a window "reaches" into the room for the cover test, and how much sill overlap is fine. */
+const WIN_DEPTH = 0.3
+const SILL_SLACK = 0.35
+/** Glass-walled, may stand under a window (bath ventilators usually sit over the shower). */
+const SEE_THROUGH = new Set(['shower_screen'])
 const EPS = 1e-9
+
+type Mode = 'solid' | 'stack' | 'flat' | 'free'
 
 interface Side {
   p0: Pt // centerline start
@@ -34,7 +51,7 @@ interface Side {
   thick: number
   /** [u0, u1] along the side from p0 */
   doors: [number, number][]
-  windows: number
+  wins: { u0: number; u1: number; sill: number; top: number }[]
 }
 
 interface Ctx {
@@ -44,14 +61,19 @@ interface Ctx {
   corners: Pt[] // inner polygon vertices, convex first, sorted far-from-doors
   doorPts: Pt[]
   clear: Pt[][]
-  quads: Pt[][]
+  wins: { q: Pt[]; sill: number; top: number }[]
+  quads: { q: Pt[]; y0: number; y1: number }[]
+  rugs: Pt[][]
   out: FurniturePlacement[]
   counts: Map<string, number>
+  /** centroid of the unit's kitchen, if any (the dining table goes to the end nearest it) */
+  kitchen: Pt | null
 }
 
 const size = (assetId: string) => kitAsset(assetId)?.sizeM ?? { x: 1, y: 1, z: 1 }
 const add = (a: Pt, b: Pt, s = 1): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
+const dot = (a: Pt, b: Pt) => a.x * b.x + a.y * b.y
 const norm360 = (deg: number) => ((Math.round(deg * 1000) / 1000) % 360 + 360) % 360
 
 /** rotationDeg whose front faces unit vector f (see header). */
@@ -108,19 +130,19 @@ function buildSides(room: Room, unit: Unit): Side[] {
     const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }
     const w = walls.get(room.wallIds[i])
     const forward = w?.a === room.loop[i]
-    const doors: [number, number][] = []
-    let windows = 0
+    const doors: Side['doors'] = []
+    const wins: Side['wins'] = []
     for (const o of w?.openings ?? []) {
       const u0 = forward ? o.offsetM : len - o.offsetM - o.widthM
-      if (o.kind === 'window') windows++
+      if (o.kind === 'window') wins.push({ u0, u1: u0 + o.widthM, sill: o.sillM, top: o.sillM + o.heightM })
       else doors.push([u0, u0 + o.widthM])
     }
-    return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, doors, windows }
+    return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, doors, wins }
   })
   const collinear = (a: Side, b: Side) => a.d.x * b.d.x + a.d.y * b.d.y > 0.9999
   const merge = (a: Side, b: Side) => {
     for (const [u0, u1] of b.doors) a.doors.push([u0 + a.len, u1 + a.len])
-    a.windows += b.windows
+    for (const w of b.wins) a.wins.push({ ...w, u0: w.u0 + a.len, u1: w.u1 + a.len })
     a.len += b.len
     a.thick = Math.max(a.thick, b.thick)
   }
@@ -137,28 +159,55 @@ function buildSides(room: Room, unit: Unit): Side[] {
   return out
 }
 
-function makeCtx(room: Room, unit: Unit): Ctx {
+/** Opening span [u0, u1] on a side → plan quad from the wall's inner face `depth` into the room. */
+const spanQuad = (s: Side, u0: number, u1: number, depth: number): Pt[] => {
+  const a = add(add(s.p0, s.d, u0), s.n, s.thick / 2)
+  const b = add(add(s.p0, s.d, u1), s.n, s.thick / 2)
+  return [a, b, add(b, s.n, depth), add(a, s.n, depth)]
+}
+
+/** Door/passage clear zones of a room (opening width × 1 m into the room). */
+export function doorClearZones(room: Room, unit: Unit): Pt[][] {
+  return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1]) => spanQuad(s, u0, u1, DOOR_CLEAR)))
+}
+
+function makeCtx(room: Room, unit: Unit, kitchen: Pt | null): Ctx {
   const sides = buildSides(room, unit)
   const inner = roomInnerPolygon(room, unit)
   const doorPts: Pt[] = []
   const clear: Pt[][] = []
+  const wins: Ctx['wins'] = []
   for (const s of sides) {
     for (const [u0, u1] of s.doors) {
-      const a = add(add(s.p0, s.d, u0), s.n, s.thick / 2)
-      const b = add(add(s.p0, s.d, u1), s.n, s.thick / 2)
-      clear.push([a, b, add(b, s.n, DOOR_CLEAR), add(a, s.n, DOOR_CLEAR)])
+      clear.push(spanQuad(s, u0, u1, DOOR_CLEAR))
       doorPts.push(add(add(s.p0, s.d, (u0 + u1) / 2), s.n, s.thick / 2))
     }
+    // 5 cm trim at each end: a cabinet may butt up to a window that starts in the corner
+    for (const w of s.wins) wins.push({ q: spanQuad(s, w.u0 + 0.05, w.u1 - 0.05, WIN_DEPTH), sill: w.sill, top: w.top })
   }
   const farFromDoors = (p: Pt) => (doorPts.length ? Math.min(...doorPts.map((q) => dist(p, q))) : 0)
   const corners = [...inner].sort((a, b) => farFromDoors(b) - farFromDoors(a))
-  return { room, inner, sides, corners, doorPts, clear, quads: [], out: [], counts: new Map() }
+  return { room, inner, sides, corners, doorPts, clear, wins, quads: [], rugs: [], out: [], counts: new Map(), kitchen }
 }
 
-function tryPlace(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, skipOverlap = false): FurniturePlacement | null {
+/** The footprint if `assetId` may stand at c (see header for modes), else null. */
+function fits(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode): Pt[] | null {
   const quad = footprint(c, rotationDeg, size(assetId))
   if (!quad.every((p) => pointInPolygon(p, ctx.inner))) return null
-  if (!skipOverlap && [...ctx.clear, ...ctx.quads].some((q) => quadsOverlap(q, quad))) return null
+  if (mode === 'free') return quad
+  if (ctx.clear.some((q) => quadsOverlap(q, quad))) return null
+  if (mode === 'flat') return ctx.rugs.some((q) => quadsOverlap(q, quad)) ? null : quad
+  const a = kitAsset(assetId)
+  const [y0, y1] = a ? heightRange(a) : [0, 1]
+  const coversWindow = (w: Ctx['wins'][number]) => y1 > w.sill + SILL_SLACK && y0 < w.top && quadsOverlap(w.q, quad)
+  if (!SEE_THROUGH.has(assetId) && a?.category !== 'plant' && ctx.wins.some(coversWindow)) return null
+  if (mode === 'solid' && ctx.quads.some((o) => o.y1 > y0 + 0.02 && o.y0 < y1 - 0.02 && quadsOverlap(o.q, quad))) return null
+  return quad
+}
+
+function tryPlace(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode = 'solid', scale?: number): FurniturePlacement | null {
+  const quad = fits(ctx, assetId, c, rotationDeg, mode)
+  if (!quad) return null
   const n = (ctx.counts.get(assetId) ?? 0) + 1
   ctx.counts.set(assetId, n)
   const p: FurniturePlacement = {
@@ -168,25 +217,45 @@ function tryPlace(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, skipOve
     x: c.x,
     y: c.y,
     rotationDeg: norm360(rotationDeg),
+    ...(scale ? { scale } : {}),
   }
   ctx.out.push(p)
-  if (!skipOverlap) ctx.quads.push(quad)
+  if (mode === 'solid' || mode === 'stack') {
+    const a = kitAsset(assetId)
+    const [y0, y1] = a ? heightRange(a) : [0, 1]
+    ctx.quads.push({ q: quad, y0, y1 })
+  } else if (mode === 'flat') ctx.rugs.push(quad)
   return p
+}
+
+/** Runs `fn`; if it returns false every placement it made is rolled back (all-or-nothing groups). */
+function atomic(ctx: Ctx, fn: () => boolean): boolean {
+  const n = [ctx.out.length, ctx.quads.length, ctx.rugs.length]
+  const counts = new Map(ctx.counts)
+  if (fn()) return true
+  ctx.out.length = n[0]
+  ctx.quads.length = n[1]
+  ctx.rugs.length = n[2]
+  ctx.counts = counts
+  return false
 }
 
 /** Centre of an item against `side` at distance u along it, plus `out` metres further into the room. */
 const againstSide = (side: Side, assetId: string, u: number, out = 0): Pt =>
   add(add(side.p0, side.d, u), side.n, side.thick / 2 + GAP + size(assetId).z / 2 + out)
 
+/** Where the perpendicular from p meets `side`, clamped to it. */
+const projU = (side: Side, p: Pt) => Math.min(side.len, Math.max(0, dot({ x: p.x - side.p0.x, y: p.y - side.p0.y }, side.d)))
+
 /** Place against a side, preferring u = uPref and sliding ±0.25 m steps until the footprint fits. */
-function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0) {
+function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0, mode: Mode = 'solid') {
   const hw = size(assetId).x / 2
   const rot = rotationFacing(side.n)
   for (let k = 0; k * 0.25 <= side.len / 2; k++) {
     for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
       if (u - hw < 0.1 || u + hw > side.len - 0.1) continue
       const c = againstSide(side, assetId, u, out)
-      const p = tryPlace(ctx, assetId, c, rot)
+      const p = tryPlace(ctx, assetId, c, rot, mode)
       if (p) return { p, u, c, side, rot }
     }
   }
@@ -202,17 +271,23 @@ function onSides(ctx: Ctx, sides: Side[], assetId: string, out = 0) {
   return null
 }
 
-/** In a corner of the inner polygon, facing the outgoing edge's inward normal. Corners farthest from doors first. */
+/**
+ * In a corner of the inner polygon, facing the outgoing edge's inward normal. Corners farthest from doors first.
+ * Edge directions snap to the nearest real wall direction: where wall thickness steps along a straight wall the
+ * inner polygon gets a short slanted edge, and a corner piece must not come out skewed by it.
+ */
 function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = []) {
   const n = ctx.inner.length
   const sz = size(assetId)
+  const snap = (e: Pt) => ctx.sides.map((s) => s.d).reduce((b, d) => (dot(d, e) > dot(b, e) ? d : b))
   for (const P of ctx.corners) {
     if (exclude.includes(P)) continue
     const i = ctx.inner.indexOf(P)
     const prev = ctx.inner[(i - 1 + n) % n]
     const next = ctx.inner[(i + 1) % n]
-    const e1 = { x: (next.x - P.x) / (dist(P, next) || 1), y: (next.y - P.y) / (dist(P, next) || 1) }
-    const e0 = { x: (P.x - prev.x) / (dist(P, prev) || 1), y: (P.y - prev.y) / (dist(P, prev) || 1) }
+    const e1 = snap({ x: (next.x - P.x) / (dist(P, next) || 1), y: (next.y - P.y) / (dist(P, next) || 1) })
+    const e0 = snap({ x: (P.x - prev.x) / (dist(P, prev) || 1), y: (P.y - prev.y) / (dist(P, prev) || 1) })
+    if (Math.abs(dot(e0, e1)) > 0.9) continue // a thickness step, not a corner
     const c = add(add(P, e1, sz.x / 2 + GAP), e0, -(sz.z / 2 + GAP))
     const p = tryPlace(ctx, assetId, c, rotationFacing({ x: -e1.y, y: e1.x }))
     if (p) return { p, corner: P }
@@ -224,7 +299,7 @@ function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = []) {
 const rankNoOpenings = (ctx: Ctx) =>
   [...ctx.sides].sort(
     (a, b) =>
-      (a.doors.length + a.windows > 0 ? 1 : 0) - (b.doors.length + b.windows > 0 ? 1 : 0) ||
+      (a.doors.length + a.wins.length > 0 ? 1 : 0) - (b.doors.length + b.wins.length > 0 ? 1 : 0) ||
       b.len - a.len ||
       sideDoorDist(ctx, b) - sideDoorDist(ctx, a),
   )
@@ -237,6 +312,19 @@ const clearSpan = (s: Side) => s.len - s.doors.reduce((t, [u0, u1]) => t + (u1 -
 const opposite = (ctx: Ctx, s: Side) =>
   ctx.sides.filter((o) => o.n.x * s.n.x + o.n.y * s.n.y < -0.7).sort((a, b) => b.len - a.len)
 const others = (ctx: Ctx, used: Side[]) => rankLongest(ctx).filter((s) => !used.includes(s))
+/** Sides by distance from p to their nearest point. */
+const nearest = (ctx: Ctx, p: Pt) => [...ctx.sides].sort((a, b) => dist(p, add(a.p0, a.d, projU(a, p))) - dist(p, add(b.p0, b.d, projU(b, p))))
+
+/**
+ * A framed diptych centred at u on `side` (above a sofa or a headboard), else its right half alone. The art set
+ * follows the room id so adjoining rooms rarely repeat. Facing the wall, side.d points to your right.
+ */
+function frames(ctx: Ctx, side: Side, u: number): void {
+  const set = ART_SETS[[...ctx.room.id].reduce((h, ch) => h + ch.charCodeAt(0), 0) % ART_SETS.length]
+  const rot = rotationFacing(side.n)
+  const hang = (id: string, du: number) => tryPlace(ctx, id, againstSide(side, id, u + du, FLUSH), rot)
+  if (!atomic(ctx, () => !!hang(`${set}_l`, -0.28) && !!hang(`${set}_r`, 0.28))) hang(`${set}_r`, 0)
+}
 
 // ───────────────────────────── per kind ─────────────────────────────
 
@@ -249,82 +337,206 @@ function bed(ctx: Ctx): void {
     const c = againstSide(b.side, 'side_table_01', b.u + s * off)
     tryPlace(ctx, 'side_table_01', c, b.rot)
   }
+  // rug under the lower two thirds of the bed (or a bit less), long side across it, nudged clear of door zones
+  const L = size(bedId).z
+  rug: for (const rug of bedId === 'bed_queen' ? ['rug_rect_large', 'rug_rect_small'] : ['rug_rect_small'])
+    for (const out of [L / 3, L / 4])
+      for (const du of [0, -0.25, 0.25, -0.5, 0.5]) if (tryPlace(ctx, rug, againstSide(b.side, rug, b.u + du, out), b.rot, 'flat')) break rug
+  frames(ctx, b.side, b.u)
   const wardrobe = onSides(ctx, others(ctx, [b.side]), 'wardrobe_tall') ?? onSides(ctx, others(ctx, [b.side]), 'drawer_cabinet')
   if (!wardrobe) onSides(ctx, [b.side], 'drawer_cabinet')
-  // ponytail: no potted_plant_04 on a side table — the engine grounds every asset and placements carry no elevation.
+  if (ctx.room.areaSqm >= 18) inCorner(ctx, 'modern_arm_chair_01')
+  inCorner(ctx, 'potted_plant_02')
+  // ponytail: no potted_plant_04 on a side table — placements carry no per-instance elevation (mountY is per asset).
 }
 
-function living(ctx: Ctx): void {
-  const sofa = onSides(ctx, rankLongest(ctx), 'sofa_02')
-  if (sofa) {
-    const { side, c, rot } = sofa
-    const tc = add(c, side.n, size('sofa_02').z / 2 + 0.5 + size('modern_coffee_table_01').z / 2)
-    tryPlace(ctx, 'modern_coffee_table_01', tc, rot)
-    // TV unit: the wall facing the sofa first, then every other wall by length (a door clear zone often blocks the facing wall)
-    const opp = opposite(ctx, side)
-    const walls = [...opp, ...others(ctx, [side, ...opp])]
-    onSides(ctx, walls, opp[0] && clearSpan(opp[0]) >= 2.7 ? 'modern_wooden_cabinet' : 'wooden_display_shelves_01') ??
-      onSides(ctx, walls, 'wooden_display_shelves_01')
-    // arm chair at the sofa's end, turned 30° toward it (positive θ turns the front toward −d, see header)
-    const chair = size('modern_arm_chair_01')
+/**
+ * Sofa group: sofa on the first side that takes it (centred on `toward`'s projection), pillows on
+ * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair.
+ */
+function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01') {
+  let sofa: ReturnType<typeof onSide> = null
+  for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
+  if (!sofa) return null
+  const { side, c, rot } = sofa
+  const sz = size('sofa_3seat')
+  for (const s of [-1, 1]) tryPlace(ctx, 'throw_pillows_01', add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free', 0.7)
+  rug: for (const rug of ['rug_rect_large', 'rug_rect_small'])
+    for (const du of [0, -0.25, 0.25, -0.5, 0.5])
+      if (tryPlace(ctx, rug, add(add(c, side.d, du), side.n, sz.z / 2 - 0.25 + size(rug).z / 2), rot, 'flat')) break rug
+  let table: string | undefined
+  let tc = c
+  for (const t of tables) {
+    tc = add(c, side.n, sz.z / 2 + 0.45 + size(t).z / 2)
+    if (tryPlace(ctx, t, tc, rot)) {
+      table = t
+      break
+    }
+  }
+  frames(ctx, side, sofa.u)
+  // arm chair beside the coffee table facing across it; else at the sofa's end turned 30° toward it
+  // (positive θ turns the front toward −d, see header)
+  const chair = size(chairId)
+  const beside = (s: number) =>
+    !!table && !!tryPlace(ctx, chairId, add(tc, side.d, s * (size(table).x / 2 + 0.3 + chair.z / 2)), rotationFacing({ x: -side.d.x * s, y: -side.d.y * s }))
+  if (!beside(1) && !beside(-1)) {
     placeChair: for (const s of [1, -1]) {
       for (const out of [0.15, 0.3, 0.45]) {
-        const cc = add(add(c, side.d, s * (size('sofa_02').x / 2 + 0.35 + chair.x / 2)), side.n, out)
-        if (tryPlace(ctx, 'modern_arm_chair_01', cc, rot + s * 30)) break placeChair
+        const cc = add(add(c, side.d, s * (sz.x / 2 + 0.35 + chair.x / 2)), side.n, out)
+        if (tryPlace(ctx, chairId, cc, rot + s * 30)) break placeChair
       }
     }
   }
+  return sofa
+}
+
+function living(ctx: Ctx): void {
+  // the TV wants the longest blank wall; the sofa faces it from the opposite side
+  const tvWall = rankNoOpenings(ctx)[0]
+  const opp = opposite(ctx, tvWall)
+  const sofa = lounge(ctx, [...opp, ...others(ctx, [tvWall, ...opp])], add(tvWall.p0, tvWall.d, tvWall.len / 2))
+  if (sofa) {
+    const facing = opposite(ctx, sofa.side)
+    const walls = [...facing, ...others(ctx, [sofa.side, ...facing])]
+    let unit: ReturnType<typeof onSide> = null
+    for (const w of walls) if (clearSpan(w) >= 2.7 && (unit = onSide(ctx, w, 'modern_wooden_cabinet', projU(w, sofa.c)))) break
+    if (unit) tryPlace(ctx, 'tv_55', againstSide(unit.side, 'tv_55', unit.u, 0.1), unit.rot)
+    else {
+      for (const w of walls) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
+      onSides(ctx, walls, 'wooden_display_shelves_01')
+    }
+  }
   inCorner(ctx, 'potted_plant_01')
-  tryPlace(ctx, 'ceiling_fan', polygonCentroid(ctx.inner), 0, true)
+  tryPlace(ctx, 'ceiling_fan', polygonCentroid(ctx.inner), 0, 'free')
+}
+
+/** Table (long axis = local x) with chairs touching its edges, all-or-nothing. */
+function diningSet(ctx: Ctx, c: Pt, rot: number, seats: number): boolean {
+  return atomic(ctx, () => {
+    if (!tryPlace(ctx, 'dining_table', c, rot)) return false
+    const t = (rot * Math.PI) / 180
+    const ex = { x: Math.cos(t), y: Math.sin(t) }
+    const ey = { x: -Math.sin(t), y: Math.cos(t) }
+    const tz = size('dining_table')
+    const ch = size('dining_chair').z / 2
+    const spots: [Pt, Pt][] = [] // [offset direction, along-offset]
+    for (const s of [-1, 1]) for (const a of seats >= 6 ? [-0.4, 0.4] : [0]) spots.push([{ x: ey.x * s, y: ey.y * s }, { x: ex.x * a, y: ex.y * a }])
+    if (seats !== 2) for (const s of [-1, 1]) spots.push([{ x: ex.x * s, y: ex.y * s }, { x: 0, y: 0 }])
+    return spots.every(([dir, along]) => {
+      const reach = Math.abs(dot(dir, ex)) > 0.5 ? tz.x / 2 : tz.z / 2
+      const cc = add(add(c, along), dir, reach + ch)
+      return !!tryPlace(ctx, 'dining_chair', cc, rotationFacing({ x: -dir.x, y: -dir.y }))
+    })
+  })
 }
 
 function dining(ctx: Ctx): void {
-  const c = polygonCentroid(ctx.inner)
-  const tableQuad = footprint(c, 0, size('round_wooden_table_01'))
-  if (tableQuad.every((p) => pointInPolygon(p, ctx.inner))) {
-    // chairs first: the table is round, so its square footprint must not reject the diagonal chairs
-    const k = ctx.room.areaSqm >= 12 ? 6 : 4
-    const r = size('round_wooden_table_01').x / 2 + 0.35
-    for (let i = 0; i < k; i++) {
-      const a = (2 * Math.PI * i) / k + Math.PI / k
-      const f = { x: -Math.cos(a), y: -Math.sin(a) }
-      tryPlace(ctx, 'dining_chair_02', add(c, f, -r), rotationFacing(f))
+  const c0 = polygonCentroid(ctx.inner)
+  const axis = rankLongest(ctx)[0].d
+  const along = ctx.inner.map((p) => dot({ x: p.x - c0.x, y: p.y - c0.y }, axis))
+  const lo = Math.min(...along)
+  const hi = Math.max(...along)
+  // a long, big room is "dining + family living": table at the end nearest the kitchen, sofa group at the other
+  const split = hi - lo >= 6 && ctx.room.areaSqm >= 25
+  const mid = (lo + hi) / 2
+  let ends = split ? [add(c0, axis, mid - (hi - lo) / 4), add(c0, axis, mid + (hi - lo) / 4)] : [c0]
+  if (ctx.kitchen) ends = [...ends].sort((a, b) => dist(a, ctx.kitchen!) - dist(b, ctx.kitchen!))
+  const cross = { x: -axis.y, y: axis.x }
+  const rotAlong = rotationFacing(cross)
+  // most seats first, then a rug under the whole set, then the smallest shift from the natural spot
+  const offs = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75]
+  let table: Pt | null = null
+  let end: Pt | null = null
+  search: for (const seats of [6, 4, 2]) {
+    for (const rug of ['rug_rect_large', 'rug_rect_small', null]) {
+      for (const e of ends) {
+        for (const a of offs) {
+          for (const b of offs) {
+            const c = add(add(e, axis, a), cross, b)
+            for (const rot of [rotAlong, rotAlong + 90]) {
+              if (atomic(ctx, () => diningSet(ctx, c, rot, seats) && (!rug || !!tryPlace(ctx, rug, c, rot, 'flat')))) {
+                table = c
+                end = e
+                tryPlace(ctx, 'modern_ceiling_lamp_01', c, 0, 'free')
+                break search
+              }
+            }
+          }
+        }
+      }
     }
-    tryPlace(ctx, 'round_wooden_table_01', c, 0, true)
-    tryPlace(ctx, 'modern_ceiling_lamp_01', c, 0, true)
+  }
+  const at = table ?? c0
+  for (const s of nearest(ctx, at)) if (onSide(ctx, s, 'wall_clock', projU(s, at), FLUSH)) break
+  const family = split ? ends.find((e) => e !== end) : undefined
+  if (family) {
+    // a different table and chair from the living room's: the two zones are seen together through the passage
+    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
+    if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
 }
 
 function study(ctx: Ctx): void {
-  const ranked = [...ctx.sides].sort((a, b) => (b.windows > 0 ? 1 : 0) - (a.windows > 0 ? 1 : 0) || b.len - a.len)
-  const desk = onSides(ctx, ranked, 'metal_office_desk')
+  const ranked = [...ctx.sides].sort((a, b) => (b.wins.length > 0 ? 1 : 0) - (a.wins.length > 0 ? 1 : 0) || b.len - a.len)
+  const desk = onSides(ctx, ranked, 'desk_oak')
   if (desk) {
-    const cc = add(desk.c, desk.side.n, size('metal_office_desk').z / 2 + 0.1 + size('dining_chair_02').z / 2)
-    tryPlace(ctx, 'dining_chair_02', cc, desk.rot + 180)
+    const cc = add(desk.c, desk.side.n, size('desk_oak').z / 2 + 0.05 + size('dining_chair').z / 2)
+    tryPlace(ctx, 'dining_chair', cc, desk.rot + 180)
     onSides(ctx, others(ctx, [desk.side]), 'wooden_display_shelves_01')
   }
+  inCorner(ctx, 'modern_arm_chair_01')
   inCorner(ctx, 'potted_plant_02')
+  const c = polygonCentroid(ctx.inner)
+  const offs = [0, -0.25, 0.25, -0.5, 0.5]
+  rug: for (const dx of offs) for (const dy of offs) if (tryPlace(ctx, 'rug_round', { x: c.x + dx, y: c.y + dy }, 0, 'flat')) break rug
 }
 
+/** Kitchen: fridge in a corner, then one fitted run of 0.6 m modules (sink, hob, counters) with wall cabinets over. */
 function kitchen(ctx: Ctx): void {
-  const stove = onSides(ctx, rankLongest(ctx), 'electric_stove')
-  if (stove) {
-    const half = size('electric_stove').x / 2 + size('kitchen_counter').x / 2
-    for (const s of [-1, 1]) {
-      for (let k = 0; k < 8; k++) {
-        const u = stove.u + s * (half + k * size('kitchen_counter').x)
-        const hw = size('kitchen_counter').x / 2
-        if (u - hw < 0.1 || u + hw > stove.side.len - 0.1) break
-        if (!tryPlace(ctx, 'kitchen_counter', againstSide(stove.side, 'kitchen_counter', u), stove.rot)) break
+  inCorner(ctx, 'fridge')
+  const w = size('kitchen_counter').x
+  let best: { side: Side; us: number[] } | null = null
+  for (const side of rankNoOpenings(ctx)) {
+    // contiguous 0.6 m slots along the side, longest unbroken run wins
+    const rot = rotationFacing(side.n)
+    let run: number[] = []
+    for (let u = w / 2 + 0.02; u + w / 2 <= side.len; ) {
+      if (fits(ctx, 'kitchen_counter', againstSide(side, 'kitchen_counter', u, FLUSH), rot, 'solid')) {
+        run.push(u)
+        if (!best || run.length > best.us.length) best = { side, us: [...run] }
+        u += w
+      } else {
+        run = []
+        u += 0.05
       }
     }
   }
-  inCorner(ctx, 'fridge')
+  if (!best) return
+  const { side, us } = best
+  const n = us.length
+  const win = side.wins[0]
+  const sink = win ? us.reduce((b, u, i) => (Math.abs(u - (win.u0 + win.u1) / 2) < Math.abs(us[b] - (win.u0 + win.u1) / 2) ? i : b), 0) : n >= 4 ? 1 : 0
+  const hob = n < 2 ? 0 : sink < n / 2 ? Math.min(n - 1, Math.max(sink + 2, n - 2)) : Math.max(0, Math.min(sink - 2, 1))
+  const rot = rotationFacing(side.n)
+  us.forEach((u, i) => {
+    const id = i === hob ? 'kitchen_hob' : i === sink && n > 1 ? 'kitchen_sink' : 'kitchen_counter'
+    tryPlace(ctx, id, againstSide(side, id, u, FLUSH), rot)
+    const top = i === hob ? 'kitchen_hood' : 'kitchen_upper'
+    tryPlace(ctx, top, againstSide(side, top, u, FLUSH), rot, 'stack')
+  })
 }
 
 function bath(ctx: Ctx): void {
-  const t = onSides(ctx, rankNoOpenings(ctx), 'toilet')
+  if (ctx.room.areaSqm >= 4) inCorner(ctx, 'shower_screen')
+  // toilet on the blankest wall and the vanity on another; if that leaves no room for the vanity, the other way round
+  const pair = (a: string, b: string) =>
+    atomic(ctx, () => {
+      const first = onSides(ctx, rankNoOpenings(ctx), a, FLUSH)
+      return !!first && !!(onSides(ctx, others(ctx, [first.side]), b, FLUSH) ?? onSide(ctx, first.side, b, first.side.len / 2, FLUSH))
+    })
+  if (pair('toilet', 'vanity') || pair('vanity', 'toilet')) return
+  const t = onSides(ctx, rankNoOpenings(ctx), 'toilet', FLUSH)
   onSides(ctx, t ? others(ctx, [t.side]) : rankLongest(ctx), 'basin') ?? onSides(ctx, rankLongest(ctx), 'basin')
 }
 
@@ -354,10 +566,12 @@ const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
 /** Deterministic preset placements for every room (rooms in the given order). */
 export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const out: FurniturePlacement[] = []
+  const k = rooms.find((r) => r.kind === 'kitchen')
+  const kitchenAt = k && k.loop.length >= 3 ? polygonCentroid(roomInnerPolygon(k, unit)) : null
   for (const room of rooms) {
     const fn = BY_KIND[room.kind]
     if (!fn || room.loop.length < 3) continue
-    const ctx = makeCtx(room, unit)
+    const ctx = makeCtx(room, unit, kitchenAt)
     fn(ctx)
     out.push(...ctx.out)
   }
