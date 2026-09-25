@@ -540,4 +540,14 @@ describe('furnish', () => {
     const square = rect('dining', 5.4, 5.4, { wall: 0, offsetM: 0.4 }) // 29 m², but no end to put a lounge at
     expect(furnish(square, deriveRooms(square)).map((p) => p.assetId)).not.toContain('sofa_3seat')
   })
+
+  test.skipIf(!typeA || !typeC)('a help room too short for the 1.9 m cot (A, C: 1.8 × 1.5 m) gets the short cot, still named cot*', () => {
+    for (const u of [typeA, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      expect(ps.filter((p) => p.roomId === 'r_helpbed').map((p) => p.assetId).sort(), u.id).toEqual(['cot_s', 'hook_rail'])
+      expectInsideAndDisjoint(ps, rooms, u)
+      for (const z of doorClearZones(rooms.find((r) => r.id === 'r_helpbed')!, u)) expect(quadsOverlap(quad(ps.find((p) => p.assetId === 'cot_s')!), z)).toBe(false)
+    }
+  })
 })

@@ -617,9 +617,9 @@ function closet(ctx: Ctx): void {
   if (ctx.room.areaSqm >= 3) for (const s of rankNoOpenings(ctx).slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
 }
 
-/** Help / servant room: a cot along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */
+/** Help / servant room: a cot (else the short one) along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */
 function helpRoom(ctx: Ctx): void {
-  const cot = onSides(ctx, rankNoOpenings(ctx), 'cot')
+  const cot = onSides(ctx, rankNoOpenings(ctx), 'cot') ?? onSides(ctx, rankNoOpenings(ctx), 'cot_s')
   onSides(ctx, cot ? others(ctx, [cot.side]) : rankLongest(ctx), 'hook_rail', FLUSH) ?? (cot && onSide(ctx, cot.side, 'hook_rail', cot.u, FLUSH))
 }
 
