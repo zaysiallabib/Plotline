@@ -1,8 +1,8 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
 import type { FurniturePlacement, Opening, Pt, Room, Unit } from '../core'
-import { heightRange, kitAsset, objectKind } from '../furnish/kit'
-import { isCommonCore } from '../furnish/presets'
+import { heightRange, kitAsset, objectKind, type KitAsset } from '../furnish/kit'
+import { footprint, isCommonCore } from '../furnish/presets'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -120,6 +120,7 @@ const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(van
 const SIGHT_MAX_SQM = 8
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
+const isSlab = (id: string, k: KitAsset) => !GLASS.has(id) && k.mount !== 'ceiling' && (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)
 /** …so that candidate loses this much of its distance-to-target score. */
 const SLAB_PENALTY = 1.5
 /** A ceiling piece reaching more than this below the ceiling (a pendant; not a fan, flush light or wall AC) hangs at head height. */
@@ -136,7 +137,7 @@ export const AC_IN_VIEW = 2.5
 export const FAN_CLEAR = 1.5
 /** …and this far in the frame: nearer, its 1.46 m blades fill the top of the view. */
 export const FAN_IN_VIEW = 2.5
-/** A wardrobe/shelf/tall piece in the frame (±FRAME_DEG) this close fills a third of it. */
+/** A wardrobe/shelf/tall piece with any corner in the frame (±FRAME_DEG) this close fills a third of it: the spot is out (like a pendant). */
 export const TALL_IN_VIEW = 1
 /** A bath is framed from a spot this far from its vanity/basin, else from its door. */
 export const BATH_BACK = 1.5
@@ -148,26 +149,31 @@ const TINY_SIGHT = 2.2
 const DOOR_STEP = [0.5, 0.6, 0.4]
 /** A piece this far off the view axis is in frame with margin (the horizontal half-FOV is ~48° at 16:9). */
 const FRAME_DEG = 40
+const inFrame = (p: Pt, face: Pt, q: Pt) => (q.x - p.x) * face.x + (q.y - p.y) * face.y > Math.cos((FRAME_DEG * Math.PI) / 180) * Math.hypot(q.x - p.x, q.y - p.y)
 /** Door views look down 20°: 1 m ahead the frame then reaches down to 0.3 m, so the vanity, WC or cot of a small room shows. */
 export const DOOR_PITCH = (-20 * Math.PI) / 180
 
 /**
- * Something overhead spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan
- * distance to its centre: a pendant (a ceiling piece hanging more than HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW
- * and in the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC within AC_NEAR / AC_IN_VIEW.
+ * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
+ * its centre: a pendant (a ceiling piece hanging more than HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW and in
+ * the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC within AC_NEAR / AC_IN_VIEW;
+ * a slab (wardrobe, shelf, tall piece) whose footprint is within TALL_IN_VIEW with a corner within ±FRAME_DEG.
  */
 const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
   unit.furniture.some((f) => {
     const k = kitAsset(f.assetId)
     if (!k) return false
+    const d = Math.hypot(f.x - p.x, f.y - p.y)
+    const ahead = (f.x - p.x) * face.x + (f.y - p.y) * face.y
+    if (isSlab(f.assetId, k))
+      return footprintDist(p, f, k.sizeM) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, k.sizeM)].some((q) => inFrame(p, face, q)) && inSight(unit, p, f)
     const kind = objectKind(k)
     const [near, inView] =
       kind === 'ac' ? [AC_NEAR, AC_IN_VIEW]
       : kind === 'ceiling-fan' ? [FAN_CLEAR, FAN_IN_VIEW]
       : k.mount === 'ceiling' && k.mountY === undefined && k.sizeM.y > HANG_DROP ? [HANG_CLEAR, HANG_IN_VIEW]
       : [0, 0]
-    const d = Math.hypot(f.x - p.x, f.y - p.y)
-    return (d < near || (d < inView && (f.x - p.x) * face.x + (f.y - p.y) * face.y > 0.6 * d)) && inSight(unit, p, f)
+    return (d < near || (d < inView && ahead > 0.6 * d)) && inSight(unit, p, f)
   })
 
 
@@ -212,7 +218,8 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * may be a whole glazed wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
- * piece is within SLAB_NEAR, minus HANG_PENALTY when the room's pendant hangs in the frame or its AC is overhead (`hangs`).
+ * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
+ * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`).
  * A room with no hero that is empty or under SIGHT_MAX_SQM has no target: each stand point faces the farthest inner
  * corner it can see and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
  * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: they are seen from just inside a door (see below).
@@ -333,9 +340,15 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     const t = sight ? farthest(p) : target
     const d = Math.hypot(t.x - p.x, t.y - p.y)
     if (d < 0.2) return // target sits here: faces nothing useful
-    const slab = pieces.some(({ f, k }) => (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6) && footprintDist(p, f, k.sizeM) < SLAB_NEAR)
-    const hung = hangs(unit, p, { x: (t.x - p.x) / d, y: (t.y - p.y) / d })
-    const score = (front ? (p.x - t.x) * front.x + (p.y - t.y) * front.y : d) - (slab ? SLAB_PENALTY : 0) - (hung ? HANG_PENALTY : 0)
+    const face = { x: (t.x - p.x) / d, y: (t.y - p.y) / d }
+    let slab = 0
+    for (const f of unit.furniture) {
+      const k = kitAsset(f.assetId)
+      const g = k && isSlab(f.assetId, k) ? footprintDist(p, f, k.sizeM) : SLAB_NEAR
+      if (g < SLAB_NEAR && inSight(unit, p, f))
+        slab = Math.max(slab, SLAB_PENALTY + ([f, ...footprint(f, f.rotationDeg, k!.sizeM)].some((q) => inFrame(p, face, q)) ? SLAB_NEAR - g : 0))
+    }
+    const score = (front ? (p.x - t.x) * front.x + (p.y - t.y) * front.y : d) - slab - (hangs(unit, p, face) ? HANG_PENALTY : 0)
     if (!best || score > best.score) best = { p, t, score }
   }
   candidates.forEach(consider)

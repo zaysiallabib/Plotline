@@ -7,7 +7,7 @@ import typeC from '../data/units/type-c.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
-import { furnish } from '../furnish/presets'
+import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_BACK, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, HANG_CLEAR, HANG_IN_VIEW, TALL_IN_VIEW, VIEW_INSET,
   entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
@@ -335,14 +335,23 @@ describe('viewer', () => {
     expect(ndc, 'cot centre on screen').toBeGreaterThan(-1)
   })
 
-  it.skip('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW and ±40° of the view (A, B, C)', () => {
+  it('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW with a corner within ±40° of the view; B Bed-2 keeps 1.4 m off its wardrobe (A, B, C)', () => {
     for (const flat of both)
-      for (const { name, v } of frames(flat))
+      for (const { name, v } of frames(flat)) {
+        // a closet's rails and a galley's run are the room itself: its 1 m aisle / 2.3 m depth cannot keep 1.5 m off them
+        if (/Walk-in closet|Kitchen/.test(name)) continue
         for (const f of flat.u.furniture) {
           const k = kitAsset(f.assetId)!
           if (k.mount === 'ceiling' || f.assetId === 'shower_screen' || !(k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)) continue
-          if (footprintDist(v.p, f, k.sizeM) < TALL_IN_VIEW && inSight(flat.u, v.p, f)) expect(deg(v.face, sub(f, v.p)), `${name}: ${f.id}`).toBeGreaterThan(40)
+          if (footprintDist(v.p, f, k.sizeM) < TALL_IN_VIEW && inSight(flat.u, v.p, f))
+            for (const q of [f, ...footprint(f, f.rotationDeg, k.sizeM)]) expect(deg(v.face, sub(q, v.p)), `${name}: ${f.id}`).toBeGreaterThan(40)
         }
+      }
+    // B Bed-2: its doors pin the bed-foot spots to the east end; the one farthest from the wardrobe (the art director's third of the frame)
+    const b = both[1]
+    const bed2 = b.rs.find((r) => r.name === 'Bed-2')!
+    const w = b.u.furniture.find((f) => f.roomId === bed2.id && f.assetId.startsWith('wardrobe'))!
+    expect(footprintDist(roomView(bed2, b.u).p, w, kitAsset(w.assetId)!.sizeM)).toBeGreaterThan(1.4)
   })
 
   it.skip('kitchen jumps stand across the room from the run, in front of the sink, and see the whole run (A, B, C; B is the model)', () => {
