@@ -485,4 +485,69 @@ describe('furnish', () => {
         expect(quadsOverlap(quad(p), below), `${p.id} under the clock`).toBe(false)
     }
   })
+
+  // Type C = Type A's layout on floors 3/5/7: its rule breaks, reproduced on the real plan
+  const typeC = (Object.values(import.meta.glob('../data/units/type-c*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test.skipIf(!typeA || !typeB || !typeC)('planters get plants only; a balcony under 1.2 m deep gets no seat', () => {
+    for (const u of [typeA, typeB, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      for (const r of rooms.filter((r) => r.kind === 'balcony' && /planter/i.test(r.name))) {
+        const ids = ps.filter((p) => p.roomId === r.id).map((p) => p.assetId)
+        expect(ids.every((a) => a.startsWith('potted_plant_')), `${u.id} ${r.name}: ${ids}`).toBe(true)
+      }
+    }
+    const planters = (u: Unit) => furnish(u, deriveRooms(u)).filter((p) => /planter/.test(p.roomId))
+    expect(planters(typeC).length, 'type C planters are dressed').toBeGreaterThanOrEqual(2)
+    const ledge = rect('balcony', 4, 1.1) // 4.4 m², 0.97 m clear
+    const ids = furnish(ledge, deriveRooms(ledge)).map((p) => p.assetId)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids.every((a) => a.startsWith('potted_plant_')), `${ids}`).toBe(true)
+  })
+
+  test.skipIf(!typeA || !typeB || !typeC)('the L-shaped 3.8 m² Bath-3 (C) gets a shower tray flush in a corner; a powder room never does', () => {
+    const rooms = deriveRooms(typeC)
+    const ps = furnish(typeC, rooms)
+    const bath = rooms.find((r) => r.id === 'r_bath3')!
+    const mine = ps.filter((p) => p.roomId === bath.id)
+    const tray = mine.find((p) => p.assetId === 'shower_screen')
+    expect(tray, `${mine.map((p) => p.assetId)}`).toBeDefined()
+    const inner = roomInnerPolygon(bath, typeC)
+    expect(Math.min(...inner.flatMap((c) => quad(tray!).map((q) => Math.hypot(q.x - c.x, q.y - c.y)))), 'flush in a corner').toBeLessThan(0.02)
+    expect(mine.map((p) => p.assetId)).toContain('toilet')
+    expectInsideAndDisjoint(ps, rooms, typeC)
+    for (const u of [typeA, typeB, typeC]) {
+      const rs = deriveRooms(u)
+      const all = furnish(u, rs)
+      for (const r of rs.filter((r) => /powder/i.test(r.name))) expect(all.filter((p) => p.roomId === r.id).map((p) => p.assetId), `${u.id} ${r.name}`).not.toContain('shower_screen')
+    }
+  })
+
+  test.skipIf(!typeA || !typeC)('the irregular 33 m² dining (C) gets two zones like A: table at the kitchen end, lounge at the other; a square room never splits', () => {
+    for (const u of [typeA, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      const mine = ps.filter((p) => p.roomId === 'r_dining')
+      const table = mine.find((p) => p.assetId === 'dining_table')!
+      const sofa = mine.find((p) => p.assetId === 'sofa_3seat')
+      expect(sofa, `${u.id}: ${mine.map((p) => p.assetId)}`).toBeDefined()
+      const k = roomInnerPolygon(rooms.find((r) => r.kind === 'kitchen')!, u)
+      const kc = { x: k.reduce((t, p) => t + p.x, 0) / k.length, y: k.reduce((t, p) => t + p.y, 0) / k.length }
+      expect(Math.hypot(table.x - kc.x, table.y - kc.y), `${u.id} table nearer the kitchen`).toBeLessThan(Math.hypot(sofa!.x - kc.x, sofa!.y - kc.y))
+      expect(Math.hypot(table.x - sofa!.x, table.y - sofa!.y), `${u.id} two zones`).toBeGreaterThan(2)
+      expectInsideAndDisjoint(ps, rooms, u)
+    }
+    const square = rect('dining', 5.4, 5.4, { wall: 0, offsetM: 0.4 }) // 29 m², but no end to put a lounge at
+    expect(furnish(square, deriveRooms(square)).map((p) => p.assetId)).not.toContain('sofa_3seat')
+  })
+
+  test.skipIf(!typeA || !typeC)('a help room too short for the 1.9 m cot (A, C: 1.8 × 1.5 m) gets the short cot, still named cot*', () => {
+    for (const u of [typeA, typeC]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      expect(ps.filter((p) => p.roomId === 'r_helpbed').map((p) => p.assetId).sort(), u.id).toEqual(['cot_s', 'hook_rail'])
+      expectInsideAndDisjoint(ps, rooms, u)
+      for (const z of doorClearZones(rooms.find((r) => r.id === 'r_helpbed')!, u)) expect(quadsOverlap(quad(ps.find((p) => p.assetId === 'cot_s')!), z)).toBe(false)
+    }
+  })
 })

@@ -1,9 +1,10 @@
 /** Pure span logic behind the skirting mesh (details.ts). */
 import { describe, expect, test } from 'vitest'
 import typeA from '../data/units/type-a.json'
+import typeC from '../data/units/type-c.json'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { skirtingSpans, wallGeometry } from './details'
+import { curtainSides, skirtingSpans, wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
 
 test('type-a wall faces are crack-free: a corner on a coplanar face edge is that edge’s end, bit for bit', () => {
@@ -83,4 +84,18 @@ describe('skirtingSpans', () => {
       if (r.kind === 'bed') expect(n, r.name).toBeGreaterThan(3)
     }
   })
+})
+
+test('curtains only where the other side is open air: never on the study/dining glass partition (A, C)', () => {
+  for (const u of [typeA, typeC] as unknown as Unit[]) {
+    const rooms = core.deriveRooms(u)
+    const sides = (id: string) => {
+      const wall = u.walls.find((w) => w.openings.some((o) => o.id === id))!
+      return curtainSides(wall.openings.find((o) => o.id === id)!, wall, u, rooms).map(([r, s]) => `${r.name}:${s}`)
+    }
+    expect(sides('o_study_glass'), `${u.id} interior glass`).toEqual([])
+    expect(sides('o_study_win'), `${u.id} outside wall`).toEqual(['Study room:-1'])
+    expect(sides('o_bed2_win_e'), `${u.id} onto a veranda`).toEqual(['Bed-2:1'])
+    expect(sides('o_bed3_win'), `${u.id} onto an air shaft`).toEqual(['Bed-3:-1'])
+  }
 })

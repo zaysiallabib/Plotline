@@ -886,15 +886,15 @@ function closetRail(W: number): THREE.Mesh[] {
   return out
 }
 
-/** A 1.9 × 0.7 oak cot (chouki), long side along x: legs, rails, plank top, an 8 cm mattress, a flat pillow, a folded blanket. */
-function cot(): THREE.Mesh[] {
+/** An L × W oak cot (chouki; 1.9 × 0.7, short 1.7 × 0.65), long side along x: legs, rails, plank top, an 8 cm mattress, a flat pillow, a folded blanket. */
+function cot(L: number, W: number): THREE.Mesh[] {
   const m = M()
-  const out = [box(1.9, 0.03, 0.7, m.oak, 0, 0.315, 0), box(1.86, 0.08, 0.66, m.mattress, 0, 0.37, 0)]
-  for (const z of [-0.32, 0.32]) {
-    out.push(box(1.9, 0.08, 0.04, m.oak, 0, 0.26, z))
-    for (const x of [-0.9, 0.9]) out.push(box(0.05, 0.3, 0.05, m.oak, x, 0.15, z))
+  const out = [box(L, 0.03, W, m.oak, 0, 0.315, 0), box(L - 0.04, 0.08, W - 0.04, m.mattress, 0, 0.37, 0)]
+  for (const z of [-(W / 2 - 0.03), W / 2 - 0.03]) {
+    out.push(box(L, 0.08, 0.04, m.oak, 0, 0.26, z))
+    for (const x of [-(L / 2 - 0.05), L / 2 - 0.05]) out.push(box(0.05, 0.3, 0.05, m.oak, x, 0.15, z))
   }
-  out.push(rbox(0.3, 0.05, 0.46, 0.02, m.linen, -0.72, 0.435, 0), rbox(0.34, 0.04, 0.6, 0.015, m.throwSage, 0.68, 0.43, 0))
+  out.push(rbox(0.3, 0.05, 0.46, 0.02, m.linen, -(L / 2 - 0.23), 0.435, 0), rbox(0.34, 0.04, W - 0.1, 0.015, m.throwSage, L / 2 - 0.27, 0.43, 0))
   return out
 }
 
@@ -985,7 +985,8 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   wardrobe_2door: () => wardrobe(2),
   closet_rail: () => closetRail(1.8),
   closet_rail_s: () => closetRail(1.2),
-  cot,
+  cot: () => cot(1.9, 0.7),
+  cot_s: () => cot(1.7, 0.65),
   hook_rail: hookRail,
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),

@@ -102,6 +102,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   closet_rail_s: P('closet_rail_s', 'Open closet unit: rail, shelf, clothes (1.2 m)', 'wardrobe', 1.2, 2.1, 0.55),
   // help room: a cot and a hook rail (a folded gamchha on it), nothing else
   cot: P('cot', 'Single cot, thin mattress', 'bed', 1.9, 0.46, 0.7), // long side is its front: it stands along a wall
+  cot_s: P('cot_s', 'Short single cot, thin mattress', 'bed', 1.7, 0.46, 0.65), // a help room under 1.9 m long
   hook_rail: { ...P('hook_rail', 'Hook rail with a towel', 'other', 0.6, 0.55, 0.09, 1.2), kind: 'decor' },
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), { ...P(stairId(w), `Dog-leg stair, ${((w - 0.1) / 2).toFixed(2)} m flights`, 'other', w, STAIR_RISE, STAIR_D), kind: 'stair' as const }])),
   ...Object.fromEntries(

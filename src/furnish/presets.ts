@@ -304,6 +304,21 @@ function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = [], gap = GAP) {
   return null
 }
 
+/**
+ * The inner polygon's minimum-area bounding box, trying the walls' directions only: its long axis, long and short
+ * extents. Ties keep the longest side's direction. (The true minimum may lie along a hull edge that bridges a notch.)
+ */
+function bounds(ctx: Ctx) {
+  const ext = (a: Pt) => Math.max(...ctx.inner.map((p) => dot(p, a))) - Math.min(...ctx.inner.map((p) => dot(p, a)))
+  let best = { axis: ctx.sides[0].d, long: 0, short: 0 }
+  for (const s of rankLongest(ctx)) {
+    const [a, b] = [ext(s.d), ext(s.n)]
+    if (best.long && a * b >= best.long * best.short - 1e-6) continue
+    best = a >= b ? { axis: s.d, long: a, short: b } : { axis: s.n, long: b, short: a }
+  }
+  return best
+}
+
 /** Sides ranked: fewest openings (doors + windows) first, then longest, then farthest from doors. */
 const rankNoOpenings = (ctx: Ctx) =>
   [...ctx.sides].sort(
@@ -439,10 +454,10 @@ function diningSet(ctx: Ctx, c: Pt, rot: number, seats: number): boolean {
   })
 }
 
-/** Centroid, main axis (the longest side) and the inner polygon's extent along it. */
+/** Centroid, main axis (the bounding box's long side: an irregular room's longest wall may run across it) and the inner polygon's extent along it. */
 function mainAxis(ctx: Ctx) {
   const c0 = polygonCentroid(ctx.inner)
-  const axis = rankLongest(ctx)[0].d
+  const axis = bounds(ctx).axis
   const along = ctx.inner.map((p) => dot({ x: p.x - c0.x, y: p.y - c0.y }, axis))
   return { c0, axis, lo: Math.min(...along), hi: Math.max(...along) }
 }
@@ -573,7 +588,8 @@ function kitchen(ctx: Ctx): void {
 }
 
 function bath(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 4) inCorner(ctx, 'shower_screen', [], GAP + FLUSH) // a fitted tray: flush to both walls
+  // a fitted tray, flush to both walls, from 3.5 m² (an L-shaped 3.8 m² bath takes one); never in a powder room (a guest WC)
+  if (ctx.room.areaSqm >= 3.5 && !/powder|\bpdr\b/i.test(ctx.room.name)) inCorner(ctx, 'shower_screen', [], GAP + FLUSH)
   // toilet on the blankest wall and the vanity on another; if that leaves no room for the vanity, the other way round
   const pair = (a: string, b: string) =>
     atomic(ctx, () => {
@@ -588,7 +604,9 @@ function bath(ctx: Ctx): void {
 
 function balcony(ctx: Ctx): void {
   const plant = inCorner(ctx, 'potted_plant_02')
-  if (ctx.room.areaSqm >= 3) {
+  // a planter is for plants; a ledge under 1.2 m deep is no place to sit
+  if (/planter/i.test(ctx.room.name)) inCorner(ctx, 'potted_plant_01', plant ? [plant.corner] : [])
+  else if (ctx.room.areaSqm >= 3 && bounds(ctx).short >= 1.2) {
     inCorner(ctx, 'mid_century_lounge_chair', plant ? [plant.corner] : []) ??
       tryPlace(ctx, 'ottoman_01', polygonCentroid(ctx.inner), 0)
   }
@@ -599,9 +617,9 @@ function closet(ctx: Ctx): void {
   if (ctx.room.areaSqm >= 3) for (const s of rankNoOpenings(ctx).slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
 }
 
-/** Help / servant room: a cot along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */
+/** Help / servant room: a cot (else the short one) along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */
 function helpRoom(ctx: Ctx): void {
-  const cot = onSides(ctx, rankNoOpenings(ctx), 'cot')
+  const cot = onSides(ctx, rankNoOpenings(ctx), 'cot') ?? onSides(ctx, rankNoOpenings(ctx), 'cot_s')
   onSides(ctx, cot ? others(ctx, [cot.side]) : rankLongest(ctx), 'hook_rail', FLUSH) ?? (cot && onSide(ctx, cot.side, 'hook_rail', cot.u, FLUSH))
 }
 
