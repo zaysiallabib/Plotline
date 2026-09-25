@@ -2,6 +2,7 @@
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit } from '../core'
 import { heightRange, kitAsset, objectKind } from '../furnish/kit'
+import { isCommonCore } from '../furnish/presets'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -148,8 +149,6 @@ const hangs = (unit: Unit, room: Room, p: Pt, face: Pt): boolean =>
     return d < near || (d < inView && (f.x - p.x) * face.x + (f.y - p.y) * face.y > 0.6 * d)
   })
 
-/** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat — furnish's isCommonCore, same rule. */
-const isCommonCore = (r: Room): boolean => /\b(stair|lift|elevator|lobby)/i.test(r.name)
 
 /** Distance from p to a placement's plan footprint (0 inside). rotationDeg is clockwise in y-down plan space. */
 const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z: number }): number => {
