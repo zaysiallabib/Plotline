@@ -207,8 +207,7 @@ function bed(w: number): THREE.Mesh[] {
   return out
 }
 
-/** Sofa seat top — throw_pillows_01's mountY in kit.ts sits them on it. */
-export const SOFA_SEAT = 0.45
+/** Seat cushions top out at 0.45 m: throw_pillows_01's mountY in kit.ts sits them on it. */
 function sofa(): THREE.Mesh[] {
   const m = M()
   const W = 2.2
