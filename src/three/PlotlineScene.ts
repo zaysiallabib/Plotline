@@ -105,6 +105,7 @@ export class PlotlineScene {
     this.look = new Look(this.renderer, this.scene, this.camera, this.sun, opts.quality ?? 'high')
     this.scene.add(this.sun, this.sun.target)
     void this.loadEnvironment()
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored)
 
     // no domElement: the orbit listeners are attached only while in orbit mode (setMode), so a click that
     // reaches the canvas in walk mode never hits OrbitControls' setPointerCapture
@@ -173,8 +174,8 @@ export class PlotlineScene {
     const alt = THREE.MathUtils.clamp(u, 0, 1)
     this.sun.position.copy(this.center).addScaledVector(dir, 2 * this.radius + 30)
     this.sun.target.position.copy(this.center)
-    this.sun.intensity = 3.5 * Math.min(1, alt * 3)
-    this.sun.color.set('#ffb070').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
+    this.sun.intensity = 5.5 * Math.min(1, alt * 3)
+    this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setHour(hour)
   }
 
@@ -270,6 +271,7 @@ export class PlotlineScene {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
+    this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.clearStatic()
@@ -432,11 +434,11 @@ export class PlotlineScene {
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
     pmrem.dispose()
-    if (sky) {
-      sky.mapping = THREE.EquirectangularReflectionMapping // windows + dollhouse see a real sky; lighting stays on the interior HDRI
-      this.scene.background = sky
-    }
+    if (sky) this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
   }
+
+  /** The PMREM environment lives only on the GPU: after a context loss it comes back empty and every room goes dark. */
+  private onContextRestored = (): void => void this.loadEnvironment()
 
   // ───────────────────────────── controls ─────────────────────────────
 

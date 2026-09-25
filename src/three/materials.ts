@@ -85,7 +85,7 @@ export function materialFor(ref: MaterialRef): THREE.MeshStandardMaterial {
 export const EXTERIOR_PLASTER: MaterialRef = { kind: 'color', color: '#d9d4cb', roughness: 0.95 }
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
   floor: { kind: 'color', color: '#b8a58c', roughness: 0.7 },
-  wall: { kind: 'color', color: '#efe9df', roughness: 0.95 },
+  wall: { kind: 'color', color: '#f1efe9', roughness: 0.95 },
   ceiling: { kind: 'color', color: '#f7f5f0', roughness: 1 },
 }
 
