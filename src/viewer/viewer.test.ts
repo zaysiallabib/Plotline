@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
 import typeA from '../data/units/type-a.json'
+import typeB from '../data/units/type-b.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { DOOR_CLEAR, VIEW_INSET, entrySpawn, roomView, yawFor } from './spawn'
+import { DOOR_CLEAR, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -87,6 +88,35 @@ describe('viewer', () => {
     // facing away from the door (along the same side normal we stepped in on)
     expect(e.face.x * (e.p.x - at.x) + e.face.y * (e.p.y - at.y)).toBeGreaterThan(0)
     expect(core.roomAt({ x: e.p.x + e.face.x * 0.5, y: e.p.y + e.face.y * 0.5 }, rooms, unit)?.id).toBe(room.id)
+  })
+
+  it('Type B: entry faces down the 36-ft living room, not into the hall across the door; a 2.6 m slider does not push the Bed-1 view to the headboard', () => {
+    const b = typeB as unknown as Unit
+    const bRooms = core.deriveRooms(b)
+    const e = entrySpawn(b, bRooms)!
+    const living = bRooms.find((r) => r.id === 'r_living')!
+    expect(core.roomAt(e.p, bRooms, b)?.id).toBe('r_living')
+    expect(e.face.x, 'looks east along the room').toBeGreaterThan(0.9)
+    const d = Math.hypot(living.centroid.x - e.p.x, living.centroid.y - e.p.y)
+    expect(e.face.x * (living.centroid.x - e.p.x) + e.face.y * (living.centroid.y - e.p.y)).toBeCloseTo(d, 6)
+    // Bed-1: a sliding door has no leaf, so its whole 2.6 m span does not keep the camera 2.9 m away
+    const furnished: Unit = { ...b, furniture: furnish(b, bRooms) }
+    const bed1 = bRooms.find((r) => r.id === 'r_bed1')!
+    const bed = furnished.furniture.find((f) => f.roomId === bed1.id && f.assetId.startsWith('bed_'))!
+    const v = roomView(bed1, furnished)
+    const t = (bed.rotationDeg * Math.PI) / 180
+    expect((v.p.x - bed.x) * -Math.sin(t) + (v.p.y - bed.y) * Math.cos(t), 'in front of the bed').toBeGreaterThan(2)
+  })
+
+  it('Rooms list: walk-in rooms only (a door or passage), no shafts, planters or lift core', () => {
+    const names = listedRooms(unit, rooms).map((r) => r.name)
+    expect(names).toContain('Lift lobby')
+    expect(names).toContain('Help bed')
+    for (const n of ['Planter', 'Lift core', 'AOD (north)']) expect(names).not.toContain(n)
+    const b = typeB as unknown as Unit
+    const bNames = listedRooms(b, core.deriveRooms(b)).map((r) => r.name)
+    for (const n of ['Stair', 'K. veranda', 'Help room']) expect(bNames).toContain(n)
+    for (const n of ['Planter (bed-1)', 'Planter (living)']) expect(bNames).not.toContain(n)
   })
 
   it('entry spawn falls back to the largest living room when the first door has no enterable side', () => {

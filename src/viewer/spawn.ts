@@ -19,10 +19,17 @@ export const yawFor = (dir: Pt): number => Math.atan2(-dir.x, -dir.y)
 
 const enterable = (r: Room | null): r is Room => !!r && r.kind !== 'other' && r.kind !== 'shaft'
 
+/** Rooms-list rooms: ones you can walk into (a door or passage on their walls) of at least 2 m²; no shafts, planters, lift cores. */
+export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
+  const walls = new Map(unit.walls.map((w) => [w.id, w]))
+  return rooms.filter((r) => r.kind !== 'shaft' && r.areaSqm >= 2 && r.wallIds.some((id) => walls.get(id)?.openings.some((o) => o.kind !== 'window')))
+}
+
 /**
  * Entry spawn (PM rule): the FIRST `door` in walls[] order; stand 1.2 m from the door centre on the
- * side whose room is not 'other'/'shaft' (larger room wins when both qualify), facing away from the
- * door into that room. Falls back to the centroid of the largest living room (then any room).
+ * side whose room is not 'other'/'shaft' (larger room wins when both qualify), facing that room's centre —
+ * a long room is seen down its length, not across into the nearest wall — or straight in from the door
+ * when the centre is not ahead. Falls back to the centroid of the largest living room (then any room).
  */
 export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
   for (const w of unit.walls) {
@@ -39,7 +46,11 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     else if (enterable(back)) side = -1
     if (!side) break // first door only; a door between two shafts/lobbies means the unit has no usable entry
     const n = { x: f.normal.x * side, y: f.normal.y * side }
-    return { p: add(at, n, w.thicknessM / 2 + 1.2), face: n }
+    const p = add(at, n, w.thicknessM / 2 + 1.2)
+    const c = (side > 0 ? front : back)!.centroid
+    const d = Math.hypot(c.x - p.x, c.y - p.y)
+    const toC = { x: (c.x - p.x) / d, y: (c.y - p.y) / d }
+    return { p, face: d > 1 && toC.x * n.x + toC.y * n.y > 0 ? toC : n }
   }
   const living = rooms.filter((r) => r.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0] ?? rooms[0]
   return living ? { p: living.centroid, face: { x: 0, y: -1 } } : null
@@ -80,8 +91,8 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * midpoint (VIEW_INSET in). A candidate is out when it is outside the inner polygon, crowded by a third
  * edge, within EYE_CLEAR of anything reaching above 1.2 m (wall cabinets, wardrobe, TV), or near a door:
  * a door's whole span must be max(DOOR_CLEAR, widthM + 0.3) away — that covers its centre, its hinge
- * and the leaf's swing arc (radius widthM around the hinge); a passage (no leaf, may be a whole open
- * wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
+ * and the leaf's swing arc (radius widthM around the hinge); a passage or a sliding door (no swinging leaf,
+ * may be a whole glazed wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece is within SLAB_NEAR.
@@ -118,7 +129,10 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
   })
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
-      o.kind === 'door' ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3) : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
+      // slider as openings.ts builds it: no hinge, ≥ 1.2 m
+      o.kind === 'door' && (o.hinge || o.widthM < 1.2)
+        ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3)
+        : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
     )
   const pieces = items.flatMap((f) => {
     const k = kitAsset(f.assetId)

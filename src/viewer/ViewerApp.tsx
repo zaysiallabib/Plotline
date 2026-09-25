@@ -16,7 +16,7 @@ import type { XRControls } from '../three/xr'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, type Draft } from './Notes'
-import { entrySpawn, roomView, yawFor } from './spawn'
+import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
 import { decodeConfig, encodeConfig } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
@@ -85,7 +85,7 @@ export default function ViewerApp() {
 
 function Viewer({ unit }: { unit: Unit }) {
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
-  const listedRooms = useMemo(() => rooms.filter((r) => r.kind !== 'shaft' && r.areaSqm >= 2), [rooms])
+  const listed = useMemo(() => listedRooms(unit, rooms), [unit, rooms])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [scene, setScene] = useState<PlotlineScene | null>(null)
   const [loaded, setLoaded] = useState(0)
@@ -306,7 +306,7 @@ function Viewer({ unit }: { unit: Unit }) {
         <>
           <Hud
             room={room}
-            rooms={listedRooms}
+            rooms={listed}
             mode={mode}
             finishesOpen={finishesOpen}
             commenting={commenting}
