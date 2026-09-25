@@ -15,8 +15,8 @@
  *
  * Every candidate footprint (4 rotated corners) must lie inside the room's
  * inner polygon. Beyond that, by placement mode:
- *  - 'solid' (default): must not cross a door/passage clear zone (opening width ×
- *    1 m into the room); must not overlap an earlier solid footprint whose height
+ *  - 'solid' (default): must not cross a door/passage clear zone (opening width × 1 m into the room where a
+ *    leaf swings in or it is a passage; 0.6 m where the leaf swings away or slides); must not overlap an earlier solid footprint whose height
  *    range [bottom, top] overlaps its own (a frame above a sofa is fine, a frame
  *    behind a wardrobe is not); must not stand in front of a window it would cover
  *    (top > sill + 0.35 m, e.g. a wardrobe, a mirror, upper cabinets).
@@ -34,6 +34,8 @@ export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
 const FLUSH = -GAP + 0.005
 const DOOR_CLEAR = 1.0
+/** Clear depth in front of a door whose leaf does not sweep the room (it swings away, or slides): room to step in. */
+const STEP_IN = 0.6
 /** How far a window "reaches" into the room for the cover test, and how much sill overlap is fine. */
 const WIN_DEPTH = 0.3
 const SILL_SLACK = 0.35
@@ -49,8 +51,8 @@ interface Side {
   n: Pt // inward normal
   len: number
   thick: number
-  /** [u0, u1] along the side from p0 */
-  doors: [number, number][]
+  /** [u0, u1] along the side from p0, clear depth into the room */
+  doors: [number, number, number][]
   wins: { u0: number; u1: number; sill: number; top: number }[]
 }
 
@@ -137,13 +139,18 @@ function buildSides(room: Room, unit: Unit): Side[] {
     for (const o of w?.openings ?? []) {
       const u0 = forward ? o.offsetM : len - o.offsetM - o.widthM
       if (o.kind === 'window') wins.push({ u0, u1: u0 + o.widthM, sill: o.sillM, top: o.sillM + o.heightM })
-      else doors.push([u0, u0 + o.widthM])
+      else {
+        // leaf side as openings.ts builds it: 'out' = +normal, which is this room's side when the wall runs with the loop
+        const slides = !o.hinge && o.widthM >= 1.2
+        const sweeps = o.kind === 'passage' || (!slides && (o.swing !== 'in') === forward)
+        doors.push([u0, u0 + o.widthM, sweeps ? DOOR_CLEAR : STEP_IN])
+      }
     }
     return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, doors, wins }
   })
   const collinear = (a: Side, b: Side) => a.d.x * b.d.x + a.d.y * b.d.y > 0.9999
   const merge = (a: Side, b: Side) => {
-    for (const [u0, u1] of b.doors) a.doors.push([u0 + a.len, u1 + a.len])
+    for (const [u0, u1, depth] of b.doors) a.doors.push([u0 + a.len, u1 + a.len, depth])
     for (const w of b.wins) a.wins.push({ ...w, u0: w.u0 + a.len, u1: w.u1 + a.len })
     a.len += b.len
     a.thick = Math.max(a.thick, b.thick)
@@ -168,9 +175,9 @@ const spanQuad = (s: Side, u0: number, u1: number, depth: number): Pt[] => {
   return [a, b, add(b, s.n, depth), add(a, s.n, depth)]
 }
 
-/** Door/passage clear zones of a room (opening width × 1 m into the room). */
+/** Door/passage clear zones of a room (opening width × clear depth into the room). */
 export function doorClearZones(room: Room, unit: Unit): Pt[][] {
-  return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1]) => spanQuad(s, u0, u1, DOOR_CLEAR)))
+  return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1, depth]) => spanQuad(s, u0, u1, depth)))
 }
 
 function makeCtx(room: Room, unit: Unit, kitchen: Pt | null, bedStyle: string): Ctx {
@@ -180,8 +187,8 @@ function makeCtx(room: Room, unit: Unit, kitchen: Pt | null, bedStyle: string): 
   const clear: Pt[][] = []
   const wins: Ctx['wins'] = []
   for (const s of sides) {
-    for (const [u0, u1] of s.doors) {
-      clear.push(spanQuad(s, u0, u1, DOOR_CLEAR))
+    for (const [u0, u1, depth] of s.doors) {
+      clear.push(spanQuad(s, u0, u1, depth))
       doorPts.push(add(add(s.p0, s.d, (u0 + u1) / 2), s.n, s.thick / 2))
     }
     // 5 cm trim at each end: a cabinet may butt up to a window that starts in the corner
@@ -249,11 +256,11 @@ const againstSide = (side: Side, assetId: string, u: number, out = 0): Pt =>
 /** Where the perpendicular from p meets `side`, clamped to it. */
 const projU = (side: Side, p: Pt) => Math.min(side.len, Math.max(0, dot({ x: p.x - side.p0.x, y: p.y - side.p0.y }, side.d)))
 
-/** Place against a side, preferring u = uPref and sliding ±0.25 m steps until the footprint fits. */
-function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0, mode: Mode = 'solid') {
+/** Place against a side, preferring u = uPref and sliding ±0.25 m steps (at most `reach`) until the footprint fits. */
+function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0, mode: Mode = 'solid', reach = side.len / 2) {
   const hw = size(assetId).x / 2
   const rot = rotationFacing(side.n)
-  for (let k = 0; k * 0.25 <= side.len / 2; k++) {
+  for (let k = 0; k * 0.25 <= reach; k++) {
     for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
       if (u - hw < 0.1 || u + hw > side.len - 0.1) continue
       const c = againstSide(side, assetId, u, out)
@@ -278,7 +285,7 @@ function onSides(ctx: Ctx, sides: Side[], assetId: string, out = 0) {
  * Edge directions snap to the nearest real wall direction: where wall thickness steps along a straight wall the
  * inner polygon gets a short slanted edge, and a corner piece must not come out skewed by it.
  */
-function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = []) {
+function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = [], gap = GAP) {
   const n = ctx.inner.length
   const sz = size(assetId)
   const snap = (e: Pt) => ctx.sides.map((s) => s.d).reduce((b, d) => (dot(d, e) > dot(b, e) ? d : b))
@@ -290,7 +297,7 @@ function inCorner(ctx: Ctx, assetId: string, exclude: Pt[] = []) {
     const e1 = snap({ x: (next.x - P.x) / (dist(P, next) || 1), y: (next.y - P.y) / (dist(P, next) || 1) })
     const e0 = snap({ x: (P.x - prev.x) / (dist(P, prev) || 1), y: (P.y - prev.y) / (dist(P, prev) || 1) })
     if (Math.abs(dot(e0, e1)) > 0.9) continue // a thickness step, not a corner
-    const c = add(add(P, e1, sz.x / 2 + GAP), e0, -(sz.z / 2 + GAP))
+    const c = add(add(P, e1, sz.x / 2 + gap), e0, -(sz.z / 2 + gap))
     const p = tryPlace(ctx, assetId, c, rotationFacing({ x: -e1.y, y: e1.x }))
     if (p) return { p, corner: P }
   }
@@ -392,6 +399,7 @@ function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_co
 }
 
 function living(ctx: Ctx): void {
+  if (twoZones(ctx)) return dining(ctx) // open-plan "living, dining & family": a TV across the whole length is useless
   // the TV wants the longest blank wall; the sofa faces it from the opposite side
   const tvWall = rankNoOpenings(ctx)[0]
   const opp = opposite(ctx, tvWall)
@@ -431,14 +439,23 @@ function diningSet(ctx: Ctx, c: Pt, rot: number, seats: number): boolean {
   })
 }
 
-function dining(ctx: Ctx): void {
+/** Centroid, main axis (the longest side) and the inner polygon's extent along it. */
+function mainAxis(ctx: Ctx) {
   const c0 = polygonCentroid(ctx.inner)
   const axis = rankLongest(ctx)[0].d
   const along = ctx.inner.map((p) => dot({ x: p.x - c0.x, y: p.y - c0.y }, axis))
-  const lo = Math.min(...along)
-  const hi = Math.max(...along)
-  // a long, big room is "dining + family living": table at the end nearest the kitchen, sofa group at the other
-  const split = hi - lo >= 6 && ctx.room.areaSqm >= 25
+  return { c0, axis, lo: Math.min(...along), hi: Math.max(...along) }
+}
+
+/** A long, big room is "dining + family living": table at the end nearest the kitchen, sofa group at the other. */
+function twoZones(ctx: Ctx): boolean {
+  const { lo, hi } = mainAxis(ctx)
+  return hi - lo >= 6 && ctx.room.areaSqm >= 25
+}
+
+function dining(ctx: Ctx): void {
+  const { c0, axis, lo, hi } = mainAxis(ctx)
+  const split = twoZones(ctx)
   const mid = (lo + hi) / 2
   let ends = split ? [add(c0, axis, mid - (hi - lo) / 4), add(c0, axis, mid + (hi - lo) / 4)] : [c0]
   if (ctx.kitchen) ends = [...ends].sort((a, b) => dist(a, ctx.kitchen!) - dist(b, ctx.kitchen!))
@@ -473,7 +490,8 @@ function dining(ctx: Ctx): void {
   if (family) {
     // a different table and chair from the living room's: the two zones are seen together through the passage
     const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
-    if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
+    // across from the sofa or not at all: slid further along a long room it faces the dining table instead
+    if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH, 'solid', 1)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
 }
@@ -534,7 +552,7 @@ function kitchen(ctx: Ctx): void {
 }
 
 function bath(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 4) inCorner(ctx, 'shower_screen')
+  if (ctx.room.areaSqm >= 4) inCorner(ctx, 'shower_screen', [], GAP + FLUSH) // a fitted tray: flush to both walls
   // toilet on the blankest wall and the vanity on another; if that leaves no room for the vanity, the other way round
   const pair = (a: string, b: string) =>
     atomic(ctx, () => {
