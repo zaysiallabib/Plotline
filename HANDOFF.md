@@ -33,14 +33,14 @@ Done and merged (commit 56a9c02, 126 tests green):
 ## Wave 5 — realism fixes from the art-director list (IN PROGRESS, interrupted)
 
 The brief was the ranked list after wave 4. Four Opus agents, one worktree each, all branched from 56a9c02.
-Status per branch, verified 2026-09-25 09:00:
+Status per branch, updated 2026-09-25 09:15 (session 3, on Opus 5.5):
 
 | Worktree (`.claude/worktrees/`) | Fixes | State |
 |---|---|---|
-| `wave5-render` | #3 flat light / dead time slider, #5 beige cast, #9 dusk grey, #8 GTAO seams, shafts+planter open to sky, env reload on context restore | **Committed 6c669c3. Tests + tsc green. Ready to merge.** |
-| `wave5-viewer` | #2 Rooms-list jump lands in door swing / wardrobe | **Committed 368e101. 127 tests + tsc green. Ready to merge.** |
+| `wave5-render` | #3 flat light / dead time slider, #5 beige cast, #9 dusk grey, #8 GTAO seams, shafts+planter open to sky, env reload on context restore | **MERGED (db2b55c).** |
+| `wave5-viewer` | #2 Rooms-list jump lands in door swing / wardrobe | **MERGED (eb2303e). 127 tests + tsc green after both merges.** |
 | `wave5-furnish` | #4 Bath tiles mosaic + dead mirror (Reflector), #6 veneer too orange (re-exported textures + boxUV grain), #12 calmer staging (bed styles, bedside, cushions, styled counter, tall larder) | **Uncommitted, mid-edit.** See "Finish furnish" below. |
-| `wave5-details` | #7 aluminium frames flip dark/white, #8 wall seam hairlines | **No code changes.** Only diagnostic shots in `E:\dev\plotline-shots\wave5\details\` (study-seam, door-seam, dining-b, red/noao variants). Needs a fresh brief. |
+| `wave5-details` | #7 aluminium frames flip dark/white, #8 wall seam hairlines | Old worktree had no code → abandoned. **Re-briefed 09:15:** an Opus agent works in a NEW `.claude/worktrees/agent-*` worktree branched from eb2303e; after-shots → `E:\dev\plotline-shots\wave5\details2\`. If the session died: `git worktree list`, look for its commit; none → re-brief (#7 frame material metalness, #8 seams fixed at the wall-mesh source). |
 
 Parked by founder decision (PC first, VR later): #1 desktop canvas black when WebXR enabled, #10 VR window glass opaque.
 These are the first two VR tasks when VR resumes. VR draw calls 2.5–3.1k/eye: fine tethered, too many for standalone Quest.
