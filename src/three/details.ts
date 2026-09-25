@@ -120,7 +120,8 @@ export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]):
 /**
  * Floor-to-ceiling curtain pair drawn open to the sides of a window, on a slim rod, 0.1 m in front of the
  * `side` face and hung 0.1 m below the wall top. The rod reaches 0.24 m past each reveal (≈0.15 m of curtain
- * overhang + finial), less where a side wall is closer; each panel is stacked back over 18 % of the window, so the
+ * overhang + finial), less where a side wall or another window's rod is closer (see reach); ball finials and an end
+ * bracket (wall rose, arm, cradle) at each end. Each panel is stacked back over 18 % of the window, so the
  * middle 64 % stays open (at 30 % the panels cut every sun patch to a strip). One mesh (rod coloured via vertex
  * colours), picked as furniture.
  */
@@ -131,11 +132,22 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
   const ph = top - bottom
   const f = core.wallFrame(wall, graph.vertices)
   const inner = core.roomInnerPolygon(room, graph)
-  const inside = (u: number) =>
-    core.pointInPolygon({ x: f.origin.x + f.dir.x * u + f.normal.x * wc, y: f.origin.y + f.dir.y * u + f.normal.y * wc }, inner)
+  const at = (u: number) => ({ x: f.origin.x + f.dir.x * u + f.normal.x * wc, y: f.origin.y + f.dir.y * u + f.normal.y * wc })
+  // every other window of the room carries a rod 0.1 m off its wall face, reaching ≤ 0.24 m past its reveals: keep 6 cm off it
+  const rods = room.wallIds.flatMap((id) => {
+    const w = graph.walls.find((x) => x.id === id)
+    return w ? w.openings.filter((x) => x.kind === 'window' && x !== o).map((x) => ({ x, w, g: core.wallFrame(w, graph.vertices) })) : []
+  })
+  const nearRod = (p: Pt) =>
+    rods.some(({ x, w, g }) => {
+      const v = { x: p.x - g.origin.x, y: p.y - g.origin.y }
+      const along = v.x * g.dir.x + v.y * g.dir.y
+      return Math.abs(v.x * g.normal.x + v.y * g.normal.y) < w.thicknessM / 2 + 0.16 && along > x.offsetM - 0.3 && along < x.offsetM + x.widthM + 0.3
+    })
+  // the rod end stops 10 cm short of a side wall (its finial 8 cm) and clear of the next rod, back inside the reveal if it must
   const reach = (from: number, dir: number) => {
-    let d = 0
-    while (d < 0.24 && inside(from + dir * (d + 0.04))) d += 0.01
+    let d = -Math.min(0.3, 0.3 * o.widthM)
+    while (d < 0.24 && core.pointInPolygon(at(from + dir * (d + 0.11)), inner) && !nearRod(at(from + dir * (d + 0.01)))) d += 0.01
     return d
   }
   const left = o.offsetM - reach(o.offsetM, -1)
@@ -146,8 +158,8 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
     return g
   }
   for (const [u0, u1, phase] of [
-    [left + 0.07, o.offsetM + 0.18 * o.widthM, 0],
-    [o.offsetM + 0.82 * o.widthM, right - 0.07, 1.7],
+    [left + 0.07, Math.max(left + 0.15, o.offsetM + 0.18 * o.widthM), 0],
+    [Math.min(right - 0.15, o.offsetM + 0.82 * o.widthM), right - 0.07, 1.7],
   ]) {
     const pw = u1 - u0
     const folds = Math.max(3, Math.round(pw / 0.11))
@@ -163,14 +175,24 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
     g.translate(u0 + pw / 2, bottom + ph / 2, wc)
     geoms.push(paint(meterUVs(g), 1))
   }
-  // rod with finials, two wall brackets
+  // rod with ball finials on collars, and an end bracket just inside each finial: wall rose, arm, cradle
   const rodY = top + 0.035
-  const rod = new THREE.CylinderGeometry(0.011, 0.011, right - left, 12).rotateZ(Math.PI / 2).translate((left + right) / 2, rodY, wc)
-  const ends = [left, right].map((u) => new THREE.SphereGeometry(0.02, 12, 8).translate(u, rodY, wc))
-  const brackets = [left + 0.05, right - 0.05].map((u) =>
-    new THREE.CylinderGeometry(0.006, 0.006, 0.1, 8).rotateX(Math.PI / 2).translate(u, rodY, wc - side * 0.05),
-  )
-  for (const g of [rod, ...ends, ...brackets]) geoms.push(paint(meterUVs(g), 0.07))
+  const along = (g: THREE.BufferGeometry, u: number, w: number) => g.rotateZ(Math.PI / 2).translate(u, rodY, w)
+  const toWall = (g: THREE.BufferGeometry, u: number, w: number) => g.rotateX(Math.PI / 2).translate(u, rodY, w)
+  const rodParts = [along(new THREE.CylinderGeometry(0.011, 0.011, right - left, 12), (left + right) / 2, wc)]
+  for (const [u, s] of [
+    [left, 1],
+    [right, -1],
+  ]) {
+    rodParts.push(
+      new THREE.SphereGeometry(0.024, 14, 10).translate(u, rodY, wc),
+      along(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 12), u + s * 0.03, wc),
+      toWall(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 16), u + s * 0.07, side * (wall.thicknessM / 2 + 0.006)),
+      toWall(new THREE.CylinderGeometry(0.008, 0.008, 0.1, 8), u + s * 0.07, wc - side * 0.05),
+      along(new THREE.CylinderGeometry(0.017, 0.017, 0.03, 12), u + s * 0.07, wc),
+    )
+  }
+  for (const g of rodParts) geoms.push(paint(meterUVs(g), 0.07))
   const mat = materialFor(CURTAIN_FABRIC)
   mat.side = THREE.DoubleSide
   mat.vertexColors = true
