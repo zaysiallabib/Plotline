@@ -45,13 +45,13 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 | fabric_curtain | texture | https://ambientcg.com/view?id=Fabric036 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/fabric_curtain/{albedo.jpg,normal.jpg,roughness.jpg} — light linen weave | 900845 |
 | fabric_upholstery | texture | https://ambientcg.com/view?id=Fabric062 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/fabric_upholstery/{albedo.jpg,normal.jpg,roughness.jpg} — woven upholstery (beds, sofa, chairs) | 684732 |
 | rug_wool | texture | https://ambientcg.com/view?id=Carpet014 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/rug_wool/{albedo.jpg,normal.jpg,roughness.jpg} — loop-pile wool | 906938 |
-| wood_veneer_light | texture | https://ambientcg.com/view?id=Wood095 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/wood_veneer_light/{albedo.jpg,normal.jpg,roughness.jpg} — light oak veneer (doors, cabinets) | 182008 |
+| wood_veneer_light | texture | https://ambientcg.com/view?id=Wood095 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/wood_veneer_light/{albedo.jpg,normal.jpg,roughness.jpg} — light oak veneer (doors, cabinets); re-exported 2026-09-25, less orange | 378127 |
 | metal_brushed | texture | https://ambientcg.com/view?id=Metal009 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/metal_brushed/{albedo.jpg,normal.jpg,roughness.jpg} — brushed steel | 352234 |
 | art_sea | art | https://polyhaven.com/a/umhlanga_sunrise | Greg Zaal | CC0 | 2026-09-25 | art/{art_sea_l.jpg,art_sea_r.jpg} — diptych crop of the tonemapped HDRI | 72636 |
 | art_dawn | art | https://polyhaven.com/a/kiara_1_dawn | Greg Zaal | CC0 | 2026-09-25 | art/{art_dawn_l.jpg,art_dawn_r.jpg} — diptych crop of the tonemapped HDRI | 63891 |
 | tile_floor_outdoor | texture | https://polyhaven.com/a/grey_tiles | Amal Kumar | CC0 | 2026-09-24 | textures/tile_floor_outdoor/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1368127 |
 | plaster_white | texture | https://polyhaven.com/a/white_stucco | Amal Kumar | CC0 | 2026-09-24 | textures/plaster_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2314644 |
-| tile_wall_white | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | textures/tile_wall_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2258996 |
+| tile_wall_white | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | textures/tile_wall_white/{albedo.jpg,normal.jpg,roughness.jpg} — re-exported 2026-09-25 so it stops reading as mosaic; ao.jpg dropped | 275683 |
 | studio_small_09 | hdri | https://polyhaven.com/a/studio_small_09 | Sergej Majboroda | CC0 | 2026-09-24 | hdri/interior.hdr | 1615248 |
 | kloofendal_43d_clear_puresky | hdri | https://polyhaven.com/a/kloofendal_43d_clear_puresky | Greg Zaal | CC0 | 2026-09-24 | hdri/sky.hdr | 1184531 |
 
@@ -75,3 +75,5 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 - `round_wooden_table_01` + `dining_chair_02` (dark, tufted), `sofa_02` (black chesterfield),
   `metal_office_desk` and `electric_stove` (both worn) stay in the kit for existing unit files
   but presets no longer place them (procedural dining set, sofa, desk and hob module instead).
+- `throw_pillows_01`'s diffuse (`throw_pillows_01_diff_1k.jpg`) was re-graded locally on 2026-09-25 (calmer
+  colour); the model is otherwise the Poly Haven original.

@@ -54,7 +54,7 @@ const aabb = (q: Pt[]) => ({
 const isRug = (p: FurniturePlacement) => kitAsset(p.assetId)!.category === 'rug'
 // ceiling fixtures hang over everything; the cushions sit ON the sofa
 const solidItems = (ps: FurniturePlacement[]) =>
-  ps.filter((p) => kitAsset(p.assetId)!.mount !== 'ceiling' && !isRug(p) && p.assetId !== 'throw_pillows_01')
+  ps.filter((p) => kitAsset(p.assetId)!.mount !== 'ceiling' && !isRug(p) && !['throw_pillows_01', 'cushions_plain'].includes(p.assetId))
 // fitted wall units sit over the base modules by design (the sink's tap reaches up into the splashback zone)
 const STACKED = new Set(['kitchen_upper', 'kitchen_hood'])
 const stacked = (a: FurniturePlacement, b: FurniturePlacement) =>
@@ -103,7 +103,7 @@ describe('furnish', () => {
     // against a long wall (y = 0 or y = 3.5), never the door wall (x = 4)
     expect([0, 180]).toContain(bed.rotationDeg)
     expect(Math.min(bed.y, 3.5 - bed.y)).toBeCloseTo(0.127 / 2 + 0.05 + kitAsset('bed_queen')!.sizeM.z / 2, 6)
-    const tables = ps.filter((p) => p.assetId === 'side_table_01')
+    const tables = ps.filter((p) => p.assetId === 'bedside_oak')
     expect(tables).toHaveLength(2)
     expect(tables.some((t) => t.x < bed.x) && tables.some((t) => t.x > bed.x)).toBe(true)
     // door swing zone: 0.9 wide from y=0.3, 1 m into the room from the wall's inner face
@@ -164,7 +164,7 @@ describe('furnish', () => {
     const ps = furnish(unit, rooms)
     const ids = ps.map((p) => p.assetId)
     for (const a of ['fridge', 'kitchen_sink', 'kitchen_hob', 'kitchen_hood', 'kitchen_upper']) expect(ids, a).toContain(a)
-    const base = ps.filter((p) => ['kitchen_sink', 'kitchen_hob', 'kitchen_counter'].includes(p.assetId))
+    const base = ps.filter((p) => ['kitchen_sink', 'kitchen_hob', 'kitchen_counter', 'kitchen_counter_styled'].includes(p.assetId))
     const tops = ps.filter((p) => STACKED.has(p.assetId))
     expect(tops.length).toBe(base.length)
     for (const t of tops) expect(base.some((b) => b.rotationDeg === t.rotationDeg && quadsOverlap(quad(b), quad(t)))).toBe(true)
@@ -233,8 +233,12 @@ describe('furnish', () => {
     for (const a of ['sofa_3seat', 'throw_pillows_01', 'modern_coffee_table_01', 'tv_55']) expect(ids('r_living'), a).toContain(a)
     for (const a of ['dining_table', 'dining_chair', 'wall_clock', 'modern_ceiling_lamp_01']) expect(ids('r_dining'), a).toContain(a)
     expect(ids('r_dining').filter((a) => a === 'dining_chair')).toHaveLength(6)
-    for (const a of ['kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'fridge']) expect(ids('r_kitchen'), a).toContain(a)
+    for (const a of ['kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'fridge', 'kitchen_tall', 'kitchen_counter_styled']) expect(ids('r_kitchen'), a).toContain(a)
     expect(ids('r_bed1'), 'bed').toContain('bed_queen')
+    // linen by size rank: no two bedrooms dressed alike
+    expect(ids('r_bed2'), 'bed-2 linen').toContain('bed_queen_b')
+    expect(ids('r_bed3'), 'bed-3 linen').toContain('bed_queen_c')
+    expect(ids('r_dining'), 'family sofa cushions').toContain('cushions_plain')
     expect(ids('r_bed1').filter((a) => a.startsWith('art_')), 'diptych').toHaveLength(2)
     for (const a of ['vanity', 'shower_screen', 'toilet']) expect(ids('r_bath1'), a).toContain(a)
   })

@@ -28,7 +28,7 @@
 import type { FurniturePlacement, Room, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
 import { heightRange, kitAsset } from './kit'
-import { ART_SETS } from './procedural.meta'
+import { ART_SETS, ART_W, BED_STYLES } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -68,6 +68,8 @@ interface Ctx {
   counts: Map<string, number>
   /** centroid of the unit's kitchen, if any (the dining table goes to the end nearest it) */
   kitchen: Pt | null
+  /** bed linen (BED_STYLES), by the bedroom's size rank in the unit */
+  bedStyle: string
 }
 
 const size = (assetId: string) => kitAsset(assetId)?.sizeM ?? { x: 1, y: 1, z: 1 }
@@ -171,7 +173,7 @@ export function doorClearZones(room: Room, unit: Unit): Pt[][] {
   return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1]) => spanQuad(s, u0, u1, DOOR_CLEAR)))
 }
 
-function makeCtx(room: Room, unit: Unit, kitchen: Pt | null): Ctx {
+function makeCtx(room: Room, unit: Unit, kitchen: Pt | null, bedStyle: string): Ctx {
   const sides = buildSides(room, unit)
   const inner = roomInnerPolygon(room, unit)
   const doorPts: Pt[] = []
@@ -187,7 +189,7 @@ function makeCtx(room: Room, unit: Unit, kitchen: Pt | null): Ctx {
   }
   const farFromDoors = (p: Pt) => (doorPts.length ? Math.min(...doorPts.map((q) => dist(p, q))) : 0)
   const corners = [...inner].sort((a, b) => farFromDoors(b) - farFromDoors(a))
-  return { room, inner, sides, corners, doorPts, clear, wins, quads: [], rugs: [], out: [], counts: new Map(), kitchen }
+  return { room, inner, sides, corners, doorPts, clear, wins, quads: [], rugs: [], out: [], counts: new Map(), kitchen, bedStyle }
 }
 
 /** The footprint if `assetId` may stand at c (see header for modes), else null. */
@@ -323,23 +325,22 @@ function frames(ctx: Ctx, side: Side, u: number): void {
   const set = ART_SETS[[...ctx.room.id].reduce((h, ch) => h + ch.charCodeAt(0), 0) % ART_SETS.length]
   const rot = rotationFacing(side.n)
   const hang = (id: string, du: number) => tryPlace(ctx, id, againstSide(side, id, u + du, FLUSH), rot)
-  if (!atomic(ctx, () => !!hang(`${set}_l`, -0.28) && !!hang(`${set}_r`, 0.28))) hang(`${set}_r`, 0)
+  const du = (ART_W + 0.05) / 2
+  if (!atomic(ctx, () => !!hang(`${set}_l`, -du) && !!hang(`${set}_r`, du))) hang(`${set}_r`, 0)
 }
 
 // ───────────────────────────── per kind ─────────────────────────────
 
 function bed(ctx: Ctx): void {
-  const bedId = ctx.room.areaSqm < 9 ? 'bed_single' : 'bed_queen'
+  const queen = ctx.room.areaSqm >= 9
+  const bedId = (queen ? 'bed_queen' : 'bed_single') + ctx.bedStyle
   const b = onSides(ctx, rankNoOpenings(ctx), bedId)
   if (!b) return
-  const off = size(bedId).x / 2 + GAP + size('side_table_01').x / 2
-  for (const s of [-1, 1]) {
-    const c = againstSide(b.side, 'side_table_01', b.u + s * off)
-    tryPlace(ctx, 'side_table_01', c, b.rot)
-  }
+  const off = size(bedId).x / 2 + GAP + size('bedside_oak').x / 2
+  for (const s of [-1, 1]) tryPlace(ctx, 'bedside_oak', againstSide(b.side, 'bedside_oak', b.u + s * off), b.rot)
   // rug under the lower two thirds of the bed (or a bit less), long side across it, nudged clear of door zones
   const L = size(bedId).z
-  rug: for (const rug of bedId === 'bed_queen' ? ['rug_rect_large', 'rug_rect_small'] : ['rug_rect_small'])
+  rug: for (const rug of queen ? ['rug_rect_large', 'rug_rect_small'] : ['rug_rect_small'])
     for (const out of [L / 3, L / 4])
       for (const du of [0, -0.25, 0.25, -0.5, 0.5]) if (tryPlace(ctx, rug, againstSide(b.side, rug, b.u + du, out), b.rot, 'flat')) break rug
   frames(ctx, b.side, b.u)
@@ -354,13 +355,14 @@ function bed(ctx: Ctx): void {
  * Sofa group: sofa on the first side that takes it (centred on `toward`'s projection), pillows on
  * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair.
  */
-function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01') {
+function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01', pillows = 'throw_pillows_01') {
   let sofa: ReturnType<typeof onSide> = null
   for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
   if (!sofa) return null
   const { side, c, rot } = sofa
   const sz = size('sofa_3seat')
-  for (const s of [-1, 1]) tryPlace(ctx, 'throw_pillows_01', add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free', 0.7)
+  const scale = pillows === 'throw_pillows_01' ? 0.7 : undefined
+  for (const s of [-1, 1]) tryPlace(ctx, pillows, add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free', scale)
   rug: for (const rug of ['rug_rect_large', 'rug_rect_small'])
     for (const du of [0, -0.25, 0.25, -0.5, 0.5])
       if (tryPlace(ctx, rug, add(add(c, side.d, du), side.n, sz.z / 2 - 0.25 + size(rug).z / 2), rot, 'flat')) break rug
@@ -471,7 +473,7 @@ function dining(ctx: Ctx): void {
   const family = split ? ends.find((e) => e !== end) : undefined
   if (family) {
     // a different table and chair from the living room's: the two zones are seen together through the passage
-    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
+    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair', 'cushions_plain')
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
@@ -519,11 +521,16 @@ function kitchen(ctx: Ctx): void {
   const sink = win ? us.reduce((b, u, i) => (Math.abs(u - (win.u0 + win.u1) / 2) < Math.abs(us[b] - (win.u0 + win.u1) / 2) ? i : b), 0) : n >= 4 ? 1 : 0
   const hob = n < 2 ? 0 : sink < n / 2 ? Math.min(n - 1, Math.max(sink + 2, n - 2)) : Math.max(0, Math.min(sink - 2, 1))
   const rot = rotationFacing(side.n)
+  // a long run ends in a tall larder at the end nearest the fridge; the first plain counter gets kettle, board, fruit
+  const fridge = ctx.out.find((p) => p.assetId === 'fridge')
+  const near = (i: number) => (fridge ? dist(add(side.p0, side.d, us[i]), fridge) : i)
+  const larder = n >= 4 ? ([0, n - 1].filter((i) => i !== sink && i !== hob).sort((a, b) => near(a) - near(b))[0] ?? -1) : -1
   us.forEach((u, i) => {
+    const at = (id: string, mode: Mode = 'solid') => tryPlace(ctx, id, againstSide(side, id, u, FLUSH), rot, mode)
+    if (i === larder && at('kitchen_tall')) return
     const id = i === hob ? 'kitchen_hob' : i === sink && n > 1 ? 'kitchen_sink' : 'kitchen_counter'
-    tryPlace(ctx, id, againstSide(side, id, u, FLUSH), rot)
-    const top = i === hob ? 'kitchen_hood' : 'kitchen_upper'
-    tryPlace(ctx, top, againstSide(side, top, u, FLUSH), rot, 'stack')
+    if (!(id === 'kitchen_counter' && !ctx.counts.has('kitchen_counter_styled') && at('kitchen_counter_styled'))) at(id)
+    at(i === hob ? 'kitchen_hood' : 'kitchen_upper', 'stack')
   })
 }
 
@@ -566,12 +573,13 @@ const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
 /** Deterministic preset placements for every room (rooms in the given order). */
 export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const out: FurniturePlacement[] = []
+  const beds = rooms.filter((r) => r.kind === 'bed').sort((a, b) => b.areaSqm - a.areaSqm)
   const k = rooms.find((r) => r.kind === 'kitchen')
   const kitchenAt = k && k.loop.length >= 3 ? polygonCentroid(roomInnerPolygon(k, unit)) : null
   for (const room of rooms) {
     const fn = BY_KIND[room.kind]
     if (!fn || room.loop.length < 3) continue
-    const ctx = makeCtx(room, unit, kitchenAt)
+    const ctx = makeCtx(room, unit, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
     out.push(...ctx.out)
   }

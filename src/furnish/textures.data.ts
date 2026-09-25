@@ -72,7 +72,6 @@ export const TEXTURES: Record<string, TextureSet> = {
     albedo: "/assets/textures/tile_wall_white/albedo.jpg",
     normal: "/assets/textures/tile_wall_white/normal.jpg",
     roughness: "/assets/textures/tile_wall_white/roughness.jpg",
-    ao: "/assets/textures/tile_wall_white/ao.jpg",
     repeatM: 1.27,
     source: "https://polyhaven.com/a/long_white_tiles",
     author: "Jenelle van Heerden, Sergej Majboroda",
