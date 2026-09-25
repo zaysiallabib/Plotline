@@ -302,8 +302,9 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     for (let s = 0.05; s < L - 0.05; s += 0.05) if (!core.pointInPolygon(add(p, { x: q.x - p.x, y: q.y - p.y }, s / L), inner)) return false
     return true
   }
-  // a sightline ends on an inner corner; a balcony's on its rail/curb (a wall below the eye) or an opening (the street, or
-  // the room back through the slider; a window there is a neighbour's), on the inner face — never a blank corner
+  // a sightline ends on an inner corner; a balcony's on its rail/curb (a wall below the eye: the street) or its slider /
+  // passage (back into the flat), on the inner face — never a blank corner, a hinged door (ajar 20°) or a window (a
+  // neighbour room's)
   const ends =
     room.kind !== 'balcony'
       ? inner
@@ -312,7 +313,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
           const f = core.wallFrame(w, unit.vertices)
           const s = core.pointInPolygon(add(add(f.origin, f.dir, f.lengthM / 2), f.normal, w.thicknessM / 2 + 0.05), inner) ? 1 : -1
           const on = (u: number) => add(add(f.origin, f.dir, u), f.normal, s * (w.thicknessM / 2 + 0.02))
-          return [...(w.heightM < EYE ? [on(f.lengthM / 2)] : []), ...w.openings.filter((o) => o.kind !== 'window').map((o) => on(o.offsetM + o.widthM / 2))]
+          return [...(w.heightM < EYE ? [on(f.lengthM / 2)] : []), ...w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => on(o.offsetM + o.widthM / 2))]
         })
   const farthest = (p: Pt): Pt =>
     ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
