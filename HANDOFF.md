@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **deployed 2026-09-25 ~12:00 with waves 4–6** (founder ran `npx vercel --prod`; Claude checked the served build matches `dist/`, walked it in headless Edge — entry, Living, Bath-1, Bed-1 at 17:30 all fine — and opened it for the founder). **Wave 7 is merged but NOT deployed yet** — founder runs `npx vercel --prod`; Type B then lives at `/u/type-b`.
+Live: https://plotline-flax.vercel.app — **deployed 2026-09-26 ~02:00 with waves 7–8** (founder ran `npx vercel --prod`; Claude checked it in headless Edge: loads to 27/27, Enter opens the flat, console clean). **Not yet deployed:** the load-screen unit/Studio links and the "Loading…" Enter button (commits 1c5f7d8, d453baa) — founder runs `npx vercel --prod` again.
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
