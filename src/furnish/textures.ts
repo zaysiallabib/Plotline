@@ -1,5 +1,5 @@
 /**
- * PBR texture registry — CC0 (Poly Haven), recorded in public/assets/MANIFEST.md.
+ * PBR texture registry — CC0 (Poly Haven, ambientCG), recorded in public/assets/MANIFEST.md.
  * Unit JSON references these by id (MaterialRef.textureId).
  * Filled by the assets agent in textures.data.ts.
  */
@@ -23,6 +23,8 @@ export interface TextureSet {
  *  floors:   wood_floor_oak, marble_floor_white, tile_floor_ceramic, tile_floor_outdoor
  *  walls:    plaster_white (tinted for paint colours), tile_wall_white
  *  ceiling:  plaster_white
+ *  soft:     fabric_curtain (curtains), fabric_upholstery, rug_wool
+ *  joinery:  wood_veneer_light (door leaves, cabinets), metal_brushed
  */
 export { TEXTURES } from './textures.data'
 
