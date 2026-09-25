@@ -133,7 +133,8 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
   const f = core.wallFrame(wall, graph.vertices)
   const inner = core.roomInnerPolygon(room, graph)
   const at = (u: number) => ({ x: f.origin.x + f.dir.x * u + f.normal.x * wc, y: f.origin.y + f.dir.y * u + f.normal.y * wc })
-  // every other window of the room carries a rod 0.1 m off its wall face, reaching ≤ 0.24 m past its reveals: keep 6 cm off it
+  // every other window of the room carries a rod 0.1 m off its wall face, reaching ≤ 0.24 m past its reveals (finial
+  // included, 0.4 m of reach counted): keep 6 cm off its line, so two corner rods end apart, not finial to finial
   const rods = room.wallIds.flatMap((id) => {
     const w = graph.walls.find((x) => x.id === id)
     return w ? w.openings.filter((x) => x.kind === 'window' && x !== o).map((x) => ({ x, w, g: core.wallFrame(w, graph.vertices) })) : []
@@ -142,7 +143,7 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
     rods.some(({ x, w, g }) => {
       const v = { x: p.x - g.origin.x, y: p.y - g.origin.y }
       const along = v.x * g.dir.x + v.y * g.dir.y
-      return Math.abs(v.x * g.normal.x + v.y * g.normal.y) < w.thicknessM / 2 + 0.16 && along > x.offsetM - 0.3 && along < x.offsetM + x.widthM + 0.3
+      return Math.abs(v.x * g.normal.x + v.y * g.normal.y) < w.thicknessM / 2 + 0.16 && along > x.offsetM - 0.4 && along < x.offsetM + x.widthM + 0.4
     })
   // the rod end stops 10 cm short of a side wall (its finial 8 cm) and clear of the next rod, back inside the reveal if it must
   const reach = (from: number, dir: number) => {
