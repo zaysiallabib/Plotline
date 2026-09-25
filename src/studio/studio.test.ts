@@ -167,6 +167,7 @@ describe('studio reducer', () => {
     expect(s.timer.started).toBe(false)
     expect(deriveRooms(s.unit)).toHaveLength(27)
     expect(validate(s.unit).filter((i) => i.level === 'error')).toHaveLength(0)
+    expect(studioIssues(s.unit, deriveRooms(s.unit))).toEqual([]) // entry door opens off the traced lift lobby
     // a bare unit also survives load-unit (Import)
     expect(reducer(initialState(), { type: 'load-unit', unit: typeA as unknown as Unit }).unit.walls).toHaveLength(90)
   })
@@ -252,7 +253,9 @@ describe('studio reducer', () => {
     expect(guessKind('PDR')).toBe('bath')
     expect(guessKind('Walk in Closet')).toBe('closet')
     expect(guessKind('Dining & Family Living')).toBe('dining')
-    expect(guessKind('Lift Lobby')).toBe('shaft')
+    expect(guessKind('Lift Lobby')).toBe('other')
+    expect(guessKind('Stair')).toBe('other')
+    expect(guessKind('E-Shaft')).toBe('shaft')
     expect(guessKind('Verandah')).toBe('balcony')
     expect(guessKind('Foyer')).toBe('other')
   })
