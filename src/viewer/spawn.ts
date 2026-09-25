@@ -118,8 +118,10 @@ const HANG_DROP = 0.6
 export const HANG_CLEAR = 1.5
 /** …and this far when it is in the frame (within ~53° of the view): 2 m ahead, a pendant fills the top third. */
 export const HANG_IN_VIEW = 3
-/** A wall AC closer than this (plan) looms in a top corner of the first frame. */
+/** A wall AC closer than this (plan) looms over the stand point… */
 export const AC_NEAR = 1
+/** …and closer than this in the frame it is cut by the top edge, looming in a corner (its top is 1 m above the eye). */
+export const AC_IN_VIEW = 2.2
 /** A spot with a pendant in its frame (or an AC over it) loses to every spot without (only when all have one does the best win). */
 const HANG_PENALTY = 100
 /** An enclosed room whose best spot 0.4 m off the walls sees less than this (help bed, WC, store) is framed from its door. */
@@ -133,16 +135,17 @@ export const DOOR_PITCH = (-20 * Math.PI) / 180
 
 /**
  * Something overhead spoils the frame from p looking along face: the room's pendant (a ceiling piece hanging more than
- * HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW and in the frame; or the room's wall AC within AC_NEAR.
+ * HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW and in the frame (within ~53° of the view); or its wall AC
+ * within AC_NEAR, or within AC_IN_VIEW and in the frame.
  */
 const hangs = (unit: Unit, room: Room, p: Pt, face: Pt): boolean =>
   unit.furniture.some((f) => {
     const k = f.roomId === room.id && kitAsset(f.assetId)
     if (!k) return false
+    const [near, inView] =
+      objectKind(k) === 'ac' ? [AC_NEAR, AC_IN_VIEW] : k.mount === 'ceiling' && k.mountY === undefined && k.sizeM.y > HANG_DROP ? [HANG_CLEAR, HANG_IN_VIEW] : [0, 0]
     const d = Math.hypot(f.x - p.x, f.y - p.y)
-    if (objectKind(k) === 'ac') return d < AC_NEAR
-    if (k.mount !== 'ceiling' || k.mountY !== undefined || k.sizeM.y <= HANG_DROP) return false
-    return d < HANG_CLEAR || (d < HANG_IN_VIEW && (f.x - p.x) * face.x + (f.y - p.y) * face.y > 0.6 * d)
+    return d < near || (d < inView && (f.x - p.x) * face.x + (f.y - p.y) * face.y > 0.6 * d)
   })
 
 /** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat — furnish's isCommonCore, same rule. */

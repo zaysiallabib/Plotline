@@ -7,7 +7,7 @@ import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { AC_NEAR, DOOR_CLEAR, DOOR_PITCH, HANG_CLEAR, HANG_IN_VIEW, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
+import { AC_IN_VIEW, AC_NEAR, DOOR_CLEAR, DOOR_PITCH, HANG_CLEAR, HANG_IN_VIEW, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -246,7 +246,7 @@ describe('viewer', () => {
   }
   const deg = (a: Pt, b: Pt) => (Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / Math.hypot(a.x, a.y) / Math.hypot(b.x, b.y)))) * 180) / Math.PI
 
-  it('nothing overhead spoils the first frame: the entry and every jump stay HANG_CLEAR from its room\'s pendant (HANG_IN_VIEW when it hangs ahead) and AC_NEAR from its wall AC (A and B)', () => {
+  it('nothing overhead spoils the first frame: the entry and every jump keep off their room\'s pendant and wall AC, farther when it is in frame (A and B)', () => {
     for (const { u, rs } of both) {
       expect(u.furniture.filter((f) => f.assetId === 'modern_ceiling_lamp_01').length).toBeGreaterThan(0)
       const e = entrySpawn(u, rs)!
@@ -257,8 +257,11 @@ describe('viewer', () => {
           expect(d, `${u.id} ${name}`).toBeGreaterThanOrEqual(HANG_CLEAR)
           if (d < HANG_IN_VIEW) expect(deg(v.face, { x: f.x - v.p.x, y: f.y - v.p.y }), `${u.id} ${name}: pendant ahead`).toBeGreaterThan(53)
         }
-        for (const f of u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'ac_split'))
-          expect(Math.hypot(f.x - v.p.x, f.y - v.p.y), `${u.id} ${name}: AC overhead`).toBeGreaterThanOrEqual(AC_NEAR)
+        for (const f of u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'ac_split')) {
+          const d = Math.hypot(f.x - v.p.x, f.y - v.p.y)
+          expect(d, `${u.id} ${name}: AC overhead`).toBeGreaterThanOrEqual(AC_NEAR)
+          if (d < AC_IN_VIEW) expect(deg(v.face, { x: f.x - v.p.x, y: f.y - v.p.y }), `${u.id} ${name}: AC looming in frame`).toBeGreaterThan(53)
+        }
       }
     }
     // Type B walks in at the dining end, 2 m in front of the pendant: the entry slides on down the room past it
