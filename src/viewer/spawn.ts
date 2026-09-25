@@ -111,7 +111,7 @@ const EYE = 1.6
 export const VIEW_INSET = 0.4
 /** Minimum distance from a stand point to a door/passage (a door needs max(this, widthM + 0.3) from its whole span). */
 export const DOOR_CLEAR = 1.2
-/** A kitchen's run faces its door wall across a narrow galley: there a stand point only keeps out of the doorway and the ajar leaf (≤ 0.26 m in). */
+/** A kitchen's run faces its door wall across a narrow galley, a veranda is 2 m deep: there a stand point only keeps this far from a swinging door (out of the doorway and the leaf, ajar 20°, ≤ 0.26 m in); a slider or passage just VIEW_INSET, like a wall. */
 export const GALLEY_DOOR_CLEAR = 0.6
 /** Anything reaching above 1.2 m (wall cabinets, wardrobe, TV) stays this far from the eye; glass only must not enclose it. */
 const EYE_CLEAR = 0.5
@@ -222,8 +222,8 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
  * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`).
- * A room with no hero that is empty or under SIGHT_MAX_SQM has no target: each stand point faces the farthest inner
- * corner it can see and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
+ * A room with no hero that is empty or under SIGHT_MAX_SQM, and every balcony, has no target: each stand point faces the farthest
+ * inner corner it can see (a balcony: rail or opening) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
  * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
@@ -258,11 +258,11 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
       .filter((o) => o.kind !== 'window')
       .map((o) => ({ o, w, f, a: add(f.origin, f.dir, o.offsetM), b: add(f.origin, f.dir, o.offsetM + o.widthM), c: add(f.origin, f.dir, o.offsetM + o.widthM / 2) }))
   })
-  const galley = room.kind === 'kitchen'
+  const tight = room.kind === 'kitchen' || room.kind === 'balcony'
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
       // slider as openings.ts builds it: no hinge, ≥ 1.2 m
-      galley ? segDist(p, a, b) >= GALLEY_DOOR_CLEAR
+      tight ? !swings(o) || segDist(p, a, b) >= GALLEY_DOOR_CLEAR
       : swings(o) ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3)
       : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
     )
@@ -289,15 +289,27 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     candidates.push(add({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, inward(a, b), VIEW_INSET))
   })
 
-  const sight = !hero && (!items.length || room.areaSqm < SIGHT_MAX_SQM)
+  const sight = room.kind === 'balcony' || (!hero && (!items.length || room.areaSqm < SIGHT_MAX_SQM))
   // p→q stays inside the room, checked every 5 cm (an L-shaped room's far corner may be round the bend)
   const visible = (p: Pt, q: Pt) => {
     const L = Math.hypot(q.x - p.x, q.y - p.y)
     for (let s = 0.05; s < L - 0.05; s += 0.05) if (!core.pointInPolygon(add(p, { x: q.x - p.x, y: q.y - p.y }, s / L), inner)) return false
     return true
   }
+  // a sightline ends on an inner corner; a balcony's on its rail/curb (a wall below the eye) or an opening (the street, or
+  // the room back through the slider; a window there is a neighbour's), on the inner face — never a blank corner
+  const ends =
+    room.kind !== 'balcony'
+      ? inner
+      : room.wallIds.flatMap((id) => {
+          const w = unit.walls.find((x) => x.id === id)!
+          const f = core.wallFrame(w, unit.vertices)
+          const s = core.pointInPolygon(add(add(f.origin, f.dir, f.lengthM / 2), f.normal, w.thicknessM / 2 + 0.05), inner) ? 1 : -1
+          const on = (u: number) => add(add(f.origin, f.dir, u), f.normal, s * (w.thicknessM / 2 + 0.02))
+          return [...(w.heightM < EYE ? [on(f.lengthM / 2)] : []), ...w.openings.filter((o) => o.kind !== 'window').map((o) => on(o.offsetM + o.widthM / 2))]
+        })
   const farthest = (p: Pt): Pt =>
-    inner.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
+    ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
   // eye (1.6 m) in or against a cabinet/wardrobe/TV
   const eyeBlocked = (p: Pt, clear = EYE_CLEAR) => pieces.some(({ f, k, top }) => top > 1.2 && footprintDist(p, f, k.sizeM) < (GLASS.has(f.assetId) ? 0.15 : clear))
   const seen = (p: Pt) => {
@@ -340,6 +352,8 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) return // a third edge (wall-thickness step) crowds it
     if (!clearOfDoors(p)) return
     if (eyeBlocked(p)) return
+    // a veranda's corners are where its plant and chair stand: not in them (the chair back would fill the foot of the frame)
+    if (room.kind === 'balcony' && pieces.some(({ f, k }) => k.category !== 'rug' && footprintDist(p, f, k.sizeM) < 0.3)) return
     const t = sight ? farthest(p) : target
     const d = Math.hypot(t.x - p.x, t.y - p.y)
     if (d < 0.2) return // target sits here: faces nothing useful

@@ -368,7 +368,7 @@ describe('viewer', () => {
     }
   })
 
-  it.skip('veranda jumps look out over the rail or back through an opening, never into a blank wall corner (A, B, C)', () => {
+  it('veranda jumps look out over the rail or back through an opening, never into a blank wall corner (A, B, C)', () => {
     for (const { u, rs } of both)
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'balcony')) {
         const v = roomView(r, u)
