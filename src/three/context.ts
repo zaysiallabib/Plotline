@@ -21,7 +21,7 @@ export interface ContactShadow {
   quad: Pt[]
   /** Gaussian falloff σ, metres */
   blurM: number
-  /** darkening under the piece, 0..1 (≈ half of it at the footprint edge) */
+  /** darkening under the piece, 0..1 */
   strength: number
 }
 
@@ -40,12 +40,12 @@ export function contactShadows(unit: Unit): ContactShadow[] {
     const legged = LEGGED.includes(a.category)
     const pot = POTS.includes(a.category) ? 0.45 * Math.min(a.sizeM.x, a.sizeM.z) * s : 0
     // a taller piece hides more of the sky from the floor around it: the falloff widens with height (a coffee
-    // table ~10 cm, a wardrobe ~50 cm). Solid pieces grow by σ/2 so the base edge sits in the dark part (≈ 45 %);
+    // table ~10 cm, a wardrobe ~50 cm). Solid pieces grow by σ/2 so the base edge sits in the dark part (≈ 55 %);
     // legged ones are a diffuse patch under the whole footprint.
     const blurM = Math.min(0.25, Math.max(0.05, 0.25 * (pot || a.sizeM.y * s)))
     const grow = legged ? 0 : blurM
     const size = pot ? { x: pot + grow, z: pot + grow } : { x: a.sizeM.x * s + grow, z: a.sizeM.z * s + grow }
-    out.push({ id: p.id, quad: footprint(p, p.rotationDeg, size), blurM, strength: legged ? 0.35 : 0.65 })
+    out.push({ id: p.id, quad: footprint(p, p.rotationDeg, size), blurM, strength: legged ? 0.45 : 0.8 })
   }
   return out
 }
