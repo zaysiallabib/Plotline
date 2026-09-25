@@ -65,7 +65,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   kitchen_sink: P('kitchen_sink', 'Kitchen sink cabinet (0.6 m)', 'kitchen', 0.6, 1.2, 0.62),
   kitchen_hob: P('kitchen_hob', 'Hob + oven cabinet (0.6 m)', 'kitchen', 0.6, 0.91, 0.62),
   kitchen_upper: P('kitchen_upper', 'Wall cabinet + splashback (0.6 m)', 'kitchen', 0.6, 1.25, 0.35, WORKTOP),
-  kitchen_hood: P('kitchen_hood', 'Chimney hood + splashback (0.6 m)', 'kitchen', 0.6, 1.25, 0.5, WORKTOP),
+  kitchen_hood: P('kitchen_hood', 'Chimney hood + splashback (0.6 m)', 'kitchen', 0.6, 2.1, 0.5, WORKTOP), // duct cover up to 3.0 m
   fridge: P('fridge', 'Fridge (brushed steel)', 'kitchen', 0.7, 1.8, 0.7),
   toilet: P('toilet', 'Wall-hung toilet', 'bath', 0.37, 0.93, 0.54, 0.2), // bowl 0.2–0.45, flush plate to 1.13
   vanity: P('vanity', 'Vanity, vessel basin + mirror', 'bath', 0.8, 1.5, 0.5, 0.45), // cabinet 0.45, mirror top 1.95

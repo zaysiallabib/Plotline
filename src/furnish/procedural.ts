@@ -80,6 +80,8 @@ function makeMats() {
     steel: pbr('metal_brushed', { metalness: 0.85 }),
     // appliance panels: paler and less metallic, the brush pattern at 2× so it reads as grain, not streaks
     applianceSteel: pbr('metal_brushed', { metalness: 0.6, tint: '#eef0f2', scale: 2 }),
+    fridgeBody: flat('#a4a7aa', 0.4, 0.3), // painted sides: a shade off the steel doors
+
     upholstery: pbr('fabric_upholstery', { tint: '#d2c8b8' }), // warm taupe: headboard, bed base
     sofa: pbr('fabric_upholstery', { tint: '#e6e1d8' }), // oatmeal
     chair: pbr('fabric_upholstery', { tint: '#b3ae9c' }), // sage-grey dining seats
@@ -497,32 +499,53 @@ function upper(): THREE.Mesh[] {
   ]
 }
 
-/** Slim chimney hood: a 35 mm brushed-steel canopy with a grease filter under it, a narrow chimney up to 2.15 m. */
+/**
+ * Chimney hood in brushed steel: a box canopy (70 mm front edge with a filter line and touch controls) whose top
+ * slopes back to a duct cover that runs up to 3.0 m; grease filter and two lamps underneath.
+ * ponytail: the duct stops at 3.0 m (Type A's ceiling) — builders don't get the ceiling height; pass it through
+ * buildProcedural if a unit with higher ceilings shows a gap above the duct.
+ */
 function hood(): THREE.Mesh[] {
   const m = M()
-  return [
-    box(0.6, 0.7, 0.012, m.stone, 0, 0.35, -0.244), // splashback up to the canopy
-    rbox(0.6, 0.035, 0.48, 0.006, m.applianceSteel, 0, 0.7525, -0.01), // canopy 1.635–1.67 m
-    box(0.52, 0.004, 0.36, m.filter, 0, 0.733, -0.02),
-    box(0.1, 0.008, 0.004, m.dark, 0.2, 0.7525, 0.231), // touch controls on the front edge
-    box(0.24, 0.48, 0.22, m.applianceSteel, 0, 1.01, -0.13), // chimney 1.67–2.15 m
+  const y0 = 0.7 // canopy underside, 1.60 m: 0.7 over the hob
+  // sloped top: the box's upper face shrinks to the duct's footprint, held against the wall (z = −0.25)
+  const slope = new THREE.BoxGeometry(0.6, 0.2, 0.5)
+  const p = slope.attributes.position
+  for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setXYZ(i, p.getX(i) * 0.47, p.getY(i), -0.25 + (p.getZ(i) + 0.25) * 0.48)
+  slope.computeVertexNormals()
+  const out = [
+    box(0.6, y0, 0.012, m.stone, 0, y0 / 2, -0.244), // splashback up to the canopy
+    rbox(0.6, 0.07, 0.5, 0.005, m.applianceSteel, 0, y0 + 0.035, 0), // canopy box, front edge 1.60–1.67 m
+    mesh(slope, m.applianceSteel, 0, y0 + 0.07 + 0.1, 0),
+    box(0.28, 2.1 - y0 - 0.27, 0.24, m.applianceSteel, 0, (2.1 + y0 + 0.27) / 2, -0.13), // duct cover to 3.0 m
+    box(0.6, 0.003, 0.002, m.dark, 0, y0 + 0.018, 0.251), // filter line along the front edge
+    box(0.5, 0.004, 0.4, m.filter, 0, y0 - 0.002, 0.01), // grease filter, a hair below the steel
+    box(0.12, 0.012, 0.002, m.blackGlass, 0.19, y0 + 0.045, 0.251), // touch controls
   ]
+  for (const x of [-0.2, 0.2]) out.push(cyl(0.025, 0.004, m.led, x, y0 - 0.003, 0.14))
+  return out
 }
 
-/** Bottom-freezer fridge in brushed steel: two door slabs with a 4 mm shadow gap, bar handles on stand-offs. */
+/**
+ * Bottom-freezer fridge: satin-grey body with rounded edges, brushed-steel doors on a dark gasket with a 6 mm gap
+ * between them, full-length bar handles on the free side (+x: inCorner puts the wall on −x, the hinge side), a
+ * black hinge cover on top, a recessed plinth grille on levelling feet. Bounds exactly 0.7 × 1.8 × 0.7.
+ */
 function fridge(): THREE.Mesh[] {
   const m = M()
-  const zf = 0.27 // carcass front; doors 0.27–0.30, handles to 0.35
+  const zf = 0.27 // body front: gasket 0.27–0.28, doors 0.28–0.32, stand-offs to 0.33, handles to 0.35
   const out = [
-    rbox(0.7, 1.76, 0.62, 0.012, m.applianceSteel, 0, 0.92, zf - 0.31), // carcass 0.04–1.8
-    box(0.64, 0.04, 0.02, m.dark, 0, 0.02, zf - 0.05), // toe-kick grille
-    box(0.69, 0.012, 0.01, m.dark, 0, 0.72, zf + 0.004), // seen through the door gap
-    rbox(0.696, 1.078, 0.03, 0.008, m.applianceSteel, 0, 1.261, zf + 0.015), // fridge door 0.722–1.8
-    rbox(0.696, 0.678, 0.03, 0.008, m.applianceSteel, 0, 0.379, zf + 0.015), // freezer door 0.04–0.718
+    rbox(0.7, 1.73, 0.62, 0.03, m.fridgeBody, 0, 0.93, zf - 0.31), // body 0.065–1.795, back at −0.35
+    box(0.64, 0.065, 0.5, m.dark, 0, 0.0325, -0.04), // plinth grille, 60 mm behind the body front
+    box(0.68, 1.71, 0.01, m.dark, 0, 0.935, zf + 0.005), // door gasket
+    rbox(0.7, 1.05, 0.04, 0.015, m.applianceSteel, 0, 1.265, zf + 0.03), // fridge door 0.74–1.79
+    rbox(0.7, 0.665, 0.04, 0.015, m.applianceSteel, 0, 0.4025, zf + 0.03), // freezer door 0.07–0.735
+    box(0.12, 0.005, 0.05, m.dark, -0.27, 1.7975, zf + 0.025), // hinge cover to 1.8
   ]
-  for (const [y0, y1] of [[0.92, 1.6], [0.3, 0.64]]) {
-    out.push(cyl(0.011, y1 - y0, m.steel, -0.29, (y0 + y1) / 2, zf + 0.07))
-    for (const y of [y0 + 0.03, y1 - 0.03]) out.push(box(0.016, 0.016, 0.04, m.steel, -0.29, y, zf + 0.05))
+  for (const x of [-0.3, 0.3]) out.push(cyl(0.016, 0.065, m.dark, x, 0.0325, 0.24)) // levelling feet
+  for (const [y0, y1] of [[0.95, 1.6], [0.45, 0.68]]) {
+    out.push(rbox(0.022, y1 - y0, 0.02, 0.008, m.steel, 0.3, (y0 + y1) / 2, zf + 0.07))
+    for (const y of [y0 + 0.04, y1 - 0.04]) out.push(box(0.014, 0.014, 0.01, m.steel, 0.3, y, zf + 0.055))
   }
   return out
 }
