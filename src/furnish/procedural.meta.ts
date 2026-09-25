@@ -35,6 +35,16 @@ export const ART_H = 0.5
 /** Bed linen styles, by bedroom size rank: '' terracotta throw over the foot, '_b' sage throw on one corner, '_c' no throw. */
 export const BED_STYLES = ['', '_b', '_c'] as const
 
+/**
+ * Dog-leg stair (common core): two flights side by side with a 0.1 m well, 8 treads of 0.25 m each (2.0 m run), a
+ * 1.1 m half landing at the back (−z) at half the rise; you step on at the front (+z). Widths: presets pick the widest
+ * that fits the room. Rise = floor to ceiling (3.0 m, both demo units); the upper flight runs up into the ceiling.
+ */
+export const STAIR_W = [3.6, 3.2, 2.8, 2.4]
+export const STAIR_RISE = 3.0
+export const STAIR_D = 3.1
+export const stairId = (w: number) => `stair_${Math.round(w * 10)}`
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -76,6 +86,13 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   ceiling_light_large: { ...P('ceiling_light_large', 'Flush ceiling light, opal diffuser Ø50 cm', 'lamp', 0.5, 0.09, 0.5), mount: 'ceiling' },
   ac_split: { ...P('ac_split', 'Split AC, wall-mounted indoor unit', 'other', 0.9, 0.3, 0.22, 2.3), mount: 'ceiling', kind: 'ac' },
   wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 3 doors)', 'wardrobe', 1.8, 2.2, 0.6),
+  wardrobe_2door: P('wardrobe_2door', 'Wardrobe (oak, 2 doors)', 'wardrobe', 1.2, 2.2, 0.6),
+  closet_rail: P('closet_rail', 'Open closet unit: rail, shelf, clothes (1.8 m)', 'wardrobe', 1.8, 2.1, 0.55),
+  closet_rail_s: P('closet_rail_s', 'Open closet unit: rail, shelf, clothes (1.2 m)', 'wardrobe', 1.2, 2.1, 0.55),
+  // help room: a cot and a hook rail (a folded gamchha on it), nothing else
+  cot: P('cot', 'Single cot, thin mattress', 'bed', 1.9, 0.46, 0.7), // long side is its front: it stands along a wall
+  hook_rail: { ...P('hook_rail', 'Hook rail with a towel', 'other', 0.6, 0.55, 0.09, 1.2), kind: 'decor' },
+  ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), { ...P(stairId(w), `Dog-leg stair, ${((w - 0.1) / 2).toFixed(2)} m flights`, 'other', w, STAIR_RISE, STAIR_D), kind: 'stair' as const }])),
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>
       (['l', 'r'] as const).map((k) => [

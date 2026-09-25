@@ -36,7 +36,7 @@ export type ObjectKind =
   | 'wall' | 'floor' | 'ceiling'
   | 'door' | 'door-leaf' | 'door-handle' | 'door-frame' | 'passage' | 'window' | 'window-frame' | 'window-glass' | 'curtain'
   | 'tv' | 'art' | 'clock' | 'cushions' | 'ottoman' | 'decor'
-  | 'ceiling-light' | 'ceiling-fan' | 'ac'
+  | 'ceiling-light' | 'ceiling-fan' | 'ac' | 'stair'
   | 'kitchen-cabinet' | 'sink' | 'hob' | 'hood' | 'fridge'
   | 'toilet' | 'vanity' | 'basin' | 'mixer' | 'mirror' | 'shower' | 'shower-tray' | 'shower-glass' | 'shower-head'
 

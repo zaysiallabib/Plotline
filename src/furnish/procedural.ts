@@ -13,7 +13,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_W, BED_STYLES } from './procedural.meta'
+import { ART, ART_H, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -712,11 +712,110 @@ function artFrame(url: string): THREE.Mesh[] {
   ]
 }
 
-function wardrobe(): THREE.Mesh[] {
+/** Oak wardrobe of n 0.6 m doors (3 mm shadow gaps) on a recessed plinth; bar handles either side of the first split. */
+function wardrobe(n: number): THREE.Mesh[] {
   const m = M()
-  const out = [box(1.8, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(1.76, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
-  for (const x of [-0.6, 0, 0.6]) out.push(box(0.596, 2.12, 0.02, m.oak, x, 1.13, 0.29))
-  for (const x of [-0.33, -0.27, 0.33]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, 0.31))
+  const W = 0.6 * n
+  const out = [box(W, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(W - 0.04, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
+  for (let i = 0; i < n; i++) out.push(box(0.596, 2.12, 0.02, m.oak, -W / 2 + 0.3 + 0.6 * i, 1.13, 0.29))
+  for (const x of n === 3 ? [-0.33, -0.27, 0.33] : [-0.03, 0.03]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, 0.31))
+  return out
+}
+
+/**
+ * Open closet unit W wide: oak end panels, cap and shoe shelf, a top shelf with folded stacks, a steel rail with
+ * clothes hanging end-on (shirts and dresses in the linen palette, a few gaps). Back open to the wall.
+ */
+function closetRail(W: number): THREE.Mesh[] {
+  const m = M()
+  const D = 0.55
+  const fab = [m.linen, m.cushionOat, m.cushionTaupe, m.chair]
+  const out = [box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 2.091, 0), box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 1.79, 0)]
+  out.push(box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 0.14, 0), box(W - 0.036, 0.13, 0.018, m.dark, 0, 0.065, D / 2 - 0.05))
+  for (const s of [-1, 1]) out.push(box(0.018, 2.1, D, m.oak, s * (W / 2 - 0.009), 1.05, 0))
+  out.push(cyl(0.012, W - 0.04, m.steel, 0, 1.7, 0).rotateZ(Math.PI / 2))
+  for (let x = -W / 2 + 0.08, i = 0; x < W / 2 - 0.06; x += 0.075, i++) {
+    if (rnd(i, W) > 0.82) continue
+    const L = 0.62 + 0.4 * rnd(W, i) // shirt … dress
+    const d = 0.38 + 0.08 * rnd(i, 2)
+    const g = rbox(0.03 + 0.03 * rnd(3, i), L, d, 0.012, fab[Math.floor(rnd(i, 7) * fab.length)], x, 1.64 - L / 2, 0)
+    g.rotation.y = 0.16 * (rnd(i, 11) - 0.5)
+    // oak hanger: a bar across the shoulders, a steel hook over the rail
+    const h = box(0.012, 0.018, d - 0.04, m.oak, x, 1.65, 0)
+    h.rotation.y = g.rotation.y
+    out.push(g, h, cyl(0.004, 0.06, m.steel, x, 1.69, 0))
+  }
+  for (let x = -W / 2 + 0.22; x < W / 2 - 0.15; x += 0.42) {
+    const h = 0.08 + 0.1 * rnd(x, 3)
+    out.push(rbox(0.32, h, 0.3, 0.02, fab[Math.floor(rnd(x, 5) * fab.length)], x, 1.8 + h / 2, 0))
+  }
+  return out
+}
+
+/** A 1.9 × 0.7 oak cot (chouki), long side along x: legs, rails, plank top, an 8 cm mattress, a flat pillow, a folded blanket. */
+function cot(): THREE.Mesh[] {
+  const m = M()
+  const out = [box(1.9, 0.03, 0.7, m.oak, 0, 0.315, 0), box(1.86, 0.08, 0.66, m.mattress, 0, 0.37, 0)]
+  for (const z of [-0.32, 0.32]) {
+    out.push(box(1.9, 0.08, 0.04, m.oak, 0, 0.26, z))
+    for (const x of [-0.9, 0.9]) out.push(box(0.05, 0.3, 0.05, m.oak, x, 0.15, z))
+  }
+  out.push(rbox(0.3, 0.05, 0.46, 0.02, m.linen, -0.72, 0.435, 0), rbox(0.34, 0.04, 0.6, 0.015, m.throwSage, 0.68, 0.43, 0))
+  return out
+}
+
+/** Oak hook rail (top at 0.55) with four steel hooks and a gamchha-style towel on the second; y = 0 is the towel's hem. */
+function hookRail(): THREE.Mesh[] {
+  const m = M()
+  const out = [box(0.6, 0.07, 0.02, m.oak, 0, 0.515, -0.03)]
+  for (const x of [-0.21, -0.07, 0.07, 0.21]) out.push(tilt(cyl(0.006, 0.05, m.steel, x, 0.5, -0.005), Math.PI / 2), cyl(0.007, 0.025, m.steel, x, 0.51, 0.02))
+  // folded over the hook: a long back layer and a shorter front one, hems falling back toward the wall
+  out.push(tilt(rbox(0.26, 0.5, 0.008, 0.004, m.throw, -0.07, 0.25, 0.012), 0.06), tilt(rbox(0.26, 0.34, 0.008, 0.004, m.throw, -0.07, 0.33, 0.03), 0.08))
+  return out
+}
+
+/** Dog-leg stair W wide (see STAIR_* in procedural.meta.ts): marble treads with 2 cm nosings, white risers and soffits, steel rail on the well. */
+function stair(W: number): THREE.Mesh[] {
+  const m = M()
+  const fw = (W - 0.1) / 2
+  const [xA, xB] = [-W / 2 + fw / 2, W / 2 - fw / 2]
+  const r = STAIR_RISE / 18
+  const t = 0.25
+  const zL = -STAIR_D / 2 + 1.1 // front edge of the half landing
+  const k = r / t
+  const yL = 9 * r
+  const out: THREE.Mesh[] = []
+  // marble tread, its 2 cm nosing toward the approaching foot (dir = −1 on flight A, which climbs toward −z)
+  const tread = (x: number, y: number, z: number, dir: number) => out.push(box(fw, 0.03, t + 0.02, m.stone, x, y - 0.015, z - dir * 0.01))
+  // balusters from the tread to a 0.9 m rail over the nosings: at a tread centre that is 0.5 r above the tread
+  const baluster = (x: number, y: number, z: number) => out.push(box(0.02, 0.9 + r / 2, 0.02, m.blackSteel, x, y + (0.9 + r / 2) / 2, z))
+  const rail = (x: number, z0: number, y0: number, z1: number, y1: number) =>
+    out.push(tilt(box(0.04, 0.04, Math.hypot(z1 - z0, y1 - y0), m.blackSteel, x, (y0 + y1) / 2, (z0 + z1) / 2), -Math.atan2(y1 - y0, z1 - z0)))
+  // flight A: solid steps up from the floor, front to back
+  for (let i = 1; i <= 8; i++) {
+    const z = STAIR_D / 2 - (i - 0.5) * t
+    out.push(box(fw, i * r - 0.03, t, m.whitePaint, xA, (i * r - 0.03) / 2, z))
+    tread(xA, i * r, z, -1)
+    baluster(-0.05, i * r, z)
+  }
+  rail(-0.05, STAIR_D / 2, r + 0.9, zL, yL + 0.9)
+  // half landing across both flights, 0.15 m slab; a newel post where the rail turns
+  out.push(box(W, 0.15, 1.1, m.whitePaint, 0, yL - 0.105, zL - 0.55), box(W, 0.03, 1.1, m.stone, 0, yL - 0.015, zL - 0.55))
+  out.push(box(0.14, 0.04, 0.04, m.blackSteel, 0, yL + 0.9, zL), box(0.05, r + 0.95, 0.05, m.blackSteel, 0, yL + (r + 0.95) / 2, zL))
+  // flight B: back to front on a sloped waist slab (its top 2 r under the nosing line), up into the ceiling
+  const a = Math.atan2(r, t)
+  const run = 8 * t
+  out.push(tilt(box(fw, 0.15, run / Math.cos(a), m.whitePaint, xB, yL - r + (run / 2) * k - 0.075 / Math.cos(a), zL + run / 2), -a))
+  const zTop = zL + (STAIR_RISE - 0.05 - yL - r - 0.9) / k // where its rail meets the ceiling
+  for (let j = 1; j <= 8; j++) {
+    const y = yL + j * r
+    const z = zL + (j - 0.5) * t
+    out.push(box(fw, 2 * r - 0.03, t, m.whitePaint, xB, y - r - 0.015, z))
+    tread(xB, y, z, 1)
+    if (z < zTop) baluster(0.05, y, z)
+  }
+  out.push(box(fw, r, 0.02, m.whitePaint, xB, yL + 8.5 * r, STAIR_D / 2 - 0.01)) // last riser, to the floor above
+  rail(0.05, zL, yL + r + 0.9, zTop, STAIR_RISE - 0.05)
   return out
 }
 
@@ -748,7 +847,13 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   ceiling_light: () => ceilingLight(0.38, 0.085),
   ceiling_light_large: () => ceilingLight(0.5, 0.09),
   ac_split: acSplit,
-  wardrobe_tall: wardrobe,
+  wardrobe_tall: () => wardrobe(3),
+  wardrobe_2door: () => wardrobe(2),
+  closet_rail: () => closetRail(1.8),
+  closet_rail_s: () => closetRail(1.2),
+  cot,
+  hook_rail: hookRail,
+  ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(`/assets/art/${id}.jpg`)])),
 }
 
