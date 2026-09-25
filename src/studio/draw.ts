@@ -121,7 +121,7 @@ export function draw(a: DrawArgs): void {
       ctx.setLineDash([])
       if (op.kind === 'door') {
         const hu = op.hinge === 'b' ? u1 : u0
-        const sign = op.swing === 'out' ? -1 : 1
+        const sign = op.swing === 'in' ? -1 : 1 // 'in' = −normal side, as src/three/openings.ts builds the leaf
         const leafAng = sign > 0 ? Math.PI / 2 : -Math.PI / 2
         const jambAng = op.hinge === 'b' ? Math.PI : 0
         ctx.beginPath()
