@@ -27,23 +27,37 @@ export type Quality = 'high' | 'low'
 const STOREY_M = 3.2
 const SLAB_M = 0.15
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
-// ENV 1.4/HEMI 1.2 → walls 221–231, ceiling 235, marble 193. Exposure stays 1 so sun patches and sky keep headroom.
+// ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
 const EXPOSURE = 1
-const HEMI = 1.2
-const ENV = 1.4
+const HEMI = 0.6
+const ENV = 0.8
+const HEMI_SKY = new THREE.Color('#dfe7f5')
+/** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
+const HEMI_GROUND = '#cfcbc4'
+/** sky light + sky dome at sunrise / sunset (low sun) */
+const GOLDEN = new THREE.Color('#ffd2a8')
+/** sky dome at dusk: a warm multiply, not a grey dim */
+const DUSK_SKY = new THREE.Color('#ffc9a0').multiplyScalar(0.55)
 /** 3000 K blackbody (Mitchell Charity table) */
 const WARM = '#ffb46b'
 /** point-light candela per m² of room at full daylight; ×DUSK_BOOST at dusk */
-const LIGHT_CD_PER_M2 = 0.06
-const DUSK_BOOST = 4
+const LIGHT_CD_PER_M2 = 0.1
+const DUSK_BOOST = 8
 /** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
 const MAX_ROOM_LIGHTS = 8
 const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
+/** no storey above: AOD shafts, the planter and the small recessed verandas get sun from above */
+const openToSky = (r: Room) => r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5)
 
 export class Look {
   private readonly composer: EffectComposer | null = null
   private readonly ao: GTAOPass | null = null
-  private readonly hemi = new THREE.HemisphereLight('#e6eeff', '#d8cab6', HEMI)
+  private readonly hemi = new THREE.HemisphereLight(HEMI_SKY, HEMI_GROUND, HEMI)
+  /** equirect sky on a camera-centred dome instead of scene.background, so the hour can tint it */
+  private readonly sky = new THREE.Mesh(
+    new THREE.SphereGeometry(250, 48, 24).scale(1, 1, -1), // mirrored: u matches three's equirectUv, faces point inward
+    new THREE.MeshBasicMaterial({ depthWrite: false }),
+  )
   private readonly unitGroup = new THREE.Group()
   /** fixtures + the slab above: exist only while the camera is under the ceiling (walk / VR) */
   private readonly indoor = new THREE.Group()
@@ -76,25 +90,33 @@ export class Look {
     sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
-    sun.shadow.radius = 3
+    sun.shadow.radius = 2
     scene.environmentIntensity = ENV
-    scene.background = new THREE.Color('#cfdcea') // until the sky HDRI arrives
 
     this.ground.receiveShadow = true
     this.catcher.receiveShadow = true
-    scene.add(this.hemi, this.ground, this.catcher, this.unitGroup)
+    this.sky.frustumCulled = false
+    this.sky.renderOrder = -1
+    scene.add(this.hemi, this.sky, this.ground, this.catcher, this.unitGroup)
 
     if (quality === 'high') {
       const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) })
       this.composer = new EffectComposer(renderer, rt)
       this.composer.addPass(new RenderPass(scene, camera))
       const ao = (this.ao = new GTAOPass(scene, camera, 1, 1))
-      ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1, scale: 1, samples: 16 })
+      ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1, thickness: 0.5, scale: 1, samples: 16 })
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
       ao.blendIntensity = 0.9
       this.composer.addPass(ao)
       this.composer.addPass(new OutputPass())
     }
+  }
+
+  /** Equirect sky texture for the dome; lighting stays on the interior HDRI. */
+  setSky(tex: THREE.Texture): void {
+    this.sky.material.map?.dispose() // context restore reloads it
+    this.sky.material.map = tex
+    this.sky.material.needsUpdate = true
   }
 
   /** Per-unit: slab + roof, catcher, ground level, ceiling fixtures and their lights. */
@@ -109,23 +131,24 @@ export class Look {
     this.topY = Math.max(0, ...heights.values())
 
     // slab: room undersides (centreline polygons) + a box under every wall to reach the outer face
-    const parts: THREE.BufferGeometry[] = rooms.map((r) =>
+    const roomParts = rooms.map((r) =>
       new THREE.ShapeGeometry(new THREE.Shape(core.roomPolygon(r, unit).map((p) => new THREE.Vector2(p.x, p.y))))
         .rotateX(Math.PI / 2) // plan (x, y) → world (x, 0, z=y), facing down
         .translate(0, -SLAB_M, 0),
     )
-    for (const w of unit.walls) {
+    const wallParts = unit.walls.map((w) => {
       const f = core.wallFrame(w, unit.vertices)
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
       m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, -(SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
-      parts.push(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m))
-    }
-    const slabGeo = mergeGeometries(parts)
-    parts.forEach((g) => g.dispose())
+      return new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)
+    })
+    const slabGeo = mergeGeometries([...roomParts, ...wallParts])
+    const roofGeo = mergeGeometries([...roomParts.filter((_, i) => !openToSky(rooms[i])), ...wallParts])
+    ;[...roomParts, ...wallParts].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
-    const roof = new THREE.Mesh(slabGeo, slab.material)
+    const roof = new THREE.Mesh(roofGeo, slab.material)
     roof.position.y = this.topY + SLAB_M + 0.005 // underside 5 mm above the ceiling plane: no z-fight
     roof.castShadow = true
     this.indoor.add(roof)
@@ -154,9 +177,9 @@ export class Look {
       }
       if (this.lights.length >= MAX_ROOM_LIGHTS) continue
       const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
-      // a point light 5 cm under the ceiling burns a hotspot into it; a 90° spot with full penumbra is a
-      // downward cosine-ish lobe, like a real diffuser/pendant with an opaque top. Same per-fragment cost.
-      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2, 1, 2)
+      // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
+      // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
+      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2.6, 0.6, 2)
       light.position.set(at.x, lightY, at.y)
       light.target.position.set(at.x, 0, at.y)
       this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm) })
@@ -169,9 +192,14 @@ export class Look {
   setHour(hour: number): void {
     // 0 by day → 1 at 18:00 (and before 07:30): sky light fades, the fixtures take over
     const dusk = Math.max(THREE.MathUtils.smoothstep(hour, 16.5, 18), 1 - THREE.MathUtils.smoothstep(hour, 6, 7.5))
+    // 1 while the sun is low (07:00 / 17:00, altitude ≲ 14°) → 0 above ~30°: sky light and the sky itself go golden
+    const alt = this.v.copy(this.sun.position).sub(this.sun.target.position).normalize().y
+    const golden = 1 - THREE.MathUtils.smoothstep(alt, 0.24, 0.5)
+    this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * golden)
     this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
     this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
-    this.scene.backgroundIntensity = 1 - 0.45 * dusk
+    this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
+    this.fixtureMat.emissiveIntensity = 2.5 + 3.5 * dusk
     for (const { light, base } of this.lights) light.intensity = base * (1 + (DUSK_BOOST - 1) * dusk)
     this.fitShadow()
   }
@@ -213,6 +241,7 @@ export class Look {
 
   render(): void {
     const under = this.camera.getWorldPosition(this.v).y < this.topY
+    this.sky.position.copy(this.v)
     this.indoor.visible = under
     this.catcher.visible = !under
     if (this.composer && !this.renderer.xr.isPresenting) {
@@ -225,7 +254,7 @@ export class Look {
 
   dispose(): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
-    for (const m of [this.ground, this.catcher]) {
+    for (const m of [this.ground, this.catcher, this.sky]) {
       m.geometry.dispose()
       ;(m.material as THREE.Material).dispose()
     }
