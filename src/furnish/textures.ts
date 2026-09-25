@@ -13,6 +13,8 @@ export interface TextureSet {
   ao?: string
   /** real-world size of one tile, meters (Poly Haven "dimensions" in mm / 1000) */
   repeatM: number
+  /** × the albedo map, under any MaterialRef tint: calibrates a scan whose white is hotter than the real surface */
+  tint?: string
   source: string
   author: string
   license: 'CC0'

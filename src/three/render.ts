@@ -21,7 +21,7 @@ import * as core from '../core'
 import type { Room, Unit } from '../core'
 import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
-import { buildContactShadows, buildStreet, hazed, setHaze } from './context'
+import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 
 export type Quality = 'high' | 'low'
@@ -100,6 +100,16 @@ export class Look {
     this.ground.receiveShadow = true
     this.catcher.receiveShadow = true
     this.sky.frustumCulled = false
+    // under the horizon the dome shows the HDRI's mirrored sky: a dark band between eye level and the ground's far
+    // edge (2–6° down from a flat). It fades into the haze the ground ends in.
+    this.sky.material.onBeforeCompile = (s) => {
+      s.uniforms.hazeColor = haze
+      s.vertexShader = `varying float vSkyY;\n${s.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyY = normalize(position).y;')
+      s.fragmentShader = `uniform vec3 hazeColor;\nvarying float vSkyY;\n${s.fragmentShader}`.replace(
+        '#include <tonemapping_fragment>',
+        'gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, 1.0 - smoothstep(-0.03, 0.03, vSkyY));\n#include <tonemapping_fragment>',
+      )
+    }
     this.sky.renderOrder = -1
     scene.add(this.hemi, this.sky, this.ground, this.catcher, this.unitGroup)
 

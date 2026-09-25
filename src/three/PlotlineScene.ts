@@ -47,6 +47,27 @@ const WALK_RADIUS = 0.3
 const UP = new THREE.Vector3(0, 1, 0)
 const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
 
+/**
+ * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
+ * +Z 0.81, −Z 1.03, so a room's walls went light or dark with their compass bearing, not with their windows
+ * (Type A at 15:30: Bed-1 walls 214–225 sRGB, living 186–193). Averaged over four quarter turns about the
+ * vertical (half-float RGBA equirect, in place), every wall bearing gets the same fill; floor vs ceiling stays.
+ */
+export function evenBearings(t: THREE.DataTexture): void {
+  const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
+  const q = Math.floor(w / 4)
+  const { fromHalfFloat: f, toHalfFloat: t16 } = THREE.DataUtils
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < q; x++) {
+      for (let c = 0; c < 3; c++) {
+        const i = [0, 1, 2, 3].map((k) => (y * w + x + k * q) * 4 + c)
+        const m = t16(i.reduce((s, j) => s + f(data[j]), 0) / 4)
+        for (const j of i) data[j] = m
+      }
+    }
+  }
+}
+
 interface Surface {
   mesh: THREE.Mesh
   /** one entry per material slot; null = fixed material (edges/reveals) */
@@ -423,6 +444,7 @@ export class PlotlineScene {
     const [hdr, sky] = await Promise.all([load(HDRI.interior), load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
     const pmrem = new THREE.PMREMGenerator(this.renderer)
+    if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
     pmrem.dispose()

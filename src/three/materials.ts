@@ -66,7 +66,7 @@ export function materialFor(ref: MaterialRef): THREE.MeshStandardMaterial {
         loadTex(url, set.repeatM, srgb)
           .then((t) => {
             mat[slot] = t
-            if (slot === 'map') mat.color.set(ref.tint ?? '#ffffff')
+            if (slot === 'map') mat.color.set(ref.tint ?? '#ffffff').multiply(new THREE.Color(set.tint ?? '#ffffff'))
             if (slot === 'roughnessMap') mat.roughness = 1
             mat.needsUpdate = true
           })

@@ -27,6 +27,8 @@ export function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
 
 /** Frame, lining and casing of interior doors: the same veneer as the leaf, tinted to a darker teak. */
 const DOOR_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#7a5a42' }
+/** Painted trim (skirting, the architrave of a doorless opening): a teak casing on a 4.7 m opening read as a dark timber lintel. */
+export const TRIM_PAINT: MaterialRef = { kind: 'color', color: '#f2f0ea', roughness: 0.35 }
 const LEAF_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light' }
 /** Main entrance: darker, heavier solid-teak look for leaf and frame alike. */
 const MAIN_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#5a3d2b' }
@@ -35,7 +37,7 @@ const ALU: MaterialRef = { kind: 'color', color: '#d5d7d6', roughness: 0.45, met
 const STEEL: MaterialRef = { kind: 'color', color: '#c4c4c2', roughness: 0.3, metalness: 1 }
 /** Window sills and thresholds: polished white marble. Flat on purpose: the tiled floor-marble texture reads as wood on a 30 mm edge. */
 const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
-let glass: THREE.MeshPhysicalMaterial | null = null
+let glass: THREE.MeshStandardMaterial | null = null
 
 const J = 0.03 // door lining (jamb) thickness
 const CW = 0.07 // casing width
@@ -111,7 +113,7 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.front ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, df, T2 + 0.02))
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
-    g.add(merged(casings(u0, u1, s, s + H, T2, 0), DOOR_WOOD))
+    g.add(merged(casings(u0, u1, s, s + H, T2, 0), TRIM_PAINT))
   } else if (slider) {
     buildSlider(g, o, T2, th)
   } else {
@@ -314,6 +316,10 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
 }
 
 function glassMesh(panes: THREE.BufferGeometry[]): THREE.Mesh {
-  glass ??= new THREE.MeshPhysicalMaterial({ transmission: 0.9, roughness: 0.05, thickness: 0.01, ior: 1.5 })
+  // A plain 10 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white plaster (a milky veil that
+  // blew out in the sun), and its sample of the blurred transmission target showed a lattice of blobs (the moiré) where
+  // a pane was seen at an angle. A flat pane doesn't refract, and no pane means no second scene render per frame.
+  // No env reflection: the interior HDRI is a photo studio.
+  glass ??= new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, envMapIntensity: 0, transparent: true, opacity: 0.1, depthWrite: false })
   return merged(panes, glass)
 }

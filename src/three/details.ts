@@ -7,13 +7,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Graph, Id, Opening, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
-import { buildOpening, meterUVs } from './openings'
+import { buildOpening, meterUVs, TRIM_PAINT } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
 const NO_SKIRTING: RoomKind[] = ['bath', 'balcony', 'shaft']
 const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
-const SKIRTING_PAINT = { kind: 'color', color: '#f2f0ea', roughness: 0.35 } as const
 const CURTAIN_FABRIC = { kind: 'pbr', textureId: 'fabric_curtain', tint: '#efe6d8' } as const
 
 /** Along inner-polygon edge `edge` (from its start vertex, metres): skirting runs over [s0, s1]; the edge is `len` long. */
@@ -73,7 +72,7 @@ export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
     m.setPosition(p.x + d.x * mid + (n.x * SKIRTING_T) / 2, SKIRTING_H / 2, p.y + d.y * mid + (n.y * SKIRTING_T) / 2)
     return g.applyMatrix4(m)
   })
-  const mesh = new THREE.Mesh(mergeGeometries(geoms)!, materialFor(SKIRTING_PAINT))
+  const mesh = new THREE.Mesh(mergeGeometries(geoms)!, materialFor(TRIM_PAINT))
   geoms.forEach((g) => g.dispose())
   mesh.receiveShadow = true
   return mesh
