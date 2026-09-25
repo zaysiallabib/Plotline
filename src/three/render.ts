@@ -21,6 +21,7 @@ import * as core from '../core'
 import type { Room, Unit } from '../core'
 import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
+import { buildContactShadows, buildStreet, hazed, setHaze } from './context'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 
 export type Quality = 'high' | 'low'
@@ -68,8 +69,11 @@ export class Look {
   )
   private readonly ground = new THREE.Mesh(
     new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: '#a39e94', roughness: 0.95 }), // paving; a tiled texture reads as carpet from 20 m up
+    hazed(new THREE.MeshStandardMaterial({ color: '#86817a', roughness: 0.95 })), // paving; a tiled texture reads as carpet from 20 m up
   )
+  /** per unit (context.ts): contact shadows under the furniture; the street (in `indoor`: none around the dollhouse) */
+  private contact: THREE.Mesh | null = null
+  private street: THREE.Group | null = null
   private lights: { light: THREE.SpotLight; base: number }[] = []
   private readonly fitBox = new THREE.Box3()
   private topY = 3
@@ -122,6 +126,7 @@ export class Look {
   /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
   setUnit(unit: Unit, rooms: Room[]): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
+    this.disposeContext()
     this.unitGroup.clear()
     this.indoor.clear()
     this.lights = []
@@ -157,6 +162,10 @@ export class Look {
     this.catcher.position.set((b.minX + b.maxX) / 2, -SLAB_M - 0.01, (b.minY + b.maxY) / 2)
     this.ground.position.y = -(unit.floor ?? 0) * STOREY_M - 0.2
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, -SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
+    this.contact = buildContactShadows(unit, b)
+    if (this.contact) this.unitGroup.add(this.contact)
+    this.street = buildStreet(unit, b, this.ground.position.y)
+    this.indoor.add(this.street)
 
     // a light at each room's ceiling fixture (flush light, fan or pendant: presets.ts places one in every lit room),
     // biggest non-bath rooms first, then baths, up to the cap
@@ -190,6 +199,7 @@ export class Look {
     this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
     this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
     this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
+    setHaze(this.sky.material.color)
     fixtureGlow().emissiveIntensity = 2.5 + 3.5 * dusk
     for (const { light, base } of this.lights) light.intensity = base * (1 + (DUSK_BOOST - 1) * dusk)
     this.fitShadow()
@@ -243,8 +253,18 @@ export class Look {
     } else this.renderer.render(this.scene, this.camera)
   }
 
+  /** The context meshes' own materials and the shadow mask (their geometry goes with unitGroup's). */
+  private disposeContext(): void {
+    const c = this.contact?.material as THREE.MeshBasicMaterial | undefined
+    c?.alphaMap?.dispose()
+    c?.dispose()
+    this.street?.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
+    this.contact = this.street = null
+  }
+
   dispose(): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
+    this.disposeContext()
     for (const m of [this.ground, this.catcher, this.sky]) {
       m.geometry.dispose()
       ;(m.material as THREE.Material).dispose()

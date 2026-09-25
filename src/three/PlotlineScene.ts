@@ -179,7 +179,9 @@ export class PlotlineScene {
     const alt = THREE.MathUtils.clamp(u, 0, 1)
     this.sun.position.copy(this.center).addScaledVector(dir, 2 * this.radius + 30)
     this.sun.target.position.copy(this.center)
-    this.sun.intensity = 5.5 * Math.min(1, alt * 3)
+    // 10: direct sun ≈ 3× the ENV/HEMI fill on a floor. At 5.5 (before wave 6 lifted the fill) a patch added only
+    // ≈ 1.8× and Neutral mapped it to a slightly lighter floor, not sun
+    this.sun.intensity = 10 * Math.min(1, alt * 3)
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setHour(hour)
   }
