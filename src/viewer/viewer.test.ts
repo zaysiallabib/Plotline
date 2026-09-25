@@ -7,7 +7,7 @@ import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
+import { AC_NEAR, DOOR_CLEAR, DOOR_PITCH, HANG_CLEAR, HANG_IN_VIEW, VIEW_INSET, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -108,15 +108,14 @@ describe('viewer', () => {
     expect((v.p.x - bed.x) * -Math.sin(t) + (v.p.y - bed.y) * Math.cos(t), 'in front of the bed').toBeGreaterThan(2)
   })
 
-  it('Rooms list: walk-in rooms only (a door or passage), no shafts, planters or lift core', () => {
+  it('Rooms list: walk-in rooms only (a door or passage), no shafts, planters or common core (stair, lift, lobby)', () => {
     const names = listedRooms(unit, rooms).map((r) => r.name)
-    expect(names).toContain('Lift lobby')
     expect(names).toContain('Help bed')
-    for (const n of ['Planter', 'Lift core', 'AOD (north)']) expect(names).not.toContain(n)
+    for (const n of ['Planter', 'Lift core', 'Lift lobby', 'AOD (north)']) expect(names).not.toContain(n)
     const b = typeB as unknown as Unit
     const bNames = listedRooms(b, core.deriveRooms(b)).map((r) => r.name)
-    for (const n of ['Stair', 'K. veranda', 'Help room']) expect(bNames).toContain(n)
-    for (const n of ['Planter (bed-1)', 'Planter (living)']) expect(bNames).not.toContain(n)
+    for (const n of ['K. veranda', 'Help room']) expect(bNames).toContain(n)
+    for (const n of ['Planter (bed-1)', 'Planter (living)', 'Stair', 'Lift lobby']) expect(bNames).not.toContain(n)
   })
 
   it('entry spawn falls back to the largest living room when the first door has no enterable side', () => {
@@ -208,7 +207,6 @@ describe('viewer', () => {
       'Veranda (bed-1)',
       'Veranda (living)',
       'Veranda (study)',
-      'Lift lobby',
     ])
     const b = typeB as unknown as Unit
     expect(listedRooms(b, core.deriveRooms(b)).map((r) => r.name)).toEqual([
@@ -225,8 +223,6 @@ describe('viewer', () => {
       'Help room',
       'Veranda (bed-1)',
       'Veranda (living)',
-      'Lift lobby',
-      'Stair',
     ])
   })
 
@@ -250,7 +246,7 @@ describe('viewer', () => {
   }
   const deg = (a: Pt, b: Pt) => (Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / Math.hypot(a.x, a.y) / Math.hypot(b.x, b.y)))) * 180) / Math.PI
 
-  it('no pendant fills the first frame: the entry and every jump stay HANG_CLEAR from its room\'s pendant, HANG_IN_VIEW when it hangs ahead (A and B)', () => {
+  it('nothing overhead spoils the first frame: the entry and every jump stay HANG_CLEAR from its room\'s pendant (HANG_IN_VIEW when it hangs ahead) and AC_NEAR from its wall AC (A and B)', () => {
     for (const { u, rs } of both) {
       expect(u.furniture.filter((f) => f.assetId === 'modern_ceiling_lamp_01').length).toBeGreaterThan(0)
       const e = entrySpawn(u, rs)!
@@ -261,6 +257,8 @@ describe('viewer', () => {
           expect(d, `${u.id} ${name}`).toBeGreaterThanOrEqual(HANG_CLEAR)
           if (d < HANG_IN_VIEW) expect(deg(v.face, { x: f.x - v.p.x, y: f.y - v.p.y }), `${u.id} ${name}: pendant ahead`).toBeGreaterThan(53)
         }
+        for (const f of u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'ac_split'))
+          expect(Math.hypot(f.x - v.p.x, f.y - v.p.y), `${u.id} ${name}: AC overhead`).toBeGreaterThanOrEqual(AC_NEAR)
       }
     }
     // Type B walks in at the dining end, 2 m in front of the pendant: the entry slides on down the room past it
@@ -276,6 +274,7 @@ describe('viewer', () => {
         const v = roomView(r, u)
         const n = doorSpot(u, r, v.p)
         expect(n, `${u.id} ${r.name} at a door`).not.toBeNull()
+        expect(v.pitch, `${u.id} ${r.name} looks down at the fittings`).toBe(DOOR_PITCH)
         expect(deg(v.face, n!), `${u.id} ${r.name} looks in, not along the door wall`).toBeLessThanOrEqual(70 + 1e-6)
         const vanity = u.furniture.find((f) => f.roomId === r.id && f.assetId === 'vanity')
         if (!vanity) continue // a WC's pedestal basin may sit beside the door
@@ -286,7 +285,7 @@ describe('viewer', () => {
     }
   })
 
-  it('a room too small to frame from inside (A help bed, WC) is seen from just inside its door; the 4.3 m² help room keeps its sightline view (B)', () => {
+  it('a room too small to frame from inside (A help bed, WC) and a help room with a cot (B) are seen from just inside a door, the cot in frame', () => {
     const [a, b] = both
     for (const name of ['Help bed', 'H. toilet']) {
       const r = a.rs.find((x) => x.name === name)!
@@ -295,8 +294,15 @@ describe('viewer', () => {
       expect(n, name).not.toBeNull()
       expect(deg(v.face, n!), name).toBeLessThanOrEqual(70 + 1e-6)
     }
+    // the 4.3 m² help room is framed from inside while empty; its cot (furnish's help-room preset, else one placed here) makes it a door view
     const help = b.rs.find((x) => x.name === 'Help room')!
-    expect(doorSpot(b.u, help, roomView(help, b.u).p)).toBeNull()
+    const cot = b.u.furniture.find((f) => f.roomId === help.id && f.assetId === 'cot') ?? { id: 'c', assetId: 'cot', roomId: help.id, x: 7.3, y: 1.9, rotationDeg: 90 }
+    const u: Unit = { ...b.u, furniture: [...b.u.furniture.filter((f) => f !== cot), cot] }
+    const v = roomView(help, u)
+    const n = doorSpot(u, help, v.p)
+    expect(n).not.toBeNull()
+    expect(v.pitch).toBe(DOOR_PITCH)
+    expect(deg(v.face, { x: cot.x - v.p.x, y: cot.y - v.p.y }), 'cot in frame').toBeLessThanOrEqual(40 + 1e-6)
   })
 
   it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {

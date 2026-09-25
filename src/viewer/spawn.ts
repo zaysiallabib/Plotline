@@ -1,7 +1,7 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit } from '../core'
-import { heightRange, kitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, objectKind } from '../furnish/kit'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -20,16 +20,17 @@ export const yawFor = (dir: Pt): number => Math.atan2(-dir.x, -dir.y)
 const enterable = (r: Room | null): r is Room => !!r && r.kind !== 'other' && r.kind !== 'shaft'
 
 /**
- * Rooms-list rooms: ones you can walk into (a door or passage on their walls) of at least 2 m²; no shafts, planters,
- * lift cores. In walk-through order: the entry room (and any foyer/entrance), living, dining, kitchen + the veranda it
- * opens onto, each bedroom by name (Bed-1, Bed-2…) followed by the bath/closet it shares a door with (and a bath behind
- * that closet), the other baths (largest first), study/utility, verandas, the rest (lobby, stair); by name within a group.
+ * Rooms-list rooms: ones you can walk into (a door or passage on their walls) of at least 2 m²; no shafts, planters or
+ * common core (stair, lift, lobby: they stay in 3D). In walk-through order: the entry room (and any foyer), living,
+ * dining, kitchen + the veranda it opens onto, each bedroom by name (Bed-1, Bed-2…) followed by the bath/closet it shares
+ * a door with (and a bath behind that closet), the other baths (largest first), study/utility, verandas, the rest; by
+ * name within a group.
  */
 export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   const walls = new Map(unit.walls.map((w) => [w.id, w]))
   const doorWalls = (r: Room) => r.wallIds.filter((id) => walls.get(id)?.openings.some((o) => o.kind !== 'window'))
   const listed = rooms
-    .filter((r) => r.kind !== 'shaft' && r.areaSqm >= 2 && doorWalls(r).length)
+    .filter((r) => r.kind !== 'shaft' && !isCommonCore(r) && r.areaSqm >= 2 && doorWalls(r).length)
     .sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }))
   const e = entrySpawn(unit, rooms)
   const entry = e && core.roomAt(e.p, rooms, unit)
@@ -55,7 +56,7 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
  * Entry spawn (PM rule): the FIRST `door` in walls[] order; stand 1.2 m from the door centre on the
  * side whose room is not 'other'/'shaft' (larger room wins when both qualify), facing that room's centre —
  * a long room is seen down its length, not across into the nearest wall — or straight in from the door
- * when the centre is not ahead. A pendant hanging in that frame (see `hangs`) slides the stand point along the view,
+ * when the centre is not ahead. A pendant or wall AC spoiling that frame (see `hangs`) slides the stand point along the view,
  * the smallest shift back or forward past it, staying VIEW_INSET off the walls and clear of furniture.
  * Falls back to the centroid of the largest living room (then any room).
  */
@@ -111,13 +112,15 @@ const SIGHT_MAX_SQM = 8
 const SLAB_NEAR = 1.5
 /** …so that candidate loses this much of its distance-to-target score. */
 const SLAB_PENALTY = 1.5
-/** A ceiling piece reaching more than this below the ceiling (a pendant; not a fan, flush light or AC) hangs at head height. */
+/** A ceiling piece reaching more than this below the ceiling (a pendant; not a fan, flush light or wall AC) hangs at head height. */
 const HANG_DROP = 0.6
 /** A stand point keeps a hanging piece this far away (plan)… */
 export const HANG_CLEAR = 1.5
 /** …and this far when it is in the frame (within ~53° of the view): 2 m ahead, a pendant fills the top third. */
 export const HANG_IN_VIEW = 3
-/** A spot with a pendant in its frame loses to every spot without one (only when all have one does the best of them win). */
+/** A wall AC closer than this (plan) looms in a top corner of the first frame. */
+export const AC_NEAR = 1
+/** A spot with a pendant in its frame (or an AC over it) loses to every spot without (only when all have one does the best win). */
 const HANG_PENALTY = 100
 /** An enclosed room whose best spot 0.4 m off the walls sees less than this (help bed, WC, store) is framed from its door. */
 const TINY_SIGHT = 2.2
@@ -125,15 +128,25 @@ const TINY_SIGHT = 2.2
 const DOOR_STEP = [0.5, 0.6, 0.4]
 /** A piece this far off the view axis is in frame with margin (the horizontal half-FOV is ~48° at 16:9). */
 const FRAME_DEG = 40
+/** Door views look down 20°: 1 m ahead the frame then reaches down to 0.3 m, so the vanity, WC or cot of a small room shows. */
+export const DOOR_PITCH = (-20 * Math.PI) / 180
 
-/** A hanging piece (HANG_DROP) of the room within HANG_CLEAR of p, or within HANG_IN_VIEW and in the frame looking along face. */
+/**
+ * Something overhead spoils the frame from p looking along face: the room's pendant (a ceiling piece hanging more than
+ * HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW and in the frame; or the room's wall AC within AC_NEAR.
+ */
 const hangs = (unit: Unit, room: Room, p: Pt, face: Pt): boolean =>
   unit.furniture.some((f) => {
-    const k = kitAsset(f.assetId)
-    if (f.roomId !== room.id || k?.mount !== 'ceiling' || k.sizeM.y + (k.dropM ?? 0) <= HANG_DROP) return false
+    const k = f.roomId === room.id && kitAsset(f.assetId)
+    if (!k) return false
     const d = Math.hypot(f.x - p.x, f.y - p.y)
+    if (objectKind(k) === 'ac') return d < AC_NEAR
+    if (k.mount !== 'ceiling' || k.mountY !== undefined || k.sizeM.y <= HANG_DROP) return false
     return d < HANG_CLEAR || (d < HANG_IN_VIEW && (f.x - p.x) * face.x + (f.y - p.y) * face.y > 0.6 * d)
   })
+
+/** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat — furnish's isCommonCore, same rule. */
+const isCommonCore = (r: Room): boolean => /\b(stair|lift|elevator|lobby)/i.test(r.name)
 
 /** Distance from p to a placement's plan footprint (0 inside). rotationDeg is clockwise in y-down plan space. */
 const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z: number }): number => {
@@ -160,19 +173,20 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * may be a whole glazed wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
- * piece is within SLAB_NEAR, minus HANG_PENALTY when the room's pendant hangs in the frame (`hangs`).
+ * piece is within SLAB_NEAR, minus HANG_PENALTY when the room's pendant hangs in the frame or its AC is overhead (`hangs`).
  * A room with no hero that is empty or under SIGHT_MAX_SQM has no target: each stand point faces the farthest inner
  * corner it can see and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
- * Baths and tiny rooms (TINY_SIGHT) skip all that: they are seen from just inside their door (see below).
+ * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
-export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
+export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: number } {
   const inner = core.roomInnerPolygon(room, unit)
   const n = inner.length
   // ceiling lights and ACs are overhead: they neither frame the view nor block a stand point
   const items = unit.furniture.filter((f) => f.roomId === room.id && kitAsset(f.assetId)?.mount !== 'ceiling')
   let target: Pt
-  const hero = HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId))
+  // a cot (help room) is the hero wherever it stands
+  const hero = items.find((f) => f.assetId === 'cot') ?? (HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId)))
   // presets.ts convention: rotation θ (clockwise, y-down) faces (−sin θ, cos θ)
   const front = hero && room.kind !== 'dining' && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
   if (hero) target = hero
@@ -242,12 +256,12 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
     return Math.hypot(q.x - p.x, q.y - p.y)
   }
 
-  // A bath, or an enclosed room too small to frame from inside (no spot VIEW_INSET off the walls sees TINY_SIGHT): from
-  // just inside a door (DOOR_STEP; from outside, the leaf ajar 20° hides the room), the door whose spot sees farthest.
-  // It looks in (≤ 70° off the door's normal, never along the door wall; 5° steps): the hero in frame (±FRAME_DEG) first,
-  // then the most other pieces in frame, then the deepest sightline — vanity, shower and a wall meet in a diagonal
-  // instead of the mirror head-on.
-  if (room.kind === 'bath' || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
+  // A bath, a help room (its cot is the hero) or an enclosed room too small to frame from inside (no spot VIEW_INSET off
+  // the walls sees TINY_SIGHT): from just inside a door (DOOR_STEP; from outside, the leaf ajar 20° hides the room), the
+  // door whose spot sees farthest, looking down DOOR_PITCH. It looks in (≤ 70° off the door's normal, never along the door
+  // wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other pieces in frame, then the deepest
+  // sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
+  if (room.kind === 'bath' || hero?.assetId === 'cot' || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
     let door = null as { p: Pt; n: Pt; d: number } | null
     for (const { w, f, c } of doors) {
       const s = core.pointInPolygon(add(c, f.normal, w.thicknessM / 2 + 0.1), inner) ? 1 : -1
@@ -267,7 +281,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt } {
         const score = (hero && framed(hero) ? 1000 : 0) + items.filter((f) => f !== hero && framed(f)).length * 100 + depth
         if (score > pick.score) pick = { score, face }
       }
-      return { p, face: pick.face }
+      return { p, face: pick.face, pitch: DOOR_PITCH }
     }
   }
 

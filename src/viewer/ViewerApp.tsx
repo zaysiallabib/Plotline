@@ -62,7 +62,7 @@ function resolveUnit(): Unit | null {
   return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? null
 }
 
-const spawn = (scene: PlotlineScene, p: Pt, face: Pt): void => scene.spawnAt(p, yawFor(face))
+const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0): void => scene.spawnAt(p, yawFor(face), pitch)
 /** Plan-space eye position (rig + camera): the walker in walk mode, the orbit camera in dollhouse. */
 const eyeOf = (scene: PlotlineScene): Pt => {
   const w = scene.camera.getWorldPosition(new THREE.Vector3())
@@ -315,7 +315,7 @@ function Viewer({ unit }: { unit: Unit }) {
             toast={toast}
             onJump={(r) => {
               const v = roomView(r, unit)
-              spawn(scene, v.p, v.face)
+              spawn(scene, v.p, v.face, v.pitch)
               setMode('walk')
             }}
             onToggleMode={toggleMode}
