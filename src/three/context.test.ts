@@ -5,7 +5,7 @@ import * as core from '../core'
 import type { Unit } from '../core'
 import { kitAsset } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { BAY, contactShadows, neighbourBlocks } from './context'
+import { BAY, blockParts, contactShadows, neighbourBlocks, STOREY } from './context'
 import { TEST_UNIT } from './testUnit'
 
 const base = typeA as unknown as Unit
@@ -78,5 +78,27 @@ describe('neighbourBlocks', () => {
     expect(near((k) => k.y0 - b.maxY)).toBe(true)
     expect(near((k) => b.minX - k.x1)).toBe(true)
     expect(near((k) => k.x0 - b.maxX)).toBe(true)
+  })
+
+  test('facade variants mix; block parts hug their block (≤ 0.9 m out, up to the tanks) and skip the parking storey', () => {
+    const b = core.unitBounds(base)
+    const at = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }
+    const { blocks } = neighbourBlocks(b, 7)
+    expect(new Set(blocks.map((k) => k.facade)).size).toBeGreaterThanOrEqual(2)
+    let r = 0
+    for (const k of blocks) {
+      const parts = blockParts(k, at, () => (r = (r + 0.37) % 1))
+      const H = k.storeys * STOREY
+      expect(parts.some((q) => q.tank && q.z0 > H)).toBe(true)
+      for (const q of parts) {
+        expect(q.x0 >= k.x0 - 0.9 - 1e-9 && q.x1 <= k.x1 + 0.9 + 1e-9 && q.y0 >= k.y0 - 0.9 - 1e-9 && q.y1 <= k.y1 + 0.9 + 1e-9).toBe(true)
+        expect(q.z0 >= STOREY && q.z1 <= H + 4).toBe(true)
+        // off the walls only on the side facing the unit
+        if (q.x1 > k.x1 + 1e-9) expect(at.x).toBeGreaterThan(k.x1)
+        if (q.x0 < k.x0 - 1e-9) expect(at.x).toBeLessThan(k.x0)
+        if (q.y1 > k.y1 + 1e-9) expect(at.y).toBeGreaterThan(k.y1)
+        if (q.y0 < k.y0 - 1e-9) expect(at.y).toBeLessThan(k.y0)
+      }
+    }
   })
 })

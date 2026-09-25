@@ -102,6 +102,8 @@ export interface Block {
   storeys: number
   /** index into TINTS */
   tint: number
+  /** index into FACADES */
+  facade: number
 }
 
 export const STOREY = 3.2
@@ -151,7 +153,7 @@ export function neighbourBlocks(b: Bounds, seed: number): { blocks: Block[]; roa
         const depth = BAY * int(3, 4)
         const base = alongY ? (side % 2 ? b.maxX : b.minX) : side % 2 ? b.maxY : b.minY
         const [n0, n1] = side % 2 ? [base + d, base + d + depth] : [base - d - depth, base - d] // away from the box
-        const k = { storeys: int(6, 10), tint: int(0, TINTS.length - 1) }
+        const k = { storeys: int(6, 10), tint: int(0, TINTS.length - 1), facade: int(0, FACADES.length - 1) }
         blocks.push(alongY ? { x0: n0, x1: n1, y0: t, y1: t + w, ...k } : { x0: t, x1: t + w, y0: n0, y1: n1, ...k })
         t += w + between(3, 9)
       }
@@ -164,6 +166,8 @@ export function neighbourBlocks(b: Bounds, seed: number): { blocks: Block[]; roa
 const HORIZON = new THREE.Color(0.62, 0.67, 0.74)
 /** Extinction per metre: 1 − e^(−βd) of the colour is haze. 0.004 ≈ 1 km visibility, a clear-ish Dhaka day. */
 const HAZE_BETA = 0.004
+/** ...and all of it by the camera's far plane (300 m), so the ground has no hard edge against the sky. */
+const FADE_M = [120, 280]
 /** Haze colour, shared by every hazed material; Look.setHour tints it with the sky. */
 export const haze = { value: HORIZON.clone() }
 export const setHaze = (skyTint: THREE.Color) => haze.value.copy(HORIZON).multiply(skyTint)
@@ -175,16 +179,35 @@ export function hazed<M extends THREE.Material>(m: M): M {
     // before tone mapping: linear in both paths (composer target, and XR where the shader tone maps)
     s.fragmentShader = `uniform vec3 hazeColor;\n${s.fragmentShader}`.replace(
       '#include <tonemapping_fragment>',
-      `gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, 1.0 - exp(-${HAZE_BETA} * length(vViewPosition)));\n#include <tonemapping_fragment>`,
+      `float hazeD = length(vViewPosition);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, max(1.0 - exp(-${HAZE_BETA} * hazeD), smoothstep(${FADE_M[0]}.0, ${FADE_M[1]}.0, hazeD)));
+      #include <tonemapping_fragment>`,
     )
   }
   return m
 }
 
-let facade: THREE.CanvasTexture | null = null
-/** One bay × one storey of plain facade: plaster, a slab band, a 1.5 × 1.3 m window with a frame and sill. */
-function facadeTexture(): THREE.CanvasTexture {
-  if (facade) return facade
+type Paint = [colour: string, u0: number, v0: number, u1: number, v1: number]
+/**
+ * Facade variants, one bay × one storey each (u along the facade, v up from the storey floor, metres), drawn over
+ * weathered plaster at albedo ≈ 0.45 (brighter blew out to cream in full sun). (0.3, 1.6) stays plain plaster in
+ * every variant: roofs and blockParts sample it.
+ */
+export const FACADES: Paint[][] = [
+  // sash: a 1.5 × 1.3 m window with a frame and sill
+  [['#c4c3bf', 1.0, 0.86, 2.6, 2.26], ['#3b4247', 1.05, 0.92, 2.55, 2.2], ['#7c8387', 1.78, 0.92, 1.82, 2.2], ['#cac7c1', 0.95, 0.84, 2.65, 0.9]],
+  // ribbon: a 2.4 m three-pane window under a concrete sunshade (chajja) with a soft shadow line
+  [
+    ['#c4c3bf', 0.6, 0.86, 3.0, 2.2], ['#3b4247', 0.65, 0.92, 2.95, 2.14], ['#7c8387', 1.43, 0.92, 1.47, 2.14], ['#7c8387', 2.18, 0.92, 2.22, 2.14],
+    ['#cac7c1', 0.55, 0.84, 3.05, 0.9], ['#8f8a83', 0.45, 2.2, 3.15, 2.32], ['#cfccc6', 0.45, 2.32, 3.15, 2.44],
+  ],
+  // balcony: a 1.0 m window and a door-height opening behind the balcony parapet (slab + parapet: blockParts)
+  [['#c4c3bf', 0.5, 0.96, 1.5, 2.26], ['#3b4247', 0.55, 1.02, 1.45, 2.2], ['#cac7c1', 0.45, 0.94, 1.55, 1.0], ['#c4c3bf', 1.9, 0.18, 3.0, 2.3], ['#2f3437', 1.95, 0.18, 2.95, 2.25]],
+]
+
+const facades: THREE.CanvasTexture[] = []
+function facadeTexture(variant: number): THREE.CanvasTexture {
+  if (facades[variant]) return facades[variant]
   const px = 36 // per metre
   const c = document.createElement('canvas')
   c.width = BAY * px
@@ -194,50 +217,120 @@ function facadeTexture(): THREE.CanvasTexture {
     g.fillStyle = col
     g.fillRect(u0 * px, c.height - v1 * px, (u1 - u0) * px, (v1 - v0) * px) // v up from the storey's floor
   }
-  // weathered plaster at albedo ≈ 0.45: brighter blew out to cream in full sun
   rect('#b9b5ae', 0, 0, BAY, STOREY)
   rect('#a29e97', 0, 0, BAY, 0.18) // slab edge
-  rect('#c4c3bf', 1.0, 0.86, 2.6, 2.26) // frame
-  rect('#3b4247', 1.05, 0.92, 2.55, 2.2) // glass
-  rect('#7c8387', 1.78, 0.92, 1.82, 2.2) // sash meeting rail
-  rect('#cac7c1', 0.95, 0.84, 2.65, 0.9) // sill
-  facade = new THREE.CanvasTexture(c)
-  facade.colorSpace = THREE.SRGBColorSpace
-  facade.wrapS = facade.wrapT = THREE.RepeatWrapping
-  facade.repeat.set(1 / BAY, 1 / STOREY)
-  facade.anisotropy = 8
-  return facade
+  for (const r of FACADES[variant]) rect(...r)
+  const t = (facades[variant] = new THREE.CanvasTexture(c))
+  t.colorSpace = THREE.SRGBColorSpace
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(1 / BAY, 1 / STOREY)
+  t.anisotropy = 8
+  return t
+}
+
+/** A box on a block: plan x/y, height z above the ground; `shade` × the block's tint; a tank is a cylinder in it. */
+export interface Part {
+  x0: number
+  x1: number
+  y0: number
+  y1: number
+  z0: number
+  z1: number
+  shade: number
+  tank?: boolean
 }
 
 /**
- * The street context in world space: blocks (one merged mesh, a tint per block in vertex colours, a facade grid
- * in metre UVs) and the road, standing on `groundY`. Neither casts nor receives shadow: they must never shade the
- * unit, and the sun's shadow map only covers the unit anyway.
+ * What a plain Dhaka block has besides windows: a roof parapet, the stair/lift head room with black water tanks on
+ * it, outdoor AC units under some windows and, on balcony blocks (facade 2), a slab + parapet at every bay's door.
+ * Facade parts only on the faces that look toward `at` (the others are never seen), none on the ground storey (parking).
+ */
+export function blockParts(k: Block, at: Pt, r: () => number): Part[] {
+  const H = k.storeys * STOREY
+  const T = 0.15
+  const parts: Part[] = [
+    { x0: k.x0, x1: k.x1, y0: k.y0, y1: k.y0 + T, z0: H, z1: H + 1, shade: 1 },
+    { x0: k.x0, x1: k.x1, y0: k.y1 - T, y1: k.y1, z0: H, z1: H + 1, shade: 1 },
+    { x0: k.x0, x1: k.x0 + T, y0: k.y0 + T, y1: k.y1 - T, z0: H, z1: H + 1, shade: 1 },
+    { x0: k.x1 - T, x1: k.x1, y0: k.y0 + T, y1: k.y1 - T, z0: H, z1: H + 1, shade: 1 },
+  ]
+  const hx = k.x0 + 1 + r() * (k.x1 - k.x0 - 5.6)
+  const hy = k.y0 + 1 + r() * (k.y1 - k.y0 - 5)
+  parts.push({ x0: hx, x1: hx + 3.6, y0: hy, y1: hy + 3, z0: H, z1: H + 2.8, shade: 0.95 })
+  for (let i = 0, n = 1 + Math.floor(2 * r()); i < n; i++) {
+    parts.push({ x0: hx + 0.3 + 1.6 * i, x1: hx + 1.4 + 1.6 * i, y0: hy + 0.9, y1: hy + 2, z0: H + 2.8, z1: H + 4, shade: 0.12, tank: true })
+  }
+  const faces = [
+    { n: [0, -1], o: [k.x0, k.y0], d: [1, 0], len: k.x1 - k.x0 },
+    { n: [0, 1], o: [k.x0, k.y1], d: [1, 0], len: k.x1 - k.x0 },
+    { n: [-1, 0], o: [k.x0, k.y0], d: [0, 1], len: k.y1 - k.y0 },
+    { n: [1, 0], o: [k.x1, k.y0], d: [0, 1], len: k.y1 - k.y0 },
+  ]
+  for (const { n, o, d, len } of faces) {
+    if ((at.x - o[0] - (d[0] * len) / 2) * n[0] + (at.y - o[1] - (d[1] * len) / 2) * n[1] <= 0) continue
+    // u along the face from the block corner (= the facade texture's u), w out from the wall
+    const box = (u0: number, u1: number, z0: number, z1: number, w0: number, w1: number, shade: number) => {
+      const xs = [o[0] + d[0] * u0 + n[0] * w0, o[0] + d[0] * u1 + n[0] * w1]
+      const ys = [o[1] + d[1] * u0 + n[1] * w0, o[1] + d[1] * u1 + n[1] * w1]
+      parts.push({ x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), z0, z1, shade })
+    }
+    for (let b = 0; b + BAY <= len + 1e-6; b += BAY) {
+      for (let s = 1; s < k.storeys; s++) {
+        const z = s * STOREY
+        if (k.facade === 2) {
+          box(b + 1.6, b + 3.3, z + 0.06, z + 0.18, 0, 0.9, 0.9) // slab
+          box(b + 1.6, b + 3.3, z + 0.18, z + 1.15, 0.8, 0.9, 1) // parapet
+          box(b + 1.6, b + 1.7, z + 0.18, z + 1.15, 0, 0.8, 1)
+          box(b + 3.2, b + 3.3, z + 0.18, z + 1.15, 0, 0.8, 1)
+        } else if (r() < 0.3) box(b + 1.4, b + 2.2, z + 0.25, z + 0.8, 0, 0.3, 1.25) // outdoor AC unit under the window
+      }
+    }
+  }
+  return parts
+}
+
+/**
+ * The street context in world space: blocks (one merged mesh per facade variant, a tint per block in vertex colours,
+ * the facade in metre UVs, roofs and parts on the plain plaster texel) and the road, standing on `groundY`.
+ * Neither casts nor receives shadow: they must never shade the unit, and the sun's shadow map only covers the unit.
  */
 export function buildStreet(unit: Unit, bounds: Bounds, groundY: number): THREE.Group {
   const seed = [...unit.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
   const { blocks, road } = neighbourBlocks(bounds, seed)
+  const at = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }
   const tints = TINTS.map((t) => new THREE.Color(t))
-  const geos = blocks.map((k) => {
-    const [W, H, D] = [k.x1 - k.x0, k.storeys * STOREY, k.y1 - k.y0]
-    const g = new THREE.BoxGeometry(W, H, D).toNonIndexed().translate(W / 2, H / 2, D / 2)
+  /** non-indexed and painted: a facade keeps metre UVs on its walls (along-face from the corner, height), the rest samples the plain texel */
+  const paint = (geo: THREE.BufferGeometry, c: THREE.Color, facade: boolean) => {
+    const g = geo.toNonIndexed()
+    geo.dispose()
     const p = g.attributes.position
     const n = g.attributes.normal
     const uv = g.attributes.uv
     const col = new Float32Array(p.count * 3)
     for (let i = 0; i < p.count; i++) {
-      // walls: along-face metres from the block corner (whole bays), height from the ground; roofs: a plain plaster texel
-      if (Math.abs(n.getY(i)) > 0.5) uv.setXY(i, 0.3, 1.6)
+      if (!facade || Math.abs(n.getY(i)) > 0.5) uv.setXY(i, 0.3, 1.6)
       else uv.setXY(i, Math.abs(n.getZ(i)) > 0.5 ? p.getX(i) : p.getZ(i), p.getY(i))
-      col.set([tints[k.tint].r, tints[k.tint].g, tints[k.tint].b], i * 3)
+      col.set([c.r, c.g, c.b], i * 3)
     }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-    return g.translate(k.x0, groundY, k.y0)
+    return g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  }
+  const geos: THREE.BufferGeometry[][] = FACADES.map(() => [])
+  blocks.forEach((k, i) => {
+    const [W, H, D] = [k.x1 - k.x0, k.storeys * STOREY, k.y1 - k.y0]
+    const tint = tints[k.tint]
+    geos[k.facade].push(paint(new THREE.BoxGeometry(W, H, D).translate(W / 2, H / 2, D / 2), tint, true).translate(k.x0, groundY, k.y0))
+    for (const q of blockParts(k, at, rng(seed + i + 1))) {
+      const [w, h, d] = [q.x1 - q.x0, q.z1 - q.z0, q.y1 - q.y0]
+      const g = q.tank ? new THREE.CylinderGeometry(w / 2, w / 2, h, 10) : new THREE.BoxGeometry(w, h, d)
+      geos[k.facade].push(paint(g, tint.clone().multiplyScalar(q.shade), false).translate((q.x0 + q.x1) / 2, groundY + (q.z0 + q.z1) / 2, (q.y0 + q.y1) / 2))
+    }
   })
   const group = new THREE.Group()
-  const mat = hazed(new THREE.MeshStandardMaterial({ map: facadeTexture(), vertexColors: true, roughness: 0.92 }))
-  group.add(new THREE.Mesh(mergeGeometries(geos)!, mat))
-  geos.forEach((g) => g.dispose())
+  geos.forEach((list, v) => {
+    if (!list.length) return
+    group.add(new THREE.Mesh(mergeGeometries(list)!, hazed(new THREE.MeshStandardMaterial({ map: facadeTexture(v), vertexColors: true, roughness: 0.92 }))))
+    list.forEach((g) => g.dispose())
+  })
   const asphalt = hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 }))
   const strip = new THREE.Mesh(new THREE.PlaneGeometry(road.x1 - road.x0, road.y1 - road.y0).rotateX(-Math.PI / 2), asphalt)
   strip.position.set((road.x0 + road.x1) / 2, groundY + 0.05, (road.y0 + road.y1) / 2)
