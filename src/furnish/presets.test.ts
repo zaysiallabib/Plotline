@@ -177,6 +177,53 @@ describe('furnish', () => {
     for (const a of ['shower_screen', 'toilet', 'vanity']) expect(ids, a).toContain(a)
     const wc = rect('bath', 1.4, 1.6, { wall: 0, offsetM: 0.3 })
     expect(furnish(wc, deriveRooms(wc)).map((p) => p.assetId)).not.toContain('shower_screen')
+    const wcIds = furnish(wc, deriveRooms(wc)).map((p) => p.assetId)
+    expect(wcIds, 'a WC under 2.5 m² gets no vanity').not.toContain('vanity')
+  })
+
+  test('a shower tray sits flush in its corner, so it still fits beside a door zone with centimetres to spare', () => {
+    // door zone x 0.3–1.2; the far corner's tray spans x 2.2 − 0.0635 − 0.9 − gap: 1.1865 with a 5 cm gap (in the zone), 1.2315 flush
+    const unit = rect('bath', 2.2, 1.9, { wall: 0, offsetM: 0.3 })
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const tray = ps.find((p) => p.assetId === 'shower_screen')!
+    expect(tray).toBeDefined()
+    const b = aabb(quad(tray))
+    expect(2.2 - 0.0635 - b.maxX).toBeLessThan(0.01)
+    expect(1.9 - 0.0635 - b.maxY).toBeLessThan(0.01)
+    expectInsideAndDisjoint(ps, rooms, unit)
+  })
+
+  test('a door whose leaf swings out of the room keeps only a 0.6 m step-in zone: a servant WC still gets its toilet', () => {
+    const wc = (swing: 'in' | 'out') => {
+      const unit = rect('bath', 1.5, 1.15, { wall: 3, offsetM: 0.1 })
+      // wall 3 runs with the room loop: 'out' = +normal = into the WC, 'in' = away from it
+      Object.assign(unit.walls[3].openings[0], { widthM: 0.7, hinge: 'a', swing })
+      return unit
+    }
+    const depth = (u: Unit) => Math.max(...doorClearZones(deriveRooms(u)[0], u)[0].map((p) => p.x)) - 0.0635
+    expect(depth(wc('out'))).toBeCloseTo(1.0, 6)
+    expect(depth(wc('in'))).toBeCloseTo(0.6, 6)
+    const unit = wc('in')
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    expect(ps.map((p) => p.assetId)).toContain('toilet')
+    expectInsideAndDisjoint(ps, rooms, unit)
+    expect(furnish(wc('out'), deriveRooms(wc('out'))).map((p) => p.assetId)).not.toContain('toilet') // the leaf sweeps the whole WC
+  })
+
+  test('an open-plan living room long enough for two zones gets a dining set and a lounge whose TV faces the sofa', () => {
+    const unit = rect('living', 11, 3.8, { wall: 3, offsetM: 1.4 })
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const ids = ps.map((p) => p.assetId)
+    for (const a of ['dining_table', 'dining_chair', 'sofa_3seat']) expect(ids, a).toContain(a)
+    const table = ps.find((p) => p.assetId === 'dining_table')!
+    const sofa = ps.find((p) => p.assetId === 'sofa_3seat')!
+    expect(Math.abs(table.x - sofa.x), 'two zones, one at each end').toBeGreaterThan(3)
+    const tv = ps.find((p) => p.assetId.startsWith('tv_55'))
+    if (tv) expect(Math.abs(tv.x - sofa.x), 'TV across from the sofa, not down the room').toBeLessThan(1.5)
+    expectInsideAndDisjoint(ps, rooms, unit)
   })
 
   test('nothing tall covers a window; a frame never hangs over one', () => {
@@ -318,5 +365,24 @@ describe('furnish', () => {
     expect(ids('r_dining'), 'family sofa cushions').toContain('cushions_plain')
     expect(ids('r_bed1').filter((a) => a.startsWith('art_')), 'diptych').toHaveLength(2)
     for (const a of ['vanity', 'shower_screen', 'toilet']) expect(ids('r_bath1'), a).toContain(a)
+    expect(ids('r_htoilet').sort(), 'the 2.1 m² WC: toilet + pedestal basin').toEqual(['basin', 'ceiling_light', 'toilet'])
+  })
+
+  // the second plan (system proof): same rules, no per-unit code
+  const typeB = (Object.values(import.meta.glob('../data/units/type-b*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test.skipIf(!typeB)('type-b.json rooms get their staging, inside and disjoint', () => {
+    const rooms = deriveRooms(typeB)
+    const ps = furnish(typeB, rooms)
+    expectInsideAndDisjoint(ps, rooms, typeB)
+    const ids = (roomId: string) => ps.filter((p) => p.roomId === roomId).map((p) => p.assetId)
+    // 36'-2" open-plan living, dining & family: both zones
+    for (const a of ['dining_table', 'sofa_3seat', 'cushions_plain']) expect(ids('r_living'), a).toContain(a)
+    expect(ids('r_living').filter((a) => a === 'dining_chair')).toHaveLength(6)
+    for (const r of ['r_bath1', 'r_bath2', 'r_bath3']) for (const a of ['vanity', 'shower_screen', 'toilet']) expect(ids(r), `${r} ${a}`).toContain(a)
+    expect(ids('r_htoilet'), 'servant WC, door swings out').toContain('toilet')
+    for (const a of ['kitchen_sink', 'kitchen_hob', 'fridge']) expect(ids('r_kitchen'), a).toContain(a)
+    expect(ids('r_bed1')).toContain('bed_queen')
+    expect(ids('r_bed2')).toContain('bed_queen_c')
+    expect(ids('r_bed3')).toContain('bed_queen_b')
   })
 })
