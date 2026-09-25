@@ -28,10 +28,11 @@ const STOREY_M = 3.2
 const SLAB_M = 0.15
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
 // ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
+// 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aims for walls ≈ 195–205.
 const EXPOSURE = 1
-const HEMI = 0.6
-const ENV = 0.8
-const HEMI_SKY = new THREE.Color('#dfe7f5')
+const HEMI = 0.9
+const ENV = 1.1
+const HEMI_SKY = new THREE.Color('#e6e9ee') // barely cool: #dfe7f5 turned the warm-white walls grey
 /** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
 const HEMI_GROUND = '#cfcbc4'
 /** sky light + sky dome at sunrise / sunset (low sun) */

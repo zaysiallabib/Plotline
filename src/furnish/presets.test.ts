@@ -134,7 +134,7 @@ describe('furnish', () => {
     const rooms = deriveRooms(unit)
     const ps = furnish(unit, rooms)
     const ids = ps.map((p) => p.assetId)
-    for (const a of ['sofa_3seat', 'throw_pillows_01', 'modern_coffee_table_01', 'modern_wooden_cabinet', 'tv_55', 'modern_arm_chair_01', 'potted_plant_01', 'ceiling_fan']) {
+    for (const a of ['sofa_3seat', 'cushions_plain', 'modern_coffee_table_01', 'modern_wooden_cabinet', 'tv_55', 'modern_arm_chair_01', 'potted_plant_01', 'ceiling_fan']) {
       expect(ids, a).toContain(a)
     }
     expect(ids.some((a) => a.startsWith('rug_'))).toBe(true)
@@ -230,7 +230,7 @@ describe('furnish', () => {
     const rooms = deriveRooms(typeA)
     const ps = furnish(typeA, rooms)
     const ids = (roomId: string) => ps.filter((p) => p.roomId === roomId).map((p) => p.assetId)
-    for (const a of ['sofa_3seat', 'throw_pillows_01', 'modern_coffee_table_01', 'tv_55']) expect(ids('r_living'), a).toContain(a)
+    for (const a of ['sofa_3seat', 'cushions_plain', 'modern_coffee_table_01', 'tv_55']) expect(ids('r_living'), a).toContain(a)
     for (const a of ['dining_table', 'dining_chair', 'wall_clock', 'modern_ceiling_lamp_01']) expect(ids('r_dining'), a).toContain(a)
     expect(ids('r_dining').filter((a) => a === 'dining_chair')).toHaveLength(6)
     for (const a of ['kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'fridge', 'kitchen_tall', 'kitchen_counter_styled']) expect(ids('r_kitchen'), a).toContain(a)

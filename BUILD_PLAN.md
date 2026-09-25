@@ -88,3 +88,5 @@ pixel-based floor-plan auto-detection (later: AI reads the PRINTED dims and
 labels — "AI drafts, human confirms" — in Phase C) · buyer geometry editing ·
 VR/AR · photorealism · cost-estimation engine · self-serve dashboard ·
 payments integration · native apps.
+
+### Note: we are holding off on android, VR, and Bangla language. Build the pc versoin first
