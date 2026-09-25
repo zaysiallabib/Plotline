@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **deployed 2026-09-26 ~02:00 with waves 7–8** (founder ran `npx vercel --prod`; Claude checked it in headless Edge: loads to 27/27, Enter opens the flat, console clean). **Not yet deployed:** the load-screen unit/Studio links and the "Loading…" Enter button (commits 1c5f7d8, d453baa) — founder runs `npx vercel --prod` again.
+Live: https://plotline-flax.vercel.app — **deployed 2026-09-26 ~03:30 = everything up to b3b211a** (waves 7–8, load-screen unit/Studio links, "Loading…" Enter). Checked in headless Edge 03:45: `/` → `/u/type-a`, nav shows Type A/B/C + Studio, Enter enabled after 28 s, console clean (`E:\dev\plotline-shots\wave9\live-*.jpg`).
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
@@ -79,6 +79,18 @@ Shots: `E:\dev\plotline-shots\wave8\{views,furnish,typec,render,score,score-pitc
 - **Regression to fix first (wave 9 #1): the door view for baths/tiny rooms.** Standing 0.5 m inside the door looking down 20° fills the frame with the near wall + floor and cuts the fittings (`a-bath-1`, `a-powder-room`, `b-bath-3`, `b-help-room`). Tried an 8° pitch (`score-pitch8\`): worse, the fittings leave the frame entirely. So it is not the pitch: the stand point must be the far corner / diagonal that sees the most fittings from the greatest distance (the wave-7 `b-bath-3` frame), with the door view only as fallback when no corner is ≥ 1.5 m from the vanity. Help rooms: the cot sits at the frame's bottom edge; aim at the cot's centre from the door at eye level, or accept that a 1.5 m room can't be framed and show it in the dollhouse only.
 - Other wave-9 items seen in the shots: a wall AC looms in the top corner of `a-entry` and `c-entry` (the AC belongs to the dining room while the entry stand point is in the passage; the 2.2 m rule only checks the stand point's own room); Type C entry has the wooden cube shelf 0.5 m to the right of the stand point; `c-veranda-living-` faces the wall corner with the lounge chair in the foreground; `a-kitchen` stands 0.5 m from the cabinets (Type B's kitchen frame is the model); oak wardrobes fill a third of `b-bed-2`, `a-bed-3`, `c-bed-1` (stand point should keep 1 m from a tall piece in frame); the ceiling fan fills the top of `a-living-room` / `c-living-room` (minor); sliders with invisible glass read as open (a faint sky reflection would fix it).
 - Typec's rule-break list (planters get a lounge chair, L-shaped Bath-3 gets no shower, curtains hang on the study's interior glass partition, the two-zone rule skips the irregular dining) is still open.
+
+## Wave 9 — IN FLIGHT from 2026-09-26 ~03:45 (manager Fable 5.1, three Opus 5.5 agents in worktrees)
+
+Founder 2026-09-26 03:40: "done deploying … opus 5.5 for technical agents, fable 5.1 as project manager. go." No bug list sent. Wave 9 = items 2–4 of "Next, in order" (small-room views, typec's rule breaks, glass/sky polish) plus the loose-end asset deletion. The whole-building view (item 5) is NOT in this wave.
+
+| Agent | Port | Scope (files) | Status |
+|---|---|---|---|
+| views | 5221 | `src/viewer/spawn.ts` + `viewer.test.ts`: corner/diagonal stand point for baths & tiny rooms (door view = fallback); help room aims at the cot; AC/pendant/fan clearance counts pieces of ANY room in frame (a-entry / c-entry AC); 1 m from any tall piece in frame; kitchen jump like Type B's; living-veranda jump faces the street or the room; ceiling-fan clearance like the pendant rule | running |
+| furnish | 5222 | `src/furnish/presets.ts`, `src/three/details.ts` + tests: planters get plants only; L-shaped bath gets a shower in its widest leg; no curtains on an interior glass partition; two-zone rule on the irregular Type C dining; a shorter cot so Type A's help bed gets one | running |
+| render | 5223 | `src/three/openings.ts`, `PlotlineScene.ts`/`render.ts`, kit + MANIFEST: faint sky reflection on window/slider glass (moiré and veil must not return); clamp the baked sun in `sky.hdr` on load (arcs in Bed-2's west window); delete the unused `steel_frame_shelves_01` + `drawer_cabinet` (2.7 MB) | running |
+
+Shots go to `E:\dev\plotline-shots\wave9\<agent>\` (baseline = `wave8\score\`); agent scratch `E:\dev\tmp\wave9\<agent>\`. Merge order when done: furnish → views → render (views depends on nothing furnish changes except the cot id; render is independent). After merge: 15:30 shots for A/B/C, blind score, HANDOFF, push, founder deploys.
 
 ## Open work
 
