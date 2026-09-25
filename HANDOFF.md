@@ -52,7 +52,7 @@ Demo drawings checked: img_1 rooftop, img_4 basement, img_5 ground floor — no 
 | Agent | Branch / worktree | Scope | Status |
 |---|---|---|---|
 | views | wave8-views | HANDOFF 3a (entry ≥ 1.5 m from a pendant, clock over nothing), 3c (bath jump from the door, diagonal like b-bath-3), 3g (Rooms list order), help-room jump from the doorway | running |
-| furnish | wave8-furnish | 3b (stair model, cot preset for help room, hide common-core rooms), 3d (AC on longest windowless wall), 3e (curtain rod brackets/finials), 4 (closed wardrobe/bookcase instead of steel rack, art pool of 8+ by room id) | running |
+| furnish | wave8-furnish | 3b (stair model, cot preset for help room, hide common-core rooms), 3d (AC on longest windowless wall), 3e (curtain rod brackets/finials), 4 (closed wardrobe/bookcase instead of steel rack, art pool of 8+ by room id) | DONE: 5 commits on worktree-agent-abd02e988205628a9 (0d722ba..36da0dd), 156 tests; exports isCommonCore/isHelpRoom for the viewer; Type A help bed too short for a cot; stair upper flight meets the ceiling (no slab hole); steel rack + drawer_cabinet now unused (2.7 MB, deletable) |
 | typec | wave8-typec | Type C = lower flat of img_2 via the Studio import path (Playwright round-trip: import → issues → Preview 3D), type-c.test.ts, north-rose re-read for A/B/C, rule breaks REPORTED not patched into Type-C code | running |
 | render | wave8-render | 3f (sun patch on living floor at 15:30, glazing moiré), 5 (blown whites in baths/windows, dark dining lintel, Bed-2 speckle), 4 (neighbour facade variants, hazier ground) | running |
 
