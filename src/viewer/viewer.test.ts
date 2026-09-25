@@ -9,7 +9,7 @@ import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
-  AC_IN_VIEW, AC_NEAR, BATH_BACK, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, HANG_CLEAR, HANG_IN_VIEW, TALL_IN_VIEW, VIEW_INSET,
+  AC_IN_VIEW, AC_NEAR, BATH_BACK, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, TALL_IN_VIEW, VIEW_INSET,
   entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
@@ -150,12 +150,14 @@ describe('viewer', () => {
       // never nose-to-wall: at least VIEW_INSET (minus a hair for acute corners) from every inner edge
       const nearest = Math.min(...inner.map((a, i) => segDist(v.p, a, inner[(i + 1) % inner.length])))
       expect(nearest, name).toBeGreaterThanOrEqual(VIEW_INSET - 0.02)
-      // never in a doorway or a leaf's swing: every door/passage centre on the room's walls ≥ DOOR_CLEAR away
+      // never in a doorway or a leaf's swing: every door/passage centre on the room's walls ≥ DOOR_CLEAR away (a galley: its whole span ≥ GALLEY_DOOR_CLEAR)
       for (const w of furnished.walls.filter((x) => r.wallIds.includes(x.id))) {
         const f = core.wallFrame(w, furnished.vertices)
         for (const o of w.openings.filter((x) => x.kind !== 'window')) {
           const c = { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) }
-          expect(Math.hypot(v.p.x - c.x, v.p.y - c.y), `${name} ${o.id}`).toBeGreaterThanOrEqual(DOOR_CLEAR)
+          const along = Math.max(-o.widthM / 2, Math.min(o.widthM / 2, (v.p.x - c.x) * f.dir.x + (v.p.y - c.y) * f.dir.y))
+          if (r.kind === 'kitchen') expect(Math.hypot(v.p.x - c.x - f.dir.x * along, v.p.y - c.y - f.dir.y * along), `${name} ${o.id}`).toBeGreaterThanOrEqual(GALLEY_DOOR_CLEAR)
+          else expect(Math.hypot(v.p.x - c.x, v.p.y - c.y), `${name} ${o.id}`).toBeGreaterThanOrEqual(DOOR_CLEAR)
         }
       }
       // facing the bed / vanity / sink (else the furniture centroid), from ≥ 0.5 m off anything at eye level
@@ -354,7 +356,7 @@ describe('viewer', () => {
     expect(footprintDist(roomView(bed2, b.u).p, w, kitAsset(w.assetId)!.sizeM)).toBeGreaterThan(1.4)
   })
 
-  it.skip('kitchen jumps stand across the room from the run, in front of the sink, and see the whole run (A, B, C; B is the model)', () => {
+  it('kitchen jumps stand across the room from the run, in front of the sink, and see the whole run (A, B, C; B is the model)', () => {
     for (const { u, rs } of both) {
       const r = rs.find((x) => x.kind === 'kitchen')!
       const v = roomView(r, u)

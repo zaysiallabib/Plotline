@@ -111,6 +111,8 @@ const EYE = 1.6
 export const VIEW_INSET = 0.4
 /** Minimum distance from a stand point to a door/passage (a door needs max(this, widthM + 0.3) from its whole span). */
 export const DOOR_CLEAR = 1.2
+/** A kitchen's run faces its door wall across a narrow galley: there a stand point only keeps out of the doorway and the ajar leaf (≤ 0.26 m in). */
+export const GALLEY_DOOR_CLEAR = 0.6
 /** Anything reaching above 1.2 m (wall cabinets, wardrobe, TV) stays this far from the eye; glass only must not enclose it. */
 const EYE_CLEAR = 0.5
 const GLASS = new Set(['shower_screen'])
@@ -256,12 +258,13 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
       .filter((o) => o.kind !== 'window')
       .map((o) => ({ o, w, f, a: add(f.origin, f.dir, o.offsetM), b: add(f.origin, f.dir, o.offsetM + o.widthM), c: add(f.origin, f.dir, o.offsetM + o.widthM / 2) }))
   })
+  const galley = room.kind === 'kitchen'
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
       // slider as openings.ts builds it: no hinge, ≥ 1.2 m
-      o.kind === 'door' && (o.hinge || o.widthM < 1.2)
-        ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3)
-        : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
+      galley ? segDist(p, a, b) >= GALLEY_DOOR_CLEAR
+      : swings(o) ? segDist(p, a, b) >= Math.max(DOOR_CLEAR, o.widthM + 0.3)
+      : Math.hypot(p.x - c.x, p.y - c.y) >= DOOR_CLEAR,
     )
   const pieces = items.flatMap((f) => {
     const k = kitAsset(f.assetId)
