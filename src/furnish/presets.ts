@@ -588,7 +588,8 @@ function kitchen(ctx: Ctx): void {
 }
 
 function bath(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 4) inCorner(ctx, 'shower_screen', [], GAP + FLUSH) // a fitted tray: flush to both walls
+  // a fitted tray, flush to both walls, from 3.5 m² (an L-shaped 3.8 m² bath takes one); never in a powder room (a guest WC)
+  if (ctx.room.areaSqm >= 3.5 && !/powder|\bpdr\b/i.test(ctx.room.name)) inCorner(ctx, 'shower_screen', [], GAP + FLUSH)
   // toilet on the blankest wall and the vanity on another; if that leaves no room for the vanity, the other way round
   const pair = (a: string, b: string) =>
     atomic(ctx, () => {

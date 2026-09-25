@@ -504,4 +504,22 @@ describe('furnish', () => {
     expect(ids.length).toBeGreaterThan(0)
     expect(ids.every((a) => a.startsWith('potted_plant_')), `${ids}`).toBe(true)
   })
+
+  test.skipIf(!typeA || !typeB || !typeC)('the L-shaped 3.8 m² Bath-3 (C) gets a shower tray flush in a corner; a powder room never does', () => {
+    const rooms = deriveRooms(typeC)
+    const ps = furnish(typeC, rooms)
+    const bath = rooms.find((r) => r.id === 'r_bath3')!
+    const mine = ps.filter((p) => p.roomId === bath.id)
+    const tray = mine.find((p) => p.assetId === 'shower_screen')
+    expect(tray, `${mine.map((p) => p.assetId)}`).toBeDefined()
+    const inner = roomInnerPolygon(bath, typeC)
+    expect(Math.min(...inner.flatMap((c) => quad(tray!).map((q) => Math.hypot(q.x - c.x, q.y - c.y)))), 'flush in a corner').toBeLessThan(0.02)
+    expect(mine.map((p) => p.assetId)).toContain('toilet')
+    expectInsideAndDisjoint(ps, rooms, typeC)
+    for (const u of [typeA, typeB, typeC]) {
+      const rs = deriveRooms(u)
+      const all = furnish(u, rs)
+      for (const r of rs.filter((r) => /powder/i.test(r.name))) expect(all.filter((p) => p.roomId === r.id).map((p) => p.assetId), `${u.id} ${r.name}`).not.toContain('shower_screen')
+    }
+  })
 })
