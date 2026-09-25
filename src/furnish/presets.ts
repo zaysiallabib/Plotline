@@ -22,12 +22,12 @@
  *    (top > sill + 0.35 m, e.g. a wardrobe, a mirror, upper cabinets).
  *  - 'stack' (wall cabinets / hood over a base module): 'solid' minus the furniture overlap test.
  *  - 'flat' (rugs): only the door clear zones and other rugs; furniture stands on them.
- *  - 'free' (ceiling fixtures, cushions on a sofa): the inside test only.
+ *  - 'free' (ceiling fixtures, cushions on a sofa, a wall AC after its own checks): the inside test only.
  * Plants and the glass shower screen may stand in front of a window.
  */
-import type { FurniturePlacement, Room, Unit } from '../core'
+import type { FurniturePlacement, Room, RoomKind, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
-import { heightRange, kitAsset } from './kit'
+import { heightRange, isCeilingLight, kitAsset } from './kit'
 import { ART_SETS, ART_W, BED_STYLES } from './procedural.meta'
 
 export const GAP = 0.05
@@ -558,6 +558,72 @@ function closet(ctx: Ctx): void {
   if (ctx.room.areaSqm >= 3) onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01')
 }
 
+// ───────────────────────────── ceiling light, AC (every room kind) ─────────────────────────────
+
+/** Rooms that get a ceiling light: the preset's fan or pendant, else a flush fixture (ceilingLight). render.ts lights them. */
+export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
+/** Rooms that get a wall-mounted split AC. */
+export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study']
+/** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of its ends. */
+const AC_CLEAR = 0.3
+
+const segDist = (p: Pt, a: Pt, b: Pt) => {
+  const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1e-9
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / L2))
+  return dist(p, { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) })
+}
+const wallClearance = (p: Pt, poly: Pt[]) => Math.min(...poly.map((a, i) => segDist(p, a, poly[(i + 1) % poly.length])))
+
+/**
+ * Flush ceiling light in a room with no fan or pendant, sized by the room: at the centroid, unless that is outside or
+ * tucked into a corner of a concave room (under 3/4 of the best clearance), then at the 0.25 m grid point farthest from
+ * every wall.
+ */
+function ceilingLight(ctx: Ctx): void {
+  if (ctx.out.some((p) => isCeilingLight(p.assetId))) return
+  const xs = ctx.inner.map((p) => p.x)
+  const ys = ctx.inner.map((p) => p.y)
+  let best = { p: polygonCentroid(ctx.inner), d: 0 }
+  for (let x = Math.min(...xs) + 0.125; x < Math.max(...xs); x += 0.25)
+    for (let y = Math.min(...ys) + 0.125; y < Math.max(...ys); y += 0.25) {
+      const d = pointInPolygon({ x, y }, ctx.inner) ? wallClearance({ x, y }, ctx.inner) : 0
+      if (d > best.d) best = { p: { x, y }, d }
+    }
+  const c = polygonCentroid(ctx.inner)
+  const at = pointInPolygon(c, ctx.inner) && wallClearance(c, ctx.inner) >= 0.75 * best.d ? c : best.p
+  tryPlace(ctx, ctx.room.areaSqm > 12 ? 'ceiling_light_large' : 'ceiling_light', at, 0, 'free')
+}
+
+/**
+ * Split AC high on a wall: never over a door/window (AC_CLEAR either side), in a door's clear zone (swing) or over
+ * anything taller than 1.8 m (wardrobe, shelves, larder). Walls ranked by the room's main piece (bed, sofa, desk,
+ * table): the wall it faces first, then those beside it, its own (the headboard's) last; on each, the spot across from
+ * the piece first, sliding in 0.25 m steps.
+ */
+function wallAC(ctx: Ctx): void {
+  const id = 'ac_split'
+  const main = ctx.out.find((p) => /^(bed_|sofa_3seat$|desk_oak$|dining_table$)/.test(p.assetId))
+  const t = ((main?.rotationDeg ?? 0) * Math.PI) / 180
+  const f = { x: -Math.sin(t), y: Math.cos(t) } // main's front (see header)
+  const sides = main ? [...ctx.sides].sort((a, b) => dot(a.n, f) - dot(b.n, f)) : rankNoOpenings(ctx)
+  const hw = size(id).x / 2
+  for (const s of sides) {
+    const uPref = main ? projU(s, main) : s.len / 2
+    const spans = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1])]
+    const rot = rotationFacing(s.n)
+    for (let k = 0; k * 0.25 <= s.len; k++) {
+      for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
+        if (u - hw < AC_CLEAR || u + hw > s.len - AC_CLEAR) continue
+        if (spans.some(([u0, u1]) => u - hw - AC_CLEAR < u1 && u0 < u + hw + AC_CLEAR)) continue
+        const c = againstSide(s, id, u, FLUSH)
+        const q = footprint(c, rot, size(id))
+        if (ctx.clear.some((z) => quadsOverlap(z, q)) || ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue
+        if (tryPlace(ctx, id, c, rot, 'free')) return
+      }
+    }
+  }
+}
+
 const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
   bed,
   living,
@@ -580,6 +646,9 @@ export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
     if (!fn || room.loop.length < 3) continue
     const ctx = makeCtx(room, unit, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
+    // after the room's own pieces, so their ids stay put; 'free' placements, so they move nothing
+    if (LIT_KINDS.includes(room.kind)) ceilingLight(ctx)
+    if (AC_KINDS.includes(room.kind)) wallAC(ctx)
     out.push(...ctx.out)
   }
   return out

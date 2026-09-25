@@ -7,7 +7,13 @@ import type { Pin } from './storage'
 
 export interface Draft {
   point: { x: number; y: number; z: number }
+  /** what was clicked, e.g. "Door handle · Bed-1" */
+  label?: string
 }
+
+/** "Door handle · Bed-1"; "Bed-1 floor" already names its room. */
+export const tagOf = (label?: string, room?: string): string =>
+  [label, room && !label?.startsWith(room) ? room : ''].filter(Boolean).join(' · ')
 
 interface LayerProps {
   scene: PlotlineScene
@@ -62,6 +68,7 @@ export function PinLayer({ scene, pins, draft, onSave, onCancel }: LayerProps) {
         <div ref={ref('draft')} className="pin">
           <span className="pin-dot">{pins.length + 1}</span>
           <div className="glass popover" onKeyDown={(e) => e.stopPropagation()}>
+            {draft.label && <div className="muted small">{draft.label}</div>}
             <textarea
               autoFocus
               rows={3}
@@ -102,7 +109,7 @@ export function NotesList({ pins, rooms, onFocus, onRemove }: ListProps) {
             <span className="pin-dot small">{i + 1}</span>
             <span className="note-text">
               <span>{p.text.split('\n')[0]}</span>
-              <span className="muted">{rooms.find((r) => r.id === p.roomId)?.name ?? ''}</span>
+              <span className="muted">{tagOf(p.anchor.label, rooms.find((r) => r.id === p.roomId)?.name)}</span>
             </span>
           </button>
           <button className="link" onClick={() => onRemove(p)}>

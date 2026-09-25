@@ -15,7 +15,7 @@ import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
-import { NotesList, PinLayer, type Draft } from './Notes'
+import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
 import { decodeConfig, encodeConfig } from './share'
@@ -121,7 +121,7 @@ function Viewer({ unit }: { unit: Unit }) {
       if (!hit) return
       if (commentingRef.current) {
         const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
-        setDraft({ hit: { ...hit, roomId }, point: hit.point })
+        setDraft({ hit: { ...hit, roomId }, point: hit.point, label: tagOf(hit.label, rooms.find((r) => r.id === roomId)?.name) })
       } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
         // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
         s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
@@ -245,7 +245,7 @@ function Viewer({ unit }: { unit: Unit }) {
     const { hit } = draft
     const pin: Pin = {
       id: core.newId(),
-      anchor: { kind: hit.kind, entityId: hit.id, offset: hit.localOffset },
+      anchor: { kind: hit.kind, entityId: hit.id, offset: hit.localOffset, label: hit.label, objectKind: hit.objectKind },
       point: hit.point,
       roomId: hit.roomId,
       text,

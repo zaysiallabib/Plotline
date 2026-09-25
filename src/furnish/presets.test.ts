@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
-import { heightRange, kitAsset } from './kit'
-import { doorClearZones, footprint, furnish, quadsOverlap } from './presets'
+import { heightRange, isCeilingLight, kitAsset } from './kit'
+import { AC_KINDS, doorClearZones, footprint, furnish, LIT_KINDS, quadsOverlap } from './presets'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
 function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offsetM: number }): Unit {
@@ -224,6 +224,83 @@ describe('furnish', () => {
     const rugs = ps.filter(isRug)
     expect(rugs.length).toBeGreaterThanOrEqual(4)
     for (const r of rugs) expect(solidItems(ps).some((p) => p.roomId === r.roomId && quadsOverlap(quad(p), quad(r))), r.id).toBe(true)
+  })
+
+  /** A wall-mounted AC's back edge must not pass over any door/window span of the room's walls. */
+  const expectACClearOfOpenings = (ac: FurniturePlacement, room: Room, unit: Unit) => {
+    const t = (ac.rotationDeg * Math.PI) / 180
+    const [f, r] = [{ x: -Math.sin(t), y: Math.cos(t) }, { x: Math.cos(t), y: Math.sin(t) }]
+    const s = kitAsset('ac_split')!.sizeM
+    for (const w of unit.walls.filter((w) => room.wallIds.includes(w.id))) {
+      const a = unit.vertices.find((v) => v.id === w.a)!
+      const b = unit.vertices.find((v) => v.id === w.b)!
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+      for (const o of w.openings) {
+        for (let i = 0; i <= 10; i++) {
+          // a point along the AC's back edge, projected on the wall's centreline
+          const p = { x: ac.x - (f.x * s.z) / 2 + r.x * s.x * (i / 10 - 0.5), y: ac.y - (f.y * s.z) / 2 + r.y * s.x * (i / 10 - 0.5) }
+          const u = (p.x - a.x) * d.x + (p.y - a.y) * d.y
+          const off = Math.abs((p.x - a.x) * -d.y + (p.y - a.y) * d.x)
+          expect(off < w.thicknessM / 2 + 0.05 && u > o.offsetM - 0.05 && u < o.offsetM + o.widthM + 0.05, `${ac.id} over ${o.id}`).toBe(false)
+        }
+      }
+    }
+  }
+
+  test('lit rooms get exactly one ceiling light (flush fixture, fan or pendant); bedrooms facing the bed wall get the AC', () => {
+    for (const kind of ['bed', 'living', 'dining', 'study', 'kitchen', 'bath'] as RoomKind[]) {
+      const unit = rect(kind, 4, 3.5, { wall: 1, offsetM: 0.3 })
+      const ps = furnish(unit, deriveRooms(unit))
+      expect(ps.filter((p) => isCeilingLight(p.assetId)), kind).toHaveLength(1)
+      expect(ps.filter((p) => p.assetId === 'ac_split'), kind).toHaveLength(AC_KINDS.includes(kind) ? 1 : 0)
+    }
+    const unit = rect('bed', 4, 3.5, { wall: 1, offsetM: 0.3 })
+    const ps = furnish(unit, deriveRooms(unit))
+    const bed = ps.find((p) => p.assetId === 'bed_queen')!
+    const ac = ps.find((p) => p.assetId === 'ac_split')!
+    // the wardrobe takes the wall the bed faces, so the AC goes beside the bed, not over the headboard or the wardrobe
+    expect(ac.rotationDeg, 'not over the headboard').not.toBe(bed.rotationDeg)
+    for (const p of ps.filter((p) => heightRange(kitAsset(p.assetId)!)[1] > 1.8 && kitAsset(p.assetId)!.mount !== 'ceiling'))
+      expect(quadsOverlap(quad(p), quad(ac)), `over ${p.id}`).toBe(false)
+    expectACClearOfOpenings(ac, deriveRooms(unit)[0], unit)
+  })
+
+  test('concave (L-shaped) bedroom: the ceiling light lands in the room, clear of the inner corner', () => {
+    // 5 × 5 with the top-right 2.5 × 2.5 cut out; the centroid sits 0.6 m off the reflex corner, the best spot 1.4 m
+    const unit = rect('bed', 5, 5)
+    unit.vertices = [
+      { id: 'v1', x: 0, y: 0 },
+      { id: 'v2', x: 2.5, y: 0 },
+      { id: 'v5', x: 2.5, y: 2.5 },
+      { id: 'v6', x: 5, y: 2.5 },
+      { id: 'v3', x: 5, y: 5 },
+      { id: 'v4', x: 0, y: 5 },
+    ]
+    const ids = ['v1', 'v2', 'v5', 'v6', 'v3', 'v4']
+    unit.walls = ids.map((a, i) => ({ id: `w${i}`, a, b: ids[(i + 1) % ids.length], thicknessM: 0.127, heightM: 3, openings: [] }))
+    unit.roomLabels[0] = { ...unit.roomLabels[0], x: 1, y: 4 }
+    const rooms = deriveRooms(unit)
+    const light = furnish(unit, rooms).find((p) => isCeilingLight(p.assetId))!
+    expect(pointInPolygon(light, roomInnerPolygon(rooms[0], unit))).toBe(true)
+    expect(Math.hypot(light.x - 2.5, light.y - 2.5), 'away from the reflex corner').toBeGreaterThan(0.9)
+  })
+
+  test.skipIf(!typeA)('type-a.json: one ceiling light per lit room, an AC in every bedroom/living clear of openings, old ids untouched', () => {
+    const rooms = deriveRooms(typeA)
+    const ps = furnish(typeA, rooms)
+    for (const r of rooms) {
+      const mine = ps.filter((p) => p.roomId === r.id)
+      expect(mine.filter((p) => isCeilingLight(p.assetId)), r.name).toHaveLength(LIT_KINDS.includes(r.kind) ? 1 : 0)
+      const acs = mine.filter((p) => p.assetId === 'ac_split')
+      if (r.kind === 'bed' || r.kind === 'living') expect(acs, r.name).toHaveLength(1)
+      for (const ac of acs) expectACClearOfOpenings(ac, r, typeA)
+      // light + AC come after the room's own pieces and are new asset ids, so every earlier id is what it was
+      const added = mine.findIndex((p) => ['ceiling_light', 'ceiling_light_large', 'ac_split'].includes(p.assetId))
+      if (added >= 0) expect(mine.slice(added).every((p) => isCeilingLight(p.assetId) || p.assetId === 'ac_split'), r.name).toBe(true)
+    }
+    for (const id of ['r_bed1:bed_queen:1', 'r_living:sofa_3seat:1', 'r_living:ceiling_fan:1', 'r_bath1:vanity:1', 'r_dining:modern_ceiling_lamp_01:1'])
+      expect(ps.map((p) => p.id)).toContain(id)
   })
 
   test.skipIf(!typeA)('type-a.json rooms get their staging', () => {

@@ -88,11 +88,57 @@ describe('buildOpening door leaf', () => {
     const o: Opening = { id: 'o', kind: 'door', offsetM: 1, widthM: 0.9, heightM: 2.1, sillM: 0, hinge, swing }
     const g = buildOpening(o, wall)
     g.updateMatrixWorld(true)
-    const pivot = g.children.find((c) => c.type === 'Group')!
-    const leaf = pivot.children[0] as THREE.Mesh
-    const hw = ((leaf.geometry as THREE.BoxGeometry).parameters.width) / 2
-    const tip = leaf.localToWorld(new THREE.Vector3(hinge === 'b' ? -hw : hw, 0, 0))
+    const part = g.getObjectsByProperty('type', 'Group').find((c) => c.userData.id === 'o/leaf')!
+    const pivot = part.parent!
+    const leaf = part.children[0] as THREE.Mesh // the leaf slab (its grooves are the second mesh)
+    const bb = new THREE.Box3().setFromBufferAttribute(leaf.geometry.attributes.position as THREE.BufferAttribute)
+    const tip = leaf.localToWorld(new THREE.Vector3(hinge === 'b' ? bb.min.x : bb.max.x, 0, (bb.min.z + bb.max.z) / 2))
     expect(Math.sign(tip.z)).toBe(sign)
     expect(pivot.position.x).toBeCloseTo(hinge === 'b' ? 1.9 : 1, 6) // hinge at that vertex end, measured from a
+  })
+})
+
+/** Every object PlotlineScene.pick can stop at (userData.kind), by id → objectKind. */
+const pickable = (root: THREE.Object3D) => {
+  const out: Record<string, string> = {}
+  root.traverse((o) => {
+    if (!o.userData.kind) return
+    expect(o.userData.id in out, `duplicate ${o.userData.id}`).toBe(false)
+    expect(o.userData.label, o.userData.id).toBeTruthy()
+    out[o.userData.id] = o.userData.objectKind
+  })
+  return out
+}
+
+describe('clickable parts', () => {
+  test('vanity and shower: parts `${placementId}/${part}`, stable across builds', async () => {
+    const vanity = { id: 'r_bath1:vanity:1', assetId: 'vanity', roomId: 'r_bath1', x: 0, y: 0, rotationDeg: 0 }
+    const ids = pickable(await buildFurniture(vanity))
+    expect(ids).toEqual({
+      'r_bath1:vanity:1': 'vanity',
+      'r_bath1:vanity:1/cabinet': 'vanity',
+      'r_bath1:vanity:1/basin': 'basin',
+      'r_bath1:vanity:1/mixer': 'mixer',
+      'r_bath1:vanity:1/mirror': 'mirror',
+    })
+    expect(pickable(await buildFurniture(vanity))).toEqual(ids)
+    const shower = pickable(await buildFurniture({ ...vanity, id: 's', assetId: 'shower_screen' }))
+    expect(shower).toEqual({ s: 'shower', 's/tray': 'shower-tray', 's/glass': 'shower-glass', 's/head': 'shower-head', 's/mixer': 'mixer' })
+  })
+
+  test('doors, sliders and windows: parts `${openingId}/${part}`; the rest of the opening stays the opening', () => {
+    const wall: Wall = { id: 'w', a: 'a', b: 'b', thicknessM: 0.127, heightM: 3.048, openings: [] }
+    const at = { offsetM: 1, heightM: 2.1, sillM: 0 }
+    const door = buildOpening({ id: 'd', kind: 'door', widthM: 0.9, hinge: 'a', swing: 'in', ...at }, wall, { threshold: true })
+    expect(pickable(door)).toEqual({ d: 'door', 'd/frame': 'door-frame', 'd/leaf': 'door-leaf', 'd/handle': 'door-handle' })
+    // a click on the threshold (no part) still reaches the door group itself
+    expect(door.children.filter((c) => (c as THREE.Mesh).isMesh)).toHaveLength(1)
+    expect(pickable(buildOpening({ id: 's', kind: 'door', widthM: 2.4, ...at }, wall))).toEqual({ s: 'door', 's/frame': 'door-frame', 's/glass': 'window-glass' })
+    expect(pickable(buildOpening({ id: 'w', kind: 'window', widthM: 1.5, ...at, sillM: 0.9 }, wall))).toEqual({
+      w: 'window',
+      'w/frame': 'window-frame',
+      'w/glass': 'window-glass',
+    })
+    door.traverse((o) => o.userData.kind && expect(o.userData.wallId).toBe('w')) // parts anchor in the wall's frame
   })
 })

@@ -12,6 +12,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
+import type { ObjectKind } from './kit'
 import { ART, ART_H, ART_W, BED_STYLES } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
@@ -109,9 +110,15 @@ function makeMats() {
     mat: flat('#f7f5f0', 0.9),
     glass: flat('#dfe9e6', 0.05, 0, { transparent: true, opacity: 0.18, depthWrite: false }),
     led: flat('#fff4dc', 0.5, 0, { emissive: '#ffe9c4', emissiveIntensity: 1.2 }),
+    // ceiling-light diffuser: the old fixture disc's glow; render.ts Look.setHour ramps it at dusk (fixtureGlow)
+    opal: flat('#ffffff', 0.6, 0, { emissive: '#fff0dc', emissiveIntensity: 2.5 }),
+    whitePaint: flat('#f3f2ee', 0.4), // AC casing (satin white)
+    nickel: flat('#d4d1ca', 0.3, 0.5), // ceiling-light canopy and trim ring
   }
 }
 const M = () => (mats ??= makeMats())
+/** The ceiling lights' shared diffuser material (emissive follows the hour). */
+export const fixtureGlow = (): THREE.MeshStandardMaterial => M().opal
 
 // ───────────────────────────── geometry helpers ─────────────────────────────
 
@@ -180,22 +187,46 @@ function boxUV(geo: THREE.BufferGeometry, grain?: { du: number; dv: number }): v
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
 }
 
+/** Marks meshes as one clickable sub-part of the piece; furniture.ts names it `${placementId}/${name}`. */
+function part(name: string, label: string, kind: ObjectKind, ...os: THREE.Object3D[]): THREE.Object3D[] {
+  for (const o of os) o.userData.part = { name, label, kind }
+  return os
+}
+
 let builds = 0
-/** Bake every part into one mesh per material; parts flagged userData.solo (the mirror) stay separate objects. */
+/**
+ * Bake every part into one mesh per material; parts flagged userData.solo (the mirror) stay separate objects.
+ * Meshes tagged by part() go into a child group per sub-part (userData.part), merged per material inside it.
+ */
 function finish(parts: THREE.Object3D[]): THREE.Group {
   const seed = ++builds // two cabinets of one kind get different veneer
   const g = new THREE.Group()
-  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
+  const byMat = new Map<THREE.Object3D, Map<THREE.Material, THREE.BufferGeometry[]>>([[g, new Map()]])
+  const subs = new Map<string, THREE.Group>()
   parts.forEach((o, i) => {
-    if (o.userData.solo) return void g.add(o)
-    const part = o as THREE.Mesh
-    const m = part.material as THREE.Material
-    part.updateMatrix()
-    const geo = (part.geometry.index ? part.geometry.toNonIndexed() : part.geometry).applyMatrix4(part.matrix) // RoundedBox is non-indexed, Box/Cylinder/Sphere are not
+    const tag = o.userData.part
+    delete o.userData.part
+    let into: THREE.Group = g
+    if (tag) {
+      if (!subs.has(tag.name)) {
+        const s = new THREE.Group()
+        s.userData.part = tag
+        subs.set(tag.name, s)
+        byMat.set(s, new Map())
+        g.add(s)
+      }
+      into = subs.get(tag.name)!
+    }
+    if (o.userData.solo) return void into.add(o)
+    const piece = o as THREE.Mesh
+    const m = piece.material as THREE.Material
+    piece.updateMatrix()
+    const geo = (piece.geometry.index ? piece.geometry.toNonIndexed() : piece.geometry).applyMatrix4(piece.matrix) // RoundedBox is non-indexed, Box/Cylinder/Sphere are not
     if (!m.userData.ownUV) boxUV(geo, m.userData.grain ? { du: rnd(seed, i) * 3, dv: rnd(i, seed) * 3 } : undefined)
-    byMat.set(m, [...(byMat.get(m) ?? []), geo])
+    const mm = byMat.get(into)!
+    mm.set(m, [...(mm.get(m) ?? []), geo])
   })
-  for (const [m, geos] of byMat) g.add(mesh(geos.length === 1 ? geos[0] : mergeGeometries(geos)!, m))
+  for (const [into, mm] of byMat) for (const [m, geos] of mm) into.add(mesh(geos.length === 1 ? geos[0] : mergeGeometries(geos)!, m))
   return g
 }
 
@@ -548,15 +579,23 @@ function vanity(): THREE.Object3D[] {
   const inside = cyl(0.14, 0.004, m.ceramic, 0, 0.405, 0.03)
   inside.scale.z = 0.8
   return [
-    box(0.8, 0.36, 0.46, m.oak, 0, 0.18, -0.02),
-    box(0.8, 0.012, 0.005, m.dark, 0, 0.3, 0.212), // finger-pull groove
-    rbox(0.8, 0.04, 0.5, 0.008, m.stone, 0, 0.38, 0), // top 0.81–0.85 m
-    bowl,
-    inside,
-    cyl(0.014, 0.32, m.steel, 0, 0.56, -0.18),
-    box(0.024, 0.024, 0.15, m.steel, 0, 0.71, -0.115),
-    box(0.72, 0.82, 0.008, m.dark, 0, 1.09, -0.246),
-    mirror(0.7, 0.8, 0, 1.09, -0.234), // glass 1.14–1.94 m, 8 mm proud of the backing board
+    ...part(
+      'cabinet',
+      'Vanity cabinet, oak, stone top',
+      'vanity',
+      box(0.8, 0.36, 0.46, m.oak, 0, 0.18, -0.02),
+      box(0.8, 0.012, 0.005, m.dark, 0, 0.3, 0.212), // finger-pull groove
+      rbox(0.8, 0.04, 0.5, 0.008, m.stone, 0, 0.38, 0), // top 0.81–0.85 m
+    ),
+    ...part('basin', 'Vessel basin', 'basin', bowl, inside),
+    ...part('mixer', 'Basin mixer', 'mixer', cyl(0.014, 0.32, m.steel, 0, 0.56, -0.18), box(0.024, 0.024, 0.15, m.steel, 0, 0.71, -0.115)),
+    ...part(
+      'mirror',
+      'Vanity mirror',
+      'mirror',
+      box(0.72, 0.82, 0.008, m.dark, 0, 1.09, -0.246),
+      mirror(0.7, 0.8, 0, 1.09, -0.234), // glass 1.14–1.94 m, 8 mm proud of the backing board
+    ),
   ]
 }
 
@@ -573,17 +612,64 @@ function basin(): THREE.Mesh[] {
 }
 
 /** Shower tray in a corner: the wall corner is at local (−x, −z); fixed glass along +x; rain head on the back wall. */
-function shower(): THREE.Mesh[] {
+function shower(): THREE.Object3D[] {
   const m = M()
   return [
-    rbox(0.9, 0.04, 0.9, 0.01, m.ceramic, 0, 0.02, 0),
-    box(0.5, 0.004, 0.05, m.steel, 0, 0.041, 0.36), // linear drain
-    box(0.008, 1.95, 0.88, m.glass, 0.446, 1.015, 0.01),
-    box(0.02, 1.95, 0.02, m.steel, 0.446, 1.015, -0.44), // wall channel
-    box(0.02, 0.02, 0.32, m.steel, 0, 2.03, -0.29), // arm 2.02–2.04 m
-    cyl(0.11, 0.012, m.steel, 0, 2.01, -0.15), // rain head
-    box(0.14, 0.14, 0.012, m.steel, 0, 1.1, -0.444),
-    box(0.02, 0.02, 0.08, m.steel, 0.03, 1.1, -0.4),
+    ...part(
+      'tray',
+      'Shower tray',
+      'shower-tray',
+      rbox(0.9, 0.04, 0.9, 0.01, m.ceramic, 0, 0.02, 0),
+      box(0.5, 0.004, 0.05, m.steel, 0, 0.041, 0.36), // linear drain
+    ),
+    ...part(
+      'glass',
+      'Glass shower screen',
+      'shower-glass',
+      box(0.008, 1.95, 0.88, m.glass, 0.446, 1.015, 0.01),
+      box(0.02, 1.95, 0.02, m.steel, 0.446, 1.015, -0.44), // wall channel
+    ),
+    ...part(
+      'head',
+      'Rain shower head',
+      'shower-head',
+      box(0.02, 0.02, 0.32, m.steel, 0, 2.03, -0.29), // arm 2.02–2.04 m
+      cyl(0.11, 0.012, m.steel, 0, 2.01, -0.15), // rain head
+    ),
+    ...part('mixer', 'Shower mixer', 'mixer', box(0.14, 0.14, 0.012, m.steel, 0, 1.1, -0.444), box(0.02, 0.02, 0.08, m.steel, 0.03, 1.1, -0.4)),
+  ]
+}
+
+/**
+ * Flush ceiling light, Ø d × h: a satin-nickel canopy on the ceiling, an opal drum with a softly domed base that
+ * glows (fixtureGlow), a slim satin-nickel trim ring round its lower edge. Top at y = h (ceiling mount).
+ */
+function ceilingLight(d: number, h: number): THREE.Mesh[] {
+  const m = M()
+  const r = d / 2
+  const dome = mesh(new THREE.SphereGeometry(r - 0.012, 48, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), m.opal, 0, 0.018, 0)
+  dome.scale.y = 0.018 / (r - 0.012) // 18 mm deep
+  return [
+    cyl(r * 0.86, 0.014, m.nickel, 0, h - 0.007, 0), // canopy (the ring's metal: two draw calls a fixture)
+    cyl(r - 0.012, h - 0.032, m.opal, 0, 0.018 + (h - 0.032) / 2, 0, r - 0.02), // drum, tapering in toward the canopy
+    cyl(r, 0.012, m.nickel, 0, 0.024, 0), // trim ring, 18–30 mm
+    dome,
+  ]
+}
+
+/**
+ * Split-AC indoor unit, 0.9 × 0.3 × 0.22, back on the wall (−z): rounded satin-white casing, a front panel proud of it
+ * with a hairline seam, the outlet slot along the underside with its louvre flap half open, a small dark display.
+ */
+function acSplit(): THREE.Mesh[] {
+  const m = M()
+  return [
+    rbox(0.9, 0.295, 0.2, 0.035, m.whitePaint, 0, 0.1525, -0.01), // casing 0.005–0.30, back at z −0.11
+    rbox(0.88, 0.2, 0.024, 0.01, m.whitePaint, 0, 0.19, 0.098), // front panel, face at z 0.11
+    box(0.86, 0.004, 0.02, m.dark, 0, 0.088, 0.092), // seam under the front panel
+    box(0.72, 0.03, 0.09, m.dark, 0, 0.015, 0.04), // outlet slot, 5 mm under the casing and its rounded front edge
+    tilt(rbox(0.74, 0.008, 0.07, 0.003, m.whitePaint, 0, 0.02, 0.075), 0.45), // louvre flap, tipped down to the front
+    box(0.08, 0.022, 0.004, m.blackGlass, 0.3, 0.14, 0.111), // display
   ]
 }
 
@@ -636,6 +722,9 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   vanity,
   basin,
   shower_screen: shower,
+  ceiling_light: () => ceilingLight(0.38, 0.085),
+  ceiling_light_large: () => ceilingLight(0.5, 0.09),
+  ac_split: acSplit,
   wardrobe_tall: wardrobe,
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(`/assets/art/${id}.jpg`)])),
 }
