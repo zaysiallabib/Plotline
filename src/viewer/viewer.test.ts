@@ -5,7 +5,7 @@ import typeA from '../data/units/type-a.json'
 import { optionsTotal } from './FinishesPanel'
 import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { furnish } from '../furnish/presets'
-import { VIEW_INSET, entrySpawn, roomView, yawFor } from './spawn'
+import { DOOR_CLEAR, VIEW_INSET, entrySpawn, roomView, yawFor } from './spawn'
 import { hhmm, period } from './SunPill'
 
 const unit = typeA as unknown as Unit
@@ -97,7 +97,7 @@ describe('viewer', () => {
     expect(e.p).toEqual(living.centroid)
   })
 
-  it('roomView: far corner from the furniture centroid, inset from both walls, facing the furniture', () => {
+  it('roomView: clear of doors and slabs, inset from every wall, facing the furniture', () => {
     const furnished: Unit = { ...unit, furniture: furnish(unit, rooms) }
     const segDist = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
       const dx = b.x - a.x
@@ -105,7 +105,7 @@ describe('viewer', () => {
       const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
       return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
     }
-    for (const name of ['Kitchen', 'Bed-1', 'Living room', 'Bath-1']) {
+    for (const name of ['Bed-1', 'Bed-2', 'Kitchen', 'Bath-1', 'Living room']) {
       const r = rooms.find((x) => x.name === name)!
       const v = roomView(r, furnished)
       const inner = core.roomInnerPolygon(r, furnished)
@@ -115,17 +115,40 @@ describe('viewer', () => {
       // never nose-to-wall: at least VIEW_INSET (minus a hair for acute corners) from every inner edge
       const nearest = Math.min(...inner.map((a, i) => segDist(v.p, a, inner[(i + 1) % inner.length])))
       expect(nearest, name).toBeGreaterThanOrEqual(VIEW_INSET - 0.02)
+      // never in a doorway or a leaf's swing: every door/passage centre on the room's walls ≥ DOOR_CLEAR away
+      for (const w of furnished.walls.filter((x) => r.wallIds.includes(x.id))) {
+        const f = core.wallFrame(w, furnished.vertices)
+        for (const o of w.openings.filter((x) => x.kind !== 'window')) {
+          const c = { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) }
+          expect(Math.hypot(v.p.x - c.x, v.p.y - c.y), `${name} ${o.id}`).toBeGreaterThanOrEqual(DOOR_CLEAR)
+        }
+      }
       // facing the furniture centroid
       const d = Math.hypot(target.x - v.p.x, target.y - v.p.y)
       expect(v.face.x * (target.x - v.p.x) + v.face.y * (target.y - v.p.y), name).toBeCloseTo(d, 6)
-      // the chosen corner is the farthest one from the furniture
-      const farthest = Math.max(...inner.map((c) => Math.hypot(c.x - target.x, c.y - target.y)))
-      expect(d, name).toBeGreaterThan(farthest - 2 * VIEW_INSET)
     }
+    // the art director's Bed-1: not the door corner, not beside the wardrobe slab
+    const bed1 = rooms.find((x) => x.name === 'Bed-1')!
+    const wardrobe = furnished.furniture.find((f) => f.roomId === bed1.id && f.assetId.includes('wardrobe'))!
+    const v1 = roomView(bed1, furnished)
+    expect(Math.hypot(v1.p.x - wardrobe.x, v1.p.y - wardrobe.y)).toBeGreaterThanOrEqual(1.5)
     // no furniture: still inside, faces the longest wall's midpoint
     const bare = rooms.find((x) => x.name === 'Lift lobby')!
     const v = roomView(bare, unit)
     expect(core.pointInPolygon(v.p, core.roomInnerPolygon(bare, unit))).toBe(true)
     expect(Math.hypot(v.face.x, v.face.y)).toBeCloseTo(1)
+  })
+
+  it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {
+    const bath = rooms.find((x) => x.name === 'Bath-1')!
+    // a room-filling tall wardrobe blocks every corner and wall midpoint
+    const u: Unit = { ...unit, furniture: [{ id: 'x', assetId: 'wardrobe_tall', roomId: bath.id, x: bath.centroid.x, y: bath.centroid.y, rotationDeg: 0, scale: 6 }] }
+    const v = roomView(bath, u)
+    const w = u.walls.find((x) => bath.wallIds.includes(x.id) && x.openings.some((o) => o.kind === 'door'))!
+    const door = w.openings.find((o) => o.kind === 'door')!
+    const f = core.wallFrame(w, u.vertices)
+    const c = { x: f.origin.x + f.dir.x * (door.offsetM + door.widthM / 2), y: f.origin.y + f.dir.y * (door.offsetM + door.widthM / 2) }
+    expect(Math.hypot(v.p.x - c.x, v.p.y - c.y)).toBeCloseTo(w.thicknessM / 2 + 0.9)
+    expect(core.pointInPolygon(v.p, core.roomInnerPolygon(bath, u))).toBe(true)
   })
 })
