@@ -22,12 +22,18 @@ const P = (id: string, label: string, category: KitAsset['category'], x: number,
 })
 
 /**
- * Framed prints, hung as diptychs (`<set>_l` left, `<set>_r` right as you face them): crops of Poly Haven
- * tonemapped HDRIs (CC0), public/assets/art/<id>.jpg. Bottom at 1.25 m clears a headboard / sofa back.
+ * Framed prints, ART_W × ART_H, hung alone or as a 0.77 m diptych (`<set>_l` left, `<set>_r` right as you face
+ * them): crops of Poly Haven tonemapped HDRIs (CC0), public/assets/art/<id>.jpg. Bottom at 1.25 m clears a
+ * headboard / sofa back.
  */
 export const ART_SETS = ['art_sea', 'art_dawn'] as const
 export const ART = ART_SETS.flatMap((s) => [`${s}_l`, `${s}_r`])
 const ART_LABEL: Record<(typeof ART_SETS)[number], string> = { art_sea: 'sea at sunrise', art_dawn: 'mountains at dawn' }
+export const ART_W = 0.36
+export const ART_H = 0.5
+
+/** Bed linen styles, by bedroom size rank: '' terracotta throw over the foot, '_b' sage throw on one corner, '_c' no throw. */
+export const BED_STYLES = ['', '_b', '_c'] as const
 
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
@@ -35,8 +41,15 @@ export const TV_UNIT_TOP = 0.68
 export const WORKTOP = 0.9
 
 export const PROCEDURAL: Record<string, KitAsset> = {
-  bed_queen: P('bed_queen', 'Queen bed, upholstered', 'bed', 1.76, 1.15, 2.16),
-  bed_single: P('bed_single', 'Single bed, upholstered', 'bed', 1.16, 1.15, 2.16),
+  ...Object.fromEntries(
+    BED_STYLES.flatMap((st) => [
+      [`bed_queen${st}`, P(`bed_queen${st}`, 'Queen bed, upholstered', 'bed', 1.76, 1.15, 2.16)],
+      [`bed_single${st}`, P(`bed_single${st}`, 'Single bed, upholstered', 'bed', 1.16, 1.15, 2.16)],
+    ]),
+  ),
+  bedside_oak: P('bedside_oak', 'Bedside table, oak, one drawer', 'bedside', 0.5, 0.52, 0.4),
+  // sits on sofa_3seat's seat cushions like throw_pillows_01
+  cushions_plain: P('cushions_plain', 'Two plain linen cushions', 'other', 0.78, 0.42, 0.26, 0.44),
   sofa_3seat: P('sofa_3seat', '3-seat fabric sofa', 'sofa', 2.2, 0.82, 0.92),
   dining_table: P('dining_table', 'Dining table, oak, 6 seats', 'dining-table', 1.6, 0.75, 0.9),
   dining_chair: P('dining_chair', 'Upholstered dining chair', 'dining-chair', 0.47, 0.84, 0.54),
@@ -47,6 +60,8 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   rug_rect_small: P('rug_rect_small', 'Wool rug 2.3 × 1.6 m', 'rug', 2.3, 0.012, 1.6),
   rug_round: P('rug_round', 'Round wool rug Ø2.0 m', 'rug', 2.0, 0.012, 2.0),
   kitchen_counter: P('kitchen_counter', 'Kitchen base cabinet (0.6 m)', 'kitchen', 0.6, 0.9, 0.62),
+  kitchen_counter_styled: P('kitchen_counter_styled', 'Base cabinet + kettle, board, fruit bowl', 'kitchen', 0.6, 1.28, 0.62),
+  kitchen_tall: P('kitchen_tall', 'Tall larder unit, oak (0.6 m)', 'kitchen', 0.6, 2.15, 0.62),
   kitchen_sink: P('kitchen_sink', 'Kitchen sink cabinet (0.6 m)', 'kitchen', 0.6, 1.2, 0.62),
   kitchen_hob: P('kitchen_hob', 'Hob + oven cabinet (0.6 m)', 'kitchen', 0.6, 0.91, 0.62),
   kitchen_upper: P('kitchen_upper', 'Wall cabinet + splashback (0.6 m)', 'kitchen', 0.6, 1.25, 0.35, WORKTOP),
@@ -59,7 +74,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 3 doors)', 'wardrobe', 1.8, 2.2, 0.6),
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>
-      (['l', 'r'] as const).map((k) => [`${s}_${k}`, P(`${s}_${k}`, `Framed print, ${ART_LABEL[s]} (${k === 'l' ? 'left' : 'right'})`, 'other', 0.5, 0.7, 0.03, 1.25)]),
+      (['l', 'r'] as const).map((k) => [`${s}_${k}`, P(`${s}_${k}`, `Framed print, ${ART_LABEL[s]} (${k === 'l' ? 'left' : 'right'})`, 'other', ART_W, ART_H, 0.03, 1.25)]),
     ),
   ),
 }

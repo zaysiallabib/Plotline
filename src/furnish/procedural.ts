@@ -9,9 +9,10 @@
  */
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
-import { ART } from './procedural.meta'
+import { ART, ART_H, ART_W, BED_STYLES } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -70,19 +71,25 @@ const flat = (color: string, roughness: number, metalness = 0, extra: THREE.Mesh
 // one material per kind, shared by every instance
 let mats: ReturnType<typeof makeMats> | null = null
 function makeMats() {
+  const oak = pbr('wood_veneer_light')
+  oak.userData.grain = true // boxUV: grain along each panel's long side, offset per panel
   return {
-    oak: pbr('wood_veneer_light'),
+    oak,
     stone: pbr('marble_floor_white', { scale: 0.6 }),
     // full metalness mirrors the dark studio HDRI and reads black; partly metallic reads as steel
     steel: pbr('metal_brushed', { metalness: 0.85 }),
-    fridge: flat('#d8dadb', 0.32, 0.35), // brushed map at fridge scale read as dark streaks
+    // appliance panels: paler and less metallic, the brush pattern at 2× so it reads as grain, not streaks
+    applianceSteel: pbr('metal_brushed', { metalness: 0.6, tint: '#eef0f2', scale: 2 }),
     upholstery: pbr('fabric_upholstery', { tint: '#d2c8b8' }), // warm taupe: headboard, bed base
     sofa: pbr('fabric_upholstery', { tint: '#e6e1d8' }), // oatmeal
     chair: pbr('fabric_upholstery', { tint: '#b3ae9c' }), // sage-grey dining seats
     duvet: pbr('fabric_upholstery', { tint: '#ffffff', scale: 0.7 }),
     linen: pbr('fabric_curtain', { tint: '#ffffff' }),
-    throw: pbr('fabric_upholstery', { tint: '#b4623e' }), // terracotta accent
+    throw: pbr('fabric_upholstery', { tint: '#a4705a' }), // dusty terracotta accent
+    throwSage: pbr('fabric_upholstery', { tint: '#a3a48f' }),
     cushion: pbr('fabric_curtain', { tint: '#d9b98c' }), // ochre accent
+    cushionOat: pbr('fabric_curtain', { tint: '#e4d9c6' }),
+    cushionTaupe: pbr('fabric_curtain', { tint: '#bfae98' }),
     rugIvory: pbr('rug_wool', { tint: '#f3eee6' }),
     rugOat: pbr('rug_wool', { tint: '#e3d8c6' }),
     rugStone: pbr('rug_wool', { tint: '#d6cfc4' }),
@@ -91,12 +98,14 @@ function makeMats() {
     ceramic: flat('#fbfbf9', 0.12),
     ceramicIn: flat('#f4f4f2', 0.15, 0, { side: THREE.DoubleSide }),
     blackGlass: flat('#070707', 0.06), // glass is a dielectric: metalness mirrored the HDRI as silver
-    hoodSteel: flat('#cdd0d2', 0.3, 0.5),
     blackSteel: flat('#1e1e1e', 0.45, 0.6),
     dark: flat('#262320', 0.7),
     ring: flat('#3a3a3a', 0.35),
-    // ponytail: no real reflection (Reflector costs a render pass per mirror, per eye in XR); pale silver instead
+    filter: flat('#4a4a48', 0.5, 0.7), // hood grease filter
+    // a mirror out of reflection range (see mirror()): pale silver, the env map's studio would read as a checkerboard
     mirror: flat('#cfd7d9', 0.06, 0.4),
+    glaze: flat('#c9cdbf', 0.18, 0, { side: THREE.DoubleSide }), // sage stoneware bowl (open: both faces show)
+    lemon: flat('#e0b53c', 0.45),
     mat: flat('#f7f5f0', 0.9),
     glass: flat('#dfe9e6', 0.05, 0, { transparent: true, opacity: 0.18, depthWrite: false }),
     led: flat('#fff4dc', 0.5, 0, { emissive: '#ffe9c4', emissiveIntensity: 1.2 }),
@@ -121,39 +130,112 @@ const cyl = (r: number, h: number, m: THREE.Material, x = 0, y = 0, z = 0, rTop 
 /** Tilt a part about x (radians, + tips its top toward +z) and return it. */
 const tilt = (o: THREE.Mesh, a: number) => ((o.rotation.x = a), o)
 
-/** UVs in metres by box projection on the dominant normal axis (fabrics, veneer, stone tile the same on every part). */
-function boxUV(geo: THREE.BufferGeometry): void {
+/** A plump cushion: a sphere squared off in its face plane, w × h, t thick at the centre, front = +z; `lean` tips its top back. */
+function cushion(w: number, h: number, t: number, m: THREE.Material, x: number, y: number, z: number, lean = 0.3): THREE.Mesh {
+  const g = new THREE.SphereGeometry(1, 28, 18)
+  const p = g.attributes.position
+  for (let i = 0; i < p.count; i++) {
+    const X = p.getX(i)
+    const Y = p.getY(i)
+    p.setXYZ(i, (X * (1 + 0.45 * Y * Y) * w) / 2, (Y * (1 + 0.45 * X * X) * h) / 2, (p.getZ(i) * t) / 2)
+  }
+  g.computeVertexNormals()
+  return tilt(mesh(g, m, x, y, z), -lean)
+}
+
+/** Stable pseudo-random in [0, 1). */
+const rnd = (a: number, b: number) => {
+  const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453
+  return s - Math.floor(s)
+}
+
+/**
+ * UVs in metres by box projection on the dominant normal axis (fabrics, stone tile the same on every part).
+ * `grain` (veneer, whose figure runs along the texture's u): u follows the longer side of each face of the part,
+ * so a door's grain runs up it and a table top's along it, shifted by (du, dv) so no two panels match.
+ */
+function boxUV(geo: THREE.BufferGeometry, grain?: { du: number; dv: number }): void {
   const p = geo.attributes.position
   const n = geo.attributes.normal
+  let ext: number[] | null = null
+  if (grain) {
+    geo.computeBoundingBox()
+    const s = geo.boundingBox!.getSize(new THREE.Vector3())
+    ext = [s.x, s.y, s.z]
+  }
   const uv = new Float32Array(p.count * 2)
+  const P = [0, 0, 0]
   for (let i = 0; i < p.count; i++) {
     const ax = Math.abs(n.getX(i))
     const ay = Math.abs(n.getY(i))
     const az = Math.abs(n.getZ(i))
-    const [u, v] = ax >= ay && ax >= az ? [p.getZ(i), p.getY(i)] : ay >= az ? [p.getX(i), p.getZ(i)] : [p.getX(i), p.getY(i)]
-    uv[2 * i] = u
-    uv[2 * i + 1] = v
+    let [a, b] = ax >= ay && ax >= az ? [2, 1] : ay >= az ? [0, 2] : [0, 1]
+    if (ext && ext[b] > ext[a]) [a, b] = [b, a]
+    P[0] = p.getX(i)
+    P[1] = p.getY(i)
+    P[2] = p.getZ(i)
+    uv[2 * i] = P[a] + (grain?.du ?? 0)
+    uv[2 * i + 1] = P[b] + (grain?.dv ?? 0)
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
 }
 
-/** Bake every part into one mesh per material. */
-function finish(parts: THREE.Mesh[]): THREE.Group {
-  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
-  for (const o of parts) {
-    o.updateMatrix()
-    const list = byMat.get(o.material as THREE.Material) ?? []
-    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry // RoundedBox is non-indexed, Box/Cylinder are not
-    list.push(geo.applyMatrix4(o.matrix))
-    byMat.set(o.material as THREE.Material, list)
-  }
+let builds = 0
+/** Bake every part into one mesh per material; parts flagged userData.solo (the mirror) stay separate objects. */
+function finish(parts: THREE.Object3D[]): THREE.Group {
+  const seed = ++builds // two cabinets of one kind get different veneer
   const g = new THREE.Group()
-  for (const [m, geos] of byMat) {
-    const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos)!
-    if (!m.userData.ownUV) boxUV(geo)
-    g.add(mesh(geo, m))
-  }
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>()
+  parts.forEach((o, i) => {
+    if (o.userData.solo) return void g.add(o)
+    const part = o as THREE.Mesh
+    const m = part.material as THREE.Material
+    part.updateMatrix()
+    const geo = (part.geometry.index ? part.geometry.toNonIndexed() : part.geometry).applyMatrix4(part.matrix) // RoundedBox is non-indexed, Box/Cylinder/Sphere are not
+    if (!m.userData.ownUV) boxUV(geo, m.userData.grain ? { du: rnd(seed, i) * 3, dv: rnd(i, seed) * 3 } : undefined)
+    byMat.set(m, [...(byMat.get(m) ?? []), geo])
+  })
+  for (const [m, geos] of byMat) g.add(mesh(geos.length === 1 ? geos[0] : mergeGeometries(geos)!, m))
   return g
+}
+
+let reflecting = false
+/**
+ * A w × h mirror facing +z at (x, y, z): a real reflection (three Reflector, 512² target) while the camera is
+ * within 4 m in front of it, outside XR, and it is on screen (onBeforeRender only runs for drawn objects);
+ * otherwise the flat `mirror` material. userData.mirror.forceOff switches it off (cost measurements).
+ * ponytail: the render target is not disposed with the unit (one 512² target per vanity); dispose on unit swap if units start changing at runtime.
+ */
+function mirror(w: number, h: number, x: number, y: number, z: number): THREE.Mesh {
+  const r = new Reflector(new THREE.PlaneGeometry(w, h), {
+    textureWidth: 512,
+    textureHeight: 512,
+    color: new THREE.Color().setRGB(0.44, 0.46, 0.45), // overlay blend: ≈ 90 % reflectance, a hint of green
+    multisample: 4,
+  })
+  r.position.set(x, y, z)
+  r.userData.solo = true
+  const state = { forceOff: false }
+  r.userData.mirror = state
+  const live = r.material
+  const off = M().mirror
+  r.material = off // until its first reflection pass has run
+  const render = r.onBeforeRender.bind(r)
+  const c = new THREE.Vector3()
+  const n = new THREE.Vector3()
+  r.onBeforeRender = (renderer, scene, camera, ...rest) => {
+    if (reflecting) return // another mirror's reflection pass: no mirror-in-mirror
+    c.setFromMatrixPosition(r.matrixWorld)
+    const toCam = n.setFromMatrixPosition(camera.matrixWorld).sub(c)
+    const on = !state.forceOff && !renderer.xr.isPresenting && toCam.lengthSq() < 16 && toCam.dot(c.set(0, 0, 1).transformDirection(r.matrixWorld)) > 0.05
+    if (on) {
+      reflecting = true
+      render(renderer, scene, camera, ...rest)
+      reflecting = false
+    }
+    r.material = on ? live : off // takes effect next frame: the render list already holds this frame's material
+  }
+  return r
 }
 
 const printCache = new Map<string, THREE.MeshStandardMaterial>()
@@ -177,8 +259,12 @@ function print(url: string): THREE.MeshStandardMaterial {
 
 // ───────────────────────────── builders ─────────────────────────────
 
-/** Upholstered bed: channel-tufted headboard at −z, duvet, pillows, throw across the foot (+z). */
-function bed(w: number): THREE.Mesh[] {
+/**
+ * Upholstered bed: channel-tufted headboard at −z, duvet, pillows; linen by style (BED_STYLES): '' ochre + terracotta
+ * cushions and a terracotta throw across the foot, '_b' oat + ochre cushions and a sage throw over the right foot
+ * corner, '_c' plain white + taupe cushions, no throw.
+ */
+function bed(w: number, style: (typeof BED_STYLES)[number]): THREE.Mesh[] {
   const m = M()
   const W = w + 0.16
   const D = 2.16
@@ -200,10 +286,43 @@ function bed(w: number): THREE.Mesh[] {
   const sleep = w > 1.3 ? [-w / 4, w / 4] : [0]
   const pw = w > 1.3 ? 0.68 : w - 0.3
   for (const x of sleep) out.push(tilt(rbox(pw, 0.13, 0.46, 0.045, m.linen, x, 0.64, zm + 0.27), -0.35))
-  const accents = w > 1.3 ? [-0.27, 0.27] : [0]
-  accents.forEach((x, i) => out.push(tilt(rbox(0.44, 0.4, 0.12, 0.05, i ? m.throw : m.cushion, x, 0.74, zm + 0.52), -0.3)))
-  out.push(rbox(w + 0.12, 0.03, 0.5, 0.012, m.throw, 0, 0.615, D / 2 - 0.28)) // throw on top
-  out.push(rbox(w + 0.12, 0.28, 0.03, 0.012, m.throw, 0, 0.48, D / 2 - 0.015)) // throw hanging over the foot
+  const [c0, c1] = style === '_b' ? [m.cushionOat, m.cushion] : style === '_c' ? [m.linen, m.cushionTaupe] : [m.cushion, m.throw]
+  const accents = w > 1.3 ? [-0.25, 0.25] : [0]
+  accents.forEach((x, i) => out.push(cushion(0.46, 0.46, 0.17, i ? c1 : c0, x, 0.8, zm + 0.5)))
+  if (style === '') {
+    out.push(rbox(w + 0.12, 0.03, 0.5, 0.012, m.throw, 0, 0.615, D / 2 - 0.28)) // throw on top
+    out.push(rbox(w + 0.12, 0.28, 0.03, 0.012, m.throw, 0, 0.48, D / 2 - 0.015)) // throw hanging over the foot
+  } else if (style === '_b') {
+    // folded throw over the right foot corner: on top, down the foot and down the side
+    const tw = Math.min(0.9, w * 0.6)
+    const x0 = w / 2 + 0.06 - tw / 2
+    out.push(rbox(tw, 0.03, 0.62, 0.012, m.throwSage, x0, 0.615, D / 2 - 0.34))
+    out.push(rbox(tw, 0.26, 0.03, 0.012, m.throwSage, x0, 0.49, D / 2 - 0.015))
+    out.push(rbox(0.03, 0.26, 0.62, 0.012, m.throwSage, w / 2 + 0.075, 0.49, D / 2 - 0.34))
+  }
+  return out
+}
+
+/** Two plain linen cushions (oat, ochre) that lean on sofa_3seat's back cushions; y = 0 on the seat (mountY). */
+function cushionsPlain(): THREE.Mesh[] {
+  const m = M()
+  return [cushion(0.44, 0.44, 0.17, m.cushionOat, -0.17, 0.213, -0.03, 0.35), cushion(0.4, 0.4, 0.15, m.cushion, 0.19, 0.193, 0.03, 0.28)]
+}
+
+/** Oak bedside table: a drawer over an open shelf, on four slim legs. */
+function bedside(): THREE.Mesh[] {
+  const m = M()
+  const out = [
+    box(0.5, 0.025, 0.4, m.oak, 0, 0.5075, 0), // top 0.495–0.52
+    box(0.5, 0.02, 0.4, m.oak, 0, 0.17, 0), // bottom 0.16–0.18
+    box(0.02, 0.315, 0.4, m.oak, -0.24, 0.3375, 0),
+    box(0.02, 0.315, 0.4, m.oak, 0.24, 0.3375, 0),
+    box(0.46, 0.315, 0.012, m.oak, 0, 0.3375, -0.194), // back
+    box(0.46, 0.012, 0.37, m.oak, 0, 0.35, 0), // shelf under the drawer
+    box(0.456, 0.13, 0.02, m.oak, 0, 0.428, 0.19), // drawer front 0.363–0.493
+    box(0.16, 0.01, 0.004, m.dark, 0, 0.47, 0.2), // finger-pull groove
+  ]
+  for (const x of [-0.22, 0.22]) for (const z of [-0.16, 0.16]) out.push(cyl(0.014, 0.16, m.oak, x, 0.08, z, 0.017))
   return out
 }
 
@@ -297,6 +416,44 @@ function counter(): THREE.Mesh[] {
   return [...base(), box(0.6, 0.04, 0.62, M().stone, 0, 0.88, 0)]
 }
 
+/** A base module styled with a kettle, an oak board leaning on the splashback and a stoneware bowl of lemons. */
+function counterStyled(): THREE.Mesh[] {
+  const m = M()
+  const T = 0.9 // worktop top
+  const out = counter()
+  out.push(tilt(rbox(0.28, 0.38, 0.02, 0.012, m.oak, -0.13, T + 0.19, -0.265), -0.1)) // board, top 1.28 m
+  const [kx, kz] = [0.13, -0.12]
+  out.push(cyl(0.08, 0.02, m.dark, kx, T + 0.01, kz)) // kettle base
+  out.push(cyl(0.078, 0.19, m.applianceSteel, kx, T + 0.115, kz, 0.064)) // body, tapering up
+  out.push(cyl(0.05, 0.012, m.dark, kx, T + 0.216, kz)) // lid
+  out.push(box(0.026, 0.15, 0.022, m.dark, kx + 0.1, T + 0.125, kz), box(0.07, 0.022, 0.022, m.dark, kx + 0.07, T + 0.2, kz)) // handle
+  const spout = box(0.05, 0.022, 0.03, m.applianceSteel, kx - 0.085, T + 0.175, kz)
+  spout.rotation.z = -0.6
+  out.push(spout)
+  const [bx, bz] = [0.02, 0.15]
+  out.push(cyl(0.05, 0.006, m.glaze, bx, T + 0.003, bz), cyl(0.05, 0.075, m.glaze, bx, T + 0.0375, bz, 0.12, true)) // flared bowl
+  for (const [x, z, y] of [[-0.035, -0.01, 0.04], [0.035, -0.015, 0.04], [0, 0.035, 0.042]]) {
+    const l = mesh(new THREE.SphereGeometry(0.034, 16, 12), m.lemon, bx + x, T + y, bz + z)
+    l.scale.x = 1.25
+    l.rotation.y = x * 20
+    out.push(l)
+  }
+  return out
+}
+
+/** Tall larder: oak carcass to 2.15 m (the wall cabinets' top line), two doors, bar handles either side of the split. */
+function tall(): THREE.Mesh[] {
+  const m = M()
+  return [
+    box(0.6, 0.1, 0.54, m.dark, 0, 0.05, -0.02), // plinth
+    box(0.6, 2.05, 0.6, m.oak, 0, 1.125, -0.01), // carcass 0.1–2.15
+    box(0.594, 1.297, 0.02, m.oak, 0, 0.7515, 0.3), // lower door 0.103–1.4
+    box(0.594, 0.741, 0.02, m.oak, 0, 1.7765, 0.3), // upper door 1.406–2.147
+    box(0.012, 0.3, 0.02, m.steel, -0.25, 1.22, 0.32),
+    box(0.012, 0.3, 0.02, m.steel, -0.25, 1.59, 0.32),
+  ]
+}
+
 function sink(): THREE.Mesh[] {
   const m = M()
   const out = base(true)
@@ -340,23 +497,34 @@ function upper(): THREE.Mesh[] {
   ]
 }
 
+/** Slim chimney hood: a 35 mm brushed-steel canopy with a grease filter under it, a narrow chimney up to 2.15 m. */
 function hood(): THREE.Mesh[] {
   const m = M()
   return [
-    box(0.6, 0.7, 0.012, m.stone, 0, 0.35, -0.244),
-    box(0.6, 0.08, 0.5, m.hoodSteel, 0, 0.74, 0), // canopy 1.6–1.68 m
-    box(0.26, 0.47, 0.24, m.hoodSteel, 0, 1.015, -0.13), // chimney to 2.15 m
+    box(0.6, 0.7, 0.012, m.stone, 0, 0.35, -0.244), // splashback up to the canopy
+    rbox(0.6, 0.035, 0.48, 0.006, m.applianceSteel, 0, 0.7525, -0.01), // canopy 1.635–1.67 m
+    box(0.52, 0.004, 0.36, m.filter, 0, 0.733, -0.02),
+    box(0.1, 0.008, 0.004, m.dark, 0.2, 0.7525, 0.231), // touch controls on the front edge
+    box(0.24, 0.48, 0.22, m.applianceSteel, 0, 1.01, -0.13), // chimney 1.67–2.15 m
   ]
 }
 
+/** Bottom-freezer fridge in brushed steel: two door slabs with a 4 mm shadow gap, bar handles on stand-offs. */
 function fridge(): THREE.Mesh[] {
   const m = M()
-  return [
-    rbox(0.7, 1.8, 0.7, 0.015, m.fridge, 0, 0.9, 0),
-    box(0.66, 0.006, 0.01, m.dark, 0, 1.2, 0.35), // freezer / fridge seam
-    box(0.02, 0.5, 0.025, m.steel, -0.28, 0.85, 0.365),
-    box(0.02, 0.35, 0.025, m.steel, -0.28, 1.45, 0.365),
+  const zf = 0.27 // carcass front; doors 0.27–0.30, handles to 0.35
+  const out = [
+    rbox(0.7, 1.76, 0.62, 0.012, m.applianceSteel, 0, 0.92, zf - 0.31), // carcass 0.04–1.8
+    box(0.64, 0.04, 0.02, m.dark, 0, 0.02, zf - 0.05), // toe-kick grille
+    box(0.69, 0.012, 0.01, m.dark, 0, 0.72, zf + 0.004), // seen through the door gap
+    rbox(0.696, 1.078, 0.03, 0.008, m.applianceSteel, 0, 1.261, zf + 0.015), // fridge door 0.722–1.8
+    rbox(0.696, 0.678, 0.03, 0.008, m.applianceSteel, 0, 0.379, zf + 0.015), // freezer door 0.04–0.718
   ]
+  for (const [y0, y1] of [[0.92, 1.6], [0.3, 0.64]]) {
+    out.push(cyl(0.011, y1 - y0, m.steel, -0.29, (y0 + y1) / 2, zf + 0.07))
+    for (const y of [y0 + 0.03, y1 - 0.03]) out.push(box(0.016, 0.016, 0.04, m.steel, -0.29, y, zf + 0.05))
+  }
+  return out
 }
 
 /** Wall-hung bowl + in-wall cistern flush plate; y = 0 is the bowl's underside (mountY 0.2). */
@@ -373,7 +541,7 @@ function toilet(): THREE.Mesh[] {
 }
 
 /** Floating oak vanity, stone top, vessel basin, tall mixer, frameless mirror; y = 0 is the cabinet underside (mountY 0.45). */
-function vanity(): THREE.Mesh[] {
+function vanity(): THREE.Object3D[] {
   const m = M()
   const bowl = cyl(0.14, 0.13, m.ceramicIn, 0, 0.465, 0.03, 0.2, true)
   bowl.scale.z = 0.8
@@ -388,7 +556,7 @@ function vanity(): THREE.Mesh[] {
     cyl(0.014, 0.32, m.steel, 0, 0.56, -0.18),
     box(0.024, 0.024, 0.15, m.steel, 0, 0.71, -0.115),
     box(0.72, 0.82, 0.008, m.dark, 0, 1.09, -0.246),
-    box(0.7, 0.8, 0.008, m.mirror, 0, 1.09, -0.238), // mirror 1.14–1.94 m
+    mirror(0.7, 0.8, 0, 1.09, -0.234), // glass 1.14–1.94 m, 8 mm proud of the backing board
   ]
 }
 
@@ -419,19 +587,19 @@ function shower(): THREE.Mesh[] {
   ]
 }
 
-/** 0.5 × 0.7 oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
+/** ART_W × ART_H oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
 function artFrame(url: string): THREE.Mesh[] {
   const m = M()
-  const W = 0.5
-  const H = 0.7
-  const b = 0.025 // moulding
+  const W = ART_W
+  const H = ART_H
+  const b = 0.02 // moulding
   return [
     box(W, b, 0.03, m.oak, 0, b / 2, 0),
     box(W, b, 0.03, m.oak, 0, H - b / 2, 0),
     box(b, H - 2 * b, 0.03, m.oak, -W / 2 + b / 2, H / 2, 0),
     box(b, H - 2 * b, 0.03, m.oak, W / 2 - b / 2, H / 2, 0),
     box(W - 2 * b, H - 2 * b, 0.01, m.mat, 0, H / 2, -0.005),
-    box(0.34, 0.476, 0.002, print(url), 0, H / 2 + 0.01, 0.001),
+    box(W * 0.68, W * 0.952, 0.002, print(url), 0, H / 2 + 0.007, 0.001),
   ]
 }
 
@@ -443,9 +611,10 @@ function wardrobe(): THREE.Mesh[] {
   return out
 }
 
-const BUILDERS: Record<string, () => THREE.Mesh[]> = {
-  bed_queen: () => bed(1.6),
-  bed_single: () => bed(1.0),
+const BUILDERS: Record<string, () => THREE.Object3D[]> = {
+  ...Object.fromEntries(BED_STYLES.flatMap((st) => [[`bed_queen${st}`, () => bed(1.6, st)], [`bed_single${st}`, () => bed(1.0, st)]])),
+  bedside_oak: bedside,
+  cushions_plain: cushionsPlain,
   sofa_3seat: sofa,
   dining_table: diningTable,
   dining_chair: diningChair,
@@ -456,6 +625,8 @@ const BUILDERS: Record<string, () => THREE.Mesh[]> = {
   rug_rect_small: () => rug(2.3, 1.6, M().rugOat),
   rug_round: () => [cyl(1.0, 0.012, M().rugStone, 0, 0.006, 0)],
   kitchen_counter: counter,
+  kitchen_counter_styled: counterStyled,
+  kitchen_tall: tall,
   kitchen_sink: sink,
   kitchen_hob: hob,
   kitchen_upper: upper,
