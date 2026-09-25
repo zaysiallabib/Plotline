@@ -325,7 +325,7 @@ describe('viewer', () => {
     ])
   })
 
-  it.skip('help room with a cot: from just inside the door at eye level, the cot centre in the lower third of the frame (B); a tiny empty room from its door (A help bed, WC)', () => {
+  it('help room with a cot: from just inside the door at eye level, the cot centre in the lower third of the frame (B); a tiny empty room from its door (A help bed, WC)', () => {
     const [a, b] = both
     for (const name of ['Help bed', 'H. toilet']) {
       const r = a.rs.find((x) => x.name === name)!

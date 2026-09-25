@@ -158,6 +158,8 @@ const inFrame = (p: Pt, face: Pt, q: Pt) => (q.x - p.x) * face.x + (q.y - p.y) *
 export const DOOR_PITCH = (-20 * Math.PI) / 180
 /** A bath framed from inside looks down 10°: 1.5 m off, the vanity top and the WC bowl are in the frame. */
 export const BATH_PITCH = (-10 * Math.PI) / 180
+/** Half the vertical field of view of PlotlineScene's camera (65°). */
+const HALF_VFOV = (32.5 * Math.PI) / 180
 
 /**
  * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
@@ -373,7 +375,11 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
         const score = (hero && framed(hero) ? 1000 : 0) + items.filter((f) => f !== hero && framed(f)).length * 100 + depth
         if (score > pick.score) pick = { score, face }
       }
-      return { p, face: pick.face, pitch: DOOR_PITCH }
+      if (hero?.assetId !== 'cot') return { p, face: pick.face, pitch: DOOR_PITCH }
+      // a cot: its centre in the middle of the frame's lower third, from its depth along the view and the eye height
+      const [y0, y1] = heightRange(kitAsset(hero.assetId)!)
+      const depth = (hero.x - p.x) * pick.face.x + (hero.y - p.y) * pick.face.y
+      return { p, face: pick.face, pitch: Math.atan2((y0 + y1) / 2 - EYE, depth) + Math.atan((2 / 3) * Math.tan(HALF_VFOV)) }
     }
   }
 
