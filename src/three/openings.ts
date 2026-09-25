@@ -29,7 +29,8 @@ const DOOR_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', ti
 const LEAF_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light' }
 /** Main entrance: darker, heavier solid-teak look for leaf and frame alike. */
 const MAIN_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#5a3d2b' }
-const ALU: MaterialRef = { kind: 'color', color: '#c9ccce', roughness: 0.38, metalness: 0.85 }
+/** Powder-coated, not bare metal: at metalness 0.85 the frames mirrored the env map and flipped black/white with view and hour. */
+const ALU: MaterialRef = { kind: 'color', color: '#d5d7d6', roughness: 0.45, metalness: 0.15 }
 const STEEL: MaterialRef = { kind: 'color', color: '#c4c4c2', roughness: 0.3, metalness: 1 }
 /** Window sills and thresholds: polished white marble. Flat on purpose: the tiled floor-marble texture reads as wood on a 30 mm edge. */
 const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }

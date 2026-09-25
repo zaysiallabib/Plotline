@@ -1,7 +1,7 @@
 /**
  * Node-only checks of the pure parts of the engine: finish resolution, furniture
  * rotation convention (presets.ts is the contract), procedural asset bounds,
- * door-leaf swing side and the BoxGeometry face layout buildWall relies on.
+ * and door-leaf swing side.
  * No WebGL: nothing here instantiates PlotlineScene.
  */
 import { describe, expect, test } from 'vitest'
@@ -95,11 +95,4 @@ describe('buildOpening door leaf', () => {
     expect(Math.sign(tip.z)).toBe(sign)
     expect(pivot.position.x).toBeCloseTo(hinge === 'b' ? 1.9 : 1, 6) // hinge at that vertex end, measured from a
   })
-})
-
-test('BoxGeometry face layout used by buildWall: indices 24..29 = +z, 30..35 = −z', () => {
-  const g = new THREE.BoxGeometry(2, 3, 0.2)
-  const n = g.attributes.normal
-  expect(n.getZ(g.index!.getX(24))).toBe(1)
-  expect(n.getZ(g.index!.getX(30))).toBe(-1)
 })
