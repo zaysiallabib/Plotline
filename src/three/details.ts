@@ -120,8 +120,9 @@ export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]):
 /**
  * Floor-to-ceiling curtain pair drawn open to the sides of a window, on a slim rod, 0.1 m in front of the
  * `side` face and hung 0.1 m below the wall top. The rod reaches 0.24 m past each reveal (≈0.15 m of curtain
- * overhang + finial), less where a side wall is closer; each panel then covers 30 % of the window, so the middle
- * 40 % stays open. One mesh (rod coloured via vertex colours), picked as furniture.
+ * overhang + finial), less where a side wall is closer; each panel is stacked back over 18 % of the window, so the
+ * middle 64 % stays open (at 30 % the panels cut every sun patch to a strip). One mesh (rod coloured via vertex
+ * colours), picked as furniture.
  */
 export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, graph: Graph): THREE.Mesh {
   const wc = side * (wall.thicknessM / 2 + 0.1)
@@ -145,8 +146,8 @@ export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, g
     return g
   }
   for (const [u0, u1, phase] of [
-    [left + 0.07, o.offsetM + 0.3 * o.widthM, 0],
-    [o.offsetM + 0.7 * o.widthM, right - 0.07, 1.7],
+    [left + 0.07, o.offsetM + 0.18 * o.widthM, 0],
+    [o.offsetM + 0.82 * o.widthM, right - 0.07, 1.7],
   ]) {
     const pw = u1 - u0
     const folds = Math.max(3, Math.round(pw / 0.11))
