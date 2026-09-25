@@ -1,11 +1,17 @@
 # public/assets — asset manifest
 
-All assets below are from [Poly Haven](https://polyhaven.com) and are released under
-**CC0 1.0 Universal** (public domain) — https://polyhaven.com/license.
-License verified on 2026-09-24. Every file in this directory tree is listed here.
+All assets below are from [Poly Haven](https://polyhaven.com) or [ambientCG](https://ambientcg.com)
+and are released under **CC0 1.0 Universal** (public domain) — https://polyhaven.com/license,
+https://ambientcg.com/license. Poly Haven licenses verified 2026-09-24; ambientCG assets and the
+Poly Haven HDRIs used for art verified 2026-09-25 (each asset page states CC0). Every file in this
+directory tree is listed here, except the two floor-plan images (plan-2nd/3rd-floor.webp, the demo
+drawings, not third-party assets).
 
 Models: 1k-texture glTF variant (.gltf + .bin + textures/). Textures: 1k JPG
 (albedo / normal (OpenGL) / roughness / ao). HDRIs: 1k Radiance .hdr.
+ambientCG sets: 1K-JPG download, maps renamed (Color → albedo, NormalGL → normal, Roughness,
+AmbientOcclusion → ao) and re-encoded (JPEG q88 albedo, q82 others); edits noted per row.
+Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into a diptych).
 
 | id | type | source | author | license | checked | file(s) | bytes |
 |---|---|---|---|---|---|---|---|
@@ -34,22 +40,38 @@ Models: 1k-texture glTF variant (.gltf + .bin + textures/). Textures: 1k JPG
 | throw_pillows_01 | model (other) | https://polyhaven.com/a/throw_pillows_01 | Serhii Khromov | CC0 | 2026-09-24 | models/throw_pillows_01/ (5 files) | 1194408 |
 | ceramic_vase_01 | model (other) | https://polyhaven.com/a/ceramic_vase_01 | James Ray Cock | CC0 | 2026-09-24 | models/ceramic_vase_01/ (5 files) | 418457 |
 | wood_floor_oak | texture | https://polyhaven.com/a/laminate_floor_03 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-09-24 | textures/wood_floor_oak/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1980643 |
-| marble_floor_white | texture | https://polyhaven.com/a/marble_01 | Rob Tuytel | CC0 | 2026-09-24 | textures/marble_floor_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 703651 |
-| tile_floor_ceramic | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | shares textures/tile_wall_white/ (floor_tiles_04 removed 2026-09-25: tan limestone read as wood) | 0 |
+| marble_floor_white | texture | https://ambientcg.com/view?id=Marble001 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/marble_floor_white/{albedo.jpg,roughness.jpg} — white polished marble; roughness flattened to an even ~0.2 polish, normal map dropped | 203091 |
+| tile_floor_ceramic | texture | https://ambientcg.com/view?id=Tiles105 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/tile_floor_ceramic/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — white porcelain 600 × 600, thin grout; roughness +40/255, normal strength 50 % | 265412 |
+| fabric_curtain | texture | https://ambientcg.com/view?id=Fabric036 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/fabric_curtain/{albedo.jpg,normal.jpg,roughness.jpg} — light linen weave | 900845 |
+| fabric_upholstery | texture | https://ambientcg.com/view?id=Fabric062 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/fabric_upholstery/{albedo.jpg,normal.jpg,roughness.jpg} — woven upholstery (beds, sofa, chairs) | 684732 |
+| rug_wool | texture | https://ambientcg.com/view?id=Carpet014 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/rug_wool/{albedo.jpg,normal.jpg,roughness.jpg} — loop-pile wool | 906938 |
+| wood_veneer_light | texture | https://ambientcg.com/view?id=Wood095 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/wood_veneer_light/{albedo.jpg,normal.jpg,roughness.jpg} — light oak veneer (doors, cabinets) | 182008 |
+| metal_brushed | texture | https://ambientcg.com/view?id=Metal009 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/metal_brushed/{albedo.jpg,normal.jpg,roughness.jpg} — brushed steel | 352234 |
+| art_sea | art | https://polyhaven.com/a/umhlanga_sunrise | Greg Zaal | CC0 | 2026-09-25 | art/{art_sea_l.jpg,art_sea_r.jpg} — diptych crop of the tonemapped HDRI | 72636 |
+| art_dawn | art | https://polyhaven.com/a/kiara_1_dawn | Greg Zaal | CC0 | 2026-09-25 | art/{art_dawn_l.jpg,art_dawn_r.jpg} — diptych crop of the tonemapped HDRI | 63891 |
 | tile_floor_outdoor | texture | https://polyhaven.com/a/grey_tiles | Amal Kumar | CC0 | 2026-09-24 | textures/tile_floor_outdoor/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1368127 |
 | plaster_white | texture | https://polyhaven.com/a/white_stucco | Amal Kumar | CC0 | 2026-09-24 | textures/plaster_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2314644 |
 | tile_wall_white | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | textures/tile_wall_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2258996 |
 | studio_small_09 | hdri | https://polyhaven.com/a/studio_small_09 | Sergej Majboroda | CC0 | 2026-09-24 | hdri/interior.hdr | 1615248 |
 | kloofendal_43d_clear_puresky | hdri | https://polyhaven.com/a/kloofendal_43d_clear_puresky | Greg Zaal | CC0 | 2026-09-24 | hdri/sky.hdr | 1184531 |
 
-**Total: 48847239 bytes (46.6 MB)** across 24 models, 5 texture sets (6 ids), 2 HDRIs.
+**Total: 51775375 bytes (49.4 MB)** across 24 models, 11 texture sets, 2 art diptychs, 2 HDRIs.
+
+### Removed
+
+| id | was | removed | bytes |
+|---|---|---|---|
+| marble_floor_white (old) | https://polyhaven.com/a/marble_01 (Rob Tuytel), cream/beige stone — not white | 2026-09-25, replaced by ambientCG Marble001 | 703651 |
+| tile_floor_ceramic (old) | shared textures/tile_wall_white/ (a wall subway tile) | 2026-09-25, replaced by ambientCG Tiles105 | 0 |
 
 ## Notes
 
-- Poly Haven has no modern bed, bathroom fixtures (toilet / basin / bathtub / shower),
-  fridge, kitchen counter, floor lamp, office chair or rug — those KitCategory values
-  are unfilled. See the assets agent report / kit.data.ts comments.
-- `marble_floor_white` uses marble_01 (cream/beige polished stone tiles) — Poly Haven has
-  no white marble.
-- `metal_office_desk` and `electric_stove` are slightly worn; acceptable but swap if a
-  cleaner CC0 alternative appears.
+- Beds, sofa, dining set, desk, TVs, rugs, the fitted kitchen, bathroom fixtures, wardrobe
+  and picture frames are procedural (src/furnish/procedural.ts) and use the textures above;
+  Poly Haven has no modern bed, bathroom fixtures, fridge, kitchen run or rug.
+- `hanging_picture_frame_01` stays in the kit but is not placed: its glass exports as opaque
+  black (JPG base colour, no alpha) over a "Ray Homes" placeholder card. Frames are procedural
+  with the art above.
+- `round_wooden_table_01` + `dining_chair_02` (dark, tufted), `sofa_02` (black chesterfield),
+  `metal_office_desk` and `electric_stove` (both worn) stay in the kit for existing unit files
+  but presets no longer place them (procedural dining set, sofa, desk and hob module instead).

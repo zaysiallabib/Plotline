@@ -65,10 +65,8 @@ const FRONT: Record<string, KitAsset['frontAxis']> = {
   modern_coffee_table_01: '+x',
 }
 
-// bottom heights: frames clear a 1.1 m headboard / sofa back; clock above door-head height;
-// the pillows sit on sofa_3seat's cushions (procedural.ts SOFA_SEAT)
+// bottom heights: clock just below door-head height; the pillows sit on sofa_3seat's cushions (procedural.ts SOFA_SEAT)
 const MOUNT_Y: Record<string, number> = {
-  hanging_picture_frame_01: 1.25,
   wall_clock: 1.8,
   throw_pillows_01: 0.44,
 }

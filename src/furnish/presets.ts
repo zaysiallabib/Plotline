@@ -28,6 +28,7 @@
 import type { FurniturePlacement, Room, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
 import { heightRange, kitAsset } from './kit'
+import { ART_SETS } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -314,12 +315,15 @@ const others = (ctx: Ctx, used: Side[]) => rankLongest(ctx).filter((s) => !used.
 /** Sides by distance from p to their nearest point. */
 const nearest = (ctx: Ctx, p: Pt) => [...ctx.sides].sort((a, b) => dist(p, add(a.p0, a.d, projU(a, p))) - dist(p, add(b.p0, b.d, projU(b, p))))
 
-/** Two frames side by side centred at u on `side` (above a sofa or a headboard), else one. */
+/**
+ * A framed diptych centred at u on `side` (above a sofa or a headboard), else its right half alone. The art set
+ * follows the room id so adjoining rooms rarely repeat. Facing the wall, side.d points to your right.
+ */
 function frames(ctx: Ctx, side: Side, u: number): void {
-  const f = 'hanging_picture_frame_01'
+  const set = ART_SETS[[...ctx.room.id].reduce((h, ch) => h + ch.charCodeAt(0), 0) % ART_SETS.length]
   const rot = rotationFacing(side.n)
-  const pair = () => [-1, 1].every((s) => tryPlace(ctx, f, againstSide(side, f, u + s * 0.36, FLUSH), rot))
-  if (!atomic(ctx, pair)) tryPlace(ctx, f, againstSide(side, f, u, FLUSH), rot)
+  const hang = (id: string, du: number) => tryPlace(ctx, id, againstSide(side, id, u + du, FLUSH), rot)
+  if (!atomic(ctx, () => !!hang(`${set}_l`, -0.28) && !!hang(`${set}_r`, 0.28))) hang(`${set}_r`, 0)
 }
 
 // ───────────────────────────── per kind ─────────────────────────────
@@ -350,7 +354,7 @@ function bed(ctx: Ctx): void {
  * Sofa group: sofa on the first side that takes it (centred on `toward`'s projection), pillows on
  * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair.
  */
-function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01']) {
+function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01') {
   let sofa: ReturnType<typeof onSide> = null
   for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
   if (!sofa) return null
@@ -372,14 +376,14 @@ function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_co
   frames(ctx, side, sofa.u)
   // arm chair beside the coffee table facing across it; else at the sofa's end turned 30° toward it
   // (positive θ turns the front toward −d, see header)
-  const chair = size('modern_arm_chair_01')
+  const chair = size(chairId)
   const beside = (s: number) =>
-    !!table && !!tryPlace(ctx, 'modern_arm_chair_01', add(tc, side.d, s * (size(table).x / 2 + 0.3 + chair.z / 2)), rotationFacing({ x: -side.d.x * s, y: -side.d.y * s }))
+    !!table && !!tryPlace(ctx, chairId, add(tc, side.d, s * (size(table).x / 2 + 0.3 + chair.z / 2)), rotationFacing({ x: -side.d.x * s, y: -side.d.y * s }))
   if (!beside(1) && !beside(-1)) {
     placeChair: for (const s of [1, -1]) {
       for (const out of [0.15, 0.3, 0.45]) {
         const cc = add(add(c, side.d, s * (sz.x / 2 + 0.35 + chair.x / 2)), side.n, out)
-        if (tryPlace(ctx, 'modern_arm_chair_01', cc, rot + s * 30)) break placeChair
+        if (tryPlace(ctx, chairId, cc, rot + s * 30)) break placeChair
       }
     }
   }
@@ -466,7 +470,8 @@ function dining(ctx: Ctx): void {
   for (const s of nearest(ctx, at)) if (onSide(ctx, s, 'wall_clock', projU(s, at), FLUSH)) break
   const family = split ? ends.find((e) => e !== end) : undefined
   if (family) {
-    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'modern_coffee_table_01'])
+    // a different table and chair from the living room's: the two zones are seen together through the passage
+    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH)) break
   }
   onSides(ctx, rankNoOpenings(ctx), 'steel_frame_shelves_01') ?? onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
@@ -482,6 +487,9 @@ function study(ctx: Ctx): void {
   }
   inCorner(ctx, 'modern_arm_chair_01')
   inCorner(ctx, 'potted_plant_02')
+  const c = polygonCentroid(ctx.inner)
+  const offs = [0, -0.25, 0.25, -0.5, 0.5]
+  rug: for (const dx of offs) for (const dy of offs) if (tryPlace(ctx, 'rug_round', { x: c.x + dx, y: c.y + dy }, 0, 'flat')) break rug
 }
 
 /** Kitchen: fridge in a corner, then one fitted run of 0.6 m modules (sink, hob, counters) with wall cabinets over. */

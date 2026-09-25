@@ -21,6 +21,14 @@ const P = (id: string, label: string, category: KitAsset['category'], x: number,
   ...(mountY !== undefined ? { mountY } : {}),
 })
 
+/**
+ * Framed prints, hung as diptychs (`<set>_l` left, `<set>_r` right as you face them): crops of Poly Haven
+ * tonemapped HDRIs (CC0), public/assets/art/<id>.jpg. Bottom at 1.25 m clears a headboard / sofa back.
+ */
+export const ART_SETS = ['art_sea', 'art_dawn'] as const
+export const ART = ART_SETS.flatMap((s) => [`${s}_l`, `${s}_r`])
+const ART_LABEL: Record<(typeof ART_SETS)[number], string> = { art_sea: 'sea at sunrise', art_dawn: 'mountains at dawn' }
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -48,5 +56,10 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   vanity: P('vanity', 'Vanity, vessel basin + mirror', 'bath', 0.8, 1.5, 0.5, 0.45), // cabinet 0.45, mirror top 1.95
   basin: P('basin', 'Pedestal basin', 'bath', 0.5, 0.97, 0.45), // rim 0.85, tap spout 0.97
   shower_screen: P('shower_screen', 'Shower tray, glass screen, rain head', 'bath', 0.9, 2.05, 0.9),
-  wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 2 doors)', 'wardrobe', 1.8, 2.2, 0.6),
+  wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 3 doors)', 'wardrobe', 1.8, 2.2, 0.6),
+  ...Object.fromEntries(
+    ART_SETS.flatMap((s) =>
+      (['l', 'r'] as const).map((k) => [`${s}_${k}`, P(`${s}_${k}`, `Framed print, ${ART_LABEL[s]} (${k === 'l' ? 'left' : 'right'})`, 'other', 0.5, 0.7, 0.03, 1.25)]),
+    ),
+  ),
 }

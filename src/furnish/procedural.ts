@@ -11,6 +11,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { TEXTURES } from './textures'
+import { ART } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -72,8 +73,9 @@ function makeMats() {
   return {
     oak: pbr('wood_veneer_light'),
     stone: pbr('marble_floor_white', { scale: 0.6 }),
-    steel: pbr('metal_brushed', { metalness: 1, tint: '#e8eaec' }),
-    fridge: pbr('metal_brushed', { metalness: 1, tint: '#f4f5f6', scale: 2 }),
+    // full metalness mirrors the dark studio HDRI and reads black; partly metallic reads as steel
+    steel: pbr('metal_brushed', { metalness: 0.85 }),
+    fridge: flat('#d8dadb', 0.32, 0.35), // brushed map at fridge scale read as dark streaks
     upholstery: pbr('fabric_upholstery', { tint: '#d2c8b8' }), // warm taupe: headboard, bed base
     sofa: pbr('fabric_upholstery', { tint: '#e6e1d8' }), // oatmeal
     chair: pbr('fabric_upholstery', { tint: '#b3ae9c' }), // sage-grey dining seats
@@ -88,11 +90,14 @@ function makeMats() {
     mattress: flat('#f1efe9', 0.9),
     ceramic: flat('#fbfbf9', 0.12),
     ceramicIn: flat('#f4f4f2', 0.15, 0, { side: THREE.DoubleSide }),
-    blackGlass: flat('#060606', 0.05, 0.4),
+    blackGlass: flat('#070707', 0.06), // glass is a dielectric: metalness mirrored the HDRI as silver
+    hoodSteel: flat('#cdd0d2', 0.3, 0.5),
     blackSteel: flat('#1e1e1e', 0.45, 0.6),
     dark: flat('#262320', 0.7),
     ring: flat('#3a3a3a', 0.35),
-    mirror: flat('#ffffff', 0.02, 1),
+    // ponytail: no real reflection (Reflector costs a render pass per mirror, per eye in XR); pale silver instead
+    mirror: flat('#cfd7d9', 0.06, 0.4),
+    mat: flat('#f7f5f0', 0.9),
     glass: flat('#dfe9e6', 0.05, 0, { transparent: true, opacity: 0.18, depthWrite: false }),
     led: flat('#fff4dc', 0.5, 0, { emissive: '#ffe9c4', emissiveIntensity: 1.2 }),
   }
@@ -145,10 +150,29 @@ function finish(parts: THREE.Mesh[]): THREE.Group {
   const g = new THREE.Group()
   for (const [m, geos] of byMat) {
     const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos)!
-    boxUV(geo)
+    if (!m.userData.ownUV) boxUV(geo)
     g.add(mesh(geo, m))
   }
   return g
+}
+
+const printCache = new Map<string, THREE.MeshStandardMaterial>()
+/** A photographic print: the image spans the part's front face (own 0..1 UVs, not metre-projected). */
+function print(url: string): THREE.MeshStandardMaterial {
+  let m = printCache.get(url)
+  if (!m) {
+    const mat = (m = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.55 }))
+    mat.userData.ownUV = true
+    tex(url, 1, true)
+      .then((t) => {
+        mat.map = t
+        mat.color.set('#ffffff')
+        mat.needsUpdate = true
+      })
+      .catch(() => {})
+    printCache.set(url, m)
+  }
+  return m
 }
 
 // ───────────────────────────── builders ─────────────────────────────
@@ -174,8 +198,8 @@ function bed(w: number): THREE.Mesh[] {
   out.push(rbox(w + 0.08, 0.3, zd1 - zd0, 0.06, m.duvet, 0, 0.45, (zd0 + zd1) / 2)) // drapes to 0.30, top 0.60
   out.push(rbox(w + 0.09, 0.05, 0.3, 0.024, m.duvet, 0, 0.61, zd0 + 0.15)) // turn-down
   const sleep = w > 1.3 ? [-w / 4, w / 4] : [0]
-  const pw = w > 1.3 ? 0.66 : w - 0.3
-  for (const x of sleep) out.push(tilt(rbox(pw, 0.17, 0.42, 0.07, m.linen, x, 0.64, zm + 0.26), -0.28))
+  const pw = w > 1.3 ? 0.68 : w - 0.3
+  for (const x of sleep) out.push(tilt(rbox(pw, 0.13, 0.46, 0.045, m.linen, x, 0.64, zm + 0.27), -0.35))
   const accents = w > 1.3 ? [-0.27, 0.27] : [0]
   accents.forEach((x, i) => out.push(tilt(rbox(0.44, 0.4, 0.12, 0.05, i ? m.throw : m.cushion, x, 0.74, zm + 0.52), -0.3)))
   out.push(rbox(w + 0.12, 0.03, 0.5, 0.012, m.throw, 0, 0.615, D / 2 - 0.28)) // throw on top
@@ -321,8 +345,8 @@ function hood(): THREE.Mesh[] {
   const m = M()
   return [
     box(0.6, 0.7, 0.012, m.stone, 0, 0.35, -0.244),
-    box(0.6, 0.08, 0.5, m.steel, 0, 0.74, 0), // canopy 1.6–1.68 m
-    box(0.26, 0.47, 0.24, m.steel, 0, 1.015, -0.13), // chimney to 2.15 m
+    box(0.6, 0.08, 0.5, m.hoodSteel, 0, 0.74, 0), // canopy 1.6–1.68 m
+    box(0.26, 0.47, 0.24, m.hoodSteel, 0, 1.015, -0.13), // chimney to 2.15 m
   ]
 }
 
@@ -396,6 +420,22 @@ function shower(): THREE.Mesh[] {
   ]
 }
 
+/** 0.5 × 0.7 oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
+function artFrame(url: string): THREE.Mesh[] {
+  const m = M()
+  const W = 0.5
+  const H = 0.7
+  const b = 0.025 // moulding
+  return [
+    box(W, b, 0.03, m.oak, 0, b / 2, 0),
+    box(W, b, 0.03, m.oak, 0, H - b / 2, 0),
+    box(b, H - 2 * b, 0.03, m.oak, -W / 2 + b / 2, H / 2, 0),
+    box(b, H - 2 * b, 0.03, m.oak, W / 2 - b / 2, H / 2, 0),
+    box(W - 2 * b, H - 2 * b, 0.01, m.mat, 0, H / 2, -0.005),
+    box(0.34, 0.476, 0.002, print(url), 0, H / 2 + 0.01, 0.001),
+  ]
+}
+
 function wardrobe(): THREE.Mesh[] {
   const m = M()
   const out = [box(1.8, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(1.76, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
@@ -427,6 +467,7 @@ const BUILDERS: Record<string, () => THREE.Mesh[]> = {
   basin,
   shower_screen: shower,
   wardrobe_tall: wardrobe,
+  ...Object.fromEntries(ART.map((id) => [id, () => artFrame(`/assets/art/${id}.jpg`)])),
 }
 
 export function buildProcedural(id: string): THREE.Group | null {

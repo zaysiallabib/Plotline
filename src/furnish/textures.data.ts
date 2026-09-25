@@ -5,13 +5,13 @@
  */
 import type { TextureSet } from './textures'
 
-const ACG = (id: string, label: string, asset: string, repeatM: number, ao = false): TextureSet => ({
+const ACG = (id: string, label: string, asset: string, repeatM: number, maps: { ao?: boolean; normal?: boolean } = {}): TextureSet => ({
   id,
   label,
   albedo: `/assets/textures/${id}/albedo.jpg`,
-  normal: `/assets/textures/${id}/normal.jpg`,
+  ...(maps.normal !== false ? { normal: `/assets/textures/${id}/normal.jpg` } : {}),
   roughness: `/assets/textures/${id}/roughness.jpg`,
-  ...(ao ? { ao: `/assets/textures/${id}/ao.jpg` } : {}),
+  ...(maps.ao ? { ao: `/assets/textures/${id}/ao.jpg` } : {}),
   repeatM,
   source: `https://ambientcg.com/view?id=${asset}`,
   author: 'ambientCG (Lennart Demes)',
@@ -31,10 +31,11 @@ export const TEXTURES: Record<string, TextureSet> = {
     author: "Dario Barresi, Charlotte Baglioni",
     license: 'CC0',
   },
-  // white polished marble, grey veining, seamless slab (no joints)
-  marble_floor_white: ACG('marble_floor_white', 'White marble', 'Marble001', 2.0),
+  // white polished marble, grey veining, seamless slab. No normal map: polished stone has no relief,
+  // and at this gloss the map's pitting mirrored the HDRI as a crumpled-foil look.
+  marble_floor_white: ACG('marble_floor_white', 'White marble', 'Marble001', 2.0, { normal: false }),
   // glossy white porcelain, thin grey grout; the map is 8 × 8 tiles → 600 × 600 mm tiles
-  tile_floor_ceramic: ACG('tile_floor_ceramic', 'White porcelain floor tiles 600 × 600', 'Tiles105', 4.8, true),
+  tile_floor_ceramic: ACG('tile_floor_ceramic', 'White porcelain floor tiles 600 × 600', 'Tiles105', 4.8, { ao: true }),
   fabric_curtain: ACG('fabric_curtain', 'Light linen weave', 'Fabric036', 0.3),
   fabric_upholstery: ACG('fabric_upholstery', 'Woven upholstery fabric', 'Fabric062', 0.4),
   rug_wool: ACG('rug_wool', 'Wool loop-pile rug', 'Carpet014', 0.4),

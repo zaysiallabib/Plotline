@@ -120,7 +120,7 @@ describe('furnish', () => {
     const rug = ps.find((p) => p.assetId.startsWith('rug_'))!
     expect(rug).toBeDefined()
     expect(quadsOverlap(quad(rug), quad(bed))).toBe(true)
-    expect(ps.filter((p) => p.assetId === 'hanging_picture_frame_01').length).toBeGreaterThan(0)
+    expect(ps.filter((p) => p.assetId.startsWith('art_')).length).toBe(2) // a diptych
   })
 
   test('small bedroom gets a single bed', () => {
@@ -134,10 +134,11 @@ describe('furnish', () => {
     const rooms = deriveRooms(unit)
     const ps = furnish(unit, rooms)
     const ids = ps.map((p) => p.assetId)
-    for (const a of ['sofa_3seat', 'throw_pillows_01', 'modern_coffee_table_01', 'modern_wooden_cabinet', 'tv_55', 'modern_arm_chair_01', 'hanging_picture_frame_01', 'potted_plant_01', 'ceiling_fan']) {
+    for (const a of ['sofa_3seat', 'throw_pillows_01', 'modern_coffee_table_01', 'modern_wooden_cabinet', 'tv_55', 'modern_arm_chair_01', 'potted_plant_01', 'ceiling_fan']) {
       expect(ids, a).toContain(a)
     }
     expect(ids.some((a) => a.startsWith('rug_'))).toBe(true)
+    expect(ids.filter((a) => a.startsWith('art_')), 'diptych over the sofa').toHaveLength(2)
     expectInsideAndDisjoint(ps, rooms, unit)
     // the TV stands on its unit, facing the same way
     const tv = ps.find((p) => p.assetId === 'tv_55')!
@@ -233,7 +234,8 @@ describe('furnish', () => {
     for (const a of ['dining_table', 'dining_chair', 'wall_clock', 'modern_ceiling_lamp_01']) expect(ids('r_dining'), a).toContain(a)
     expect(ids('r_dining').filter((a) => a === 'dining_chair')).toHaveLength(6)
     for (const a of ['kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'fridge']) expect(ids('r_kitchen'), a).toContain(a)
-    for (const a of ['bed_queen', 'hanging_picture_frame_01']) expect(ids('r_bed1'), a).toContain(a)
+    expect(ids('r_bed1'), 'bed').toContain('bed_queen')
+    expect(ids('r_bed1').filter((a) => a.startsWith('art_')), 'diptych').toHaveLength(2)
     for (const a of ['vanity', 'shower_screen', 'toilet']) expect(ids('r_bath1'), a).toContain(a)
   })
 })
