@@ -13,6 +13,8 @@ export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
 const NO_SKIRTING: RoomKind[] = ['bath', 'balcony', 'shaft']
 const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
+/** Rooms that are open to the sky: a window onto one is an outside window. */
+const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
 const CURTAIN_FABRIC = { kind: 'pbr', textureId: 'fabric_curtain', tint: '#efe6d8' } as const
 
 /** Along inner-polygon edge `edge` (from its start vertex, metres): skirting runs over [s0, s1]; the edge is `len` long. */
@@ -85,17 +87,35 @@ export function floorSlotId(slots: FinishSlot[], roomId: Id | undefined): Id | n
   return (floor.find((s) => s.roomIds !== 'all' && s.roomIds.includes(roomId)) ?? floor.find((s) => s.roomIds === 'all'))?.id ?? null
 }
 
-/**
- * Everything that dresses one opening, in the wall's local frame: the joinery (picked as the opening),
- * plus curtains on each window side that faces a bed/living/dining/study room.
- */
-export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): THREE.Object3D[] {
+/** The rooms on either face of an opening: [front (+normal), back]; null = outside the unit. */
+function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room | null, Room | null] {
   const f = core.wallFrame(wall, unit.vertices)
   const c = { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) }
   const off = wall.thicknessM / 2 + 0.05
   const probe = (s: number) => core.roomAt({ x: c.x + f.normal.x * off * s, y: c.y + f.normal.y * off * s }, rooms, unit)
-  const front = probe(1)
-  const back = probe(-1)
+  return [probe(1), probe(-1)]
+}
+
+/**
+ * The faces of a window that get curtains: a bed/living/dining/study face whose other side is open air (outside
+ * the unit, a balcony or a shaft) — never an interior glass partition between two rooms.
+ */
+export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
+  if (o.kind !== 'window') return []
+  const [front, back] = openingRooms(o, wall, unit, rooms)
+  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind)
+  const out: [Room, 1 | -1][] = []
+  if (front && CURTAIN_ROOMS.includes(front.kind) && open(back)) out.push([front, 1])
+  if (back && CURTAIN_ROOMS.includes(back.kind) && open(front)) out.push([back, -1])
+  return out
+}
+
+/**
+ * Everything that dresses one opening, in the wall's local frame: the joinery (picked as the opening),
+ * plus curtains (curtainSides).
+ */
+export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): THREE.Object3D[] {
+  const [front, back] = openingRooms(o, wall, unit, rooms)
   const firstDoor = unit.walls.flatMap((w) => w.openings).find((x) => x.kind === 'door')
   const out: THREE.Object3D[] = [
     buildOpening(o, wall, {
@@ -105,14 +125,7 @@ export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]):
       threshold: floorSlotId(unit.finishSlots, front?.id) !== floorSlotId(unit.finishSlots, back?.id),
     }),
   ]
-  if (o.kind === 'window') {
-    for (const [room, side] of [
-      [front, 1],
-      [back, -1],
-    ] as const) {
-      if (room && CURTAIN_ROOMS.includes(room.kind)) out.push(buildCurtain(o, wall, side, room, unit))
-    }
-  }
+  for (const [room, side] of curtainSides(o, wall, unit, rooms)) out.push(buildCurtain(o, wall, side, room, unit))
   return out
 }
 
