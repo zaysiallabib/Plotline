@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — still shows the **pre-wave-4** build (checked 2026-09-25 11:45 with `npx vercel ls`: one deployment, 9 h old). Waves 4–6 are waiting for the founder's `npx vercel --prod`.
+Live: https://plotline-flax.vercel.app — **deployed 2026-09-25 ~12:00 with waves 4–6** (founder ran `npx vercel --prod`; Claude checked the served build matches `dist/`, walked it in headless Edge — entry, Living, Bath-1, Bed-1 at 17:30 all fine — and opened it for the founder).
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (session 3 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5).
@@ -44,10 +44,17 @@ Done and merged on `feat/phase-0` (127 tests + tsc + build green, 2026-09-25 ~11
 Parked by founder decision (PC first, VR later): #1 desktop canvas black when WebXR enabled, #10 VR window glass opaque.
 These are the first two VR tasks when VR resumes. VR draw calls 2.5–3.1k/eye: fine tethered, too many for standalone Quest.
 
+### Founder questions answered 2026-09-25 (they set the order below)
+- **"Is this a system or one polished plan?"** The pipeline is rule-based (walls, furniture presets, materials, lights, room views work on any traced plan), BUT every rule was only ever judged on Type A. Until a second, different plan goes through untouched and scores close to Type A, "system" is unproven. **This is now the top priority** — no more Type-A-only polish before it.
+- **"When can I see it?"** Now: the live link. Founder is testing it himself and will send a bug list. Comments/notes save only in the founder's own browser (Phase 0).
+- **"Make every object selectable/swappable (table, sofa, fan, AC, lights, curtains, glass colour, door, mirror, shower handle…) — foundation for a catalog."** Added below. Today: furniture pieces, curtains, doors/windows (as a whole), walls/floors/ceilings are already clickable with their own ID; walls/floors/ceilings already swap via the Finishes panel. Missing: ceiling lights (not clickable), parts inside a piece (mirror inside the vanity, shower handle inside the shower, window glass, door handle), an AC model (none in the kit), and a catalog of alternatives per object.
+
 ### Next, in order
-1. **Deploy** (founder): `cd E:\dev\Plotline` then `npx vercel --prod`. Claude then verifies https://plotline-flax.vercel.app in a browser (Rooms list → Living, Bed-1, Bath-1 at 10:00 and 17:30) and opens it.
-2. Next realism wave (art director's remaining list, ranked): (a) no visible sun patches / contact shadows under sofa, bed, wardrobe; (b) exterior void — plain neighbour blocks + haze, still "plain"; (c) blown whites (bath tiles, windows); (d) ceiling light is a flat white disc — flush-mount fixture; (e) dark timber lintel over the dining cased opening — plaster or thin frame; (f) hood reads as a grey slab, fridge a flat box, brown sliver left of the fridge; (g) plaster speckle too strong in Bed-2; (h) Bed-3 and kitchen jump views still cramped (door clearance boxes them in).
-3. Then masterplan week 2: founder traces a unit in the Studio (record minutes), discovery demos.
+1. **Second-plan test (system proof).** Trace the OTHER apartment on `Demo drawings/img_2.webp` (upper unit on the 3rd/5th/7th floor plan: Bed-1 14'5"×14'4", Bed-2 15'2"×10', Bed-3 14'3"×11'10", Living/Dining/Family 36'2"×12', Kitchen 8'×11') into `src/data/units/type-b.json`, add it to the viewer's unit list, run the same room-by-room screenshot pass + art-director score. Fix what breaks **in the rules** (presets, spawn, lighting), never by hand-placing for Type B. Pass = Type B within ~0.5 of Type A's score with zero Type-B-specific code. Then ask the founder for 2–3 brochure plans from OTHER Dhaka developers (different drawing styles, odd angles) and repeat. Est: trace ~half a day, fixes 1–2 days depending on what breaks.
+2. **Founder's bug list** from testing the live link — fix as it arrives.
+3. **Object foundation (catalog-ready).** Every visible thing gets a stable ID + a "slot" (what it is: sofa, ceiling light, curtain, window glass, mirror, shower mixer, door handle…) and is clickable; built pieces expose their sub-parts (vanity → mirror, basin, mixer; shower → glass, head, mixer; window → frame, glass) as separately clickable parts; a slot can be swapped for another catalog item without touching the plan. Add ceiling lights + wall AC units as real objects. Catalog content itself comes later. Est: 1–2 days.
+4. Next realism wave (art director's remaining list, ranked): (a) no visible sun patches / contact shadows under sofa, bed, wardrobe; (b) exterior void — plain neighbour blocks + haze, still "plain"; (c) blown whites (bath tiles, windows); (d) ceiling light is a flat white disc — flush-mount fixture; (e) dark timber lintel over the dining cased opening — plaster or thin frame; (f) hood reads as a grey slab, fridge a flat box, brown sliver left of the fridge; (g) plaster speckle too strong in Bed-2; (h) Bed-3 and kitchen jump views still cramped (door clearance boxes them in); (i) the entry view (first thing on load) stands close to the family-sofa wall with the prints filling the right side.
+5. Then masterplan week 2: founder traces a unit in the Studio (record minutes), discovery demos.
 
 Diagnostic scripts worth keeping (E:\dev): `w5d2.mjs` (details views incl. window frames at 10:00/17:30), `seam.mjs` / `seamcap.mjs` (seam toggles), `E:\dev\tmp\{colprof,spikes,sheet}.ps1` (pixel column profiles, single-pixel line detector, before/after contact sheet).
 
