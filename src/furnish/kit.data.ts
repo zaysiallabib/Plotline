@@ -6,18 +6,6 @@
 import type { KitAsset } from './kit'
 
 export const KIT: Record<string, KitAsset> = {
-  drawer_cabinet: {
-    id: "drawer_cabinet",
-    label: "Drawer cabinet (oak + black steel)",
-    category: "wardrobe",
-    url: "/assets/models/drawer_cabinet/drawer_cabinet_1k.gltf",
-    sizeM: { x: 1.141, y: 1.881, z: 0.488 },
-    frontAxis: '+z',
-    source: "https://polyhaven.com/a/drawer_cabinet",
-    author: "Ulan Cabanilla",
-    license: 'CC0',
-    bytes: 1143429,
-  },
   side_table_01: {
     id: "side_table_01",
     label: "Side table (minimalist wood)",
@@ -161,18 +149,6 @@ export const KIT: Record<string, KitAsset> = {
     author: "James Ray Cock",
     license: 'CC0',
     bytes: 471129,
-  },
-  steel_frame_shelves_01: {
-    id: "steel_frame_shelves_01",
-    label: "Steel frame shelves",
-    category: "shelf",
-    url: "/assets/models/steel_frame_shelves_01/steel_frame_shelves_01_1k.gltf",
-    sizeM: { x: 1.097, y: 2.141, z: 0.502 },
-    frontAxis: '+z',
-    source: "https://polyhaven.com/a/steel_frame_shelves_01",
-    author: "James Ray Cock",
-    license: 'CC0',
-    bytes: 1597356,
   },
   modern_ceiling_lamp_01: {
     id: "modern_ceiling_lamp_01",

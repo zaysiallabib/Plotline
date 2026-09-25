@@ -23,6 +23,7 @@ import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
+import { GLASS, GLASS_SKY } from './openings'
 
 export type Quality = 'high' | 'low'
 
@@ -208,8 +209,9 @@ export class Look {
     this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * golden)
     this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
     this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
-    this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
-    setHaze(this.sky.material.color)
+    const sky = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
+    setHaze(sky)
+    GLASS.envMapIntensity = GLASS_SKY * (0.2126 * sky.r + 0.7152 * sky.g + 0.0722 * sky.b) // the panes mirror this sky
     fixtureGlow().emissiveIntensity = 2.5 + 3.5 * dusk
     for (const { light, base } of this.lights) light.intensity = base * (1 + (DUSK_BOOST - 1) * dusk)
     this.fitShadow()

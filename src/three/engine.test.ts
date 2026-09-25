@@ -13,7 +13,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { resolveFinishRef } from './materials'
 import { buildOpening } from './openings'
-import { evenBearings } from './PlotlineScene'
+import { clampSun, evenBearings } from './PlotlineScene'
 
 // TextureLoader → ImageLoader wants a DOM element; the tests never await a load.
 ;(globalThis as { document?: unknown }).document ??= { createElementNS: () => ({ addEventListener() {}, removeEventListener() {} }) }
@@ -160,6 +160,31 @@ describe('evenBearings', () => {
           expect(f(out[at(x)])).toBeCloseTo(want, 2)
         }
       }
+    }
+  })
+})
+
+describe('clampSun', () => {
+  test('the sun disc and its rays take the sky around them; the sky gradient and a sunlit cloud stay bit-identical', () => {
+    const { toHalfFloat: t16, fromHalfFloat: f } = THREE.DataUtils
+    const [w, h] = [512, 256]
+    const sky = (y: number) => [0.3, 0.4, 0.7].map((v) => f(t16(v * (1 + y / h)))) // brighter toward the horizon
+    const data = new Uint16Array(w * h * 4)
+    const set = (x: number, y: number, rgb: number[]) => data.set([...rgb, 1].map(t16), 4 * (y * w + x))
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) set(x, y, sky(y))
+    const sun = [[100, 64], [101, 64], [100, 65], [101, 65]]
+    const ray = [102, 103, 104, 105, 106].map((x) => [x, 64])
+    for (const [x, y] of sun) set(x, y, [60000, 56000, 50000])
+    for (const [x, y] of ray) set(x, y, [5, 4.6, 4])
+    for (let y = 180; y < 200; y++) for (let x = 300; x < 330; x++) set(x, y, [5, 5, 5]) // a cloud, far off the sun
+    const before = data.slice()
+    clampSun(new THREE.DataTexture(data, w, h))
+    const changed = new Set<number>()
+    for (let i = 0; i < data.length; i++) if (data[i] !== before[i]) changed.add(Math.floor(i / 4))
+    expect([...changed].sort((a, b) => a - b)).toEqual([...sun, ...ray].map(([x, y]) => y * w + x).sort((a, b) => a - b))
+    for (const [x, y] of [...sun, ...ray]) {
+      const got = [0, 1, 2].map((c) => f(data[4 * (y * w + x) + c]))
+      got.forEach((v, c) => expect(v, `${x},${y}`).toBeCloseTo(sky(y)[c], 2))
     }
   })
 })

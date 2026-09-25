@@ -37,7 +37,20 @@ const ALU: MaterialRef = { kind: 'color', color: '#d5d7d6', roughness: 0.45, met
 const STEEL: MaterialRef = { kind: 'color', color: '#c4c4c2', roughness: 0.3, metalness: 1 }
 /** Window sills and thresholds: polished white marble. Flat on purpose: the tiled floor-marble texture reads as wood on a 30 mm edge. */
 const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
-let glass: THREE.MeshStandardMaterial | null = null
+/**
+ * Window and slider panes. A plain 10 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white
+ * plaster (a milky veil that blew out in the sun), and its sample of the blurred transmission target showed a lattice of
+ * blobs (the moiré) where a pane was seen at an angle. A flat pane doesn't refract, and no pane means no second scene
+ * render per frame.
+ * Reflection: PlotlineScene sets the sky's PMREM as this material's own envMap. Without one three reflects
+ * scene.environment at scene.environmentIntensity (the envMapIntensity here is then ignored): the interior HDRI is a
+ * photo studio, and its lights showed as faint arcs in the panes. Blending scales the reflection by the opacity too, so
+ * GLASS_SKY = 10 is the sky at full strength, as real glass mirrors it: Fresnel keeps a pane almost clear head-on (4 %)
+ * and shows the sky at grazing angles. 2 (a fifth of it) was invisible in every Rooms-list view. Look.setHour dims it
+ * with the sky dome at dusk.
+ */
+export const GLASS_SKY = 10
+export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, envMapIntensity: GLASS_SKY, transparent: true, opacity: 0.1, depthWrite: false })
 
 const J = 0.03 // door lining (jamb) thickness
 const CW = 0.07 // casing width
@@ -279,7 +292,7 @@ function buildSlider(g: THREE.Group, o: Opening, T2: number, th: number): void {
     alu.push(slab(hu - 0.007, hu + 0.007, hv, hv + 0.2, z1, z1 + 0.012), slab(hu - 0.007, hu + 0.007, hv, hv + 0.2, z0 - 0.012, z0))
   })
   g.add(part(g, 'frame', 'Sliding door frame', 'door-frame', merged(alu, ALU, true)))
-  g.add(part(g, 'glass', 'Sliding door glass', 'window-glass', glassMesh(panes)))
+  g.add(part(g, 'glass', 'Sliding door glass', 'window-glass', merged(panes, GLASS)))
 }
 
 /** Slim aluminium sliding window: 50 mm outer frame, 2 sashes (3 over 1.8 m) alternately offset in depth. */
@@ -312,14 +325,5 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
     panes.push(slab(a + st, b - st, s + F + st, top - F - st, zc - 0.003, zc + 0.003))
   }
   g.add(part(g, 'frame', 'Window frame', 'window-frame', merged(alu, ALU, true)))
-  g.add(part(g, 'glass', 'Window glass', 'window-glass', glassMesh(panes)))
-}
-
-function glassMesh(panes: THREE.BufferGeometry[]): THREE.Mesh {
-  // A plain 10 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white plaster (a milky veil that
-  // blew out in the sun), and its sample of the blurred transmission target showed a lattice of blobs (the moiré) where
-  // a pane was seen at an angle. A flat pane doesn't refract, and no pane means no second scene render per frame.
-  // No env reflection: the interior HDRI is a photo studio.
-  glass ??= new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, envMapIntensity: 0, transparent: true, opacity: 0.1, depthWrite: false })
-  return merged(panes, glass)
+  g.add(part(g, 'glass', 'Window glass', 'window-glass', merged(panes, GLASS)))
 }
