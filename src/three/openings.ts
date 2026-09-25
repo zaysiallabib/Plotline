@@ -27,6 +27,8 @@ export function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
 
 /** Frame, lining and casing of interior doors: the same veneer as the leaf, tinted to a darker teak. */
 const DOOR_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#7a5a42' }
+/** Painted trim (skirting, the architrave of a doorless opening): a teak casing on a 4.7 m opening read as a dark timber lintel. */
+export const TRIM_PAINT: MaterialRef = { kind: 'color', color: '#f2f0ea', roughness: 0.35 }
 const LEAF_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light' }
 /** Main entrance: darker, heavier solid-teak look for leaf and frame alike. */
 const MAIN_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#5a3d2b' }
@@ -111,7 +113,7 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.front ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, df, T2 + 0.02))
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
-    g.add(merged(casings(u0, u1, s, s + H, T2, 0), DOOR_WOOD))
+    g.add(merged(casings(u0, u1, s, s + H, T2, 0), TRIM_PAINT))
   } else if (slider) {
     buildSlider(g, o, T2, th)
   } else {
