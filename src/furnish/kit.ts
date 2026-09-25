@@ -92,9 +92,9 @@ const KIND: Record<string, ObjectKind> = {
   electric_stove: 'hob',
 }
 
-// bottom heights: clock just below door-head height; the pillows sit on sofa_3seat's 0.45 m seat cushions
+// bottom heights: clock centred at 2.4 m, above the 2.1 m door heads; the pillows sit on sofa_3seat's 0.45 m seat cushions
 const MOUNT_Y: Record<string, number> = {
-  wall_clock: 1.8,
+  wall_clock: 2.24,
   throw_pillows_01: 0.44,
 }
 

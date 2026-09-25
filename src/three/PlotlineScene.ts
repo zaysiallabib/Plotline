@@ -217,12 +217,13 @@ export class PlotlineScene {
     this.setMode('walk')
   }
 
-  /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left). Switches to walk mode. */
-  spawnAt(p: Pt, yawRad: number): void {
+  /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left), pitchRad down when < 0. Switches to walk mode. */
+  spawnAt(p: Pt, yawRad: number, pitchRad = 0): void {
     this.walker = { ...p }
     this.yaw = yawRad
     this.moveTarget = null
     this.setMode('walk')
+    this.camera.quaternion.setFromEuler(new THREE.Euler(pitchRad, yawRad, 0, 'YXZ'))
   }
 
   onPick(cb: (hit: PickHit | null) => void): void {

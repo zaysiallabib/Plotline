@@ -385,4 +385,30 @@ describe('furnish', () => {
     expect(ids('r_bed2')).toContain('bed_queen_c')
     expect(ids('r_bed3')).toContain('bed_queen_b')
   })
+
+  test.skipIf(!typeA || !typeB)('the wall clock hangs at 2.4 m over bare wall: no door/window within 0.3 m, nothing over 1.8 m beneath (A and B)', () => {
+    const k = kitAsset('wall_clock')!
+    expect((heightRange(k)[0] + heightRange(k)[1]) / 2).toBeCloseTo(2.4)
+    // a dining room whose long walls are mostly window: the clock goes to a short wall or 0.3 m clear of the glass
+    const glazed = rect('dining', 4.5, 3.5)
+    for (const i of [0, 2]) glazed.walls[i].openings = [{ id: `win${i}`, kind: 'window', offsetM: 0.6, widthM: 3.3, heightM: 1.4, sillM: 0.9 }]
+    for (const unit of [typeA, typeB, glazed]) {
+      const ps = furnish(unit, deriveRooms(unit))
+      const clock = ps.find((p) => p.assetId === 'wall_clock')!
+      const t = (clock.rotationDeg * Math.PI) / 180
+      const front = { x: -Math.sin(t), y: Math.cos(t) }
+      for (const w of unit.walls) {
+        const a = unit.vertices.find((v) => v.id === w.a)!
+        const b = unit.vertices.find((v) => v.id === w.b)!
+        const L = Math.hypot(b.x - a.x, b.y - a.y)
+        const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+        if (Math.abs((clock.x - a.x) * -d.y + (clock.y - a.y) * d.x) > w.thicknessM / 2 + 0.1) continue // not on this wall
+        const u = (clock.x - a.x) * d.x + (clock.y - a.y) * d.y
+        for (const o of w.openings) expect(Math.abs(u - o.offsetM - o.widthM / 2), `${clock.id} by ${o.id}`).toBeGreaterThanOrEqual(o.widthM / 2 + k.sizeM.x / 2 + 0.3 - 1e-6)
+      }
+      const below = footprint({ x: clock.x + front.x * 0.3, y: clock.y + front.y * 0.3 }, clock.rotationDeg, { x: k.sizeM.x, z: 0.55 })
+      for (const p of ps.filter((p) => p !== clock && p.roomId === clock.roomId && kitAsset(p.assetId)!.mount !== 'ceiling' && heightRange(kitAsset(p.assetId)!)[1] > 1.8))
+        expect(quadsOverlap(quad(p), below), `${p.id} under the clock`).toBe(false)
+    }
+  })
 })
