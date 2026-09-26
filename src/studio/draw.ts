@@ -169,8 +169,18 @@ export function draw(a: DrawArgs): void {
   const og = state.tool === 'opening' ? a.hover?.ghost : undefined
   const ogWall = og && state.unit.walls.find((w) => w.id === og.wallId)
   if (og && ogWall) {
+    const f = wallFrame(ogWall, vs)
+    const h = ogWall.thicknessM / 2
+    const color = og.error ? C.red : C.accent
     ctx.globalAlpha = 0.6
-    drawOpening(ctx, wallFrame(ogWall, vs), ogWall.thicknessM / 2, og.opening, og.error ? C.red : C.accent, px(1.5), px)
+    drawOpening(ctx, f, h, og.opening, color, px(2), px)
+    // tint the footprint too: a window's triple line alone vanishes in a 5" wall at fit zoom
+    ctx.globalAlpha = 0.35
+    ctx.save()
+    ctx.transform(f.dir.x, f.dir.y, f.normal.x, f.normal.y, f.origin.x, f.origin.y)
+    ctx.fillStyle = color
+    ctx.fillRect(og.opening.offsetM, -h, og.opening.widthM, 2 * h)
+    ctx.restore()
     ctx.globalAlpha = 1
   }
 
