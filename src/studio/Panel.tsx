@@ -159,8 +159,13 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
   if (e.kind === 'opening') {
     const o = e.o
     const patch = (p: Partial<Omit<Opening, 'id'>>) => dispatch({ type: 'update-opening', id: o.id, patch: p })
+    const L = wallFrame(e.w, unit.vertices).lengthM
+    const toB = L - o.widthM - o.offsetM
     return (
       <div className="props">
+        <p className="muted">
+          {formatFeetInches(o.offsetM)} from corner A · {formatFeetInches(toB)} from corner B
+        </p>
         <div className="seg">
           {(['door', 'window', 'passage'] as OpeningKind[]).map((k) => (
             <button key={k} className={o.kind === k ? 'on' : ''} onClick={() => patch({ kind: k })}>
@@ -179,6 +184,9 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
         </Row>
         <Row label="From corner A">
           <LenInput valueM={o.offsetM} onCommit={(m) => patch({ offsetM: m })} />
+        </Row>
+        <Row label="From corner B">
+          <LenInput valueM={toB} onCommit={(m) => patch({ offsetM: L - o.widthM - m })} />
         </Row>
         {o.kind === 'door' && (
           <>
