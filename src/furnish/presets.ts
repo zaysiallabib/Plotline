@@ -375,9 +375,10 @@ function bed(ctx: Ctx): void {
 
 /**
  * Sofa group: sofa on the first side that takes it (centred on `toward`'s projection), pillows on
- * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair.
+ * it, a rug under its front legs and the coffee table, the table, frames above, an arm chair — on the
+ * side away from `away` first (the room's other zone: a chair back between them hides it).
  */
-function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01') {
+function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01', away: Pt | null = null) {
   let sofa: ReturnType<typeof onSide> = null
   for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
   if (!sofa) return null
@@ -397,13 +398,17 @@ function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_co
     }
   }
   frames(ctx, side, sofa.u)
-  // arm chair beside the coffee table facing across it; else at the sofa's end turned 30° toward it
-  // (positive θ turns the front toward −d, see header)
+  // arm chair beside the coffee table facing across it, slid ≤ 0.25 m toward or away from the sofa (the away side
+  // first); else at the sofa's end turned 30° toward it (positive θ turns the front toward −d, see header)
   const chair = size(chairId)
+  const order = away && dot(side.d, { x: away.x - tc.x, y: away.y - tc.y }) > 0 ? [-1, 1] : [1, -1]
   const beside = (s: number) =>
-    !!table && !!tryPlace(ctx, chairId, add(tc, side.d, s * (size(table).x / 2 + 0.3 + chair.z / 2)), rotationFacing({ x: -side.d.x * s, y: -side.d.y * s }))
-  if (!beside(1) && !beside(-1)) {
-    placeChair: for (const s of [1, -1]) {
+    !!table &&
+    [0, -0.25, 0.25].some(
+      (o) => !!tryPlace(ctx, chairId, add(add(tc, side.d, s * (size(table).x / 2 + 0.3 + chair.z / 2)), side.n, o), rotationFacing({ x: -side.d.x * s, y: -side.d.y * s })),
+    )
+  if (!order.some(beside)) {
+    placeChair: for (const s of order) {
       for (const out of [0.15, 0.3, 0.45]) {
         const cc = add(add(c, side.d, s * (sz.x / 2 + 0.35 + chair.x / 2)), side.n, out)
         if (tryPlace(ctx, chairId, cc, rot + s * 30)) break placeChair
@@ -503,7 +508,7 @@ function dining(ctx: Ctx): void {
   const family = split ? ends.find((e) => e !== end) : undefined
   if (family) {
     // a different table and chair from the living room's: the two zones are seen together through the passage
-    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair')
+    const sofa = lounge(ctx, nearest(ctx, family), family, ['coffee_table_round_01', 'ottoman_01', 'modern_coffee_table_01'], 'mid_century_lounge_chair', table)
     // across from the sofa or not at all: slid further along a long room it faces the dining table instead
     if (sofa) for (const w of opposite(ctx, sofa.side)) if (onSide(ctx, w, 'tv_55_wall', projU(w, sofa.c), FLUSH, 'solid', 1)) break
   }
@@ -612,9 +617,14 @@ function balcony(ctx: Ctx): void {
   }
 }
 
-/** Walk-in closet: an open rail + shelf unit (1.8 m, else 1.2 m) on each of its two blankest walls. */
+/**
+ * Walk-in closet: an open rail + shelf unit (1.8 m, else 1.2 m) on each of its two blank walls farthest from its doors — a
+ * dead end's far wall first, the one its doorway looks at (seen whole, not as a close-up of a side unit).
+ */
 function closet(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 3) for (const s of rankNoOpenings(ctx).slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
+  const open = (s: Side) => (s.doors.length + s.wins.length > 0 ? 1 : 0)
+  const walls = [...ctx.sides].sort((a, b) => open(a) - open(b) || sideDoorDist(ctx, b) - sideDoorDist(ctx, a))
+  if (ctx.room.areaSqm >= 3) for (const s of walls.slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
 }
 
 /** Help / servant room: a cot (else the short one) along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */

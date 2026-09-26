@@ -406,6 +406,17 @@ describe('furnish', () => {
     expect(furnish(rect('bed', 3, 2.6), deriveRooms(rect('bed', 3, 2.6))).map((p) => p.assetId)).not.toContain('cot')
   })
 
+  test('a dead-end walk-in closet puts its first unit on the far wall, the one its doorway looks at', () => {
+    const unit = rect('closet', 2.4, 3.0, { wall: 2, offsetM: 0.75 }) // door centred on the bottom short wall (y = 3)
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const units = ps.filter((p) => p.assetId.startsWith('closet_rail'))
+    expect(units.length, `${ps.map((p) => p.assetId)}`).toBe(2)
+    expect(units[0].rotationDeg, 'backed onto the top wall, facing the door').toBe(0)
+    expect(units[0].y).toBeLessThan(0.5)
+    expectInsideAndDisjoint(ps, rooms, unit)
+  })
+
   test('common-core rooms are flagged for the viewer; a stair room gets the widest dog-leg that fits, clear of its door', () => {
     for (const n of ['Stair', 'Staircase', 'Lift lobby', 'Lift core', 'LIFT', 'Lift machine room']) expect(isCommonCore({ name: n }), n).toBe(true)
     for (const n of ['Bed-1', 'Living, dining & family', 'Help room', 'H. toilet', 'Kitchen', 'Walk-in closet']) expect(isCommonCore({ name: n }), n).toBe(false)
@@ -539,6 +550,18 @@ describe('furnish', () => {
     }
     const square = rect('dining', 5.4, 5.4, { wall: 0, offsetM: 0.4 }) // 29 m², but no end to put a lounge at
     expect(furnish(square, deriveRooms(square)).map((p) => p.assetId)).not.toContain('sofa_3seat')
+  })
+
+  test.skipIf(!typeC)('two zones: the lounge chair takes the coffee table side away from the dining table (C: its back hid the table)', () => {
+    const wide = rect('living', 11, 3.8, { wall: 3, offsetM: 1.4 })
+    for (const u of [typeC, wide, { ...wide, vertices: wide.vertices.map((v) => ({ ...v, x: 11 - v.x })) }]) {
+      const ps = furnish(u, deriveRooms(u))
+      const at = (re: RegExp) => ps.find((p) => re.test(p.assetId))!
+      const [table, coffee, chair] = [at(/^dining_table$/), at(/coffee_table|ottoman/), at(/^mid_century_lounge_chair$/)]
+      expect(chair, u.id).toBeDefined()
+      const d = (p: Pt) => Math.hypot(p.x - table.x, p.y - table.y)
+      expect(d(chair), `${u.id}: chair ${chair.x},${chair.y}`).toBeGreaterThan(d(coffee))
+    }
   })
 
   test.skipIf(!typeA || !typeC)('a help room too short for the 1.9 m cot (A, C: 1.8 × 1.5 m) gets the short cot, still named cot*', () => {
