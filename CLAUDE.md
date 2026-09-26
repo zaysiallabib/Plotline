@@ -11,6 +11,8 @@ Budget rule: $0 until revenue — free tiers and CC0 assets only.
 
 Full plan: `Docs/Plotline masterplan v2.md`. Architecture: ARCHITECTURE.md.
 Build order: BUILD_PLAN.md. Product spec: Docs/PRODUCT_SPEC.md.
+Why we don't chase render-level realism, and how to answer "why pay":
+Docs/PRODUCT_PHILOSOPHY.md.
 `plotline_1.2/` is the OLD prototype — read-only reference, never import from it.
 
 ## Decisions made 2026-09-24 (override older docs where they conflict)
