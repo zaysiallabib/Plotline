@@ -11,7 +11,7 @@ import type { Opening, Unit, Wall } from '../core'
 import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
-import { resolveFinishRef } from './materials'
+import { EXTERIOR_PLASTER, materialFor, resolveFinishRef } from './materials'
 import { buildOpening } from './openings'
 import { clampSun, evenBearings } from './PlotlineScene'
 
@@ -40,10 +40,17 @@ describe('resolveFinishRef on type-a.json', () => {
   })
 
   test('exterior side of a wall is plaster, unslotted room floor is the flat default', () => {
-    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'color' })
+    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'pbr', textureId: 'plaster_white' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_lifts', 'floor')).toMatchObject({ kind: 'color' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_closet', 'floor')).toMatchObject({ kind: 'pbr', textureId: 'wood_floor_oak' })
   })
+})
+
+test('the edge variant of a material is its own cached copy, pushed back in depth', () => {
+  const edge = materialFor(EXTERIOR_PLASTER, true)
+  expect(edge).not.toBe(materialFor(EXTERIOR_PLASTER))
+  expect(materialFor(EXTERIOR_PLASTER, true)).toBe(edge)
+  expect(edge.polygonOffset && !materialFor(EXTERIOR_PLASTER).polygonOffset).toBe(true)
 })
 
 describe('furniture', () => {

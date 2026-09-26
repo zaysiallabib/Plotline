@@ -43,8 +43,12 @@ function fallbackColor(textureId: string): string {
   return '#efe9df' // plaster
 }
 
-export function materialFor(ref: MaterialRef): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref)
+/**
+ * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
+ * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
+ */
+export function materialFor(ref: MaterialRef, edge = false): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial
@@ -78,11 +82,14 @@ export function materialFor(ref: MaterialRef): THREE.MeshStandardMaterial {
       apply('aoMap', set.ao)
     }
   }
+  if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
   matCache.set(key, m)
   return m
 }
 
-export const EXTERIOR_PLASTER: MaterialRef = { kind: 'color', color: '#d9d4cb', roughness: 0.95 }
+/** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the
+ * outside face reads as a different, weathered surface through a window. Flat #d9d4cb read as a cream sheet in every pane (wave 10). */
+export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
   floor: { kind: 'color', color: '#b8a58c', roughness: 0.7 },
   wall: { kind: 'color', color: '#f1efe9', roughness: 0.95 },

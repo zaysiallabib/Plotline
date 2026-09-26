@@ -23,7 +23,7 @@ import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
-import { setGlassSky } from './openings'
+import { meterUVs, setGlassSky } from './openings'
 
 export type Quality = 'high' | 'low'
 
@@ -156,7 +156,7 @@ export class Look {
       const f = core.wallFrame(w, unit.vertices)
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
       m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, -(SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
-      return new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)
+      return meterUVs(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
     })
     const slabGeo = mergeGeometries([...roomParts, ...wallParts])
     const roofGeo = mergeGeometries([...roomParts.filter((_, i) => !openToSky(rooms[i])), ...wallParts])

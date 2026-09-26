@@ -141,7 +141,6 @@ export class PlotlineScene {
   private readonly furnitureGroup = new THREE.Group()
   private readonly floors: THREE.Mesh[] = []
   private readonly surfaces: Surface[] = []
-  private edgeMat: THREE.MeshStandardMaterial | null = null
   private readonly wallFrames = new Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>()
 
   private readonly look: Look
@@ -498,7 +497,7 @@ export class PlotlineScene {
     if (!this.unit) return
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
-    const plaster = (this.edgeMat ??= Object.assign(materialFor(EXTERIOR_PLASTER).clone(), { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }))
+    const plaster = materialFor(EXTERIOR_PLASTER, true)
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
         side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target) : plaster,
