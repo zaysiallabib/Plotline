@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
-import { AC_KINDS, doorClearZones, footprint, furnish, isCommonCore, LIT_KINDS, quadsOverlap } from './presets'
-import { ART_SETS } from './procedural.meta'
+import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
+import { ART_SETS, parsePlanter, PLANTER } from './procedural.meta'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
 function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offsetM: number }): Unit {
@@ -52,7 +52,10 @@ const aabb = (q: Pt[]) => ({
   minY: Math.min(...q.map((p) => p.y)),
   maxY: Math.max(...q.map((p) => p.y)),
 })
-const isRug = (p: FurniturePlacement) => kitAsset(p.assetId)!.category === 'rug'
+/** A planter bed's own outline in plan (its id carries the shape), else null. */
+const bedShape = (p: FurniturePlacement) => parsePlanter(p.assetId)?.poly.map((q) => ({ x: p.x + q.x, y: p.y + q.y })) ?? null
+// the planter bed is a 'rug' to the engine (floor-level), not a rug furniture stands on
+const isRug = (p: FurniturePlacement) => kitAsset(p.assetId)!.category === 'rug' && !bedShape(p)
 // ceiling fixtures hang over everything; the cushions sit ON the sofa
 const solidItems = (ps: FurniturePlacement[]) =>
   ps.filter((p) => kitAsset(p.assetId)!.mount !== 'ceiling' && !isRug(p) && !['throw_pillows_01', 'cushions_plain'].includes(p.assetId))
@@ -73,7 +76,10 @@ function expectInsideAndDisjoint(ps: FurniturePlacement[], rooms: Room[], unit: 
   for (const p of ps) {
     const room = rooms.find((r) => r.id === p.roomId)!
     const inner = roomInnerPolygon(room, unit)
-    for (const c of quad(p)) expect(pointInPolygon(c, inner), `${p.id} corner outside`).toBe(true)
+    const shape = bedShape(p)
+    // a planter bed fills its room: its outline is the inner polygon, to the cm its id is written in
+    if (shape) inner.forEach((c, i) => expect(Math.hypot(c.x - shape[i].x, c.y - shape[i].y), `${p.id} vertex ${i}`).toBeLessThan(0.01))
+    else for (const c of quad(p)) expect(pointInPolygon(c, inner), `${p.id} corner outside`).toBe(true)
   }
   const fl = solidItems(ps)
   for (let i = 0; i < fl.length; i++) {
@@ -154,7 +160,7 @@ describe('furnish', () => {
   test('living room with no wall long enough for the TV unit gets a wall-mounted TV', () => {
     const unit = rect('living', 2.6, 2.6, { wall: 3, offsetM: 0.3 })
     const ids = furnish(unit, deriveRooms(unit)).map((p) => p.assetId)
-    expect(ids).toContain('sofa_3seat')
+    expect(ids, 'under 3 m wide: the 2-seater (wave 11, piece size by room size)').toContain('sofa_2seat')
     expect(ids).not.toContain('modern_wooden_cabinet')
     expect(ids).toContain('tv_55_wall')
   })
@@ -499,18 +505,26 @@ describe('furnish', () => {
 
   // Type C = Type A's layout on floors 3/5/7: its rule breaks, reproduced on the real plan
   const typeC = (Object.values(import.meta.glob('../data/units/type-c*.json', { eager: true, import: 'default' })) as Unit[])[0]
-  test.skipIf(!typeA || !typeB || !typeC)('planters get plants only; a balcony under 1.2 m deep gets no seat', () => {
-    for (const u of [typeA, typeB, typeC]) {
+  const sheltech = (Object.values(import.meta.glob('../data/units/sheltech-a*.json', { eager: true, import: 'default' })) as Unit[])[0]
+  test.skipIf(!typeA || !typeB || !typeC || !sheltech)('every planter (A, B, C, Sheltech) gets one planter bed and nothing else; a balcony under 1.2 m deep gets no seat', () => {
+    for (const u of [typeA, typeB, typeC, sheltech]) {
       const rooms = deriveRooms(u)
       const ps = furnish(u, rooms)
-      for (const r of rooms.filter((r) => r.kind === 'balcony' && /planter/i.test(r.name))) {
-        const ids = ps.filter((p) => p.roomId === r.id).map((p) => p.assetId)
-        expect(ids.every((a) => a.startsWith('potted_plant_')), `${u.id} ${r.name}: ${ids}`).toBe(true)
+      const planters = rooms.filter((r) => isPlanter(r, u))
+      expect(planters.length, u.id).toBeGreaterThanOrEqual(1)
+      for (const r of planters) {
+        const mine = ps.filter((p) => p.roomId === r.id)
+        expect(mine.map((p) => p.id), `${u.id} ${r.name}`).toEqual([`${r.id}:planter_bed:1`])
+        expect(mine[0].assetId.startsWith(PLANTER)).toBe(true)
       }
+      expectInsideAndDisjoint(ps, rooms, u)
     }
-    const planters = (u: Unit) => furnish(u, deriveRooms(u)).filter((p) => /planter/.test(p.roomId))
-    expect(planters(typeC).length, 'type C planters are dressed').toBeGreaterThanOrEqual(2)
-    const ledge = rect('balcony', 4, 1.1) // 4.4 m², 0.97 m clear
+    // Sheltech's 18 m² Planter (south): plants trail over its three parapets only, not over the curbs onto Veranda 1 / 4
+    const r = deriveRooms(sheltech).find((r) => r.id === 'r_planter_south')!
+    const bed = furnish(sheltech, deriveRooms(sheltech)).find((p) => p.roomId === r.id)!
+    const outer = parsePlanter(bed.assetId)!.edges.map((e, i) => (e.h ? r.wallIds[i] : null)).filter(Boolean)
+    expect(outer.sort()).toEqual(['w_pls_e', 'w_pls_s', 'w_pls_w'])
+    const ledge = rect('balcony', 4, 1.1, { wall: 0, offsetM: 0.3 }) // 4.4 m², 0.97 m clear, a door: a veranda, not a planter
     const ids = furnish(ledge, deriveRooms(ledge)).map((p) => p.assetId)
     expect(ids.length).toBeGreaterThan(0)
     expect(ids.every((a) => a.startsWith('potted_plant_')), `${ids}`).toBe(true)
@@ -572,5 +586,132 @@ describe('furnish', () => {
       expectInsideAndDisjoint(ps, rooms, u)
       for (const z of doorClearZones(rooms.find((r) => r.id === 'r_helpbed')!, u)) expect(quadsOverlap(quad(ps.find((p) => p.assetId === 'cot_s')!), z)).toBe(false)
     }
+  })
+
+  // ───────────── wave 11: planter beds, piece size by room size, beds off the entry paths ─────────────
+
+  /** A 4 × 1 m planter strip (parapets 1.1 m on three sides) beside a 4 × 2 m veranda, a 0.45 m curb between them. */
+  function planterAndVeranda(): Unit {
+    const u = rect('balcony', 4, 3)
+    u.vertices = [
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 4, y: 0 },
+      { id: 'c', x: 4, y: 1 },
+      { id: 'd', x: 4, y: 3 },
+      { id: 'e', x: 0, y: 3 },
+      { id: 'f', x: 0, y: 1 },
+    ]
+    const wall = (id: string, a: string, b: string, heightM: number, door = false) => ({
+      id,
+      a,
+      b,
+      thicknessM: 0.127,
+      heightM,
+      openings: door ? [{ id: 'slider', kind: 'door' as const, offsetM: 1, widthM: 1.8, heightM: 2.1, sillM: 0 }] : [],
+    })
+    u.walls = [wall('ab', 'a', 'b', 1.1), wall('bc', 'b', 'c', 1.1), wall('cd', 'c', 'd', 1.1), wall('de', 'd', 'e', 3, true), wall('ef', 'e', 'f', 1.1), wall('fa', 'f', 'a', 1.1), wall('curb', 'f', 'c', 0.45)]
+    u.roomLabels = [
+      { id: 'p', name: 'Planter', kind: 'balcony', x: 2, y: 0.5 },
+      { id: 'v', name: 'Veranda', kind: 'balcony', x: 2, y: 2 },
+    ]
+    return u
+  }
+
+  test('a planter strip gets one bed filling it (no chair, ottoman or pot); plants trail over its parapets, not over the curb onto the veranda', () => {
+    const unit = planterAndVeranda()
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const mine = ps.filter((p) => p.roomId === 'p')
+    expect(mine.map((p) => p.id)).toEqual(['p:planter_bed:1'])
+    const bed = mine[0]
+    expect(bed.rotationDeg).toBe(0)
+    const room = rooms.find((r) => r.id === 'p')!
+    const { edges } = parsePlanter(bed.assetId)!
+    expect(edges.map((e, i) => [room.wallIds[i], e.h]).filter(([, h]) => h).map(([w]) => w).sort()).toEqual(['ab', 'bc', 'fa'])
+    for (const e of edges.filter((e) => e.h)) expect(e).toEqual({ h: 1.1, t: 0.13 }) // cm, as the id writes it
+    // the engine sees a floor-level piece the size of the strip: no contact shadow, never a view blocker
+    const a = kitAsset(bed.assetId)!
+    expect([a.category, a.kind, a.url]).toEqual(['rug', 'plant', `procedural:${bed.assetId}`])
+    expect(Math.abs(a.sizeM.x - (4 - 0.127))).toBeLessThan(0.01)
+    expect(Math.abs(a.sizeM.z - (1 - 0.127))).toBeLessThan(0.01)
+    expectInsideAndDisjoint(ps, rooms, unit)
+    // the veranda (a door opens onto it) is still a veranda
+    expect(ps.filter((p) => p.roomId === 'v').map((p) => p.assetId)).not.toContain(bed.assetId)
+    expect(ps.filter((p) => p.roomId === 'v').some((p) => /lounge_chair|ottoman/.test(p.assetId))).toBe(true)
+    // a strip no door opens onto is a planter whatever it is called
+    unit.roomLabels[0].name = 'Sunshade'
+    expect(furnish(unit, deriveRooms(unit)).filter((p) => p.roomId === 'p').map((p) => p.id)).toEqual(['p:planter_bed:1'])
+  })
+
+  /** Front zone of a wardrobe placement: its width × WARDROBE_CLEAR. */
+  const frontZone = (p: FurniturePlacement) => {
+    const s = kitAsset(p.assetId)!.sizeM
+    const t = (p.rotationDeg * Math.PI) / 180
+    const f = { x: -Math.sin(t), y: Math.cos(t) }
+    return footprint({ x: p.x + f.x * (s.z + WARDROBE_CLEAR) / 2, y: p.y + f.y * (s.z + WARDROBE_CLEAR) / 2 }, p.rotationDeg, { x: s.x, z: WARDROBE_CLEAR })
+  }
+  const low = (p: FurniturePlacement) => heightRange(kitAsset(p.assetId)!)[0] < 1
+
+  test('piece size by room size: under 11 m² a 2-door wardrobe, under 9 m² a single bed, under 10 m² a 4-seat dining set; a wardrobe keeps 0.7 m clear in front', () => {
+    const small = rect('bed', 3.5, 3.1) // 10.85 m²
+    const ids = furnish(small, deriveRooms(small)).map((p) => p.assetId)
+    expect(ids).toContain('bed_queen')
+    expect(ids).toContain('wardrobe_2door')
+    expect(ids).not.toContain('wardrobe_tall')
+    const big = rect('bed', 3.6, 3.1) // 11.16 m², 10 cm longer: the 3-door one fits, and is allowed
+    expect(furnish(big, deriveRooms(big)).map((p) => p.assetId)).toContain('wardrobe_tall')
+    const tiny = rect('bed', 3.0, 2.9, { wall: 1, offsetM: 0.3 }) // 8.7 m²
+    expect(furnish(tiny, deriveRooms(tiny)).map((p) => p.assetId)).toContain('bed_single')
+    const dining = rect('dining', 3.2, 3.0, { wall: 3, offsetM: 1 }) // 9.6 m²: six chairs would fit, four is the rule
+    expect(furnish(dining, deriveRooms(dining)).filter((p) => p.assetId === 'dining_chair')).toHaveLength(4)
+    for (const u of [small, big, tiny, typeA, typeB, typeC, sheltech].filter(Boolean)) {
+      const ps = furnish(u, deriveRooms(u))
+      for (const w of ps.filter((p) => p.assetId.startsWith('wardrobe_')))
+        for (const p of ps.filter((p) => p.roomId === w.roomId && p !== w && low(p) && !isRug(p) && kitAsset(p.assetId)!.mount !== 'ceiling'))
+          expect(quadsOverlap(frontZone(w), quad(p)), `${u.id}: ${p.id} within 0.7 m of ${w.id}`).toBe(false)
+    }
+  })
+
+  test.skipIf(!typeA || !typeB || !typeC || !sheltech)('a bed never stands on a door entry path (1.2 m in; a slider its step-in) and some door has a straight path to the wardrobe past it', () => {
+    for (const u of [typeA, typeB, typeC, sheltech]) {
+      const rooms = deriveRooms(u)
+      const ps = furnish(u, rooms)
+      for (const r of rooms.filter((r) => r.kind === 'bed' && r.areaSqm >= 4)) {
+        const mine = ps.filter((p) => p.roomId === r.id)
+        const bed = mine.find((p) => p.assetId.startsWith('bed_'))
+        expect(bed, `${u.id} ${r.name}: a bed`).toBeDefined()
+        const entries = doorClearZones(r, u, true)
+        for (const z of entries) expect(quadsOverlap(quad(bed!), z), `${u.id} ${r.name}: bed on an entry path`).toBe(false)
+        const w = mine.find((p) => p.assetId.startsWith('wardrobe_'))
+        if (!w) continue
+        const t = (w.rotationDeg * Math.PI) / 180
+        const front = { x: w.x - Math.sin(t) * kitAsset(w.assetId)!.sizeM.z / 2, y: w.y + Math.cos(t) * kitAsset(w.assetId)!.sizeM.z / 2 }
+        const path = (a: Pt) => {
+          const l = Math.hypot(front.x - a.x, front.y - a.y)
+          const m = { x: (-(front.y - a.y) / l) * (PATH_W / 2), y: ((front.x - a.x) / l) * (PATH_W / 2) }
+          return [{ x: a.x + m.x, y: a.y + m.y }, { x: front.x + m.x, y: front.y + m.y }, { x: front.x - m.x, y: front.y - m.y }, { x: a.x - m.x, y: a.y - m.y }]
+        }
+        const doors = entries.map((z) => ({ x: (z[0].x + z[1].x) / 2, y: (z[0].y + z[1].y) / 2 }))
+        expect(doors.some((d) => !quadsOverlap(path(d), quad(bed!))), `${u.id} ${r.name}: wardrobe cut off by the bed`).toBe(true)
+      }
+    }
+    expect(ENTRY).toBe(1.2)
+    // Sheltech Bed 4 (10.4 m², door + 1.8 m slider): the queen leaves no reachable wardrobe with 0.7 m clear, so the single bed
+    const ids = furnish(sheltech, deriveRooms(sheltech)).filter((p) => p.roomId === 'r_bed4').map((p) => p.assetId)
+    expect(ids).toContain('bed_single')
+    expect(ids).toContain('wardrobe_2door')
+  })
+
+  test('a bed slides along the blankest wall off a door entry path (centred, it cleared the 1 m swing zone but not the 1.2 m path)', () => {
+    // 4 × 3.2, a window in the bottom wall: the top wall is the blankest; a door in the left wall at its top end
+    const unit = rect('bed', 4, 3.2, { wall: 3, offsetM: 2.2 }) // wall 3 runs v4 → v1 (bottom to top): the door spans y 1.0–0.1
+    unit.walls[2].openings.push({ id: 'win', kind: 'window', offsetM: 1.5, widthM: 1.0, heightM: 1.4, sillM: 0.9 })
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const bed = ps.find((p) => p.assetId.startsWith('bed_'))!
+    expect(bed.rotationDeg, 'still against the top wall').toBe(0)
+    expect(bed.x, 'slid away from the door').toBeGreaterThan(2)
+    for (const z of doorClearZones(rooms[0], unit, true)) expect(quadsOverlap(quad(bed), z)).toBe(false)
+    expectInsideAndDisjoint(ps, rooms, unit)
   })
 })
