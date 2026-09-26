@@ -124,11 +124,12 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
     q.forEach((v, i) => (i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)))
     ctx.closePath()
     if (on || layer < 2) {
-      ctx.fillStyle = on ? (hot === C.red ? 'rgba(229,83,75,0.35)' : 'rgba(232,193,112,0.3)') : 'rgba(242,242,240,0.07)'
+      // opaque enough to hide the plan's own printed furniture under a piece
+      ctx.fillStyle = on ? (hot === C.red ? 'rgba(229,83,75,0.45)' : 'rgba(232,193,112,0.4)') : 'rgba(23,24,26,0.7)'
       ctx.fill()
     }
     ctx.setLineDash(layer >= 2 ? [px(3), px(3)] : [])
-    ctx.strokeStyle = on ? hot : 'rgba(242,242,240,0.5)'
+    ctx.strokeStyle = on ? hot : layer >= 2 ? 'rgba(242,242,240,0.55)' : 'rgba(242,242,240,0.85)'
     ctx.lineWidth = px(1)
     ctx.stroke()
     ctx.setLineDash([])
