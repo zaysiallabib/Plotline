@@ -381,20 +381,21 @@ const corridor = (a: Pt, b: Pt): Pt[] => {
 /**
  * Wardrobe `id` on the first of `sides` that takes it with WARDROBE_CLEAR free in front: no piece under 1 m high across
  * its width (reserved, so later pieces stay off it), room to stand (PATH_W wide) in front of its middle, and a straight
- * path to its front from some door that the bed (footprint `bed`) does not cross.
+ * path from some door into that clear strip (to its middle or either end, PATH_W / 2 in) that the bed (footprint `bed`)
+ * does not cross.
  */
 function wardrobe(ctx: Ctx, sides: Side[], id: string, bed: Pt[]): boolean {
   const sz = size(id)
   for (const s of sides) {
     let zone: Pt[] = []
     const ok = (c: Pt) => {
-      const front = add(c, s.n, sz.z / 2)
-      const mid = add(front, s.n, WARDROBE_CLEAR / 2)
+      const mid = add(c, s.n, sz.z / 2 + WARDROBE_CLEAR / 2)
       zone = footprint(mid, rotationFacing(s.n), { x: sz.x, z: WARDROBE_CLEAR })
+      const ends = [0, -1, 1].map((k) => add(mid, s.d, (k * (sz.x - PATH_W)) / 2))
       return (
         footprint(mid, rotationFacing(s.n), { x: PATH_W, z: WARDROBE_CLEAR }).every((p) => pointInPolygon(p, ctx.inner)) &&
         !ctx.quads.some((o) => o.y0 < 1 && quadsOverlap(o.q, zone)) &&
-        (!ctx.doorPts.length || ctx.doorPts.some((d) => !quadsOverlap(corridor(d, front), bed)))
+        (!ctx.doorPts.length || ctx.doorPts.some((d) => ends.some((e) => !quadsOverlap(corridor(d, e), bed))))
       )
     }
     if (onSide(ctx, s, id, s.len / 2, 0, 'solid', s.len / 2, ok)) {
@@ -406,12 +407,12 @@ function wardrobe(ctx: Ctx, sides: Side[], id: string, bed: Pt[]): boolean {
 }
 
 /**
- * Bed (queen from 9 m², else single) on `side` clear of every door's entry path (fits), bedside tables, a rug, prints over
- * it; then a wardrobe (the 3-door one from 11 m² only; else 2 doors; else beside the bed). Null if the bed does not fit.
+ * Bed at u on `side`, clear of every door's entry path (fits), bedside tables, a rug, prints over it; then wardrobe `robe`
+ * on another wall (a 2-door one also beside the bed). False if the bed does not fit or the wardrobe does not (null: none).
  */
-function dressBed(ctx: Ctx, side: Side, bedId: string, u: number) {
+function dressBed(ctx: Ctx, side: Side, bedId: string, u: number, robe: string | null): boolean {
   const b = onSide(ctx, side, bedId, u, 0, 'solid', 0)
-  if (!b) return null
+  if (!b) return false
   const off = size(bedId).x / 2 + GAP + size('bedside_oak').x / 2
   for (const s of [-1, 1]) tryPlace(ctx, 'bedside_oak', againstSide(b.side, 'bedside_oak', b.u + s * off), b.rot)
   // rug under the lower two thirds of the bed (or a bit less), long side across it, nudged clear of door zones
@@ -422,27 +423,16 @@ function dressBed(ctx: Ctx, side: Side, bedId: string, u: number) {
   frames(ctx, b.side, b.u)
   // closed oak wardrobes only (the kit's steel-framed drawer_cabinet read as garage shelving)
   const q = footprint(b.c, b.rot, size(bedId))
-  const robes = ctx.room.areaSqm >= 11 ? ['wardrobe_tall', 'wardrobe_2door'] : ['wardrobe_2door']
-  const robe = robes.some((id) => wardrobe(ctx, others(ctx, [side]), id, q)) || wardrobe(ctx, [side], 'wardrobe_2door', q)
-  return { ...b, robe }
+  return !robe || wardrobe(ctx, others(ctx, [side]), robe, q) || (robe === 'wardrobe_2door' && wardrobe(ctx, [side], robe, q))
 }
 
 function bed(ctx: Ctx): void {
   const beds = (ctx.room.areaSqm >= 9 ? ['bed_queen', 'bed_single'] : ['bed_single']).map((id) => id + ctx.bedStyle)
-  // the blankest wall (sliding along it) that takes the bed and still leaves a reachable wardrobe, else the next wall, else
-  // the single bed; then the same without the wardrobe
-  const placed = [true, false].some((needRobe) =>
-    beds.some((bedId) =>
-      rankNoOpenings(ctx).some((side) =>
-        [...slots(side, size(bedId).x / 2)].some((u) =>
-          atomic(ctx, () => {
-            const b = dressBed(ctx, side, bedId, u)
-            return !!b && (b.robe || !needRobe)
-          }),
-        ),
-      ),
-    ),
-  )
+  const robes = ctx.room.areaSqm >= 11 ? ['wardrobe_tall', 'wardrobe_2door'] : ['wardrobe_2door']
+  // the blankest wall that takes the bed (sliding along it) with a reachable wardrobe, the 3-door one first; else the next
+  // wall; else the single bed; else the bed without a wardrobe
+  const tries = (rs: (string | null)[]) => beds.flatMap((bedId) => rankNoOpenings(ctx).flatMap((side) => rs.map((robe) => ({ robe, bedId, side }))))
+  const placed = [...tries(robes), ...tries([null])].some(({ robe, bedId, side }) => [...slots(side, size(bedId).x / 2)].some((u) => atomic(ctx, () => dressBed(ctx, side, bedId, u, robe))))
   if (!placed) return
   if (ctx.room.areaSqm >= 18) inCorner(ctx, 'modern_arm_chair_01')
   inCorner(ctx, 'potted_plant_02')

@@ -684,15 +684,21 @@ describe('furnish', () => {
         for (const z of entries) expect(quadsOverlap(quad(bed!), z), `${u.id} ${r.name}: bed on an entry path`).toBe(false)
         const w = mine.find((p) => p.assetId.startsWith('wardrobe_'))
         if (!w) continue
+        // the 0.7 m strip in front of it: its middle and both ends (PATH_W / 2 in)
         const t = (w.rotationDeg * Math.PI) / 180
-        const front = { x: w.x - Math.sin(t) * kitAsset(w.assetId)!.sizeM.z / 2, y: w.y + Math.cos(t) * kitAsset(w.assetId)!.sizeM.z / 2 }
-        const path = (a: Pt) => {
-          const l = Math.hypot(front.x - a.x, front.y - a.y)
-          const m = { x: (-(front.y - a.y) / l) * (PATH_W / 2), y: ((front.x - a.x) / l) * (PATH_W / 2) }
-          return [{ x: a.x + m.x, y: a.y + m.y }, { x: front.x + m.x, y: front.y + m.y }, { x: front.x - m.x, y: front.y - m.y }, { x: a.x - m.x, y: a.y - m.y }]
+        const s = kitAsset(w.assetId)!.sizeM
+        const [f, x] = [{ x: -Math.sin(t), y: Math.cos(t) }, { x: Math.cos(t), y: Math.sin(t) }]
+        const ends = [0, -1, 1].map((k) => ({
+          x: w.x + f.x * (s.z + WARDROBE_CLEAR) / 2 + (x.x * k * (s.x - PATH_W)) / 2,
+          y: w.y + f.y * (s.z + WARDROBE_CLEAR) / 2 + (x.y * k * (s.x - PATH_W)) / 2,
+        }))
+        const path = (a: Pt, b: Pt) => {
+          const l = Math.hypot(b.x - a.x, b.y - a.y)
+          const m = { x: (-(b.y - a.y) / l) * (PATH_W / 2), y: ((b.x - a.x) / l) * (PATH_W / 2) }
+          return [{ x: a.x + m.x, y: a.y + m.y }, { x: b.x + m.x, y: b.y + m.y }, { x: b.x - m.x, y: b.y - m.y }, { x: a.x - m.x, y: a.y - m.y }]
         }
         const doors = entries.map((z) => ({ x: (z[0].x + z[1].x) / 2, y: (z[0].y + z[1].y) / 2 }))
-        expect(doors.some((d) => !quadsOverlap(path(d), quad(bed!))), `${u.id} ${r.name}: wardrobe cut off by the bed`).toBe(true)
+        expect(doors.some((d) => ends.some((e) => !quadsOverlap(path(d, e), quad(bed!)))), `${u.id} ${r.name}: wardrobe cut off by the bed`).toBe(true)
       }
     }
     expect(ENTRY).toBe(1.2)
