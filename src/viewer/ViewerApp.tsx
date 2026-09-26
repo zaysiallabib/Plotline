@@ -369,6 +369,10 @@ function Viewer({ unit }: { unit: Unit }) {
             onToggleFinishes={() => setFinishesOpen((v) => !v)}
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
+            onEditPlan={() => {
+              const id = location.pathname.split('/')[2] // the route stem; `/u/preview` is already the Studio's draft
+              window.open(id === 'preview' ? '/studio' : `/studio?unit=${id}`, '_blank')
+            }}
           />
           {finishesOpen && (
             <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>

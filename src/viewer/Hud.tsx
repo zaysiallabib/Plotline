@@ -24,6 +24,8 @@ interface Props {
   onToggleFinishes: () => void
   onToggleComment: () => void
   onShare: () => void
+  /** opens this unit in the Studio, new tab */
+  onEditPlan: () => void
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
@@ -86,6 +88,9 @@ export default function Hud(p: Props) {
         </button>
         <button className="btn" onClick={p.onShare}>
           Share
+        </button>
+        <button className="btn" onClick={p.onEditPlan}>
+          Edit plan
         </button>
         {p.onEnterVR && (
           <button className="btn" onClick={p.onEnterVR}>
