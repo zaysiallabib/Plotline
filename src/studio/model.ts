@@ -4,6 +4,7 @@
  */
 import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import { snapOpeningOffset, type OpeningSnap } from './snap'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -73,14 +74,15 @@ export type Action =
   | { type: 'chain-back' }
   | { type: 'chain-end' }
   | { type: 'toggle-thickness' }
-  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind }
+  /** tolM: edge-snap tolerance (10 screen px); absent = centred on t */
+  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; tolM?: number }
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
   | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
   | { type: 'move-vertex'; id: Id; x: number; y: number }
   | { type: 'drag-begin' }
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
-  | { type: 'drag-opening'; id: Id; offsetM: number }
+  | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
   | { type: 'delete'; ids?: Id[] }
   | { type: 'add-label'; label: Omit<RoomLabel, 'id'> }
@@ -259,8 +261,24 @@ const replaceOpening = (u: Unit, wallId: Id, o: Opening): Unit => ({
   walls: u.walls.map((w) => (w.id === wallId ? { ...w, openings: w.openings.map((x) => (x.id === o.id ? o : x)) } : w)),
 })
 
-const bordersBath = (u: Unit, wallId: Id): boolean =>
-  deriveRooms(u).some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
+const bordersBath = (rooms: Room[], wallId: Id): boolean => rooms.some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
+
+/** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. */
+export function openingAt(
+  u: Unit,
+  wall: Wall,
+  t: number,
+  kind: OpeningKind,
+  tolM: number,
+  rooms: Room[],
+): { opening: Opening; snapped: OpeningSnap; error: string | null } {
+  const len = wallLen(u, wall)
+  const d = openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id))
+  const { offsetM, snapped } = snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
+  const opening: Opening = { id: newId(), kind, ...d, offsetM, hinge: 'a', swing: 'in' }
+  const placed = placeOpening(wall, len, opening)
+  return typeof placed === 'string' ? { opening, snapped, error: placed } : { opening: placed, snapped, error: null }
+}
 
 // ---------- reducer ----------
 
@@ -354,11 +372,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const wall = s.unit.walls.find((w) => w.id === a.wallId)
       if (!wall) return s
       const kind = a.kind ?? s.lastOpeningKind
-      const len = wallLen(s.unit, wall)
-      const d = openingDefaults(kind, kind === 'door' && bordersBath(s.unit, wall.id))
-      const o: Opening = { id: newId(), kind, ...d, offsetM: a.t * len - d.widthM / 2, hinge: 'a', swing: 'in' }
-      const placed = placeOpening(wall, len, o)
-      if (typeof placed === 'string') return withToast(s, placed)
+      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit))
+      if (error) return withToast(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
       return commit(s, { ...s.unit, walls }, { selection: [placed.id], lastOpeningKind: kind })
     }
@@ -367,7 +382,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!f) return s
       let next: Opening = { ...f.opening, ...a.patch }
       if (a.patch.kind && a.patch.kind !== f.opening.kind) {
-        next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(s.unit, f.wall.id)) }
+        next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(deriveRooms(s.unit), f.wall.id)) }
       }
       const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), next)
       if (typeof placed === 'string') return withToast(s, placed)
@@ -376,7 +391,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'drag-opening': {
       const f = findOpening(s.unit, a.id)
       if (!f) return s
-      const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), { ...f.opening, offsetM: a.offsetM })
+      const len = wallLen(s.unit, f.wall)
+      const w = f.opening.widthM
+      const { offsetM } = snapOpeningOffset(f.wall, len, a.offsetM + w / 2, w, a.tolM ?? 0, a.id)
+      const placed = placeOpening(f.wall, len, { ...f.opening, offsetM })
       if (typeof placed === 'string') return { ...s, dragBlocked: true }
       return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
     }

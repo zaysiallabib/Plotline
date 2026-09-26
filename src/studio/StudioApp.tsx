@@ -477,7 +477,7 @@ export default function StudioApp() {
         if (!scaleSet) return toast('Set the scale first (S)')
         const nw = nearestWall(m, unit)
         if (!nw || nw.distanceM > Math.max(tolM, nw.wall.thicknessM)) return toast('Click on a wall')
-        dispatch({ type: 'add-opening', wallId: nw.wall.id, t: nw.t })
+        dispatch({ type: 'add-opening', wallId: nw.wall.id, t: nw.t, tolM })
         return
       }
       case 'room': {
@@ -533,7 +533,7 @@ export default function StudioApp() {
         if (w && o) {
           const f = wallFrame(w, unit.vertices)
           const u = (m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y
-          dispatch({ type: 'drag-opening', id: o.id, offsetM: u - o.widthM / 2 })
+          dispatch({ type: 'drag-opening', id: o.id, offsetM: u - o.widthM / 2, tolM })
         }
       } else if (d.hit.kind === 'label') {
         dispatch({ type: 'drag-label', id: d.hit.id, x: m.x, y: m.y })

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, roomAt, validate, wallFrame } from '../core'
-import type { Unit } from '../core'
+import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import { EXTERIOR_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 
 const TOL = 0.05
@@ -143,6 +144,41 @@ describe('studio reducer', () => {
     s = reducer(s, { type: 'drag-opening', id: o1.id, offsetM: 0.5 })
     expect(s.dragBlocked).toBe(false)
     expect(s.unit.walls[0].openings[0].offsetM).toBe(0.5)
+  })
+
+  it('opening edge snap: nearer edge flush to a wall end or a neighbour, else centred', () => {
+    const door: Opening = { id: 'd', kind: 'door', offsetM: 2, widthM: 0.9, heightM: 2.1, sillM: 0 }
+    const wall: Wall = { id: 'w', a: 'a', b: 'b', thicknessM: PARTITION_M, heightM: 3, openings: [door] }
+    const at = (uM: number, tolM: number, ex?: string) => snapOpeningOffset(wall, 4, uM, 0.9, tolM, ex)
+    const expectSnap = (r: ReturnType<typeof at>, offsetM: number, snapped: string | null) => {
+      expect(r.snapped).toBe(snapped)
+      expect(r.offsetM).toBeCloseTo(offsetM, 9)
+    }
+    expectSnap(at(0.6, 0.2), 0, 'corner') // centred would start at 0.15
+    expectSnap(at(3.5, 0.2), 3.1, 'corner') // 0.05 from the far end beats 0.15 from the door
+    expectSnap(at(3.4, 0.2), 2.9, 'door') // 0.05 from the door's jamb beats 0.15 from the far end
+    expectSnap(at(1.4, 0.2), 1.1, 'door') // flush against the door's other side
+    expectSnap(at(1.2, 0.1), 0.75, null) // nothing within tolerance: centred on the cursor
+    expectSnap(at(-1, 0), 0, 'corner') // past the wall end: clamped, which is flush
+    expectSnap(at(1.45, 0.2, 'd'), 1.0, null) // a dragged opening ignores its own edges
+  })
+
+  it('add-opening and drag-opening use the edge snap', () => {
+    let s = traceRect()
+    const wall = s.unit.walls[0] // (0,0) → (4,0)
+    s = reducer(s, { type: 'add-opening', wallId: wall.id, t: 0.6 / 4, tolM: 0.2 })
+    const door = s.unit.walls[0].openings[0]
+    expect(door.offsetM).toBe(0) // corner
+    s = reducer(s, { type: 'add-opening', wallId: wall.id, t: 1.6 / 4, kind: 'window', tolM: 0.2 })
+    const win = s.unit.walls[0].openings[1]
+    expect(win.offsetM).toBeCloseTo(door.widthM, 9) // next to the door
+    s = run(s, { type: 'drag-begin' }, { type: 'drag-opening', id: win.id, offsetM: 2, tolM: 0.2 })
+    expect(s.unit.walls[0].openings[1].offsetM).toBeCloseTo(2, 9) // centred on the cursor
+    s = reducer(s, { type: 'drag-opening', id: win.id, offsetM: 0.95, tolM: 0.2 })
+    expect(s.unit.walls[0].openings[1].offsetM).toBeCloseTo(door.widthM, 9)
+    s = reducer(s, { type: 'drag-opening', id: win.id, offsetM: 2.7, tolM: 0.2 })
+    expect(s.unit.walls[0].openings[1].offsetM).toBeCloseTo(4 - win.widthM, 9) // far corner
+    expect(s.dragBlocked).toBe(false)
   })
 
   it('assigns a label to the enclosed face', () => {
