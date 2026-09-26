@@ -17,6 +17,7 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { XRControls } from './xr'
+import { Building, type FlatRef } from './building'
 import * as core from '../core'
 import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
@@ -41,7 +42,8 @@ export interface PickHit {
   /** wall/opening: (u along wall from vertex a, v height); floor/ceiling: plan (x, y); furniture: local (x, z) */
   localOffset?: { u: number; v: number }
 }
-export type SceneMode = 'walk' | 'orbit'
+/** orbit = the dollhouse; building = the whole tower from outside (building.ts) */
+export type SceneMode = 'walk' | 'orbit' | 'building'
 
 const EYE = 1.6
 const WALK_RADIUS = 0.3
@@ -165,6 +167,9 @@ export class PlotlineScene {
   private radius = 10
   private pickCb: ((hit: PickHit | null) => void) | null = null
   private pointerDown: { x: number; y: number } | null = null
+  /** built on the first switch to the Building view; hidden in walk / dollhouse */
+  private building: Building | null = null
+  private flatCb: ((flat: FlatRef | null) => void) | null = null
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -258,22 +263,36 @@ export class PlotlineScene {
     this.sun.intensity = 10 * Math.min(1, alt * 3)
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setHour(hour)
+    if (this.mode === 'building') this.building?.setSun(this.sun)
   }
 
   setMode(mode: SceneMode): void {
-    if (this.mode === 'walk' && mode === 'orbit') {
+    if (this.mode === 'walk' && mode !== 'walk') {
       this.yaw = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ').y
     }
+    const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
     this.ceilingGroup.visible = mode === 'walk'
-    this.orbit.enabled = mode === 'orbit'
-    if (mode === 'orbit') this.orbit.connect(this.canvas)
+    this.orbit.enabled = mode !== 'walk'
+    if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
-    if (mode === 'orbit') {
+    if (mode === 'building' && this.unit && !this.building) {
+      this.building = Building.for(this.unit)
+      if (this.building) this.scene.add(this.building)
+    }
+    if (this.building) this.building.visible = mode === 'building'
+    // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
+    const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
+    if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
+    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's
+    if (mode !== 'walk') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
-      this.camera.position.copy(this.center).add(new THREE.Vector3(this.radius, this.radius * 1.3, this.radius))
-      this.orbit.target.copy(this.center)
+      const b = mode === 'building' ? this.building : null
+      const v = b?.view(b.floor)
+      b?.highlight(b.floor)
+      this.camera.position.copy(v?.eye ?? this.center.clone().add(new THREE.Vector3(this.radius, this.radius * 1.3, this.radius)))
+      this.orbit.target.copy(v?.target ?? this.center)
       this.orbit.update()
     } else {
       this.rig.position.set(this.walker.x, 0, this.walker.y)
@@ -302,6 +321,21 @@ export class PlotlineScene {
 
   onPick(cb: (hit: PickHit | null) => void): void {
     this.pickCb = cb
+  }
+
+  /** Building view: a click on a flat (null: anything else). Replaces onPick there. */
+  onFlat(cb: (flat: FlatRef | null) => void): void {
+    this.flatCb = cb
+  }
+
+  /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */
+  showFloor(k: number): void {
+    const b = this.building
+    if (!b || this.mode !== 'building') return
+    const dy = b.levelOf(k) + 1.5 - this.orbit.target.y
+    this.orbit.target.y += dy
+    this.camera.position.y += dy
+    b.highlight(k)
   }
 
   currentRoomId(): Id | null {
@@ -375,6 +409,8 @@ export class PlotlineScene {
     this.floors.length = 0
     this.surfaces.length = 0
     this.wallFrames.clear()
+    this.building?.dispose()
+    this.building = null
   }
 
   private buildWall(wall: Wall, unit: Unit): void {
@@ -533,6 +569,11 @@ export class PlotlineScene {
       const r = this.canvas.getBoundingClientRect()
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
     }
+    if (this.mode === 'building') {
+      this.raycaster.setFromCamera(ndc, this.camera)
+      this.flatCb?.(this.building?.flatAt(this.raycaster) ?? null)
+      return
+    }
     const hit = this.pick(ndc)
     this.pickCb?.(hit)
     if (hit?.kind === 'floor' && this.mode === 'walk' && !this.plc.isLocked) {
@@ -616,8 +657,9 @@ export class PlotlineScene {
     this.xr?.update()
     this.timer.update()
     const dt = Math.min(this.timer.getDelta(), 0.1)
-    if (this.mode === 'orbit') {
+    if (this.mode !== 'walk') {
       this.orbit.update()
+      if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
     } else if (this.ready) {
       const k = this.keys
       if (!this.plc.isLocked) {

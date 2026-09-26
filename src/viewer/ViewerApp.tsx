@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, Id, Pt, Room, Unit } from '../core'
+import { FLATS, FLOORS } from '../data/building/demo-tower'
 import { furnish } from '../furnish/presets'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
@@ -30,6 +31,18 @@ const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh
 const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
 const DEFAULT_HOUR = 15.5
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
+const params = new URLSearchParams(location.search)
+const TOP = Math.max(...FLOORS.map((f) => f.floor))
+/** Building view floor picker, top down: roof, the floors with flats, ground */
+const PICKER = [{ k: TOP + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }]
+/** the flat's route stem in the demo tower, if it is one */
+const towerStem = (u: Unit) => Object.keys(FLATS).find((s) => FLATS[s].unit.id === u.id)
+/** `?floor=N` (a flat picked in the Building view) puts the flat on floor N if the tower has it there; the JSON keeps its own. */
+function onFloor(u: Unit | null): Unit | null {
+  const n = Number(params.get('floor'))
+  const stem = u && towerStem(u)
+  return u && stem && FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
+}
 
 /**
  * Dev only (stripped from production builds): `?xr=emulate` installs Meta's IWER as an emulated Quest 3 before the
@@ -75,7 +88,7 @@ const headingOf = (scene: PlotlineScene): Pt => {
 
 export default function ViewerApp() {
   const unit = useMemo(() => {
-    const u = resolveUnit()
+    const u = onFloor(resolveUnit())
     return u && !u.furniture.length ? { ...u, furniture: furnish(u, core.deriveRooms(u)) } : u
   }, [])
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
@@ -102,6 +115,8 @@ function Viewer({ unit }: { unit: Unit }) {
   const [toast, setToast] = useState<string | null>(null)
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
+  const [picked, setPicked] = useState(unit.floor ?? 0)
+  const stem = towerStem(unit)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
   const modeRef = useRef(mode)
@@ -127,6 +142,13 @@ function Viewer({ unit }: { unit: Unit }) {
         s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
         setMode('walk')
       }
+    })
+    // Building view: a click on this flat opens its dollhouse, on another flat loads that one on its floor
+    s.onFlat((f) => {
+      if (!f) return
+      if (f.stem !== stem || f.floor !== unit.floor) return location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
+      setMode('orbit')
+      s.setMode('orbit')
     })
     let alive = true // StrictMode/HMR dispose this scene before the promise settles
     void Promise.resolve(xrEmulation)
@@ -195,14 +217,21 @@ function Viewer({ unit }: { unit: Unit }) {
     setEntered(true)
     const e = entrySpawn(unit, rooms)
     if (e) spawn(scene, e.p, e.face)
-    scene.lockPointer()
+    if (params.get('view') === 'dollhouse') go('orbit')
+    else scene.lockPointer()
   }
 
-  const toggleMode = () => {
-    const m: SceneMode = mode === 'walk' ? 'orbit' : 'walk'
+  const go = (m: SceneMode) => {
+    if (m === modeRef.current) return // setMode('walk') again would snap the view back to the last saved heading
     setMode(m)
     scene?.setMode(m)
+    setPicked(unit.floor ?? 0)
   }
+  const toggleMode = () => go(mode === 'walk' ? 'orbit' : 'walk')
+  // a flat picked in the Building view opens straight into its dollhouse once loaded
+  useEffect(() => {
+    if (ready && !entered && params.get('view') === 'dollhouse') enter()
+  })
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -210,7 +239,8 @@ function Viewer({ unit }: { unit: Unit }) {
   }
 
   const share = () => {
-    const url = `${location.origin}${location.pathname}?c=${encodeConfig(fullCfg)}`
+    const floor = params.get('floor') ? `floor=${unit.floor}&` : '' // the flat picked in the Building view stays on its floor
+    const url = `${location.origin}${location.pathname}?${floor}c=${encodeConfig(fullCfg)}`
     history.replaceState(null, '', url)
     void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
   }
@@ -229,6 +259,7 @@ function Viewer({ unit }: { unit: Unit }) {
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
       if (k === 'o') toggleMode()
+      else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
       else if (k === 'escape') {
@@ -317,6 +348,13 @@ function Viewer({ unit }: { unit: Unit }) {
             room={room}
             rooms={listed}
             mode={mode}
+            floor={unit.floor}
+            floors={stem ? PICKER : null}
+            picked={picked}
+            onPickFloor={(k) => {
+              setPicked(k)
+              scene.showFloor(k)
+            }}
             finishesOpen={finishesOpen}
             commenting={commenting}
             locked={locked}
@@ -327,7 +365,7 @@ function Viewer({ unit }: { unit: Unit }) {
               spawn(scene, v.p, v.face, v.pitch)
               setMode('walk')
             }}
-            onToggleMode={toggleMode}
+            onMode={go}
             onToggleFinishes={() => setFinishesOpen((v) => !v)}
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
