@@ -2,7 +2,23 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **founder deployed wave 9 (2bb63cb, 2026-09-26 morning)** and said not to be asked about deploying again; the manager tries `npx vercel --prod` itself at the end of a wave and only notes it here if the harness blocks it.
+Live: https://plotline-flax.vercel.app — **deployed by the manager 2026-09-26 ~10:20 = 8791310 (wave 10 studio ergonomics on top of wave 9)**. `npx vercel --prod --yes` runs fine from this session now (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves the new bundle, `/studio` 200.
+
+## C: DRIVE IS FULL (0 bytes free, 2026-09-26 ~11:00) — RULE: NOTHING OF OURS TOUCHES C: ANY MORE, ONLY E:
+
+Founder 11:00: "we are not to deal with C drive anymore, only E drive". Done by the manager in that session (user environment variables, effective for every NEW process/session):
+- `CLAUDE_CONFIG_DIR = E:\claude-config` — a full copy of `C:\Users\allab\.claude` (846 MB: transcripts, memory, settings, credentials, plugins) made 11:01 with robocopy. New Claude Code sessions read/write E: from now on; memory lives at `E:\claude-config\projects\E--dev-Plotline\memory\`.
+- `TEMP = TMP = E:\tmp\win` — Claude's scratch/tool results, Vite, Playwright temp all go to E:.
+- npm cache was already `E:\dev\npm-cache`; Playwright uses the system Edge (no browser cache on C:).
+- What is actually filling C: is the founder's own OneDrive (Documents 35 GB, Desktop 11 GB), not Plotline. `OneDrive\Desktop\Programming\Archi\plotline` is a 0 MB old web prototype (not a repo copy) — nothing there to gain.
+
+**Founder chores (Claude's auto-mode classifier refuses every delete on C:, "Shared Scratch Sweep"):** after closing ALL Claude Code sessions, in PowerShell:
+```
+robocopy C:\Users\allab\.claude E:\claude-config /E /XO /R:1 /W:1      # picks up the last session's transcript
+Remove-Item C:\Users\allab\.claude -Recurse -Force                     # 846 MB
+Remove-Item C:\Users\allab\AppData\Local\Temp\claude -Recurse -Force   # 658 MB of old session scratch (Fixed-Atlas + Plotline)
+```
+Then open a NEW terminal (so the env vars apply) before running `claude`. If a session ever says its memory dir is under C: again, the env var was lost — re-run `setx CLAUDE_CONFIG_DIR E:\claude-config`.
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
@@ -120,12 +136,22 @@ Founder 09:30: "read everything, multi-agent, start wave 10, don't ask me to dep
 
 | Agent | Port | Scope (files) | Brief | Status |
 |---|---|---|---|---|
-| studio | 5231 | `src/studio/*` only | PRODUCT_SPEC §2.8: filled ghost wall + length label; opening ghost (leaf/swing, triple line, dashed gap) sliding on the hovered wall before the click; `snapOpeningOffset` edge snap to wall ends / neighbouring openings (add, ghost, drag); arrow-key nudge 1" / Shift 1' (no snapPoint on nudge); "· V to move things" in every hint; one-time "Drag any corner with V" toast on the first closed loop; dangling-vertex copy "— click to find it"; opening panel shows distances to both corners (From corner B editable). SNAP_PX and snapPoint untouched. | running |
+| studio | 5231 | `src/studio/*` only | PRODUCT_SPEC §2.8: filled ghost wall + length label; opening ghost (leaf/swing, triple line, dashed gap) sliding on the hovered wall before the click; `snapOpeningOffset` edge snap to wall ends / neighbouring openings (add, ghost, drag); arrow-key nudge 1" / Shift 1' (no snapPoint on nudge); "· V to move things" in every hint; one-time "Drag any corner with V" toast on the first closed loop; dangling-vertex copy "— click to find it"; opening panel shows distances to both corners (From corner B editable). SNAP_PX and snapPoint untouched. | **MERGED 8791310** (5 commits 3ef6247..3daa9cc, 183 tests). `snapOpeningOffset` in snap.ts; `openingAt()` in model.ts is the one place deciding what an O click creates (ghost = click); `add-opening`/`drag-opening` take optional `tolM` (absent = old centred behaviour); `nudge` action, no snapPoint on nudge (spec said "same snapping" — a 10 px snap would swallow a 1" step; founder to confirm); `StudioState.loopTipShown`; opening ghost also tints its footprint (0.35) — a window ghost in a 5" wall was invisible otherwise. Not verified: passage ghost (same code path). Pre-existing quirks left: LenInput blur re-commits rounded to the inch; hover stays stale after a tool switch until the mouse moves. 20 shots `wave10\studio\`, console clean. Script `E:\dev\tmp\wave10\studio\studio.mjs` drives /studio headless with type-a injected. |
 | sheltech | 5232 | `src/data/units/sheltech-a.json`, `src/core/sheltech-a.test.ts`, `public/assets/plan-sheltech-l2.jpg`, scratch `E:\dev\tmp\wave10\sheltech\` | Trace Sheltech Level 2 TYPE-A (±2736 sft, right half of the drawing) from the printed sizes (drawing is only 1000×833 px), lobby as `other`, labels + printedSize, `furniture: []`; tests like type-b.test.ts; Studio round trip; 15:30 shots of every room; **rule-break list, no fixes** — the third-developer system test. Route `/u/sheltech-a`. | running |
 | render | 5233 | `src/three/{openings,details,PlotlineScene,render,materials}.ts` + tests; `procedural.ts` `shower` function only | shower_screen gets the windows' sky-envMap GLASS (milky veil in a/c-bath-2); find + remove the "dashed outline" on the study↔dining partition window in the veranda-study shots; small study/bath panes blowing to white at 15:30 (clipped-% before/after); draw calls flat. | running |
 | furnish | 5234 | `src/furnish/{presets,presets.test,procedural.meta}.ts`; `procedural.ts` `cot` function only | two-zone lounge chair away from the dining table (c-entry/c-dining); cot reads as a bed, not a white plank (help rooms); walk-in closet rail placement so the door view has depth (spawn.ts read-only, recommendation if the fix is there); full A/B/C furniture diff in the report. | running |
 
 Shots `E:\dev\plotline-shots\wave10\<agent>\`; scratch `E:\dev\tmp\wave10\<agent>\`. `procedural.ts` is touched by two agents in two different functions (`shower`, `cot`) — resolve at merge if git cannot.
+
+**Founder 2026-09-26 ~10:05, going to sleep:** "38 % of the 5-hour limit used, 2 h 55 min left; do extra tasks; permission granted in advance for anything not needing review; keep HANDOFF current; commit to GitHub after each task; deploy yourself if you can." Extra agents launched (same rules, Opus, worktrees):
+
+| Agent | Port | Scope | Brief | Status |
+|---|---|---|---|---|
+| views | 5235 | `src/viewer/spawn.ts`, `viewer.test.ts` (+ a new pure helper beside them) | Wave 11 #1 pulled forward: frame-coverage test (project the candidate view on a coarse grid, reject > 15 % door leaf / tall piece / near wall), wet rooms from the doorway aiming basin↔toilet midpoint, help rooms lengthwise from the cot's foot, closets from the opposite wall; before/after spawn diff for A/B/C. | running |
+| building | 5236 | new `src/three/building.ts` + `src/data/building/demo-tower.ts`, `PlotlineScene.ts` (additive mode branch), `context.ts` (grounding only), `ViewerApp.tsx`, `Hud.tsx`, `viewer.css` | Founder item 5: "Building" view — floor 2 = Type A, floors 3–8 = Type B + C, ground plate from img_5 (boxes/planes), rooftop from img_1; other floors as merged shells, current flat highlighted, floor picker G/2–8/R, click a flat → `/u/<unit>?floor=N` landing in the dollhouse; units aligned on the lift core; unit stays at y=0, building sinks around it; draw calls ≤ +150 over the dollhouse. | running |
+| finishes | 5237 | `finishSlots` of type-a/b/c.json, `textures.data.ts`, `public/assets/textures/*`, MANIFEST.md, `FinishesPanel.tsx` + css (swatches only), one test | 8–10 wall paints (tints on plaster_white, Dhaka brands, small BDT deltas), 3 bath wall tiles, dark-wood floor, grey porcelain wet floor, second veranda tile, swatches in the panel; CC0 only, < 3 MB new assets; sheltech-a.json NOT touched (copy the ids later). | running |
+
+Not started (in this order if budget remains): "swap this piece" catalog per furniture object (viewer + kit; Phase-B-ish); a drag-to-move furniture editor stays out (CLAUDE.md). Manager attempts `npx vercel --prod` after each merge batch.
 
 ## Open work
 
