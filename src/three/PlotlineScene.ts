@@ -399,9 +399,11 @@ export class PlotlineScene {
     const front = side(1)
     const back = side(-1)
 
-    // world space, groups 0 = front (+n), 1 = back, 2 = edges/reveals: every wall shares the identity transform,
-    // so a corner two walls share reaches the GPU as the same numbers (no hairline crack between them)
-    const geo = wallGeometry(wall, unit)
+    // world space, groups 0 = front (+n), 1 = back, 2 = ends/tops: every wall shares the identity transform,
+    // so a corner two walls share reaches the GPU as the same numbers (no hairline crack between them).
+    // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
+    // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
+    const geo = wallGeometry(wall, unit, back === null && front !== null ? 1 : 0)
     if (geo) {
       const mesh = new THREE.Mesh(geo)
       mesh.castShadow = mesh.receiveShadow = true
@@ -458,7 +460,7 @@ export class PlotlineScene {
 
   private applyMaterials(): void {
     if (!this.unit) return
-    // wall ends, reveals, tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
+    // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
     const plaster = (this.edgeMat ??= Object.assign(materialFor(EXTERIOR_PLASTER).clone(), { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }))
     for (const s of this.surfaces) {
