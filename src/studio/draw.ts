@@ -1,6 +1,7 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { formatFeetInches, roomAt, roomPolygon, wallFrame } from '../core'
-import type { Id, Opening, Pt, Room } from '../core'
+import { formatFeetInches, roomAt, roomPolygon, unitBounds, wallFrame } from '../core'
+import type { FurniturePlacement, Id, Opening, Pt, Room } from '../core'
+import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import type { StudioState } from './model'
 import type { OpeningSnap, Snap } from './snap'
 import { mToScreen, screenToM, type Frame } from './transform'
@@ -9,7 +10,7 @@ const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', 
 /** Wall length labels only when the wall is at least this long on screen. */
 export const MIN_LABEL_PX = 40
 
-export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label'; id: Id }
+export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label' | 'furniture'; id: Id }
 export interface Hover {
   m: Pt
   px: Pt
@@ -87,6 +88,79 @@ export interface DrawArgs {
   hover: Hover | null
   scaleStart: Pt | null // plan px
   frame: Frame
+  /** F tool: the layer (unit.furniture or the preset layout); while dragging, the candidate layout (red when refused) */
+  furniture?: { pieces: FurniturePlacement[]; drag: Move | null }
+}
+
+/** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
+const LAYER_ORDER = [1, 2, 3, 0]
+
+/** Footprints at true size, front edge marked; the 1 ft grid faintly while dragging. Metres space. */
+function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>, px: (n: number) => number): void {
+  const { pieces, drag } = a.furniture!
+  if (drag) {
+    const b = unitBounds(a.state.unit)
+    ctx.beginPath()
+    for (let x = b.minX; x <= b.maxX + 1e-9; x += GRID_M) {
+      ctx.moveTo(x, b.minY)
+      ctx.lineTo(x, b.maxY)
+    }
+    for (let y = b.minY; y <= b.maxY + 1e-9; y += GRID_M) {
+      ctx.moveTo(b.minX, y)
+      ctx.lineTo(b.maxX, y)
+    }
+    ctx.strokeStyle = 'rgba(242,242,240,0.08)'
+    ctx.lineWidth = px(1)
+    ctx.stroke()
+  }
+  const moving = new Set(drag?.ids)
+  const hot = drag?.error ? C.red : C.accent
+  const shown = [...(drag?.furniture ?? pieces)].sort((p, q) => LAYER_ORDER[layerOf(p)] - LAYER_ORDER[layerOf(q)])
+  for (const p of shown) {
+    const q = pieceQuad(p)
+    const on = moving.has(p.id) || (!drag && sel.has(p.id))
+    const layer = layerOf(p)
+    ctx.beginPath()
+    q.forEach((v, i) => (i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)))
+    ctx.closePath()
+    if (on || layer < 2) {
+      ctx.fillStyle = on ? (hot === C.red ? 'rgba(229,83,75,0.35)' : 'rgba(232,193,112,0.3)') : 'rgba(242,242,240,0.07)'
+      ctx.fill()
+    }
+    ctx.setLineDash(layer >= 2 ? [px(3), px(3)] : [])
+    ctx.strokeStyle = on ? hot : 'rgba(242,242,240,0.5)'
+    ctx.lineWidth = px(1)
+    ctx.stroke()
+    ctx.setLineDash([])
+    if (layer === 2 || layer === 3) continue
+    ctx.beginPath() // front edge (local +y side: footprint corners 2 → 3)
+    ctx.moveTo(q[2].x, q[2].y)
+    ctx.lineTo(q[3].x, q[3].y)
+    ctx.strokeStyle = on ? hot : C.ink
+    ctx.lineWidth = px(2.5)
+    ctx.stroke()
+  }
+}
+
+/** Floor pieces' short labels where they fit (the selected one always). Screen space. */
+function labelFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>, toScreen: (m: Pt) => Pt): void {
+  const { pieces, drag } = a.furniture!
+  ctx.font = '300 11px Inter, system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (const p of drag?.furniture ?? pieces) {
+    const on = drag ? drag.ids[0] === p.id : sel.has(p.id)
+    if (layerOf(p) !== 0 && !on) continue
+    const name = pieceLabel(p)
+    const q = pieceQuad(p).map(toScreen)
+    const w = Math.max(...q.map((v) => v.x)) - Math.min(...q.map((v) => v.x))
+    const h = Math.max(...q.map((v) => v.y)) - Math.min(...q.map((v) => v.y))
+    if (!on && (ctx.measureText(name).width > w - 6 || h < 14)) continue
+    const c = toScreen(p)
+    ctx.fillStyle = on ? (drag?.error ? C.red : C.accent) : C.ink
+    ctx.fillText(name, c.x, c.y)
+  }
+  ctx.textBaseline = 'alphabetic'
 }
 
 export function draw(a: DrawArgs): void {
@@ -203,6 +277,8 @@ export function draw(a: DrawArgs): void {
     }
   }
 
+  if (a.furniture) drawFurniture(ctx, a, sel, px)
+
   // vertices
   for (const v of vs) {
     const active = sel.has(v.id) || chainIds.has(v.id)
@@ -259,6 +335,7 @@ export function draw(a: DrawArgs): void {
       ctx.fillText(l.printedSize, p.x, p.y + 14)
     }
   }
+  if (a.furniture) labelFurniture(ctx, a, sel, toScreen)
 
   if (state.tool === 'scale' && a.scaleStart && a.hover) {
     const p0 = { x: a.scaleStart.x * zoom + panX, y: a.scaleStart.y * zoom + panY }

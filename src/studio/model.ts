@@ -5,6 +5,8 @@
 import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
+import { furnish } from '../furnish/presets'
+import { movePiece, piecesOf } from './furniture'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -13,7 +15,7 @@ const EPS = 1e-6
 const HISTORY_CAP = 200
 const IDLE_MS = 3 * 60_000
 
-export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room'
+export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room' | 'furniture'
 export interface View {
   panX: number
   panY: number
@@ -94,6 +96,12 @@ export type Action =
   | { type: 'update-label'; id: Id; patch: Partial<Omit<RoomLabel, 'id'>> }
   | { type: 'duplicate-label' }
   | { type: 'flip'; what: 'hinge' | 'swing' }
+  /** Furniture tool: piece to centre (x, y) on the 1 ft grid + wall snap (furniture.movePiece); refused → toast, nothing moves */
+  | { type: 'move-piece'; id: Id; x: number; y: number }
+  /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
+  | { type: 'rotate-piece'; id: Id }
+  /** one room back to its preset pieces; no room = all of them (an empty array: the layout follows the walls again) */
+  | { type: 'reset-furniture'; roomId?: Id }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'load-unit'; unit: Unit }
@@ -200,6 +208,12 @@ export function findEntity(u: Unit, id: Id): Entity | null {
   const l = u.roomLabels.find((x) => x.id === id)
   if (l) return { kind: 'label', l }
   return null
+}
+
+/** Selected ids still in `u`: graph entities, or pieces of its furniture layer (preset ids are deterministic). */
+function stillThere(u: Unit, ids: Id[]): Id[] {
+  let pieces: Set<Id> | undefined
+  return ids.filter((id) => findEntity(u, id) || (pieces ??= new Set(piecesOf(u, deriveRooms(u)).map((p) => p.id))).has(id))
 }
 
 /** Plan points that stand for an entity (for pan-to / bounds). */
@@ -344,8 +358,11 @@ function chainAdd(s: StudioState, at: Target): StudioState {
 
 export function reducer(s: StudioState, a: Action): StudioState {
   switch (a.type) {
-    case 'set-tool':
-      return { ...s, tool: a.tool, chain: a.tool === 'wall' ? s.chain : null }
+    case 'set-tool': {
+      // pieces and graph entities are never selected together
+      const selection = (a.tool === 'furniture') === (s.tool === 'furniture') ? s.selection : []
+      return { ...s, tool: a.tool, chain: a.tool === 'wall' ? s.chain : null, selection }
+    }
     case 'set-view':
       return { ...s, view: a.view }
     case 'set-plan-image': {
@@ -529,6 +546,30 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return changed ? commit(s, { ...s.unit, walls }) : s
     }
 
+    case 'move-piece':
+    case 'rotate-piece': {
+      const rooms = deriveRooms(s.unit)
+      const pieces = piecesOf(s.unit, rooms)
+      const p = pieces.find((x) => x.id === a.id)
+      if (!p) return s
+      const r =
+        a.type === 'rotate-piece'
+          ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)!
+          : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, p.rotationDeg)!
+      if (r.error) return withToast(s, r.error)
+      const q = r.piece
+      if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg) return s
+      // the first move writes the whole preset layout: that is what Export and Preview 3D then carry
+      return commit(s, { ...s.unit, furniture: r.furniture })
+    }
+    case 'reset-furniture': {
+      if (!s.unit.furniture.length) return s
+      if (!a.roomId) return commit(s, { ...s.unit, furniture: [] })
+      const preset = furnish(s.unit, deriveRooms(s.unit)).filter((p) => p.roomId === a.roomId)
+      const ids = new Set(preset.map((p) => p.id)) // a piece moved to another room comes home too
+      return commit(s, { ...s.unit, furniture: [...s.unit.furniture.filter((p) => p.roomId !== a.roomId && !ids.has(p.id)), ...preset] })
+    }
+
     case 'undo': {
       const past = s.history.past
       if (!past.length) return s
@@ -538,7 +579,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
         unit,
         history: { past: past.slice(0, -1), future: [s.unit, ...s.history.future] },
         chain: null,
-        selection: s.selection.filter((id) => findEntity(unit, id)),
+        selection: stillThere(unit, s.selection),
       }
     }
     case 'redo': {
@@ -550,7 +591,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
         unit,
         history: { past: [...s.history.past, s.unit], future: future.slice(1) },
         chain: null,
-        selection: s.selection.filter((id) => findEntity(unit, id)),
+        selection: stillThere(unit, s.selection),
       }
     }
 

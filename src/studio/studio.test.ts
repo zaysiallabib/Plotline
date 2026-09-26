@@ -5,6 +5,9 @@ import typeA from '../data/units/type-a.json'
 import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
+import type { FurniturePlacement } from '../core'
+import { furnish } from '../furnish/presets'
+import { GRID_M, pieceAt, pieceQuad, piecesOf } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -432,5 +435,123 @@ describe('corners merge when moved onto each other', () => {
     expect(s.selection).toEqual([v2.id])
     s = reducer(s, { type: 'undo' })
     expect(s.unit.vertices).toHaveLength(4)
+  })
+})
+
+describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
+  /**
+   * 8 × 5 m, 0.2 m walls, partition at x = 5: Living (inner 0.1..4.9) | Bed (inner 5.1..7.9), y inner 0.1..4.9.
+   * The left wall's door (walls[0]) is the entrance: zone x −1.3..1.3, y 0.5..1.5. Partition door y 3.0..3.8.
+   */
+  const V = [[0, 0], [5, 0], [8, 0], [8, 5], [5, 5], [0, 5]].map(([x, y], i) => ({ id: `v${i}`, x, y }))
+  const wall = (id: string, a: number, b: number, openings: Opening[] = []): Wall => ({ id, a: `v${a}`, b: `v${b}`, thicknessM: 0.2, heightM: 3, openings })
+  const door = (id: string, offsetM: number, widthM: number): Opening => ({ id, kind: 'door', offsetM, widthM, heightM: 2.1, sillM: 0, hinge: 'a', swing: 'in' })
+  const piece = (id: string, assetId: string, roomId: string, x: number, y: number, rotationDeg = 0): FurniturePlacement => ({ id, assetId, roomId, x, y, rotationDeg })
+  const fixture = (): StudioState => ({
+    ...initialState(),
+    tool: 'furniture',
+    unit: {
+      ...initialState().unit,
+      vertices: V,
+      walls: [wall('wL', 5, 0, [door('entry', 3.5, 1)]), wall('wT1', 0, 1), wall('wT2', 1, 2), wall('wR', 2, 3), wall('wB2', 3, 4), wall('wB1', 4, 5), wall('wP', 1, 4, [door('d', 3, 0.8)])],
+      roomLabels: [
+        { id: 'A', name: 'Living', kind: 'living', x: 2.5, y: 2.5 },
+        { id: 'B', name: 'Bed', kind: 'bed', x: 6.5, y: 2.5 },
+      ],
+      furniture: [
+        piece('sofa', 'sofa_3seat', 'A', 2.5, 4.39, 180), // against the bottom wall, facing up
+        piece('cush', 'cushions_plain', 'A', 3.05, 4.27, 180), // on the sofa
+        piece('rug', 'rug_rect_small', 'A', 2.5, 2.5),
+        piece('lamp', 'ceiling_light', 'A', 2.5, 2.5),
+        piece('side', 'bedside_oak', 'B', 6.5, 2.5), // 0.5 × 0.4
+        piece('base', 'kitchen_counter', 'B', 6.5, 0.415), // fitted: 5 mm off the top wall
+      ],
+    },
+  })
+  const at = (s: StudioState, id: string) => s.unit.furniture.find((p) => p.id === id)!
+  const move = (s: StudioState, id: string, x: number, y: number) => reducer(s, { type: 'move-piece', id, x, y })
+
+  it('snaps the footprint corner onto the 1 ft grid from the unit corner; one undo entry', () => {
+    const s0 = fixture()
+    const s = move(s0, 'side', 6.61, 2.47)
+    const q = pieceQuad(at(s, 'side'))
+    for (const k of ['x', 'y'] as const) {
+      const lo = Math.min(...q.map((p) => p[k]))
+      expect(Math.abs(lo / GRID_M - Math.round(lo / GRID_M))).toBeLessThan(1e-9)
+    }
+    expect(at(s, 'side')).toMatchObject({ x: expect.closeTo(6.6508, 4), y: expect.closeTo(2.3336, 4), roomId: 'B' })
+    expect(s.history.past).toHaveLength(1)
+    expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit)
+  })
+
+  it('snaps flush to a wall within 0.15 m: furniture GAP 0.05 off, fitted pieces 5 mm off (also out of a wall)', () => {
+    const s = move(fixture(), 'side', 7.6, 2.5) // the grid leaves its right edge 8.5 cm off the wall
+    expect(Math.max(...pieceQuad(at(s, 'side')).map((p) => p.x))).toBeCloseTo(7.9 - 0.05, 6)
+    const k = move(fixture(), 'base', 6.5, 0.45) // the grid pushes it 10 cm into the top wall
+    expect(at(k, 'base').y).toBeCloseTo(0.1 + 0.005 + 0.31, 6)
+  })
+
+  it('R turns 90° clockwise in place; against a wall it comes out flush and what rests on it turns along', () => {
+    let s = reducer(fixture(), { type: 'rotate-piece', id: 'side' })
+    expect(at(s, 'side')).toMatchObject({ x: 6.5, y: 2.5, rotationDeg: 90 })
+    expect(s.history.past).toHaveLength(1)
+    s = reducer(fixture(), { type: 'rotate-piece', id: 'sofa' })
+    expect(at(s, 'sofa')).toMatchObject({ x: expect.closeTo(2.5, 6), y: expect.closeTo(4.9 - 0.05 - 1.1, 6), rotationDeg: 270 })
+    // the cushion's offset (0.55, −0.12) turns to (0.12, 0.55), then comes out of the wall with the sofa
+    expect(at(s, 'cush')).toMatchObject({ x: expect.closeTo(2.62, 6), y: expect.closeTo(4.39 + 0.55 - (4.39 - 3.75), 6), rotationDeg: 270 })
+  })
+
+  it('refuses a drop that overlaps a piece, a door zone, the entrance or leaves the room; nothing moves', () => {
+    const s0 = fixture()
+    const cases: [number, number, string][] = [
+      [2.5, 4.3, 'Overlaps the 3-seat fabric sofa'],
+      [4.6, 3.4, 'Blocks the door'],
+      [0.8, 1.0, 'Blocks the entrance'],
+      [-3, 2, 'Outside the room'],
+    ]
+    for (const [x, y, why] of cases) {
+      const s = move(s0, 'side', x, y)
+      expect(s.unit).toBe(s0.unit)
+      expect(s.toast?.text).toBe(why)
+    }
+    // rugs and ceiling fixtures never block a floor piece
+    expect(move(s0, 'side', 2.5, 2.5).unit).not.toBe(s0.unit)
+  })
+
+  it('moving into another room re-assigns the room; what rests on a piece moves with it', () => {
+    let s = move(fixture(), 'side', 1.0, 3.0)
+    expect(at(s, 'side').roomId).toBe('A')
+    s = move(fixture(), 'sofa', 2.5 - GRID_M, 4.39)
+    expect(at(s, 'sofa')).toMatchObject({ x: expect.closeTo(2.3192, 4), y: expect.closeTo(4.39, 6) })
+    expect(at(s, 'cush')).toMatchObject({ x: expect.closeTo(3.05 - 0.1808, 4), y: expect.closeTo(4.27, 6) })
+    expect(at(s, 'rug')).toEqual(at(fixture(), 'rug'))
+  })
+
+  it('pieceAt prefers the floor piece over what rests on it, and ceiling fixtures over rugs', () => {
+    const ps = fixture().unit.furniture
+    expect(pieceAt(ps, { x: 3.05, y: 4.27 })?.id).toBe('sofa')
+    expect(pieceAt(ps, { x: 2.5, y: 2.5 })?.id).toBe('lamp')
+    expect(pieceAt(ps, { x: 2.0, y: 2.0 })?.id).toBe('rug')
+    expect(pieceAt(ps, { x: 0.5, y: 0.5 })).toBeNull()
+  })
+
+  it('type A: the first move writes the preset layout with only the moved piece (and its cushions) changed; resets', () => {
+    const preset = furnish(typeA as Unit, deriveRooms(typeA as Unit))
+    const sofa = preset.find((p) => p.id === 'r_living:sofa_3seat:1')!
+    let s: StudioState = { ...initialState(), tool: 'furniture', unit: typeA as Unit, selection: [sofa.id] }
+    expect(piecesOf(s.unit, deriveRooms(s.unit))).toEqual(preset)
+    s = move(s, sofa.id, sofa.x + GRID_M, sofa.y)
+    const changed = s.unit.furniture.filter((p, i) => JSON.stringify(p) !== JSON.stringify(preset[i])).map((p) => p.id)
+    expect(changed).toEqual(['r_living:sofa_3seat:1', 'r_living:cushions_plain:1', 'r_living:cushions_plain:2'])
+    expect(reducer(s, { type: 'undo' }).selection).toEqual([sofa.id]) // preset ids are deterministic
+    const byId = (ps: FurniturePlacement[]) => [...ps].sort((a, b) => a.id.localeCompare(b.id))
+    expect(byId(reducer(s, { type: 'reset-furniture', roomId: 'r_living' }).unit.furniture)).toEqual(byId(preset))
+    expect(reducer(s, { type: 'reset-furniture' }).unit.furniture).toEqual([])
+  })
+
+  it('entering or leaving the furniture tool clears the selection', () => {
+    const s = reducer(reducer(fixture(), { type: 'select', ids: ['sofa'] }), { type: 'set-tool', tool: 'select' })
+    expect(s.selection).toEqual([])
+    expect(reducer({ ...s, selection: ['v1'] }, { type: 'set-tool', tool: 'wall' }).selection).toEqual(['v1'])
   })
 })
