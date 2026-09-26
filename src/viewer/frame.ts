@@ -25,26 +25,30 @@ type Box = { id: string; c: Pt; ex: Pt; ey: Pt; hx: number; hy: number; h0: numb
 /** A swinging door (hinged, or narrower than a slider as openings.ts builds it): the only openings with a leaf. */
 export const swings = (o: Opening) => o.kind === 'door' && (!!o.hinge || o.widthM < 1.2)
 
-/** The leaf of a swinging door as openings.ts builds it: pivot at the hinge jamb on the swing face, ajar 20° toward it. */
-function leafQuad(o: Opening, w: Wall, unit: Unit): Quad {
+/** The leaf of a swinging door as openings.ts builds it: pivot at the hinge jamb on the swing face, ajar 20° toward it (0: shut). */
+function leafQuad(o: Opening, w: Wall, unit: Unit, ajar = AJAR): Quad {
   const f = core.wallFrame(w, unit.vertices)
   const sx = o.hinge === 'b' ? -1 : 1
   const sw = o.swing === 'in' ? -1 : 1
   const at = (u: number, n: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * n, y: f.origin.y + f.dir.y * u + f.normal.y * n })
-  const d = { x: sx * Math.cos(AJAR) * f.dir.x + sw * Math.sin(AJAR) * f.normal.x, y: sx * Math.cos(AJAR) * f.dir.y + sw * Math.sin(AJAR) * f.normal.y }
+  const d = { x: sx * Math.cos(ajar) * f.dir.x + sw * Math.sin(ajar) * f.normal.x, y: sx * Math.cos(ajar) * f.dir.y + sw * Math.sin(ajar) * f.normal.y }
   return { id: o.id, o: at(o.hinge === 'b' ? o.offsetM + o.widthM : o.offsetM, (sw * w.thicknessM) / 2), d, u0: 0.03, u1: o.widthM - 0.03, h0: o.sillM, h1: o.sillM + o.heightM - 0.03 }
 }
 
-type Scene = { walls: Unit['walls']; furniture: Unit['furniture']; quads: Quad[]; boxes: Box[]; top: number }
+type Scene = { walls: Unit['walls']; furniture: Unit['furniture']; quads: Quad[]; shut: Map<string, Quad>; boxes: Box[]; top: number }
 const cache = new WeakMap<Unit, Scene>()
 const scene = (unit: Unit): Scene => {
   const hit = cache.get(unit)
   if (hit && hit.walls === unit.walls && hit.furniture === unit.furniture) return hit
   const quads: Quad[] = []
+  const shut = new Map<string, Quad>()
   for (const w of unit.walls) {
     const f = core.wallFrame(w, unit.vertices)
     for (const p of core.wallPieces(w, f.lengthM)) quads.push({ id: w.id, o: f.origin, d: f.dir, u0: p.u0, u1: p.u1, h0: p.v0, h1: p.v1 })
-    for (const o of w.openings) if (swings(o)) quads.push(leafQuad(o, w, unit))
+    for (const o of w.openings.filter(swings)) {
+      quads.push(leafQuad(o, w, unit))
+      shut.set(o.id, leafQuad(o, w, unit, 0))
+    }
   }
   const boxes = unit.furniture.flatMap((f) => {
     const k = kitAsset(f.assetId)
@@ -54,7 +58,7 @@ const scene = (unit: Unit): Scene => {
     const [h0, h1] = heightRange(k)
     return [{ id: f.id, c: f, ex: { x: Math.cos(r), y: Math.sin(r) }, ey: { x: -Math.sin(r), y: Math.cos(r) }, hx: (k.sizeM.x * s) / 2, hy: (k.sizeM.z * s) / 2, h0, h1 }]
   })
-  const s = { walls: unit.walls, furniture: unit.furniture, quads, boxes, top: Math.max(...unit.walls.map((w) => w.heightM)) }
+  const s = { walls: unit.walls, furniture: unit.furniture, quads, shut, boxes, top: Math.max(...unit.walls.map((w) => w.heightM)) }
   cache.set(unit, s)
   return s
 }
@@ -65,21 +69,23 @@ export const RAY = 1 / (NX * NY)
 /**
  * Share of the frame (0–1) whose first hit is each wall (by wall id), door leaf (by opening id) or piece (by
  * placement id), seen from p at eye height looking along the plan direction `face`, `pitch` radians up (< 0 down).
- * Hits farther than `within` m don't count.
+ * Hits farther than `within` m don't count. The leaf `shut` (an opening id) is closed.
  */
-export function frameShares(unit: Unit, p: Pt, face: Pt, pitch = 0, within = Infinity): Map<string, number> {
+export function frameShares(unit: Unit, p: Pt, face: Pt, pitch = 0, within = Infinity, shut?: string): Map<string, number> {
   const out = new Map<string, number>()
-  for (const h of frameHits(unit, p, face, pitch)) if (h.t <= within) out.set(h.id, (out.get(h.id) ?? 0) + RAY)
+  for (const h of frameHits(unit, p, face, pitch, shut)) if (h.t <= within) out.set(h.id, (out.get(h.id) ?? 0) + RAY)
   return out
 }
 
 /**
  * The first hit (id, distance in m) of each ray of a 32 × 18 grid through the frame; floor, ceiling and the view out of
  * a window or passage are no hit. Walls are their centre planes, pieces their bounding boxes (overhead pieces and rugs
- * left out).
+ * left out); the leaf `shut` (an opening id) closed.
  */
-export function frameHits(unit: Unit, p: Pt, face: Pt, pitch = 0): { id: string; t: number }[] {
-  const { quads, boxes, top } = scene(unit)
+export function frameHits(unit: Unit, p: Pt, face: Pt, pitch = 0, shut?: string): { id: string; t: number }[] {
+  const sc = scene(unit)
+  const { boxes, top } = sc
+  const quads = shut ? sc.quads.map((q) => (q.id === shut ? (sc.shut.get(shut) ?? q) : q)) : sc.quads
   const L = Math.hypot(face.x, face.y) || 1
   const fx = face.x / L
   const fy = face.y / L
