@@ -1542,6 +1542,17 @@
             "kind": "pbr",
             "textureId": "tile_floor_ceramic"
           }
+        },
+        {
+          "id": "fo_beds_walnut",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-WOOD-WALNUT",
+          "label": "Dark walnut wood",
+          "priceDeltaBdt": 45000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "wood_floor_walnut"
+          }
         }
       ]
     },
@@ -1591,6 +1602,17 @@
             "kind": "pbr",
             "textureId": "wood_floor_oak"
           }
+        },
+        {
+          "id": "fo_living_walnut",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-WOOD-WALNUT",
+          "label": "Dark walnut wood",
+          "priceDeltaBdt": 140000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "wood_floor_walnut"
+          }
         }
       ]
     },
@@ -1628,6 +1650,18 @@
             "kind": "pbr",
             "textureId": "marble_floor_white"
           }
+        },
+        {
+          "id": "fo_wet_grey",
+          "brand": "Akij Ceramics",
+          "sku": "AKIJ-PORC-GR600",
+          "label": "Grey porcelain tile",
+          "priceDeltaBdt": 15000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_ceramic",
+            "tint": "#b4b3b0"
+          }
         }
       ]
     },
@@ -1653,6 +1687,17 @@
           "material": {
             "kind": "pbr",
             "textureId": "tile_floor_outdoor"
+          }
+        },
+        {
+          "id": "fo_veranda_terracotta",
+          "brand": "Mir Ceramic",
+          "sku": "MIR-TERRA-300",
+          "label": "Terracotta tile",
+          "priceDeltaBdt": 18000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_terracotta"
           }
         }
       ]
@@ -1684,8 +1729,8 @@
         {
           "id": "fo_paint_warm_white",
           "brand": "Berger",
-          "sku": "BERGER-WARM-WHITE",
-          "label": "Berger Warm White",
+          "sku": "BGR-SILK-1027",
+          "label": "Berger Silk Warm White",
           "priceDeltaBdt": 0,
           "material": {
             "kind": "pbr",
@@ -1694,10 +1739,22 @@
           }
         },
         {
+          "id": "fo_paint_off_white",
+          "brand": "Asian Paints",
+          "sku": "AP-ROY-L101",
+          "label": "Asian Paints Royale Off White",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#eeebe4"
+          }
+        },
+        {
           "id": "fo_paint_cream",
           "brand": "Berger",
-          "sku": "BERGER-CREAM",
-          "label": "Berger Cream",
+          "sku": "BGR-SILK-2011",
+          "label": "Berger Silk Cream",
           "priceDeltaBdt": 12000,
           "material": {
             "kind": "pbr",
@@ -1706,15 +1763,87 @@
           }
         },
         {
+          "id": "fo_paint_sand",
+          "brand": "Elite Paint",
+          "sku": "ELT-SLK-2108",
+          "label": "Elite Silk Sandstone",
+          "priceDeltaBdt": 12000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#e3d6c0"
+          }
+        },
+        {
+          "id": "fo_paint_greige",
+          "brand": "Nippon Paint",
+          "sku": "NP-ODL-1203",
+          "label": "Nippon Warm Greige",
+          "priceDeltaBdt": 15000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#d8d0c4"
+          }
+        },
+        {
+          "id": "fo_paint_pale_grey",
+          "brand": "Nippon Paint",
+          "sku": "NP-ODL-0917",
+          "label": "Nippon Pale Grey",
+          "priceDeltaBdt": 15000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#d9dad7"
+          }
+        },
+        {
           "id": "fo_paint_sage",
           "brand": "Asian Paints",
-          "sku": "AP-SAGE",
-          "label": "Asian Paints Sage",
+          "sku": "AP-ROY-7872",
+          "label": "Asian Paints Royale Sage",
           "priceDeltaBdt": 18000,
           "material": {
             "kind": "pbr",
             "textureId": "plaster_white",
-            "tint": "#d9dfd6"
+            "tint": "#d0d8c9"
+          }
+        },
+        {
+          "id": "fo_paint_dusty_blue",
+          "brand": "Asian Paints",
+          "sku": "AP-ROY-8255",
+          "label": "Asian Paints Royale Dusty Blue",
+          "priceDeltaBdt": 20000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#bfcad2"
+          }
+        },
+        {
+          "id": "fo_paint_terracotta",
+          "brand": "Elite Paint",
+          "sku": "ELT-SLK-3302",
+          "label": "Elite Silk Soft Terracotta",
+          "priceDeltaBdt": 22000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#d8aa92"
+          }
+        },
+        {
+          "id": "fo_paint_slate_blue",
+          "brand": "Berger",
+          "sku": "BGR-SILK-6153",
+          "label": "Berger Silk Slate Blue",
+          "priceDeltaBdt": 35000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#6b7d8f"
           }
         }
       ]
@@ -1741,6 +1870,29 @@
           "material": {
             "kind": "pbr",
             "textureId": "tile_wall_white"
+          }
+        },
+        {
+          "id": "fo_bathwall_beige",
+          "brand": "Akij Ceramics",
+          "sku": "AKIJ-WALL-BG-3060",
+          "label": "Warm beige wall tile",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_wall_white",
+            "tint": "#ecdfc8"
+          }
+        },
+        {
+          "id": "fo_bathwall_grey_marble",
+          "brand": "DBL Ceramics",
+          "sku": "DBL-WALL-GRM-3060",
+          "label": "Grey marble-look tile",
+          "priceDeltaBdt": 45000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_wall_marble_grey"
           }
         }
       ]
