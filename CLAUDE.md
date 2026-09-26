@@ -24,7 +24,13 @@ Build order: BUILD_PLAN.md. Product spec: Docs/PRODUCT_SPEC.md.
   models, PBR textures, HDRI environment lighting.
 - **Price is not shown** in the demo. Unit area/dimensions come from the plan.
 - Phase 0 unit = the 2662–2703 sft unit repeated on floors 2–8 of the demo
-  tower (`Demo drawings/img_3.webp` is the clearest drawing).
+  tower (`Demo drawings/Btibd/img_3.webp` is the clearest drawing; developer
+  BTI). `Demo drawings/Sheltech/` (added 2026-09-26) is a second developer's
+  tower — basements, ground, levels 1–6, rooftop; two ±2736 sft flats per
+  level — and is the real "different plan" system test.
+- Level templates (ground / basement / typical floor / rooftop, each with
+  its own furnishing rules) are parked until the living floors are done
+  (founder, 2026-09-26).
 
 ## Stack
 

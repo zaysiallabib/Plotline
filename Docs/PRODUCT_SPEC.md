@@ -2,7 +2,7 @@
 
 Owner: PM · Date: 2026-09-24 · Builds on CLAUDE.md decisions (English only, realism first, PC + VR, no base price, Poly Haven CC0). Data model = `src/core/types.ts`. Where docs were silent I decided and marked **(PM decision)**.
 
-Demo unit: the large apartment in the lower part of `Demo drawings/img_3.webp` — "2nd floor plan, 2703 SFT". Rooms printed on it: Living Room 14'-11"×15'-4", Dining & Family Living 12'-11"×23'-10", Bed-1 14'-0"×16'-0", Walk-in Closet 7'-0"×8'-6", Bath-1 7'-0"×8'-0", Bed-2 15'-0"×11'-10", Bath-2 9'-0"×5'-0", Study Room 12'-11"×10'-0", Kitchen 11'-0"×7'-6", Bed-3 11'-0"×10'-6", Bath-3 4'-11"×7'-7", Help Bed 6'-0"×5'-0", H.Toilet 3'-9"×4'-5", PDR 5'-11"×5'-11", four Verandas, Lift Lobby 14'-8"×5'-8". Compass on the drawing: N points up-left, so `northDeg ≈ 315` **(PM decision: read from the rose, refine later)**. Unit name: `Type A · 2703 sft`, floor 2, `areaSqft: 2703`.
+Demo unit: the large apartment in the lower part of `Demo drawings/Btibd/img_3.webp` — "2nd floor plan, 2703 SFT". Rooms printed on it: Living Room 14'-11"×15'-4", Dining & Family Living 12'-11"×23'-10", Bed-1 14'-0"×16'-0", Walk-in Closet 7'-0"×8'-6", Bath-1 7'-0"×8'-0", Bed-2 15'-0"×11'-10", Bath-2 9'-0"×5'-0", Study Room 12'-11"×10'-0", Kitchen 11'-0"×7'-6", Bed-3 11'-0"×10'-6", Bath-3 4'-11"×7'-7", Help Bed 6'-0"×5'-0", H.Toilet 3'-9"×4'-5", PDR 5'-11"×5'-11", four Verandas, Lift Lobby 14'-8"×5'-8". Compass on the drawing: N points up-left, so `northDeg ≈ 315` **(PM decision: read from the rose, refine later)**. Unit name: `Type A · 2703 sft`, floor 2, `areaSqft: 2703`.
 
 ---
 
@@ -104,6 +104,20 @@ Top bar shows `⏱ 04:12`. Starts on the first scale click, pauses when the tab 
 - Length ≤ 0 or > 100 m: "That length looks wrong".
 - localStorage full (big data URL): "Draft too large to autosave — export your JSON often."
 - Preview tab blocked by popup blocker: show link "Open preview".
+
+### 2.8 Studio v1.1 — from the founder's first tracing session (2026-09-26, 13:15 on a 5-room tilted plan)
+
+The founder traced a plan on the live Studio without help and hit these. Each is a requirement now; "placing" means the moment before the click.
+
+- **Ghost footprint before placing (the Clash-of-Clans rule).** Whatever the cursor is about to create is drawn at its true size first. Wall tool: the ghost wall is a filled slab at the chain's thickness (5" or 10"), with its length label, not a hairline. Opening tool: hovering a wall shows the opening at its full width (door leaf + swing arc on the swing side, window triple line, passage dashed gap) sliding along the wall under the cursor; nothing is created until the click. Room tool: the hovered face is tinted.
+- **Openings anchor from an edge.** Today a click centres the opening on the cursor. New: the ghost snaps its nearer edge to a wall end or to the edge of a neighbouring opening within 10 screen px (status bar: "snapped: corner" / "snapped: next to door"); otherwise it centres. `From corner A` in the panel stays for exact numbers. Dragging an opening in Select uses the same edge snap.
+- **Moving must be obvious.** Select (V) already drags corners, walls, openings and labels; the founder never found it. The status-bar hint of every tool ends with "· V to move things"; the first time a chain closes, a one-time toast says "Drag any corner with V to adjust it". Arrow keys nudge the selection by 1" (Shift: 1'), with the same snapping; Esc + arrows never scroll the canvas.
+- **Closing a loop must land on the start corner.** While chaining, the start vertex draws a larger accent ring and its snap radius doubles (20 px), so a chain closed "next to" it cannot leave a dangling corner (the "wall sticking out" the founder saw in 3D). The `dangling-vertex` issue row reads "Corner is not joined to anything — click to find it".
+- **Selected item shows its size.** The panel for a wall shows its length; for an opening its width and the distances to both wall ends ("2'-4\" from corner A · 5'-1\" from corner B"), editable.
+
+Acceptance: the founder re-traces the same plan and raises none of the five points; "minutes to trace" does not get worse.
+
+Parked (founder, 2026-09-26): level templates — ground floor, basements, typical floors, rooftop — with different furnishing rules (rooftops and verandas get furniture, basements don't). After the living floors are done.
 
 ---
 
