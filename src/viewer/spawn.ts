@@ -352,15 +352,15 @@ export function roomView(room: Room, unit: Unit): View {
     return k ? [{ f, k, top: heightRange(k)[1] }] : []
   })
 
-  // what may not fill a frame beyond FLAT_MAX: every ajar leaf, every slab but a kitchen's run;
-  // nor near plaster beyond NEAR_WALL_MAX (together: fill ≤ 1)
+  // what may not fill a frame beyond FLAT_MAX: every ajar leaf, every slab but a kitchen's run (a free-standing fridge is
+  // a slab: Sheltech's filled 30 % of its kitchen frame); nor near plaster beyond NEAR_WALL_MAX (together: fill ≤ 1)
   const leafIds = new Set(unit.walls.flatMap((w) => w.openings.filter(swings).map((o) => o.id)))
   const flatIds = new Set([
     ...leafIds,
     ...unit.furniture
       .filter((f) => {
         const k = kitAsset(f.assetId)
-        return !!k && isSlab(f.assetId, k) && k.category !== 'kitchen'
+        return !!k && isSlab(f.assetId, k) && (k.category !== 'kitchen' || f.assetId === 'fridge')
       })
       .map((f) => f.id),
   ])

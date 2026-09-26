@@ -300,7 +300,8 @@ describe('viewer', { timeout: 20_000 }, () => {
       ...u.furniture
         .filter((f) => {
           const k = kitAsset(f.assetId)!
-          return k.mount !== 'ceiling' && f.assetId !== 'shower_screen' && k.category !== 'kitchen' && (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6) && !(r.kind === 'closet' && f.roomId === r.id)
+          const run = k.category === 'kitchen' && f.assetId !== 'fridge' // a free-standing fridge is no part of the run
+          return k.mount !== 'ceiling' && f.assetId !== 'shower_screen' && !run && (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6) && !(r.kind === 'closet' && f.roomId === r.id)
         })
         .map((f) => f.id),
     ])
