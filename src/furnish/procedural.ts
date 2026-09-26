@@ -11,7 +11,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { GLASS } from '../three/openings'
+import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
 import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
@@ -784,7 +784,7 @@ function shower(): THREE.Object3D[] {
       'glass',
       'Glass shower screen',
       'shower-glass',
-      box(0.008, 1.95, 0.88, GLASS, 0.446, 1.015, 0.01), // the windows' pane: sky PMREM, rebuilt on context restore
+      box(0.008, 1.95, 0.88, CLEAR_GLASS, 0.446, 1.015, 0.01), // clear pane beside the windows' tinted one: sky PMREM, rebuilt on context restore
       box(0.02, 1.95, 0.02, m.steel, 0.446, 1.015, -0.44), // wall channel
     ),
     ...part(

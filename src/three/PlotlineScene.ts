@@ -24,7 +24,7 @@ import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
 import { buildFurniture } from './furniture'
 import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
-import { GLASS } from './openings'
+import { PANES } from './openings'
 import { Look, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
@@ -504,7 +504,8 @@ export class PlotlineScene {
     hdr?.dispose()
     if (sky) {
       clampSun(sky)
-      GLASS.envMap = pmrem.fromEquirectangular(sky).texture // panes reflect the sky; no sky: they keep scene.environment
+      const env = pmrem.fromEquirectangular(sky).texture
+      for (const m of PANES) m.envMap = env // panes reflect the sky; no sky: they keep scene.environment
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()

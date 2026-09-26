@@ -38,19 +38,28 @@ const STEEL: MaterialRef = { kind: 'color', color: '#c4c4c2', roughness: 0.3, me
 /** Window sills and thresholds: polished white marble. Flat on purpose: the tiled floor-marble texture reads as wood on a 30 mm edge. */
 const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
 /**
- * Window and slider panes. A plain 10 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white
+ * Window and slider panes. A plain 30 % dimming, not `transmission`: at 0.9 a tenth of each pane was lit like white
  * plaster (a milky veil that blew out in the sun), and its sample of the blurred transmission target showed a lattice of
  * blobs (the moiré) where a pane was seen at an angle. A flat pane doesn't refract, and no pane means no second scene
- * render per frame.
+ * render per frame. 30 % is the grey-tinted float glass of Dhaka's aluminium windows (≈ 70 % transmission): at 10 %
+ * (clear float) the sunlit veranda wall seen through a study pane at 15:30 stayed a near-white sheet.
  * Reflection: PlotlineScene sets the sky's PMREM as this material's own envMap. Without one three reflects
  * scene.environment at scene.environmentIntensity (the envMapIntensity here is then ignored): the interior HDRI is a
  * photo studio, and its lights showed as faint arcs in the panes. Blending scales the reflection by the opacity too, so
- * GLASS_SKY = 10 is the sky at full strength, as real glass mirrors it: Fresnel keeps a pane almost clear head-on (4 %)
- * and shows the sky at grazing angles. 2 (a fifth of it) was invisible in every Rooms-list view. Look.setHour dims it
- * with the sky dome at dusk.
+ * setGlassSky makes envMapIntensity = sky / opacity: the sky at full strength, as real glass mirrors it: Fresnel keeps a
+ * pane almost clear head-on (4 %) and shows the sky at grazing angles. A fifth of it was invisible in every Rooms-list
+ * view. Look.setHour dims it with the sky dome at dusk.
  */
-export const GLASS_SKY = 10
-export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, envMapIntensity: GLASS_SKY, transparent: true, opacity: 0.1, depthWrite: false })
+export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false })
+/** The shower screen: 10 mm clear glass, 10 %. Tinted like the windows it laid a grey sheet across the bath view. */
+export const CLEAR_GLASS = Object.assign(GLASS.clone(), { opacity: 0.1 })
+/** Every pane material: PlotlineScene gives them the sky's PMREM, Look.setHour their reflection strength. */
+export const PANES = [GLASS, CLEAR_GLASS]
+/** Sky luminance (1 by day) → each pane's reflection at full strength, whatever its opacity. */
+export function setGlassSky(sky: number): void {
+  for (const m of PANES) m.envMapIntensity = sky / m.opacity
+}
+setGlassSky(1)
 
 const J = 0.03 // door lining (jamb) thickness
 const CW = 0.07 // casing width
