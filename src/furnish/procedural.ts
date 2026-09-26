@@ -993,7 +993,7 @@ function paintLeaves(): HTMLCanvasElement {
   const c = document.createElement('canvas')
   ;[c.width, c.height] = [768, 512]
   const g = c.getContext('2d')!
-  const greens = ['#35602a', '#3d6a2c', '#4b7a33', '#5a8a3b', '#6b9a45']
+  const greens = ['#263f1d', '#2f4d24', '#39592b', '#446532', '#52723a']
   // a leaf from its base (x, y), tip `len` away along angle a (0 = up, clockwise), `round` widens the base (heart)
   const leaf = (x: number, y: number, len: number, w: number, a: number, color: string, round = 0.3) => {
     g.save()
@@ -1021,29 +1021,30 @@ function paintLeaves(): HTMLCanvasElement {
     g.stroke()
   }
   const pick = (i: number, j: number) => greens[Math.floor(rnd(i, j) * greens.length)]
-  // 0: pothos vine, heart-shaped leaves alternating down a swaying stem, smaller toward the tip
-  const vine = (s: number) => ({ x: 128 + 34 * Math.sin(3.2 * s + 0.6), y: 6 + 490 * s })
-  stem(Array.from({ length: 41 }, (_, i) => vine(i / 40)), 4)
-  for (let i = 0; i < 13; i++) {
-    const s = (i + 0.3) / 13
-    const p = vine(s)
-    const side = i % 2 ? 1 : -1
-    const len = 92 - 40 * s
-    leaf(p.x, p.y, len, len * 0.8, side * (Math.PI / 2 + 0.55 + 0.3 * rnd(i, 1)), pick(i, 2), 0.55)
+  // 0: pothos, two vines of heart-shaped leaves alternating down swaying stems, smaller toward the tips
+  for (const [k, x0] of [84, 172].entries()) {
+    const vine = (s: number) => ({ x: x0 + 30 * Math.sin(3.2 * s + 0.6 + 2 * k), y: 6 + (440 + 50 * k) * s })
+    stem(Array.from({ length: 41 }, (_, i) => vine(i / 40)), 4)
+    for (let i = 0; i < 14; i++) {
+      const s = (i + 0.3) / 14
+      const p = vine(s)
+      const len = 96 - 44 * s
+      leaf(p.x, p.y, len, len * 0.8, (i % 2 ? 1 : -1) * (Math.PI / 2 + 0.5 + 0.35 * rnd(i, k + 1)), pick(i, k + 2), 0.55)
+    }
   }
-  // 1: clump, long leaves fanning up from the base, dark ones behind
-  for (let i = 0; i < 18; i++) {
-    const a = -1.15 + 2.3 * rnd(i, 3)
-    const len = 230 + 220 * rnd(i, 4) * Math.cos(a * 0.8)
-    leaf(256 + 128 + 30 * (rnd(i, 5) - 0.5), 508, len, 46 + 26 * rnd(i, 6), a, greens[Math.min(4, Math.floor(i / 4))], 0.15)
+  // 1: clump, broad leaves fanning up from a wide base, dark ones behind, light ones in front
+  for (let i = 0; i < 34; i++) {
+    const a = -1.25 + 2.5 * rnd(i, 3)
+    const len = 170 + 260 * rnd(i, 4) * Math.cos(a * 0.7)
+    leaf(256 + 128 + 90 * (rnd(i, 5) - 0.5), 510, len, 52 + 34 * rnd(i, 6), a, greens[Math.min(4, Math.floor(i / 7))], 0.2)
   }
-  // 2: creeper, three strands of small round leaves
-  for (const [k, x0] of [60, 128, 196].entries()) {
-    const at = (s: number) => ({ x: 512 + x0 + 22 * Math.sin(5 * s + k * 2), y: 4 + (380 + 110 * rnd(k, 7)) * s })
+  // 2: creeper, four strands of small round leaves
+  for (const [k, x0] of [48, 104, 160, 214].entries()) {
+    const at = (s: number) => ({ x: 512 + x0 + 20 * Math.sin(5 * s + k * 2), y: 4 + (360 + 140 * rnd(k, 7)) * s })
     stem(Array.from({ length: 31 }, (_, i) => at(i / 30)), 2)
-    for (let i = 0; i < 24; i++) {
-      const p = at((i + 0.5) / 24)
-      leaf(p.x, p.y, 30 + 8 * rnd(i, k), 28, (i % 2 ? 1 : -1) * (1.9 + 0.5 * rnd(k, i)), pick(i + 7, k), 0.9)
+    for (let i = 0; i < 26; i++) {
+      const p = at((i + 0.5) / 26)
+      leaf(p.x, p.y, 34 + 12 * rnd(i, k), 32, (i % 2 ? 1 : -1) * (1.9 + 0.5 * rnd(k, i)), pick(i + 7, k), 0.9)
     }
   }
   return c
@@ -1067,7 +1068,7 @@ function leaves(): THREE.MeshStandardMaterial {
  * Planter bed filling a planter strip (the shape is in its id, procedural.meta.ts): a plaster kerb 8 cm wide round the
  * edge up to PLANTER_KERB, dark soil inside it, a low mound of leaf cards over the soil (taller toward the outer edges)
  * and trailing strands over each outer parapet: a card across its cap and one hanging 0.3–0.6 m down its outside face.
- * Cards are alpha-tested sprites (paintLeaves), one InstancedMesh per sprite (≤ ~400 cards), casting no shadow. Their
+ * Cards are alpha-tested sprites (paintLeaves), one InstancedMesh per sprite (≤ ~600 cards on an 18 m² strip), casting no shadow. Their
  * layout box is set to the bed's (the strands hang outside it) so furniture.ts centres and grounds the bed on its polygon.
  */
 function planterBed(id: string): THREE.Object3D[] {
@@ -1095,7 +1096,7 @@ function planterBed(id: string): THREE.Object3D[] {
     const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
     return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
   }
-  // mound: a jittered grid over the soil, ~240 cards at most; within 0.4 m of an outer edge taller and leaning out over it
+  // mound: a jittered grid over the soil, ~320 cards at most; within 0.4 m of an outer edge taller and leaning out over it
   const xs = soilPoly.map((p) => p.x)
   const ys = soilPoly.map((p) => p.y)
   let area = 0
@@ -1103,29 +1104,30 @@ function planterBed(id: string): THREE.Object3D[] {
     const [p, r] = [soilPoly[i], soilPoly[(i + 1) % soilPoly.length]]
     area += (p.x * r.y - r.x * p.y) / 2
   }
-  const step = Math.max(0.2, Math.sqrt(Math.abs(area) / 240))
+  const step = Math.max(0.15, Math.sqrt(Math.abs(area) / 320))
   for (let x = Math.min(...xs) + step / 2, i = 0; x < Math.max(...xs); x += step, i++)
     for (let y = Math.min(...ys) + step / 2, j = 0; y < Math.max(...ys); y += step, j++) {
-      const p = { x: x + step * 0.7 * (rnd(i, j) - 0.5), y: y + step * 0.7 * (rnd(j, i) - 0.5) }
+      const p = { x: x + step * 0.8 * (rnd(i, j) - 0.5), y: y + step * 0.8 * (rnd(j, i) - 0.5) }
       if (!pointInPolygon(p, soilPoly)) continue
       const near = outer.find((e) => segDist(p, e.a, e.b) < 0.4)
       const out = near && { x: near.b.y - near.a.y, y: near.a.x - near.b.x } // outward normal (unnormalised) of that edge
       const yaw = out ? Math.atan2(out.x, out.y) + 0.8 * (rnd(i + 3, j) - 0.5) : 2 * Math.PI * rnd(i + 5, j)
-      const s = near ? 1.0 + 0.25 * rnd(i, j + 9) : 0.6 + 0.4 * rnd(i, j + 9)
-      card(rnd(i + 1, j + 2) < 0.85 ? 1 : 2, new THREE.Vector3(p.x, ySoil - 0.05, p.y), 1, yaw, (near ? 0.35 : 0) + 0.9 * (rnd(j + 4, i) - 0.5), s)
+      const s = near ? 1.15 + 0.3 * rnd(i, j + 9) : 0.85 + 0.45 * rnd(i, j + 9)
+      // leaning ±0.65 rad: seen from above too, the cards cover the soil
+      card(rnd(i + 1, j + 2) < 0.8 ? 1 : 2, new THREE.Vector3(p.x, ySoil - 0.06, p.y), 1, yaw, (near ? 0.35 : 0) + 1.3 * (rnd(j + 4, i) - 0.5), s)
     }
-  // trailing strands over the outer parapets, every 0.13 m
+  // trailing strands over the outer parapets every 0.1 m: one across the cap, one hanging 0.3–0.6 m down the outside face
   outer.forEach((e, k) => {
     const L = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
     const d = { x: (e.b.x - e.a.x) / L, y: (e.b.y - e.a.y) / L }
     const o = { x: d.y, y: -d.x } // outward (rooms are positive loops: inward is (−d.y, d.x))
     const yaw = Math.atan2(o.x, o.y)
-    const n = Math.max(1, Math.floor(L / 0.13))
+    const n = Math.max(1, Math.floor(L / 0.1))
     for (let i = 0; i < n; i++) {
-      const u = ((i + 0.5 + 0.6 * (rnd(i, k) - 0.5)) / n) * L
+      const u = ((i + 0.5 + 0.8 * (rnd(i, k) - 0.5)) / n) * L
       const at = (off: number, y: number) => new THREE.Vector3(e.a.x + d.x * u + o.x * off, y, e.a.y + d.y * u + o.y * off)
-      if (i % 2 === 0) card(2, at(e.t / 2, e.h + 0.02), 1, yaw + 0.3 * (rnd(k, i) - 0.5), 1.35, 0.55) // across the cap
-      card(rnd(i, k + 1) < 0.6 ? 0 : 2, at(e.t + 0.02, e.h + 0.04), -1, yaw + 0.5 * (rnd(k + 2, i) - 0.5), -0.05 - 0.15 * rnd(i, k + 3), 0.5 + 0.5 * rnd(k + 4, i))
+      card(rnd(k, i + 5) < 0.5 ? 1 : 2, at(e.t / 2 - 0.05, e.h - 0.02), 1, yaw + 0.5 * (rnd(k, i) - 0.5), 1.25, 0.55 + 0.2 * rnd(i, k + 6)) // across the cap
+      card(rnd(i, k + 1) < 0.6 ? 0 : 2, at(e.t + 0.02 + 0.05 * rnd(i, k + 7), e.h + 0.04), -1, yaw + 0.6 * (rnd(k + 2, i) - 0.5), -0.05 - 0.2 * rnd(i, k + 3), 0.5 + 0.5 * rnd(k + 4, i))
     }
   })
   const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
@@ -1138,8 +1140,8 @@ function planterBed(id: string): THREE.Object3D[] {
     const im = new THREE.InstancedMesh(geo, leaves(), ms.length)
     ms.forEach((mt, i) => {
       im.setMatrixAt(i, mt)
-      const v = 0.78 + 0.27 * rnd(i, sprite + 11)
-      im.setColorAt(i, tint.setRGB(v * (0.92 + 0.1 * rnd(sprite, i)), v, v * 0.9))
+      const v = 0.72 + 0.3 * rnd(i, sprite + 11)
+      im.setColorAt(i, tint.setRGB(v * (0.9 + 0.14 * rnd(sprite, i)), v, v * (0.85 + 0.1 * rnd(i, sprite))))
     })
     im.boundingBox = bed.clone()
     im.userData.solo = true
