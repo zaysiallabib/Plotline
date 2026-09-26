@@ -1,8 +1,10 @@
-/** The demo tower's data (data/building/demo-tower.ts): alignment offsets re-derived from the traced lift core, floor map. */
+/** The towers' data (data/building/*-tower.ts): alignment offsets re-derived from the traced core, floor maps, towerOf. */
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
+import { towerOf } from '../data/building'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
+import * as sheltech from '../data/building/sheltech-tower'
 
 const roomsOf = (u: Unit) => core.deriveRooms(u)
 
@@ -50,5 +52,48 @@ describe('demo tower', () => {
 
   test('the core rooms that run ground to roof exist in their traces', () => {
     for (const [stem, name] of CORE) expect(roomsOf(FLATS[stem].unit).some((r) => r.name === name), `${stem} ${name}`).toBe(true)
+  })
+})
+
+describe('Sheltech tower', () => {
+  const T = sheltech
+
+  test('towerOf: BTI for type-a/b/c, Sheltech for sheltech-a/b, null for a unit in no tower', () => {
+    for (const { unit } of Object.values(FLATS)) expect(towerOf(unit)?.FLATS, unit.id).toBe(FLATS)
+    for (const { unit } of Object.values(T.FLATS)) expect(towerOf(unit)?.FLATS, unit.id).toBe(T.FLATS)
+    expect(towerOf({ ...FLATS['type-a'].unit, id: 'elsewhere' })).toBeNull()
+  })
+
+  test('A and B share the core walls (the lobby) within 1 cm after offsets', () => {
+    /** a flat's walls around its Lobby, as segments in the building frame */
+    const lobbyWalls = (stem: string) => {
+      const { unit, offset } = T.FLATS[stem]
+      const lobby = roomsOf(unit).find((r) => r.name === 'Lobby')!
+      const vs = new Map(unit.vertices.map((v) => [v.id, { x: v.x + offset.x, y: v.y + offset.y }]))
+      return lobby.wallIds.map((id) => unit.walls.find((w) => w.id === id)!).map((w) => [vs.get(w.a)!, vs.get(w.b)!] as const)
+    }
+    const dist = (p: Pt, [a, b]: readonly [Pt, Pt]) => {
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / ((b.x - a.x) ** 2 + (b.y - a.y) ** 2)))
+      return Math.hypot(p.x - a.x - t * (b.x - a.x), p.y - a.y - t * (b.y - a.y))
+    }
+    // every point along one flat's lobby walls lies on the other flat's lobby walls
+    for (const [s, o] of [['sheltech-a', 'sheltech-b'], ['sheltech-b', 'sheltech-a']]) {
+      const other = lobbyWalls(o)
+      for (const [a, b] of lobbyWalls(s)) {
+        for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+          const p = { x: a.x + f * (b.x - a.x), y: a.y + f * (b.y - a.y) }
+          expect(Math.min(...other.map((seg) => dist(p, seg))), `${s} ${p.x},${p.y}`).toBeLessThan(0.01)
+        }
+      }
+    }
+  })
+
+  test('floor map: 1 = stand-ins (lounge + gym), 2–6 = A + B; flats sit on their JSON floor; core rooms exist', () => {
+    expect(T.FLOORS.map((f) => [f.floor, f.flats.length])).toEqual([[1, 0], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2]])
+    for (const f of T.FLOORS) for (const s of [...f.flats, ...(f.standIns ?? [])]) expect(T.FLATS[s], s).toBeDefined()
+    for (const { unit } of Object.values(T.FLATS)) {
+      expect(T.FLOORS.some((f) => f.floor === unit.floor && f.flats.some((s) => T.FLATS[s].unit.id === unit.id)), unit.name).toBe(true)
+    }
+    for (const [stem, name] of T.CORE) expect(roomsOf(T.FLATS[stem].unit).some((r) => r.name === name), `${stem} ${name}`).toBe(true)
   })
 })
