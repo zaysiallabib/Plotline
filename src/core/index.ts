@@ -64,6 +64,9 @@ export { parseLength } from './units'
 /** 4.394 → 14'-5" */
 export { formatFeetInches, FT, sqmToSqft } from './units'
 
+/** The unit reflected about x = axisX: a/b swapped per wall (normals keep their room), offsets re-measured, ids + `-m`. */
+export { mirrorUnit } from './mirror'
+
 /** Lookup helpers */
 export const vertexById = (vs: Vertex[], id: Id): Vertex => {
   const v = vs.find((x) => x.id === id)
