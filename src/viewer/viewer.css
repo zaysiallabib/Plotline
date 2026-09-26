@@ -108,3 +108,8 @@
 .popover { position: absolute; left: 16px; top: -8px; width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
 .popover textarea { width: 100%; resize: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 13px; }
 .row { display: flex; gap: 8px; }
+
+/* building view: floor picker, roof at the top */
+.floor-picker { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.floor-picker .btn { width: 38px; padding: 6px 0; }
+.floor-picker .btn.own { text-decoration: underline; text-underline-offset: 3px; }

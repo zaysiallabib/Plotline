@@ -239,9 +239,11 @@ function wallPoint(wall: Wall, graph: Pick<Unit, 'vertices'>): (u: number, v: nu
  * per-wall frame left sub-pixel gaps that showed the end caps behind as hairlines.
  * Also: reveals/soffits, end caps, top, and the prism closing the notch two walls leave at an L-corner
  * (emitted by the earlier wall). UVs in metres, world-aligned, so textures run on across walls.
- * Non-indexed; groups: 0 = +normal face, 1 = −normal face, 2 = edges/reveals/tops.
+ * Non-indexed; groups: 0 = +normal face, 1 = −normal face, 2 = wall ends and tops. Opening reveals (jambs, heads,
+ * sills) go into face group `reveals` (the caller passes the exterior side's, so they stay exterior plaster): unlike
+ * an end cap they share every edge with the faces and have no depth tie to lose, and no extra group = no extra draw call.
  */
-export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>): THREE.BufferGeometry | null {
+export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>, reveals: 0 | 1 = 0): THREE.BufferGeometry | null {
   const f = core.wallFrame(wall, graph.vertices)
   const pieces = core.wallPieces(wall, f.lengthM)
   if (!pieces.length) return null
@@ -275,10 +277,10 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
       const [u0, u1, v0, v1] = [us[i], us[i + 1], vs[j], vs[j + 1]]
       quad(0, n, at(u0, v0, T2), at(u1, v0, T2), at(u1, v1, T2), at(u0, v1, T2))
       quad(1, neg(n), at(u0, v0, -T2), at(u1, v0, -T2), at(u1, v1, -T2), at(u0, v1, -T2))
-      if (!solid(i - 1, j)) quad(2, neg(d), at(u0, v0, T2), at(u0, v0, -T2), at(u0, v1, -T2), at(u0, v1, T2))
-      if (!solid(i + 1, j)) quad(2, d, at(u1, v0, T2), at(u1, v0, -T2), at(u1, v1, -T2), at(u1, v1, T2))
-      if (!solid(i, j - 1) && v0 > 0) quad(2, [0, -1, 0], at(u0, v0, T2), at(u1, v0, T2), at(u1, v0, -T2), at(u0, v0, -T2))
-      if (!solid(i, j + 1)) quad(2, [0, 1, 0], at(u0, v1, T2), at(u1, v1, T2), at(u1, v1, -T2), at(u0, v1, -T2))
+      if (!solid(i - 1, j)) quad(i ? reveals : 2, neg(d), at(u0, v0, T2), at(u0, v0, -T2), at(u0, v1, -T2), at(u0, v1, T2))
+      if (!solid(i + 1, j)) quad(i + 2 < us.length ? reveals : 2, d, at(u1, v0, T2), at(u1, v0, -T2), at(u1, v1, -T2), at(u1, v1, T2))
+      if (!solid(i, j - 1) && v0 > 0) quad(reveals, [0, -1, 0], at(u0, v0, T2), at(u1, v0, T2), at(u1, v0, -T2), at(u0, v0, -T2))
+      if (!solid(i, j + 1)) quad(v1 < H ? reveals : 2, [0, 1, 0], at(u0, v1, T2), at(u1, v1, T2), at(u1, v1, -T2), at(u0, v1, -T2))
     }
   }
 

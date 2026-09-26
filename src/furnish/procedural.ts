@@ -11,6 +11,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
 import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
@@ -783,7 +784,7 @@ function shower(): THREE.Object3D[] {
       'glass',
       'Glass shower screen',
       'shower-glass',
-      box(0.008, 1.95, 0.88, m.glass, 0.446, 1.015, 0.01),
+      box(0.008, 1.95, 0.88, CLEAR_GLASS, 0.446, 1.015, 0.01), // clear pane beside the windows' tinted one: sky PMREM, rebuilt on context restore
       box(0.02, 1.95, 0.02, m.steel, 0.446, 1.015, -0.44), // wall channel
     ),
     ...part(
@@ -886,15 +887,23 @@ function closetRail(W: number): THREE.Mesh[] {
   return out
 }
 
-/** An L × W oak cot (chouki; 1.9 × 0.7, short 1.7 × 0.65), long side along x: legs, rails, plank top, an 8 cm mattress, a flat pillow, a folded blanket. */
+/**
+ * An L × W cot (chouki; 1.9 × 0.7, short 1.7 × 0.65), long side along x, head at −x: a teak-stained frame (legs, aprons,
+ * a plank top whose dark edge shows round the mattress), a 12 cm mattress in a mist-blue cotton sheet, a plump white
+ * pillow, a terracotta blanket folded at the foot. (It read as a white plank: an untextured off-white 8 cm slab, the
+ * walls' own value, with a 5 cm pillow and a 4 cm blanket lying flat on it.)
+ */
 function cot(L: number, W: number): THREE.Mesh[] {
   const m = M()
-  const out = [box(L, 0.03, W, m.oak, 0, 0.315, 0), box(L - 0.04, 0.08, W - 0.04, m.mattress, 0, 0.37, 0)]
+  const teak = pbr('wood_veneer_light', { tint: '#8a6446' })
+  teak.userData.grain = true
+  const out = [box(L, 0.03, W, teak, 0, 0.315, 0), rbox(L - 0.05, 0.12, W - 0.05, 0.035, pbr('fabric_curtain', { tint: '#a9b8bf' }), 0, 0.39, 0)]
   for (const z of [-(W / 2 - 0.03), W / 2 - 0.03]) {
-    out.push(box(L, 0.08, 0.04, m.oak, 0, 0.26, z))
-    for (const x of [-(L / 2 - 0.05), L / 2 - 0.05]) out.push(box(0.05, 0.3, 0.05, m.oak, x, 0.15, z))
+    out.push(box(L, 0.08, 0.04, teak, 0, 0.26, z))
+    for (const x of [-(L / 2 - 0.05), L / 2 - 0.05]) out.push(box(0.05, 0.3, 0.05, teak, x, 0.15, z))
   }
-  out.push(rbox(0.3, 0.05, 0.46, 0.02, m.linen, -(L / 2 - 0.23), 0.435, 0), rbox(0.34, 0.04, W - 0.1, 0.015, m.throwSage, L / 2 - 0.27, 0.43, 0))
+  out.push(cushion(0.36, W - 0.14, 0.13, m.linen, -(L / 2 - 0.24), 0.51, 0, Math.PI / 2))
+  out.push(rbox(0.46, 0.045, W - 0.12, 0.018, m.throw, L / 2 - 0.3, 0.4725, 0), rbox(0.4, 0.04, W - 0.16, 0.016, m.throw, L / 2 - 0.32, 0.515, 0))
   return out
 }
 
