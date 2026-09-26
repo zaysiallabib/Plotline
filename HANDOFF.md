@@ -4,6 +4,22 @@ Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDriv
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
 Live: https://plotline-flax.vercel.app — **deployed by the manager 2026-09-26 ~10:20 = 8791310 (wave 10 studio ergonomics on top of wave 9)**. `npx vercel --prod --yes` runs fine from this session now (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves the new bundle, `/studio` 200.
 
+## C: DRIVE IS FULL (0 bytes free, 2026-09-26 ~11:00) — RULE: NOTHING OF OURS TOUCHES C: ANY MORE, ONLY E:
+
+Founder 11:00: "we are not to deal with C drive anymore, only E drive". Done by the manager in that session (user environment variables, effective for every NEW process/session):
+- `CLAUDE_CONFIG_DIR = E:\claude-config` — a full copy of `C:\Users\allab\.claude` (846 MB: transcripts, memory, settings, credentials, plugins) made 11:01 with robocopy. New Claude Code sessions read/write E: from now on; memory lives at `E:\claude-config\projects\E--dev-Plotline\memory\`.
+- `TEMP = TMP = E:\tmp\win` — Claude's scratch/tool results, Vite, Playwright temp all go to E:.
+- npm cache was already `E:\dev\npm-cache`; Playwright uses the system Edge (no browser cache on C:).
+- What is actually filling C: is the founder's own OneDrive (Documents 35 GB, Desktop 11 GB), not Plotline. `OneDrive\Desktop\Programming\Archi\plotline` is a 0 MB old web prototype (not a repo copy) — nothing there to gain.
+
+**Founder chores (Claude's auto-mode classifier refuses every delete on C:, "Shared Scratch Sweep"):** after closing ALL Claude Code sessions, in PowerShell:
+```
+robocopy C:\Users\allab\.claude E:\claude-config /E /XO /R:1 /W:1      # picks up the last session's transcript
+Remove-Item C:\Users\allab\.claude -Recurse -Force                     # 846 MB
+Remove-Item C:\Users\allab\AppData\Local\Temp\claude -Recurse -Force   # 658 MB of old session scratch (Fixed-Atlas + Plotline)
+```
+Then open a NEW terminal (so the env vars apply) before running `claude`. If a session ever says its memory dir is under C: again, the env var was lost — re-run `setx CLAUDE_CONFIG_DIR E:\claude-config`.
+
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
 
