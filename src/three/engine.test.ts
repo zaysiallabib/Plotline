@@ -11,7 +11,7 @@ import type { Opening, Unit, Wall } from '../core'
 import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
-import { EXTERIOR_PLASTER, materialFor, resolveFinishRef } from './materials'
+import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
 import { buildOpening } from './openings'
 import { clampSun, evenBearings } from './PlotlineScene'
 
@@ -47,10 +47,10 @@ describe('resolveFinishRef on type-a.json', () => {
 })
 
 test('the edge variant of a material is its own cached copy, pushed back in depth', () => {
-  const edge = materialFor(EXTERIOR_PLASTER, true)
-  expect(edge).not.toBe(materialFor(EXTERIOR_PLASTER))
-  expect(materialFor(EXTERIOR_PLASTER, true)).toBe(edge)
-  expect(edge.polygonOffset && !materialFor(EXTERIOR_PLASTER).polygonOffset).toBe(true)
+  const edge = materialFor(EDGE_PLASTER, true)
+  expect(edge).not.toBe(materialFor(EDGE_PLASTER))
+  expect(materialFor(EDGE_PLASTER, true)).toBe(edge)
+  expect(edge.polygonOffset && !materialFor(EDGE_PLASTER).polygonOffset).toBe(true)
 })
 
 describe('furniture', () => {

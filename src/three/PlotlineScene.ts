@@ -24,7 +24,7 @@ import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
 import { buildFurniture } from './furniture'
-import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
+import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
 import { PANES } from './openings'
 import { Look, type Quality } from './render'
 
@@ -500,7 +500,7 @@ export class PlotlineScene {
     if (!this.unit) return
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
-    const plaster = materialFor(EXTERIOR_PLASTER, true)
+    const plaster = materialFor(EDGE_PLASTER, true)
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
         side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target) : plaster,

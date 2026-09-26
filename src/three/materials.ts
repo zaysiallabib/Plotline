@@ -90,6 +90,9 @@ export function materialFor(ref: MaterialRef, edge = false): THREE.MeshStandardM
 /** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the
  * outside face reads as a different, weathered surface through a window. Flat #d9d4cb read as a cream sheet in every pane (wave 10). */
 export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
+/** Wall ends and tops (edge variant): the warm-white paint. A thick outer wall's end cap shows inside the room it stops at
+ * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
+export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
   floor: { kind: 'color', color: '#b8a58c', roughness: 0.7 },
   wall: { kind: 'color', color: '#f1efe9', roughness: 0.95 },
