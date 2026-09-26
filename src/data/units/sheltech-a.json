@@ -1,0 +1,1779 @@
+{
+  "id": "unit_sheltech_a_2736",
+  "projectName": "Sheltech tower",
+  "name": "Sheltech Type A · 2736 sft",
+  "floor": 2,
+  "northDeg": 0,
+  "vertices": [
+    {
+      "id": "v_lw_n",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "v_lk_n",
+      "x": 4.305,
+      "y": 0
+    },
+    {
+      "id": "v_ve_n",
+      "x": 6.591,
+      "y": 0
+    },
+    {
+      "id": "v_te_n",
+      "x": 8.446,
+      "y": 0
+    },
+    {
+      "id": "v_lk_kn",
+      "x": 4.305,
+      "y": 1.467
+    },
+    {
+      "id": "v_ve_kn",
+      "x": 6.591,
+      "y": 1.467
+    },
+    {
+      "id": "v_kt_kn",
+      "x": 6.998,
+      "y": 1.467
+    },
+    {
+      "id": "v_te_kn",
+      "x": 8.446,
+      "y": 1.467
+    },
+    {
+      "id": "v_t3b_kn",
+      "x": 8.979,
+      "y": 1.467
+    },
+    {
+      "id": "v_t3b_b3n",
+      "x": 8.979,
+      "y": 1.34
+    },
+    {
+      "id": "v_e_b3n",
+      "x": 12.675,
+      "y": 1.34
+    },
+    {
+      "id": "v_kt_t3s",
+      "x": 6.998,
+      "y": 3.55
+    },
+    {
+      "id": "v_pe_t3s",
+      "x": 8.069,
+      "y": 3.55
+    },
+    {
+      "id": "v_t3b_t3s",
+      "x": 8.979,
+      "y": 3.55
+    },
+    {
+      "id": "v_kt_pj",
+      "x": 6.998,
+      "y": 4.35
+    },
+    {
+      "id": "v_pw_pj",
+      "x": 6.367,
+      "y": 4.35
+    },
+    {
+      "id": "v_low_ls",
+      "x": -4.343,
+      "y": 5.131
+    },
+    {
+      "id": "v_lw_ls",
+      "x": 0,
+      "y": 5.131
+    },
+    {
+      "id": "v_md_ls",
+      "x": 1.6,
+      "y": 5.131
+    },
+    {
+      "id": "v_lk_ls",
+      "x": 4.305,
+      "y": 5.131
+    },
+    {
+      "id": "v_lk_ksk",
+      "x": 4.305,
+      "y": 5.366
+    },
+    {
+      "id": "v_se_ksk",
+      "x": 5.144,
+      "y": 5.366
+    },
+    {
+      "id": "v_pw_ksk",
+      "x": 6.367,
+      "y": 5.366
+    },
+    {
+      "id": "v_pw_ks",
+      "x": 6.367,
+      "y": 5.556
+    },
+    {
+      "id": "v_pe_ks",
+      "x": 8.069,
+      "y": 5.556
+    },
+    {
+      "id": "v_de_ks",
+      "x": 9.487,
+      "y": 5.556
+    },
+    {
+      "id": "v_pl_ks",
+      "x": 10.964,
+      "y": 5.556
+    },
+    {
+      "id": "v_e_ks",
+      "x": 12.675,
+      "y": 5.556
+    },
+    {
+      "id": "v_low_los",
+      "x": -4.343,
+      "y": 7.214
+    },
+    {
+      "id": "v_lm_los",
+      "x": 0.28,
+      "y": 7.214
+    },
+    {
+      "id": "v_md_los",
+      "x": 1.6,
+      "y": 7.214
+    },
+    {
+      "id": "v_md_sn",
+      "x": 1.6,
+      "y": 7.658
+    },
+    {
+      "id": "v_se_sn",
+      "x": 5.144,
+      "y": 7.658
+    },
+    {
+      "id": "v_de_t1n",
+      "x": 9.487,
+      "y": 8.716
+    },
+    {
+      "id": "v_pl_t1n",
+      "x": 10.964,
+      "y": 8.716
+    },
+    {
+      "id": "v_e_t1n",
+      "x": 12.675,
+      "y": 8.716
+    },
+    {
+      "id": "v_de_t1s",
+      "x": 9.487,
+      "y": 10.379
+    },
+    {
+      "id": "v_wr_t1s",
+      "x": 10.817,
+      "y": 10.379
+    },
+    {
+      "id": "v_e_t1s",
+      "x": 12.675,
+      "y": 10.379
+    },
+    {
+      "id": "v_lm_ds",
+      "x": 0.28,
+      "y": 10.839
+    },
+    {
+      "id": "v_b2w_ds",
+      "x": 1.295,
+      "y": 10.839
+    },
+    {
+      "id": "v_t2e_ds",
+      "x": 3.416,
+      "y": 10.839
+    },
+    {
+      "id": "v_se_ds",
+      "x": 5.144,
+      "y": 10.839
+    },
+    {
+      "id": "v_b1w_ds",
+      "x": 8.458,
+      "y": 10.839
+    },
+    {
+      "id": "v_de_ds",
+      "x": 9.487,
+      "y": 10.839
+    },
+    {
+      "id": "v_wr_ds",
+      "x": 10.817,
+      "y": 10.839
+    },
+    {
+      "id": "v_se_b4n",
+      "x": 5.144,
+      "y": 12.279
+    },
+    {
+      "id": "v_b1w_b4n",
+      "x": 8.458,
+      "y": 12.279
+    },
+    {
+      "id": "v_b2w_b2n",
+      "x": 1.295,
+      "y": 13.037
+    },
+    {
+      "id": "v_t2e_b2n",
+      "x": 3.416,
+      "y": 13.037
+    },
+    {
+      "id": "v_se_b4s",
+      "x": 5.144,
+      "y": 15.416
+    },
+    {
+      "id": "v_v4e_b4s",
+      "x": 7.531,
+      "y": 15.416
+    },
+    {
+      "id": "v_b1w_b4s",
+      "x": 8.458,
+      "y": 15.416
+    },
+    {
+      "id": "v_b1w_b1s",
+      "x": 8.458,
+      "y": 15.754
+    },
+    {
+      "id": "v_v1w_b1s",
+      "x": 10.49,
+      "y": 15.754
+    },
+    {
+      "id": "v_e_b1s",
+      "x": 12.675,
+      "y": 15.754
+    },
+    {
+      "id": "v_b2w_b2s",
+      "x": 1.295,
+      "y": 17.494
+    },
+    {
+      "id": "v_se_b2s",
+      "x": 5.144,
+      "y": 17.494
+    },
+    {
+      "id": "v_se_v4s",
+      "x": 5.144,
+      "y": 17.639
+    },
+    {
+      "id": "v_v4e_v4s",
+      "x": 7.531,
+      "y": 17.639
+    },
+    {
+      "id": "v_v1w_v1s",
+      "x": 10.49,
+      "y": 17.85
+    },
+    {
+      "id": "v_e_v1s",
+      "x": 12.675,
+      "y": 17.85
+    },
+    {
+      "id": "v_b2w_s",
+      "x": 1.295,
+      "y": 18.7
+    },
+    {
+      "id": "v_e_s",
+      "x": 12.675,
+      "y": 18.7
+    }
+  ],
+  "walls": [
+    {
+      "id": "w_main",
+      "a": "v_md_ls",
+      "b": "v_md_los",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_main_door",
+          "kind": "door",
+          "offsetM": 0.491,
+          "widthM": 1.1,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_n1",
+      "a": "v_low_ls",
+      "b": "v_lw_ls",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_win",
+          "kind": "window",
+          "offsetM": 2.3,
+          "widthM": 1.9,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_n2",
+      "a": "v_lw_ls",
+      "b": "v_md_ls",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lobby_w",
+      "a": "v_low_ls",
+      "b": "v_low_los",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lobby_s1",
+      "a": "v_low_los",
+      "b": "v_lm_los",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lobby_s2",
+      "a": "v_lm_los",
+      "b": "v_md_los",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_door",
+          "kind": "door",
+          "offsetM": 0.2,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_w",
+      "a": "v_lm_los",
+      "b": "v_lm_ds",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_foyer_w",
+      "a": "v_md_los",
+      "b": "v_md_sn",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_n",
+      "a": "v_md_sn",
+      "b": "v_se_sn",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e",
+      "a": "v_se_sn",
+      "b": "v_se_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s1",
+      "a": "v_lm_ds",
+      "b": "v_b2w_ds",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s2",
+      "a": "v_b2w_ds",
+      "b": "v_t2e_ds",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s3",
+      "a": "v_t2e_ds",
+      "b": "v_se_ds",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_liv_n",
+      "a": "v_lw_n",
+      "b": "v_lk_n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_liv_win_n",
+          "kind": "window",
+          "offsetM": 0.72,
+          "widthM": 2.8,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_liv_w",
+      "a": "v_lw_n",
+      "b": "v_lw_ls",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_liv_win_w",
+          "kind": "window",
+          "offsetM": 3.1,
+          "widthM": 1.5,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_liv_fo",
+      "a": "v_md_ls",
+      "b": "v_lk_ls",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_liv_fo_open",
+          "kind": "passage",
+          "offsetM": 0.1,
+          "widthM": 2.505,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_liv_ver",
+      "a": "v_lk_n",
+      "b": "v_lk_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_liv_kit",
+      "a": "v_lk_kn",
+      "b": "v_lk_ls",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_kit_fo",
+      "a": "v_lk_ls",
+      "b": "v_lk_ksk",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_ver_n",
+      "a": "v_lk_n",
+      "b": "v_ve_n",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    },
+    {
+      "id": "w_ver_kit",
+      "a": "v_lk_kn",
+      "b": "v_ve_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_kit_ver_door",
+          "kind": "door",
+          "offsetM": 0.393,
+          "widthM": 1.5,
+          "heightM": 2.1,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_ver_e",
+      "a": "v_ve_n",
+      "b": "v_ve_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_toilet_door",
+          "kind": "door",
+          "offsetM": 0.637,
+          "widthM": 0.75,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_toi_n",
+      "a": "v_ve_n",
+      "b": "v_te_n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_toilet_vent",
+          "kind": "window",
+          "offsetM": 1.304,
+          "widthM": 0.45,
+          "heightM": 0.6,
+          "sillM": 1.5
+        }
+      ]
+    },
+    {
+      "id": "w_toi_e",
+      "a": "v_te_n",
+      "b": "v_te_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_toi_s1",
+      "a": "v_ve_kn",
+      "b": "v_kt_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_toi_s2",
+      "a": "v_kt_kn",
+      "b": "v_te_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t3_n2",
+      "a": "v_te_kn",
+      "b": "v_t3b_kn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t3_vent",
+          "kind": "window",
+          "offsetM": 0.09,
+          "widthM": 0.35,
+          "heightM": 0.6,
+          "sillM": 1.5
+        }
+      ]
+    },
+    {
+      "id": "w_b3_nx",
+      "a": "v_t3b_b3n",
+      "b": "v_t3b_kn",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t3_e",
+      "a": "v_t3b_kn",
+      "b": "v_t3b_t3s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_kit_e1",
+      "a": "v_kt_kn",
+      "b": "v_kt_t3s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t3_s1",
+      "a": "v_kt_t3s",
+      "b": "v_pe_t3s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t3_s2",
+      "a": "v_pe_t3s",
+      "b": "v_t3b_t3s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t3_door",
+          "kind": "door",
+          "offsetM": 0.08,
+          "widthM": 0.75,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_kit_e2",
+      "a": "v_kt_t3s",
+      "b": "v_kt_pj",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_kit_pj",
+      "a": "v_pw_pj",
+      "b": "v_kt_pj",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_kit_e3",
+      "a": "v_pw_pj",
+      "b": "v_pw_ksk",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_pdr_w",
+      "a": "v_pw_ksk",
+      "b": "v_pw_ks",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_pdr_e",
+      "a": "v_pe_t3s",
+      "b": "v_pe_ks",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_pdr_s",
+      "a": "v_pw_ks",
+      "b": "v_pe_ks",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_pdr_door",
+          "kind": "door",
+          "offsetM": 0.872,
+          "widthM": 0.75,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_kit_s1",
+      "a": "v_lk_ksk",
+      "b": "v_se_ksk",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_kit_s2",
+      "a": "v_se_ksk",
+      "b": "v_pw_ksk",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_kit_door",
+          "kind": "door",
+          "offsetM": 0.22,
+          "widthM": 0.8,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_b3_n",
+      "a": "v_t3b_b3n",
+      "b": "v_e_b3n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b3_win_n",
+          "kind": "window",
+          "offsetM": 1.65,
+          "widthM": 1.8,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_b3_e",
+      "a": "v_e_b3n",
+      "b": "v_e_ks",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b3_win_e",
+          "kind": "window",
+          "offsetM": 1.85,
+          "widthM": 1.4,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_b3_s1",
+      "a": "v_pe_ks",
+      "b": "v_de_ks",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b3_door",
+          "kind": "door",
+          "offsetM": 0.2,
+          "widthM": 0.914,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_b3_s2",
+      "a": "v_de_ks",
+      "b": "v_pl_ks",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_b3_s3",
+      "a": "v_pl_ks",
+      "b": "v_e_ks",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b3_win_s",
+          "kind": "window",
+          "offsetM": 0.31,
+          "widthM": 1.1,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_fo_din",
+      "a": "v_se_ksk",
+      "b": "v_se_sn",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_fo_din_open",
+          "kind": "passage",
+          "offsetM": 0.1,
+          "widthM": 2.092,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_din_e1",
+      "a": "v_de_ks",
+      "b": "v_de_t1n",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_din_win_e",
+          "kind": "window",
+          "offsetM": 0.28,
+          "widthM": 2.6,
+          "heightM": 1.8,
+          "sillM": 0.6
+        }
+      ]
+    },
+    {
+      "id": "w_t1_w1",
+      "a": "v_de_t1n",
+      "b": "v_de_t1s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t1_w2",
+      "a": "v_de_t1s",
+      "b": "v_de_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_din_s1",
+      "a": "v_se_ds",
+      "b": "v_b1w_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_din_pass_open",
+          "kind": "passage",
+          "offsetM": 0.1,
+          "widthM": 3.115,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_din_s2",
+      "a": "v_b1w_ds",
+      "b": "v_de_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_ple_e",
+      "a": "v_pl_ks",
+      "b": "v_pl_t1n",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    },
+    {
+      "id": "w_t1_n1",
+      "a": "v_de_t1n",
+      "b": "v_pl_t1n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t1_n2",
+      "a": "v_pl_t1n",
+      "b": "v_e_t1n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t1_e",
+      "a": "v_e_t1n",
+      "b": "v_e_t1s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t1_vent",
+          "kind": "window",
+          "offsetM": 0.1,
+          "widthM": 0.6,
+          "heightM": 0.6,
+          "sillM": 1.5
+        }
+      ]
+    },
+    {
+      "id": "w_t1_s",
+      "a": "v_wr_t1s",
+      "b": "v_e_t1s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t1_wr",
+      "a": "v_wr_t1s",
+      "b": "v_wr_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_t1_s0",
+      "a": "v_de_ds",
+      "b": "v_wr_ds",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t1_door",
+          "kind": "door",
+          "offsetM": 0.45,
+          "widthM": 0.762,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_b2_door",
+      "a": "v_se_ds",
+      "b": "v_se_b4n",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b2_door",
+          "kind": "door",
+          "offsetM": 0.15,
+          "widthM": 0.914,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_b4_n",
+      "a": "v_se_b4n",
+      "b": "v_b1w_b4n",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b4_door",
+          "kind": "door",
+          "offsetM": 2.251,
+          "widthM": 0.914,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_b1_w1",
+      "a": "v_b1w_ds",
+      "b": "v_b1w_b4n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b1_door",
+          "kind": "door",
+          "offsetM": 0.15,
+          "widthM": 0.914,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_b1_w2",
+      "a": "v_b1w_b4n",
+      "b": "v_b1w_b4s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_b1_w3",
+      "a": "v_b1w_b4s",
+      "b": "v_b1w_b1s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_b1_e",
+      "a": "v_e_t1s",
+      "b": "v_e_b1s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b1_win_e",
+          "kind": "window",
+          "offsetM": 0.9,
+          "widthM": 1.5,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_b1_s1",
+      "a": "v_b1w_b1s",
+      "b": "v_v1w_b1s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b1_win_s",
+          "kind": "window",
+          "offsetM": 0.266,
+          "widthM": 1.5,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_b1_s2",
+      "a": "v_v1w_b1s",
+      "b": "v_e_b1s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b1_ver_door",
+          "kind": "door",
+          "offsetM": 0.192,
+          "widthM": 1.8,
+          "heightM": 2.1,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_v1_w",
+      "a": "v_v1w_b1s",
+      "b": "v_v1w_v1s",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "w_v1_s",
+      "a": "v_v1w_v1s",
+      "b": "v_e_v1s",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "w_v1_e",
+      "a": "v_e_b1s",
+      "b": "v_e_v1s",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    },
+    {
+      "id": "w_b2_e1",
+      "a": "v_se_b4n",
+      "b": "v_se_b4s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_b4_s1",
+      "a": "v_se_b4s",
+      "b": "v_v4e_b4s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b4_ver_door",
+          "kind": "door",
+          "offsetM": 0.294,
+          "widthM": 1.8,
+          "heightM": 2.1,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_b4_s2",
+      "a": "v_v4e_b4s",
+      "b": "v_b1w_b4s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b4_win_s",
+          "kind": "window",
+          "offsetM": 0.164,
+          "widthM": 0.6,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_v4_w",
+      "a": "v_se_b4s",
+      "b": "v_se_b2s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_v4_w2",
+      "a": "v_se_b2s",
+      "b": "v_se_v4s",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_v4_e",
+      "a": "v_v4e_b4s",
+      "b": "v_v4e_v4s",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "w_v4_s",
+      "a": "v_se_v4s",
+      "b": "v_v4e_v4s",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "w_t2_w",
+      "a": "v_b2w_ds",
+      "b": "v_b2w_b2n",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t2_vent",
+          "kind": "window",
+          "offsetM": 0.7,
+          "widthM": 0.6,
+          "heightM": 0.6,
+          "sillM": 1.5
+        }
+      ]
+    },
+    {
+      "id": "w_t2_e",
+      "a": "v_t2e_ds",
+      "b": "v_t2e_b2n",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_t2_door",
+          "kind": "door",
+          "offsetM": 1.385,
+          "widthM": 0.762,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_t2_s",
+      "a": "v_b2w_b2n",
+      "b": "v_t2e_b2n",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_b2_w",
+      "a": "v_b2w_b2n",
+      "b": "v_b2w_b2s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b2_win_w",
+          "kind": "window",
+          "offsetM": 0.5,
+          "widthM": 1.5,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_b2_s",
+      "a": "v_b2w_b2s",
+      "b": "v_se_b2s",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_b2_win_s",
+          "kind": "window",
+          "offsetM": 0.724,
+          "widthM": 2.4,
+          "heightM": 1.4,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_pls_w",
+      "a": "v_b2w_b2s",
+      "b": "v_b2w_s",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    },
+    {
+      "id": "w_pls_s",
+      "a": "v_b2w_s",
+      "b": "v_e_s",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    },
+    {
+      "id": "w_pls_e",
+      "a": "v_e_v1s",
+      "b": "v_e_s",
+      "thicknessM": 0.127,
+      "heightM": 1.1,
+      "openings": []
+    }
+  ],
+  "roomLabels": [
+    {
+      "id": "r_lobby",
+      "name": "Lobby",
+      "kind": "other",
+      "x": -1.372,
+      "y": 6.172,
+      "printedSize": "18'-8\" × 6'-0\""
+    },
+    {
+      "id": "r_stair",
+      "name": "Stair",
+      "kind": "other",
+      "x": 3.372,
+      "y": 9.249
+    },
+    {
+      "id": "r_foyer",
+      "name": "Foyer",
+      "kind": "other",
+      "x": 2.953,
+      "y": 6.712,
+      "printedSize": "11'-0\" × 7'-8\""
+    },
+    {
+      "id": "r_living",
+      "name": "Living",
+      "kind": "living",
+      "x": 0.8,
+      "y": 2.565,
+      "printedSize": "13'-6\" × 16'-0\""
+    },
+    {
+      "id": "r_veranda_kitchen",
+      "name": "Veranda (kitchen)",
+      "kind": "balcony",
+      "x": 5.448,
+      "y": 0.733,
+      "printedSize": "7'-1\" × 4'-6\""
+    },
+    {
+      "id": "r_toilet",
+      "name": "Toilet",
+      "kind": "bath",
+      "x": 7.518,
+      "y": 0.733,
+      "printedSize": "5'-8\" × 4'-1\""
+    },
+    {
+      "id": "r_kitchen",
+      "name": "Kitchen",
+      "kind": "kitchen",
+      "x": 5.336,
+      "y": 3.108,
+      "printedSize": "8'-5\" × 12'-2\""
+    },
+    {
+      "id": "r_toilet3",
+      "name": "Toilet 3",
+      "kind": "bath",
+      "x": 7.988,
+      "y": 2.508,
+      "printedSize": "6'-1\" × 6'-5\""
+    },
+    {
+      "id": "r_pdr",
+      "name": "PDR",
+      "kind": "bath",
+      "x": 7.533,
+      "y": 4.953,
+      "printedSize": "5'-2\" × 6'-2\""
+    },
+    {
+      "id": "r_bed3",
+      "name": "Bed 3",
+      "kind": "bed",
+      "x": 11.381,
+      "y": 3.448,
+      "printedSize": "11'-6\" × 13'-0\""
+    },
+    {
+      "id": "r_dining",
+      "name": "Dining",
+      "kind": "dining",
+      "x": 5.755,
+      "y": 8.503,
+      "printedSize": "13'-11\" × 17'-4\""
+    },
+    {
+      "id": "r_planter_east",
+      "name": "Planter (east)",
+      "kind": "balcony",
+      "x": 10.225,
+      "y": 7.136
+    },
+    {
+      "id": "r_toilet1",
+      "name": "Toilet 1",
+      "kind": "bath",
+      "x": 11.746,
+      "y": 9.548,
+      "printedSize": "9'-10\" × 4'-10\""
+    },
+    {
+      "id": "r_passage",
+      "name": "Passage",
+      "kind": "other",
+      "x": 6.801,
+      "y": 11.559
+    },
+    {
+      "id": "r_bed1",
+      "name": "Bed 1",
+      "kind": "bed",
+      "x": 9.938,
+      "y": 13.297,
+      "printedSize": "13'-0\" × 15'-6\""
+    },
+    {
+      "id": "r_veranda_1",
+      "name": "Veranda 1",
+      "kind": "balcony",
+      "x": 11.582,
+      "y": 16.802,
+      "printedSize": "6'-9\" × 6'-3\""
+    },
+    {
+      "id": "r_bed4",
+      "name": "Bed 4",
+      "kind": "bed",
+      "x": 6.801,
+      "y": 13.848,
+      "printedSize": "10'-2\" × 9'-8\""
+    },
+    {
+      "id": "r_veranda_4",
+      "name": "Veranda 4",
+      "kind": "balcony",
+      "x": 6.337,
+      "y": 16.528,
+      "printedSize": "7'-5\" × 6'-8\""
+    },
+    {
+      "id": "r_toilet2",
+      "name": "Toilet 2",
+      "kind": "bath",
+      "x": 2.356,
+      "y": 11.938,
+      "printedSize": "6'-4\" × 6'-7\""
+    },
+    {
+      "id": "r_bed2",
+      "name": "Bed 2",
+      "kind": "bed",
+      "x": 2.656,
+      "y": 15.265,
+      "printedSize": "12'-0\" × 14'-0\""
+    },
+    {
+      "id": "r_planter_south",
+      "name": "Planter (south)",
+      "kind": "balcony",
+      "x": 7.995,
+      "y": 18.169
+    }
+  ],
+  "furniture": [],
+  "finishSlots": [
+    {
+      "id": "s_floor_beds",
+      "label": "Bedroom floors",
+      "target": "floor",
+      "roomIds": [
+        "r_bed1",
+        "r_bed2",
+        "r_bed3",
+        "r_bed4"
+      ],
+      "defaultOptionId": "fo_beds_oak",
+      "options": [
+        {
+          "id": "fo_beds_oak",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-WOOD-OAK",
+          "label": "Oak wood",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "wood_floor_oak"
+          }
+        },
+        {
+          "id": "fo_beds_marble",
+          "brand": "Mir Ceramic",
+          "sku": "MIR-MARBLE-WHITE",
+          "label": "White marble",
+          "priceDeltaBdt": 185000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "marble_floor_white"
+          }
+        },
+        {
+          "id": "fo_beds_tile",
+          "brand": "Akij Ceramics",
+          "sku": "AKIJ-PORC-600",
+          "label": "Porcelain tile",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_ceramic"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_floor_living",
+      "label": "Living & dining floors",
+      "target": "floor",
+      "roomIds": [
+        "r_living",
+        "r_dining",
+        "r_foyer",
+        "r_passage",
+        "r_lobby",
+        "r_pdr"
+      ],
+      "defaultOptionId": "fo_living_marble",
+      "options": [
+        {
+          "id": "fo_living_marble",
+          "brand": "Mir Ceramic",
+          "sku": "MIR-MARBLE-WHITE",
+          "label": "White marble",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "marble_floor_white"
+          }
+        },
+        {
+          "id": "fo_living_tile",
+          "brand": "Akij Ceramics",
+          "sku": "AKIJ-PORC-600",
+          "label": "Porcelain tile",
+          "priceDeltaBdt": -95000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_ceramic"
+          }
+        },
+        {
+          "id": "fo_living_oak",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-WOOD-OAK",
+          "label": "Oak wood",
+          "priceDeltaBdt": 120000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "wood_floor_oak"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_floor_wet",
+      "label": "Kitchen & bath floors",
+      "target": "floor",
+      "roomIds": [
+        "r_kitchen",
+        "r_toilet",
+        "r_toilet1",
+        "r_toilet2",
+        "r_toilet3"
+      ],
+      "defaultOptionId": "fo_wet_tile",
+      "options": [
+        {
+          "id": "fo_wet_tile",
+          "brand": "Akij Ceramics",
+          "sku": "AKIJ-CER-300",
+          "label": "Ceramic tile",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_ceramic"
+          }
+        },
+        {
+          "id": "fo_wet_marble",
+          "brand": "Mir Ceramic",
+          "sku": "MIR-MARBLE-WHITE",
+          "label": "White marble",
+          "priceDeltaBdt": 60000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "marble_floor_white"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_floor_veranda",
+      "label": "Veranda floors",
+      "target": "floor",
+      "roomIds": [
+        "r_veranda_kitchen",
+        "r_veranda_1",
+        "r_veranda_4",
+        "r_planter_east",
+        "r_planter_south"
+      ],
+      "defaultOptionId": "fo_veranda_tile",
+      "options": [
+        {
+          "id": "fo_veranda_tile",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-OUTDOOR-R11",
+          "label": "Outdoor tile",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_floor_outdoor"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_wall_paint",
+      "label": "Wall paint",
+      "target": "wall",
+      "roomIds": [
+        "r_lobby",
+        "r_stair",
+        "r_foyer",
+        "r_living",
+        "r_veranda_kitchen",
+        "r_kitchen",
+        "r_bed3",
+        "r_dining",
+        "r_planter_east",
+        "r_passage",
+        "r_bed1",
+        "r_veranda_1",
+        "r_bed4",
+        "r_veranda_4",
+        "r_bed2",
+        "r_planter_south"
+      ],
+      "defaultOptionId": "fo_paint_warm_white",
+      "options": [
+        {
+          "id": "fo_paint_warm_white",
+          "brand": "Berger",
+          "sku": "BERGER-WARM-WHITE",
+          "label": "Berger Warm White",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#f4f1ea"
+          }
+        },
+        {
+          "id": "fo_paint_cream",
+          "brand": "Berger",
+          "sku": "BERGER-CREAM",
+          "label": "Berger Cream",
+          "priceDeltaBdt": 12000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#e9e2d0"
+          }
+        },
+        {
+          "id": "fo_paint_sage",
+          "brand": "Asian Paints",
+          "sku": "AP-SAGE",
+          "label": "Asian Paints Sage",
+          "priceDeltaBdt": 18000,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#d9dfd6"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_wall_bath",
+      "label": "Bath walls",
+      "target": "wall",
+      "roomIds": [
+        "r_toilet",
+        "r_toilet1",
+        "r_toilet2",
+        "r_toilet3",
+        "r_pdr"
+      ],
+      "defaultOptionId": "fo_bathwall_white",
+      "options": [
+        {
+          "id": "fo_bathwall_white",
+          "brand": "RAK Ceramics",
+          "sku": "RAK-WALL-WHITE-300",
+          "label": "White wall tile",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "tile_wall_white"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_ceiling",
+      "label": "Ceiling",
+      "target": "ceiling",
+      "roomIds": "all",
+      "defaultOptionId": "fo_ceiling_white",
+      "options": [
+        {
+          "id": "fo_ceiling_white",
+          "brand": "Berger",
+          "sku": "BERGER-CEILING-WHITE",
+          "label": "Ceiling white",
+          "priceDeltaBdt": 0,
+          "material": {
+            "kind": "pbr",
+            "textureId": "plaster_white",
+            "tint": "#ffffff"
+          }
+        }
+      ]
+    }
+  ],
+  "areaSqft": 2736,
+  "planImage": {
+    "src": "/assets/plan-sheltech-l2.jpg",
+    "pxPerM": 26.638,
+    "originPx": {
+      "x": 492.293,
+      "y": 140.708
+    }
+  }
+}
