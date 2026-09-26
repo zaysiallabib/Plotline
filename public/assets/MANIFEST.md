@@ -80,3 +80,11 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
   but presets no longer place them (procedural dining set, sofa, desk and hob module instead).
 - `throw_pillows_01`'s diffuse (`throw_pillows_01_diff_1k.jpg`) was re-graded locally on 2026-09-25 (calmer
   colour); the model is otherwise the Poly Haven original.
+
+### Added wave 11 (furnish)
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| turf | texture | https://ambientcg.com/view?id=Grass004 | ambientCG (Lennart Demes) | CC0 | 2026-09-27 | textures/turf/{albedo.jpg,normal.jpg,roughness.jpg} — mown lawn for ground-floor / rooftop green strips; 1K maps re-encoded (albedo q82, normal q80, roughness q75) | 962184 |
+
+The planter bed's leaf sprites are painted at runtime (src/furnish/procedural.ts paintLeaves): no file.
