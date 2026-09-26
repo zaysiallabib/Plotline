@@ -280,12 +280,12 @@ export class Building extends THREE.Group {
     cam.updateProjectionMatrix()
   }
 
-  /** Orbit target on floor k (the tower's plan centre, 1.5 m up) and the street-corner eye (+x, +y: roads 10/A and 9/A). */
+  /** Orbit target on floor k (the tower's plan centre, 1.5 m up) and the street-corner eye (+x, +y: roads 10/A and 9/A), steep and inside the neighbours' ring (context.ts: 20+ m off the plot) so none stands in front. */
   view(k: number): { target: THREE.Vector3; eye: THREE.Vector3 } {
     const c = this.box.getCenter(new THREE.Vector3())
     const size = this.box.getSize(new THREE.Vector3())
     const target = new THREE.Vector3(c.x, this.levelOf(k) + 1.5, c.z)
-    const eye = new THREE.Vector3(1, 0.6, 1).normalize().multiplyScalar(1.5 * Math.hypot(size.x, size.z)).add(target)
+    const eye = new THREE.Vector3(1, 1, 1).normalize().multiplyScalar(1.25 * Math.hypot(size.x, size.z)).add(target)
     return { target, eye }
   }
 
