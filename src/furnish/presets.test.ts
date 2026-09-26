@@ -541,6 +541,18 @@ describe('furnish', () => {
     expect(furnish(square, deriveRooms(square)).map((p) => p.assetId)).not.toContain('sofa_3seat')
   })
 
+  test.skipIf(!typeC)('two zones: the lounge chair takes the coffee table side away from the dining table (C: its back hid the table)', () => {
+    const wide = rect('living', 11, 3.8, { wall: 3, offsetM: 1.4 })
+    for (const u of [typeC, wide, { ...wide, vertices: wide.vertices.map((v) => ({ ...v, x: 11 - v.x })) }]) {
+      const ps = furnish(u, deriveRooms(u))
+      const at = (re: RegExp) => ps.find((p) => re.test(p.assetId))!
+      const [table, coffee, chair] = [at(/^dining_table$/), at(/coffee_table|ottoman/), at(/^mid_century_lounge_chair$/)]
+      expect(chair, u.id).toBeDefined()
+      const d = (p: Pt) => Math.hypot(p.x - table.x, p.y - table.y)
+      expect(d(chair), `${u.id}: chair ${chair.x},${chair.y}`).toBeGreaterThan(d(coffee))
+    }
+  })
+
   test.skipIf(!typeA || !typeC)('a help room too short for the 1.9 m cot (A, C: 1.8 × 1.5 m) gets the short cot, still named cot*', () => {
     for (const u of [typeA, typeC]) {
       const rooms = deriveRooms(u)
