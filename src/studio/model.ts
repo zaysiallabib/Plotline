@@ -53,6 +53,8 @@ export interface StudioState {
   toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
+  /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
+  loopTipShown: boolean
 }
 export interface Draft {
   unit: Unit
@@ -84,6 +86,8 @@ export type Action =
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
   | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
+  /** arrow keys: move the selection by (dx, dy) m; openings slide along their wall by dx + dy. No snapping. */
+  | { type: 'nudge'; dx: number; dy: number }
   | { type: 'delete'; ids?: Id[] }
   | { type: 'add-label'; label: Omit<RoomLabel, 'id'> }
   | { type: 'update-label'; id: Id; patch: Partial<Omit<RoomLabel, 'id'>> }
@@ -130,6 +134,7 @@ export function initialState(): StudioState {
     toast: null,
     dragBlocked: false,
     exported: false,
+    loopTipShown: false,
   }
 }
 
@@ -300,8 +305,9 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   if (r.id === last) return s
   const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM)
   if (typeof u === 'string') return withToast(s, u)
-  const ends = r.existing || r.id === s.chain.ids[0]
-  return commit(s, u, { chain: ends ? null : { ...s.chain, ids: [...s.chain.ids, r.id] }, selection: [] })
+  const closes = r.id === s.chain.ids[0]
+  const next = commit(s, u, { chain: r.existing || closes ? null : { ...s.chain, ids: [...s.chain.ids, r.id] }, selection: [] })
+  return closes && !s.loopTipShown ? { ...withToast(next, 'Drag any corner with V to adjust it'), loopTipShown: true } : next
 }
 
 export function reducer(s: StudioState, a: Action): StudioState {
@@ -429,6 +435,22 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
     case 'drag-label':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, x: a.x, y: a.y } : l)) } }
+    case 'nudge': {
+      if (!s.selection.length) return s
+      const sel = new Set(s.selection)
+      const moved = new Set([...s.selection, ...s.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b])])
+      const vertices = s.unit.vertices.filter((v) => moved.has(v.id)).map((v) => ({ id: v.id, x: v.x + a.dx, y: v.y + a.dy }))
+      let u = reducer(s, { type: 'drag', vertices }).unit // walls follow, their openings clamp
+      u = { ...u, roomLabels: u.roomLabels.map((l) => (sel.has(l.id) ? { ...l, x: l.x + a.dx, y: l.y + a.dy } : l)) }
+      for (const id of s.selection) {
+        const f = findOpening(u, id)
+        if (!f) continue
+        const placed = placeOpening(f.wall, wallLen(u, f.wall), { ...f.opening, offsetM: f.opening.offsetM + a.dx + a.dy })
+        if (typeof placed === 'string') return withToast(s, placed)
+        u = replaceOpening(u, f.wall.id, placed)
+      }
+      return commit(s, u)
+    }
 
     case 'delete': {
       const ids = new Set(a.ids ?? s.selection)
@@ -532,7 +554,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
 // ---------- studio-only derived data ----------
 
 export const ISSUE_COPY: Record<ValidationIssue['code'], string> = {
-  'dangling-vertex': 'Corner is not joined to anything',
+  'dangling-vertex': 'Corner is not joined to anything — click to find it',
   'zero-length-wall': 'Wall has no length',
   'duplicate-wall': 'Two walls lie on top of each other',
   'opening-out-of-bounds': 'Opening runs past the end of its wall',

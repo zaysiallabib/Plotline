@@ -80,7 +80,7 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue }: Props) {
         ) : (
           <ul className="issues">
             {issues.map((i, k) => (
-              <li key={k} onClick={() => onFocusIssue(i)}>
+              <li key={k} className={i.ids.length ? 'find' : undefined} title={i.ids.length ? 'Click to find it' : undefined} onClick={() => onFocusIssue(i)}>
                 <span className={`dot ${i.level}`} />
                 {i.message}
               </li>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { deriveRooms, roomAt, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
-import { EXTERIOR_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 
@@ -179,6 +179,95 @@ describe('studio reducer', () => {
     s = reducer(s, { type: 'drag-opening', id: win.id, offsetM: 2.7, tolM: 0.2 })
     expect(s.unit.walls[0].openings[1].offsetM).toBeCloseTo(4 - win.widthM, 9) // far corner
     expect(s.dragBlocked).toBe(false)
+  })
+
+  it('nudge moves the selection 1" (Shift 1\') without snapping, one history entry per press', () => {
+    const IN = 0.0254
+    const FOOT = 0.3048
+    let s = traceRect()
+    const [v0, v1, v2] = s.unit.vertices
+    let past = s.history.past.length
+    const nudge = (dx: number, dy: number) => {
+      s = reducer(s, { type: 'nudge', dx, dy })
+      expect(s.history.past.length).toBe(++past)
+    }
+    const vx = (id: string) => s.unit.vertices.find((v) => v.id === id)!
+
+    s = reducer(s, { type: 'select', ids: [v1.id] }) // corner (4,0)
+    nudge(IN, 0)
+    expect(vx(v1.id)).toMatchObject({ x: 4 + IN, y: 0 })
+    nudge(0, FOOT)
+    expect(vx(v1.id).y).toBeCloseTo(FOOT, 12)
+    expect(vx(v0.id)).toMatchObject({ x: 0, y: 0 })
+    nudge(-IN, -FOOT) // back
+    expect(vx(v1.id).x).toBeCloseTo(4, 12)
+    expect(vx(v1.id).y).toBeCloseTo(0, 12)
+
+    s = reducer(s, { type: 'select', ids: [s.unit.walls[1].id] }) // (4,0)→(4,3): both ends move
+    nudge(IN, 0)
+    expect(vx(v1.id).x).toBeCloseTo(4 + IN, 12)
+    expect(vx(v2.id).x).toBeCloseTo(4 + IN, 12)
+    expect(vx(v0.id)).toMatchObject({ x: 0, y: 0 })
+
+    s = reducer(s, { type: 'add-label', label: { name: 'Bed-1', kind: 'bed', x: 2, y: 1.5 } }) // selects it
+    past = s.history.past.length
+    nudge(-IN, 0)
+    expect(s.unit.roomLabels[0].x).toBeCloseTo(2 - IN, 12)
+    expect(s.unit.roomLabels[0].y).toBe(1.5)
+
+    s = reducer(s, { type: 'add-opening', wallId: s.unit.walls[0].id, t: 0.5 }) // door centred, selected
+    past = s.history.past.length
+    const door = s.unit.walls[0].openings[0]
+    nudge(IN, 0) // Right = +offsetM
+    expect(s.unit.walls[0].openings[0].offsetM).toBeCloseTo(door.offsetM + IN, 12)
+    nudge(0, -FOOT) // Shift+Up = −1'
+    expect(s.unit.walls[0].openings[0].offsetM).toBeCloseTo(door.offsetM + IN - FOOT, 12)
+
+    // a window flush against the door's right jamb: nudging the door right is refused with a toast
+    const selected = s.selection
+    const d = s.unit.walls[0].openings[0]
+    const top = s.unit.walls[0]
+    const t = (d.offsetM + d.widthM + 0.6096 + 0.05) / wallFrame(top, s.unit.vertices).lengthM // window centre 5 cm past flush
+    s = reducer(s, { type: 'add-opening', wallId: top.id, t, kind: 'window', tolM: 0.2 })
+    expect(s.unit.walls[0].openings[1].offsetM).toBeCloseTo(d.offsetM + d.widthM, 9)
+    s = reducer(s, { type: 'select', ids: selected })
+    const before = s.unit
+    s = reducer(s, { type: 'nudge', dx: IN, dy: 0 })
+    expect(s.unit).toBe(before)
+    expect(s.toast?.text).toBe('Two openings overlap on this wall')
+
+    // nothing selected: no-op, no history
+    s = reducer(s, { type: 'select', ids: [] })
+    expect(reducer(s, { type: 'nudge', dx: IN, dy: 0 })).toBe(s)
+  })
+
+  it('the first closed loop shows the move tip, once per session', () => {
+    let s = traceRect()
+    expect(s.toast?.text).toBe('Drag any corner with V to adjust it')
+    expect(s.loopTipShown).toBe(true)
+    s = run(
+      s,
+      { type: 'clear-toast' },
+      { type: 'chain-start', at: { x: 6, y: 0, tolM: TOL } },
+      { type: 'chain-typed', lengthM: 2, dirDeg: 0, tolM: TOL },
+      { type: 'chain-typed', lengthM: 2, dirDeg: 90, tolM: TOL },
+      { type: 'chain-add', at: { x: 6, y: 0, tolM: TOL } },
+    )
+    expect(s.chain).toBeNull()
+    expect(deriveRooms(s.unit)).toHaveLength(2)
+    expect(s.toast).toBeNull()
+  })
+
+  it('a lone corner reads "click to find it"', () => {
+    expect(ISSUE_COPY['dangling-vertex']).toBe('Corner is not joined to anything — click to find it')
+    const s = run(
+      reducer(initialState(), { type: 'set-scale', pxPerM: 100 }),
+      { type: 'chain-start', at: { x: 1, y: 1, tolM: TOL } },
+      { type: 'chain-end' },
+    )
+    const i = studioIssues(s.unit, []).find((x) => x.code === 'dangling-vertex')!
+    expect(i.message).toBe('Corner is not joined to anything — click to find it')
+    expect(i.ids).toEqual([s.unit.vertices[0].id])
   })
 
   it('assigns a label to the enclosed face', () => {

@@ -37,7 +37,7 @@ const TOOLS: [Tool, string, string][] = [
   ['room', 'R', 'Room'],
 ]
 const HINTS: Record<Tool, string> = {
-  select: 'Select · click to select, drag to move, double-click a wall to set its length',
+  select: `Select · click to select, drag to move, arrow keys nudge 1" (Shift 1'), double-click a wall to set its length`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
   opening: 'Opening · click a wall',
@@ -663,6 +663,13 @@ export default function StudioApp() {
         return dispatch({ type: 'duplicate-label' })
       }
       if (ctrl) return
+      const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
+      if (arrow) {
+        e.preventDefault() // never scroll the page or the panel
+        const step = e.shiftKey ? 0.3048 : 0.0254 // 1' / 1"; no snapPoint: a 10 px snap would swallow a 1" step
+        if (st.selection.length) dispatch({ type: 'nudge', dx: arrow[0] * step, dy: arrow[1] * step })
+        return
+      }
       if (e.key === ' ') {
         spaceRef.current = true
         e.preventDefault()
@@ -749,13 +756,14 @@ export default function StudioApp() {
   }
 
   // ----- status text
-  const hint = chain
-    ? chain.ids.length >= 3
-      ? 'Wall · Click the start corner to close'
-      : 'Wall · Click the next corner, or type its printed length'
-    : tool === 'scale' && scaleStart
-      ? 'Scale · click the other end'
-      : HINTS[tool]
+  const hint =
+    (chain
+      ? chain.ids.length >= 3
+        ? 'Wall · Click the start corner to close'
+        : 'Wall · Click the next corner, or type its printed length'
+      : tool === 'scale' && scaleStart
+        ? 'Scale · click the other end'
+        : HINTS[tool]) + (tool === 'select' ? '' : ' · V to move things')
   let centre = ''
   if (chain && hover?.snap) {
     const last = vertexById(unit.vertices, chain.ids[chain.ids.length - 1])
