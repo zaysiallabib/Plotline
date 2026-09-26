@@ -41,6 +41,21 @@ Then open a NEW terminal (so the env vars apply) before running `claude`. If a s
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
 
+## SESSION 9 — 2026-09-27 02:10 → (Fable 5.1): wave 11 launched
+
+Founder 02:10: "read all the docs, read the codes, understand what we are building, read handoff clearly and you will know what to do". Manager read everything; `feat/phase-0` = d5dd723, 207 tests green, no worktrees. **Wave 11 started ~02:20: six Opus 5.5 agents in parallel on worktrees** (briefs = the six items in START HERE below, expanded with the file scopes and evidence rules; ports 5241–5246; scratch `E:\dev\tmp\wave11\<agent>\`, shots `E:\dev\plotline-shots\wave11\<agent>\`; the score runner goes to `E:\dev\tmp\wave11\score\shots.mjs`).
+
+| Agent | Port | Scope (files) | Status |
+|---|---|---|---|
+| look | 5241 | `src/three/{materials,context,PlotlineScene,render}.ts` + tests, `details.ts` (casing contrast only), `textures.data.ts` tints + appended sets, MANIFEST appended | running |
+| views | 5242 | `src/viewer/{spawn,frame}.ts`, `viewer.test.ts`, runner copy; if a leaf must close per view: `openings.ts` leaf angle + one PlotlineScene method + the ViewerApp jump handler only | running |
+| furnish | 5243 | `src/furnish/{presets,presets.test,procedural,procedural.meta,kit*}.ts`, appended texture sets (turf, soil) + MANIFEST | running |
+| studio-edit | 5244 | `Hud.tsx` button, `ViewerApp.tsx` HUD wiring, `StudioApp.tsx` `?unit=` import block | running |
+| studio-furniture | 5245 | `src/studio/{model,draw,StudioApp,Panel}.ts*`, `studio.css`, `studio.test.ts`, new `src/studio/furniture.ts` | running |
+| mirror | 5246 | new `src/core/mirror.ts` + test + index export, `sheltech-b.json` + test, new `src/data/building/sheltech-tower.ts` (+ `index.ts` towerOf), `building.ts` + test, `ViewerApp.tsx` tower constants only | running |
+
+Shared-file rule given to the agents: `StudioApp.tsx` (studio-edit block vs studio-furniture layer), `ViewerApp.tsx` (studio-edit HUD wiring / views jump handler / mirror tower constants), `textures.data.ts` + `MANIFEST.md` (look and furnish both APPEND) — resolve at merge. Merge order: look → views → furnish → studio-edit → studio-furniture → mirror. After merge the manager wires `building.ts` garden rects to the furnish agent's `turf` texture (one line), then 15:30 shots a/b/c/s into `wave11\score\` with the HUD-label assertion, blind Fable score (baseline `wave10\score\`, full mean + hero-rooms mean, scoring-honesty rules below), HANDOFF, push, deploy.
+
 ## NEW SESSION: START HERE (rewritten 2026-09-27 02:10, founder about to open a fresh session)
 
 **Workflow (founder's standing rule):** the session runs on **Fable 5.1 as project manager** — reads this file, plans the wave, writes the agent briefs, merges, scores, updates HANDOFF, pushes. **Every technical task goes to an Opus 5.5 agent** (`Agent` tool, `model: "opus"`, `isolation: "worktree"`), one agent per non-overlapping file scope, run in parallel; `model: "fable"` only for blind art-direction scoring; `model: "sonnet"` for trivial mechanical edits. Agents never merge and never touch HANDOFF; the manager does. Each agent brief names: repo `E:\dev\Plotline`, scratch `E:\dev\tmp\wave<N>\<agent>\`, shots `E:\dev\plotline-shots\wave<N>\<agent>\`, never C:, tests + tsc green at every commit, `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, a final report as the only channel back. The manager pushes `feat/phase-0` after every merge.
