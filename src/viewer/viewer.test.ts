@@ -13,6 +13,7 @@ import {
   entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
+import { frameShares } from './frame'
 
 const unit = typeA as unknown as Unit
 const rooms = core.deriveRooms(unit)
@@ -403,6 +404,58 @@ describe('viewer', () => {
         const ok = hit.length > 0 && (hit.every((h) => h.on) || (hit.length > 1 && hit.every((h) => h.open)))
         expect(ok, `${u.id} ${r.name} ends on an opening, the rail or an open corner`).toBe(true)
       }
+  })
+
+  it('frameShares: a 1 m door leaf ajar 20° fills most of the frame from 0.5 m, under 15 % from 3 m; a wardrobe 1.5 m ahead fills half', () => {
+    const bare: Unit = {
+      id: 'u', projectName: '', name: '', northDeg: 0, areaSqft: 0, roomLabels: [], finishSlots: [], furniture: [],
+      vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 8, y: 0 }],
+      walls: [{ id: 'w', a: 'a', b: 'b', thicknessM: 0.1, heightM: 3, openings: [{ id: 'd', kind: 'door', offsetM: 3, widthM: 1, heightM: 2.1, sillM: 0, hinge: 'a', swing: 'in' }] }],
+    }
+    // openings.ts: hinged at vertex a's jamb on the swing face (−normal = −y), turned 20° toward it
+    const r = (20 * Math.PI) / 180
+    const mid = at({ x: 3, y: -0.05 }, { x: Math.cos(r), y: -Math.sin(r) }, 0.5)
+    const out = { x: -Math.sin(r), y: -Math.cos(r) } // the leaf's face on the swing side
+    const leaf = (d: number) => frameShares(bare, at(mid, out, d), { x: -out.x, y: -out.y }).get('d') ?? 0
+    expect(leaf(0.5)).toBeGreaterThan(0.6)
+    expect(leaf(3)).toBeGreaterThan(0.03)
+    expect(leaf(3)).toBeLessThan(0.15)
+    const robe: Unit = { ...bare, furniture: [{ id: 'x', assetId: 'wardrobe_tall', roomId: 'r', x: 4, y: -3, rotationDeg: 0 }] }
+    expect(frameShares(robe, { x: 4, y: -4.5 }, { x: 0, y: 1 }).get('x')).toBeGreaterThan(0.5)
+    // the wave-9 C Bed-1 frame (15:30 score shot: the wardrobe spans x 112–490, y 220–733 of 1280 × 720, ≈ 16 %)
+    const c = both[2]
+    const w = c.u.furniture.find((f) => f.roomId === 'r_bed1' && f.assetId === 'wardrobe_tall')!
+    expect(frameShares(c.u, { x: 15.1855, y: 14.525 }, { x: -0.6518, y: -0.7584 }).get(w.id)).toBeCloseTo(0.16, 1)
+  })
+
+  it('frameShares in a 4 × 3 m box: the far wall fills most of the frame, floor, ceiling and the view out of a window count for nobody, the first hit hides what is behind it, `within` keeps near hits only', () => {
+    const V = [[0, 0], [4, 0], [4, 3], [0, 3]].map(([x, y], i) => ({ id: `v${i}`, x, y }))
+    const box = (openings: Unit['walls'][number]['openings'] = [], furniture: Unit['furniture'] = []): Unit => ({
+      id: 'u', projectName: '', name: '', northDeg: 0, areaSqft: 0, roomLabels: [], finishSlots: [], furniture, vertices: V,
+      // w1 is the east wall, 2 m ahead of the eye
+      walls: V.map((v, i) => ({ id: `w${i}`, a: v.id, b: V[(i + 1) % 4].id, thicknessM: 0.1, heightM: 2.7, openings: i === 1 ? openings : [] })),
+    })
+    const p = { x: 2, y: 1.5 }
+    const east = { x: 1, y: 0 }
+    const plain = frameShares(box(), p, east)
+    expect([...plain.keys()].sort()).toEqual(['w0', 'w1', 'w2']) // the wall behind is out of the frame
+    expect(plain.get('w1')).toBeGreaterThan(0.6)
+    expect(plain.get('w0')).toBeCloseTo(plain.get('w2')!, 9)
+    const total = [...plain.values()].reduce((a, b) => a + b, 0)
+    expect(total).toBeLessThan(0.99) // the floor and ceiling at the frame's corners
+    expect(total).toBeGreaterThan(0.9)
+    // a 1 × 1.2 m window in the east wall: the frame through it counts for nobody
+    const win = frameShares(box([{ id: 'win', kind: 'window', offsetM: 1, widthM: 1, heightM: 1.2, sillM: 0.9 }]), p, east)
+    expect(plain.get('w1')! - win.get('w1')!).toBeGreaterThan(0.08)
+    expect(win.get('w0')).toBeCloseTo(plain.get('w0')!, 9)
+    // a wardrobe behind the east wall is hidden; one in front of it fills over half the frame
+    expect(frameShares(box([], [{ id: 'x', assetId: 'wardrobe_tall', roomId: 'r', x: 5, y: 1.5, rotationDeg: 90 }]), p, east).has('x')).toBe(false)
+    const robe = frameShares(box([], [{ id: 'x', assetId: 'wardrobe_tall', roomId: 'r', x: 3.6, y: 1.5, rotationDeg: 90 }]), p, east)
+    expect(robe.get('x')).toBeGreaterThan(0.5)
+    expect(robe.get('w1')).toBeLessThan(0.15)
+    // within: every wall is 1.5 m or more off — none within 1 m; 0.6 m from the east wall it is the whole frame
+    expect(frameShares(box(), p, east, 0, 1).size).toBe(0)
+    expect(frameShares(box(), { x: 3.4, y: 1.5 }, east, 0, 1.2).get('w1')).toBeCloseTo(1, 9)
   })
 
   it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {
