@@ -106,6 +106,7 @@ export default function StudioApp() {
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
   const [scaleStart, setScaleStart] = useState<Pt | null>(null)
+  const [panning, setPanning] = useState(false)
   const [field, setField] = useState<Field | null>(null)
   const [popover, setPopover] = useState<Popover | null>(null)
   const [note, setNote] = useState<Note | null>(null)
@@ -451,8 +452,11 @@ export default function StudioApp() {
     // take focus off the top-bar inputs; the field/popover effects below re-focus their input after render.
     // The canvas's onMouseDown preventDefault keeps the browser from moving focus back to <body>.
     canvasRef.current?.focus()
-    if (e.button === 1 || spaceRef.current) {
+    // Pan (Figma-style): middle or right button in any tool, Space+drag, or Shift+drag on empty
+    // canvas in Select (Shift over a piece still adds it to the selection).
+    if (e.button === 1 || e.button === 2 || spaceRef.current || (e.shiftKey && tool === 'select' && !hitTest(sx, sy))) {
       panRef.current = { sx, sy, panX: view.panX, panY: view.panY }
+      setPanning(true)
       return
     }
     if (e.button !== 0) return
@@ -552,6 +556,7 @@ export default function StudioApp() {
   }
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (panRef.current) setPanning(false)
     panRef.current = null
     const d = dragRef.current
     dragRef.current = null
@@ -763,7 +768,9 @@ export default function StudioApp() {
         : 'Wall · Click the next corner, or type its printed length'
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
-        : HINTS[tool]) + (tool === 'select' ? '' : ' · V to move things')
+        : HINTS[tool]) +
+    (tool === 'select' ? ' · Shift-drag empty space to pan' : ' · V to move things · right-drag or Space-drag to pan') +
+    ' · wheel zooms'
   let centre = ''
   if (chain && hover?.snap) {
     const last = vertexById(unit.vertices, chain.ids[chain.ids.length - 1])
@@ -830,7 +837,7 @@ export default function StudioApp() {
           <canvas
             ref={canvasRef}
             tabIndex={-1}
-            style={{ width: size.w, height: size.h, cursor: tool === 'select' ? 'default' : 'crosshair' }}
+            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
