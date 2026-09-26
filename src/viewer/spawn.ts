@@ -290,17 +290,21 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * a door's whole span must be max(DOOR_CLEAR, widthM + 0.3) away — that covers its centre, its hinge
  * and the leaf's swing arc (radius widthM around the hinge); a passage or a sliding door (no swinging leaf,
  * may be a whole glazed wall) only needs its centre DOOR_CLEAR away. Target = the room's HERO piece, else the furniture centroid
- * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
+ * (an empty foyer or passage: the anchor of the room through its widest leafless opening, `through`; fallback: the longest
+ * wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
  * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`) — and the best whose frame no door leaf or
- * slab fills beyond FLAT_MAX nor near plaster beyond NEAR_WALL_MAX (`clear`; the spot may turn TURN_MAX for it).
+ * slab fills beyond FLAT_MAX nor near plaster beyond NEAR_WALL_MAX (`clear`; the spot may turn TURN_MAX for it; none clears:
+ * the same frames with their largest leaf shut). Every spot left stands on the hero (a bed filling its room): just inside its door.
  * A room with no hero that is empty or under SIGHT_MAX_SQM, and every balcony, has no target: each stand point faces the farthest
- * inner corner it can see (a balcony: its rail, slider or a corner of two open walls) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
+ * inner corner it can see (a balcony: its rail, slider or a corner of two open walls; one with nothing to sit on: its
+ * slider back into the flat) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
  * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: a vanity/basin is framed from BATH_BACK inside the
  * room, else from the spot (the doorway or inside) where it shows at eye height; a cot lengthwise from its foot; else
  * they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
+ * `closeLeaf`: the door leaf the viewer shuts for this frame (the largest ajar one still filling over LEAF_SHUT of it).
  */
 export function roomView(room: Room, unit: Unit): View {
   const inner = core.roomInnerPolygon(room, unit)
