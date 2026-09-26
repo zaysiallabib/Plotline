@@ -6,6 +6,7 @@
  * Wall-hung pieces (toilet bowl, vanity, upper cabinets) are built from their
  * lowest point at y = 0 and lifted by mountY.
  */
+import type { Pt } from '../core'
 import type { KitAsset } from './kit'
 
 const P = (id: string, label: string, category: KitAsset['category'], x: number, y: number, z: number, mountY?: number): KitAsset => ({
@@ -56,6 +57,43 @@ export const STAIR_RISE = 3.0
 export const STAIR_D = 3.1
 export const stairId = (w: number) => `stair_${Math.round(w * 10)}`
 
+/**
+ * Planter bed: one piece filling a planter strip, sized per room like the stair by width, except that the whole shape is
+ * in its id: `planter_bed@` + one `x,y,h,t` per vertex of the room's inner polygon (cm, relative to the polygon's bbox
+ * centre = the placement's x, y at rotation 0), where h, t are the height and thickness of the parapet along the edge
+ * from that vertex if plants trail over it (an outer edge), else 0. Kerb top at PLANTER_KERB (the curbs' height).
+ */
+export const PLANTER = 'planter_bed@'
+export const PLANTER_KERB = 0.45
+export const PLANTER_TOP = 1.15
+export type PlanterEdge = { h: number; t: number }
+const cm = (v: number) => Math.round(v * 100)
+
+export function planterId(poly: Pt[], edges: PlanterEdge[]): { id: string; c: Pt } {
+  const xs = poly.map((p) => p.x)
+  const ys = poly.map((p) => p.y)
+  const c = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }
+  return { id: PLANTER + poly.map((p, i) => [cm(p.x - c.x), cm(p.y - c.y), cm(edges[i].h), cm(edges[i].t)].join(',')).join(';'), c }
+}
+
+export function parsePlanter(id: string): { poly: Pt[]; edges: PlanterEdge[] } | null {
+  if (!id.startsWith(PLANTER)) return null
+  const v = id.slice(PLANTER.length).split(';').map((s) => s.split(',').map((n) => Number(n) / 100))
+  return { poly: v.map(([x, y]) => ({ x, y })), edges: v.map(([, , h, t]) => ({ h, t })) }
+}
+
+/**
+ * kit entry for a planter id. ponytail: category 'rug' so the engine treats it as floor-level (no contact shadow, never a
+ * view blocker: an L-shaped strip's bbox covers the verandas it wraps); give it its own category once context.ts,
+ * frame.ts and spawn.ts learn one.
+ */
+export function planterAsset(id: string): KitAsset | undefined {
+  const s = parsePlanter(id)
+  if (!s) return undefined
+  const ext = (k: 'x' | 'y') => Math.max(...s.poly.map((p) => p[k])) - Math.min(...s.poly.map((p) => p[k]))
+  return { ...P(id, 'Planter bed, trailing plants', 'rug', ext('x'), PLANTER_TOP, ext('y')), kind: 'plant' }
+}
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -72,6 +110,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   // sits on sofa_3seat's seat cushions like throw_pillows_01
   cushions_plain: { ...P('cushions_plain', 'Two plain linen cushions', 'other', 0.78, 0.42, 0.26, 0.44), kind: 'cushions' },
   sofa_3seat: P('sofa_3seat', '3-seat fabric sofa', 'sofa', 2.2, 0.82, 0.92),
+  sofa_2seat: P('sofa_2seat', '2-seat fabric sofa', 'sofa', 1.6, 0.82, 0.92), // a narrow living room (presets.ts)
   dining_table: P('dining_table', 'Dining table, oak, 6 seats', 'dining-table', 1.6, 0.75, 0.9),
   dining_chair: P('dining_chair', 'Upholstered dining chair', 'dining-chair', 0.47, 0.84, 0.54),
   desk_oak: P('desk_oak', 'Oak desk, steel legs', 'desk', 1.4, 0.75, 0.7),

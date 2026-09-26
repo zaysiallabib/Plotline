@@ -11,10 +11,11 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { pointInPolygon, type Pt } from '../core'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
+import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -116,6 +117,8 @@ function makeMats() {
     // ceiling-light diffuser: the old fixture disc's glow; render.ts Look.setHour ramps it at dusk (fixtureGlow)
     opal: flat('#ffffff', 0.6, 0, { emissive: '#fff0dc', emissiveIntensity: 2.5 }),
     whitePaint: flat('#f3f2ee', 0.4), // AC casing (satin white)
+    kerb: pbr('plaster_white', { tint: '#d3cdc1' }), // planter kerb: weathered plaster
+    soil: flat('#33271e', 1), // damp potting soil
     nickel: flat('#d4d1ca', 0.3, 0.5), // ceiling-light canopy and trim ring
   }
 }
@@ -494,10 +497,9 @@ function bedside(): THREE.Mesh[] {
   return out
 }
 
-/** Seat cushions top out at 0.45 m: throw_pillows_01's mountY in kit.ts sits them on it. */
-function sofa(): THREE.Mesh[] {
+/** W wide (3 seats at 2.2, 2 at 1.6); seat cushions top out at 0.45 m: throw_pillows_01's mountY in kit.ts sits them on it. */
+function sofa(W: number): THREE.Mesh[] {
   const m = M()
-  const W = 2.2
   const D = 0.92
   const zB = -D / 2
   const inner = W - 0.4
@@ -506,8 +508,9 @@ function sofa(): THREE.Mesh[] {
   for (const x of [-(W / 2 - 0.1), W / 2 - 0.1]) out.push(rbox(0.2, 0.62, D, 0.06, m.sofa, x, 0.43, 0)) // arms 0.12–0.74
   out.push(rbox(inner + 0.04, 0.7, 0.2, 0.05, m.sofa, 0, 0.47, zB + 0.1)) // back frame 0.12–0.82
   out.push(rbox(inner, 0.2, D - 0.2, 0.03, m.sofa, 0, 0.22, zB + 0.2 + (D - 0.2) / 2)) // seat base
-  const cw = inner / 3
-  for (let i = 0; i < 3; i++) {
+  const seats = W > 2 ? 3 : 2
+  const cw = inner / seats
+  for (let i = 0; i < seats; i++) {
     const x = -inner / 2 + cw * (i + 0.5)
     out.push(rbox(cw - 0.012, 0.13, D - 0.22, 0.05, m.sofa, x, 0.385, zB + 0.21 + (D - 0.22) / 2)) // seat cushions to 0.45
     out.push(tilt(rbox(cw - 0.012, 0.4, 0.17, 0.07, m.sofa, x, 0.61, zB + 0.29), -0.1)) // back cushions
@@ -962,11 +965,198 @@ function stair(W: number): THREE.Mesh[] {
   return out
 }
 
+// ───────────────────────────── planter bed ─────────────────────────────
+
+/** The polygon moved k inward, edge by edge (a positive loop, as rooms are: core roomInnerPolygon's construction). */
+function inset(poly: Pt[], k: number): Pt[] {
+  const n = poly.length
+  const lines = poly.map((p, i) => {
+    const q = poly[(i + 1) % n]
+    const l = Math.hypot(q.x - p.x, q.y - p.y) || 1
+    const d = { x: (q.x - p.x) / l, y: (q.y - p.y) / l }
+    return { d, o: { x: p.x - d.y * k, y: p.y + d.x * k } }
+  })
+  return lines.map((b, i) => {
+    const a = lines[(i - 1 + n) % n]
+    const den = a.d.x * b.d.y - a.d.y * b.d.x
+    if (Math.abs(den) < 1e-6) return b.o
+    const s = ((b.o.x - a.o.x) * b.d.y - (b.o.y - a.o.y) * b.d.x) / den
+    return { x: a.o.x + s * a.d.x, y: a.o.y + s * a.d.y }
+  })
+}
+
+/**
+ * Three leaf sprites side by side, 256 × 512 each on transparent: a trailing pothos vine hanging from the top, a leafy
+ * clump rising from the bottom, a fine creeper hanging in three strands (same idea as paintArt: painted once, no download).
+ */
+function paintLeaves(): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  ;[c.width, c.height] = [768, 512]
+  const g = c.getContext('2d')!
+  const greens = ['#35602a', '#3d6a2c', '#4b7a33', '#5a8a3b', '#6b9a45']
+  // a leaf from its base (x, y), tip `len` away along angle a (0 = up, clockwise), `round` widens the base (heart)
+  const leaf = (x: number, y: number, len: number, w: number, a: number, color: string, round = 0.3) => {
+    g.save()
+    g.translate(x, y)
+    g.rotate(a)
+    g.beginPath()
+    g.moveTo(0, 0)
+    g.bezierCurveTo(w * (0.5 + round), -len * 0.1, w * 0.45, -len * 0.75, 0, -len)
+    g.bezierCurveTo(-w * 0.45, -len * 0.75, -w * (0.5 + round), -len * 0.1, 0, 0)
+    g.fillStyle = color
+    g.fill()
+    g.strokeStyle = 'rgba(200,225,160,0.4)'
+    g.lineWidth = Math.max(1, w * 0.05)
+    g.beginPath()
+    g.moveTo(0, 0)
+    g.lineTo(0, -len * 0.8)
+    g.stroke()
+    g.restore()
+  }
+  const stem = (pts: Pt[], w: number) => {
+    g.strokeStyle = '#4e6a2c'
+    g.lineWidth = w
+    g.beginPath()
+    for (const p of pts) g.lineTo(p.x, p.y)
+    g.stroke()
+  }
+  const pick = (i: number, j: number) => greens[Math.floor(rnd(i, j) * greens.length)]
+  // 0: pothos vine, heart-shaped leaves alternating down a swaying stem, smaller toward the tip
+  const vine = (s: number) => ({ x: 128 + 34 * Math.sin(3.2 * s + 0.6), y: 6 + 490 * s })
+  stem(Array.from({ length: 41 }, (_, i) => vine(i / 40)), 4)
+  for (let i = 0; i < 13; i++) {
+    const s = (i + 0.3) / 13
+    const p = vine(s)
+    const side = i % 2 ? 1 : -1
+    const len = 92 - 40 * s
+    leaf(p.x, p.y, len, len * 0.8, side * (Math.PI / 2 + 0.55 + 0.3 * rnd(i, 1)), pick(i, 2), 0.55)
+  }
+  // 1: clump, long leaves fanning up from the base, dark ones behind
+  for (let i = 0; i < 18; i++) {
+    const a = -1.15 + 2.3 * rnd(i, 3)
+    const len = 230 + 220 * rnd(i, 4) * Math.cos(a * 0.8)
+    leaf(256 + 128 + 30 * (rnd(i, 5) - 0.5), 508, len, 46 + 26 * rnd(i, 6), a, greens[Math.min(4, Math.floor(i / 4))], 0.15)
+  }
+  // 2: creeper, three strands of small round leaves
+  for (const [k, x0] of [60, 128, 196].entries()) {
+    const at = (s: number) => ({ x: 512 + x0 + 22 * Math.sin(5 * s + k * 2), y: 4 + (380 + 110 * rnd(k, 7)) * s })
+    stem(Array.from({ length: 31 }, (_, i) => at(i / 30)), 2)
+    for (let i = 0; i < 24; i++) {
+      const p = at((i + 0.5) / 24)
+      leaf(p.x, p.y, 30 + 8 * rnd(i, k), 28, (i % 2 ? 1 : -1) * (1.9 + 0.5 * rnd(k, i)), pick(i + 7, k), 0.9)
+    }
+  }
+  return c
+}
+
+let leafMat: THREE.MeshStandardMaterial | null = null
+/** Leaf-card material (paintLeaves), alpha-tested, both faces; without a DOM (Vitest) a flat green. */
+function leaves(): THREE.MeshStandardMaterial {
+  if (leafMat) return leafMat
+  leafMat = new THREE.MeshStandardMaterial({ roughness: 0.7, side: THREE.DoubleSide, alphaTest: 0.45 })
+  if (typeof globalThis.document?.createElement === 'function') {
+    const t = new THREE.CanvasTexture(paintLeaves())
+    t.colorSpace = THREE.SRGBColorSpace
+    t.anisotropy = 8
+    leafMat.map = t
+  } else leafMat.color.set('#4b7a33')
+  return leafMat
+}
+
+/**
+ * Planter bed filling a planter strip (the shape is in its id, procedural.meta.ts): a plaster kerb 8 cm wide round the
+ * edge up to PLANTER_KERB, dark soil inside it, a low mound of leaf cards over the soil (taller toward the outer edges)
+ * and trailing strands over each outer parapet: a card across its cap and one hanging 0.3–0.6 m down its outside face.
+ * Cards are alpha-tested sprites (paintLeaves), one InstancedMesh per sprite (≤ ~400 cards), casting no shadow. Their
+ * layout box is set to the bed's (the strands hang outside it) so furniture.ts centres and grounds the bed on its polygon.
+ */
+function planterBed(id: string): THREE.Object3D[] {
+  const { poly, edges } = parsePlanter(id)!
+  const m = M()
+  const V2 = (p: Pt) => new THREE.Vector2(p.x, -p.y) // plan y → world z after rotateX(−90°)
+  const soilPoly = inset(poly, 0.08)
+  const ring = new THREE.Shape(poly.map(V2))
+  ring.holes.push(new THREE.Path(soilPoly.map(V2)))
+  const kerb = new THREE.ExtrudeGeometry(ring, { depth: PLANTER_KERB, bevelEnabled: false }).rotateX(-Math.PI / 2)
+  const ySoil = PLANTER_KERB - 0.04
+  const soil = new THREE.ShapeGeometry(new THREE.Shape(soilPoly.map(V2))).rotateX(-Math.PI / 2).translate(0, ySoil, 0)
+  // cards: [sprite][] of matrices; a card is 0.3 × 0.6 m at scale 1, centred
+  const cards: THREE.Matrix4[][] = [[], [], []]
+  const q = new THREE.Quaternion()
+  const card = (sprite: number, at: THREE.Vector3, anchor: 1 | -1, yaw: number, tilt: number, s: number) => {
+    q.setFromEuler(new THREE.Euler(tilt, yaw, 0, 'YXZ'))
+    // anchor 1: `at` is the card's bottom edge (it grows up), −1: its top edge (it hangs)
+    const c = at.clone().add(new THREE.Vector3(0, 0.3 * s * anchor, 0).applyQuaternion(q))
+    cards[sprite].push(new THREE.Matrix4().compose(c, q.clone(), new THREE.Vector3(s, s, s)))
+  }
+  const outer = poly.map((a, i) => ({ a, b: poly[(i + 1) % poly.length], ...edges[i] })).filter((e) => e.h > 0)
+  const segDist = (p: Pt, a: Pt, b: Pt) => {
+    const [dx, dy] = [b.x - a.x, b.y - a.y]
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
+    return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
+  }
+  // mound: a jittered grid over the soil, ~240 cards at most; within 0.4 m of an outer edge taller and leaning out over it
+  const xs = soilPoly.map((p) => p.x)
+  const ys = soilPoly.map((p) => p.y)
+  let area = 0
+  for (let i = 0; i < soilPoly.length; i++) {
+    const [p, r] = [soilPoly[i], soilPoly[(i + 1) % soilPoly.length]]
+    area += (p.x * r.y - r.x * p.y) / 2
+  }
+  const step = Math.max(0.2, Math.sqrt(Math.abs(area) / 240))
+  for (let x = Math.min(...xs) + step / 2, i = 0; x < Math.max(...xs); x += step, i++)
+    for (let y = Math.min(...ys) + step / 2, j = 0; y < Math.max(...ys); y += step, j++) {
+      const p = { x: x + step * 0.7 * (rnd(i, j) - 0.5), y: y + step * 0.7 * (rnd(j, i) - 0.5) }
+      if (!pointInPolygon(p, soilPoly)) continue
+      const near = outer.find((e) => segDist(p, e.a, e.b) < 0.4)
+      const out = near && { x: near.b.y - near.a.y, y: near.a.x - near.b.x } // outward normal (unnormalised) of that edge
+      const yaw = out ? Math.atan2(out.x, out.y) + 0.8 * (rnd(i + 3, j) - 0.5) : 2 * Math.PI * rnd(i + 5, j)
+      const s = near ? 1.0 + 0.25 * rnd(i, j + 9) : 0.6 + 0.4 * rnd(i, j + 9)
+      card(rnd(i + 1, j + 2) < 0.85 ? 1 : 2, new THREE.Vector3(p.x, ySoil - 0.05, p.y), 1, yaw, (near ? 0.35 : 0) + 0.9 * (rnd(j + 4, i) - 0.5), s)
+    }
+  // trailing strands over the outer parapets, every 0.13 m
+  outer.forEach((e, k) => {
+    const L = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
+    const d = { x: (e.b.x - e.a.x) / L, y: (e.b.y - e.a.y) / L }
+    const o = { x: d.y, y: -d.x } // outward (rooms are positive loops: inward is (−d.y, d.x))
+    const yaw = Math.atan2(o.x, o.y)
+    const n = Math.max(1, Math.floor(L / 0.13))
+    for (let i = 0; i < n; i++) {
+      const u = ((i + 0.5 + 0.6 * (rnd(i, k) - 0.5)) / n) * L
+      const at = (off: number, y: number) => new THREE.Vector3(e.a.x + d.x * u + o.x * off, y, e.a.y + d.y * u + o.y * off)
+      if (i % 2 === 0) card(2, at(e.t / 2, e.h + 0.02), 1, yaw + 0.3 * (rnd(k, i) - 0.5), 1.35, 0.55) // across the cap
+      card(rnd(i, k + 1) < 0.6 ? 0 : 2, at(e.t + 0.02, e.h + 0.04), -1, yaw + 0.5 * (rnd(k + 2, i) - 0.5), -0.05 - 0.15 * rnd(i, k + 3), 0.5 + 0.5 * rnd(k + 4, i))
+    }
+  })
+  const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
+  const tint = new THREE.Color()
+  const sprites = cards.flatMap((ms, sprite) => {
+    if (!ms.length) return []
+    const geo = new THREE.PlaneGeometry(0.3, 0.6)
+    const uv = geo.attributes.uv
+    for (let i = 0; i < uv.count; i++) uv.setX(i, (sprite + uv.getX(i)) / 3)
+    const im = new THREE.InstancedMesh(geo, leaves(), ms.length)
+    ms.forEach((mt, i) => {
+      im.setMatrixAt(i, mt)
+      const v = 0.78 + 0.27 * rnd(i, sprite + 11)
+      im.setColorAt(i, tint.setRGB(v * (0.92 + 0.1 * rnd(sprite, i)), v, v * 0.9))
+    })
+    im.boundingBox = bed.clone()
+    im.userData.solo = true
+    // ponytail: furniture.ts sets castShadow on every mesh it loads; square card shadows (no alpha depth material) would be
+    // worse than none. Let furniture.ts honour a userData flag instead if more pieces need this.
+    Object.defineProperty(im, 'castShadow', { get: () => false, set: () => {} })
+    return [im]
+  })
+  return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...sprites]
+}
+
 const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   ...Object.fromEntries(BED_STYLES.flatMap((st) => [[`bed_queen${st}`, () => bed(1.6, st)], [`bed_single${st}`, () => bed(1.0, st)]])),
   bedside_oak: bedside,
   cushions_plain: cushionsPlain,
-  sofa_3seat: sofa,
+  sofa_3seat: () => sofa(2.2),
+  sofa_2seat: () => sofa(1.6),
   dining_table: diningTable,
   dining_chair: diningChair,
   desk_oak: desk,
@@ -1002,6 +1192,6 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
 }
 
 export function buildProcedural(id: string): THREE.Group | null {
-  const parts = BUILDERS[id]?.()
+  const parts = BUILDERS[id]?.() ?? (id.startsWith(PLANTER) ? planterBed(id) : undefined)
   return parts ? finish(parts) : null
 }
