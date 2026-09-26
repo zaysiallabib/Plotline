@@ -319,6 +319,16 @@ export class PlotlineScene {
     this.camera.quaternion.setFromEuler(new THREE.Euler(pitchRad, yawRad, 0, 'YXZ'))
   }
 
+  /** Shuts the leaf of door `openingId` (a first frame's `closeLeaf`) and reopens the one shut before; null reopens only. */
+  shutLeaf(openingId: Id | null): void {
+    this.staticGroup.traverse((o) => {
+      const pivot = o.userData.id?.endsWith('/leaf') ? o.parent : null // openings.ts: the leaf part hangs on its hinge pivot
+      if (!pivot) return
+      pivot.userData.ajar ??= pivot.rotation.y
+      pivot.rotation.y = o.userData.id === `${openingId}/leaf` ? 0 : pivot.userData.ajar
+    })
+  }
+
   onPick(cb: (hit: PickHit | null) => void): void {
     this.pickCb = cb
   }

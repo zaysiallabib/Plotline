@@ -362,6 +362,9 @@ function Viewer({ unit }: { unit: Unit }) {
             toast={toast}
             onJump={(r) => {
               const v = roomView(r, unit)
+              // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
+              scene.shutLeaf(v.closeLeaf ?? null)
+              if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene.shutLeaf(null), { once: true })
               spawn(scene, v.p, v.face, v.pitch)
               setMode('walk')
             }}
