@@ -35,8 +35,9 @@ export const TEXTURES: Record<string, TextureSet> = {
   // and at this gloss the map's pitting mirrored the HDRI as a crumpled-foil look.
   marble_floor_white: ACG('marble_floor_white', 'White marble', 'Marble001', 2.0, { normal: false }),
   // glossy white porcelain, thin grey grout; the map is 8 × 8 tiles → 600 × 600 mm tiles
-  // tint: the map averages 0.94 linear (84 % of texels ≥ 250); glazed white tile is ≈ 0.8 and blew out to white in baths
-  tile_floor_ceramic: { ...ACG('tile_floor_ceramic', 'White porcelain floor tiles 600 × 600', 'Tiles105', 4.8, { ao: true }), tint: '#ebebeb' },
+  // tint: the map averages 0.93 linear (84 % of texels ≥ 250); × #d7d7d7 = 0.63, just above the warm-white paint (0.59).
+  // At #ebebeb (0.77) a white bath was one near-white sheet at 15:30 (tile walls sRGB 231, painted walls 212).
+  tile_floor_ceramic: { ...ACG('tile_floor_ceramic', 'White porcelain floor tiles 600 × 600', 'Tiles105', 4.8, { ao: true }), tint: '#d7d7d7' },
   fabric_curtain: ACG('fabric_curtain', 'Light linen weave', 'Fabric036', 0.3),
   fabric_upholstery: ACG('fabric_upholstery', 'Woven upholstery fabric', 'Fabric062', 0.4),
   rug_wool: ACG('rug_wool', 'Wool loop-pile rug', 'Carpet014', 0.4),
@@ -74,7 +75,7 @@ export const TEXTURES: Record<string, TextureSet> = {
     normal: "/assets/textures/tile_wall_white/normal.jpg",
     roughness: "/assets/textures/tile_wall_white/roughness.jpg",
     repeatM: 1.27,
-    tint: '#efefef', // the map averages 0.90 linear; glazed white tile ≈ 0.8
+    tint: '#dbdbdb', // the map averages 0.91 linear; × this = 0.65, a hair above the paint (0.59) + the glaze; #efefef (0.79) blew baths white
     source: "https://polyhaven.com/a/long_white_tiles",
     author: "Jenelle van Heerden, Sergej Majboroda",
     license: 'CC0',
