@@ -167,10 +167,10 @@ export class Building extends THREE.Group {
     }
 
     // ground floor: plinth, gardens, ramp, bays, blocks, columns; roads at street level
-    const c = this.shift()
-    const plan = (r: Rect): Rect => [r[0] - c.x, r[1] - c.y, r[2] - c.x, r[3] - c.y]
+    const c = this.shift() // building frame → scene: + c
+    const plan = (r: Rect): Rect => [r[0] + c.x, r[1] + c.y, r[2] + c.x, r[3] + c.y]
     const flat = (r: Rect, y: number) => rectBox(plan(r), y, y + 0.01)
-    const plot = new THREE.Shape(GROUND.plot.map((p) => new THREE.Vector2(p.x - c.x, p.y - c.y)))
+    const plot = new THREE.Shape(GROUND.plot.map((p) => new THREE.Vector2(p.x + c.x, p.y + c.y)))
     put(PAVING, new THREE.ExtrudeGeometry(plot, { depth: 0.6, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, G, 0))
     put(GREEN, ...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R)))
     put(ASPHALT, flat(GROUND.ramp, G))
