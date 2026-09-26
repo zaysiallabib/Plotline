@@ -452,9 +452,8 @@ export default function StudioApp() {
     // take focus off the top-bar inputs; the field/popover effects below re-focus their input after render.
     // The canvas's onMouseDown preventDefault keeps the browser from moving focus back to <body>.
     canvasRef.current?.focus()
-    // Pan (Figma-style): middle or right button in any tool, Space+drag, or Shift+drag on empty
-    // canvas in Select (Shift over a piece still adds it to the selection).
-    if (e.button === 1 || e.button === 2 || spaceRef.current || (e.shiftKey && tool === 'select' && !hitTest(sx, sy))) {
+    // Pan (Figma-style): Space+drag, or the middle / right button, in any tool.
+    if (e.button === 1 || e.button === 2 || spaceRef.current) {
       panRef.current = { sx, sy, panX: view.panX, panY: view.panY }
       setPanning(true)
       return
@@ -769,8 +768,8 @@ export default function StudioApp() {
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
         : HINTS[tool]) +
-    (tool === 'select' ? ' · Shift-drag empty space to pan' : ' · V to move things · right-drag or Space-drag to pan') +
-    ' · wheel zooms'
+    (tool === 'select' ? '' : ' · V to move things') +
+    ' · Space-drag to pan · wheel zooms'
   let centre = ''
   if (chain && hover?.snap) {
     const last = vertexById(unit.vertices, chain.ids[chain.ids.length - 1])
