@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Graph, Id, Opening, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
-import { buildOpening, meterUVs, TRIM_PAINT } from './openings'
+import { buildOpening, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
@@ -55,7 +55,11 @@ export function skirtingSpans(room: Room, graph: Graph): SkirtingSpan[] {
   return out
 }
 
-/** 90 × 12 mm painted skirting, one merged mesh per room (non-pickable decoration). */
+/**
+ * 90 × 12 mm skirting, one merged mesh per room (non-pickable decoration), in metre UVs. No material: the caller gives it
+ * the room's floor finish, as a Dhaka flat's skirting is a strip of its floor tile / stone / laminate. The white painted
+ * trim it had vanished against white walls on a marble floor, so the wall–floor junction did not read.
+ */
 export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
   const spans = skirtingSpans(room, graph)
   if (!spans.length) return null
@@ -72,9 +76,9 @@ export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
     const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(d.x, 0, d.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(n.x, 0, n.y))
     const mid = (a + b) / 2
     m.setPosition(p.x + d.x * mid + (n.x * SKIRTING_T) / 2, SKIRTING_H / 2, p.y + d.y * mid + (n.y * SKIRTING_T) / 2)
-    return g.applyMatrix4(m)
+    return meterUVs(g.applyMatrix4(m))
   })
-  const mesh = new THREE.Mesh(mergeGeometries(geoms)!, materialFor(TRIM_PAINT))
+  const mesh = new THREE.Mesh(mergeGeometries(geoms)!)
   geoms.forEach((g) => g.dispose())
   mesh.receiveShadow = true
   return mesh

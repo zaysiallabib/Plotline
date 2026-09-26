@@ -480,7 +480,10 @@ export class PlotlineScene {
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
     const skirting = buildSkirting(room, unit)
-    if (skirting) this.staticGroup.add(skirting)
+    if (skirting) {
+      this.staticGroup.add(skirting)
+      this.surfaces.push({ mesh: skirting, sides: [{ roomId: room.id, target: 'floor' }] }) // follows the floor finish
+    }
 
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
