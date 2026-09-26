@@ -11,7 +11,7 @@ import { kitAsset } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_BACK, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
-  LEAF_SHUT, NEAR_WALL, NEAR_WALL_MAX, SHOW_DEG, SHOW_H, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WC_H, WET_PITCH,
+  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, SHOW_DEG, SHOW_H, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WC_H, WET_PITCH,
   entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
@@ -288,13 +288,12 @@ describe('viewer', { timeout: 20_000 }, () => {
   })
 
   /**
-   * What fills a first frame, its `closeLeaf` shut: the largest share of one ajar door leaf or slab (wardrobe, shelf, tall
-   * piece; not a kitchen's run, a shower's glass or a closet's own rails), of one ajar leaf alone, and the share of wall hit
-   * within NEAR_WALL.
+   * What fills a first frame, its `closeLeaf` shut (a shut door still counts): the largest share of one door leaf or slab
+   * (wardrobe, shelf, tall piece; not a kitchen's run, a shower's glass or a closet's own rails), of one leaf alone, and the
+   * share of wall hit within NEAR_WALL.
    */
   const frameFill = (u: Unit, r: Room, v: { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }) => {
     const leaves = new Set(u.walls.flatMap((w) => w.openings.filter(swings).map((o) => o.id)))
-    leaves.delete(v.closeLeaf!)
     const flat = new Set([
       ...leaves,
       ...u.furniture
@@ -314,19 +313,29 @@ describe('viewer', { timeout: 20_000 }, () => {
     }
   }
 
-  it('no ajar door leaf, wardrobe or other tall piece fills more than FLAT_MAX of a first frame (its closeLeaf shut), no wall within NEAR_WALL more than NEAR_WALL_MAX (A, B, C, Sheltech A) — but the door views (closets, a cot as long as its room), where no leaf fills more than DOOR_LEAF_MAX; a leaf left over LEAF_SHUT is shut', WHOLE, () => {
+  it('no ajar door leaf, wardrobe or other tall piece fills more than FLAT_MAX of a first frame (its closeLeaf shut), no wall within NEAR_WALL more than NEAR_WALL_MAX (A, B, C, Sheltech A) — but the door views (closets, a cot as long as its room), where no leaf fills more than DOOR_LEAF_MAX; a shut leaf takes back LEAF_GAIN of its frame', WHOLE, () => {
     const s0 = sheltechA as unknown as Unit
     const s = { u: { ...s0, furniture: furnish(s0, core.deriveRooms(s0)) } as Unit, rs: core.deriveRooms(s0) }
     const door: string[] = []
-    const ajar: string[] = []
+    const shut: string[] = []
     for (const { u, rs } of [...both, s]) {
       const leafIds = new Set(u.walls.flatMap((w) => w.openings.filter(swings).map((o) => o.id)))
       const e = entrySpawn(u, rs)!
       const views = [{ name: `${u.id} entry`, r: core.roomAt(e.p, rs, u)!, v: e as ReturnType<typeof roomView> }, ...listedRooms(u, rs).map((r) => ({ name: `${u.id} ${r.name}`, r, v: view(r, u) }))]
       for (const { name, r, v } of views) {
-        if (v.closeLeaf) expect(leafIds.has(v.closeLeaf), `${name}: shuts a hinged leaf`).toBe(true)
         const f = frameFill(u, r, v)
-        if (f.leaf > LEAF_SHUT) ajar.push(name.replace(/unit_(type_)?/, ''))
+        if (v.closeLeaf) {
+          shut.push(name.replace(/unit_(type_)?/, ''))
+          expect(leafIds.has(v.closeLeaf), `${name}: shuts a hinged leaf`).toBe(true)
+          // …standing in its doorway (a small wet room), the ajar leaf would be at the eye; else shutting takes back LEAF_GAIN
+          const w = u.walls.find((x) => x.openings.some((o) => o.id === v.closeLeaf))!
+          const o = w.openings.find((x) => x.id === v.closeLeaf)!
+          const fr = core.wallFrame(w, u.vertices)
+          const along = sub(v.p, fr.origin).x * fr.dir.x + sub(v.p, fr.origin).y * fr.dir.y
+          const inDoorway = along >= o.offsetM && along <= o.offsetM + o.widthM && Math.abs(sub(v.p, fr.origin).x * fr.normal.x + sub(v.p, fr.origin).y * fr.normal.y) < 0.3
+          const share = (s?: string) => frameShares(u, v.p, v.face, v.pitch, Infinity, s).get(v.closeLeaf!) ?? 0
+          if (!inDoorway) expect(share(v.closeLeaf), `${name}: shutting takes back LEAF_GAIN`).toBeLessThanOrEqual(share() - LEAF_GAIN + 1e-9)
+        }
         // steeper than WET_PITCH: only a door view looks down that far (at a cot)
         if ((v.pitch ?? 0) < WET_PITCH - 1e-9 || r.kind === 'closet') {
           door.push(name.replace(/unit_(type_)?/, ''))
@@ -340,9 +349,9 @@ describe('viewer', { timeout: 20_000 }, () => {
     // the closets (the far door at the end of the aisle), the A/C help beds (a leaf at each end of a 1.8 m aisle); the
     // small wet rooms that were door views are framed from their doorway now
     expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed'])
-    // left ajar over LEAF_SHUT: the entry (not a jump: the viewer's Enter keeps every leaf ajar) and B's K. veranda (two
-    // doors onto 2.7 m²; one leaf is shut per frame)
-    expect(ajar).toEqual(['b_1747 entry', 'b_1747 K. veranda'])
+    // shut for the shot: leaves standing into a bath frame, the far leaf over the C cot, the small wet rooms' own leaves
+    // behind the eye in their doorway; a door seen along its own wall fills the same shut or ajar and stays ajar
+    expect(shut).toEqual(['a_2703 Bath-3', 'b_1747 Bath-2', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
     const b = both[1]
     const wave9 = [

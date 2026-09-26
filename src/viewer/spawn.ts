@@ -227,8 +227,11 @@ export const WC_H = 0.4
 const THRESHOLD = 0.15
 /** A door view (a help room, a closet, a tiny room) fails when a leaf fills more than this (it is exempt from FLAT_MAX). */
 export const DOOR_LEAF_MAX = 0.25
-/** An ajar leaf still filling more than this share of the chosen frame is shut for the shot (`closeLeaf`). */
-export const LEAF_SHUT = 0.05
+/**
+ * The largest leaf in the chosen frame is shut for the shot (`closeLeaf`) when that takes back at least this share of it: a
+ * leaf standing into the view goes flat; a door seen along its own wall fills the same, shut or ajar, and stays ajar.
+ */
+export const LEAF_GAIN = 0.02
 type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }
 
 /**
@@ -304,7 +307,7 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * room, else from the spot (the doorway or inside) where it shows at eye height; a cot lengthwise from its foot; else
  * they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
- * `closeLeaf`: the door leaf the viewer shuts for this frame (the largest ajar one still filling over LEAF_SHUT of it).
+ * `closeLeaf`: the door leaf the viewer shuts for this frame (the largest, when shutting it takes back LEAF_GAIN of it).
  */
 export function roomView(room: Room, unit: Unit): View {
   const inner = core.roomInnerPolygon(room, unit)
@@ -373,7 +376,7 @@ export function roomView(room: Room, unit: Unit): View {
   // by frame, not object: the same spot and heading ranked twice (a bath's far and near lists) is traced once
   const fills = new Map<string, Fill>()
   const tried: View[] = []
-  /** The largest share of one ajar leaf (and which) and of one slab in v's frame, and the share of plaster within NEAR_WALL. */
+  /** The largest share of one leaf (and which; a shut one counts: still a door) and of one slab in v's frame, and of plaster within NEAR_WALL. */
   const measure = (v: View): Fill => {
     const key = `${v.p.x},${v.p.y},${v.face.x},${v.face.y},${v.pitch},${v.closeLeaf}`
     let m = fills.get(key)
@@ -381,7 +384,7 @@ export function roomView(room: Room, unit: Unit): View {
       const by = new Map<string, number>()
       let wall = 0
       for (const { id, t } of frameHits(unit, v.p, v.face, v.pitch, v.closeLeaf)) {
-        if (flatIds.has(id) && id !== v.closeLeaf) by.set(id, (by.get(id) ?? 0) + RAY)
+        if (flatIds.has(id)) by.set(id, (by.get(id) ?? 0) + RAY)
         else if (t <= NEAR_WALL && wallIds.has(id)) wall += RAY
       }
       const f: Fill = { leaf: 0, slab: 0, wall }
@@ -402,9 +405,15 @@ export function roomView(room: Room, unit: Unit): View {
   const clear = <V extends View>(ranked: V[]) => ranked.slice(0, FLAT_TRIES).find((v) => flat(v) <= 1)
   /** …else the least filled frame tried (the first of equals). */
   const leastFilled = () => tried.reduce<View | undefined>((m, v) => (!m || flat(v) < flat(m) ? v : m), undefined)
-  /** The view to return: the ajar leaf still filling more than LEAF_SHUT of its frame shut for the shot (one per view). */
+  /** v with its largest leaf shut, when that takes back LEAF_GAIN of the frame (else v). */
+  const shut = (v: View): View => {
+    const { leaf, leafId } = measure(v)
+    const s = { ...v, closeLeaf: leafId }
+    return leafId && measure(s).leaf <= leaf - LEAF_GAIN ? s : v
+  }
+  /** The view to return (one shut leaf at most). */
   const done = (v: View): View => {
-    const closeLeaf = v.closeLeaf ?? (measure(v).leaf > LEAF_SHUT ? measure(v).leafId : undefined)
+    const closeLeaf = v.closeLeaf ?? shut(v).closeLeaf
     return { p: v.p, face: v.face, ...(v.pitch !== undefined && { pitch: v.pitch }), ...(closeLeaf && { closeLeaf }) }
   }
 
@@ -606,7 +615,7 @@ export function roomView(room: Room, unit: Unit): View {
         }
       }
     }
-    if (tries.length) return done(tries.find((v) => measure(v).leaf <= DOOR_LEAF_MAX) ?? { ...tries[0], closeLeaf: measure(tries[0]).leafId })
+    if (tries.length) return done(tries.find((v) => measure(v).leaf <= DOOR_LEAF_MAX) ?? tries.map(shut).find((v) => measure(v).leaf <= DOOR_LEAF_MAX) ?? tries[0])
   }
 
   const views: (View & { score: number })[] = []
@@ -650,7 +659,7 @@ export function roomView(room: Room, unit: Unit): View {
   if (hero && views.every((v) => onHero(v.p))) for (const d of doors) if (swings(d.o)) DOOR_STEP.forEach((m) => consider(stepIn(d, m), true))
   views.sort((a, b) => b.score - a.score) // stable: the first of equals, as before
   // nothing clears: the same frames with their largest leaf shut, then the least filled
-  const best = clear(views) ?? clear(views.slice(0, FLAT_TRIES).map((v) => ({ ...v, closeLeaf: measure(v).leafId }))) ?? leastFilled()
+  const best = clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
   if (best) return done(best)
 
   for (const { w, f, c } of doors) {
