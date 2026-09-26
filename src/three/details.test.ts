@@ -1,4 +1,5 @@
 /** Pure span logic behind the skirting mesh (details.ts). */
+import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import typeA from '../data/units/type-a.json'
 import typeC from '../data/units/type-c.json'
@@ -48,6 +49,38 @@ test('type-a wall faces are crack-free: a corner on a coplanar face edge is that
   }
   expect(bad).toEqual([])
   expect(checked).toBeGreaterThan(1000)
+})
+
+test('type-a/c reveals (jambs, heads, sills) move with the face group asked for; ends and tops stay in group 2 (3 groups: no extra draw call)', () => {
+  const area = (g: THREE.BufferGeometry, m: number) => {
+    const p = g.attributes.position
+    let s = 0
+    for (const gr of g.groups.filter((gr) => gr.materialIndex === m))
+      for (let i = gr.start; i < gr.start + gr.count; i += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(p, i + k))
+        s += b.sub(a).cross(c.sub(a)).length() / 2
+      }
+    return s
+  }
+  for (const unit of [typeA, typeC] as unknown as Unit[]) {
+    for (const w of unit.walls) {
+      const [g0, g1] = [wallGeometry(w, unit, 0), wallGeometry(w, unit, 1)]
+      if (!g0 || !g1) continue
+      const L = core.wallFrame(w, unit.vertices).lengthM
+      const want = w.openings.reduce(
+        (s, o) =>
+          s +
+          w.thicknessM *
+            (o.heightM * ((o.offsetM > 1e-9 ? 1 : 0) + (o.offsetM + o.widthM < L - 1e-9 ? 1 : 0)) +
+              o.widthM * ((o.sillM > 0 ? 1 : 0) + (o.sillM + o.heightM < w.heightM ? 1 : 0))),
+        0,
+      )
+      expect(g0.groups.length, w.id).toBe(3)
+      expect(area(g0, 0) - area(g1, 0), w.id).toBeCloseTo(want, 4) // float32 world positions
+      expect(area(g1, 1) - area(g0, 1), w.id).toBeCloseTo(want, 4)
+      expect(area(g0, 2), w.id).toBeCloseTo(area(g1, 2), 6)
+    }
+  }
 })
 
 describe('skirtingSpans', () => {
