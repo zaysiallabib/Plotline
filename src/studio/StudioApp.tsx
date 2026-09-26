@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveRooms, formatFeetInches, nearestWall, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
+import { GRID_M, movePiece, pieceAt, pieceLabel, piecesOf, type Move } from './furniture'
 import {
   entityPoints,
   formatTimer,
@@ -35,8 +36,10 @@ const TOOLS: [Tool, string, string][] = [
   ['wall', 'W', 'Wall'],
   ['opening', 'O', 'Opening'],
   ['room', 'R', 'Room'],
+  ['furniture', 'F', 'Furniture'],
 ]
 const HINTS: Record<Tool, string> = {
+  furniture: 'Furniture · drag a piece to move it on the 1 ft grid, R turns it 90°, arrow keys move it one square',
   select: `Select · click to select, drag to move, arrow keys nudge 1" (Shift 1'), double-click a wall to set its length`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
@@ -71,7 +74,8 @@ interface Note {
   text: string
   link?: { label: string; onClick: () => void }
 }
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt> }
+/** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt }
 
 function init(): StudioState {
   const s = initialState()
@@ -138,6 +142,11 @@ export default function StudioApp() {
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
+  // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
+  const pieces = useMemo(() => (tool === 'furniture' ? piecesOf(unit, rooms) : null), [tool, unit, rooms])
+  const piecesRef = useRef(pieces)
+  piecesRef.current = pieces
+  const [furnDrag, setFurnDrag] = useState<Move | null>(null)
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
@@ -223,10 +232,11 @@ export default function StudioApp() {
     if (canvas.height !== Math.round(size.h * dpr)) canvas.height = Math.round(size.h * dpr)
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame })
+      const furniture = pieces ? { pieces, drag: furnDrag } : undefined
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag])
 
   // ----- draft persistence
   const saveDraft = useCallback(() => {
@@ -366,6 +376,10 @@ export default function StudioApp() {
     (sx: number, sy: number): Hit | null => {
       const u = stateRef.current.unit
       const m = toM(sx, sy)
+      if (stateRef.current.tool === 'furniture') {
+        const p = pieceAt(piecesRef.current ?? [], m)
+        return p && { kind: 'furniture', id: p.id }
+      }
       for (const v of u.vertices) {
         const p = toScreen(v)
         if (Math.hypot(p.x - sx, p.y - sy) <= 8) return { kind: 'vertex', id: v.id }
@@ -510,6 +524,13 @@ export default function StudioApp() {
         }
         dragRef.current = { hit, sx, sy, m, moved: false, orig }
         if (!e.shiftKey && !state.selection.includes(hit.id)) dispatch({ type: 'select', ids: [hit.id] })
+        return
+      }
+      case 'furniture': {
+        const hit = hitTest(sx, sy)
+        const p = hit && piecesRef.current?.find((x) => x.id === hit.id)
+        dispatch({ type: 'select', ids: p ? [p.id] : [] })
+        if (hit && p) dragRef.current = { hit, sx, sy, m, moved: false, orig: new Map([[p.id, { x: p.x, y: p.y }]]) }
       }
     }
   }
@@ -520,6 +541,18 @@ export default function StudioApp() {
     if (panRef.current) {
       const p = panRef.current
       dispatch({ type: 'set-view', view: { ...view, panX: p.panX + sx - p.sx, panY: p.panY + sy - p.sy } })
+      return
+    }
+    const fd = dragRef.current
+    if (fd?.hit.kind === 'furniture') {
+      // a piece follows the pointer on the grid; the reducer only sees the drop (one undo entry, refusals spring back)
+      if (!fd.moved && Math.hypot(sx - fd.sx, sy - fd.sy) < 3) return
+      fd.moved = true
+      const m = toM(sx, sy)
+      const o = fd.orig.get(fd.hit.id)!
+      const p = pieces?.find((x) => x.id === fd.hit.id)
+      fd.to = { x: o.x + m.x - fd.m.x, y: o.y + m.y - fd.m.y }
+      if (p && pieces) setFurnDrag(movePiece(unit, rooms, pieces, p.id, fd.to, p.rotationDeg))
       return
     }
     const d = dragRef.current
@@ -566,6 +599,9 @@ export default function StudioApp() {
     } else if (d.hit.kind === 'vertex' || d.hit.kind === 'wall') {
       // a corner dropped on another corner becomes that corner
       dispatch({ type: 'drag-end', ids: d.hit.kind === 'vertex' ? [d.hit.id] : [...d.orig.keys()] })
+    } else if (d.hit.kind === 'furniture' && d.to) {
+      setFurnDrag(null)
+      dispatch({ type: 'move-piece', id: d.hit.id, ...d.to })
     }
   }
 
@@ -671,6 +707,17 @@ export default function StudioApp() {
       }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
+      // furniture tool: arrows move the selected piece one grid square, R turns it; Delete / T / H never touch a piece
+      if (st.tool === 'furniture') {
+        const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
+        if (arrow) {
+          e.preventDefault()
+          if (p) dispatch({ type: 'move-piece', id: p.id, x: p.x + arrow[0] * GRID_M, y: p.y + arrow[1] * GRID_M })
+          return
+        }
+        if (e.key === 'r' || e.key === 'R') return p && dispatch({ type: 'rotate-piece', id: p.id })
+        if (['Delete', 't', 'T', 'h', 'H'].includes(e.key)) return
+      }
       if (arrow) {
         e.preventDefault() // never scroll the page or the panel
         const step = e.shiftKey ? 0.3048 : 0.0254 // 1' / 1"; no snapPoint: a 10 px snap would swallow a 1" step
@@ -771,7 +818,7 @@ export default function StudioApp() {
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
         : HINTS[tool]) +
-    (tool === 'select' ? '' : ' · V to move things') +
+    (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
   let centre = ''
   if (chain && hover?.snap) {
@@ -786,6 +833,11 @@ export default function StudioApp() {
     const g = hover.ghost
     const why = g.error ?? (g.snapped && `snapped: ${g.snapped === 'corner' ? 'corner' : `next to ${g.snapped}`}`)
     centre = why ? `${formatFeetInches(g.opening.widthM)} · ${why}` : formatFeetInches(g.opening.widthM)
+  } else if (furnDrag) {
+    centre = `${pieceLabel(furnDrag.piece)} · ${furnDrag.error ?? `snapped: ${furnDrag.snapped === 'wall' ? 'wall' : '1 ft grid'}`}`
+  } else if (hover?.hit?.kind === 'furniture') {
+    const p = pieces?.find((x) => x.id === hover.hit!.id)
+    centre = p ? pieceLabel(p) : ''
   } else if (hover?.hit) centre = hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : 'Scale not set'
 
@@ -839,7 +891,7 @@ export default function StudioApp() {
           <canvas
             ref={canvasRef}
             tabIndex={-1}
-            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair' }}
+            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : tool === 'select' || tool === 'furniture' ? 'default' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -975,7 +1027,7 @@ export default function StudioApp() {
             </div>
           )}
         </div>
-        <Panel state={state} dispatch={dispatch} rooms={rooms} issues={issues} onFocusIssue={focusIssue} />
+        <Panel state={state} dispatch={dispatch} rooms={rooms} issues={issues} onFocusIssue={focusIssue} pieces={pieces} />
       </div>
 
       <footer className="statusbar">

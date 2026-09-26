@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { Opening, OpeningKind, Room, RoomKind } from '../core'
+import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
+import { kitAsset } from '../furnish/kit'
 import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
@@ -41,9 +42,12 @@ interface Props {
   rooms: Room[]
   issues: StudioIssue[]
   onFocusIssue: (i: StudioIssue) => void
+  /** the furniture layer while tool F is on */
+  pieces?: FurniturePlacement[] | null
 }
 
-export function Panel({ state, dispatch, rooms, issues, onFocusIssue }: Props) {
+export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces }: Props) {
+  const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
@@ -71,7 +75,13 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue }: Props) {
       </section>
       <section>
         <h3>Selection</h3>
-        <Selection state={state} dispatch={dispatch} rooms={rooms} />
+        {piece ? (
+          <PieceProps p={piece} rooms={rooms} dispatch={dispatch} edited={unit.furniture.length > 0} />
+        ) : pieces ? (
+          <p className="muted">Nothing selected. Click a piece of furniture.</p>
+        ) : (
+          <Selection state={state} dispatch={dispatch} rooms={rooms} />
+        )}
       </section>
       <section>
         <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
@@ -238,6 +248,39 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
       <button className="link" onClick={() => dispatch({ type: 'delete', ids: [l.id] })}>
         Remove
       </button>
+    </div>
+  )
+}
+
+/** A selected piece (tool F). X/Y go through the same grid + wall snap as a drag; no free placement. */
+function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; rooms: Room[]; dispatch: (a: Action) => void; edited: boolean }) {
+  const room = rooms.find((r) => r.id === p.roomId)
+  const move = (x: number, y: number) => dispatch({ type: 'move-piece', id: p.id, x, y })
+  return (
+    <div className="props">
+      <p>{kitAsset(p.assetId)?.label ?? p.assetId}</p>
+      <p className="muted">
+        {room?.name ?? 'No room'} · turned {Math.round(p.rotationDeg)}°
+      </p>
+      <Row label="X (m)">
+        <NumInput value={p.x} onCommit={(x) => move(x, p.y)} />
+      </Row>
+      <Row label="Y (m)">
+        <NumInput value={p.y} onCommit={(y) => move(p.x, y)} />
+      </Row>
+      <Row label="Rotation">
+        <div className="seg">
+          <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>Turn 90° (R)</button>
+        </div>
+      </Row>
+      <div className="seg">
+        <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>
+          Reset to preset
+        </button>
+        <button disabled={!edited} title="Every room back to the preset layout" onClick={() => dispatch({ type: 'reset-furniture' })}>
+          Reset all
+        </button>
+      </div>
     </div>
   )
 }
