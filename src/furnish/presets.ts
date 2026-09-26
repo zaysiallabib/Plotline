@@ -617,9 +617,14 @@ function balcony(ctx: Ctx): void {
   }
 }
 
-/** Walk-in closet: an open rail + shelf unit (1.8 m, else 1.2 m) on each of its two blankest walls. */
+/**
+ * Walk-in closet: an open rail + shelf unit (1.8 m, else 1.2 m) on each of its two blank walls farthest from its doors — a
+ * dead end's far wall first, the one its doorway looks at (seen whole, not as a close-up of a side unit).
+ */
 function closet(ctx: Ctx): void {
-  if (ctx.room.areaSqm >= 3) for (const s of rankNoOpenings(ctx).slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
+  const open = (s: Side) => (s.doors.length + s.wins.length > 0 ? 1 : 0)
+  const walls = [...ctx.sides].sort((a, b) => open(a) - open(b) || sideDoorDist(ctx, b) - sideDoorDist(ctx, a))
+  if (ctx.room.areaSqm >= 3) for (const s of walls.slice(0, 2)) onSide(ctx, s, 'closet_rail') ?? onSide(ctx, s, 'closet_rail_s')
 }
 
 /** Help / servant room: a cot (else the short one) along the blankest wall, a hook rail on another wall (else over the cot), nothing else. */

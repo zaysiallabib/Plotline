@@ -406,6 +406,17 @@ describe('furnish', () => {
     expect(furnish(rect('bed', 3, 2.6), deriveRooms(rect('bed', 3, 2.6))).map((p) => p.assetId)).not.toContain('cot')
   })
 
+  test('a dead-end walk-in closet puts its first unit on the far wall, the one its doorway looks at', () => {
+    const unit = rect('closet', 2.4, 3.0, { wall: 2, offsetM: 0.75 }) // door centred on the bottom short wall (y = 3)
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const units = ps.filter((p) => p.assetId.startsWith('closet_rail'))
+    expect(units.length, `${ps.map((p) => p.assetId)}`).toBe(2)
+    expect(units[0].rotationDeg, 'backed onto the top wall, facing the door').toBe(0)
+    expect(units[0].y).toBeLessThan(0.5)
+    expectInsideAndDisjoint(ps, rooms, unit)
+  })
+
   test('common-core rooms are flagged for the viewer; a stair room gets the widest dog-leg that fits, clear of its door', () => {
     for (const n of ['Stair', 'Staircase', 'Lift lobby', 'Lift core', 'LIFT', 'Lift machine room']) expect(isCommonCore({ name: n }), n).toBe(true)
     for (const n of ['Bed-1', 'Living, dining & family', 'Help room', 'H. toilet', 'Kitchen', 'Walk-in closet']) expect(isCommonCore({ name: n }), n).toBe(false)
