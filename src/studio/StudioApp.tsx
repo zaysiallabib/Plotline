@@ -73,8 +73,32 @@ interface Note {
 }
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt> }
 
+/**
+ * `/studio?unit=<stem|id>` (the viewer's "Edit plan"): open that unit from src/data/units instead of the draft.
+ * Asks first when the draft holds anything but that unit untouched; drops the param so a reload keeps the edits.
+ * Module level so StrictMode's double init never asks twice.
+ */
+const EDIT = ((): Draft['unit'] | null => {
+  const q = new URLSearchParams(location.search).get('unit')
+  const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Draft['unit']>
+  const u = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
+  if (!u) return null
+  let d: { unit?: unknown } | null = null
+  try {
+    d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')
+  } catch {
+    /* no usable draft */
+  }
+  const du = [d, d?.unit].find(isUnit) // a Draft or a bare Unit, as init() accepts
+  if (du?.vertices.length && JSON.stringify(du) !== JSON.stringify(normalizeUnit(u)))
+    if (!window.confirm(`Replace your Studio draft (${du.name || 'untitled unit'}) with ${u.name} as the viewer shows it? Export the draft first if you need it.`)) return null
+  history.replaceState(null, '', '/studio')
+  return u
+})()
+
 function init(): StudioState {
   const s = initialState()
+  if (EDIT) return reducer(reducer(s, { type: 'load-unit', unit: EDIT }), { type: 'toast', text: `Editing ${EDIT.name} — Export saves a copy` })
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (raw) {
@@ -100,7 +124,7 @@ const download = (name: string, text: string) => {
 export default function StudioApp() {
   const [state, dispatch] = useReducer(reducer, undefined, init)
   const [restored, setRestored] = useState<string | null>(() =>
-    state.unit.vertices.length || state.planImage ? state.unit.name || 'untitled unit' : null,
+    !EDIT && (state.unit.vertices.length || state.planImage) ? state.unit.name || 'untitled unit' : null,
   )
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [img, setImg] = useState<HTMLImageElement | null>(null)
