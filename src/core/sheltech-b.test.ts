@@ -1,7 +1,7 @@
 /**
- * Sheltech Type B (src/data/units/sheltech-b.json) = Type A mirrored about the traced lobby's centre line, generated
- * by E:\dev\tmp\wave11\mirror\gen-b.mjs. Same checks as sheltech-a.test.ts on the mirror, and B must still be the
- * mirror of the current A (re-run the generator after A is retraced).
+ * Geometry invariants of the Sheltech Type B unit (src/data/units/sheltech-b.json, LEFT flat of
+ * "Demo drawings/Sheltech/Level 2.jpg"), traced from its own 16 printed sizes in Type A's frame (generator
+ * E:\dev\tmp\wave11\mirror\gen-b2.mjs): the shared lobby is A's.
  */
 import { describe, expect, test } from 'vitest'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -13,7 +13,6 @@ const A = sheltechA as unknown as Unit
 const unit = sheltechB as unknown as Unit
 const rooms = core.deriveRooms(unit)
 const add = (a: core.Pt, b: core.Pt, s: number) => ({ x: a.x + b.x * s, y: a.y + b.y * s })
-const m = (id: string) => `${id}-m`
 
 /** Length of the chord of `poly` through p along x (or y): the clear span a tape measure would give at p. */
 function chord(poly: core.Pt[], p: core.Pt, axis: 'x' | 'y'): number {
@@ -41,31 +40,46 @@ function links(): [string, string, string][] {
   return out
 }
 
-const COMMON = new Set(['r_lobby', 'r_stair'].map(m))
+const COMMON = new Set(['r_lobby', 'r_lifts'])
 
 describe('sheltech-b.json', () => {
-  test('is Type A mirrored about the lobby centre line (regenerate after A changes)', () => {
-    const x = (id: string) => A.vertices.find((v) => v.id === id)!.x
-    const axis = (x('v_low_ls') + x('v_md_ls')) / 2
-    const round = (u: Unit) => JSON.parse(JSON.stringify(u, (_, v) => (typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v)))
-    expect(round(unit)).toEqual(round({ ...core.mirrorUnit(A, axis), id: 'unit_sheltech_b_2736', name: 'Sheltech Type B · 2736 sft' }))
-    // the lobby maps onto itself (same outline, its walls split at other points): B's main door is in A's lobby west wall
-    const box = (u: Unit, id: string) => {
-      const p = core.roomPolygon(core.deriveRooms(u).find((r) => r.id === id)!, u)
-      return [Math.min(...p.map((q) => q.x)), Math.max(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.y))]
-    }
-    box(unit, m('r_lobby')).forEach((v, i) => expect(v).toBeCloseTo(box(A, 'r_lobby')[i], 6))
-  })
-
-  test('21 labelled rooms, no validation issues', () => {
-    expect(rooms).toHaveLength(21)
+  test('20 labelled rooms, no validation issues; the lobby has A’s outline', () => {
+    expect(rooms).toHaveLength(20)
     expect(new Set(rooms.map((r) => r.id))).toEqual(new Set(unit.roomLabels.map((l) => l.id)))
     expect(core.validate(unit)).toEqual([])
+    const box = (u: Unit) => {
+      const p = core.roomPolygon(core.deriveRooms(u).find((r) => r.id === 'r_lobby')!, u)
+      return [Math.min(...p.map((q) => q.x)), Math.max(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.y))]
+    }
+    box(unit).forEach((v, i) => expect(v).toBeCloseTo(box(A)[i], 6))
+    expect(unit.planImage).toEqual(A.planImage)
   })
 
-  test('every room but the two planters is reachable from the lobby', () => {
+  test('roomInnerPolygon: positive, smaller than the centerline polygon, inside it, finite', () => {
+    for (const r of rooms) {
+      const outer = core.roomPolygon(r, unit)
+      const inner = core.roomInnerPolygon(r, unit)
+      expect(inner, r.name).toHaveLength(outer.length)
+      for (const p of inner) {
+        expect(Number.isFinite(p.x) && Number.isFinite(p.y), r.name).toBe(true)
+        expect(core.pointInPolygon(p, outer), `${r.name} ${p.x},${p.y}`).toBe(true)
+      }
+      expect(core.signedArea(inner), r.name).toBeGreaterThan(0)
+      expect(core.signedArea(inner), r.name).toBeLessThan(core.signedArea(outer))
+    }
+  })
+
+  test('openings fit their wall; doors ≥ 0.7 m; every room but the lifts and the two planters is reachable from the lobby', () => {
+    for (const w of unit.walls) {
+      const f = core.wallFrame(w, unit.vertices)
+      for (const o of w.openings) {
+        expect(o.sillM + o.heightM, o.id).toBeLessThanOrEqual(w.heightM + 1e-9)
+        expect(o.offsetM + o.widthM, o.id).toBeLessThanOrEqual(f.lengthM + 1e-9)
+        if (o.kind === 'door') expect(o.widthM, o.id).toBeGreaterThanOrEqual(0.7)
+      }
+    }
     const ls = links()
-    const reached = new Set([m('r_lobby')])
+    const reached = new Set(['r_lobby'])
     for (let grew = true; grew; ) {
       grew = false
       for (const [a, b] of ls) {
@@ -76,20 +90,20 @@ describe('sheltech-b.json', () => {
         }
       }
     }
-    expect(rooms.filter((r) => !reached.has(r.id)).map((r) => r.id).sort()).toEqual(['r_planter_east', 'r_planter_south'].map(m))
+    expect(rooms.filter((r) => !reached.has(r.id)).map((r) => r.id).sort()).toEqual(['r_lifts', 'r_planter_south', 'r_planter_west'])
   })
 
   test('the first door in walls[] is the main entrance, on the flat boundary: lobby → foyer', () => {
     const w = unit.walls.find((x) => x.openings.some((o) => o.kind === 'door'))!
-    expect(w.openings[0].id).toBe(m('o_main_door'))
-    expect(rooms.filter((r) => r.wallIds.includes(w.id)).map((r) => r.id).sort()).toEqual([m('r_foyer'), m('r_lobby')])
+    expect(w.openings[0].id).toBe('o_main_door')
+    expect(rooms.filter((r) => r.wallIds.includes(w.id)).map((r) => r.id).sort()).toEqual(['r_foyer', 'r_lobby'])
     const fromCommon = links().filter(([a, b]) => COMMON.has(a) !== COMMON.has(b)).map(([, , id]) => id)
-    expect(fromCommon).toEqual([m('o_main_door')])
+    expect(fromCommon).toEqual(['o_main_door'])
   })
 
-  test('every printed size matches the traced clear size through its label within 2"', () => {
+  test('every printed size (all 16 on the drawing) matches the traced clear size through its label within 2"', () => {
     const labelled = unit.roomLabels.filter((l) => l.printedSize)
-    expect(labelled.length).toBe(17)
+    expect(labelled.length).toBe(16)
     for (const l of labelled) {
       const r = rooms.find((x) => x.id === l.id)!
       const inner = core.roomInnerPolygon(r, unit)
@@ -97,5 +111,11 @@ describe('sheltech-b.json', () => {
       expect(Math.abs(chord(inner, l, 'x') - pw), `${l.name} width`).toBeLessThan(2 * 0.0254)
       expect(Math.abs(chord(inner, l, 'y') - ph), `${l.name} depth`).toBeLessThan(2 * 0.0254)
     }
+  })
+
+  test('traced outline of the flat (centerline faces, lobby and lifts excluded) is 70–90 % of the printed area', () => {
+    const sqft = core.sqmToSqft(rooms.filter((r) => !COMMON.has(r.id)).reduce((s, r) => s + r.areaSqm, 0))
+    expect(sqft / unit.areaSqft).toBeGreaterThan(0.7)
+    expect(sqft / unit.areaSqft).toBeLessThan(0.9)
   })
 })
