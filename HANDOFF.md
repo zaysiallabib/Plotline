@@ -7,6 +7,16 @@ Live: https://plotline-flax.vercel.app — **deployed 2026-09-26 ~03:30 = everyt
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
 
+## NEW SESSION: START HERE (written 2026-09-26 ~09:30, founder about to open a fresh session)
+
+**Workflow (founder's standing rule):** the session runs on **Fable 5.1 as project manager** — reads this file, plans the wave, writes the agent briefs, merges, scores, updates HANDOFF, pushes. **Every technical task goes to an Opus 5.5 agent** (`Agent` tool, `model: "opus"`, `isolation: "worktree"`), one agent per non-overlapping file scope, run in parallel; `model: "fable"` only for blind art-direction scoring; `model: "sonnet"` for trivial mechanical edits. Agents never merge and never touch HANDOFF; the manager does. Each agent brief names: repo `E:\dev\Plotline`, scratch `E:\dev\tmp\wave<N>\<agent>\`, shots `E:\dev\plotline-shots\wave<N>\<agent>\`, never C:, tests + tsc green at every commit, `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, a final report as the only channel back. The manager pushes `feat/phase-0` after every merge.
+
+**State:** `feat/phase-0` at 15f3ad2, clean, pushed. Wave 9 merged (49e7ee1) and scored; **live link still = b3b211a (wave 8) until the founder runs `npx vercel --prod`** — ask him first if unsure. Three wave-9 worktrees still on disk (see Session 6 → founder chore).
+
+**Next wave = Wave 10 — Studio ergonomics** (founder said "go" is pending; he will say it in the new session). The brief is item 2 of "Next, in order" below and the requirements are `Docs/PRODUCT_SPEC.md` §2.8 (read both). One Opus agent, scope `src/studio/` only (`StudioApp.tsx`, `draw.ts`, `model.ts`, `snap.ts`, `Panel.tsx`, `studio.test.ts`): ghost footprints for walls (filled true thickness + length label) and openings (full width with leaf/swing or triple line, sliding on the hovered wall before the click); opening edge-snap to wall ends / neighbouring openings; arrow-key nudge 1" (Shift 1'); Select-tool discoverability (hint in every tool + one-time toast after the first closed loop); opening panel shows distances to both corners; issue rows "click to find it". **Snapping radius and behaviour unchanged (founder's explicit wish).** Acceptance = the founder re-traces the same small tilted plan on the live Studio and raises none of his five points; timer not worse than 13:15. Then item 3: a Sheltech Level 2 flat (`Demo drawings/Sheltech/Level 2.jpg`, Type A ±2736 sft) traced and run through the engine untouched — the third-developer system test.
+
+Read `Docs/PRODUCT_PHILOSOPHY.md` once: it says why we do not chase render-level realism and how to answer "why pay".
+
 ## Session 6 — 2026-09-26 ~03:00–03:30 (Fable 5.1): orientation only, no code changed
 
 - Read every doc and every source file; `npm test` = 168 passing on `b3b211a`. Nothing in the working tree.
