@@ -563,6 +563,9 @@ export default function StudioApp() {
     if (!d.moved) {
       if (e.shiftKey) dispatch({ type: 'select', ids: [d.hit.id], add: true })
       else dispatch({ type: 'select', ids: [d.hit.id] })
+    } else if (d.hit.kind === 'vertex' || d.hit.kind === 'wall') {
+      // a corner dropped on another corner becomes that corner
+      dispatch({ type: 'drag-end', ids: d.hit.kind === 'vertex' ? [d.hit.id] : [...d.orig.keys()] })
     }
   }
 

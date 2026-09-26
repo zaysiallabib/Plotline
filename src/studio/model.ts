@@ -84,6 +84,7 @@ export type Action =
   | { type: 'move-vertex'; id: Id; x: number; y: number }
   | { type: 'drag-begin' }
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
+  | { type: 'drag-end'; ids: Id[] }
   | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
   /** arrow keys: move the selection by (dx, dy) m; openings slide along their wall by dx + dy. No snapping. */
@@ -141,6 +142,37 @@ export function initialState(): StudioState {
 // ---------- graph helpers ----------
 
 const wallKey = (a: Id, b: Id): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
+
+/** Two corners closer than this after a move are one corner (under half an inch). */
+export const MERGE_M = 0.01
+
+/**
+ * A corner moved onto another corner becomes that corner: its walls rewire, a wall collapsed to
+ * nothing goes, a doubled wall keeps the one with openings. Without this a drag or nudge onto a
+ * neighbour left a zero-length wall plus a corner "not joined to anything" sitting on the same spot.
+ * Returns the same unit when nothing merged; `merged` maps each removed corner to its survivor.
+ */
+export function mergeCoincident(unit: Unit, ids: Id[], tolM = MERGE_M): { unit: Unit; merged: Map<Id, Id> } {
+  const merged = new Map<Id, Id>()
+  let u = unit
+  for (const id of ids) {
+    const v = u.vertices.find((x) => x.id === id)
+    if (!v) continue
+    const other = u.vertices.find((x) => x.id !== id && Math.hypot(x.x - v.x, x.y - v.y) <= tolM)
+    if (!other) continue
+    const seen = new Map<string, Wall>()
+    for (const w0 of u.walls) {
+      const w = w0.a === id || w0.b === id ? { ...w0, a: w0.a === id ? other.id : w0.a, b: w0.b === id ? other.id : w0.b } : w0
+      if (w.a === w.b) continue
+      const key = wallKey(w.a, w.b)
+      const dup = seen.get(key)
+      if (!dup || w.openings.length > dup.openings.length) seen.set(key, w)
+    }
+    u = { ...u, walls: u.walls.flatMap((w0) => { const w = seen.get(wallKey(w0.a === id ? other.id : w0.a, w0.b === id ? other.id : w0.b)); return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
+    merged.set(id, other.id)
+  }
+  return merged.size ? { unit: u, merged } : { unit, merged }
+}
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
 
@@ -433,6 +465,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       })
       return { ...s, unit: { ...s.unit, vertices, walls } }
     }
+    case 'drag-end': {
+      // drag-begin already put the pre-drag unit in history; only the merge is applied here
+      const r = mergeCoincident(s.unit, a.ids)
+      if (r.unit === s.unit) return s
+      return { ...s, unit: r.unit, selection: s.selection.map((id) => r.merged.get(id) ?? id) }
+    }
     case 'drag-label':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, x: a.x, y: a.y } : l)) } }
     case 'nudge': {
@@ -449,7 +487,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
         if (typeof placed === 'string') return withToast(s, placed)
         u = replaceOpening(u, f.wall.id, placed)
       }
-      return commit(s, u)
+      const r = mergeCoincident(u, [...moved])
+      return commit(s, r.unit, r.merged.size ? { selection: s.selection.map((id) => r.merged.get(id) ?? id) } : {})
     }
 
     case 'delete': {

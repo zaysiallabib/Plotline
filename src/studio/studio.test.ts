@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { deriveRooms, roomAt, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
-import { EXTERIOR_M, ISSUE_COPY, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 
@@ -383,5 +383,54 @@ describe('studio reducer', () => {
     expect(guessKind('E-Shaft')).toBe('shaft')
     expect(guessKind('Verandah')).toBe('balcony')
     expect(guessKind('Foyer')).toBe('other')
+  })
+})
+
+describe('corners merge when moved onto each other', () => {
+  const TOL = 0.1
+  const rect = () =>
+    run(
+      reducer(initialState(), { type: 'set-scale', pxPerM: 100 }),
+      { type: 'chain-start', at: { x: 0, y: 0, tolM: TOL } },
+      { type: 'chain-typed', lengthM: 4, dirDeg: 0, tolM: TOL },
+      { type: 'chain-typed', lengthM: 3, dirDeg: 90, tolM: TOL },
+      { type: 'chain-typed', lengthM: 4, dirDeg: 180, tolM: TOL },
+      { type: 'chain-add', at: { x: 0.01, y: 0.01, tolM: TOL } },
+    )
+  const kinds = (s: StudioState) => studioIssues(s.unit, deriveRooms(s.unit)).map((i) => i.code)
+
+  it('a corner dragged onto its neighbour becomes that corner: no zero-length wall, no stray corner', () => {
+    let s = rect()
+    const [v0, v1, v2] = s.unit.vertices
+    s = reducer(s, { type: 'add-opening', wallId: s.unit.walls[0].id, t: 0.5 }) // door on (0,0)→(4,0)
+    s = reducer(s, { type: 'select', ids: [v1.id] })
+    s = reducer(s, { type: 'drag-begin' })
+    s = reducer(s, { type: 'drag', vertices: [{ id: v1.id, x: v2.x, y: v2.y }] })
+    // mid-drag the collapsed wall exists and both issues show — exactly the founder's screen
+    expect(kinds(s)).toEqual(expect.arrayContaining(['zero-length-wall']))
+    s = reducer(s, { type: 'drag-end', ids: [v1.id] })
+    expect(s.unit.vertices).toHaveLength(3)
+    expect(s.unit.vertices.find((v) => v.id === v1.id)).toBeUndefined()
+    expect(s.unit.walls).toHaveLength(3)
+    expect(s.unit.walls.every((w) => w.a !== w.b)).toBe(true)
+    const rewired = s.unit.walls.find((w) => [w.a, w.b].includes(v0.id) && [w.a, w.b].includes(v2.id))!
+    expect(rewired.openings).toHaveLength(1) // the door followed its wall
+    expect(s.selection).toEqual([v2.id])
+    expect(kinds(s)).not.toEqual(expect.arrayContaining(['zero-length-wall', 'dangling-vertex']))
+    expect(deriveRooms(s.unit)).toHaveLength(1) // the triangle still closes
+  })
+
+  it('nudging a corner onto another merges them too; a corner nudged near but not onto stays', () => {
+    let s = rect()
+    const [, v1, v2] = s.unit.vertices
+    s = reducer(s, { type: 'select', ids: [v1.id] })
+    s = reducer(s, { type: 'nudge', dx: 0, dy: 3 - MERGE_M * 2 })
+    expect(s.unit.vertices).toHaveLength(4)
+    s = reducer(s, { type: 'nudge', dx: 0, dy: MERGE_M * 2 })
+    expect(s.unit.vertices).toHaveLength(3)
+    expect(s.unit.walls).toHaveLength(3)
+    expect(s.selection).toEqual([v2.id])
+    s = reducer(s, { type: 'undo' })
+    expect(s.unit.vertices).toHaveLength(4)
   })
 })
