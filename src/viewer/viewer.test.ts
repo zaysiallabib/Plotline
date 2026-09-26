@@ -10,7 +10,7 @@ import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
 import { kitAsset } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
-  AC_IN_VIEW, AC_NEAR, BATH_BACK, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH, NEAR_WALL, NEAR_WALL_MAX, SHOW_DEG, SHOW_H,
+  AC_IN_VIEW, AC_NEAR, BATH_BACK, CLOSET_PITCH, DOOR_CLEAR, DOOR_PITCH, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH, NEAR_WALL, NEAR_WALL_MAX, SHOW_DEG, SHOW_H,
   TALL_IN_VIEW, VIEW_INSET,
   entrySpawn, footprintDist, inSight, listedRooms, roomView, yawFor,
 } from './spawn'
@@ -305,7 +305,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     }
   }
 
-  it('no ajar door leaf, wardrobe or other tall piece fills more than FLAT_MAX of a first frame, no wall within NEAR_WALL more than NEAR_WALL_MAX (A, B, C, Sheltech A) — but the door views (≥ 20° down) of rooms with no clear frame', () => {
+  it('no ajar door leaf, wardrobe or other tall piece fills more than FLAT_MAX of a first frame, no wall within NEAR_WALL more than NEAR_WALL_MAX (A, B, C, Sheltech A) — but the door views (closets; ≥ 20° down: rooms with no clear frame)', () => {
     const s0 = sheltechA as unknown as Unit
     const s = { u: { ...s0, furniture: furnish(s0, core.deriveRooms(s0)) } as Unit, rs: core.deriveRooms(s0) }
     const door: string[] = []
@@ -313,7 +313,7 @@ describe('viewer', { timeout: 20_000 }, () => {
       const e = entrySpawn(u, rs)!
       const views = [{ name: `${u.id} entry`, r: core.roomAt(e.p, rs, u)!, v: e as { p: Pt; face: Pt; pitch?: number } }, ...listedRooms(u, rs).map((r) => ({ name: `${u.id} ${r.name}`, r, v: view(r, u) }))]
       for (const { name, r, v } of views) {
-        if ((v.pitch ?? 0) <= DOOR_PITCH + 1e-9) {
+        if ((v.pitch ?? 0) <= DOOR_PITCH + 1e-9 || r.kind === 'closet') {
           door.push(name.replace(/unit_(type_)?/, ''))
           continue
         }
@@ -322,8 +322,9 @@ describe('viewer', { timeout: 20_000 }, () => {
         expect(f.wall, `${name}: near wall`).toBeLessThanOrEqual(NEAR_WALL_MAX)
       }
     }
-    // the A/C help beds (a leaf at each end of a 1.8 m aisle), the A WC, the Sheltech PDR (2.9 m²) and toilet
-    expect(door).toEqual(['a_2703 H. toilet', 'a_2703 Help bed', 'c_2254 Help bed', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
+    // the closets (the far door at the end of the aisle), the A/C help beds (a leaf at each end of a 1.8 m aisle), the A WC,
+    // the Sheltech PDR (2.9 m²) and toilet
+    expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 H. toilet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
     const b = both[1]
     const wave9 = [
@@ -333,7 +334,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     for (const [name, v] of wave9) expect(frameFill(b.u, b.rs.find((r) => r.name === name)!, v).flat, name).toBeGreaterThan(FLAT_MAX)
   })
 
-  it('bath jumps look down 10°: the vanity/basin framed from ≥ 1.5 m with the most fittings, else from the spot (the doorway or inside) where it shows — or, where it shows from nowhere, two other fittings; a 1.5 m WC where nothing shows from its door (A, B, C)', () => {
+  it('bath jumps look down 10°: the vanity/basin framed (within SHOW_DEG) from ≥ 1.5 m with the most fittings, else from the spot (the doorway or inside) where it shows — or, where it shows from nowhere, two other fittings; a 1.5 m WC where nothing shows from its door (A, B, C)', () => {
     const back: string[] = []
     const door: string[] = []
     // a fitting shows when it is within SHOW_DEG of the view and its counter (SHOW_H, or its top) is above the bottom tenth of the frame (65° FOV)
@@ -362,8 +363,9 @@ describe('viewer', { timeout: 20_000 }, () => {
         else expect(items.filter((f) => shows(v, f)).length, `${name}: two fittings show`).toBeGreaterThanOrEqual(2)
       }
     }
-    // no spot 1.5 m from the basin with a clear frame: the 1.8 m powder rooms, the WC, A/C Bath-3 (vanity and WC at opposite ends), B Bath-1
-    expect(back).toEqual(['a_2703 Bath-1', 'a_2703 Bath-2', 'b_1747 Bath-2', 'b_1747 Bath-3', 'c_2254 Bath-1', 'c_2254 Bath-2'])
+    // no spot 1.5 m from the basin with a clear frame and the basin within SHOW_DEG: the 1.8 m powder rooms, the WC, A/C Bath-3 (vanity and WC at opposite ends), B Bath-1
+    // B Bath-3: from 1.5 m its vanity is 40° off the view once the leaf is out of the frame — seen from nearer, centred
+    expect(back).toEqual(['a_2703 Bath-1', 'a_2703 Bath-2', 'b_1747 Bath-2', 'c_2254 Bath-1', 'c_2254 Bath-2'])
     expect(door).toEqual(['a_2703 H. toilet'])
   })
 
@@ -392,21 +394,26 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect(foot).toEqual(['unit_type_b_1747 Help room'])
   })
 
-  it('walk-in closets look along their rails from an end of the aisle, at the middle of their far halves (A, C)', () => {
+  it('walk-in closets are seen from 0.4–0.6 m inside a door down the aisle, along the rails, 5° down (A, C)', () => {
     for (const { u, rs } of [both[0], both[2]]) {
       const r = rs.find((x) => x.name === 'Walk-in closet')!
       const v = view(r, u)
-      const rails = u.furniture.filter((f) => f.roomId === r.id && f.assetId === 'closet_rail')
-      expect(rails.length, u.id).toBeGreaterThan(0)
-      const aims = rails.map((f) => {
-        const a = { x: Math.cos((f.rotationDeg * Math.PI) / 180), y: Math.sin((f.rotationDeg * Math.PI) / 180) } // along the rail
-        const along = sub(f, v.p).x * a.x + sub(f, v.p).y * a.y
-        // past the middle of its near half: the eye sees the run recede, not its face
-        expect(Math.abs(along), `${u.id} ${f.id}`).toBeGreaterThan(kitAsset(f.assetId)!.sizeM.x / 4)
-        return at(f, a, (Math.sign(along) * kitAsset(f.assetId)!.sizeM.x) / 4)
-      })
-      const aim = { x: aims.reduce((t, q) => t + q.x, 0) / aims.length, y: aims.reduce((t, q) => t + q.y, 0) / aims.length }
-      expect(deg(v.face, sub(aim, v.p)), u.id).toBeLessThanOrEqual(20 + 1e-6) // turned at most TURN_MAX to clear a leaf
+      expect(v.pitch, u.id).toBe(CLOSET_PITCH)
+      const spot = u.walls
+        .filter((w) => r.wallIds.includes(w.id))
+        .flatMap((w) => {
+          const f = core.wallFrame(w, u.vertices)
+          return w.openings.filter((o) => o.kind === 'door').map((o) => {
+            const c = at(f.origin, f.dir, o.offsetM + o.widthM / 2)
+            return { along: Math.abs(sub(v.p, c).x * f.dir.x + sub(v.p, c).y * f.dir.y), into: Math.abs(sub(v.p, c).x * f.normal.x + sub(v.p, c).y * f.normal.y) - w.thicknessM / 2 }
+          })
+        })
+        .find((d) => d.along < 1e-6 && d.into > 0.4 - 1e-6 && d.into < 0.6 + 1e-6)
+      expect(spot, `${u.id}: just inside a door`).toBeDefined()
+      for (const f of u.furniture.filter((x) => x.roomId === r.id && x.assetId === 'closet_rail')) {
+        const ax = { x: Math.cos((f.rotationDeg * Math.PI) / 180), y: Math.sin((f.rotationDeg * Math.PI) / 180) } // along the rail
+        expect(Math.min(deg(v.face, ax), deg(v.face, { x: -ax.x, y: -ax.y })), `${u.id} ${f.id}: along it, not into it`).toBeLessThanOrEqual(40)
+      }
     }
   })
 
