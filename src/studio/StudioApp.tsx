@@ -9,6 +9,7 @@ import {
   initialState,
   isUnit,
   normalizeUnit,
+  openingAt,
   printedSizeOf,
   reducer,
   slug,
@@ -403,9 +404,17 @@ export default function StudioApp() {
         }
         return { m, px, snap: null, hit: null }
       }
+      if (st.tool === 'opening' && st.unit.planImage) {
+        const nw = nearestWall(m, st.unit)
+        const ghost =
+          nw && nw.distanceM <= Math.max(SNAP_PX / s, nw.wall.thicknessM)
+            ? { wallId: nw.wall.id, t: nw.t, ...openingAt(st.unit, nw.wall, nw.t, st.lastOpeningKind, SNAP_PX / s, rooms) }
+            : undefined
+        return { m, px, snap: null, hit: hitTest(sx, sy), ghost }
+      }
       return { m, px, snap: null, hit: hitTest(sx, sy) }
     },
-    [toM, toPx, s, scaleStart, hitTest],
+    [toM, toPx, s, scaleStart, hitTest, rooms],
   )
 
   const local = (e: { clientX: number; clientY: number }) => {
@@ -475,9 +484,8 @@ export default function StudioApp() {
       }
       case 'opening': {
         if (!scaleSet) return toast('Set the scale first (S)')
-        const nw = nearestWall(m, unit)
-        if (!nw || nw.distanceM > Math.max(tolM, nw.wall.thicknessM)) return toast('Click on a wall')
-        dispatch({ type: 'add-opening', wallId: nw.wall.id, t: nw.t, tolM })
+        if (!h.ghost) return toast('Click on a wall')
+        dispatch({ type: 'add-opening', wallId: h.ghost.wallId, t: h.ghost.t, tolM })
         return
       }
       case 'room': {
@@ -757,6 +765,10 @@ export default function StudioApp() {
     centre = `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${shiftRef.current ? 'free' : `${Math.round(ang)}°`} · snapped: ${snapped}`
   } else if (tool === 'scale' && scaleStart && hover) {
     centre = `${Math.round(Math.hypot(hover.px.x - scaleStart.x, hover.px.y - scaleStart.y))} px`
+  } else if (tool === 'opening' && hover?.ghost) {
+    const g = hover.ghost
+    const why = g.error ?? (g.snapped && `snapped: ${g.snapped === 'corner' ? 'corner' : `next to ${g.snapped}`}`)
+    centre = why ? `${formatFeetInches(g.opening.widthM)} · ${why}` : formatFeetInches(g.opening.widthM)
   } else if (hover?.hit) centre = hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : 'Scale not set'
 

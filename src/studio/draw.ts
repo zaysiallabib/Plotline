@@ -1,8 +1,8 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { formatFeetInches, roomPolygon, wallFrame } from '../core'
-import type { Id, Pt, Room } from '../core'
+import { formatFeetInches, roomAt, roomPolygon, wallFrame } from '../core'
+import type { Id, Opening, Pt, Room } from '../core'
 import type { StudioState } from './model'
-import type { Snap } from './snap'
+import type { OpeningSnap, Snap } from './snap'
 import { mToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
@@ -15,6 +15,64 @@ export interface Hover {
   px: Pt
   snap: Snap | null
   hit: Hit | null
+  /** O tool over a wall: the opening a click there creates (model.openingAt); red when the click is refused */
+  ghost?: { wallId: Id; t: number; opening: Opening; snapped: OpeningSnap; error: string | null }
+}
+type WallFrame = ReturnType<typeof wallFrame>
+
+/** Wall slab path: centreline origin → origin + dir·L, h to each side. */
+function slab(ctx: CanvasRenderingContext2D, { origin: o, dir: d, normal: n, lengthM: L }: WallFrame, h: number): void {
+  ctx.beginPath()
+  ctx.moveTo(o.x + n.x * h, o.y + n.y * h)
+  ctx.lineTo(o.x + d.x * L + n.x * h, o.y + d.y * L + n.y * h)
+  ctx.lineTo(o.x + d.x * L - n.x * h, o.y + d.y * L - n.y * h)
+  ctx.lineTo(o.x - n.x * h, o.y - n.y * h)
+  ctx.closePath()
+}
+
+/** One opening in wall-local (u along, v across) coordinates: door leaf + swing arc, window triple line, passage dashed gap. */
+function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op: Opening, color: string, lineWidth: number, px: (n: number) => number): void {
+  const { origin: o, dir: d, normal: n } = f
+  ctx.save()
+  ctx.transform(d.x, d.y, n.x, n.y, o.x, o.y)
+  const u0 = op.offsetM
+  const u1 = op.offsetM + op.widthM
+  ctx.fillStyle = C.bg
+  ctx.fillRect(u0, -h - px(0.5), op.widthM, 2 * h + px(1))
+  ctx.strokeStyle = color
+  ctx.lineWidth = lineWidth
+  ctx.setLineDash([])
+  if (op.kind === 'door') {
+    const hu = op.hinge === 'b' ? u1 : u0
+    const sign = op.swing === 'in' ? -1 : 1 // 'in' = −normal side, as src/three/openings.ts builds the leaf
+    const leafAng = sign > 0 ? Math.PI / 2 : -Math.PI / 2
+    const jambAng = op.hinge === 'b' ? Math.PI : 0
+    ctx.beginPath()
+    ctx.moveTo(hu, sign * h)
+    ctx.lineTo(hu, sign * (h + op.widthM))
+    ctx.stroke()
+    ctx.beginPath()
+    const ccw = ((jambAng - leafAng + 2 * Math.PI) % (2 * Math.PI)) > Math.PI
+    ctx.arc(hu, sign * h, op.widthM, leafAng, jambAng, ccw)
+    ctx.stroke()
+  } else if (op.kind === 'window') {
+    ctx.beginPath()
+    for (const v of [-h, 0, h]) {
+      ctx.moveTo(u0, v)
+      ctx.lineTo(u1, v)
+    }
+    ctx.stroke()
+  } else {
+    ctx.setLineDash([px(4), px(3)])
+    ctx.beginPath()
+    ctx.moveTo(u0, -h)
+    ctx.lineTo(u1, -h)
+    ctx.moveTo(u0, h)
+    ctx.lineTo(u1, h)
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+  ctx.restore()
 }
 export interface DrawArgs {
   ctx: CanvasRenderingContext2D
@@ -57,12 +115,13 @@ export function draw(a: DrawArgs): void {
   ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * m0.x, dpr * m0.y)
   ctx.lineJoin = 'round'
 
+  const hotRoom = state.tool === 'room' && a.hover ? roomAt(a.hover.m, a.rooms, state.unit) : null
   for (const r of a.rooms) {
     const poly = roomPolygon(r, state.unit)
     ctx.beginPath()
     poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
     ctx.closePath()
-    ctx.fillStyle = 'rgba(232,193,112,0.05)'
+    ctx.fillStyle = r === hotRoom ? 'rgba(232,193,112,0.16)' : 'rgba(232,193,112,0.05)'
     ctx.fill()
   }
 
@@ -91,13 +150,7 @@ export function draw(a: DrawArgs): void {
   for (const w of state.unit.walls) {
     const f = wallFrame(w, vs)
     const h = w.thicknessM / 2
-    const { origin: o, dir: d, normal: n, lengthM: L } = f
-    ctx.beginPath()
-    ctx.moveTo(o.x + n.x * h, o.y + n.y * h)
-    ctx.lineTo(o.x + d.x * L + n.x * h, o.y + d.y * L + n.y * h)
-    ctx.lineTo(o.x + d.x * L - n.x * h, o.y + d.y * L - n.y * h)
-    ctx.lineTo(o.x - n.x * h, o.y - n.y * h)
-    ctx.closePath()
+    slab(ctx, f, h)
     const selected = sel.has(w.id)
     const exterior = w.thicknessM >= 0.2
     ctx.fillStyle = selected ? 'rgba(232,193,112,0.35)' : exterior ? C.ink : 'rgba(242,242,240,0.22)'
@@ -106,69 +159,37 @@ export function draw(a: DrawArgs): void {
     ctx.lineWidth = px(selected ? 2 : 1)
     ctx.stroke()
 
-    // openings, in wall-local (u along, v across) coordinates
     for (const op of w.openings) {
-      ctx.save()
-      ctx.transform(d.x, d.y, n.x, n.y, o.x, o.y)
-      const u0 = op.offsetM
-      const u1 = op.offsetM + op.widthM
       const osel = sel.has(op.id)
-      const color = osel && state.dragBlocked ? C.red : osel ? C.accent : C.ink
-      ctx.fillStyle = C.bg
-      ctx.fillRect(u0, -h - px(0.5), op.widthM, 2 * h + px(1))
-      ctx.strokeStyle = color
-      ctx.lineWidth = px(osel ? 1.5 : 1)
-      ctx.setLineDash([])
-      if (op.kind === 'door') {
-        const hu = op.hinge === 'b' ? u1 : u0
-        const sign = op.swing === 'in' ? -1 : 1 // 'in' = −normal side, as src/three/openings.ts builds the leaf
-        const leafAng = sign > 0 ? Math.PI / 2 : -Math.PI / 2
-        const jambAng = op.hinge === 'b' ? Math.PI : 0
-        ctx.beginPath()
-        ctx.moveTo(hu, sign * h)
-        ctx.lineTo(hu, sign * (h + op.widthM))
-        ctx.stroke()
-        ctx.beginPath()
-        const ccw = ((jambAng - leafAng + 2 * Math.PI) % (2 * Math.PI)) > Math.PI
-        ctx.arc(hu, sign * h, op.widthM, leafAng, jambAng, ccw)
-        ctx.stroke()
-      } else if (op.kind === 'window') {
-        ctx.beginPath()
-        for (const v of [-h, 0, h]) {
-          ctx.moveTo(u0, v)
-          ctx.lineTo(u1, v)
-        }
-        ctx.stroke()
-      } else {
-        ctx.setLineDash([px(4), px(3)])
-        ctx.beginPath()
-        ctx.moveTo(u0, -h)
-        ctx.lineTo(u1, -h)
-        ctx.moveTo(u0, h)
-        ctx.lineTo(u1, h)
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-      ctx.restore()
+      drawOpening(ctx, f, h, op, osel && state.dragBlocked ? C.red : osel ? C.accent : C.ink, px(osel ? 1.5 : 1), px)
     }
   }
 
-  // ghost wall
+  // ghost opening: exactly what an O-tool click here creates
+  const og = state.tool === 'opening' ? a.hover?.ghost : undefined
+  const ogWall = og && state.unit.walls.find((w) => w.id === og.wallId)
+  if (og && ogWall) {
+    ctx.globalAlpha = 0.6
+    drawOpening(ctx, wallFrame(ogWall, vs), ogWall.thicknessM / 2, og.opening, og.error ? C.red : C.accent, px(1.5), px)
+    ctx.globalAlpha = 1
+  }
+
+  // ghost wall: the true-thickness slab the next click creates
   const snap = a.hover?.snap
   const chain = state.chain
+  let ghostWall: WallFrame | null = null
   if (chain && snap && state.tool === 'wall') {
     const last = vs.find((v) => v.id === chain.ids[chain.ids.length - 1])
-    if (last) {
-      ctx.setLineDash([px(6), px(4)])
+    const L = last ? Math.hypot(snap.x - last.x, snap.y - last.y) : 0
+    if (last && L > 1e-6) {
+      const dir = { x: (snap.x - last.x) / L, y: (snap.y - last.y) / L }
+      ghostWall = { origin: last, dir, normal: { x: -dir.y, y: dir.x }, lengthM: L }
+      slab(ctx, ghostWall, chain.thicknessM / 2)
+      ctx.fillStyle = 'rgba(232,193,112,0.45)'
+      ctx.fill()
       ctx.strokeStyle = C.accent
-      ctx.lineWidth = Math.max(px(1), chain.thicknessM)
-      ctx.globalAlpha = 0.5
-      ctx.beginPath()
-      ctx.moveTo(last.x, last.y)
-      ctx.lineTo(snap.x, snap.y)
+      ctx.lineWidth = px(1)
       ctx.stroke()
-      ctx.globalAlpha = 1
-      ctx.setLineDash([])
     }
   }
 
@@ -192,20 +213,27 @@ export function draw(a: DrawArgs): void {
 
   // screen space: wall lengths, labels, scale line
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const lengthLabel = (f: WallFrame, side: number, thicknessM: number) => {
+    const mid = toScreen({ x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 })
+    const nx = f.normal.x * side
+    const ny = f.normal.y * side
+    const off = thicknessM * s * 0.5 + 5
+    ctx.textAlign = Math.abs(nx) < 0.3 ? 'center' : nx > 0 ? 'left' : 'right'
+    ctx.textBaseline = Math.abs(ny) < 0.3 ? 'middle' : ny > 0 ? 'top' : 'bottom'
+    ctx.fillText(formatFeetInches(f.lengthM), mid.x + nx * off, mid.y + ny * off)
+  }
   ctx.font = '300 10px Inter, system-ui, sans-serif'
   ctx.fillStyle = C.muted
   for (const [id, side] of a.labelSides) {
     const w = state.unit.walls.find((x) => x.id === id)
     if (!w) continue
     const f = wallFrame(w, vs)
-    if (f.lengthM * s < MIN_LABEL_PX) continue
-    const mid = toScreen({ x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 })
-    const nx = f.normal.x * side
-    const ny = f.normal.y * side
-    const off = w.thicknessM * s * 0.5 + 5
-    ctx.textAlign = Math.abs(nx) < 0.3 ? 'center' : nx > 0 ? 'left' : 'right'
-    ctx.textBaseline = Math.abs(ny) < 0.3 ? 'middle' : ny > 0 ? 'top' : 'bottom'
-    ctx.fillText(formatFeetInches(f.lengthM), mid.x + nx * off, mid.y + ny * off)
+    if (f.lengthM * s >= MIN_LABEL_PX) lengthLabel(f, side, w.thicknessM)
+  }
+  if (ghostWall && chain) {
+    ctx.font = '400 12px Inter, system-ui, sans-serif'
+    ctx.fillStyle = C.accent
+    lengthLabel(ghostWall, 1, chain.thicknessM)
   }
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'center'
