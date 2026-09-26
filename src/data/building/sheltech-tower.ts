@@ -1,12 +1,10 @@
 /**
  * The Sheltech tower (`Demo drawings/Sheltech/`) for the Building view, same shape as demo-tower.ts.
  *
- * Building frame = Type A's plan frame. Type B is generated in that same frame (A mirrored about the lobby's centre
- * line, src/data/units/sheltech-b.json), so both offsets are 0 and the lobby walls coincide. Every Sheltech drawing is
- * 1000×833 px with the same framing, so the ground floor and the rooftop were read off with A's plan-image fit:
- * x = (px − 492.3) / 26.64, y = (py − 140.7) / 26.64 (rough, ±0.5 m; the brochure scale drifts 25–28 px/m).
- * NOTE: the drawing's left flat is not a mirror of A (report of wave 11 "mirror"): the mirrored B reaches 3.1 m past
- * the drawn west facade, so the upper floors overhang the ground floor and the plot line on the west.
+ * Building frame = Type A's plan frame. Type B is traced in that same frame (A's plan-image fit and A's lobby lines),
+ * so both offsets are 0 and the lobby walls coincide. Every Sheltech drawing is 1000×833 px with the same framing, so
+ * the ground floor and the rooftop were read off with the same fit: x = (px − 492.3) / 26.64, y = (py − 140.7) / 26.64
+ * (rough, ±0.5 m; the brochure scale drifts 25–28 px/m).
  */
 import type { Pt, Unit } from '../../core'
 import sheltechA from '../units/sheltech-a.json'
@@ -26,10 +24,11 @@ export const FLOORS: { floor: number; flats: string[]; standIns?: string[] }[] =
   ...[2, 3, 4, 5, 6].map((floor) => ({ floor, flats: ['sheltech-a', 'sheltech-b'] })),
 ]
 
-/** Stair + lobby, ground to roof head (Rooftop.jpg: lobby 6.71 × 2.08 m, stair 4.50 × 2.69 m); the lifts are not traced. */
+/** Lobby, stair and lift shaft, ground to roof head (Rooftop.jpg: lobby 6.71 × 2.08 m, stair 4.50 × 2.69 m, lift machine room 4.36 × 2.49 m). */
 export const CORE: [stem: string, room: string][] = [
   ['sheltech-a', 'Lobby'],
   ['sheltech-a', 'Stair'],
+  ['sheltech-b', 'Lifts'],
 ]
 
 /** Ground floor.jpg: lawn all round, the 1:8 driveway ramp down along the north-east, the gate at the south-east. */
@@ -58,7 +57,7 @@ export const GROUND = {
   ] as Rect[],
   /** parking is in the two basements */
   bays: [] as Rect[],
-  /** driver's waiting + toilet, meter room, E.M.E. room, lobby west of the core, toilet, reception, the lift shaft, guard room */
+  /** driver's waiting + toilet, meter room, E.M.E. room, lobby west of the core, toilet, reception, guard room (the lift shaft is CORE) */
   blocks: [
     [-12.4, 0, -5.5, 2.6],
     [-4, 0, -1.2, 2.8],
@@ -66,7 +65,6 @@ export const GROUND = {
     [-6.8, 5.1, -4.3, 7.9],
     [-9.1, 6.2, -6.8, 7.9],
     [-9.1, 7.9, -4.4, 14.1],
-    [-4.3, 7.2, 0.28, 10.8],
     [12.3, 14.1, 14, 17.4],
   ] as Rect[],
   /** the free-standing columns under the upper floors' south half (Level 1.jpg) */
