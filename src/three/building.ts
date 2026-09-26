@@ -1,8 +1,9 @@
 /**
- * Building view: the whole demo tower around the current flat. Every other flat is a SHELL — its traced walls
- * (wallGeometry: openings cut) and a floor plate, merged into one mesh per flat per floor; windows and sliders are
- * plain dark panes (one merged mesh, no shadows), doors stay as voids. No furniture, lights or ceilings. The ground
- * floor and rooftop are boxes and planes (data/building/demo-tower.ts); the lift/stair core walls run through both.
+ * Building view: the whole tower around the current flat (data/building: towerOf picks BTI's or Sheltech's). Every
+ * other flat is a SHELL — its traced walls (wallGeometry: openings cut) and a floor plate, merged into one mesh per flat
+ * per floor; windows and sliders are plain dark panes (one merged mesh, no shadows), doors stay as voids. No furniture,
+ * lights or ceilings. The ground floor and rooftop are boxes and planes (data/building/*-tower.ts); the lift/stair core
+ * walls run through both.
  *
  * Frame: the current flat stays where it is (its floor at y = 0, plan = world X/Z), the tower is placed around it:
  * a flat's plan point p lands at p + offset(flat) − offset(current), floor k at (k − current floor) · FLOOR_M.
@@ -13,7 +14,8 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { CORE, FLATS, FLOOR_M, FLOORS, GROUND, ROOF, type Rect } from '../data/building/demo-tower'
+import { towerOf, type Tower } from '../data/building'
+import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
@@ -21,7 +23,6 @@ import { GLASS } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
-const PLATE_M = FLOOR_M - WALL_M
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
 const UP = new THREE.Vector3(0, 1, 0)
@@ -97,20 +98,27 @@ export class Building extends THREE.Group {
   private readonly glass = new THREE.MeshStandardMaterial({ color: '#27303a', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap })
   private readonly own: THREE.Material[] = [this.glass]
   private readonly rooms = new Map<string, Room[]>()
+  private readonly t: Tower
 
-  /** null when `unit` is not a flat of the demo tower; it sits on unit.floor (the viewer sets that from ?floor=). */
+  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=). */
   static for(unit: Unit): Building | null {
-    const stem = Object.keys(FLATS).find((s) => FLATS[s].unit.id === unit.id)
-    return stem ? new Building(unit, stem, unit.floor ?? 2) : null
+    const t = towerOf(unit)
+    const stem = t && Object.keys(t.FLATS).find((s) => t.FLATS[s].unit.id === unit.id)
+    return t && stem ? new Building(unit, t, stem, unit.floor ?? 2) : null
   }
 
-  private constructor(unit: Unit, stem: string, floor: number) {
+  private constructor(unit: Unit, t: Tower, stem: string, floor: number) {
     super()
+    this.t = t
     this.stem = stem
     this.floor = floor
     this.minCameraY = Math.max(...unit.walls.map((w) => w.heightM)) + 0.3
+    const { FLATS, FLOORS, CORE, GROUND, ROOF, FLOOR_M } = t
+    const PLATE_M = FLOOR_M - WALL_M
     const lists = new Map<MaterialRef | 'glass', THREE.BufferGeometry[]>()
-    const put = (m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => lists.set(m, [...(lists.get(m) ?? []), ...g])
+    const put = (m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
+      if (g.length) lists.set(m, [...(lists.get(m) ?? []), ...g]) // an empty list (no tanks, no bays) must not reach merge
+    }
     const top = Math.max(...FLOORS.map((f) => f.floor))
     const G = this.levelOf(0)
     const R = this.levelOf(top + 1)
@@ -207,7 +215,7 @@ export class Building extends THREE.Group {
 
   /** y of floor k's finished floor (0 = ground, top + 1 = roof). */
   levelOf(k: number): number {
-    return (k - this.floor) * FLOOR_M
+    return (k - this.floor) * this.t.FLOOR_M
   }
 
   /** render.ts puts the street (Look's ground) at −floor · 3.2 − 0.2 */
@@ -217,23 +225,25 @@ export class Building extends THREE.Group {
 
   /** building-frame offset of a flat relative to the current one (plan x, y); no stem = the building frame's origin */
   private shift(stem?: string): Pt {
-    const o = stem ? FLATS[stem].offset : { x: 0, y: 0 }
-    const c = FLATS[this.stem].offset
+    const o = stem ? this.t.FLATS[stem].offset : { x: 0, y: 0 }
+    const c = this.t.FLATS[this.stem].offset
     return { x: o.x - c.x, y: o.y - c.y }
   }
 
   private roomsOf(stem: string): Room[] {
     let r = this.rooms.get(stem)
-    if (!r) this.rooms.set(stem, (r = core.deriveRooms(FLATS[stem].unit)))
+    if (!r) this.rooms.set(stem, (r = core.deriveRooms(this.t.FLATS[stem].unit)))
     return r
   }
 
   private inFlat(stem: string, p: Pt): boolean {
-    return !!core.roomAt(p, this.roomsOf(stem), FLATS[stem].unit)
+    return !!core.roomAt(p, this.roomsOf(stem), this.t.FLATS[stem].unit)
   }
 
   /** Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of them. */
   highlight(k: number): void {
+    const { FLATS, FLOORS, FLOOR_M } = this.t
+    const PLATE_M = FLOOR_M - WALL_M
     const entry = FLOORS.find((f) => f.floor === k)
     const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats
     const y = this.levelOf(k)

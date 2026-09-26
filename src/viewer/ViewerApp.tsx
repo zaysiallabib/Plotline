@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, Id, Pt, Room, Unit } from '../core'
-import { FLATS, FLOORS } from '../data/building/demo-tower'
+import { towerOf } from '../data/building'
 import { furnish } from '../furnish/presets'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
@@ -32,16 +32,22 @@ const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
 const DEFAULT_HOUR = 15.5
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
-const TOP = Math.max(...FLOORS.map((f) => f.floor))
-/** Building view floor picker, top down: roof, the floors with flats, ground */
-const PICKER = [{ k: TOP + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }]
-/** the flat's route stem in the demo tower, if it is one */
-const towerStem = (u: Unit) => Object.keys(FLATS).find((s) => FLATS[s].unit.id === u.id)
+/** Building view floor picker of the flat's tower, top down: roof, the floors with flats, ground */
+function PICKER(u: Unit) {
+  const FLOORS = towerOf(u)?.FLOORS ?? []
+  const top = Math.max(...FLOORS.map((f) => f.floor))
+  return [{ k: top + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }]
+}
+/** the flat's route stem in its tower, if it is in one */
+const towerStem = (u: Unit) => {
+  const FLATS = towerOf(u)?.FLATS ?? {}
+  return Object.keys(FLATS).find((s) => FLATS[s].unit.id === u.id)
+}
 /** `?floor=N` (a flat picked in the Building view) puts the flat on floor N if the tower has it there; the JSON keeps its own. */
 function onFloor(u: Unit | null): Unit | null {
   const n = Number(params.get('floor'))
   const stem = u && towerStem(u)
-  return u && stem && FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
+  return u && stem && towerOf(u)!.FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
 }
 
 /**
@@ -349,7 +355,7 @@ function Viewer({ unit }: { unit: Unit }) {
             rooms={listed}
             mode={mode}
             floor={unit.floor}
-            floors={stem ? PICKER : null}
+            floors={stem ? PICKER(unit) : null}
             picked={picked}
             onPickFloor={(k) => {
               setPicked(k)
