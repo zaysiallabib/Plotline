@@ -173,7 +173,7 @@ export class Building extends THREE.Group {
     const plot = new THREE.Shape(GROUND.plot.map((p) => new THREE.Vector2(p.x + c.x, p.y + c.y)))
     put(PAVING, new THREE.ExtrudeGeometry(plot, { depth: 0.6, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, G, 0))
     put(GREEN, ...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R)))
-    put(ASPHALT, flat(GROUND.ramp, G))
+    put(ASPHALT, ...GROUND.ramp.map((r) => flat(r, G)))
     for (const [x0, y0, x1, y1] of GROUND.bays) {
       const e = 0.08
       put(PAINT, ...[[x0, y0, x1, y0 + e], [x0, y1 - e, x1, y1], [x0, y0, x0 + e, y1], [x1 - e, y0, x1, y1]].map((r) => flat(r as Rect, G)))

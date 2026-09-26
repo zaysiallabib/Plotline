@@ -13,7 +13,7 @@
  * E:\dev\plotline-shots\wave10\building\overlay.png.
  *
  * Ground floor and rooftop rectangles were read off the drawings by hand, placed by the same core anchor
- * (img_5: 57.8 px/m like img_2; img_1: 78.6 px/m): rough, ±0.2 m.
+ * (img_5: 57.8 px/m like img_2; img_1: 79.2 px/m; overlays in E:\dev\tmp\wave10\building\): rough, ±0.2 m.
  */
 import type { Pt, Unit } from '../../core'
 import typeA from '../units/type-a.json'
@@ -51,62 +51,75 @@ export const CORE: [stem: string, room: string][] = [
 /** [x0, y0, x1, y1] in the building frame, metres */
 export type Rect = [number, number, number, number]
 
-/** img_5, rough. Roads 9/A (south) and 10/A (east) are 12.19 m wide. */
+
+/**
+ * img_5 (57.8 px/m, core anchor at px (220.5, 1023)), read off gridded crops, ±0.2 m. The ground floor's north wall
+ * sits 0.9 m inside the typical floors' (they cantilever). Roads 9/A (south) and 10/A (east) are 12.19 m wide.
+ */
 export const GROUND = {
   /** the plot: a paved plinth 0.2 m above the street */
   plot: [
     { x: -1.6, y: -3.2 },
     { x: 19.4, y: -3.9 },
-    { x: 19.4, y: 25.5 },
-    { x: 15.0, y: 29.9 },
-    { x: -1.6, y: 29.4 },
+    { x: 19.4, y: 25.3 },
+    { x: 15.8, y: 28.8 },
+    { x: -1.6, y: 28.8 },
   ] as Pt[],
   roads: [
-    [-40, 29.9, 60, 42.1],
-    [19.4, -40, 31.6, 29.9],
+    [-40, 28.8, 60, 41],
+    [19.4, -40, 31.6, 28.8],
   ] as Rect[],
   gardens: [
-    [-1.6, -3.2, 19.4, -0.3],
-    [-1.6, -0.3, 0, 26.6],
-    [17.8, -0.3, 19.4, 25.5],
-    [13.8, 16.8, 17.8, 26.4],
+    [-1.6, -3.2, 19.4, 0.9],
+    [-1.6, 0.9, 0, 28.8],
+    [17.8, 0.9, 19.4, 25.3],
+    [13.8, 19.07, 17.8, 25.3],
+    [13.8, 25.3, 15.8, 28.8],
+    [0, 26.72, 4.9, 28.3],
   ] as Rect[],
-  /** down to the basement, slope 1:8 */
-  ramp: [13.8, -0.3, 17.8, 16.8] as Rect,
+  /** down to the basement, slope 1:8 (drawn flat) */
+  ramp: [
+    [13.4, 0.9, 17.55, 14.18],
+    [8.73, 14.18, 17.55, 18.76],
+  ] as Rect[],
   /** parking bays C-01..C-08 (painted outlines) */
   bays: [
-    [0, 13.9, 4.5, 16.2],
-    [0, 16.2, 4.5, 18.5],
-    [0, 19.0, 4.5, 21.3],
-    [0, 21.3, 4.5, 23.6],
-    [0, 23.6, 4.5, 25.9],
-    [8.8, 5.2, 13.3, 7.5],
-    [8.8, 7.9, 13.3, 10.2],
-    [8.8, 10.2, 13.3, 12.5],
+    [0, 14.23, 4.59, 16.48],
+    [0, 16.48, 4.59, 18.73],
+    [0, 19.08, 4.59, 21.27],
+    [0, 21.27, 4.59, 23.52],
+    [0, 23.52, 4.59, 25.82],
+    [8.73, 6.45, 13.3, 9.16],
+    [8.73, 9.42, 13.3, 11.67],
+    [8.73, 11.67, 13.3, 13.92],
   ] as Rect[],
-  /** caretaker / driver's waiting / E.M.R. block, waiting lounge: solid storey-high boxes */
+  /** storey-high boxes: caretaker / driver's waiting / E.M.R., waiting lounge, the wall along the ramp, the south wall, the guard booth */
   blocks: [
-    [0, -0.3, 13.5, 4.4],
-    [8.8, 16.9, 13.8, 20.2],
+    [0, 0.9, 13.4, 5.6],
+    [8.73, 19.07, 13.75, 22.25],
+    [8.73, 18.76, 17.8, 19.07],
+    [0, 26.46, 4.9, 26.72],
+    [8.73, 25.3, 11, 26.7],
   ] as Rect[],
   columns: [
-    [8.8, 7.6, 9.6, 7.9],
-    [12.5, 7.6, 13.3, 7.9],
-    [8.8, 12.6, 9.6, 12.9],
-    [12.5, 12.6, 13.3, 12.9],
-    [0, 18.6, 0.9, 18.9],
-    [3.6, 18.6, 4.5, 18.9],
-    [17.4, 4.5, 17.8, 5.5],
-    [17.4, 12.3, 17.8, 13.2],
-    [17.4, 16.4, 17.8, 16.8],
-    [0, 25.9, 0.5, 26.6],
-    [13.3, 25.9, 13.8, 26.6],
+    [0, 18.76, 0.95, 19.07],
+    [3.54, 18.76, 4.58, 19.07],
+    [8.73, 9.16, 9.68, 9.42],
+    [12.36, 9.16, 13.31, 9.42],
+    [8.73, 13.92, 9.68, 14.18],
+    [12.36, 13.92, 13.31, 14.18],
+    [17.55, 1.9, 17.8, 3.9],
+    [17.55, 5.4, 17.8, 6.3],
+    [17.55, 13.2, 17.8, 14.3],
   ] as Rect[],
 }
 
-/** img_1, rough: the garden strip along the north parapet, two water tanks on the lift machine room */
+/** img_1 (79.2 px/m, core anchor at px (157.5, 930)), rough: the garden strip along the north parapet and the central lawn; two water tanks on the lift machine room */
 export const ROOF = {
-  gardens: [[0.8, 0.2, 17.2, 4.2]] as Rect[],
+  gardens: [
+    [0.2, 0.3, 16.9, 4.9],
+    [4.8, 14.8, 10.4, 19.2],
+  ] as Rect[],
   tanks: [
     [0.4, 12.2, 1.9, 13.7],
     [2.3, 12.2, 3.8, 13.7],
