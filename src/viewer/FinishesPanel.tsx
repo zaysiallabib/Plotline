@@ -15,8 +15,10 @@ function swatchStyle(m: MaterialRef): React.CSSProperties {
   if (m.kind === 'color') return { background: m.color }
   const tex = TEXTURES[m.textureId]
   const tint = m.tint ?? '#ffffff'
-  // tint over the albedo: an 8-digit hex gives the overlay ~45 % alpha
-  return tex ? { backgroundImage: `linear-gradient(${tint}73, ${tint}73), url(${tex.albedo})`, backgroundSize: 'cover' } : { background: tint }
+  // tint × albedo, like the renderer (materials.ts), so a deep paint shows deep, not washed out
+  return tex
+    ? { backgroundImage: `linear-gradient(${tint}, ${tint}), url(${tex.albedo})`, backgroundBlendMode: 'multiply', backgroundSize: 'cover' }
+    : { background: tint }
 }
 
 export const chosen = (slot: FinishSlot, cfg: Configuration): FinishOption | undefined =>

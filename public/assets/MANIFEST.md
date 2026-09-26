@@ -50,10 +50,13 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 | tile_floor_outdoor | texture | https://polyhaven.com/a/grey_tiles | Amal Kumar | CC0 | 2026-09-24 | textures/tile_floor_outdoor/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1368127 |
 | plaster_white | texture | https://polyhaven.com/a/white_stucco | Amal Kumar | CC0 | 2026-09-24 | textures/plaster_white/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 2314644 |
 | tile_wall_white | texture | https://polyhaven.com/a/long_white_tiles | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-09-24 | textures/tile_wall_white/{albedo.jpg,normal.jpg,roughness.jpg} — re-exported 2026-09-25 so it stops reading as mosaic; ao.jpg dropped | 275683 |
+| wood_floor_walnut | texture | https://ambientcg.com/view?id=WoodFloor008 | ambientCG (Lennart Demes) | CC0 | 2026-09-26 | textures/wood_floor_walnut/{albedo.jpg,normal.jpg,roughness.jpg} — dark walnut strip boards; albedo brightened ×1.4 (scan averaged sRGB 65) | 473801 |
+| tile_wall_marble_grey | texture | https://ambientcg.com/view?id=Marble012 | ambientCG (Lennart Demes) | CC0 | 2026-09-26 | textures/tile_wall_marble_grey/albedo.jpg — grey veined marble; normal + roughness shared with tile_wall_white (grout relief) | 307449 |
+| tile_floor_terracotta | texture | https://ambientcg.com/view?id=Tiles027 | ambientCG (Lennart Demes) | CC0 | 2026-09-26 | textures/tile_floor_terracotta/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — warm clay 300 × 300 quarry tiles (veranda) | 513838 |
 | studio_small_09 | hdri | https://polyhaven.com/a/studio_small_09 | Sergej Majboroda | CC0 | 2026-09-24 | hdri/interior.hdr | 1615248 |
 | kloofendal_43d_clear_puresky | hdri | https://polyhaven.com/a/kloofendal_43d_clear_puresky | Greg Zaal | CC0 | 2026-09-24 | hdri/sky.hdr | 1184531 |
 
-**Total: 47212823 bytes (45.0 MB)** across 22 models, 11 texture sets, 2 art diptychs, 2 HDRIs.
+**Total: 48507911 bytes (46.3 MB)** across 22 models, 14 texture sets, 2 art diptychs, 2 HDRIs.
 
 ### Removed
 

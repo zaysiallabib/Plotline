@@ -79,4 +79,16 @@ export const TEXTURES: Record<string, TextureSet> = {
     author: "Jenelle van Heerden, Sergej Majboroda",
     license: 'CC0',
   },
+  // dark walnut strip boards, 8 rows per map → ~175 mm boards; albedo re-encoded ×1.4 (the scan averages sRGB 65, oiled walnut ≈ 90)
+  wood_floor_walnut: ACG('wood_floor_walnut', 'Dark walnut plank floor', 'WoodFloor008', 1.4),
+  // grey veined marble-look wall tile: Marble012 albedo over tile_wall_white's grout relief + glaze (its 2 × 4 tiles per 1.27 m → 635 × 318 mm);
+  // tint: the scan is bluish (sRGB 172,173,182), this lands it on a neutral light grey
+  tile_wall_marble_grey: {
+    ...ACG('tile_wall_marble_grey', 'Grey marble-look wall tiles', 'Marble012', 1.27),
+    normal: '/assets/textures/tile_wall_white/normal.jpg',
+    roughness: '/assets/textures/tile_wall_white/roughness.jpg',
+    tint: '#f6f2ea',
+  },
+  // warm clay quarry tiles, 6 × 6 per map → 300 × 300 mm
+  tile_floor_terracotta: ACG('tile_floor_terracotta', 'Terracotta floor tiles 300 × 300', 'Tiles027', 1.8, { ao: true }),
 }
