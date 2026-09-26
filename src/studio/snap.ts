@@ -1,6 +1,6 @@
 /** Pure snapping in plan meters. `tolM` = 10 screen px converted by the caller. */
 import { nearestWall, wallFrame } from '../core'
-import type { Id, Pt, Unit } from '../core'
+import type { Id, OpeningKind, Pt, Unit, Wall } from '../core'
 
 export interface Snap extends Pt {
   kind: 'vertex' | 'wall' | 'aligned x' | 'aligned y' | 'angle' | 'free'
@@ -110,4 +110,40 @@ export function snapPoint(
   const v1 = nearVertex(q)
   if (v1) return asVertex(v1)
   return { ...q, kind, angleDeg: o.from ? deg(o.from, q) : undefined, guides }
+}
+
+export type OpeningSnap = 'corner' | OpeningKind | null
+
+/**
+ * Edge snap for an opening `widthM` wide centred on `uM` along a wall `lengthM` long: its nearer
+ * edge goes flush to a wall end or to a neighbouring opening's edge (not `excludeId`) when that
+ * shift is the smallest and within `tolM`; otherwise it stays centred. Clamped inside the wall
+ * like placeOpening, so an opening pushed against a wall end reports 'corner'.
+ */
+export function snapOpeningOffset(
+  wall: Wall,
+  lengthM: number,
+  uM: number,
+  widthM: number,
+  tolM: number,
+  excludeId?: Id,
+): { offsetM: number; snapped: OpeningSnap } {
+  const max = lengthM - widthM
+  const c = Math.max(0, Math.min(max, uM - widthM / 2))
+  let best: { offsetM: number; snapped: OpeningSnap } = { offsetM: c, snapped: null }
+  let bd = tolM
+  const at = (offsetM: number, snapped: OpeningSnap) => {
+    const d = Math.abs(offsetM - c)
+    if (offsetM < -1e-9 || offsetM > max + 1e-9 || d > bd) return
+    bd = d
+    best = { offsetM, snapped }
+  }
+  at(0, 'corner')
+  at(max, 'corner')
+  for (const o of wall.openings) {
+    if (o.id === excludeId) continue
+    at(o.offsetM + o.widthM, o.kind)
+    at(o.offsetM - widthM, o.kind)
+  }
+  return best
 }

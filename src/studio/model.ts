@@ -4,6 +4,7 @@
  */
 import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import { snapOpeningOffset, type OpeningSnap } from './snap'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -52,6 +53,8 @@ export interface StudioState {
   toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
+  /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
+  loopTipShown: boolean
 }
 export interface Draft {
   unit: Unit
@@ -73,15 +76,18 @@ export type Action =
   | { type: 'chain-back' }
   | { type: 'chain-end' }
   | { type: 'toggle-thickness' }
-  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind }
+  /** tolM: edge-snap tolerance (10 screen px); absent = centred on t */
+  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; tolM?: number }
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
   | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
   | { type: 'move-vertex'; id: Id; x: number; y: number }
   | { type: 'drag-begin' }
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
-  | { type: 'drag-opening'; id: Id; offsetM: number }
+  | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
+  /** arrow keys: move the selection by (dx, dy) m; openings slide along their wall by dx + dy. No snapping. */
+  | { type: 'nudge'; dx: number; dy: number }
   | { type: 'delete'; ids?: Id[] }
   | { type: 'add-label'; label: Omit<RoomLabel, 'id'> }
   | { type: 'update-label'; id: Id; patch: Partial<Omit<RoomLabel, 'id'>> }
@@ -128,6 +134,7 @@ export function initialState(): StudioState {
     toast: null,
     dragBlocked: false,
     exported: false,
+    loopTipShown: false,
   }
 }
 
@@ -259,8 +266,24 @@ const replaceOpening = (u: Unit, wallId: Id, o: Opening): Unit => ({
   walls: u.walls.map((w) => (w.id === wallId ? { ...w, openings: w.openings.map((x) => (x.id === o.id ? o : x)) } : w)),
 })
 
-const bordersBath = (u: Unit, wallId: Id): boolean =>
-  deriveRooms(u).some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
+const bordersBath = (rooms: Room[], wallId: Id): boolean => rooms.some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
+
+/** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. */
+export function openingAt(
+  u: Unit,
+  wall: Wall,
+  t: number,
+  kind: OpeningKind,
+  tolM: number,
+  rooms: Room[],
+): { opening: Opening; snapped: OpeningSnap; error: string | null } {
+  const len = wallLen(u, wall)
+  const d = openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id))
+  const { offsetM, snapped } = snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
+  const opening: Opening = { id: newId(), kind, ...d, offsetM, hinge: 'a', swing: 'in' }
+  const placed = placeOpening(wall, len, opening)
+  return typeof placed === 'string' ? { opening, snapped, error: placed } : { opening: placed, snapped, error: null }
+}
 
 // ---------- reducer ----------
 
@@ -282,8 +305,9 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   if (r.id === last) return s
   const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM)
   if (typeof u === 'string') return withToast(s, u)
-  const ends = r.existing || r.id === s.chain.ids[0]
-  return commit(s, u, { chain: ends ? null : { ...s.chain, ids: [...s.chain.ids, r.id] }, selection: [] })
+  const closes = r.id === s.chain.ids[0]
+  const next = commit(s, u, { chain: r.existing || closes ? null : { ...s.chain, ids: [...s.chain.ids, r.id] }, selection: [] })
+  return closes && !s.loopTipShown ? { ...withToast(next, 'Drag any corner with V to adjust it'), loopTipShown: true } : next
 }
 
 export function reducer(s: StudioState, a: Action): StudioState {
@@ -354,11 +378,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const wall = s.unit.walls.find((w) => w.id === a.wallId)
       if (!wall) return s
       const kind = a.kind ?? s.lastOpeningKind
-      const len = wallLen(s.unit, wall)
-      const d = openingDefaults(kind, kind === 'door' && bordersBath(s.unit, wall.id))
-      const o: Opening = { id: newId(), kind, ...d, offsetM: a.t * len - d.widthM / 2, hinge: 'a', swing: 'in' }
-      const placed = placeOpening(wall, len, o)
-      if (typeof placed === 'string') return withToast(s, placed)
+      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit))
+      if (error) return withToast(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
       return commit(s, { ...s.unit, walls }, { selection: [placed.id], lastOpeningKind: kind })
     }
@@ -367,7 +388,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!f) return s
       let next: Opening = { ...f.opening, ...a.patch }
       if (a.patch.kind && a.patch.kind !== f.opening.kind) {
-        next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(s.unit, f.wall.id)) }
+        next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(deriveRooms(s.unit), f.wall.id)) }
       }
       const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), next)
       if (typeof placed === 'string') return withToast(s, placed)
@@ -376,7 +397,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'drag-opening': {
       const f = findOpening(s.unit, a.id)
       if (!f) return s
-      const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), { ...f.opening, offsetM: a.offsetM })
+      const len = wallLen(s.unit, f.wall)
+      const w = f.opening.widthM
+      const { offsetM } = snapOpeningOffset(f.wall, len, a.offsetM + w / 2, w, a.tolM ?? 0, a.id)
+      const placed = placeOpening(f.wall, len, { ...f.opening, offsetM })
       if (typeof placed === 'string') return { ...s, dragBlocked: true }
       return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
     }
@@ -411,6 +435,22 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
     case 'drag-label':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, x: a.x, y: a.y } : l)) } }
+    case 'nudge': {
+      if (!s.selection.length) return s
+      const sel = new Set(s.selection)
+      const moved = new Set([...s.selection, ...s.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b])])
+      const vertices = s.unit.vertices.filter((v) => moved.has(v.id)).map((v) => ({ id: v.id, x: v.x + a.dx, y: v.y + a.dy }))
+      let u = reducer(s, { type: 'drag', vertices }).unit // walls follow, their openings clamp
+      u = { ...u, roomLabels: u.roomLabels.map((l) => (sel.has(l.id) ? { ...l, x: l.x + a.dx, y: l.y + a.dy } : l)) }
+      for (const id of s.selection) {
+        const f = findOpening(u, id)
+        if (!f) continue
+        const placed = placeOpening(f.wall, wallLen(u, f.wall), { ...f.opening, offsetM: f.opening.offsetM + a.dx + a.dy })
+        if (typeof placed === 'string') return withToast(s, placed)
+        u = replaceOpening(u, f.wall.id, placed)
+      }
+      return commit(s, u)
+    }
 
     case 'delete': {
       const ids = new Set(a.ids ?? s.selection)
@@ -514,7 +554,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
 // ---------- studio-only derived data ----------
 
 export const ISSUE_COPY: Record<ValidationIssue['code'], string> = {
-  'dangling-vertex': 'Corner is not joined to anything',
+  'dangling-vertex': 'Corner is not joined to anything — click to find it',
   'zero-length-wall': 'Wall has no length',
   'duplicate-wall': 'Two walls lie on top of each other',
   'opening-out-of-bounds': 'Opening runs past the end of its wall',
