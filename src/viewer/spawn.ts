@@ -1,8 +1,9 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
-import type { FurniturePlacement, Opening, Pt, Room, Unit, Wall } from '../core'
+import type { FurniturePlacement, Pt, Room, Unit, Wall } from '../core'
 import { heightRange, kitAsset, objectKind, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
+import { EYE, RAY, frameHits, swings } from './frame'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -105,8 +106,6 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
   return living ? { p: living.centroid, face: { x: 0, y: -1 } } : null
 }
 
-/** Eye height (PlotlineScene). */
-const EYE = 1.6
 /** Distance from the room to spawn away from the two walls meeting at the chosen corner. */
 export const VIEW_INSET = 0.4
 /** Minimum distance from a stand point to a door/passage (a door needs max(this, widthM + 0.3) from its whole span). */
@@ -161,6 +160,34 @@ export const DOOR_PITCH = (-20 * Math.PI) / 180
 export const BATH_PITCH = (-10 * Math.PI) / 180
 /** Half the vertical field of view of PlotlineScene's camera (65°). */
 const HALF_VFOV = (32.5 * Math.PI) / 180
+/**
+ * A door leaf (ajar 20°) or a slab (wardrobe, shelf or other tall piece — not a kitchen's run, not a closet's own rails)
+ * filling more than this share of a first frame (frameShares) hides the room: the frame is out. Measured on the wave-9
+ * frames: B Bath-3's leaf 31 %, B K. veranda's two leaves 28 + 13 %, B Bed-2's wardrobe 24 %, C Bed-1's 16 %.
+ */
+export const FLAT_MAX = 0.15
+/**
+ * Plaster within NEAR_WALL (m) of the eye filling more than this share of a first frame is a close-up of a wall: the frame
+ * is out like a leaf's (wave-9 A H. toilet 44 %; the a/c Bath-2 frames the director liked 15 %).
+ */
+export const NEAR_WALL_MAX = 0.2
+export const NEAR_WALL = 1.2
+/** frameHits costs ~1 ms: this many best-ranked frames are tried before the least filled of them is taken. */
+const FLAT_TRIES = 150
+/** A help room is seen lengthwise from its cot's foot, looking down no more than this. */
+export const HELP_PITCH = (-15 * Math.PI) / 180
+/**
+ * A fitting shows in a wet room's frame within this (°) of the view: basin and WC facing each other across a 1.8 m powder
+ * room are 74° apart from its door — aimed between them, both sit on the frame's edges round a blank wall.
+ */
+export const SHOW_DEG = 30
+/** …and its part at counter height (m; its top if lower) above the frame's bottom tenth: a vanity's mirror in frame over a basin under it is no view of the basin. */
+export const SHOW_H = 0.85
+/** A closet's stand point keeps this far from its rails (EYE_CLEAR would leave no aisle). */
+const RAIL_CLEAR = 0.3
+/** A general room's best spot may turn this far (°) off its target to clear its frame before the next spot is tried. */
+const TURN_MAX = 20
+type View = { p: Pt; face: Pt; pitch?: number }
 
 /**
  * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
@@ -184,10 +211,6 @@ const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
       : [0, 0]
     return (d < near || (d < inView && ahead > 0.6 * d)) && inSight(unit, p, f)
   })
-
-
-/** A swinging door (hinged, or narrower than a slider as openings.ts builds it); it renders ajar 20°, so it blocks the view and the leaf takes room. */
-const swings = (o: Opening) => o.kind === 'door' && (!!o.hinge || o.widthM < 1.2)
 
 /** Nothing at eye height between p and q: p→q crosses full-height walls only through a passage, window or slider (rails and curbs are lower). */
 export const inSight = (unit: Unit, p: Pt, q: Pt): boolean =>
@@ -228,11 +251,15 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * (fallback: the longest wall's midpoint). Best = farthest from the target — for a hero, farthest in FRONT of it
  * (a bed from its foot, a kitchen run from across the room; a table has no front) — minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
- * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`).
+ * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`) — and the best whose frame no door leaf or
+ * slab fills beyond FLAT_MAX nor near plaster beyond NEAR_WALL_MAX (`clear`; the spot may turn TURN_MAX for it).
  * A room with no hero that is empty or under SIGHT_MAX_SQM, and every balcony, has no target: each stand point faces the farthest
  * inner corner it can see (a balcony: its rail, slider or a corner of two open walls) and scores that sightline (a narrow lobby or a closet facing its near wall is a wall of plaster).
+ * A walk-in closet looks along its rails (`alongRails`: the middle of their far halves, from the farthest spot — an end of
+ * its aisle), RAIL_CLEAR off them and GALLEY_DOOR_CLEAR off a door (its leaves are measured in the frame instead).
  * Baths, help rooms (a cot) and tiny rooms (TINY_SIGHT) skip all that: a vanity/basin is framed from BATH_BACK inside the
- * room, else they are seen from just inside a door (see below).
+ * room, else from the spot (the doorway or inside) where it shows at eye height; a cot lengthwise from its foot; else
+ * they are seen from just inside a door (see below).
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  */
 export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: number } {
@@ -244,6 +271,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   // a cot (help room) is the hero wherever it stands
   const hero = items.find((f) => f.assetId.startsWith('cot')) ?? (HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId)))
   const cot = !!hero && hero.assetId.startsWith('cot') // cot, cot_s (a help room under 1.9 m)
+  const closet = room.kind === 'closet' && items.length > 0
   // presets.ts convention: rotation θ (clockwise, y-down) faces (−sin θ, cos θ)
   const front = hero && room.kind !== 'dining' && { x: -Math.sin((hero.rotationDeg * Math.PI) / 180), y: Math.cos((hero.rotationDeg * Math.PI) / 180) }
   if (hero) target = hero
@@ -270,7 +298,7 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   // a galley: less than GALLEY_DEPTH of floor in front of its sink (A/C 2.0 m; B's 3.2 m keeps the full door zone and its diagonal)
   let ahead = 0
   if (front && room.kind === 'kitchen') while (ahead < GALLEY_DEPTH && core.pointInPolygon(add(target, front, ahead + 0.05), inner)) ahead += 0.05
-  const tight = room.kind === 'balcony' || (room.kind === 'kitchen' && ahead < GALLEY_DEPTH)
+  const tight = room.kind === 'balcony' || closet || (room.kind === 'kitchen' && ahead < GALLEY_DEPTH)
   const clearOfDoors = (p: Pt) =>
     doors.every(({ o, a, b, c }) =>
       tight ? !swings(o) || segDist(p, a, b) >= GALLEY_DOOR_CLEAR
@@ -281,6 +309,37 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     const k = kitAsset(f.assetId)
     return k ? [{ f, k, top: heightRange(k)[1] }] : []
   })
+
+  // what may not fill a frame beyond FLAT_MAX: every ajar leaf, every slab but a kitchen's run and this closet's rails;
+  // nor near plaster beyond NEAR_WALL_MAX (together: fill ≤ 1)
+  const flatIds = new Set([
+    ...unit.walls.flatMap((w) => w.openings.filter(swings).map((o) => o.id)),
+    ...unit.furniture
+      .filter((f) => {
+        const k = kitAsset(f.assetId)
+        return !!k && isSlab(f.assetId, k) && k.category !== 'kitchen' && !(closet && f.roomId === room.id)
+      })
+      .map((f) => f.id),
+  ])
+  const wallIds = new Set(unit.walls.map((w) => w.id))
+  const fill = new Map<View, number>()
+  const flat = (v: View) => {
+    if (!fill.has(v)) {
+      const leaves = new Map<string, number>()
+      let wall = 0
+      for (const { id, t } of frameHits(unit, v.p, v.face, v.pitch)) {
+        if (flatIds.has(id)) leaves.set(id, (leaves.get(id) ?? 0) + RAY)
+        else if (t <= NEAR_WALL && wallIds.has(id)) wall += RAY
+      }
+      fill.set(v, Math.max(Math.max(0, ...leaves.values()) / FLAT_MAX, wall / NEAR_WALL_MAX))
+    }
+    return fill.get(v)!
+  }
+  // ponytail: the first FLAT_TRIES frames only (~0.3 s worst case); rank smarter if a room needs more
+  /** The best-ranked view that no leaf or slab fills beyond FLAT_MAX, nor near plaster beyond NEAR_WALL_MAX. */
+  const clear = <V extends View>(ranked: V[]) => ranked.slice(0, FLAT_TRIES).find((v) => flat(v) <= 1)
+  /** …else the least filled frame tried (the first of equals). */
+  const leastFilled = () => [...fill].reduce<[View, number] | undefined>((m, e) => (!m || e[1] < m[1] ? e : m), undefined)?.[0]
 
   // inward normal of edge a→b (loops are positive: n = (−d.y, d.x))
   const inward = (a: Pt, b: Pt): Pt => {
@@ -299,8 +358,27 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     const b = inner[(i + 1) % n]
     candidates.push(add({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, inward(a, b), VIEW_INSET))
   })
+  const xs = inner.map((q) => q.x)
+  const ys = inner.map((q) => q.y)
+  /** 0.25 m grid points `inset` in from the room's bounding box. */
+  const grid = (inset: number) => {
+    const out: Pt[] = []
+    for (let x = Math.min(...xs) + inset; x <= Math.max(...xs) - inset; x += 0.25) for (let y = Math.min(...ys) + inset; y <= Math.max(...ys) - inset; y += 0.25) out.push({ x, y })
+    return out
+  }
+  /** The side of a door's wall this room is on. */
+  const inSide = ({ w, f, c }: (typeof doors)[number]) => (core.pointInPolygon(add(c, f.normal, w.thicknessM / 2 + 0.1), inner) ? 1 : -1)
 
-  const sight = room.kind === 'balcony' || (!hero && (!items.length || room.areaSqm < SIGHT_MAX_SQM))
+  const sight = room.kind === 'balcony' || (!hero && !closet && (!items.length || room.areaSqm < SIGHT_MAX_SQM))
+  // a closet looks along its rails, not into them: at the middle of each piece's far half (as at a cot's), their mean;
+  // the farthest spot from that is an end of the aisle
+  const alongRails = (p: Pt): Pt => {
+    const qs = items.map((f) => {
+      const ax = { x: Math.cos((f.rotationDeg * Math.PI) / 180), y: Math.sin((f.rotationDeg * Math.PI) / 180) }
+      return add(f, ax, ((f.x - p.x) * ax.x + (f.y - p.y) * ax.y >= 0 ? 1 : -1) * (kitAsset(f.assetId)!.sizeM.x / 4))
+    })
+    return { x: qs.reduce((s, q) => s + q.x, 0) / qs.length, y: qs.reduce((s, q) => s + q.y, 0) / qs.length }
+  }
   // p→q stays inside the room, checked every 5 cm (an L-shaped room's far corner may be round the bend)
   const visible = (p: Pt, q: Pt) => {
     const L = Math.hypot(q.x - p.x, q.y - p.y)
@@ -336,43 +414,87 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
   }
 
   // A bath, a help room (its cot is the hero) or an enclosed room too small to frame from inside (no spot VIEW_INSET off
-  // the walls sees TINY_SIGHT): from just inside a door (DOOR_STEP; from outside, the leaf ajar 20° hides the room), the
-  // door whose spot sees farthest, looking down DOOR_PITCH (at a cot: down to put it in the lower third). It looks in (≤ 70°
-  // off the door's normal, never along the door wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most other
-  // pieces in frame, then the deepest sightline — vanity, shower and a wall meet in a diagonal instead of the mirror head-on.
+  // the walls sees TINY_SIGHT).
   if (room.kind === 'bath' || cot || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
-    // …but a bath (or tiny room) with a vanity/basin is framed from inside first (the wave-7 Bath-3 frame): the spot — a
-    // corner, wall midpoint or 0.25 m grid point, clear of the fittings and the ajar leaves — BATH_BACK or more from the
-    // hero that frames the most fittings (hero included, each ≥ 1 m off so it is in the frame at BATH_PITCH), farthest
-    // from the hero, the fittings centred; the door view only when no spot is that far.
+    // spots: corners, wall midpoints, a 0.25 m grid and 0.4–0.6 m inside each door, BATH_INSET off the walls, clear of the
+    // pieces and of a swinging door's leaf (ajar 20°, ≤ 0.26 m in)
+    const spots = [...candidates, ...grid(BATH_INSET), ...doors.flatMap((d) => DOOR_STEP.map((m) => add(d.c, d.f.normal, inSide(d) * (d.w.thicknessM / 2 + m))))].filter(
+      (p) =>
+        core.pointInPolygon(p, inner) &&
+        inner.every((a, j) => segDist(p, a, inner[(j + 1) % n]) >= BATH_INSET - 0.02) &&
+        pieces.every(({ f, k }) => footprintDist(p, f, k.sizeM) >= 0.2) &&
+        doors.every(({ o, a, b }) => !swings(o) || segDist(p, a, b) >= DOOR_STEP[2]),
+    )
+    const dir = (deg: number) => ({ x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) })
+    // A bath (or tiny room) with a vanity/basin is framed from inside (the wave-7 Bath-3 frame), at BATH_PITCH: the spot
+    // BATH_BACK or more from the hero that frames the most fittings (hero included, each ≥ 1 m off so it is in the frame),
+    // farthest from the hero, the fittings centred. No such spot, or none whose frame is clear (an ajar leaf by the
+    // vanity): the spot — the doorway or inside — that shows the hero, then the most fittings (`shows`: within SHOW_DEG of
+    // the view and its counter above the frame's bottom tenth — at BATH_PITCH 1 m off or more), the nearest of them farthest off,
+    // the fittings centred: aimed between basin and toilet when both show. Nothing shows from anywhere (a 1.5 m WC), or no
+    // such frame is clear: the door view below.
     if (hero && !cot) {
-      const xs = inner.map((q) => q.x)
-      const ys = inner.map((q) => q.y)
-      const spots = [...candidates]
-      for (let x = Math.min(...xs) + BATH_INSET; x <= Math.max(...xs) - BATH_INSET; x += 0.25)
-        for (let y = Math.min(...ys) + BATH_INSET; y <= Math.max(...ys) - BATH_INSET; y += 0.25) spots.push({ x, y })
-      let pick = null as { p: Pt; face: Pt; count: number; back: number; spread: number } | null
+      // the tangent of the steepest look down to a counter above the frame's bottom tenth (37° at BATH_PITCH)
+      const tanFoot = Math.tan(Math.atan(0.8 * Math.tan(HALF_VFOV)) - BATH_PITCH)
+      const shows = (p: Pt, face: Pt, f: FurniturePlacement) => {
+        const h1 = heightRange(kitAsset(f.assetId)!)[1]
+        const fwd = (f.x - p.x) * face.x + (f.y - p.y) * face.y
+        return fwd > Math.cos((SHOW_DEG * Math.PI) / 180) * Math.hypot(f.x - p.x, f.y - p.y) && EYE - Math.min(h1, SHOW_H) <= fwd * tanFoot
+      }
+      type Pick = View & { hero: number; count: number; back: number; spread: number }
+      const far: Pick[] = []
+      const near: Pick[] = []
       for (const p of spots) {
         const back = Math.hypot(hero.x - p.x, hero.y - p.y)
-        if (back < BATH_BACK || !core.pointInPolygon(p, inner) || inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < BATH_INSET - 0.02)) continue
-        if (pieces.some(({ f, k }) => footprintDist(p, f, k.sizeM) < 0.2) || doors.some(({ o, a, b }) => swings(o) && segDist(p, a, b) < DOOR_STEP[2])) continue
         for (let deg = 0; deg < 360; deg += 5) {
-          const face = { x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) }
-          const framed = items.filter((f) => Math.hypot(f.x - p.x, f.y - p.y) >= 1 && inFrame(p, face, f))
-          if (!framed.includes(hero)) continue
+          const face = dir(deg)
           const off = (f: Pt) => Math.abs(Math.atan2((f.x - p.x) * face.y - (f.y - p.y) * face.x, (f.x - p.x) * face.x + (f.y - p.y) * face.y))
-          const spread = Math.max(...framed.map(off))
-          const better = !pick || framed.length > pick.count || (framed.length === pick.count && (back > pick.back + 1e-9 || (back > pick.back - 1e-9 && spread < pick.spread)))
-          if (better) pick = { p, face, count: framed.length, back, spread }
+          const framed = (min: number) => items.filter((f) => Math.hypot(f.x - p.x, f.y - p.y) >= min && inFrame(p, face, f))
+          const f1 = framed(1)
+          if (back >= BATH_BACK && f1.includes(hero)) far.push({ p, face, pitch: BATH_PITCH, hero: 1, count: f1.length, back, spread: Math.max(...f1.map(off)) })
+          const f2 = items.filter((f) => shows(p, face, f))
+          if (f2.length) near.push({ p, face, pitch: BATH_PITCH, hero: +f2.includes(hero), count: f2.length, back: Math.min(...f2.map((f) => Math.hypot(f.x - p.x, f.y - p.y))), spread: Math.max(...f2.map(off)) })
         }
       }
+      const rank = (a: Pick, b: Pick) => b.hero - a.hero || b.count - a.count || b.back - a.back || a.spread - b.spread
+      far.sort(rank)
+      near.sort(rank)
+      const pick = clear(far) ?? clear(near)
       if (pick) return { p: pick.p, face: pick.face, pitch: BATH_PITCH }
     }
+    // A cot lengthwise from its foot (presets: its length is local x, the pillow at −x): a spot past the line of its foot
+    // end, the one looking most nearly along the cot, tilted to put what it aims at in the lower third but never more than
+    // HELP_PITCH down; a clear frame first. A cot filling its room's length (A/C: 1.7 m in 1.8 m, a leaf swinging into each
+    // end of the aisle beside it) has no such spot: the door view below, looking down at it (from the foot-end door at
+    // HELP_PITCH the far leaf fills 29 % and the cot drops out of the frame).
+    if (cot) {
+      const k = kitAsset(hero.assetId)!
+      const t = (hero.rotationDeg * Math.PI) / 180
+      const axis = { x: Math.cos(t), y: Math.sin(t) }
+      const [y0, y1] = heightRange(k)
+      // aimed at the middle of its far (pillow) half: at HELP_PITCH, 1–1.5 m off, the near half is under the frame
+      const aim = add(hero, axis, -k.sizeM.x / 4)
+      const ends = spots
+        .map((p) => {
+          const along = (p.x - hero.x) * axis.x + (p.y - hero.y) * axis.y
+          const side = Math.abs((p.x - hero.x) * axis.y - (p.y - hero.y) * axis.x)
+          const d = Math.hypot(aim.x - p.x, aim.y - p.y)
+          return { p, face: { x: (aim.x - p.x) / d, y: (aim.y - p.y) / d }, pitch: Math.max(HELP_PITCH, Math.atan2((y0 + y1) / 2 - EYE, d) + Math.atan((2 / 3) * Math.tan(HALF_VFOV))), along, off: Math.atan2(side, along) }
+        })
+        .filter((v) => v.along >= k.sizeM.x / 2)
+        .sort((a, b) => a.off - b.off || b.along - a.along)
+      const pick = clear(ends) ?? leastFilled()
+      if (pick) return { p: pick.p, face: pick.face, pitch: pick.pitch }
+    }
+    // From just inside a door (DOOR_STEP; from outside, the leaf ajar 20° hides the room), the door whose spot sees
+    // farthest, looking down DOOR_PITCH (at a cot: to put it in the lower third). It looks in (≤ 70°
+    // off the door's normal, never along the door wall; 5° steps): the hero in frame (±FRAME_DEG) first, then the most
+    // other pieces in frame, then the deepest sightline.
     let door = null as { p: Pt; n: Pt; d: number } | null
-    for (const { w, f, c } of doors) {
-      const s = core.pointInPolygon(add(c, f.normal, w.thicknessM / 2 + 0.1), inner) ? 1 : -1
-      const p = DOOR_STEP.map((m) => add(c, f.normal, s * (w.thicknessM / 2 + m))).find((q) => core.pointInPolygon(q, inner) && !eyeBlocked(q, 0.3))
-      if (p && (!door || seen(p) > door.d)) door = { p, n: { x: f.normal.x * s, y: f.normal.y * s }, d: seen(p) }
+    for (const d of doors) {
+      const s = inSide(d)
+      const p = DOOR_STEP.map((m) => add(d.c, d.f.normal, s * (d.w.thicknessM / 2 + m))).find((q) => core.pointInPolygon(q, inner) && !eyeBlocked(q, 0.3))
+      if (p && (!door || seen(p) > door.d)) door = { p, n: { x: d.f.normal.x * s, y: d.f.normal.y * s }, d: seen(p) }
     }
     if (door) {
       const { p, n: dn } = door
@@ -395,38 +517,45 @@ export function roomView(room: Room, unit: Unit): { p: Pt; face: Pt; pitch?: num
     }
   }
 
-  let best = null as { p: Pt; t: Pt; score: number } | null // set inside consider(): no narrowing to null
+  const views: (View & { score: number })[] = []
   const consider = (p: Pt) => {
     if (!core.pointInPolygon(p, inner)) return
     if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) return // a third edge (wall-thickness step) crowds it
     if (!clearOfDoors(p)) return
-    if (eyeBlocked(p)) return
+    if (eyeBlocked(p, closet ? RAIL_CLEAR : EYE_CLEAR)) return
+    // not on the hero (the bed, once the frame test has turned the far spots down)
+    if (hero && footprintDist(p, hero, kitAsset(hero.assetId)!.sizeM) < 0.2) return
     // a veranda's corners are where its plant and chair stand: not in them (the chair back would fill the foot of the frame)
     if (room.kind === 'balcony' && pieces.some(({ f, k }) => k.category !== 'rug' && footprintDist(p, f, k.sizeM) < 0.3)) return
-    const t = sight ? farthest(p) : target
+    const t = sight ? farthest(p) : closet ? alongRails(p) : target
     const d = Math.hypot(t.x - p.x, t.y - p.y)
     if (d < 0.2) return // target sits here: faces nothing useful
     const face = { x: (t.x - p.x) / d, y: (t.y - p.y) / d }
     let slab = 0
     for (const f of unit.furniture) {
       const k = kitAsset(f.assetId)
-      const g = k && isSlab(f.assetId, k) ? footprintDist(p, f, k.sizeM) : SLAB_NEAR
+      const g = k && isSlab(f.assetId, k) && !(closet && f.roomId === room.id) ? footprintDist(p, f, k.sizeM) : SLAB_NEAR // a closet's rails are what it shows
       if (g < SLAB_NEAR && inSight(unit, p, f))
         slab = Math.max(slab, SLAB_PENALTY + ([f, ...footprint(f, f.rotationDeg, k!.sizeM)].some((q) => inFrame(p, face, q)) ? SLAB_NEAR - g : 0))
     }
-    const score = (front ? (p.x - t.x) * front.x + (p.y - t.y) * front.y : d) - slab - (hangs(unit, p, face) ? HANG_PENALTY : 0)
-    if (!best || score > best.score) best = { p, t, score }
+    const hang = hangs(unit, p, face)
+    const score = (front ? (p.x - t.x) * front.x + (p.y - t.y) * front.y : d) - slab - (hang ? HANG_PENALTY : 0)
+    // …and the same spot turned up to TURN_MAX (5° steps, the target stays in frame) when a leaf or slab fills that frame:
+    // ranked right after it, so it never beats a clear frame of its own spot
+    for (let a = 0; a <= TURN_MAX; a += 5)
+      for (const s of a ? [1, -1] : [0]) {
+        const r = (s * a * Math.PI) / 180
+        const turned = { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
+        views.push({ p, face: turned, score: score - (a && !hang && hangs(unit, p, turned) ? HANG_PENALTY : 0) })
+      }
   }
   candidates.forEach(consider)
-  if (!best || hero) {
-    // a hero wants the best spot in front of it, not just a corner or wall midpoint (a door or wardrobe often takes
-    // those); a small room whose door clearance eats every corner and midpoint (Bath-1) needs one at all: 0.25 m grid
-    const xs = inner.map((p) => p.x)
-    const ys = inner.map((p) => p.y)
-    for (let x = Math.min(...xs) + VIEW_INSET; x <= Math.max(...xs) - VIEW_INSET; x += 0.25)
-      for (let y = Math.min(...ys) + VIEW_INSET; y <= Math.max(...ys) - VIEW_INSET; y += 0.25) consider({ x, y })
-  }
-  if (best) return look(best.p, best.t)
+  // a hero (or a closet's rails) wants the best spot in front of it, not just a corner or wall midpoint (a door or wardrobe
+  // often takes those); a small room whose door clearance eats every corner and midpoint (Bath-1) needs one at all
+  if (!views.length || hero || closet) grid(VIEW_INSET).forEach(consider)
+  views.sort((a, b) => b.score - a.score) // stable: the first of equals, as before
+  const best = clear(views) ?? leastFilled()
+  if (best) return { p: best.p, face: best.face }
 
   for (const { w, f, c } of doors) {
     for (const s of [1, -1]) {
