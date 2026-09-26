@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **founder deployed wave 9 (2bb63cb, 2026-09-26 morning)** and said not to be asked about deploying again; the manager tries `npx vercel --prod` itself at the end of a wave and only notes it here if the harness blocks it.
+Live: https://plotline-flax.vercel.app — **deployed by the manager 2026-09-26 ~10:20 = 8791310 (wave 10 studio ergonomics on top of wave 9)**. `npx vercel --prod --yes` runs fine from this session now (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves the new bundle, `/studio` 200.
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
