@@ -1,6 +1,6 @@
 /**
  * Studio furniture layer (tool F): grid-snapped move / 90° rotate of the unit's placements. Pure, Vitest-covered.
- * The founder's exception to "no placement editor" (CLAUDE.md, 2026-09-27): 1 ft grid, wall snap, refuse overlaps and
+ * The founder's exception to "no placement editor" (CLAUDE.md, 2026-09-27; 6" grid since 2026-09-28), wall snap, refuse overlaps and
  * door / entrance zones; pieces resize within their kit limits (kit.ts resizeLimits); pieces may be deleted. A dining table
  * carries its chairs, and a resized one gets as many as its new size seats. Nothing else is added, nothing placed free.
  * The viewer's Arrange mode (src/viewer/arrange.ts) runs the same rules.
@@ -14,7 +14,8 @@ import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, 
 import { GAP, chairSpots, doorClearZones, footprint, furnish, quadsOverlap, windowZones } from '../furnish/presets'
 import { PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
-export const GRID_M = 0.3048
+/** 6" squares (0.25 sq ft; founder 2026-09-28 — 1 ft was too coarse to place a piece where he wanted) */
+export const GRID_M = 0.3048 / 2
 /** A footprint edge this close to a wall's inner face (or past it) goes flush. */
 export const WALL_SNAP_M = 0.15
 /** Fitted pieces (kitchen, bath, wall-hung) sit this far off the wall, as presets hang them; furniture sits GAP off. */
@@ -275,7 +276,7 @@ const frontOf = (deg: number): Pt => ({ x: -Math.sin((deg * Math.PI) / 180), y: 
 const halfAlong = (q: Pt[], n: Pt) => (Math.max(...q.map((v) => v.x * n.x + v.y * n.y)) - Math.min(...q.map((v) => v.x * n.x + v.y * n.y))) / 2
 
 /**
- * Piece `id` to centre `to`, turned to `rotationDeg`: onto the 1 ft grid (unless `grid` is false: R turns in place),
+ * Piece `id` to centre `to`, turned to `rotationDeg`: onto the 6" grid (unless `grid` is false: R turns in place),
  * then flush to a wall it nears. A piece that stands against a wall (BACKED), dropped onto a wall it is not backed
  * onto, turns its back to that wall and goes flush. It belongs to the room `to` is in. What rests on it moves and turns with it.
  */
@@ -330,7 +331,7 @@ export interface WallFace {
   n: Pt
 }
 
-/** Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 1 ft steps; a move's rules (flush, refusals). */
+/** Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 6" steps; a move's rules (flush, refusals). */
 export function hangOn(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: WallFace): Move | null {
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
@@ -365,7 +366,7 @@ export function nearestFace(unit: Unit, rooms: Room[], at: Pt): WallFace | null 
 
 /**
  * A new piece of kit asset `assetId` (the staff library, CLAUDE.md 2026-09-27 late) dropped at `at`, turned
- * `rotationDeg`, on a move's rules: floor and ceiling pieces as movePiece puts them (1 ft grid, flush to a wall they
+ * `rotationDeg`, on a move's rules: floor and ceiling pieces as movePiece puts them (6" grid, flush to a wall they
  * near, backed ones back to it); wall pieces on `wall` (the face under the 3D pointer), else on the face of `at`'s room
  * nearest `at` (hangOn). It belongs to the room it lands in. `error` = why not; the caller keeps the old layout.
  */

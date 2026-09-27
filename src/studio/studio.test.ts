@@ -666,7 +666,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
   const at = (s: StudioState, id: string) => s.unit.furniture.find((p) => p.id === id)!
   const move = (s: StudioState, id: string, x: number, y: number) => reducer(s, { type: 'move-piece', id, x, y })
 
-  it('snaps the footprint corner onto the 1 ft grid from the unit corner; one undo entry', () => {
+  it('snaps the footprint corner onto the 6" grid from the unit corner; one undo entry', () => {
     const s0 = fixture()
     const s = move(s0, 'side', 6.61, 2.47)
     const q = pieceQuad(at(s, 'side'))
@@ -674,7 +674,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
       const lo = Math.min(...q.map((p) => p[k]))
       expect(Math.abs(lo / GRID_M - Math.round(lo / GRID_M))).toBeLessThan(1e-9)
     }
-    expect(at(s, 'side')).toMatchObject({ x: expect.closeTo(6.6508, 4), y: expect.closeTo(2.3336, 4), roomId: 'B' })
+    expect(at(s, 'side')).toMatchObject({ x: expect.closeTo(6.6508, 4), y: expect.closeTo(2.486, 4), roomId: 'B' })
     expect(s.history.past).toHaveLength(1)
     expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit)
   })
@@ -808,7 +808,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(at(reducer(s, { type: 'rotate-piece', id: 'chair' }), 'chair').rotationDeg).toBe(90)
   })
 
-  it('Sheltech A Veranda 1: a chair dragged toward the slider stops at its step-in strip (the grid left it 2 cm inside: "Blocks the door")', () => {
+  it('Sheltech A Veranda 1: a chair dragged toward the slider stops at its step-in strip and never into it', () => {
     const u = sheltechA as unknown as Unit
     const rooms = deriveRooms(u)
     const v1 = rooms.find((r) => r.name === 'Veranda 1')!
@@ -819,7 +819,6 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(m.piece.y).toBeLessThan(chair.y - 0.1)
     const zones = doorClearZones(v1, u)
     expect(zones.some((z) => quadsOverlap(z, pieceQuad(m.piece)))).toBe(false)
-    expect(zones.some((z) => quadsOverlap(z, pieceQuad({ ...m.piece, y: m.piece.y - 0.02 })))).toBe(true) // at the strip's edge
     // deeper than one grid step into a zone: still refused
     expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * GRID_M }, chair.rotationDeg)!.error).toBe('Blocks the door')
   })

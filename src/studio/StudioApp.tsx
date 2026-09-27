@@ -41,7 +41,7 @@ const TOOLS: [Tool, string, string][] = [
   ['furniture', 'F', 'Furniture'],
 ]
 const HINTS: Record<Tool, string> = {
-  furniture: 'Furniture · drag a piece to move it on the 1 ft grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
+  furniture: 'Furniture · drag a piece to move it on the 6" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
   select: `Select · drag to move (Shift: no snap), drag a selected wall's end to resize it, Alt-drag a corner to detach, Del deletes, arrows nudge 1" (Shift 1')`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
@@ -958,7 +958,7 @@ export default function StudioApp() {
     const why = g.error ?? (g.snapped && `snapped: ${g.snapped === 'corner' ? 'corner' : `next to ${g.snapped}`}`)
     centre = why ? `${formatFeetInches(g.opening.widthM)} · ${why}` : formatFeetInches(g.opening.widthM)
   } else if (furnDrag) {
-    centre = `${pieceLabel(furnDrag.piece)} · ${furnDrag.error ?? `snapped: ${furnDrag.snapped === 'wall' ? 'wall' : '1 ft grid'}`}`
+    centre = `${pieceLabel(furnDrag.piece)} · ${furnDrag.error ?? `snapped: ${furnDrag.snapped === 'wall' ? 'wall' : '6" grid'}`}`
   } else if (hover?.hit?.kind === 'furniture') {
     const p = pieces?.find((x) => x.id === hover.hit!.id)
     centre = p ? pieceLabel(p) : ''
