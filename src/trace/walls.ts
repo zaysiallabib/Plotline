@@ -8,7 +8,7 @@
  *   → Zhang–Suen skeleton → pixel graph (junctions, ends, chains) → spur pruning → line / arc fitting
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
-import { edt, otsu, thin, threshold } from './raster'
+import { edt, lineInk, otsu, thin, threshold } from './raster'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
@@ -383,7 +383,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       })),
     }
   }
-  const { o, w, h, t, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  const { o, w, h, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   const walls = tidy(
     segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
       const len = dist(s.a, s.b)
@@ -394,8 +394,8 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
     }),
   )
-  // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
-  const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
+  // door arcs and window lines are often thin light-grey strokes on a light floor fill: "line ink" = darker than the local background
+  const openings = findOpenings(walls, core, rCore, lineInk(gray, 18), dt, w, h, half, o.partitionM)
   return { walls, openings }
 }
 

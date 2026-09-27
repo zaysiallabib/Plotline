@@ -30,6 +30,29 @@ export function threshold(g: Gray, t: number): Uint8Array {
 }
 
 /**
+ * 1 where a pixel is at least `delta` darker than the lightest pixel within 3 px (its local paper or floor fill):
+ * thin light-grey lines (door arcs, window frames) on white or on a grey floor fill, whatever their absolute grey.
+ */
+export function lineInk(g: Gray, delta: number, r = 3): Uint8Array {
+  const { width: w, height: h, data } = g
+  const rowMax = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let m = 0
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) if (data[y * w + k] > m) m = data[y * w + k]
+      rowMax[y * w + x] = m
+    }
+  const out = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let m = 0
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) if (rowMax[k * w + x] > m) m = rowMax[k * w + x]
+      out[y * w + x] = data[y * w + x] <= m - delta ? 1 : 0
+    }
+  return out
+}
+
+/**
  * Exact Euclidean distance transform (Felzenszwalb & Huttenlocher): for every pixel with mask = 1, the distance to the
  * nearest mask = 0 pixel (pixel centres). Mask-0 pixels get 0. Image border counts as mask 0.
  */
