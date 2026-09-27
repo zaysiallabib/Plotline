@@ -98,7 +98,7 @@ export type Action =
   | { type: 'update-label'; id: Id; patch: Partial<Omit<RoomLabel, 'id'>> }
   | { type: 'duplicate-label' }
   | { type: 'flip'; what: 'hinge' | 'swing' }
-  /** Furniture tool: piece to centre (x, y) on the 1 ft grid + wall snap (furniture.movePiece); refused → toast, nothing moves */
+  /** Furniture tool: piece to centre (x, y) on the 3" grid + wall snap (furniture.movePiece); refused → toast, nothing moves */
   | { type: 'move-piece'; id: Id; x: number; y: number }
   /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
   | { type: 'rotate-piece'; id: Id }
