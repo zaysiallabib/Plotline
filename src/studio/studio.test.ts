@@ -819,8 +819,8 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(m.piece.y).toBeLessThanOrEqual(chair.y + 1e-9) // on the 3" grid the preset chair already sits at the strip edge
     const zones = doorClearZones(v1, u)
     expect(zones.some((z) => quadsOverlap(z, pieceQuad(m.piece)))).toBe(false)
-    // deeper than one grid step into a zone: still refused
-    expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * GRID_M }, chair.rotationDeg)!.error).toBe('Blocks the door')
+    // deeper than a foot into a zone: still refused
+    expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * 0.3048 }, chair.rotationDeg)!.error).toBe('Blocks the door')
   })
 
   it('resizeAxes: structure none; an axis with min = max stays fixed', () => {
