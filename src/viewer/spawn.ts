@@ -221,6 +221,8 @@ export const wetBand = (k: KitAsset, size: { x: number; y: number; z: number }):
   const [h0, h1] = heightRange({ ...k, sizeM: size })
   return { h0: Math.max(h0, foot), h1: Math.min(h1, WET_TOP) }
 }
+/** A fitting half in a bath's frame counts only with its centre this far in (NDC): one cropped in a corner shows nothing. */
+const HALF_IN = 0.8
 /** A bath's pitches are tried in these steps (rad). */
 const WET_STEP = (5 * Math.PI) / 180
 /** A veranda looks out along its floor this far down: 1.8 m ahead the floor enters the frame, the parapet and the street stay in it. */
@@ -523,11 +525,12 @@ export function roomView(room: Room, unit: Unit): View {
     ]
     const dir = (deg: number) => ({ x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) })
     // A bath (or tiny room) with a vanity/basin: every spot × heading (5°) × pitch (level to BATH_PITCH; a small wet room to
-    // WET_PITCH), ranked by what the projector shows of each fitting's band (`wetBand`, `boxInFrame`: whole = 1, half its
-    // corners = ½): the vanity/basin whole, else half (no spot shows both: the vanity, not a WC), then the most fittings
-    // (WC, shower), then the pitch nearest BATH_PITCH (shallower first), the fittings centred, the farthest back. The first
-    // clear frame (FLAT_MAX / NEAR_WALL_MAX) of those wins; none clears (a WC is all near tile): the least filled frame of the
-    // top rank. No fitting half in frame from anywhere: the door view below.
+    // WET_PITCH), ranked by what the projector shows of each fitting's band (`wetBand`, `boxInFrame`): whole, or half —
+    // half its corners and its centre in frame (a WC's bowl front cut off; not a fitting cropped in a corner of the frame).
+    // The vanity/basin whole, else half (no spot shows both: the vanity, not a WC), then the most other fittings whole
+    // (WC, shower), then the most half, then the pitch nearest BATH_PITCH (shallower first), the fittings centred, the
+    // farthest back. The first clear frame (FLAT_MAX / NEAR_WALL_MAX) wins; none clears (a WC is all near tile): the least
+    // filled frame of the top rank. No fitting half in frame from anywhere: the door view below.
     if (hero && !cot) {
       const low = small ? WET_PITCH : BATH_PITCH
       const bands = items.flatMap((f) => {
@@ -538,27 +541,31 @@ export function roomView(room: Room, unit: Unit): View {
       const pitches: number[] = []
       for (let a = 0; a >= low - 1e-9; a -= WET_STEP) pitches.push(a)
       pitches.sort((a, b) => Math.abs(a - BATH_PITCH) - Math.abs(b - BATH_PITCH) || b - a)
-      type Pick = View & { hero: number; count: number; pref: number; spread: number; back: number }
+      type Pick = View & { hero: number; whole: number; half: number; pref: number; spread: number; back: number }
       const picks: Pick[] = []
       for (const { p, closeLeaf } of spots)
         for (let deg = 0; deg < 360; deg += 5) {
           const face = dir(deg)
           pitches.forEach((pitch, pref) => {
-            // a fitting counts 1 whole, ½ with half its corners in frame (a WC's bowl front cut off)
-            const shown = bands.map((b) => ({ b, s: boxInFrame(b.f, b.s, b.h0, b.h1, p, face, pitch) })).filter((x) => x.s >= 0.5)
+            const shown = bands.flatMap((b) => {
+              const s = boxInFrame(b.f, b.s, b.h0, b.h1, p, face, pitch)
+              const c = project(p, face, pitch, b.f, (b.h0 + b.h1) / 2)
+              return s === 1 || (s >= 0.5 && c.z > 0 && Math.abs(c.x) <= HALF_IN && Math.abs(c.y) <= HALF_IN) ? [{ b, s, x: Math.abs(c.x) }] : []
+            })
             if (!shown.length) return
-            const spread = Math.max(...shown.map(({ b }) => Math.abs(project(p, face, pitch, b.f, (b.h0 + b.h1) / 2).x)))
+            const h = shown.find((x) => x.b.f === hero)?.s ?? 0
+            const others = shown.filter((x) => x.b.f !== hero)
+            const spread = Math.max(...shown.map((x) => x.x))
             const back = Math.min(...shown.map(({ b }) => Math.hypot(b.f.x - p.x, b.f.y - p.y)))
-            const count = shown.reduce((t, x) => t + (x.s === 1 ? 1 : 0.5), 0)
-            picks.push({ p, face, pitch, closeLeaf, hero: Math.max(0, ...shown.map((x) => (x.b.f !== hero ? 0 : x.s === 1 ? 1 : 0.5))), count, pref, spread, back })
+            picks.push({ p, face, pitch, closeLeaf, hero: h === 1 ? 1 : h && 0.5, whole: others.filter((x) => x.s === 1).length, half: others.filter((x) => x.s < 1).length, pref, spread, back })
           })
         }
-      picks.sort((a, b) => b.hero - a.hero || b.count - a.count || a.pref - b.pref || a.spread - b.spread || b.back - a.back)
+      picks.sort((a, b) => b.hero - a.hero || b.whole - a.whole || b.half - a.half || a.pref - b.pref || a.spread - b.spread || b.back - a.back)
       // the best 3 frames per spot: FLAT_TRIES frames then span ~50 spots, not one spot's headings and pitches
       const per = new Map<Pt, number>()
       const ranked = picks.filter((v) => per.set(v.p, (per.get(v.p) ?? 0) + 1).get(v.p)! <= 3)
       const top = ranked[0]
-      const tier = top && ranked.filter((v) => v.hero === top.hero && v.count === top.count).slice(0, FLAT_TRIES)
+      const tier = top && ranked.filter((v) => v.hero === top.hero && v.whole === top.whole && v.half === top.half).slice(0, FLAT_TRIES)
       const pick = top && (clear(ranked) ?? tier.reduce((m, v) => (flat(v) < flat(m) ? v : m)))
       if (pick) return done({ p: pick.p, face: pick.face, pitch: pick.pitch, closeLeaf: pick.closeLeaf })
     }

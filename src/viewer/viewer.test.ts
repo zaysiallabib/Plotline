@@ -360,7 +360,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed'])
     // shut for the shot: leaves standing into a bath frame, the far leaf over the C cot, the wet rooms' own leaves behind the
     // eye in their doorway (the door corner); a door seen along its own wall fills the same shut or ajar and stays ajar
-    expect(shut).toEqual(['a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Bath-2', 'c_2254 Bath-3', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
+    expect(shut).toEqual(['a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Bath-2', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
     const b = both[1]
     const wave9 = [
@@ -388,7 +388,9 @@ describe('viewer', { timeout: 20_000 }, () => {
           return b ? [{ f, s: boxInFrame(f, placementSize(f), b.h0, b.h1, v.p, v.face, v.pitch!) }] : []
         })
         const hero = shares.find((x) => /^(vanity|basin)$/.test(x.f.assetId))!
-        expect(hero.s, `${name}: the ${hero.f.assetId}`).toBeGreaterThanOrEqual(0.5)
+        // C Bath-3: its pedestal basin faces the shower 1.2 m off, no spot has it half in frame with its centre: the shower and the WC
+        if (name === 'c_2254 Bath-3') expect(shares.filter((x) => x !== hero && x.s >= 0.5).length, name).toBe(2)
+        else expect(hero.s, `${name}: the ${hero.f.assetId}`).toBeGreaterThanOrEqual(0.5)
         if (hero.s < 1) half.push(name)
         else if (shares.some((x) => x !== hero && x.s === 1)) two.push(name)
       }
