@@ -31,6 +31,8 @@ export interface TextScore {
   found: number
   dimsTotal: number
   dimsExact: number
+  /** parsed, but not the printed value (worse than no reading: the solver would trust it) */
+  dimsMisread: number
   kindOk: number
   greenTotal: number
   greenFound: number
@@ -46,7 +48,7 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
   const toPx = (p: { x: number; y: number }) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM })
   const rooms = new Map(deriveRooms(unit).map((r) => [r.id, roomPolygon(r, unit).map(toPx)]))
   const used = new Set<TextItem>()
-  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, dimsExact: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
+  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, dimsExact: 0, dimsMisread: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
   for (const label of unit.roomLabels) {
     const p = toPx(label)
     const poly = rooms.get(label.id)
@@ -78,7 +80,10 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
     if (truthDims) {
       const d = best.dims
       if (d && Math.abs(d.aM - truthDims.aM) <= INCH && Math.abs(d.bM - truthDims.bM) <= INCH) s.dimsExact++
-      else s.wrongDims.push(`${label.name}: ${JSON.stringify(best.text)} (truth ${label.printedSize})`)
+      else {
+        if (d) s.dimsMisread++
+        s.wrongDims.push(`${label.name}: ${JSON.stringify(best.text)} (truth ${label.printedSize})`)
+      }
     }
   }
   const area = unit.areaSqft * FT * FT

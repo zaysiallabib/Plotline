@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import { FT } from '../core'
+import type { Unit } from '../core'
+import typeB from '../data/units/type-b.json'
 import type { TextItem } from './types'
+import { parseAiAnswer } from './ai'
+import { sameLabel, scoreText } from './textEval'
 import { chunkWords, classifyRoom, groupWords, itemFromAi, parseArea, parseDims, reaskList, reaskReason, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
@@ -228,9 +232,46 @@ describe('re-ask rule', () => {
     expect(list).toHaveLength(1)
     expect(list[0].crop).toEqual({ x: 85, y: 85, w: 60, h: 55 })
   })
+  test('the reader JSON (fenced, 0–1000 boxes) → image-space items; junk → []', () => {
+    const answer = '```json\n[{"text": "KITCHEN\\n8\'-0\\"X11\'-0\\"", "box": [100, 200, 500, 800], "kind": "room"}, {"text": 5}, {"text": "x", "box": [1]}]\n```'
+    const items = parseAiAnswer(answer, { w: 200, h: 100, offset: { x: 1000, y: 2000 } })
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'room', roomKind: 'kitchen', source: 'ai', box: { x: 1040, y: 2010, w: 120, h: 40 } })
+    expect(items[0].dims!.bM).toBeCloseTo(ft(11), 4)
+    expect(parseAiAnswer('Sorry, I cannot read that.', { w: 1, h: 1, offset: { x: 0, y: 0 } })).toEqual([])
+    expect(parseAiAnswer('{"text": "BED"}', { w: 1, h: 1, offset: { x: 0, y: 0 } })).toEqual([])
+  })
   test('an AI answer parses like OCR text, box moved to image space', () => {
     const it = itemFromAi(`BED-1\n14'-0"X16'-0"`, { x: 5, y: 5, w: 40, h: 20 }, { x: 100, y: 200 })
     expect(it).toMatchObject({ kind: 'room', roomKind: 'bed', source: 'ai', box: { x: 105, y: 205, w: 40, h: 20 } })
     expect(it.dims!.bM).toBeCloseTo(ft(16), 4)
+  })
+})
+
+describe('scoreText (eval vs a hand-traced unit)', () => {
+  const unit = typeB as unknown as Unit
+  const pi = unit.planImage!
+  test('a perfect reading scores full marks; an empty one misses everything', () => {
+    const items: TextItem[] = unit.roomLabels.map((l) => ({
+      text: l.printedSize ? `${l.name}\n${l.printedSize}` : l.name,
+      box: { x: pi.originPx.x + l.x * pi.pxPerM - 20, y: pi.originPx.y + l.y * pi.pxPerM - 5, w: 40, h: 10 },
+      kind: 'room',
+      roomKind: l.kind,
+      green: /planter/i.test(l.name) || undefined,
+      dims: l.printedSize ? parseDims(l.printedSize)! : undefined,
+      conf: 1,
+      source: 'ocr',
+    }))
+    const s = scoreText({ items }, unit)
+    expect([s.found, s.kindOk, s.dimsExact, s.greenFound, s.dimsMisread]).toEqual([s.labels, s.labels, s.dimsTotal, s.greenTotal, 0])
+    const none = scoreText({ items: [] }, unit)
+    expect([none.found, none.missed.length]).toEqual([0, none.labels])
+  })
+  test('label matching: plan abbreviations, conflicting numbers', () => {
+    expect(sameLabel('Veranda (kitchen)', 'K.VERANDA')).toBe(true)
+    expect(sameLabel('Veranda 1', `VER.\n7'-9"x5'-2"`)).toBe(true)
+    expect(sameLabel('Powder room', 'PDR.')).toBe(true)
+    expect(sameLabel('Bed-1', 'BED-2')).toBe(false)
+    expect(sameLabel('Kitchen', 'BED-2')).toBe(false)
   })
 })

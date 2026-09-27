@@ -597,7 +597,7 @@ async function toGray(src: ImageBitmapSource): Promise<Gray> {
   return { width: bmp.width, height: bmp.height, data }
 }
 
-function toCanvas(g: Gray): OffscreenCanvas {
+export function toCanvas(g: Gray): OffscreenCanvas {
   const c = new OffscreenCanvas(g.width, g.height)
   const ctx = c.getContext('2d')!
   const img = ctx.createImageData(g.width, g.height)
@@ -630,31 +630,32 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
   workers.forEach((w) => scheduler.addWorker(w))
   const setAll = (params: Record<string, string>) => Promise.all(workers.map((w) => w.setParameters(params)))
   try {
-    const crops = lines.map((l) => {
+    const crop = (i: number, from: Gray, glyphPx: number) => {
+      const l = lines[i]
       const pad = 0.4 * Math.min(l.box.w, l.box.h)
-      let g = cropGray(clean, { x: l.box.x - pad, y: l.box.y - pad, w: l.box.w + 2 * pad, h: l.box.h + 2 * pad })
+      let g = cropGray(from, { x: l.box.x - pad, y: l.box.y - pad, w: l.box.w + 2 * pad, h: l.box.h + 2 * pad })
       if (l.vertical) g = rotateCW(g)
-      return toCanvas(scaleGray(g, Math.max(1, Math.min(8, GLYPH_PX / (l.vertical ? l.box.w : l.box.h)))))
-    })
+      return toCanvas(scaleGray(g, Math.max(1, Math.min(8, glyphPx / (l.vertical ? l.box.w : l.box.h)))))
+    }
     let done = 0
-    const readAll = (idx: number[]) =>
+    const readAll = (idx: number[], from = clean, glyphPx = GLYPH_PX) =>
       Promise.all(
         idx.map(async (i) => {
-          const { data } = await scheduler.addJob('recognize', crops[i])
+          const { data } = await scheduler.addJob('recognize', crop(i, from, glyphPx))
           opts.onProgress?.(++done, lines.length)
           return { text: data.text.replace(/\s+/g, ' ').trim(), conf: data.confidence / 100 }
         }),
       )
     await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, user_defined_dpi: '300' })
     const read = await readAll(lines.map((_, i) => i))
-    // every line that is not a room name, an area or a size already: most are a size line OCR garbled (glyphs 6–8 px)
-    const retry = read.flatMap((r, i) => (!classifyRoom(r.text) && !parseDims(r.text) && parseArea(r.text) === null ? [i] : []))
-    if (retry.length) {
-      await setAll({ tessedit_char_whitelist: DIMS_CHARS })
-      const again = await readAll(retry)
-      retry.forEach((i, k) => {
-        if (parseDims(again[k].text)) read[i] = again[k]
-      })
+    // every line that is not a room name, an area or a size already — most are a size line OCR garbled (glyphs 6–8 px):
+    // re-read digits-only from the masked and the raw raster at two sizes; the first reading that parses wins
+    let retry = read.flatMap((r, i) => (!classifyRoom(r.text) && !parseDims(r.text) && parseArea(r.text) === null ? [i] : []))
+    if (retry.length) await setAll({ tessedit_char_whitelist: DIMS_CHARS })
+    for (const [from, px] of [[clean, GLYPH_PX], [gray, GLYPH_PX], [clean, 24]] as const) {
+      if (!retry.length) break
+      const again = await readAll(retry, from, px)
+      retry = retry.filter((i, k) => !(parseDims(again[k].text) && (read[i] = again[k])))
     }
     const words = (vertical: boolean): OcrWord[] => read.flatMap((r, i) => (r.text && lines[i].vertical === vertical ? [{ text: r.text, conf: r.conf, box: lines[i].box }] : []))
     return { items: [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] } // a vertical word stands alone
