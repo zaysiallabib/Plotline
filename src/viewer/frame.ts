@@ -7,8 +7,8 @@ import * as core from '../core'
 import type { Opening, Pt, Unit, Wall } from '../core'
 import { heightRange, kitAsset, placementSize } from '../furnish/kit'
 
-/** Eye height (PlotlineScene). */
-export const EYE = 1.6
+/** Eye height (m; PlotlineScene's EYE): a Dhaka buyer's standing eye (adults ~1.52–1.65 m tall), and the real-estate camera height (1.2–1.5 m) that keeps a room's walls tall and its floor deep. Was 1.6. */
+export const EYE = 1.45
 /** PlotlineScene's camera: 65° vertical FOV; the frame is 16:9 (a laptop, the score shots). */
 const TAN_V = Math.tan((32.5 * Math.PI) / 180)
 const TAN_H = (16 / 9) * TAN_V
@@ -192,6 +192,73 @@ export function boxInFrame(f: { x: number; y: number; rotationDeg: number }, siz
       }
     }
   return n / 6
+}
+
+/**
+ * Share (0–1) of a room's floor in the frame from p at eye height along `face`, `pitch` up: the grid cells (~100) of its
+ * inner polygon whose centre lands inside the frame, seen from p without crossing the room's edge (round an L's bend it is
+ * hidden). Furniture hides nothing here: the floor under a bed is the bed's, and the bed is the room too. The real-estate
+ * rule: stand back in a corner or doorway, level, so the floor's full depth reads — a camera pushed up to the hero piece
+ * sees a strip of it.
+ */
+export function floorShare(inner: Pt[], p: Pt, face: Pt, pitch = 0): number {
+  const { cells, convex } = floor(inner)
+  const n = inner.length
+  let seen = 0
+  for (const q of cells) {
+    const v = project(p, face, pitch, q, 0)
+    if (v.z <= 0.05 || Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue
+    let hidden = false
+    for (let i = 0; i < n && !convex && !hidden; i++) hidden = crosses(p, q, inner[i], inner[(i + 1) % n])
+    if (!hidden) seen++
+  }
+  return cells.length ? seen / cells.length : 0
+}
+
+/** A room's floor cells (0.25 m grid centres inside it) and whether nothing can hide one from a point inside (convex). */
+const floors = new WeakMap<Pt[], { cells: Pt[]; convex: boolean }>()
+const floor = (inner: Pt[]) => {
+  let f = floors.get(inner)
+  if (f) return f
+  const n = inner.length
+  const xs = inner.map((q) => q.x)
+  const ys = inner.map((q) => q.y)
+  const cells: Pt[] = []
+  // ~100 cells whatever the room's size (0.25 m at most: a veranda keeps ~60): a candidate frame costs ~0.01 ms
+  const area = Math.abs(inner.reduce((t, a, i) => t + a.x * inner[(i + 1) % n].y - inner[(i + 1) % n].x * a.y, 0)) / 2
+  const s = Math.max(0.25, Math.sqrt(area / 100))
+  for (let x = Math.min(...xs) + s / 2; x < Math.max(...xs); x += s)
+    for (let y = Math.min(...ys) + s / 2; y < Math.max(...ys); y += s) if (core.pointInPolygon({ x, y }, inner)) cells.push({ x, y })
+  const turn = (i: number) => {
+    const [a, b, c] = [inner[i], inner[(i + 1) % n], inner[(i + 2) % n]]
+    return (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+  }
+  const turns = inner.map((_, i) => turn(i))
+  f = { cells, convex: turns.every((t) => t >= -1e-9) || turns.every((t) => t <= 1e-9) }
+  floors.set(inner, f)
+  return f
+}
+
+/** A piece counts whole in a room's frame from this height (m: a bed's mattress, a sofa's seat, a table's rail) to its top. */
+export const WHOLE_FOOT = 0.45
+/** …and to WHOLE_TOP at most (a wardrobe's or a kitchen run's top may leave the frame). */
+export const WHOLE_TOP = 1.9
+/**
+ * How much of a piece a room's frame shows (0–1; 1: whole — a bed's foot and headboard, a sofa's seat and back): its
+ * footprint corners at WHOLE_FOOT (its base if higher) and its back corners at its top (WHOLE_TOP at most) inside the frame.
+ */
+export function pieceInFrame(f: { assetId: string; x: number; y: number; rotationDeg: number; scale?: number; sizeM?: { x: number; y: number; z: number } }, p: Pt, face: Pt, pitch = 0): number {
+  const k = kitAsset(f.assetId)
+  if (!k) return 0
+  const s = placementSize(f)
+  const [h0, h1] = heightRange({ ...k, sizeM: s })
+  return boxInFrame(f, s, Math.min(Math.max(h0, WHOLE_FOOT), h1), Math.min(h1, WHOLE_TOP), p, face, pitch, 1)
+}
+
+/** Segments p→q and a→b cross properly (touching ends do not count). */
+const crosses = (p: Pt, q: Pt, a: Pt, b: Pt): boolean => {
+  const s = (o: Pt, u: Pt, v: Pt) => (u.x - o.x) * (v.y - o.y) - (u.y - o.y) * (v.x - o.x)
+  return s(p, q, a) * s(p, q, b) < 0 && s(a, b, p) * s(a, b, q) < 0
 }
 
 /** Entry and exit distance of a ray (origin o, direction v, along one axis) through the slab |x| ≤ h. */
