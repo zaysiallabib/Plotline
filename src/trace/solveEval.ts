@@ -26,6 +26,27 @@ export interface SolveReport {
   review: number
   reviewByKind: Record<string, number>
   ms: number
+  /** truth openings with a draft opening centre within 0.3 m (one-to-one), of `truthOpenings` (in the draft's area) */
+  openingsFound: number
+  truthOpenings: number
+  /** found openings whose kind (door / window / slider / passage) matches */
+  openingKindOk: number
+  /** draft openings on no truth opening */
+  openingsExtra: number
+}
+
+/** Opening centres in sheet px, with kind. */
+function pxOpenings(u: Unit): { c: Px; kind: string }[] {
+  const pi = u.planImage!
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  return u.walls.flatMap((w) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    return w.openings.map((o) => {
+      const t = (o.offsetM + o.widthM / 2) / L
+      return { c: { x: pi.originPx.x + (a.x + (b.x - a.x) * t) * pi.pxPerM, y: pi.originPx.y + (a.y + (b.y - a.y) * t) * pi.pxPerM }, kind: o.kind }
+    })
+  })
 }
 
 /** The biggest truth room's label point in sheet px: the eval's stand-in for the Studio click. */
@@ -86,6 +107,18 @@ export function scoreSolve(res: AutoTraceResult, truth: Unit): SolveReport {
     areaErr += Math.abs(D[p.d].r.areaSqm - T[p.t].r.areaSqm) / T[p.t].r.areaSqm
     if (D[p.d].r.kind === T[p.t].r.kind) kindOk++
   }
+  // openings: only truth openings inside the draft's bounding box count (the draft may be one part of the flat)
+  const dO = pxOpenings(res.unit)
+  const xs = D.flatMap((x) => [x.box[0], x.box[2]]), ys = D.flatMap((x) => [x.box[1], x.box[3]])
+  const tO = pxOpenings(truth).filter((o) => o.c.x >= Math.min(...xs) && o.c.x <= Math.max(...xs) && o.c.y >= Math.min(...ys) && o.c.y <= Math.max(...ys))
+  const oPairs = tO.flatMap((t, i) => dO.map((d, j) => ({ i, j, dist: Math.hypot(t.c.x - d.c.x, t.c.y - d.c.y) }))).filter((p) => p.dist <= 0.3 * k).sort((p, q) => p.dist - q.dist)
+  const oT = new Set<number>(), oD = new Set<number>()
+  let openingKindOk = 0
+  for (const p of oPairs) {
+    if (oT.has(p.i) || oD.has(p.j)) continue
+    oT.add(p.i), oD.add(p.j)
+    if (tO[p.i].kind === dO[p.j].kind) openingKindOk++
+  }
   const reviewByKind: Record<string, number> = {}
   for (const r of res.review) reviewByKind[r.kind] = (reviewByKind[r.kind] ?? 0) + 1
   return {
@@ -102,17 +135,21 @@ export function scoreSolve(res: AutoTraceResult, truth: Unit): SolveReport {
     review: res.review.length,
     reviewByKind,
     ms: res.stats.ms,
+    openingsFound: oT.size,
+    truthOpenings: tO.length,
+    openingKindOk,
+    openingsExtra: dO.length - oD.size,
   }
 }
 
 export function formatSolveReports(rows: SolveReport[]): string {
   const pct = (x: number) => (Number.isNaN(x) ? '   -' : `${(x * 100).toFixed(0)}%`).padStart(5)
-  const head = 'unit                  rooms matched   area%  scale%  from       kindOk  cover  spill review    ms  review kinds'
+  const head = 'unit                  rooms matched   area%  scale%  from       kindOk  cover  spill  opens okKind extra review    ms  review kinds'
   return [
     head,
     ...rows.map(
       (r) =>
-        `${r.unitId.padEnd(20)} ${`${r.draftRooms}/${r.truthRooms}`.padStart(6)} ${String(r.matched).padStart(7)} ${pct(r.areaErr)}  ${(`${r.scaleErr >= 0 ? '+' : ''}${(r.scaleErr * 100).toFixed(1)}%`).padStart(6)}  ${r.scaleFrom.padEnd(9)} ${`${r.kindOk}/${r.matched}`.padStart(7)} ${pct(r.coverage)} ${pct(r.spill)} ${String(r.review).padStart(6)} ${String(r.ms).padStart(5)}  ${Object.entries(r.reviewByKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
+        `${r.unitId.padEnd(20)} ${`${r.draftRooms}/${r.truthRooms}`.padStart(6)} ${String(r.matched).padStart(7)} ${pct(r.areaErr)}  ${(`${r.scaleErr >= 0 ? '+' : ''}${(r.scaleErr * 100).toFixed(1)}%`).padStart(6)}  ${r.scaleFrom.padEnd(9)} ${`${r.kindOk}/${r.matched}`.padStart(7)} ${pct(r.coverage)} ${pct(r.spill)} ${`${r.openingsFound}/${r.truthOpenings}`.padStart(6)} ${String(r.openingKindOk).padStart(6)} ${String(r.openingsExtra).padStart(5)} ${String(r.review).padStart(6)} ${String(r.ms).padStart(5)}  ${Object.entries(r.reviewByKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
     ),
   ].join('\n')
 }
