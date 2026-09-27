@@ -296,6 +296,7 @@ function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number)
 export function openingDefaults(kind: OpeningKind, bath: boolean): Pick<Opening, 'widthM' | 'heightM' | 'sillM'> {
   if (kind === 'window') return { widthM: 4 * FT, heightM: 4 * FT, sillM: 3 * FT }
   if (kind === 'passage') return { widthM: 4 * FT, heightM: 7 * FT, sillM: 0 }
+  if (kind === 'slider') return { widthM: 6 * FT, heightM: 7 * FT, sillM: 0 }
   return { widthM: (bath ? 2.5 : 3) * FT, heightM: 7 * FT, sillM: 0 }
 }
 
@@ -546,7 +547,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const walls = s.unit.walls.map((w) => ({
         ...w,
         openings: w.openings.map((o): Opening => {
-          if (!sel.has(o.id)) return o
+          if (!sel.has(o.id) || o.kind !== 'door') return o // only a door has a hinge and a swing
           changed = true
           return a.what === 'hinge' ? { ...o, hinge: o.hinge === 'b' ? 'a' : 'b' } : { ...o, swing: o.swing === 'out' ? 'in' : 'out' }
         }),
@@ -795,7 +796,13 @@ export const normalizeUnit = (u: Unit): Unit => {
       ...w,
       thicknessM: num(w.thicknessM) && w.thicknessM > 0 ? w.thicknessM : PARTITION_M,
       heightM: num(w.heightM) && w.heightM > 0 ? w.heightM : WALL_HEIGHT_M,
-      openings: (w.openings ?? []).map((o) => ({ ...o, heightM: num(o.heightM) ? o.heightM : 7 * FT, sillM: num(o.sillM) ? o.sillM : 0 })),
+      openings: (w.openings ?? []).map((o) => ({
+        ...o,
+        // before 'slider' was a kind, a hingeless door ≥ 1.2 m rendered as one: old exports keep their sliders
+        ...(o.kind === 'door' && !o.hinge && o.widthM >= 1.2 ? { kind: 'slider' as const } : {}),
+        heightM: num(o.heightM) ? o.heightM : 7 * FT,
+        sillM: num(o.sillM) ? o.sillM : 0,
+      })),
     })),
     planImage,
   }

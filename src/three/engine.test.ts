@@ -205,7 +205,7 @@ describe('clickable parts', () => {
     expect(pickable(door)).toEqual({ d: 'door', 'd/frame': 'door-frame', 'd/leaf': 'door-leaf', 'd/handle': 'door-handle' })
     // a click on the threshold (no part) still reaches the door group itself
     expect(door.children.filter((c) => (c as THREE.Mesh).isMesh)).toHaveLength(1)
-    expect(pickable(buildOpening({ id: 's', kind: 'door', widthM: 2.4, ...at }, wall))).toEqual({ s: 'door', 's/frame': 'door-frame', 's/glass': 'window-glass' })
+    expect(pickable(buildOpening({ id: 's', kind: 'slider', widthM: 2.4, ...at }, wall))).toEqual({ s: 'door', 's/frame': 'door-frame', 's/glass': 'window-glass' })
     expect(pickable(buildOpening({ id: 'w', kind: 'window', widthM: 1.5, ...at, sillM: 0.9 }, wall))).toEqual({
       w: 'window',
       'w/frame': 'window-frame',

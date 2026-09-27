@@ -22,8 +22,8 @@ type Quad = { id: string; o: Pt; d: Pt; u0: number; u1: number; h0: number; h1: 
 /** A piece's box: centre c, local axes ex (width) / ey (front), half sizes hx / hy, height ∈ [h0, h1]. */
 type Box = { id: string; c: Pt; ex: Pt; ey: Pt; hx: number; hy: number; h0: number; h1: number }
 
-/** A swinging door (hinged, or narrower than a slider as openings.ts builds it): the only openings with a leaf. */
-export const swings = (o: Opening) => o.kind === 'door' && (!!o.hinge || o.widthM < 1.2)
+/** A swinging door — kind 'door', whatever its width: the only openings with a leaf (a slider never has one). */
+export const swings = (o: Opening) => o.kind === 'door'
 
 /** The leaf of a swinging door as openings.ts builds it: pivot at the hinge jamb on the swing face, ajar 20° toward it (0: shut). */
 function leafQuad(o: Opening, w: Wall, unit: Unit, ajar = AJAR): Quad {

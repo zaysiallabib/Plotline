@@ -149,6 +149,24 @@ describe('studio reducer', () => {
     expect(s.unit.walls[0].openings[0].offsetM).toBe(0.5)
   })
 
+  it('sliding door: its own kind, 6\'-0" × 7\'-0" by default, a door switched to it takes those; H / Shift+H do nothing on it', () => {
+    let s = traceRect()
+    s = reducer(s, { type: 'add-opening', wallId: s.unit.walls[0].id, t: 0.5, kind: 'slider' })
+    const o = s.unit.walls[0].openings[0]
+    expect(o).toMatchObject({ kind: 'slider', sillM: 0 })
+    expect(o.widthM).toBeCloseTo(6 * 0.3048)
+    expect(o.heightM).toBeCloseTo(7 * 0.3048)
+    expect(s.lastOpeningKind).toBe('slider')
+    expect(reducer(s, { type: 'flip', what: 'hinge' })).toBe(s)
+    expect(reducer(s, { type: 'flip', what: 'swing' })).toBe(s)
+    s = reducer(s, { type: 'add-opening', wallId: s.unit.walls[2].id, t: 0.5, kind: 'door' })
+    const d = s.unit.walls[2].openings[0]
+    expect(reducer(s, { type: 'flip', what: 'hinge' }).unit.walls[2].openings[0].hinge).toBe('b') // a door still flips
+    s = reducer(s, { type: 'update-opening', id: d.id, patch: { kind: 'slider' } })
+    expect(s.unit.walls[2].openings[0].kind).toBe('slider')
+    expect(s.unit.walls[2].openings[0].widthM).toBeCloseTo(6 * 0.3048)
+  })
+
   it('opening edge snap: nearer edge flush to a wall end or a neighbour, else centred', () => {
     const door: Opening = { id: 'd', kind: 'door', offsetM: 2, widthM: 0.9, heightM: 2.1, sillM: 0 }
     const wall: Wall = { id: 'w', a: 'a', b: 'b', thicknessM: PARTITION_M, heightM: 3, openings: [door] }
@@ -323,6 +341,26 @@ describe('studio reducer', () => {
     expect(u.roomLabels).toEqual([])
     expect(() => deriveRooms(u)).not.toThrow()
     expect(() => validate(u)).not.toThrow()
+  })
+
+  it('normalizeUnit: an old export\'s hingeless door ≥ 1.2 m (it rendered as a slider) becomes a slider; nothing else changes', () => {
+    const op = (id: string, widthM: number, hinge?: 'a') => ({ id, kind: 'door' as const, offsetM: 0, widthM, heightM: 2.1, sillM: 0, ...(hinge ? { hinge } : {}) })
+    const raw = {
+      name: 'x',
+      vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 9, y: 0 }],
+      walls: [{ id: 'w', a: 'a', b: 'b', openings: [op('wide', 1.5), op('hinged', 1.5, 'a'), op('narrow', 0.9), { ...op('win', 1.5), kind: 'window' }] }],
+    }
+    expect(normalizeUnit(raw as unknown as Unit).walls[0].openings.map((o) => o.kind)).toEqual(['slider', 'door', 'door', 'window'])
+  })
+
+  it('no shipped unit JSON still has a hingeless door ≥ 1.2 m: every sliding door says kind "slider"', () => {
+    const units = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
+    expect(Object.keys(units).length).toBeGreaterThanOrEqual(5)
+    for (const [path, u] of Object.entries(units)) {
+      const guessed = u.walls.flatMap((w) => w.openings).filter((o) => o.kind === 'door' && !o.hinge && o.widthM >= 1.2)
+      expect(guessed.map((o) => o.id), path).toEqual([])
+      expect(normalizeUnit(u).walls, path).toEqual(u.walls) // an import of it migrates nothing
+    }
   })
 
   it('re-setting the scale keeps originPx; transforms round-trip through originPx', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
+import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Opening, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
 import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
 import { ART_SETS, parsePlanter, PLANTER } from './procedural.meta'
@@ -217,6 +217,17 @@ describe('furnish', () => {
     expect(ps.map((p) => p.assetId)).toContain('toilet')
     expectInsideAndDisjoint(ps, rooms, unit)
     expect(furnish(wc('out'), deriveRooms(wc('out'))).map((p) => p.assetId)).not.toContain('toilet') // the leaf sweeps the whole WC
+  })
+
+  test('a slider keeps only the 0.6 m step-in strip, never the 1 m swing zone; its width and a stray hinge do not matter', () => {
+    const depth = (o: Partial<Opening>) => {
+      const unit = rect('balcony', 2.2, 2.0, { wall: 3, offsetM: 0.1 })
+      Object.assign(unit.walls[3].openings[0], o) // wall 3 runs with the loop: swing 'out' = into the room
+      return Math.max(...doorClearZones(deriveRooms(unit)[0], unit)[0].map((p) => p.x)) - 0.0635
+    }
+    expect(depth({ kind: 'slider', widthM: 1.8 })).toBeCloseTo(0.6, 6)
+    expect(depth({ kind: 'slider', widthM: 0.9, hinge: 'a', swing: 'out' })).toBeCloseTo(0.6, 6)
+    expect(depth({ kind: 'door', widthM: 1.8, swing: 'out' })).toBeCloseTo(1.0, 6) // a wide hingeless door still swings
   })
 
   test('an open-plan living room long enough for two zones gets a dining set and a lounge whose TV faces the sofa', () => {
@@ -607,7 +618,7 @@ describe('furnish', () => {
       b,
       thicknessM: 0.127,
       heightM,
-      openings: door ? [{ id: 'slider', kind: 'door' as const, offsetM: 1, widthM: 1.8, heightM: 2.1, sillM: 0 }] : [],
+      openings: door ? [{ id: 'slider', kind: 'slider' as const, offsetM: 1, widthM: 1.8, heightM: 2.1, sillM: 0 }] : [],
     })
     u.walls = [wall('ab', 'a', 'b', 1.1), wall('bc', 'b', 'c', 1.1), wall('cd', 'c', 'd', 1.1), wall('de', 'd', 'e', 3, true), wall('ef', 'e', 'f', 1.1), wall('fa', 'f', 'a', 1.1), wall('curb', 'f', 'c', 0.45)]
     u.roomLabels = [
