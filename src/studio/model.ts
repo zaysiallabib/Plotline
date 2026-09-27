@@ -6,7 +6,7 @@ import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, val
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
-import { deletePiece, forgetPresets, layoutFor, movePiece, resizePiece } from './furniture'
+import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -104,8 +104,10 @@ export type Action =
   | { type: 'rotate-piece'; id: Id }
   /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
   | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number } }
-  /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); no adding back but undo / reset */
+  /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); undo / reset bring it back */
   | { type: 'delete-piece'; id: Id }
+  /** a new piece `id` of kit asset `assetId` from the library, dropped at (x, y) turned `rotationDeg` (furniture.placePiece); refused → toast */
+  | { type: 'place-piece'; id: Id; assetId: string; x: number; y: number; rotationDeg: number }
   /** one room back to its preset pieces (its deletions cleared); no room = all of them (an empty array: the layout follows the walls again) */
   | { type: 'reset-furniture'; roomId?: Id }
   | { type: 'undo' }
@@ -685,6 +687,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const pieces = layoutFor(s.unit, deriveRooms(s.unit))
       const furniture = deletePiece(pieces, a.id)
       return furniture === pieces ? s : commit(s, { ...s.unit, furniture }, { selection: [] })
+    }
+    case 'place-piece': {
+      const rooms = deriveRooms(s.unit)
+      const r = placePiece(s.unit, rooms, layoutFor(s.unit, rooms), a.assetId, a, a.rotationDeg, a.id)
+      if (!r) return s
+      return r.error ? withToast(s, r.error) : commit(s, { ...s.unit, furniture: r.furniture }, { selection: [a.id] })
     }
     case 'reset-furniture': {
       if (!s.unit.furniture.length) return s

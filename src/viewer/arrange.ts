@@ -4,23 +4,30 @@
  * the Studio's tool F, the undo stack, and where a drag in the 3D view puts a piece.
  */
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { kitAsset, placementSize } from '../furnish/kit'
-import { GRID_M, layerOf, movePiece, pieceAt, type Move } from '../studio/furniture'
+import { hangOn, layerOf, movePiece, pieceAt, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
 export const STAFF_KEY = 'plotline.staff'
 
-/** Staff = the Studio has run in this browser (it sets the flag), or `?staff=1`, which sets it too. Share links never carry it (share.ts shareUrl). */
+/**
+ * Staff = the Studio has run in this browser (it sets the flag), or `?staff=1` (the load screen's "Staff mode" link),
+ * which sets it too; `?staff=0` forgets it (see what a buyer sees). Share links never carry it (share.ts shareUrl).
+ */
 export function isStaff(search: string, store?: Store): boolean {
   try {
     const s = store ?? localStorage
-    if (new URLSearchParams(search).get('staff') === '1') s.setItem(STAFF_KEY, '1')
+    const q = new URLSearchParams(search).get('staff')
+    if (q === '1') s.setItem(STAFF_KEY, '1')
+    if (q === '0') s.removeItem(STAFF_KEY)
     return s.getItem(STAFF_KEY) === '1'
   } catch {
     return false // storage blocked: nobody is staff
   }
 }
+
+/** A buyer's link (Share: `?c=`) never offers staff mode: its load screen has no "Staff mode" or Studio link. */
+export const isShareLink = (search: string): boolean => new URLSearchParams(search).has('c')
 
 /** The arranged layout: the unit's whole FurniturePlacement[], written by Arrange and by the Studio's tool F. */
 export const layoutKey = (unitId: Id): string => `plotline.layout.${unitId}`
@@ -55,12 +62,8 @@ const UNDO_MAX = 50
 export const pushStep = (h: Steps, pieces: FurniturePlacement[]): Steps => ({ pieces, past: [...h.past, h.pieces].slice(-UNDO_MAX) })
 export const undoStep = (h: Steps): Steps => (h.past.length ? { pieces: h.past[h.past.length - 1], past: h.past.slice(0, -1) } : h)
 
-/** Where a drag slides a piece: wall-hung ones (TV, art, clock, AC, hook rail: mount 'wall' or hung ≥ 0.9 m) along walls, lights and fans on the ceiling, the rest on the floor. */
-export function surfaceOf(p: FurniturePlacement): 'floor' | 'wall' | 'ceiling' {
-  const a = kitAsset(p.assetId)
-  if (a?.mount === 'wall' || (a?.mountY ?? 0) >= 0.9) return 'wall'
-  return a?.mount === 'ceiling' ? 'ceiling' : 'floor'
-}
+/** Where a drag slides a piece (studio/furniture.ts): walls, ceiling or floor. */
+export { surfaceOf }
 
 /**
  * The pointer during a drag (plan metres): `at` = where the piece's centre goes on the horizontal plane it was grabbed
@@ -68,7 +71,7 @@ export function surfaceOf(p: FurniturePlacement): 'floor' | 'wall' | 'ceiling' {
  */
 export interface DragTarget {
   at: Pt | null
-  wall: { p: Pt; n: Pt } | null
+  wall: WallFace | null
 }
 
 /** What a click on piece `id` picks up: a piece resting on another (a TV on its unit, cushions) → that one, as the Studio's pieceAt. */
@@ -88,12 +91,5 @@ export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
   const p = baseOf(pieces, id)
   if (!g || !p) return null
   if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, p.id, { x: t.at.x + p.x - g.x, y: t.at.y + p.y - g.y }, p.rotationDeg)
-  if (!t.wall) return null
-  const { n } = t.wall
-  const d = { x: n.y, y: -n.x } // along the wall
-  const u = t.wall.p.x * d.x + t.wall.p.y * d.y
-  const s = Math.round(u / GRID_M) * GRID_M - u
-  const out = placementSize(p).z / 2 + 0.005
-  const c = { x: t.wall.p.x + d.x * s + n.x * out, y: t.wall.p.y + d.y * s + n.y * out }
-  return movePiece(unit, rooms, pieces, id, c, (Math.atan2(-n.x, n.y) * 180) / Math.PI, false)
+  return t.wall && hangOn(unit, rooms, pieces, id, t.wall)
 }
