@@ -824,8 +824,10 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * GRID_M }, chair.rotationDeg)!.error).toBe('Blocks the door')
   })
 
-  it('resizeAxes: scans none; an axis with min = max stays fixed', () => {
-    expect(resizeAxes('sofa_3seat')).toEqual([])
+  it('resizeAxes: structure none; an axis with min = max stays fixed', () => {
+    expect(resizeAxes('stair_36')).toEqual([])
+    expect(resizeAxes('sofa_3seat')).toEqual(['x'])
+    expect(resizeAxes('potted_plant_01')).toEqual(['x', 'z', 'y'])
     expect(resizeAxes('wardrobe_2door')).toEqual(['x', 'z', 'y'])
     expect(resizeAxes('desk_oak')).toEqual(['x', 'z'])
   })

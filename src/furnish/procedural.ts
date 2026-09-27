@@ -1298,14 +1298,14 @@ function planterBed(id: string): THREE.Object3D[] {
   return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...ims.filter((im) => im.count)]
 }
 
-/** id → builder at size s (its kit size unless resized); the resizable ones (kit.ts RESIZE) rebuild at any size in their limits. */
+/** id → builder at size s (its kit size unless resized); the kit.ts REBUILD ones rebuild at any size in their limits, the rest are scaled. */
 const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   // mattress = width − the headboard's 16 cm
   ...Object.fromEntries(BED_STYLES.flatMap((st) => [`bed_queen${st}`, `bed_single${st}`].map((id) => [id, (s: Size3) => bed(s.x - 0.16, st)]))),
   bedside_oak: bedside,
   cushions_plain: cushionsPlain,
-  sofa_3seat: () => sofa(2.2),
-  sofa_2seat: () => sofa(1.6),
+  sofa_3seat: (s) => sofa(s.x),
+  sofa_2seat: (s) => sofa(s.x),
   dining_table: diningTable,
   dining_chair: diningChair,
   desk_oak: desk,
@@ -1333,8 +1333,8 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   wardrobe_2door: wardrobe,
   closet_rail: closetRail,
   closet_rail_s: closetRail,
-  cot: () => cot(1.9, 0.7),
-  cot_s: () => cot(1.7, 0.65),
+  cot: (s) => cot(s.x, s.z),
+  cot_s: (s) => cot(s.x, s.z),
   hook_rail: hookRail,
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),

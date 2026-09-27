@@ -759,7 +759,8 @@ describe('furnish', () => {
 
 describe('sized labels', () => {
   test('a resized piece is named for what is built: doors, seats, width; at its kit size the kit label', () => {
-    for (const id of ['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'dining_table', 'rug_rect_large', 'rug_rect_small', 'bed_queen', 'bed_single_b'])
+    const scaled = ['kitchen_counter', 'kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'kitchen_hood', 'round_wooden_table_01', 'rug_round', 'ceiling_light', 'ceiling_light_large', 'tv_55', 'tv_55_wall']
+    for (const id of ['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'dining_table', 'rug_rect_large', 'rug_rect_small', 'bed_queen', 'bed_single_b', ...scaled])
       expect(placementLabel({ assetId: id }), id).toBe(kitAsset(id)!.label)
     const sized = (assetId: string, x: number, z = 0.6) => placementLabel({ assetId, sizeM: { x, y: 2.2, z } })
     expect(sized('wardrobe_tall', 2.4)).toBe('Tall wardrobe (oak, 4 doors)')
@@ -771,5 +772,8 @@ describe('sized labels', () => {
     expect(sized('rug_rect_small', 2.5, 1.8)).toBe('Wool rug 2.5 × 1.8 m')
     expect(sized('bed_queen', 2.16, 2.16)).toBe('King bed, upholstered')
     expect(placementLabel({ assetId: 'sofa_3seat', sizeM: { x: 9, y: 1, z: 1 } })).toBe('3-seat fabric sofa') // no size in its name
+    expect(placementLabel({ assetId: 'tv_55', sizeM: { x: 1.845, y: 1.17, z: 0.24 } })).toBe('83" TV on stand')
+    expect(sized('kitchen_sink', 0.75)).toBe('Kitchen sink cabinet (0.75 m)')
+    expect(placementLabel({ assetId: 'ceiling_light', sizeM: { x: 0.532, y: 0.119, z: 0.532 } })).toBe('Flush ceiling light, opal diffuser Ø53 cm')
   })
 })

@@ -10,12 +10,13 @@ import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import { chairSpots, furnish } from '../furnish/presets'
 
-// test limits for the wardrobe, the real ones for the dining table, nothing else resizes
+// test limits for the wardrobe, the real ones for the dining table and the fan (proportional), nothing else resizes
 vi.mock('../furnish/kit', async (orig) => {
   const kit = await orig<typeof import('../furnish/kit')>()
   return {
     ...kit,
-    resizeLimits: (id: string) => (id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : id === 'dining_table' ? kit.resizeLimits(id) : null),
+    resizeLimits: (id: string) =>
+      id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : ['dining_table', 'ceiling_fan', 'sofa_3seat'].includes(id) ? kit.resizeLimits(id) : null,
   }
 })
 
@@ -248,6 +249,24 @@ describe('resizePiece: 5 cm steps, kit limits, the same refusals', () => {
     expect(d.piece.y).toBeCloseTo(0.475, 9) // the back stays 5 cm off the wall
     expect(d.error).toBe('Overlaps the bedside table')
     expect(resizePiece(unit, rooms, ps, 'side', { x: 1, y: 1, z: 1 })).toBeNull()
+  })
+
+  it('what rests on a piece never blocks its resize and stays put (the cushions on a longer sofa)', () => {
+    const m = resizePiece(unit, rooms, ps, 'sofa', { x: 2.45, y: 0.82, z: 0.92 }, { x: 1, z: 0 })!
+    expect(m.error).toBeNull()
+    expect(m.piece.sizeM!.x).toBeCloseTo(2.45, 9)
+    expect(at(m.furniture, 'cush')).toBe(at(ps, 'cush'))
+  })
+
+  it('a proportional piece (the fan): the dragged axis lands on 5 cm, the others follow it, clamped to 0.7–1.4×', () => {
+    const kit = { x: 1.463, y: 0.516, z: 1.463 }
+    const f = resizePiece(unit, rooms, ps, 'fan', { ...kit, y: 0.64 })!
+    expect(f.error).toBeNull()
+    expect(size(f)!.y).toBeCloseTo(0.65, 9)
+    expect(size(f)!.x / kit.x).toBeCloseTo(0.65 / kit.y, 2)
+    expect(size(f)!.z).toBe(size(f)!.x)
+    const big = size(resizePiece(unit, rooms, ps, 'fan', { ...kit, x: 9 }))!
+    expect([big.x / kit.x, big.y / kit.y, big.z / kit.z].map((k) => k.toFixed(2))).toEqual(['1.40', '1.40', '1.40'])
   })
 
   it('Studio: resize-piece commits one undo step, a refusal toasts and keeps the layout', () => {
