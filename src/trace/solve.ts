@@ -992,9 +992,11 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     if (it) {
       const at = insidePoint(r, u, rooms, toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
       const id = newId()
-      const name = titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1')) || KIND_NAME[it.roomKind as RoomKind]
-      roomLabels.push({ id, name, kind: it.roomKind as RoomKind, ...at, ...(it.dims ? { printedSize: `${formatFeetInches(it.dims.aM)} × ${formatFeetInches(it.dims.bM)}` } : {}) })
-      if (it.dims) dimsOf.set(id, it.dims)
+      const name = titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
+      // a misread size ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side
+      const dims = it.dims && Math.min(it.dims.aM, it.dims.bM) >= 0.6 && Math.max(it.dims.aM, it.dims.bM) <= 12 ? it.dims : undefined
+      roomLabels.push({ id, name, kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: `${formatFeetInches(dims.aM)} × ${formatFeetInches(dims.bM)}` } : {}) })
+      if (dims) dimsOf.set(id, dims)
       kindOf.set(r, it.roomKind as RoomKind)
       labelled++
       const names = new Set(items.map((x) => normaliseName(x.text.split('\n')[0])))
@@ -1049,7 +1051,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       let kind: OpeningKind = o.kind
       const wet = kinds.includes('bath')
       const veranda = kinds.includes('balcony')
-      if (gs?.kind === 'window' || (outside && kind !== 'door') || (wet && outside)) kind = 'window'
+      // one room only: the outside (or an unclosed open area — then the review item says so)
+      if (gs?.kind === 'window' || (outside && (kind !== 'door' || wet))) kind = 'window'
       if (veranda && o.widthM >= 1.2 && !outside) kind = 'slider'
       if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other')) kind = 'door'
       const conf = gs?.conf ?? 0.2
@@ -1057,14 +1060,15 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const op: Opening = { ...o, kind, heightM: def.heightM, sillM: def.sillM }
       if (kind === 'door') {
         const mid = o.offsetM + o.widthM / 2
-        if (gs?.hinge) op.hinge = dot(sub(gs.hinge, a), dir) < mid ? 'a' : 'b'
-        else op.hinge = 'a'
-        op.swing = gs?.swingTo && dot(sub(gs.swingTo, a), nrm) > 0 ? 'out' : 'in'
+        // the guess's points are in the pre-shift metres
+        const sh = (p: Pt): Pt => ({ x: p.x - shift.x, y: p.y - shift.y })
+        op.hinge = gs?.hinge && dot(sub(sh(gs.hinge), a), dir) > mid ? 'b' : 'a'
+        op.swing = gs?.swingTo && dot(sub(sh(gs.swingTo), a), nrm) > 0 ? 'out' : 'in'
       }
       if (conf < OP_CONF_OK || gs?.kind !== kind) {
         const m = o.offsetM + o.widthM / 2
         const at = { x: a.x + dir.x * m, y: a.y + dir.y * m }
-        const why = !gs ? 'a gap with nothing drawn in it' : gs.kind === kind ? 'faint evidence' : `drawn like a ${gs.kind}, rooms say ${kind}`
+        const why = !gs ? 'a gap with nothing drawn in it' : gs.kind === kind ? 'faint evidence' : gs.kind === 'unknown' ? `no clear symbol, rooms say ${kind}` : `drawn like a ${gs.kind}, rooms say ${kind}`
         review.push({ id: newId(), at, kind: 'opening-guess', message: `${titleCase(kind)} ${formatFeetInches(o.widthM)} wide? (${why})`, entityId: o.id })
       }
       return [op]
