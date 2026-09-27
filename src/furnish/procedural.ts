@@ -9,6 +9,7 @@
  */
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
@@ -1017,90 +1018,101 @@ function inset(poly: Pt[], k: number): Pt[] {
 }
 
 /**
- * Three leaf sprites side by side, 256 × 512 each on transparent: a trailing pothos vine hanging from the top, a leafy
- * clump rising from the bottom, a fine creeper hanging in three strands (same idea as paintArt: painted once, no download).
+ * The leaf blades of a scanned leaves mesh: its connected components textured from the atlas's leaf images (the stem
+ * strip is the atlas's right edge, u > 0.75), the longest one per image, longest first, each re-posed with its
+ * petiole end at the origin, tip up +y at 1 (the tip is its texel nearest the image top: the atlas's leaves stand
+ * upright) and face +z (its mean normal).
  */
-function paintLeaves(): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  ;[c.width, c.height] = [768, 512]
-  const g = c.getContext('2d')!
-  const greens = ['#263f1d', '#2f4d24', '#39592b', '#446532', '#52723a']
-  // a leaf from its base (x, y), tip `len` away along angle a (0 = up, clockwise), `round` widens the base (heart)
-  const leaf = (x: number, y: number, len: number, w: number, a: number, color: string, round = 0.3) => {
-    g.save()
-    g.translate(x, y)
-    g.rotate(a)
-    g.beginPath()
-    g.moveTo(0, 0)
-    g.bezierCurveTo(w * (0.5 + round), -len * 0.1, w * 0.45, -len * 0.75, 0, -len)
-    g.bezierCurveTo(-w * 0.45, -len * 0.75, -w * (0.5 + round), -len * 0.1, 0, 0)
-    g.fillStyle = color
-    g.fill()
-    g.strokeStyle = 'rgba(200,225,160,0.4)'
-    g.lineWidth = Math.max(1, w * 0.05)
-    g.beginPath()
-    g.moveTo(0, 0)
-    g.lineTo(0, -len * 0.8)
-    g.stroke()
-    g.restore()
+function blades(src: THREE.BufferGeometry): THREE.BufferGeometry[] {
+  const idx = src.index!.array
+  const pos = src.attributes.position
+  const nor = src.attributes.normal
+  const uv = src.attributes.uv
+  const root = Array.from({ length: pos.count }, (_, i) => i)
+  const find = (i: number) => {
+    while (root[i] !== i) i = root[i] = root[root[i]]
+    return i
   }
-  const stem = (pts: Pt[], w: number) => {
-    g.strokeStyle = '#4e6a2c'
-    g.lineWidth = w
-    g.beginPath()
-    for (const p of pts) g.lineTo(p.x, p.y)
-    g.stroke()
+  const seen = new Map<string, number>() // uv seams split a blade's vertices: weld by position
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${pos.getX(i)},${pos.getY(i)},${pos.getZ(i)}`
+    if (seen.has(k)) root[find(i)] = find(seen.get(k)!)
+    else seen.set(k, i)
   }
-  const pick = (i: number, j: number) => greens[Math.floor(rnd(i, j) * greens.length)]
-  // 0: pothos, two vines of heart-shaped leaves alternating down swaying stems, smaller toward the tips
-  for (const [k, x0] of [84, 172].entries()) {
-    const vine = (s: number) => ({ x: x0 + 30 * Math.sin(3.2 * s + 0.6 + 2 * k), y: 6 + (440 + 50 * k) * s })
-    stem(Array.from({ length: 41 }, (_, i) => vine(i / 40)), 4)
-    for (let i = 0; i < 14; i++) {
-      const s = (i + 0.3) / 14
-      const p = vine(s)
-      const len = 96 - 44 * s
-      leaf(p.x, p.y, len, len * 0.8, (i % 2 ? 1 : -1) * (Math.PI / 2 + 0.5 + 0.35 * rnd(i, k + 1)), pick(i, k + 2), 0.55)
-    }
+  for (let t = 0; t < idx.length; t += 3) root[find(idx[t + 1])] = root[find(idx[t + 2])] = find(idx[t])
+  const tris = new Map<number, number[]>()
+  for (let t = 0; t < idx.length; t += 3) {
+    const r = find(idx[t])
+    if (!tris.has(r)) tris.set(r, [])
+    tris.get(r)!.push(idx[t], idx[t + 1], idx[t + 2])
   }
-  // 1: clump, broad leaves fanning up from a wide base, dark ones behind, light ones in front
-  for (let i = 0; i < 34; i++) {
-    const a = -1.25 + 2.5 * rnd(i, 3)
-    const len = 170 + 260 * rnd(i, 4) * Math.cos(a * 0.7)
-    leaf(256 + 128 + 90 * (rnd(i, 5) - 0.5), 510, len, 52 + 34 * rnd(i, 6), a, greens[Math.min(4, Math.floor(i / 7))], 0.2)
+  const V = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, i: number) => new THREE.Vector3().fromBufferAttribute(a, i)
+  const best = new Map<string, { len: number; geo: THREE.BufferGeometry }>()
+  for (const ts of tris.values()) {
+    const vs = [...new Set(ts)]
+    const u0 = Math.min(...vs.map((i) => uv.getX(i)))
+    if (u0 > 0.75) continue
+    const c = vs.reduce((s, i) => s.add(V(pos, i)), new THREE.Vector3()).divideScalar(vs.length)
+    const tip = V(pos, vs.reduce((a, i) => (uv.getY(i) < uv.getY(a) ? i : a)))
+    const y = tip.sub(c)
+    const L = y.length()
+    y.divideScalar(L)
+    const n = vs.reduce((s, i) => s.add(V(nor, i)), new THREE.Vector3())
+    const z = n.addScaledVector(y, -n.dot(y)).normalize()
+    const x = new THREE.Vector3().crossVectors(y, z)
+    const base = c.clone().addScaledVector(y, -0.35 * L) // the petiole meets a heart-shaped blade ~⅓ of the way below its middle
+    const s = 1 / (1.35 * L)
+    const at = new Map(vs.map((v, k) => [v, k]))
+    const P = new Float32Array(vs.length * 3)
+    const N = new Float32Array(vs.length * 3)
+    const UV = new Float32Array(vs.length * 2)
+    vs.forEach((v, k) => {
+      const p = V(pos, v).sub(base)
+      const m = V(nor, v)
+      P.set([p.dot(x) * s, p.dot(y) * s, p.dot(z) * s], 3 * k)
+      N.set([m.dot(x), m.dot(y), m.dot(z)], 3 * k)
+      UV.set([uv.getX(v), uv.getY(v)], 2 * k)
+    })
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(P, 3))
+    geo.setAttribute('normal', new THREE.BufferAttribute(N, 3))
+    geo.setAttribute('uv', new THREE.BufferAttribute(UV, 2))
+    geo.setIndex(ts.map((v) => at.get(v)!))
+    const key = `${u0.toFixed(2)},${Math.min(...vs.map((i) => uv.getY(i))).toFixed(2)}`
+    if ((best.get(key)?.len ?? 0) < L) best.set(key, { len: L, geo })
   }
-  // 2: creeper, four strands of small round leaves
-  for (const [k, x0] of [48, 104, 160, 214].entries()) {
-    const at = (s: number) => ({ x: 512 + x0 + 20 * Math.sin(5 * s + k * 2), y: 4 + (360 + 140 * rnd(k, 7)) * s })
-    stem(Array.from({ length: 31 }, (_, i) => at(i / 30)), 2)
-    for (let i = 0; i < 26; i++) {
-      const p = at((i + 0.5) / 26)
-      leaf(p.x, p.y, 34 + 12 * rnd(i, k), 32, (i % 2 ? 1 : -1) * (1.9 + 0.5 * rnd(k, i)), pick(i + 7, k), 0.9)
-    }
-  }
-  return c
+  return [...best.values()].sort((a, b) => b.len - a.len).map((b) => b.geo)
 }
 
-let leafMat: THREE.MeshStandardMaterial | null = null
-/** Leaf-card material (paintLeaves), alpha-tested, both faces; without a DOM (Vitest) a flat green. */
-function leaves(): THREE.MeshStandardMaterial {
-  if (leafMat) return leafMat
-  leafMat = new THREE.MeshStandardMaterial({ roughness: 0.7, side: THREE.DoubleSide, alphaTest: 0.45 })
-  if (typeof globalThis.document?.createElement === 'function') {
-    const t = new THREE.CanvasTexture(paintLeaves())
-    t.colorSpace = THREE.SRGBColorSpace
-    t.anisotropy = 8
-    leafMat.map = t
-  } else leafMat.color.set('#4b7a33')
-  return leafMat
+/** Blade kinds per planter bed: one InstancedMesh (+ its shadow pass) each. */
+const LEAF_KINDS = 3
+/**
+ * Real leaves for the planter beds: the scanned blades of Poly Haven's potted_plant_02 (CC0; the veranda pots' model,
+ * so no new download), its own PBR maps (colour, normal, roughness). Leaves are lit on both faces and glow faintly
+ * with their own colour (emissive = the colour map): light through a thin leaf, never black in the shade.
+ */
+const leafMat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, emissive: '#4a5a38', metalness: 0 })
+let leafGeos: Promise<THREE.BufferGeometry[]> | null = null
+function loadLeaves(): Promise<THREE.BufferGeometry[]> {
+  return (leafGeos ??= new GLTFLoader().loadAsync('/assets/models/potted_plant_02/potted_plant_02_1k.gltf').then((g) => {
+    const src = g.scene.getObjectByName('potted_plant_02_leaves') as THREE.Mesh
+    const m = src.material as THREE.MeshStandardMaterial
+    Object.assign(leafMat, { map: m.map, emissiveMap: m.map, normalMap: m.normalMap, roughnessMap: m.roughnessMap, roughness: 1 })
+    leafMat.needsUpdate = true
+    return blades(src.geometry).slice(0, LEAF_KINDS)
+  }))
 }
 
 /**
  * Planter bed filling a planter strip (the shape is in its id, procedural.meta.ts): a plaster kerb 8 cm wide round the
- * edge up to PLANTER_KERB, dark soil inside it, a low mound of leaf cards over the soil (taller toward the outer edges)
- * and trailing strands over each outer parapet: a card across its cap and one hanging 0.3–0.6 m down its outside face.
- * Cards are alpha-tested sprites (paintLeaves), one InstancedMesh per sprite (≤ ~600 cards on an 18 m² strip), casting no shadow. Their
- * layout box is set to the bed's (the strands hang outside it) so furniture.ts centres and grounds the bed on its polygon.
+ * edge up to PLANTER_KERB, dark soil inside it, planted with real leaves (loadLeaves) in two habits:
+ * - a mound of leafy clumps on a jittered grid over the soil, each a spray of leaves on (unseen) petioles, low by the
+ *   curb onto the veranda (the floor, chairs and pots stay in view) and rising toward the outer parapets to their cap;
+ * - trailing strands over each outer parapet every ~0.14 m: a leaf or two across its cap, then leaves hanging tip-down
+ *   0.1–0.9 m down its outside face.
+ * Leaves are instanced per blade kind (LEAF_KINDS draw calls + their shadow pass) and cast real shadows (they are cut
+ * geometry, not alpha cards: no shimmer, no square shadows). Their layout box is set to the bed's (the strands hang
+ * outside it) so furniture.ts centres and grounds the bed on its polygon; they appear once the scan has loaded.
  */
 function planterBed(id: string): THREE.Object3D[] {
   const { poly, edges } = parsePlanter(id)!
@@ -1112,76 +1124,112 @@ function planterBed(id: string): THREE.Object3D[] {
   const kerb = new THREE.ExtrudeGeometry(ring, { depth: PLANTER_KERB, bevelEnabled: false }).rotateX(-Math.PI / 2)
   const ySoil = PLANTER_KERB - 0.04
   const soil = new THREE.ShapeGeometry(new THREE.Shape(soilPoly.map(V2))).rotateX(-Math.PI / 2).translate(0, ySoil, 0)
-  // cards: [sprite][] of matrices; a card is 0.3 × 0.6 m at scale 1, centred
-  const cards: THREE.Matrix4[][] = [[], [], []]
-  const q = new THREE.Quaternion()
-  const card = (sprite: number, at: THREE.Vector3, anchor: 1 | -1, yaw: number, tilt: number, s: number) => {
-    q.setFromEuler(new THREE.Euler(tilt, yaw, 0, 'YXZ'))
-    // anchor 1: `at` is the card's bottom edge (it grows up), −1: its top edge (it hangs)
-    const c = at.clone().add(new THREE.Vector3(0, 0.3 * s * anchor, 0).applyQuaternion(q))
-    cards[sprite].push(new THREE.Matrix4().compose(c, q.clone(), new THREE.Vector3(s, s, s)))
+  // leaves: [kind][] of matrix + tint
+  const kinds: { m: THREE.Matrix4; v: number }[][] = Array.from({ length: LEAF_KINDS }, () => [])
+  const UP = new THREE.Vector3(0, 1, 0)
+  let n = 0
+  /** A leaf, petiole end at `at`, tip along `d` (unit), `len` m long, face turned toward `face` then rolled about d. */
+  const leaf = (at: THREE.Vector3, d: THREE.Vector3, face: THREE.Vector3, roll: number, len: number, v: number) => {
+    const z = face.clone().addScaledVector(d, -face.dot(d))
+    if (z.lengthSq() < 1e-6) z.set(1, 0, 0)
+    z.normalize()
+    const x = new THREE.Vector3().crossVectors(d, z)
+    z.multiplyScalar(Math.cos(roll)).addScaledVector(x, Math.sin(roll)) // roll about d
+    x.crossVectors(d, z)
+    const mt = new THREE.Matrix4().makeBasis(x, d, z).scale(new THREE.Vector3(len, len, len)).setPosition(at)
+    kinds[Math.floor(rnd(n++, 7.7) * LEAF_KINDS)].push({ m: mt, v })
   }
-  const outer = poly.map((a, i) => ({ a, b: poly[(i + 1) % poly.length], ...edges[i] })).filter((e) => e.h > 0)
+  const dir = (yaw: number, pitch: number) => new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
+  const sides = poly.map((a, i) => ({ a, b: poly[(i + 1) % poly.length], ...edges[i] }))
+  const outer = sides.filter((e) => e.h > 0)
+  const inner = sides.filter((e) => !e.h) // the curb onto a veranda, or the building's wall
   const segDist = (p: Pt, a: Pt, b: Pt) => {
     const [dx, dy] = [b.x - a.x, b.y - a.y]
     const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
     return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
   }
-  // mound: a jittered grid over the soil, ~320 cards at most; within 0.4 m of an outer edge taller and leaning out over it
+  // mound: domed clumps every ~0.25 m (a narrow strip still gets a row); 0.26 m tall away from the parapets, rising to ~0.66 m against them, except
+  // within 0.4 m of an inner side (by a curb the veranda's floor, chairs and pots stay in view)
   const xs = soilPoly.map((p) => p.x)
   const ys = soilPoly.map((p) => p.y)
-  let area = 0
-  for (let i = 0; i < soilPoly.length; i++) {
-    const [p, r] = [soilPoly[i], soilPoly[(i + 1) % soilPoly.length]]
-    area += (p.x * r.y - r.x * p.y) / 2
-  }
-  const step = Math.max(0.15, Math.sqrt(Math.abs(area) / 320))
+  const step = 0.25
   for (let x = Math.min(...xs) + step / 2, i = 0; x < Math.max(...xs); x += step, i++)
     for (let y = Math.min(...ys) + step / 2, j = 0; y < Math.max(...ys); y += step, j++) {
-      const p = { x: x + step * 0.8 * (rnd(i, j) - 0.5), y: y + step * 0.8 * (rnd(j, i) - 0.5) }
+      const p = { x: x + step * 0.7 * (rnd(i, j) - 0.5), y: y + step * 0.7 * (rnd(j, i) - 0.5) }
       if (!pointInPolygon(p, soilPoly)) continue
-      const near = outer.find((e) => segDist(p, e.a, e.b) < 0.4)
-      const out = near && { x: near.b.y - near.a.y, y: near.a.x - near.b.x } // outward normal (unnormalised) of that edge
-      const yaw = out ? Math.atan2(out.x, out.y) + 0.8 * (rnd(i + 3, j) - 0.5) : 2 * Math.PI * rnd(i + 5, j)
-      const s = near ? 1.15 + 0.3 * rnd(i, j + 9) : 0.85 + 0.45 * rnd(i, j + 9)
-      // leaning ±0.65 rad: seen from above too, the cards cover the soil
-      card(rnd(i + 1, j + 2) < 0.8 ? 1 : 2, new THREE.Vector3(p.x, ySoil - 0.06, p.y), 1, yaw, (near ? 0.35 : 0) + 1.3 * (rnd(j + 4, i) - 0.5), s)
+      const dOut = Math.min(Infinity, ...outer.map((e) => segDist(p, e.a, e.b)))
+      const dIn = Math.min(Infinity, ...inner.map((e) => segDist(p, e.a, e.b)))
+      const t = Math.max(0, 1 - dOut / 0.75) ** 2 * Math.min(1, dIn / 0.4)
+      const H = (0.26 + 0.4 * t) * (0.85 + 0.3 * rnd(i + 2, j))
+      const count = 6 + Math.round(4 * t + 3 * rnd(j, i + 4))
+      for (let k = 0; k < count; k++) {
+        const a = 2 * Math.PI * (k / count + 0.3 * rnd(k, i + j))
+        const f = 0.2 + 0.8 * rnd(i + k, j + 1)
+        const h = H * f // petiole top above the soil; the high ones near the middle: a dome
+        const r = 0.02 + 0.22 * (1 - f) ** 0.7 * (0.5 + 0.5 * rnd(j + k, i + 2))
+        const at = new THREE.Vector3(p.x + r * Math.sin(a), ySoil + h, p.y + r * Math.cos(a))
+        if (!pointInPolygon({ x: at.x, y: at.z }, poly)) continue
+        // blades held out from the clump, the high ones nearer level, the low ones tipped up; faces to the sky
+        const pitch = -0.2 + 0.8 * rnd(k, j + 3) - 0.3 * f
+        const d = dir(a + 0.5 * (rnd(i, k + 5) - 0.5), pitch)
+        const len = 0.12 + 0.08 * rnd(i + 7, k)
+        if (!pointInPolygon({ x: at.x + d.x * len, y: at.z + d.z * len }, poly)) continue // into a wall, or over the curb
+        leaf(at, d, UP, 0.6 * (rnd(k + 6, i) - 0.5), len, 0.6 + 0.35 * f)
+      }
     }
-  // trailing strands over the outer parapets every 0.1 m: one across the cap, one hanging 0.3–0.6 m down the outside face
+  // trailing strands over the outer parapets
   outer.forEach((e, k) => {
     const L = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
     const d = { x: (e.b.x - e.a.x) / L, y: (e.b.y - e.a.y) / L }
-    const o = { x: d.y, y: -d.x } // outward (rooms are positive loops: inward is (−d.y, d.x))
-    const yaw = Math.atan2(o.x, o.y)
-    const n = Math.max(1, Math.floor(L / 0.1))
-    for (let i = 0; i < n; i++) {
-      const u = ((i + 0.5 + 0.8 * (rnd(i, k) - 0.5)) / n) * L
-      const at = (off: number, y: number) => new THREE.Vector3(e.a.x + d.x * u + o.x * off, y, e.a.y + d.y * u + o.y * off)
-      card(rnd(k, i + 5) < 0.5 ? 1 : 2, at(e.t / 2 - 0.05, e.h - 0.02), 1, yaw + 0.5 * (rnd(k, i) - 0.5), 1.25, 0.55 + 0.2 * rnd(i, k + 6)) // across the cap
-      card(rnd(i, k + 1) < 0.6 ? 0 : 2, at(e.t + 0.02 + 0.05 * rnd(i, k + 7), e.h + 0.04), -1, yaw + 0.6 * (rnd(k + 2, i) - 0.5), -0.05 - 0.2 * rnd(i, k + 3), 0.5 + 0.5 * rnd(k + 4, i))
+    const o = new THREE.Vector3(d.y, 0, -d.x) // outward (rooms are positive loops: inward is (−d.y, d.x))
+    const along = new THREE.Vector3(d.x, 0, d.y)
+    const count = Math.max(1, Math.floor(L / 0.14))
+    for (let i = 0; i < count; i++) {
+      if (rnd(i, k + 9) < 0.15) continue
+      const u = ((i + 0.5 + 0.7 * (rnd(i, k) - 0.5)) / count) * L
+      const at = (off: number, y: number) => new THREE.Vector3(e.a.x + d.x * u + o.x * off, y, e.a.y + d.y * u + o.z * off)
+      const side = along.clone().multiplyScalar(0.6 * (rnd(k, i + 1) - 0.5))
+      // across the cap: blades lying outward, tips dipping over the outer arris
+      for (let c = 0; c < 2; c++)
+        leaf(at(-0.04 + e.t * 0.45 * c, e.h + 0.03), o.clone().add(side).setY(-0.15 - 0.2 * c).normalize(), UP, 0.5 * (rnd(i, c + 2) - 0.5), 0.1 + 0.04 * rnd(c, i), 0.85)
+      // down the outside face: tip-down blades facing out, smaller and paler toward the strand's end
+      const drop = 0.1 + 0.8 * rnd(k + 3, i) ** 1.5
+      const leaves = Math.max(1, Math.round(drop / 0.07))
+      for (let s = 0; s < leaves; s++) {
+        const f = s / leaves
+        const sway = 0.03 * Math.sin(7 * f + i)
+        const hang = new THREE.Vector3(0, -1, 0).addScaledVector(o, 0.25 + 0.5 * rnd(s, i + k)).addScaledVector(along, 0.6 * (rnd(i + s, k + 4) - 0.5)).normalize()
+        const a = at(e.t + 0.025 + 0.03 * rnd(s + 1, i), e.h - 0.02 - f * drop).addScaledVector(along, sway)
+        leaf(a, hang, o, 0.8 * (rnd(s, i + 2) - 0.5), (0.12 - 0.05 * f) * (0.8 + 0.4 * rnd(i, s + 3)), 0.75 + 0.25 * f)
+      }
     }
   })
   const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
   const tint = new THREE.Color()
-  const sprites = cards.flatMap((ms, sprite) => {
-    if (!ms.length) return []
-    const geo = new THREE.PlaneGeometry(0.3, 0.6)
-    const uv = geo.attributes.uv
-    for (let i = 0; i < uv.count; i++) uv.setX(i, (sprite + uv.getX(i)) / 3)
-    const im = new THREE.InstancedMesh(geo, leaves(), ms.length)
-    ms.forEach((mt, i) => {
+  const ims = kinds.map((ls, kind) => {
+    const im = new THREE.InstancedMesh(new THREE.BufferGeometry(), leafMat, ls.length)
+    ls.forEach(({ m: mt, v }, i) => {
       im.setMatrixAt(i, mt)
-      const v = 0.72 + 0.3 * rnd(i, sprite + 11)
-      im.setColorAt(i, tint.setRGB(v * (0.9 + 0.14 * rnd(sprite, i)), v, v * (0.85 + 0.1 * rnd(i, sprite))))
+      // older blades darker and bluer, young ones yellower: the scan's pale green spread over a mixed bed
+      const g = v * (0.8 + 0.3 * rnd(i, kind + 11))
+      im.setColorAt(i, tint.setRGB(g * (0.78 + 0.22 * rnd(kind, i)), g, g * (0.7 + 0.2 * rnd(i + 1, kind))))
     })
     im.boundingBox = bed.clone()
     im.userData.solo = true
-    // ponytail: furniture.ts sets castShadow on every mesh it loads; square card shadows (no alpha depth material) would be
-    // worse than none. Let furniture.ts honour a userData flag instead if more pieces need this.
-    Object.defineProperty(im, 'castShadow', { get: () => false, set: () => {} })
-    return [im]
+    im.visible = false // until the scan's blades are in
+    return im
   })
-  return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...sprites]
+  if (typeof globalThis.document?.createElement === 'function')
+    loadLeaves()
+      .then((geos) =>
+        ims.forEach((im, k) => {
+          im.geometry = geos[k % geos.length]
+          im.boundingSphere = null // recomputed from the real blades (frustum culling)
+          im.visible = true
+        }),
+      )
+      .catch((e) => console.warn('[plotline] planter leaves failed to load', e))
+  return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...ims.filter((im) => im.count)]
 }
 
 /** id → builder at size s (its kit size unless resized); the resizable ones (kit.ts RESIZE) rebuild at any size in their limits. */
