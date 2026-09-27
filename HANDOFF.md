@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **deployed by the manager 2026-09-27 00:50 = 81b7b67 (wave 10: studio + sheltech + finishes + furnish + render + building + Studio pan; views still out)**. Earlier today: 22:58 = 3ae357f. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
+Live: https://plotline-flax.vercel.app — **wave 11 merged but NOT deployed (founder: run npx vercel --prod --yes); last deploy 2026-09-27 00:50 = 81b7b67 (wave 10: studio + sheltech + finishes + furnish + render + building + Studio pan; views still out)**. Earlier today: 22:58 = 3ae357f. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
 
 ## SESSION 8 — 2026-09-26 22:45 → (Fable 5.1): resumed after session 7 died mid-wave
 
@@ -40,6 +40,31 @@ Then open a NEW terminal (so the env vars apply) before running `claude`. If a s
 
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
+
+## WAVE 11 RESULT — merged, shot, blind-scored 2026-09-27 (session 10). NOT DEPLOYED: the founder runs `npx vercel --prod --yes` (auto-mode denied it this session)
+
+**Code:** `feat/phase-0` = all six wave-11 branches merged + turf wiring (386dbbe) + HANDOFF; **262 tests, tsc + `npm run build` green, pushed.** Worktrees and `worktree-agent-*` branches removed (each proven merged first). Live link is still wave 10 (81b7b67) until the founder deploys.
+
+**What shipped (founder-visible):**
+- **Edit plan** button in the viewer → `/studio?unit=<stem>` opens that unit's walls/openings/labels (confirm if a draft exists); Preview 3D / Export round trip = identical JSON.
+- **Furniture tool F in the Studio** (the one-time exception): 1 ft grid drag, wall snap, R turns 90°, arrows move a square, refusals "Overlaps the …" / "Blocks the door" / "Blocks the entrance" / "Outside the room", Reset to preset / Reset all; the first move writes the preset layout into `unit.furniture` (the viewer honours it). Shots `wave11\studio-furniture\`.
+- **Sheltech Type B = a REAL trace** (`/u/sheltech-b`), NOT A mirrored: "L/O" on the drawing = Land Owner, 13 of 16 printed sizes differ. `mirrorUnit` is in core (tested) but no unit uses it. **Sheltech tower** (levels 2–6 = A + B + core, rough ground/roof, turf) → both Sheltech flats have the Building button; +56 draw calls over the dollhouse. Level 1 = lounge + gym (shells), Levels 3/4 "Family Living" variant not modelled. Shots `wave11\mirror\b2-*`.
+- **Look:** exterior plaster textured (plaster_white #dbd3c6), white tiles 0.65/0.63 albedo (baths' near-white band 17–24 % → 3–5 %), skirting in the floor finish, dusk bounce; draw calls +0.
+- **Views:** 19 of 67 frames reframed (wet rooms < 3 m² up to 25° from the doorway, door leaves shut when that frees ≥ 2 %, foyer/passage/plant verandas look into the flat); runner asserts the HUD label (0 BAD frames in 89).
+- **Furnish:** planter strips → procedural planter beds with trailing leaf cards; turf; bed-3s get the 2-door wardrobe; Sheltech Bed 4 a single bed; beds off door paths.
+
+**Blind score (Fable, 89 candidate frames vs wave 10, `wave11\score\SCORE.md`):** A 4.95 → 4.97 (flat) · B 4.33 → 4.70 (but +4.5 of that is b-bed-2, whose BASELINE is the known wave-10 capture fault — without it B is ≈ flat) · C 5.06 → 4.97 (down) · S 4.76 → 5.11 (up) · SB 4.78 (new, no pair) · **Hero mean 5.19 → 5.26.** This director rescales harder again (wave-10 director had A 5.34 for the same baseline). **Honest verdict: flat overall; Sheltech up from the view rules; the planter foliage is a regression.** Wins: b-bed-2 (capture fault fixed), s-passage +3, s-veranda-kitchen +2.5, s-entry +2. Drops: s-veranda-4 −1.5 and s-veranda-1 −1 ("flat leaf-card planter reads as game foliage"), s-bed-4 −1.5 (blank corner + cropped AC), s-bed-2 −1 (close blank wall).
+
+**Director's ceilings (candidate set, by frames touched) → wave 12 candidates:**
+1. Flat, shadowless lighting / uniform materials, blown marble near windows (~80 frames) — the real ceiling; options: baked AO/lightmap per unit (PRODUCT_PHILOSOPHY §5 lists it), stronger contact shadows, marble roughness.
+2. Wet rooms washed-out, fixtures cropped / top-down, WC often missing (23).
+3. Neighbour towers blocky (22) — **founder: do not spend effort; accept.**
+4. A near slab fills 25–40 % (wall, leaf, wardrobe, curtain column) or the bed cropped (18): a/c-bed-3, s-bed-2, s-bed-4, sb-bed-1, sb-bed-3, sb-kitchen, sb-foyer, help rooms.
+5. **Planter leaf cards look like cardboard (7 frames + 7 glimpses) — fix first (cheap): denser/smaller cards with proper alpha + normal/translucency, or real CC0 3D foliage, or hide the cards and keep soil + low shrubs.**
+6. Veranda frames never show the veranda (8) — the new "plant-only veranda looks into the flat" rule; revisit: a veranda view should show the veranda floor + rail + what is outside.
+7. Tiny rooms show slab props (cot blanket block, slab "clothes" in closets) (5).
+
+**Process lessons (put in every brief):** give each agent a private Vite `cacheDir` (`--config` copy) — the node_modules junction makes dev servers break each other ("504 Outdated Optimize Dep"); never start the dev server as a harness background task (two agents looped forever "waiting on background work" and never reported); commit every green step (a usage-limit cut-off lost one agent's worktree); subagents cannot write report .md files — the final message is the report.
 
 **UPDATE session 10 (2026-09-27 ~09:00): ALL SIX wave-11 branches merged (furnish 07328cd), turf wired into the building gardens (386dbbe), 262 tests, tsc green, pushed; all worktrees + branches removed; no stale dev servers. Score shoot running: `bash E:dev	mpwave11scoreun-all.sh` (a/b/c/s/sb → wave11score, log run-all.log) against vite :5250. Remaining: blind score (brief score-brief.md, add the sb- unit as "no pair"), Sheltech B building shots (REPORT2.md commands), HANDOFF result, deploy.**
 
