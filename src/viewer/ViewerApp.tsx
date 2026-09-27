@@ -107,7 +107,9 @@ export default function ViewerApp() {
     const u = onFloor(resolveUnit())
     if (!u) return [null, []]
     const rooms = core.deriveRooms(u)
-    return [{ ...u, furniture: layoutFor({ ...u, furniture: readLayout(u.id) ?? u.furniture }, rooms) }, layoutFor(u, rooms)]
+    const base = layoutFor(u, rooms)
+    const saved = readLayout(u.id)
+    return [{ ...u, furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
   }, [])
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
   if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
