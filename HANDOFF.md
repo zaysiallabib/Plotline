@@ -2,7 +2,26 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **waves 11 + 12 merged but NOT deployed (founder: run npx vercel --prod --yes); last deploy 2026-09-27 00:50 = 81b7b67 (wave 10: studio + sheltech + finishes + furnish + render + building + Studio pan; views still out)**. Earlier today: 22:58 = 3ae357f. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
+Live: https://plotline-flax.vercel.app — **wave 13 live (the founder deployed it 2026-09-27 late); wave 14 in progress.** Staff editing: `/u/type-a?staff=1` → Arrange. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
+
+## WAVE 14 — launched 2026-09-27 late (session 11, founder awake; four Opus 5.5 agents on worktrees)
+
+Founder: "I still cannot change anything while I am inside a room … every object should be in a library, even in room view … delete the TV, point at the wall, put it there … rooms look cramped." **Arrange already existed (wave 12) behind `?staff=1` — he never found it** (memory: always give him the exact URL). CLAUDE.md Decisions updated (d7d002c): staff may ADD pieces from the kit library in walk view + Studio; every piece sized; longer tables gain chairs. Baseline for the score = `E:\dev\plotline-shots\wave13\score\` (wave-13 HEAD frames).
+
+| Agent | Port | Scope | Status |
+|---|---|---|---|
+| library | 5271 | Add panel (kit by category) + ghost placement on floor/wall/ceiling in Arrange; shared `placePiece` in studio/furniture.ts; Studio F library; chair cap reverted; visible "Staff mode" entry; share links never show it | running |
+| sizes | 5272 | every kit asset gets resize limits; scanned glTF scale via sizeM (per-axis or uniform by category); kit.ts, three/furniture.ts, resizePiece | running |
+| roomy | 5273 | spawn/frame: stand far back (corner/doorway), lower level camera (~1.4 m, pitch 0…−5°), visible-floor metric; undo wave-13 veranda/s-toilet-1 regressions | running |
+| light-fix | 5274 | daylight.ts: remove atlas blocks (a-powder-room, b-bath-2), visible falloff without muddy floors, sawtooth corners | running |
+
+## WAVE 13 RESULT — merged ~21:40, DEPLOYED BY THE FOUNDER (session 11)
+
+**Code:** ab3a0f7, 309 tests, tsc + build green, pushed; worktrees removed. Merged in a separate integration worktree (`git worktree add … wave13-integ`) so the baseline Vite on the main checkout kept serving old code — reuse that. **Gotcha:** removing worktrees while a Vite server runs from the main checkout force-reloads every open page (it watches `.claude/worktrees/`) — never clean up during a shoot.
+- **Daylight:** `src/three/daylight.ts` bakes per unit (~0.1 s) the sky each 0.25 m patch of a room's floor/walls/ceiling sees through its OWN openings; scales indirect light only (env + hemi) via an R8 atlas on room surfaces; no leaks; +0 draw calls; white marble #ebebeb. Manager softened the gradient at merge (WITHIN 0.75–1.25, BETWEEN ≥ 0.8) — too subtle per the score. **Known artefact live: blocky squares on bath tiles (a-powder-room, b-bath-2)** → wave-14 light-fix.
+- **Views:** wet rooms ranked by fittings in frame; railed verandas look out (regressed 5 frames); blank-side-wall rule. **Props:** labels follow size; chairs travel with their table; garments on hangers; cot throw. Manager capped chair count on a longer table (then-CLAUDE.md rule) — reverted in wave 14 by founder decision.
+- **Blind score** (two Fable directors, 89 pairs vs `wave13\base\`, tables `wave13\score\SCORE-abc.md`, `SCORE-s.md`): A 4.95→5.08, B 4.83→4.77, C 5.06→5.28, S 5.39→5.39, SB 5.03→5.50; hero ABC 5.42→5.48, hero S+SB 5.22→5.36 — flat-to-slightly-up. Wins: closets 3.5→5, sb-pdr 3.5→6, sb-kitchen 4→6, sb-veranda-1 3→5.5. Drops: b-veranda-living, a/c-veranda-study, s/sb-veranda-4 (look-out rule), s-toilet-1. Ceilings: camera too close / key pieces cropped (~25), flat light (~30 of 35 S frames), white wet rooms, toy neighbour towers (accepted), blank walls.
+- Open founder question: type-a/c help-bed opening onto the service veranda — door, slider or window?
 
 ## WAVE 13 — launched 2026-09-27 (session 11, Fable 5.1 manager, three Opus 5.5 agents on worktrees; founder asleep, 3 h budget)
 
@@ -11,9 +30,9 @@ Baseline for the blind score: shot at HEAD 2118005 into `E:\dev\plotline-shots\w
 
 | Agent | Port | Scope | Status |
 |---|---|---|---|
-| light | 5261 | new `src/three/daylight.ts` (+ test): per-unit bake of window sky-visibility modulating env+hemi only, no leaks through walls; ENV/HEMI rebalance; blown marble; `render/context/materials.ts`, PlotlineScene room-geometry hookup | running |
-| views | 5262 | `src/viewer/{spawn,frame}.ts` + viewer.test: wet rooms show basin+mirror+WC, near-slab frames (a/c-bed-3, s-bed-2/4, sb-*), veranda views show the veranda | running |
-| props | 5263 | labels follow resized size (three/furniture.ts), dining chairs follow a resized table (one shared fn, viewer Arrange + Studio F), closet garments + cot blanket not slabs (procedural.ts those functions only) | running |
+| light | 5261 | new `src/three/daylight.ts` (+ test): per-unit bake of window sky-visibility modulating env+hemi only, no leaks through walls; ENV/HEMI rebalance; blown marble; `render/context/materials.ts`, PlotlineScene room-geometry hookup | MERGED |
+| views | 5262 | `src/viewer/{spawn,frame}.ts` + viewer.test: wet rooms show basin+mirror+WC, near-slab frames (a/c-bed-3, s-bed-2/4, sb-*), veranda views show the veranda | MERGED |
+| props | 5263 | labels follow resized size (three/furniture.ts), dining chairs follow a resized table (one shared fn, viewer Arrange + Studio F), closet garments + cot blanket not slabs (procedural.ts those functions only) | MERGED |
 
 Merge order: props → views → light. Then candidate shots → `wave13\score\`, blind Fable score vs `wave13\base\`, HANDOFF, push, deploy.
 
