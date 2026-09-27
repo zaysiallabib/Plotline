@@ -16,7 +16,7 @@ vi.mock('../furnish/kit', async (orig) => {
   return {
     ...kit,
     resizeLimits: (id: string) =>
-      id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : ['dining_table', 'ceiling_fan'].includes(id) ? kit.resizeLimits(id) : null,
+      id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : ['dining_table', 'ceiling_fan', 'sofa_3seat'].includes(id) ? kit.resizeLimits(id) : null,
   }
 })
 
@@ -169,6 +169,13 @@ describe('resizePiece: 5 cm steps, kit limits, the same refusals', () => {
     expect(d.piece.y).toBeCloseTo(0.475, 9) // the back stays 5 cm off the wall
     expect(d.error).toBe('Overlaps the bedside table')
     expect(resizePiece(unit, rooms, ps, 'side', { x: 1, y: 1, z: 1 })).toBeNull()
+  })
+
+  it('what rests on a piece never blocks its resize and stays put (the cushions on a longer sofa)', () => {
+    const m = resizePiece(unit, rooms, ps, 'sofa', { x: 2.45, y: 0.82, z: 0.92 }, { x: 1, z: 0 })!
+    expect(m.error).toBeNull()
+    expect(m.piece.sizeM!.x).toBeCloseTo(2.45, 9)
+    expect(at(m.furniture, 'cush')).toBe(at(ps, 'cush'))
   })
 
   it('a proportional piece (the fan): the dragged axis lands on 5 cm, the others follow it, clamped to 0.7–1.4×', () => {

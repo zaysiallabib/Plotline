@@ -356,7 +356,9 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   }
   const piece = { ...p, x: c.x, y: c.y, sizeM: s }
   const chairs = chairsOf(pieces, p)
-  const others = pieces.filter((x) => x.id !== id && !chairs.includes(x))
+  // what rests on it (cushions on a sofa, a TV on its unit) stays put and never blocks it; a table's chairs are laid again
+  const on = riders(pieces, p)
+  const others = pieces.filter((x) => x.id !== id && !on.includes(x))
   let error = whyNot(unit, room, others, piece)
   // a dining table's chairs are laid again round its new size
   const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs) : []
