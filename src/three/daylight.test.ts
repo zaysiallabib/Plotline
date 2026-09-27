@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { bakeDaylight, factorAt, formFactor, HI, LO, RANGE } from './daylight'
+import { bakeDaylight, factorAt, formFactor, HI, LO, mapDaylight, RANGE } from './daylight'
+import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
 import typeA from '../data/units/type-a.json'
 
@@ -67,4 +68,52 @@ describe('bakeDaylight', () => {
     expect(d.data.reduce((a, b) => Math.min(a, b), 255)).toBeGreaterThanOrEqual(Math.floor((255 * LO) / RANGE))
     expect(d.data.reduce((a, b) => Math.max(a, b), 0)).toBeLessThanOrEqual(Math.ceil((255 * HI) / RANGE))
   }, 30000) // ≈ 100 ms idle; the dev machine runs other agents' headless browsers at 100 % CPU
+})
+
+describe('smooth atlas (wave 14: no texel pattern)', () => {
+  const texel = (d: ReturnType<typeof bake>, key: string) => {
+    const r = d.regions.get(key)!
+    return (x: number, y: number) => (RANGE * d.data[(r.y + y) * d.width + r.x + x]) / 255
+  }
+  test('no texel-to-texel step above 0.25 in any indoor room (wave 13: 0.49 from the hard clamp and the wall-end texels)', () => {
+    const u = typeA as Unit
+    const rooms = core.deriveRooms(u)
+    const d = bakeDaylight(u, rooms)
+    for (const [key, r] of d.regions) {
+      if (['shaft', 'balcony'].includes(rooms.find((x) => x.id === r.roomId)!.kind)) continue // a sky well / veranda: steep by nature
+      const at = texel(d, key)
+      let m = 0
+      for (let y = 0; y < r.nv; y++)
+        for (let x = 0; x < r.nu; x++) m = Math.max(m, x ? Math.abs(at(x, y) - at(x - 1, y)) : 0, y ? Math.abs(at(x, y) - at(x, y - 1)) : 0)
+      expect(m, key).toBeLessThanOrEqual(0.25)
+    }
+  }, 30000)
+  test("every face triangle reads its own face's region — the L-corner notch too (wave 13's sawtooth by the bed-1 door)", () => {
+    const u = typeA as Unit
+    const d = bake(u)
+    let n = 0
+    for (const w of u.walls) {
+      const geo = wallGeometry(w, u)
+      if (!geo) continue
+      mapDaylight(d, geo, u, 'wall', w.id)
+      const uv = geo.attributes.dayUv
+      const [front, back] = d.sides.get(w.id)!
+      for (const g of geo.groups) {
+        if (g.materialIndex === 2 || !(g.materialIndex ? back : front)) continue
+        const r = d.regions.get(`wall:${w.id}:${g.materialIndex ? -1 : 1}`)!
+        for (let i = g.start; i < g.start + g.count; i++) {
+          const [x, y] = [uv.getX(i) * d.width, uv.getY(i) * d.height]
+          expect(x >= r.x && x <= r.x + r.nu && y >= r.y && y <= r.y + r.nv, `${w.id} group ${g.materialIndex} vertex ${i}`).toBe(true)
+          n++
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(1000)
+  }, 30000)
+  test('a wall-end texel (inside the neighbouring wall) copies the visible face, not its own dark sample', () => {
+    const d = bake(typeA as Unit)
+    const r = d.regions.get('wall:w_pdr_e:1')! // powder room, by its door: 0.60 beside 1.00 in wave 13
+    const at = texel(d, 'wall:w_pdr_e:1')
+    for (let y = 0; y < r.nv; y++) expect(Math.abs(at(0, y) - at(1, y))).toBeLessThan(0.06)
+  }, 30000)
 })
