@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Opening, type Pt, type Room, type RoomKind, type Unit } from '../core'
-import { heightRange, isCeilingLight, kitAsset } from './kit'
+import { heightRange, isCeilingLight, kitAsset, placementLabel } from './kit'
 import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
 import { buildProcedural } from './procedural'
 import { ART_SETS, parsePlanter, PLANTER } from './procedural.meta'
@@ -754,5 +754,22 @@ describe('furnish', () => {
     expect(bed.x, 'slid away from the door').toBeGreaterThan(2)
     for (const z of doorClearZones(rooms[0], unit, true)) expect(quadsOverlap(quad(bed), z)).toBe(false)
     expectInsideAndDisjoint(ps, rooms, unit)
+  })
+})
+
+describe('sized labels', () => {
+  test('a resized piece is named for what is built: doors, seats, width; at its kit size the kit label', () => {
+    for (const id of ['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'dining_table', 'rug_rect_large', 'rug_rect_small', 'bed_queen', 'bed_single_b'])
+      expect(placementLabel({ assetId: id }), id).toBe(kitAsset(id)!.label)
+    const sized = (assetId: string, x: number, z = 0.6) => placementLabel({ assetId, sizeM: { x, y: 2.2, z } })
+    expect(sized('wardrobe_tall', 2.4)).toBe('Tall wardrobe (oak, 4 doors)')
+    expect(sized('wardrobe_2door', 0.9)).toBe('Wardrobe (oak, 2 doors)')
+    expect(sized('dining_table', 0.9, 0.75)).toBe('Dining table, oak, 2 seats')
+    expect(sized('dining_table', 1.2, 0.9)).toBe('Dining table, oak, 4 seats')
+    expect(sized('dining_table', 2.6, 1.0)).toBe('Dining table, oak, 10 seats')
+    expect(sized('closet_rail', 2.35)).toBe('Open closet unit: rail, shelf, clothes (2.35 m)')
+    expect(sized('rug_rect_small', 2.5, 1.8)).toBe('Wool rug 2.5 × 1.8 m')
+    expect(sized('bed_queen', 2.16, 2.16)).toBe('King bed, upholstered')
+    expect(placementLabel({ assetId: 'sofa_3seat', sizeM: { x: 9, y: 1, z: 1 } })).toBe('3-seat fabric sofa') // no size in its name
   })
 })

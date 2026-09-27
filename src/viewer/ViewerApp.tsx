@@ -9,8 +9,8 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
-import { placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, movePiece, pieceLabel, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
+import { placementLabel, placementSize } from '../furnish/kit'
+import { deletePiece, layoutFor, movePiece, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
@@ -123,7 +123,7 @@ function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; o
     <aside className="glass arrange">
       {p.piece && s ? (
         <>
-          <div className="arrange-name">{pieceLabel(p.piece)}</div>
+          <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {resizeAxes(p.piece.assetId).length
               ? `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high · drag a dot to resize`
@@ -350,7 +350,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       live.current = null
       if (!m) return
       if (!m.error) return settle(pushStep(steps.current, m.furniture), m.piece.id)
-      scene?.placePieces(m.ids.map((id) => pieceOf(id)!)) // springs back
+      scene?.placePieces(steps.current.pieces, true) // springs back (chairs a resize added go)
       showSel(pieceOf(m.piece.id))
       return showToast(m.error)
     }
@@ -361,7 +361,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
         : p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
     if (!next) return
     live.current = next
-    scene?.placePieces(next.furniture.filter((q) => next.ids.includes(q.id)))
+    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this drag added goes again
     showSel(next.piece, !!next.error)
   }
   useEffect(() => scene?.onArrange(onArrange))

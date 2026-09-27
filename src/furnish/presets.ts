@@ -507,24 +507,29 @@ function living(ctx: Ctx): void {
   tryPlace(ctx, 'ceiling_fan', polygonCentroid(ctx.inner), 0, 'free')
 }
 
+/**
+ * Where `seats` chairs (depth `chairD`) go round a dining table of size `t` centred at c, turned rot (long axis = local
+ * x): one at each head from 4 seats on a table ≥ 1.4 m long, the rest spread evenly along the two long sides (back side
+ * first), each touching its edge and facing the table. Presets and a resized table (studio/furniture.ts) both use it;
+ * a table seats up to tableSeats(t.x).
+ */
+export function chairSpots(c: Pt, rot: number, t: { x: number; z: number }, seats: number, chairD = size('dining_chair').z): { c: Pt; rot: number }[] {
+  const r = (rot * Math.PI) / 180
+  const ex = { x: Math.cos(r), y: Math.sin(r) }
+  const ey = { x: -Math.sin(r), y: Math.cos(r) }
+  const heads = seats >= 4 && t.x >= 1.4 ? 2 : 0
+  const out: { c: Pt; rot: number }[] = []
+  for (const s of [-1, 1]) {
+    const n = s < 0 ? Math.ceil((seats - heads) / 2) : Math.floor((seats - heads) / 2)
+    for (let i = 0; i < n; i++) out.push({ c: add(add(c, ex, t.x * ((i + 0.5) / n - 0.5)), ey, s * (t.z / 2 + chairD / 2)), rot: rotationFacing({ x: -ey.x * s, y: -ey.y * s }) })
+  }
+  if (heads) for (const s of [-1, 1]) out.push({ c: add(c, ex, s * (t.x / 2 + chairD / 2)), rot: rotationFacing({ x: -ex.x * s, y: -ex.y * s }) })
+  return out
+}
+
 /** Table (long axis = local x) with chairs touching its edges, all-or-nothing. */
 function diningSet(ctx: Ctx, c: Pt, rot: number, seats: number): boolean {
-  return atomic(ctx, () => {
-    if (!tryPlace(ctx, 'dining_table', c, rot)) return false
-    const t = (rot * Math.PI) / 180
-    const ex = { x: Math.cos(t), y: Math.sin(t) }
-    const ey = { x: -Math.sin(t), y: Math.cos(t) }
-    const tz = size('dining_table')
-    const ch = size('dining_chair').z / 2
-    const spots: [Pt, Pt][] = [] // [offset direction, along-offset]
-    for (const s of [-1, 1]) for (const a of seats >= 6 ? [-0.4, 0.4] : [0]) spots.push([{ x: ey.x * s, y: ey.y * s }, { x: ex.x * a, y: ex.y * a }])
-    if (seats !== 2) for (const s of [-1, 1]) spots.push([{ x: ex.x * s, y: ex.y * s }, { x: 0, y: 0 }])
-    return spots.every(([dir, along]) => {
-      const reach = Math.abs(dot(dir, ex)) > 0.5 ? tz.x / 2 : tz.z / 2
-      const cc = add(add(c, along), dir, reach + ch)
-      return !!tryPlace(ctx, 'dining_chair', cc, rotationFacing({ x: -dir.x, y: -dir.y }))
-    })
-  })
+  return atomic(ctx, () => !!tryPlace(ctx, 'dining_table', c, rot) && chairSpots(c, rot, size('dining_table'), seats).every((s) => !!tryPlace(ctx, 'dining_chair', s.c, s.rot)))
 }
 
 /** Centroid, main axis (the bounding box's long side: an irregular room's longest wall may run across it) and the inner polygon's extent along it. */

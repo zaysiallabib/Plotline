@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { planterAsset, PROCEDURAL } from './procedural.meta'
+import { planterAsset, PROCEDURAL, tableSeats, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -127,6 +127,28 @@ export function placementSize(p: { assetId: string; scale?: number; sizeM?: Size
   const k = p.scale ?? 1
   return { x: s.x * k, y: s.y * k, z: s.z * k }
 }
+
+const dec = (v: number) => v.toFixed(2).replace(/0$/, '') // 3 → "3.0", 2.35 → "2.35"
+const doors = (w: number) => (wardrobeDoors(w) === 1 ? '1 door' : `${wardrobeDoors(w)} doors`)
+const closet = (s: Size3) => `Open closet unit: rail, shelf, clothes (${dec(s.x)} m)`
+const rug = (s: Size3) => `Wool rug ${dec(s.x)} × ${dec(s.z)} m`
+/** Mattress = width − the headboard's 16 cm. */
+const bed = (s: Size3) => `${s.x - 0.16 < 1.1 ? 'Single' : s.x - 0.16 < 1.45 ? 'Double' : s.x - 0.16 < 1.7 ? 'Queen' : 'King'} bed, upholstered`
+/** Labels that name a size, rebuilt from the size the piece is built at (at its kit size = the kit label, tested). */
+const SIZED: Record<string, (s: Size3) => string> = {
+  wardrobe_tall: (s) => `Tall wardrobe (oak, ${doors(s.x)})`,
+  wardrobe_2door: (s) => `Wardrobe (oak, ${doors(s.x)})`,
+  closet_rail: closet,
+  closet_rail_s: closet,
+  kitchen_tall: (s) => `Tall larder unit, oak (${dec(s.x)} m)`,
+  dining_table: (s) => `Dining table, oak, ${tableSeats(s.x)} seats`,
+  rug_rect_large: rug,
+  rug_rect_small: rug,
+  ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, bed])),
+}
+/** What a placement is called: a resized wardrobe says the doors it was built with, a table the seats it takes. */
+export const placementLabel = (p: { assetId: string; scale?: number; sizeM?: Size3 }): string =>
+  SIZED[p.assetId]?.(placementSize(p)) ?? kitAsset(p.assetId)?.label ?? p.assetId
 
 /**
  * Size limits (m) for pieces that may be stretched: procedural builders that rebuild properly at any size within

@@ -418,11 +418,22 @@ export class PlotlineScene {
     this.selFoot.visible = true
   }
 
-  /** Live: these placements where they say (a transform each); one whose size changed is rebuilt, alone. */
-  placePieces(ps: FurniturePlacement[]): void {
+  /**
+   * Live: these placements where they say (a transform each); one whose size changed is rebuilt, alone; one not built
+   * yet (a chair a longer dining table gained) is built. `all`: ps is the whole layout, pieces left out of it are hidden.
+   */
+  placePieces(ps: FurniturePlacement[], all = false): void {
+    if (all) {
+      const ids = new Set(ps.map((p) => p.id))
+      for (const o of [...this.furnitureGroup.children, ...this.ceilingGroup.children]) if (o.userData.kind === 'furniture' && !ids.has(o.userData.id)) o.visible = false
+      for (const id of this.adding.keys()) if (!ids.has(id)) this.adding.set(id, null)
+    }
     for (const p of ps) {
       const o = this.pieceObject(p.id)
-      if (!o) continue
+      if (!o) {
+        if (!p.removed || this.adding.has(p.id)) void this.addPiece(p)
+        continue
+      }
       const size = JSON.stringify(p.sizeM ?? null)
       if (o.userData.size !== size) {
         void this.rebuildPiece(o, p, size)
@@ -436,9 +447,25 @@ export class PlotlineScene {
     }
   }
 
+  /** Pieces being built for placePieces → where they should stand when done (null: left out of the layout since). */
+  private readonly adding = new Map<Id, FurniturePlacement | null>()
+  private async addPiece(p: FurniturePlacement): Promise<void> {
+    const building = this.adding.has(p.id)
+    this.adding.set(p.id, p)
+    if (building) return
+    const token = this.buildToken
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
+    const now = this.adding.get(p.id)
+    this.adding.delete(p.id)
+    if (token !== this.buildToken || this.pieceObject(p.id)) return
+    this.mountPiece(obj, p)
+    obj.visible = false
+    if (now) this.placePieces([now])
+  }
+
   /** A committed layout (drop, turn, delete, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
   setLayout(all: FurniturePlacement[]): void {
-    this.placePieces(all)
+    this.placePieces(all, true)
     if (this.unit) this.look.setFurniture(present({ ...this.unit, furniture: all }))
   }
 
@@ -683,12 +710,16 @@ export class PlotlineScene {
     for (const p of byDistance) {
       const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
-      obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
+      this.mountPiece(obj, p)
       obj.visible = !p.removed
-      // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
-      const a = kitAsset(p.assetId)
-      ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
     }
+  }
+
+  private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
+    obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
+    // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
+    const a = kitAsset(p.assetId)
+    ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
   }
 
   private async loadEnvironment(): Promise<void> {

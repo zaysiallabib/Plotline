@@ -1,19 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveRooms } from '../core'
 import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
-import { pieceQuad, resizePiece } from '../studio/furniture'
+import { movePiece, pieceQuad, resizePiece } from '../studio/furniture'
+import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
 import { baseOf, dragTo, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
-import { furnish } from '../furnish/presets'
+import { chairSpots, furnish } from '../furnish/presets'
 
-// resizeLimits is empty until the resize work fills it: one resizable asset for these tests
-vi.mock('../furnish/kit', async (orig) => ({
-  ...(await orig<typeof import('../furnish/kit')>()),
-  resizeLimits: (id: string) => (id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : null),
-}))
+// test limits for the wardrobe, the real ones for the dining table, nothing else resizes
+vi.mock('../furnish/kit', async (orig) => {
+  const kit = await orig<typeof import('../furnish/kit')>()
+  return {
+    ...kit,
+    resizeLimits: (id: string) => (id === 'wardrobe_2door' ? { min: { x: 0.8, y: 1.8, z: 0.5 }, max: { x: 2.4, y: 2.4, z: 0.65 } } : id === 'dining_table' ? kit.resizeLimits(id) : null),
+  }
+})
 
 const memStore = () => {
   const m = new Map<string, string>()
@@ -176,3 +180,63 @@ describe('resizePiece: 5 cm steps, kit limits, the same refusals', () => {
     expect(bad.toast?.text).toBe('Overlaps the bedside table')
   })
 })
+
+describe('a dining set: the table carries its chairs, a resized one re-lays them (presets\' chairSpots)', () => {
+  // 1.6 × 0.9 table in the Living fixture, its 6 chairs laid as presets lay them
+  const table = piece('table', 'dining_table', 'A', 2.3, 2.2)
+  const set = [...ps, table, ...chairSpots(table, 0, { x: 1.6, z: 0.9 }, 6).map((s, i) => piece(`c${i + 1}`, 'dining_chair', 'A', s.c.x, s.c.y, s.rot))]
+  const live = (f: FurniturePlacement[]) => f.filter((p) => p.assetId === 'dining_chair' && !p.removed)
+  /** every chair touches an edge of the table (its back half-depth 0.27 m off it) and faces it */
+  const seated = (f: FurniturePlacement[], t: FurniturePlacement) => {
+    const q = pieceQuad(t)
+    for (const c of live(f)) {
+      const d = Math.min(...q.map((a, i) => segDist(c, a, q[(i + 1) % 4])))
+      expect(d, c.id).toBeCloseTo(0.27, 6)
+    }
+  }
+
+  it('moving or turning the table takes its chairs along (a refused chair refuses the set)', () => {
+    const m = movePiece(unit, rooms, set, 'table', { x: 2.6, y: 2.2 }, 0)!
+    expect(m.error).toBeNull()
+    expect(m.ids).toEqual(['table', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'])
+    seated(m.furniture, m.piece)
+    const r = movePiece(unit, rooms, set, 'table', table, 90, false)!
+    expect(r.error).toBeNull()
+    // sides faced 0 / 180, heads 270 / 90: all a quarter turn on
+    expect(live(r.furniture).map((c) => c.rotationDeg).sort((a, b) => a - b)).toEqual([0, 90, 90, 180, 270, 270])
+    seated(r.furniture, r.piece)
+    expect(movePiece(unit, rooms, set, 'table', { x: 2.3, y: 3.1 }, 0)!.error).toBe('A chair overlaps the 3-seat fabric sofa')
+  })
+
+  it('a longer table gains the chairs it seats, a shorter one drops them as tombstones; ids stay; the label follows', () => {
+    const g = resizePiece(unit, rooms, set, 'table', { x: 2.2, y: 0.75, z: 0.9 })!
+    expect(g.error).toBeNull()
+    expect(live(g.furniture)).toHaveLength(8) // tableSeats(2.2): 3 a side + the heads
+    expect(live(g.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'table:chair:1', 'table:chair:2'])
+    seated(g.furniture, g.piece)
+    expect(placementLabel(g.piece)).toBe('Dining table, oak, 8 seats')
+    const s = resizePiece(unit, rooms, g.furniture, 'table', { x: 0.9, y: 0.75, z: 0.9 })!
+    expect(s.error).toBeNull()
+    expect(live(s.furniture)).toHaveLength(2)
+    expect(s.furniture.filter((p) => p.removed)).toHaveLength(6)
+    seated(s.furniture, s.piece)
+    // a deeper table keeps its six: the chairs step out with its edges
+    const d = resizePiece(unit, rooms, set, 'table', { x: 1.6, y: 0.75, z: 1.1 })!
+    expect(live(d.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6'])
+    seated(d.furniture, d.piece)
+  })
+
+  it('Studio tool F resizes the set the same way (one shared function)', () => {
+    const s0: StudioState = { ...initialState(), tool: 'furniture', unit: { ...unit, furniture: set } }
+    const s = reducer(s0, { type: 'resize-piece', id: 'table', sizeM: { x: 2.2, y: 0.75, z: 0.9 } })
+    expect(live(s.unit.furniture)).toHaveLength(8)
+    expect(s.history.past).toHaveLength(1)
+  })
+})
+
+/** Distance from p to segment ab. */
+function segDist(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const [dx, dy] = [b.x - a.x, b.y - a.y]
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)))
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
+}

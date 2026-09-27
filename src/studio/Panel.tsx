@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
-import { kitAsset, placementSize } from '../furnish/kit'
+import { placementLabel, placementSize } from '../furnish/kit'
 import { resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
 
@@ -271,7 +271,7 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
   const size = placementSize(p)
   return (
     <div className="props">
-      <p>{kitAsset(p.assetId)?.label ?? p.assetId}</p>
+      <p>{placementLabel(p)}</p>
       <p className="muted">
         {room?.name ?? 'No room'} · turned {Math.round(p.rotationDeg)}°
       </p>
