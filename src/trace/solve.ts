@@ -1009,7 +1009,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     const id = newId()
     roomLabels.push({ id, name: h.green ? 'Planter' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
     labelled++
-    review.push({ id: newId(), at, kind: 'low-confidence', message: `Named from the drawing (${h.what ?? h.source}) — check the name`, entityId: id })
+    const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : (h.what ?? 'a drawn fixture')
+    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what} — check`, entityId: id })
   }
   const pending: Room[] = []
   for (const r of rooms) {
@@ -1029,11 +1030,10 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       if (names.size > 1) review.push({ id: newId(), at, kind: 'unclosed', message: `${[...names].map(titleCase).join(' and ')} fall in one space — a wall between them is probably missing`, entityId: id })
       continue
     }
-    const h = vote(hintsIn.get(r.id) ?? [])
-    if (h) fromHint(r, h)
-    else pending.push(r)
+    pending.push(r)
   }
-  // rooms still unnamed: the colour of same-fill named rooms (Banani-style sheets), when hints.ts offers it
+  // founder rule: the printed label decides; without one, the fill colour of label-named rooms (Banani-style sheets),
+  // then a drawn fixture / green fill — both flagged for a check; else 'other' + unlabelled
   if (pending.length && inputs.propagate) {
     const toPxP = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
     const got = inputs.propagate(rooms.map((r) => ({ poly: polys.get(r.id)!.map(toPxP), kind: kindOf.get(r) })))
@@ -1041,6 +1041,10 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const h = got[rooms.indexOf(pending[i])]
       if (h?.kind) fromHint(pending[i], h), pending.splice(i, 1)
     }
+  }
+  for (let i = pending.length - 1; i >= 0; i--) {
+    const h = vote(hintsIn.get(pending[i].id) ?? [])
+    if (h) fromHint(pending[i], h), pending.splice(i, 1)
   }
   for (const r of pending) {
     const n = (count.get('other') ?? 0) + 1
