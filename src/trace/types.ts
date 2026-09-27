@@ -83,3 +83,62 @@ export interface TextTrace {
  * matching TextItem[] (box relative to the crop). Keep prompts tiny and the task small: read what is printed, nothing else.
  */
 export type AiReader = (crop: { png: Blob; offset: Px }, question: string) => Promise<TextItem[]>
+
+// ── wave 16: hints, solver, review (manager contract, 2026-09-28) ─────────────────────────────────────────────────────
+// Strategy (founder asked for honesty after low text scores): GEOMETRY FIRST, text only as hints. Walls come from the
+// ink; ONE scale anchor is enough (an area label like "2956 SFT", 2–3 legible dims, or the 5"/10" wall prior); room kinds
+// come from a label OR the drawn fixtures OR a sheet's colour fills; printed sizes become checks that feed the review list.
+
+/** A non-text clue about the room at `at` (pixel space). */
+export interface RoomHint {
+  at: Px
+  kind?: string // core RoomKind
+  green?: boolean
+  /** what produced it: a fixture symbol (WC, basin, bed, stove, shower, bath), a colour-fill cluster, a green mask blob */
+  source: 'fixture' | 'colour' | 'green'
+  /** e.g. 'wc', 'bed', 'stove' — for the review list / debugging */
+  what?: string
+  conf: number
+}
+
+export interface HintTrace {
+  hints: RoomHint[]
+  /** plan-up → north, degrees clockwise, when a north arrow was found */
+  northDeg?: number
+}
+
+/** One thing the human should look at (the 5 %). `at` is in PLAN metres (the draft's space). */
+export interface ReviewItem {
+  id: string
+  at: { x: number; y: number }
+  kind: 'size-mismatch' | 'unclosed' | 'unlabelled' | 'opening-guess' | 'low-confidence' | 'scale' | 'other'
+  message: string
+  /** the entity it concerns in the draft, when there is one */
+  entityId?: string
+}
+
+export interface AutoTraceStats {
+  ms: number
+  pxPerM: number
+  scaleFrom: 'dims' | 'area' | 'thickness' | 'given'
+  walls: number
+  rooms: number
+  labelled: number
+}
+
+export interface AutoTraceResult {
+  /** a normal core Unit (walls, vertices, openings, roomLabels, planImage) — the Studio edits it like any trace */
+  unit: import('../core').Unit
+  review: ReviewItem[]
+  stats: AutoTraceStats
+}
+
+export interface AutoTraceOpts {
+  /** a click inside the flat to trace (sheets show several flats + the core); pixel space */
+  pickPx?: Px
+  /** known scale, skips the scale solve */
+  pxPerM?: number
+  /** backup AI reader for labels the OCR could not read (only when the user configured a key) */
+  ai?: AiReader
+  onProgress?: (stage: string, fraction: number) => void
+}
