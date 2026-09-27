@@ -28,9 +28,11 @@ export interface WallOpts {
   partitionM?: number
   /** enlarge the raster first (1 = never). Default: 2 when walls are under ~6 px thick (low-res sheets), else 1. */
   upscale?: number
+  /** drop walls whose lighter side is less than this many grey levels above their centre (foliage, textures). */
+  minContrast?: number
 }
 
-const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160 }
+const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
 
 export const inkThreshold = (g: Gray, o: WallOpts) => o.darkMax ?? Math.min(otsu(g), o.inkCap ?? DEF.inkCap)
 
@@ -436,15 +438,44 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   const walls = tidy(
     segs
       .filter((s) => dist(s.a, s.b) >= 1)
-      .map((s) => {
+      .flatMap((s): WallSeg[] => {
         const len = dist(s.a, s.b)
         const thicknessPx = thicknessOf(s.half)
-        return { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx)) }
+        // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
+        const c = sideContrast(gray, s, thicknessPx)
+        if (c < o.minContrast) return []
+        return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
       }),
   )
   // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
   const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
   return { walls, openings }
+}
+
+/**
+ * Median over the segment of (lighter side − centre) grey, the sides sampled 2 px beyond the stroke's edges. Walls:
+ * ~150 (dark band, paper or floor fill beside it); tree canopies, hatching and textures: well under 60.
+ */
+export function sideContrast(g: Gray, s: { a: Px; b: Px; mid?: Px }, thicknessPx: number): number {
+  const vals: number[] = []
+  const at = (x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    return xi >= 0 && yi >= 0 && xi < g.width && yi < g.height ? g.data[yi * g.width + xi] : 255
+  }
+  const off = thicknessPx / 2 + 2
+  for (const { a: p, b: q } of segPieces({ ...s, thicknessPx, conf: 1 })) {
+    const L = dist(p, q)
+    if (L < 1) continue
+    const nx = -(q.y - p.y) / L, ny = (q.x - p.x) / L
+    const n = Math.max(3, Math.min(24, Math.round(L / 4)))
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.5) / n
+      const x = p.x + (q.x - p.x) * f, y = p.y + (q.y - p.y) * f
+      vals.push(Math.max(at(x + nx * off, y + ny * off), at(x - nx * off, y - ny * off)) - at(x, y))
+    }
+  }
+  vals.sort((u, v) => u - v)
+  return vals.length ? vals[vals.length >> 1] : 0
 }
 
 const pkey = (p: Px) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`
@@ -689,3 +720,33 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thin
   return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : gap <= 2 * pxPerM ? { a, b, kind: 'unknown', conf: 0.2 } : null
 }
 
+/** A traced wall as straight pieces (an arc → 8 chords). */
+export function segPieces(s: WallSeg): { a: Px; b: Px }[] {
+  if (!s.mid) return [{ a: s.a, b: s.b }]
+  const c = circle3(s.a, s.mid, s.b)
+  if (!c) return [{ a: s.a, b: s.mid }, { a: s.mid, b: s.b }]
+  const ang = (p: Px) => Math.atan2(p.y - c.y, p.x - c.x)
+  const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+  const a0 = ang(s.a)
+  // the sweep direction that passes through mid
+  let sweep = norm(ang(s.b) - a0)
+  if (norm(ang(s.mid) - a0) > sweep) sweep -= 2 * Math.PI
+  const out: { a: Px; b: Px }[] = []
+  let prev = s.a
+  for (let k = 1; k <= 8; k++) {
+    const t = a0 + (sweep * k) / 8
+    const p = k === 8 ? s.b : { x: c.x + c.r * Math.cos(t), y: c.y + c.r * Math.sin(t) }
+    out.push({ a: prev, b: p })
+    prev = p
+  }
+  return out
+}
+
+function circle3(a: Px, b: Px, c: Px): { x: number; y: number; r: number } | null {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
+  if (Math.abs(d) < 1e-9) return null
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y
+  const x = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d
+  const y = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d
+  return { x, y, r: Math.hypot(a.x - x, a.y - y) }
+}

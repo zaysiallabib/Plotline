@@ -4,7 +4,7 @@
  * holds other flats and the core.
  */
 import type { Unit } from '../core/types'
-import { traceWalls, type WallOpts } from './walls'
+import { segPieces, traceWalls, type WallOpts } from './walls'
 import { edt, otsu, threshold } from './raster'
 import type { Gray, Px, WallSeg, WallTrace } from './types'
 
@@ -61,37 +61,6 @@ interface Line {
   a: Px
   b: Px
   thM: number
-}
-
-/** A traced wall as straight pieces (an arc → 8 chords). */
-export function segPieces(s: WallSeg): { a: Px; b: Px }[] {
-  if (!s.mid) return [{ a: s.a, b: s.b }]
-  const c = circle3(s.a, s.mid, s.b)
-  if (!c) return [{ a: s.a, b: s.mid }, { a: s.mid, b: s.b }]
-  const ang = (p: Px) => Math.atan2(p.y - c.y, p.x - c.x)
-  const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
-  const a0 = ang(s.a)
-  // the sweep direction that passes through mid
-  let sweep = norm(ang(s.b) - a0)
-  if (norm(ang(s.mid) - a0) > sweep) sweep -= 2 * Math.PI
-  const out: { a: Px; b: Px }[] = []
-  let prev = s.a
-  for (let k = 1; k <= 8; k++) {
-    const t = a0 + (sweep * k) / 8
-    const p = k === 8 ? s.b : { x: c.x + c.r * Math.cos(t), y: c.y + c.r * Math.sin(t) }
-    out.push({ a: prev, b: p })
-    prev = p
-  }
-  return out
-}
-
-function circle3(a: Px, b: Px, c: Px): { x: number; y: number; r: number } | null {
-  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
-  if (Math.abs(d) < 1e-9) return null
-  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y
-  const x = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d
-  const y = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d
-  return { x, y, r: Math.hypot(a.x - x, a.y - y) }
 }
 
 /** Distance from p to segment ab (only when p projects onto it, within `slack` px past the ends), else Infinity. */

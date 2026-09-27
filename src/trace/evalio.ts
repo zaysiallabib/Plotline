@@ -2,7 +2,7 @@
 /** Node-only IO for the trace eval (tests): load PGM fixtures (scripts/trace-fixtures.mjs), write overlay PNGs. Never imported by the app. */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
-import { segPieces } from './eval'
+import { segPieces } from './walls'
 import type { Gray, Px, WallTrace } from './types'
 
 export const FIXTURES = process.env.TRACE_FIXTURES ?? 'E:/dev/tmp/wave15/walls/fixtures/'
