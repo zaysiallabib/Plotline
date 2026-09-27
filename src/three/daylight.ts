@@ -448,16 +448,8 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
  * `dayUv` for one room-surface mesh. `target` floor / ceiling (and skirting, which follows the floor): plan (X, Z) into
  * the room's region. A wall: each triangle into one face's region — a face by the side it lies on; reveals, end caps and
  * tops (they span the thickness) into the room-facing side at their (u, v); a face toward the outside reads neutral.
- * A wall is de-indexed first (in place, groups kept): an end cap shares its edge vertices with both faces, and a shared
- * vertex took whichever region its last triangle wrote — a cap triangle then interpolated across the atlas (wave 13's
- * sawtooth stripe down every wall end beside a door).
  */
 export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, target: 'floor' | 'ceiling' | 'wall', id: Id): void {
-  if (target === 'wall' && geo.index) {
-    const flat = geo.toNonIndexed()
-    for (const [k, a] of Object.entries(flat.attributes)) geo.setAttribute(k, a)
-    geo.setIndex(null)
-  }
   const p = geo.attributes.position
   const uv = new Float32Array(p.count * 2)
   const put = (i: number, key: string | null, u: number, v: number) => {
@@ -479,8 +471,10 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
       const [dx, dz] = [p.getX(i) - f.origin.x, p.getZ(i) - f.origin.y]
       return { u: dx * f.dir.x + dz * f.dir.y, w: dx * f.normal.x + dz * f.normal.y, v: p.getY(i) }
     }
-    for (let t = 0; t < p.count; t += 3) {
-      const vi = [t, t + 1, t + 2]
+    const idx = geo.index
+    const n = idx ? idx.count : p.count
+    for (let t = 0; t < n; t += 3) {
+      const vi = [0, 1, 2].map((k) => (idx ? idx.getX(t + k) : t + k))
       const l = vi.map(local)
       const wc = (l[0].w + l[1].w + l[2].w) / 3
       const s = Math.abs(wc) > T2 / 2 ? Math.sign(wc) : prefer
