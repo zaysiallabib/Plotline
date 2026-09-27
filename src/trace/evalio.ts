@@ -18,6 +18,18 @@ export function loadPgm(path: string): Gray | null {
   return { width: w, height: h, data: new Uint8Array(b.buffer, b.byteOffset + m[0].length, w * h) }
 }
 
+/** P6 colour fixture (`trace-fixtures.mjs --rgb`) → RGBA, as a canvas would give it. */
+export function loadPpm(path: string): { width: number; height: number; data: Uint8Array } | null {
+  if (!existsSync(path)) return null
+  const b = readFileSync(path)
+  const m = /^P6\s+(\d+)\s+(\d+)\s+255\s/.exec(b.subarray(0, 40).toString('latin1'))
+  if (!m) throw new Error(`not a P6 PPM: ${path}`)
+  const w = +m[1], h = +m[2], o = m[0].length
+  const data = new Uint8Array(w * h * 4)
+  for (let i = 0; i < w * h; i++) (data[i * 4] = b[o + i * 3]), (data[i * 4 + 1] = b[o + i * 3 + 1]), (data[i * 4 + 2] = b[o + i * 3 + 2]), (data[i * 4 + 3] = 255)
+  return { width: w, height: h, data }
+}
+
 type RGB = [number, number, number]
 
 /**
@@ -82,7 +94,7 @@ export function writeOverlay(
   writePng(path, W, H, px)
 }
 
-function writePng(path: string, w: number, h: number, rgb: Uint8Array): void {
+export function writePng(path: string, w: number, h: number, rgb: Uint8Array): void {
   const raw = Buffer.alloc((w * 3 + 1) * h)
   for (let y = 0; y < h; y++) {
     raw[y * (w * 3 + 1)] = 0
