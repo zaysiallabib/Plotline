@@ -666,7 +666,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
   const at = (s: StudioState, id: string) => s.unit.furniture.find((p) => p.id === id)!
   const move = (s: StudioState, id: string, x: number, y: number) => reducer(s, { type: 'move-piece', id, x, y })
 
-  it('snaps the footprint corner onto the 6" grid from the unit corner; one undo entry', () => {
+  it('snaps the footprint corner onto the 3" grid from the unit corner; one undo entry', () => {
     const s0 = fixture()
     const s = move(s0, 'side', 6.61, 2.47)
     const q = pieceQuad(at(s, 'side'))
@@ -674,7 +674,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
       const lo = Math.min(...q.map((p) => p[k]))
       expect(Math.abs(lo / GRID_M - Math.round(lo / GRID_M))).toBeLessThan(1e-9)
     }
-    expect(at(s, 'side')).toMatchObject({ x: expect.closeTo(6.6508, 4), y: expect.closeTo(2.486, 4), roomId: 'B' })
+    expect(at(s, 'side')).toMatchObject({ x: expect.closeTo(6.5746, 4), y: expect.closeTo(2.486, 4), roomId: 'B' })
     expect(s.history.past).toHaveLength(1)
     expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit)
   })
@@ -717,8 +717,8 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     let s = move(fixture(), 'side', 1.0, 3.0)
     expect(at(s, 'side').roomId).toBe('A')
     s = move(fixture(), 'sofa', 2.5 - GRID_M, 4.39)
-    expect(at(s, 'sofa')).toMatchObject({ x: expect.closeTo(2.3192, 4), y: expect.closeTo(4.39, 6) })
-    expect(at(s, 'cush')).toMatchObject({ x: expect.closeTo(3.05 - 0.1808, 4), y: expect.closeTo(4.27, 6) })
+    expect(at(s, 'sofa')).toMatchObject({ x: expect.closeTo(2.3954, 4), y: expect.closeTo(4.39, 6) })
+    expect(at(s, 'cush')).toMatchObject({ x: expect.closeTo(3.05 - 0.1046, 4), y: expect.closeTo(4.27, 6) })
     expect(at(s, 'rug')).toEqual(at(fixture(), 'rug'))
   })
 
@@ -816,7 +816,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     const chair = ps.find((p) => p.roomId === v1.id && /chair/.test(p.assetId))!
     const m = movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - GRID_M }, chair.rotationDeg)!
     expect(m.error).toBeNull()
-    expect(m.piece.y).toBeLessThan(chair.y - 0.1)
+    expect(m.piece.y).toBeLessThanOrEqual(chair.y + 1e-9) // on the 3" grid the preset chair already sits at the strip edge
     const zones = doorClearZones(v1, u)
     expect(zones.some((z) => quadsOverlap(z, pieceQuad(m.piece)))).toBe(false)
     // deeper than one grid step into a zone: still refused

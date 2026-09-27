@@ -122,10 +122,10 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     expect(surfaceOf(piece('ac', 'ac_split', 'A', 0, 0))).toBe('wall')
   })
 
-  it('a wall piece hops to the wall under the pointer: back to it, front into the room, 1 ft steps along it', () => {
+  it('a wall piece hops to the wall under the pointer: back to it, front into the room, 3" steps along it', () => {
     const m = dragTo(unit, rooms, ps, 'tv', { at: null, wall: { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 } } })!
     expect(m.error).toBeNull()
-    expect(m.piece).toMatchObject({ x: expect.closeTo(0.1 + 0.005 + 0.03, 6), y: expect.closeTo(8 * 0.3048, 6), rotationDeg: 270, roomId: 'A' })
+    expect(m.piece).toMatchObject({ x: expect.closeTo(0.1 + 0.005 + 0.03, 6), y: expect.closeTo(33 * 0.0762, 6), rotationDeg: 270, roomId: 'A' })
     expect(dragTo(unit, rooms, ps, 'tv', { at: { x: 2, y: 2 }, wall: null })).toBeNull() // no wall under the pointer
   })
 
@@ -183,7 +183,7 @@ describe('placePiece: the staff library adds a kit piece on a move’s rules', (
     expect(m.piece).toMatchObject({ id: 'new', assetId: 'dining_chair', roomId: 'A' })
     expect(m.furniture).toHaveLength(ps.length + 1)
     const minX = Math.min(...pieceQuad(m.piece).map((p) => p.x))
-    expect(minX / 0.3048).toBeCloseTo(Math.round(minX / 0.3048), 6)
+    expect(minX / 0.0762).toBeCloseTo(Math.round(minX / 0.0762), 6) // the 3" grid
   })
 
   it('a backed piece dropped by a wall turns its back to it and goes flush', () => {

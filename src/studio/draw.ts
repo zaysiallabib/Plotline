@@ -102,7 +102,7 @@ export interface DrawArgs {
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
 const LAYER_ORDER = [1, 2, 3, 0]
 
-/** Footprints at true size, front edge marked; the 6" grid faintly while dragging. Metres space. */
+/** Footprints at true size, front edge marked; the 3" grid faintly while dragging. Metres space. */
 function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>, px: (n: number) => number): void {
   const { pieces, drag } = a.furniture!
   if (drag) {

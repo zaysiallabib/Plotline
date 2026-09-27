@@ -82,9 +82,9 @@ export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement
 }
 
 /**
- * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 6" grid, wall snap,
+ * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 3" grid, wall snap,
  * refusals, riders along). A wall piece goes onto the wall under the pointer — back to it, front into the room, sliding
- * in 6" steps along it — so it hops walls; the others slide on their plane.
+ * in 3" steps along it — so it hops walls; the others slide on their plane.
  */
 export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget): Move | null {
   const g = pieces.find((x) => x.id === id)
