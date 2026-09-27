@@ -132,9 +132,9 @@ const dec = (v: number) => v.toFixed(2).replace(/0$/, '') // 3 → "3.0", 2.35 �
 const doors = (w: number) => (wardrobeDoors(w) === 1 ? '1 door' : `${wardrobeDoors(w)} doors`)
 const closet = (s: Size3) => `Open closet unit: rail, shelf, clothes (${dec(s.x)} m)`
 const rug = (s: Size3) => `Wool rug ${dec(s.x)} × ${dec(s.z)} m`
-/** Mattress = width − the headboard's 16 cm. */
 /** The size a kit label states ("(0.6 m)", "Ø38 cm", '55"'), restated at the built size. */
 const restate = (id: string, from: string, to: (s: Size3) => string) => [id, (s: Size3) => kitAsset(id)!.label.replace(from, to(s))] as const
+/** Mattress = width − the headboard's 16 cm. */
 const bed = (s: Size3) => `${s.x - 0.16 < 1.1 ? 'Single' : s.x - 0.16 < 1.45 ? 'Double' : s.x - 0.16 < 1.7 ? 'Queen' : 'King'} bed, upholstered`
 /** Labels that name a size, rebuilt from the size the piece is built at (at its kit size = the kit label, tested). */
 const SIZED: Record<string, (s: Size3) => string> = {
