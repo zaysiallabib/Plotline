@@ -19,7 +19,7 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
 import * as core from '../core'
-import type { Configuration, FinishSlot, Id, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
@@ -44,6 +44,19 @@ export interface PickHit {
 }
 /** orbit = the dollhouse; building = the whole tower from outside (building.ts) */
 export type SceneMode = 'walk' | 'orbit' | 'building'
+/**
+ * Arrange (staff, src/viewer/arrange.ts): what the pointer does to a piece, in plan metres. `drag`: `at` = the piece's
+ * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer).
+ * `resize`: a handle dragged — the new size along `axis`, the `sign` face moving.
+ */
+export type ArrangeEvent =
+  | { kind: 'select'; id: Id | null }
+  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null }
+  | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
+  | { kind: 'drop'; id: Id }
+type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
+const SEL = '#39a0ff'
+const REFUSED = '#ff4d4d'
 
 const EYE = 1.6
 const WALK_RADIUS = 0.3
@@ -169,6 +182,15 @@ export class PlotlineScene {
   /** built on the first switch to the Building view; hidden in walk / dollhouse */
   private building: Building | null = null
   private flatCb: ((flat: FlatRef | null) => void) | null = null
+  // Arrange: the mouse stays free; a grab holds the piece (or handle) under the pointer, a look-drag turns the walker
+  private arranging = false
+  private arrangeCb: ((e: ArrangeEvent) => void) | null = null
+  private grab: { id: Id; y: number; off: Pt; moved: boolean; handle?: Handle & { inv: THREE.Matrix4; half: number; plane: THREE.Plane } } | null = null
+  private look2: { x: number; y: number } | null = null
+  /** the selected piece's box and resize handles, parented to its pivot; its footprint on the floor */
+  private readonly selBox = new THREE.Group()
+  private readonly selMat = new THREE.MeshBasicMaterial({ color: SEL, depthTest: false, transparent: true, opacity: 0.9 })
+  private readonly selFoot = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: SEL, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }))
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -198,9 +220,16 @@ export class PlotlineScene {
     this.plc = new PointerLockControls(this.camera, canvas)
     this.setMode('walk')
 
+    this.selFoot.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3))
+    this.selFoot.geometry.setIndex([0, 1, 2, 0, 2, 3])
+    this.selFoot.frustumCulled = false
+    this.selFoot.visible = false
+    this.scene.add(this.selFoot)
+
     window.addEventListener('keydown', this.onKey)
     window.addEventListener('keyup', this.onKey)
     canvas.addEventListener('pointerdown', this.onPointerDown)
+    canvas.addEventListener('pointermove', this.onPointerMove)
     canvas.addEventListener('pointerup', this.onPointerUp)
     canvas.addEventListener('dblclick', this.onDblClick)
     this.ro = new ResizeObserver(() => this.resize())
@@ -352,9 +381,125 @@ export class PlotlineScene {
     return core.roomAt(this.walker, this.rooms, this.unit)?.id ?? null
   }
 
-  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. */
+  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging. */
   lockPointer(): void {
-    if (this.mode === 'walk') this.plc.lock()
+    if (this.mode === 'walk' && !this.arranging) this.plc.lock()
+  }
+
+  // ───────────────────────────── arrange (staff) ─────────────────────────────
+
+  /** The mouse stays free (no pointer lock; dragging empty space looks around in walk mode); clicks pick pieces, not floors or pins. */
+  setArrange(on: boolean): void {
+    this.arranging = on
+    if (on && this.plc.isLocked) this.plc.unlock()
+    if (!on) this.showSelection(null)
+  }
+
+  onArrange(cb: (e: ArrangeEvent) => void): void {
+    this.arrangeCb = cb
+  }
+
+  /** Highlights piece `id`: its box (+ resize handles), its footprint `quad` on the floor; red while refused. null clears. */
+  showSelection(s: { id: Id; quad: Pt[]; refused: boolean; handles: boolean } | null): void {
+    const o = s && this.pieceObject(s.id)
+    if (!s || !o) {
+      this.selBox.removeFromParent()
+      this.selFoot.visible = false
+      return
+    }
+    if (this.selBox.parent !== o || this.selBox.userData.handles !== s.handles) this.fitSelection(o, s.handles)
+    const color = s.refused ? REFUSED : SEL
+    for (const m of [this.selMat, this.selFoot.material, (this.selBox.userData.lines as THREE.LineSegments).material] as THREE.MeshBasicMaterial[]) m.color.set(color)
+    const pos = this.selFoot.geometry.getAttribute('position') as THREE.BufferAttribute
+    s.quad.forEach((p, i) => pos.setXYZ(i, p.x, 0.015, p.y)) // over the 14 mm contact shadows and 12 mm rugs
+    pos.needsUpdate = true
+    this.selFoot.visible = true
+  }
+
+  /** Live: these placements where they say (a transform each); one whose size changed is rebuilt, alone. */
+  placePieces(ps: FurniturePlacement[]): void {
+    for (const p of ps) {
+      const o = this.pieceObject(p.id)
+      if (!o) continue
+      const size = JSON.stringify(p.sizeM ?? null)
+      if (o.userData.size !== size) {
+        void this.rebuildPiece(o, p, size)
+        continue
+      }
+      o.position.x = p.x
+      o.position.z = p.y
+      o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
+      o.userData.roomId = p.roomId
+    }
+  }
+
+  /** A committed layout (drop, turn, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
+  setLayout(all: FurniturePlacement[]): void {
+    this.placePieces(all)
+    if (this.unit) this.look.setFurniture({ ...this.unit, furniture: all })
+  }
+
+  private pieceObject(id: Id): THREE.Object3D | undefined {
+    return [...this.furnitureGroup.children, ...this.ceilingGroup.children].find((o) => o.userData.id === id)
+  }
+
+  /** The box in the piece's own frame (measured with its pivot at the origin), handles on the four sides and the top. */
+  private fitSelection(o: THREE.Object3D, handles: boolean): void {
+    this.selBox.removeFromParent()
+    this.selBox.traverse((c) => (c as THREE.Mesh).geometry?.dispose())
+    this.selBox.clear()
+    const [p, q, k] = [o.position.clone(), o.quaternion.clone(), o.scale.clone()]
+    o.position.set(0, 0, 0)
+    o.quaternion.identity()
+    o.scale.set(1, 1, 1)
+    o.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(o)
+    o.position.copy(p)
+    o.quaternion.copy(q)
+    o.scale.copy(k)
+    o.updateMatrixWorld(true)
+    const lines = new THREE.Box3Helper(box, SEL)
+    const lm = lines.material as THREE.LineBasicMaterial
+    lm.depthTest = false // seen through the piece, the walls and the ceiling
+    lm.transparent = true
+    lines.renderOrder = 10
+    lines.raycast = () => {} // a Line's 1 m pick threshold would catch every click near it
+    this.selBox.add(lines)
+    if (handles) {
+      const c = box.getCenter(new THREE.Vector3())
+      const at: [Handle, THREE.Vector3][] = [
+        [{ axis: 'x', sign: 1 }, new THREE.Vector3(box.max.x, c.y, c.z)],
+        [{ axis: 'x', sign: -1 }, new THREE.Vector3(box.min.x, c.y, c.z)],
+        [{ axis: 'z', sign: 1 }, new THREE.Vector3(c.x, c.y, box.max.z)],
+        [{ axis: 'z', sign: -1 }, new THREE.Vector3(c.x, c.y, box.min.z)],
+        [{ axis: 'y', sign: 1 }, new THREE.Vector3(c.x, box.max.y, c.z)],
+      ]
+      for (const [h, v] of at) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), this.selMat)
+        m.position.copy(v)
+        m.renderOrder = 11
+        m.userData.handle = h
+        this.selBox.add(m)
+      }
+    }
+    this.selBox.userData = { handles, box, lines }
+    o.add(this.selBox)
+  }
+
+  private async rebuildPiece(old: THREE.Object3D, p: FurniturePlacement, size: string): Promise<void> {
+    old.userData.size = size // a newer size supersedes this build
+    const token = this.buildToken
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
+    const parent = old.parent
+    if (token !== this.buildToken || !parent || old.userData.size !== size) return
+    obj.userData.size = size
+    const selected = this.selBox.parent === old
+    if (selected) this.selBox.removeFromParent()
+    parent.add(obj)
+    old.removeFromParent()
+    // procedural geometry is per build (glTF clones share theirs, and never resize)
+    if (kitAsset(p.assetId)?.url.startsWith('procedural:')) old.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
+    if (selected) this.fitSelection(obj, !!this.selBox.userData.handles)
   }
 
   private xr: XRControls | null = null
@@ -394,12 +539,16 @@ export class PlotlineScene {
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('keyup', this.onKey)
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
+    this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.clearStatic()
+    this.selFoot.geometry.dispose()
+    ;(this.selFoot.material as THREE.Material).dispose()
+    this.selMat.dispose()
     this.look.dispose()
     // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
     // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.
@@ -519,19 +668,20 @@ export class PlotlineScene {
     }
   }
 
+  private ceilingOf(roomId: Id): number {
+    const hs = this.rooms.find((r) => r.id === roomId)?.wallIds.map((id) => this.unit?.walls.find((w) => w.id === id)?.heightM ?? 3.048) ?? []
+    return hs.length ? Math.max(...hs) : 3.048
+  }
+
   private async loadFurniture(unit: Unit): Promise<void> {
     const token = this.buildToken
     const byDistance = [...unit.furniture].sort(
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
-    const heights = new Map(unit.walls.map((w) => [w.id, w.heightM]))
-    const ceilingOf = (roomId: Id) => {
-      const hs = this.rooms.find((r) => r.id === roomId)?.wallIds.map((id) => heights.get(id) ?? 3.048) ?? []
-      return hs.length ? Math.max(...hs) : 3.048
-    }
     for (const p of byDistance) {
-      const obj = await buildFurniture(p, ceilingOf(p.roomId))
+      const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
+      obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
       // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
       const a = kitAsset(p.assetId)
       ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
@@ -573,11 +723,96 @@ export class PlotlineScene {
 
   private onPointerDown = (e: PointerEvent): void => {
     this.pointerDown = { x: e.clientX, y: e.clientY }
+    if (this.arranging && this.mode !== 'building') this.arrangeDown(e)
+  }
+
+  private ndcOf(e: PointerEvent): THREE.Vector2 {
+    const r = this.canvas.getBoundingClientRect()
+    return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
+  }
+
+  /** Arrange: a handle of the selected piece, else a piece (selects it), else empty space (walk: look around). */
+  private arrangeDown(e: PointerEvent): void {
+    const ndc = this.ndcOf(e)
+    this.raycaster.setFromCamera(ndc, this.camera)
+    const pivot = this.selBox.parent
+    const h = pivot && this.raycaster.intersectObjects(this.selBox.children.filter((c) => c.userData.handle), false)[0]
+    if (pivot && h) {
+      const handle = h.object.userData.handle as Handle
+      const box = this.selBox.userData.box as THREE.Box3
+      // measured in the piece's frame as it was grabbed (it shifts while one face moves); sides on their level, the top on an upright plane facing us
+      const n = handle.axis === 'y' ? this.camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize() : UP
+      this.grab = {
+        id: pivot.userData.id,
+        y: h.point.y,
+        off: { x: 0, y: 0 },
+        moved: false,
+        handle: {
+          ...handle,
+          inv: pivot.matrixWorld.clone().invert(),
+          half: handle.axis === 'y' ? -box.min.y : (box.max[handle.axis] - box.min[handle.axis]) / 2,
+          plane: new THREE.Plane().setFromNormalAndCoplanarPoint(n, h.point),
+        },
+      }
+    } else {
+      const hit = this.pick(ndc)
+      const o = hit?.kind === 'furniture' ? this.pieceObject(hit.id.split('/')[0]) : undefined // a part → its piece
+      if (!hit || !o) {
+        if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
+        return
+      }
+      this.arrangeCb?.({ kind: 'select', id: o.userData.id })
+      this.grab = { id: o.userData.id, y: hit.point.y, off: { x: o.position.x - hit.point.x, y: o.position.z - hit.point.z }, moved: false }
+    }
+    this.orbit.enabled = false // the piece moves, not the dollhouse camera
+    this.canvas.setPointerCapture(e.pointerId)
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    if (this.look2) {
+      // grab-the-room look (no pointer lock while arranging)
+      const eu = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ')
+      eu.y += (e.clientX - this.look2.x) * 0.004
+      eu.x = THREE.MathUtils.clamp(eu.x + (e.clientY - this.look2.y) * 0.004, -1.4, 1.4)
+      this.camera.quaternion.setFromEuler(eu)
+      this.look2 = { x: e.clientX, y: e.clientY }
+      return
+    }
+    const g = this.grab
+    const d = this.pointerDown
+    if (!g || (!g.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3)) return
+    g.moved = true
+    this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+    const ray = this.raycaster.ray
+    if (g.handle) {
+      const P = ray.intersectPlane(g.handle.plane, new THREE.Vector3())?.applyMatrix4(g.handle.inv)
+      const { axis, sign, half } = g.handle
+      if (P) this.arrangeCb?.({ kind: 'resize', id: g.id, axis, sign, sizeM: axis === 'y' ? P.y + half : sign * P[axis] + half })
+      return
+    }
+    const P = ray.intersectPlane(new THREE.Plane(UP, -g.y), new THREE.Vector3())
+    const w = this.raycaster.intersectObjects(this.staticGroup.children.filter((o) => o.userData.kind === 'wall'), false)[0]
+    const f = w && this.wallFrames.get(w.object.userData.id)
+    const s = f && (f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1) // the face toward us
+    this.arrangeCb?.({
+      kind: 'drag',
+      id: g.id,
+      at: P && { x: P.x + g.off.x, y: P.z + g.off.y },
+      wall: w && f && s ? { p: { x: w.point.x, y: w.point.z }, n: { x: s * f.normal.x, y: s * f.normal.y } } : null,
+    })
   }
 
   private onPointerUp = (e: PointerEvent): void => {
     const d = this.pointerDown
     this.pointerDown = null
+    if (this.arranging && this.mode !== 'building') {
+      const g = this.grab
+      this.grab = this.look2 = null
+      this.orbit.enabled = this.mode !== 'walk'
+      if (g?.moved) this.arrangeCb?.({ kind: 'drop', id: g.id })
+      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) this.arrangeCb?.({ kind: 'select', id: null })
+      return
+    }
     if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return // a drag, not a click
     const ndc = new THREE.Vector2(0, 0)
     if (!this.plc.isLocked) {

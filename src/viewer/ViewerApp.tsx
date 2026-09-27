@@ -4,22 +4,25 @@
  * Routes: `/` → replaceState `/u/<first unit>`; `/u/preview` ← localStorage
  * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, Id, Pt, Room, Unit } from '../core'
+import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
+import { placementSize, resizeLimits } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
+import { movePiece, pieceLabel, pieceQuad, resizePiece, type Move } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
-import { PlotlineScene, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
+import { dragTo, isStaff, pushStep, readLayout, saveLayout, undoStep, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
-import { decodeConfig, encodeConfig } from './share'
+import { decodeConfig, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import './viewer.css'
 
@@ -32,6 +35,12 @@ const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
 const DEFAULT_HOUR = 15.5
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
+/** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
+const STAFF = isStaff(location.search)
+if (params.has('staff')) {
+  params.delete('staff')
+  history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`)
+}
 /** Building view floor picker of the flat's tower, top down: roof, the floors with flats, ground */
 function PICKER(u: Unit) {
   const FLOORS = towerOf(u)?.FLOORS ?? []
@@ -93,16 +102,51 @@ const headingOf = (scene: PlotlineScene): Pt => {
 }
 
 export default function ViewerApp() {
-  const unit = useMemo(() => {
+  // `base` = the unit's own layout (its JSON's, else the presets); a layout arranged in this browser (Arrange, Studio F) wins
+  const [unit, base] = useMemo(() => {
     const u = onFloor(resolveUnit())
-    return u && !u.furniture.length ? { ...u, furniture: furnish(u, core.deriveRooms(u)) } : u
+    if (!u) return [null, []]
+    const base = u.furniture.length ? u.furniture : furnish(u, core.deriveRooms(u))
+    return [{ ...u, furniture: readLayout(u.id) ?? base }, base]
   }, [])
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
   if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
-  return <Viewer unit={unit} />
+  return <Viewer unit={unit} base={base} />
 }
 
-function Viewer({ unit }: { unit: Unit }) {
+/** Arrange (staff): the selected piece, what it allows, turn / undo / reset. */
+function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; onTurn: () => void; onUndo: () => void; onReset: () => void }) {
+  const s = p.piece && placementSize(p.piece)
+  return (
+    <aside className="glass arrange">
+      {p.piece && s ? (
+        <>
+          <div className="arrange-name">{pieceLabel(p.piece)}</div>
+          <div className="muted small">
+            {resizeLimits(p.piece.assetId)
+              ? `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high · drag a dot to resize`
+              : 'This piece can be moved and turned'}
+          </div>
+        </>
+      ) : (
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, lights and fans on the ceiling.</div>
+      )}
+      <div className="arrange-row">
+        <button className="btn" disabled={!p.piece} onClick={p.onTurn}>
+          Turn 90° (R)
+        </button>
+        <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
+          Undo
+        </button>
+        <button className="btn" title="Back to the unit’s own layout (undo brings yours back)" onClick={p.onReset}>
+          Reset layout
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
   const listed = useMemo(() => listedRooms(unit, rooms), [unit, rooms])
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -122,6 +166,12 @@ function Viewer({ unit }: { unit: Unit }) {
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
   const [picked, setPicked] = useState(unit.floor ?? 0)
+  // Arrange (staff): the committed layout and its undo steps; a drag's candidate lives in `live` until the drop
+  const [arranging, setArranging] = useState(false)
+  const [sel, setSel] = useState<Id | null>(null)
+  const steps = useRef<Steps>({ pieces: unit.furniture, past: [] })
+  const live = useRef<Move | null>(null)
+  const [, redraw] = useReducer((n: number) => n + 1, 0)
   const stem = towerStem(unit)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
@@ -245,13 +295,63 @@ function Viewer({ unit }: { unit: Unit }) {
   }
 
   const share = () => {
-    const floor = params.get('floor') ? `floor=${unit.floor}&` : '' // the flat picked in the Building view stays on its floor
-    const url = `${location.origin}${location.pathname}?${floor}c=${encodeConfig(fullCfg)}`
+    const url = shareUrl(location, unit.floor, fullCfg) // the flat picked in the Building view stays on its floor; never `staff`
     history.replaceState(null, '', url)
     void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
   }
 
   const toggleVR = () => void xr?.toggle().catch(() => showToast(VR_FAILED))
+
+  // ── Arrange: the Studio's rules (arrange.ts → studio/furniture.ts); the scene moves one piece's transform at a time
+  const pieceOf = (id: Id | null) => steps.current.pieces.find((p) => p.id === id) ?? null
+  const showSel = (p: FurniturePlacement | null, refused = false) =>
+    scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, handles: !!resizeLimits(p.assetId) })
+  /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
+  const settle = (h: Steps) => {
+    steps.current = h
+    saveLayout(unit.id, h.pieces, base)
+    scene?.setLayout(h.pieces)
+    showSel(pieceOf(sel))
+    redraw()
+  }
+  const undo = () => steps.current.past.length && settle(undoStep(steps.current))
+  const turn = () => {
+    const p = pieceOf(sel)
+    const m = p && movePiece(unit, rooms, steps.current.pieces, p.id, p, p.rotationDeg + 90, false)
+    if (m?.error) showToast(m.error)
+    else if (m) settle(pushStep(steps.current, m.furniture))
+  }
+  const toggleArrange = () => {
+    setArranging(!arranging)
+    scene?.setArrange(!arranging)
+    setSel(null)
+    setCommenting(false)
+  }
+  const onArrange = (e: ArrangeEvent) => {
+    if (e.kind === 'select') {
+      setSel(e.id)
+      return showSel(pieceOf(e.id))
+    }
+    const m = live.current
+    if (e.kind === 'drop') {
+      live.current = null
+      if (!m) return
+      if (!m.error) return settle(pushStep(steps.current, m.furniture))
+      scene?.placePieces(m.ids.map((id) => pieceOf(id)!)) // springs back
+      showSel(pieceOf(e.id))
+      return showToast(m.error)
+    }
+    const p = pieceOf(e.id)
+    const next =
+      e.kind === 'drag'
+        ? dragTo(unit, rooms, steps.current.pieces, e.id, e)
+        : p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
+    if (!next) return
+    live.current = next
+    scene?.placePieces(next.furniture.filter((q) => next.ids.includes(q.id)))
+    showSel(next.piece, !!next.error)
+  }
+  useEffect(() => scene?.onArrange(onArrange))
 
   // keys: Enter (load screen), O, F, C, Esc
   useEffect(() => {
@@ -264,7 +364,12 @@ function Viewer({ unit }: { unit: Unit }) {
       }
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
-      if (k === 'o') toggleMode()
+      if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) undo()
+      else if (arranging && k === 'r') turn()
+      else if (arranging && k === 'escape') {
+        setSel(null)
+        showSel(null)
+      } else if (k === 'o') toggleMode()
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
@@ -378,6 +483,8 @@ function Viewer({ unit }: { unit: Unit }) {
             onToggleFinishes={() => setFinishesOpen((v) => !v)}
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
+            arranging={arranging}
+            onArrange={STAFF ? toggleArrange : null}
             onEditPlan={() => {
               const id = location.pathname.split('/')[2] // the route stem; `/u/preview` is already the Studio's draft
               window.open(id === 'preview' ? '/studio' : `/studio?unit=${id}`, '_blank')
@@ -403,6 +510,7 @@ function Viewer({ unit }: { unit: Unit }) {
               />
             </aside>
           )}
+          {arranging && <ArrangePanel piece={pieceOf(sel)} canUndo={steps.current.past.length > 0} onTurn={turn} onUndo={undo} onReset={() => settle(pushStep(steps.current, base))} />}
           <SunPill
             hour={hour}
             northDeg={unit.northDeg}

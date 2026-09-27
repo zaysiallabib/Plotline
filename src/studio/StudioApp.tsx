@@ -23,6 +23,7 @@ import {
 } from './model'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapPoint } from './snap'
+import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
@@ -77,6 +78,15 @@ interface Note {
 /** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt }
 
+// the Studio's user is staff: the viewer shows them its Arrange button from now on (arrange.ts isStaff)
+try {
+  localStorage.setItem(STAFF_KEY, '1')
+} catch {
+  /* storage blocked */
+}
+/** The furniture layout arranged in this browser (viewer Arrange / tool F, `plotline.layout.<unit id>`) replaces the unit's own. */
+const withLayout = <U extends Draft['unit']>(u: U): U => ({ ...u, furniture: readLayout(u.id) ?? u.furniture })
+
 /**
  * `/studio?unit=<stem|id>` (the viewer's "Edit plan"): open that unit from src/data/units instead of the draft.
  * Asks first when the draft holds anything but that unit untouched; drops the param so a reload keeps the edits.
@@ -85,8 +95,9 @@ type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map
 const EDIT = ((): Draft['unit'] | null => {
   const q = new URLSearchParams(location.search).get('unit')
   const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Draft['unit']>
-  const u = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
-  if (!u) return null
+  const found = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
+  if (!found) return null
+  const u = withLayout(found) // as the viewer shows it: with the layout arranged in this browser
   let d: { unit?: unknown } | null = null
   try {
     d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')
@@ -109,7 +120,7 @@ function init(): StudioState {
       const parsed = JSON.parse(raw) as unknown
       // a full Draft, a bare `{ unit }`, or a Unit JSON pasted straight in — all restore
       const d = (isUnit(parsed) ? { unit: parsed } : parsed) as Partial<Draft> | null
-      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: d as Draft })
+      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: { ...(d as Draft), unit: withLayout(d.unit) } })
     }
   } catch {
     /* corrupt draft: start clean */
@@ -276,6 +287,14 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, saveDraft])
+  // shared layout: a change made with tool F (move, turn, resize, reset, their undo) is what the viewer shows after a reload
+  const lastFurniture = useRef(unit.furniture)
+  useEffect(() => {
+    if (lastFurniture.current === unit.furniture) return
+    lastFurniture.current = unit.furniture
+    if (tool === 'furniture') saveLayout(unit.id, unit.furniture) // "Reset all" (empty) removes it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unit.furniture])
 
   // ----- timer
   useEffect(() => {
