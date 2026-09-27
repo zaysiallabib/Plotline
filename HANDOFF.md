@@ -43,7 +43,7 @@ Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the found
 
 ## RESUME HERE (session 9 ran out of tokens ~04:30, 2026-09-27) — wave 11 is ≈ 55 % done
 
-**State:** `feat/phase-0` = 9f526e2 (pushed), **255 tests, tsc green. NOT deployed** (live is still 81b7b67 / wave 10). Merged so far: studio-edit (f1c05a4), studio-furniture (efc3d11 + 3c2405d), mirror (9f526e2). Three agent branches are still unmerged, each with green commits (see the table; the agents were Opus 5.5, cut off / possibly still finishing when the manager ran out of tokens):
+**UPDATE 04:50: look (a32e4c…, 5 commits) and views merged → `feat/phase-0` = 2d87a45, 258 tests, tsc green, pushed. Only FURNISH is left to merge (its branch below; also delete its untracked vite.furnish.config.ts). Look report: baths' 235–249 band 17–24 % → 3–5 % (never clipped), study pane 229 → 203 with grain, painted walls unchanged ~212, draw calls +0; skirting = floor finish now; dusk bounce; recommendations: shower-screen haze in a/c-bath-2 (procedural.ts), baths get no ceiling light at 18:00 (MAX_ROOM_LIGHTS 8), tile roughness ~0.3 if still washed. Shots wave11look{before,after,pairs,steps}. Vite tip: run agents with --config <private copy> + cacheDir.** Earlier state: `feat/phase-0` = 9f526e2 (pushed), **255 tests, tsc green. NOT deployed** (live is still 81b7b67 / wave 10). Merged so far: studio-edit (f1c05a4), studio-furniture (efc3d11 + 3c2405d), mirror (9f526e2). Three agent branches are still unmerged, each with green commits (see the table; the agents were Opus 5.5, cut off / possibly still finishing when the manager ran out of tokens):
 
 | Branch (worktree under `.claude/worktrees/agent-<id>`) | Commits ahead | What is in it | To finish |
 |---|---|---|---|
