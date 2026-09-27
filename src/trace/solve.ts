@@ -709,7 +709,7 @@ function openNeighbours(d: Draft, at: Pt, R = 9): Set<string> {
  * a door in a 10" wall is the entrance — the face behind it (the lobby) joins, but grows no further. A click in an
  * open area starts from every room around it.
  */
-function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity): { rooms: Set<Room>; open: boolean } {
+function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity, names: { p: Pt; name: string }[] = []): { rooms: Set<Room>; open: boolean } {
   const byWall = new Map<string, Room[]>()
   for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
   const W = new Map(d.walls.map((w) => [w.id, w]))
@@ -748,12 +748,32 @@ function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity
       let sum = 0
       return new Set([...rs].sort((p, q) => d2(p.centroid, at) - d2(q.centroid, at)).filter((r) => (sum += r.areaSqm) - r.areaSqm < budgetSqm))
     }
+    // a one-per-flat name printed twice in the region (two LIVINGs, two BED 3s): the far one is the next flat's — every
+    // face fewer rooms away from it than from the click goes with it
+    const split = (rs: Set<Room>, starts: Room[]): Set<Room> => {
+      const faceAt = (p: Pt) => [...rs].filter((r) => pointInPolygon(p, polys.get(r)!)).sort((a, b) => a.areaSqm - b.areaSqm)[0]
+      const byName = new Map<string, Set<Room>>()
+      for (const l of names) {
+        const f = faceAt(l.p)
+        if (f) byName.set(l.name, (byName.get(l.name) ?? new Set()).add(f))
+      }
+      const rivals = [...byName.values()].flatMap((fs) => [...fs].sort((a, b) => d2(a.centroid, at) - d2(b.centroid, at)).slice(1)).filter((r) => !starts.includes(r))
+      if (!rivals.length) return rs
+      const hops = (from: Room[]) => {
+        const h = new Map(from.map((r) => [r, 0]))
+        for (let i = 0, q = [...from]; i < q.length; i++)
+          for (const w of q[i].wallIds) for (const n of byWall.get(w) ?? []) if (rs.has(n) && !h.has(n)) h.set(n, h.get(q[i])! + 1), q.push(n)
+        return h
+      }
+      const hp = hops(starts), hr = hops(rivals)
+      return new Set([...rs].filter((r) => (hp.get(r) ?? Infinity) <= (hr.get(r) ?? Infinity)))
+    }
     let hit: Room | null = null
     for (const r of d.rooms) if (pointInPolygon(at, polys.get(r)!) && (!hit || r.areaSqm < hit.areaSqm)) hit = r
-    if (hit) return { rooms: ok(hit) ? cap(grow([hit], true)) : new Set(), open: false }
+    if (hit) return { rooms: ok(hit) ? cap(split(grow([hit], true), [hit])) : new Set(), open: false }
     const touched = openNeighbours(d, at)
     const starts = d.rooms.filter((r) => ok(r) && r.wallIds.some((w) => touched.has(w)))
-    return { rooms: starts.length ? cap(grow(starts, true)) : new Set(), open: true }
+    return { rooms: starts.length ? cap(split(grow(starts, true), starts)) : new Set(), open: true }
   }
   // no click: the largest closed region (grown the same way, without the entrance step)
   let best = new Set<Room>(), bestA = 0
@@ -861,6 +881,12 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     text.items
       .filter((it) => it.kind === 'room' && (it.green || /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(normaliseName(it.text.split('\n')[0]))))
       .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
+  // names a flat has once (LIVING, KITCHEN, numbered BED 3 / TOILET 2): a second one belongs to the next flat
+  const namesAt = (k: number) =>
+    text.items
+      .filter((it) => it.kind === 'room')
+      .map((it) => ({ p: { x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }, name: normaliseName(it.text.split('\n')[0]) }))
+      .filter((l) => /\d|\b(LIVING|DINING|KITCHEN|FOYER)\b/.test(l.name) && !/\b(AOD|LIFTS?|STAIRS?|LOBBY|VER|VERANDAH?)\b/.test(l.name))
   // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
   const budget = ((): number => {
     const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
@@ -920,7 +946,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink)
   const pick = pickM(pxPerM, origin0)
-  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget)
+  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM))
   let flat = picked.rooms
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'The clicked area is open — its walls did not close (open plan, glass or a railing the tracer missed). Draw the missing wall.' })
   if (!flat.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
