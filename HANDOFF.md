@@ -2,7 +2,7 @@
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
-Live: https://plotline-flax.vercel.app — **wave 13 live (the founder deployed it 2026-09-27 late); wave 14 in progress.** Staff editing: `/u/type-a?staff=1` → Arrange. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
+Live: https://plotline-flax.vercel.app — **wave 13 live (founder deployed it 2026-09-27 late). Wave 14 + 3" grid READY at afd23e0 (score up on every unit) — the classifier denied `npx vercel --prod --yes` ("Production Deploy") on 2026-09-28: the founder runs it.** Staff editing: `/u/type-a?staff=1` → Arrange. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
 
 ## WAVE 14 — launched 2026-09-27 late (session 11, founder awake; four Opus 5.5 agents on worktrees)
 
