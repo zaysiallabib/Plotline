@@ -160,3 +160,5 @@
   overflow: hidden;
 }
 .statusbar .centre { flex: 1; text-align: center; color: var(--ink); }
+.topbar .staff-badge { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 1px 8px; white-space: nowrap; cursor: help; }
+.panel select { width: 100%; }

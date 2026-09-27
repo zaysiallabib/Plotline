@@ -24,11 +24,13 @@ interface Props {
   onToggleFinishes: () => void
   onToggleComment: () => void
   onShare: () => void
-  /** opens this unit in the Studio, new tab */
-  onEditPlan: () => void
-  /** staff only (arrange.ts isStaff): toggles Arrange; null hides the button (every buyer link) */
+  /** staff only: opens this unit in the Studio, new tab (the Studio makes its user staff, so buyers never see it) */
+  onEditPlan: (() => void) | null
+  /** staff only (arrange.ts isStaff): toggles Arrange ("Edit furniture"); null hides the button (every buyer link) */
   onArrange: (() => void) | null
   arranging: boolean
+  /** a library piece follows the pointer */
+  placing: boolean
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
@@ -93,13 +95,15 @@ export default function Hud(p: Props) {
           Share
         </button>
         {p.onArrange && (
-          <button className={`btn${p.arranging ? ' active' : ''}`} onClick={p.onArrange}>
-            Arrange
+          <button className={`btn${p.arranging ? ' active' : ''}`} title="Staff only: move, turn, resize, delete or add furniture" onClick={p.onArrange}>
+            Edit furniture
           </button>
         )}
-        <button className="btn" onClick={p.onEditPlan}>
-          Edit plan
-        </button>
+        {p.onEditPlan && (
+          <button className="btn" onClick={p.onEditPlan}>
+            Edit plan
+          </button>
+        )}
         {p.onEnterVR && (
           <button className="btn" onClick={p.onEnterVR}>
             Enter VR
@@ -110,7 +114,8 @@ export default function Hud(p: Props) {
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
       {p.arranging && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
-          Drag a piece to move it · R turns · Ctrl+Z undoes · Esc lets go{p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}
+          {p.placing ? 'Point at the floor, a wall or the ceiling · click puts it there · R turns · Esc cancels' : 'Drag a piece to move it · R turns · Ctrl+Z undoes · Esc lets go'}
+          {p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}
         </div>
       ) : (
         !p.locked && p.mode === 'walk' && <div className="glass hint hint-bottom">Click to look around · WASD to walk · Esc to release</div>
