@@ -5,7 +5,7 @@
  */
 import { FT, parseLength } from '../core'
 import type { RoomKind } from '../core'
-import type { Dims, TextItem, TextKind, TextTrace } from './types'
+import type { Dims, Gray, TextItem, TextKind, TextTrace } from './types'
 
 type Box = TextItem['box']
 
@@ -25,8 +25,17 @@ function normaliseQuotes(s: string): string {
     .replace(/½/g, ' 1/2')
 }
 
-/** One side of a "W x L" pair → metres, or null. Feet are the default unit (as core parseLength). */
-export function parseSide(raw: string): number | null {
+/** Marks lost by OCR in a feet-inch size: "362" → 36'-2", "511" → 5'-11", "120" → 12'-0", "50" → 5'-0" (inches < 12). */
+function splitFeetInches(d: string): number {
+  const two = d.length >= 3 && +d.slice(-2) >= 10 && +d.slice(-2) <= 11 && +d.slice(0, -2) >= 2
+  return (+d.slice(0, two ? -2 : -1) + +d.slice(two ? -2 : -1) / 12) * FT
+}
+
+/**
+ * One side of a "W x L" pair → metres, or null. Feet are the default unit (as core parseLength).
+ * `marksLost`: the pair shows feet-inch marks elsewhere, so a bare digit run is a feet-inch value whose marks OCR dropped.
+ */
+export function parseSide(raw: string, marksLost = false): number | null {
   let t = normaliseQuotes(raw)
     .trim()
     .replace(/^[^0-9A-Za-z|!$]+|[^0-9A-Za-z'"]+$/g, '')
@@ -35,19 +44,24 @@ export function parseSide(raw: string): number | null {
   if (metric) t = metric[1]
   t = t.replace(/[lIi|!OoQDSs$BZzG]/g, (c) => DIGIT_LOOKALIKES[c]).replace(/(\d+)\s+(\d+)\/(\d+)/, (_, a, b, c) => String(+a + +b / +c))
   let v: number | null
+  const bare = marksLost ? /^(\d{2,4})"?$/.exec(t) : null
   const fi = /^(\d{1,3})\s*(?:'\s*-?|-)\s*(\d{1,2}(?:\.\d+)?)\s*["']?$/.exec(t) // 14'-5"  14'5  14-5"  14'-5' (inch mark read as ')
   if (fi) v = +fi[2] < 12 ? (+fi[1] + +fi[2] / 12) * FT : null
-  else v = parseLength(unit ? t + unit : t)
+  else if (bare) {
+    v = splitFeetInches(bare[1])
+    if (v < MIN_M) v = parseLength(bare[1]) // 14'-5" X 12: plain feet after all
+  } else v = parseLength(unit ? t + unit : t)
   return v !== null && v >= MIN_M && v <= MAX_M ? v : null
 }
 
 /**
  * A printed room size → metres: `14'-5" x 14'-4"`, `14'5"x14'4"`, `14'-0"×16'-0"`, `5'-11 1/2" X 7'`, `4.4m x 3.2m`,
- * `14.4 x 12` (feet), and OCR-mangled variants (`l4'-5"`, `14'-S"`, `14'-5"x 14'-4`, `14'-5"14'-4"`). Else null.
+ * `14.4 x 12` (feet), and OCR-mangled variants (`l4'-5"`, `14'-S"`, `14'-5"x 14'-4`, `14'-5"14'-4"`, `14-5%14-4"`,
+ * `362X120"` = 36'-2" × 12'-0" with the marks lost). Else null.
  */
 export function parseDims(raw: string): Dims | null {
   const s = normaliseQuotes(raw).trim()
-  let parts = s.split(/\s*[x×X*]\s*/).filter((p) => /\d/.test(p))
+  let parts = s.split(/\s*[x×X*%]\s*/).filter((p) => /\d/.test(p)) // % = an X misread
   if (parts.length === 1) {
     const m = /^(.*?\d\s*")\s*(\d.*)$/.exec(s) // separator lost: 14'-5"14'-4"
     if (m) parts = [m[1], m[2]]
@@ -56,8 +70,9 @@ export function parseDims(raw: string): Dims | null {
   let [a, b] = parts
   const metric = /m\s*$/i.test(s) && !/['"]/.test(s) // "4.4 x 3.2m": the unit printed once
   if (metric && /\d$/.test(a.trim())) a += 'm'
-  const aM = parseSide(a)
-  const bM = parseSide(b)
+  const marksLost = /['"-]/.test(s)
+  const aM = parseSide(a, marksLost)
+  const bM = parseSide(b, marksLost)
   return aM === null || bM === null ? null : { aM, bM }
 }
 
@@ -152,7 +167,7 @@ const union = (a: Box, b: Box): Box => {
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }
 }
 
-const LOOKS_LIKE_DIMS = /\d.*['"].*[x×X*]|[x×X*].*\d.*['"]|\d\s*['"]\s*-?\s*\d/
+const LOOKS_LIKE_DIMS = /\d.*['"].*[x×X*%]|[x×X*%].*\d.*['"]|\d\s*['"]\s*-?\s*\d/
 
 /** A line chunk: name and/or dims on one baseline. */
 interface Chunk {
@@ -247,10 +262,15 @@ export function groupWords(words: OcrWord[]): TextItem[] {
   })
   const items: TextItem[] = []
   for (const idx of blocks.values()) {
-    const names = idx.filter((i) => kinds[i] !== 'dims' && kinds[i] !== 'area')
-    const dimsIdx = idx.find((i) => kinds[i] === 'dims')
+    let dimsIdx = idx.find((i) => kinds[i] === 'dims')
+    const last = idx[idx.length - 1]
+    // a trailing line under a name that names no room is the size line OCR garbled ("LOBBY" / "Irs"): keep it as the size
+    if (dimsIdx === undefined && idx.length >= 2 && kinds[last] === 'other' && classifyRoom(idx.slice(0, -1).map((i) => chunks[i].text).join(' '))) dimsIdx = last
+    const names = idx.filter((i) => i !== dimsIdx && kinds[i] !== 'area')
     const box = idx.map((i) => chunks[i].box).reduce(union)
-    const conf = Math.min(...idx.map((i) => chunks[i].conf))
+    const dimsOk = dimsIdx !== undefined && parseDims(chunks[dimsIdx].text)
+    const confs = idx.filter((i) => i !== dimsIdx || dimsOk).map((i) => chunks[i].conf) // a garbled size is flagged by its missing dims, not here
+    const conf = Math.min(...(confs.length ? confs : idx.map((i) => chunks[i].conf)))
     if (kinds[idx[0]] === 'area') {
       items.push({ text: chunks[idx[0]].text, box, kind: 'area', areaSqm: parseArea(chunks[idx[0]].text)!, conf, source: 'ocr' })
       continue
@@ -314,3 +334,332 @@ export function itemFromAi(text: string, box: Box, offset: { x: number; y: numbe
   if (room) return { text, box: b, kind: 'room', roomKind: room.kind, green: room.green || undefined, dims, conf: 0.9, source: 'ai' }
   return { text, box: b, kind: dims ? 'dims' : 'other', dims, conf: 0.9, source: 'ai' }
 }
+
+// ---------------------------------------------------------------- preprocessing (pure, on Gray)
+
+/** Max of each pixel's (2r+1)² neighbourhood: the local paper / floor-fill tone under thin strokes. */
+export function localMax(g: Gray, r: number): Uint8Array {
+  const { width: W, height: H, data } = g
+  const tmp = new Uint8Array(W * H)
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let m = 0
+      for (let k = Math.max(0, x - r); k <= Math.min(W - 1, x + r); k++) m = Math.max(m, data[y * W + k])
+      tmp[y * W + x] = m
+    }
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let m = 0
+      for (let k = Math.max(0, y - r); k <= Math.min(H - 1, y + r); k++) m = Math.max(m, tmp[k * W + x])
+      out[y * W + x] = m
+    }
+  return out
+}
+
+/**
+ * Keep only glyph-sized dark blobs (walls, furniture outlines, fills, foliage go). A pixel is ink when it is `delta`
+ * darker than its local paper tone (so black text on a brown lobby fill and grey text on white both count, light
+ * hatching does not). 8-connected ink blobs; glyph height = median height of blobs 4–40 px tall; a blob stays when
+ * it is at most 1.6 × that tall and 8 × wide (touching glyphs in small print merge into flat runs). Kept blobs grow by
+ * `grow` px into half-contrast pixels (thin grey strokes, anti-aliased rims) and are redrawn as dark-on-white by their
+ * contrast; everything else turns white. Returns the cleaned raster, the glyph height and the kept blobs' boxes.
+ */
+export function cleanForOcr(g: Gray, delta = 40, grow = 1): { gray: Gray; charH: number; glyphs: Box[] } {
+  const { width: W, height: H, data } = g
+  const bg = localMax(g, 5)
+  const ink = (p: number, d: number) => data[p] < bg[p] - d
+  const label = new Int32Array(W * H).fill(-1)
+  const boxes: number[] = [] // x0, y0, x1, y1, count per component
+  const stack: number[] = []
+  for (let s = 0; s < W * H; s++) {
+    if (!ink(s, delta) || label[s] >= 0) continue
+    const id = boxes.length / 5
+    let x0 = W
+    let y0 = H
+    let x1 = 0
+    let y1 = 0
+    let count = 0
+    label[s] = id
+    stack.push(s)
+    while (stack.length) {
+      const p = stack.pop()!
+      const x = p % W
+      const y = (p - x) / W
+      count++
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy
+        if (yy < 0 || yy >= H) continue
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx
+          if (xx < 0 || xx >= W) continue
+          const q = yy * W + xx
+          if (label[q] < 0 && ink(q, delta)) {
+            label[q] = id
+            stack.push(q)
+          }
+        }
+      }
+    }
+    boxes.push(x0, y0, x1, y1, count)
+  }
+  const n = boxes.length / 5
+  const heights: number[] = []
+  for (let i = 0; i < n; i++) {
+    const h = boxes[i * 5 + 3] - boxes[i * 5 + 1] + 1
+    const w = boxes[i * 5 + 2] - boxes[i * 5] + 1
+    if (h >= 4 && h <= 40 && w <= 3 * h) heights.push(h)
+  }
+  heights.sort((a, b) => a - b)
+  const charH = heights.length ? heights[heights.length >> 1] : 10
+  const keep = new Uint8Array(n)
+  for (let i = 0; i < n; i++) {
+    const w = boxes[i * 5 + 2] - boxes[i * 5] + 1
+    const h = boxes[i * 5 + 3] - boxes[i * 5 + 1] + 1
+    // glyph runs, vertical glyph runs, and big title glyphs ("2662 SFT" under the plan)
+    keep[i] = +(boxes[i * 5 + 4] >= 2 && ((h <= 1.6 * charH && w <= 8 * charH) || (w <= 1.6 * charH && w >= 0.6 * charH && h <= 8 * charH) || (h <= 5 * charH && w <= 1.5 * h)))
+  }
+  const out = new Uint8Array(W * H).fill(255)
+  const draw = (p: number) => (out[p] = Math.max(0, Math.min(254, 255 - 2 * (bg[p] - data[p]))))
+  let front: number[] = []
+  for (let p = 0; p < W * H; p++) {
+    if (label[p] >= 0 && keep[label[p]]) {
+      draw(p)
+      front.push(p)
+    }
+  }
+  for (let step = 0; step < grow; step++) {
+    const next: number[] = []
+    for (const p of front) {
+      const x = p % W
+      for (const q of [p - 1, p + 1, p - W, p + W, p - W - 1, p - W + 1, p + W - 1, p + W + 1]) {
+        if (q < 0 || q >= W * H || Math.abs((q % W) - x) > 1 || out[q] !== 255 || !ink(q, delta / 2)) continue
+        if (label[q] >= 0 && !keep[label[q]]) continue // never bleed into a dropped wall / line
+        draw(q)
+        next.push(q)
+      }
+    }
+    front = next
+  }
+  const glyphs: Box[] = []
+  for (let i = 0; i < n; i++) if (keep[i]) glyphs.push({ x: boxes[i * 5], y: boxes[i * 5 + 1], w: boxes[i * 5 + 2] - boxes[i * 5] + 1, h: boxes[i * 5 + 3] - boxes[i * 5 + 1] + 1 })
+  return { gray: { width: W, height: H, data: out }, charH, glyphs }
+}
+
+/** Bilinear resize by `s`. */
+export function scaleGray(g: Gray, s: number): Gray {
+  const W = Math.round(g.width * s)
+  const H = Math.round(g.height * s)
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const fy = Math.min(g.height - 1, Math.max(0, (y + 0.5) / s - 0.5))
+    const y0 = Math.floor(fy)
+    const y1 = Math.min(g.height - 1, y0 + 1)
+    const ty = fy - y0
+    for (let x = 0; x < W; x++) {
+      const fx = Math.min(g.width - 1, Math.max(0, (x + 0.5) / s - 0.5))
+      const x0 = Math.floor(fx)
+      const x1 = Math.min(g.width - 1, x0 + 1)
+      const tx = fx - x0
+      const top = g.data[y0 * g.width + x0] * (1 - tx) + g.data[y0 * g.width + x1] * tx
+      const bot = g.data[y1 * g.width + x0] * (1 - tx) + g.data[y1 * g.width + x1] * tx
+      out[y * W + x] = top * (1 - ty) + bot * ty
+    }
+  }
+  return { width: W, height: H, data: out }
+}
+
+/** Rotate 90° clockwise: text printed bottom-to-top reads left-to-right. Pixel (x, y) → (H-1-y, x). */
+export function rotateCW(g: Gray): Gray {
+  const { width: W, height: H } = g
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) out[x * H + (H - 1 - y)] = g.data[y * W + x]
+  return { width: H, height: W, data: out }
+}
+
+/** A sub-rectangle (clamped to the raster), white outside. */
+export function cropGray(g: Gray, b: Box): Gray {
+  const x0 = Math.round(b.x)
+  const y0 = Math.round(b.y)
+  const W = Math.max(1, Math.round(b.w))
+  const H = Math.max(1, Math.round(b.h))
+  const out = new Uint8Array(W * H).fill(255)
+  for (let y = 0; y < H; y++) {
+    const sy = y0 + y
+    if (sy < 0 || sy >= g.height) continue
+    for (let x = 0; x < W; x++) {
+      const sx = x0 + x
+      if (sx >= 0 && sx < g.width) out[y * W + x] = g.data[sy * g.width + sx]
+    }
+  }
+  return { width: W, height: H, data: out }
+}
+
+export interface TextLine {
+  box: Box
+  /** printed bottom-to-top (AOD / E-SHAFT on a shaft) */
+  vertical: boolean
+}
+
+/**
+ * Glyph blobs → text lines, no OCR yet: a blob joins the line whose glyph band (tall glyphs only, so ' " - marks don't
+ * stretch it) holds its centre and whose right end is within 1.2 glyph heights. Two lines printed nearly touching
+ * (a name over its size) stay apart. Lone upright glyphs stacked in a column form a vertical line; other loners go.
+ */
+export function findTextLines(glyphs: Box[], charH: number): TextLine[] {
+  const gap = 1.2 * charH
+  const tall = (b: Box) => b.h >= 0.6 * charH
+  interface L {
+    box: Box
+    y0: number
+    y1: number
+    n: number
+    tall: number
+  }
+  const lines: L[] = []
+  let active: L[] = []
+  for (const g of [...glyphs].sort((a, b) => a.x - b.x)) {
+    active = active.filter((l) => g.x - (l.box.x + l.box.w) <= Math.max(gap, 1.2 * (l.y1 - l.y0)))
+    const cy = g.y + g.h / 2
+    let best: L | undefined
+    let bestD = Infinity
+    for (const l of active) {
+      const band = l.y1 - l.y0
+      if (cy < l.y0 - 0.25 * band || cy > l.y1 + 0.25 * band || g.h > 1.6 * Math.max(band, 0.6 * charH)) continue
+      const d = Math.abs(cy - (l.y0 + l.y1) / 2)
+      if (d < bestD) {
+        best = l
+        bestD = d
+      }
+    }
+    if (best) {
+      best.box = union(best.box, g)
+      best.n++
+      if (tall(g)) {
+        best.y0 = best.tall ? Math.min(best.y0, g.y) : g.y
+        best.y1 = best.tall ? Math.max(best.y1, g.y + g.h) : g.y + g.h
+        best.tall++
+      }
+    } else {
+      const l = { box: g, y0: g.y, y1: g.y + g.h, n: 1, tall: +tall(g) }
+      lines.push(l)
+      active.push(l)
+    }
+  }
+  const out: TextLine[] = lines.filter((l) => (l.n >= 2 || l.box.w >= 1.5 * l.box.h) && l.tall >= 1 && l.box.w >= 1.2 * charH).map((l) => ({ box: l.box, vertical: false }))
+  // vertical: loners (one blob as wide as a glyph is tall: a rotated letter or a rotated merged word) stacked in a column
+  const loners = lines
+    .filter((l) => l.n === 1 && l.box.w < 1.5 * l.box.h && l.box.w >= 0.6 * charH && l.box.w <= 1.6 * charH)
+    .map((l) => l.box)
+    .sort((a, b) => a.y - b.y)
+  const used = new Set<Box>()
+  for (const s of loners) {
+    if (used.has(s)) continue
+    let col = s
+    const members = [s]
+    for (const t of loners) {
+      if (used.has(t) || t === s || t.y < col.y) continue
+      if (t.y - (col.y + col.h) <= 0.8 * charH && Math.abs(t.x + t.w / 2 - (col.x + col.w / 2)) < 0.35 * col.w) {
+        col = union(col, t)
+        members.push(t)
+      }
+    }
+    if (col.h >= 1.5 * col.w) {
+      members.forEach((m) => used.add(m))
+      out.push({ box: col, vertical: true })
+    }
+  }
+  return out
+}
+
+// ---------------------------------------------------------------- the OCR stage (browser; tesseract.js loaded on first call)
+
+export interface ReadTextOptions {
+  /** OCR workers in parallel; default 3 */
+  workers?: number
+  /** where eng.traineddata comes from; default = tesseract.js's own jsdelivr CDN (4.0.0_best_int, ≈ 2.9 MB gz, cached in IndexedDB) */
+  langPath?: string
+  onProgress?: (done: number, total: number) => void
+}
+
+async function toGray(src: ImageBitmapSource): Promise<Gray> {
+  const bmp = await createImageBitmap(src)
+  const c = new OffscreenCanvas(bmp.width, bmp.height)
+  const ctx = c.getContext('2d')!
+  ctx.drawImage(bmp, 0, 0)
+  const rgba = ctx.getImageData(0, 0, bmp.width, bmp.height).data
+  const data = new Uint8Array(bmp.width * bmp.height)
+  for (let i = 0; i < data.length; i++) data[i] = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]
+  return { width: bmp.width, height: bmp.height, data }
+}
+
+function toCanvas(g: Gray): OffscreenCanvas {
+  const c = new OffscreenCanvas(g.width, g.height)
+  const ctx = c.getContext('2d')!
+  const img = ctx.createImageData(g.width, g.height)
+  for (let i = 0; i < g.data.length; i++) {
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = g.data[i]
+    img.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+  return c
+}
+
+const GLYPH_PX = 32 // tesseract's LSTM reads best around this glyph height
+const DIMS_CHARS = `0123456789'"-xX/. `
+
+/**
+ * Plan raster → every printed label / size / area it can read, in the source image's pixels.
+ * Glyph-only mask → text lines found from the blobs → each line cropped, upscaled to ~32 px glyphs and read as one
+ * line (vertical ones rotated first) → a line that looks like a size but does not parse is re-read with a digits-only
+ * alphabet → grouped into labels.
+ */
+export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOptions = {}): Promise<TextTrace> {
+  const gray = 'data' in src && 'width' in src && src.data instanceof Uint8Array ? (src as Gray) : await toGray(src as ImageBitmapSource)
+  const { gray: clean, charH, glyphs } = cleanForOcr(gray)
+  const lines = findTextLines(glyphs, charH)
+  const T = await import('tesseract.js')
+  const scheduler = T.createScheduler()
+  const workers = await Promise.all(
+    Array.from({ length: opts.workers ?? 3 }, () => T.createWorker('eng', T.OEM.LSTM_ONLY, opts.langPath ? { langPath: opts.langPath } : {})),
+  )
+  workers.forEach((w) => scheduler.addWorker(w))
+  const setAll = (params: Record<string, string>) => Promise.all(workers.map((w) => w.setParameters(params)))
+  try {
+    const crops = lines.map((l) => {
+      const pad = 0.4 * Math.min(l.box.w, l.box.h)
+      let g = cropGray(clean, { x: l.box.x - pad, y: l.box.y - pad, w: l.box.w + 2 * pad, h: l.box.h + 2 * pad })
+      if (l.vertical) g = rotateCW(g)
+      return toCanvas(scaleGray(g, Math.max(1, Math.min(8, GLYPH_PX / (l.vertical ? l.box.w : l.box.h)))))
+    })
+    let done = 0
+    const readAll = (idx: number[]) =>
+      Promise.all(
+        idx.map(async (i) => {
+          const { data } = await scheduler.addJob('recognize', crops[i])
+          opts.onProgress?.(++done, lines.length)
+          return { text: data.text.replace(/\s+/g, ' ').trim(), conf: data.confidence / 100 }
+        }),
+      )
+    await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, user_defined_dpi: '300' })
+    const read = await readAll(lines.map((_, i) => i))
+    // every line that is not a room name, an area or a size already: most are a size line OCR garbled (glyphs 6–8 px)
+    const retry = read.flatMap((r, i) => (!classifyRoom(r.text) && !parseDims(r.text) && parseArea(r.text) === null ? [i] : []))
+    if (retry.length) {
+      await setAll({ tessedit_char_whitelist: DIMS_CHARS })
+      const again = await readAll(retry)
+      retry.forEach((i, k) => {
+        if (parseDims(again[k].text)) read[i] = again[k]
+      })
+    }
+    const words = (vertical: boolean): OcrWord[] => read.flatMap((r, i) => (r.text && lines[i].vertical === vertical ? [{ text: r.text, conf: r.conf, box: lines[i].box }] : []))
+    return { items: [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] } // a vertical word stands alone
+  } finally {
+    await scheduler.terminate()
+  }
+}
+

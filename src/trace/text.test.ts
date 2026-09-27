@@ -32,6 +32,15 @@ describe('parseDims', () => {
     [`3'-0"X    5'-5"`, ft(3), ft(5, 5)],
     [`(12'-O"X14'-2").`, ft(12), ft(14, 2)],
     [`13'-10"X12'-0"`, ft(13, 10), ft(12)],
+    // marks lost by OCR on 6–8 px print (seen on the BTI / Sheltech sheets)
+    [`362X120"`, ft(36, 2), ft(12)],
+    [`50X70"`, ft(5), ft(7)],
+    [`14-5%14-4"`, ft(14, 5), ft(14, 4)],
+    [`136" 160"`, ft(13, 6), ft(16)],
+    [`511X5'-11"`, ft(5, 11), ft(5, 11)],
+    [`110"X9'-0"`, ft(11), ft(9)],
+    [`9.0'X50"`, ft(9), ft(5)],
+    [`14'-5" X 12`, ft(14, 5), ft(12)],
   ])('%s', (s, a, b) => {
     const d = parseDims(s)!
     expect(d).not.toBeNull()
