@@ -5,6 +5,7 @@ import { draw, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
   entityPoints,
+  findEntity,
   formatTimer,
   guessKind,
   initialState,
@@ -22,6 +23,9 @@ import {
   type StudioState,
   type Tool,
 } from './model'
+import { AI_KEY, studioReducer, type Review } from './review'
+import type { AutoTraceResult, Gray } from '../trace/types'
+import type { TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
@@ -124,12 +128,30 @@ function init(): StudioState {
       const parsed = JSON.parse(raw) as unknown
       // a full Draft, a bare `{ unit }`, or a Unit JSON pasted straight in — all restore
       const d = (isUnit(parsed) ? { unit: parsed } : parsed) as Partial<Draft> | null
-      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: { ...(d as Draft), unit: withLayout(d.unit) } })
+      if (d && isUnit(d.unit)) return studioReducer(s, { type: 'restore', draft: { ...(d as Draft), unit: withLayout(d.unit) } })
     }
   } catch {
     /* corrupt draft: start clean */
   }
   return s
+}
+
+/** dev only: Auto-trace returns the fixed Sheltech A result (autotraceMock.ts) until the solver lands */
+const MOCK_TRACE = import.meta.env.DEV && new URLSearchParams(location.search).has('mock-trace')
+
+/** The loaded plan as auto-trace's grey raster (luminance; transparent pixels read as paper). */
+function grayOf(im: HTMLImageElement): Gray {
+  const c = document.createElement('canvas')
+  c.width = im.naturalWidth
+  c.height = im.naturalHeight
+  const ctx = c.getContext('2d', { willReadFrequently: true })!
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, c.width, c.height)
+  ctx.drawImage(im, 0, 0)
+  const rgba = ctx.getImageData(0, 0, c.width, c.height).data
+  const data = new Uint8Array(c.width * c.height)
+  for (let i = 0; i < data.length; i++) data[i] = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]
+  return { width: c.width, height: c.height, data }
 }
 
 const download = (name: string, text: string) => {
@@ -141,7 +163,7 @@ const download = (name: string, text: string) => {
 }
 
 export default function StudioApp() {
-  const [state, dispatch] = useReducer(reducer, undefined, init)
+  const [state, dispatch] = useReducer(studioReducer, undefined, init)
   const [restored, setRestored] = useState<string | null>(() =>
     !EDIT && (state.unit.vertices.length || state.planImage) ? state.unit.name || 'untitled unit' : null,
   )
@@ -154,6 +176,11 @@ export default function StudioApp() {
   const [popover, setPopover] = useState<Popover | null>(null)
   const [note, setNote] = useState<Note | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
+  // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
+  const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
+  const cancelTrace = useRef(() => setTrace(null))
+  /** a review row's spot, ringed on the canvas until the next click */
+  const [mark, setMark] = useState<Pt | null>(null)
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -284,15 +311,15 @@ export default function StudioApp() {
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
       const furniture = pieces ? { pieces, drag: furnDrag } : undefined
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark])
 
   // ----- draft persistence
   const saveDraft = useCallback(() => {
     const st = stateRef.current
-    const d: Draft = { unit: st.unit, planImage: st.planImage, view: st.view, timer: st.timer }
+    const d: Draft = { unit: st.unit, planImage: st.planImage, view: st.view, timer: st.timer, review: st.review }
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(d))
     } catch {
@@ -302,7 +329,7 @@ export default function StudioApp() {
   useEffect(() => {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
-  }, [state.unit, state.planImage, state.view, saveDraft])
+  }, [state.unit, state.planImage, state.view, state.review, saveDraft])
   // shared layout: every furniture change (move, turn, resize, delete, reset, a relabel's re-furnish, their undo, an
   // import) is what the viewer shows after a reload; loading one is not a change
   const lastFurniture = useRef(unit.furniture)
@@ -430,6 +457,62 @@ export default function StudioApp() {
     if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
   }, [errors, toast])
 
+  // ----- auto-trace: a click inside the flat → worker → the result replaces the unit (one undo step)
+  const startAutoTrace = () => {
+    if (unit.walls.length && !window.confirm('Replace your current trace? Ctrl+Z brings it back.')) return
+    cancelTrace.current = () => setTrace(null)
+    setTrace('pick')
+  }
+  const runAutoTrace = (pickPx: Pt) => {
+    if (!img) return
+    let aiKey: string | undefined
+    try {
+      aiKey = localStorage.getItem(AI_KEY) || undefined
+    } catch {
+      /* storage blocked: no AI helper */
+    }
+    const job: TraceJob = { gray: grayOf(img), pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, mock: MOCK_TRACE }
+    const worker = new Worker(new URL('./autotrace.worker.ts', import.meta.url), { type: 'module' })
+    const stop = () => {
+      worker.terminate()
+      setTrace(null)
+    }
+    const done = (result: AutoTraceResult) => {
+      stop()
+      dispatch({ type: 'auto-trace', result })
+      const u = result.unit
+      if (u.vertices.length) {
+        const f = frameOf(view, u.planImage)
+        const b = unitBounds(u)
+        const lo = mToPx(f, { x: b.minX - 1, y: b.minY - 1 })
+        const hi = mToPx(f, { x: b.maxX + 1, y: b.maxY + 1 })
+        fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
+      }
+      const n = result.review.length
+      toast(n ? `Traced — ${n} thing${n === 1 ? '' : 's'} to check on the right · Ctrl+Z undoes it` : 'Traced · Ctrl+Z undoes it')
+    }
+    const fail = (why: string) => {
+      stop()
+      toast(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`)
+    }
+    cancelTrace.current = () => {
+      stop()
+      toast('Auto-trace cancelled')
+    }
+    worker.onmessage = (e: MessageEvent<TraceMsg>) => {
+      const m = e.data
+      if (m.type === 'progress') setTrace({ stage: m.stage, fraction: m.fraction })
+      else if (m.type === 'done') done(m.result)
+      else fail(m.message)
+    }
+    worker.onerror = (e) => {
+      e.preventDefault()
+      fail(e.message || 'the tracer could not start')
+    }
+    setTrace({ stage: 'Starting', fraction: 0 })
+    worker.postMessage(job, [job.gray.data.buffer])
+  }
+
   // ----- hit testing (screen px)
   const hitTest = useCallback(
     (sx: number, sy: number): Hit | null => {
@@ -532,6 +615,13 @@ export default function StudioApp() {
       return
     }
     if (e.button !== 0) return
+    if (mark) setMark(null)
+    if (trace === 'pick') {
+      const p = toPx(sx, sy)
+      const pi = state.planImage
+      if (!pi || p.x < 0 || p.y < 0 || p.x > pi.naturalW || p.y > pi.naturalH) return toast('Click on the plan, inside the flat')
+      return runAutoTrace(p)
+    }
     if (placing && tool === 'furniture') {
       // the ghost's spot: put it there (the reducer runs placePiece again and toasts a refusal); refused → keep placing
       const m = placePiece(unit, rooms, pieces ?? [], placing.assetId, toM(sx, sy), placing.rot, placing.id)
@@ -812,6 +902,7 @@ export default function StudioApp() {
         return jsonRef.current?.click()
       }
       if (typing) return
+      if (e.key === 'Escape' && trace === 'pick') return setTrace(null)
       if (e.key === 'Alt') return e.preventDefault() // Alt-drag detaches; a lone Alt must not focus the browser menu
       dispatch({ type: 'timer-input', now: now() })
       if (ctrl && (e.key === 'z' || e.key === 'Z')) {
@@ -900,18 +991,25 @@ export default function StudioApp() {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
     }
-  }, [exportJson, fitView, computeHover, popover, size])
+  }, [exportJson, fitView, computeHover, popover, size, trace])
 
-  // ----- issues → pan/zoom/select
-  const focusIssue = (i: StudioIssue) => {
-    const pts = i.ids.flatMap((id) => entityPoints(unit, id))
-    const selectable = i.ids.filter((id) => !id.startsWith('space-'))
+  // ----- issues and review rows → pan/zoom/select
+  const focusIssue = (i: StudioIssue) =>
+    focusOn(
+      i.ids.flatMap((id) => entityPoints(unit, id)),
+      i.ids.filter((id) => !id.startsWith('space-')),
+    )
+  const focusReview = (r: Review['items'][number]) => {
+    focusOn([r.at], r.entityId && findEntity(unit, r.entityId) ? [r.entityId] : [], 4) // a spot: a room's worth around it
+    setMark(r.at)
+  }
+  const focusOn = (pts: Pt[], selectable: Id[], padM = 2) => {
     dispatch({ type: 'select', ids: selectable })
     if (!pts.length) return
     const xs = pts.map((p) => p.x)
     const ys = pts.map((p) => p.y)
-    const lo = mToPx(frame, { x: Math.min(...xs) - 2, y: Math.min(...ys) - 2 }) // 2 m of context around the issue
-    const hi = mToPx(frame, { x: Math.max(...xs) + 2, y: Math.max(...ys) + 2 })
+    const lo = mToPx(frame, { x: Math.min(...xs) - padM, y: Math.min(...ys) - padM }) // context around the issue
+    const hi = mToPx(frame, { x: Math.max(...xs) + padM, y: Math.max(...ys) + padM })
     fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
   }
 
@@ -933,7 +1031,9 @@ export default function StudioApp() {
 
   // ----- status text
   const hint =
-    (chain
+    trace === 'pick'
+      ? 'Auto-trace · click inside the flat you want to trace · Esc cancels'
+      : (chain
       ? chain.ids.length >= 3
         ? 'Wall · Click the start corner to close'
         : 'Wall · Click the next corner, or type its printed length'
@@ -1010,6 +1110,16 @@ export default function StudioApp() {
           Redo
         </button>
         <span className="sep" />
+        {state.planImage && (
+          <button
+            className="primary"
+            disabled={!img || !!trace}
+            title="Trace the plan automatically: click inside a flat, then check what it lists on the right. Everything stays editable."
+            onClick={startAutoTrace}
+          >
+            Auto-trace
+          </button>
+        )}
         <button onClick={() => jsonRef.current?.click()}>Import</button>
         <button onClick={exportJson}>Export</button>
         <button className="primary" disabled={errors > 0} title={errors ? 'Fix the errors first' : undefined} onClick={preview}>
@@ -1024,7 +1134,7 @@ export default function StudioApp() {
           <canvas
             ref={canvasRef}
             tabIndex={-1}
-            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : tool === 'select' || tool === 'furniture' ? 'default' : 'crosshair' }}
+            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : trace !== 'pick' && (tool === 'select' || tool === 'furniture') ? 'default' : 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -1058,6 +1168,21 @@ export default function StudioApp() {
               <button className="primary" onClick={() => fileRef.current?.click()}>
                 Choose plan image…
               </button>
+            </div>
+          )}
+          {trace && (
+            <div className="trace-card" role="status">
+              {trace === 'pick' ? (
+                <span>Click inside the flat you want to trace</span>
+              ) : (
+                <>
+                  <span>
+                    Auto-trace · {trace.stage} · {Math.round(trace.fraction * 100)} %
+                  </span>
+                  <progress value={trace.fraction} />
+                </>
+              )}
+              <button onClick={() => cancelTrace.current()}>Cancel</button>
             </div>
           )}
           {field && (
@@ -1166,6 +1291,7 @@ export default function StudioApp() {
           rooms={rooms}
           issues={issues}
           onFocusIssue={focusIssue}
+          onFocusReview={focusReview}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => setPlacing(assetId ? { id: newId(), assetId, rot: 0 } : null)}

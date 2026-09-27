@@ -7,6 +7,7 @@ import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, Val
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
 import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
+import type { Review } from './review'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -57,12 +58,15 @@ export interface StudioState {
   exported: boolean
   /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
   loopTipShown: boolean
+  /** the last auto-trace's "Check these" list (review.ts: studioReducer sets it; absent = none) */
+  review?: Review | null
 }
 export interface Draft {
   unit: Unit
   planImage: PlanImage | null
   view: View
   timer: Timer
+  review?: Review | null
 }
 
 export type Action =
