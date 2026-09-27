@@ -42,9 +42,11 @@ const RHO = 0.5
  */
 const GAMMA = 0.75
 const PIVOT = 0.5
-const WITHIN = [0.65, 1.35]
+// manager at merge: 0.65/1.35 left bedroom floors muddy (b-bed-1 oak 140 → 119) and the b-living window-facing wall at 232;
+// a gentler [0.75, 1.25] until the blind score says otherwise
+const WITHIN = [0.75, 1.25]
 const GAMMA_B = 0.25
-const BETWEEN = [0.75, 1]
+const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
 export const LO = WITHIN[0] * BETWEEN[0]
 export const HI = WITHIN[1] * BETWEEN[1]
 /** apertures are cut into strips this wide, each occlusion-tested on its own (an L-shaped room sees part of a window) */
