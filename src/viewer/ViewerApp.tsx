@@ -15,7 +15,7 @@ import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
+import { dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
@@ -474,9 +474,10 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       return settle(pushStep(steps.current, m.furniture), m.piece.id)
     }
     if (e.kind === 'select') {
-      const b = e.id ? baseOf(steps.current.pieces, e.id) : null // the TV → its unit, cushions → the sofa
-      setSel(b?.id ?? null)
-      return showSel(b)
+      // the piece clicked, so Delete takes just the TV off its unit; a drag of it moves what it rests on (dragTo)
+      const p = pieceOf(e.id)
+      setSel(p?.id ?? null)
+      return showSel(p)
     }
     const m = live.current
     if (e.kind === 'drop') {

@@ -74,7 +74,7 @@ export interface DragTarget {
   wall: WallFace | null
 }
 
-/** What a click on piece `id` picks up: a piece resting on another (a TV on its unit, cushions) → that one, as the Studio's pieceAt. */
+/** What a drag of piece `id` moves: a piece resting on another (a TV on its unit, cushions) → that one, as the Studio's pieceAt. */
 export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement | null {
   const p = pieces.find((x) => x.id === id)
   if (!p || surfaceOf(p) !== 'floor' || layerOf(p) !== 1) return p ?? null
