@@ -1,0 +1,586 @@
+/**
+ * Stage 1 of auto-trace: plan raster → WallTrace (wall centre lines + thickness, straight or arc, plus gap guesses).
+ * Deterministic image analysis, no AI, no network. Pixel space throughout (x → right, y → down).
+ *
+ * Pipeline (each step a small pure function):
+ *   ink mask (Otsu) → distance transform → wall scale from the ridge histogram (walls = the commonest thick stroke)
+ *   → core = ink at least `minHalf` from paper (text, furniture, dimension lines vanish) minus filled blobs (lawns, fills)
+ *   → Zhang–Suen skeleton → pixel graph (junctions, ends, chains) → spur pruning → line / arc fitting
+ *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
+ */
+import { edt, otsu, thin, threshold } from './raster'
+import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
+
+export interface WallOpts {
+  /** grey ≤ this is ink. Default: Otsu's threshold of the image. */
+  darkMax?: number
+  /** the commonest wall half-width in px (the partition wall). Default: the ridge-histogram peak. */
+  halfPx?: number
+  /** keep ink at least this far from paper (× halfPx); thinner strokes (text, furniture) vanish. */
+  coreFrac?: number
+  /** ink deeper than this (× halfPx) is a filled blob (lawn, hatch fill, a black block), not a wall. */
+  blobFrac?: number
+  /** drop isolated wall pieces shorter than this (× halfPx). */
+  minCompFrac?: number
+  /** assumed partition wall thickness (m) — only used to size door/window gaps before the solver knows the scale. */
+  partitionM?: number
+  /** enlarge the raster first (1 = never). Default: 2 when walls are under ~6 px thick (low-res sheets), else 1. */
+  upscale?: number
+}
+
+const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127 }
+
+/** Wall half-width (px) = the most common distance-transform ridge value among strokes thicker than text (DT ≥ 1.9). */
+export function wallHalfWidth(dt: Float32Array, w: number, h: number): number {
+  const bins = new Float64Array(200)
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x, d = dt[i]
+      if (d < 1.9 || d > 99) continue
+      if (d >= dt[i - 1] && d >= dt[i + 1] && d >= dt[i - w] && d >= dt[i + w]) bins[Math.round(d * 2)]++
+    }
+  // smooth over ±0.5 px: an even-width wall's ridge splits across two bins
+  let best = 4, bestC = -1
+  for (let b = 4; b < 199; b++) {
+    const c = bins[b - 1] * 0.5 + bins[b] + bins[b + 1] * 0.5
+    if (c > bestC) (bestC = c), (best = b)
+  }
+  return best / 2
+}
+
+interface Node {
+  x: number
+  y: number
+  edges: number[]
+}
+interface Edge {
+  a: number
+  b: number
+  pts: number[] // pixel indices, a → b
+  dead?: boolean
+}
+
+const N8 = (w: number) => [-w - 1, -w, -w + 1, 1, w + 1, w, w - 1, -1] // clockwise from NW
+const IS4 = [false, true, false, true, false, true, false, true]
+
+/** Skeleton → graph of junction/end nodes and pixel chains. */
+export function skeletonGraph(sk: Uint8Array, w: number, h: number): { nodes: Node[]; edges: Edge[] } {
+  const nb = N8(w)
+  const cls = new Uint8Array(sk.length) // 0 none, 2 path, 1/3 node (end / junction)
+  const pix: number[] = []
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x
+      if (!sk[i]) continue
+      let n = 0, cn = 0
+      for (let k = 0; k < 8; k++) {
+        const v = sk[i + nb[k]], u = sk[i + nb[(k + 1) & 7]]
+        n += v
+        if (!v && u) cn++
+      }
+      cls[i] = n <= 1 ? 1 : cn >= 3 ? 3 : 2
+      pix.push(i)
+    }
+  // node clusters: 8-connected runs of junction pixels; ends are single pixels
+  const nodeOf = new Int32Array(sk.length).fill(-1)
+  const nodes: Node[] = []
+  for (const i of pix) {
+    if (cls[i] === 2 || nodeOf[i] >= 0) continue
+    const id = nodes.length
+    const stack = [i]
+    nodeOf[i] = id
+    let sx = 0, sy = 0, c = 0
+    while (stack.length) {
+      const p = stack.pop()!
+      sx += p % w
+      sy += (p / w) | 0
+      c++
+      if (cls[p] === 1) continue
+      for (const o of nb) {
+        const q = p + o
+        if (cls[q] === 3 && nodeOf[q] < 0) (nodeOf[q] = id), stack.push(q)
+      }
+    }
+    nodes.push({ x: sx / c, y: sy / c, edges: [] })
+  }
+  const visited = new Uint8Array(sk.length)
+  const edges: Edge[] = []
+  const walk = (start: number, first: number) => {
+    const a = nodeOf[start]
+    const pts = [start, first]
+    let prev = start, cur = first
+    while (nodeOf[cur] < 0) {
+      visited[cur] = 1
+      let next = -1
+      for (let k = 0; k < 8 && next < 0; k++) {
+        const q = cur + nb[k]
+        if (q !== prev && nodeOf[q] >= 0 && (nodeOf[q] !== a || pts.length > 3)) next = q
+      }
+      for (let pass = 0; pass < 2 && next < 0; pass++)
+        for (let k = 0; k < 8; k++) {
+          const q = cur + nb[k]
+          if (IS4[k] === (pass === 0) && cls[q] === 2 && !visited[q] && q !== prev) {
+            next = q
+            break
+          }
+        }
+      if (next < 0) {
+        // dead end inside a chain (thinning artefact): make it an end node
+        nodeOf[cur] = nodes.length
+        nodes.push({ x: cur % w, y: (cur / w) | 0, edges: [] })
+        break
+      }
+      prev = cur
+      cur = next
+      pts.push(cur)
+    }
+    const e = edges.length
+    edges.push({ a, b: nodeOf[cur], pts })
+    nodes[a].edges.push(e)
+    nodes[nodeOf[cur]].edges.push(e)
+  }
+  for (const i of pix) {
+    if (nodeOf[i] < 0) continue
+    for (const o of nb) {
+      const q = i + o
+      if (cls[q] === 2 && !visited[q]) walk(i, q)
+      else if (nodeOf[q] >= 0 && nodeOf[q] !== nodeOf[i] && q > i) {
+        // two nodes touching directly: a zero-length chain between them
+        const e = edges.length
+        edges.push({ a: nodeOf[i], b: nodeOf[q], pts: [i, q] })
+        nodes[nodeOf[i]].edges.push(e)
+        nodes[nodeOf[q]].edges.push(e)
+      }
+    }
+  }
+  // closed loops with no node at all
+  for (const i of pix) {
+    if (cls[i] !== 2 || visited[i]) continue
+    nodeOf[i] = nodes.length
+    nodes.push({ x: i % w, y: (i / w) | 0, edges: [] })
+    visited[i] = 1
+    for (const o of nb) if (cls[i + o] === 2 && !visited[i + o]) {
+      walk(i, i + o)
+      break
+    }
+  }
+  return { nodes, edges }
+}
+
+/**
+ * Remove short end-spurs (thinning hairs at wall corners, the two-pronged fork at a thick wall's free end). Each round
+ * judges every spur on the degrees before the round, so both prongs of a fork go together.
+ */
+function pruneSpurs(nodes: Node[], edges: Edge[], maxLen: (junction: number) => number): void {
+  for (let round = 0; round < 3; round++) {
+    const kill: number[] = []
+    for (let e = 0; e < edges.length; e++) {
+      const E = edges[e]
+      if (E.dead || E.a === E.b) continue
+      const da = nodes[E.a].edges.length, db = nodes[E.b].edges.length
+      const at = da === 1 && db >= 3 ? E.b : db === 1 && da >= 3 ? E.a : -1
+      if (at >= 0 && E.pts.length <= maxLen(at)) kill.push(e)
+    }
+    if (!kill.length) return
+    for (const e of kill) {
+      edges[e].dead = true
+      for (const n of [edges[e].a, edges[e].b]) nodes[n].edges = nodes[n].edges.filter((x) => x !== e)
+    }
+  }
+}
+
+interface Seg {
+  a: Px
+  b: Px
+  mid?: Px
+  half: number // px
+  na: number // node ids (−1 = interior split point)
+  nb: number
+  pts: Px[]
+}
+
+const dist = (p: Px, q: Px) => Math.hypot(p.x - q.x, p.y - q.y)
+
+function lineDev(P: Px[], i0: number, i1: number): { d: number; at: number } {
+  const a = P[i0], b = P[i1]
+  const L = dist(a, b) || 1
+  let d = 0, at = (i0 + i1) >> 1
+  for (let i = i0 + 1; i < i1; i++) {
+    const v = Math.abs((b.x - a.x) * (a.y - P[i].y) - (a.x - P[i].x) * (b.y - a.y)) / L
+    if (v > d) (d = v), (at = i)
+  }
+  return { d, at }
+}
+
+/** Algebraic (Kåsa) circle fit. */
+export function fitCircle(P: Px[]): { cx: number; cy: number; r: number; rms: number } | null {
+  const n = P.length
+  let mx = 0, my = 0
+  for (const p of P) (mx += p.x), (my += p.y)
+  mx /= n
+  my /= n
+  let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0
+  for (const p of P) {
+    const u = p.x - mx, v = p.y - my
+    suu += u * u
+    svv += v * v
+    suv += u * v
+    suuu += u * u * u
+    svvv += v * v * v
+    suvv += u * v * v
+    svuu += v * u * u
+  }
+  const det = suu * svv - suv * suv
+  if (Math.abs(det) < 1e-9) return null
+  const r1 = 0.5 * (suuu + suvv), r2 = 0.5 * (svvv + svuu)
+  const uc = (r1 * svv - r2 * suv) / det, vc = (r2 * suu - r1 * suv) / det
+  const cx = uc + mx, cy = vc + my
+  const r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / n)
+  let e = 0
+  for (const p of P) e += (Math.hypot(p.x - cx, p.y - cy) - r) ** 2
+  return { cx, cy, r, rms: Math.sqrt(e / n) }
+}
+
+/** Split a chain into straight pieces and arcs (recursive: line if flat, arc if it is a clean circle, else split). */
+function fitChain(P: Px[], i0: number, i1: number, eps: number, half: number, out: { i0: number; i1: number; arc?: Px }[]): void {
+  const { d, at } = lineDev(P, i0, i1)
+  if (d <= eps || i1 - i0 < 3) {
+    out.push({ i0, i1 })
+    return
+  }
+  if (i1 - i0 >= 12) {
+    const c = fitCircle(P.slice(i0, i1 + 1))
+    if (c && c.rms <= eps * 0.5 && c.r >= 4 * half) {
+      // sweep must be one-directional and between ~20° and 300°
+      const ang = (p: Px) => Math.atan2(p.y - c.cy, p.x - c.cx)
+      let sweep = 0, sgn = 0, ok = true
+      for (let i = i0 + 1; i <= i1; i++) {
+        let da = ang(P[i]) - ang(P[i - 1])
+        if (da > Math.PI) da -= 2 * Math.PI
+        if (da < -Math.PI) da += 2 * Math.PI
+        sweep += da
+      }
+      sgn = Math.sign(sweep)
+      const mid = P[(i0 + i1) >> 1]
+      const sw = Math.abs(sweep)
+      if (sw < 0.35 || sw > 5.3) ok = false
+      if (ok && sgn) {
+        const k = c.r / (Math.hypot(mid.x - c.cx, mid.y - c.cy) || 1)
+        out.push({ i0, i1, arc: { x: c.cx + (mid.x - c.cx) * k, y: c.cy + (mid.y - c.cy) * k } })
+        return
+      }
+    }
+  }
+  fitChain(P, i0, at, eps, half, out)
+  fitChain(P, at, i1, eps, half, out)
+}
+
+/** Least-squares line through points: centroid + unit direction. */
+function lsq(P: Px[]): { cx: number; cy: number; dx: number; dy: number } {
+  let cx = 0, cy = 0
+  for (const p of P) (cx += p.x), (cy += p.y)
+  cx /= P.length
+  cy /= P.length
+  let sxx = 0, syy = 0, sxy = 0
+  for (const p of P) {
+    const u = p.x - cx, v = p.y - cy
+    sxx += u * u
+    syy += v * v
+    sxy += u * v
+  }
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy)
+  return { cx, cy, dx: Math.cos(th), dy: Math.sin(th) }
+}
+
+/** Point minimising squared distance to several lines (their normals), or null when they are near-parallel. */
+function meetPoint(lines: { cx: number; cy: number; dx: number; dy: number }[]): Px | null {
+  let a = 0, b = 0, c = 0, r1 = 0, r2 = 0
+  for (const l of lines) {
+    const nx = -l.dy, ny = l.dx, k = nx * l.cx + ny * l.cy
+    a += nx * nx
+    b += nx * ny
+    c += ny * ny
+    r1 += nx * k
+    r2 += ny * k
+  }
+  const det = a * c - b * b
+  if (det < 0.05 * lines.length * lines.length * 0.25) return null // all within ~13° of each other
+  return { x: (r1 * c - r2 * b) / det, y: (a * r2 - b * r1) / det }
+}
+
+/** Stages 1–4: ink, distance transform, wall scale, wall core (thin strokes and filled blobs removed), its skeleton. */
+export function wallSkeleton(gray: Gray, opts: WallOpts = {}) {
+  const o = { ...DEF, ...opts }
+  const { width: w, height: h } = gray
+  const ink = threshold(gray, o.darkMax ?? otsu(gray))
+  const dt = edt(ink, w, h)
+  const half = o.halfPx ?? wallHalfWidth(dt, w, h)
+  const rCore = Math.max(1.9, half * o.coreFrac)
+  const rBlob = half * o.blobFrac
+  // filled blobs: every pixel within rBlob of a pixel deeper than rBlob (the blob and the band around its edge)
+  const core = new Uint8Array(w * h)
+  const notBlob = new Uint8Array(w * h)
+  let anyBlob = false
+  for (let i = 0; i < core.length; i++) {
+    core[i] = dt[i] >= rCore ? 1 : 0
+    if (dt[i] > rBlob) anyBlob = true
+    else notBlob[i] = 1
+  }
+  const blob = new Uint8Array(w * h)
+  if (anyBlob) {
+    const toBlob = edt(notBlob, w, h)
+    for (let i = 0; i < core.length; i++) if (!notBlob[i] || (toBlob[i] <= rBlob + 1 && ink[i])) (blob[i] = 1), (core[i] = 0)
+  }
+  const sk = core.slice()
+  thin(sk, w, h)
+  return { o, w, h, ink, dt, half, rCore, core, blob, sk }
+}
+
+/** Bilinear ×f enlargement: low-res plans (walls ≤ ~5 px) get sub-pixel stroke widths back from the anti-aliasing. */
+export function upsample(g: Gray, f: number): Gray {
+  const W = Math.round(g.width * f), H = Math.round(g.height * f)
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(g.height - 1, Math.max(0, (y + 0.5) / f - 0.5))
+    const y0 = Math.floor(sy), y1 = Math.min(g.height - 1, y0 + 1), fy = sy - y0
+    for (let x = 0; x < W; x++) {
+      const sx = Math.min(g.width - 1, Math.max(0, (x + 0.5) / f - 0.5))
+      const x0 = Math.floor(sx), x1 = Math.min(g.width - 1, x0 + 1), fx = sx - x0
+      const d = g.data, r0 = y0 * g.width, r1 = y1 * g.width
+      out[y * W + x] = (d[r0 + x0] * (1 - fx) + d[r0 + x1] * fx) * (1 - fy) + (d[r1 + x0] * (1 - fx) + d[r1 + x1] * fx) * fy + 0.5
+    }
+  }
+  return { width: W, height: H, data: out }
+}
+
+const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
+
+export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
+  let f = opts.upscale
+  if (f === undefined) {
+    const dt0 = edt(threshold(gray, opts.darkMax ?? otsu(gray)), gray.width, gray.height)
+    f = (opts.halfPx ?? wallHalfWidth(dt0, gray.width, gray.height)) < 3 ? 2 : 1
+  }
+  if (f !== 1) {
+    const t = traceWalls(upsample(gray, f), { ...opts, upscale: 1, ...(opts.halfPx ? { halfPx: opts.halfPx * f } : {}) })
+    const k = 1 / f
+    return {
+      walls: t.walls.map((s) => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })),
+      openings: t.openings.map((op) => ({
+        ...op,
+        a: scalePx(op.a, k),
+        b: scalePx(op.b, k),
+        ...(op.hingeAt ? { hingeAt: scalePx(op.hingeAt, k) } : {}),
+        ...(op.swingTo ? { swingTo: scalePx(op.swingTo, k) } : {}),
+      })),
+    }
+  }
+  const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  const { nodes, edges } = skeletonGraph(sk, w, h)
+  pruneSpurs(nodes, edges, (j) => 1.5 * Math.max(2, dt[Math.round(nodes[j].y) * w + Math.round(nodes[j].x)]))
+
+  // connected components of the live graph → drop tiny isolated pieces (leftover bold text, specks)
+  const comp = new Int32Array(nodes.length).fill(-1)
+  const compLen: number[] = []
+  for (let s = 0; s < nodes.length; s++) {
+    if (comp[s] >= 0 || !nodes[s].edges.length) continue
+    const id = compLen.length
+    let len = 0
+    const st = [s]
+    comp[s] = id
+    while (st.length) {
+      const n = st.pop()!
+      for (const e of nodes[n].edges) {
+        const E = edges[e]
+        len += E.pts.length / 2
+        const m = E.a === n ? E.b : E.a
+        if (comp[m] < 0) (comp[m] = id), st.push(m)
+      }
+    }
+    compLen.push(len)
+  }
+
+  const segs: Seg[] = []
+  for (const E of edges) {
+    if (E.dead || compLen[comp[E.a]] < o.minCompFrac * half) continue
+    const P: Px[] = E.pts.map((i) => ({ x: i % w, y: (i / w) | 0 }))
+    P[0] = { x: nodes[E.a].x, y: nodes[E.a].y }
+    P[P.length - 1] = { x: nodes[E.b].x, y: nodes[E.b].y }
+    let hs: number[] = E.pts.map((i) => dt[i])
+    hs = hs.slice().sort((x, y) => x - y)
+    const eh = hs[hs.length >> 1]
+    const pieces: { i0: number; i1: number; arc?: Px }[] = []
+    fitChain(P, 0, P.length - 1, Math.max(1.5, 0.3 * eh), eh, pieces)
+    for (const pc of pieces) {
+      const sub = P.slice(pc.i0, pc.i1 + 1)
+      const hh = E.pts.slice(pc.i0, pc.i1 + 1).map((i) => dt[i]).sort((x, y) => x - y)
+      segs.push({
+        a: P[pc.i0],
+        b: P[pc.i1],
+        mid: pc.arc,
+        half: hh[hh.length >> 1],
+        na: pc.i0 === 0 ? E.a : -1,
+        nb: pc.i1 === P.length - 1 ? E.b : -1,
+        pts: sub,
+      })
+    }
+  }
+
+  refine(segs, nodes, (p) => dt[Math.round(p.y) * w + Math.round(p.x)] ?? 0)
+  const walls: WallSeg[] = segs
+    .filter((s) => dist(s.a, s.b) >= 1)
+    .map((s) => {
+      const len = dist(s.a, s.b)
+      const thicknessPx = thicknessOf(s.half)
+      return { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx)) }
+    })
+  const openings = findOpenings(walls, core, rCore, ink, dt, w, h, half, o.partitionM)
+  return { walls, openings }
+}
+
+/** DT at the ridge → stroke width. A (2k+1)-px stroke has ridge DT k+1, a 2k-px stroke has k (pixel-centre distances). */
+export const thicknessOf = (ridgeDt: number) => Math.max(1, 2 * ridgeDt - 0.5)
+
+/** Snap junction nodes to the least-squares meeting point of their straight arms; extend free ends by the skeleton retraction. */
+function refine(segs: Seg[], nodes: Node[], dtAt: (p: Px) => number): void {
+  const arms = new Map<number, { s: Seg; end: 'a' | 'b' }[]>()
+  for (const s of segs)
+    for (const end of ['a', 'b'] as const) {
+      const n = end === 'a' ? s.na : s.nb
+      if (n < 0) continue
+      if (!arms.has(n)) arms.set(n, [])
+      arms.get(n)!.push({ s, end })
+    }
+  // interior split points (corners inside one chain): intersect the two neighbouring pieces' LSQ lines
+  const fitOf = (s: Seg) => {
+    const k = Math.max(1, Math.round(s.half))
+    const inner = s.pts.length > 2 * k + 2 ? s.pts.slice(k, s.pts.length - k) : s.pts
+    return lsq(inner)
+  }
+  for (let i = 0; i + 1 < segs.length; i++) {
+    const s = segs[i], t = segs[i + 1]
+    if (s.nb !== -1 || t.na !== -1 || s.mid || t.mid) continue
+    if (s.b.x !== t.a.x || s.b.y !== t.a.y) continue
+    const p = meetPoint([fitOf(s), fitOf(t)])
+    if (p && dist(p, s.b) <= 2 * Math.max(s.half, t.half)) (s.b = p), (t.a = { ...p })
+  }
+  for (const [n, list] of arms) {
+    if (list.length === 1) {
+      // free end: the skeleton stops ~one half-width short of the wall's end
+      const { s, end } = list[0]
+      const p = end === 'a' ? s.a : s.b, q = end === 'a' ? s.b : s.a
+      if (s.mid) continue
+      const L = dist(p, q) || 1
+      const ext = Math.min(s.half, dtAt(p)) // the end pixel sits dt(end) from the paper beyond it
+      const np = { x: p.x + ((p.x - q.x) / L) * ext, y: p.y + ((p.y - q.y) / L) * ext }
+      if (end === 'a') s.a = np
+      else s.b = np
+      continue
+    }
+    const straight = list.filter((x) => !x.s.mid && x.s.pts.length >= 4)
+    if (straight.length < 2) continue
+    const p = meetPoint(straight.map((x) => fitOf(x.s)))
+    const node = nodes[n]
+    const lim = 1.5 * Math.max(...list.map((x) => x.s.half))
+    const at = p && dist(p, node) <= lim ? p : { x: node.x, y: node.y }
+    for (const { s, end } of list) {
+      if (end === 'a') s.a = { ...at }
+      else s.b = { ...at }
+    }
+  }
+}
+
+/**
+ * Gaps: from every free wall end, march on along the wall's direction over the wall core; the first wall pixel between
+ * ~0.45 m and ~3.2 m away (at the assumed partition scale) is the far jamb — another free end (a gap in one wall run)
+ * or the side of a cross wall (a door beside a corner). Kind: a thin arc of radius ≈ gap around either jamb → door;
+ * ≥ 2 thin ink lines running across the gap → window; else passage (≤ 1.4 m) / unknown.
+ */
+function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, ink: Uint8Array, dt: Float32Array, w: number, h: number, half: number, partitionM: number): OpeningGuess[] {
+  const pxPerM = thicknessOf(half) / partitionM
+  const key = (p: Px) => `${Math.round(p.x)},${Math.round(p.y)}`
+  const deg = new Map<string, number>()
+  for (const s of walls) for (const p of [s.a, s.b]) deg.set(key(p), (deg.get(key(p)) ?? 0) + 1)
+  const ends: { p: Px; dir: Px; th: number }[] = []
+  for (const s of walls) {
+    if (s.mid) continue
+    const L = dist(s.a, s.b)
+    if (L < 1) continue
+    const ux = (s.b.x - s.a.x) / L, uy = (s.b.y - s.a.y) / L
+    if (deg.get(key(s.a)) === 1) ends.push({ p: s.a, dir: { x: -ux, y: -uy }, th: s.thicknessPx })
+    if (deg.get(key(s.b)) === 1) ends.push({ p: s.b, dir: { x: ux, y: uy }, th: s.thicknessPx })
+  }
+  const at = (m: Uint8Array, x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    return xi >= 0 && yi >= 0 && xi < w && yi < h ? m[yi * w + xi] : 0
+  }
+  const thinInk = (x: number, y: number) => {
+    // ink but not wall-deep, within ±1 px (door arcs and window lines are 1–2 px; jpeg shifts them)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const xi = Math.round(x) + dx, yi = Math.round(y) + dy
+        if (xi < 0 || yi < 0 || xi >= w || yi >= h) continue
+        const i = yi * w + xi
+        if (ink[i] && dt[i] < rCore) return 1
+      }
+    return 0
+  }
+  const out: OpeningGuess[] = []
+  for (const E of ends) {
+    const { p, dir } = E
+    let t = 1
+    while (t < 2 * E.th && at(core, p.x + dir.x * t, p.y + dir.y * t)) t++ // off our own wall's last pixels
+    let hit = -1
+    for (; t <= 3.2 * pxPerM + rCore; t++)
+      if (at(core, p.x + dir.x * t, p.y + dir.y * t)) {
+        hit = t - rCore // the core is the wall eroded by rCore
+        break
+      }
+    if (hit < 0.45 * pxPerM) continue
+    const b = { x: p.x + dir.x * hit, y: p.y + dir.y * hit }
+    const tol = 1.5 * E.th
+    if (out.some((o) => (dist(o.a, b) < tol && dist(o.b, p) < tol) || (dist(o.a, p) < tol && dist(o.b, b) < tol))) continue
+    out.push(classifyGap(p, b, E.th, hit, pxPerM, thinInk, (x, y) => at(ink, x, y)))
+  }
+  return out
+}
+
+function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thinInk: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess {
+  const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
+  const nx = -uy, ny = ux
+  // door: a quarter arc of radius ≈ gap (0.8–1.0) around either jamb, on either side
+  let best = { score: 0, hinge: a, side: 1 }
+  for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
+    for (const side of [1, -1]) {
+      let hit = 0, n = 0
+      for (let k = 0; k <= 16; k++) {
+        const ang = ((0.1 + (0.8 * k) / 16) * Math.PI) / 2
+        const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side
+        const dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
+        let got = 0
+        for (const rf of [0.8, 0.9, 1.0, 1.1]) if (thinInk(hp.x + dx * gap * rf, hp.y + dy * gap * rf)) got = 1
+        hit += got
+        n++
+      }
+      if (hit / n > best.score) best = { score: hit / n, hinge: hp, side }
+    }
+  if (best.score >= 0.6) {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+    return { a, b, kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
+  }
+  // window: ≥ 2 thin ink lines running across the gap, within the wall's thickness
+  let lines = 0, prev = false
+  for (let off = -th * 0.8; off <= th * 0.8; off += 0.5) {
+    let hit = 0, n = 0
+    for (let t = 0.1; t <= 0.9; t += 0.05) {
+      hit += inkAt(a.x + ux * gap * t + nx * off, a.y + uy * gap * t + ny * off)
+      n++
+    }
+    const on = hit / n >= 0.85
+    if (on && !prev) lines++
+    prev = on
+  }
+  if (lines >= 2) return { a, b, kind: 'window', conf: 0.6 }
+  return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : { a, b, kind: 'unknown', conf: 0.2 }
+}
+
