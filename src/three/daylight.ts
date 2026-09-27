@@ -42,13 +42,23 @@ const RHO = 0.5
  */
 const GAMMA = 0.75
 const PIVOT = 0.5
-// manager at merge: 0.65/1.35 left bedroom floors muddy (b-bed-1 oak 140 → 119) and the b-living window-facing wall at 232;
-// a gentler [0.75, 1.25] until the blind score says otherwise
-const WITHIN = [0.75, 1.25]
+// manager at merge: 0.65/1.35 left bedroom floors muddy (b-bed-1 oak 140 → 119) and the b-living window-facing wall at 232.
+// Wave 14: per class (floor, wall, ceiling) and SOFT (tanh in log space, no plateau): the hard clamp flattened a small room's
+// field into plateaus whose kinks read as blocks. Floors stay gentle; walls and ceilings carry the falloff, mostly downward.
+const WITHIN: [number, number][] = [
+  [0.75, 1.25],
+  [0.75, 1.25],
+  [0.75, 1.25],
+]
 const GAMMA_B = 0.25
 const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
-export const LO = WITHIN[0] * BETWEEN[0]
-export const HI = WITHIN[1] * BETWEEN[1]
+export const LO = Math.min(...WITHIN.map((w) => w[0])) * BETWEEN[0]
+export const HI = Math.max(...WITHIN.map((w) => w[1])) * BETWEEN[1]
+/** ln(x) squashed into (ln lo, ln hi): slope 1 at x = 1, never reaching the bounds */
+const soft = (lnx: number, [lo, hi]: [number, number]) => {
+  const a = lnx < 0 ? -Math.log(lo) : Math.log(hi)
+  return Math.exp(a * Math.tanh(lnx / a))
+}
 /** apertures are cut into strips this wide, each occlusion-tested on its own (an L-shaped room sees part of a window) */
 const STRIP = 0.5
 /** the rooms whose median sets factor 1: the tuned living-room look stays the average look */
@@ -163,6 +173,20 @@ function convex(poly: Pt[]): boolean {
   return true
 }
 
+/**
+ * One [1 2 1] / 4 pass each way inside one region (its edges repeat; it never reads a neighbour region): the 0.25 m grid
+ * under-samples the steep light beside a window, and bilinear filtering showed the texel-to-texel kinks.
+ */
+function blur(F: Float32Array, nu: number, nv: number): Float32Array {
+  const pass = (src: Float32Array, dx: number, dy: number) =>
+    src.map((v, i) => {
+      const [x, y] = [i % nu, Math.floor(i / nu)]
+      const at = (k: number) => src[THREE.MathUtils.clamp(y + k * dy, 0, nv - 1) * nu + THREE.MathUtils.clamp(x + k * dx, 0, nu - 1)]
+      return (at(-1) + 2 * v + at(1)) / 4
+    })
+  return pass(pass(F, 1, 0), 0, 1)
+}
+
 /** Bake every room surface of the unit (pure: no GL). */
 export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const t0 = performance.now()
@@ -243,6 +267,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
     jobs.push({ ...base, key: `floor:${r.id}`, point: at(0), n: [0, 0, 1], cls: 0 })
     jobs.push({ ...base, key: `ceil:${r.id}`, point: at(h), n: [0, 0, -1], cls: 2 })
   }
+  const inners = new Map(rooms.map((r) => [r.id, core.roomInnerPolygon(r, unit)]))
   for (const w of unit.walls) {
     const f = frames.get(w.id)!
     const gu = grid(0, f.lengthM)
@@ -260,7 +285,13 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
         v0: 0,
         du: gu.d,
         dv: gv.d,
-        point: (u, v) => [f.origin.x + f.dir.x * u + f.normal.x * off, f.origin.y + f.dir.y * u + f.normal.y * off, v],
+        // a texel at a wall end sits inside the neighbouring wall (the graph joins centrelines): wrong light, and a hard step
+        // at every corner (wave 13's "light-leak" lines). Only texels on the visible face are lit; the rest copy the face.
+        point: (u, v) => {
+          const [x, y] = [f.origin.x + f.dir.x * u + f.normal.x * off, f.origin.y + f.dir.y * u + f.normal.y * off]
+          const probe = { x: x + s * f.normal.x * 0.01, y: y + s * f.normal.y * 0.01 }
+          return core.pointInPolygon(probe, inners.get(room.id)!) ? [x, y, v] : null
+        },
         n: [s * f.normal.x, s * f.normal.y, 0],
         own: w.id,
         cls: 1,
@@ -340,7 +371,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const med = [0, 1, 2].map((c) => median(rooms.filter((r) => HABITABLE.includes(r.kind)).map((r) => roomMed.get(`${r.id}:${c}`)!)))
   const factor = (e: number, room: Room, c: number) => {
     const rm = roomMed.get(`${room.id}:${c}`)!
-    const within = rm > 0 ? THREE.MathUtils.clamp((e / rm) ** GAMMA, WITHIN[0], WITHIN[1]) : 1
+    const within = rm > 0 ? soft(GAMMA * Math.log(Math.max(e, 1e-9) / rm), WITHIN[c]) : 1
     const between = med[c] > 0 ? THREE.MathUtils.clamp((rm / med[c]) ** GAMMA_B, BETWEEN[0], BETWEEN[1]) : 1
     return within * between
   }
@@ -363,10 +394,9 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const regions = new Map<string, Region>()
   jobs.forEach((j, k) => {
     const [x0, y0] = pos[k]
+    const F = blur(E[k].map((e) => factor(e, j.room, j.cls)), j.nu, j.nv)
     for (let y = 0; y < j.nv; y++) {
-      for (let x = 0; x < j.nu; x++) {
-        data[(y0 + y) * width + x0 + x] = Math.round((255 * factor(E[k][y * j.nu + x], j.room, j.cls)) / RANGE)
-      }
+      for (let x = 0; x < j.nu; x++) data[(y0 + y) * width + x0 + x] = Math.round((255 * F[y * j.nu + x]) / RANGE)
     }
     regions.set(j.key, { x: x0, y: y0, nu: j.nu, nv: j.nv, u0: j.u0, v0: j.v0, du: j.du, dv: j.dv, E: E[k], roomId: j.room.id })
   })
@@ -418,8 +448,16 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
  * `dayUv` for one room-surface mesh. `target` floor / ceiling (and skirting, which follows the floor): plan (X, Z) into
  * the room's region. A wall: each triangle into one face's region — a face by the side it lies on; reveals, end caps and
  * tops (they span the thickness) into the room-facing side at their (u, v); a face toward the outside reads neutral.
+ * A wall is de-indexed first (in place, groups kept): an end cap shares its edge vertices with both faces, and a shared
+ * vertex took whichever region its last triangle wrote — a cap triangle then interpolated across the atlas (wave 13's
+ * sawtooth stripe down every wall end beside a door).
  */
 export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, target: 'floor' | 'ceiling' | 'wall', id: Id): void {
+  if (target === 'wall' && geo.index) {
+    const flat = geo.toNonIndexed()
+    for (const [k, a] of Object.entries(flat.attributes)) geo.setAttribute(k, a)
+    geo.setIndex(null)
+  }
   const p = geo.attributes.position
   const uv = new Float32Array(p.count * 2)
   const put = (i: number, key: string | null, u: number, v: number) => {
@@ -441,10 +479,8 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
       const [dx, dz] = [p.getX(i) - f.origin.x, p.getZ(i) - f.origin.y]
       return { u: dx * f.dir.x + dz * f.dir.y, w: dx * f.normal.x + dz * f.normal.y, v: p.getY(i) }
     }
-    const idx = geo.index
-    const n = idx ? idx.count : p.count
-    for (let t = 0; t < n; t += 3) {
-      const vi = [0, 1, 2].map((k) => (idx ? idx.getX(t + k) : t + k))
+    for (let t = 0; t < p.count; t += 3) {
+      const vi = [t, t + 1, t + 2]
       const l = vi.map(local)
       const wc = (l[0].w + l[1].w + l[2].w) / 3
       const s = Math.abs(wc) > T2 / 2 ? Math.sign(wc) : prefer

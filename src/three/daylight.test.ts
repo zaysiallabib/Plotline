@@ -68,3 +68,26 @@ describe('bakeDaylight', () => {
     expect(d.data.reduce((a, b) => Math.max(a, b), 0)).toBeLessThanOrEqual(Math.ceil((255 * HI) / RANGE))
   }, 30000) // ≈ 100 ms idle; the dev machine runs other agents' headless browsers at 100 % CPU
 })
+
+describe('smooth atlas (wave 14: no texel pattern)', () => {
+  const texel = (d: ReturnType<typeof bake>, key: string) => {
+    const r = d.regions.get(key)!
+    return (x: number, y: number) => (RANGE * d.data[(r.y + y) * d.width + r.x + x]) / 255
+  }
+  test('no texel-to-texel step above 0.25 anywhere (wave 13: 0.49 from the hard clamp and the wall-end texels)', () => {
+    const d = bake(typeA as Unit)
+    for (const [key, r] of d.regions) {
+      const at = texel(d, key)
+      let m = 0
+      for (let y = 0; y < r.nv; y++)
+        for (let x = 0; x < r.nu; x++) m = Math.max(m, x ? Math.abs(at(x, y) - at(x - 1, y)) : 0, y ? Math.abs(at(x, y) - at(x, y - 1)) : 0)
+      expect(m, key).toBeLessThanOrEqual(0.25)
+    }
+  }, 30000)
+  test('a wall-end texel (inside the neighbouring wall) copies the visible face, not its own dark sample', () => {
+    const d = bake(typeA as Unit)
+    const r = d.regions.get('wall:w_pdr_e:1')! // powder room, by its door: 0.60 beside 1.00 in wave 13
+    const at = texel(d, 'wall:w_pdr_e:1')
+    for (let y = 0; y < r.nv; y++) expect(Math.abs(at(0, y) - at(1, y))).toBeLessThan(0.06)
+  }, 30000)
+})
