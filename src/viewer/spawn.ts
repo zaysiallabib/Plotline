@@ -280,7 +280,7 @@ type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }
 /**
  * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
  * its centre: a pendant (a ceiling piece hanging more than HANG_DROP) within HANG_CLEAR, or within HANG_IN_VIEW and in
- * the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC within AC_NEAR / AC_IN_VIEW;
+ * the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC ahead of the eye within AC_NEAR / AC_IN_VIEW;
  * a slab (wardrobe, shelf, tall piece) whose footprint is within TALL_IN_VIEW with a corner within ±FRAME_DEG.
  */
 const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
@@ -292,6 +292,9 @@ const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
     if (isSlab(f, k))
       return footprintDist(p, f) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, placementSize(f))].some((q) => inFrame(p, face, q)) && inSight(unit, p, f)
     const kind = objectKind(k)
+    // a wall AC behind the eye (its centre behind the eye's plane, its top ~1 m up) is out of any frame: the stand point may be
+    // under it (the wave-14 C Bed-3's only spots past the bed's foot stand under its AC)
+    if (kind === 'ac' && ahead < 0) return false
     const [near, inView] =
       kind === 'ac' ? [AC_NEAR, AC_IN_VIEW]
       : kind === 'ceiling-fan' ? [FAN_CLEAR, FAN_IN_VIEW]
@@ -737,7 +740,10 @@ export function roomView(room: Room, unit: Unit): View {
   // SIDE_WALL_MAX (a blank side wall 1.2–2 m off filling a quarter: s Bed-2, sb Bed-1/3, sb Kitchen, sb Foyer); nothing
   // clears: the old rule, the same frames with their largest leaf shut, the least filled (the frames traced once: cached)
   const good = views.filter((v) => v.score > views[0].score - HANG_PENALTY / 2)
-  const best = clear(good.slice(0, SIDE_TRIES), roomFlat) ?? clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
+  // a veranda none of whose best frames clears its side walls (a 1.5 m service veranda): the least walled of them, not the
+  // first that clears the leaf/slab rule (wave 14's SB kitchen veranda: 61 % plaster within 2 m)
+  const walled = room.kind === 'balcony' && good.length ? good.slice(0, SIDE_TRIES).reduce((m, v) => (roomFlat(v) < roomFlat(m) ? v : m)) : undefined
+  const best = clear(good.slice(0, SIDE_TRIES), roomFlat) ?? walled ?? clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
   if (best) return done(best)
 
   for (const { w, f, c } of doors) {
