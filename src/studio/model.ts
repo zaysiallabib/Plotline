@@ -6,7 +6,7 @@ import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, val
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
-import { movePiece, piecesOf } from './furniture'
+import { movePiece, piecesOf, resizePiece } from './furniture'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -100,6 +100,8 @@ export type Action =
   | { type: 'move-piece'; id: Id; x: number; y: number }
   /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
   | { type: 'rotate-piece'; id: Id }
+  /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
+  | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number } }
   /** one room back to its preset pieces; no room = all of them (an empty array: the layout follows the walls again) */
   | { type: 'reset-furniture'; roomId?: Id }
   | { type: 'undo' }
@@ -547,18 +549,22 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
 
     case 'move-piece':
-    case 'rotate-piece': {
+    case 'rotate-piece':
+    case 'resize-piece': {
       const rooms = deriveRooms(s.unit)
       const pieces = piecesOf(s.unit, rooms)
       const p = pieces.find((x) => x.id === a.id)
       if (!p) return s
       const r =
-        a.type === 'rotate-piece'
-          ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)!
-          : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, p.rotationDeg)!
+        a.type === 'resize-piece'
+          ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM)
+          : a.type === 'rotate-piece'
+            ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
+            : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, p.rotationDeg)
+      if (!r) return s
       if (r.error) return withToast(s, r.error)
       const q = r.piece
-      if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg) return s
+      if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM)) return s
       // the first move writes the whole preset layout: that is what Export and Preview 3D then carry
       return commit(s, { ...s.unit, furniture: r.furniture })
     }

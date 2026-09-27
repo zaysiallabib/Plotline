@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
-import { kitAsset } from '../furnish/kit'
+import { kitAsset, placementSize, resizeLimits } from '../furnish/kit'
 import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
@@ -256,6 +256,7 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
 function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; rooms: Room[]; dispatch: (a: Action) => void; edited: boolean }) {
   const room = rooms.find((r) => r.id === p.roomId)
   const move = (x: number, y: number) => dispatch({ type: 'move-piece', id: p.id, x, y })
+  const size = placementSize(p)
   return (
     <div className="props">
       <p>{kitAsset(p.assetId)?.label ?? p.assetId}</p>
@@ -273,6 +274,15 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>Turn 90° (R)</button>
         </div>
       </Row>
+      {resizeLimits(p.assetId) ? (
+        (['x', 'z', 'y'] as const).map((k) => (
+          <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
+            <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
+          </Row>
+        ))
+      ) : (
+        <p className="muted">This piece can be moved and turned</p>
+      )}
       <div className="seg">
         <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>
           Reset to preset
