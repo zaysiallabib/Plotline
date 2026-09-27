@@ -49,6 +49,8 @@ export const KNOBS = {
   sizeTolM: 2 * 0.0254,
   /** faces bigger than this are never part of a flat (courtyards / the space between other flats) */
   maxRoomSqm: 90,
+  /** faces smaller than this are closing artefacts: merged into a neighbour */
+  sliverSqm: 0.3,
   /** sum of a flat's centreline faces ÷ its printed area (walls + common share are in the printed figure) */
   areaShare: 0.88,
   /** … and an area-label scale is used only within this share of the wall-thickness prior */
@@ -734,6 +736,34 @@ function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity
   return { rooms: best, open: false }
 }
 
+/**
+ * Slivers (faces under sliverSqm, or strips under ~0.2 m wide) are closing artefacts, not rooms: take out one of their
+ * walls — one shared with a neighbour, the solver's own bridges first, then the longest — so they merge away.
+ */
+function dropSlivers(d: Draft): Draft {
+  for (let it = 0; it < 100; it++) {
+    const rooms = deriveRooms(d.unit)
+    const perim = (r: Room) => {
+      const p = roomPolygon(r, d.unit)
+      return p.reduce((t, q, i) => t + d2(q, p[(i + 1) % p.length]), 0)
+    }
+    const s = rooms.find((r) => r.areaSqm < KNOBS.sliverSqm || r.areaSqm / perim(r) < 0.1)
+    if (!s) return d
+    const uses = new Map<string, number>()
+    for (const r of rooms) for (const w of new Set(r.wallIds)) uses.set(w, (uses.get(w) ?? 0) + 1)
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    const len = (w: GWall) => d2(V.get(w.a)!, V.get(w.b)!)
+    const cands = d.walls.filter((w) => s.wallIds.includes(w.id))
+    const score = (w: GWall) => (uses.get(w.id)! > 1 ? 4 : 0) + (w.bridge ? 2 : 0) + len(w) / 100
+    const cut = cands.reduce((b, w) => (score(w) > score(b) ? w : b))
+    const walls = d.walls.filter((w) => w !== cut)
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    d = { ...d, unit: { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }, walls: m.walls }
+  }
+  return { ...d, rooms: deriveRooms(d.unit) }
+}
+
 /** Keep only the picked faces' walls (+ loose walls inside them), re-merge, re-derive. */
 function restrict(d: Draft, keep: Set<Room>): Draft {
   const ids = new Set([...keep].flatMap((r) => r.wallIds))
@@ -794,10 +824,11 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   let scaleFrom: AutoTraceStats['scaleFrom'] = opts.pxPerM ? 'given' : 'thickness'
   const origin0 = { x: 0, y: 0 }
   let draft = buildGraph(trace, pxPerM, origin0, gray, ink)
-  // the building core's labels (lobby, lifts, stair): part of the draft when reached, never a way into the next flat
+  // the building core's labels (lobby, lifts, stair) and planter strips: part of the draft when reached, never a way
+  // into the next flat
   const coreAt = (k: number) =>
     text.items
-      .filter((it) => it.kind === 'room' && /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(normaliseName(it.text.split('\n')[0])))
+      .filter((it) => it.kind === 'room' && (it.green || /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(normaliseName(it.text.split('\n')[0]))))
       .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
   // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
   const budget = ((): number => {
@@ -856,7 +887,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   let flat = picked.rooms
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'The clicked area is open — its walls did not close (open plan, glass or a railing the tracer missed). Draw the missing wall.' })
   if (!flat.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
-  if (flat.size) draft = restrict(draft, flat)
+  if (flat.size) draft = dropSlivers(restrict(draft, flat))
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }

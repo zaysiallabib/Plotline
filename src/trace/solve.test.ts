@@ -82,6 +82,31 @@ describe('solveTraces on a synthetic flat', () => {
     // outer walls 10", partitions 5"
     expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
   })
+
+  test('no click: the largest closed region, same rooms', () => {
+    const { g, text } = synthetic()
+    expect(deriveRooms(solveTraces(g, { text }).unit).length).toBe(4)
+  })
+
+  test('a side drawn only as a double thin line (glazing) still closes the room, as a window', () => {
+    const width = Math.round(6 * K + 2 * O.x), height = Math.round(4 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    stroke(g, P(-h, 0), P(6 + h, 0), ext)
+    stroke(g, P(-h, 4), P(6 + h, 4), ext)
+    stroke(g, P(0, 0), P(0, 4), ext)
+    for (const dx of [-2, 2]) for (let y = Math.round(P(0, 0).y); y < Math.round(P(0, 4).y); y++) g.data[y * width + Math.round(P(6, 0).x) + dx] = 90
+    const r = solveTraces(g, {}, { pickPx: P(1.5, 2) })
+    const rooms = deriveRooms(r.unit)
+    expect(rooms.length).toBe(1) // open on the right without the glazing: no room at all
+    // (no printed sizes here: the scale is the wall prior, so compare with the wall's own length)
+    const len = (w: (typeof r.unit.walls)[number]) => {
+      const a = r.unit.vertices.find((v) => v.id === w.a)!, b = r.unit.vertices.find((v) => v.id === w.b)!
+      return Math.hypot(b.x - a.x, b.y - a.y)
+    }
+    expect(r.unit.walls.some((w) => w.openings.some((o) => o.kind === 'window' && o.widthM > 0.9 * len(w)))).toBe(true)
+    expect(validate(r.unit).filter((i) => i.level === 'error')).toEqual([])
+  })
 })
 
 // ---------- the real plans: end to end vs the hand-traced units (fixtures + cached OCR; skipped when absent) ----------
@@ -107,8 +132,8 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
 
 /** One flat each on the sheets nobody traced by hand (click = a spot in its living room). */
 const SMOKE: { file: string; text: string; pick: Px }[] = [
-  { file: 'Sheltech_Banani__Level_2-6.pgm', text: 'Sheltech-Banani-Level-2-6', pick: { x: 0, y: 0 } },
-  { file: 'Sheltech_dmd__Level_3-14.pgm', text: 'Sheltech-dmd-Level-3-14', pick: { x: 0, y: 0 } },
+  { file: 'Sheltech_Banani__Level_2-6.pgm', text: 'Sheltech-Banani-Level-2-6', pick: { x: 490, y: 320 } },
+  { file: 'Sheltech_dmd__Level_3-14.pgm', text: 'Sheltech-dmd-Level-3-14', pick: { x: 440, y: 470 } },
 ]
 describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays only)', () => {
   test('never crashes, validates', () => {
