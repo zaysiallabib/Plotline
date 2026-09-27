@@ -23,6 +23,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, Pt, Room, Unit,
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
+import { bakeDaylight, mapDaylight, setDaylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
 import { PANES } from './openings'
@@ -254,6 +255,13 @@ export class PlotlineScene {
 
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
+    // indirect light × where the sky reaches (daylight.ts)
+    const day = bakeDaylight(unit, this.rooms)
+    for (const s of this.surfaces) {
+      const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
+      mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
+    }
+    setDaylight(day)
     this.applyMaterials()
     this.look.setUnit(present(unit), this.rooms) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
@@ -688,10 +696,10 @@ export class PlotlineScene {
     if (!this.unit) return
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
-    const plaster = materialFor(EDGE_PLASTER, true)
+    const plaster = materialFor(EDGE_PLASTER, true, true)
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
-        side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target) : plaster,
+        side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true) : plaster,
       )
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }
