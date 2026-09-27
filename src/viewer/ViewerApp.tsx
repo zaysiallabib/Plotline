@@ -10,8 +10,7 @@ import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
 import { placementSize } from '../furnish/kit'
-import { furnish } from '../furnish/presets'
-import { movePiece, pieceLabel, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, movePiece, pieceLabel, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
@@ -102,20 +101,21 @@ const headingOf = (scene: PlotlineScene): Pt => {
 }
 
 export default function ViewerApp() {
-  // `base` = the unit's own layout (its JSON's, else the presets); a layout arranged in this browser (Arrange, Studio F) wins
+  // `base` = the unit's own layout (its JSON's, presets for rooms without pieces); a layout arranged in this browser
+  // (Arrange, Studio F) wins; both through layoutFor, so a room added since gets its presets
   const [unit, base] = useMemo(() => {
     const u = onFloor(resolveUnit())
     if (!u) return [null, []]
-    const base = u.furniture.length ? u.furniture : furnish(u, core.deriveRooms(u))
-    return [{ ...u, furniture: readLayout(u.id) ?? base }, base]
+    const rooms = core.deriveRooms(u)
+    return [{ ...u, furniture: layoutFor({ ...u, furniture: readLayout(u.id) ?? u.furniture }, rooms) }, layoutFor(u, rooms)]
   }, [])
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
   if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
   return <Viewer unit={unit} base={base} />
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / undo / reset. */
-function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; onTurn: () => void; onUndo: () => void; onReset: () => void }) {
+/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset. */
+function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; onTurn: () => void; onDelete: () => void; onUndo: () => void; onReset: () => void }) {
   const s = p.piece && placementSize(p.piece)
   return (
     <aside className="glass arrange">
@@ -134,6 +134,9 @@ function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; o
       <div className="arrange-row">
         <button className="btn" disabled={!p.piece} onClick={p.onTurn}>
           Turn 90° (R)
+        </button>
+        <button className="btn" disabled={!p.piece} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+          Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
           Undo
@@ -271,7 +274,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const enter = () => {
     if (!scene || !ready) return
     setEntered(true)
-    const e = entrySpawn(unit, rooms)
+    const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
     else scene.lockPointer()
@@ -321,6 +324,13 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
   }
+  const remove = () => {
+    if (!sel) return
+    settle(pushStep(steps.current, deletePiece(steps.current.pieces, sel)), null)
+    setSel(null)
+  }
+  /** the unit as arranged, deleted pieces out: what the first views frame */
+  const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
   const toggleArrange = () => {
     setArranging(!arranging)
     scene?.setArrange(!arranging)
@@ -367,6 +377,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       const k = e.key.toLowerCase()
       if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) undo()
       else if (arranging && k === 'r') turn()
+      else if (arranging && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
         setSel(null)
         showSel(null)
@@ -473,7 +484,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             onEnterVR={xr ? toggleVR : null}
             toast={toast}
             onJump={(r) => {
-              const v = roomView(r, unit)
+              const v = roomView(r, shown()) // the arranged layout, deleted pieces out
               // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
               scene.shutLeaf(v.closeLeaf ?? null)
               if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene.shutLeaf(null), { once: true })
@@ -511,7 +522,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
               />
             </aside>
           )}
-          {arranging && <ArrangePanel piece={pieceOf(sel)} canUndo={steps.current.past.length > 0} onTurn={turn} onUndo={undo} onReset={() => settle(pushStep(steps.current, base))} />}
+          {arranging && <ArrangePanel piece={pieceOf(sel)} canUndo={steps.current.past.length > 0} onTurn={turn} onDelete={remove} onUndo={undo} onReset={() => settle(pushStep(steps.current, base))} />}
           <SunPill
             hour={hour}
             northDeg={unit.northDeg}

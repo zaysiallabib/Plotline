@@ -55,6 +55,8 @@ export type ArrangeEvent =
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
+/** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
+const present = (u: Unit): Unit => (u.furniture.some((p) => p.removed) ? { ...u, furniture: u.furniture.filter((p) => !p.removed) } : u)
 const SEL = '#39a0ff'
 const REFUSED = '#ff4d4d'
 
@@ -253,7 +255,7 @@ export class PlotlineScene {
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.applyMaterials()
-    this.look.setUnit(unit, this.rooms) // fixtures, lights, slab, shadow fit box
+    this.look.setUnit(present(unit), this.rooms) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
 
     const first = this.rooms[0]
@@ -430,13 +432,14 @@ export class PlotlineScene {
       o.position.z = p.y
       o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
       o.userData.roomId = p.roomId
+      o.visible = !p.removed
     }
   }
 
-  /** A committed layout (drop, turn, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
+  /** A committed layout (drop, turn, delete, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
   setLayout(all: FurniturePlacement[]): void {
     this.placePieces(all)
-    if (this.unit) this.look.setFurniture({ ...this.unit, furniture: all })
+    if (this.unit) this.look.setFurniture(present({ ...this.unit, furniture: all }))
   }
 
   private pieceObject(id: Id): THREE.Object3D | undefined {
@@ -491,6 +494,7 @@ export class PlotlineScene {
     const parent = old.parent
     if (token !== this.buildToken || !parent || old.userData.size !== size) return
     obj.userData.size = size
+    obj.visible = !p.removed
     const selected = this.selBox.parent === old
     if (selected) this.selBox.removeFromParent()
     parent.add(obj)
@@ -680,6 +684,7 @@ export class PlotlineScene {
       const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
       if (token !== this.buildToken) return // unit changed mid-load
       obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
+      obj.visible = !p.removed
       // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
       const a = kitAsset(p.assetId)
       ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
@@ -838,6 +843,9 @@ export class PlotlineScene {
     const hits = this.raycaster.intersectObjects(targets, true)
     for (const h of hits) {
       let o: THREE.Object3D | null = h.object
+      let hidden = false // a deleted piece (Arrange) is built but hidden
+      for (let v: THREE.Object3D | null = o; v; v = v.parent) hidden ||= !v.visible
+      if (hidden) continue
       while (o && !o.userData.kind) o = o.parent
       if (!o) continue
       const { kind, id, roomId, wallId, front, back, label, objectKind } = o.userData as {

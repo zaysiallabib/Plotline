@@ -7,7 +7,7 @@ import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { furnish } from '../furnish/presets'
-import { GRID_M, pieceAt, pieceQuad, piecesOf } from './furniture'
+import { GRID_M, layoutFor, pieceAt, pieceQuad, resizeAxes } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -539,7 +539,7 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     const preset = furnish(typeA as Unit, deriveRooms(typeA as Unit))
     const sofa = preset.find((p) => p.id === 'r_living:sofa_3seat:1')!
     let s: StudioState = { ...initialState(), tool: 'furniture', unit: typeA as Unit, selection: [sofa.id] }
-    expect(piecesOf(s.unit, deriveRooms(s.unit))).toEqual(preset)
+    expect(layoutFor(s.unit, deriveRooms(s.unit))).toEqual(preset)
     s = move(s, sofa.id, sofa.x + GRID_M, sofa.y)
     const changed = s.unit.furniture.filter((p, i) => JSON.stringify(p) !== JSON.stringify(preset[i])).map((p) => p.id)
     expect(changed).toEqual(['r_living:sofa_3seat:1', 'r_living:cushions_plain:1', 'r_living:cushions_plain:2'])
@@ -547,6 +547,56 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     const byId = (ps: FurniturePlacement[]) => [...ps].sort((a, b) => a.id.localeCompare(b.id))
     expect(byId(reducer(s, { type: 'reset-furniture', roomId: 'r_living' }).unit.furniture)).toEqual(byId(preset))
     expect(reducer(s, { type: 'reset-furniture' }).unit.furniture).toEqual([])
+  })
+
+  it('layoutFor: a room with no stored pieces gets its presets, a gone room’s pieces drop, a room emptied by deleting stays empty', () => {
+    const u = fixture().unit
+    const rooms = deriveRooms(u)
+    const presetB = furnish(u, rooms).filter((p) => p.roomId === 'B')
+    expect(presetB.length).toBeGreaterThan(0)
+    const noB = { ...u, furniture: [...u.furniture.filter((p) => p.roomId !== 'B'), piece('old', 'bedside_oak', 'gone', 1, 1)] }
+    const l = layoutFor(noB, rooms)
+    expect(l.filter((p) => p.roomId === 'A')).toEqual(u.furniture.filter((p) => p.roomId === 'A'))
+    expect(l.filter((p) => p.roomId === 'B')).toEqual(presetB)
+    expect(l.some((p) => p.roomId === 'gone')).toBe(false)
+    expect(layoutFor(u, rooms)).toBe(u.furniture) // nothing to add or drop: the stored array itself
+    const emptied = { ...u, furniture: u.furniture.map((p) => (p.roomId === 'B' ? { ...p, removed: true as const } : p)) }
+    expect(layoutFor(emptied, rooms).filter((p) => p.roomId === 'B' && !p.removed)).toEqual([])
+  })
+
+  it('relabelling a room to another kind re-furnishes it while it holds only presets; a moved piece keeps the room as is', () => {
+    const u0 = fixture().unit
+    const u = { ...u0, furniture: furnish(u0, deriveRooms(u0)) }
+    const s0: StudioState = { ...fixture(), unit: u }
+    const relabel = (s: StudioState) => reducer(s, { type: 'update-label', id: 'B', patch: { kind: 'study', name: 'Study' } })
+    const s = relabel(s0)
+    expect(layoutFor(s.unit, deriveRooms(s.unit)).filter((p) => p.roomId === 'B')).toEqual(furnish(s.unit, deriveRooms(s.unit)).filter((p) => p.roomId === 'B'))
+    // the first legal one-square move of a Bed piece
+    const moved = u.furniture
+      .filter((p) => p.roomId === 'B')
+      .flatMap((p) => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => reducer(s0, { type: 'move-piece', id: p.id, x: p.x + dx * GRID_M, y: p.y + dy * GRID_M })))
+      .find((x) => x.unit !== s0.unit)!
+    expect(moved).toBeDefined()
+    expect(relabel(moved).unit.furniture.filter((p) => p.roomId === 'B')).toEqual(moved.unit.furniture.filter((p) => p.roomId === 'B'))
+  })
+
+  it('Delete: the piece and what rests on it become tombstones (one undo step); they block nothing and are never picked', () => {
+    const s0 = fixture()
+    const s = reducer({ ...s0, selection: ['sofa'] }, { type: 'delete-piece', id: 'sofa' })
+    expect(s.unit.furniture.filter((p) => p.removed).map((p) => p.id)).toEqual(['sofa', 'cush'])
+    expect(s.selection).toEqual([])
+    expect(s.history.past).toHaveLength(1)
+    expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit)
+    expect(pieceAt(s.unit.furniture, { x: 3.05, y: 4.27 })).toBeNull()
+    expect(move(s, 'side', 2.5, 4.3).toast).toBeNull() // where the sofa stood
+    // "Reset to preset" clears the room's tombstones
+    expect(reducer(s, { type: 'reset-furniture', roomId: 'A' }).unit.furniture.some((p) => p.removed)).toBe(false)
+  })
+
+  it('resizeAxes: scans none; an axis with min = max stays fixed', () => {
+    expect(resizeAxes('sofa_3seat')).toEqual([])
+    expect(resizeAxes('wardrobe_2door')).toEqual(['x', 'z', 'y'])
+    expect(resizeAxes('desk_oak')).toEqual(['x', 'z'])
   })
 
   it('entering or leaving the furniture tool clears the selection', () => {

@@ -273,6 +273,9 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
       <Row label="Rotation">
         <div className="seg">
           <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>Turn 90° (R)</button>
+          <button title="Delete this piece (and what rests on it); Undo or Reset to preset brings it back" onClick={() => dispatch({ type: 'delete-piece', id: p.id })}>
+            Delete
+          </button>
         </div>
       </Row>
       {resizeAxes(p.assetId).length ? (

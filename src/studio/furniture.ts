@@ -4,8 +4,8 @@
  * door / entrance zones; code-built pieces also resize within their kit limits. Nothing is added, deleted or placed free.
  * The viewer's Arrange mode (src/viewer/arrange.ts) runs the same rules.
  *
- * An empty `unit.furniture` IS the preset layout (the viewer runs `furnish` then, ViewerApp); the first move writes
- * the whole array so it is exported, "Reset all" empties it again. Reuses src/furnish (read-only).
+ * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
+ * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
 import { pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
@@ -23,7 +23,36 @@ const FLUSH_M = 0.005
  */
 const ENTRY_DEPTH_M = 1.2
 
-export const piecesOf = (unit: Unit, rooms: Room[]): FurniturePlacement[] => (unit.furniture.length ? unit.furniture : furnish(unit, rooms))
+/**
+ * The layout a unit shows (Studio tool F, viewer, Arrange, Preview 3D): its stored pieces whose room still exists, plus
+ * the presets of every room with none stored (drawn or labelled after the first move). Tombstones (`removed`) stay: a room
+ * emptied by deleting keeps nothing. The stored array itself when nothing changes.
+ */
+export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
+  if (!unit.furniture.length) return furnish(unit, rooms)
+  const live = new Set(rooms.map((r) => r.id))
+  const stored = unit.furniture.every((p) => live.has(p.roomId)) ? unit.furniture : unit.furniture.filter((p) => live.has(p.roomId))
+  const has = new Set(stored.map((p) => p.roomId))
+  // ponytail: runs every preset when some room has no pieces (a shaft, a lobby); cache per unit if the Studio ever lags
+  const added = rooms.some((r) => !has.has(r.id)) ? furnish(unit, rooms).filter((p) => !has.has(p.roomId)) : []
+  return added.length ? [...stored, ...added] : stored
+}
+
+/** The stored pieces without room `roomId`'s when those are still exactly its presets (none moved, turned, resized or deleted): a relabelled room re-furnishes. */
+export function forgetPresets(unit: Unit, rooms: Room[], roomId: Id): FurniturePlacement[] {
+  const mine = unit.furniture.filter((p) => p.roomId === roomId)
+  if (!mine.length) return unit.furniture
+  const preset = new Set(furnish(unit, rooms).filter((p) => p.roomId === roomId).map((p) => JSON.stringify(p)))
+  return mine.every((p) => preset.has(JSON.stringify(p))) ? unit.furniture.filter((p) => p.roomId !== roomId) : unit.furniture
+}
+
+/** Piece `id` and what rests on it, deleted: tombstones, so the room stays as left and is never re-furnished. */
+export function deletePiece(pieces: FurniturePlacement[], id: Id): FurniturePlacement[] {
+  const p = pieces.find((x) => x.id === id)
+  if (!p || p.removed) return pieces
+  const gone = new Set([id, ...riders(pieces, p).map((r) => r.id)])
+  return pieces.map((x) => (gone.has(x.id) ? { ...x, removed: true as const } : x))
+}
 
 const assetOf = (p: FurniturePlacement): KitAsset | undefined => kitAsset(p.assetId)
 const sizeOf = placementSize
@@ -58,7 +87,7 @@ function blocks(p: FurniturePlacement, o: FurniturePlacement): boolean {
 /** The piece under a plan point: floor pieces before lifted, ceiling and rugs; the smaller first. */
 export function pieceAt(pieces: FurniturePlacement[], m: Pt): FurniturePlacement | null {
   const area = (p: FurniturePlacement) => sizeOf(p).x * sizeOf(p).z
-  const under = pieces.filter((p) => pointInPolygon(m, pieceQuad(p)))
+  const under = pieces.filter((p) => !p.removed && pointInPolygon(m, pieceQuad(p)))
   return under.sort((a, b) => layerOf(a) - layerOf(b) || area(a) - area(b))[0] ?? null
 }
 
@@ -67,7 +96,7 @@ function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurnitureP
   if (layerOf(p) !== 0) return []
   const q = pieceQuad(p)
   const top = band(p)[1]
-  return pieces.filter((o) => o.id !== p.id && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q))
+  return pieces.filter((o) => o.id !== p.id && !o.removed && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q))
 }
 
 /** The first door in walls[] order is the entrance: its span, ENTRY_DEPTH_M out from both faces of its wall. */
@@ -132,7 +161,7 @@ export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement
     if (entry && quadsOverlap(entry, q)) return 'Blocks the entrance'
     if (doorClearZones(room, unit).some((z) => quadsOverlap(z, q))) return 'Blocks the door'
   }
-  const hit = others.find((o) => blocks(p, o) && quadsOverlap(pieceQuad(o), q))
+  const hit = others.find((o) => !o.removed && blocks(p, o) && quadsOverlap(pieceQuad(o), q))
   if (!hit) return null
   const name = pieceLabel(hit)
   return `Overlaps the ${name[0].toLowerCase()}${name.slice(1)}`

@@ -125,6 +125,11 @@ export interface FurniturePlacement {
    * (procedural) piece is stretched. Absent = the kit size × scale. Scanned glTF models are never resized.
    */
   sizeM?: { x: number; y: number; z: number }
+  /**
+   * Deleted by staff (Arrange / the Studio's tool F): a tombstone kept in the stored layout so its room is not
+   * re-furnished with presets. Never rendered, picked, shadowed or framed.
+   */
+  removed?: true
 }
 
 export interface Unit {

@@ -6,7 +6,7 @@ import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomPolygon, val
 import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
-import { movePiece, piecesOf, resizePiece } from './furniture'
+import { deletePiece, forgetPresets, layoutFor, movePiece, resizePiece } from './furniture'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
@@ -102,7 +102,9 @@ export type Action =
   | { type: 'rotate-piece'; id: Id }
   /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
   | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number } }
-  /** one room back to its preset pieces; no room = all of them (an empty array: the layout follows the walls again) */
+  /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); no adding back but undo / reset */
+  | { type: 'delete-piece'; id: Id }
+  /** one room back to its preset pieces (its deletions cleared); no room = all of them (an empty array: the layout follows the walls again) */
   | { type: 'reset-furniture'; roomId?: Id }
   | { type: 'undo' }
   | { type: 'redo' }
@@ -215,7 +217,7 @@ export function findEntity(u: Unit, id: Id): Entity | null {
 /** Selected ids still in `u`: graph entities, or pieces of its furniture layer (preset ids are deterministic). */
 function stillThere(u: Unit, ids: Id[]): Id[] {
   let pieces: Set<Id> | undefined
-  return ids.filter((id) => findEntity(u, id) || (pieces ??= new Set(piecesOf(u, deriveRooms(u)).map((p) => p.id))).has(id))
+  return ids.filter((id) => findEntity(u, id) || (pieces ??= new Set(layoutFor(u, deriveRooms(u)).map((p) => p.id))).has(id))
 }
 
 /** Plan points that stand for an entity (for pan-to / bounds). */
@@ -526,8 +528,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const label: RoomLabel = { id: newId(), ...a.label }
       return commit(s, { ...s.unit, roomLabels: [...s.unit.roomLabels, label] }, { selection: [label.id] })
     }
-    case 'update-label':
-      return commit(s, { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, ...a.patch } : l)) })
+    case 'update-label': {
+      const roomLabels = s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, ...a.patch } : l))
+      // another kind: a room still holding only its presets gets the new kind's (furniture.forgetPresets)
+      const relabel = a.patch.kind && a.patch.kind !== s.unit.roomLabels.find((l) => l.id === a.id)?.kind
+      return commit(s, { ...s.unit, roomLabels, ...(relabel ? { furniture: forgetPresets(s.unit, deriveRooms(s.unit), a.id) } : {}) })
+    }
     case 'duplicate-label': {
       const sel = new Set(s.selection)
       const copies = s.unit.roomLabels.filter((l) => sel.has(l.id)).map((l) => ({ ...l, id: newId(), x: l.x + 0.5, y: l.y + 0.5 }))
@@ -552,7 +558,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'rotate-piece':
     case 'resize-piece': {
       const rooms = deriveRooms(s.unit)
-      const pieces = piecesOf(s.unit, rooms)
+      const pieces = layoutFor(s.unit, rooms)
       const p = pieces.find((x) => x.id === a.id)
       if (!p) return s
       const r =
@@ -567,6 +573,11 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM)) return s
       // the first move writes the whole preset layout: that is what Export and Preview 3D then carry
       return commit(s, { ...s.unit, furniture: r.furniture })
+    }
+    case 'delete-piece': {
+      const pieces = layoutFor(s.unit, deriveRooms(s.unit))
+      const furniture = deletePiece(pieces, a.id)
+      return furniture === pieces ? s : commit(s, { ...s.unit, furniture }, { selection: [] })
     }
     case 'reset-furniture': {
       if (!s.unit.furniture.length) return s

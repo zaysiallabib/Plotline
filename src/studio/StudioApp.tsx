@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveRooms, formatFeetInches, nearestWall, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, piecesOf, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, layoutFor, type Move } from './furniture'
 import {
   entityPoints,
   formatTimer,
@@ -178,7 +178,7 @@ export default function StudioApp() {
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
-  const pieces = useMemo(() => (tool === 'furniture' ? piecesOf(unit, rooms) : null), [tool, unit, rooms])
+  const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
   piecesRef.current = pieces
   const [furnDrag, setFurnDrag] = useState<Move | null>(null)
@@ -287,14 +287,14 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, saveDraft])
-  // shared layout: a change made with tool F (move, turn, resize, reset, their undo) is what the viewer shows after a reload
+  // shared layout: every furniture change (move, turn, resize, delete, reset, a relabel's re-furnish, their undo, an
+  // import) is what the viewer shows after a reload; loading one is not a change
   const lastFurniture = useRef(unit.furniture)
   useEffect(() => {
     if (lastFurniture.current === unit.furniture) return
     lastFurniture.current = unit.furniture
-    if (tool === 'furniture') saveLayout(unit.id, unit.furniture) // "Reset all" (empty) removes it
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unit.furniture])
+    saveLayout(unit.id, unit.furniture) // "Reset all" (empty) removes it
+  }, [unit.furniture, unit.id])
 
   // ----- timer
   useEffect(() => {
@@ -750,7 +750,7 @@ export default function StudioApp() {
       }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
-      // furniture tool: arrows move the selected piece one grid square, R turns it; Delete / T / H never touch a piece
+      // furniture tool: arrows move the selected piece one grid square, R turns it, Delete / Backspace deletes it; T / H never touch a piece
       if (st.tool === 'furniture') {
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
@@ -759,7 +759,8 @@ export default function StudioApp() {
           return
         }
         if (e.key === 'r' || e.key === 'R') return p && dispatch({ type: 'rotate-piece', id: p.id })
-        if (['Delete', 't', 'T', 'h', 'H'].includes(e.key)) return
+        if (e.key === 'Delete' || e.key === 'Backspace') return p && dispatch({ type: 'delete-piece', id: p.id })
+        if (['t', 'T', 'h', 'H'].includes(e.key)) return
       }
       if (arrow) {
         e.preventDefault() // never scroll the page or the panel
