@@ -277,14 +277,17 @@ export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] 
   }
 
   // dining: a table box with ≥ 4 chair-sized holes just outside its edges
-  const small = S.filter((s) => s.m1 >= 0.28 && s.m1 <= 0.65 && s.m2 >= 0.22 && s.m2 <= 0.6)
+  const small = S.filter((s) => s.L2 >= 4 && s.m1 >= 0.28 && s.m1 <= 0.65 && s.m2 >= 0.15 && s.m2 <= 0.6)
+  const side = (o: Shape, p: Px) => Math.sign(-(p.x - o.c.x) * Math.sin(o.ang) + (p.y - o.c.y) * Math.cos(o.ang))
   const tables = rects.filter((tb) => {
     if (tb.m1 < 1.0 || tb.m1 > 2.8 || tb.m2 < 0.72 || tb.m2 > 1.3 || tb.m1 / tb.m2 < 1.2 || tb.m1 / tb.m2 > 3.2) return false
     const chairs = small.filter((s) => {
       const { a, b } = frame(tb, s.c)
       return !(a < tb.L1 / 2 && b < tb.L2 / 2) && a <= tb.L1 / 2 + 0.55 * k && b <= tb.L2 / 2 + 0.55 * k
     })
-    return chairs.length >= 4
+    // chairs on BOTH long sides (stair treads beside a landing line up on one)
+    const long = chairs.filter((s) => frame(tb, s.c).b >= tb.L2 / 2)
+    return chairs.length >= 4 && chairs.length <= 12 && long.some((s) => side(tb, s.c) > 0) && long.some((s) => side(tb, s.c) < 0)
   })
   for (const tb of tables) out.push({ at: tb.c, kind: 'dining', source: 'fixture', what: 'table+chairs', conf: 0.7 })
   const atTable = (p: Px) =>
@@ -358,7 +361,7 @@ export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] 
 
   // bed: exactly two pillow boxes end to end along the headboard; the hint goes onto the bed, away from the wall.
   // Pillows are empty inside (a label box — F.H.B, E-SHAFT — holds text).
-  const pillows = rects.filter((r) => r.solid >= 0.92 && r.m1 >= 0.35 && r.m1 <= 0.9 && r.m2 >= 0.18 && r.m2 <= 0.55 && r.m1 / r.m2 >= 1.3 && r.m1 / r.m2 <= 3)
+  const pillows = rects.filter((r) => r.L2 >= 4 && r.solid >= 0.92 && r.m1 >= 0.35 && r.m1 <= 0.9 && r.m2 >= 0.18 && r.m2 <= 0.55 && r.m1 / r.m2 >= 1.3 && r.m1 / r.m2 <= 3)
   const alike = (a: (typeof S)[0], b: (typeof S)[0]) => Math.max(a.L1, b.L1) / Math.min(a.L1, b.L1) <= 1.3 && Math.max(a.L2, b.L2) / Math.min(a.L2, b.L2) <= 1.3 && angDiff(a.ang, b.ang) < 0.15
   const usedP = new Set<number>()
   for (let i = 0; i < pillows.length; i++)
@@ -376,7 +379,8 @@ export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] 
       const at = intoRoom(gray, t, c, [{ x: -u.y, y: u.x }, { x: u.y, y: -u.x }], 1.2 * k, 0.8 * k)
       out.push({ at, kind: 'bed', source: 'fixture', what: 'bed', conf: 0.7 })
     }
-
+  // ponytail: no bed-without-pillows detector — Banani's white beds merge with their bedside tables into one hole; its
+  // grey bedroom fill (propagateByColour) is the route there
   return out
 }
 
@@ -406,7 +410,8 @@ function innerPoints(lab: Int32Array, depth: Float32Array, n: number, w: number)
 
 // ---------------------------------------------------------------- green
 
-const isGreen = (r: number, g: number, b: number) => g >= r + 6 && g >= b + 10 && g - (r + b) / 2 >= 12
+// plant greens are yellowish (blue well under red: lawn 95,108,53 · planter 223,235,197 · tree 116,128,104); a mint flat tint is not (210,234,204)
+const isGreen = (r: number, g: number, b: number) => g >= r + 6 && g >= b + 10 && g - (r + b) / 2 >= 12 && b <= r - 8
 
 /**
  * Green blobs (planter strips, lawns, foliage images) → balcony + green at each blob's deepest point. Clumps closer than
@@ -429,10 +434,11 @@ export function greenHints(rgb: Rgba, k: number): RoomHint[] {
     if (c >= 0 && !notGreen[i]) (n[c]++), (minC[c] += Math.min(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]))
   }
   const out: RoomHint[] = []
-  comps.forEach((_, i) => {
+  comps.forEach((c, i) => {
     if (n[i] < 0.6 * k * k) return
     const pale = minC[i] / n[i] > 170
-    if (pale && (2 * (inner[i].depth - rd)) / k > 2.4) return
+    // a tinted flat (DMD Type B) is wide, or full of furniture holes; a planter strip is a narrow solid band
+    if (pale && ((2 * (inner[i].depth - rd)) / k > 2.4 || c.n / shapeOf(c, i + 1, lab, w).n < 0.85)) return
     out.push({ at: { x: inner[i].x, y: inner[i].y }, kind: 'balcony', green: true, source: 'green', what: pale ? 'green fill' : 'foliage', conf: pale ? 0.6 : 0.8, areaPx: n[i] })
   })
   return out

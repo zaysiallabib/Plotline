@@ -211,6 +211,7 @@ describe.skipIf(!haveFixtures)('findHints vs the hand-traced units (eval report)
       const t = findHints(g, rgb, { pxPerM: k })
       const by = t.hints.reduce<Record<string, number>>((m, h) => ((m[h.what ?? h.source] = (m[h.what ?? h.source] ?? 0) + 1), m), {})
       console.log(`${f} (k ${k}, wall estimate ${estimatePxPerM(traceWalls(g)).toFixed(1)}): ${t.hints.length} hints ${JSON.stringify(by)}; ${t.clusters?.length} fill clusters ${JSON.stringify(t.clusters)}; ${Math.round(performance.now() - t0)} ms`)
+      console.log(`   ${t.hints.map((h) => `${h.what}@${Math.round(h.at.x)},${Math.round(h.at.y)}`).join(" ")}`)
       if (SHOTS) overlay(`${SHOTS}/smoke-${f}.png`, rgb, t)
     }
   }, 120000)
