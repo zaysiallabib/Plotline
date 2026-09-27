@@ -4,6 +4,19 @@ Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDriv
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
 Live: https://plotline-flax.vercel.app — **waves 11 + 12 merged but NOT deployed (founder: run npx vercel --prod --yes); last deploy 2026-09-27 00:50 = 81b7b67 (wave 10: studio + sheltech + finishes + furnish + render + building + Studio pan; views still out)**. Earlier today: 22:58 = 3ae357f. `npx vercel --prod --yes` runs fine from a session (CLI logged in as the founder); the founder said not to be asked about deploying again. Checked: `/` serves bundle `index-BIbRWGL0.js`, `/u/sheltech-a` 200, `/studio` 200, new walnut texture + Sheltech plan image 200. **Deploy gotcha:** run vercel in the foreground and log to a file (`> E:\dev\tmp\wave10\deploy-<hhmm>.log 2>&1`); a backgrounded run once returned exit 0 with the old bundle still live.
 
+## WAVE 13 — launched 2026-09-27 (session 11, Fable 5.1 manager, three Opus 5.5 agents on worktrees; founder asleep, 3 h budget)
+
+Founder: "read the codebase + handoff, get to work with your subagents for the next task, 3 hours". **Waves 11 + 12 ARE live** (live bundle `index-C88kfDZL.js` = a local build of 2118005 — the founder deployed). Next task per wave-12 result = the director's ceilings: lighting, wet rooms, near-slab frames, verandas, slab props.
+Baseline for the blind score: shot at HEAD 2118005 into `E:\dev\plotline-shots\wave13\base\` (runner `E:\dev\tmp\wave13\score\{shots.mjs,run-all.sh}`, `bash run-all.sh <outdir>`, vite :5260 via `node_modules/.score13.vite.config.ts` — a config outside the repo cannot resolve `vite`).
+
+| Agent | Port | Scope | Status |
+|---|---|---|---|
+| light | 5261 | new `src/three/daylight.ts` (+ test): per-unit bake of window sky-visibility modulating env+hemi only, no leaks through walls; ENV/HEMI rebalance; blown marble; `render/context/materials.ts`, PlotlineScene room-geometry hookup | running |
+| views | 5262 | `src/viewer/{spawn,frame}.ts` + viewer.test: wet rooms show basin+mirror+WC, near-slab frames (a/c-bed-3, s-bed-2/4, sb-*), veranda views show the veranda | running |
+| props | 5263 | labels follow resized size (three/furniture.ts), dining chairs follow a resized table (one shared fn, viewer Arrange + Studio F), closet garments + cot blanket not slabs (procedural.ts those functions only) | running |
+
+Merge order: props → views → light. Then candidate shots → `wave13\score\`, blind Fable score vs `wave13\base\`, HANDOFF, push, deploy.
+
 ## SESSION 8 — 2026-09-26 22:45 → (Fable 5.1): resumed after session 7 died mid-wave
 
 Founder 22:45: "resume from the handoff; do not use C: for anything, everything moved to E:". Session 7 was killed (C: full) with six Opus agents mid-task; their worktrees survived. Done so far:
