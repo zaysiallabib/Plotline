@@ -41,6 +41,19 @@ Then open a NEW terminal (so the env vars apply) before running `claude`. If a s
 Session ritual: each wave ends with (1) this file updated, (2) production redeployed and checked in a real browser.
 Manager model: Fable 5.1 by default (sessions 3–4 ran on Opus 5.5 by the founder's /model choice); every coding agent uses `model: "opus"` (Opus 5.5), art direction `model: "fable"`, easy mechanical tasks `model: "sonnet"`.
 
+## WAVE 12 — launched 2026-09-27 ~10:30 (session 10, Fable 5.1 manager, four Opus 5.5 agents on worktrees)
+
+Founder 10:20 (after the wave-11 result): "(1) take care of the trees [= the cardboard planter foliage] if it helps; (2) separate normal doors from sliding doors — I cannot move the veranda chairs, 'Blocks the door'; (3) move furniture from inside the walk view in real time (TV to another wall, fan, chair, sofa) and drag corners to make cupboard / fridge / shelf bigger, smaller, taller, shorter." Manager's plain-language read accepted with the defaults: **Arrange button staff-only (never on buyer links); only code-built (procedural) pieces resize, scanned glTF models move/turn only; saved in the browser, shared by viewer and Studio.** Recorded in CLAUDE.md Decisions. Shared contract added by the manager before launch: `FurniturePlacement.sizeM?: {x, y, z}` (types.ts).
+
+| Agent | Port | Scope | Status |
+|---|---|---|---|
+| planter | 5251 | `procedural.ts` planter_bed only (+ meta, new CC0 foliage asset ≤ 3 MB, MANIFEST append) | running |
+| sliders | 5252 | core `OpeningKind` gains `'slider'` (plan first) + every consumer (openings.ts, presets buildSides, frame.ts swings, spawn, Studio panel/model/draw/snap), migrate the 5 unit JSONs | running |
+| arrange | 5253 | new `src/viewer/arrange.ts` + tests, `PlotlineScene.ts` (select/drag/gizmo), `ViewerApp.tsx` + `Hud.tsx` (Arrange button, staff-only), layout persistence shared with the Studio (`StudioApp.tsx` load/save block only) | running |
+| resize | 5254 | honour `sizeM`: `kit.ts` `placementSize()`, `three/furniture.ts`, resizable procedural builders (wardrobes, closet units, kitchen tall/base runs, fridge, shelves) in `procedural.ts` (not planter_bed), size users (presets footprint, context.ts shadows, spawn footprintDist, `studio/furniture.ts` sizeOf), Studio panel W/D/H fields | running |
+
+Scratch `E:\dev\tmp\wave12\<agent>\`, shots `E:\dev\plotline-shots\wave12\<agent>\`. Merge order: sliders → resize → arrange → planter. No full blind score this wave (features, not look); the planter agent reports veranda before/after itself.
+
 ## WAVE 11 RESULT — merged, shot, blind-scored 2026-09-27 (session 10). NOT DEPLOYED: the founder runs `npx vercel --prod --yes` (auto-mode denied it this session)
 
 **Code:** `feat/phase-0` = all six wave-11 branches merged + turf wiring (386dbbe) + HANDOFF; **262 tests, tsc + `npm run build` green, pushed.** Worktrees and `worktree-agent-*` branches removed (each proven merged first). Live link is still wave 10 (81b7b67) until the founder deploys.

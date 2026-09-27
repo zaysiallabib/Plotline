@@ -120,6 +120,11 @@ export interface FurniturePlacement {
   y: number
   rotationDeg: number // clockwise in plan space, 0 = asset's front faces +y
   scale?: number
+  /**
+   * Per-axis size override in metres (x width, y height, z depth), set by Arrange / the Studio when a resizable
+   * (procedural) piece is stretched. Absent = the kit size × scale. Scanned glTF models are never resized.
+   */
+  sizeM?: { x: number; y: number; z: number }
 }
 
 export interface Unit {

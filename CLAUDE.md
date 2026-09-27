@@ -30,6 +30,13 @@ Docs/PRODUCT_PHILOSOPHY.md.
   BTI). `Demo drawings/Sheltech/` (added 2026-09-26) is a second developer's
   tower — basements, ground, levels 1–6, rooftop; two ±2736 sft flats per
   level — and is the real "different plan" system test.
+- **Furniture arranging (founder, 2026-09-27, extends the grid-move exception):**
+  staff can move, turn and (code-built pieces only) resize furniture in the
+  Studio (tool F) AND in the 3D walk view via an "Arrange" button that buyer
+  links never show. Same rules everywhere: 1 ft grid, wall snap, refuse
+  overlaps / blocked doors. Saved in the browser (Phase 0), shared by viewer
+  and Studio. Buyers still only look, choose finishes and comment.
+  Sliding doors are their own opening kind.
 - Level templates (ground / basement / typical floor / rooftop, each with
   its own furnishing rules) are parked until the living floors are done
   (founder, 2026-09-26).
@@ -93,3 +100,5 @@ public/assets/{models,textures,hdri}/ + MANIFEST.md (licenses)
 - Don't add abstractions, frameworks, or "hireability" layers speculatively.
 - No drag-and-drop furniture placement editor in the first 6 weeks — per-room
   presets + the per-unit JSON are the mechanism until paying customers demand more.
+  Exception: the founder's staff-only arranging (Decisions, 2026-09-27) — nothing
+  beyond move / turn / resize of existing pieces (no catalog, no adding) without asking.
