@@ -1117,11 +1117,11 @@ function planterBed(id: string): THREE.Object3D[] {
     const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)))
     return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
   }
-  // mound: domed clumps every ~0.34 m; 0.26 m tall away from the parapets, rising to ~0.66 m against them, except
+  // mound: domed clumps every ~0.25 m (a narrow strip still gets a row); 0.26 m tall away from the parapets, rising to ~0.66 m against them, except
   // within 0.4 m of an inner side (by a curb the veranda's floor, chairs and pots stay in view)
   const xs = soilPoly.map((p) => p.x)
   const ys = soilPoly.map((p) => p.y)
-  const step = 0.34
+  const step = 0.25
   for (let x = Math.min(...xs) + step / 2, i = 0; x < Math.max(...xs); x += step, i++)
     for (let y = Math.min(...ys) + step / 2, j = 0; y < Math.max(...ys); y += step, j++) {
       const p = { x: x + step * 0.7 * (rnd(i, j) - 0.5), y: y + step * 0.7 * (rnd(j, i) - 0.5) }
@@ -1130,7 +1130,7 @@ function planterBed(id: string): THREE.Object3D[] {
       const dIn = Math.min(Infinity, ...inner.map((e) => segDist(p, e.a, e.b)))
       const t = Math.max(0, 1 - dOut / 0.75) ** 2 * Math.min(1, dIn / 0.4)
       const H = (0.26 + 0.4 * t) * (0.85 + 0.3 * rnd(i + 2, j))
-      const count = 11 + Math.round(8 * t + 4 * rnd(j, i + 4))
+      const count = 6 + Math.round(4 * t + 3 * rnd(j, i + 4))
       for (let k = 0; k < count; k++) {
         const a = 2 * Math.PI * (k / count + 0.3 * rnd(k, i + j))
         const f = 0.2 + 0.8 * rnd(i + k, j + 1)
@@ -1140,7 +1140,10 @@ function planterBed(id: string): THREE.Object3D[] {
         if (!pointInPolygon({ x: at.x, y: at.z }, poly)) continue
         // blades held out from the clump, the high ones nearer level, the low ones tipped up; faces to the sky
         const pitch = -0.2 + 0.8 * rnd(k, j + 3) - 0.3 * f
-        leaf(at, dir(a + 0.5 * (rnd(i, k + 5) - 0.5), pitch), UP, 0.6 * (rnd(k + 6, i) - 0.5), 0.12 + 0.08 * rnd(i + 7, k), 0.6 + 0.35 * f)
+        const d = dir(a + 0.5 * (rnd(i, k + 5) - 0.5), pitch)
+        const len = 0.12 + 0.08 * rnd(i + 7, k)
+        if (!pointInPolygon({ x: at.x + d.x * len, y: at.z + d.z * len }, poly)) continue // into a wall, or over the curb
+        leaf(at, d, UP, 0.6 * (rnd(k + 6, i) - 0.5), len, 0.6 + 0.35 * f)
       }
     }
   // trailing strands over the outer parapets
