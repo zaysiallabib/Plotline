@@ -13,13 +13,15 @@
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, openingDefaults } from '../studio/model'
-import { lineInk } from './raster'
+import { edt, lineInk, threshold } from './raster'
 import { normaliseName } from './text'
-import { circle3, segPieces, traceWalls } from './walls'
+import { circle3, inkThreshold, segPieces, traceWalls, wallHalfWidth } from './walls'
 import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
+  /** erase the read text's thin strokes from the raster before tracing walls */
+  eraseText: true,
   /** walls within this many degrees of the sheet's dominant axes are snapped onto them; others keep their angle */
   axisSnapDeg: 5,
   /** parallel axis walls whose centre lines differ by less than this are put on one line */
@@ -60,7 +62,7 @@ export const KNOBS = {
   /** sum of a flat's centreline faces ÷ its printed area (walls + common share are in the printed figure) */
   areaShare: 0.88,
   /** … and an area-label scale is used only within this share of the wall-thickness prior */
-  areaTrust: 0.1,
+  areaTrust: 0.05,
 }
 
 type Pt = { x: number; y: number }
@@ -573,6 +575,37 @@ function mergeCollinear(vertices: Vertex[], walls: GWall[]): { vertices: Vertex[
   return { vertices: vertices.filter((v) => V.has(v.id)), walls: ws }
 }
 
+/**
+ * The raster with the read text's strokes erased: inside every plausible text box, ink thinner than a wall core
+ * turns to paper; wall ink running through the box stays (it is thicker). Garbage boxes (a read of a hatch or a
+ * drawing, taller than a few text lines) are left alone.
+ */
+export function eraseText(gray: Gray, text: TextTrace): Gray {
+  // read items only (room names, sizes, areas): an 'other' box is often a garbage read over a drawing, glazing included
+  const items = text.items.filter((it) => it.kind !== 'other' && it.box.w > 0 && it.box.h > 0)
+  if (!items.length) return gray
+  const hs = items.filter((it) => it.kind !== 'other').map((it) => it.box.h).sort((a, b) => a - b)
+  const lineH = text.glyphPx ?? (hs.length ? hs[hs.length >> 1] / 2 : 12)
+  const { width: w, height: h } = gray
+  const ink = threshold(gray, inkThreshold(gray, {}))
+  const dt = edt(ink, w, h)
+  const half = wallHalfWidth(dt, w, h)
+  // on a low-res sheet a partition is as thin as a letter stroke: erasing thin ink would erase the partitions too
+  if (half < 3) return gray
+  const rCore = 0.7 * half
+  const out = new Uint8Array(gray.data)
+  for (const it of items) {
+    const b = it.box
+    if (b.h > 5 * lineH || b.w > 40 * lineH) continue
+    for (let y = Math.max(0, Math.floor(b.y) - 1); y <= Math.min(h - 1, Math.ceil(b.y + b.h) + 1); y++)
+      for (let x = Math.max(0, Math.floor(b.x) - 1); x <= Math.min(w - 1, Math.ceil(b.x + b.w) + 1); x++) {
+        const i = y * w + x
+        if (ink[i] && dt[i] < rCore) out[i] = 255
+      }
+  }
+  return { width: w, height: h, data: out }
+}
+
 // ───────────────────────────────────────────────────────────────── the draft
 
 interface Draft {
@@ -866,7 +899,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const t0 = performance.now()
   const review: ReviewItem[] = []
   const text = inputs.text ?? { items: [] }
-  let trace = inputs.walls ?? traceWalls(gray)
+  // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
+  const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
+  let trace = inputs.walls ?? traceWalls(plan)
   const ink = inkMasks(gray)
   opts.onProgress?.('scale', 0.5)
 
@@ -934,7 +969,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   // re-trace at the scale's wall width when it moved (the wall stage's own width guess is its weakest link)
   const halfPx = (PARTITION_M / 2) * pxPerM
-  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(gray, { halfPx })
+  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(plan, { halfPx })
   let hints = inputs.hints ?? null
   try {
     hints ??= inputs.findHints?.(pxPerM, trace) ?? null
@@ -1176,9 +1211,8 @@ const HINTS = import.meta.glob<HintsModule>('./hints.ts')
 
 export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceResult> {
   const review: ReviewItem[] = []
-  opts.onProgress?.('walls', 0)
-  const walls = traceWalls(gray)
-  opts.onProgress?.('text', 0.15)
+  // text first (founder): its strokes are erased before the walls are traced (solveTraces)
+  opts.onProgress?.('text', 0)
   let text: TextTrace = { items: [] }
   try {
     const { readText } = await import('./text')
@@ -1190,8 +1224,8 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   const load = HINTS['./hints.ts']
   const m: HintsModule = load ? await load().catch(() => ({})) : {}
   let hints: HintTrace | null = null
+  opts.onProgress?.('walls', 0.4)
   const inputs: SolveInputs = {
-    walls,
     text,
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
