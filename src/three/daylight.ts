@@ -31,15 +31,20 @@ const GROUND = 0.3
 /** mean interior albedo: bounce = ρ / (1 − ρ) × the room's mean direct light */
 const RHO = 0.5
 /**
- * factor = within × between. within = (E / the room's median)^γ: the eye (and a photo) compresses a real room's ≈ 10 : 1
- * falloff from the window. between = (room median / the unit's)^γb, much flatter: the eye adapts room to room (a
- * photographer exposes each room), so a dining area lit only through the living room's passage — E ≈ 1/10 of the
- * living's — reads dimmer, not black. Both per surface class (floor / wall / ceiling), so each class keeps today's tuned mean.
+ * factor = within × between. within = (E / the room's PIVOT texel)^γ: the eye (and a photo) compresses a real room's
+ * ≈ 10 : 1 falloff from the window. between = (that texel / the habitable rooms' median)^γb, much flatter: the eye adapts
+ * room to room (a photographer exposes each room), so a dining area lit only through the living room's passage — E ≈ 1/10
+ * of the living's — reads dimmer, not black; never above 1 (a best-lit room keeps today's look, it doesn't whiten).
+ * Both per surface class (floor / wall / ceiling), so each class keeps today's tuned level.
+ * Tuned on type-a/-b at 15:30 (sRGB, 1280 × 720): between ≤ 1.1 lifted the long type-b living's window-facing wall and
+ * ceiling into Neutral's knee (213 → 234, flat again); pivot 0.6 / γ 0.8 or normalising the room's MEAN to 1 sank the type-a
+ * living's walls 213 → 182–197; this set keeps mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
  */
-const GAMMA = 0.7
-const WITHIN = [0.55, 1.5]
+const GAMMA = 0.75
+const PIVOT = 0.5
+const WITHIN = [0.65, 1.35]
 const GAMMA_B = 0.25
-const BETWEEN = [0.65, 1.3]
+const BETWEEN = [0.75, 1]
 export const LO = WITHIN[0] * BETWEEN[0]
 export const HI = WITHIN[1] * BETWEEN[1]
 /** apertures are cut into strips this wide, each occlusion-tested on its own (an L-shaped room sees part of a window) */
@@ -320,14 +325,14 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
     if (e.some(Number.isNaN)) e.fill(m2.get(j.room.id) ?? 0) // a room too thin for any texel centre
   })
 
-  // medians per room and class, and per class over the habitable rooms' medians (factor 1 = today's tuned look)
-  const median = (v: number[]) => (v.sort((a, b) => a - b), v.length ? v[v.length >> 1] : 0)
+  // per room and class: the PIVOT texel; per class: the habitable rooms' median of those
+  const median = (v: number[], q = 0.5) => (v.sort((a, b) => a - b), v.length ? v[Math.floor(q * (v.length - 1))] : 0)
   const roomMed = new Map<string, number>()
   for (const r of rooms) {
     for (const c of [0, 1, 2]) {
       const v: number[] = []
       jobs.forEach((j, k) => j.cls === c && j.room === r && pts[k].forEach((p, i) => p && v.push(E[k][i])))
-      roomMed.set(`${r.id}:${c}`, median(v))
+      roomMed.set(`${r.id}:${c}`, median(v, PIVOT))
     }
   }
   const med = [0, 1, 2].map((c) => median(rooms.filter((r) => HABITABLE.includes(r.kind)).map((r) => roomMed.get(`${r.id}:${c}`)!)))
@@ -401,7 +406,7 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
       `#include <aomap_fragment>
       float dayK = mix(1.0, ${RANGE.toFixed(1)} * texture2D(dayMap, vDayUv).r, dayMix);
       reflectedLight.indirectDiffuse *= dayK;
-      reflectedLight.indirectSpecular *= dayK;`,
+      reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out`,
     )
   }
   m.customProgramCacheKey = () => 'daylit'

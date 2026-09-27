@@ -33,7 +33,9 @@ export const TEXTURES: Record<string, TextureSet> = {
   },
   // white polished marble, grey veining, seamless slab. No normal map: polished stone has no relief,
   // and at this gloss the map's pitting mirrored the HDRI as a crumpled-foil look.
-  marble_floor_white: ACG('marble_floor_white', 'White marble', 'Marble001', 2.0, { normal: false }),
+  // tint: the map averages 0.72 linear; at 15:30 a sun patch (≈ 1.77 × albedo + the window-zone fill) mapped to sRGB ≥ 250 and the veining
+  // vanished (Neutral compresses 25 : 1 there). × #ebebeb (0.83) = 0.6, level with the warm-white paint (0.59); #e6e6e6 (0.57) read grey in shade (sRGB 145–170).
+  marble_floor_white: { ...ACG('marble_floor_white', 'White marble', 'Marble001', 2.0, { normal: false }), tint: '#ebebeb' },
   // glossy white porcelain, thin grey grout; the map is 8 × 8 tiles → 600 × 600 mm tiles
   // tint: the map averages 0.93 linear (84 % of texels ≥ 250); × #d7d7d7 = 0.63, just above the warm-white paint (0.59).
   // At #ebebeb (0.77) a white bath was one near-white sheet at 15:30 (tile walls sRGB 231, painted walls 212).
