@@ -4,17 +4,36 @@
  * and door-leaf swing side.
  * No WebGL: nothing here instantiates PlotlineScene.
  */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import * as THREE from 'three'
 import typeA from '../data/units/type-a.json'
 import type { Opening, Unit, Wall } from '../core'
-import { KIT, placementSize, resizeLimits } from '../furnish/kit'
+import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
 import { buildOpening } from './openings'
 import { clampSun, evenBearings } from './PlotlineScene'
+
+// No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
+// and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
+vi.mock('three/addons/loaders/GLTFLoader.js', async () => {
+  const T = await import('three')
+  const { KIT: kit, kitAsset: asset } = await import('../furnish/kit')
+  class GLTFLoader {
+    async loadAsync(url: string) {
+      const { sizeM: s, frontAxis } = asset(Object.values(kit).find((a) => a.url === url)!.id)!
+      const side = frontAxis.endsWith('x')
+      const m = new T.Mesh(new T.BoxGeometry(side ? s.z : s.x, s.y, side ? s.x : s.z))
+      m.position.set(0.3, 0.2, -0.1)
+      const scene = new T.Group()
+      scene.add(m)
+      return { scene }
+    }
+  }
+  return { GLTFLoader }
+})
 
 // TextureLoader → ImageLoader wants a DOM element; the tests never await a load.
 ;(globalThis as { document?: unknown }).document ??= { createElementNS: () => ({ addEventListener() {}, removeEventListener() {} }) }
@@ -88,20 +107,32 @@ describe('furniture', () => {
 
 describe('resize (sizeM)', () => {
   const XYZ = ['x', 'y', 'z'] as const
-  const resizable = Object.keys(PROCEDURAL).filter((id) => resizeLimits(id))
+  const resizable = Object.keys(PROCEDURAL).filter((id) => rebuildsAtSize(id))
 
-  test('scanned glTF models never resize; each resizable piece has a sane range around its kit size', () => {
-    for (const id of Object.keys(KIT)) expect(resizeLimits(id), id).toBeNull()
-    expect(resizable).toEqual(expect.arrayContaining(['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'fridge', 'desk_oak', 'dining_table', 'rug_rect_large', 'bed_queen']))
-    for (const id of resizable) {
-      const { min, max } = resizeLimits(id)!
+  test('every kit asset but structure resizes, in a sane range around its kit size; scans scale 0.7–1.4×, flat pieces 0.5–2×', () => {
+    const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)]
+    expect(all.filter((id) => !resizeLimits(id))).toEqual(Object.keys(PROCEDURAL).filter((id) => id.startsWith('stair_')))
+    expect(resizable).toEqual(expect.arrayContaining(['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'fridge', 'desk_oak', 'dining_table', 'rug_rect_large', 'bed_queen', 'sofa_3seat', 'cot']))
+    for (const id of all.filter((id) => resizeLimits(id))) {
+      const { min, max, lock } = resizeLimits(id)!
+      const kit = kitAsset(id)!.sizeM
+      expect(XYZ.some((k) => max[k] > min[k]), id).toBe(true)
       for (const k of XYZ) {
         expect(min[k], `${id}.${k}`).toBeGreaterThan(0)
-        expect(min[k], `${id}.${k}`).toBeLessThanOrEqual(PROCEDURAL[id].sizeM[k])
-        expect(max[k], `${id}.${k}`).toBeGreaterThanOrEqual(PROCEDURAL[id].sizeM[k])
+        expect(min[k], `${id}.${k}`).toBeLessThanOrEqual(kit[k] + 1e-9)
+        expect(max[k], `${id}.${k}`).toBeGreaterThanOrEqual(kit[k] - 1e-9)
         expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(4)
+        if (rebuildsAtSize(id)) continue
+        const flat = ['art', 'tv'].includes(objectKind(kitAsset(id)!)) || id === 'rug_round'
+        expect(min[k] / kit[k], `${id}.${k}`).toBeGreaterThanOrEqual(flat ? 0.5 - 1e-9 : 0.7 - 1e-9)
+        expect(max[k] / kit[k], `${id}.${k}`).toBeLessThanOrEqual(flat ? 2 + 1e-9 : 1.4 + 1e-9)
       }
+      // locked axes share one range of factors
+      if (lock) expect(new Set(lock.map((k) => (max[k] / kit[k]).toFixed(6))).size, id).toBe(1)
     }
+    expect(resizeLimits('potted_plant_01')!.lock).toEqual(['x', 'y', 'z'])
+    expect(resizeLimits('sofa_02')!.lock).toBeUndefined()
+    expect(resizeLimits('tv_55')!.lock).toEqual(['x', 'y'])
   })
 
   test('placementSize: sizeM wins, else kit size × scale', () => {
@@ -145,6 +176,32 @@ describe('resize (sizeM)', () => {
       const g = await buildFurniture({ id: 'p', assetId, roomId: 'r', x: 0, y: 0, rotationDeg: 0, scale: 1.5, sizeM })
       const s = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3())
       for (const k of XYZ) expect(Math.abs(s[k] - sizeM[k]), `${assetId}.${k}`).toBeLessThan(0.01)
+    }
+  })
+
+  test('a resized scan or scaled builder fills its sizeM (±1 cm): grounded, on its mountY, centred at 1.5 m on the wall, top at the ceiling', async () => {
+    const scaled = Object.keys({ ...KIT, ...PROCEDURAL }).filter((id) => resizeLimits(id) && !rebuildsAtSize(id))
+    expect(scaled).toEqual(expect.arrayContaining(['sofa_02', 'potted_plant_01', 'wooden_display_shelves_01', 'ceiling_fan', 'tv_55', 'art_sea_l']))
+    const boxOf = async (assetId: string, sizeM?: { x: number; y: number; z: number }) => {
+      const g = await buildFurniture({ id: 'p', assetId, roomId: 'r', x: 2, y: 3, rotationDeg: 90, sizeM }, 3)
+      g.rotation.y = 0 // measured in the piece's own frame
+      g.updateMatrixWorld(true)
+      return new THREE.Box3().setFromObject(g)
+    }
+    for (const id of scaled) {
+      const { min, max } = resizeLimits(id)!
+      const a = kitAsset(id)!
+      const s0 = (await boxOf(id)).getSize(new THREE.Vector3()) // as built at its kit size (a scan's = its kit size, below)
+      if (KIT[id]) for (const k of XYZ) expect(Math.abs(s0[k] - a.sizeM[k]), `${id} ${k}`).toBeLessThan(0.01)
+      for (const want of [min, max]) {
+        const b = await boxOf(id, want)
+        const s = b.getSize(new THREE.Vector3())
+        for (const k of XYZ) expect(Math.abs(s[k] - (s0[k] * want[k]) / a.sizeM[k]), `${id} ${k}`).toBeLessThan(0.01)
+        const y0 = a.mountY ?? (a.mount === 'ceiling' ? 3 - s.y : a.mount === 'wall' ? 1.5 - s.y / 2 : 0)
+        expect(b.min.y, id).toBeCloseTo(y0, 3)
+        expect(Math.abs(b.min.x + b.max.x - 4), id).toBeLessThan(0.01)
+        expect(Math.abs(b.min.z + b.max.z - 6), id).toBeLessThan(0.01)
+      }
     }
   })
 })

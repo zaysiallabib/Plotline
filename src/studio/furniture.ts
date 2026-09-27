@@ -1,7 +1,7 @@
 /**
  * Studio furniture layer (tool F): grid-snapped move / 90° rotate of the unit's placements. Pure, Vitest-covered.
  * The founder's exception to "no placement editor" (CLAUDE.md, 2026-09-27): 1 ft grid, wall snap, refuse overlaps and
- * door / entrance zones; code-built pieces also resize within their kit limits; pieces may be deleted. A dining table
+ * door / entrance zones; pieces resize within their kit limits (kit.ts resizeLimits); pieces may be deleted. A dining table
  * carries its chairs, and a resized one gets as many as its new size seats. Nothing else is added, nothing placed free.
  * The viewer's Arrange mode (src/viewer/arrange.ts) runs the same rules.
  *
@@ -72,8 +72,7 @@ export function layerOf(p: FurniturePlacement): 0 | 1 | 2 | 3 {
 }
 const band = (p: FurniturePlacement): [number, number] => {
   const a = assetOf(p)
-  const y0 = a ? heightRange(a)[0] : 0
-  return [y0, y0 + sizeOf(p).y]
+  return a ? heightRange({ ...a, sizeM: sizeOf(p) }) : [0, sizeOf(p).y] // a resized wall piece stays centred at 1.5 m
 }
 
 /** Rugs only stop rugs, ceiling fixtures stop nothing, the rest when their heights overlap (a frame above a sofa is fine), as presets. */
@@ -318,7 +317,7 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
 
 /** Resized sizes land on this step (m). */
 export const SIZE_STEP_M = 0.05
-/** The axes a piece may be resized along (x width, y height, z depth): none for scans; min = max fixes an axis. */
+/** The axes a piece may be resized along (x width, y height, z depth): none for structure; min = max fixes an axis. */
 export function resizeAxes(assetId: string): ('x' | 'y' | 'z')[] {
   const l = resizeLimits(assetId)
   return l ? (['x', 'z', 'y'] as const).filter((k) => l.max[k] > l.min[k]) : []
@@ -337,6 +336,13 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   const fit = (k: 'x' | 'y' | 'z') => Math.min(lim.max[k], Math.max(lim.min[k], Math.round(size[k] / SIZE_STEP_M) / (1 / SIZE_STEP_M))) // n / 20: 0.6, not 0.6000000000000001
   const s = { x: fit('x'), y: fit('y'), z: fit('z') }
   const old = sizeOf(p)
+  if (lim.lock) {
+    // proportional (a plant, a chair, a print): the axis changed most sets the scale, the other locked axes follow it
+    const kit = assetOf(p)!.sizeM
+    const k = lim.lock.reduce((a, b) => (Math.abs(size[b] / old[b] - 1) > Math.abs(size[a] / old[a] - 1) ? b : a))
+    const f = s[k] / kit[k]
+    for (const a of lim.lock) if (a !== k) s[a] = Math.round(kit[a] * f * 1000) / 1000
+  }
   const t = (p.rotationDeg * Math.PI) / 180
   const du = (grow.x * (s.x - old.x)) / 2 // along local +x
   const dv = (grow.z * (s.z - old.z)) / 2 // along local +y, the front

@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { planterAsset, PROCEDURAL, tableSeats, wardrobeDoors } from './procedural.meta'
+import { ART, PLANTER, planterAsset, PROCEDURAL, tableSeats, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -133,6 +133,8 @@ const doors = (w: number) => (wardrobeDoors(w) === 1 ? '1 door' : `${wardrobeDoo
 const closet = (s: Size3) => `Open closet unit: rail, shelf, clothes (${dec(s.x)} m)`
 const rug = (s: Size3) => `Wool rug ${dec(s.x)} × ${dec(s.z)} m`
 /** Mattress = width − the headboard's 16 cm. */
+/** The size a kit label states ("(0.6 m)", "Ø38 cm", '55"'), restated at the built size. */
+const restate = (id: string, from: string, to: (s: Size3) => string) => [id, (s: Size3) => kitAsset(id)!.label.replace(from, to(s))] as const
 const bed = (s: Size3) => `${s.x - 0.16 < 1.1 ? 'Single' : s.x - 0.16 < 1.45 ? 'Double' : s.x - 0.16 < 1.7 ? 'Queen' : 'King'} bed, upholstered`
 /** Labels that name a size, rebuilt from the size the piece is built at (at its kit size = the kit label, tested). */
 const SIZED: Record<string, (s: Size3) => string> = {
@@ -145,25 +147,37 @@ const SIZED: Record<string, (s: Size3) => string> = {
   rug_rect_large: rug,
   rug_rect_small: rug,
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, bed])),
+  ...Object.fromEntries(
+    [
+      ...['kitchen_counter', 'kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'kitchen_hood'].map((id) => restate(id, '0.6 m', (s) => `${dec(s.x)} m`)),
+      restate('round_wooden_table_01', '1.4 m', (s) => `${dec(s.x)} m`),
+      restate('rug_round', '2.0 m', (s) => `${dec(s.x)} m`),
+      restate('ceiling_light', '38 cm', (s) => `${Math.round(s.x * 100)} cm`),
+      restate('ceiling_light_large', '50 cm', (s) => `${Math.round(s.x * 100)} cm`),
+      ...['tv_55', 'tv_55_wall'].map((id) => restate(id, '55"', (s) => `${Math.round((55 * s.x) / 1.23)}"`)),
+    ],
+  ),
 }
 /** What a placement is called: a resized wardrobe says the doors it was built with, a table the seats it takes. */
 export const placementLabel = (p: { assetId: string; scale?: number; sizeM?: Size3 }): string =>
   SIZED[p.assetId]?.(placementSize(p)) ?? kitAsset(p.assetId)?.label ?? p.assetId
 
-/**
- * Size limits (m) for pieces that may be stretched: procedural builders that rebuild properly at any size within
- * them (a wider wardrobe gets another door, not stretched handles). null = move / turn only (every scanned glTF).
- * min = max on an axis: that axis is fixed (a table's height, a rug's pile, a larder's depth in the kitchen run).
- * The only shelf (wooden_display_shelves_01) is a scan: move / turn only.
- */
+type Axis = 'x' | 'y' | 'z'
+/** min / max size (m); min = max fixes an axis; `lock`ed axes keep their proportions (one drives them all). */
+export type ResizeLimits = { min: Size3; max: Size3; lock?: Axis[] }
 const lim = (min: [number, number, number], max: [number, number, number]) => ({ min: { x: min[0], y: min[1], z: min[2] }, max: { x: max[0], y: max[1], z: max[2] } })
+/**
+ * Procedural builders that REBUILD properly at any size within these limits (a wider wardrobe gets another door, not
+ * stretched handles; a longer sofa wider cushions): src/three/furniture.ts builds them at the placement's sizeM.
+ */
 // 0.9 m (two 0.45 m doors) to 3.0 m (five 0.6 m doors); up to 2.6 m tall under a 3.0 m ceiling
 const WARDROBE = lim([0.9, 1.8, 0.5], [3.0, 2.6, 0.65])
 const CLOSET = lim([0.6, 1.8, 0.5], [3.0, 2.6, 0.65])
 const RUG = lim([1.2, 0.012, 0.8], [4.0, 0.012, 3.0])
 // headboard width: a 0.9 m single mattress to a 2.0 m king (bed_* = mattress + 0.16)
 const BED = lim([1.06, 1.15, 2.16], [2.16, 1.15, 2.16])
-const RESIZE: Record<string, { min: Size3; max: Size3 }> = {
+const COT = lim([1.6, 0.58, 0.6], [2.0, 0.58, 0.9])
+const REBUILD: Record<string, ResizeLimits> = {
   wardrobe_tall: WARDROBE,
   wardrobe_2door: WARDROBE,
   closet_rail: CLOSET,
@@ -174,6 +188,49 @@ const RESIZE: Record<string, { min: Size3; max: Size3 }> = {
   dining_table: lim([0.9, 0.75, 0.75], [2.6, 0.75, 1.2]), // 2 to 10 seats
   rug_rect_large: RUG,
   rug_rect_small: RUG,
+  sofa_3seat: lim([2.05, 0.82, 0.92], [2.6, 0.82, 0.92]), // stays 3 seats (procedural.ts sofa: 3 over 2 m)
+  sofa_2seat: lim([1.3, 0.82, 0.92], [2.0, 0.82, 0.92]),
+  cot: COT,
+  cot_s: COT,
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, BED])),
 }
-export const resizeLimits = (assetId: string): { min: Size3; max: Size3 } | null => RESIZE[assetId] ?? null
+/** Built at its sizeM (REBUILD), not built at its kit size and scaled. */
+export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD
+
+/**
+ * Every other piece (every Poly Haven scan, the other builders) SCALES its mesh by sizeM / kit size: [lo, hi] × its kit
+ * size along the listed axes, the rest fixed; per axis where a stretch still looks right, else `lock`ed (proportions).
+ * - sofa, ottoman, TV unit, desk, kitchen / bath modules, hook rail: longer or shorter only, 0.75–1.25× (seat, worktop, basin heights hold)
+ * - shelves wider and taller 0.75–1.4×; the rectangular coffee table longer and deeper 0.75–1.25×; the shower tray 0.9–1.35×
+ * - plants, lamps, vases, fans, ceiling lights, the clock: uniform 0.7–1.4×
+ * - flat pieces, width and height together: art 0.5–2×, TV 0.6–1.5× (33–83"); a round rug's diameter 0.6–2×
+ * - the rest (chairs, armchairs, round tables, bedsides, cushions, appliances, toilet, basin, AC): uniform 0.85–1.15×, a seat can't rise far
+ * - structure (stairs, planter beds): move / turn only (null)
+ */
+type Rule = [axes: Axis[], lo: number, hi: number, lock?: true]
+const LONG: Rule = [['x'], 0.75, 1.25]
+const DECOR: Rule = [['x', 'y', 'z'], 0.7, 1.4, true]
+const ART_RULE: Rule = [['x', 'y'], 0.5, 2, true]
+const TV_RULE: Rule = [['x', 'y'], 0.6, 1.5, true]
+const PROP: Rule = [['x', 'y', 'z'], 0.85, 1.15, true]
+const each = (ids: string[], r: Rule) => Object.fromEntries(ids.map((id) => [id, r]))
+const SCALE: Record<string, Rule> = {
+  ...each(['sofa_02', 'ottoman_01', 'modern_wooden_cabinet', 'metal_office_desk', 'hook_rail', 'vanity'], LONG),
+  ...each(['kitchen_counter', 'kitchen_counter_styled', 'kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'kitchen_hood'], LONG),
+  wooden_display_shelves_01: [['x', 'y'], 0.75, 1.4],
+  modern_coffee_table_01: [['x', 'z'], 0.75, 1.25],
+  shower_screen: [['x', 'z'], 0.9, 1.35],
+  ...each(['modern_ceiling_lamp_01', 'potted_plant_01', 'potted_plant_02', 'potted_plant_04', 'ceramic_vase_01', 'ceiling_fan', 'wall_clock', 'ceiling_light', 'ceiling_light_large'], DECOR),
+  ...each(['hanging_picture_frame_01', ...ART], ART_RULE),
+  tv_55: TV_RULE,
+  tv_55_wall: TV_RULE,
+  rug_round: [['x', 'z'], 0.6, 2, true],
+}
+export function resizeLimits(assetId: string): ResizeLimits | null {
+  if (REBUILD[assetId]) return REBUILD[assetId]
+  const a = kitAsset(assetId)
+  if (!a || a.kind === 'stair' || assetId.startsWith(PLANTER)) return null
+  const [axes, lo, hi, lock] = SCALE[assetId] ?? PROP
+  const at = (k: number): Size3 => ({ ...a.sizeM, ...Object.fromEntries(axes.map((ax) => [ax, a.sizeM[ax] * k])) })
+  return { min: at(lo), max: at(hi), ...(lock ? { lock: axes } : {}) }
+}

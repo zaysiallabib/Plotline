@@ -19,7 +19,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
 import type { Room, Unit } from '../core'
-import { isCeilingLight, kitAsset } from '../furnish/kit'
+import { isCeilingLight, placementSize } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { dayMix, openToSky } from './daylight'
@@ -191,7 +191,7 @@ export class Look {
       if (!hung || this.lights.length >= MAX_ROOM_LIGHTS) continue
       const at = { x: hung.x, y: hung.y }
       // just under a flush diffuser; at the fan's light kit / the pendant's globe
-      const lightY = ceilingOf(room) - Math.max(0.12, 0.8 * (kitAsset(hung.assetId)?.sizeM.y ?? 0.5))
+      const lightY = ceilingOf(room) - Math.max(0.12, 0.8 * placementSize(hung).y)
       const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
