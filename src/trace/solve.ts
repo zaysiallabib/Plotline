@@ -39,6 +39,8 @@ export const KNOBS = {
   inkShare: 0.75,
   /** "a clear drawn line": this many grey levels darker than the paper around it (tile grids and hatching are fainter) */
   lineDelta: 40,
+  /** a single (not double) drawn line closes a room only from this long up, and only onto a wall's free end */
+  singleLineM: 1,
   /** an unevidenced bridge at least this wide becomes a passage opening (a door the wall stage did not see) */
   passageM: 0.45,
   /** dangling walls shorter than this are dropped */
@@ -51,6 +53,8 @@ export const KNOBS = {
   sizeTolM: 2 * 0.0254,
   /** faces bigger than this are never part of a flat (courtyards / the space between other flats) */
   maxRoomSqm: 90,
+  /** a click in an open area floods at most this much floor to find the rooms around it */
+  openFloodSqm: 50,
   /** faces smaller than this are closing artefacts: merged into a neighbour */
   sliverSqm: 0.3,
   /** sum of a flat's centreline faces ÷ its printed area (walls + common share are in the printed figure) */
@@ -314,13 +318,17 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
 }
 
 /**
- * Long straight double thin lines on the sheet's axes (px): glazing, window bands, railings — the wall stage drops them
- * (too thin, too light). Kept only when both ends touch a traced wall and the line is not a wall's own edge.
+ * Long straight thin lines on the sheet's axes (px): glazing, window bands, railings, light exterior outlines — the wall
+ * stage drops them (too thin, too light). Kept when both ends touch a traced wall and the line is not a wall's own edge;
+ * a single line (not a double) only when it is long and one end closes onto a wall's free end — a counter or wardrobe
+ * front runs between two walls' middles instead.
  * ponytail: axis-aligned sheets only (a rotated scan skips this); a Hough pass if rotated scans show up.
  */
 function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number): { a: Px; b: Px }[] {
   const minPx = 0.6 * k, bandPx = Math.max(3, 0.3 * k), touch = 0.3 * k
   const out: { a: Px; b: Px }[] = []
+  const ends = walls.flatMap((wl) => [wl.a, wl.b])
+  const freeEnds = ends.filter((p) => ends.filter((q) => d2(p, q) < 2).length === 1)
   for (const horiz of [true, false]) {
     const U = horiz ? w : h, N = horiz ? h : w
     const runs: { v: number; u0: number; u1: number }[] = []
@@ -350,12 +358,12 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
       const vs = [...new Set(band.map((r) => r.v))].sort((p, q) => p - q)
       let lines = 1
       for (let t = 1; t < vs.length; t++) if (vs[t] - vs[t - 1] >= 2) lines++
-      if (lines < 2) continue
       const med = (xs: number[]) => xs.sort((p, q) => p - q)[xs.length >> 1]
       const v = (vs[0] + vs[vs.length - 1]) / 2, u0 = med(band.map((r) => r.u0)), u1 = med(band.map((r) => r.u1))
       const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
       // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
       if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
+      if (lines < 2 && (d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
       let onWall = 0
       for (let t = 0; t < 10; t++) {
         const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
@@ -668,8 +676,9 @@ function openNeighbours(d: Draft, at: Pt, R = 9): Set<string> {
   const seen = new Uint8Array(n * n)
   const queue = [start]
   seen[start] = 1
-  while (queue.length) {
-    const i = queue.pop()!
+  // breadth first, at most openFloodSqm of floor: the open room fills first; what leaks on down a corridor stops early
+  for (let head = 0; head < queue.length && head < KNOBS.openFloodSqm / (cell * cell); head++) {
+    const i = queue[head]
     const x = i % n, y = (i / n) | 0
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const X = x + dx, Y = y + dy
