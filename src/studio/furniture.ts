@@ -1,7 +1,8 @@
 /**
  * Studio furniture layer (tool F): grid-snapped move / 90° rotate of the unit's placements. Pure, Vitest-covered.
  * The founder's exception to "no placement editor" (CLAUDE.md, 2026-09-27): 1 ft grid, wall snap, refuse overlaps and
- * door / entrance zones; code-built pieces also resize within their kit limits. Nothing is added, deleted or placed free.
+ * door / entrance zones; code-built pieces also resize within their kit limits; pieces may be deleted. A dining table
+ * carries its chairs, and a resized one gets as many as its new size seats. Nothing else is added, nothing placed free.
  * The viewer's Arrange mode (src/viewer/arrange.ts) runs the same rules.
  *
  * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
@@ -10,7 +11,8 @@
 import { pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, kitAsset, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
-import { GAP, doorClearZones, footprint, furnish, quadsOverlap } from '../furnish/presets'
+import { GAP, chairSpots, doorClearZones, footprint, furnish, quadsOverlap } from '../furnish/presets'
+import { tableSeats } from '../furnish/procedural.meta'
 
 export const GRID_M = 0.3048
 /** A footprint edge this close to a wall's inner face (or past it) goes flush. */
@@ -91,12 +93,56 @@ export function pieceAt(pieces: FurniturePlacement[], m: Pt): FurniturePlacement
   return under.sort((a, b) => layerOf(a) - layerOf(b) || area(a) - area(b))[0] ?? null
 }
 
-/** What rests on p and moves with it: cushions on a sofa, a TV on its unit, wall cabinets over a counter. */
+/** A dining table's chairs: the dining chairs of its room standing within 0.65 m of its edges (presets set them touching). */
+function chairsOf(pieces: FurniturePlacement[], p: FurniturePlacement): FurniturePlacement[] {
+  if (assetOf(p)?.category !== 'dining-table') return []
+  const s = sizeOf(p)
+  const reach = footprint(p, p.rotationDeg, { x: s.x + 1.3, z: s.z + 1.3 })
+  return pieces.filter((o) => !o.removed && o.roomId === p.roomId && assetOf(o)?.category === 'dining-chair' && pointInPolygon(o, reach))
+}
+
+/** What rests on p and moves with it: cushions on a sofa, a TV on its unit, wall cabinets over a counter; a dining table's chairs. */
 function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurniturePlacement[] {
   if (layerOf(p) !== 0) return []
   const q = pieceQuad(p)
   const top = band(p)[1]
-  return pieces.filter((o) => o.id !== p.id && !o.removed && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q))
+  return [...pieces.filter((o) => o.id !== p.id && !o.removed && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
+}
+
+/** A chair's refusal, said of the set it belongs to. */
+const chairWhy = (e: string | null): string | null => e && (e === 'Outside the room' ? 'No room for the chairs' : `A chair ${e[0].toLowerCase()}${e.slice(1)}`)
+
+/**
+ * A resized dining table's chairs laid again round its new size by presets' chairSpots: as many as before, plus as many
+ * as its capacity (tableSeats) grew, never more than it seats; while one has no room (a wall, a door, another piece),
+ * one fewer, as presets fall back. Chairs keep their ids (the nearest spot first), new ones copy the first and get
+ * `${tableId}:chair:<n>`, dropped ones become tombstones like a delete. A string = why not even one fits.
+ */
+function relayChairs(unit: Unit, room: Room | null, others: FurniturePlacement[], table: FurniturePlacement, chairs: FurniturePlacement[], was: { x: number }): FurniturePlacement[] | string {
+  const s = sizeOf(table)
+  const want = Math.min(tableSeats(s.x), chairs.length + Math.max(0, tableSeats(s.x) - tableSeats(was.x)))
+  const used = new Set([...others, ...chairs].map((o) => o.id))
+  let k = 0
+  const fresh = (): Id => {
+    while (used.has(`${table.id}:chair:${++k}`));
+    return `${table.id}:chair:${k}`
+  }
+  let why: string | null = null
+  for (let n = want; n >= 1; n--) {
+    const left = [...chairs]
+    const laid: FurniturePlacement[] = []
+    k = 0
+    for (const sp of chairSpots(table, table.rotationDeg, s, n, sizeOf(chairs[0]).z)) {
+      const i = left.reduce((b, c, j) => (Math.hypot(c.x - sp.c.x, c.y - sp.c.y) < Math.hypot(left[b].x - sp.c.x, left[b].y - sp.c.y) ? j : b), 0)
+      const from = left.length ? left.splice(i, 1)[0] : { ...chairs[0], id: fresh() }
+      const c = { ...from, x: sp.c.x, y: sp.c.y, rotationDeg: sp.rot, roomId: table.roomId }
+      why = whyNot(unit, room, [...others, table, ...laid], c)
+      if (why) break
+      laid.push(c)
+    }
+    if (!why) return [...laid, ...left.map((c) => ({ ...c, removed: true as const }))]
+  }
+  return chairWhy(why) ?? 'No room for the chairs'
 }
 
 /** The first door in walls[] order is the entrance: its span, ENTRY_DEPTH_M out from both faces of its wall. */
@@ -261,8 +307,10 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
     const y = c.y + dx * Math.sin(t) + dy * Math.cos(t)
     moved.set(r.id, { ...r, x, y, rotationDeg: norm(r.rotationDeg + rot - p.rotationDeg), roomId })
   }
-  // ponytail: riders are not checked themselves; they sit inside the piece's footprint, add checks if a rider ever overhangs
-  const error = whyNot(unit, room, pieces.filter((x) => !moved.has(x.id)), piece)
+  // ponytail: lifted riders are not checked themselves; they sit inside the piece's footprint, add checks if one ever overhangs
+  const others = pieces.filter((x) => !moved.has(x.id))
+  let error = whyNot(unit, room, others, piece)
+  for (const c of chairsOf(pieces, p)) error ??= chairWhy(whyNot(unit, room, others, moved.get(c.id)!)) // a table's chairs stand round it, not on it
   return { furniture: pieces.map((x) => moved.get(x.id) ?? x), piece, ids: [...moved.keys()], snapped, error }
 }
 
@@ -278,7 +326,7 @@ export function resizeAxes(assetId: string): ('x' | 'y' | 'z')[] {
  * Piece `id` resized to `size` (m; x width, y height, z depth): each axis on the 5 cm step, clamped to its kit limits
  * (resizeLimits; null = move / turn only → returns null). `grow` picks the face that moves per footprint axis (+1 the
  * +x / front face, −1 the other, 0 both halves): the opposite face stays. Then flush to a wall it nears, and refused on
- * the same rules as a move. What rests on it stays put.
+ * the same rules as a move. What rests on it stays put; a dining table's chairs are laid again round it (relayChairs).
  */
 export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, size: { x: number; y: number; z: number }, grow = { x: 0, z: 1 }): Move | null {
   const p = pieces.find((x) => x.id === id)
@@ -299,6 +347,13 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
     if (r.snapped) snapped = 'wall'
   }
   const piece = { ...p, x: c.x, y: c.y, sizeM: s }
-  const error = whyNot(unit, room, pieces.filter((x) => x.id !== id), piece)
-  return { furniture: pieces.map((x) => (x.id === id ? piece : x)), piece, ids: [id], snapped, error }
+  const chairs = chairsOf(pieces, p)
+  const others = pieces.filter((x) => x.id !== id && !chairs.includes(x))
+  let error = whyNot(unit, room, others, piece)
+  // a dining table's chairs are laid again round its new size
+  const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs, old) : []
+  if (typeof laid === 'string') error = laid
+  const moved = new Map<Id, FurniturePlacement>([[id, piece], ...(typeof laid === 'string' ? [] : laid.map((q) => [q.id, q] as const))])
+  const added = [...moved.values()].filter((q) => !pieces.some((x) => x.id === q.id))
+  return { furniture: [...pieces.map((x) => moved.get(x.id) ?? x), ...added], piece, ids: [...moved.keys()], snapped, error }
 }

@@ -350,7 +350,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       live.current = null
       if (!m) return
       if (!m.error) return settle(pushStep(steps.current, m.furniture), m.piece.id)
-      scene?.placePieces(m.ids.map((id) => pieceOf(id)!)) // springs back
+      scene?.placePieces(steps.current.pieces, true) // springs back (chairs a resize added go)
       showSel(pieceOf(m.piece.id))
       return showToast(m.error)
     }
@@ -361,7 +361,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
         : p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
     if (!next) return
     live.current = next
-    scene?.placePieces(next.furniture.filter((q) => next.ids.includes(q.id)))
+    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this drag added goes again
     showSel(next.piece, !!next.error)
   }
   useEffect(() => scene?.onArrange(onArrange))
