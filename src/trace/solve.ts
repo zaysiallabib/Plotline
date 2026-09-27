@@ -16,7 +16,7 @@ import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, openingDefaults } from '../stud
 import { lineInk } from './raster'
 import { normaliseName } from './text'
 import { circle3, segPieces, traceWalls } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, TextTrace, WallTrace } from './types'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -80,6 +80,10 @@ export interface SolveInputs {
   walls?: WallTrace
   text?: TextTrace
   hints?: HintTrace | null
+  /** hints.ts findHints bound to the sheet: called once the scale is solved (its own wall-based scale is its weak spot) */
+  findHints?: (pxPerM: number, walls: WallTrace) => HintTrace | null
+  /** hints.ts propagateByColour bound to the sheet: per room (sheet px) a hint for the unnamed ones, from same-fill named rooms */
+  propagate?: (rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -814,7 +818,6 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const t0 = performance.now()
   const review: ReviewItem[] = []
   const text = inputs.text ?? { items: [] }
-  const hints = inputs.hints ?? null
   let trace = inputs.walls ?? traceWalls(gray)
   const ink = inkMasks(gray)
   opts.onProgress?.('scale', 0.5)
@@ -878,6 +881,12 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // re-trace at the scale's wall width when it moved (the wall stage's own width guess is its weakest link)
   const halfPx = (PARTITION_M / 2) * pxPerM
   if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(gray, { halfPx })
+  let hints = inputs.hints ?? null
+  try {
+    hints ??= inputs.findHints?.(pxPerM, trace) ?? null
+  } catch {
+    hints = null // a hint stage failure never costs the draft
+  }
   opts.onProgress?.('graph', 0.7)
 
   // ── graph at the final scale, the flat, then its own origin
@@ -915,42 +924,68 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     const f = faceOf(toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
     if (f) labelsIn.set(f.id, [...(labelsIn.get(f.id) ?? []), it])
   }
-  const hintsIn = new Map<string, NonNullable<HintTrace>['hints']>()
+  const hintsIn = new Map<string, RoomHint[]>()
   for (const h of hints?.hints ?? []) {
     const f = faceOf(toM(h.at))
     if (f && h.kind) hintsIn.set(f.id, [...(hintsIn.get(f.id) ?? []), h])
+  }
+  /** the hints in a face vote (sum of conf); a basin / sink alone is weak — dining areas and kitchens draw them too */
+  const vote = (hs: RoomHint[]): RoomHint | null => {
+    const w = new Map<string, number>()
+    for (const h of hs) w.set(h.kind!, (w.get(h.kind!) ?? 0) + h.conf * (/basin|sink/.test(h.what ?? '') ? 0.4 : 1))
+    const best = [...w].sort((p, q) => q[1] - p[1])[0]
+    return best ? hs.filter((h) => h.kind === best[0]).sort((p, q) => q.conf - p.conf)[0] : null
   }
   const count = new Map<string, number>()
   const roomLabels: RoomLabel[] = []
   let labelled = 0
   const dimsOf = new Map<string, { aM: number; bM: number }>()
+  const kindOf = new Map<Room, RoomKind>()
+  const fromHint = (r: Room, h: RoomHint) => {
+    const kind = h.kind as RoomKind
+    kindOf.set(r, kind)
+    const n = (count.get(kind) ?? 0) + 1
+    count.set(kind, n)
+    const at = insidePoint(r, u, rooms)
+    const id = newId()
+    roomLabels.push({ id, name: h.green ? 'Planter' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
+    labelled++
+    review.push({ id: newId(), at, kind: 'low-confidence', message: `Named from the drawing (${h.what ?? h.source}) — check the name`, entityId: id })
+  }
+  const pending: Room[] = []
   for (const r of rooms) {
     const items = (labelsIn.get(r.id) ?? []).sort((p, q) => Number(!!q.dims) - Number(!!p.dims) || q.conf - p.conf)
     const it = items[0]
-    const center = it ? toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }) : undefined
-    const at = insidePoint(r, u, rooms, center)
-    const id = newId()
     if (it) {
+      const at = insidePoint(r, u, rooms, toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
+      const id = newId()
       const name = titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1')) || KIND_NAME[it.roomKind as RoomKind]
       roomLabels.push({ id, name, kind: it.roomKind as RoomKind, ...at, ...(it.dims ? { printedSize: `${formatFeetInches(it.dims.aM)} × ${formatFeetInches(it.dims.bM)}` } : {}) })
       if (it.dims) dimsOf.set(id, it.dims)
+      kindOf.set(r, it.roomKind as RoomKind)
       labelled++
       const names = new Set(items.map((x) => normaliseName(x.text.split('\n')[0])))
       if (names.size > 1) review.push({ id: newId(), at, kind: 'unclosed', message: `${[...names].map(titleCase).join(' and ')} fall in one space — a wall between them is probably missing`, entityId: id })
       continue
     }
-    const hs = (hintsIn.get(r.id) ?? []).sort((p, q) => q.conf - p.conf)
-    if (hs.length) {
-      const kind = hs[0].kind as RoomKind
-      const n = (count.get(kind) ?? 0) + 1
-      count.set(kind, n)
-      roomLabels.push({ id, name: hs[0].green ? 'Planter' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
-      labelled++
-      review.push({ id: newId(), at, kind: 'low-confidence', message: `Named from the drawing (${hs[0].what ?? hs[0].source}) — check the name`, entityId: id })
-      continue
+    const h = vote(hintsIn.get(r.id) ?? [])
+    if (h) fromHint(r, h)
+    else pending.push(r)
+  }
+  // rooms still unnamed: the colour of same-fill named rooms (Banani-style sheets), when hints.ts offers it
+  if (pending.length && inputs.propagate) {
+    const toPxP = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
+    const got = inputs.propagate(rooms.map((r) => ({ poly: polys.get(r.id)!.map(toPxP), kind: kindOf.get(r) })))
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const h = got[rooms.indexOf(pending[i])]
+      if (h?.kind) fromHint(pending[i], h), pending.splice(i, 1)
     }
+  }
+  for (const r of pending) {
     const n = (count.get('other') ?? 0) + 1
     count.set('other', n)
+    const at = insidePoint(r, u, rooms)
+    const id = newId()
     roomLabels.push({ id, name: `Space ${n}`, kind: 'other', ...at })
     if (r.areaSqm >= 0.5) review.push({ id: newId(), at, kind: 'unlabelled', message: `Unnamed space (${r.areaSqm.toFixed(1)} m²) — name it or delete a wall`, entityId: id })
   }
@@ -1056,8 +1091,12 @@ function fixAndReport(u: Unit, review: ReviewItem[]): void {
 
 // ───────────────────────────────────────────────────────────────── entry
 
-type HintsModule = { traceHints?: (g: Gray) => HintTrace | Promise<HintTrace>; findHints?: (g: Gray) => HintTrace | Promise<HintTrace> }
-/** hints.ts is written by a parallel agent: loaded when it exists (Vite resolves the glob at build time), skipped when not. */
+/** hints.ts's API (hints agent, wave 16) as the solver uses it; typed here so the solver builds with or without the file. */
+type HintsModule = {
+  findHints?: (gray: Gray, rgb?: AutoTraceOpts['rgb'], o?: { pxPerM?: number; walls?: WallTrace }) => HintTrace
+  propagateByColour?: (rgb: NonNullable<AutoTraceOpts['rgb']>, trace: HintTrace, rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
+}
+/** hints.ts: loaded when it exists (Vite resolves the glob at build time), skipped when not. */
 const HINTS = import.meta.glob<HintsModule>('./hints.ts')
 
 export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceResult> {
@@ -1073,18 +1112,16 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   } catch (e) {
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `Could not read the printed text (${(e as Error).message}) — rooms stay unnamed` })
   }
-  let hints: HintTrace | null = null
   const load = HINTS['./hints.ts']
-  if (load) {
-    try {
-      const m = await load()
-      const fn = m.traceHints ?? m.findHints
-      if (fn) hints = await fn(gray)
-    } catch {
-      hints = null
-    }
+  const m: HintsModule = load ? await load().catch(() => ({})) : {}
+  let hints: HintTrace | null = null
+  const inputs: SolveInputs = {
+    walls,
+    text,
+    findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
+    propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
   }
-  const r = solveTraces(gray, { walls, text, hints }, opts)
+  const r = solveTraces(gray, inputs, opts)
   if (text.glyphPx !== undefined && text.glyphPx < 7)
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The print is small (${text.glyphPx.toFixed(0)} px letters) — a larger export or the PDF reads far better` })
   return { ...r, review: [...review, ...r.review] }

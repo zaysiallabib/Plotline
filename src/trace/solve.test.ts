@@ -7,7 +7,7 @@ import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, writeUnitOverlay } from './evalio'
 import { solveTraces } from './solve'
 import { formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
-import type { Gray, Px, TextItem, TextTrace } from './types'
+import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic: a 3-room flat with printed sizes → the exact Unit ----------
 const K = 50 // px per m
@@ -81,6 +81,22 @@ describe('solveTraces on a synthetic flat', () => {
     for (const o of ops) expect(Math.abs(o.widthM - 0.85)).toBeLessThan(0.12)
     // outer walls 10", partitions 5"
     expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
+  })
+
+  test('hints name the unlabelled store: a table outvotes a lone basin; colour propagation fills what is left', () => {
+    const { g, text } = synthetic()
+    const hints: HintTrace = {
+      hints: [
+        { at: P(4.8, 3.3), kind: 'bath', source: 'fixture', what: 'basin', conf: 0.6 },
+        { at: P(5.2, 4.2), kind: 'dining', source: 'fixture', what: 'table', conf: 0.7 },
+      ],
+    }
+    const store = (r: ReturnType<typeof solveTraces>) => deriveRooms(r.unit).find((x) => x.centroid.x > 0 && !['Living', 'Bed 1', 'Toilet'].includes(x.name))!
+    const byHint = solveTraces(g, { text, hints }, { pickPx: P(2, 2.5) })
+    expect(store(byHint).kind).toBe('dining')
+    expect(byHint.review.filter((x) => x.kind === 'unlabelled')).toEqual([])
+    const byColour = solveTraces(g, { text, propagate: (rooms) => rooms.map((r) => (r.kind ? null : { at: r.poly[0], kind: 'utility', source: 'colour', conf: 0.6 })) }, { pickPx: P(2, 2.5) })
+    expect(store(byColour).kind).toBe('utility')
   })
 
   test('no click: the largest closed region, same rooms', () => {

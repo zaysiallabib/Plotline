@@ -141,4 +141,6 @@ export interface AutoTraceOpts {
   /** backup AI reader for labels the OCR could not read (only when the user configured a key) */
   ai?: AiReader
   onProgress?: (stage: string, fraction: number) => void
+  /** the sheet in colour (ImageData-like, the layout hints.ts findHints / propagateByColour take) — colour fills name rooms — extension (solver, wave 16) */
+  rgb?: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
 }
