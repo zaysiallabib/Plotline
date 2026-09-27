@@ -168,9 +168,12 @@ describe('placePiece: the staff library adds a kit piece on a move’s rules', (
   const win: Opening = { id: 'w', kind: 'window', offsetM: 1, widthM: 1.5, heightM: 1.2, sillM: 0.9 } // the Bed's east wall, y 1..2.5
   const withWindow: Unit = { ...unit, walls: unit.walls.map((w) => (w.id === 'wR' ? { ...w, openings: [win] } : w)) }
 
-  it('every kit piece but the stairs is in the library, once, under a tab', () => {
+  it('every kit piece but the stairs is in the library, once per tab; the hand-wash basin is under Dining too', () => {
     const items = library().flatMap((t) => t.items)
-    expect(new Set(items.map((i) => i.id)).size).toBe(items.length)
+    for (const t of library()) expect(new Set(t.items.map((i) => i.id)).size).toBe(t.items.length)
+    const dining = library().find((t) => t.tab === 'Dining')!.items.map((i) => i.id)
+    expect(dining).toEqual(expect.arrayContaining(['basin', 'vanity']))
+    expect(library().find((t) => t.tab === 'Bath')!.items.map((i) => i.id)).toContain('basin')
     expect(items.map((i) => i.id)).toEqual(expect.arrayContaining(['tv_55_wall', 'sofa_02', 'dining_chair', 'ceiling_fan', 'ac_split', 'hanging_picture_frame_01']))
     expect(items.some((i) => i.id.startsWith('stair_'))).toBe(false)
     const tab = (id: string) => library().find((t) => t.items.some((i) => i.id === id))?.tab

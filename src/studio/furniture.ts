@@ -387,6 +387,8 @@ const TAB_OF: Record<string, (typeof TABS)[number]> = {
   bed: 'Bedroom', bedside: 'Bedroom', wardrobe: 'Bedroom', desk: 'Bedroom', chair: 'Bedroom',
   kitchen: 'Kitchen', bath: 'Bath', lamp: 'Lights & AC', 'ceiling-fan': 'Lights & AC', ac: 'Lights & AC',
 }
+/** Also listed in another tab: Dhaka dining areas have a hand-wash basin (founder 2026-09-28). */
+const ALSO_IN: Record<string, (typeof TABS)[number]> = { basin: 'Dining', vanity: 'Dining' }
 const BED_LINEN: Record<string, string> = { '': 'terracotta throw', _b: 'sage throw', _c: 'no throw' }
 export interface LibraryItem {
   id: string
@@ -397,7 +399,8 @@ export interface LibraryItem {
 export function library(): { tab: string; items: LibraryItem[] }[] {
   const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)].map((id) => kitAsset(id)!).filter((a) => objectKind(a) !== 'stair')
   const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
-  return TABS.map((tab) => ({ tab, items: all.filter((a) => (TAB_OF[a.category] ?? TAB_OF[objectKind(a)] ?? 'Decor') === tab).map((a) => ({ id: a.id, label: label(a), size: a.sizeM })) }))
+  const tabOf = (a: KitAsset) => TAB_OF[a.category] ?? TAB_OF[objectKind(a)] ?? 'Decor'
+  return TABS.map((tab) => ({ tab, items: all.filter((a) => tabOf(a) === tab || ALSO_IN[a.id] === tab).map((a) => ({ id: a.id, label: label(a), size: a.sizeM })) }))
 }
 
 /** Resized sizes land on this step (m). */
