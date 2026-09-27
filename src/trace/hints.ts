@@ -42,7 +42,14 @@ export function estimatePxPerM(walls: WallTrace): number {
 
 export function findHints(gray: Gray, rgb?: Rgba, opts: HintOpts = {}): HintTrace {
   const k = opts.pxPerM ?? estimatePxPerM(opts.walls ?? traceWalls(gray))
-  const hints = k > 0 ? fixtureHints(gray, k, opts.lineDelta ?? 40) : []
+  const delta = opts.lineDelta ?? 40
+  const hints = k > 0 ? fixtureHints(gray, k, delta) : []
+  // faint outlines (BTI 3rd floor: a grey WC on striped tiles) leak at `delta`; a second, fainter pass keeps only the
+  // strictest symbol, a WC bowl with its cistern (every other detector over-fires on faint lines)
+  // ponytail: reruns every detector for one; split fixtureHints if the 0.3–0.6 s matters
+  if (k > 0)
+    for (const h of fixtureHints(gray, k, delta - 12))
+      if (h.what === 'wc' && !hints.some((q) => q.kind === 'bath' && Math.hypot(q.at.x - h.at.x, q.at.y - h.at.y) < 0.6 * k)) hints.push(h)
   if (!rgb || k <= 0) return { hints }
   hints.push(...greenHints(rgb, k))
   return { hints, ...colourFills(rgb, k) }
