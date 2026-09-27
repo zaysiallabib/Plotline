@@ -7,10 +7,13 @@ import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, Val
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
 import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
+import type { AutoTraceResult, AutoTraceStats, ReviewItem } from '../trace/types'
 
 export const PARTITION_M = 0.127
 export const EXTERIOR_M = 0.254
 export const WALL_HEIGHT_M = 3.048
+/** = trace/ai AI_KEY_STORAGE (a test pins it), spelled out so the Studio chunk never pulls in the trace code */
+export const AI_KEY = 'plotline.geminiKey'
 const EPS = 1e-6
 const HISTORY_CAP = 200
 const IDLE_MS = 3 * 60_000
@@ -57,12 +60,23 @@ export interface StudioState {
   exported: boolean
   /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
   loopTipShown: boolean
+  review: Review | null
 }
 export interface Draft {
   unit: Unit
   planImage: PlanImage | null
   view: View
   timer: Timer
+  review?: Review | null
+}
+/**
+ * The last auto-trace's "Check these" list. Shown only while the unit is that trace's (`unitId`: an undo past the
+ * import hides it, a redo brings it back). `sig`: the item's entity as imported — once the user edits it, it is done.
+ */
+export interface Review {
+  unitId: Id
+  items: (ReviewItem & { sig?: string })[]
+  stats: AutoTraceStats
 }
 
 export type Action =
@@ -113,6 +127,10 @@ export type Action =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'load-unit'; unit: Unit }
+  /** the auto-trace result becomes the unit: ONE undo step; its review list comes with it */
+  | { type: 'auto-trace'; result: AutoTraceResult }
+  /** "Looks right": a review item leaves the list */
+  | { type: 'dismiss-review'; id: string }
   | { type: 'restore'; draft: Draft }
   | { type: 'reset' }
   | { type: 'timer-start'; now: number }
@@ -152,6 +170,7 @@ export function initialState(): StudioState {
     dragBlocked: false,
     exported: false,
     loopTipShown: false,
+    review: null,
   }
 }
 
@@ -729,6 +748,21 @@ export function reducer(s: StudioState, a: Action): StudioState {
 
     case 'load-unit':
       return { ...initialState(), unit: normalizeUnit(a.unit), planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }
+    case 'auto-trace': {
+      // a fresh id binds the review list to this trace; the plan image stays the one on screen; what the user typed stays
+      const r = a.result.unit
+      const unit = normalizeUnit({
+        ...r,
+        id: newId(),
+        name: r.name || s.unit.name,
+        projectName: r.projectName || s.unit.projectName,
+        planImage: r.planImage && { ...r.planImage, src: s.planImage?.name ?? r.planImage.src },
+      })
+      const items = a.result.review.map((i) => ({ ...i, sig: i.entityId ? entitySig(unit, i.entityId) : undefined }))
+      return commit(s, unit, { selection: [], chain: null, tool: 'select', review: { unitId: unit.id, items, stats: a.result.stats } })
+    }
+    case 'dismiss-review':
+      return s.review ? { ...s, review: { ...s.review, items: s.review.items.filter((i) => i.id !== a.id) } } : s
     case 'restore': {
       // a draft may be just `{ unit }` (older drafts, hand-injected JSON): every other field is optional
       const init = initialState()
@@ -739,6 +773,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
         planImage: d.planImage ?? null,
         view: d.view ?? init.view,
         timer: { ...init.timer, ...d.timer, lastTickAt: 0 },
+        review: d.review ?? null,
       }
     }
     case 'reset':
@@ -764,6 +799,18 @@ export function reducer(s: StudioState, a: Action): StudioState {
 }
 
 // ---------- studio-only derived data ----------
+
+/** An entity as it stands (its fields + where it is); undefined when the unit has no such entity (e.g. an unlabelled room). */
+const entitySig = (u: Unit, id: Id): string | undefined => {
+  const e = findEntity(u, id)
+  return e ? JSON.stringify([e, entityPoints(u, id)]) : undefined
+}
+
+/** The review items still to look at: the unit is still the trace's, not dismissed, their entity not edited since. */
+export function openReview(s: StudioState): Review['items'] {
+  if (!s.review || s.review.unitId !== s.unit.id) return []
+  return s.review.items.filter((i) => !i.sig || entitySig(s.unit, i.entityId!) === i.sig)
+}
 
 export const ISSUE_COPY: Record<ValidationIssue['code'], string> = {
   'dangling-vertex': 'Corner is not joined to anything — click to find it',
