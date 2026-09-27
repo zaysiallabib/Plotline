@@ -202,6 +202,8 @@ export const NEAR_WALL = 1.2
 /** A room's frame (not a bath's) prefers no more than SIDE_WALL_MAX of plaster within SIDE_WALL (m): a blank side wall 1.2–2 m off (the director's "close wall fills a quarter"). */
 export const SIDE_WALL = 2
 export const SIDE_WALL_MAX = 0.15
+/** …among this many best-ranked frames only (each costs a frame trace, ~1 ms; the five fixed frames clear within 30). */
+const SIDE_TRIES = 30
 /** frameHits costs ~1 ms: this many best-ranked frames are tried before the least filled of them is taken. */
 const FLAT_TRIES = 150
 /** A help room is seen lengthwise from its cot's foot, looking down no more than this. */
@@ -690,7 +692,7 @@ export function roomView(room: Room, unit: Unit, out = true): View {
   const good = views.filter((v) => v.score > views[0].score - HANG_PENALTY / 2)
   // a railed veranda whose every frame looking out is a close-up of its side walls (a 1.5 m box): the old view back in
   const lookOut = room.kind === 'balcony' && out && rails.length > 0
-  const best = clear(good, roomFlat) ?? (lookOut ? undefined : clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled())
+  const best = clear(good.slice(0, SIDE_TRIES), roomFlat) ?? (lookOut ? undefined : clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled())
   if (!best && lookOut) return roomView(room, unit, false)
   if (best) return done(best)
 
