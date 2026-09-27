@@ -18,6 +18,8 @@ export interface Hover {
   hit: Hit | null
   /** O tool over a wall: the opening a click there creates (model.openingAt); red when the click is refused */
   ghost?: { wallId: Id; t: number; opening: Opening; snapped: OpeningSnap; error: string | null }
+  /** Select drag: the corners moving — every wall at them gets a live length label */
+  moving?: Id[]
 }
 type WallFrame = ReturnType<typeof wallFrame>
 
@@ -290,7 +292,7 @@ export function draw(a: DrawArgs): void {
   }
 
   // snap ring
-  if (snap && (state.tool === 'wall' || a.hover?.hit?.kind === 'vertex')) {
+  if (snap && (state.tool === 'wall' || a.hover?.hit?.kind === 'vertex' || snap.kind === 'vertex' || snap.kind === 'wall')) {
     ctx.beginPath()
     ctx.arc(snap.x, snap.y, px(snap.kind === 'vertex' || snap.kind === 'wall' ? 8 : 4), 0, Math.PI * 2)
     ctx.strokeStyle = C.accent
@@ -311,12 +313,18 @@ export function draw(a: DrawArgs): void {
   }
   ctx.font = '300 10px Inter, system-ui, sans-serif'
   ctx.fillStyle = C.muted
+  const moving = new Set(a.hover?.moving)
+  const live = (w: { a: Id; b: Id }) => moving.has(w.a) || moving.has(w.b)
   for (const [id, side] of a.labelSides) {
     const w = state.unit.walls.find((x) => x.id === id)
-    if (!w) continue
+    if (!w || live(w)) continue
     const f = wallFrame(w, vs)
     if (f.lengthM * s >= MIN_LABEL_PX) lengthLabel(f, side, w.thicknessM)
   }
+  // dragging: every wall at a moving corner, however short, in the ghost wall's style
+  ctx.font = '400 12px Inter, system-ui, sans-serif'
+  ctx.fillStyle = C.accent
+  for (const w of moving.size ? state.unit.walls : []) if (live(w)) lengthLabel(wallFrame(w, vs), a.labelSides.get(w.id) ?? 1, w.thicknessM)
   if (ghostWall && chain) {
     ctx.font = '400 12px Inter, system-ui, sans-serif'
     ctx.fillStyle = C.accent

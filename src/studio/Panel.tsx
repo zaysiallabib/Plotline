@@ -163,6 +163,10 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
         </Row>
+        <p className="muted">Walls at B stay straight. Drag an end to resize · Alt-drag a corner to detach it.</p>
+        <button className="link" onClick={() => dispatch({ type: 'delete', ids: [w.id] })}>
+          Delete wall (Del)
+        </button>
       </div>
     )
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { deriveRooms, formatFeetInches, nearestWall, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, piecesOf, type Move } from './furniture'
@@ -9,6 +9,7 @@ import {
   guessKind,
   initialState,
   isUnit,
+  lengthMoves,
   normalizeUnit,
   openingAt,
   printedSizeOf,
@@ -22,7 +23,7 @@ import {
   type Tool,
 } from './model'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
-import { snapPoint } from './snap'
+import { snapMove, snapPoint, type Snap } from './snap'
 import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
@@ -40,7 +41,7 @@ const TOOLS: [Tool, string, string][] = [
 ]
 const HINTS: Record<Tool, string> = {
   furniture: 'Furniture · drag a piece to move it on the 1 ft grid, R turns it 90°, arrow keys move it one square',
-  select: `Select · click to select, drag to move, arrow keys nudge 1" (Shift 1'), double-click a wall to set its length`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's end to resize it, Alt-drag a corner to detach, Del deletes, arrows nudge 1" (Shift 1')`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
   opening: 'Opening · click a wall',
@@ -75,7 +76,10 @@ interface Note {
   link?: { label: string; onClick: () => void }
 }
 /** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt }
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt } & CornerDrag
+/** Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end, `detach` = Alt on a corner, `ids` = the corners the drop joins */
+type CornerDrag = { lengthOf?: Id; detach?: boolean; ids?: Id[] }
+const loose = (p: Pt): Snap => ({ x: p.x, y: p.y, kind: 'free', guides: [] })
 
 /**
  * `/studio?unit=<stem|id>` (the viewer's "Edit plan"): open that unit from src/data/units instead of the draft.
@@ -546,8 +550,12 @@ export default function StudioApp() {
           const w = unit.walls.find((x) => x.id === hit.id)!
           for (const id of [w.a, w.b]) orig.set(id, { ...vertexById(unit.vertices, id) })
         }
-        dragRef.current = { hit, sx, sy, m, moved: false, orig }
-        if (!e.shiftKey && !state.selection.includes(hit.id)) dispatch({ type: 'select', ids: [hit.id] })
+        // a corner: Alt detaches a wall end from it (on the first move); an end of the selected wall resizes that wall
+        const detach = hit.kind === 'vertex' && e.altKey
+        const selWall = hit.kind === 'vertex' && state.selection.length === 1 ? unit.walls.find((w) => w.id === state.selection[0] && (w.a === hit.id || w.b === hit.id)) : undefined
+        const lengthOf = detach ? undefined : selWall?.id
+        dragRef.current = { hit, sx, sy, m, moved: false, orig, detach, lengthOf }
+        if (!e.shiftKey && !state.selection.includes(hit.id) && !detach && !lengthOf) dispatch({ type: 'select', ids: [hit.id] })
         return
       }
       case 'furniture': {
@@ -581,20 +589,64 @@ export default function StudioApp() {
     }
     const d = dragRef.current
     if (d) {
+      const m = toM(sx, sy)
       if (!d.moved) {
         if (Math.hypot(sx - d.sx, sy - d.sy) < 3) return
         d.moved = true
         dispatch({ type: 'drag-begin' })
+        const id = d.hit.id
+        const at = d.detach ? unit.walls.filter((w) => w.a === id || w.b === id) : []
+        if (at.length >= 2) {
+          // detach the selected wall if it ends here, else the wall the pointer pulls along; the new end then drags as a corner
+          const v = vertexById(unit.vertices, id)
+          const pull = (w: (typeof at)[number]) => {
+            const o = vertexById(unit.vertices, w.a === id ? w.b : w.a)
+            return ((o.x - v.x) * (m.x - d.m.x) + (o.y - v.y) * (m.y - d.m.y)) / Math.hypot(o.x - v.x, o.y - v.y)
+          }
+          const w = at.find((x) => state.selection.includes(x.id)) ?? at.reduce((p, q) => (pull(q) > pull(p) ? q : p))
+          const nid = newId()
+          dispatch({ type: 'detach', wallId: w.id, vertexId: id, newId: nid })
+          d.hit = { kind: 'vertex', id: nid }
+        }
       }
-      const m = toM(sx, sy)
-      if (d.hit.kind === 'vertex') {
-        const snap = snapPoint(m, unit, { tolM, exclude: [d.hit.id] })
+      // corners and walls snap exactly as the Wall tool's cursor (snapPoint, same radius); Shift = free
+      const free = e.shiftKey
+      const show = (snap: Snap, ids: Id[]) => {
+        d.ids = ids
+        setHover({ m, px: toPx(sx, sy), snap, hit: d.hit, moving: ids })
+      }
+      if (d.hit.kind === 'vertex' && d.lengthOf) {
+        // the end slides along its wall; the walls at it stay straight (model.lengthMoves)
+        const w = unit.walls.find((x) => x.id === d.lengthOf)
+        if (!w) return
+        const A = vertexById(unit.vertices, w.a === d.hit.id ? w.b : w.a)
+        const E = vertexById(unit.vertices, d.hit.id)
+        const L0 = Math.hypot(E.x - A.x, E.y - A.y)
+        const dir = { x: (E.x - A.x) / L0, y: (E.y - A.y) / L0 }
+        const along = (p: Pt) => (p.x - A.x) * dir.x + (p.y - A.y) * dir.y
+        const onLine = (L: number): Pt => ({ x: A.x + dir.x * L, y: A.y + dir.y * L })
+        const ids = lengthMoves(unit, w.id, d.hit.id, L0).map((v) => v.id)
+        let L = along(m)
+        let snap = loose(onLine(L))
+        if (!free) {
+          const s0 = snapPoint(onLine(L), unit, { tolM, exclude: ids })
+          L = along(s0)
+          const guides = s0.guides.filter((g) => Math.abs(g.axis === 'x' ? dir.x : dir.y) > 1e-6) // only guides across the line stop the end
+          const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : s0.kind === 'vertex' || s0.kind === 'wall' ? s0.kind : 'free'
+          snap = { ...s0, ...onLine(L), kind, guides }
+        }
+        if (L < 0.05) return // never through the anchor
+        dispatch({ type: 'drag', vertices: lengthMoves(unit, w.id, d.hit.id, L) })
+        show(snap, ids)
+      } else if (d.hit.kind === 'vertex') {
+        const snap = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [d.hit.id] })
         dispatch({ type: 'drag', vertices: [{ id: d.hit.id, x: snap.x, y: snap.y }] })
-        setHover({ m, px: toPx(sx, sy), snap, hit: d.hit })
+        show(snap, [d.hit.id])
       } else if (d.hit.kind === 'wall') {
-        const dx = m.x - d.m.x
-        const dy = m.y - d.m.y
-        dispatch({ type: 'drag', vertices: [...d.orig].map(([id, p]) => ({ id, x: p.x + dx, y: p.y + dy })) })
+        const pts = [...d.orig].map(([id, p]) => ({ id, x: p.x + m.x - d.m.x, y: p.y + m.y - d.m.y }))
+        const { dx, dy, snap } = free ? { dx: 0, dy: 0, snap: loose(pts[0]) } : snapMove(pts, unit, tolM)
+        dispatch({ type: 'drag', vertices: pts.map((p) => ({ id: p.id, x: p.x + dx, y: p.y + dy })) })
+        show(snap, pts.map((p) => p.id))
       } else if (d.hit.kind === 'opening') {
         const w = unit.walls.find((x) => x.openings.some((o) => o.id === d.hit.id))
         const o = w?.openings.find((x) => x.id === d.hit.id)
@@ -621,8 +673,10 @@ export default function StudioApp() {
       if (e.shiftKey) dispatch({ type: 'select', ids: [d.hit.id], add: true })
       else dispatch({ type: 'select', ids: [d.hit.id] })
     } else if (d.hit.kind === 'vertex' || d.hit.kind === 'wall') {
-      // a corner dropped on another corner becomes that corner
-      dispatch({ type: 'drag-end', ids: d.hit.kind === 'vertex' ? [d.hit.id] : [...d.orig.keys()] })
+      // a corner dropped on another corner becomes that corner; on a wall, it T-splits the wall
+      dispatch({ type: 'drag-end', ids: d.ids ?? [] })
+      const { sx, sy } = local(e)
+      setHover(computeHover(sx, sy, e.shiftKey)) // drop the drag's guides, ring and live lengths
     } else if (d.hit.kind === 'furniture' && d.to) {
       setFurnDrag(null)
       dispatch({ type: 'move-piece', id: d.hit.id, ...d.to })
@@ -705,7 +759,7 @@ export default function StudioApp() {
       const ctrl = e.ctrlKey || e.metaKey
       if (e.key === 'Shift') {
         shiftRef.current = true
-        if (lastPointer.current && !typing) setHover(computeHover(lastPointer.current.sx, lastPointer.current.sy, true))
+        if (lastPointer.current && !typing && !dragRef.current) setHover(computeHover(lastPointer.current.sx, lastPointer.current.sy, true))
       }
       if (ctrl && (e.key === 's' || e.key === 'S')) {
         e.preventDefault()
@@ -716,6 +770,7 @@ export default function StudioApp() {
         return jsonRef.current?.click()
       }
       if (typing) return
+      if (e.key === 'Alt') return e.preventDefault() // Alt-drag detaches; a lone Alt must not focus the browser menu
       dispatch({ type: 'timer-input', now: now() })
       if (ctrl && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault()
@@ -769,11 +824,8 @@ export default function StudioApp() {
       }
       if (key === 't') return dispatch({ type: 'toggle-thickness' })
       if (key === 'h') return dispatch({ type: 'flip', what: e.shiftKey ? 'swing' : 'hinge' })
-      if (e.key === 'Backspace') {
-        if (st.chain) dispatch({ type: 'chain-back' })
-        return
-      }
-      if (e.key === 'Delete') {
+      if (e.key === 'Backspace' && st.chain) return dispatch({ type: 'chain-back' })
+      if (e.key === 'Delete' || (e.key === 'Backspace' && st.tool !== 'furniture')) {
         const sel = new Set(st.selection)
         const orphaned = st.unit.walls
           .filter((w) => sel.has(w.a) || sel.has(w.b) || sel.has(w.id))
@@ -793,7 +845,7 @@ export default function StudioApp() {
       if (e.key === 'Shift') {
         shiftRef.current = false
         const t = e.target as HTMLElement
-        if (lastPointer.current && t.tagName !== 'INPUT') setHover(computeHover(lastPointer.current.sx, lastPointer.current.sy, false))
+        if (lastPointer.current && t.tagName !== 'INPUT' && !dragRef.current) setHover(computeHover(lastPointer.current.sx, lastPointer.current.sy, false))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -862,6 +914,12 @@ export default function StudioApp() {
   } else if (hover?.hit?.kind === 'furniture') {
     const p = pieces?.find((x) => x.id === hover.hit!.id)
     centre = p ? pieceLabel(p) : ''
+  } else if (tool === 'select' && hover?.snap) {
+    // dragging a corner or a wall: the selected wall's live length, and what the drag snapped to (Wall tool wording)
+    const w = state.selection.length === 1 ? unit.walls.find((x) => x.id === state.selection[0]) : undefined
+    const len = w ? wallFrame(w, unit.vertices).lengthM : 0
+    const snapped = shiftRef.current ? 'free' : `snapped: ${hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind}`
+    centre = w ? `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${snapped}` : snapped
   } else if (hover?.hit) centre = hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : 'Scale not set'
 

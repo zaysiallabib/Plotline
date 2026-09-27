@@ -3,7 +3,7 @@ import { deriveRooms, roomAt, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
-import { snapOpeningOffset } from './snap'
+import { snapMove, snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { furnish } from '../furnish/presets'
@@ -536,6 +536,21 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     expect(s.unit.walls.filter((w) => w.a === 'loose' || w.b === 'loose')).toHaveLength(3)
     expect(deriveRooms(s.unit)).toHaveLength(2)
     expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+  })
+
+  it('a dragged wall snaps like the Wall tool: an end aligns with a corner (guide), a corner snap wins', () => {
+    const s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[5.05, -2], [7, -2]]) // a loose wall whose corner sits at x = 5.05
+    const right = wallAt(s, [4, 0], [4, 3])
+    const ends = (dx: number, dy: number) => [right.a, right.b].map((id) => ({ id, x: at(s, 4, id === right.a ? 0 : 3)!.x + dx, y: (id === right.a ? 0 : 3) + dy }))
+    const aligned = snapMove(ends(1, 0.02), s.unit, 0.1)
+    expect(aligned.dx).toBeCloseTo(0.05)
+    expect(aligned.snap.kind).toBe('aligned x')
+    expect(aligned.snap.guides).toContainEqual({ axis: 'x', at: 5.05 })
+    const cornered = snapMove(ends(1.02, -1.97), s.unit, 0.1) // the top end lands 4 cm from (5.05, -2)
+    expect(cornered.snap.kind).toBe('vertex')
+    expect(cornered.dx).toBeCloseTo(0.03)
+    expect(cornered.dy).toBeCloseTo(-0.03)
+    expect(snapMove(ends(0.5, 0.5), s.unit, 0.1).snap.kind).toBe('free')
   })
 
   it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
