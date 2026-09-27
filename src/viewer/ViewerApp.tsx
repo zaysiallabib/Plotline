@@ -10,12 +10,12 @@ import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, movePiece, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, dragTo, isStaff, pushStep, readLayout, saveLayout, undoStep, type Steps } from './arrange'
+import { dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
@@ -36,6 +36,30 @@ const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
 /** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
 const STAFF = isStaff(location.search)
+/** a buyer's link: no way into staff mode from it (no "Staff mode" / Studio link) */
+const SHARED = isShareLink(location.search)
+/** this address with `staff=` 1 (the load screen's Staff mode link) or 0 (leave it) */
+const staffHref = (v: string): string => {
+  const q = new URLSearchParams(params)
+  q.set('staff', v)
+  return `?${q}`
+}
+/** the one-line Edit furniture hint shows once per browser */
+const HINTED = 'plotline.hint.furniture'
+const stored = (k: string): boolean => {
+  try {
+    return localStorage.getItem(k) === '1'
+  } catch {
+    return true
+  }
+}
+const store = (k: string): void => {
+  try {
+    localStorage.setItem(k, '1')
+  } catch {
+    /* storage blocked */
+  }
+}
 if (params.has('staff')) {
   params.delete('staff')
   history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`)
@@ -116,24 +140,71 @@ export default function ViewerApp() {
   return <Viewer unit={unit} base={base} />
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset. */
-function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; onTurn: () => void; onDelete: () => void; onUndo: () => void; onReset: () => void }) {
+const dims = (s: { x: number; y: number; z: number }) => `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high`
+
+/** The staff library (studio/furniture.ts library): every kit piece by tab; pick one, then point where it goes. */
+function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
+  const tabs = useMemo(library, [])
+  const [tab, setTab] = useState(tabs[0].tab)
+  return (
+    <aside className="glass library">
+      <div className="arrange-row">
+        {tabs.map((t) => (
+          <button key={t.tab} className={`btn${t.tab === tab ? ' active' : ''}`} onClick={() => setTab(t.tab)}>
+            {t.tab}
+          </button>
+        ))}
+      </div>
+      <div className="library-list">
+        {tabs
+          .find((t) => t.tab === tab)!
+          .items.map((i) => (
+            <button key={i.id} className="room-row" onClick={() => onPick(i.id)}>
+              <span>{i.label}</span>
+              <span className="muted">{dims(i.size)}</span>
+            </button>
+          ))}
+      </div>
+    </aside>
+  )
+}
+
+/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; while placing, what and why not. */
+function ArrangePanel(p: {
+  piece: FurniturePlacement | null
+  placing: { label: string; error: string | null; ready: boolean } | null
+  adding: boolean
+  canUndo: boolean
+  onTurn: () => void
+  onDelete: () => void
+  onUndo: () => void
+  onReset: () => void
+  onAdd: () => void
+}) {
   const s = p.piece && placementSize(p.piece)
   return (
     <aside className="glass arrange">
-      {p.piece && s ? (
+      {p.placing ? (
+        <>
+          <div className="arrange-name">Placing: {p.placing.label}</div>
+          <div className={`small ${p.placing.error ? 'refused' : 'muted'}`}>{p.placing.error ?? (p.placing.ready ? 'Click to put it here · R turns · Esc cancels' : 'Point at the floor, a wall or the ceiling')}</div>
+        </>
+      ) : p.piece && s ? (
         <>
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {resizeAxes(p.piece.assetId).length
-              ? `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high · drag a dot to resize`
+              ? `${dims(s)} · drag a dot to resize`
               : 'This piece can be moved and turned'}
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, lights and fans on the ceiling.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
+        <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
+          Add
+        </button>
         <button className="btn" disabled={!p.piece} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
@@ -176,6 +247,9 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const [sel, setSel] = useState<Id | null>(null)
   const steps = useRef<Steps>({ pieces: unit.furniture, past: [] })
   const live = useRef<Move | null>(null)
+  // the library: open or not; the new piece following the pointer (its id, asset, turn, the last pointer target)
+  const [adding, setAdding] = useState(false)
+  const placing = useRef<{ id: Id; assetId: string; rot: number; last: DragTarget | null } | null>(null)
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const stem = towerStem(unit)
   const commentingRef = useRef(commenting)
@@ -294,9 +368,9 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     if (ready && !entered && params.get('view') === 'dollhouse') enter()
   })
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, ms = 2500) => {
     setToast(msg)
-    setTimeout(() => setToast(null), 2500)
+    setTimeout(() => setToast((t) => (t === msg ? null : t)), ms)
   }
 
   const share = () => {
@@ -334,16 +408,76 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
   const toggleArrange = () => {
+    stopPlacing()
+    setAdding(false)
     setArranging(!arranging)
     scene?.setArrange(!arranging)
     setSel(null)
     setCommenting(false)
+    if (!arranging && !stored(HINTED)) {
+      showToast('Edit furniture: click a piece to move, turn, resize or delete it — or Add one from the library', 6000)
+      store(HINTED)
+    }
+  }
+  // ── the library: a picked piece follows the pointer (placePiece: the same rules as a move) until a click drops it
+  const startPlacing = (assetId: string) => {
+    stopPlacing()
+    const id = core.newId()
+    placing.current = { id, assetId, rot: 0, last: null }
+    const ceiling = Math.max(...unit.walls.map((w) => w.heightM))
+    scene?.setPlacing({ id, y: surfaceOf({ assetId }) === 'ceiling' ? ceiling : 0 })
+    setAdding(false)
+    setSel(null)
+    showSel(null)
+  }
+  /** Esc, or done: the ghost goes (ponytail: a cancelled ghost stays in the scene graph, hidden, until the page reloads) */
+  const stopPlacing = () => {
+    if (!placing.current) return
+    placing.current = null
+    live.current = null
+    scene?.setPlacing(null)
+    scene?.placePieces(steps.current.pieces, true)
+    showSel(null)
+    redraw()
+  }
+  const previewPlacing = () => {
+    const pl = placing.current
+    if (!pl) return
+    const at = pl.last && (pl.last.at ?? pl.last.wall?.p)
+    const m = at && placePiece(unit, rooms, steps.current.pieces, pl.assetId, at, pl.rot, pl.id, pl.last!.wall)
+    if (!m) {
+      // the sky out of a window: nothing to put it on
+      live.current = null
+      scene?.placePieces(steps.current.pieces, true)
+      showSel(null)
+      return redraw()
+    }
+    live.current = m
+    scene?.placePieces(m.furniture, true)
+    showSel(m.piece, !!m.error)
+    redraw()
   }
   const onArrange = (e: ArrangeEvent) => {
+    const pl = placing.current
+    if (pl && e.kind === 'drag' && e.id === pl.id) {
+      pl.last = e
+      return previewPlacing()
+    }
+    if (pl && e.kind === 'drop' && e.id === pl.id) {
+      const m = live.current
+      if (!m) return
+      if (m.error) return showToast(m.error)
+      placing.current = null
+      live.current = null
+      scene?.setPlacing(null)
+      setSel(m.piece.id)
+      return settle(pushStep(steps.current, m.furniture), m.piece.id)
+    }
     if (e.kind === 'select') {
-      const b = e.id ? baseOf(steps.current.pieces, e.id) : null // the TV → its unit, cushions → the sofa
-      setSel(b?.id ?? null)
-      return showSel(b)
+      // the piece clicked, so Delete takes just the TV off its unit; a drag of it moves what it rests on (dragTo)
+      const p = pieceOf(e.id)
+      setSel(p?.id ?? null)
+      return showSel(p)
     }
     const m = live.current
     if (e.kind === 'drop') {
@@ -377,10 +511,18 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       }
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
-      if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) undo()
-      else if (arranging && k === 'r') turn()
-      else if (arranging && (k === 'delete' || k === 'backspace')) remove()
+      const pl = placing.current
+      if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
+        stopPlacing()
+        undo()
+      } else if (pl && k === 'r') {
+        pl.rot += 90
+        previewPlacing()
+      } else if (arranging && k === 'r') turn()
+      else if (arranging && !pl && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
+        stopPlacing()
+        setAdding(false)
         setSel(null)
         showSel(null)
       } else if (k === 'o') toggleMode()
@@ -454,7 +596,17 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
                 {u.unit.name}
               </a>
             ))}
-            <a href="/studio">Studio</a>
+            {!SHARED && <a href="/studio">Studio</a>}
+            {!SHARED &&
+              (STAFF ? (
+                <a href={staffHref('0')} title="See the flat as a buyer does (no Edit furniture, no Edit plan)">
+                  Leave staff mode
+                </a>
+              ) : (
+                <a href={staffHref('1')} title="For the developer’s team: Edit furniture and Edit plan in this browser. Buyer links never show them.">
+                  Staff mode
+                </a>
+              ))}
           </nav>
         </div>
       )}
@@ -498,11 +650,16 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
             arranging={arranging}
+            placing={!!placing.current}
             onArrange={STAFF ? toggleArrange : null}
-            onEditPlan={() => {
-              const id = location.pathname.split('/')[2] // the route stem; `/u/preview` is already the Studio's draft
-              window.open(id === 'preview' ? '/studio' : `/studio?unit=${id}`, '_blank')
-            }}
+            onEditPlan={
+              STAFF
+                ? () => {
+                    const id = location.pathname.split('/')[2] // the route stem; `/u/preview` is already the Studio's draft
+                    window.open(id === 'preview' ? '/studio' : `/studio?unit=${id}`, '_blank')
+                  }
+                : null
+            }
           />
           {finishesOpen && (
             <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>
@@ -524,7 +681,29 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
               />
             </aside>
           )}
-          {arranging && <ArrangePanel piece={pieceOf(sel)} canUndo={steps.current.past.length > 0} onTurn={turn} onDelete={remove} onUndo={undo} onReset={() => settle(pushStep(steps.current, base))} />}
+          {arranging && adding && <AddPanel onPick={startPlacing} />}
+          {arranging && (
+            <ArrangePanel
+              piece={pieceOf(sel)}
+              placing={placing.current && { label: placementLabel(placing.current), error: live.current?.error ?? null, ready: !!live.current }}
+              adding={adding}
+              canUndo={steps.current.past.length > 0}
+              onTurn={turn}
+              onDelete={remove}
+              onUndo={() => {
+                stopPlacing()
+                undo()
+              }}
+              onReset={() => {
+                stopPlacing()
+                settle(pushStep(steps.current, base))
+              }}
+              onAdd={() => {
+                stopPlacing()
+                setAdding((v) => !v)
+              }}
+            />
+          )}
           <SunPill
             hour={hour}
             northDeg={unit.northDeg}

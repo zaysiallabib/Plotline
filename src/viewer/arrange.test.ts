@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveRooms } from '../core'
 import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
-import { movePiece, pieceQuad, resizePiece } from '../studio/furniture'
+import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { baseOf, dragTo, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
+import { baseOf, dragTo, isShareLink, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -69,6 +69,17 @@ describe('arrange: staff only, never on a buyer link', () => {
     expect(url).not.toMatch(/staff/)
     expect(url).toMatch(/^https:\/\/plotline\.test\/u\/type-a\?floor=5&c=[\w-]+$/)
     expect(shareUrl({ ...loc, search: '?staff=1' }, 2, {})).not.toMatch(/staff|floor/)
+  })
+
+  it('a share link opened in a buyer’s browser: not staff, and no "Staff mode" offered; ?staff=0 forgets the flag', () => {
+    const search = new URL(shareUrl({ origin: 'https://plotline.test', pathname: '/u/type-a', search: '?staff=1' }, undefined, { s1: 'o2' })).search
+    expect(isStaff(search, memStore())).toBe(false)
+    expect(isShareLink(search)).toBe(true)
+    expect(isShareLink('?floor=5')).toBe(false)
+    const s = memStore()
+    expect(isStaff('?staff=1', s)).toBe(true)
+    expect(isStaff('?staff=0', s)).toBe(false)
+    expect(isStaff('', s)).toBe(false)
   })
 })
 
@@ -150,6 +161,75 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
   })
 })
 
+describe('placePiece: the staff library adds a kit piece on a move’s rules', () => {
+  const place = (assetId: string, x: number, y: number, rot = 0, wall?: { p: { x: number; y: number }; n: { x: number; y: number } }, u = unit) =>
+    placePiece(u, deriveRooms(u), ps, assetId, { x, y }, rot, 'new', wall)!
+  const win: Opening = { id: 'w', kind: 'window', offsetM: 1, widthM: 1.5, heightM: 1.2, sillM: 0.9 } // the Bed's east wall, y 1..2.5
+  const withWindow: Unit = { ...unit, walls: unit.walls.map((w) => (w.id === 'wR' ? { ...w, openings: [win] } : w)) }
+
+  it('every kit piece but the stairs is in the library, once, under a tab', () => {
+    const items = library().flatMap((t) => t.items)
+    expect(new Set(items.map((i) => i.id)).size).toBe(items.length)
+    expect(items.map((i) => i.id)).toEqual(expect.arrayContaining(['tv_55_wall', 'sofa_02', 'dining_chair', 'ceiling_fan', 'ac_split', 'hanging_picture_frame_01']))
+    expect(items.some((i) => i.id.startsWith('stair_'))).toBe(false)
+    const tab = (id: string) => library().find((t) => t.items.some((i) => i.id === id))?.tab
+    expect(['tv_55_wall', 'dining_chair', 'fridge', 'ac_split', 'art_sea_l'].map(tab)).toEqual(['Living', 'Dining', 'Kitchen', 'Lights & AC', 'Decor'])
+  })
+
+  it('a floor piece lands on the grid in the room it is dropped in; the layout gains it', () => {
+    const m = place('dining_chair', 2.0, 2.5)
+    expect(m.error).toBeNull()
+    expect(m.piece).toMatchObject({ id: 'new', assetId: 'dining_chair', roomId: 'A' })
+    expect(m.furniture).toHaveLength(ps.length + 1)
+    const minX = Math.min(...pieceQuad(m.piece).map((p) => p.x))
+    expect(minX / 0.3048).toBeCloseTo(Math.round(minX / 0.3048), 6)
+  })
+
+  it('a backed piece dropped by a wall turns its back to it and goes flush', () => {
+    const m = place('modern_wooden_cabinet', 6.5, 4.5, 90) // the TV unit, near the Bed's bottom wall (inner face y = 4.9)
+    expect(m.error).toBeNull()
+    expect(m.piece.rotationDeg).toBe(180)
+    expect(Math.max(...pieceQuad(m.piece).map((p) => p.y))).toBeCloseTo(4.9 - 0.05, 6)
+  })
+
+  it('a wall piece hangs on the nearest wall of the room clicked (plan), or on the wall under the 3D pointer', () => {
+    const art = place('hanging_picture_frame_01', 7.6, 3.5)
+    expect(art.error).toBeNull()
+    expect(art.piece).toMatchObject({ rotationDeg: 90, roomId: 'B', x: expect.closeTo(7.9 - 0.005 - 0.008, 6) })
+    const tv = place('tv_55_wall', 2, 2, 0, { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 } })
+    expect(tv.error).toBeNull()
+    expect(tv.piece).toMatchObject({ rotationDeg: 270, roomId: 'A', x: expect.closeTo(0.1 + 0.005 + 0.03, 6) })
+  })
+
+  it('a ceiling piece goes anywhere on the ceiling of its room (over furniture too)', () => {
+    const m = place('ceiling_light', 6.5, 0.45)
+    expect(m.error).toBeNull()
+    expect(m.piece.roomId).toBe('B')
+  })
+
+  it('refuses what a move refuses, with the reason; a wall piece may not cover a window', () => {
+    expect(place('dining_chair', 2.5, 4.4).error).toBe('Overlaps the 3-seat fabric sofa')
+    expect(place('dining_chair', 0.6, 1.0).error).toBe('Blocks the entrance')
+    expect(place('dining_chair', 5.4, 3.4).error).toBe('Blocks the door')
+    expect(place('dining_chair', 9, 9).error).toBe('Outside the room')
+    expect(place('hanging_picture_frame_01', 9, 9).error).toBe('Outside the room')
+    expect(place('hanging_picture_frame_01', 7.6, 1.8, 0, undefined, withWindow).error).toBe('Covers the window')
+    expect(place('ac_split', 7.6, 1.8, 0, undefined, withWindow).error).toBeNull() // hung above the window head
+    expect(placePiece(unit, rooms, ps, 'no_such_asset', { x: 2, y: 2 }, 0)).toBeNull()
+  })
+
+  it('Studio: place-piece commits one undo step and selects the new piece; a refusal toasts and keeps the layout', () => {
+    const s0: StudioState = { ...initialState(), tool: 'furniture', unit }
+    const s = reducer(s0, { type: 'place-piece', id: 'n1', assetId: 'dining_chair', x: 2, y: 2.5, rotationDeg: 0 })
+    expect(s.unit.furniture.find((p) => p.id === 'n1')).toMatchObject({ assetId: 'dining_chair', roomId: 'A' })
+    expect(s.selection).toEqual(['n1'])
+    expect(s.history.past).toHaveLength(1)
+    const bad = reducer(s0, { type: 'place-piece', id: 'n2', assetId: 'dining_chair', x: 2.5, y: 4.4, rotationDeg: 0 })
+    expect(bad.unit).toBe(s0.unit)
+    expect(bad.toast?.text).toBe('Overlaps the 3-seat fabric sofa')
+  })
+})
+
 describe('resizePiece: 5 cm steps, kit limits, the same refusals', () => {
   const size = (m: ReturnType<typeof resizePiece>) => m!.piece.sizeM
   it('snaps to 5 cm and clamps to the limits; width grows both ways, depth grows out of the wall', () => {
@@ -208,16 +288,16 @@ describe('a dining set: the table carries its chairs, a resized one re-lays them
     expect(movePiece(unit, rooms, set, 'table', { x: 2.3, y: 3.1 }, 0)!.error).toBe('A chair overlaps the 3-seat fabric sofa')
   })
 
-  it('a longer table keeps its chairs (staff never add pieces), a shorter one drops them as tombstones; ids stay; the label follows', () => {
+  it('a longer table gains chairs, a shorter one drops them as tombstones; ids stay; the label follows', () => {
     const g = resizePiece(unit, rooms, set, 'table', { x: 2.2, y: 0.75, z: 0.9 })!
     expect(g.error).toBeNull()
-    expect(live(g.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']) // seats 8, keeps its 6
+    expect(live(g.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'table:chair:1', 'table:chair:2']) // seats 8: two more
     seated(g.furniture, g.piece)
     expect(placementLabel(g.piece)).toBe('Dining table, oak, 8 seats')
     const s = resizePiece(unit, rooms, g.furniture, 'table', { x: 0.9, y: 0.75, z: 0.9 })!
     expect(s.error).toBeNull()
     expect(live(s.furniture)).toHaveLength(2)
-    expect(s.furniture.filter((p) => p.removed)).toHaveLength(4)
+    expect(s.furniture.filter((p) => p.removed)).toHaveLength(6)
     seated(s.furniture, s.piece)
     // a deeper table keeps its six: the chairs step out with its edges
     const d = resizePiece(unit, rooms, set, 'table', { x: 1.6, y: 0.75, z: 1.1 })!
@@ -228,7 +308,7 @@ describe('a dining set: the table carries its chairs, a resized one re-lays them
   it('Studio tool F resizes the set the same way (one shared function)', () => {
     const s0: StudioState = { ...initialState(), tool: 'furniture', unit: { ...unit, furniture: set } }
     const s = reducer(s0, { type: 'resize-piece', id: 'table', sizeM: { x: 2.2, y: 0.75, z: 0.9 } })
-    expect(live(s.unit.furniture)).toHaveLength(6)
+    expect(live(s.unit.furniture)).toHaveLength(8)
     expect(s.history.past).toHaveLength(1)
   })
 })

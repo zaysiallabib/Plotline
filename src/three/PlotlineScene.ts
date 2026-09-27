@@ -190,6 +190,8 @@ export class PlotlineScene {
   private arrangeCb: ((e: ArrangeEvent) => void) | null = null
   private grab: { id: Id; y: number; off: Pt; moved: boolean; handle?: Handle & { inv: THREE.Matrix4; half: number; plane: THREE.Plane } } | null = null
   private look2: { x: number; y: number } | null = null
+  /** Library (staff): the new piece following the pointer on the plane at height y until a click drops it */
+  private placing: { id: Id; y: number } | null = null
   /** the selected piece's box and resize handles, parented to its pivot; its footprint on the floor */
   private readonly selBox = new THREE.Group()
   private readonly selMat = new THREE.MeshBasicMaterial({ color: SEL, depthTest: false, transparent: true, opacity: 0.9 })
@@ -402,11 +404,22 @@ export class PlotlineScene {
   setArrange(on: boolean): void {
     this.arranging = on
     if (on && this.plc.isLocked) this.plc.unlock()
-    if (!on) this.showSelection(null)
+    if (!on) {
+      this.showSelection(null)
+      this.placing = null
+    }
   }
 
   onArrange(cb: (e: ArrangeEvent) => void): void {
     this.arrangeCb = cb
+  }
+
+  /**
+   * Library (staff): new piece `id` follows the pointer — `drag` events on the plane at height `y` (floor 0, ceiling),
+   * with the wall under the pointer — and a click sends `drop` (a drag-look in walk mode just looks). null stops.
+   */
+  setPlacing(p: { id: Id; y: number } | null): void {
+    this.placing = p
   }
 
   /** Highlights piece `id`: its box, resize handles for `axes`, its footprint `quad` on the floor; red while refused. null clears. */
@@ -765,7 +778,10 @@ export class PlotlineScene {
 
   private onPointerDown = (e: PointerEvent): void => {
     this.pointerDown = { x: e.clientX, y: e.clientY }
-    if (this.arranging && this.mode !== 'building') this.arrangeDown(e)
+    if (this.arranging && this.mode !== 'building') {
+      if (!this.placing) this.arrangeDown(e)
+      else if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
+    }
   }
 
   private ndcOf(e: PointerEvent): THREE.Vector2 {
@@ -820,33 +836,65 @@ export class PlotlineScene {
       this.look2 = { x: e.clientX, y: e.clientY }
       return
     }
+    if (this.placing) {
+      if (!e.buttons) this.dragEvent(e, this.placing.id, this.placing.y, { x: 0, y: 0 }, true)
+      return
+    }
     const g = this.grab
     const d = this.pointerDown
     if (!g || (!g.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3)) return
     g.moved = true
-    this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
-    const ray = this.raycaster.ray
     if (g.handle) {
-      const P = ray.intersectPlane(g.handle.plane, new THREE.Vector3())?.applyMatrix4(g.handle.inv)
+      this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+      const P = this.raycaster.ray.intersectPlane(g.handle.plane, new THREE.Vector3())?.applyMatrix4(g.handle.inv)
       const { axis, sign, half } = g.handle
       if (P) this.arrangeCb?.({ kind: 'resize', id: g.id, axis, sign, sizeM: axis === 'y' ? P.y + half : sign * P[axis] + half })
       return
     }
-    const P = ray.intersectPlane(new THREE.Plane(UP, -g.y), new THREE.Vector3())
-    const w = this.raycaster.intersectObjects(this.staticGroup.children.filter((o) => o.userData.kind === 'wall'), false)[0]
-    const f = w && this.wallFrames.get(w.object.userData.id)
-    const s = f && (f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1) // the face toward us
-    this.arrangeCb?.({
-      kind: 'drag',
-      id: g.id,
-      at: P && { x: P.x + g.off.x, y: P.z + g.off.y },
-      wall: w && f && s ? { p: { x: w.point.x, y: w.point.z }, n: { x: s * f.normal.x, y: s * f.normal.y } } : null,
-    })
+    this.dragEvent(e, g.id, g.y, g.off)
+  }
+
+  /**
+   * A `drag` of piece `id` to the pointer: `at` on the plane at height y (plus the grab offset), `wall` the face toward
+   * us of the wall under it — its window, door or reveal counts as the wall (the TV never goes through a window onto the
+   * veranda's wall). `stopAtWalls` (placing): a wall nearer than the plane point stops `at` 0.3 m before it.
+   */
+  private dragEvent(e: PointerEvent, id: Id, y: number, off: Pt, stopAtWalls = false): void {
+    this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+    const ray = this.raycaster.ray
+    const P = ray.intersectPlane(new THREE.Plane(UP, -y), new THREE.Vector3())
+    let wall: { p: Pt; n: Pt } | null = null
+    let dist = Infinity
+    for (const h of this.raycaster.intersectObjects(this.staticGroup.children, true)) {
+      let o: THREE.Object3D | null = h.object
+      while (o && !o.userData.kind) o = o.parent
+      const wallId = o?.userData.kind === 'wall' ? o.userData.id : o?.userData.kind === 'opening' ? o.userData.wallId : null
+      const f = wallId && this.wallFrames.get(wallId)
+      const w = wallId && this.unit?.walls.find((x) => x.id === wallId)
+      if (!f || !w) continue
+      const s = f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1
+      const n = { x: s * f.normal.x, y: s * f.normal.y }
+      const k = w.thicknessM / 2 - ((h.point.x - f.origin.x) * n.x + (h.point.z - f.origin.y) * n.y) // onto the face
+      wall = { p: { x: h.point.x + n.x * k, y: h.point.z + n.y * k }, n }
+      dist = h.distance
+      break
+    }
+    let at = P && { x: P.x + off.x, y: P.z + off.y }
+    if (stopAtWalls && wall && (!P || dist < ray.origin.distanceTo(P))) at = { x: wall.p.x + wall.n.x * 0.3, y: wall.p.y + wall.n.y * 0.3 }
+    this.arrangeCb?.({ kind: 'drag', id, at, wall })
   }
 
   private onPointerUp = (e: PointerEvent): void => {
     const d = this.pointerDown
     this.pointerDown = null
+    if (this.arranging && this.mode !== 'building' && this.placing) {
+      this.look2 = null
+      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) {
+        this.dragEvent(e, this.placing.id, this.placing.y, { x: 0, y: 0 }, true) // where the click is, then drop there
+        this.arrangeCb?.({ kind: 'drop', id: this.placing.id })
+      }
+      return
+    }
     if (this.arranging && this.mode !== 'building') {
       const g = this.grab
       this.grab = this.look2 = null

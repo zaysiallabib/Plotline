@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, layoutFor, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
   entityPoints,
   formatTimer,
@@ -41,7 +41,7 @@ const TOOLS: [Tool, string, string][] = [
   ['furniture', 'F', 'Furniture'],
 ]
 const HINTS: Record<Tool, string> = {
-  furniture: 'Furniture · drag a piece to move it on the 1 ft grid, R turns it 90°, arrow keys move it one square',
+  furniture: 'Furniture · drag a piece to move it on the 1 ft grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
   select: `Select · drag to move (Shift: no snap), drag a selected wall's end to resize it, Alt-drag a corner to detach, Del deletes, arrows nudge 1" (Shift 1')`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
@@ -186,12 +186,24 @@ export default function StudioApp() {
   const piecesRef = useRef(pieces)
   piecesRef.current = pieces
   const [furnDrag, setFurnDrag] = useState<Move | null>(null)
+  // the library (tool F): a picked kit piece follows the pointer as a candidate layout (placePiece) until a click puts it
+  const [placing, setPlacing] = useState<{ id: Id; assetId: string; rot: number } | null>(null)
+  const placingRef = useRef(placing)
+  placingRef.current = placing
+  const ghost = (sx: number, sy: number) => placing && pieces && setFurnDrag(placePiece(unit, rooms, pieces, placing.assetId, toM(sx, sy), placing.rot, placing.id))
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
   const toScreen = useCallback((m: Pt): Pt => mToScreen(frame, m), [frame])
   const now = () => Date.now()
+  // a new pick or R: the ghost where the pointer is; leaving tool F drops it
+  useEffect(() => {
+    if (placing && tool !== 'furniture') return setPlacing(null)
+    if (!placing) return setFurnDrag(null)
+    const p = lastPointer.current
+    if (p) ghost(p.sx, p.sy)
+  }, [placing, tool]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- reducer toasts → note
   useEffect(() => {
@@ -520,6 +532,16 @@ export default function StudioApp() {
       return
     }
     if (e.button !== 0) return
+    if (placing && tool === 'furniture') {
+      // the ghost's spot: put it there (the reducer runs placePiece again and toasts a refusal); refused → keep placing
+      const m = placePiece(unit, rooms, pieces ?? [], placing.assetId, toM(sx, sy), placing.rot, placing.id)
+      dispatch({ type: 'place-piece', id: placing.id, assetId: placing.assetId, ...toM(sx, sy), rotationDeg: placing.rot })
+      if (m && !m.error) {
+        setPlacing(null)
+        setFurnDrag(null)
+      }
+      return
+    }
     if (field) setField(null)
     if (popover) setPopover(null)
     dispatch({ type: 'timer-input', now: now() })
@@ -594,6 +616,7 @@ export default function StudioApp() {
       dispatch({ type: 'set-view', view: { ...view, panX: p.panX + sx - p.sx, panY: p.panY + sy - p.sy } })
       return
     }
+    if (placing && tool === 'furniture') return void ghost(sx, sy)
     const fd = dragRef.current
     if (fd?.hit.kind === 'furniture') {
       // a piece follows the pointer on the grid; the reducer only sees the drop (one undo entry, refusals spring back)
@@ -807,6 +830,9 @@ export default function StudioApp() {
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
       // furniture tool: arrows move the selected piece one grid square, R turns it, Delete / Backspace deletes it; T / H never touch a piece
       if (st.tool === 'furniture') {
+        const pl = placingRef.current
+        if (pl && e.key === 'Escape') return setPlacing(null)
+        if (pl && (e.key === 'r' || e.key === 'R')) return setPlacing({ ...pl, rot: pl.rot + 90 })
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
           e.preventDefault()
@@ -913,7 +939,9 @@ export default function StudioApp() {
         : 'Wall · Click the next corner, or type its printed length'
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
-        : HINTS[tool]) +
+        : tool === 'furniture' && placing
+          ? 'Furniture · click the plan to put the piece there, R turns it, Esc cancels'
+          : HINTS[tool]) +
     (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
   let centre = ''
@@ -963,6 +991,9 @@ export default function StudioApp() {
       <header className="topbar">
         <span className="brand">
           <a href="/" title="Open the buyer viewer">Plotline</a> <span className="muted">/ Studio</span>
+        </span>
+        <span className="staff-badge" title="Staff mode is on in this browser: the 3D viewer (Preview 3D, or any unit) shows Edit furniture — move, turn, resize, delete, add — and Edit plan. Buyer links never do.">
+          Staff mode
         </span>
         <input className="meta wide" placeholder="Unit name" value={unit.name} onChange={meta('name')} />
         <input className="meta" placeholder="Project" value={unit.projectName} onChange={meta('projectName')} />
@@ -1129,7 +1160,16 @@ export default function StudioApp() {
             </div>
           )}
         </div>
-        <Panel state={state} dispatch={dispatch} rooms={rooms} issues={issues} onFocusIssue={focusIssue} pieces={pieces} />
+        <Panel
+          state={state}
+          dispatch={dispatch}
+          rooms={rooms}
+          issues={issues}
+          onFocusIssue={focusIssue}
+          pieces={pieces}
+          placing={placing?.assetId ?? null}
+          onPlace={(assetId) => setPlacing(assetId ? { id: newId(), assetId, rot: 0 } : null)}
+        />
       </div>
 
       <footer className="statusbar">

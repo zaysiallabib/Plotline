@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { resizeAxes } from './furniture'
+import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
@@ -45,9 +45,12 @@ interface Props {
   onFocusIssue: (i: StudioIssue) => void
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
+  /** tool F's library: the kit asset being placed; pick one ('' stops) */
+  placing?: string | null
+  onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces }: Props) {
+export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const errors = issues.filter((i) => i.level === 'error').length
@@ -84,6 +87,24 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces }: 
           <Selection state={state} dispatch={dispatch} rooms={rooms} />
         )}
       </section>
+      {pieces && onPlace && (
+        <section>
+          <h3>Add a piece</h3>
+          <select value={placing ?? ''} onChange={(e) => onPlace(e.target.value)}>
+            <option value="">Pick from the library…</option>
+            {library().map((t) => (
+              <optgroup key={t.tab} label={t.tab}>
+                {t.items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.label} · {i.size.x.toFixed(2)} × {i.size.z.toFixed(2)} m
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {placing && <p className="muted">Click the plan to put it there · R turns · Esc cancels</p>}
+        </section>
+      )}
       <section>
         <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
         {issues.length === 0 ? (

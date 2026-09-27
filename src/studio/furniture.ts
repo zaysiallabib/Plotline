@@ -8,11 +8,11 @@
  * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
  * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
-import { pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
+import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { heightRange, kitAsset, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
-import { GAP, chairSpots, doorClearZones, footprint, furnish, quadsOverlap } from '../furnish/presets'
-import { tableSeats } from '../furnish/procedural.meta'
+import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
+import { GAP, chairSpots, doorClearZones, footprint, furnish, quadsOverlap, windowZones } from '../furnish/presets'
+import { PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 export const GRID_M = 0.3048
 /** A footprint edge this close to a wall's inner face (or past it) goes flush. */
@@ -70,6 +70,12 @@ export function layerOf(p: FurniturePlacement): 0 | 1 | 2 | 3 {
   if (a.mount === 'ceiling') return 2
   return a.mount === 'wall' || (a.mountY ?? 0) > 0.05 ? 1 : 0
 }
+/** Where a piece hangs: wall-hung ones (TV, art, clock, AC, hook rail: mount 'wall' or hung ≥ 0.9 m) on a wall, lights and fans on the ceiling, the rest on the floor. */
+export function surfaceOf(p: { assetId: string }): 'floor' | 'wall' | 'ceiling' {
+  const a = kitAsset(p.assetId)
+  if (a?.mount === 'wall' || (a?.mountY ?? 0) >= 0.9) return 'wall'
+  return a?.mount === 'ceiling' ? 'ceiling' : 'floor'
+}
 const band = (p: FurniturePlacement): [number, number] => {
   const a = assetOf(p)
   const y0 = a ? heightRange(a)[0] : 0
@@ -118,11 +124,10 @@ const chairWhy = (e: string | null): string | null => e && (e === 'Outside the r
  * one fewer, as presets fall back. Chairs keep their ids (the nearest spot first), new ones copy the first and get
  * `${tableId}:chair:<n>`, dropped ones become tombstones like a delete. A string = why not even one fits.
  */
-function relayChairs(unit: Unit, room: Room | null, others: FurniturePlacement[], table: FurniturePlacement, chairs: FurniturePlacement[]): FurniturePlacement[] | string {
+function relayChairs(unit: Unit, room: Room | null, others: FurniturePlacement[], table: FurniturePlacement, chairs: FurniturePlacement[], seatsBefore: number): FurniturePlacement[] | string {
   const s = sizeOf(table)
-  // CLAUDE.md: staff never ADD pieces without asking — a longer table keeps its chairs, a shorter one drops some.
-  // ponytail: founder asked 2026-09-27; to let a grown table gain seats: chairs.length + max(0, seats(new) - seats(old))
-  const want = Math.min(tableSeats(s.x), chairs.length)
+  // CLAUDE.md 2026-09-27 late: a longer table may gain chairs
+  const want = Math.min(tableSeats(s.x), chairs.length + Math.max(0, tableSeats(s.x) - seatsBefore))
   const used = new Set([...others, ...chairs].map((o) => o.id))
   let k = 0
   const fresh = (): Id => {
@@ -230,6 +235,10 @@ export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement
     if (entry && quadsOverlap(entry, q)) return 'Blocks the entrance'
     if (doorClearZones(room, unit).some((z) => quadsOverlap(z, q))) return 'Blocks the door'
   }
+  if (surfaceOf(p) === 'wall') {
+    const [y0, y1] = band(p)
+    if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
+  }
   const hit = others.find((o) => !o.removed && blocks(p, o) && quadsOverlap(pieceQuad(o), q))
   if (!hit) return null
   const name = pieceLabel(hit)
@@ -316,6 +325,81 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
   return { furniture: pieces.map((x) => moved.get(x.id) ?? x), piece, ids: [...moved.keys()], snapped, error }
 }
 
+/** A wall face: a point on it and its normal into the room (plan metres). */
+export interface WallFace {
+  p: Pt
+  n: Pt
+}
+
+/** Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 1 ft steps; a move's rules (flush, refusals). */
+export function hangOn(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: WallFace): Move | null {
+  const p = pieces.find((x) => x.id === id)
+  if (!p) return null
+  const { n } = w
+  const d = { x: n.y, y: -n.x } // along the wall
+  const u = w.p.x * d.x + w.p.y * d.y
+  const s = Math.round(u / GRID_M) * GRID_M - u
+  const out = sizeOf(p).z / 2 + FLUSH_M
+  const c = { x: w.p.x + d.x * s + n.x * out, y: w.p.y + d.y * s + n.y * out }
+  return movePiece(unit, rooms, pieces, id, c, (Math.atan2(-n.x, n.y) * 180) / Math.PI, false)
+}
+
+/** The inner wall face of `at`'s room nearest to it (a plan click in the Studio). */
+export function nearestFace(unit: Unit, rooms: Room[], at: Pt): WallFace | null {
+  const room = roomAt(at, rooms, unit)
+  if (!room) return null
+  const inner = roomInnerPolygon(room, unit)
+  let best: (WallFace & { dist: number }) | null = null
+  for (let i = 0; i < inner.length; i++) {
+    const a = inner[i]
+    const b = inner[(i + 1) % inner.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (len < 1e-6) continue
+    const d = { x: (b.x - a.x) / len, y: (b.y - a.y) / len }
+    const t = Math.max(0, Math.min(len, (at.x - a.x) * d.x + (at.y - a.y) * d.y))
+    const p = { x: a.x + d.x * t, y: a.y + d.y * t }
+    const dist = Math.hypot(at.x - p.x, at.y - p.y)
+    if (!best || dist < best.dist) best = { p, n: { x: -d.y, y: d.x }, dist } // positive loop: inward normal
+  }
+  return best && { p: best.p, n: best.n }
+}
+
+/**
+ * A new piece of kit asset `assetId` (the staff library, CLAUDE.md 2026-09-27 late) dropped at `at`, turned
+ * `rotationDeg`, on a move's rules: floor and ceiling pieces as movePiece puts them (1 ft grid, flush to a wall they
+ * near, backed ones back to it); wall pieces on `wall` (the face under the 3D pointer), else on the face of `at`'s room
+ * nearest `at` (hangOn). It belongs to the room it lands in. `error` = why not; the caller keeps the old layout.
+ */
+export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], assetId: string, at: Pt, rotationDeg: number, id: Id = newId(), wall?: WallFace | null): Move | null {
+  if (!kitAsset(assetId)) return null
+  const p: FurniturePlacement = { id, assetId, roomId: roomAt(at, rooms, unit)?.id ?? '', x: at.x, y: at.y, rotationDeg: norm(rotationDeg) }
+  const all = [...pieces, p]
+  if (surfaceOf(p) !== 'wall') return movePiece(unit, rooms, all, id, at, rotationDeg)
+  const face = wall ?? nearestFace(unit, rooms, at)
+  return face ? hangOn(unit, rooms, all, id, face) : { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
+}
+
+const TABS = ['Living', 'Dining', 'Bedroom', 'Kitchen', 'Bath', 'Lights & AC', 'Decor'] as const
+/** By category, else by what it is (the 'other' pieces); the rest (plants, rugs, art, clock, vase) is Decor. */
+const TAB_OF: Record<string, (typeof TABS)[number]> = {
+  sofa: 'Living', armchair: 'Living', 'coffee-table': 'Living', 'tv-unit': 'Living', shelf: 'Living', tv: 'Living', ottoman: 'Living', cushions: 'Living',
+  'dining-table': 'Dining', 'dining-chair': 'Dining',
+  bed: 'Bedroom', bedside: 'Bedroom', wardrobe: 'Bedroom', desk: 'Bedroom', chair: 'Bedroom',
+  kitchen: 'Kitchen', bath: 'Bath', lamp: 'Lights & AC', 'ceiling-fan': 'Lights & AC', ac: 'Lights & AC',
+}
+const BED_LINEN: Record<string, string> = { '': 'terracotta throw', _b: 'sage throw', _c: 'no throw' }
+export interface LibraryItem {
+  id: string
+  label: string
+  size: KitAsset['sizeM']
+}
+/** The staff library: every kit asset (Poly Haven + procedural) by tab, but the stairs (building, not furniture); beds name their linen. */
+export function library(): { tab: string; items: LibraryItem[] }[] {
+  const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)].map((id) => kitAsset(id)!).filter((a) => objectKind(a) !== 'stair')
+  const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
+  return TABS.map((tab) => ({ tab, items: all.filter((a) => (TAB_OF[a.category] ?? TAB_OF[objectKind(a)] ?? 'Decor') === tab).map((a) => ({ id: a.id, label: label(a), size: a.sizeM })) }))
+}
+
 /** Resized sizes land on this step (m). */
 export const SIZE_STEP_M = 0.05
 /** The axes a piece may be resized along (x width, y height, z depth): none for scans; min = max fixes an axis. */
@@ -353,7 +437,7 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   const others = pieces.filter((x) => x.id !== id && !chairs.includes(x))
   let error = whyNot(unit, room, others, piece)
   // a dining table's chairs are laid again round its new size
-  const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs) : []
+  const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs, tableSeats(old.x)) : []
   if (typeof laid === 'string') error = laid
   const moved = new Map<Id, FurniturePlacement>([[id, piece], ...(typeof laid === 'string' ? [] : laid.map((q) => [q.id, q] as const))])
   const added = [...moved.values()].filter((q) => !pieces.some((x) => x.id === q.id))

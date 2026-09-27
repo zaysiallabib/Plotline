@@ -193,6 +193,11 @@ export function doorClearZones(room: Room, unit: Unit, entry = false): Pt[][] {
   return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1, depth, e]) => spanQuad(s, u0, u1, entry ? e : depth)))
 }
 
+/** A room's windows as the cover test sees them (fits): span × WIN_DEPTH into the room, and the heights a piece may not reach into. */
+export function windowZones(room: Room, unit: Unit): { q: Pt[]; from: number; to: number }[] {
+  return buildSides(room, unit).flatMap((s) => s.wins.map((w) => ({ q: spanQuad(s, w.u0 + 0.05, w.u1 - 0.05, WIN_DEPTH), from: w.sill + SILL_SLACK, to: w.top })))
+}
+
 function makeCtx(room: Room, unit: Unit, rooms: Room[], kitchen: Pt | null, bedStyle: string): Ctx {
   const sides = buildSides(room, unit)
   const inner = roomInnerPolygon(room, unit)

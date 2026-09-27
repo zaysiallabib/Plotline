@@ -120,3 +120,9 @@
 .arrange-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .arrange-row .btn { padding: 6px 12px; font-size: 12px; }
 .arrange-row .btn:disabled { opacity: 0.4; cursor: default; }
+.arrange .refused { color: #ff6b6b; }
+/* the staff library: above the Arrange panel */
+.library { position: absolute; left: 16px; bottom: 190px; width: 340px; max-height: calc(100vh - 330px); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.library-list { display: flex; flex-direction: column; overflow: auto; min-height: 0; }
+.library-list .room-row { font-size: 12px; padding: 6px 8px; }
+.library-list .room-row .muted { white-space: nowrap; }
