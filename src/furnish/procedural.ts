@@ -16,7 +16,7 @@ import { pointInPolygon, type Pt } from '../core'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PROCEDURAL, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
+import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PROCEDURAL, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId, wardrobeDoors } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -879,7 +879,7 @@ function artFrame(printMat: THREE.Material): THREE.Mesh[] {
  */
 function wardrobe({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const n = Math.max(1, Math.ceil(W / 0.6 - 1e-3))
+  const n = wardrobeDoors(W)
   const dw = W / n
   const zf = D / 2 - 0.04 // carcass front; doors to D/2 − 0.02, handles to D/2
   const out = [box(W, H - 0.06, D - 0.04, m.oak, 0, (H + 0.06) / 2, zf - (D - 0.04) / 2), box(W - 0.04, 0.06, D - 0.08, m.dark, 0, 0.03, -0.02)]

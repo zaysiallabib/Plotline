@@ -6,7 +6,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { FurniturePlacement } from '../core'
-import { kitAsset, objectKind } from '../furnish/kit'
+import { kitAsset, objectKind, placementLabel } from '../furnish/kit'
 import { buildProcedural } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
@@ -49,7 +49,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
   pivot.position.set(p.x, 0, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
   const asset = kitAsset(p.assetId)
-  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: asset?.label ?? p.assetId, objectKind: asset ? objectKind(asset) : 'decor' }
+  pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: placementLabel(p), objectKind: asset ? objectKind(asset) : 'decor' }
 
   let model: THREE.Object3D | null = null
   if (asset) {

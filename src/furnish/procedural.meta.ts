@@ -94,6 +94,11 @@ export function planterAsset(id: string): KitAsset | undefined {
   return { ...P(id, 'Planter bed, trailing plants', 'rug', ext('x'), PLANTER_TOP, ext('y')), kind: 'plant' }
 }
 
+/** Doors the wardrobe builder hangs across W: one per ≤ 0.6 m (procedural.ts wardrobe). */
+export const wardrobeDoors = (W: number): number => Math.max(1, Math.ceil(W / 0.6 - 1e-3))
+/** Chairs a W-long dining table seats: one per 0.6 m along each long side, one at each head from 1.4 m (0.9 m = 2, 1.6 m = 6, 2.6 m = 10). */
+export const tableSeats = (W: number): number => 2 * Math.max(1, Math.floor(W / 0.6 + 1e-6)) + (W >= 1.4 ? 2 : 0)
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */

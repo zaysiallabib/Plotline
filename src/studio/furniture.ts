@@ -9,7 +9,7 @@
  */
 import { pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { heightRange, kitAsset, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
 import { GAP, doorClearZones, footprint, furnish, quadsOverlap } from '../furnish/presets'
 
 export const GRID_M = 0.3048
@@ -58,7 +58,7 @@ const assetOf = (p: FurniturePlacement): KitAsset | undefined => kitAsset(p.asse
 const sizeOf = placementSize
 export const pieceQuad = (p: FurniturePlacement): Pt[] => footprint(p, p.rotationDeg, sizeOf(p))
 /** "Queen bed, upholstered" → "Queen bed" */
-export const pieceLabel = (p: FurniturePlacement): string => (assetOf(p)?.label ?? p.assetId).split(/[,(]/)[0].trim()
+export const pieceLabel = (p: FurniturePlacement): string => placementLabel(p).split(/[,(]/)[0].trim()
 
 /** 0 stands on the floor, 1 lifted (on a unit / sofa / wall: mountY), 2 ceiling-hung (incl. the AC), 3 rug. */
 export function layerOf(p: FurniturePlacement): 0 | 1 | 2 | 3 {
