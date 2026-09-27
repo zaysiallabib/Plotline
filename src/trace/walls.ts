@@ -373,12 +373,17 @@ const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
 
 export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   let f = opts.upscale
+  let half0 = opts.halfPx
   if (f === undefined) {
-    const dt0 = edt(threshold(gray, inkThreshold(gray, opts)), gray.width, gray.height)
-    f = (opts.halfPx ?? wallHalfWidth(dt0, gray.width, gray.height)) < 3 ? 2 : 1
+    half0 ??= wallHalfWidth(edt(threshold(gray, inkThreshold(gray, opts)), gray.width, gray.height), gray.width, gray.height)
+    f = half0 < 3 ? 2 : 1
   }
   if (f !== 1) {
-    const t = traceWalls(upsample(gray, f), { ...opts, upscale: 1, ...(opts.halfPx ? { halfPx: opts.halfPx * f } : {}) })
+    const big = upsample(gray, f)
+    // re-estimate on the enlarged raster (finer), but never above the native estimate: on a sheet with few walls the
+    // enlarged histogram can lock onto the columns
+    const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
+    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig })
     const k = 1 / f
     return {
       walls: t.walls.map((s) => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })),
