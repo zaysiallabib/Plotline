@@ -539,7 +539,9 @@ export function roomView(room: Room, unit: Unit, out = true): View {
     // A bath (or tiny room) with a vanity/basin: every spot × heading (5°) × pitch (level to BATH_PITCH; a small wet room to
     // WET_PITCH), ranked by what the projector shows of each fitting's band (`wetBand`, `boxInFrame`): whole, or half —
     // half its corners and its centre in frame (a WC's bowl front cut off; not a fitting cropped in a corner of the frame).
-    // The vanity/basin whole, else half (no spot shows both: the vanity, not a WC), then the most other fittings whole
+    // The vanity/basin whole, else mostly (4 of 6 corners; a room over SMALL_WET: its vanity and mirror beat two fittings
+    // cut in half — B powder room; a WC under 3 m² is there for its WC), else half (no spot shows both: the vanity, not a
+    // WC), then the most other fittings whole
     // (WC, shower), then the most half, then the pitch nearest BATH_PITCH (shallower first), the fittings centred, the
     // farthest back. The first clear frame (FLAT_MAX / NEAR_WALL_MAX) wins; none clears (a WC is all near tile): the least
     // filled frame of the top rank. No fitting half in frame from anywhere: the door view below.
@@ -569,7 +571,7 @@ export function roomView(room: Room, unit: Unit, out = true): View {
             const others = shown.filter((x) => x.b.f !== hero)
             const spread = Math.max(...shown.map((x) => x.x))
             const back = Math.min(...shown.map(({ b }) => Math.hypot(b.f.x - p.x, b.f.y - p.y)))
-            picks.push({ p, face, pitch, closeLeaf, hero: h === 1 ? 1 : h && 0.5, whole: others.filter((x) => x.s === 1).length, half: others.filter((x) => x.s < 1).length, pref, spread, back })
+            picks.push({ p, face, pitch, closeLeaf, hero: h === 1 ? 1 : !small && h >= 4 / 6 - 1e-9 ? 0.75 : h && 0.5, whole: others.filter((x) => x.s === 1).length, half: others.filter((x) => x.s < 1).length, pref, spread, back })
           })
         }
       picks.sort((a, b) => b.hero - a.hero || b.whole - a.whole || b.half - a.half || a.pref - b.pref || a.spread - b.spread || b.back - a.back)

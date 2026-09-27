@@ -360,7 +360,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed'])
     // shut for the shot: leaves standing into a bath frame, the far leaf over the C cot, the wet rooms' own leaves behind the
     // eye in their doorway (the door corner); a door seen along its own wall fills the same shut or ajar and stays ajar
-    expect(shut).toEqual(['a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Bath-2', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
+    expect(shut).toEqual(['a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Bath-3', 'c_2254 Bath-2', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
     const b = both[1]
     const wave9 = [
