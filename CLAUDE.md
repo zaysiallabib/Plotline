@@ -53,7 +53,7 @@ Docs/PRODUCT_PHILOSOPHY.md.
 - TypeScript + React 19 + Vite 8
 - Three.js latest (0.186+) — never pin to old r-versions; WebXR via built-in
 - Supabase (later — Phase A/B), deploy: Vercel
-- Tests: Vitest — ONLY for `src/core/` (geometry) and `src/furnish/presets`
+- Tests: Vitest for pure logic only — `src/core/`, `src/furnish/`, `src/trace/` (auto-trace + its eval vs the hand-traced units), and the reducers/rules in `src/viewer`, `src/studio`, `src/three` that already have tests
 
 ## Non-negotiable invariants
 
@@ -83,6 +83,7 @@ src/three/    scene generation, materials, lighting, controls, WebXR
 src/furnish/  kit registry (kit.data.ts generated) + presets
 src/viewer/   buyer-facing React app  (route: /  and /u/:unitId)
 src/studio/   tracing editor React app (route: /studio)
+src/trace/    auto-trace: plan image → walls/openings/text → Unit draft + review list (pure; local first, AI backup)
 src/data/units/*.json   hand-authored unit JSONs (Phase 0)
 public/assets/{models,textures,hdri}/ + MANIFEST.md (licenses)
 ```
