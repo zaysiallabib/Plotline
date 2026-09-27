@@ -683,7 +683,7 @@
         },
         {
           "id": "o_study_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 2.35,
           "widthM": 1.5,
           "heightM": 2.1,
@@ -735,7 +735,7 @@
       "openings": [
         {
           "id": "o_bed1_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.47,
           "widthM": 1.5,
           "heightM": 2.1,
@@ -760,7 +760,7 @@
       "openings": [
         {
           "id": "o_study_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.216,
           "widthM": 1.2,
           "heightM": 2.1,
@@ -1329,7 +1329,7 @@
       "openings": [
         {
           "id": "o_liv_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.241,
           "widthM": 1.5,
           "heightM": 2.1,

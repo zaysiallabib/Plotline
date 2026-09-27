@@ -258,6 +258,14 @@ describe('viewer', { timeout: 20_000 }, () => {
   }
   const deg = (a: Pt, b: Pt) => (Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / Math.hypot(a.x, a.y) / Math.hypot(b.x, b.y)))) * 180) / Math.PI
 
+  it('swings: kind decides — every door has a leaf (hinged or not, any width), a slider never does', () => {
+    const o = { id: 'o', offsetM: 0, heightM: 2.1, sillM: 0 }
+    expect(swings({ ...o, kind: 'door', widthM: 1.8 })).toBe(true)
+    expect(swings({ ...o, kind: 'door', widthM: 0.9, hinge: 'b' })).toBe(true)
+    expect(swings({ ...o, kind: 'slider', widthM: 1.8 })).toBe(false)
+    expect(swings({ ...o, kind: 'slider', widthM: 0.9, hinge: 'a', swing: 'in' })).toBe(false)
+  })
+
   it('inSight: walls hide what is behind them; passages, windows and sliders do not, nor do rails; a hinged door (ajar 20°) does', () => {
     const [a] = both
     const e = entrySpawn(a.u, a.rs)!
@@ -531,7 +539,7 @@ describe('viewer', { timeout: 20_000 }, () => {
           const off = Math.abs((end.x - f.origin.x) * f.normal.x + (end.y - f.origin.y) * f.normal.y)
           if (off > w.thicknessM / 2 + 0.2 || along < -0.2 || along > f.lengthM + 0.2) return []
           const low = w.heightM < 1.6
-          return [{ on: low || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM), open: low || w.openings.some((o) => o.kind !== 'door' || (!o.hinge && o.widthM >= 1.2)) }]
+          return [{ on: low || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM), open: low || w.openings.some((o) => o.kind !== 'door') }]
         })
         const ok = hit.length > 0 && (hit.every((h) => h.on) || (hit.length > 1 && hit.every((h) => h.open)))
         expect(ok, `${u.id} ${r.name} ends on an opening, the rail or an open corner`).toBe(true)

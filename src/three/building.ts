@@ -155,7 +155,7 @@ export class Building extends THREE.Group {
         if (mine) continue
         for (const w of u.walls) {
           for (const o of w.openings) {
-            if (o.kind === 'window' || (o.kind === 'door' && !o.hinge && o.widthM >= 1.2)) {
+            if (o.kind === 'window' || o.kind === 'slider') {
               put('glass', at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01)))
             }
           }

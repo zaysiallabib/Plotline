@@ -115,9 +115,8 @@ function part(g: THREE.Group, name: string, label: string, objectKind: ObjectKin
 /** Door/passage/window joinery in wall-local coordinates (u, v, w). The group is picked as the opening; parts on their own. */
 export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): THREE.Group {
   const g = new THREE.Group()
-  const slider = o.kind === 'door' && !o.hinge && o.widthM >= 1.2
   const [label, objectKind]: [string, ObjectKind] =
-    o.kind === 'window' ? ['Window', 'window'] : o.kind === 'passage' ? ['Cased opening', 'passage'] : [slider ? 'Sliding door' : opts.main ? 'Main door' : 'Door', 'door']
+    o.kind === 'window' ? ['Window', 'window'] : o.kind === 'passage' ? ['Cased opening', 'passage'] : [o.kind === 'slider' ? 'Sliding door' : opts.main ? 'Main door' : 'Door', 'door']
   g.userData = { kind: 'opening', id: o.id, wallId: wall.id, label, objectKind }
   const T2 = wall.thicknessM / 2
   const u0 = o.offsetM
@@ -136,7 +135,7 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
     g.add(merged(casings(u0, u1, s, s + H, T2, 0), TRIM_PAINT))
-  } else if (slider) {
+  } else if (o.kind === 'slider') {
     buildSlider(g, o, T2, th)
   } else {
     buildDoor(g, o, T2, th, !!opts.main)

@@ -21,7 +21,8 @@ export interface Vertex {
   y: number // m
 }
 
-export type OpeningKind = 'door' | 'window' | 'passage'
+/** 'slider' = a sliding door (glazed panels, no swinging leaf): its own kind, never guessed from width or hinge. */
+export type OpeningKind = 'door' | 'window' | 'passage' | 'slider'
 
 export interface Opening {
   id: Id
@@ -30,7 +31,7 @@ export interface Opening {
   widthM: number
   heightM: number
   sillM: number // 0 for doors/passages
-  /** door swing/hinge side hint; purely visual */
+  /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'
 }

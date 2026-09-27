@@ -154,7 +154,7 @@ function buildSides(room: Room, unit: Unit): Side[] {
       if (o.kind === 'window') wins.push({ u0, u1: u0 + o.widthM, sill: o.sillM, top: o.sillM + o.heightM })
       else {
         // leaf side as openings.ts builds it: 'out' = +normal, which is this room's side when the wall runs with the loop
-        const slides = !o.hinge && o.widthM >= 1.2
+        const slides = o.kind === 'slider'
         const sweeps = o.kind === 'passage' || (!slides && (o.swing !== 'in') === forward)
         doors.push([u0, u0 + o.widthM, sweeps ? DOOR_CLEAR : STEP_IN, slides ? STEP_IN : ENTRY])
       }

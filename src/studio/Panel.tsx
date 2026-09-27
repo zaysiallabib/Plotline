@@ -177,9 +177,16 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
           {formatFeetInches(o.offsetM)} from corner A · {formatFeetInches(toB)} from corner B
         </p>
         <div className="seg">
-          {(['door', 'window', 'passage'] as OpeningKind[]).map((k) => (
+          {(
+            [
+              ['door', 'Door'],
+              ['slider', 'Sliding door'],
+              ['window', 'Window'],
+              ['passage', 'Passage'],
+            ] as [OpeningKind, string][]
+          ).map(([k, label]) => (
             <button key={k} className={o.kind === k ? 'on' : ''} onClick={() => patch({ kind: k })}>
-              {k[0].toUpperCase() + k.slice(1)}
+              {label}
             </button>
           ))}
         </div>

@@ -554,7 +554,7 @@
       "openings": [
         {
           "id": "o_kit_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.393,
           "widthM": 1.5,
           "heightM": 2.1,
@@ -1121,7 +1121,7 @@
       "openings": [
         {
           "id": "o_b1_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.192,
           "widthM": 1.8,
           "heightM": 2.1,
@@ -1170,7 +1170,7 @@
       "openings": [
         {
           "id": "o_b4_ver_door",
-          "kind": "door",
+          "kind": "slider",
           "offsetM": 0.294,
           "widthM": 1.8,
           "heightM": 2.1,
