@@ -324,7 +324,7 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * Nothing qualifies: 0.9 m in from the first door/passage on its centreline. Always faces the target.
  * `closeLeaf`: the door leaf the viewer shuts for this frame (the largest, when shutting it takes back LEAF_GAIN of it).
  */
-export function roomView(room: Room, unit: Unit): View {
+export function roomView(room: Room, unit: Unit, out = true): View {
   const inner = core.roomInnerPolygon(room, unit)
   const n = inner.length
   // ceiling lights and ACs are overhead: they neither frame the view nor block a stand point
@@ -478,7 +478,8 @@ export function roomView(room: Room, unit: Unit): View {
   }
   // a sightline ends on an inner corner; a balcony's OUT on its rail/curb (a wall below the eye: the veranda's floor, its
   // parapet and the street in one frame — the director: veranda frames that look into the flat never show the veranda),
-  // anywhere along it (0.25 m steps, 0.3 m in from its ends); only a balcony without a rail looks at its
+  // anywhere along it (0.25 m steps, 0.3 m in from its ends); only a balcony without a rail (or with no clear frame out:
+  // `out` false) looks at its
   // slider / passage (back into the flat) or a corner of two open walls. Never a blank corner, a hinged door (ajar 20°)
   // or a window (a neighbour room's).
   const wallOf = (id: string) => unit.walls.find((x) => x.id === id)!
@@ -499,7 +500,7 @@ export function roomView(room: Room, unit: Unit): View {
   const openCorner = (i: number) => open(wallOf(room.wallIds[(i - 1 + n) % n])) && open(wallOf(room.wallIds[i]))
   const ends =
     room.kind !== 'balcony' ? inner
-    : rails.length ? rails
+    : out && rails.length ? rails
     : [...inner.filter((_, i) => openCorner(i)), ...sides.flatMap((x) => x.ways)]
   const farthest = (p: Pt): Pt =>
     ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
@@ -687,7 +688,10 @@ export function roomView(room: Room, unit: Unit): View {
   // SIDE_WALL_MAX (a blank side wall 1.2–2 m off filling a quarter: s Bed-2, sb Bed-1/3, sb Kitchen, sb Foyer); nothing
   // clears: the old rule, the same frames with their largest leaf shut, the least filled (the frames traced once: cached)
   const good = views.filter((v) => v.score > views[0].score - HANG_PENALTY / 2)
-  const best = clear(good, roomFlat) ?? clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
+  // a railed veranda whose every frame looking out is a close-up of its side walls (a 1.5 m box): the old view back in
+  const lookOut = room.kind === 'balcony' && out && rails.length > 0
+  const best = clear(good, roomFlat) ?? (lookOut ? undefined : clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled())
+  if (!best && lookOut) return roomView(room, unit, false)
   if (best) return done(best)
 
   for (const { w, f, c } of doors) {

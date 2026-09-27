@@ -495,7 +495,7 @@ describe('viewer', { timeout: 20_000 }, () => {
       }
   })
 
-  it('veranda jumps look OUT: the sightline leaves the veranda over its rail (the first wall it crosses is below the eye), never back through the slider into the flat, looking 10° down onto its floor (A, B, C, Sheltech A + B)', WHOLE, () => {
+  it('veranda jumps look OUT: the sightline leaves the veranda over its rail (the first wall it crosses is below the eye), not back through the slider into the flat — unless every frame out is a close-up of its side walls — looking 10° down onto its floor (A, B, C, Sheltech A + B)', WHOLE, () => {
     const sh = ([sheltechA, sheltechB] as unknown as Unit[]).map((u0) => {
       const rs = core.deriveRooms(u0)
       return { u: { ...u0, furniture: furnish(u0, rs) } as Unit, rs }
@@ -519,15 +519,16 @@ describe('viewer', { timeout: 20_000 }, () => {
         }
         if (first?.low) out.push(name)
       }
-    // every listed veranda has a rail; all but one look out over it (wave 11: B Bed-1/living, the C study, the service verandas looked back in)
+    // every listed veranda has a rail and looks out over it (wave 11: B Bed-1/living, the C study looked back in) — but the
+    // 1.5 m service verandas, whose every frame out is a close-up of their side walls (SIDE_WALL): back into the kitchen, and
+    // SB Veranda 1 (curbs on three sides), turned 20° to clear its frame into the slider wall's corner
     expect(out).toEqual([
-      'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 K. veranda', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
-      'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda (kitchen)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4',
-      'sheltech_b_2736 Veranda (kitchen)', 'sheltech_b_2736 Veranda 4', // SB Veranda 1 (curbs on three sides): turned 20° to clear its frame, into the slider wall's corner
+      'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
+      'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4', 'sheltech_b_2736 Veranda 4',
     ])
   })
 
-  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a service veranda looks out, not back in; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
+  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a service veranda too small to look out looks back in; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
     const s0 = sheltechA as unknown as Unit
     const rs = core.deriveRooms(s0)
     const u = { ...s0, furniture: furnish(s0, rs) } as Unit
@@ -538,7 +539,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     const room = (n: string) => rs.find((r) => r.name === n)!
     expect(ahead(view(room('Foyer'), u), 3), 'foyer: into the living room').toBe('Living')
     expect(ahead(view(room('Passage'), u), 2.5), 'passage: into the dining room').toBe('Dining')
-    expect(ahead(view(room('Veranda (kitchen)'), u), 1.5), 'service veranda: out, not back into the kitchen').not.toBe('Kitchen')
+    expect(ahead(view(room('Veranda (kitchen)'), u), 1.5), 'service veranda (every frame out a close-up of its side walls): back into the kitchen').toBe('Kitchen')
     const v = view(room('Bed 4'), u)
     const bed = u.furniture.find((f) => f.roomId === room('Bed 4').id && f.assetId.startsWith('bed_'))!
     expect(footprintDist(v.p, bed, kitAsset(bed.assetId)!.sizeM), 'Bed 4: off the bed').toBeGreaterThanOrEqual(0.2)
