@@ -1,7 +1,9 @@
+import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
 import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
+import { buildProcedural } from './procedural'
 import { ART_SETS, parsePlanter, PLANTER } from './procedural.meta'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
@@ -641,6 +643,28 @@ describe('furnish', () => {
     // a strip no door opens onto is a planter whatever it is called
     unit.roomLabels[0].name = 'Sunshade'
     expect(furnish(unit, deriveRooms(unit)).filter((p) => p.roomId === 'p').map((p) => p.id)).toEqual(['p:planter_bed:1'])
+  })
+
+  test('planter leaves keep off the veranda: none past the curb, low beside it, and strands hang down the parapets outside', () => {
+    const unit = planterAndVeranda()
+    const bed = furnish(unit, deriveRooms(unit)).find((p) => p.roomId === 'p')!
+    const g = buildProcedural(bed.assetId)!
+    const ims = g.children.filter((o): o is THREE.InstancedMesh => (o as THREE.InstancedMesh).isInstancedMesh)
+    expect(ims.length).toBeGreaterThan(0)
+    // bed-local: plan y = world z, the strip's inner faces at z = ±0.4365, the curb's veranda face at z = 0.5635
+    const [m, base, tip] = [new THREE.Matrix4(), new THREE.Vector3(), new THREE.Vector3()]
+    let [leaves, hanging] = [0, 0]
+    for (const im of ims)
+      for (let i = 0; i < im.count; i++, leaves++) {
+        im.getMatrixAt(i, m)
+        base.setFromMatrixPosition(m)
+        tip.set(0, 1, 0).applyMatrix4(m) // a blade is re-posed petiole end at the origin, tip at +y 1
+        for (const p of [base, tip]) expect(p.z).toBeLessThan(0.5635)
+        if (tip.z > 0.1365 && base.y < 1.05) expect(tip.y).toBeLessThan(0.95) // the mound within 0.3 m of the curb stays well under the 1.1 m caps
+        if (base.z < -0.4365 - 0.127 && tip.y < base.y && tip.y < 1.1) hanging++ // outside the far parapet, tip down
+      }
+    expect(leaves).toBeGreaterThan(300)
+    expect(hanging).toBeGreaterThan(100)
   })
 
   /** Front zone of a wardrobe placement: its width × WARDROBE_CLEAR. */
