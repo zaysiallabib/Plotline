@@ -92,4 +92,6 @@ export const TEXTURES: Record<string, TextureSet> = {
   },
   // warm clay quarry tiles, 6 × 6 per map → 300 × 300 mm
   tile_floor_terracotta: ACG('tile_floor_terracotta', 'Terracotta floor tiles 300 × 300', 'Tiles027', 1.8, { ao: true }),
+  // mown lawn for ground-floor and rooftop green strips (turf; storey-height planters get a planter_bed instead), 1.4 m a repeat
+  turf: ACG('turf', 'Lawn (turf)', 'Grass004', 1.4),
 }

@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { PROCEDURAL } from './procedural.meta'
+import { planterAsset, PROCEDURAL } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -98,7 +98,7 @@ const MOUNT_Y: Record<string, number> = {
 
 /** Poly Haven kit + procedural assets (src/furnish/procedural.meta.ts), with mount/front overrides applied. */
 export function kitAsset(id: string): KitAsset | undefined {
-  const a = KIT[id] ?? PROCEDURAL[id]
+  const a = KIT[id] ?? PROCEDURAL[id] ?? planterAsset(id)
   if (!a || !(MOUNT[id] || FRONT[id] || MOUNT_Y[id] !== undefined || KIND[id])) return a
   return { ...a, mount: MOUNT[id] ?? a.mount, frontAxis: FRONT[id] ?? a.frontAxis, mountY: MOUNT_Y[id] ?? a.mountY, kind: KIND[id] ?? a.kind }
 }

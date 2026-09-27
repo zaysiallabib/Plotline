@@ -28,7 +28,7 @@
 import type { FurniturePlacement, Room, RoomKind, Unit } from '../core'
 import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
 import { heightRange, isCeilingLight, kitAsset } from './kit'
-import { ART_SETS, ART_W, BED_STYLES, STAIR_W, stairId } from './procedural.meta'
+import { ART_SETS, ART_W, BED_STYLES, planterId, STAIR_W, stairId } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -36,6 +36,14 @@ const FLUSH = -GAP + 0.005
 const DOOR_CLEAR = 1.0
 /** Clear depth in front of a door whose leaf does not sweep the room (it swings away, or slides): room to step in. */
 const STEP_IN = 0.6
+/** A bed keeps the straight path in from every door free: door width × ENTRY into the room (a slider onto a veranda: its step-in zone). */
+export const ENTRY = 1.2
+/** A wardrobe keeps this much floor free in front of it, and a PATH_W wide straight path to it from some door that the bed does not cross. */
+export const WARDROBE_CLEAR = 0.7
+export const PATH_W = 0.6
+/** Piece size by room size: a lounge in a room narrower than this gets the 2-seat sofa; a dining room under DINING_4 m² seats 4. */
+const NARROW = 3.0
+const DINING_4 = 10
 /** How far a window "reaches" into the room for the cover test, and how much sill overlap is fine. */
 const WIN_DEPTH = 0.3
 const SILL_SLACK = 0.35
@@ -51,18 +59,23 @@ interface Side {
   n: Pt // inward normal
   len: number
   thick: number
-  /** [u0, u1] along the side from p0, clear depth into the room */
-  doors: [number, number, number][]
+  /** [u0, u1] along the side from p0, clear depth into the room, entry-path depth (ENTRY; a slider: its step-in) */
+  doors: [number, number, number, number][]
   wins: { u0: number; u1: number; sill: number; top: number }[]
 }
 
 interface Ctx {
   room: Room
+  unit: Unit
+  /** every room of the unit (a planter's outer edge is a wall no other room has) */
+  rooms: Room[]
   inner: Pt[]
   sides: Side[]
   corners: Pt[] // inner polygon vertices, convex first, sorted far-from-doors
   doorPts: Pt[]
   clear: Pt[][]
+  /** door width × ENTRY into the room, per door: no bed there */
+  entry: Pt[][]
   wins: { q: Pt[]; sill: number; top: number }[]
   quads: { q: Pt[]; y0: number; y1: number }[]
   rugs: Pt[][]
@@ -143,14 +156,14 @@ function buildSides(room: Room, unit: Unit): Side[] {
         // leaf side as openings.ts builds it: 'out' = +normal, which is this room's side when the wall runs with the loop
         const slides = !o.hinge && o.widthM >= 1.2
         const sweeps = o.kind === 'passage' || (!slides && (o.swing !== 'in') === forward)
-        doors.push([u0, u0 + o.widthM, sweeps ? DOOR_CLEAR : STEP_IN])
+        doors.push([u0, u0 + o.widthM, sweeps ? DOOR_CLEAR : STEP_IN, slides ? STEP_IN : ENTRY])
       }
     }
     return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, doors, wins }
   })
   const collinear = (a: Side, b: Side) => a.d.x * b.d.x + a.d.y * b.d.y > 0.9999
   const merge = (a: Side, b: Side) => {
-    for (const [u0, u1, depth] of b.doors) a.doors.push([u0 + a.len, u1 + a.len, depth])
+    for (const [u0, u1, depth, entry] of b.doors) a.doors.push([u0 + a.len, u1 + a.len, depth, entry])
     for (const w of b.wins) a.wins.push({ ...w, u0: w.u0 + a.len, u1: w.u1 + a.len })
     a.len += b.len
     a.thick = Math.max(a.thick, b.thick)
@@ -175,20 +188,22 @@ const spanQuad = (s: Side, u0: number, u1: number, depth: number): Pt[] => {
   return [a, b, add(b, s.n, depth), add(a, s.n, depth)]
 }
 
-/** Door/passage clear zones of a room (opening width × clear depth into the room). */
-export function doorClearZones(room: Room, unit: Unit): Pt[][] {
-  return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1, depth]) => spanQuad(s, u0, u1, depth)))
+/** Door/passage clear zones of a room (opening width × clear depth into the room); `entry`: the entry paths no bed may stand on. */
+export function doorClearZones(room: Room, unit: Unit, entry = false): Pt[][] {
+  return buildSides(room, unit).flatMap((s) => s.doors.map(([u0, u1, depth, e]) => spanQuad(s, u0, u1, entry ? e : depth)))
 }
 
-function makeCtx(room: Room, unit: Unit, kitchen: Pt | null, bedStyle: string): Ctx {
+function makeCtx(room: Room, unit: Unit, rooms: Room[], kitchen: Pt | null, bedStyle: string): Ctx {
   const sides = buildSides(room, unit)
   const inner = roomInnerPolygon(room, unit)
   const doorPts: Pt[] = []
   const clear: Pt[][] = []
+  const entry: Pt[][] = []
   const wins: Ctx['wins'] = []
   for (const s of sides) {
-    for (const [u0, u1, depth] of s.doors) {
+    for (const [u0, u1, depth, entryDepth] of s.doors) {
       clear.push(spanQuad(s, u0, u1, depth))
+      entry.push(spanQuad(s, u0, u1, entryDepth))
       doorPts.push(add(add(s.p0, s.d, (u0 + u1) / 2), s.n, s.thick / 2))
     }
     // 5 cm trim at each end: a cabinet may butt up to a window that starts in the corner
@@ -196,7 +211,7 @@ function makeCtx(room: Room, unit: Unit, kitchen: Pt | null, bedStyle: string): 
   }
   const farFromDoors = (p: Pt) => (doorPts.length ? Math.min(...doorPts.map((q) => dist(p, q))) : 0)
   const corners = [...inner].sort((a, b) => farFromDoors(b) - farFromDoors(a))
-  return { room, inner, sides, corners, doorPts, clear, wins, quads: [], rugs: [], out: [], counts: new Map(), kitchen, bedStyle }
+  return { room, unit, rooms, inner, sides, corners, doorPts, clear, entry, wins, quads: [], rugs: [], out: [], counts: new Map(), kitchen, bedStyle }
 }
 
 /** The footprint if `assetId` may stand at c (see header for modes), else null. */
@@ -205,6 +220,7 @@ function fits(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode)
   if (!quad.every((p) => pointInPolygon(p, ctx.inner))) return null
   if (mode === 'free') return quad
   if (ctx.clear.some((q) => quadsOverlap(q, quad))) return null
+  if (assetId.startsWith('bed_') && ctx.entry.some((q) => quadsOverlap(q, quad))) return null
   if (mode === 'flat') return ctx.rugs.some((q) => quadsOverlap(q, quad)) ? null : quad
   const a = kitAsset(assetId)
   const [y0, y1] = a ? heightRange(a) : [0, 1]
@@ -256,17 +272,19 @@ const againstSide = (side: Side, assetId: string, u: number, out = 0): Pt =>
 /** Where the perpendicular from p meets `side`, clamped to it. */
 const projU = (side: Side, p: Pt) => Math.min(side.len, Math.max(0, dot({ x: p.x - side.p0.x, y: p.y - side.p0.y }, side.d)))
 
-/** Place against a side, preferring u = uPref and sliding ±0.25 m steps (at most `reach`) until the footprint fits. */
-function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0, mode: Mode = 'solid', reach = side.len / 2) {
-  const hw = size(assetId).x / 2
+/** Positions along a side for an item hw half-wide: uPref first, then ±0.25 m steps (at most `reach`), each end 0.1 m off the corner. */
+function* slots(side: Side, hw: number, uPref = side.len / 2, reach = side.len / 2) {
+  for (let k = 0; k * 0.25 <= reach; k++) for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) if (u - hw >= 0.1 && u + hw <= side.len - 0.1) yield u
+}
+
+/** Place against a side at the first of its slots where the footprint fits (and `ok` holds). */
+function onSide(ctx: Ctx, side: Side, assetId: string, uPref = side.len / 2, out = 0, mode: Mode = 'solid', reach = side.len / 2, ok?: (c: Pt) => boolean) {
   const rot = rotationFacing(side.n)
-  for (let k = 0; k * 0.25 <= reach; k++) {
-    for (const u of k ? [uPref - k * 0.25, uPref + k * 0.25] : [uPref]) {
-      if (u - hw < 0.1 || u + hw > side.len - 0.1) continue
-      const c = againstSide(side, assetId, u, out)
-      const p = tryPlace(ctx, assetId, c, rot, mode)
-      if (p) return { p, u, c, side, rot }
-    }
+  for (const u of slots(side, size(assetId).x / 2, uPref, reach)) {
+    const c = againstSide(side, assetId, u, out)
+    if (ok && !ok(c)) continue
+    const p = tryPlace(ctx, assetId, c, rot, mode)
+    if (p) return { p, u, c, side, rot }
   }
   return null
 }
@@ -353,21 +371,69 @@ function frames(ctx: Ctx, side: Side, u: number): void {
 
 // ───────────────────────────── per kind ─────────────────────────────
 
-function bed(ctx: Ctx): void {
-  const queen = ctx.room.areaSqm >= 9
-  const bedId = (queen ? 'bed_queen' : 'bed_single') + ctx.bedStyle
-  const b = onSides(ctx, rankNoOpenings(ctx), bedId)
-  if (!b) return
+/** A PATH_W wide strip from a to b. */
+const corridor = (a: Pt, b: Pt): Pt[] => {
+  const l = dist(a, b) || 1
+  const m = { x: (-(b.y - a.y) / l) * (PATH_W / 2), y: ((b.x - a.x) / l) * (PATH_W / 2) }
+  return [add(a, m), add(b, m), add(b, m, -1), add(a, m, -1)]
+}
+
+/**
+ * Wardrobe `id` on the first of `sides` that takes it with WARDROBE_CLEAR free in front: no piece under 1 m high across
+ * its width (reserved, so later pieces stay off it), room to stand (PATH_W wide) in front of its middle, and a straight
+ * path from some door into that clear strip (to its middle or either end, PATH_W / 2 in) that the bed (footprint `bed`)
+ * does not cross.
+ */
+function wardrobe(ctx: Ctx, sides: Side[], id: string, bed: Pt[]): boolean {
+  const sz = size(id)
+  for (const s of sides) {
+    let zone: Pt[] = []
+    const ok = (c: Pt) => {
+      const mid = add(c, s.n, sz.z / 2 + WARDROBE_CLEAR / 2)
+      zone = footprint(mid, rotationFacing(s.n), { x: sz.x, z: WARDROBE_CLEAR })
+      const ends = [0, -1, 1].map((k) => add(mid, s.d, (k * (sz.x - PATH_W)) / 2))
+      return (
+        footprint(mid, rotationFacing(s.n), { x: PATH_W, z: WARDROBE_CLEAR }).every((p) => pointInPolygon(p, ctx.inner)) &&
+        !ctx.quads.some((o) => o.y0 < 1 && quadsOverlap(o.q, zone)) &&
+        (!ctx.doorPts.length || ctx.doorPts.some((d) => ends.some((e) => !quadsOverlap(corridor(d, e), bed))))
+      )
+    }
+    if (onSide(ctx, s, id, s.len / 2, 0, 'solid', s.len / 2, ok)) {
+      ctx.quads.push({ q: zone, y0: 0, y1: 1 })
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Bed at u on `side`, clear of every door's entry path (fits), bedside tables, a rug, prints over it; then wardrobe `robe`
+ * on another wall (a 2-door one also beside the bed). False if the bed does not fit or the wardrobe does not (null: none).
+ */
+function dressBed(ctx: Ctx, side: Side, bedId: string, u: number, robe: string | null): boolean {
+  const b = onSide(ctx, side, bedId, u, 0, 'solid', 0)
+  if (!b) return false
   const off = size(bedId).x / 2 + GAP + size('bedside_oak').x / 2
   for (const s of [-1, 1]) tryPlace(ctx, 'bedside_oak', againstSide(b.side, 'bedside_oak', b.u + s * off), b.rot)
   // rug under the lower two thirds of the bed (or a bit less), long side across it, nudged clear of door zones
   const L = size(bedId).z
-  rug: for (const rug of queen ? ['rug_rect_large', 'rug_rect_small'] : ['rug_rect_small'])
+  rug: for (const rug of bedId.startsWith('bed_queen') ? ['rug_rect_large', 'rug_rect_small'] : ['rug_rect_small'])
     for (const out of [L / 3, L / 4])
       for (const du of [0, -0.25, 0.25, -0.5, 0.5]) if (tryPlace(ctx, rug, againstSide(b.side, rug, b.u + du, out), b.rot, 'flat')) break rug
   frames(ctx, b.side, b.u)
-  // closed oak wardrobes only (the kit's steel-framed drawer_cabinet read as garage shelving): 3 doors, else 2, else beside the bed
-  onSides(ctx, others(ctx, [b.side]), 'wardrobe_tall') ?? onSides(ctx, others(ctx, [b.side]), 'wardrobe_2door') ?? onSides(ctx, [b.side], 'wardrobe_2door')
+  // closed oak wardrobes only (the kit's steel-framed drawer_cabinet read as garage shelving)
+  const q = footprint(b.c, b.rot, size(bedId))
+  return !robe || wardrobe(ctx, others(ctx, [side]), robe, q) || (robe === 'wardrobe_2door' && wardrobe(ctx, [side], robe, q))
+}
+
+function bed(ctx: Ctx): void {
+  const beds = (ctx.room.areaSqm >= 9 ? ['bed_queen', 'bed_single'] : ['bed_single']).map((id) => id + ctx.bedStyle)
+  const robes = ctx.room.areaSqm >= 11 ? ['wardrobe_tall', 'wardrobe_2door'] : ['wardrobe_2door']
+  // the blankest wall that takes the bed (sliding along it) with a reachable wardrobe, the 3-door one first; else the next
+  // wall; else the single bed; else the bed without a wardrobe
+  const tries = (rs: (string | null)[]) => beds.flatMap((bedId) => rankNoOpenings(ctx).flatMap((side) => rs.map((robe) => ({ robe, bedId, side }))))
+  const placed = [...tries(robes), ...tries([null])].some(({ robe, bedId, side }) => [...slots(side, size(bedId).x / 2)].some((u) => atomic(ctx, () => dressBed(ctx, side, bedId, u, robe))))
+  if (!placed) return
   if (ctx.room.areaSqm >= 18) inCorner(ctx, 'modern_arm_chair_01')
   inCorner(ctx, 'potted_plant_02')
   // ponytail: no potted_plant_04 on a side table — placements carry no per-instance elevation (mountY is per asset).
@@ -379,12 +445,14 @@ function bed(ctx: Ctx): void {
  * side away from `away` first (the room's other zone: a chair back between them hides it).
  */
 function lounge(ctx: Ctx, sides: Side[], toward: Pt | null, tables = ['modern_coffee_table_01'], chairId = 'modern_arm_chair_01', away: Pt | null = null) {
+  // a narrow room gets the 2-seater: the 3-seater's depth plus a coffee table and a walkway fill it
+  const sofaId = bounds(ctx).short < NARROW ? 'sofa_2seat' : 'sofa_3seat'
   let sofa: ReturnType<typeof onSide> = null
-  for (const s of sides) if ((sofa = onSide(ctx, s, 'sofa_3seat', toward ? projU(s, toward) : s.len / 2))) break
+  for (const s of sides) if ((sofa = onSide(ctx, s, sofaId, toward ? projU(s, toward) : s.len / 2))) break
   if (!sofa) return null
   const { side, c, rot } = sofa
-  const sz = size('sofa_3seat')
-  for (const s of [-1, 1]) tryPlace(ctx, 'cushions_plain', add(add(c, side.d, s * 0.55), side.n, 0.12), rot + s * 8, 'free')
+  const sz = size(sofaId)
+  for (const s of sofaId === 'sofa_3seat' ? [-0.55, 0.55] : [0.2]) tryPlace(ctx, 'cushions_plain', add(add(c, side.d, s), side.n, 0.12), rot + Math.sign(s) * 8, 'free')
   rug: for (const rug of ['rug_rect_large', 'rug_rect_small'])
     for (const du of [0, -0.25, 0.25, -0.5, 0.5])
       if (tryPlace(ctx, rug, add(add(c, side.d, du), side.n, sz.z / 2 - 0.25 + size(rug).z / 2), rot, 'flat')) break rug
@@ -485,7 +553,7 @@ function dining(ctx: Ctx): void {
   const offs = [0, 0.25, -0.25, 0.5, -0.5, 0.75, -0.75]
   let table: Pt | null = null
   let end: Pt | null = null
-  search: for (const seats of [6, 4, 2]) {
+  search: for (const seats of ctx.room.areaSqm < DINING_4 ? [4, 2] : [6, 4, 2]) {
     for (const rug of ['rug_rect_large', 'rug_rect_small', null]) {
       for (const e of ends) {
         for (const a of offs) {
@@ -607,11 +675,30 @@ function bath(ctx: Ctx): void {
   onSides(ctx, t ? others(ctx, [t.side]) : rankLongest(ctx), 'basin') ?? onSides(ctx, rankLongest(ctx), 'basin')
 }
 
+/** A planter strip (Dhaka drawings' SUNSHADE/PLANTER): a balcony named planter, or one no door opens onto. Not somewhere to stand. */
+export const isPlanter = (room: Room, unit: Unit): boolean =>
+  room.kind === 'balcony' &&
+  (/planter/i.test(room.name) || !room.wallIds.some((id) => unit.walls.find((w) => w.id === id)?.openings.some((o) => o.kind !== 'window')))
+
+/**
+ * One raised bed filling the strip (procedural planter_bed, shaped by its id): plants trail over every outer edge, a
+ * wall lower than 1.5 m (parapet, rail) that no other room shares; a curb onto a veranda or the building's wall is not one.
+ */
+function planter(ctx: Ctx): void {
+  const walls = new Map(ctx.unit.walls.map((w) => [w.id, w]))
+  const edges = ctx.room.wallIds.map((id) => {
+    const w = walls.get(id)
+    return w && w.heightM < 1.5 && !ctx.rooms.some((r) => r !== ctx.room && r.wallIds.includes(id)) ? { h: w.heightM, t: w.thicknessM } : { h: 0, t: 0 }
+  })
+  const { id, c } = planterId(ctx.inner, edges)
+  ctx.out.push({ id: `${ctx.room.id}:planter_bed:1`, assetId: id, roomId: ctx.room.id, x: c.x, y: c.y, rotationDeg: 0 })
+}
+
 function balcony(ctx: Ctx): void {
+  if (isPlanter(ctx.room, ctx.unit)) return planter(ctx)
   const plant = inCorner(ctx, 'potted_plant_02')
-  // a planter is for plants; a ledge under 1.2 m deep is no place to sit
-  if (/planter/i.test(ctx.room.name)) inCorner(ctx, 'potted_plant_01', plant ? [plant.corner] : [])
-  else if (ctx.room.areaSqm >= 3 && bounds(ctx).short >= 1.2) {
+  // a ledge under 1.2 m deep is no place to sit
+  if (ctx.room.areaSqm >= 3 && bounds(ctx).short >= 1.2) {
     inCorner(ctx, 'mid_century_lounge_chair', plant ? [plant.corner] : []) ??
       tryPlace(ctx, 'ottoman_01', polygonCentroid(ctx.inner), 0)
   }
@@ -750,7 +837,7 @@ export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
     const help = isHelpRoom(room)
     const fn = isStair(room) ? stairwell : help ? helpRoom : BY_KIND[room.kind]
     if (!fn || room.loop.length < 3) continue
-    const ctx = makeCtx(room, unit, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
+    const ctx = makeCtx(room, unit, rooms, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
     // after the room's own pieces, so their ids stay put; 'free' placements, so they move nothing
     if (LIT_KINDS.includes(room.kind)) ceilingLight(ctx)
