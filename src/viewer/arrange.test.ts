@@ -3,7 +3,7 @@ import { deriveRooms } from '../core'
 import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { pieceQuad, resizePiece } from '../studio/furniture'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { dragTo, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
+import { baseOf, dragTo, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
 import { shareUrl } from './share'
 
 // resizeLimits is empty until the resize work fills it: one resizable asset for these tests
@@ -36,6 +36,7 @@ const unit: Unit = {
   ],
   furniture: [
     piece('sofa', 'sofa_3seat', 'A', 2.5, 4.39, 180),
+    piece('cush', 'cushions_plain', 'A', 3.05, 4.27, 180), // on the sofa
     piece('tv', 'tv_55_wall', 'A', 2.5, 0.135), // on the top wall, facing down into the room
     piece('fan', 'ceiling_fan', 'A', 2.5, 2.5),
     piece('robe', 'wardrobe_2door', 'B', 6.5, 0.45), // 1.2 × 0.6, back 5 cm off the top wall
@@ -107,6 +108,17 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     expect(m.error).toBeNull()
     expect(m.piece).toMatchObject({ x: expect.closeTo(0.1 + 0.005 + 0.03, 6), y: expect.closeTo(8 * 0.3048, 6), rotationDeg: 270, roomId: 'A' })
     expect(dragTo(unit, rooms, ps, 'tv', { at: { x: 2, y: 2 }, wall: null })).toBeNull() // no wall under the pointer
+  })
+
+  it('grabbing what rests on a piece picks up the piece (cushions → the sofa), moved by the pointer’s travel', () => {
+    expect(baseOf(ps, 'cush')?.id).toBe('sofa')
+    expect(baseOf(ps, 'tv')?.id).toBe('tv') // wall-hung: itself
+    const cush = at(ps, 'cush')
+    const m = dragTo(unit, rooms, ps, 'cush', { at: { x: cush.x - 0.5, y: cush.y }, wall: null })!
+    expect(m.error).toBeNull()
+    expect(m.ids).toEqual(['sofa', 'cush'])
+    expect(m.piece.x).toBeCloseTo(2.5 - 0.5, 0) // on the grid
+    expect(at(m.furniture, 'cush').x - cush.x).toBeCloseTo(m.piece.x - 2.5, 9)
   })
 
   it('floor and ceiling pieces slide on their plane; a refused spot says why', () => {

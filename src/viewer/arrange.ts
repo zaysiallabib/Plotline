@@ -5,7 +5,7 @@
  */
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { kitAsset, placementSize } from '../furnish/kit'
-import { GRID_M, movePiece, type Move } from '../studio/furniture'
+import { GRID_M, layerOf, movePiece, pieceAt, type Move } from '../studio/furniture'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
@@ -71,15 +71,23 @@ export interface DragTarget {
   wall: { p: Pt; n: Pt } | null
 }
 
+/** What a click on piece `id` picks up: a piece resting on another (a TV on its unit, cushions) → that one, as the Studio's pieceAt. */
+export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement | null {
+  const p = pieces.find((x) => x.id === id)
+  if (!p || surfaceOf(p) !== 'floor' || layerOf(p) !== 1) return p ?? null
+  return pieceAt(pieces.filter((o) => o.roomId === p.roomId), p) ?? p
+}
+
 /**
- * Piece `id` dragged to `t`, on the Studio's rules (movePiece: 1 ft grid, wall snap, refusals, riders along). A wall
- * piece goes onto the wall under the pointer — back to it, front into the room, sliding in 1 ft steps along it — so it
- * hops walls; the others slide on their plane.
+ * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 1 ft grid, wall snap,
+ * refusals, riders along). A wall piece goes onto the wall under the pointer — back to it, front into the room, sliding
+ * in 1 ft steps along it — so it hops walls; the others slide on their plane.
  */
 export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget): Move | null {
-  const p = pieces.find((x) => x.id === id)
-  if (!p) return null
-  if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, id, t.at, p.rotationDeg)
+  const g = pieces.find((x) => x.id === id)
+  const p = baseOf(pieces, id)
+  if (!g || !p) return null
+  if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, p.id, { x: t.at.x + p.x - g.x, y: t.at.y + p.y - g.y }, p.rotationDeg)
   if (!t.wall) return null
   const { n } = t.wall
   const d = { x: n.y, y: -n.x } // along the wall

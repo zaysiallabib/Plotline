@@ -16,7 +16,7 @@ import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { dragTo, isStaff, pushStep, readLayout, saveLayout, undoStep, type Steps } from './arrange'
+import { baseOf, dragTo, isStaff, pushStep, readLayout, saveLayout, undoStep, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
@@ -307,11 +307,11 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const showSel = (p: FurniturePlacement | null, refused = false) =>
     scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, handles: !!resizeLimits(p.assetId) })
   /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
-  const settle = (h: Steps) => {
+  const settle = (h: Steps, show = sel) => {
     steps.current = h
     saveLayout(unit.id, h.pieces, base)
     scene?.setLayout(h.pieces)
-    showSel(pieceOf(sel))
+    showSel(pieceOf(show))
     redraw()
   }
   const undo = () => steps.current.past.length && settle(undoStep(steps.current))
@@ -329,16 +329,17 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   }
   const onArrange = (e: ArrangeEvent) => {
     if (e.kind === 'select') {
-      setSel(e.id)
-      return showSel(pieceOf(e.id))
+      const b = e.id ? baseOf(steps.current.pieces, e.id) : null // the TV → its unit, cushions → the sofa
+      setSel(b?.id ?? null)
+      return showSel(b)
     }
     const m = live.current
     if (e.kind === 'drop') {
       live.current = null
       if (!m) return
-      if (!m.error) return settle(pushStep(steps.current, m.furniture))
+      if (!m.error) return settle(pushStep(steps.current, m.furniture), m.piece.id)
       scene?.placePieces(m.ids.map((id) => pieceOf(id)!)) // springs back
-      showSel(pieceOf(e.id))
+      showSel(pieceOf(m.piece.id))
       return showToast(m.error)
     }
     const p = pieceOf(e.id)
