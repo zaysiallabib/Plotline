@@ -13,7 +13,7 @@ import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
-  entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
+  VERANDA_PITCH, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
 import { boxInFrame, frameShares, swings } from './frame'
@@ -313,7 +313,7 @@ describe('viewer', { timeout: 20_000 }, () => {
         })
         .map((f) => f.id),
     ])
-    const walls = new Set(u.walls.map((w) => w.id))
+    const walls = new Set(u.walls.filter((w) => w.heightM >= 1.6).map((w) => w.id)) // rails and curbs are no near plaster
     const shares = [...frameShares(u, v.p, v.face, v.pitch, Infinity, v.closeLeaf)]
     return {
       flat: Math.max(0, ...shares.filter(([id]) => flat.has(id)).map(([, s]) => s)),
@@ -493,28 +493,39 @@ describe('viewer', { timeout: 20_000 }, () => {
       }
   })
 
-  it('veranda jumps look out over the rail, back through an opening or into a corner of two open walls, never into a blank wall corner (A, B, C)', () => {
-    for (const { u, rs } of both)
+  it('veranda jumps look OUT: the sightline leaves the veranda over its rail (the first wall it crosses is below the eye), never back through the slider into the flat, looking 10° down onto its floor (A, B, C, Sheltech A + B)', WHOLE, () => {
+    const sh = ([sheltechA, sheltechB] as unknown as Unit[]).map((u0) => {
+      const rs = core.deriveRooms(u0)
+      return { u: { ...u0, furniture: furnish(u0, rs) } as Unit, rs }
+    })
+    const out: string[] = []
+    for (const { u, rs } of [...both, ...sh])
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'balcony')) {
+        const name = `${u.id} ${r.name}`.replace(/unit_(type_)?/, '')
         const v = view(r, u)
-        const inner = core.roomInnerPolygon(r, u)
-        let s = 0
-        while (s < 20 && core.pointInPolygon(at(v.p, v.face, s + 0.05), inner)) s += 0.05
-        const end = at(v.p, v.face, s + 0.1) // inside the wall(s) the sightline ends on
-        const hit = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => {
+        expect(v.pitch, name).toBeCloseTo(VERANDA_PITCH, 9)
+        // the nearest of the room's walls the plan ray crosses (centre lines)
+        let first: { t: number; low: boolean } | null = null
+        for (const w of u.walls.filter((x) => r.wallIds.includes(x.id))) {
           const f = core.wallFrame(w, u.vertices)
-          const along = (end.x - f.origin.x) * f.dir.x + (end.y - f.origin.y) * f.dir.y
-          const off = Math.abs((end.x - f.origin.x) * f.normal.x + (end.y - f.origin.y) * f.normal.y)
-          if (off > w.thicknessM / 2 + 0.2 || along < -0.2 || along > f.lengthM + 0.2) return []
-          const low = w.heightM < 1.6
-          return [{ on: low || w.openings.some((o) => along >= o.offsetM && along <= o.offsetM + o.widthM), open: low || w.openings.some((o) => o.kind !== 'door') }]
-        })
-        const ok = hit.length > 0 && (hit.every((h) => h.on) || (hit.length > 1 && hit.every((h) => h.open)))
-        expect(ok, `${u.id} ${r.name} ends on an opening, the rail or an open corner`).toBe(true)
+          const den = v.face.x * f.dir.y - v.face.y * f.dir.x
+          if (Math.abs(den) < 1e-9) continue
+          const o = sub(f.origin, v.p)
+          const t = (o.x * f.dir.y - o.y * f.dir.x) / den
+          const s = (o.x * v.face.y - o.y * v.face.x) / den
+          if (t > 0 && s >= 0 && s <= f.lengthM && (!first || t < first.t)) first = { t, low: w.heightM < 1.6 }
+        }
+        if (first?.low) out.push(name)
       }
+    // every listed veranda has a rail; all but one look out over it (wave 11: B Bed-1/living, the C study, the service verandas looked back in)
+    expect(out).toEqual([
+      'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 K. veranda', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
+      'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda (kitchen)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4',
+      'sheltech_b_2736 Veranda (kitchen)', 'sheltech_b_2736 Veranda 4', // SB Veranda 1 (curbs on three sides): turned 20° to clear its frame, into the slider wall's corner
+    ])
   })
 
-  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a veranda with nothing to sit on looks back in; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
+  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a service veranda looks out, not back in; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
     const s0 = sheltechA as unknown as Unit
     const rs = core.deriveRooms(s0)
     const u = { ...s0, furniture: furnish(s0, rs) } as Unit
@@ -525,7 +536,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     const room = (n: string) => rs.find((r) => r.name === n)!
     expect(ahead(view(room('Foyer'), u), 3), 'foyer: into the living room').toBe('Living')
     expect(ahead(view(room('Passage'), u), 2.5), 'passage: into the dining room').toBe('Dining')
-    expect(ahead(view(room('Veranda (kitchen)'), u), 1.5), 'service veranda: back into the kitchen').toBe('Kitchen')
+    expect(ahead(view(room('Veranda (kitchen)'), u), 1.5), 'service veranda: out, not back into the kitchen').not.toBe('Kitchen')
     const v = view(room('Bed 4'), u)
     const bed = u.furniture.find((f) => f.roomId === room('Bed 4').id && f.assetId.startsWith('bed_'))!
     expect(footprintDist(v.p, bed, kitAsset(bed.assetId)!.sizeM), 'Bed 4: off the bed').toBeGreaterThanOrEqual(0.2)

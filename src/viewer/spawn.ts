@@ -223,6 +223,8 @@ export const wetBand = (k: KitAsset, size: { x: number; y: number; z: number }):
 }
 /** A bath's pitches are tried in these steps (rad). */
 const WET_STEP = (5 * Math.PI) / 180
+/** A veranda looks out along its floor this far down: 1.8 m ahead the floor enters the frame, the parapet and the street stay in it. */
+export const VERANDA_PITCH = (-10 * Math.PI) / 180
 /** A walk-in closet is seen from just inside a door down its aisle, looking down this little (the rails' tops stay in frame). */
 export const CLOSET_PITCH = (-5 * Math.PI) / 180
 /** A general room's best spot may turn this far (°) off its target to clear its frame before the next spot is tried. */
@@ -379,7 +381,8 @@ export function roomView(room: Room, unit: Unit): View {
       })
       .map((f) => f.id),
   ])
-  const wallIds = new Set(unit.walls.map((w) => w.id))
+  // near plaster: full-height walls only (a veranda's rail or curb below the eye is its edge, not a wall in the face)
+  const wallIds = new Set(unit.walls.filter((w) => w.heightM >= EYE).map((w) => w.id))
   type Fill = { leaf: number; leafId?: string; slab: number; wall: number }
   // by frame, not object: the same spot and heading ranked twice (a bath's far and near lists) is traced once
   const fills = new Map<string, Fill>()
@@ -462,10 +465,11 @@ export function roomView(room: Room, unit: Unit): View {
     for (let s = 0.05; s < L - 0.05; s += 0.05) if (!core.pointInPolygon(add(p, { x: q.x - p.x, y: q.y - p.y }, s / L), inner)) return false
     return true
   }
-  // a sightline ends on an inner corner; a balcony's on its rail/curb (a wall below the eye: the street) or its slider /
-  // passage (back into the flat), on the inner face — never a blank corner, a hinged door (ajar 20°) or a window (a
-  // neighbour room's). A balcony with nothing to sit on (a service veranda: a plant at most) only looks back into the
-  // flat: out over its rail there is nothing but the neighbours' facades.
+  // a sightline ends on an inner corner; a balcony's OUT on its rail/curb (a wall below the eye: the veranda's floor, its
+  // parapet and the street in one frame — the director: veranda frames that look into the flat never show the veranda),
+  // anywhere along it (0.25 m steps, 0.3 m in from its ends); only a balcony without a rail looks at its
+  // slider / passage (back into the flat) or a corner of two open walls. Never a blank corner, a hinged door (ajar 20°)
+  // or a window (a neighbour room's).
   const wallOf = (id: string) => unit.walls.find((x) => x.id === id)!
   const open = (w: Wall) => w.heightM < EYE || w.openings.some((o) => !swings(o))
   const sides =
@@ -476,17 +480,16 @@ export function roomView(room: Room, unit: Unit): View {
           const f = core.wallFrame(w, unit.vertices)
           const s = core.pointInPolygon(add(add(f.origin, f.dir, f.lengthM / 2), f.normal, w.thicknessM / 2 + 0.05), inner) ? 1 : -1
           const on = (u: number) => add(add(f.origin, f.dir, u), f.normal, s * (w.thicknessM / 2 + 0.02))
-          return { rail: w.heightM < EYE ? [on(f.lengthM / 2)] : [], ways: w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => on(o.offsetM + o.widthM / 2)) }
+          const rail: Pt[] = []
+          if (w.heightM < EYE) for (let u = Math.min(0.3, f.lengthM / 2); u <= f.lengthM - Math.min(0.3, f.lengthM / 2) + 1e-9; u += 0.25) rail.push(on(u))
+          return { rail, ways: w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => on(o.offsetM + o.widthM / 2)) }
         })
-  const ways = sides.flatMap((x) => x.ways)
+  const rails = sides.flatMap((x) => x.rail)
+  const openCorner = (i: number) => open(wallOf(room.wallIds[(i - 1 + n) % n])) && open(wallOf(room.wallIds[i]))
   const ends =
     room.kind !== 'balcony' ? inner
-    : ways.length && items.every((f) => kitAsset(f.assetId)?.category === 'plant') ? ways
-    : [
-        // …or a corner where two open walls meet (the slider and the rail: the flat and the street in one frame)
-        ...inner.filter((_, i) => open(wallOf(room.wallIds[(i - 1 + n) % n])) && open(wallOf(room.wallIds[i]))),
-        ...sides.flatMap((x) => [...x.rail, ...x.ways]),
-      ]
+    : rails.length ? rails
+    : [...inner.filter((_, i) => openCorner(i)), ...sides.flatMap((x) => x.ways)]
   const farthest = (p: Pt): Pt =>
     ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
   // eye (1.6 m) in or against a cabinet/wardrobe/TV
@@ -653,7 +656,7 @@ export function roomView(room: Room, unit: Unit): View {
       for (const s of a ? [1, -1] : [0]) {
         const r = (s * a * Math.PI) / 180
         const turned = { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
-        views.push({ p, face: turned, score: score - (a && !hang && hangs(unit, p, turned) ? HANG_PENALTY : 0) })
+        views.push({ p, face: turned, score: score - (a && !hang && hangs(unit, p, turned) ? HANG_PENALTY : 0), ...(room.kind === 'balcony' && { pitch: VERANDA_PITCH }) })
       }
   }
   candidates.forEach((p) => consider(p))
