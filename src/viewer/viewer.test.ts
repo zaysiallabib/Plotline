@@ -12,7 +12,7 @@ import { kitAsset, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
-  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
+  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
@@ -543,6 +543,20 @@ describe('viewer', { timeout: 20_000 }, () => {
     const bed = u.furniture.find((f) => f.roomId === room('Bed 4').id && f.assetId.startsWith('bed_'))!
     expect(footprintDist(v.p, bed, kitAsset(bed.assetId)!.sizeM), 'Bed 4: off the bed').toBeGreaterThanOrEqual(0.2)
     expect(deg(v.face, sub(bed, v.p)), 'Bed 4: the bed in frame').toBeLessThanOrEqual(40)
+  })
+
+  it('a room frame keeps plaster within SIDE_WALL (2 m) under SIDE_WALL_MAX where a spot allows — the wave-11 director\'s "close blank wall fills a quarter" frames (Sheltech A Bed 2; Sheltech B Bed 1, Bed 3, Kitchen, Foyer)', WHOLE, () => {
+    const side = (u0: Unit, names: string[]) => {
+      const rs = core.deriveRooms(u0)
+      const u = { ...u0, furniture: furnish(u0, rs) } as Unit
+      const walls = new Set(u.walls.filter((w) => w.heightM >= 1.6).map((w) => w.id))
+      return names.map((n) => {
+        const v = view(rs.find((r) => r.name === n)!, u)
+        return [n, [...frameShares(u, v.p, v.face, v.pitch, SIDE_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0)] as const
+      })
+    }
+    // wave 11 (HEAD before this rule): 17, 17, 20, 34, 25 % of the frame
+    for (const [n, s] of [...side(sheltechA as unknown as Unit, ['Bed 2']), ...side(sheltechB as unknown as Unit, ['Bed 1', 'Bed 3', 'Kitchen', 'Foyer'])]) expect(s, n).toBeLessThanOrEqual(SIDE_WALL_MAX)
   })
 
   it('frameShares: a 1 m door leaf ajar 20° fills most of the frame from 0.5 m, under 15 % from 3 m; a wardrobe 1.5 m ahead fills half', () => {
