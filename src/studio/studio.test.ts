@@ -438,6 +438,147 @@ describe('corners merge when moved onto each other', () => {
   })
 })
 
+describe('wall length keeps neighbours straight; detach, re-join, delete', () => {
+  /** a closed polygon from points, then optional extra chains [from, to] (T partitions); tol 0.05 */
+  const poly = (pts: [number, number][], ...chains: [number, number][][]) => {
+    let s = reducer(initialState(), { type: 'set-scale', pxPerM: 100 })
+    for (const c of [[...pts, pts[0]], ...chains]) {
+      s = reducer(s, { type: 'chain-start', at: { x: c[0][0], y: c[0][1], tolM: TOL } })
+      for (const [x, y] of c.slice(1)) s = reducer(s, { type: 'chain-add', at: { x, y, tolM: TOL } })
+      s = reducer(s, { type: 'chain-end' })
+    }
+    return s
+  }
+  const at = (s: StudioState, x: number, y: number) => s.unit.vertices.find((v) => Math.hypot(v.x - x, v.y - y) < 1e-6)
+  const wallAt = (s: StudioState, p: [number, number], q: [number, number]) => {
+    const a = at(s, ...p)!.id
+    const b = at(s, ...q)!.id
+    return s.unit.walls.find((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))!
+  }
+  const setLen = (s: StudioState, w: Wall, lengthM: number) => reducer(s, { type: 'set-wall-length', id: w.id, lengthM })
+  const issues = (s: StudioState) => studioIssues(s.unit, deriveRooms(s.unit)).map((i) => `${i.level}:${i.code}`)
+
+  it('rectangle: shortening a side slides the far wall with it, one undo entry', () => {
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const right = wallAt(s, [4, 0], [4, 3]) // traced 4,0 → 4,3: b = (4,3)
+    const past = s.history.past.length
+    s = setLen(s, right, 2.5)
+    expect(s.history.past.length).toBe(past + 1)
+    expect(at(s, 4, 2.5)).toBeDefined()
+    expect(at(s, 0, 2.5)).toBeDefined() // the bottom wall shifted up, not tilted
+    expect(at(s, 0, 0)).toBeDefined()
+    expect(deriveRooms(s.unit)[0].areaSqm).toBeCloseTo(10)
+    s = reducer(s, { type: 'undo' })
+    expect(at(s, 0, 3)).toBeDefined()
+  })
+
+  it('L: the neighbour at the moved end shifts, the wall beyond it stretches', () => {
+    let s = poly([[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]])
+    s = setLen(s, wallAt(s, [4, 0], [4, 2]), 1.5)
+    expect(at(s, 4, 1.5)).toBeDefined()
+    expect(at(s, 2, 1.5)).toBeDefined() // (4,2)→(2,2) moved rigidly
+    expect(at(s, 2, 4)).toBeDefined() // (2,2)→(2,4) stretched, still vertical
+    expect(deriveRooms(s.unit)[0].areaSqm).toBeCloseTo(4 * 1.5 + 2 * 2.5)
+  })
+
+  it('T: a long wall split at a T-junction moves as one straight run; the partition stretches', () => {
+    // 4×3 box, partition from (2,0) down to (2,3): top and bottom walls are split at x = 2
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 0], [2, 3]])
+    expect(deriveRooms(s.unit)).toHaveLength(2)
+    s = setLen(s, wallAt(s, [4, 0], [4, 3]), 2.5)
+    for (const p of [[4, 2.5], [2, 2.5], [0, 2.5], [2, 0], [0, 0]] as [number, number][]) expect(at(s, ...p)).toBeDefined()
+    expect(deriveRooms(s.unit).map((r) => r.areaSqm.toFixed(2))).toEqual(['5.00', '5.00'])
+    // the partition's own end sits on the bottom wall: shortening it pulls the whole bottom wall, never kinks it
+    s = setLen(s, wallAt(s, [2, 0], [2, 2.5]), 2)
+    for (const p of [[4, 2], [2, 2], [0, 2]] as [number, number][]) expect(at(s, ...p)).toBeDefined()
+    expect(deriveRooms(s.unit).map((r) => r.areaSqm.toFixed(2))).toEqual(['4.00', '4.00'])
+    expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+  })
+
+  it('openings keep their offset and clamp inside a shortened wall', () => {
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const top = wallAt(s, [0, 0], [4, 0])
+    s = reducer(s, { type: 'add-opening', wallId: top.id, t: 0.8, kind: 'window' }) // 1.22 m wide, centred at 3.2
+    const o = s.unit.walls.find((w) => w.id === top.id)!.openings[0]
+    s = setLen(s, s.unit.walls.find((w) => w.id === top.id)!, 3.5)
+    const o2 = s.unit.walls.find((w) => w.id === top.id)!.openings[0]
+    expect(o2.offsetM).toBeCloseTo(Math.min(o.offsetM, 3.5 - o.widthM))
+    expect(issues(s).some((c) => c.includes('opening'))).toBe(false)
+  })
+
+  it('detach a partition end from a T, drag it, re-join it on the corner (merge) or on a wall (T-split)', () => {
+    const base = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 0], [2, 3]])
+    const part = wallAt(base, [2, 0], [2, 3])
+    const t = at(base, 2, 3)!
+    const detached = (to: [number, number]) => {
+      let s = reducer(base, { type: 'drag-begin' })
+      s = reducer(s, { type: 'detach', wallId: part.id, vertexId: t.id, newId: 'loose' })
+      expect(s.unit.walls.find((w) => w.id === part.id)).toMatchObject({ b: 'loose' })
+      expect(s.unit.vertices.find((v) => v.id === t.id)).toBeDefined() // the other walls keep the corner
+      s = reducer(s, { type: 'drag', vertices: [{ id: 'loose', x: to[0], y: to[1] }] })
+      return reducer(s, { type: 'drag-end', ids: ['loose'] })
+    }
+    // left free: the partition is 2.5 m, its end is loose (a dangling-end warning), one room
+    let s = detached([2, 2.5])
+    expect(wallFrame(s.unit.walls.find((w) => w.id === part.id)!, s.unit.vertices).lengthM).toBeCloseTo(2.5)
+    expect(issues(s)).toContain('warning:dangling-vertex')
+    expect(deriveRooms(s.unit)).toHaveLength(1)
+    s = reducer(s, { type: 'undo' }) // the whole gesture is one entry
+    expect(s.unit).toBe(base.unit)
+    // dropped back on its corner: merged, the T is whole again
+    s = detached([2, 3])
+    expect(s.unit.vertices).toHaveLength(base.unit.vertices.length)
+    expect(s.unit.walls.find((w) => w.id === part.id)).toMatchObject({ b: t.id })
+    expect(deriveRooms(s.unit)).toHaveLength(2)
+    // dropped on the bottom wall at x = 1: that wall splits there, two rooms, no crossing, no loose end
+    s = detached([1, 3])
+    expect(s.unit.walls.find((w) => w.id === part.id)).toMatchObject({ b: 'loose' })
+    expect(s.unit.walls.filter((w) => w.a === 'loose' || w.b === 'loose')).toHaveLength(3)
+    expect(deriveRooms(s.unit)).toHaveLength(2)
+    expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+  })
+
+  it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 1], [2, 2]]) // a loose stub inside
+    const tip = at(s, 2, 2)!
+    s = run(s, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: tip.id, x: 2, y: 3 }] }, { type: 'drag-end', ids: [tip.id] })
+    expect(s.unit.walls.filter((w) => w.a === tip.id || w.b === tip.id)).toHaveLength(3)
+    expect(issues(s).filter((c) => c.includes('walls-intersect'))).toEqual([])
+  })
+
+  it('delete: a rectangle side → room gone, no corner joined to nothing; the middle wall of a T → the through-wall is one wall again', () => {
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const past = s.history.past.length
+    s = reducer(s, { type: 'delete', ids: [wallAt(s, [4, 0], [4, 3]).id] })
+    expect(s.history.past.length).toBe(past + 1)
+    expect(deriveRooms(s.unit)).toHaveLength(0)
+    expect(s.unit.walls).toHaveLength(3)
+    expect(s.unit.vertices).toHaveLength(4) // the two open ends still end walls: warnings, never an error
+    expect(issues(s).filter((c) => c === 'error:dangling-vertex')).toEqual([])
+
+    // T: partition (2,0)→(2,3) splits top and bottom; a door on the bottom-right piece, a window on the top-left one
+    s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 0], [2, 3]])
+    s = reducer(s, { type: 'add-opening', wallId: wallAt(s, [2, 3], [4, 3]).id, t: 0.5, kind: 'door' })
+    s = reducer(s, { type: 'add-opening', wallId: wallAt(s, [0, 0], [2, 0]).id, t: 0.5, kind: 'window' })
+    const world = (u: Unit) =>
+      u.walls.flatMap((w) => {
+        const f = wallFrame(w, u.vertices)
+        return w.openings.map((o) => {
+          const hu = o.hinge === 'b' ? o.offsetM + o.widthM : o.offsetM
+          const side = (o.swing === 'out' ? 1 : -1) * Math.sign(f.normal.y || f.normal.x)
+          return `${o.kind} ${(f.origin.x + f.dir.x * hu).toFixed(3)},${(f.origin.y + f.dir.y * hu).toFixed(3)} ${side}`
+        })
+      }).sort()
+    const before = world(s.unit)
+    s = reducer(s, { type: 'delete', ids: [wallAt(s, [2, 0], [2, 3]).id] })
+    expect(s.unit.walls).toHaveLength(4)
+    expect(s.unit.vertices).toHaveLength(4)
+    expect(deriveRooms(s.unit)).toHaveLength(1)
+    expect(world(s.unit)).toEqual(before) // openings stay where they were, hinge side and swing side too
+    expect(issues(s).filter((c) => c.includes('dangling') || c.includes('opening'))).toEqual([])
+  })
+})
+
 describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
   /**
    * 8 × 5 m, 0.2 m walls, partition at x = 5: Living (inner 0.1..4.9) | Bed (inner 5.1..7.9), y inner 0.1..4.9.
