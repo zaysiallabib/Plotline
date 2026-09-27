@@ -44,6 +44,8 @@ export interface EvalReport {
   openingPrecision: number
   /** matched openings whose kind guess equals the hand-traced kind */
   openingKindAcc: number
+  /** mean |guessed − true| opening width (m) over found openings */
+  openingWidthErrM: number
   truthOpenings: number
   ms?: number
   /** see inkCeiling: the recall an ink-based tracer could reach at all */
@@ -53,7 +55,7 @@ export interface EvalReport {
   extra: Px[]
   /** hand-traced openings no guess found (centre px, kind, distance to the nearest guess in m) */
   missedOpenings: (Px & { kind: string; nearestM: number })[]
-  /** found openings, "trueKind→guessedKind": count */
+  /** found openings, "trueKind→guessedKind": count; guesses on no hand-traced opening count as "none→kind" */
   kindConfusion: Record<string, number>
 }
 
@@ -185,7 +187,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
   const truth: Line[] = []
   const solid: Line[] = []
   const jambs: Px[] = [...V.values()]
-  const openings: { c: Px; kind: string }[] = []
+  const openings: { c: Px; kind: string; wM: number }[] = []
   const VM = new Map(unit.vertices.map((v) => [v.id, v]))
   for (const wl of unit.walls) {
     const a = V.get(wl.a)!, b = V.get(wl.b)!
@@ -197,7 +199,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
     for (const op of [...wl.openings].sort((p, q) => p.offsetM - q.offsetM)) {
       if (op.offsetM > from) solid.push({ a: at(from), b: at(op.offsetM), thM: wl.thicknessM })
       jambs.push(at(op.offsetM), at(op.offsetM + op.widthM))
-      openings.push({ c: at(op.offsetM + op.widthM / 2), kind: op.kind })
+      openings.push({ c: at(op.offsetM + op.widthM / 2), kind: op.kind, wM: op.widthM })
       from = Math.max(from, op.offsetM + op.widthM)
     }
     if (L / k > from) solid.push({ a: at(from), b, thM: wl.thicknessM })
@@ -269,8 +271,8 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
   }
 
   // openings
-  const guesses = trace.openings.map((o) => ({ c: { x: (o.a.x + o.b.x) / 2, y: (o.a.y + o.b.y) / 2 }, kind: o.kind })).filter((o) => inRegion(o.c))
-  let oHit = 0, oKind = 0
+  const guesses = trace.openings.map((o) => ({ c: { x: (o.a.x + o.b.x) / 2, y: (o.a.y + o.b.y) / 2 }, kind: o.kind, wM: Math.hypot(o.b.x - o.a.x, o.b.y - o.a.y) / k })).filter((o) => inRegion(o.c))
+  let oHit = 0, oKind = 0, oWidth = 0
   const missedOpenings: EvalReport['missedOpenings'] = []
   const kinds: Record<string, number> = {}
   for (const t of openings) {
@@ -284,9 +286,12 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
       const ck = `${t.kind}→${best.kind}`
       kinds[ck] = (kinds[ck] ?? 0) + 1
       if (best.kind === t.kind) oKind++
+      oWidth += Math.abs(best.wM - t.wM)
     } else missedOpenings.push({ ...t.c, kind: t.kind, nearestM: bd / k })
   }
-  const gHitOpen = guesses.filter((gss) => openings.some((t) => Math.hypot(gss.c.x - t.c.x, gss.c.y - t.c.y) <= openM * k)).length
+  const onTruth = (gss: (typeof guesses)[number]) => openings.some((t) => Math.hypot(gss.c.x - t.c.x, gss.c.y - t.c.y) <= openM * k)
+  const gHitOpen = guesses.filter(onTruth).length
+  for (const gss of guesses) if (!onTruth(gss)) kinds[`none→${gss.kind}`] = (kinds[`none→${gss.kind}`] ?? 0) + 1
 
   return {
     unitId: unit.id,
@@ -303,6 +308,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
     openingRecall: openings.length ? oHit / openings.length : 0,
     openingPrecision: guesses.length ? gHitOpen / guesses.length : 0,
     openingKindAcc: oHit ? oKind / oHit : 0,
+    openingWidthErrM: oHit ? oWidth / oHit : NaN,
     truthOpenings: openings.length,
     missed,
     extra,
@@ -330,12 +336,12 @@ export function truthLines(unit: Unit, xf: TruthXf = planXf(unit)): { a: Px; b: 
 export function formatReports(rows: EvalReport[]): string {
   const pct = (x: number) => `${(x * 100).toFixed(0)}%`.padStart(5)
   const m = (x: number) => (Number.isNaN(x) ? '   - ' : x.toFixed(3).padStart(6))
-  const head = 'unit                  prec recall  prec2 recall2  ceil endErr  near  thErr thBias opRec opPrec  kind    ms'
+  const head = 'unit                  prec recall  prec2 recall2  ceil endErr  near  thErr thBias opRec opPrec  kind  opWErr    ms'
   return [
     head,
     ...rows.map(
       (r) =>
-        `${r.unitId.padEnd(20)} ${pct(r.precision)}  ${pct(r.recall)}  ${pct(r.precisionLoose)}  ${pct(r.recallLoose)} ${pct(r.inkCeiling ?? NaN)} ${m(r.endpointErrM)} ${pct(r.endpointNear)} ${m(r.thicknessErrM)} ${m(r.thicknessBiasM)} ${pct(r.openingRecall)} ${pct(r.openingPrecision)} ${pct(r.openingKindAcc)} ${String(Math.round(r.ms ?? 0)).padStart(5)}`,
+        `${r.unitId.padEnd(20)} ${pct(r.precision)}  ${pct(r.recall)}  ${pct(r.precisionLoose)}  ${pct(r.recallLoose)} ${pct(r.inkCeiling ?? NaN)} ${m(r.endpointErrM)} ${pct(r.endpointNear)} ${m(r.thicknessErrM)} ${m(r.thicknessBiasM)} ${pct(r.openingRecall)} ${pct(r.openingPrecision)} ${pct(r.openingKindAcc)}  ${m(r.openingWidthErrM)} ${String(Math.round(r.ms ?? 0)).padStart(5)}`,
     ),
   ].join('\n')
 }
