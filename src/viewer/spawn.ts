@@ -3,7 +3,7 @@ import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit, Wall } from '../core'
 import { heightRange, kitAsset, objectKind, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
-import { EYE, RAY, frameHits, swings } from './frame'
+import { EYE, RAY, boxInFrame, frameHits, project, swings } from './frame'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -170,9 +170,7 @@ export const FAN_CLEAR = 1.5
 export const FAN_IN_VIEW = 2.5
 /** A wardrobe/shelf/tall piece with any corner in the frame (±FRAME_DEG) this close fills a third of it: the spot is out (like a pendant). */
 export const TALL_IN_VIEW = 1
-/** A bath is framed from a spot this far from its vanity/basin, else from its door. */
-export const BATH_BACK = 1.5
-/** …with its back to a wall (in a 1.5 m bath VIEW_INSET leaves a 0.7 m band). */
+/** A bath's stand points keep this far off its walls (in a 1.5 m bath VIEW_INSET leaves a 0.7 m band). */
 const BATH_INSET = 0.3
 /** A spot with a pendant in its frame (or an AC over it) loses to every spot without (only when all have one does the best win). */
 const HANG_PENALTY = 100
@@ -205,25 +203,36 @@ export const NEAR_WALL = 1.2
 const FLAT_TRIES = 150
 /** A help room is seen lengthwise from its cot's foot, looking down no more than this. */
 export const HELP_PITCH = (-15 * Math.PI) / 180
+/** A fitting's band tops out here (m; a shower screen's glass and a mirror run on to ~2 m, above a 10°-down frame 1 m off). */
+export const WET_TOP = 1.9
 /**
- * A fitting shows in a wet room's frame within this (°) of the view: basin and WC facing each other across a 1.8 m powder
- * room are 74° apart from its door — aimed between them, both sit on the frame's edges round a blank wall.
+ * Where a fitting's band starts (m): a vanity at its counter (the cabinet under the basin may leave the frame), a WC at its
+ * bowl's rim, a pedestal basin under its bowl, a shower's glass above its tray. At 1.6 m eye height and 65° FOV nothing
+ * lower shows from 1–1.5 m off at 10° down (a WC's bowl underside, 0.2 m, needs 1.5 m).
  */
-export const SHOW_DEG = 30
-/** …and its part at counter height (m; its top if lower) above the frame's bottom tenth: a vanity's mirror in frame over a basin under it is no view of the basin. */
-export const SHOW_H = 0.85
+export const WET_FOOT: Record<string, number> = { vanity: 0.85, basin: 0.6, toilet: 0.4, shower: 0.6 }
+/**
+ * The part of a wet-room fitting that must be wholly inside a bath's frame (heights, m): WET_FOOT up to its top, WET_TOP
+ * at most (a vanity to its mirror, a WC to its flush plate, a shower's glass); null: not a fitting (a towel rail, a plant).
+ */
+export const wetBand = (k: KitAsset, size: { x: number; y: number; z: number }): { h0: number; h1: number } | null => {
+  const foot = WET_FOOT[objectKind(k)]
+  if (foot === undefined) return null
+  const [h0, h1] = heightRange({ ...k, sizeM: size })
+  return { h0: Math.max(h0, foot), h1: Math.min(h1, WET_TOP) }
+}
+/** A bath's pitches are tried in these steps (rad). */
+const WET_STEP = (5 * Math.PI) / 180
 /** A walk-in closet is seen from just inside a door down its aisle, looking down this little (the rails' tops stay in frame). */
 export const CLOSET_PITCH = (-5 * Math.PI) / 180
 /** A general room's best spot may turn this far (°) off its target to clear its frame before the next spot is tried. */
 const TURN_MAX = 20
 /**
- * A wet room under this (m²: a WC, a powder room) may look down as far as WET_PITCH so its WC — by its bowl (WC_H), not
- * its flush plate — enters the frame with the basin (founder 2026-09-27); it is also seen from its doorway (THRESHOLD in,
- * its own leaf shut when it swings in). Larger baths keep BATH_PITCH.
+ * A wet room under this (m²: a WC, a powder room) may look down as far as WET_PITCH so its WC enters the frame with the
+ * basin (founder 2026-09-27); larger baths no more than BATH_PITCH.
  */
 export const SMALL_WET = 3
 export const WET_PITCH = (-25 * Math.PI) / 180
-export const WC_H = 0.4
 const THRESHOLD = 0.15
 /** A door view (a help room, a closet, a tiny room) fails when a leaf fills more than this (it is exempt from FLAT_MAX). */
 export const DOOR_LEAF_MAX = 0.25
@@ -492,8 +501,8 @@ export function roomView(room: Room, unit: Unit): View {
   // sees TINY_SIGHT).
   if (room.kind === 'bath' || room.kind === 'closet' || cot || (room.kind !== 'balcony' && Math.max(...candidates.filter((p) => core.pointInPolygon(p, inner)).map(seen)) < TINY_SIGHT)) {
     // spots: corners, wall midpoints, a 0.25 m grid and 0.4–0.6 m inside each door, BATH_INSET off the walls, clear of the
-    // pieces and of a swinging door's leaf (ajar 20°, ≤ 0.26 m in); a small wet room also from each doorway (THRESHOLD in,
-    // its leaf shut when it swings in)
+    // pieces and of a swinging door's leaf (ajar 20°, ≤ 0.26 m in); a wet room also from each doorway (THRESHOLD in, its
+    // leaf shut when it swings in: the door corner photographers shoot a bath from)
     const small = room.kind === 'bath' && room.areaSqm < SMALL_WET
     const clearOf = (p: Pt, inset: number, but?: (typeof doors)[number]) =>
       core.pointInPolygon(p, inner) &&
@@ -502,7 +511,7 @@ export function roomView(room: Room, unit: Unit): View {
       doors.every((d) => d === but || !swings(d.o) || segDist(p, d.a, d.b) >= DOOR_STEP[2])
     const spots: { p: Pt; closeLeaf?: string }[] = [
       ...[...candidates, ...grid(BATH_INSET), ...doors.flatMap((d) => DOOR_STEP.map((m) => stepIn(d, m)))].filter((p) => clearOf(p, BATH_INSET)).map((p) => ({ p })),
-      ...(small ? doors : []).flatMap((d) => {
+      ...(room.kind === 'bath' ? doors : []).flatMap((d) => {
         // a leaf swinging in is shut behind the eye; one swinging away (or none) leaves the doorway itself free
         const shut = swings(d.o) && (d.o.swing === 'in' ? -1 : 1) === inSide(d)
         const p = stepIn(d, shut ? THRESHOLD : 0.02)
@@ -510,46 +519,44 @@ export function roomView(room: Room, unit: Unit): View {
       }),
     ]
     const dir = (deg: number) => ({ x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) })
-    // A bath (or tiny room) with a vanity/basin is framed from inside (the wave-7 Bath-3 frame), at BATH_PITCH: the spot
-    // BATH_BACK or more from the hero that frames the most fittings (hero included, each ≥ 1 m off so it is in the frame),
-    // farthest from the hero, the fittings centred. No such spot, or none whose frame is clear (an ajar leaf by the
-    // vanity): the spot — the doorway or inside — that shows the hero, then the most fittings (`shows`: within SHOW_DEG of
-    // the view and its counter above the frame's bottom tenth — at BATH_PITCH 1 m off or more), the nearest of them farthest off,
-    // the fittings centred: aimed between basin and toilet when both show. Nothing shows from anywhere (a 1.5 m WC), or no
-    // such frame is clear: the door view below. A small wet room looks down as little as its fittings need, BATH_PITCH to
-    // WET_PITCH, its WC showing by its bowl.
+    // A bath (or tiny room) with a vanity/basin: every spot × heading (5°) × pitch (level to BATH_PITCH; a small wet room to
+    // WET_PITCH), ranked by what the projector shows of each fitting's band (`wetBand`, `boxInFrame`: whole = 1, half its
+    // corners = ½): the vanity/basin whole, else half (no spot shows both: the vanity, not a WC), then the most fittings
+    // (WC, shower), then the pitch nearest BATH_PITCH (shallower first), the fittings centred, the farthest back. The first
+    // clear frame (FLAT_MAX / NEAR_WALL_MAX) of those wins; none clears (a WC is all near tile): the least filled frame of the
+    // top rank. No fitting half in frame from anywhere: the door view below.
     if (hero && !cot) {
       const low = small ? WET_PITCH : BATH_PITCH
-      // the angle below the view of a frame's bottom tenth (27°)
-      const foot = Math.atan(0.8 * Math.tan(HALF_VFOV))
-      const counter = (f: FurniturePlacement) => (small && f.assetId === 'toilet' ? WC_H : Math.min(heightRange(kitAsset(f.assetId)!)[1], SHOW_H))
-      /** The pitch that puts f's counter on the frame's bottom tenth. */
-      const need = (p: Pt, face: Pt, f: FurniturePlacement) => foot - Math.atan2(EYE - counter(f), (f.x - p.x) * face.x + (f.y - p.y) * face.y)
-      const shows = (p: Pt, face: Pt, f: FurniturePlacement) =>
-        (f.x - p.x) * face.x + (f.y - p.y) * face.y > Math.cos((SHOW_DEG * Math.PI) / 180) * Math.hypot(f.x - p.x, f.y - p.y) && need(p, face, f) >= low - 1e-9
-      /** BATH_PITCH, or in a small wet room the least look down that shows every fitting in `fit`. */
-      const tilt = (p: Pt, face: Pt, fit: FurniturePlacement[]) => (small ? Math.max(low, Math.min(BATH_PITCH, ...fit.map((f) => need(p, face, f)))) : BATH_PITCH)
-      type Pick = View & { hero: number; count: number; back: number; spread: number }
-      const far: Pick[] = []
-      const near: Pick[] = []
-      for (const { p, closeLeaf } of spots) {
-        const back = Math.hypot(hero.x - p.x, hero.y - p.y)
+      const bands = items.flatMap((f) => {
+        const k = kitAsset(f.assetId)!
+        const b = wetBand(k, placementSize(f))
+        return b ? [{ f, s: placementSize(f), ...b }] : []
+      })
+      const pitches: number[] = []
+      for (let a = 0; a >= low - 1e-9; a -= WET_STEP) pitches.push(a)
+      pitches.sort((a, b) => Math.abs(a - BATH_PITCH) - Math.abs(b - BATH_PITCH) || b - a)
+      type Pick = View & { hero: number; count: number; pref: number; spread: number; back: number }
+      const picks: Pick[] = []
+      for (const { p, closeLeaf } of spots)
         for (let deg = 0; deg < 360; deg += 5) {
           const face = dir(deg)
-          const off = (f: Pt) => Math.abs(Math.atan2((f.x - p.x) * face.y - (f.y - p.y) * face.x, (f.x - p.x) * face.x + (f.y - p.y) * face.y))
-          const framed = (min: number) => items.filter((f) => Math.hypot(f.x - p.x, f.y - p.y) >= min && inFrame(p, face, f))
-          const f1 = framed(1)
-          if (back >= BATH_BACK && f1.includes(hero) && off(hero) <= (SHOW_DEG * Math.PI) / 180)
-            far.push({ p, face, pitch: tilt(p, face, f1), closeLeaf, hero: 1, count: f1.length, back, spread: Math.max(...f1.map(off)) })
-          const f2 = items.filter((f) => shows(p, face, f))
-          if (f2.length)
-            near.push({ p, face, pitch: tilt(p, face, f2), closeLeaf, hero: +f2.includes(hero), count: f2.length, back: Math.min(...f2.map((f) => Math.hypot(f.x - p.x, f.y - p.y))), spread: Math.max(...f2.map(off)) })
+          pitches.forEach((pitch, pref) => {
+            // a fitting counts 1 whole, ½ with half its corners in frame (a WC's bowl front cut off)
+            const shown = bands.map((b) => ({ b, s: boxInFrame(b.f, b.s, b.h0, b.h1, p, face, pitch) })).filter((x) => x.s >= 0.5)
+            if (!shown.length) return
+            const spread = Math.max(...shown.map(({ b }) => Math.abs(project(p, face, pitch, b.f, (b.h0 + b.h1) / 2).x)))
+            const back = Math.min(...shown.map(({ b }) => Math.hypot(b.f.x - p.x, b.f.y - p.y)))
+            const count = shown.reduce((t, x) => t + (x.s === 1 ? 1 : 0.5), 0)
+            picks.push({ p, face, pitch, closeLeaf, hero: Math.max(0, ...shown.map((x) => (x.b.f !== hero ? 0 : x.s === 1 ? 1 : 0.5))), count, pref, spread, back })
+          })
         }
-      }
-      const rank = (a: Pick, b: Pick) => b.hero - a.hero || b.count - a.count || b.back - a.back || a.spread - b.spread
-      far.sort(rank)
-      near.sort(rank)
-      const pick = clear(far) ?? clear(near)
+      picks.sort((a, b) => b.hero - a.hero || b.count - a.count || a.pref - b.pref || a.spread - b.spread || b.back - a.back)
+      // the best 3 frames per spot: FLAT_TRIES frames then span ~50 spots, not one spot's headings and pitches
+      const per = new Map<Pt, number>()
+      const ranked = picks.filter((v) => per.set(v.p, (per.get(v.p) ?? 0) + 1).get(v.p)! <= 3)
+      const top = ranked[0]
+      const tier = top && ranked.filter((v) => v.hero === top.hero && v.count === top.count).slice(0, FLAT_TRIES)
+      const pick = top && (clear(ranked) ?? tier.reduce((m, v) => (flat(v) < flat(m) ? v : m)))
       if (pick) return done({ p: pick.p, face: pick.face, pitch: pick.pitch, closeLeaf: pick.closeLeaf })
     }
     // A cot lengthwise from its foot (presets: its length is local x, the pillow at −x): a spot past the line of its foot

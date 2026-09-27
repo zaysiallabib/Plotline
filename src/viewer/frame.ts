@@ -155,6 +155,45 @@ export function frameHits(unit: Unit, p: Pt, face: Pt, pitch = 0, shut?: string)
   return out
 }
 
+/**
+ * Where plan point q at height h lands in the frame seen from p at eye height along `face`, `pitch` up: x, y in
+ * [−1, 1] are inside the frame (y up), z is the depth along the view (≤ 0: behind the eye).
+ */
+export function project(p: Pt, face: Pt, pitch: number, q: Pt, h: number): { x: number; y: number; z: number } {
+  const L = Math.hypot(face.x, face.y) || 1
+  const fx = face.x / L
+  const fy = face.y / L
+  const cp = Math.cos(pitch)
+  const sp = Math.sin(pitch)
+  const vx = q.x - p.x
+  const vy = q.y - p.y
+  const vz = h - EYE
+  const z = (vx * fx + vy * fy) * cp + vz * sp
+  return { x: (vy * fx - vx * fy) / (z * TAN_H), y: (vz * cp - (vx * fx + vy * fy) * sp) / (z * TAN_V), z }
+}
+
+/**
+ * How much of a wall-backed piece is inside the frame (within `margin` of its edges, in NDC): the share of its four
+ * footprint corners at height h0 and its two back corners at h1 — a vanity's counter and its mirror's top, a WC's bowl and
+ * its flush plate, a bed's foot and its headboard — that land inside (1: the whole piece). Presets: a piece at rotation θ
+ * faces (−sin θ, cos θ); its back is the other side.
+ */
+export function boxInFrame(f: { x: number; y: number; rotationDeg: number }, size: { x: number; z: number }, h0: number, h1: number, p: Pt, face: Pt, pitch: number, margin = 0.96): number {
+  const r = (f.rotationDeg * Math.PI) / 180
+  const c = Math.cos(r)
+  const s = Math.sin(r)
+  let n = 0
+  for (const i of [-1, 1])
+    for (const k of [-1, 1]) {
+      const q = { x: f.x + (c * i * size.x - s * k * size.z) / 2, y: f.y + (s * i * size.x + c * k * size.z) / 2 }
+      for (const h of k < 0 ? [h0, h1] : [h0]) {
+        const v = project(p, face, pitch, q, h)
+        if (v.z > 0.05 && Math.abs(v.x) <= margin && Math.abs(v.y) <= margin) n++
+      }
+    }
+  return n / 6
+}
+
 /** Entry and exit distance of a ray (origin o, direction v, along one axis) through the slab |x| ≤ h. */
 const slabT = (o: number, v: number, h: number): [number, number] => {
   if (Math.abs(v) < 1e-12) return Math.abs(o) <= h ? [-Infinity, Infinity] : [Infinity, -Infinity]
