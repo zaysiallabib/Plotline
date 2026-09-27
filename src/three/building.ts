@@ -19,7 +19,7 @@ import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
-import { GLASS } from './openings'
+import { GLASS, meterUVs } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
@@ -27,7 +27,8 @@ const WALL_M = 3
 const LOOK_SLAB = 0.15
 const UP = new THREE.Vector3(0, 1, 0)
 const PAVING: MaterialRef = { kind: 'color', color: '#9d988f', roughness: 0.9 }
-const GREEN: MaterialRef = { kind: 'color', color: '#56703d', roughness: 1 }
+/** lawn strips on the ground floor and the roof: the turf scan (furnish, wave 11), metre UVs so it tiles at its real size */
+const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
@@ -180,7 +181,7 @@ export class Building extends THREE.Group {
     const flat = (r: Rect, y: number) => rectBox(plan(r), y, y + 0.01)
     const plot = new THREE.Shape(GROUND.plot.map((p) => new THREE.Vector2(p.x + c.x, p.y + c.y)))
     put(PAVING, new THREE.ExtrudeGeometry(plot, { depth: 0.6, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, G, 0))
-    put(GREEN, ...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R)))
+    put(GREEN, ...[...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R))].map(meterUVs))
     put(ASPHALT, ...GROUND.ramp.map((r) => flat(r, G)))
     for (const [x0, y0, x1, y1] of GROUND.bays) {
       const e = 0.08
