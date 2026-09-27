@@ -658,7 +658,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       retry = retry.filter((i, k) => !(parseDims(again[k].text) && (read[i] = again[k])))
     }
     const words = (vertical: boolean): OcrWord[] => read.flatMap((r, i) => (r.text && lines[i].vertical === vertical ? [{ text: r.text, conf: r.conf, box: lines[i].box }] : []))
-    return { items: [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] } // a vertical word stands alone
+    return { items: [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))], glyphPx: charH } // a vertical word stands alone
   } finally {
     await scheduler.terminate()
   }

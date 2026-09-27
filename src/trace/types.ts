@@ -71,6 +71,11 @@ export interface TextItem {
 
 export interface TextTrace {
   items: TextItem[]
+  /**
+   * Median printed-glyph height the text stage measured, px — extension (text agent, wave 15). Below ~7 px OCR reads
+   * little (Sheltech L2 ≈ 7, Sheltech dmd ≈ 4): ask for a larger export / the PDF before trusting an empty trace.
+   */
+  glyphPx?: number
 }
 
 /**
