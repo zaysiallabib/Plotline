@@ -34,6 +34,8 @@ export const KNOBS = {
   bridgeM: 1.2,
   /** … and up to this along a clear drawn line (glazing, window bands, railings): at least inkShare of it inked */
   inkBridgeM: 6,
+  /** a solid wall's free end runs on across open floor to the next wall up to this: the open-plan boundary a human draws */
+  openPlanM: 4,
   inkShare: 0.75,
   /** "a clear drawn line": this many grey levels darker than the paper around it (tile grids and hatching are fainter) */
   lineDelta: 40,
@@ -374,7 +376,9 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
 function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a: Pt, b: Pt, th: number) => number): void {
   const deg = degrees(segs)
   const ends: End[] = segs.flatMap((s) => (['a', 'b'] as const).filter((e) => deg.get(ekey(s[e])) === 1 && d2(s.a, s.b) >= 0.05).map((e) => ({ s, e })))
-  const cands: { x: End; y?: End; q: Pt; L: number; th: number; drawn: boolean }[] = []
+  const cands: { x: End; y?: End; q: Pt; L: number; th: number; drawn: boolean; open?: boolean }[] = []
+  // an open-plan boundary guess: a solid drawn wall (not a scrap) running on across open floor to the next wall
+  const solid = (s: Seg) => s.conf >= 0.5 && !s.bridge && d2(s.a, s.b) >= 0.6
   const inked = (p: Pt, q: Pt, th: number) => lineInk(p, q, th) >= KNOBS.inkShare
   for (let i = 0; i < ends.length; i++) {
     const x = ends[i], p = x.s[x.e], d = outDir(x)
@@ -386,15 +390,17 @@ function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a:
       if (dot(d, v) <= 0 || Math.abs(crs(d, v)) > 0.75 * Math.max(x.s.th, y.s.th)) continue
       const th = Math.max(x.s.th, y.s.th)
       if (L <= KNOBS.bridgeM || inked(p, q, th)) cands.push({ x, y, q, L, th, drawn: L > KNOBS.bridgeM })
+      else if (L <= KNOBS.openPlanM && solid(x.s) && solid(y.s)) cands.push({ x, y, q, L, th, drawn: false, open: true })
     }
     // ahead, then sideways
     for (const [dir, side] of [[d, false], [{ x: -d.y, y: d.x }, true], [{ x: d.y, y: -d.x }, true]] as const) {
       const hit = rayHit(segs, x, KNOBS.inkBridgeM, side ? 1.5 * x.s.th : 0, dir)
       if (!hit || hit.u < (side ? 0.3 : 0.02)) continue
       if ((!side && hit.u <= KNOBS.bridgeM) || inked(p, hit.X, x.s.th)) cands.push({ x, q: hit.X, L: hit.u, th: x.s.th, drawn: side || hit.u > KNOBS.bridgeM })
+      else if (!side && hit.u <= KNOBS.openPlanM && solid(x.s)) cands.push({ x, q: hit.X, L: hit.u, th: x.s.th, drawn: false, open: true })
     }
   }
-  cands.sort((p, q) => p.L - q.L)
+  cands.sort((p, q) => p.L + (p.open ? KNOBS.openPlanM : 0) - q.L - (q.open ? KNOBS.openPlanM : 0)) // guesses last
   const used = new Set<string>()
   for (const c of cands) {
     const p = c.x.s[c.x.e]
@@ -403,7 +409,7 @@ function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a:
     used.add(kp)
     if (c.y) used.add(kq)
     const kind: Seg['bridge'] = c.drawn || weakInk(p, c.q) >= 0.6 ? 'ink' : 'gap'
-    const op: Op | undefined = kind === 'gap' && c.L >= KNOBS.passageM ? { kind: 'passage', conf: 0.2 } : undefined
+    const op: Op | undefined = kind === 'gap' && c.L >= KNOBS.passageM ? { kind: 'passage', conf: c.open ? 0.1 : 0.2 } : undefined
     segs.push({ a: { ...p }, b: { ...c.q }, th: c.th, conf: 0.3, bridge: kind, op })
   }
 }
@@ -929,10 +935,15 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     const f = faceOf(toM(h.at))
     if (f && h.kind) hintsIn.set(f.id, [...(hintsIn.get(f.id) ?? []), h])
   }
-  /** the hints in a face vote (sum of conf); a basin / sink alone is weak — dining areas and kitchens draw them too */
-  const vote = (hs: RoomHint[]): RoomHint | null => {
+  /**
+   * The hints in a face vote (sum of conf). A basin / sink never names a room by itself: Bangladeshi dining areas have a
+   * hand-wash basin (founder), kitchens a sink — it only backs up a WC / shower.
+   */
+  const washOnly = (h: RoomHint) => /basin|sink/i.test(h.what ?? '')
+  const vote = (all: RoomHint[]): RoomHint | null => {
+    const hs = all.some((h) => !washOnly(h)) ? all : []
     const w = new Map<string, number>()
-    for (const h of hs) w.set(h.kind!, (w.get(h.kind!) ?? 0) + h.conf * (/basin|sink/.test(h.what ?? '') ? 0.4 : 1))
+    for (const h of hs) w.set(h.kind!, (w.get(h.kind!) ?? 0) + h.conf * (washOnly(h) ? 0.4 : 1))
     const best = [...w].sort((p, q) => q[1] - p[1])[0]
     return best ? hs.filter((h) => h.kind === best[0]).sort((p, q) => q.conf - p.conf)[0] : null
   }
@@ -991,6 +1002,14 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   u.roomLabels = roomLabels
   const named = deriveRooms(u)
+  // basins / sinks outside wet rooms: kept as fixture positions (the dining area's hand-wash basin), not as a room kind
+  const fixtures: NonNullable<AutoTraceStats['fixtures']> = []
+  for (const h of hints?.hints ?? []) {
+    if (!washOnly(h)) continue
+    const at = toM(h.at)
+    const f = named.filter((r) => pointInPolygon(at, roomPolygon(r, u))).sort((p, q) => p.areaSqm - q.areaSqm)[0]
+    if (f && f.kind !== 'bath') fixtures.push({ what: f.kind === 'kitchen' ? 'sink' : 'hand-wash basin', at, roomId: f.id })
+  }
 
   // ── opening kinds from the rooms on both sides
   const side = new Map<string, Room[]>()
@@ -1061,7 +1080,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   return {
     unit: u,
     review,
-    stats: { ms: Math.round(performance.now() - t0), pxPerM, scaleFrom, walls: u.walls.length, rooms: named.length, labelled },
+    stats: { ms: Math.round(performance.now() - t0), pxPerM, scaleFrom, walls: u.walls.length, rooms: named.length, labelled, ...(fixtures.length ? { fixtures } : {}) },
   }
 }
 

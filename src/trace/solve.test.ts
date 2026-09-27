@@ -95,6 +95,11 @@ describe('solveTraces on a synthetic flat', () => {
     const byHint = solveTraces(g, { text, hints }, { pickPx: P(2, 2.5) })
     expect(store(byHint).kind).toBe('dining')
     expect(byHint.review.filter((x) => x.kind === 'unlabelled')).toEqual([])
+    // a hand-wash basin alone (dining areas have one, founder): never a bath; kept as a fixture position
+    const basin = solveTraces(g, { text, hints: { hints: [{ at: P(4.8, 3.3), kind: 'bath', source: 'fixture', what: 'basin', conf: 0.6 }, { at: P(1, 1), kind: 'bath', source: 'fixture', what: 'basin', conf: 0.6 }] } }, { pickPx: P(2, 2.5) })
+    expect(store(basin).kind).toBe('other')
+    expect(deriveRooms(basin.unit).find((x) => x.name === 'Living')!.kind).toBe('living')
+    expect(basin.stats.fixtures?.map((f) => f.what)).toEqual(['hand-wash basin', 'hand-wash basin'])
     const byColour = solveTraces(g, { text, propagate: (rooms) => rooms.map((r) => (r.kind ? null : { at: r.poly[0], kind: 'utility', source: 'colour', conf: 0.6 })) }, { pickPx: P(2, 2.5) })
     expect(store(byColour).kind).toBe('utility')
   })
