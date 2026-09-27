@@ -238,7 +238,7 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   const p = pieces.find((x) => x.id === id)
   const lim = p && resizeLimits(p.assetId)
   if (!p || !lim) return null
-  const fit = (k: 'x' | 'y' | 'z') => Math.min(lim.max[k], Math.max(lim.min[k], Math.round(size[k] / SIZE_STEP_M) * SIZE_STEP_M))
+  const fit = (k: 'x' | 'y' | 'z') => Math.min(lim.max[k], Math.max(lim.min[k], Math.round(size[k] / SIZE_STEP_M) / (1 / SIZE_STEP_M))) // n / 20: 0.6, not 0.6000000000000001
   const s = { x: fit('x'), y: fit('y'), z: fit('z') }
   const old = sizeOf(p)
   const t = (p.rotationDeg * Math.PI) / 180
