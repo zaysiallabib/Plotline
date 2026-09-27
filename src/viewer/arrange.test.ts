@@ -208,16 +208,16 @@ describe('a dining set: the table carries its chairs, a resized one re-lays them
     expect(movePiece(unit, rooms, set, 'table', { x: 2.3, y: 3.1 }, 0)!.error).toBe('A chair overlaps the 3-seat fabric sofa')
   })
 
-  it('a longer table keeps its chairs (staff never add pieces), a shorter one drops them as tombstones; ids stay; the label follows', () => {
+  it('a longer table gains chairs, a shorter one drops them as tombstones; ids stay; the label follows', () => {
     const g = resizePiece(unit, rooms, set, 'table', { x: 2.2, y: 0.75, z: 0.9 })!
     expect(g.error).toBeNull()
-    expect(live(g.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6']) // seats 8, keeps its 6
+    expect(live(g.furniture).map((c) => c.id).sort()).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'table:chair:1', 'table:chair:2']) // seats 8: two more
     seated(g.furniture, g.piece)
     expect(placementLabel(g.piece)).toBe('Dining table, oak, 8 seats')
     const s = resizePiece(unit, rooms, g.furniture, 'table', { x: 0.9, y: 0.75, z: 0.9 })!
     expect(s.error).toBeNull()
     expect(live(s.furniture)).toHaveLength(2)
-    expect(s.furniture.filter((p) => p.removed)).toHaveLength(4)
+    expect(s.furniture.filter((p) => p.removed)).toHaveLength(6)
     seated(s.furniture, s.piece)
     // a deeper table keeps its six: the chairs step out with its edges
     const d = resizePiece(unit, rooms, set, 'table', { x: 1.6, y: 0.75, z: 1.1 })!
@@ -228,7 +228,7 @@ describe('a dining set: the table carries its chairs, a resized one re-lays them
   it('Studio tool F resizes the set the same way (one shared function)', () => {
     const s0: StudioState = { ...initialState(), tool: 'furniture', unit: { ...unit, furniture: set } }
     const s = reducer(s0, { type: 'resize-piece', id: 'table', sizeM: { x: 2.2, y: 0.75, z: 0.9 } })
-    expect(live(s.unit.furniture)).toHaveLength(6)
+    expect(live(s.unit.furniture)).toHaveLength(8)
     expect(s.history.past).toHaveLength(1)
   })
 })

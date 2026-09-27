@@ -118,11 +118,10 @@ const chairWhy = (e: string | null): string | null => e && (e === 'Outside the r
  * one fewer, as presets fall back. Chairs keep their ids (the nearest spot first), new ones copy the first and get
  * `${tableId}:chair:<n>`, dropped ones become tombstones like a delete. A string = why not even one fits.
  */
-function relayChairs(unit: Unit, room: Room | null, others: FurniturePlacement[], table: FurniturePlacement, chairs: FurniturePlacement[]): FurniturePlacement[] | string {
+function relayChairs(unit: Unit, room: Room | null, others: FurniturePlacement[], table: FurniturePlacement, chairs: FurniturePlacement[], seatsBefore: number): FurniturePlacement[] | string {
   const s = sizeOf(table)
-  // CLAUDE.md: staff never ADD pieces without asking — a longer table keeps its chairs, a shorter one drops some.
-  // ponytail: founder asked 2026-09-27; to let a grown table gain seats: chairs.length + max(0, seats(new) - seats(old))
-  const want = Math.min(tableSeats(s.x), chairs.length)
+  // CLAUDE.md 2026-09-27 late: a longer table may gain chairs
+  const want = Math.min(tableSeats(s.x), chairs.length + Math.max(0, tableSeats(s.x) - seatsBefore))
   const used = new Set([...others, ...chairs].map((o) => o.id))
   let k = 0
   const fresh = (): Id => {
@@ -353,7 +352,7 @@ export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacemen
   const others = pieces.filter((x) => x.id !== id && !chairs.includes(x))
   let error = whyNot(unit, room, others, piece)
   // a dining table's chairs are laid again round its new size
-  const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs) : []
+  const laid = chairs.length && !error ? relayChairs(unit, room, others, piece, chairs, tableSeats(old.x)) : []
   if (typeof laid === 'string') error = laid
   const moved = new Map<Id, FurniturePlacement>([[id, piece], ...(typeof laid === 'string' ? [] : laid.map((q) => [q.id, q] as const))])
   const added = [...moved.values()].filter((q) => !pieces.some((x) => x.id === q.id))
