@@ -632,14 +632,15 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
   const key = (p: Px) => `${Math.round(p.x)},${Math.round(p.y)}`
   const deg = new Map<string, number>()
   for (const s of walls) for (const p of [s.a, s.b]) deg.set(key(p), (deg.get(key(p)) ?? 0) + 1)
-  const ends: { p: Px; dir: Px; th: number }[] = []
+  // free ends cast rays; so do junctions (a window between two corners has no free end), but those need evidence
+  const ends: { p: Px; dir: Px; th: number; junction: boolean }[] = []
   for (const s of walls) {
     if (s.mid) continue
     const L = dist(s.a, s.b)
     if (L < 1.5 * s.thicknessPx) continue // a stub's direction is noise
     const ux = (s.b.x - s.a.x) / L, uy = (s.b.y - s.a.y) / L
-    if (deg.get(key(s.a)) === 1) ends.push({ p: s.a, dir: { x: -ux, y: -uy }, th: s.thicknessPx })
-    if (deg.get(key(s.b)) === 1) ends.push({ p: s.b, dir: { x: ux, y: uy }, th: s.thicknessPx })
+    ends.push({ p: s.a, dir: { x: -ux, y: -uy }, th: s.thicknessPx, junction: deg.get(key(s.a)) !== 1 })
+    ends.push({ p: s.b, dir: { x: ux, y: uy }, th: s.thicknessPx, junction: deg.get(key(s.b)) !== 1 })
   }
   const at = (m: Uint8Array, x: number, y: number) => {
     const xi = Math.round(x), yi = Math.round(y)
@@ -658,13 +659,18 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
   }
   const out: OpeningGuess[] = []
   for (const E of ends) {
-    const { p, dir } = E
+    const { dir } = E
     let t = 1
-    while (t < 2 * E.th && at(core, p.x + dir.x * t, p.y + dir.y * t)) t++ // off our own wall's last pixels
+    const maxSkip = (E.junction ? 3 : 2) * E.th
+    while (t < maxSkip && at(core, E.p.x + dir.x * t, E.p.y + dir.y * t)) t++ // off our own wall (or the corner's body)
+    if (E.junction && t >= maxSkip) continue // the wall runs on through the junction
+    // the near jamb: a free end is its own jamb; from a junction it is where the corner's body stops
+    const a0 = E.junction ? t - 1 + rCore : 0
+    const p = { x: E.p.x + dir.x * a0, y: E.p.y + dir.y * a0 }
     let hit = -1
-    for (; t <= 3.2 * pxPerM + rCore; t++)
-      if (at(core, p.x + dir.x * t, p.y + dir.y * t)) {
-        hit = t - rCore // the core is the wall eroded by rCore
+    for (; t <= a0 + 3.2 * pxPerM + rCore; t++)
+      if (at(core, E.p.x + dir.x * t, E.p.y + dir.y * t)) {
+        hit = t - rCore - a0 // the core is the wall eroded by rCore
         break
       }
     if (hit < 0.45 * pxPerM) continue
@@ -672,7 +678,7 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
     const tol = 1.5 * E.th
     if (out.some((o) => (dist(o.a, b) < tol && dist(o.b, p) < tol) || (dist(o.a, p) < tol && dist(o.b, b) < tol))) continue
     const g = classifyGap(p, b, E.th, hit, pxPerM, thinInk, (x, y) => at(ink, x, y))
-    if (g) out.push(g)
+    if (g && (!E.junction || g.kind === 'door' || g.kind === 'window')) out.push(g)
   }
   return out
 }
@@ -700,7 +706,8 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thin
       const score = inner / n > 0.35 ? 0 : hit / n
       if (score > best.score) best = { score, hinge: hp, side }
     }
-  if (best.score >= 0.7) {
+  // a single leaf is 0.6–1.1 m: wider "arcs" are furniture and text lining up by chance
+  if (best.score >= 0.7 && gap <= 1.25 * pxPerM) {
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
     return { a, b, kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
   }

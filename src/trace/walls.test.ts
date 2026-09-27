@@ -162,11 +162,11 @@ const haveFixtures = Object.values(units).every((u) => loadPgm(fixture(u)) !== n
 
 /** Floors = what the tracer reached when written, minus a margin, so the report never flakes but regressions show. */
 const FLOOR: Record<string, { precision: number; recall: number; openingRecall: number }> = {
-  unit_type_a_2703: { precision: 0.6, recall: 0.38, openingRecall: 0.25 },
-  unit_type_b_1747: { precision: 0.65, recall: 0.58, openingRecall: 0.3 },
-  unit_type_c_2254: { precision: 0.72, recall: 0.5, openingRecall: 0.35 },
-  unit_sheltech_a_2736: { precision: 0.52, recall: 0.45, openingRecall: 0.25 },
-  unit_sheltech_b_2736: { precision: 0.66, recall: 0.48, openingRecall: 0.22 },
+  unit_type_a_2703: { precision: 0.63, recall: 0.4, openingRecall: 0.31 },
+  unit_type_b_1747: { precision: 0.7, recall: 0.61, openingRecall: 0.4 },
+  unit_type_c_2254: { precision: 0.76, recall: 0.54, openingRecall: 0.42 },
+  unit_sheltech_a_2736: { precision: 0.56, recall: 0.48, openingRecall: 0.37 },
+  unit_sheltech_b_2736: { precision: 0.7, recall: 0.51, openingRecall: 0.34 },
 }
 
 describe.skipIf(!haveFixtures)('traceWalls vs the hand-traced units (eval report)', () => {
