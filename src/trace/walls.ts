@@ -46,11 +46,17 @@ export function wallHalfWidth(dt: Float32Array, w: number, h: number): number {
       if (d >= dt[i - 1] && d >= dt[i + 1] && d >= dt[i - w] && d >= dt[i + w]) bins[Math.round(d * 2)]++
     }
   // smooth over ±0.5 px: an even-width wall's ridge splits across two bins
+  const sm = (b: number) => bins[b - 1] * 0.5 + bins[b] + bins[b + 1] * 0.5
   let best = 4, bestC = -1
   for (let b = 4; b < 199; b++) {
-    const c = bins[b - 1] * 0.5 + bins[b] + bins[b + 1] * 0.5
+    const c = sm(b)
     if (c > bestC) (bestC = c), (best = b)
   }
+  // the commonest stroke can be the 10" wall (a flat with long outer walls): a strong peak at half its width is the
+  // partition, and eroding by the 10" width would wipe the partitions out (solver, wave 16)
+  if (best >= 8)
+    for (let b = Math.max(5, Math.floor(best * 0.4)); b <= Math.ceil(best * 0.62); b++)
+      if (sm(b) >= 0.3 * bestC && sm(b) >= sm(b - 1) && sm(b) >= sm(b + 1)) return b / 2
   return best / 2
 }
 
@@ -744,8 +750,8 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thin
   return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : gap <= 2 * pxPerM ? { a, b, kind: 'unknown', conf: 0.2 } : null
 }
 
-/** A traced wall as straight pieces (an arc → 8 chords). */
-export function segPieces(s: WallSeg): { a: Px; b: Px }[] {
+/** A traced wall as straight pieces (an arc → `n` chords). */
+export function segPieces(s: WallSeg, n = 8): { a: Px; b: Px }[] {
   if (!s.mid) return [{ a: s.a, b: s.b }]
   const c = circle3(s.a, s.mid, s.b)
   if (!c) return [{ a: s.a, b: s.mid }, { a: s.mid, b: s.b }]
@@ -757,16 +763,16 @@ export function segPieces(s: WallSeg): { a: Px; b: Px }[] {
   if (norm(ang(s.mid) - a0) > sweep) sweep -= 2 * Math.PI
   const out: { a: Px; b: Px }[] = []
   let prev = s.a
-  for (let k = 1; k <= 8; k++) {
-    const t = a0 + (sweep * k) / 8
-    const p = k === 8 ? s.b : { x: c.x + c.r * Math.cos(t), y: c.y + c.r * Math.sin(t) }
+  for (let k = 1; k <= n; k++) {
+    const t = a0 + (sweep * k) / n
+    const p = k === n ? s.b : { x: c.x + c.r * Math.cos(t), y: c.y + c.r * Math.sin(t) }
     out.push({ a: prev, b: p })
     prev = p
   }
   return out
 }
 
-function circle3(a: Px, b: Px, c: Px): { x: number; y: number; r: number } | null {
+export function circle3(a: Px, b: Px, c: Px): { x: number; y: number; r: number } | null {
   const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
   if (Math.abs(d) < 1e-9) return null
   const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y

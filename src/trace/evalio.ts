@@ -2,6 +2,8 @@
 /** Node-only IO for the trace eval (tests): load PGM fixtures (scripts/trace-fixtures.mjs), write overlay PNGs. Never imported by the app. */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
+import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
+import type { Unit } from '../core'
 import { segPieces } from './walls'
 import type { Gray, Px, WallTrace } from './types'
 
@@ -79,6 +81,80 @@ export function writeOverlay(
   }
   for (const p of marks?.missed ?? []) blob(p, [130, 70, 0])
   for (const p of marks?.extra ?? []) blob(p, [240, 200, 0])
+  writePng(path, W, H, px)
+}
+
+const KIND_RGB: Record<string, RGB> = {
+  bed: [120, 170, 255], living: [255, 200, 90], dining: [255, 160, 60], kitchen: [255, 110, 110], bath: [90, 220, 220], balcony: [120, 220, 110],
+  study: [190, 140, 255], closet: [210, 180, 140], utility: [200, 200, 120], shaft: [150, 150, 150], other: [255, 120, 230],
+}
+
+/**
+ * A solver draft on its sheet (cropped to the draft ± 2 m): plan faded; rooms filled by kind (bed blue, living/dining
+ * orange, kitchen red, bath cyan, veranda green, study violet, closet tan, utility olive, shaft grey, other/unnamed pink);
+ * 10" walls dark red, 5" red; openings door blue, window cyan, passage magenta,
+ * slider violet; review points yellow (unclosed / unlabelled) or orange (the rest); hand-traced walls green.
+ */
+export function writeUnitOverlay(path: string, g: Gray, unit: Unit, review: { at: { x: number; y: number }; kind: string }[], truth?: { a: Px; b: Px }[]): void {
+  const pi = unit.planImage!
+  const toPx = (p: { x: number; y: number }) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM })
+  const xs = unit.vertices.map((v) => toPx(v).x), ys = unit.vertices.map((v) => toPx(v).y)
+  const pad = 2 * pi.pxPerM
+  const c = xs.length
+    ? { x: Math.max(0, Math.min(...xs) - pad), y: Math.max(0, Math.min(...ys) - pad), w: 0, h: 0 }
+    : { x: 0, y: 0, w: g.width, h: g.height }
+  if (xs.length) (c.w = Math.min(g.width, Math.max(...xs) + pad) - c.x), (c.h = Math.min(g.height, Math.max(...ys) + pad) - c.y)
+  const s = Math.min(3, Math.max(1, 1400 / Math.max(c.w, c.h)))
+  const W = Math.round(c.w * s), H = Math.round(c.h * s)
+  const px = new Uint8Array(W * H * 3)
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const sx = Math.floor(c.x + x / s), sy = Math.floor(c.y + y / s)
+      const v = sx >= 0 && sy >= 0 && sx < g.width && sy < g.height ? 110 + (g.data[sy * g.width + sx] * 145) / 255 : 128
+      px[(y * W + x) * 3] = px[(y * W + x) * 3 + 1] = px[(y * W + x) * 3 + 2] = v
+    }
+  const to = (p: Px) => ({ x: (p.x - c.x) * s, y: (p.y - c.y) * s })
+  const dot = (x: number, y: number, col: RGB, a = 1) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    if (xi < 0 || yi < 0 || xi >= W || yi >= H) return
+    const i = (yi * W + xi) * 3
+    for (let k = 0; k < 3; k++) px[i + k] = Math.round(px[i + k] * (1 - a) + col[k] * a)
+  }
+  // rooms (smallest last so nested faces show)
+  for (const r of deriveRooms(unit).sort((p, q) => q.areaSqm - p.areaSqm)) {
+    const poly = roomPolygon(r, unit).map((p) => to(toPx(p)))
+    const bx = poly.map((p) => p.x), by = poly.map((p) => p.y)
+    for (let y = Math.max(0, Math.floor(Math.min(...by))); y <= Math.min(H - 1, Math.ceil(Math.max(...by))); y++)
+      for (let x = Math.max(0, Math.floor(Math.min(...bx))); x <= Math.min(W - 1, Math.ceil(Math.max(...bx))); x++)
+        if (pointInPolygon({ x, y }, poly)) dot(x, y, KIND_RGB[r.kind] ?? KIND_RGB.other, 0.35)
+  }
+  const line = (p: Px, q: Px, col: RGB, r = 0, dash = 0) => {
+    const a = to(p), b = to(q)
+    const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) * 2) + 1
+    for (let k = 0; k <= n; k++) {
+      if (dash && Math.floor(k / (2 * dash)) % 2) continue
+      const x = a.x + ((b.x - a.x) * k) / n, y = a.y + ((b.y - a.y) * k) / n
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) dot(x + dx, y + dy, col)
+    }
+  }
+  for (const l of truth ?? []) line(l.a, l.b, [0, 170, 0], 0)
+  const V = new Map(unit.vertices.map((v) => [v.id, toPx(v)]))
+  const opCol: Record<string, RGB> = { door: [0, 60, 255], window: [0, 200, 220], passage: [255, 0, 200], slider: [150, 0, 255] }
+  for (const w of unit.walls) {
+    const a = V.get(w.a)!, b = V.get(w.b)!
+    line(a, b, w.thicknessM > 0.19 ? [150, 0, 0] : [230, 20, 20], w.thicknessM > 0.19 ? 2 : 1)
+    const L = Math.hypot(b.x - a.x, b.y - a.y) / pi.pxPerM
+    for (const o of w.openings) {
+      const f0 = o.offsetM / L, f1 = (o.offsetM + o.widthM) / L
+      const p = { x: a.x + (b.x - a.x) * f0, y: a.y + (b.y - a.y) * f0 }, q = { x: a.x + (b.x - a.x) * f1, y: a.y + (b.y - a.y) * f1 }
+      line(p, q, opCol[o.kind], 2)
+    }
+  }
+  for (const r of review) {
+    const q = to(toPx(r.at))
+    const col: RGB = r.kind === 'unclosed' || r.kind === 'unlabelled' ? [255, 230, 0] : [255, 140, 0]
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (Math.abs(dx) === 3 || Math.abs(dy) === 3) dot(q.x + dx, q.y + dy, col)
+  }
   writePng(path, W, H, px)
 }
 
