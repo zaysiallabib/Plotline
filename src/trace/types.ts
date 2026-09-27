@@ -62,6 +62,8 @@ export interface TextItem {
   roomKind?: string
   green?: boolean
   dims?: Dims
+  /** kind 'area': the printed area in m² ("±2,736 SFT" → 254.2) — extension (text agent, wave 15) */
+  areaSqm?: number
   conf: number
   /** who read it: the local OCR or the backup AI reader */
   source: 'ocr' | 'ai'
