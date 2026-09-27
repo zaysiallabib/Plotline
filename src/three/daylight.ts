@@ -40,15 +40,16 @@ const RHO = 0.5
  * ceiling into Neutral's knee (213 → 234, flat again); pivot 0.6 / γ 0.8 or normalising the room's MEAN to 1 sank the type-a
  * living's walls 213 → 182–197; this set keeps mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
  */
-const GAMMA = 0.75
+/** per class: floor, wall, ceiling (walls / ceilings steeper, wave 14) */
+const GAMMA = [0.75, 0.9, 0.9]
 const PIVOT = 0.5
 // manager at merge: 0.65/1.35 left bedroom floors muddy (b-bed-1 oak 140 → 119) and the b-living window-facing wall at 232.
 // Wave 14: per class (floor, wall, ceiling) and SOFT (tanh in log space, no plateau): the hard clamp flattened a small room's
 // field into plateaus whose kinks read as blocks. Floors stay gentle; walls and ceilings carry the falloff, mostly downward.
 const WITHIN: [number, number][] = [
   [0.75, 1.25],
-  [0.75, 1.25],
-  [0.75, 1.25],
+  [0.62, 1.25],
+  [0.6, 1.22],
 ]
 const GAMMA_B = 0.25
 const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
@@ -371,7 +372,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const med = [0, 1, 2].map((c) => median(rooms.filter((r) => HABITABLE.includes(r.kind)).map((r) => roomMed.get(`${r.id}:${c}`)!)))
   const factor = (e: number, room: Room, c: number) => {
     const rm = roomMed.get(`${room.id}:${c}`)!
-    const within = rm > 0 ? soft(GAMMA * Math.log(Math.max(e, 1e-9) / rm), WITHIN[c]) : 1
+    const within = rm > 0 ? soft(GAMMA[c] * Math.log(Math.max(e, 1e-9) / rm), WITHIN[c]) : 1
     const between = med[c] > 0 ? THREE.MathUtils.clamp((rm / med[c]) ** GAMMA_B, BETWEEN[0], BETWEEN[1]) : 1
     return within * between
   }
@@ -448,6 +449,8 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
  * `dayUv` for one room-surface mesh. `target` floor / ceiling (and skirting, which follows the floor): plan (X, Z) into
  * the room's region. A wall: each triangle into one face's region — a face by the side it lies on; reveals, end caps and
  * tops (they span the thickness) into the room-facing side at their (u, v); a face toward the outside reads neutral.
+ * A triangle in a face group (0 front, 1 back) reads that face when it borders a room: the L-corner notch quads lie past
+ * the wall's end, where the centroid test split each quad between the two faces (wave 13's sawtooth by the bed-1 door).
  */
 export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, target: 'floor' | 'ceiling' | 'wall', id: Id): void {
   const p = geo.attributes.position
@@ -477,7 +480,9 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
       const vi = [0, 1, 2].map((k) => (idx ? idx.getX(t + k) : t + k))
       const l = vi.map(local)
       const wc = (l[0].w + l[1].w + l[2].w) / 3
-      const s = Math.abs(wc) > T2 / 2 ? Math.sign(wc) : prefer
+      const g = geo.groups.find((x) => t >= x.start && t < x.start + x.count)?.materialIndex
+      const gs = g === 0 && front ? 1 : g === 1 && back ? -1 : 0
+      const s = gs || (Math.abs(wc) > T2 / 2 ? Math.sign(wc) : prefer)
       const room = s > 0 ? front : s < 0 ? back : null
       vi.forEach((v, k) => put(v, room ? `wall:${id}:${s}` : null, l[k].u, l[k].v))
     }
