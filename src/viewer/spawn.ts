@@ -202,6 +202,13 @@ export const NEAR_WALL = 1.2
 /** A room's frame (not a bath's) prefers no more than SIDE_WALL_MAX of plaster within SIDE_WALL (m): a blank side wall 1.2–2 m off (the director's "close wall fills a quarter"). */
 export const SIDE_WALL = 2
 export const SIDE_WALL_MAX = 0.15
+/**
+ * A veranda's frame also keeps plaster within VERANDA_WALL (m) under VERANDA_WALL_MAX: its end wall 2–2.5 m off filled 68 % of
+ * the wave-14 Sheltech A Veranda 4 frame (the director's "blank side wall" again); a frame through the slider, its jambs
+ * and head in view, is ~40 % (B Veranda (living)).
+ */
+export const VERANDA_WALL = 3
+export const VERANDA_WALL_MAX = 0.45
 /** …among this many best-ranked frames only (each costs a frame trace, ~1 ms; the five fixed frames clear within 30). */
 const SIDE_TRIES = 30
 /** frameHits costs ~1 ms: this many best-ranked frames are tried before the least filled of them is taken. */
@@ -422,7 +429,7 @@ export function roomView(room: Room, unit: Unit): View {
   ])
   // near plaster: full-height walls only (a veranda's rail or curb below the eye is its edge, not a wall in the face)
   const wallIds = new Set(unit.walls.filter((w) => w.heightM >= EYE).map((w) => w.id))
-  type Fill = { leaf: number; leafId?: string; slab: number; wall: number; side: number }
+  type Fill = { leaf: number; leafId?: string; slab: number; wall: number; side: number; far: number }
   // by frame, not object: the same spot and heading ranked twice (a bath's far and near lists) is traced once
   const fills = new Map<string, Fill>()
   const tried: View[] = []
@@ -434,14 +441,16 @@ export function roomView(room: Room, unit: Unit): View {
       const by = new Map<string, number>()
       let wall = 0
       let side = 0
+      let far = 0
       for (const { id, t } of frameHits(unit, v.p, v.face, v.pitch, v.closeLeaf)) {
         if (flatIds.has(id)) by.set(id, (by.get(id) ?? 0) + RAY)
-        else if (t <= SIDE_WALL && wallIds.has(id)) {
-          side += RAY
+        else if (t <= VERANDA_WALL && wallIds.has(id)) {
+          far += RAY
+          if (t <= SIDE_WALL) side += RAY
           if (t <= NEAR_WALL) wall += RAY
         }
       }
-      const f: Fill = { leaf: 0, slab: 0, wall, side }
+      const f: Fill = { leaf: 0, slab: 0, wall, side, far }
       for (const [id, s] of by)
         if (!leafIds.has(id)) f.slab = Math.max(f.slab, s)
         else if (s > f.leaf) Object.assign(f, { leaf: s, leafId: id })
@@ -457,8 +466,8 @@ export function roomView(room: Room, unit: Unit): View {
   // ponytail: the first FLAT_TRIES frames only (~0.3 s worst case); rank smarter if a room needs more
   /** The best-ranked view that no leaf or slab fills beyond FLAT_MAX, nor near plaster beyond NEAR_WALL_MAX. */
   const clear = <V extends View>(ranked: V[], fill = flat) => ranked.slice(0, FLAT_TRIES).find((v) => fill(v) <= 1)
-  /** A room's frame (not a bath's or a door view's): also no more than SIDE_WALL_MAX of plaster within SIDE_WALL. */
-  const roomFlat = (v: View) => Math.max(flat(v), measure(v).side / SIDE_WALL_MAX)
+  /** A room's frame (not a bath's or a door view's): also no more than SIDE_WALL_MAX of plaster within SIDE_WALL (a veranda's: VERANDA_WALL_MAX within VERANDA_WALL). */
+  const roomFlat = (v: View) => Math.max(flat(v), measure(v).side / SIDE_WALL_MAX, room.kind === 'balcony' ? measure(v).far / VERANDA_WALL_MAX : 0)
   /** …else the least filled frame tried (the first of equals). */
   const leastFilled = () => tried.reduce<View | undefined>((m, v) => (!m || flat(v) < flat(m) ? v : m), undefined)
   /** v with its largest leaf shut, when that takes back LEAF_GAIN of the frame (else v). */

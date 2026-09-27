@@ -13,7 +13,7 @@ import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
-  VERANDA_PITCH, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
+  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
 import { EYE, boxInFrame, floorShare, frameShares, pieceInFrame, project, swings } from './frame'
@@ -527,6 +527,8 @@ describe('viewer', { timeout: 20_000 }, () => {
         // wave 13's regressions (a blank side wall filling half the frame): plaster within SIDE_WALL under SIDE_WALL_MAX
         if (/(b_1747 Veranda \(living\)|Veranda \(study\)|Veranda 4)$/.test(name))
           expect([...frameShares(u, v.p, v.face, v.pitch, SIDE_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0), `${name}: side wall`).toBeLessThanOrEqual(SIDE_WALL_MAX)
+        // …and no veranda's end wall 2–3 m off fills it (wave 14 before VERANDA_WALL: Sheltech A Veranda 4 72 %, A Veranda (bed-1) 48 %)
+        expect([...frameShares(u, v.p, v.face, v.pitch, VERANDA_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0), `${name}: plaster`).toBeLessThanOrEqual(VERANDA_WALL_MAX)
       }
     }
     // all but the 1.5 m service verandas of B and Sheltech A, shot along themselves (their kitchen door or slider behind the eye)
