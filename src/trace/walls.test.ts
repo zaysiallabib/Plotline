@@ -200,7 +200,10 @@ describe.skipIf(!allFixtures.length)('traceWalls smoke run over every demo drawi
       const t0 = performance.now()
       const t = traceWalls(g)
       const ms = performance.now() - t0
-      lines.push(`${f.padEnd(40)} ${String(g.width).padStart(5)}×${String(g.height).padEnd(5)} walls ${String(t.walls.length).padStart(4)} arcs ${String(t.walls.filter((w) => w.mid).length).padStart(3)} openings ${String(t.openings.length).padStart(3)} ${Math.round(ms)} ms`)
+      const deg = new Map<string, number>()
+      for (const w of t.walls) for (const p of [w.a, w.b]) deg.set(`${p.x.toFixed(2)},${p.y.toFixed(2)}`, (deg.get(`${p.x.toFixed(2)},${p.y.toFixed(2)}`) ?? 0) + 1)
+      const free = [...deg.values()].filter((d) => d === 1).length
+      lines.push(`${f.padEnd(40)} ${String(g.width).padStart(5)}×${String(g.height).padEnd(5)} walls ${String(t.walls.length).padStart(4)} arcs ${String(t.walls.filter((w) => w.mid).length).padStart(3)} free ends ${String(free).padStart(4)} openings ${String(t.openings.length).padStart(3)} ${String(Math.round(ms)).padStart(4)} ms`)
       if (SHOTS) writeOverlay(`${SHOTS}/smoke-${f.replace(/\.pgm$/, '')}.png`, g, t)
       expect(ms, f).toBeLessThan(6000)
       for (const w of t.walls) expect(Number.isFinite(w.a.x + w.a.y + w.b.x + w.b.y + w.thicknessPx), f).toBe(true)

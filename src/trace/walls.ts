@@ -12,8 +12,10 @@ import { edt, otsu, thin, threshold } from './raster'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
-  /** grey ≤ this is ink. Default: Otsu's threshold of the image. */
+  /** grey ≤ this is ink. Default: Otsu's threshold of the image, capped at `inkCap`. */
   darkMax?: number
+  /** walls are dark: never count greys lighter than this as ink (light tile grids, fills, grey hatching). */
+  inkCap?: number
   /** the commonest wall half-width in px (the partition wall). Default: the ridge-histogram peak. */
   halfPx?: number
   /** keep ink at least this far from paper (× halfPx); thinner strokes (text, furniture) vanish. */
@@ -28,7 +30,9 @@ export interface WallOpts {
   upscale?: number
 }
 
-const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127 }
+const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160 }
+
+export const inkThreshold = (g: Gray, o: WallOpts) => o.darkMax ?? Math.min(otsu(g), o.inkCap ?? DEF.inkCap)
 
 /** Wall half-width (px) = the most common distance-transform ridge value among strokes thicker than text (DT ≥ 1.9). */
 export function wallHalfWidth(dt: Float32Array, w: number, h: number): number {
@@ -248,7 +252,8 @@ function fitChain(P: Px[], i0: number, i1: number, eps: number, half: number, ou
     out.push({ i0, i1 })
     return
   }
-  if (i1 - i0 >= 12) {
+  if (i1 - i0 >= Math.max(12, 8 * half) && d >= 2 * eps) {
+    // a real bow (sagitta ≥ 2 eps over ≥ 4 wall thicknesses), not a wobbly skeleton on a column or a thickness step
     const c = fitCircle(P.slice(i0, i1 + 1))
     if (c && c.rms <= eps * 0.5 && c.r >= 4 * half) {
       // sweep must be one-directional and between ~20° and 300°
@@ -312,7 +317,7 @@ function meetPoint(lines: { cx: number; cy: number; dx: number; dy: number }[]):
 export function wallSkeleton(gray: Gray, opts: WallOpts = {}) {
   const o = { ...DEF, ...opts }
   const { width: w, height: h } = gray
-  const t = o.darkMax ?? otsu(gray)
+  const t = inkThreshold(gray, o)
   const ink = threshold(gray, t)
   const dt = edt(ink, w, h)
   const half = o.halfPx ?? wallHalfWidth(dt, w, h)
@@ -359,7 +364,7 @@ const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
 export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   let f = opts.upscale
   if (f === undefined) {
-    const dt0 = edt(threshold(gray, opts.darkMax ?? otsu(gray)), gray.width, gray.height)
+    const dt0 = edt(threshold(gray, inkThreshold(gray, opts)), gray.width, gray.height)
     f = (opts.halfPx ?? wallHalfWidth(dt0, gray.width, gray.height)) < 3 ? 2 : 1
   }
   if (f !== 1) {
@@ -428,16 +433,108 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   }
 
   refine(segs, nodes, (p) => dt[Math.round(p.y) * w + Math.round(p.x)] ?? 0)
-  const walls: WallSeg[] = segs
-    .filter((s) => dist(s.a, s.b) >= 1)
-    .map((s) => {
-      const len = dist(s.a, s.b)
-      const thicknessPx = thicknessOf(s.half)
-      return { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx)) }
-    })
+  const walls = tidy(
+    segs
+      .filter((s) => dist(s.a, s.b) >= 1)
+      .map((s) => {
+        const len = dist(s.a, s.b)
+        const thicknessPx = thicknessOf(s.half)
+        return { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx)) }
+      }),
+  )
   // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
   const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
   return { walls, openings }
+}
+
+const pkey = (p: Px) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`
+
+/**
+ * Topology clean-up on the fitted walls: (1) merge two straight walls meeting end to end within 4° (thinning splits a
+ * run at every hair it pruned); (2) close near-junctions: a free end that stops within 1.5 thicknesses of another
+ * wall's line is extended onto it — that wall is split there (a T), or, if the meeting point is past its free end too,
+ * both ends move to the corner (an L). Real gaps (doors ≥ 0.45 m) are far wider than 1.5 thicknesses.
+ */
+export function tidy(walls: WallSeg[]): WallSeg[] {
+  walls = walls.slice()
+  const cos4 = Math.cos((4 * Math.PI) / 180)
+  for (let changed = true; changed; ) {
+    changed = false
+    const at = new Map<string, number[]>()
+    walls.forEach((s, i) => [s.a, s.b].forEach((p) => at.set(pkey(p), [...(at.get(pkey(p)) ?? []), i])))
+    for (const [k, list] of at) {
+      if (list.length !== 2 || list[0] === list[1]) continue
+      const s = walls[list[0]], t = walls[list[1]]
+      if (s.mid || t.mid) continue
+      const s0 = pkey(s.a) === k ? s.b : s.a, t1 = pkey(t.a) === k ? t.b : t.a
+      const sh = pkey(s.a) === k ? s.a : s.b
+      const ls = dist(s0, sh), lt = dist(sh, t1)
+      if (ls < 1 || lt < 1 || dist(s0, t1) < 1) continue
+      const c =((sh.x - s0.x) * (t1.x - sh.x) + (sh.y - s0.y) * (t1.y - sh.y)) / (ls * lt || 1)
+      if (c < cos4 || Math.abs(s.thicknessPx - t.thicknessPx) > 0.35 * Math.max(s.thicknessPx, t.thicknessPx)) continue
+      const merged: WallSeg = { a: s0, b: t1, thicknessPx: (s.thicknessPx * ls + t.thicknessPx * lt) / (ls + lt), conf: Math.max(s.conf, t.conf) }
+      walls = walls.filter((_, i) => i !== list[0] && i !== list[1])
+      walls.push(merged)
+      changed = true
+      break
+    }
+  }
+  // near-junctions
+  const deg = new Map<string, number>()
+  const bump = (p: Px, d: number) => deg.set(pkey(p), (deg.get(pkey(p)) ?? 0) + d)
+  for (const s of walls) (bump(s.a, 1), bump(s.b, 1))
+  const sin25 = Math.sin((25 * Math.PI) / 180)
+  for (let i = 0; i < walls.length; i++) {
+    for (const end of ['a', 'b'] as const) {
+      const s = walls[i]
+      if (s.mid) break
+      const e = s[end], o = end === 'a' ? s.b : s.a
+      if (deg.get(pkey(e)) !== 1) continue
+      const L = dist(e, o)
+      if (L < 1) continue
+      const dx = (e.x - o.x) / L, dy = (e.y - o.y) / L
+      const reach = 1.5 * s.thicknessPx
+      let best: { u: number; j: number; v: number; X: Px } | null = null
+      for (let j = 0; j < walls.length; j++) {
+        const t = walls[j]
+        if (j === i || t.mid) continue
+        const tx = t.b.x - t.a.x, ty = t.b.y - t.a.y, Lt = Math.hypot(tx, ty)
+        if (Lt < 1) continue
+        const cr = dx * ty - dy * tx
+        if (Math.abs(cr) < sin25 * Lt) continue
+        // e + u·d = t.a + v·(t.b − t.a)
+        const u = ((t.a.x - e.x) * ty - (t.a.y - e.y) * tx) / cr
+        const v = ((t.a.x - e.x) * dy - (t.a.y - e.y) * dx) / cr
+        if (u < -0.5 * s.thicknessPx || u > reach + t.thicknessPx / 2) continue
+        const slack = reach / Lt
+        if (v < -slack || v > 1 + slack) continue
+        if (!best || Math.abs(u) < Math.abs(best.u)) best = { u, j, v, X: { x: e.x + u * dx, y: e.y + u * dy } }
+      }
+      if (!best) continue
+      const t = walls[best.j], X = best.X
+      bump(e, -1)
+      walls[i] = { ...s, [end]: X }
+      bump(X, 1)
+      if (best.v <= 0 || best.v >= 1) {
+        // past t's end: an L corner if that end is free, else a T at t's end (it is a junction already)
+        const te = best.v <= 0 ? 'a' : 'b'
+        if (deg.get(pkey(t[te])) === 1) {
+          bump(t[te], -1)
+          walls[best.j] = { ...t, [te]: X }
+          bump(X, 1)
+        } else {
+          bump(X, -1)
+          walls[i] = { ...s, [end]: t[te] }
+          bump(t[te], 1)
+        }
+      } else if (dist(X, t.a) >= 1 && dist(X, t.b) >= 1) {
+        walls[best.j] = { ...t, b: X }
+        walls.push({ ...t, a: X })
+        bump(X, 2)
+      }
+    }
+  }
+  return walls
 }
 
 /** DT at the ridge → stroke width. A (2k+1)-px stroke has ridge DT k+1, a 2k-px stroke has k (pixel-centre distances). */
