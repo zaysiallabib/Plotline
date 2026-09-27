@@ -5,6 +5,9 @@ import { pieceQuad, resizePiece } from '../studio/furniture'
 import { initialState, reducer, type StudioState } from '../studio/model'
 import { baseOf, dragTo, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
 import { shareUrl } from './share'
+import typeA from '../data/units/type-a.json'
+import sheltechA from '../data/units/sheltech-a.json'
+import { furnish } from '../furnish/presets'
 
 // resizeLimits is empty until the resize work fills it: one resizable asset for these tests
 vi.mock('../furnish/kit', async (orig) => ({
@@ -119,6 +122,19 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     expect(m.ids).toEqual(['sofa', 'cush'])
     expect(m.piece.x).toBeCloseTo(2.5 - 0.5, 0) // on the grid
     expect(at(m.furniture, 'cush').x - cush.x).toBeCloseTo(m.piece.x - 2.5, 9)
+  })
+
+  it('drops follow the Studio rules: the TV unit turns its back to the east wall, a veranda chair stops at the slider strip', () => {
+    const a = typeA as unknown as Unit
+    const ra = deriveRooms(a)
+    const pa = furnish(a, ra).filter((p) => !['r_living:modern_arm_chair_01:1', 'r_living:potted_plant_01:1'].includes(p.id))
+    const tv = pa.find((p) => p.id === 'r_living:tv_55:1')!
+    expect(dragTo(a, ra, pa, tv.id, { at: { x: 13.0, y: 6.4 }, wall: null })!.piece).toMatchObject({ id: 'r_living:modern_wooden_cabinet:1', rotationDeg: 90 })
+    const s = sheltechA as unknown as Unit
+    const rs = deriveRooms(s)
+    const ps2 = furnish(s, rs)
+    const chair = ps2.find((p) => p.roomId === rs.find((r) => r.name === 'Veranda 1')!.id && /chair/.test(p.assetId))!
+    expect(dragTo(s, rs, ps2, chair.id, { at: { x: chair.x, y: chair.y - 0.3048 }, wall: null })!.error).toBeNull()
   })
 
   it('floor and ceiling pieces slide on their plane; a refused spot says why', () => {
