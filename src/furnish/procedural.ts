@@ -15,9 +15,11 @@ import { pointInPolygon, type Pt } from '../core'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
+import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PROCEDURAL, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId } from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
+
+type Size3 = { x: number; y: number; z: number }
 
 // ───────────────────────────── materials ─────────────────────────────
 
@@ -469,7 +471,7 @@ function bed(w: number, style: (typeof BED_STYLES)[number]): THREE.Mesh[] {
     const x0 = w / 2 + 0.06 - tw / 2
     out.push(rbox(tw, 0.03, 0.62, 0.012, m.throwSage, x0, 0.615, D / 2 - 0.34))
     out.push(rbox(tw, 0.26, 0.03, 0.012, m.throwSage, x0, 0.49, D / 2 - 0.015))
-    out.push(rbox(0.03, 0.26, 0.62, 0.012, m.throwSage, w / 2 + 0.075, 0.49, D / 2 - 0.34))
+    out.push(rbox(0.03, 0.26, 0.62, 0.012, m.throwSage, w / 2 + 0.065, 0.49, D / 2 - 0.34)) // flush with the headboard
   }
   return out
 }
@@ -518,10 +520,11 @@ function sofa(W: number): THREE.Mesh[] {
   return out
 }
 
-function diningTable(): THREE.Mesh[] {
+/** Oak top W × D on an apron, steel legs 9 cm in from each corner. */
+function diningTable({ x: W, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const out = [rbox(1.6, 0.04, 0.9, 0.012, m.oak, 0, 0.73, 0), box(1.42, 0.07, 0.72, m.oak, 0, 0.675, 0)]
-  for (const x of [-0.71, 0.71]) for (const z of [-0.36, 0.36]) out.push(box(0.045, 0.71, 0.045, m.blackSteel, x, 0.355, z))
+  const out = [rbox(W, 0.04, D, 0.012, m.oak, 0, 0.73, 0), box(W - 0.18, 0.07, D - 0.18, m.oak, 0, 0.675, 0)]
+  for (const x of [-(W / 2 - 0.09), W / 2 - 0.09]) for (const z of [-(D / 2 - 0.09), D / 2 - 0.09]) out.push(box(0.045, 0.71, 0.045, m.blackSteel, x, 0.355, z))
   return out
 }
 
@@ -536,12 +539,14 @@ function diningChair(): THREE.Mesh[] {
   return out
 }
 
-function desk(): THREE.Mesh[] {
+/** Oak top W × D on a steel frame: legs at the corners (4 / 5 cm in), side rails top and bottom, a back rail. */
+function desk({ x: W, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const out = [rbox(1.4, 0.03, 0.7, 0.008, m.oak, 0, 0.735, 0), box(1.29, 0.03, 0.03, m.blackSteel, 0, 0.6, -0.3)]
-  for (const x of [-0.66, 0.66]) {
-    for (const z of [-0.3, 0.3]) out.push(box(0.03, 0.72, 0.03, m.blackSteel, x, 0.36, z))
-    for (const y of [0.015, 0.705]) out.push(box(0.03, 0.03, 0.63, m.blackSteel, x, y, 0))
+  const [lx, lz] = [W / 2 - 0.04, D / 2 - 0.05]
+  const out = [rbox(W, 0.03, D, 0.008, m.oak, 0, 0.735, 0), box(2 * lx - 0.03, 0.03, 0.03, m.blackSteel, 0, 0.6, -lz)]
+  for (const x of [-lx, lx]) {
+    for (const z of [-lz, lz]) out.push(box(0.03, 0.72, 0.03, m.blackSteel, x, 0.36, z))
+    for (const y of [0.015, 0.705]) out.push(box(0.03, 0.03, 2 * lz + 0.03, m.blackSteel, x, y, 0))
   }
   return out
 }
@@ -612,17 +617,23 @@ function counterStyled(): THREE.Mesh[] {
   return out
 }
 
-/** Tall larder: oak carcass to 2.15 m (the wall cabinets' top line), two doors, bar handles either side of the split. */
-function tall(): THREE.Mesh[] {
+/**
+ * Tall larder W × H (2.15 m = the wall cabinets' top line), back at z −0.31 like the base run, handles at +0.31: a lower
+ * door to 1.4 m and an upper one to the top, bar handles either side of that split; over 0.7 m wide two columns of doors,
+ * handles by the middle.
+ */
+function tall({ x: W, y: H }: Size3): THREE.Mesh[] {
   const m = M()
-  return [
-    box(0.6, 0.1, 0.54, m.dark, 0, 0.05, -0.02), // plinth
-    box(0.6, 2.05, 0.6, m.oak, 0, 1.125, -0.01), // carcass 0.1–2.15
-    box(0.594, 1.297, 0.02, m.oak, 0, 0.7515, 0.3), // lower door 0.103–1.4
-    box(0.594, 0.741, 0.02, m.oak, 0, 1.7765, 0.3), // upper door 1.406–2.147
-    box(0.012, 0.3, 0.02, m.steel, -0.25, 1.22, 0.32),
-    box(0.012, 0.3, 0.02, m.steel, -0.25, 1.59, 0.32),
-  ]
+  const cols = W > 0.7 ? 2 : 1
+  const dw = W / cols
+  const out = [box(W, 0.1, 0.54, m.dark, 0, 0.05, -0.02), box(W, H - 0.1, 0.58, m.oak, 0, (H + 0.1) / 2, -0.02)] // plinth, carcass
+  for (let c = 0; c < cols; c++) {
+    const x = -W / 2 + dw * (c + 0.5)
+    out.push(box(dw - 0.006, 1.297, 0.02, m.oak, x, 0.7515, 0.28), box(dw - 0.006, H - 1.409, 0.02, m.oak, x, (H + 1.403) / 2, 0.28)) // doors 0.103–1.4, 1.406–H
+    const hx = cols === 1 ? -W / 2 + 0.05 : c ? 0.05 : -0.05
+    out.push(box(0.012, 0.3, 0.02, m.steel, hx, 1.22, 0.3), box(0.012, 0.3, 0.02, m.steel, hx, 1.59, 0.3))
+  }
+  return out
 }
 
 function sink(): THREE.Mesh[] {
@@ -696,25 +707,35 @@ function hood(): THREE.Mesh[] {
 }
 
 /**
- * Bottom-freezer fridge: satin-grey body with rounded edges, brushed-steel doors on a dark gasket with a 6 mm gap
- * between them, full-length bar handles on the free side (+x: inCorner puts the wall on −x, the hinge side), a
- * black hinge cover on top, a recessed plinth grille on levelling feet. Bounds exactly 0.7 × 1.8 × 0.7.
+ * Bottom-freezer fridge W × H × D (bounds exact): satin-grey body with rounded edges, brushed-steel doors on a dark
+ * gasket with a 6 mm gap between them, bar handles on the free side (+x: inCorner puts the wall on −x, the hinge side),
+ * a black hinge cover on top, a recessed plinth grille on levelling feet. From 0.8 m wide French doors: two fridge
+ * doors with handles either side of their split and a freezer drawer with a bar across. The freezer stays 0.07–0.735 m;
+ * the fridge door takes the rest of the height.
  */
-function fridge(): THREE.Mesh[] {
+function fridge({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const zf = 0.27 // body front: gasket 0.27–0.28, doors 0.28–0.32, stand-offs to 0.33, handles to 0.35
+  const zf = D / 2 - 0.08 // body front: gasket to +0.01, doors to +0.05, stand-offs to +0.06, handles to +0.08
+  const french = W >= 0.8
+  const [y0, y1] = [0.74, H - 0.01] // fridge door
   const out = [
-    rbox(0.7, 1.73, 0.62, 0.03, m.fridgeBody, 0, 0.93, zf - 0.31), // body 0.065–1.795, back at −0.35
-    box(0.64, 0.065, 0.5, m.dark, 0, 0.0325, -0.04), // plinth grille, 60 mm behind the body front
-    box(0.68, 1.71, 0.01, m.dark, 0, 0.935, zf + 0.005), // door gasket
-    rbox(0.7, 1.05, 0.04, 0.015, m.applianceSteel, 0, 1.265, zf + 0.03), // fridge door 0.74–1.79
-    rbox(0.7, 0.665, 0.04, 0.015, m.applianceSteel, 0, 0.4025, zf + 0.03), // freezer door 0.07–0.735
-    box(0.12, 0.005, 0.05, m.dark, -0.27, 1.7975, zf + 0.025), // hinge cover to 1.8
+    rbox(W, H - 0.07, D - 0.08, 0.03, m.fridgeBody, 0, (H + 0.06) / 2, (zf - D / 2) / 2), // body 0.065–(H − 0.005), back at −D/2
+    box(W - 0.06, 0.065, D - 0.2, m.dark, 0, 0.0325, zf - 0.06 - (D - 0.2) / 2), // plinth grille, 60 mm behind the body front
+    box(W - 0.02, H - 0.09, 0.01, m.dark, 0, (H + 0.07) / 2, zf + 0.005), // door gasket
+    rbox(W, 0.665, 0.04, 0.015, m.applianceSteel, 0, 0.4025, zf + 0.03), // freezer door 0.07–0.735
+    ...(french ? [-1, 1] : [0]).map((s) => rbox(french ? W / 2 - 0.003 : W, y1 - y0, 0.04, 0.015, m.applianceSteel, s * (W / 4 + 0.0015), (y0 + y1) / 2, zf + 0.03)),
+    ...(french ? [-1, 1] : [-1]).map((s) => box(0.12, 0.005, 0.05, m.dark, s * (W / 2 - 0.08), H - 0.0025, zf + 0.025)), // hinge covers to H
   ]
-  for (const x of [-0.3, 0.3]) out.push(cyl(0.016, 0.065, m.dark, x, 0.0325, 0.24)) // levelling feet
-  for (const [y0, y1] of [[0.95, 1.6], [0.45, 0.68]]) {
-    out.push(rbox(0.022, y1 - y0, 0.02, 0.008, m.steel, 0.3, (y0 + y1) / 2, zf + 0.07))
-    for (const y of [y0 + 0.04, y1 - 0.04]) out.push(box(0.014, 0.014, 0.01, m.steel, 0.3, y, zf + 0.055))
+  for (const x of [-(W / 2 - 0.05), W / 2 - 0.05]) out.push(cyl(0.016, 0.065, m.dark, x, 0.0325, zf - 0.03)) // levelling feet
+  const bar = (x: number, b0: number, b1: number) => {
+    out.push(rbox(0.022, b1 - b0, 0.02, 0.008, m.steel, x, (b0 + b1) / 2, zf + 0.07))
+    for (const y of [b0 + 0.04, b1 - 0.04]) out.push(box(0.014, 0.014, 0.01, m.steel, x, y, zf + 0.055))
+  }
+  for (const x of french ? [-0.04, 0.04] : [W / 2 - 0.05]) bar(x, y0 + 0.21, H - 0.2)
+  if (!french) bar(W / 2 - 0.05, 0.45, 0.68)
+  else {
+    out.push(rbox(W - 0.24, 0.022, 0.02, 0.008, m.steel, 0, 0.66, zf + 0.07))
+    for (const x of [-(W / 2 - 0.16), W / 2 - 0.16]) out.push(box(0.014, 0.014, 0.01, m.steel, x, 0.66, zf + 0.055))
   }
   return out
 }
@@ -850,42 +871,52 @@ function artFrame(printMat: THREE.Material): THREE.Mesh[] {
   ]
 }
 
-/** Oak wardrobe of n 0.6 m doors (3 mm shadow gaps) on a recessed plinth; bar handles either side of the first split. */
-function wardrobe(n: number): THREE.Mesh[] {
+/**
+ * Oak wardrobe W × H × D (bounds exact, handles at the front face): ⌈W / 0.6⌉ doors (3 mm shadow gaps, ≤ 0.6 m each) on a
+ * recessed plinth. Doors pair up with bar handles either side of their split, an odd last door has one by its left
+ * edge; handles stay 0.6 m long centred at 1.1 m whatever the height.
+ */
+function wardrobe({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const W = 0.6 * n
-  const out = [box(W, 2.14, 0.58, m.oak, 0, 1.13, -0.01), box(W - 0.04, 0.06, 0.52, m.dark, 0, 0.03, -0.02)]
-  for (let i = 0; i < n; i++) out.push(box(0.596, 2.12, 0.02, m.oak, -W / 2 + 0.3 + 0.6 * i, 1.13, 0.29))
-  for (const x of n === 3 ? [-0.33, -0.27, 0.33] : [-0.03, 0.03]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, 0.31))
+  const n = Math.max(1, Math.ceil(W / 0.6 - 1e-3))
+  const dw = W / n
+  const zf = D / 2 - 0.04 // carcass front; doors to D/2 − 0.02, handles to D/2
+  const out = [box(W, H - 0.06, D - 0.04, m.oak, 0, (H + 0.06) / 2, zf - (D - 0.04) / 2), box(W - 0.04, 0.06, D - 0.08, m.dark, 0, 0.03, -0.02)]
+  for (let i = 0; i < n; i++) out.push(box(dw - 0.004, H - 0.08, 0.02, m.oak, -W / 2 + dw * (i + 0.5), (H + 0.06) / 2, zf + 0.01))
+  for (let i = 0; i < n; i += 2) {
+    const split = -W / 2 + dw * (i + 1)
+    for (const x of i + 1 < n ? [split - 0.03, split + 0.03] : [split - dw + 0.03]) out.push(box(0.012, 0.6, 0.02, m.steel, x, 1.1, D / 2 - 0.01))
+  }
   return out
 }
 
 /**
- * Open closet unit W wide: oak end panels, cap and shoe shelf, a top shelf with folded stacks, a steel rail with
- * clothes hanging end-on (shirts and dresses in the linen palette, a few gaps). Back open to the wall.
+ * Open closet unit W × H × D: oak end panels, cap and shoe shelf, a top shelf with folded stacks, a steel rail with
+ * clothes hanging end-on (shirts and dresses in the linen palette, a few gaps). Back open to the wall. The rail sits
+ * 0.4 m under the cap (1.7 m at 2.1) but never above 1.9 m, within reach.
  */
-function closetRail(W: number): THREE.Mesh[] {
+function closetRail({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const m = M()
-  const D = 0.55
+  const rail = Math.min(1.9, H - 0.4)
   const fab = [m.linen, m.cushionOat, m.cushionTaupe, m.chair]
-  const out = [box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 2.091, 0), box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 1.79, 0)]
+  const out = [box(W - 0.036, 0.018, D - 0.02, m.oak, 0, H - 0.009, 0), box(W - 0.036, 0.018, D - 0.02, m.oak, 0, rail + 0.09, 0)]
   out.push(box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 0.14, 0), box(W - 0.036, 0.13, 0.018, m.dark, 0, 0.065, D / 2 - 0.05))
-  for (const s of [-1, 1]) out.push(box(0.018, 2.1, D, m.oak, s * (W / 2 - 0.009), 1.05, 0))
-  out.push(cyl(0.012, W - 0.04, m.steel, 0, 1.7, 0).rotateZ(Math.PI / 2))
+  for (const s of [-1, 1]) out.push(box(0.018, H, D, m.oak, s * (W / 2 - 0.009), H / 2, 0))
+  out.push(cyl(0.012, W - 0.04, m.steel, 0, rail, 0).rotateZ(Math.PI / 2))
   for (let x = -W / 2 + 0.08, i = 0; x < W / 2 - 0.06; x += 0.075, i++) {
     if (rnd(i, W) > 0.82) continue
     const L = 0.62 + 0.4 * rnd(W, i) // shirt … dress
     const d = 0.38 + 0.08 * rnd(i, 2)
-    const g = rbox(0.03 + 0.03 * rnd(3, i), L, d, 0.012, fab[Math.floor(rnd(i, 7) * fab.length)], x, 1.64 - L / 2, 0)
+    const g = rbox(0.03 + 0.03 * rnd(3, i), L, d, 0.012, fab[Math.floor(rnd(i, 7) * fab.length)], x, rail - 0.06 - L / 2, 0)
     g.rotation.y = 0.16 * (rnd(i, 11) - 0.5)
     // oak hanger: a bar across the shoulders, a steel hook over the rail
-    const h = box(0.012, 0.018, d - 0.04, m.oak, x, 1.65, 0)
+    const h = box(0.012, 0.018, d - 0.04, m.oak, x, rail - 0.05, 0)
     h.rotation.y = g.rotation.y
-    out.push(g, h, cyl(0.004, 0.06, m.steel, x, 1.69, 0))
+    out.push(g, h, cyl(0.004, 0.06, m.steel, x, rail - 0.01, 0))
   }
   for (let x = -W / 2 + 0.22; x < W / 2 - 0.15; x += 0.42) {
     const h = 0.08 + 0.1 * rnd(x, 3)
-    out.push(rbox(0.32, h, 0.3, 0.02, fab[Math.floor(rnd(x, 5) * fab.length)], x, 1.8 + h / 2, 0))
+    out.push(rbox(0.32, h, 0.3, 0.02, fab[Math.floor(rnd(x, 5) * fab.length)], x, rail + 0.1 + h / 2, 0))
   }
   return out
 }
@@ -1153,8 +1184,10 @@ function planterBed(id: string): THREE.Object3D[] {
   return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...sprites]
 }
 
-const BUILDERS: Record<string, () => THREE.Object3D[]> = {
-  ...Object.fromEntries(BED_STYLES.flatMap((st) => [[`bed_queen${st}`, () => bed(1.6, st)], [`bed_single${st}`, () => bed(1.0, st)]])),
+/** id → builder at size s (its kit size unless resized); the resizable ones (kit.ts RESIZE) rebuild at any size in their limits. */
+const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
+  // mattress = width − the headboard's 16 cm
+  ...Object.fromEntries(BED_STYLES.flatMap((st) => [`bed_queen${st}`, `bed_single${st}`].map((id) => [id, (s: Size3) => bed(s.x - 0.16, st)]))),
   bedside_oak: bedside,
   cushions_plain: cushionsPlain,
   sofa_3seat: () => sofa(2.2),
@@ -1164,8 +1197,8 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   desk_oak: desk,
   tv_55: () => tv(true),
   tv_55_wall: () => tv(false),
-  rug_rect_large: () => rug(3.0, 2.0, M().rugIvory),
-  rug_rect_small: () => rug(2.3, 1.6, M().rugOat),
+  rug_rect_large: (s) => rug(s.x, s.z, M().rugIvory),
+  rug_rect_small: (s) => rug(s.x, s.z, M().rugOat),
   rug_round: () => [cyl(1.0, 0.012, M().rugStone, 0, 0.006, 0)],
   kitchen_counter: counter,
   kitchen_counter_styled: counterStyled,
@@ -1182,10 +1215,10 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   ceiling_light: () => ceilingLight(0.38, 0.085),
   ceiling_light_large: () => ceilingLight(0.5, 0.09),
   ac_split: acSplit,
-  wardrobe_tall: () => wardrobe(3),
-  wardrobe_2door: () => wardrobe(2),
-  closet_rail: () => closetRail(1.8),
-  closet_rail_s: () => closetRail(1.2),
+  wardrobe_tall: wardrobe,
+  wardrobe_2door: wardrobe,
+  closet_rail: closetRail,
+  closet_rail_s: closetRail,
   cot: () => cot(1.9, 0.7),
   cot_s: () => cot(1.7, 0.65),
   hook_rail: hookRail,
@@ -1193,7 +1226,8 @@ const BUILDERS: Record<string, () => THREE.Object3D[]> = {
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 
-export function buildProcedural(id: string): THREE.Group | null {
-  const parts = BUILDERS[id]?.() ?? (id.startsWith(PLANTER) ? planterBed(id) : undefined)
+/** The piece at `size` (a resized placement's sizeM), else at its kit size. */
+export function buildProcedural(id: string, size?: Size3): THREE.Group | null {
+  const parts = BUILDERS[id]?.(size ?? PROCEDURAL[id].sizeM) ?? (id.startsWith(PLANTER) ? planterBed(id) : undefined)
   return parts ? finish(parts) : null
 }
