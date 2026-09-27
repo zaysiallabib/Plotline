@@ -384,7 +384,7 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
 function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a: Pt, b: Pt, th: number) => number): void {
   const deg = degrees(segs)
   const ends: End[] = segs.flatMap((s) => (['a', 'b'] as const).filter((e) => deg.get(ekey(s[e])) === 1 && d2(s.a, s.b) >= 0.05).map((e) => ({ s, e })))
-  const cands: { x: End; y?: End; q: Pt; L: number; th: number; drawn: boolean; open?: boolean }[] = []
+  const cands: { x: End; y?: End; q: Pt; L: number; th: number; drawn: boolean; open?: boolean; corner?: Pt }[] = []
   // an open-plan boundary guess: a solid drawn wall (not a scrap) running on across open floor to the next wall
   const solid = (s: Seg) => s.conf >= 0.5 && !s.bridge && d2(s.a, s.b) >= 0.6
   const inked = (p: Pt, q: Pt, th: number) => lineInk(p, q, th) >= KNOBS.inkShare
@@ -394,8 +394,18 @@ function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a:
     for (let j = i + 1; j < ends.length; j++) {
       const y = ends[j], q = y.s[y.e]
       const v = sub(q, p), L = Math.hypot(v.x, v.y)
-      if (L < 0.02 || L > KNOBS.inkBridgeM || dot(d, outDir(y)) > -0.94) continue
-      if (dot(d, v) <= 0 || Math.abs(crs(d, v)) > 0.75 * Math.max(x.s.th, y.s.th)) continue
+      if (L < 0.02 || L > KNOBS.inkBridgeM) continue
+      const dy = outDir(y)
+      if (Math.abs(crs(d, dy)) > Math.sin(Math.PI / 3)) {
+        // two walls that should meet at a corner but both stop short: run both on to where their lines cross
+        const cr = crs(d, dy), u = crs(v, dy) / cr, t = crs(v, d) / cr
+        if (u > 0.02 && t > 0.02 && u <= KNOBS.bridgeM && t <= KNOBS.bridgeM)
+          cands.push({ x, y, q, L: u + t, th: Math.max(x.s.th, y.s.th), drawn: false, corner: { x: p.x + d.x * u, y: p.y + d.y * u } })
+        continue
+      }
+      if (dot(d, dy) > -0.94) continue
+      // a scrap's blob-sized 'thickness' must not widen the run: the lateral slack is the thinner wall's, capped
+      if (dot(d, v) <= 0 || Math.abs(crs(d, v)) > Math.min(0.25, 0.75 * Math.min(x.s.th, y.s.th))) continue
       const th = Math.max(x.s.th, y.s.th)
       if (L <= KNOBS.bridgeM || inked(p, q, th)) cands.push({ x, y, q, L, th, drawn: L > KNOBS.bridgeM })
       else if (L <= KNOBS.openPlanM && solid(x.s) && solid(y.s)) cands.push({ x, y, q, L, th, drawn: false, open: true })
@@ -416,9 +426,12 @@ function bridgeGaps(segs: Seg[], weakInk: (a: Pt, b: Pt) => number, lineInk: (a:
     if (used.has(kp) || (c.y && used.has(kq))) continue
     used.add(kp)
     if (c.y) used.add(kq)
-    const kind: Seg['bridge'] = c.drawn || weakInk(p, c.q) >= 0.6 ? 'ink' : 'gap'
-    const op: Op | undefined = kind === 'gap' && c.L >= KNOBS.passageM ? { kind: 'passage', conf: c.open ? 0.1 : 0.2 } : undefined
-    segs.push({ a: { ...p }, b: { ...c.q }, th: c.th, conf: 0.3, bridge: kind, op })
+    for (const [a, b] of c.corner ? [[p, c.corner], [c.q, c.corner]] : [[p, c.q]]) {
+      const L = d2(a, b)
+      const kind: Seg['bridge'] = c.drawn || weakInk(a, b) >= 0.6 ? 'ink' : 'gap'
+      const op: Op | undefined = kind === 'gap' && L >= KNOBS.passageM ? { kind: 'passage', conf: c.open ? 0.1 : 0.2 } : undefined
+      segs.push({ a: { ...a }, b: { ...b }, th: c.th, conf: 0.3, bridge: kind, op })
+    }
   }
 }
 
