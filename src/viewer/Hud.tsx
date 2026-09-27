@@ -114,8 +114,9 @@ export default function Hud(p: Props) {
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
       {p.arranging && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
-          {p.placing ? 'Point at the floor, a wall or the ceiling · click puts it there · R turns · Esc cancels' : 'Drag a piece to move it · R turns · Ctrl+Z undoes · Esc lets go'}
-          {p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}
+          {p.placing
+            ? 'Point at the floor, a wall or the ceiling · click puts it there · R turns · Esc cancels'
+            : `Drag a piece to move it · R turns · Ctrl+Z undoes · Esc lets go${p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}`}
         </div>
       ) : (
         !p.locked && p.mode === 'walk' && <div className="glass hint hint-bottom">Click to look around · WASD to walk · Esc to release</div>
