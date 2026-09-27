@@ -361,10 +361,10 @@ describe('viewer', { timeout: 20_000 }, () => {
     // small wet rooms that were door views are framed from their doorway now
     expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed'])
     // shut for the shot: leaves standing into a bath frame, the far leaf over the C cot, the wet rooms' own leaves behind the
-    // eye in their doorway (the door corner), a room shot from its doorway (B K. veranda + Veranda (living), Sheltech A Bed 4);
+    // eye in their doorway (the door corner), a room shot from its doorway (B Veranda (living), Sheltech A Bed 4);
     // a door seen along its own wall fills the same shut or ajar and stays ajar
     expect(shut).toEqual([
-      'a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 K. veranda', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Veranda (living)', 'c_2254 Bath-2', 'c_2254 Bath-3', 'c_2254 Help bed',
+      'a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Veranda (living)', 'c_2254 Bath-2', 'c_2254 Bath-3', 'c_2254 Help bed',
       'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 Bed 4', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet',
     ])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
@@ -529,9 +529,9 @@ describe('viewer', { timeout: 20_000 }, () => {
           expect([...frameShares(u, v.p, v.face, v.pitch, SIDE_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0), `${name}: side wall`).toBeLessThanOrEqual(SIDE_WALL_MAX)
       }
     }
-    // all but Sheltech A's 1.5 m service veranda, shot along itself with its kitchen slider behind the eye
+    // all but the 1.5 m service verandas of B and Sheltech A, shot along themselves (their kitchen door or slider behind the eye)
     expect(way).toEqual([
-      'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 K. veranda', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
+      'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
       'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4',
       'sheltech_b_2736 Veranda (kitchen)', 'sheltech_b_2736 Veranda 1', 'sheltech_b_2736 Veranda 4',
     ])

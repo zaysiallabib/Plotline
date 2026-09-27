@@ -684,15 +684,21 @@ export function roomView(room: Room, unit: Unit): View {
         const face = { x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) }
         const slab = Math.max(0, ...near.map(({ g, qs }) => SLAB_PENALTY + (qs.some((q) => inFrame(p, face, q)) ? SLAB_NEAR - g : 0)))
         const hang = hangs(unit, p, face) ? HANG_PENALTY : 0
-        for (const pitch of [ROOM_PITCH, VERANDA_PITCH]) {
-          const way = ways.some((c) => {
-            const v = project(p, face, pitch, c, WAY_H)
-            return v.z > 0.3 && Math.abs(v.x) <= HALF_IN && Math.abs(v.y) <= HALF_IN
-          })
-          const pieces = shown.length ? shown.reduce((t, f) => t + pieceInFrame(f, p, face, pitch), 0) / shown.length : 0
-          const shows = FLOOR_W * floorShare(inner, p, face, pitch) + WHOLE_W * pieces + (way ? WAY_W : 0)
-          views.push({ p, face, pitch, score: shows - slab - hang - (pitch === ROOM_PITCH ? 0 : PITCH_COST) })
-        }
+        // the better of the two pitches only: the side-wall search then traces 30 headings, not 15 twice
+        views.push(
+          ...[ROOM_PITCH, VERANDA_PITCH]
+            .map((pitch) => {
+              const way = ways.some((c) => {
+                const v = project(p, face, pitch, c, WAY_H)
+                return v.z > 0.3 && Math.abs(v.x) <= HALF_IN && Math.abs(v.y) <= HALF_IN
+              })
+              const pieces = shown.length ? shown.reduce((t, f) => t + pieceInFrame(f, p, face, pitch), 0) / shown.length : 0
+              const shows = FLOOR_W * floorShare(inner, p, face, pitch) + WHOLE_W * pieces + (way ? WAY_W : 0)
+              return { p, face, pitch, score: shows - slab - hang - (pitch === ROOM_PITCH ? 0 : PITCH_COST) }
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 1),
+        )
       }
       return
     }
@@ -720,10 +726,12 @@ export function roomView(room: Room, unit: Unit): View {
         const turnHang = a && !hang && hangs(unit, p, turned) ? HANG_PENALTY : 0
         if (!photo) views.push({ p, face: turned, score: score - turnHang })
         else
-          for (const pitch of [0, ROOM_PITCH]) {
-            const shows = FLOOR_W * floorShare(inner, p, turned, pitch) + WHOLE_W * wholeIn(p, turned, pitch)
-            views.push({ p, face: turned, pitch, score: score + shows - turnHang - (pitch ? PITCH_COST : 0) })
-          }
+          views.push(
+            ...[0, ROOM_PITCH]
+              .map((pitch) => ({ p, face: turned, pitch, score: score - turnHang - (pitch ? PITCH_COST : 0) + FLOOR_W * floorShare(inner, p, turned, pitch) + WHOLE_W * wholeIn(p, turned, pitch) }))
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 1), // the better pitch only (see the veranda's)
+          )
       }
   }
   candidates.forEach((p) => consider(p))
@@ -740,9 +748,9 @@ export function roomView(room: Room, unit: Unit): View {
   // SIDE_WALL_MAX (a blank side wall 1.2–2 m off filling a quarter: s Bed-2, sb Bed-1/3, sb Kitchen, sb Foyer); nothing
   // clears: the old rule, the same frames with their largest leaf shut, the least filled (the frames traced once: cached)
   const good = views.filter((v) => v.score > views[0].score - HANG_PENALTY / 2)
-  // a veranda none of whose best frames clears its side walls (a 1.5 m service veranda): the least walled of them, not the
-  // first that clears the leaf/slab rule (wave 14's SB kitchen veranda: 61 % plaster within 2 m)
-  const walled = room.kind === 'balcony' && good.length ? good.slice(0, SIDE_TRIES).reduce((m, v) => (roomFlat(v) < roomFlat(m) ? v : m)) : undefined
+  // a veranda none of whose best frames clears its side walls (a 1.5 m service veranda): the least walled of them that clears
+  // the leaf/slab rule, not the first (wave 14's SB kitchen veranda: 61 % plaster within 2 m)
+  const walled = room.kind === 'balcony' ? good.slice(0, SIDE_TRIES).filter((v) => flat(v) <= 1).reduce<View | undefined>((m, v) => (!m || roomFlat(v) < roomFlat(m) ? v : m), undefined) : undefined
   const best = clear(good.slice(0, SIDE_TRIES), roomFlat) ?? walled ?? clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
   if (best) return done(best)
 
