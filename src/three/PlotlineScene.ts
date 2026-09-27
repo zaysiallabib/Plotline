@@ -61,7 +61,8 @@ const present = (u: Unit): Unit => (u.furniture.some((p) => p.removed) ? { ...u,
 const SEL = '#39a0ff'
 const REFUSED = '#ff4d4d'
 
-const EYE = 1.6
+/** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
+const EYE = 1.45
 const WALK_RADIUS = 0.3
 const UP = new THREE.Vector3(0, 1, 0)
 const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
@@ -341,7 +342,7 @@ export class PlotlineScene {
     }
   }
 
-  /** Walker to the room centroid (eye height 1.6). Switches to walk mode. */
+  /** Walker to the room centroid (eye height EYE). Switches to walk mode. */
   teleportTo(roomId: Id): void {
     const room = this.rooms.find((r) => r.id === roomId)
     if (!room) return

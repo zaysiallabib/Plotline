@@ -12,11 +12,11 @@ import { kitAsset, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
-  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
-  VERANDA_PITCH, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
+  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
+  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, period } from './SunPill'
-import { boxInFrame, frameShares, swings } from './frame'
+import { EYE, boxInFrame, floorShare, frameShares, pieceInFrame, project, swings } from './frame'
 
 const unit = typeA as unknown as Unit
 const rooms = core.deriveRooms(unit)
@@ -168,11 +168,11 @@ describe('viewer', { timeout: 20_000 }, () => {
           else expect(Math.hypot(v.p.x - c.x, v.p.y - c.y), `${name} ${o.id}`).toBeGreaterThanOrEqual(DOOR_CLEAR)
         }
       }
-      // facing the bed / vanity / sink (else the furniture centroid), from ≥ 0.5 m off anything at eye level
+      // the bed / vanity / sink (else the furniture centroid) in frame — no more than PHOTO_TURN off the view, turned for more
+      // floor — from ≥ 0.5 m off anything at eye level
       for (const f of items.filter((f) => f.assetId !== 'shower_screen' && (kitAsset(f.assetId)?.sizeM.y ?? 0) + (kitAsset(f.assetId)?.mountY ?? 0) > 1.2))
         expect(Math.hypot(v.p.x - f.x, v.p.y - f.y), `${name} ${f.id}`).toBeGreaterThan(0.5)
-      const d = Math.hypot(target.x - v.p.x, target.y - v.p.y)
-      expect(v.face.x * (target.x - v.p.x) + v.face.y * (target.y - v.p.y), name).toBeCloseTo(d, 6)
+      expect(deg(v.face, sub(target, v.p)), name).toBeLessThanOrEqual(PHOTO_TURN + 1e-6)
     }
     // the art director's Bed-1: not the door corner, not beside the wardrobe slab
     const bed1 = rooms.find((x) => x.name === 'Bed-1')!
@@ -285,6 +285,8 @@ describe('viewer', { timeout: 20_000 }, () => {
         for (const f of flat.u.furniture.filter((f) => lim[f.assetId] && inSight(flat.u, v.p, f))) {
           const [near, inView] = lim[f.assetId]
           const d = Math.hypot(f.x - v.p.x, f.y - v.p.y)
+          // a wall AC behind the eye's plane is out of the frame (C Bed-3 stands under its AC, at the bed's foot)
+          if (f.assetId === 'ac_split' && (f.x - v.p.x) * v.face.x + (f.y - v.p.y) * v.face.y < 0) continue
           expect(d, `${name}: ${f.id} overhead`).toBeGreaterThanOrEqual(near)
           if (d < inView) expect(deg(v.face, sub(f, v.p)), `${name}: ${f.id} looming in frame`).toBeGreaterThan(53)
         }
@@ -359,8 +361,12 @@ describe('viewer', { timeout: 20_000 }, () => {
     // small wet rooms that were door views are framed from their doorway now
     expect(door).toEqual(['a_2703 Walk-in closet', 'a_2703 Help bed', 'c_2254 Walk-in closet', 'c_2254 Help bed'])
     // shut for the shot: leaves standing into a bath frame, the far leaf over the C cot, the wet rooms' own leaves behind the
-    // eye in their doorway (the door corner); a door seen along its own wall fills the same shut or ajar and stays ajar
-    expect(shut).toEqual(['a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Bath-3', 'c_2254 Bath-2', 'c_2254 Help bed', 'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet'])
+    // eye in their doorway (the door corner), a room shot from its doorway (B Veranda (living), Sheltech A Bed 4);
+    // a door seen along its own wall fills the same shut or ajar and stays ajar
+    expect(shut).toEqual([
+      'a_2703 Bath-2', 'a_2703 Bath-3', 'b_1747 Bath-1', 'b_1747 Bath-2', 'b_1747 Veranda (living)', 'c_2254 Bath-2', 'c_2254 Bath-3', 'c_2254 Help bed',
+      'sheltech_a_2736 Toilet 1', 'sheltech_a_2736 Bed 4', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet',
+    ])
     // the wave-9 frames this turns down: B Bath-3's leaf (31 %), B Bed-2's wardrobe (24 %) — the director's list
     const b = both[1]
     const wave9 = [
@@ -388,13 +394,13 @@ describe('viewer', { timeout: 20_000 }, () => {
           return b ? [{ f, s: boxInFrame(f, placementSize(f), b.h0, b.h1, v.p, v.face, v.pitch!) }] : []
         })
         const hero = shares.find((x) => /^(vanity|basin)$/.test(x.f.assetId))!
-        // C Bath-3: its pedestal basin faces the shower 1.2 m off, no spot has it half in frame with its centre: the shower and the WC
-        if (name === 'c_2254 Bath-3') expect(shares.filter((x) => x !== hero && x.s >= 0.5).length, name).toBe(2)
-        else expect(hero.s, `${name}: the ${hero.f.assetId}`).toBeGreaterThanOrEqual(0.5)
+        // (C Bath-3's pedestal basin, 1.2 m off the shower, showed from nowhere at a 1.6 m eye; at 1.45 m 4 of its 6 corners)
+        expect(hero.s, `${name}: the ${hero.f.assetId}`).toBeGreaterThanOrEqual(0.5)
         if (hero.s < 1) half.push(name)
         else if (shares.some((x) => x !== hero && x.s === 1)) two.push(name)
       }
-    expect(two).toEqual(['a_2703 Bath-2', 'c_2254 Bath-2', 'sheltech_b_2736 Toilet 1', 'sheltech_b_2736 PDR'])
+    // (the 1.45 m eye adds Sheltech A Toilet 2 + 3 and Sheltech B Toilet 2: their WC whole beside the vanity)
+    expect(two).toEqual(['a_2703 Bath-2', 'b_1747 Bath-1', 'c_2254 Bath-2', 'sheltech_a_2736 Toilet 2', 'sheltech_a_2736 Toilet 3', 'sheltech_b_2736 Toilet 1', 'sheltech_b_2736 Toilet 2', 'sheltech_b_2736 PDR'])
     // vanity and WC/shower at opposite ends of a 1.5 m-wide bath, or a WC under 3 m²: the vanity/basin whole only from inside the
     // shower or from a spot whose frame a leaf or near tile fills (B Bath-3 23 %)
     expect(half).toEqual(['a_2703 Bath-3', 'a_2703 H. toilet', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Bath-3', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet', 'sheltech_b_2736 Toilet'])
@@ -426,7 +432,7 @@ describe('viewer', { timeout: 20_000 }, () => {
       expect(deg(v.face, sub(cot, v.p)), `${name}: cot in frame`).toBeLessThanOrEqual(40 + 1e-6)
       // screen height of the cot centre (0.23 m up): tan(angle below the view axis) / tan(half the 65° vertical FOV)
       const depth = (cot.x - v.p.x) * v.face.x + (cot.y - v.p.y) * v.face.y
-      const ndc = Math.tan(Math.atan2(0.23 - 1.6, depth) - (v.pitch ?? 0)) / Math.tan((32.5 * Math.PI) / 180)
+      const ndc = Math.tan(Math.atan2(0.23 - EYE, depth) - (v.pitch ?? 0)) / Math.tan((32.5 * Math.PI) / 180)
       expect(ndc, `${name}: cot centre in the lower third`).toBeLessThan(-1 / 3)
       expect(ndc, `${name}: cot centre on screen`).toBeGreaterThan(-1)
     }
@@ -456,7 +462,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     }
   })
 
-  it('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW with a corner within ±40° of the view; B Bed-2 keeps 1.4 m off its wardrobe (A, B, C)', WHOLE, () => {
+  it('no wardrobe, shelf or other tall piece looms in a first frame: none in sight within TALL_IN_VIEW with a corner within ±40° of the view; B Bed-2 keeps 1.3 m off its wardrobe (A, B, C)', WHOLE, () => {
     for (const flat of both)
       for (const { name, v } of frames(flat)) {
         // a closet's rails and a galley's run are the room itself: its 1 m aisle / 2.3 m depth cannot keep 1.5 m off them
@@ -472,7 +478,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     const b = both[1]
     const bed2 = b.rs.find((r) => r.name === 'Bed-2')!
     const w = b.u.furniture.find((f) => f.roomId === bed2.id && f.assetId.startsWith('wardrobe'))!
-    expect(footprintDist(view(bed2, b.u).p, w, kitAsset(w.assetId)!.sizeM)).toBeGreaterThan(1.4)
+    expect(footprintDist(view(bed2, b.u).p, w, kitAsset(w.assetId)!.sizeM)).toBeGreaterThan(1.3) // 1.33: a 1.45 m eye 5° down shows 0.38 of its floor from here (wave 13: 1.4 m, 0.33); FLAT_MAX still holds its slab
   })
 
   it('kitchen jumps stand across the room from the run, in front of the sink, and see the whole run (A, B, C; B is the model)', () => {
@@ -482,8 +488,11 @@ describe('viewer', { timeout: 20_000 }, () => {
       const sink = u.furniture.find((f) => f.roomId === r.id && f.assetId === 'kitchen_sink')!
       const t = (sink.rotationDeg * Math.PI) / 180
       expect(sub(v.p, sink).x * -Math.sin(t) + sub(v.p, sink).y * Math.cos(t), `${u.id} across the room from the sink`).toBeGreaterThan(1.3)
-      for (const f of u.furniture.filter((f) => f.roomId === r.id && /^(kitchen_|fridge)/.test(f.assetId)))
-        expect(deg(v.face, sub(f, v.p)), `${u.id} ${f.assetId} in view`).toBeLessThan(48)
+      // each piece's centre at counter height inside the frame (the projector: 5° down, the frame's side reaches past 48° low)
+      for (const f of u.furniture.filter((f) => f.roomId === r.id && /^(kitchen_|fridge)/.test(f.assetId))) {
+        const q = project(v.p, v.face, v.pitch ?? 0, f, 0.9)
+        expect(q.z > 0 && Math.abs(q.x) < 1 && Math.abs(q.y) < 1, `${u.id} ${f.assetId} in view`).toBe(true)
+      }
     }
     // B has 3.2 m in front of its sink, no galley: it keeps the full door zone and its wave-8 diagonal
     const { u, rs } = both[1]
@@ -495,40 +504,42 @@ describe('viewer', { timeout: 20_000 }, () => {
       }
   })
 
-  it('veranda jumps look OUT: the sightline leaves the veranda over its rail (the first wall it crosses is below the eye), not back through the slider into the flat — unless every frame out is a close-up of its side walls — looking 10° down onto its floor (A, B, C, Sheltech A + B)', WHOLE, () => {
+  it('veranda jumps are photos of the veranda — its floor and pieces with a slider into the flat in the frame (the director\'s best wave-13 frames: planters and paving with the lit bedroom beyond; worst: a bare rail and towers, a blank side wall), 5 or 10° down (A, B, C, Sheltech A + B)', WHOLE, () => {
     const sh = ([sheltechA, sheltechB] as unknown as Unit[]).map((u0) => {
       const rs = core.deriveRooms(u0)
       return { u: { ...u0, furniture: furnish(u0, rs) } as Unit, rs }
     })
-    const out: string[] = []
-    for (const { u, rs } of [...both, ...sh])
+    const way: string[] = []
+    for (const { u, rs } of [...both, ...sh]) {
+      const walls = new Set(u.walls.filter((w) => w.heightM >= 1.6).map((w) => w.id))
       for (const r of listedRooms(u, rs).filter((x) => x.kind === 'balcony')) {
         const name = `${u.id} ${r.name}`.replace(/unit_(type_)?/, '')
         const v = view(r, u)
-        expect(v.pitch, name).toBeCloseTo(VERANDA_PITCH, 9)
-        // the nearest of the room's walls the plan ray crosses (centre lines)
-        let first: { t: number; low: boolean } | null = null
-        for (const w of u.walls.filter((x) => r.wallIds.includes(x.id))) {
-          const f = core.wallFrame(w, u.vertices)
-          const den = v.face.x * f.dir.y - v.face.y * f.dir.x
-          if (Math.abs(den) < 1e-9) continue
-          const o = sub(f.origin, v.p)
-          const t = (o.x * f.dir.y - o.y * f.dir.x) / den
-          const s = (o.x * v.face.y - o.y * v.face.x) / den
-          if (t > 0 && s >= 0 && s <= f.lengthM && (!first || t < first.t)) first = { t, low: w.heightM < 1.6 }
+        expect([ROOM_PITCH, VERANDA_PITCH], name).toContain(v.pitch)
+        const sliders = u.walls
+          .filter((w) => r.wallIds.includes(w.id))
+          .flatMap((w) => w.openings.filter((o) => o.kind !== 'window' && !swings(o)).map((o) => at(core.wallFrame(w, u.vertices).origin, core.wallFrame(w, u.vertices).dir, o.offsetM + o.widthM / 2)))
+        const frames = (c: Pt) => {
+          const q = project(v.p, v.face, v.pitch!, c, 1.1)
+          return q.z > 0.3 && Math.abs(q.x) <= 0.8 && Math.abs(q.y) <= 0.8
         }
-        if (first?.low) out.push(name)
+        if (sliders.some(frames)) way.push(name)
+        // wave 13's regressions (a blank side wall filling half the frame): plaster within SIDE_WALL under SIDE_WALL_MAX
+        if (/(b_1747 Veranda \(living\)|Veranda \(study\)|Veranda 4)$/.test(name))
+          expect([...frameShares(u, v.p, v.face, v.pitch, SIDE_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0), `${name}: side wall`).toBeLessThanOrEqual(SIDE_WALL_MAX)
+        // …and no veranda's end wall 2–3 m off fills it (wave 14 before VERANDA_WALL: Sheltech A Veranda 4 72 %, A Veranda (bed-1) 48 %)
+        expect([...frameShares(u, v.p, v.face, v.pitch, VERANDA_WALL, v.closeLeaf)].filter(([id]) => walls.has(id)).reduce((t, [, s]) => t + s, 0), `${name}: plaster`).toBeLessThanOrEqual(VERANDA_WALL_MAX)
       }
-    // every listed veranda has a rail and looks out over it (wave 11: B Bed-1/living, the C study looked back in) — but the
-    // 1.5 m service verandas, whose every frame out is a close-up of their side walls (SIDE_WALL): back into the kitchen, and
-    // SB Veranda 1 (curbs on three sides), turned 20° to clear its frame into the slider wall's corner
-    expect(out).toEqual([
+    }
+    // all but the 1.5 m service verandas of B and Sheltech A, shot along themselves (their kitchen door or slider behind the eye)
+    expect(way).toEqual([
       'a_2703 Veranda (bed-1)', 'a_2703 Veranda (living)', 'a_2703 Veranda (study)', 'b_1747 Veranda (bed-1)', 'b_1747 Veranda (living)',
-      'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4', 'sheltech_b_2736 Veranda 4',
+      'c_2254 Veranda (bed-1)', 'c_2254 Veranda (living)', 'c_2254 Veranda (study)', 'sheltech_a_2736 Veranda 1', 'sheltech_a_2736 Veranda 4',
+      'sheltech_b_2736 Veranda (kitchen)', 'sheltech_b_2736 Veranda 1', 'sheltech_b_2736 Veranda 4',
     ])
   })
 
-  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a service veranda too small to look out looks back in; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
+  it('Sheltech A: the entry and an empty foyer or passage look on into the flat through their widest opening; a service veranda is shot along itself; a bed filling its room is seen from its door, not from on it', WHOLE, () => {
     const s0 = sheltechA as unknown as Unit
     const rs = core.deriveRooms(s0)
     const u = { ...s0, furniture: furnish(s0, rs) } as Unit
@@ -539,7 +550,8 @@ describe('viewer', { timeout: 20_000 }, () => {
     const room = (n: string) => rs.find((r) => r.name === n)!
     expect(ahead(view(room('Foyer'), u), 3), 'foyer: into the living room').toBe('Living')
     expect(ahead(view(room('Passage'), u), 2.5), 'passage: into the dining room').toBe('Dining')
-    expect(ahead(view(room('Veranda (kitchen)'), u), 1.5), 'service veranda (every frame out a close-up of its side walls): back into the kitchen').toBe('Kitchen')
+    // the director on wave 13's frame back into the kitchen: "the veranda itself is never shown" — now shot along itself
+    expect(ahead(view(room('Veranda (kitchen)'), u), 1), 'service veranda: along itself, not back into the kitchen').toBe('Veranda (kitchen)')
     const v = view(room('Bed 4'), u)
     const bed = u.furniture.find((f) => f.roomId === room('Bed 4').id && f.assetId.startsWith('bed_'))!
     expect(footprintDist(v.p, bed, kitAsset(bed.assetId)!.sizeM), 'Bed 4: off the bed').toBeGreaterThanOrEqual(0.2)
@@ -601,9 +613,12 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect([...plain.keys()].sort()).toEqual(['w0', 'w1', 'w2']) // the wall behind is out of the frame
     expect(plain.get('w1')).toBeGreaterThan(0.6)
     expect(plain.get('w0')).toBeCloseTo(plain.get('w2')!, 9)
-    const total = [...plain.values()].reduce((a, b) => a + b, 0)
-    expect(total).toBeLessThan(0.99) // the floor and ceiling at the frame's corners
-    expect(total).toBeGreaterThan(0.9)
+    // level at a 1.45 m eye the 2 m-off walls fill the frame (the floor enters 2.28 m ahead); 10° down the floor counts for nobody
+    const sum = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0)
+    expect(sum(plain)).toBeGreaterThan(0.99)
+    const total = sum(frameShares(box(), p, east, (-10 * Math.PI) / 180))
+    expect(total).toBeLessThan(0.97)
+    expect(total).toBeGreaterThan(0.8)
     // a 1 × 1.2 m window in the east wall: the frame through it counts for nobody
     const win = frameShares(box([{ id: 'win', kind: 'window', offsetM: 1, widthM: 1, heightM: 1.2, sillM: 0.9 }]), p, east)
     expect(plain.get('w1')! - win.get('w1')!).toBeGreaterThan(0.08)
@@ -616,6 +631,49 @@ describe('viewer', { timeout: 20_000 }, () => {
     // within: every wall is 1.5 m or more off — none within 1 m; 0.6 m from the east wall it is the whole frame
     expect(frameShares(box(), p, east, 0, 1).size).toBe(0)
     expect(frameShares(box(), { x: 3.4, y: 1.5 }, east, 0, 1.2).get('w1')).toBeCloseTo(1, 9)
+  })
+
+  it('floorShare: the room floor in frame — more from a corner down the diagonal than from the middle at a wall, none behind the eye, none round an L\'s bend; the eye is 1.45 m', () => {
+    expect(EYE).toBe(1.45)
+    const box: Pt[] = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }]
+    const corner = floorShare(box, { x: 0.4, y: 0.4 }, { x: 0.8, y: 0.6 })
+    const middle = floorShare(box, { x: 2, y: 1.5 }, { x: 1, y: 0 })
+    expect(corner).toBeGreaterThan(0.3)
+    expect(middle).toBeLessThan(0.05) // level, 2 m off the wall: the floor enters the frame 2.28 m ahead
+    expect(floorShare(box, { x: 2, y: 1.5 }, { x: 1, y: 0 }, ROOM_PITCH), '5° down shows more').toBeGreaterThan(middle)
+    expect(floorShare(box, { x: 3.9, y: 1.5 }, { x: 1, y: 0 })).toBe(0) // facing the wall 0.1 m off: all of it behind the eye
+    // an L (a 4 × 4 square less its north-east 2 × 2): from the south-west corner looking north, the east leg is round the bend
+    const L: Pt[] = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 2 }, { x: 2, y: 2 }, { x: 2, y: 4 }, { x: 0, y: 4 }]
+    const sq: Pt[] = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }]
+    const from = { x: 0.3, y: 3.7 }
+    const toSE = { x: 0.7, y: -0.7 }
+    expect(floorShare(L, from, toSE) * 12).toBeLessThan(floorShare(sq, from, toSE) * 16) // the L's hidden cells are the square's seen ones
+  })
+
+  it('pieceInFrame: a queen bed is whole (foot at its mattress, headboard top) 3.5 m in front of it, not 1.5 m off its foot; every bedroom and room jump is level or ROOM_PITCH down and shows ≥ 20 % of its floor with the bed ≥ 4 of 6 corners in (A, B, C, Sheltech A + B)', WHOLE, () => {
+    const bed = { id: 'b', assetId: 'bed_queen', roomId: 'r', x: 0, y: 0, rotationDeg: 0 } // faces +y, headboard at −y
+    expect(pieceInFrame(bed, { x: 0, y: 3.5 }, { x: 0, y: -1 }, ROOM_PITCH)).toBe(1)
+    expect(pieceInFrame(bed, { x: 0, y: 2.6 }, { x: 0, y: -1 })).toBeLessThan(1)
+    const sh = ([sheltechA, sheltechB] as unknown as Unit[]).map((u0) => {
+      const rs = core.deriveRooms(u0)
+      return { u: { ...u0, furniture: furnish(u0, rs) } as Unit, rs }
+    })
+    const rows: string[] = []
+    for (const { u, rs } of [...both, ...sh])
+      for (const r of listedRooms(u, rs).filter((x) => ['bed', 'living', 'dining', 'kitchen', 'study'].includes(x.kind))) {
+        const name = `${u.id} ${r.name}`.replace(/unit_(type_)?/, '')
+        const v = view(r, u)
+        expect([0, ROOM_PITCH], `${name}: level or 5° down`).toContain(v.pitch)
+        if (r.kind !== 'bed') continue
+        const fs = floorShare(core.roomInnerPolygon(r, u), v.p, v.face, v.pitch)
+        const b = u.furniture.find((f) => f.roomId === r.id && f.assetId.startsWith('bed_'))!
+        rows.push(`${name} ${fs.toFixed(2)}`)
+        // wave 13 (1.6 m, level, the farthest spot in front of the bed): A/C Bed-3 0.02, Sheltech A Bed 4 0.01, Bed 1 0.16; now
+        // C Bed-3 (11.7 m², a queen bed and a wardrobe) 0.20 from the bed's foot, the rest 0.35 or more
+        expect(fs, `${name}: floor in frame`).toBeGreaterThanOrEqual(0.2)
+        expect(pieceInFrame(b, v.p, v.face, v.pitch), `${name}: the bed`).toBeGreaterThanOrEqual(4 / 6 - 1e-9)
+      }
+    expect(rows.length).toBe(17)
   })
 
   it('roomView falls back to 0.9 m in from the door when no candidate qualifies', () => {
