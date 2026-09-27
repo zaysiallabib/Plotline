@@ -54,7 +54,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
   let model: THREE.Object3D | null = null
   if (asset) {
     try {
-      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id) : (await loadModel(asset.url)).clone()
+      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, p.sizeM) : (await loadModel(asset.url)).clone()
       if (!model) throw new Error('no procedural builder')
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
@@ -62,7 +62,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
       // Some Poly Haven exports carry vertex data in the wrong unit (steel_frame_shelves_01 is 10×).
       // Largest extent is axis-swap-proof; if it is off by > 25 % scale so the height matches the kit.
       const size = box.getSize(new THREE.Vector3())
-      const want = asset.sizeM
+      const want = p.sizeM ?? asset.sizeM
       const ratio = Math.max(size.x, size.y, size.z) / Math.max(want.x, want.y, want.z)
       if (Math.abs(ratio - 1) > 0.25 && size.y > 1e-6) {
         if (!warned.has(asset.id)) {
@@ -96,7 +96,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048): P
   } else {
     console.warn(`[plotline] unknown assetId "${p.assetId}" — placeholder`)
   }
-  pivot.add(model ?? placeholder(asset?.sizeM ?? { x: 1, y: 1, z: 1 }))
-  if (p.scale) pivot.scale.setScalar(p.scale)
+  pivot.add(model ?? placeholder(p.sizeM ?? asset?.sizeM ?? { x: 1, y: 1, z: 1 }))
+  if (p.scale && !p.sizeM) pivot.scale.setScalar(p.scale) // sizeM wins (kit.ts placementSize): the piece is built at it
   return pivot
 }

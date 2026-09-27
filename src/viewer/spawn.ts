@@ -1,7 +1,7 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit, Wall } from '../core'
-import { heightRange, kitAsset, objectKind, type KitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, objectKind, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
 import { EYE, RAY, frameHits, swings } from './frame'
 
@@ -93,7 +93,7 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
       inner.every((a, j) => segDist(q, a, inner[(j + 1) % inner.length]) >= VIEW_INSET) &&
       unit.furniture.every((pl) => {
         const k = pl.roomId === room.id && kitAsset(pl.assetId)
-        return !k || k.mount === 'ceiling' || k.category === 'rug' || footprintDist(q, pl, k.sizeM) >= 0.3
+        return !k || k.mount === 'ceiling' || k.category === 'rug' || footprintDist(q, pl) >= 0.3
       })
     const turn = (deg: number): Pt => {
       const r = (deg * Math.PI) / 180
@@ -151,7 +151,7 @@ const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(van
 const SIGHT_MAX_SQM = 8
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
-const isSlab = (id: string, k: KitAsset) => !GLASS.has(id) && k.mount !== 'ceiling' && (k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)
+const isSlab = (f: FurniturePlacement, k: KitAsset) => !GLASS.has(f.assetId) && k.mount !== 'ceiling' && (k.category === 'wardrobe' || k.category === 'shelf' || placementSize(f).y > 1.6)
 /** …so that candidate loses this much of its distance-to-target score. */
 const SLAB_PENALTY = 1.5
 /** A ceiling piece reaching more than this below the ceiling (a pendant; not a fan, flush light or wall AC) hangs at head height. */
@@ -246,8 +246,8 @@ const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
     if (!k) return false
     const d = Math.hypot(f.x - p.x, f.y - p.y)
     const ahead = (f.x - p.x) * face.x + (f.y - p.y) * face.y
-    if (isSlab(f.assetId, k))
-      return footprintDist(p, f, k.sizeM) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, k.sizeM)].some((q) => inFrame(p, face, q)) && inSight(unit, p, f)
+    if (isSlab(f, k))
+      return footprintDist(p, f) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, placementSize(f))].some((q) => inFrame(p, face, q)) && inSight(unit, p, f)
     const kind = objectKind(k)
     const [near, inView] =
       kind === 'ac' ? [AC_NEAR, AC_IN_VIEW]
@@ -270,14 +270,13 @@ export const inSight = (unit: Unit, p: Pt, q: Pt): boolean =>
     return t < 0 || t > 1 || u < 0 || u > lengthM || w.openings.some((x) => !swings(x) && u >= x.offsetM && u <= x.offsetM + x.widthM)
   })
 
-/** Distance from p to a placement's plan footprint (0 inside). rotationDeg is clockwise in y-down plan space. */
-export const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z: number }): number => {
+/** Distance from p to a placement's plan footprint (0 inside), its real size (kit.ts placementSize) unless given. rotationDeg is clockwise in y-down plan space. */
+export const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z: number } = placementSize(f)): number => {
   const r = (f.rotationDeg * Math.PI) / 180
-  const s = f.scale ?? 1
   const dx = p.x - f.x
   const dy = p.y - f.y
-  const u = Math.abs(dx * Math.cos(r) + dy * Math.sin(r)) - (size.x * s) / 2
-  const v = Math.abs(-dx * Math.sin(r) + dy * Math.cos(r)) - (size.z * s) / 2
+  const u = Math.abs(dx * Math.cos(r) + dy * Math.sin(r)) - size.x / 2
+  const v = Math.abs(-dx * Math.sin(r) + dy * Math.cos(r)) - size.z / 2
   return Math.hypot(Math.max(u, 0), Math.max(v, 0))
 }
 
@@ -356,7 +355,7 @@ export function roomView(room: Room, unit: Unit): View {
     )
   const pieces = items.flatMap((f) => {
     const k = kitAsset(f.assetId)
-    return k ? [{ f, k, top: heightRange(k)[1] }] : []
+    return k ? [{ f, k, top: heightRange({ ...k, sizeM: placementSize(f) })[1] }] : []
   })
 
   // what may not fill a frame beyond FLAT_MAX: every ajar leaf, every slab but a kitchen's run (a free-standing fridge is
@@ -367,7 +366,7 @@ export function roomView(room: Room, unit: Unit): View {
     ...unit.furniture
       .filter((f) => {
         const k = kitAsset(f.assetId)
-        return !!k && isSlab(f.assetId, k) && (k.category !== 'kitchen' || f.assetId === 'fridge')
+        return !!k && isSlab(f, k) && (k.category !== 'kitchen' || f.assetId === 'fridge')
       })
       .map((f) => f.id),
   ])
@@ -482,7 +481,7 @@ export function roomView(room: Room, unit: Unit): View {
   const farthest = (p: Pt): Pt =>
     ends.reduce((a, v) => (visible(p, v) && Math.hypot(v.x - p.x, v.y - p.y) > Math.hypot(a.x - p.x, a.y - p.y) ? v : a), target)
   // eye (1.6 m) in or against a cabinet/wardrobe/TV
-  const eyeBlocked = (p: Pt, clear = EYE_CLEAR) => pieces.some(({ f, k, top }) => top > 1.2 && footprintDist(p, f, k.sizeM) < (GLASS.has(f.assetId) ? 0.15 : clear))
+  const eyeBlocked = (p: Pt, clear = EYE_CLEAR) => pieces.some(({ f, top }) => top > 1.2 && footprintDist(p, f) < (GLASS.has(f.assetId) ? 0.15 : clear))
   const seen = (p: Pt) => {
     const q = farthest(p)
     return Math.hypot(q.x - p.x, q.y - p.y)
@@ -499,7 +498,7 @@ export function roomView(room: Room, unit: Unit): View {
     const clearOf = (p: Pt, inset: number, but?: (typeof doors)[number]) =>
       core.pointInPolygon(p, inner) &&
       inner.every((a, j) => segDist(p, a, inner[(j + 1) % n]) >= inset - 0.02) &&
-      pieces.every(({ f, k }) => footprintDist(p, f, k.sizeM) >= 0.2) &&
+      pieces.every(({ f }) => footprintDist(p, f) >= 0.2) &&
       doors.every((d) => d === but || !swings(d.o) || segDist(p, d.a, d.b) >= DOOR_STEP[2])
     const spots: { p: Pt; closeLeaf?: string }[] = [
       ...[...candidates, ...grid(BATH_INSET), ...doors.flatMap((d) => DOOR_STEP.map((m) => stepIn(d, m)))].filter((p) => clearOf(p, BATH_INSET)).map((p) => ({ p })),
@@ -619,14 +618,14 @@ export function roomView(room: Room, unit: Unit): View {
   }
 
   const views: (View & { score: number })[] = []
-  const onHero = (p: Pt) => !!hero && footprintDist(p, hero, kitAsset(hero.assetId)!.sizeM) < 0.2
+  const onHero = (p: Pt) => !!hero && footprintDist(p, hero) < 0.2
   const consider = (p: Pt, atDoor = false) => {
     if (!core.pointInPolygon(p, inner)) return
     if (inner.some((a, j) => segDist(p, a, inner[(j + 1) % n]) < VIEW_INSET - 0.02)) return // a third edge (wall-thickness step) crowds it
     if (!atDoor && !clearOfDoors(p)) return
     if (eyeBlocked(p)) return
     // a veranda's corners are where its plant and chair stand: not in them (the chair back would fill the foot of the frame)
-    if (room.kind === 'balcony' && pieces.some(({ f, k }) => k.category !== 'rug' && footprintDist(p, f, k.sizeM) < 0.3)) return
+    if (room.kind === 'balcony' && pieces.some(({ f, k }) => k.category !== 'rug' && footprintDist(p, f) < 0.3)) return
     const t = sight ? farthest(p) : target
     const d = Math.hypot(t.x - p.x, t.y - p.y)
     if (d < 0.2) return // target sits here: faces nothing useful
@@ -634,9 +633,9 @@ export function roomView(room: Room, unit: Unit): View {
     let slab = 0
     for (const f of unit.furniture) {
       const k = kitAsset(f.assetId)
-      const g = k && isSlab(f.assetId, k) ? footprintDist(p, f, k.sizeM) : SLAB_NEAR
+      const g = k && isSlab(f, k) ? footprintDist(p, f) : SLAB_NEAR
       if (g < SLAB_NEAR && inSight(unit, p, f))
-        slab = Math.max(slab, SLAB_PENALTY + ([f, ...footprint(f, f.rotationDeg, k!.sizeM)].some((q) => inFrame(p, face, q)) ? SLAB_NEAR - g : 0))
+        slab = Math.max(slab, SLAB_PENALTY + ([f, ...footprint(f, f.rotationDeg, placementSize(f))].some((q) => inFrame(p, face, q)) ? SLAB_NEAR - g : 0))
     }
     const hang = hangs(unit, p, face)
     // on the hero (a bed) only when nothing else qualifies

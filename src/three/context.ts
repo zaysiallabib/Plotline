@@ -7,7 +7,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { Pt, Unit } from '../core'
-import { kitAsset, type KitCategory } from '../furnish/kit'
+import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
@@ -36,15 +36,15 @@ export function contactShadows(unit: Unit): ContactShadow[] {
   for (const p of unit.furniture) {
     const a = kitAsset(p.assetId)
     if (!a || a.category === 'rug' || (a.mount ?? 'floor') !== 'floor' || (a.mountY ?? 0) > 0.05) continue
-    const s = p.scale ?? 1
+    const s = placementSize(p)
     const legged = LEGGED.includes(a.category)
-    const pot = POTS.includes(a.category) ? 0.45 * Math.min(a.sizeM.x, a.sizeM.z) * s : 0
+    const pot = POTS.includes(a.category) ? 0.45 * Math.min(s.x, s.z) : 0
     // a taller piece hides more of the sky from the floor around it: the falloff widens with height (a coffee
     // table ~10 cm, a wardrobe ~50 cm). Solid pieces grow by σ/2 so the base edge sits in the dark part (≈ 55 %);
     // legged ones are a diffuse patch under the whole footprint.
-    const blurM = Math.min(0.25, Math.max(0.05, 0.25 * (pot || a.sizeM.y * s)))
+    const blurM = Math.min(0.25, Math.max(0.05, 0.25 * (pot || s.y)))
     const grow = legged ? 0 : blurM
-    const size = pot ? { x: pot + grow, z: pot + grow } : { x: a.sizeM.x * s + grow, z: a.sizeM.z * s + grow }
+    const size = pot ? { x: pot + grow, z: pot + grow } : { x: s.x + grow, z: s.z + grow }
     out.push({ id: p.id, quad: footprint(p, p.rotationDeg, size), blurM, strength: legged ? 0.45 : 0.8 })
   }
   return out

@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest'
 import * as THREE from 'three'
 import typeA from '../data/units/type-a.json'
 import type { Opening, Unit, Wall } from '../core'
+import { KIT, placementSize, resizeLimits } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
@@ -81,6 +82,69 @@ describe('furniture', () => {
       for (const k of ['x', 'y', 'z'] as const) expect(Math.abs(s[k] - meta.sizeM[k]) / meta.sizeM[k], `${id}.${k}`).toBeLessThan(0.1)
       expect(Math.abs(b.min.y), id).toBeLessThan(1e-3)
       expect(Math.abs(b.min.x + b.max.x), id).toBeLessThan(0.05)
+    }
+  })
+})
+
+describe('resize (sizeM)', () => {
+  const XYZ = ['x', 'y', 'z'] as const
+  const resizable = Object.keys(PROCEDURAL).filter((id) => resizeLimits(id))
+
+  test('scanned glTF models never resize; each resizable piece has a sane range around its kit size', () => {
+    for (const id of Object.keys(KIT)) expect(resizeLimits(id), id).toBeNull()
+    expect(resizable).toEqual(expect.arrayContaining(['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'fridge', 'desk_oak', 'dining_table', 'rug_rect_large', 'bed_queen']))
+    for (const id of resizable) {
+      const { min, max } = resizeLimits(id)!
+      for (const k of XYZ) {
+        expect(min[k], `${id}.${k}`).toBeGreaterThan(0)
+        expect(min[k], `${id}.${k}`).toBeLessThanOrEqual(PROCEDURAL[id].sizeM[k])
+        expect(max[k], `${id}.${k}`).toBeGreaterThanOrEqual(PROCEDURAL[id].sizeM[k])
+        expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(4)
+      }
+    }
+  })
+
+  test('placementSize: sizeM wins, else kit size × scale', () => {
+    const p = { id: 'p', assetId: 'fridge', roomId: 'r', x: 0, y: 0, rotationDeg: 0 }
+    expect(placementSize(p)).toEqual(PROCEDURAL.fridge.sizeM)
+    expect(placementSize({ ...p, scale: 2 }).y).toBeCloseTo(3.6, 9)
+    expect(placementSize({ ...p, scale: 2, sizeM: { x: 0.9, y: 1.9, z: 0.7 } })).toEqual({ x: 0.9, y: 1.9, z: 0.7 })
+  })
+
+  test('every resizable builder fills exactly the size asked for (±1 cm), grounded and centred, at its limits and in between', () => {
+    for (const id of resizable) {
+      const { min, max } = resizeLimits(id)!
+      const mid = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 }
+      for (const want of [min, max, mid, { x: min.x, y: max.y, z: min.z }, { x: max.x, y: min.y, z: max.z }]) {
+        const g = buildProcedural(id, want)!
+        g.updateMatrixWorld(true)
+        const b = new THREE.Box3().setFromObject(g)
+        const s = b.getSize(new THREE.Vector3())
+        for (const k of XYZ) expect(Math.abs(s[k] - want[k]), `${id} ${JSON.stringify(want)} .${k}`).toBeLessThan(0.01)
+        expect(Math.abs(b.min.y), id).toBeLessThan(1e-3)
+        expect(Math.abs(b.min.x + b.max.x), id).toBeLessThan(0.01)
+        expect(Math.abs(b.min.z + b.max.z), id).toBeLessThan(0.01)
+      }
+    }
+  })
+
+  test('a wardrobe rebuilds with more doors, not wider ones: 2.4 m = 4 doors and 2 handle pairs', () => {
+    // finish() merges per material: oak = carcass + one box per door, steel = one box per handle (36 vertices a box)
+    const boxes = (w: number, pick: (m: THREE.MeshStandardMaterial) => boolean) => {
+      const ms = buildProcedural('wardrobe_2door', { x: w, y: 2.5, z: 0.6 })!.children as THREE.Mesh[]
+      return ms.find((o) => pick(o.material as THREE.MeshStandardMaterial))!.geometry.attributes.position.count / 36
+    }
+    const doors = (w: number) => boxes(w, (m) => !!m.userData.grain) - 1
+    const handles = (w: number) => boxes(w, (m) => m.metalness === 0.85)
+    expect([doors(1.2), doors(1.8), doors(2.4), doors(0.9), doors(3.0)]).toEqual([2, 3, 4, 2, 5])
+    expect([handles(1.8), handles(2.4)]).toEqual([3, 4])
+  })
+
+  test('buildFurniture builds a resized piece at its sizeM (no kit-size rescale, scale ignored)', async () => {
+    for (const [assetId, sizeM] of [['rug_rect_large', { x: 4, y: 0.012, z: 3 }], ['wardrobe_tall', { x: 2.4, y: 2.5, z: 0.6 }]] as const) {
+      const g = await buildFurniture({ id: 'p', assetId, roomId: 'r', x: 0, y: 0, rotationDeg: 0, scale: 1.5, sizeM })
+      const s = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3())
+      for (const k of XYZ) expect(Math.abs(s[k] - sizeM[k]), `${assetId}.${k}`).toBeLessThan(0.01)
     }
   })
 })
