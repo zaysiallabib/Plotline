@@ -384,6 +384,23 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }
   }
   const { o, w, h, t, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  const walls = tidy(
+    segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
+      const len = dist(s.a, s.b)
+      const thicknessPx = thicknessOf(s.half)
+      // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
+      const c = sideContrast(gray, s, thicknessPx)
+      if (len < 1 || c < o.minContrast) return []
+      return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
+    }),
+  )
+  // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
+  const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
+  return { walls, openings }
+}
+
+/** Skeleton → fitted, junction-snapped wall pieces (components shorter than `minComp` px dropped). */
+function segsOf(sk: Uint8Array, dt: Float32Array, w: number, h: number, minComp: number): Seg[] {
   const { nodes, edges } = skeletonGraph(sk, w, h)
   pruneSpurs(nodes, edges, (j) => 1.5 * Math.max(2, dt[Math.round(nodes[j].y) * w + Math.round(nodes[j].x)]))
 
@@ -410,7 +427,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
 
   const segs: Seg[] = []
   for (const E of edges) {
-    if (E.dead || compLen[comp[E.a]] < o.minCompFrac * half) continue
+    if (E.dead || compLen[comp[E.a]] < minComp) continue
     const P: Px[] = E.pts.map((i) => ({ x: i % w, y: (i / w) | 0 }))
     P[0] = { x: nodes[E.a].x, y: nodes[E.a].y }
     P[P.length - 1] = { x: nodes[E.b].x, y: nodes[E.b].y }
@@ -435,21 +452,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   }
 
   refine(segs, nodes, (p) => dt[Math.round(p.y) * w + Math.round(p.x)] ?? 0)
-  const walls = tidy(
-    segs
-      .filter((s) => dist(s.a, s.b) >= 1)
-      .flatMap((s): WallSeg[] => {
-        const len = dist(s.a, s.b)
-        const thicknessPx = thicknessOf(s.half)
-        // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
-        const c = sideContrast(gray, s, thicknessPx)
-        if (c < o.minContrast) return []
-        return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
-      }),
-  )
-  // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
-  const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
-  return { walls, openings }
+  return segs
 }
 
 /**
