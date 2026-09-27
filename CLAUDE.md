@@ -38,6 +38,12 @@ Docs/PRODUCT_PHILOSOPHY.md.
   and Studio. Buyers still only look, choose finishes and comment. Staff may
   also DELETE pieces (founder, same day); rooms with no pieces auto-furnish.
   Sliding doors are their own opening kind.
+- **Furniture library (founder, 2026-09-27 late, extends the arranging decision):**
+  staff may ADD pieces from a library (the kit) in the 3D walk view AND the
+  Studio — pick an item, point at the floor / wall / ceiling, drop it (same
+  rules: grid, wall snap, no overlaps / blocked doors); every piece gets
+  dimensions (scanned models scale within sane limits). A longer table may
+  gain chairs. Staff-only; buyers still only look, choose finishes, comment.
 - Level templates (ground / basement / typical floor / rooftop, each with
   its own furnishing rules) are parked until the living floors are done
   (founder, 2026-09-26).
@@ -102,4 +108,4 @@ public/assets/{models,textures,hdri}/ + MANIFEST.md (licenses)
 - No drag-and-drop furniture placement editor in the first 6 weeks — per-room
   presets + the per-unit JSON are the mechanism until paying customers demand more.
   Exception: the founder's staff-only arranging (Decisions, 2026-09-27) — nothing
-  beyond move / turn / resize / delete of existing pieces (no catalog, no adding) without asking.
+  beyond move / turn / resize / delete / add-from-the-kit-library (Decisions, 2026-09-27 late) without asking.
