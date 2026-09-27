@@ -24,7 +24,7 @@ import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { buildSkirting, dressOpening, wallGeometry } from './details'
 import { buildFurniture } from './furniture'
-import { EXTERIOR_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
+import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
 import { PANES } from './openings'
 import { Look, type Quality } from './render'
 
@@ -141,7 +141,6 @@ export class PlotlineScene {
   private readonly furnitureGroup = new THREE.Group()
   private readonly floors: THREE.Mesh[] = []
   private readonly surfaces: Surface[] = []
-  private edgeMat: THREE.MeshStandardMaterial | null = null
   private readonly wallFrames = new Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>()
 
   private readonly look: Look
@@ -481,7 +480,10 @@ export class PlotlineScene {
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
     const skirting = buildSkirting(room, unit)
-    if (skirting) this.staticGroup.add(skirting)
+    if (skirting) {
+      this.staticGroup.add(skirting)
+      this.surfaces.push({ mesh: skirting, sides: [{ roomId: room.id, target: 'floor' }] }) // follows the floor finish
+    }
 
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
@@ -498,7 +500,7 @@ export class PlotlineScene {
     if (!this.unit) return
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
-    const plaster = (this.edgeMat ??= Object.assign(materialFor(EXTERIOR_PLASTER).clone(), { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }))
+    const plaster = materialFor(EDGE_PLASTER, true)
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
         side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target) : plaster,

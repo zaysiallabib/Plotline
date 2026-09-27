@@ -23,7 +23,7 @@ import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
-import { setGlassSky } from './openings'
+import { meterUVs, setGlassSky } from './openings'
 
 export type Quality = 'high' | 'low'
 
@@ -44,6 +44,11 @@ const GOLDEN = new THREE.Color('#ffd2a8')
 const DUSK_SKY = new THREE.Color('#ffc9a0').multiplyScalar(0.55)
 /** 3000 K blackbody (Mitchell Charity table) */
 const WARM = '#ffb46b'
+/**
+ * Hemisphere ground colour at dusk: the lamps' light bounced off the lit floor and walls (the spots point down, so without
+ * it the ceilings sat at sRGB 110–135 under walls at 145–150 at 18:00: a dim flat, not one with its lights on).
+ */
+const BOUNCE = new THREE.Color('#ffd9b0').multiplyScalar(2)
 /** point-light candela per m² of room at full daylight; ×DUSK_BOOST at dusk */
 const LIGHT_CD_PER_M2 = 0.1
 const DUSK_BOOST = 8
@@ -156,7 +161,7 @@ export class Look {
       const f = core.wallFrame(w, unit.vertices)
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
       m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, -(SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
-      return new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)
+      return meterUVs(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
     })
     const slabGeo = mergeGeometries([...roomParts, ...wallParts])
     const roofGeo = mergeGeometries([...roomParts.filter((_, i) => !openToSky(rooms[i])), ...wallParts])
@@ -208,6 +213,7 @@ export class Look {
     const golden = 1 - THREE.MathUtils.smoothstep(alt, 0.24, 0.5)
     this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * golden)
     this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
+    this.hemi.groundColor.set(HEMI_GROUND).lerp(BOUNCE, dusk)
     this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
     const sky = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
     setHaze(sky)
