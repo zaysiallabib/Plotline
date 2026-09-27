@@ -104,6 +104,14 @@ describe('solveTraces on a synthetic flat', () => {
     expect(store(byColour).kind).toBe('utility')
   })
 
+  test('a blank sheet: an empty draft that still opens (no crash, validates, says why)', () => {
+    const g: Gray = { width: 300, height: 200, data: new Uint8Array(300 * 200).fill(255) }
+    const r = solveTraces(g, {}, { pickPx: { x: 150, y: 100 } })
+    expect(r.unit.walls).toEqual([])
+    expect(validate(r.unit)).toEqual([])
+    expect(r.review.length).toBeGreaterThan(0)
+  })
+
   test('no click: the largest closed region, same rooms', () => {
     const { g, text } = synthetic()
     expect(deriveRooms(solveTraces(g, { text }).unit).length).toBe(4)
