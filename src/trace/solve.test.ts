@@ -147,7 +147,7 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
       if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
       expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
     }
-    console.log(`\n${formatSolveReports(rows)}\n`)
+    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n`)
   }, 300000)
 })
 

@@ -33,6 +33,8 @@ export interface SolveReport {
   openingKindOk: number
   /** draft openings on no truth opening */
   openingsExtra: number
+  /** each unmatched truth room and why (no face / merged / split / shifted) */
+  missed: string[]
 }
 
 /** Opening centres in sheet px, with kind. */
@@ -139,6 +141,13 @@ export function scoreSolve(res: AutoTraceResult, truth: Unit): SolveReport {
     truthOpenings: tO.length,
     openingKindOk,
     openingsExtra: dO.length - oD.size,
+    missed: T.flatMap((t, i) => {
+      if (usedT.has(i)) return []
+      const best = pairs.find((p) => p.t === i)
+      if (!best) return [`${t.r.name}: no face`]
+      const ratio = aD[best.d] / aT[i]
+      return [`${t.r.name}: IoU ${best.iou.toFixed(2)} with a face ${ratio > 1.3 ? `${ratio.toFixed(1)}× its size (merged)` : ratio < 0.77 ? `${ratio.toFixed(1)}× its size (split)` : 'of its size (shifted)'}`]
+    }),
   }
 }
 
