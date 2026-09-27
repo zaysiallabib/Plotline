@@ -36,7 +36,7 @@ export const KNOBS = {
   inkBridgeM: 6,
   inkShare: 0.75,
   /** "a clear drawn line": this many grey levels darker than the paper around it (tile grids and hatching are fainter) */
-  lineDelta: 50,
+  lineDelta: 40,
   /** an unevidenced bridge at least this wide becomes a passage opening (a door the wall stage did not see) */
   passageM: 0.45,
   /** dangling walls shorter than this are dropped */
@@ -51,6 +51,8 @@ export const KNOBS = {
   maxRoomSqm: 90,
   /** sum of a flat's centreline faces ÷ its printed area (walls + common share are in the printed figure) */
   areaShare: 0.88,
+  /** … and an area-label scale is used only within this share of the wall-thickness prior */
+  areaTrust: 0.1,
 }
 
 type Pt = { x: number; y: number }
@@ -296,6 +298,67 @@ function inkAlong(ink: Uint8Array, w: number, h: number, p0: Px, q0: Px, off = 0
   return hit / n
 }
 
+/** Distance from p to segment ab (clamped). */
+function segDist(p: Pt, a: Pt, b: Pt): number {
+  const v = sub(b, a), L2 = dot(v, v) || 1
+  const t = Math.max(0, Math.min(1, dot(sub(p, a), v) / L2))
+  return d2(p, { x: a.x + v.x * t, y: a.y + v.y * t })
+}
+
+/**
+ * Long straight double thin lines on the sheet's axes (px): glazing, window bands, railings — the wall stage drops them
+ * (too thin, too light). Kept only when both ends touch a traced wall and the line is not a wall's own edge.
+ * ponytail: axis-aligned sheets only (a rotated scan skips this); a Hough pass if rotated scans show up.
+ */
+function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number): { a: Px; b: Px }[] {
+  const minPx = 0.6 * k, bandPx = Math.max(3, 0.3 * k), touch = 0.3 * k
+  const out: { a: Px; b: Px }[] = []
+  for (const horiz of [true, false]) {
+    const U = horiz ? w : h, N = horiz ? h : w
+    const runs: { v: number; u0: number; u1: number }[] = []
+    for (let v = 0; v < N; v++) {
+      let u0 = -1, gap = 0
+      for (let u = 0; u <= U; u++) {
+        const on = u < U && (horiz ? mask[v * w + u] : mask[u * w + v])
+        if (on) {
+          if (u0 < 0) u0 = u
+          gap = 0
+        } else if (u0 >= 0 && ++gap > 2) {
+          if (u - gap - u0 >= minPx) runs.push({ v, u0, u1: u - gap })
+          ;(u0 = -1), (gap = 0)
+        }
+      }
+    }
+    runs.sort((p, q) => p.v - q.v || p.u0 - q.u0)
+    const used = new Uint8Array(runs.length)
+    for (let i = 0; i < runs.length; i++) {
+      if (used[i]) continue
+      const band = [runs[i]]
+      used[i] = 1
+      for (let j = i + 1; j < runs.length && runs[j].v - runs[i].v <= bandPx; j++) {
+        const r = runs[j], s = runs[i]
+        if (!used[j] && Math.min(s.u1, r.u1) - Math.max(s.u0, r.u0) >= 0.7 * Math.min(s.u1 - s.u0, r.u1 - r.u0)) (used[j] = 1), band.push(r)
+      }
+      const vs = [...new Set(band.map((r) => r.v))].sort((p, q) => p - q)
+      let lines = 1
+      for (let t = 1; t < vs.length; t++) if (vs[t] - vs[t - 1] >= 2) lines++
+      if (lines < 2) continue
+      const med = (xs: number[]) => xs.sort((p, q) => p - q)[xs.length >> 1]
+      const v = (vs[0] + vs[vs.length - 1]) / 2, u0 = med(band.map((r) => r.u0)), u1 = med(band.map((r) => r.u1))
+      const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
+      // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
+      if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
+      let onWall = 0
+      for (let t = 0; t < 10; t++) {
+        const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
+        if (walls.some((wl) => segDist(p, wl.a, wl.b) <= wl.thicknessPx / 2 + bandPx / 2)) onWall++
+      }
+      if (onWall <= 3) out.push({ a, b })
+    }
+  }
+  return out
+}
+
 /**
  * Free ends still open. Short gaps (≤ bridgeM): to a facing free end on the same run, or to the first wall ahead —
  * along thin ink (railing, glass, parapet line) the bridge is a solid wall, over paper a missed door / open side.
@@ -520,10 +583,13 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     segs.push({ a: toM(o.a), b: toM(o.b), th, conf: o.conf, bridge: 'guess', op: { kind: o.kind, conf: o.conf, hinge: o.hingeAt && toM(o.hingeAt), swingTo: o.swingTo && toM(o.swingTo) } })
   }
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
+  const { weak, line } = ink ?? inkMasks(gray)
+  // glazing / window bands / railings: double thin lines between two walls, too faint for the wall stage
+  if (Math.abs(th0) < (2 * Math.PI) / 180)
+    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'ink', op: { kind: 'window', conf: 0.4 } })
   snapAxes(segs, th0)
   joinEnds(segs)
   extendEnds(segs)
-  const { weak, line } = ink ?? inkMasks(gray)
   const W = gray.width, H = gray.height
   bridgeGaps(
     segs,
@@ -563,22 +629,66 @@ const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w
 // ───────────────────────────────────────────────────────────────── picking the flat
 
 /**
- * Faces of the flat: from the clicked face, grow across partitions (5") and walls with a door / passage / slider;
- * a door in a 10" wall is the entrance — the face behind it (the lobby) joins, but grows no further.
+ * The walls a flood from `at` over open floor touches (walls as barriers, 0.1 m cells, within `R` m): the rooms
+ * around an area whose own walls did not close — e.g. an open-plan living / dining the click landed in.
  */
-function pickFlat(d: Draft, at: Pt | null): Set<Room> {
+function openNeighbours(d: Draft, at: Pt, R = 9): Set<string> {
+  const cell = 0.1, n = Math.ceil((2 * R) / cell)
+  const x0 = at.x - R, y0 = at.y - R
+  const grid = new Int32Array(n * n).fill(-1)
+  const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+  d.walls.forEach((w, wi) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!
+    const steps = Math.ceil(d2(a, b) / (cell / 2)) + 1
+    const r = Math.max(1, Math.round(w.thicknessM / 2 / cell))
+    for (let k = 0; k <= steps; k++) {
+      const cx = Math.floor((a.x + ((b.x - a.x) * k) / steps - x0) / cell), cy = Math.floor((a.y + ((b.y - a.y) * k) / steps - y0) / cell)
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          const x = cx + dx, y = cy + dy
+          if (x >= 0 && y >= 0 && x < n && y < n) grid[y * n + x] = wi
+        }
+    }
+  })
+  const touched = new Set<string>()
+  const start = Math.floor(R / cell) * n + Math.floor(R / cell)
+  if (grid[start] >= 0) return touched
+  const seen = new Uint8Array(n * n)
+  const queue = [start]
+  seen[start] = 1
+  while (queue.length) {
+    const i = queue.pop()!
+    const x = i % n, y = (i / n) | 0
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx, Y = y + dy
+      if (X < 0 || Y < 0 || X >= n || Y >= n || (X - n / 2) ** 2 + (Y - n / 2) ** 2 > (n / 2) ** 2) continue
+      const j = Y * n + X
+      if (grid[j] >= 0) touched.add(d.walls[grid[j]].id)
+      else if (!seen[j]) (seen[j] = 1), queue.push(j)
+    }
+  }
+  return touched
+}
+
+/**
+ * Faces of the flat: from the clicked face, grow across partitions (5") and walls with a door / passage / slider;
+ * a door in a 10" wall is the entrance — the face behind it (the lobby) joins, but grows no further. A click in an
+ * open area starts from every room around it.
+ */
+function pickFlat(d: Draft, at: Pt | null, core: Pt[] = []): { rooms: Set<Room>; open: boolean } {
   const byWall = new Map<string, Room[]>()
   for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
   const W = new Map(d.walls.map((w) => [w.id, w]))
   const polys = new Map(d.rooms.map((r) => [r, roomPolygon(r, d.unit)]))
   const ok = (r: Room) => r.areaSqm <= KNOBS.maxRoomSqm
-  const grow = (start: Room, entrance: boolean): Set<Room> => {
-    const cost = new Map<Room, number>([[start, 0]])
-    const queue = [start]
+  const grow = (starts: Room[], entrance: boolean): Set<Room> => {
+    const cost = new Map<Room, number>(starts.map((r) => [r, 0]))
+    const queue = [...starts]
     while (queue.length) {
       const r = queue.shift()!
       const c = cost.get(r)!
       if (c > 0) continue // the lobby behind the entrance grows no further
+      if (core.some((p) => pointInPolygon(p, polys.get(r)!))) continue // nor does a face labelled lobby / lift / stair
       for (const wid of new Set(r.wallIds)) {
         const w = W.get(wid)!
         const walk = w.openings.some((o) => o.kind !== 'window')
@@ -599,21 +709,22 @@ function pickFlat(d: Draft, at: Pt | null): Set<Room> {
   if (at) {
     let hit: Room | null = null
     for (const r of d.rooms) if (pointInPolygon(at, polys.get(r)!) && (!hit || r.areaSqm < hit.areaSqm)) hit = r
-    // the click is in an open area (its walls did not close): start from the nearest closed room within 3 m
-    if (!hit) for (const r of d.rooms) if (ok(r) && d2(r.centroid, at) < 3 && (!hit || d2(r.centroid, at) < d2(hit.centroid, at))) hit = r
-    return hit && ok(hit) ? grow(hit, true) : new Set()
+    if (hit) return { rooms: ok(hit) ? grow([hit], true) : new Set(), open: false }
+    const touched = openNeighbours(d, at)
+    const starts = d.rooms.filter((r) => ok(r) && r.wallIds.some((w) => touched.has(w)))
+    return { rooms: starts.length ? grow(starts, true) : new Set(), open: true }
   }
   // no click: the largest closed region (grown the same way, without the entrance step)
   let best = new Set<Room>(), bestA = 0
   const seen = new Set<Room>()
   for (const r of d.rooms) {
     if (seen.has(r) || !ok(r)) continue
-    const g = grow(r, false)
+    const g = grow([r], false)
     g.forEach((x) => seen.add(x))
     const A = [...g].reduce((t, x) => t + x.areaSqm, 0)
     if (A > bestA) (bestA = A), (best = g)
   }
-  return best
+  return { rooms: best, open: false }
 }
 
 /** Keep only the picked faces' walls (+ loose walls inside them), re-merge, re-derive. */
@@ -676,6 +787,11 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   let scaleFrom: AutoTraceStats['scaleFrom'] = opts.pxPerM ? 'given' : 'thickness'
   const origin0 = { x: 0, y: 0 }
   let draft = buildGraph(trace, pxPerM, origin0, gray, ink)
+  // the building core's labels (lobby, lifts, stair): part of the draft when reached, never a way into the next flat
+  const coreAt = (k: number) =>
+    text.items
+      .filter((it) => it.kind === 'room' && /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(normaliseName(it.text.split('\n')[0])))
+      .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
   const pickM = (k: number, o: Px) => (opts.pickPx ? { x: (opts.pickPx.x - o.x) / k, y: (opts.pickPx.y - o.y) / k } : null)
   if (!opts.pxPerM) {
     const polys = draft.rooms.map((r) => ({ r, inner: roomInnerPolygon(r, draft.unit), poly: roomPolygon(r, draft.unit) }))
@@ -699,13 +815,14 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       scaleFrom = 'dims'
     } else {
       const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
-      const flat = pickFlat(draft, pickM(pxPerM, origin0))
+      const flat = pickFlat(draft, pickM(pxPerM, origin0), coreAt(pxPerM)).rooms
       const drawn = [...flat].reduce((t, r) => t + r.areaSqm, 0)
       if (areas.length && drawn > 0) {
         // the area label whose scale is closest to the wall prior
         const ks = areas.map((a) => pxPerM * Math.sqrt(drawn / (a.areaSqm! * KNOBS.areaShare)))
         const k = ks.reduce((b, x) => (Math.abs(Math.log(x / pxPerM)) < Math.abs(Math.log(b / pxPerM)) ? x : b))
-        if (Math.abs(Math.log(k / pxPerM)) < Math.log(1.3)) {
+        // the picked region is only as good as its walls: trust the label near the wall prior only (else the prior stays)
+        if (Math.abs(Math.log(k / pxPerM)) < Math.log(1 + KNOBS.areaTrust)) {
           pxPerM = k
           scaleFrom = 'area'
         }
@@ -720,17 +837,17 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink)
   const pick = pickM(pxPerM, origin0)
-  let flat = pickFlat(draft, pick)
-  if (!flat.size) {
-    review.push({ id: newId(), at: pick ?? { x: 0, y: 0 }, kind: 'unclosed', message: 'The clicked spot is not inside a closed room — its walls did not close. Showing the closed rooms around it.' })
-    flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
-  }
+  const picked = pickFlat(draft, pick, coreAt(pxPerM))
+  let flat = picked.rooms
+  if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'The clicked area is open — its walls did not close (open plan, glass or a railing the tracer missed). Draw the missing wall.' })
+  if (!flat.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
   if (flat.size) draft = restrict(draft, flat)
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }
   const originPx = { x: origin0.x + shift.x * pxPerM, y: origin0.y + shift.y * pxPerM }
   draft.unit.vertices = draft.unit.vertices.map((v) => ({ ...v, x: v.x - shift.x, y: v.y - shift.y }))
+  for (const r of review) r.at = { x: r.at.x - shift.x, y: r.at.y - shift.y } // items raised before the shift
   draft.unit.planImage = { src: '', pxPerM, originPx }
   const u = draft.unit
   const rooms = deriveRooms(u)
