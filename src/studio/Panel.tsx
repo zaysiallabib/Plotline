@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
-import { kitAsset, placementSize, resizeLimits } from '../furnish/kit'
+import { kitAsset, placementSize } from '../furnish/kit'
+import { resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
@@ -274,8 +275,8 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>Turn 90° (R)</button>
         </div>
       </Row>
-      {resizeLimits(p.assetId) ? (
-        (['x', 'z', 'y'] as const).map((k) => (
+      {resizeAxes(p.assetId).length ? (
+        resizeAxes(p.assetId).map((k) => (
           <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
             <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
           </Row>

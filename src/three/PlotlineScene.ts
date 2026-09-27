@@ -399,15 +399,15 @@ export class PlotlineScene {
     this.arrangeCb = cb
   }
 
-  /** Highlights piece `id`: its box (+ resize handles), its footprint `quad` on the floor; red while refused. null clears. */
-  showSelection(s: { id: Id; quad: Pt[]; refused: boolean; handles: boolean } | null): void {
+  /** Highlights piece `id`: its box, resize handles for `axes`, its footprint `quad` on the floor; red while refused. null clears. */
+  showSelection(s: { id: Id; quad: Pt[]; refused: boolean; axes: Handle['axis'][] } | null): void {
     const o = s && this.pieceObject(s.id)
     if (!s || !o) {
       this.selBox.removeFromParent()
       this.selFoot.visible = false
       return
     }
-    if (this.selBox.parent !== o || this.selBox.userData.handles !== s.handles) this.fitSelection(o, s.handles)
+    if (this.selBox.parent !== o || this.selBox.userData.axes !== s.axes.join()) this.fitSelection(o, s.axes)
     const color = s.refused ? REFUSED : SEL
     for (const m of [this.selMat, this.selFoot.material, (this.selBox.userData.lines as THREE.LineSegments).material] as THREE.MeshBasicMaterial[]) m.color.set(color)
     const pos = this.selFoot.geometry.getAttribute('position') as THREE.BufferAttribute
@@ -443,8 +443,8 @@ export class PlotlineScene {
     return [...this.furnitureGroup.children, ...this.ceilingGroup.children].find((o) => o.userData.id === id)
   }
 
-  /** The box in the piece's own frame (measured with its pivot at the origin), handles on the four sides and the top. */
-  private fitSelection(o: THREE.Object3D, handles: boolean): void {
+  /** The box in the piece's own frame (measured with its pivot at the origin), handles on the sides and top `axes` may move. */
+  private fitSelection(o: THREE.Object3D, axes: Handle['axis'][]): void {
     this.selBox.removeFromParent()
     this.selBox.traverse((c) => (c as THREE.Mesh).geometry?.dispose())
     this.selBox.clear()
@@ -465,24 +465,22 @@ export class PlotlineScene {
     lines.renderOrder = 10
     lines.raycast = () => {} // a Line's 1 m pick threshold would catch every click near it
     this.selBox.add(lines)
-    if (handles) {
-      const c = box.getCenter(new THREE.Vector3())
-      const at: [Handle, THREE.Vector3][] = [
-        [{ axis: 'x', sign: 1 }, new THREE.Vector3(box.max.x, c.y, c.z)],
-        [{ axis: 'x', sign: -1 }, new THREE.Vector3(box.min.x, c.y, c.z)],
-        [{ axis: 'z', sign: 1 }, new THREE.Vector3(c.x, c.y, box.max.z)],
-        [{ axis: 'z', sign: -1 }, new THREE.Vector3(c.x, c.y, box.min.z)],
-        [{ axis: 'y', sign: 1 }, new THREE.Vector3(c.x, box.max.y, c.z)],
-      ]
-      for (const [h, v] of at) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), this.selMat)
-        m.position.copy(v)
-        m.renderOrder = 11
-        m.userData.handle = h
-        this.selBox.add(m)
-      }
+    const c = box.getCenter(new THREE.Vector3())
+    const at: [Handle, THREE.Vector3][] = [
+      [{ axis: 'x', sign: 1 }, new THREE.Vector3(box.max.x, c.y, c.z)],
+      [{ axis: 'x', sign: -1 }, new THREE.Vector3(box.min.x, c.y, c.z)],
+      [{ axis: 'z', sign: 1 }, new THREE.Vector3(c.x, c.y, box.max.z)],
+      [{ axis: 'z', sign: -1 }, new THREE.Vector3(c.x, c.y, box.min.z)],
+      [{ axis: 'y', sign: 1 }, new THREE.Vector3(c.x, box.max.y, c.z)],
+    ]
+    for (const [h, v] of at.filter(([h]) => axes.includes(h.axis))) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), this.selMat)
+      m.position.copy(v)
+      m.renderOrder = 11
+      m.userData.handle = h
+      this.selBox.add(m)
     }
-    this.selBox.userData = { handles, box, lines }
+    this.selBox.userData = { axes: axes.join(), axesList: axes, box, lines }
     o.add(this.selBox)
   }
 
@@ -499,7 +497,7 @@ export class PlotlineScene {
     old.removeFromParent()
     // procedural geometry is per build (glTF clones share theirs, and never resize)
     if (kitAsset(p.assetId)?.url.startsWith('procedural:')) old.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
-    if (selected) this.fitSelection(obj, !!this.selBox.userData.handles)
+    if (selected) this.fitSelection(obj, this.selBox.userData.axesList)
   }
 
   private xr: XRControls | null = null

@@ -193,6 +193,11 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
 
 /** Resized sizes land on this step (m). */
 export const SIZE_STEP_M = 0.05
+/** The axes a piece may be resized along (x width, y height, z depth): none for scans; min = max fixes an axis. */
+export function resizeAxes(assetId: string): ('x' | 'y' | 'z')[] {
+  const l = resizeLimits(assetId)
+  return l ? (['x', 'z', 'y'] as const).filter((k) => l.max[k] > l.min[k]) : []
+}
 
 /**
  * Piece `id` resized to `size` (m; x width, y height, z depth): each axis on the 5 cm step, clamped to its kit limits

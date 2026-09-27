@@ -9,9 +9,9 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
-import { placementSize, resizeLimits } from '../furnish/kit'
+import { placementSize } from '../furnish/kit'
 import { furnish } from '../furnish/presets'
-import { movePiece, pieceLabel, pieceQuad, resizePiece, type Move } from '../studio/furniture'
+import { movePiece, pieceLabel, pieceQuad, resizeAxes, resizePiece, type Move } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
@@ -123,7 +123,7 @@ function ArrangePanel(p: { piece: FurniturePlacement | null; canUndo: boolean; o
         <>
           <div className="arrange-name">{pieceLabel(p.piece)}</div>
           <div className="muted small">
-            {resizeLimits(p.piece.assetId)
+            {resizeAxes(p.piece.assetId).length
               ? `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high · drag a dot to resize`
               : 'This piece can be moved and turned'}
           </div>
@@ -305,7 +305,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   // ── Arrange: the Studio's rules (arrange.ts → studio/furniture.ts); the scene moves one piece's transform at a time
   const pieceOf = (id: Id | null) => steps.current.pieces.find((p) => p.id === id) ?? null
   const showSel = (p: FurniturePlacement | null, refused = false) =>
-    scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, handles: !!resizeLimits(p.assetId) })
+    scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, axes: resizeAxes(p.assetId) })
   /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     steps.current = h
