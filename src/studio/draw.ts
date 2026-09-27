@@ -31,7 +31,7 @@ function slab(ctx: CanvasRenderingContext2D, { origin: o, dir: d, normal: n, len
   ctx.closePath()
 }
 
-/** One opening in wall-local (u along, v across) coordinates: door leaf + swing arc, window triple line, passage dashed gap. */
+/** One opening in wall-local (u along, v across) coordinates: door leaf + swing arc, slider two offset panes, window triple line, passage dashed gap. */
 function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op: Opening, color: string, lineWidth: number, px: (n: number) => number): void {
   const { origin: o, dir: d, normal: n } = f
   ctx.save()
@@ -56,6 +56,11 @@ function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op:
     const ccw = ((jambAng - leafAng + 2 * Math.PI) % (2 * Math.PI)) > Math.PI
     ctx.arc(hu, sign * h, op.widthM, leafAng, jambAng, ccw)
     ctx.stroke()
+  } else if (op.kind === 'slider') {
+    // the plan symbol: two panes, each a little over half the span, offset across the wall and overlapping mid-span
+    const m = op.widthM * 0.55
+    ctx.strokeRect(u0, -h * 0.6, m, h * 0.5)
+    ctx.strokeRect(u1 - m, h * 0.1, m, h * 0.5)
   } else if (op.kind === 'window') {
     ctx.beginPath()
     for (const v of [-h, 0, h]) {
