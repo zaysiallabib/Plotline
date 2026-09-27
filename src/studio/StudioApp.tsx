@@ -1000,16 +1000,16 @@ export default function StudioApp() {
       i.ids.filter((id) => !id.startsWith('space-')),
     )
   const focusReview = (r: Review['items'][number]) => {
-    focusOn([r.at], r.entityId && findEntity(unit, r.entityId) ? [r.entityId] : [])
+    focusOn([r.at], r.entityId && findEntity(unit, r.entityId) ? [r.entityId] : [], 4) // a spot: a room's worth around it
     setMark(r.at)
   }
-  const focusOn = (pts: Pt[], selectable: Id[]) => {
+  const focusOn = (pts: Pt[], selectable: Id[], padM = 2) => {
     dispatch({ type: 'select', ids: selectable })
     if (!pts.length) return
     const xs = pts.map((p) => p.x)
     const ys = pts.map((p) => p.y)
-    const lo = mToPx(frame, { x: Math.min(...xs) - 2, y: Math.min(...ys) - 2 }) // 2 m of context around the issue
-    const hi = mToPx(frame, { x: Math.max(...xs) + 2, y: Math.max(...ys) + 2 })
+    const lo = mToPx(frame, { x: Math.min(...xs) - padM, y: Math.min(...ys) - padM }) // context around the issue
+    const hi = mToPx(frame, { x: Math.max(...xs) + padM, y: Math.max(...ys) + padM })
     fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
   }
 
