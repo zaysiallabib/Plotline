@@ -249,6 +249,14 @@ export function fitCircle(P: Px[]): { cx: number; cy: number; r: number; rms: nu
 
 /** Split a chain into straight pieces and arcs (recursive: line if flat, arc if it is a clean circle, else split). */
 function fitChain(P: Px[], i0: number, i1: number, eps: number, half: number, out: { i0: number; i1: number; arc?: Px }[]): void {
+  if (i1 - i0 > 3 && dist(P[i0], P[i1]) < 1) {
+    // a closed loop (a shaft or room outline with no junction): split at the point farthest from its start
+    let far = i0 + 1
+    for (let i = i0 + 1; i < i1; i++) if (dist(P[i], P[i0]) > dist(P[far], P[i0])) far = i
+    fitChain(P, i0, far, eps, half, out)
+    fitChain(P, far, i1, eps, half, out)
+    return
+  }
   const { d, at } = lineDev(P, i0, i1)
   if (d <= eps || i1 - i0 < 3) {
     out.push({ i0, i1 })
@@ -393,6 +401,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       if (len < 1 || c < o.minContrast) return []
       return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
     }),
+    2.5 * thicknessOf(half),
   )
   // door arcs and window lines are often thin light-grey strokes on a light floor fill: "line ink" = darker than the local background
   const openings = findOpenings(walls, core, rCore, lineInk(gray, 18), dt, w, h, half, o.partitionM)
@@ -489,7 +498,7 @@ const pkey = (p: Px) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`
  * wall's line is extended onto it — that wall is split there (a T), or, if the meeting point is past its free end too,
  * both ends move to the corner (an L). Real gaps (doors ≥ 0.45 m) are far wider than 1.5 thicknesses.
  */
-export function tidy(walls: WallSeg[]): WallSeg[] {
+export function tidy(walls: WallSeg[], minReach = 0): WallSeg[] {
   walls = walls.slice()
   const cos4 = Math.cos((4 * Math.PI) / 180)
   for (let changed = true; changed; ) {
@@ -527,7 +536,7 @@ export function tidy(walls: WallSeg[]): WallSeg[] {
       const L = dist(e, o)
       if (L < 1) continue
       const dx = (e.x - o.x) / L, dy = (e.y - o.y) / L
-      const reach = 1.5 * s.thicknessPx
+      const reach = Math.max(minReach, 1.5 * s.thicknessPx)
       let best: { u: number; j: number; v: number; X: Px } | null = null
       for (let j = 0; j < walls.length; j++) {
         const t = walls[j]

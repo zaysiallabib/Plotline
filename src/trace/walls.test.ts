@@ -11,11 +11,11 @@ import type { Gray, Px, WallTrace } from './types'
 const K = 60 // px per m
 const O = { x: 40, y: 40 }
 
-function canvas(wM: number, hM: number): Gray {
-  const width = Math.round(wM * K + 2 * O.x), height = Math.round(hM * K + 2 * O.y)
+function canvas(wM: number, hM: number, k = K): Gray {
+  const width = Math.round(wM * k + 2 * O.x), height = Math.round(hM * k + 2 * O.y)
   return { width, height, data: new Uint8Array(width * height).fill(255) }
 }
-const P = (x: number, y: number): Px => ({ x: O.x + x * K, y: O.y + y * K })
+const P = (x: number, y: number, k = K): Px => ({ x: O.x + x * k, y: O.y + y * k })
 
 /** Ink every pixel within `th/2` px of segment ab (anti-aliased by a 1-px ramp). */
 function stroke(g: Gray, a: Px, b: Px, th: number, grey = 0): void {
@@ -42,9 +42,9 @@ function arcStroke(g: Gray, c: Px, rad: number, a0: number, a1: number, th: numb
 }
 
 /** A unit from a polygon (metres), walls 0.12 m, plus the raster of its solid walls (openings left as gaps). */
-function unitFrom(pts: [number, number][], openings: Record<number, { offsetM: number; widthM: number; kind: 'door' | 'window' | 'passage' }> = {}): { unit: Unit; g: Gray } {
+function unitFrom(pts: [number, number][], openings: Record<number, { offsetM: number; widthM: number; kind: 'door' | 'window' | 'passage' }> = {}, k = K): { unit: Unit; g: Gray } {
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1])
-  const g = canvas(Math.max(...xs) + 0.5, Math.max(...ys) + 0.5)
+  const g = canvas(Math.max(...xs) + 0.5, Math.max(...ys) + 0.5, k)
   const vertices = pts.map(([x, y], i) => ({ id: `v${i}`, x, y }))
   const walls: Wall[] = pts.map((_, i) => ({
     id: `w${i}`,
@@ -60,9 +60,9 @@ function unitFrom(pts: [number, number][], openings: Record<number, { offsetM: n
     const cuts = openings[i] ? [[openings[i].offsetM, openings[i].offsetM + openings[i].widthM]] : []
     let from = 0
     // extend each piece by half a thickness at the corners so they join squarely
-    const at = (m: number) => P(ax + ((bx - ax) * m) / L, ay + ((by - ay) * m) / L)
+    const at = (m: number) => P(ax + ((bx - ax) * m) / L, ay + ((by - ay) * m) / L, k)
     for (const [p, q] of [...cuts, [L + 0.06, L + 0.06]]) {
-      stroke(g, at(from === 0 ? -0.06 : from), at(Math.min(p, L + 0.06)), 0.12 * K)
+      stroke(g, at(from === 0 ? -0.06 : from), at(Math.min(p, L + 0.06)), 0.12 * k)
       from = q
     }
   }
@@ -77,7 +77,7 @@ function unitFrom(pts: [number, number][], openings: Record<number, { offsetM: n
     furniture: [],
     finishSlots: [],
     areaSqft: 0,
-    planImage: { src: '', pxPerM: K, originPx: O },
+    planImage: { src: '', pxPerM: k, originPx: O },
   }
   return { unit, g }
 }
@@ -136,6 +136,18 @@ describe('traceWalls on synthetic plans', () => {
     const d = t.openings.find((o) => o.kind === 'door')!
     expect(Math.hypot(d.hingeAt!.x - P(1.5, 0).x, d.hingeAt!.y - P(1.5, 0).y)).toBeLessThan(0.1 * K)
     expect(d.swingTo!.y).toBeGreaterThan(P(0, 0).y) // into the room
+  })
+
+  test('low-res noisy sheet (26.6 px/m, walls ≈ 3 px, jpeg-like noise): upsampled, still found', () => {
+    const k = 26.6
+    const { unit, g } = unitFrom([[0, 0], [5, 0], [5, 4], [2.5, 4], [2.5, 2.5], [0, 2.5]], {}, k)
+    let seed = 7
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+    for (let i = 0; i < g.data.length; i++) g.data[i] = Math.max(0, Math.min(255, g.data[i] + Math.round((rnd() - 0.5) * 40)))
+    const tt = traceWalls(g)
+    const r = evalTrace(tt, unit, { marginM: 0.3 })
+    expect(r.recall).toBeGreaterThan(0.9)
+    expect(r.precision).toBeGreaterThan(0.9)
   })
 
   test('text and a thin dimension line are not walls', () => {
@@ -202,8 +214,11 @@ describe.skipIf(!allFixtures.length)('traceWalls smoke run over every demo drawi
       const ms = performance.now() - t0
       const deg = new Map<string, number>()
       for (const w of t.walls) for (const p of [w.a, w.b]) deg.set(`${p.x.toFixed(2)},${p.y.toFixed(2)}`, (deg.get(`${p.x.toFixed(2)},${p.y.toFixed(2)}`) ?? 0) + 1)
-      const free = [...deg.values()].filter((d) => d === 1).length
-      lines.push(`${f.padEnd(40)} ${String(g.width).padStart(5)}×${String(g.height).padEnd(5)} walls ${String(t.walls.length).padStart(4)} arcs ${String(t.walls.filter((w) => w.mid).length).padStart(3)} free ends ${String(free).padStart(4)} openings ${String(t.openings.length).padStart(3)} ${String(Math.round(ms)).padStart(4)} ms`)
+      const freeEnds = t.walls.flatMap((w) => [w.a, w.b]).filter((p) => deg.get(`${p.x.toFixed(2)},${p.y.toFixed(2)}`) === 1)
+      const free = freeEnds.length
+      // dangling = a free end that is no jamb of any opening guess: the solver's junction-closing work
+      const dangling = freeEnds.filter((p) => !t.openings.some((o) => Math.hypot(o.a.x - p.x, o.a.y - p.y) < 3 || Math.hypot(o.b.x - p.x, o.b.y - p.y) < 3)).length
+      lines.push(`${f.padEnd(40)} ${String(g.width).padStart(5)}×${String(g.height).padEnd(5)} walls ${String(t.walls.length).padStart(4)} arcs ${String(t.walls.filter((w) => w.mid).length).padStart(3)} free ends ${String(free).padStart(4)} dangling ${String(dangling).padStart(4)} openings ${String(t.openings.length).padStart(3)} ${String(Math.round(ms)).padStart(4)} ms`)
       if (SHOTS) writeOverlay(`${SHOTS}/smoke-${f.replace(/\.pgm$/, '')}.png`, g, t)
       expect(ms, f).toBeLessThan(6000)
       for (const w of t.walls) expect(Number.isFinite(w.a.x + w.a.y + w.b.x + w.b.y + w.thicknessPx), f).toBe(true)
