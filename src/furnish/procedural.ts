@@ -11,7 +11,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
@@ -891,42 +891,108 @@ function wardrobe({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   return out
 }
 
+/** A deformable grid: `src` without uv / normals, its coincident vertices welded (smooth across the seams and edges). */
+function weld(src: THREE.BufferGeometry): THREE.BufferGeometry {
+  src.deleteAttribute('uv')
+  src.deleteAttribute('normal')
+  return mergeVertices(src)
+}
+
+/**
+ * A garment on its hanger, end-on to the closet front (its width W along z), top at y = 0: a flattened ellipse in section,
+ * narrow at the neck, shoulders sloping out over the first 8 cm, the body L long flaring by `flare` toward the hem, the
+ * fabric t thick at the chest and thinner at the shoulders and hem, the hem swung `lean` along x. ~200 triangles.
+ */
+function garment(L: number, W: number, t: number, flare: number, lean: number, m: THREE.Material): THREE.Mesh {
+  const g = weld(new THREE.CylinderGeometry(1, 1, 1, 10, 10))
+  const p = g.attributes.position
+  for (let i = 0; i < p.count; i++) {
+    const v = Math.pow(0.5 - p.getY(i), 1.7) // 0 at the neck … 1 at the hem, rows packed toward the shoulders
+    const a = Math.atan2(p.getX(i), p.getZ(i))
+    const r = Math.hypot(p.getX(i), p.getZ(i)) // 0 at the caps' centres
+    const half = (W / 2) * (0.22 + 0.78 * Math.sin((Math.min(1, (v * L) / 0.08) * Math.PI) / 2)) * (1 + flare * v * v)
+    const th = (t / 2) * (0.4 + 0.6 * Math.sin((Math.min(1, v * 2.5) * Math.PI) / 2)) * (1 - 0.35 * v)
+    p.setXYZ(i, r * Math.sin(a) * th + lean * v * v, -v * L, r * Math.cos(a) * half)
+  }
+  g.computeVertexNormals()
+  return mesh(g, m)
+}
+
 /**
  * Open closet unit W × H × D: oak end panels, cap and shoe shelf, a top shelf with folded stacks, a steel rail with
- * clothes hanging end-on (shirts and dresses in the linen palette, a few gaps). Back open to the wall. The rail sits
- * 0.4 m under the cap (1.7 m at 2.1) but never above 1.9 m, within reach.
+ * clothes hanging end-on on oak hangers (shirts, long kurtas / dresses, a jacket; a calm linen palette, a few gaps).
+ * Back open to the wall. The rail sits 0.4 m under the cap (1.7 m at 2.1) but never above 1.9 m, within reach.
+ * (The clothes read as slabs: flat rounded boards on a bar.)
  */
 function closetRail({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
   const m = M()
   const rail = Math.min(1.9, H - 0.4)
-  const fab = [m.linen, m.cushionOat, m.cushionTaupe, m.chair]
+  const fab = [m.linen, m.cushionOat, m.cushionTaupe, m.chair, m.throwSage]
+  const pick = (a: number, b: number) => fab[Math.floor(rnd(a, b) * fab.length)]
   const out = [box(W - 0.036, 0.018, D - 0.02, m.oak, 0, H - 0.009, 0), box(W - 0.036, 0.018, D - 0.02, m.oak, 0, rail + 0.09, 0)]
   out.push(box(W - 0.036, 0.018, D - 0.02, m.oak, 0, 0.14, 0), box(W - 0.036, 0.13, 0.018, m.dark, 0, 0.065, D / 2 - 0.05))
   for (const s of [-1, 1]) out.push(box(0.018, H, D, m.oak, s * (W / 2 - 0.009), H / 2, 0))
   out.push(cyl(0.012, W - 0.04, m.steel, 0, rail, 0).rotateZ(Math.PI / 2))
-  for (let x = -W / 2 + 0.08, i = 0; x < W / 2 - 0.06; x += 0.075, i++) {
-    if (rnd(i, W) > 0.82) continue
-    const L = 0.62 + 0.4 * rnd(W, i) // shirt … dress
-    const d = 0.38 + 0.08 * rnd(i, 2)
-    const g = rbox(0.03 + 0.03 * rnd(3, i), L, d, 0.012, fab[Math.floor(rnd(i, 7) * fab.length)], x, rail - 0.06 - L / 2, 0)
-    g.rotation.y = 0.16 * (rnd(i, 11) - 0.5)
-    // oak hanger: a bar across the shoulders, a steel hook over the rail
-    const h = box(0.012, 0.018, d - 0.04, m.oak, x, rail - 0.05, 0)
-    h.rotation.y = g.rotation.y
-    out.push(g, h, cyl(0.004, 0.06, m.steel, x, rail - 0.01, 0))
+  const T = new THREE.Matrix4()
+  for (let x = -W / 2 + 0.07, i = 0; ; i++) {
+    const k = rnd(i, 13)
+    // shirt · long kurta / dress · jacket: length, width (along z), thickness, flare
+    const [L, w0, t, flare] = k < 0.55 ? [0.72 + 0.1 * rnd(W, i), 0.44 + 0.04 * rnd(i, 2), 0.05, 0.06] : k < 0.82 ? [1.0 + 0.15 * rnd(W, i), 0.38 + 0.04 * rnd(i, 2), 0.04, 0.3] : [0.72 + 0.06 * rnd(W, i), 0.48, 0.085, 0]
+    if (x + t > W / 2 - 0.05) break
+    const w = Math.min(w0, D - 0.07) // inside a shallow unit too, the hem's flare included
+    if (rnd(i, W) < 0.86) {
+      // round a point 7.4 cm under the rail: the garment hanging from the hanger's oak neck, a steel hook up and over the rail
+      const hook = mesh(new THREE.TorusGeometry(0.014, 0.0025, 4, 8, Math.PI), m.steel, 0, 0.074, 0)
+      hook.rotation.y = Math.PI / 2
+      const parts = [garment(L, w, t, Math.min(flare, (D - 0.04) / w - 1), 0.03 * (rnd(i, 17) - 0.5), pick(i, 7)), box(0.014, 0.02, 0.06, m.oak, 0, 0.01), mesh(new THREE.CylinderGeometry(0.0025, 0.0025, 0.054, 6), m.steel, 0, 0.047, -0.014), hook]
+      T.makeRotationY(0.16 * (rnd(i, 11) - 0.5)).setPosition(x + t / 2, rail - 0.074, 0)
+      for (const o of parts) o.applyMatrix4(T)
+      out.push(...parts)
+    }
+    x += t + 0.028
   }
-  for (let x = -W / 2 + 0.22; x < W / 2 - 0.15; x += 0.42) {
-    const h = 0.08 + 0.1 * rnd(x, 3)
-    out.push(rbox(0.32, h, 0.3, 0.02, fab[Math.floor(rnd(x, 5) * fab.length)], x, rail + 0.1 + h / 2, 0))
+  // folded stacks on the shelf: 2–4 soft layers each, a little askew, one colour per layer
+  for (let x = -W / 2 + 0.22, j = 0; x < W / 2 - 0.15; x += 0.42, j++) {
+    let y = rail + 0.099
+    for (let n = 2 + Math.floor(rnd(x, 3) * 3), l = 0; l < n; l++) {
+      const h = 0.035 + 0.02 * rnd(j, l)
+      out.push(mesh(new RoundedBoxGeometry(0.32 - 0.02 * rnd(l, j), h, 0.3, 1, 0.012), pick(j * 7 + l, 5), x + 0.012 * (rnd(l, 9 + j) - 0.5), y + h / 2, 0.012 * (rnd(j, 5 + l) - 0.5)))
+      y += h
+    }
   }
   return out
+}
+
+/**
+ * A folded blanket w × h × d lying on y = 0, folded edge toward +x: bullnose edges (a full round at the fold, a thinner
+ * one at the open edge), the folded-over layer ending in a soft step across the middle, a slight slump toward the ends
+ * and a few shallow creases. One welded grid, ~800 triangles.
+ */
+function foldedBlanket(w: number, h: number, d: number, m: THREE.Material, x0: number, y0: number, z0: number): THREE.Mesh {
+  const g = weld(new THREE.BoxGeometry(1, 1, 1, 10, 4, 8))
+  const p = g.attributes.position
+  for (let i = 0; i < p.count; i++) {
+    const [a, b, c] = [p.getX(i), p.getY(i), p.getZ(i)] // each −0.5 … 0.5
+    const x = a * w
+    const top = h * (0.55 + 0.45 * (0.5 + 0.5 * Math.tanh((x + 0.02) / 0.025))) * (1 - 0.12 * (2 * c) ** 2) + 0.003 * Math.sin(x * 37 + c * 9) + 0.002 * Math.sin(c * d * 29)
+    const phi = b * Math.PI // bottom −π/2 … top π/2
+    const side = Math.abs(b) < 0.499 || Math.abs(a) > 0.499 || Math.abs(c) > 0.499 // on the rim, not inside the top / bottom face
+    const r = (top / 2) * (a > 0 ? 1 : 0.6)
+    const inset = side ? r * (1 - Math.cos(phi)) : 0
+    const px = Math.abs(a) > 0.499 ? Math.sign(a) * (w / 2 - inset) : x
+    const pz = Math.abs(c) > 0.499 ? Math.sign(c) * (d / 2 - inset) : c * d
+    p.setXYZ(i, px, (top * (1 + Math.sin(phi))) / 2, pz)
+  }
+  g.computeVertexNormals()
+  return mesh(g, m, x0, y0, z0)
 }
 
 /**
  * An L × W cot (chouki; 1.9 × 0.7, short 1.7 × 0.65), long side along x, head at −x: a teak-stained frame (legs, aprons,
  * a plank top whose dark edge shows round the mattress), a 12 cm mattress in a mist-blue cotton sheet, a plump white
  * pillow, a terracotta blanket folded at the foot. (It read as a white plank: an untextured off-white 8 cm slab, the
- * walls' own value, with a 5 cm pillow and a 4 cm blanket lying flat on it.)
+ * walls' own value, with a 5 cm pillow and a 4 cm blanket lying flat on it; then the blanket read as a block: two
+ * square-edged boards.)
  */
 function cot(L: number, W: number): THREE.Mesh[] {
   const m = M()
@@ -938,7 +1004,7 @@ function cot(L: number, W: number): THREE.Mesh[] {
     for (const x of [-(L / 2 - 0.05), L / 2 - 0.05]) out.push(box(0.05, 0.3, 0.05, teak, x, 0.15, z))
   }
   out.push(cushion(0.36, W - 0.14, 0.13, m.linen, -(L / 2 - 0.24), 0.51, 0, Math.PI / 2))
-  out.push(rbox(0.46, 0.045, W - 0.12, 0.018, m.throw, L / 2 - 0.3, 0.4725, 0), rbox(0.4, 0.04, W - 0.16, 0.016, m.throw, L / 2 - 0.32, 0.515, 0))
+  out.push(foldedBlanket(0.46, 0.08, W - 0.12, m.throw, L / 2 - 0.3, 0.451, 0))
   return out
 }
 
