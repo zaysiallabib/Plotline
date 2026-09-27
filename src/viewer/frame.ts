@@ -5,7 +5,7 @@
  */
 import * as core from '../core'
 import type { Opening, Pt, Unit, Wall } from '../core'
-import { heightRange, kitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, placementSize } from '../furnish/kit'
 
 /** Eye height (PlotlineScene). */
 export const EYE = 1.6
@@ -54,9 +54,9 @@ const scene = (unit: Unit): Scene => {
     const k = kitAsset(f.assetId)
     if (!k || k.mount === 'ceiling' || k.category === 'rug') return []
     const r = (f.rotationDeg * Math.PI) / 180
-    const s = f.scale ?? 1
-    const [h0, h1] = heightRange(k)
-    return [{ id: f.id, c: f, ex: { x: Math.cos(r), y: Math.sin(r) }, ey: { x: -Math.sin(r), y: Math.cos(r) }, hx: (k.sizeM.x * s) / 2, hy: (k.sizeM.z * s) / 2, h0, h1 }]
+    const s = placementSize(f)
+    const [h0, h1] = heightRange({ ...k, sizeM: s })
+    return [{ id: f.id, c: f, ex: { x: Math.cos(r), y: Math.sin(r) }, ey: { x: -Math.sin(r), y: Math.cos(r) }, hx: s.x / 2, hy: s.z / 2, h0, h1 }]
   })
   const s = { walls: unit.walls, furniture: unit.furniture, quads, shut, boxes, top: Math.max(...unit.walls.map((w) => w.heightM)) }
   cache.set(unit, s)

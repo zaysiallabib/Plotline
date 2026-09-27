@@ -35,7 +35,8 @@ Docs/PRODUCT_PHILOSOPHY.md.
   Studio (tool F) AND in the 3D walk view via an "Arrange" button that buyer
   links never show. Same rules everywhere: 1 ft grid, wall snap, refuse
   overlaps / blocked doors. Saved in the browser (Phase 0), shared by viewer
-  and Studio. Buyers still only look, choose finishes and comment.
+  and Studio. Buyers still only look, choose finishes and comment. Staff may
+  also DELETE pieces (founder, same day); rooms with no pieces auto-furnish.
   Sliding doors are their own opening kind.
 - Level templates (ground / basement / typical floor / rooftop, each with
   its own furnishing rules) are parked until the living floors are done
@@ -101,4 +102,4 @@ public/assets/{models,textures,hdri}/ + MANIFEST.md (licenses)
 - No drag-and-drop furniture placement editor in the first 6 weeks — per-room
   presets + the per-unit JSON are the mechanism until paying customers demand more.
   Exception: the founder's staff-only arranging (Decisions, 2026-09-27) — nothing
-  beyond move / turn / resize of existing pieces (no catalog, no adding) without asking.
+  beyond move / turn / resize / delete of existing pieces (no catalog, no adding) without asking.

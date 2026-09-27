@@ -131,7 +131,27 @@ export function placementSize(p: { assetId: string; scale?: number; sizeM?: Size
 /**
  * Size limits (m) for pieces that may be stretched: procedural builders that rebuild properly at any size within
  * them (a wider wardrobe gets another door, not stretched handles). null = move / turn only (every scanned glTF).
- * ponytail: empty until the wave-12 resize work fills it per asset.
+ * min = max on an axis: that axis is fixed (a table's height, a rug's pile, a larder's depth in the kitchen run).
+ * The only shelf (wooden_display_shelves_01) is a scan: move / turn only.
  */
-const RESIZE: Record<string, { min: Size3; max: Size3 }> = {}
+const lim = (min: [number, number, number], max: [number, number, number]) => ({ min: { x: min[0], y: min[1], z: min[2] }, max: { x: max[0], y: max[1], z: max[2] } })
+// 0.9 m (two 0.45 m doors) to 3.0 m (five 0.6 m doors); up to 2.6 m tall under a 3.0 m ceiling
+const WARDROBE = lim([0.9, 1.8, 0.5], [3.0, 2.6, 0.65])
+const CLOSET = lim([0.6, 1.8, 0.5], [3.0, 2.6, 0.65])
+const RUG = lim([1.2, 0.012, 0.8], [4.0, 0.012, 3.0])
+// headboard width: a 0.9 m single mattress to a 2.0 m king (bed_* = mattress + 0.16)
+const BED = lim([1.06, 1.15, 2.16], [2.16, 1.15, 2.16])
+const RESIZE: Record<string, { min: Size3; max: Size3 }> = {
+  wardrobe_tall: WARDROBE,
+  wardrobe_2door: WARDROBE,
+  closet_rail: CLOSET,
+  closet_rail_s: CLOSET,
+  kitchen_tall: lim([0.45, 1.8, 0.62], [1.2, 2.4, 0.62]),
+  fridge: lim([0.55, 1.5, 0.6], [0.9, 2.0, 0.75]),
+  desk_oak: lim([1.0, 0.75, 0.5], [2.0, 0.75, 0.9]),
+  dining_table: lim([0.9, 0.75, 0.75], [2.6, 0.75, 1.2]), // 2 to 10 seats
+  rug_rect_large: RUG,
+  rug_rect_small: RUG,
+  ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, BED])),
+}
 export const resizeLimits = (assetId: string): { min: Size3; max: Size3 } | null => RESIZE[assetId] ?? null
