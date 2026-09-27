@@ -312,7 +312,8 @@ function meetPoint(lines: { cx: number; cy: number; dx: number; dy: number }[]):
 export function wallSkeleton(gray: Gray, opts: WallOpts = {}) {
   const o = { ...DEF, ...opts }
   const { width: w, height: h } = gray
-  const ink = threshold(gray, o.darkMax ?? otsu(gray))
+  const t = o.darkMax ?? otsu(gray)
+  const ink = threshold(gray, t)
   const dt = edt(ink, w, h)
   const half = o.halfPx ?? wallHalfWidth(dt, w, h)
   const rCore = Math.max(1.9, half * o.coreFrac)
@@ -333,7 +334,7 @@ export function wallSkeleton(gray: Gray, opts: WallOpts = {}) {
   }
   const sk = core.slice()
   thin(sk, w, h)
-  return { o, w, h, ink, dt, half, rCore, core, blob, sk }
+  return { o, w, h, t, ink, dt, half, rCore, core, blob, sk }
 }
 
 /** Bilinear ×f enlargement: low-res plans (walls ≤ ~5 px) get sub-pixel stroke widths back from the anti-aliasing. */
@@ -375,7 +376,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       })),
     }
   }
-  const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  const { o, w, h, t, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   const { nodes, edges } = skeletonGraph(sk, w, h)
   pruneSpurs(nodes, edges, (j) => 1.5 * Math.max(2, dt[Math.round(nodes[j].y) * w + Math.round(nodes[j].x)]))
 
@@ -434,7 +435,8 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       const thicknessPx = thicknessOf(s.half)
       return { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx)) }
     })
-  const openings = findOpenings(walls, core, rCore, ink, dt, w, h, half, o.partitionM)
+  // door arcs and window lines are often thin light-grey strokes: a lighter threshold, halfway from ink to paper
+  const openings = findOpenings(walls, core, rCore, threshold(gray, Math.round((t + 255) / 2) - 12), dt, w, h, half, o.partitionM)
   return { walls, openings }
 }
 
@@ -496,7 +498,8 @@ function refine(segs: Seg[], nodes: Node[], dtAt: (p: Px) => number): void {
  * or the side of a cross wall (a door beside a corner). Kind: a thin arc of radius ≈ gap around either jamb → door;
  * ≥ 2 thin ink lines running across the gap → window; else passage (≤ 1.4 m) / unknown.
  */
-function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, ink: Uint8Array, dt: Float32Array, w: number, h: number, half: number, partitionM: number): OpeningGuess[] {
+function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk: Uint8Array, dt: Float32Array, w: number, h: number, half: number, partitionM: number): OpeningGuess[] {
+  const ink = lineInk
   const pxPerM = thicknessOf(half) / partitionM
   const key = (p: Px) => `${Math.round(p.x)},${Math.round(p.y)}`
   const deg = new Map<string, number>()
@@ -505,7 +508,7 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, ink: Ui
   for (const s of walls) {
     if (s.mid) continue
     const L = dist(s.a, s.b)
-    if (L < 1) continue
+    if (L < 1.5 * s.thicknessPx) continue // a stub's direction is noise
     const ux = (s.b.x - s.a.x) / L, uy = (s.b.y - s.a.y) / L
     if (deg.get(key(s.a)) === 1) ends.push({ p: s.a, dir: { x: -ux, y: -uy }, th: s.thicknessPx })
     if (deg.get(key(s.b)) === 1) ends.push({ p: s.b, dir: { x: ux, y: uy }, th: s.thicknessPx })
@@ -540,19 +543,22 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, ink: Ui
     const b = { x: p.x + dir.x * hit, y: p.y + dir.y * hit }
     const tol = 1.5 * E.th
     if (out.some((o) => (dist(o.a, b) < tol && dist(o.b, p) < tol) || (dist(o.a, p) < tol && dist(o.b, b) < tol))) continue
-    out.push(classifyGap(p, b, E.th, hit, pxPerM, thinInk, (x, y) => at(ink, x, y)))
+    const g = classifyGap(p, b, E.th, hit, pxPerM, thinInk, (x, y) => at(ink, x, y))
+    if (g) out.push(g)
   }
   return out
 }
 
-function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thinInk: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess {
+/** Door / window / passage / unknown for a gap a→b; null = no evidence and too wide to be a plain passage. */
+function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thinInk: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess | null {
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
-  // door: a quarter arc of radius ≈ gap (0.8–1.0) around either jamb, on either side
+  // door: a quarter arc of radius ≈ gap (0.8–1.1) around either jamb, on either side, with empty floor inside it
+  // (the control ring at half the radius stops hatching, tiles and furniture clutter passing as an arc)
   let best = { score: 0, hinge: a, side: 1 }
   for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
     for (const side of [1, -1]) {
-      let hit = 0, n = 0
+      let hit = 0, inner = 0, n = 0
       for (let k = 0; k <= 16; k++) {
         const ang = ((0.1 + (0.8 * k) / 16) * Math.PI) / 2
         const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side
@@ -560,11 +566,13 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thin
         let got = 0
         for (const rf of [0.8, 0.9, 1.0, 1.1]) if (thinInk(hp.x + dx * gap * rf, hp.y + dy * gap * rf)) got = 1
         hit += got
+        inner += inkAt(hp.x + dx * gap * 0.5, hp.y + dy * gap * 0.5)
         n++
       }
-      if (hit / n > best.score) best = { score: hit / n, hinge: hp, side }
+      const score = inner / n > 0.35 ? 0 : hit / n
+      if (score > best.score) best = { score, hinge: hp, side }
     }
-  if (best.score >= 0.6) {
+  if (best.score >= 0.7) {
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
     return { a, b, kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
   }
@@ -581,6 +589,6 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thin
     prev = on
   }
   if (lines >= 2) return { a, b, kind: 'window', conf: 0.6 }
-  return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : { a, b, kind: 'unknown', conf: 0.2 }
+  return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : gap <= 2 * pxPerM ? { a, b, kind: 'unknown', conf: 0.2 } : null
 }
 

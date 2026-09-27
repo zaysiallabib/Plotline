@@ -53,6 +53,8 @@ export interface EvalReport {
   extra: Px[]
   /** hand-traced openings no guess found (centre px, kind, distance to the nearest guess in m) */
   missedOpenings: (Px & { kind: string; nearestM: number })[]
+  /** found openings, "trueKind→guessedKind": count */
+  kindConfusion: Record<string, number>
 }
 
 interface Line {
@@ -301,6 +303,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
   const guesses = trace.openings.map((o) => ({ c: { x: (o.a.x + o.b.x) / 2, y: (o.a.y + o.b.y) / 2 }, kind: o.kind })).filter((o) => inRegion(o.c))
   let oHit = 0, oKind = 0
   const missedOpenings: EvalReport['missedOpenings'] = []
+  const kinds: Record<string, number> = {}
   for (const t of openings) {
     let best: (typeof guesses)[number] | null = null, bd = Infinity
     for (const gss of guesses) {
@@ -309,6 +312,8 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
     }
     if (best && bd <= openM * k) {
       oHit++
+      const ck = `${t.kind}→${best.kind}`
+      kinds[ck] = (kinds[ck] ?? 0) + 1
       if (best.kind === t.kind) oKind++
     } else missedOpenings.push({ ...t.c, kind: t.kind, nearestM: bd / k })
   }
@@ -333,6 +338,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
     missed,
     extra,
     missedOpenings,
+    kindConfusion: kinds,
   }
 }
 
