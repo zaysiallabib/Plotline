@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRooms, roomAt, validate, wallFrame } from '../core'
+import { deriveRooms, roomAt, roomInnerPolygon, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
+import sheltechA from '../data/units/sheltech-a.json'
 import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { snapOpeningOffset } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
-import { furnish } from '../furnish/presets'
-import { GRID_M, layoutFor, pieceAt, pieceQuad, resizeAxes } from './furniture'
+import { doorClearZones, furnish, quadsOverlap } from '../furnish/presets'
+import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, resizeAxes } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -629,6 +630,42 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(move(s, 'side', 2.5, 4.3).toast).toBeNull() // where the sofa stood
     // "Reset to preset" clears the room's tombstones
     expect(reducer(s, { type: 'reset-furniture', roomId: 'A' }).unit.furniture.some((p) => p.removed)).toBe(false)
+  })
+
+  it('a piece that stands against a wall, dropped on a wall it is not backed onto, turns its back to it (its TV along); a chair keeps its rotation', () => {
+    const u = typeA as Unit
+    const rooms = deriveRooms(u)
+    const living = rooms.find((r) => r.id === 'r_living')!
+    const east = Math.max(...roomInnerPolygon(living, u).map((p) => p.x))
+    // the armchair and the plant stand on that wall's free stretch: out of the way first
+    const ps = furnish(u, rooms).filter((p) => !['r_living:modern_arm_chair_01:1', 'r_living:potted_plant_01:1'].includes(p.id))
+    const m = movePiece(u, rooms, ps, 'r_living:modern_wooden_cabinet:1', { x: 13.0, y: 6.4 }, 180)!
+    expect(m.error).toBeNull()
+    expect(m.piece.rotationDeg).toBe(90) // front faces west, into the room
+    expect(Math.max(...pieceQuad(m.piece).map((p) => p.x))).toBeCloseTo(east - 0.05, 6) // backed flush (GAP)
+    expect(m.furniture.find((p) => p.id === 'r_living:tv_55:1')!.rotationDeg).toBe(90)
+    const f = fixture()
+    const withChair = { ...f, unit: { ...f.unit, furniture: [...f.unit.furniture, piece('chair', 'dining_chair', 'B', 6.5, 3.5)] } }
+    const s = move(withChair, 'chair', 7.7, 3.5) // snaps flush to the right wall, still facing +y
+    expect(at(s, 'chair')).toMatchObject({ rotationDeg: 0, x: expect.closeTo(7.9 - 0.05 - 0.235, 6) })
+    // R still turns freely against a wall
+    expect(at(reducer(s, { type: 'rotate-piece', id: 'chair' }), 'chair').rotationDeg).toBe(90)
+  })
+
+  it('Sheltech A Veranda 1: a chair dragged toward the slider stops at its step-in strip (the grid left it 2 cm inside: "Blocks the door")', () => {
+    const u = sheltechA as unknown as Unit
+    const rooms = deriveRooms(u)
+    const v1 = rooms.find((r) => r.name === 'Veranda 1')!
+    const ps = furnish(u, rooms)
+    const chair = ps.find((p) => p.roomId === v1.id && /chair/.test(p.assetId))!
+    const m = movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - GRID_M }, chair.rotationDeg)!
+    expect(m.error).toBeNull()
+    expect(m.piece.y).toBeLessThan(chair.y - 0.1)
+    const zones = doorClearZones(v1, u)
+    expect(zones.some((z) => quadsOverlap(z, pieceQuad(m.piece)))).toBe(false)
+    expect(zones.some((z) => quadsOverlap(z, pieceQuad({ ...m.piece, y: m.piece.y - 0.02 })))).toBe(true) // at the strip's edge
+    // deeper than one grid step into a zone: still refused
+    expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * GRID_M }, chair.rotationDeg)!.error).toBe('Blocks the door')
   })
 
   it('resizeAxes: scans none; an axis with min = max stays fixed', () => {

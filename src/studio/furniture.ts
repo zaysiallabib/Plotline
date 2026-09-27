@@ -124,7 +124,7 @@ export function snapToGrid(c: Pt, rotationDeg: number, size: { x: number; z: num
  * of, or pokes through: the nearest first, then one more that is not parallel to it (a corner). A face counts only
  * beside the footprint and when `from` (the unsnapped footprint) is not wholly behind it (a concave room's far side).
  */
-export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: number; z: number }, inner: Pt[], gap: number): { c: Pt; snapped: boolean } {
+export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: number; z: number }, inner: Pt[], gap: number): { c: Pt; snapped: boolean; normals: Pt[] } {
   const done: Pt[] = []
   for (let k = 0; k < 2; k++) {
     const q = footprint(c, rotationDeg, size)
@@ -149,7 +149,28 @@ export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: n
     c = { x: c.x + n.x * shift, y: c.y + n.y * shift }
     done.push(n)
   }
-  return { c, snapped: done.length > 0 }
+  return { c, snapped: done.length > 0, normals: done }
+}
+
+/**
+ * Like the wall snap, for door / slider clear zones and the entrance: a footprint at c that pokes less than one grid step
+ * into one, measured along its depth, goes back out to its edge + 1 cm (the grid must not refuse a spot that fits).
+ * Deeper, it stays and whyNot refuses it.
+ */
+export function outOfZones(unit: Unit, room: Room, c: Pt, rotationDeg: number, size: { x: number; z: number }): Pt {
+  const entry = entryZone(unit)
+  for (const z of [...(entry ? [entry] : []), ...doorClearZones(room, unit)]) {
+    const q = footprint(c, rotationDeg, size)
+    if (!quadsOverlap(z, q)) continue
+    const len = Math.hypot(z[3].x - z[0].x, z[3].y - z[0].y) // spanQuad / entryZone: z[0] → z[3] is the depth
+    const m = { x: (z[3].x - z[0].x) / len, y: (z[3].y - z[0].y) / len }
+    const at = q.map((v) => v.x * m.x + v.y * m.y)
+    const up = z[3].x * m.x + z[3].y * m.y + 0.01 - Math.min(...at)
+    const down = z[0].x * m.x + z[0].y * m.y - 0.01 - Math.max(...at)
+    const s = Math.abs(up) < Math.abs(down) ? up : down
+    if (Math.abs(s) < GRID_M) c = { x: c.x + m.x * s, y: c.y + m.y * s }
+  }
+  return c
 }
 
 /** Why p may not stand where it is (null = it may). `others` = every piece that is not moving with it. */
@@ -186,23 +207,48 @@ function isFitted(p: FurniturePlacement): boolean {
 
 const norm = (deg: number) => ((Math.round(deg * 1000) / 1000) % 360 + 360) % 360
 
+/** Pieces that stand with their back to a wall (a TV unit, sofa, wardrobe, bed's headboard, desk, shelves, kitchen and bath fittings, cot, closet units); not tables, chairs, rugs, plants. */
+const BACKED: KitAsset['category'][] = ['tv-unit', 'sofa', 'wardrobe', 'bed', 'desk', 'shelf', 'kitchen', 'bath']
+const backsOnto = (p: FurniturePlacement) => {
+  const a = assetOf(p)
+  return !!a && BACKED.includes(a.category) && !a.mount && (a.mountY ?? 0) < 0.9
+}
+/** Front (local +y) of a piece turned `deg`, as footprint(). */
+const frontOf = (deg: number): Pt => ({ x: -Math.sin((deg * Math.PI) / 180), y: Math.cos((deg * Math.PI) / 180) })
+/** Half its footprint's extent along n. */
+const halfAlong = (q: Pt[], n: Pt) => (Math.max(...q.map((v) => v.x * n.x + v.y * n.y)) - Math.min(...q.map((v) => v.x * n.x + v.y * n.y))) / 2
+
 /**
  * Piece `id` to centre `to`, turned to `rotationDeg`: onto the 1 ft grid (unless `grid` is false: R turns in place),
- * then flush to a wall it nears. It belongs to the room `to` is in. What rests on it moves and turns with it.
+ * then flush to a wall it nears. A piece that stands against a wall (BACKED), dropped onto a wall it is not backed
+ * onto, turns its back to that wall and goes flush. It belongs to the room `to` is in. What rests on it moves and turns with it.
  */
 export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, to: Pt, rotationDeg: number, grid = true): Move | null {
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
-  const rot = norm(rotationDeg)
+  let rot = norm(rotationDeg)
   const size = sizeOf(p)
   const b = unitBounds(unit)
   let c = grid ? snapToGrid(to, rot, size, { x: b.minX, y: b.minY }) : { x: to.x, y: to.y }
   const room = roomAt(to, rooms, unit)
   let snapped: Move['snapped'] = grid ? 'grid' : null
   if (room) {
-    const r = snapToWalls(c, footprint(to, rot, size), rot, size, roomInnerPolygon(room, unit), isFitted(p) ? FLUSH_M : GAP)
+    const inner = roomInnerPolygon(room, unit)
+    const gap = isFitted(p) ? FLUSH_M : GAP
+    let r = snapToWalls(c, footprint(to, rot, size), rot, size, inner, gap)
+    const n = r.normals[0]
+    const f = frontOf(rot)
+    if (grid && n && backsOnto(p) && !r.normals.some((m) => m.x * f.x + m.y * f.y > 0.99)) {
+      // back to the wall it was dropped on (front = the wall's inward normal), still flush: its depth now spans n
+      const turned = norm((Math.atan2(-n.x, n.y) * 180) / Math.PI)
+      const k = halfAlong(footprint(r.c, rot, size), n) - halfAlong(footprint(r.c, turned, size), n)
+      const c2 = { x: r.c.x - n.x * k, y: r.c.y - n.y * k }
+      rot = turned
+      r = snapToWalls(c2, footprint(c2, rot, size), rot, size, inner, gap)
+    }
     c = r.c
     if (r.snapped) snapped = 'wall'
+    if (layerOf(p) === 0) c = outOfZones(unit, room, c, rot, size)
   }
   const roomId = room?.id ?? p.roomId
   const piece = { ...p, x: c.x, y: c.y, rotationDeg: rot, roomId }
