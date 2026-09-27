@@ -22,6 +22,7 @@ import type { Room, Unit } from '../core'
 import { isCeilingLight, kitAsset } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
+import { dayMix, openToSky } from './daylight'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, setGlassSky } from './openings'
 
@@ -54,8 +55,6 @@ const LIGHT_CD_PER_M2 = 0.1
 const DUSK_BOOST = 8
 /** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
 const MAX_ROOM_LIGHTS = 8
-/** no storey above: AOD shafts, the planter and the small recessed verandas get sun from above */
-const openToSky = (r: Room) => r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5)
 
 export class Look {
   private readonly composer: EffectComposer | null = null
@@ -237,6 +236,7 @@ export class Look {
     this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
     this.hemi.groundColor.set(HEMI_GROUND).lerp(BOUNCE, dusk)
     this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
+    dayMix.value = 1 - dusk // after dark the lamps light the rooms, not the windows
     const sky = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
     setHaze(sky)
     setGlassSky(0.2126 * sky.r + 0.7152 * sky.g + 0.0722 * sky.b) // the panes mirror this sky

@@ -8,6 +8,7 @@
 import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef } from '../core'
 import { TEXTURES } from '../furnish/textures'
+import { daylit as daylitPatch } from './daylight'
 
 const texCache = new Map<string, Promise<THREE.Texture>>()
 const matCache = new Map<string, THREE.MeshStandardMaterial>()
@@ -46,9 +47,10 @@ function fallbackColor(textureId: string): string {
 /**
  * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
  * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
+ * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
  */
-export function materialFor(ref: MaterialRef, edge = false): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref) + (edge ? '|edge' : '')
+export function materialFor(ref: MaterialRef, edge = false, daylit = false): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial
@@ -83,6 +85,7 @@ export function materialFor(ref: MaterialRef, edge = false): THREE.MeshStandardM
     }
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+  if (daylit) daylitPatch(m)
   matCache.set(key, m)
   return m
 }
@@ -128,6 +131,7 @@ export function resolveFinish(
   cfg: Configuration,
   roomId: Id | null,
   target: FinishSlot['target'],
+  daylit = false,
 ): THREE.MeshStandardMaterial {
-  return materialFor(resolveFinishRef(slots, cfg, roomId, target))
+  return materialFor(resolveFinishRef(slots, cfg, roomId, target), false, daylit)
 }
