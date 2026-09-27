@@ -117,3 +117,21 @@ export function heightRange(a: KitAsset): [number, number] {
   const y0 = a.mountY ?? (a.mount === 'wall' ? 1.5 - a.sizeM.y / 2 : 0)
   return [y0, y0 + a.sizeM.y]
 }
+
+type Size3 = { x: number; y: number; z: number }
+
+/** A placement's real size (m): its own `sizeM` override (a resized piece), else the kit size × scale. */
+export function placementSize(p: { assetId: string; scale?: number; sizeM?: Size3 }): Size3 {
+  if (p.sizeM) return p.sizeM
+  const s = kitAsset(p.assetId)?.sizeM ?? { x: 1, y: 1, z: 1 }
+  const k = p.scale ?? 1
+  return { x: s.x * k, y: s.y * k, z: s.z * k }
+}
+
+/**
+ * Size limits (m) for pieces that may be stretched: procedural builders that rebuild properly at any size within
+ * them (a wider wardrobe gets another door, not stretched handles). null = move / turn only (every scanned glTF).
+ * ponytail: empty until the wave-12 resize work fills it per asset.
+ */
+const RESIZE: Record<string, { min: Size3; max: Size3 }> = {}
+export const resizeLimits = (assetId: string): { min: Size3; max: Size3 } | null => RESIZE[assetId] ?? null
