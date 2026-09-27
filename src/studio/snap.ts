@@ -112,6 +112,31 @@ export function snapPoint(
   return { ...q, kind, angleDeg: o.from ? deg(o.from, q) : undefined, guides }
 }
 
+/**
+ * A rigid move of `pts` (a dragged wall's ends, already moved with the cursor): each end snaps as
+ * snapPoint does with the same tolerance. A corner/wall snap of either end wins (the smaller shift);
+ * else each axis takes its smallest guide shift. Returns that shift and the Snap to draw.
+ */
+export function snapMove(pts: (Pt & { id: Id })[], unit: Unit, tolM: number): { dx: number; dy: number; snap: Snap } {
+  const exclude = pts.map((p) => p.id)
+  const snaps = pts.map((p) => ({ p, s: snapPoint(p, unit, { tolM, exclude }) }))
+  const hard = snaps
+    .filter(({ s }) => s.kind === 'vertex' || s.kind === 'wall')
+    .sort((m, n) => Math.hypot(m.s.x - m.p.x, m.s.y - m.p.y) - Math.hypot(n.s.x - n.p.x, n.s.y - n.p.y))[0]
+  if (hard) return { dx: hard.s.x - hard.p.x, dy: hard.s.y - hard.p.y, snap: hard.s }
+  const best: Record<'x' | 'y', { d: number; g: Snap['guides'][number] } | undefined> = { x: undefined, y: undefined }
+  for (const { p, s } of snaps) {
+    for (const g of s.guides) {
+      const d = g.at - p[g.axis]
+      if (!best[g.axis] || Math.abs(d) < Math.abs(best[g.axis]!.d)) best[g.axis] = { d, g }
+    }
+  }
+  const dx = best.x?.d ?? 0
+  const dy = best.y?.d ?? 0
+  const guides = [best.x?.g, best.y?.g].filter((g) => g !== undefined)
+  return { dx, dy, snap: { x: pts[0].x + dx, y: pts[0].y + dy, kind: best.x ? 'aligned x' : best.y ? 'aligned y' : 'free', guides } }
+}
+
 export type OpeningSnap = 'corner' | OpeningKind | null
 
 /**

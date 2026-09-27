@@ -83,6 +83,8 @@ export type Action =
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
   | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
+  /** mid-drag (no history of its own): wall `wallId`'s end at `vertexId` moves to a new corner `newId` at the same spot */
+  | { type: 'detach'; wallId: Id; vertexId: Id; newId: Id }
   | { type: 'move-vertex'; id: Id; x: number; y: number }
   | { type: 'drag-begin' }
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
@@ -158,11 +160,26 @@ const wallKey = (a: Id, b: Id): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
 /** Two corners closer than this after a move are one corner (under half an inch). */
 export const MERGE_M = 0.01
 
+/** Corner `id` becomes corner `to`: its walls rewire, a wall collapsed to nothing goes, a doubled wall keeps the one with openings. */
+function rewire(u: Unit, id: Id, to: Id): Unit {
+  const end = (x: Id) => (x === id ? to : x)
+  const seen = new Map<string, Wall>()
+  for (const w0 of u.walls) {
+    const w = w0.a === id || w0.b === id ? { ...w0, a: end(w0.a), b: end(w0.b) } : w0
+    if (w.a === w.b) continue
+    const key = wallKey(w.a, w.b)
+    const dup = seen.get(key)
+    if (!dup || w.openings.length > dup.openings.length) seen.set(key, w)
+  }
+  return { ...u, walls: u.walls.flatMap((w0) => { const w = seen.get(wallKey(end(w0.a), end(w0.b))); return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
+}
+
 /**
- * A corner moved onto another corner becomes that corner: its walls rewire, a wall collapsed to
- * nothing goes, a doubled wall keeps the one with openings. Without this a drag or nudge onto a
+ * A corner moved onto another corner becomes that corner (rewire). Without this a drag or nudge onto a
  * neighbour left a zero-length wall plus a corner "not joined to anything" sitting on the same spot.
- * Returns the same unit when nothing merged; `merged` maps each removed corner to its survivor.
+ * A corner dropped on a wall mid-span (not one of its own) T-splits that wall at the corner, as the Wall
+ * tool does — otherwise it only looked joined ("Walls cross", and a detached end stayed "not joined").
+ * Returns the same unit when nothing changed; `merged` maps each removed corner to its survivor.
  */
 export function mergeCoincident(unit: Unit, ids: Id[], tolM = MERGE_M): { unit: Unit; merged: Map<Id, Id> } {
   const merged = new Map<Id, Id>()
@@ -171,19 +188,100 @@ export function mergeCoincident(unit: Unit, ids: Id[], tolM = MERGE_M): { unit: 
     const v = u.vertices.find((x) => x.id === id)
     if (!v) continue
     const other = u.vertices.find((x) => x.id !== id && Math.hypot(x.x - v.x, x.y - v.y) <= tolM)
-    if (!other) continue
-    const seen = new Map<string, Wall>()
-    for (const w0 of u.walls) {
-      const w = w0.a === id || w0.b === id ? { ...w0, a: w0.a === id ? other.id : w0.a, b: w0.b === id ? other.id : w0.b } : w0
-      if (w.a === w.b) continue
-      const key = wallKey(w.a, w.b)
-      const dup = seen.get(key)
-      if (!dup || w.openings.length > dup.openings.length) seen.set(key, w)
+    if (other) {
+      u = rewire(u, id, other.id)
+      merged.set(id, other.id)
+      continue
     }
-    u = { ...u, walls: u.walls.flatMap((w0) => { const w = seen.get(wallKey(w0.a === id ? other.id : w0.a, w0.b === id ? other.id : w0.b)); return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
-    merged.set(id, other.id)
+    const nw = nearestWall(v, { vertices: u.vertices, walls: u.walls.filter((w) => w.a !== id && w.b !== id) })
+    if (nw && nw.distanceM <= tolM && nw.t > 0 && nw.t < 1) {
+      const r = splitWall(u, nw.wall, nw.t) // an opening on that spot: left unjoined, the Issues list says so
+      if (typeof r !== 'string') u = rewire(r.unit, r.vertexId, id)
+    }
   }
-  return merged.size ? { unit: u, merged } : { unit, merged }
+  return { unit: u, merged }
+}
+
+/** Unit direction of wall `w` leaving its end `from`. */
+function dirFrom(u: Unit, w: Wall, from: Id): Pt {
+  const f = wallFrame(w, u.vertices)
+  return w.a === from ? f.dir : { x: -f.dir.x, y: -f.dir.y }
+}
+/** Two directions within ~0.6° of the same line. */
+const parallel = (p: Pt, q: Pt): boolean => Math.abs(p.x * q.y - p.y * q.x) < 0.01
+
+/**
+ * Corner moves that give wall `wallId` the length `lengthM` by sliding its end `endId` along the wall
+ * (the other end is the anchor). Keep-neighbours-straight rule: every OTHER wall at that end that is
+ * not collinear with the edited wall moves rigidly with it — together with the straight run it belongs
+ * to (walls collinear with it, chained through their shared corners, e.g. a long wall split at
+ * T-junctions), all shifted by the same delta. So a rectangle stays a rectangle (the lobby's long wall
+ * shifts 10" instead of tilting). A wall collinear with the edited one just stretches. Walls attached
+ * to a moved run but not part of it keep their far end: they stretch when parallel to the delta,
+ * otherwise tilt as before — nothing cascades further. Openings keep offsets (the drag clamps them).
+ */
+export function lengthMoves(u: Unit, wallId: Id, endId: Id, lengthM: number): { id: Id; x: number; y: number }[] {
+  const w = u.walls.find((x) => x.id === wallId)
+  if (!w || (w.a !== endId && w.b !== endId)) return []
+  const anchorId = w.a === endId ? w.b : w.a
+  const anchor = vertexById(u.vertices, anchorId)
+  const end = vertexById(u.vertices, endId)
+  const L = Math.hypot(end.x - anchor.x, end.y - anchor.y)
+  if (L <= EPS) return []
+  const dir = { x: (end.x - anchor.x) / L, y: (end.y - anchor.y) / L }
+  const moved = new Set([endId])
+  for (const n of u.walls) {
+    if (n.id === w.id || (n.a !== endId && n.b !== endId)) continue
+    const nd = dirFrom(u, n, endId)
+    if (parallel(nd, dir)) continue
+    // walk the straight run away from the end
+    let at = endId
+    let cur: Wall | undefined = n
+    while (cur) {
+      const next: Id = cur.a === at ? cur.b : cur.a
+      if (next === anchorId || moved.has(next)) break
+      moved.add(next)
+      at = next
+      const prev: Wall = cur
+      cur = u.walls.find((x) => x.id !== prev.id && (x.a === next || x.b === next) && parallel(dirFrom(u, x, next), nd) && dirFrom(u, x, next).x * nd.x + dirFrom(u, x, next).y * nd.y > 0)
+    }
+  }
+  const dx = dir.x * (lengthM - L)
+  const dy = dir.y * (lengthM - L)
+  return [...moved].map((id) => {
+    const v = vertexById(u.vertices, id)
+    return { id, x: v.x + dx, y: v.y + dy }
+  })
+}
+
+/**
+ * After a delete: a corner (of `ids`) left joining exactly two collinear walls of the same thickness and
+ * height is merged away — the two become one wall (the first keeps its id and direction), openings keep
+ * their positions (a door on a reversed piece gets its hinge and swing mirrored so it stays put).
+ */
+function healStraight(unit: Unit, ids: Id[]): Unit {
+  let u = unit
+  for (const id of ids) {
+    const at = u.walls.filter((w) => w.a === id || w.b === id)
+    if (at.length !== 2) continue
+    const [w1, w2] = at
+    const d1 = dirFrom(u, w1, id)
+    const d2 = dirFrom(u, w2, id)
+    if (!parallel(d1, d2) || d1.x * d2.x + d1.y * d2.y > 0 || w1.thicknessM !== w2.thicknessM || w1.heightM !== w2.heightM) continue
+    const far2 = w2.a === id ? w2.b : w2.a
+    const c: Wall = { ...w1, a: w1.a === id ? far2 : w1.a, b: w1.b === id ? far2 : w1.b }
+    if (u.walls.some((w) => w.id !== w1.id && w.id !== w2.id && wallKey(w.a, w.b) === wallKey(c.a, c.b))) continue
+    const vs = u.vertices.filter((v) => v.id !== id)
+    const fc = wallFrame(c, vs)
+    const openings = [w1, w2].flatMap((w) => {
+      const f = wallFrame(w, u.vertices)
+      const s0 = (f.origin.x - fc.origin.x) * fc.dir.x + (f.origin.y - fc.origin.y) * fc.dir.y
+      if (f.dir.x * fc.dir.x + f.dir.y * fc.dir.y > 0) return w.openings.map((o) => ({ ...o, offsetM: s0 + o.offsetM }))
+      return w.openings.map((o): Opening => ({ ...o, offsetM: s0 - o.offsetM - o.widthM, hinge: o.hinge === 'b' ? 'a' : 'b', swing: o.swing === 'out' ? 'in' : 'out' }))
+    })
+    u = { ...u, vertices: vs, walls: u.walls.flatMap((w) => (w.id === w1.id ? [{ ...c, openings }] : w.id === w2.id ? [] : [w])) }
+  }
+  return u
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
@@ -463,11 +561,17 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (w.id === a.id ? { ...w, ...a.patch } : w)) })
     }
     case 'set-wall-length': {
+      // a is the anchor, b slides; the walls at b stay straight (lengthMoves), openings clamp
       const wall = s.unit.walls.find((w) => w.id === a.id)
       if (!wall || a.lengthM <= 0 || a.lengthM > 100) return s
-      const f = wallFrame(wall, s.unit.vertices)
-      const b = { x: f.origin.x + f.dir.x * a.lengthM, y: f.origin.y + f.dir.y * a.lengthM }
-      return commit(s, { ...s.unit, vertices: s.unit.vertices.map((v) => (v.id === wall.b ? { ...v, ...b } : v)) })
+      return commit(s, reducer(s, { type: 'drag', vertices: lengthMoves(s.unit, wall.id, wall.b, a.lengthM) }).unit)
+    }
+    case 'detach': {
+      // Alt-drag: the wall's end leaves the shared corner for a new corner of its own; drag-begin holds the undo entry
+      const v = s.unit.vertices.find((x) => x.id === a.vertexId)
+      if (!v || degree(s.unit, v.id) < 2) return s
+      const walls = s.unit.walls.map((w) => (w.id === a.wallId ? { ...w, a: w.a === v.id ? a.newId : w.a, b: w.b === v.id ? a.newId : w.b } : w))
+      return { ...s, unit: { ...s.unit, vertices: [...s.unit.vertices, { id: a.newId, x: v.x, y: v.y }], walls }, selection: [a.wallId] }
     }
     case 'move-vertex':
       return commit(s, { ...s.unit, vertices: s.unit.vertices.map((v) => (v.id === a.id ? { ...v, x: a.x, y: a.y } : v)) })
@@ -519,10 +623,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const walls = s.unit.walls
         .filter((w) => !ids.has(w.id) && !ids.has(w.a) && !ids.has(w.b))
         .map((w) => ({ ...w, openings: w.openings.filter((o) => !ids.has(o.id)) }))
+      // corners joined to nothing go; a corner left between two collinear walls joins them into one
       const used = new Set(walls.flatMap((w) => [w.a, w.b]))
       const vertices = s.unit.vertices.filter((v) => !ids.has(v.id) && used.has(v.id))
       const roomLabels = s.unit.roomLabels.filter((l) => !ids.has(l.id))
-      return commit(s, { ...s.unit, walls, vertices, roomLabels }, { selection: [], chain: null })
+      const touched = s.unit.walls.filter((w) => !walls.some((x) => x.id === w.id)).flatMap((w) => [w.a, w.b])
+      return commit(s, healStraight({ ...s.unit, walls, vertices, roomLabels }, touched), { selection: [], chain: null })
     }
 
     case 'add-label': {
