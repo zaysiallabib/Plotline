@@ -3,7 +3,8 @@ import { deriveRooms, roomAt, roomInnerPolygon, validate, wallFrame } from '../c
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
-import { AI_KEY, EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, openReview, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { AI_KEY, openReview, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
 import { snapMove, snapOpeningOffset } from './snap'
@@ -844,7 +845,7 @@ describe('auto-trace import and its review list', () => {
   const plan = { dataUrl: 'data:,', naturalW: 2000, naturalH: 1400, name: 'plan-sheltech-l2.jpg' }
   const traced = () => {
     const before = run(traceRect(), { type: 'set-plan-image', image: plan })
-    return { before, after: reducer(before, { type: 'auto-trace', result: mockTraceResult() }) }
+    return { before, after: studioReducer(before, { type: 'auto-trace', result: mockTraceResult() }) }
   }
 
   it('the result becomes the unit in ONE undo step; undo restores the hand trace, redo the auto-trace', () => {
@@ -856,10 +857,10 @@ describe('auto-trace import and its review list', () => {
     expect(after.planImage).toBe(plan) // the image on screen stays
     expect(after.history.past).toHaveLength(before.history.past.length + 1)
     expect(after.history.future).toEqual([])
-    const undone = reducer(after, { type: 'undo' })
+    const undone = studioReducer(after, { type: 'undo' })
     expect(undone.unit).toBe(before.unit)
     expect(openReview(undone)).toEqual([]) // the list belongs to the trace
-    const redone = reducer(undone, { type: 'redo' })
+    const redone = studioReducer(undone, { type: 'redo' })
     expect(redone.unit).toBe(after.unit)
     expect(openReview(redone)).toHaveLength(3)
   })
@@ -867,10 +868,10 @@ describe('auto-trace import and its review list', () => {
   it('stays editable like a hand trace: a corner moves, a label renames, both undo', () => {
     const { after } = traced()
     const v = after.unit.vertices[0]
-    const moved = reducer(after, { type: 'move-vertex', id: v.id, x: v.x + 0.1, y: v.y })
+    const moved = studioReducer(after, { type: 'move-vertex', id: v.id, x: v.x + 0.1, y: v.y })
     expect(moved.unit.vertices[0].x).toBeCloseTo(v.x + 0.1)
     const l = after.unit.roomLabels[0]
-    const renamed = reducer(moved, { type: 'update-label', id: l.id, patch: { name: 'Guest bed' } })
+    const renamed = studioReducer(moved, { type: 'update-label', id: l.id, patch: { name: 'Guest bed' } })
     expect(renamed.unit.roomLabels[0].name).toBe('Guest bed')
     expect(run(renamed, { type: 'undo' }, { type: 'undo' }).unit).toBe(after.unit)
   })
@@ -878,20 +879,20 @@ describe('auto-trace import and its review list', () => {
   it('"looks right" dismisses a row; editing its entity closes a row; rows without an entity stay', () => {
     const { after } = traced()
     expect(openReview(after).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
-    const dismissed = reducer(after, { type: 'dismiss-review', id: 'r-open' })
+    const dismissed = studioReducer(after, { type: 'dismiss-review', id: 'r-open' })
     expect(openReview(dismissed).map((i) => i.id)).toEqual(['r-size', 'r-scale'])
     const living = after.unit.roomLabels.find((l) => l.name === 'Living')!
-    const edited = reducer(dismissed, { type: 'update-label', id: living.id, patch: { printedSize: "14'-4\" × 16'-0\"" } })
+    const edited = studioReducer(dismissed, { type: 'update-label', id: living.id, patch: { printedSize: "14'-4\" × 16'-0\"" } })
     expect(openReview(edited).map((i) => i.id)).toEqual(['r-scale'])
-    expect(openReview(reducer(edited, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-scale']) // undo re-opens it
+    expect(openReview(studioReducer(edited, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-scale']) // undo re-opens it
   })
 
   it('the review list survives a draft restore; load-unit and reset drop it', () => {
     const { after } = traced()
     const d: Draft = { unit: after.unit, planImage: after.planImage, view: after.view, timer: after.timer, review: after.review }
-    expect(openReview(reducer(initialState(), { type: 'restore', draft: d }))).toHaveLength(3)
-    expect(reducer(after, { type: 'load-unit', unit: typeA as unknown as Unit }).review).toBeNull()
-    expect(reducer(after, { type: 'reset' }).review).toBeNull()
+    expect(openReview(studioReducer(initialState(), { type: 'restore', draft: d }))).toHaveLength(3)
+    expect(studioReducer(after, { type: 'load-unit', unit: typeA as unknown as Unit }).review).toBeUndefined()
+    expect(studioReducer(after, { type: 'reset' }).review).toBeUndefined()
   })
 
   it('the Studio key field writes the key the AI reader reads', () => expect(AI_KEY).toBe(AI_KEY_STORAGE))

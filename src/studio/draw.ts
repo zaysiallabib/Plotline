@@ -97,6 +97,8 @@ export interface DrawArgs {
   frame: Frame
   /** F tool: the layer (unit.furniture or the preset layout); while dragging, the candidate layout (red when refused) */
   furniture?: { pieces: FurniturePlacement[]; drag: Move | null }
+  /** a review row's spot (plan m), ringed */
+  mark?: Pt | null
 }
 
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
@@ -350,6 +352,16 @@ export function draw(a: DrawArgs): void {
     }
   }
   if (a.furniture) labelFurniture(ctx, a, sel, toScreen)
+
+  if (a.mark) {
+    const p = toScreen(a.mark)
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = 2
+    ctx.setLineDash([])
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, 22, 0, Math.PI * 2)
+    ctx.stroke()
+  }
 
   if (state.tool === 'scale' && a.scaleStart && a.hover) {
     const p0 = { x: a.scaleStart.x * zoom + panX, y: a.scaleStart.y * zoom + panY }

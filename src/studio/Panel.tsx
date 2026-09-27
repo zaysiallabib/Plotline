@@ -3,7 +3,23 @@ import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
-import { EXTERIOR_M, PARTITION_M, findEntity, type Action, type StudioIssue, type StudioState } from './model'
+import { EXTERIOR_M, PARTITION_M, findEntity, type StudioIssue, type StudioState } from './model'
+import { AI_KEY, openReview, type Review, type StudioAction as Action } from './review'
+import type { AutoTraceStats, ReviewItem } from '../trace/types'
+
+/** icon + what the icon means, per review kind */
+const REVIEW_ICON: Record<ReviewItem['kind'], [string, string]> = {
+  'size-mismatch': ['↔', 'Size differs from the printed size'],
+  unclosed: ['⊐', 'Outline not closed'],
+  unlabelled: ['?', 'Room has no name'],
+  'opening-guess': ['⌒', 'Opening kind is a guess'],
+  'low-confidence': ['≈', 'Not sure about this'],
+  scale: ['⤢', 'Scale'],
+  other: ['•', 'Check this'],
+}
+const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
+const statsLine = (s: AutoTraceStats) =>
+  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]} · ${(s.ms / 1000).toFixed(1)} s`
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
 export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² · ${Math.round(sqmToSqft(sqm))} sqft`
@@ -43,6 +59,7 @@ interface Props {
   rooms: Room[]
   issues: StudioIssue[]
   onFocusIssue: (i: StudioIssue) => void
+  onFocusReview: (r: Review['items'][number]) => void
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
@@ -50,9 +67,11 @@ interface Props {
   onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusReview, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
+  const review = openReview(state)
+  const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
     ['1 Load plan', !!state.planImage],
@@ -103,6 +122,37 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, pieces, pl
             ))}
           </select>
           {placing && <p className="muted">Click the plan to put it there · R turns · Esc cancels</p>}
+        </section>
+      )}
+      {state.planImage && (
+        <section>
+          <h3>{review.length ? `Check these (${review.length})` : 'Check these'}</h3>
+          {stats && <p className="muted">{statsLine(stats)}</p>}
+          {review.length ? (
+            <ul className="issues">
+              {review.map((r) => (
+                <li key={r.id} className="find" title="Click to find it" onClick={() => onFocusReview(r)}>
+                  <span className="rk" title={REVIEW_ICON[r.kind][1]}>
+                    {REVIEW_ICON[r.kind][0]}
+                  </span>
+                  <span className="grow">{r.message}</span>
+                  <button
+                    className="link"
+                    title="Take it off the list"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      dispatch({ type: 'dismiss-review', id: r.id })
+                    }}
+                  >
+                    Looks right
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">{stats ? 'Nothing left to check.' : 'Auto-trace (top bar) lists here what it is unsure of.'}</p>
+          )}
+          <AiKeyField />
         </section>
       )}
       <section>
@@ -328,6 +378,39 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
         </button>
       </div>
     </div>
+  )
+}
+
+/** The optional Gemini key for auto-trace's backup label reader: this browser's localStorage only, never exported. */
+function AiKeyField() {
+  const [key, setKey] = useState(() => {
+    try {
+      return localStorage.getItem(AI_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const save = (v: string) => {
+    setKey(v)
+    try {
+      if (v.trim()) localStorage.setItem(AI_KEY, v.trim())
+      else localStorage.removeItem(AI_KEY)
+    } catch {
+      /* storage blocked: the key lives until reload */
+    }
+  }
+  return (
+    <details className="ai-key">
+      <summary>AI helper (optional){key ? ' · key set' : ''}</summary>
+      <input type="password" placeholder="Gemini API key" value={key} onChange={(e) => save(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+      <p className="muted">
+        Only used to re-read labels the built-in reader could not; free keys work (
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+          get one
+        </a>
+        ). Stays in this browser.
+      </p>
+    </details>
   )
 }
 

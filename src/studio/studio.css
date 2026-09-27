@@ -162,3 +162,26 @@
 .statusbar .centre { flex: 1; text-align: center; color: var(--ink); }
 .topbar .staff-badge { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 1px 8px; white-space: nowrap; cursor: help; }
 .panel select { width: 100%; }
+.trace-card {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border-radius: var(--radius);
+  background: rgba(23, 24, 26, 0.72);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+.trace-card progress { width: 140px; accent-color: var(--accent); }
+.issues .grow { flex: 1; }
+.issues .rk { width: 14px; flex: none; text-align: center; color: var(--accent); }
+.ai-key { margin-top: 10px; }
+.ai-key summary { cursor: pointer; color: var(--muted); }
+.ai-key input { width: 100%; margin-top: 6px; }
+.ai-key a { color: var(--accent); }
