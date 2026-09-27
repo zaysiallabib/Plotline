@@ -223,24 +223,52 @@ function intoRoom(gray: Gray, t: number, p: Px, dirs: Px[], len: number, move: n
 }
 const DIRS8: Px[] = Array.from({ length: 8 }, (_, i) => ({ x: Math.cos((i * Math.PI) / 4), y: Math.sin((i * Math.PI) / 4) }))
 
-/** Holes (closed white regions) of the thin-line layer → fixture symbols. k = px per metre. */
-export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] {
+export interface HoleShape extends Shape {
+  /** long / short side in metres, the outline added back */
+  m1: number
+  m2: number
+  /** own pixels / filled pixels: 1 = nothing drawn inside (a pillow), < 1 = lines or text inside (a burner ring, a label box) */
+  solid: number
+}
+
+/**
+ * Closed white regions ("holes") of the thin-line layer (lines ≥ lineDelta darker than their surroundings, plus dark ink),
+ * sized between a 7 cm dot and 4 m², with their shape measures. `ringInk(s)`: share of dark ink just outside the hole
+ * (a glyph counter's thick stroke ≈ 1, a fixture's thin outline ≤ ~0.4). `nearWall(p, r)`: thick dark ink within r px.
+ */
+export function holeShapes(gray: Gray, k: number, lineDelta = 40) {
   const { width: w, height: h } = gray
   const t = inkThreshold(gray, {})
   const thinInk = lineInk(gray, lineDelta, 2)
-  const free = new Uint8Array(w * h)
-  for (let i = 0; i < free.length; i++) free[i] = thinInk[i] || gray.data[i] <= t ? 0 : 1
+  const free = new Uint8Array(w * h), dark = new Uint8Array(w * h)
+  for (let i = 0; i < free.length; i++) {
+    dark[i] = gray.data[i] <= t ? 1 : 0
+    free[i] = thinInk[i] || dark[i] ? 0 : 1
+  }
   const { lab, comps } = components(free, w, h)
   const nMin = Math.max(8, 0.004 * k * k), nMax = 4 * k * k
-  const S: (Shape & { m1: number; m2: number })[] = []
+  const shapes: HoleShape[] = []
   comps.forEach((c, i) => {
     if (c.edge || c.n < nMin || c.n > nMax) return
     const s = shapeOf(c, i + 1, lab, w)
-    S.push({ ...s, m1: (s.L1 + LINE_PX) / k, m2: (s.L2 + LINE_PX) / k })
+    shapes.push({ ...s, m1: (s.L1 + LINE_PX) / k, m2: (s.L2 + LINE_PX) / k, solid: c.n / s.n })
   })
-  const isRect = (s: (typeof S)[0]) => s.fill >= 0.88
+  const depth = edt(dark, w, h)
+  const nearWall = (p: Px, r: number) => {
+    for (let y = Math.max(0, Math.round(p.y - r)); y <= Math.min(h - 1, Math.round(p.y + r)); y++)
+      for (let x = Math.max(0, Math.round(p.x - r)); x <= Math.min(w - 1, Math.round(p.x + r)); x++)
+        if (depth[y * w + x] >= 1.9 && (x - p.x) ** 2 + (y - p.y) ** 2 <= r * r) return true
+    return false
+  }
+  return { shapes, t, nearWall, ringInk: (s: Shape) => ringInk(comps[s.id - 1], s.id, lab, w, h, (i) => dark[i] === 1, 4) }
+}
+
+/** Holes of the thin-line layer → fixture symbols. k = px per metre. */
+export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] {
+  const { shapes: S, t, nearWall, ringInk } = holeShapes(gray, k, lineDelta)
+  const isRect = (s: HoleShape) => s.fill >= 0.88
   // a glyph's counter ("O", "0" in a big title) is ringed by a thick dark stroke; a fixture by a thin line
-  const thinRing = (s: (typeof S)[0]) => ringInk(comps[s.id - 1], s.id, lab, w, h, (i) => gray.data[i] <= t, 4) <= 0.55
+  const thinRing = (s: HoleShape) => ringInk(s) <= 0.55
   const rects = S.filter(isRect)
   const out: RoomHint[] = []
   const frame = (o: Shape, p: Px) => {
@@ -273,8 +301,46 @@ export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] 
       const { a, b } = frame(o, s.c)
       return a <= 0.25 * o.L1 && b <= (o.L2 + s.L2) / 2 + 0.12 * k
     })
-  const ovals = S.filter((s) => s.m1 >= 0.25 && s.m1 <= 0.72 && s.m2 >= 0.17 && s.m2 <= 0.52 && s.m1 / s.m2 >= 1.18 && s.m1 / s.m2 <= 2.1 && s.fill >= 0.68 && s.fill <= 0.9 && s.out <= 0.08 && thinRing(s) && !atTable(s.c) && !chairLike(s))
-  const circles = S.filter((s) => s.m1 / s.m2 < 1.18 && (s.m1 + s.m2) / 2 >= 0.13 && (s.m1 + s.m2) / 2 <= 0.36 && s.fill >= 0.66 && s.fill <= 0.9 && s.out <= 0.06 && thinRing(s))
+  const circles = S.filter((s) => s.L2 >= 6 && s.m1 / s.m2 < 1.25 && (s.m1 + s.m2) / 2 >= 0.13 && (s.m1 + s.m2) / 2 <= 0.36 && s.fill >= 0.66 && s.fill <= 0.9 && s.out <= 0.06 && thinRing(s))
+
+  // hob: 2–4 similar burner circles close together (lamps on bedside tables are ~2 m apart)
+  const parent = circles.map((_, i) => i)
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+  for (let i = 0; i < circles.length; i++)
+    for (let j = i + 1; j < circles.length; j++) {
+      const a = circles[i], b = circles[j]
+      const da = (a.L1 + a.L2) / 2, db = (b.L1 + b.L2) / 2, d = dist(a.c, b.c)
+      if (Math.max(da, db) / Math.min(da, db) <= 1.4 && d >= 1.5 * Math.max(da, db) && d <= Math.min(3.5 * Math.max(da, db), 0.75 * k)) parent[find(i)] = find(j)
+    }
+  const groups = new Map<number, HoleShape[]>()
+  circles.forEach((c, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), c]))
+  const hobs: Px[] = []
+  for (const g of groups.values()) {
+    if (g.length < 2 || g.length > 4) continue
+    const xs = g.map((c) => c.c.x), ys = g.map((c) => c.c.y)
+    if (Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) > 0.8 * k) continue
+    const c = { x: xs.reduce((a, b) => a + b) / g.length, y: ys.reduce((a, b) => a + b) / g.length }
+    hobs.push(c)
+    out.push({ at: intoRoom(gray, t, c, DIRS8, 0.9 * k, 0.35 * k), kind: 'kitchen', source: 'fixture', what: 'stove', conf: 0.7 })
+  }
+
+  // double kitchen sink: two alike bowls sharing a divider, on a counter against a wall, nothing alike beside them
+  const bowls = S.filter((s) => s.m1 >= 0.22 && s.m1 <= 0.5 && s.m2 >= 0.18 && s.m2 <= 0.45 && s.m1 / s.m2 < 1.5 && s.fill >= 0.75 && thinRing(s) && !atTable(s.c) && nearWall(s.c, 0.7 * k))
+  const sinkBowl = new Set<HoleShape>()
+  for (let i = 0; i < bowls.length; i++)
+    for (let j = i + 1; j < bowls.length; j++) {
+      const a = bowls[i], b = bowls[j], L = (a.L1 + b.L1) / 2, d = dist(a.c, b.c)
+      if (sinkBowl.has(a) || sinkBowl.has(b) || Math.max(a.n, b.n) / Math.min(a.n, b.n) > 1.5 || d < 0.8 * L || d > L + 0.12 * k) continue
+      const c = { x: (a.c.x + b.c.x) / 2, y: (a.c.y + b.c.y) / 2 }
+      // a drainboard may make three; a row of chairs makes more
+      if (bowls.filter((q) => q !== a && q !== b && Math.max(q.n, a.n) / Math.min(q.n, a.n) <= 1.5 && dist(q.c, c) < 2 * L).length > 1) continue
+      sinkBowl.add(a), sinkBowl.add(b)
+      hobs.push(c)
+      out.push({ at: intoRoom(gray, t, c, DIRS8, 0.9 * k, 0.35 * k), kind: 'kitchen', source: 'fixture', what: 'sink', conf: 0.6 })
+    }
+
+  // a WC stands and a basin hangs against a wall; a sink beside a hob is the kitchen's
+  const ovals = S.filter((s) => s.L2 >= 5 && s.m1 >= 0.25 && s.m1 <= 0.72 && s.m2 >= 0.17 && s.m2 <= 0.52 && s.m1 / s.m2 >= 1.18 && s.m1 / s.m2 <= 2.1 && s.fill >= 0.68 && s.fill <= 0.9 && s.out <= 0.08 && thinRing(s) && !atTable(s.c) && !chairLike(s) && nearWall(s.c, 0.75 * k) && !sinkBowl.has(s) && !hobs.some((p) => dist(p, s.c) < 1.2 * k))
   for (const o of ovals) {
     const u = { x: Math.cos(o.ang), y: Math.sin(o.ang) }
     const tank = rects.find((r) => {
@@ -290,27 +356,9 @@ export function fixtureHints(gray: Gray, k: number, lineDelta = 40): RoomHint[] 
     out.push({ at, kind: 'bath', source: 'fixture', what: tank ? 'wc' : 'wc/basin', conf: tank ? 0.8 : 0.6 })
   }
 
-  // hob: 2–4 similar burner circles close together (lamps on bedside tables are ~2 m apart)
-  const parent = circles.map((_, i) => i)
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
-  for (let i = 0; i < circles.length; i++)
-    for (let j = i + 1; j < circles.length; j++) {
-      const a = circles[i], b = circles[j]
-      const da = (a.L1 + a.L2) / 2, db = (b.L1 + b.L2) / 2, d = dist(a.c, b.c)
-      if (Math.max(da, db) / Math.min(da, db) <= 1.4 && d >= 1.1 * Math.max(da, db) && d <= Math.min(3.5 * Math.max(da, db), 0.75 * k)) parent[find(i)] = find(j)
-    }
-  const groups = new Map<number, (typeof circles)[0][]>()
-  circles.forEach((c, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), c]))
-  for (const g of groups.values()) {
-    if (g.length < 2 || g.length > 4) continue
-    const xs = g.map((c) => c.c.x), ys = g.map((c) => c.c.y)
-    if (Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) > 0.8 * k) continue
-    const c = { x: xs.reduce((a, b) => a + b) / g.length, y: ys.reduce((a, b) => a + b) / g.length }
-    out.push({ at: intoRoom(gray, t, c, DIRS8, 0.9 * k, 0.35 * k), kind: 'kitchen', source: 'fixture', what: 'stove', conf: 0.7 })
-  }
-
-  // bed: exactly two pillow boxes end to end along the headboard; the hint goes onto the bed, away from the wall
-  const pillows = rects.filter((r) => r.m1 >= 0.35 && r.m1 <= 0.9 && r.m2 >= 0.18 && r.m2 <= 0.55 && r.m1 / r.m2 >= 1.3 && r.m1 / r.m2 <= 3)
+  // bed: exactly two pillow boxes end to end along the headboard; the hint goes onto the bed, away from the wall.
+  // Pillows are empty inside (a label box — F.H.B, E-SHAFT — holds text).
+  const pillows = rects.filter((r) => r.solid >= 0.92 && r.m1 >= 0.35 && r.m1 <= 0.9 && r.m2 >= 0.18 && r.m2 <= 0.55 && r.m1 / r.m2 >= 1.3 && r.m1 / r.m2 <= 3)
   const alike = (a: (typeof S)[0], b: (typeof S)[0]) => Math.max(a.L1, b.L1) / Math.min(a.L1, b.L1) <= 1.3 && Math.max(a.L2, b.L2) / Math.min(a.L2, b.L2) <= 1.3 && angDiff(a.ang, b.ang) < 0.15
   const usedP = new Set<number>()
   for (let i = 0; i < pillows.length; i++)

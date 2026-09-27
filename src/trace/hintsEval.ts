@@ -54,7 +54,7 @@ export function scoreHints(hints: RoomHint[], unit: Unit, xf: TruthXf): HintScor
     const ok = same(h.kind, r.kind, false), okLoose = same(h.kind, r.kind, true)
     if (ok) s.correct++
     if (okLoose) (s.correctLoose++), hit.add(r.id)
-    else s.wrong.push(`${what}→${h.kind} in ${r.name} (${r.kind})`)
+    else s.wrong.push(`${what}→${h.kind} in ${r.name} (${r.kind}) @${Math.round(h.at.x)},${Math.round(h.at.y)}`)
     const bw = (s.byWhat[what] ??= [0, 0])
     bw[1]++
     if (okLoose) bw[0]++

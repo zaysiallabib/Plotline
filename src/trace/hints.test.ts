@@ -3,7 +3,8 @@ import { describe, expect, test } from 'vitest'
 import type { Unit } from '../core/types'
 import { registerTruth } from './eval'
 import { loadPgm, loadPpm, SHOTS, writePng } from './evalio'
-import { findHints, propagateByColour, type Rgba } from './hints'
+import { estimatePxPerM, findHints, propagateByColour, type Rgba } from './hints'
+import { traceWalls } from './walls'
 import { formatHintScores, scoreHints, truthRooms, type HintScore } from './hintsEval'
 import type { Gray, HintTrace, Px } from './types'
 
@@ -164,22 +165,24 @@ function overlay(path: string, rgb: Rgba, t: HintTrace, marks?: HintScore['marks
 
 describe.skipIf(!haveFixtures)('findHints vs the hand-traced units (eval report)', () => {
   test('hint precision + room coverage per unit; colour propagation (half the labels read)', () => {
-    const rows: HintScore[] = []
+    const rows: HintScore[] = [], rowsK: HintScore[] = []
     const prop: string[] = []
-    const seen = new Map<string, { g: Gray; rgb: Rgba; t: HintTrace; ms: number }>()
+    const seen = new Map<string, { g: Gray; rgb: Rgba; t: HintTrace; tK: HintTrace; ms: number; k: number }>()
     for (const u of Object.values(units)) {
       const f = stem(u)
       let run = seen.get(f)
       if (!run) {
         const g = loadPgm(f + '.pgm')!, rgb = loadPpm(f + '.ppm')!
         const t0 = performance.now()
-        const t = findHints(g, rgb)
-        run = { g, rgb, t, ms: performance.now() - t0 }
+        const t = findHints(g, rgb) // scale estimated from the walls
+        const ms = performance.now() - t0
+        run = { g, rgb, t, tK: findHints(g, rgb, { pxPerM: u.planImage!.pxPerM }), ms, k: estimatePxPerM(traceWalls(g)) }
         seen.set(f, run)
       }
       const xf = registerTruth(run.g, u)
       const s = scoreHints(run.t.hints, u, xf)
       rows.push(s)
+      rowsK.push(scoreHints(run.tK.hints, u, xf))
       const rooms = truthRooms(u, xf)
       // colour propagation: label every other room, predict the rest, then swap
       let made = 0, right = 0
@@ -191,22 +194,23 @@ describe.skipIf(!haveFixtures)('findHints vs the hand-traced units (eval report)
           if (h.kind === rooms[i].kind) right++
         })
       }
-      prop.push(`${u.id.padEnd(22)} colour propagation: ${right}/${made} right over ${rooms.length} rooms (${run.t.clusters?.length ?? 0} fill clusters, ${run.t.fills?.length ?? 0} fills) ${Math.round(run.ms)} ms`)
+      prop.push(`${u.id.padEnd(22)} scale est ${run.k.toFixed(1)} vs true ${u.planImage!.pxPerM} px/m; colour propagation: ${right}/${made} right over ${rooms.length} rooms (${run.t.clusters?.length ?? 0} fill clusters, ${run.t.fills?.length ?? 0} fills) ${Math.round(run.ms)} ms`)
       if (s.wrong.length) prop.push(`   wrong: ${s.wrong.join('; ')}`)
       if (SHOTS) overlay(`${SHOTS}/eval-${u.id}.png`, run.rgb, run.t, s.marks, rooms)
       expect(run.ms, u.id).toBeLessThan(8000)
     }
-    console.log(`\n${formatHintScores(rows)}\n${prop.join('\n')}\n`)
+    console.log(`\nscale estimated from the walls:\n${formatHintScores(rows)}\nscale known (the solver's pxPerM):\n${formatHintScores(rowsK)}\n${prop.join('\n')}\n`)
   }, 180000)
 
   test('smoke: Banani Level 2-6 and DMD Level 3-14 (no truth — judge the overlays)', () => {
-    for (const f of ['Sheltech_Banani__Level_2-6', 'Sheltech_dmd__Level_3-14']) {
+    // scale read off the drawings by hand (Banani Bed-02 12'-4" ≈ 97 px, DMD Bed-2 ≈ 15' ≈ 83 px); the wall estimate is shown beside
+    for (const [f, k] of [['Sheltech_Banani__Level_2-6', 26], ['Sheltech_dmd__Level_3-14', 18]] as const) {
       const g = loadPgm(FIX + f + '.pgm'), rgb = loadPpm(FIX + f + '.ppm')
       if (!g || !rgb) continue
       const t0 = performance.now()
-      const t = findHints(g, rgb)
+      const t = findHints(g, rgb, { pxPerM: k })
       const by = t.hints.reduce<Record<string, number>>((m, h) => ((m[h.what ?? h.source] = (m[h.what ?? h.source] ?? 0) + 1), m), {})
-      console.log(`${f}: ${t.hints.length} hints ${JSON.stringify(by)}; ${t.clusters?.length} fill clusters ${JSON.stringify(t.clusters)}; ${Math.round(performance.now() - t0)} ms`)
+      console.log(`${f} (k ${k}, wall estimate ${estimatePxPerM(traceWalls(g)).toFixed(1)}): ${t.hints.length} hints ${JSON.stringify(by)}; ${t.clusters?.length} fill clusters ${JSON.stringify(t.clusters)}; ${Math.round(performance.now() - t0)} ms`)
       if (SHOTS) overlay(`${SHOTS}/smoke-${f}.png`, rgb, t)
     }
   }, 120000)
