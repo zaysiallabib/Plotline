@@ -15,8 +15,9 @@ import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wal
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, openingDefaults } from '../studio/model'
 import { edt, lineInk, threshold } from './raster'
 import { normaliseName } from './text'
+import { trackThin } from './track'
 import { circle3, inkThreshold, segPieces, traceWalls, wallHalfWidth } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallTrace } from './types'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -55,6 +56,10 @@ export const KNOBS = {
   sizeTolM: 2 * 0.0254,
   /** faces bigger than this are never part of a flat (courtyards / the space between other flats) */
   maxRoomSqm: 90,
+  /** follow thin strokes from dangling wall ends (track.ts) */
+  track: true,
+  /** a tracked line that closes a face smaller than this is furniture, not a wall */
+  trackLoopSqm: 3,
   /** a click in an open area floods at most this much floor to find the rooms around it */
   openFloodSqm: 50,
   /** faces smaller than this are closing artefacts: merged into a neighbour */
@@ -80,7 +85,7 @@ interface Seg {
   conf: number
   op?: Op
   /** closed by the solver, not seen as a wall: 'ink' = along a thin line, 'gap' = over paper */
-  bridge?: 'ink' | 'gap' | 'guess'
+  bridge?: 'ink' | 'gap' | 'guess' | 'track'
 }
 
 export interface SolveInputs {
@@ -616,7 +621,7 @@ interface Draft {
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: { weak: Uint8Array; line: Uint8Array }): Draft {
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: { weak: Uint8Array; line: Uint8Array }, tracked: WallSeg[] = []): Draft {
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
   const segs: Seg[] = []
@@ -648,6 +653,8 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
       }
     segs.push({ a: toM(o.a), b: toM(o.b), th, conf: o.conf, bridge: 'guess', op: { kind: o.kind, conf: o.conf, hinge: o.hingeAt && toM(o.hingeAt), swingTo: o.swingTo && toM(o.swingTo) } })
   }
+  // thin walls the tracker followed (track.ts): weaker than drawn walls, marked so the small-loop rule can drop them
+  for (const t of tracked) segs.push({ a: toM(t.a), b: toM(t.b), th: PARTITION_M, conf: t.conf, bridge: 'track' })
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
   const { weak, line } = ink ?? inkMasks(gray)
   // glazing / window bands / railings: double thin lines between two walls, too faint for the wall stage
@@ -671,7 +678,16 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   let noded = pruneSpurs(node(segs, 0.02))
   noded = noded.filter((s) => d2(s.a, s.b) > 0.01)
   const g = toUnitGraph(noded)
-  const m = mergeCollinear(g.vertices, g.walls)
+  let m = mergeCollinear(g.vertices, g.walls)
+  // a tracked line closing a small loop with the walls is furniture (bed, wardrobe, counter): take it out again
+  for (let it = 0; it < 50 && tracked.length; it++) {
+    const rooms = deriveRooms({ vertices: m.vertices, walls: m.walls, roomLabels: [] })
+    const bad = new Set(rooms.filter((r) => r.areaSqm < KNOBS.trackLoopSqm).flatMap((r) => r.wallIds))
+    const walls = m.walls.filter((w) => !(w.bridge === 'track' && bad.has(w.id)))
+    if (walls.length === m.walls.length) break
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    m = mergeCollinear(m.vertices.filter((v) => used.has(v.id)), walls)
+  }
   const unit: Unit = {
     id: newId(),
     projectName: '',
@@ -976,10 +992,14 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   } catch {
     hints = null // a hint stage failure never costs the draft
   }
+  // follow thin strokes from dangling wall ends; never inside a drawn fixture (bed, table, wc, basin, stove, sink)
+  const FIX_R: Record<string, number> = { bed: 1, table: 0.8, dining: 0.8, wc: 0.4, basin: 0.4, sink: 0.4, stove: 0.4 }
+  const avoid = (hints?.hints ?? []).filter((h) => h.source === 'fixture').map((h) => ({ at: h.at, r: (FIX_R[h.what ?? ''] ?? 0.5) * pxPerM }))
+  const tracked = KNOBS.track ? trackThin(plan, trace, { pxPerM, avoid, delta: KNOBS.lineDelta }) : []
   opts.onProgress?.('graph', 0.7)
 
   // ── graph at the final scale, the flat, then its own origin
-  draft = buildGraph(trace, pxPerM, origin0, gray, ink)
+  draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked)
   const pick = pickM(pxPerM, origin0)
   const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM))
   let flat = picked.rooms
@@ -1155,7 +1175,10 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   for (const w of u.walls) for (const v of [w.a, w.b]) deg.set(v, (deg.get(v) ?? 0) + 1)
   for (const [vid, n] of deg) if (n === 1) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
   for (const w of draft.walls)
-    if (w.bridge === 'ink' && !w.openings.length && d2(V.get(w.a)!, V.get(w.b)!) >= 0.6) {
+    if (w.bridge === 'track' && d2(V.get(w.a)!, V.get(w.b)!) >= 3) {
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'low-confidence', message: 'Wall followed along a long thin line — railing, glass or furniture?', entityId: w.id })
+    } else if (w.bridge === 'ink' && !w.openings.length && d2(V.get(w.a)!, V.get(w.b)!) >= 0.6) {
       const a = V.get(w.a)!, b = V.get(w.b)!
       review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'low-confidence', message: 'Closed along a thin line — railing, glass or a window?', entityId: w.id })
     }
