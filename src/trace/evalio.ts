@@ -20,14 +20,17 @@ export function loadPgm(path: string): Gray | null {
 
 type RGB = [number, number, number]
 
-/** The plan faded to 45 % contrast, then (optional) hand-traced walls in green, traced walls in red, openings by kind. */
+/**
+ * The plan faded to 45 % contrast; hand-traced walls green, traced walls red (arcs orange, ends black ticks); openings:
+ * door blue (+ a thin hinge→swing line), window cyan, passage/unknown magenta; eval misses brown, extras yellow.
+ */
 export function writeOverlay(
   path: string,
   g: Gray,
   trace: WallTrace,
   truth?: { a: Px; b: Px }[],
   crop?: { x: number; y: number; w: number; h: number; s?: number },
-  /** eval misses (hand-traced wall no trace covers → blue dots) and extras (trace on no hand-traced wall → yellow) */
+  /** eval misses (hand-traced wall no trace covers → brown dots) and extras (trace on no hand-traced wall → yellow) */
   marks?: { missed: Px[]; extra: Px[] },
 ): void {
   const c = crop ?? { x: 0, y: 0, w: g.width, h: g.height }
@@ -74,7 +77,7 @@ export function writeOverlay(
     const q = to(p)
     for (let dy = -1 - lw; dy <= 1 + lw; dy++) for (let dx = -1 - lw; dx <= 1 + lw; dx++) dot(q.x + dx, q.y + dy, col)
   }
-  for (const p of marks?.missed ?? []) blob(p, [30, 90, 255])
+  for (const p of marks?.missed ?? []) blob(p, [130, 70, 0])
   for (const p of marks?.extra ?? []) blob(p, [240, 200, 0])
   writePng(path, W, H, px)
 }
