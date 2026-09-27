@@ -99,12 +99,31 @@ export interface RoomHint {
   /** e.g. 'wc', 'bed', 'stove' — for the review list / debugging */
   what?: string
   conf: number
+  /** source 'green': the blob's area in px² — extension (hints agent, wave 16) */
+  areaPx?: number
+}
+
+/**
+ * One flat-coloured region of the sheet (a room's floor fill) — extension (hints agent, wave 16). Regions of one
+ * `cluster` share a fill colour (Banani: grey = bedrooms, blue = wet rooms); hints.ts `propagateByColour` turns the
+ * labels the OCR did read into kinds for the unread rooms of the same fill.
+ */
+export interface ColourFill {
+  /** a point well inside the region (its deepest pixel) */
+  at: Px
+  areaPx: number
+  rgb: [number, number, number]
+  cluster: number
 }
 
 export interface HintTrace {
   hints: RoomHint[]
   /** plan-up → north, degrees clockwise, when a north arrow was found */
   northDeg?: number
+  /** flat colour fills, when a colour image was given — extension (hints agent, wave 16) */
+  fills?: ColourFill[]
+  /** colour of each fill cluster (index = ColourFill.cluster) — extension (hints agent, wave 16) */
+  clusters?: [number, number, number][]
 }
 
 /** One thing the human should look at (the 5 %). `at` is in PLAN metres (the draft's space). */
