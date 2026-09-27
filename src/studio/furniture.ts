@@ -1,14 +1,15 @@
 /**
  * Studio furniture layer (tool F): grid-snapped move / 90° rotate of the unit's placements. Pure, Vitest-covered.
- * The founder's one-time exception to "no placement editor": 1 ft grid, wall snap, refuse overlaps and door /
- * entrance zones. Nothing is added, deleted, scaled or placed free.
+ * The founder's exception to "no placement editor" (CLAUDE.md, 2026-09-27): 1 ft grid, wall snap, refuse overlaps and
+ * door / entrance zones; code-built pieces also resize within their kit limits. Nothing is added, deleted or placed free.
+ * The viewer's Arrange mode (src/viewer/arrange.ts) runs the same rules.
  *
- * An empty `unit.furniture` IS the preset layout (the viewer runs `furnish` then, ViewerApp); the first move writes
- * the whole array so it is exported, "Reset all" empties it again. Reuses src/furnish (read-only).
+ * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
+ * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
 import { pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { heightRange, kitAsset, type KitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
 import { GAP, doorClearZones, footprint, furnish, quadsOverlap } from '../furnish/presets'
 
 export const GRID_M = 0.3048
@@ -22,14 +23,39 @@ const FLUSH_M = 0.005
  */
 const ENTRY_DEPTH_M = 1.2
 
-export const piecesOf = (unit: Unit, rooms: Room[]): FurniturePlacement[] => (unit.furniture.length ? unit.furniture : furnish(unit, rooms))
+/**
+ * The layout a unit shows (Studio tool F, viewer, Arrange, Preview 3D): its stored pieces whose room still exists, plus
+ * the presets of every room with none stored (drawn or labelled after the first move). Tombstones (`removed`) stay: a room
+ * emptied by deleting keeps nothing. The stored array itself when nothing changes.
+ */
+export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
+  if (!unit.furniture.length) return furnish(unit, rooms)
+  const live = new Set(rooms.map((r) => r.id))
+  const stored = unit.furniture.every((p) => live.has(p.roomId)) ? unit.furniture : unit.furniture.filter((p) => live.has(p.roomId))
+  const has = new Set(stored.map((p) => p.roomId))
+  // ponytail: runs every preset when some room has no pieces (a shaft, a lobby); cache per unit if the Studio ever lags
+  const added = rooms.some((r) => !has.has(r.id)) ? furnish(unit, rooms).filter((p) => !has.has(p.roomId)) : []
+  return added.length ? [...stored, ...added] : stored
+}
+
+/** The stored pieces without room `roomId`'s when those are still exactly its presets (none moved, turned, resized or deleted): a relabelled room re-furnishes. */
+export function forgetPresets(unit: Unit, rooms: Room[], roomId: Id): FurniturePlacement[] {
+  const mine = unit.furniture.filter((p) => p.roomId === roomId)
+  if (!mine.length) return unit.furniture
+  const preset = new Set(furnish(unit, rooms).filter((p) => p.roomId === roomId).map((p) => JSON.stringify(p)))
+  return mine.every((p) => preset.has(JSON.stringify(p))) ? unit.furniture.filter((p) => p.roomId !== roomId) : unit.furniture
+}
+
+/** Piece `id` and what rests on it, deleted: tombstones, so the room stays as left and is never re-furnished. */
+export function deletePiece(pieces: FurniturePlacement[], id: Id): FurniturePlacement[] {
+  const p = pieces.find((x) => x.id === id)
+  if (!p || p.removed) return pieces
+  const gone = new Set([id, ...riders(pieces, p).map((r) => r.id)])
+  return pieces.map((x) => (gone.has(x.id) ? { ...x, removed: true as const } : x))
+}
 
 const assetOf = (p: FurniturePlacement): KitAsset | undefined => kitAsset(p.assetId)
-const sizeOf = (p: FurniturePlacement) => {
-  const s = assetOf(p)?.sizeM ?? { x: 1, z: 1 }
-  const k = p.scale ?? 1
-  return { x: s.x * k, z: s.z * k }
-}
+const sizeOf = placementSize
 export const pieceQuad = (p: FurniturePlacement): Pt[] => footprint(p, p.rotationDeg, sizeOf(p))
 /** "Queen bed, upholstered" → "Queen bed" */
 export const pieceLabel = (p: FurniturePlacement): string => (assetOf(p)?.label ?? p.assetId).split(/[,(]/)[0].trim()
@@ -44,7 +70,8 @@ export function layerOf(p: FurniturePlacement): 0 | 1 | 2 | 3 {
 }
 const band = (p: FurniturePlacement): [number, number] => {
   const a = assetOf(p)
-  return a ? heightRange(a) : [0, 1]
+  const y0 = a ? heightRange(a)[0] : 0
+  return [y0, y0 + sizeOf(p).y]
 }
 
 /** Rugs only stop rugs, ceiling fixtures stop nothing, the rest when their heights overlap (a frame above a sofa is fine), as presets. */
@@ -60,7 +87,7 @@ function blocks(p: FurniturePlacement, o: FurniturePlacement): boolean {
 /** The piece under a plan point: floor pieces before lifted, ceiling and rugs; the smaller first. */
 export function pieceAt(pieces: FurniturePlacement[], m: Pt): FurniturePlacement | null {
   const area = (p: FurniturePlacement) => sizeOf(p).x * sizeOf(p).z
-  const under = pieces.filter((p) => pointInPolygon(m, pieceQuad(p)))
+  const under = pieces.filter((p) => !p.removed && pointInPolygon(m, pieceQuad(p)))
   return under.sort((a, b) => layerOf(a) - layerOf(b) || area(a) - area(b))[0] ?? null
 }
 
@@ -69,7 +96,7 @@ function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurnitureP
   if (layerOf(p) !== 0) return []
   const q = pieceQuad(p)
   const top = band(p)[1]
-  return pieces.filter((o) => o.id !== p.id && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q))
+  return pieces.filter((o) => o.id !== p.id && !o.removed && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q))
 }
 
 /** The first door in walls[] order is the entrance: its span, ENTRY_DEPTH_M out from both faces of its wall. */
@@ -134,7 +161,7 @@ export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement
     if (entry && quadsOverlap(entry, q)) return 'Blocks the entrance'
     if (doorClearZones(room, unit).some((z) => quadsOverlap(z, q))) return 'Blocks the door'
   }
-  const hit = others.find((o) => blocks(p, o) && quadsOverlap(pieceQuad(o), q))
+  const hit = others.find((o) => !o.removed && blocks(p, o) && quadsOverlap(pieceQuad(o), q))
   if (!hit) return null
   const name = pieceLabel(hit)
   return `Overlaps the ${name[0].toLowerCase()}${name.slice(1)}`
@@ -149,6 +176,12 @@ export interface Move {
   snapped: 'wall' | 'grid' | null
   /** why the drop is refused; the caller keeps the old layout */
   error: string | null
+}
+
+/** Kitchen, bath and wall-hung pieces (the AC too: ceiling layer, hung on a wall) go flush; furniture keeps GAP. */
+function isFitted(p: FurniturePlacement): boolean {
+  const a = assetOf(p)
+  return layerOf(p) === 1 || (a?.mountY ?? 0) > 0.05 || a?.category === 'kitchen' || a?.category === 'bath'
 }
 
 const norm = (deg: number) => ((Math.round(deg * 1000) / 1000) % 360 + 360) % 360
@@ -167,9 +200,7 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
   const room = roomAt(to, rooms, unit)
   let snapped: Move['snapped'] = grid ? 'grid' : null
   if (room) {
-    const a = assetOf(p)
-    const fitted = layerOf(p) === 1 || a?.category === 'kitchen' || a?.category === 'bath'
-    const r = snapToWalls(c, footprint(to, rot, size), rot, size, roomInnerPolygon(room, unit), fitted ? FLUSH_M : GAP)
+    const r = snapToWalls(c, footprint(to, rot, size), rot, size, roomInnerPolygon(room, unit), isFitted(p) ? FLUSH_M : GAP)
     c = r.c
     if (r.snapped) snapped = 'wall'
   }
@@ -187,4 +218,41 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
   // ponytail: riders are not checked themselves; they sit inside the piece's footprint, add checks if a rider ever overhangs
   const error = whyNot(unit, room, pieces.filter((x) => !moved.has(x.id)), piece)
   return { furniture: pieces.map((x) => moved.get(x.id) ?? x), piece, ids: [...moved.keys()], snapped, error }
+}
+
+/** Resized sizes land on this step (m). */
+export const SIZE_STEP_M = 0.05
+/** The axes a piece may be resized along (x width, y height, z depth): none for scans; min = max fixes an axis. */
+export function resizeAxes(assetId: string): ('x' | 'y' | 'z')[] {
+  const l = resizeLimits(assetId)
+  return l ? (['x', 'z', 'y'] as const).filter((k) => l.max[k] > l.min[k]) : []
+}
+
+/**
+ * Piece `id` resized to `size` (m; x width, y height, z depth): each axis on the 5 cm step, clamped to its kit limits
+ * (resizeLimits; null = move / turn only → returns null). `grow` picks the face that moves per footprint axis (+1 the
+ * +x / front face, −1 the other, 0 both halves): the opposite face stays. Then flush to a wall it nears, and refused on
+ * the same rules as a move. What rests on it stays put.
+ */
+export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, size: { x: number; y: number; z: number }, grow = { x: 0, z: 1 }): Move | null {
+  const p = pieces.find((x) => x.id === id)
+  const lim = p && resizeLimits(p.assetId)
+  if (!p || !lim) return null
+  const fit = (k: 'x' | 'y' | 'z') => Math.min(lim.max[k], Math.max(lim.min[k], Math.round(size[k] / SIZE_STEP_M) / (1 / SIZE_STEP_M))) // n / 20: 0.6, not 0.6000000000000001
+  const s = { x: fit('x'), y: fit('y'), z: fit('z') }
+  const old = sizeOf(p)
+  const t = (p.rotationDeg * Math.PI) / 180
+  const du = (grow.x * (s.x - old.x)) / 2 // along local +x
+  const dv = (grow.z * (s.z - old.z)) / 2 // along local +y, the front
+  let c = { x: p.x + du * Math.cos(t) - dv * Math.sin(t), y: p.y + du * Math.sin(t) + dv * Math.cos(t) }
+  const room = rooms.find((r) => r.id === p.roomId) ?? null
+  let snapped: Move['snapped'] = null
+  if (room) {
+    const r = snapToWalls(c, footprint(c, p.rotationDeg, s), p.rotationDeg, s, roomInnerPolygon(room, unit), isFitted(p) ? FLUSH_M : GAP)
+    c = r.c
+    if (r.snapped) snapped = 'wall'
+  }
+  const piece = { ...p, x: c.x, y: c.y, sizeM: s }
+  const error = whyNot(unit, room, pieces.filter((x) => x.id !== id), piece)
+  return { furniture: pieces.map((x) => (x.id === id ? piece : x)), piece, ids: [id], snapped, error }
 }

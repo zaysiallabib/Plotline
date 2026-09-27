@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveRooms, formatFeetInches, nearestWall, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, piecesOf, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, layoutFor, type Move } from './furniture'
 import {
   entityPoints,
   formatTimer,
@@ -23,6 +23,7 @@ import {
 } from './model'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapPoint } from './snap'
+import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
@@ -77,6 +78,15 @@ interface Note {
 /** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt }
 
+// the Studio's user is staff: the viewer shows them its Arrange button from now on (arrange.ts isStaff)
+try {
+  localStorage.setItem(STAFF_KEY, '1')
+} catch {
+  /* storage blocked */
+}
+/** The furniture layout arranged in this browser (viewer Arrange / tool F, `plotline.layout.<unit id>`) replaces the unit's own. */
+const withLayout = <U extends Draft['unit']>(u: U): U => ({ ...u, furniture: readLayout(u.id) ?? u.furniture })
+
 /**
  * `/studio?unit=<stem|id>` (the viewer's "Edit plan"): open that unit from src/data/units instead of the draft.
  * Asks first when the draft holds anything but that unit untouched; drops the param so a reload keeps the edits.
@@ -85,8 +95,9 @@ type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map
 const EDIT = ((): Draft['unit'] | null => {
   const q = new URLSearchParams(location.search).get('unit')
   const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Draft['unit']>
-  const u = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
-  if (!u) return null
+  const found = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
+  if (!found) return null
+  const u = withLayout(found) // as the viewer shows it: with the layout arranged in this browser
   let d: { unit?: unknown } | null = null
   try {
     d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')
@@ -109,7 +120,7 @@ function init(): StudioState {
       const parsed = JSON.parse(raw) as unknown
       // a full Draft, a bare `{ unit }`, or a Unit JSON pasted straight in — all restore
       const d = (isUnit(parsed) ? { unit: parsed } : parsed) as Partial<Draft> | null
-      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: d as Draft })
+      if (d && isUnit(d.unit)) return reducer(s, { type: 'restore', draft: { ...(d as Draft), unit: withLayout(d.unit) } })
     }
   } catch {
     /* corrupt draft: start clean */
@@ -167,7 +178,7 @@ export default function StudioApp() {
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
-  const pieces = useMemo(() => (tool === 'furniture' ? piecesOf(unit, rooms) : null), [tool, unit, rooms])
+  const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
   piecesRef.current = pieces
   const [furnDrag, setFurnDrag] = useState<Move | null>(null)
@@ -276,6 +287,14 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, saveDraft])
+  // shared layout: every furniture change (move, turn, resize, delete, reset, a relabel's re-furnish, their undo, an
+  // import) is what the viewer shows after a reload; loading one is not a change
+  const lastFurniture = useRef(unit.furniture)
+  useEffect(() => {
+    if (lastFurniture.current === unit.furniture) return
+    lastFurniture.current = unit.furniture
+    saveLayout(unit.id, unit.furniture) // "Reset all" (empty) removes it
+  }, [unit.furniture, unit.id])
 
   // ----- timer
   useEffect(() => {
@@ -731,7 +750,7 @@ export default function StudioApp() {
       }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
-      // furniture tool: arrows move the selected piece one grid square, R turns it; Delete / T / H never touch a piece
+      // furniture tool: arrows move the selected piece one grid square, R turns it, Delete / Backspace deletes it; T / H never touch a piece
       if (st.tool === 'furniture') {
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
@@ -740,7 +759,8 @@ export default function StudioApp() {
           return
         }
         if (e.key === 'r' || e.key === 'R') return p && dispatch({ type: 'rotate-piece', id: p.id })
-        if (['Delete', 't', 'T', 'h', 'H'].includes(e.key)) return
+        if (e.key === 'Delete' || e.key === 'Backspace') return p && dispatch({ type: 'delete-piece', id: p.id })
+        if (['t', 'T', 'h', 'H'].includes(e.key)) return
       }
       if (arrow) {
         e.preventDefault() // never scroll the page or the panel

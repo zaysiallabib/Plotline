@@ -8,6 +8,15 @@ export function encodeConfig(cfg: Configuration): string {
     .replace(/=+$/, '')
 }
 
+/**
+ * The buyer link: this route, the floor if one was picked in the Building view (`?floor=`), the finishes. Nothing else
+ * from the address, so a staff `?staff=1` never reaches a buyer.
+ */
+export function shareUrl(loc: { origin: string; pathname: string; search: string }, floor: number | undefined, cfg: Configuration): string {
+  const f = new URLSearchParams(loc.search).get('floor') ? `floor=${floor}&` : ''
+  return `${loc.origin}${loc.pathname}?${f}c=${encodeConfig(cfg)}`
+}
+
 /** Unknown slot/option ids are dropped silently (spec §3.7). */
 export function decodeConfig(s: string | null, slots: FinishSlot[]): Configuration {
   if (!s) return {}

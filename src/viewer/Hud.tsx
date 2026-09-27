@@ -26,6 +26,9 @@ interface Props {
   onShare: () => void
   /** opens this unit in the Studio, new tab */
   onEditPlan: () => void
+  /** staff only (arrange.ts isStaff): toggles Arrange; null hides the button (every buyer link) */
+  onArrange: (() => void) | null
+  arranging: boolean
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
@@ -89,6 +92,11 @@ export default function Hud(p: Props) {
         <button className="btn" onClick={p.onShare}>
           Share
         </button>
+        {p.onArrange && (
+          <button className={`btn${p.arranging ? ' active' : ''}`} onClick={p.onArrange}>
+            Arrange
+          </button>
+        )}
         <button className="btn" onClick={p.onEditPlan}>
           Edit plan
         </button>
@@ -100,7 +108,13 @@ export default function Hud(p: Props) {
       </div>
 
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
-      {!p.locked && p.mode === 'walk' && <div className="glass hint hint-bottom">Click to look around · WASD to walk · Esc to release</div>}
+      {p.arranging && p.mode !== 'building' ? (
+        <div className="glass hint hint-bottom">
+          Drag a piece to move it · R turns · Ctrl+Z undoes · Esc lets go{p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}
+        </div>
+      ) : (
+        !p.locked && p.mode === 'walk' && <div className="glass hint hint-bottom">Click to look around · WASD to walk · Esc to release</div>
+      )}
       {p.mode === 'building' && p.floors && (
         <>
           <div className="glass floor-picker">

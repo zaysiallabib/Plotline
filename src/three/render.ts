@@ -80,7 +80,8 @@ export class Look {
   /** per unit (context.ts): contact shadows under the furniture; the street (in `indoor`: none around the dollhouse) */
   private contact: THREE.Mesh | null = null
   private street: THREE.Group | null = null
-  private lights: { light: THREE.SpotLight; base: number }[] = []
+  /** `id`: the fixture placement it hangs at */
+  private lights: { light: THREE.SpotLight; base: number; id: string }[] = []
   private readonly fitBox = new THREE.Box3()
   private topY = 3
   private readonly v = new THREE.Vector3()
@@ -198,10 +199,31 @@ export class Look {
       const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2.6, 0.6, 2)
       light.position.set(at.x, lightY, at.y)
       light.target.position.set(at.x, 0, at.y)
-      this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm) })
+      this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm), id: hung.id })
       this.unitGroup.add(light, light.target)
     }
     this.unitGroup.add(slab, this.indoor)
+  }
+
+  /** Arrange moved pieces: the contact shadows are redrawn (one canvas) and each room light follows its fixture. */
+  setFurniture(unit: Unit): void {
+    const c = this.contact
+    if (c) {
+      c.removeFromParent()
+      c.geometry.dispose()
+      const m = c.material as THREE.MeshBasicMaterial
+      m.alphaMap?.dispose()
+      m.dispose()
+    }
+    this.contact = buildContactShadows(unit, core.unitBounds(unit))
+    if (this.contact) this.unitGroup.add(this.contact)
+    for (const { light, id } of this.lights) {
+      const p = unit.furniture.find((x) => x.id === id)
+      if (!p) continue
+      light.position.x = p.x
+      light.position.z = p.y
+      light.target.position.set(p.x, 0, p.y)
+    }
   }
 
   /** Call after the sun has been placed for `hour`. */
