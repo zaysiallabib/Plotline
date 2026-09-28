@@ -57,7 +57,14 @@ export const KNOBS = {
   /** faces bigger than this are never part of a flat (courtyards / the space between other flats) */
   maxRoomSqm: 90,
   /** follow thin strokes from dangling wall ends (track.ts) */
-  track: true,
+  track: false,
+  /**
+   * Founder, 2026-09-28 (scope for this stage): trace only walls + door arcs (+ windows drawn in a wall gap); do not
+   * auto-add partitions, passages or thin-line closures — unclosed spots stay review items. true = the full closer:
+   * bridges over gaps (passages), long bridges along drawn lines, double-line glazing between walls, corner run-ons,
+   * open-plan run-ons, the wall stage's evidence-free passage guesses.
+   */
+  closeGaps: false,
   /** a tracked line that closes a face smaller than this is furniture, not a wall */
   trackLoopSqm: 3,
   /** a click in an open area floods at most this much floor to find the rooms around it */
@@ -645,6 +652,8 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   }
   // opening guesses = bridges carrying the opening; thickness of the wall they continue
   for (const o of trace.openings) {
+    // without the closer: only openings the drawing shows (a door arc, a window's lines), not evidence-free gaps
+    if (!KNOBS.closeGaps && o.kind !== 'door' && o.kind !== 'window') continue
     let th = PARTITION_M, bd = Infinity
     for (const w of trace.walls)
       for (const p of [w.a, w.b]) {
@@ -658,13 +667,14 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
   const { weak, line } = ink ?? inkMasks(gray)
   // glazing / window bands / railings: double thin lines between two walls, too faint for the wall stage
-  if (Math.abs(th0) < (2 * Math.PI) / 180)
+  if (KNOBS.closeGaps && Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'ink', op: { kind: 'window', conf: 0.4 } })
   snapAxes(segs, th0)
   joinEnds(segs)
   extendEnds(segs)
   const W = gray.width, H = gray.height
-  bridgeGaps(
+  if (KNOBS.closeGaps)
+    bridgeGaps(
     segs,
     (p, q) => inkAlong(weak, W, H, toPx(p), toPx(q)),
     (p, q, th) => {
