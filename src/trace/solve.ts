@@ -862,18 +862,55 @@ export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, gre
  * glazing count; gaps under ~0.8 m are closed first). A flat's growth never enters it.
  */
 export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h: number, pxPerM: number): Uint8Array {
+  // barriers: wall ink, and drawn lines at least 1.2 m long — the dashes of a site boundary or a slab outline (and specks)
+  // are no barrier, else closing the gaps would wall the outside off
   const bar = new Uint8Array(w * h)
-  for (let i = 0; i < bar.length; i++) bar[i] = lines[i] | wallInk[i]
+  for (let i = 0; i < bar.length; i++) bar[i] = wallInk[i]
+  {
+    const seen = new Uint8Array(w * h), comp: number[] = [], minLen = 1.2 * pxPerM
+    for (let s = 0; s < w * h; s++) {
+      if (!lines[s] || seen[s]) continue
+      comp.length = 0
+      comp.push(s)
+      seen[s] = 1
+      let x0 = w, x1 = 0, y0 = h, y1 = 0
+      for (let head = 0; head < comp.length; head++) {
+        const p = comp[head], x = p % w, y = (p - x) / w
+        ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const X = x + dx, Y = y + dy, q = Y * w + X
+            if (X >= 0 && Y >= 0 && X < w && Y < h && lines[q] && !seen[q]) (seen[q] = 1), comp.push(q)
+          }
+      }
+      if (Math.max(x1 - x0, y1 - y0) >= minLen) for (const p of comp) bar[p] = 1
+    }
+  }
   const r = 0.4 * pxPerM
   const closed = dilate(bar, w, h, r)
-  const reach = new Uint8Array(w * h)
+  // paper regions: those touching the sheet border, and the largest one (a sheet with a drawn frame: the paper around
+  // the building lies inside the frame line)
+  const lab = new Int32Array(w * h).fill(-1)
+  const size: number[] = [], border: boolean[] = []
   const queue: number[] = []
-  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) if (!closed[y * w + x]) (reach[y * w + x] = 1), queue.push(y * w + x)
-  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) if (!closed[y * w + x] && !reach[y * w + x]) (reach[y * w + x] = 1), queue.push(y * w + x)
-  for (let head = 0; head < queue.length; head++) {
-    const p = queue[head], x = p % w
-    for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < w * h && !closed[q] && !reach[q]) (reach[q] = 1), queue.push(q)
+  for (let s = 0; s < w * h; s++) {
+    if (closed[s] || lab[s] >= 0) continue
+    const id = size.length
+    let n = 0, edge = false
+    queue.length = 0
+    queue.push(s)
+    lab[s] = id
+    for (let head = 0; head < queue.length; head++) {
+      const p = queue[head], x = p % w
+      n++
+      if (x === 0 || x === w - 1 || p < w || p >= w * (h - 1)) edge = true
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < w * h && !closed[q] && lab[q] < 0) (lab[q] = id), queue.push(q)
+    }
+    size.push(n), border.push(edge)
   }
+  const big = size.indexOf(Math.max(0, ...size))
+  const reach = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) if (lab[i] >= 0 && (border[lab[i]] || lab[i] === big)) reach[i] = 1
   // grow back over the closing margin (not across a line)
   const out = dilate(reach, w, h, r)
   for (let i = 0; i < out.length; i++) if (bar[i]) out[i] = 0
@@ -886,7 +923,7 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
  * Breadth first until nothing is left — or `capSqm` of floor (the printed flat area: what leaks on through an unclosed
  * spot stops there). Returns the flooded cells and every wall the flood touched.
  */
-function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number } {
+function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number, names: { p: Pt; name: string }[] = []): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number } {
   const cell = 0.1
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
   const xs = d.unit.vertices.map((v) => v.x).concat(at.x), ys = d.unit.vertices.map((v) => v.y).concat(at.y)
@@ -931,22 +968,51 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
       }
   if (start < 0) return { inFlood: () => false, touched, sqm: 0 }
   const free = blocked(centre(start)) ? () => true : (i: number) => !blocked(centre(i))
+  const cellOf = (p: Pt) => {
+    const x = Math.floor((p.x - x0) / cell), y = Math.floor((p.y - y0) / cell)
+    return x >= 0 && y >= 0 && x < nx && y < ny ? y * nx + x : -1
+  }
+  const near4 = (i: number) => {
+    const x = i % nx
+    return [x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, i - nx, i + nx < nx * ny ? i + nx : -1]
+  }
+  // pass 1: from the click, breadth first, until nothing is left or the cap
+  const dist = new Int32Array(nx * ny).fill(-1)
   const queue = [start]
   seen[start] = 1
+  dist[start] = 0
   const cap = capSqm / (cell * cell)
   for (let head = 0; head < queue.length && head < cap; head++) {
-    const i = queue[head], x = i % nx
-    for (const j of [x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, i - nx, i + nx]) {
-      if (j < 0 || j >= nx * ny || seen[j]) continue
-      if (grid[j] >= 0) touched.add(d.walls[grid[j]].id)
-      else if (free(j)) (seen[j] = 1), queue.push(j)
-    }
+    const i = queue[head]
+    for (const j of near4(i)) if (j >= 0 && !seen[j] && grid[j] < 0 && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
+  }
+  // pass 2: a name a flat has once, printed twice on that floor — the farther print is the next flat's. The click and
+  // those rivals flood together; every cell goes to the nearest source, the click's share is the flat.
+  const byName = new Map<string, { c: number; d: number }[]>()
+  for (const l of names) {
+    const c = cellOf(l.p)
+    if (c >= 0 && seen[c]) byName.set(l.name, [...(byName.get(l.name) ?? []), { c, d: dist[c] }])
+  }
+  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).filter((c) => c !== start)
+  const own = new Int8Array(nx * ny).fill(-1)
+  const q2 = [start, ...rivals]
+  own[start] = 0
+  for (const r of rivals) own[r] = 1
+  for (let head = 0; head < q2.length; head++) {
+    const i = q2[head]
+    for (const j of near4(i)) if (j >= 0 && seen[j] && own[j] < 0) (own[j] = own[i]), q2.push(j)
+  }
+  let n = 0
+  for (let i = 0; i < nx * ny; i++) {
+    if (own[i] !== 0) continue
+    n++
+    for (const j of near4(i)) if (j >= 0 && grid[j] >= 0) touched.add(d.walls[grid[j]].id)
   }
   const inFlood = (p: Pt) => {
-    const x = Math.floor((p.x - x0) / cell), y = Math.floor((p.y - y0) / cell)
-    return x >= 0 && y >= 0 && x < nx && y < ny && seen[y * nx + x] === 1
+    const c = cellOf(p)
+    return c >= 0 && own[c] === 0
   }
-  return { inFlood, touched, sqm: Math.min(queue.length, cap) * cell * cell }
+  return { inFlood, touched, sqm: n * cell * cell }
 }
 
 
@@ -999,36 +1065,14 @@ function pickFlat(
     return new Set(cost.keys())
   }
   if (at) {
-    // a one-per-flat name printed twice in the region (two LIVINGs, two BED 3s): the far one is the next flat's — every
-    // face fewer rooms away from it than from the click goes with it
-    const split = (rs: Set<Room>, starts: Room[]): Set<Room> => {
-      const faceAt = (p: Pt) => [...rs].filter((r) => pointInPolygon(p, polys.get(r)!)).sort((a, b) => a.areaSqm - b.areaSqm)[0]
-      const byName = new Map<string, Set<Room>>()
-      for (const l of names) {
-        const f = faceAt(l.p)
-        if (f) byName.set(l.name, (byName.get(l.name) ?? new Set()).add(f))
-      }
-      const rivals = [...byName.values()].flatMap((fs) => [...fs].sort((a, b) => d2(a.centroid, at) - d2(b.centroid, at)).slice(1)).filter((r) => !starts.includes(r))
-      if (!rivals.length) return rs
-      const hops = (from: Room[]) => {
-        const h = new Map(from.map((r) => [r, 0]))
-        for (let i = 0, q = [...from]; i < q.length; i++)
-          for (const w of q[i].wallIds) for (const n of byWall.get(w) ?? []) if (rs.has(n) && !h.has(n)) h.set(n, h.get(q[i])! + 1), q.push(n)
-        return h
-      }
-      const hp = hops(starts), hr = hops(rivals)
-      return new Set([...rs].filter((r) => (hp.get(r) ?? Infinity) <= (hr.get(r) ?? Infinity)))
-    }
     // founder rule 3: the floor the flood from the click reaches; every closed face on it, the planters at its edge
     // the printed figure includes walls and a common share: the floor is about areaShare of it
-    const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm)
+    const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm, names)
     const inner = new Map(d.rooms.map((r) => [r, insidePoint(r, d.unit, d.rooms)]))
     const onFloor = d.rooms.filter((r) => ok(r) && fl.inFlood(inner.get(r)!))
     const edge = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && planter(inner.get(r)!) && r.wallIds.some((w) => fl.touched.has(w)))
     if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched }
-    const nearest = onFloor.reduce((b, r) => (d2(r.centroid, at) < d2(b.centroid, at) ? r : b))
-    const starts = onFloor.filter((r) => pointInPolygon(at, polys.get(r)!))
-    const rooms = split(new Set([...onFloor, ...edge]), starts.length ? starts : [nearest])
+    const rooms = new Set([...onFloor, ...edge])
     // open = flooded floor no closed face covers (an open plan, or walls the tracer could not close)
     const covered = onFloor.reduce((t, r) => t + r.areaSqm, 0)
     return { rooms, open: fl.sqm > covered + 2, touched: fl.touched }
