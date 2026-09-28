@@ -292,14 +292,20 @@ function rayHit(segs: Seg[], x: End, reach: number, slack: number, d = outDir(x)
  * `inked` says the wall's thick ink runs on past the end (the founder's "follow the thick wall": the skeleton loses
  * corners where a door swing, a column or erased text touches the wall; the drawing still shows the wall there).
  */
-function extendEnds(segs: Seg[], inked?: (x: End) => number): void {
+function extendEnds(segs: Seg[], inked?: (x: End) => number, solid?: (p: Pt, q: Pt) => number): void {
   const deg = degrees(segs)
   for (const s of segs.slice())
     for (const e of ['a', 'b'] as const) {
       if (deg.get(ekey(s[e])) !== 1 || d2(s.a, s.b) < 0.05) continue
       const x = { s, e }
       const reach = Math.max(KNOBS.extendFrac * s.th + 0.02, inked ? inked(x) + s.th / 2 : 0)
-      const hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
+      let hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
+      // meeting a wall's line up to 0.6 m past its end: only where that stretch is solid wall ink (a column or shaft
+      // block the skeleton lost at a corner) — the stretch is then added as wall
+      if (!hit && solid) {
+        const far = rayHit(segs, x, reach, 0.6)
+        if (far && solid(far.t[far.v < 0 ? 'a' : 'b'], far.X) >= 0.9) hit = far
+      }
       if (!hit) continue
       const old = ekey(s[e])
       if (hit.v < 0 || hit.v > 1) {
@@ -307,6 +313,10 @@ function extendEnds(segs: Seg[], inked?: (x: End) => number): void {
         if (deg.get(ekey(hit.t[te])) === 1) {
           deg.set(ekey(hit.t[te]), 0)
           hit.t[te] = { ...hit.X }
+        } else if (solid && d2(hit.t[te], hit.X) > 0.02 && solid(hit.t[te], hit.X) >= 0.9) {
+          segs.push({ a: { ...hit.t[te] }, b: { ...hit.X }, th: hit.t.th, conf: hit.t.conf })
+          deg.set(ekey(hit.t[te]), (deg.get(ekey(hit.t[te])) ?? 0) + 1)
+          deg.set(ekey(hit.X), (deg.get(ekey(hit.X)) ?? 0) - 1) // the +2 below counts the new piece's end and s's
         } else hit.X = { ...hit.t[te] }
       }
       deg.set(old, 0)
@@ -740,7 +750,12 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const W = gray.width, H = gray.height
   // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
   segs = pruneSpurs(node(segs, 0.02))
-  extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM)
+  const solidInk = (p: Pt, q: Pt) => {
+    let best = 0
+    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(wall, W, H, toPx(p), toPx(q), o))
+    return best
+  }
+  extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM, solidInk)
   const resumed = resumeWalls(segs, (p, q) => {
     let best = 0
     for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
