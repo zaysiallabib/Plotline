@@ -1146,6 +1146,17 @@ function pickFlat(
     const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm, names)
     const inner = new Map(d.rooms.map((r) => [r, insidePoint(r, d.unit, d.rooms)]))
     const onFloor = d.rooms.filter((r) => ok(r) && fl.inFlood(inner.get(r)!))
+    // a closed room the flood could not enter (its door not found, or carried over as wall) but mostly surrounded by
+    // the flat — at least 60 % of its perimeter on walls the flood touched or the flat's rooms own — is the flat's too;
+    // the next flat's room shares one party wall only
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    const len = (wid: string) => d2(V.get(W.get(wid)!.a)!, V.get(W.get(wid)!.b)!)
+    for (let it = 0; it < 3; it++) {
+      const flatWalls = new Set([...fl.touched, ...onFloor.flatMap((r) => r.wallIds)])
+      const more = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && !blocked(inner.get(r)!) && r.areaSqm < 30 && r.wallIds.reduce((t, w) => t + (flatWalls.has(w) ? len(w) : 0), 0) >= 0.6 * r.wallIds.reduce((t, w) => t + len(w), 0))
+      if (!more.length) break
+      onFloor.push(...more)
+    }
     const edge = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && planter(inner.get(r)!) && r.wallIds.some((w) => fl.touched.has(w)))
     if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched }
     const rooms = new Set([...onFloor, ...edge])
