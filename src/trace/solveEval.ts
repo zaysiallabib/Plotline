@@ -1,0 +1,164 @@
+/**
+ * End-to-end eval of the solver (wave 16): a draft Unit against a hand-traced Unit on the same sheet. Both are mapped to
+ * sheet pixels through their own planImage (px = originPx + m × pxPerM), so rooms are matched on the drawing and the
+ * draft's scale error shows up in its areas, not in the matching. Pure.
+ */
+import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
+import type { Room, Unit } from '../core'
+import type { AutoTraceResult, Px } from './types'
+
+export interface SolveReport {
+  unitId: string
+  truthRooms: number
+  draftRooms: number
+  /** truth rooms with a draft room at IoU ≥ 0.6 (one-to-one) */
+  matched: number
+  /** mean |draft − truth| / truth area over matched rooms (draft areas in the draft's own metres: scale error included) */
+  areaErr: number
+  /** draft px/m ÷ truth px/m − 1 */
+  scaleErr: number
+  scaleFrom: string
+  /** matched rooms whose draft kind equals the truth kind */
+  kindOk: number
+  /** share of the truth flat's floor covered by some draft room / draft floor outside every truth room */
+  coverage: number
+  spill: number
+  review: number
+  reviewByKind: Record<string, number>
+  ms: number
+  /** truth openings with a draft opening centre within 0.3 m (one-to-one), of `truthOpenings` (in the draft's area) */
+  openingsFound: number
+  truthOpenings: number
+  /** found openings whose kind (door / window / slider / passage) matches */
+  openingKindOk: number
+  /** draft openings on no truth opening */
+  openingsExtra: number
+  /** each unmatched truth room and why (no face / merged / split / shifted) */
+  missed: string[]
+}
+
+/** Opening centres in sheet px, with kind. */
+function pxOpenings(u: Unit): { c: Px; kind: string }[] {
+  const pi = u.planImage!
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  return u.walls.flatMap((w) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    return w.openings.map((o) => {
+      const t = (o.offsetM + o.widthM / 2) / L
+      return { c: { x: pi.originPx.x + (a.x + (b.x - a.x) * t) * pi.pxPerM, y: pi.originPx.y + (a.y + (b.y - a.y) * t) * pi.pxPerM }, kind: o.kind }
+    })
+  })
+}
+
+/** The biggest truth room's label point in sheet px: the eval's stand-in for the Studio click. */
+export function truthPick(truth: Unit): Px {
+  const pi = truth.planImage!
+  const rooms = deriveRooms(truth).filter((r) => truth.roomLabels.some((l) => l.id === r.id))
+  const big = rooms.reduce((b, r) => (r.areaSqm > b.areaSqm ? r : b))
+  const l = truth.roomLabels.find((x) => x.id === big.id)!
+  return { x: pi.originPx.x + l.x * pi.pxPerM, y: pi.originPx.y + l.y * pi.pxPerM }
+}
+
+function pxRooms(u: Unit): { r: Room; poly: Px[]; box: [number, number, number, number] }[] {
+  const pi = u.planImage!
+  return deriveRooms(u)
+    .map((r) => {
+      const poly = roomPolygon(r, u).map((p) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM }))
+      const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
+      return { r, poly, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as [number, number, number, number] }
+    })
+    .sort((a, b) => a.r.areaSqm - b.r.areaSqm) // smallest containing face wins, as in deriveRooms' labelling
+}
+
+export function scoreSolve(res: AutoTraceResult, truth: Unit): SolveReport {
+  const T = pxRooms(truth), D = pxRooms(res.unit)
+  const k = truth.planImage!.pxPerM
+  const st = Math.max(0.5, 0.05 * k) // 5 cm grid
+  const all = [...T, ...D].map((x) => x.box)
+  const x0 = Math.min(...all.map((b) => b[0])), y0 = Math.min(...all.map((b) => b[1]))
+  const x1 = Math.max(...all.map((b) => b[2])), y1 = Math.max(...all.map((b) => b[3]))
+  const at = (L: typeof T, p: Px) => L.findIndex((x) => p.x >= x.box[0] && p.x <= x.box[2] && p.y >= x.box[1] && p.y <= x.box[3] && pointInPolygon(p, x.poly))
+  const inter = new Map<string, number>()
+  const aT = new Float64Array(T.length), aD = new Float64Array(D.length)
+  let tIn = 0, tCov = 0, dIn = 0, dOut = 0
+  // ponytail: raster IoU on a 5 cm grid — exact polygon clipping if the eval ever needs sub-percent areas
+  for (let y = y0 + st / 2; y < y1; y += st)
+    for (let x = x0 + st / 2; x < x1; x += st) {
+      const p = { x, y }
+      const t = at(T, p), d = at(D, p)
+      if (t >= 0) (aT[t]++, tIn++)
+      if (d >= 0) (aD[d]++, dIn++)
+      if (t >= 0 && d >= 0) {
+        tCov++
+        inter.set(`${t},${d}`, (inter.get(`${t},${d}`) ?? 0) + 1)
+      }
+      if (d >= 0 && t < 0) dOut++
+    }
+  const pairs = [...inter].map(([key, n]) => {
+    const [t, d] = key.split(',').map(Number)
+    return { t, d, iou: n / (aT[t] + aD[d] - n) }
+  })
+  pairs.sort((a, b) => b.iou - a.iou)
+  const usedT = new Set<number>(), usedD = new Set<number>()
+  let matched = 0, areaErr = 0, kindOk = 0
+  for (const p of pairs) {
+    if (p.iou < 0.6 || usedT.has(p.t) || usedD.has(p.d)) continue
+    usedT.add(p.t), usedD.add(p.d)
+    matched++
+    areaErr += Math.abs(D[p.d].r.areaSqm - T[p.t].r.areaSqm) / T[p.t].r.areaSqm
+    if (D[p.d].r.kind === T[p.t].r.kind) kindOk++
+  }
+  // openings: only truth openings inside the draft's bounding box count (the draft may be one part of the flat)
+  const dO = pxOpenings(res.unit)
+  const xs = D.flatMap((x) => [x.box[0], x.box[2]]), ys = D.flatMap((x) => [x.box[1], x.box[3]])
+  const tO = pxOpenings(truth).filter((o) => o.c.x >= Math.min(...xs) && o.c.x <= Math.max(...xs) && o.c.y >= Math.min(...ys) && o.c.y <= Math.max(...ys))
+  const oPairs = tO.flatMap((t, i) => dO.map((d, j) => ({ i, j, dist: Math.hypot(t.c.x - d.c.x, t.c.y - d.c.y) }))).filter((p) => p.dist <= 0.3 * k).sort((p, q) => p.dist - q.dist)
+  const oT = new Set<number>(), oD = new Set<number>()
+  let openingKindOk = 0
+  for (const p of oPairs) {
+    if (oT.has(p.i) || oD.has(p.j)) continue
+    oT.add(p.i), oD.add(p.j)
+    if (tO[p.i].kind === dO[p.j].kind) openingKindOk++
+  }
+  const reviewByKind: Record<string, number> = {}
+  for (const r of res.review) reviewByKind[r.kind] = (reviewByKind[r.kind] ?? 0) + 1
+  return {
+    unitId: truth.id,
+    truthRooms: T.length,
+    draftRooms: D.length,
+    matched,
+    areaErr: matched ? areaErr / matched : NaN,
+    scaleErr: res.stats.pxPerM / k - 1,
+    scaleFrom: res.stats.scaleFrom,
+    kindOk,
+    coverage: tIn ? tCov / tIn : 0,
+    spill: dIn ? dOut / dIn : 0,
+    review: res.review.length,
+    reviewByKind,
+    ms: res.stats.ms,
+    openingsFound: oT.size,
+    truthOpenings: tO.length,
+    openingKindOk,
+    openingsExtra: dO.length - oD.size,
+    missed: T.flatMap((t, i) => {
+      if (usedT.has(i)) return []
+      const best = pairs.find((p) => p.t === i)
+      if (!best) return [`${t.r.name}: no face`]
+      const ratio = aD[best.d] / aT[i]
+      return [`${t.r.name}: IoU ${best.iou.toFixed(2)} with a face ${ratio > 1.3 ? `${ratio.toFixed(1)}× its size (merged)` : ratio < 0.77 ? `${ratio.toFixed(1)}× its size (split)` : 'of its size (shifted)'}`]
+    }),
+  }
+}
+
+export function formatSolveReports(rows: SolveReport[]): string {
+  const pct = (x: number) => (Number.isNaN(x) ? '   -' : `${(x * 100).toFixed(0)}%`).padStart(5)
+  const head = 'unit                  rooms matched   area%  scale%  from       kindOk  cover  spill  opens okKind extra review    ms  review kinds'
+  return [
+    head,
+    ...rows.map(
+      (r) =>
+        `${r.unitId.padEnd(20)} ${`${r.draftRooms}/${r.truthRooms}`.padStart(6)} ${String(r.matched).padStart(7)} ${pct(r.areaErr)}  ${(`${r.scaleErr >= 0 ? '+' : ''}${(r.scaleErr * 100).toFixed(1)}%`).padStart(6)}  ${r.scaleFrom.padEnd(9)} ${`${r.kindOk}/${r.matched}`.padStart(7)} ${pct(r.coverage)} ${pct(r.spill)} ${`${r.openingsFound}/${r.truthOpenings}`.padStart(6)} ${String(r.openingKindOk).padStart(6)} ${String(r.openingsExtra).padStart(5)} ${String(r.review).padStart(6)} ${String(r.ms).padStart(5)}  ${Object.entries(r.reviewByKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
+    ),
+  ].join('\n')
+}

@@ -143,6 +143,11 @@ export interface AutoTraceStats {
   walls: number
   rooms: number
   labelled: number
+  /**
+   * Fixtures found outside wet rooms, plan metres — e.g. the hand-wash basin a Bangladeshi dining area has — for a later
+   * wave to place a piece there. Extension (solver, wave 16).
+   */
+  fixtures?: { what: string; at: { x: number; y: number }; roomId?: string }[]
 }
 
 export interface AutoTraceResult {
@@ -160,4 +165,6 @@ export interface AutoTraceOpts {
   /** backup AI reader for labels the OCR could not read (only when the user configured a key) */
   ai?: AiReader
   onProgress?: (stage: string, fraction: number) => void
+  /** the sheet in colour (ImageData-like, the layout hints.ts findHints / propagateByColour take) — colour fills name rooms — extension (solver, wave 16) */
+  rgb?: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
 }
