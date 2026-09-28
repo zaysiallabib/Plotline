@@ -250,7 +250,7 @@ export function diagnoseMisses(
           else {
             const s = strokeAt(ink, p, n, Math.round(tol))
             why =
-              s >= 1.4 * half ? 'thick wall missed by walls.ts'
+              s >= 1.4 * half ? 'thick ink, no wall traced (mostly foliage over a planter wall)'
               : strokeAt(light, p, n, Math.round(tol)) >= 1.4 * half ? 'light-grey thick wall (lighter than the ink cut)'
               : s > 0 || strokeAt(faint, p, n, Math.round(tol)) ? 'thin line (railing / glass / shaft / thin partition)'
               : 'nothing drawn there'

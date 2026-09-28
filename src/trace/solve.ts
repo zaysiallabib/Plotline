@@ -3,12 +3,17 @@
  * GEOMETRY FIRST (founder, after the honest text scores): walls come from the ink (walls.ts); text (text.ts) and hints
  * (hints.ts, optional) only name rooms, anchor the scale and become size checks.
  *
+ * Founder workflow (2026-09-28), in this order: (1) text first — read, then erase the glyph boxes; (2) plant sections —
+ * planter / green / foliage strips marked (planterMask); (3) start in the middle — the flat grows from the click
+ * (floodFlat) until nothing is left to follow; (4) whatever interrupts a thick wall is ignored and the same wall
+ * resumes (resumeWalls); a door arc = door, glazing in a wall gap = window (+ rule 5 blue glazing, rule 6 stairs).
+ *
  *   traceWalls → scale (printed dims ÷ the face they sit in | area label | the 5" partition prior) → re-trace at that
- *   wall width → metres → axis snap (real angles kept, arcs → chords) → close (join ends, extend onto walls, bridge
- *   facing ends ≤ 1.2 m, every opening guess = a bridge carrying the opening) → node (T / X splits) → prune spurs →
- *   5"/10" thickness → merge collinear (openings re-offset) → deriveRooms → pick the flat (grow from the click across
- *   partitions and doors; one entrance door out, never a second) → labels (text, else hint, else 'unlabelled')
- *   → opening kinds from the rooms on both sides → printed-size checks → validate (every leftover issue = review item).
+ *   wall width → metres → axis snap (real angles kept, arcs → chords) → glazing between walls (grey profile / blue
+ *   line; never stair treads) → join ends → prune hairs → free ends follow their thick ink onto the next wall →
+ *   rule-4 resume → node → merge collinear → deriveRooms → pick the flat (flood from the click; the outside, planters
+ *   and stairs bound it; rival names split it) → labels (text, else hint, else 'unlabelled') → opening kinds from the
+ *   rooms on both sides → printed-size checks → validate (every leftover issue = review item).
  */
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
@@ -1012,7 +1017,9 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
  * Founder rule 3, "start in the middle": flood the open floor from the click on a 0.1 m grid. Walls are barriers except
  * their door / passage / slider spans (a window looks out); `blocked` cells (the outside, planters) are never entered.
  * Breadth first until nothing is left — or `capSqm` of floor (the printed flat area: what leaks on through an unclosed
- * spot stops there). Returns the flooded cells and every wall the flood touched.
+ * spot stops there). Then a one-per-flat name printed twice on that floor seeds a rival at the farther print: click and
+ * rivals flood together, each cell goes to its nearest source, the click's share is the flat. Returns its cells and
+ * every wall they touch.
  */
 function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number, names: { p: Pt; name: string }[] = []): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number } {
   const cell = 0.1
@@ -1108,9 +1115,9 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
 
 
 /**
- * Faces of the flat: from the clicked face, grow across partitions (5") and walls with a door / passage / slider;
- * a door in a 10" wall is the entrance — the face behind it (the lobby) joins, but grows no further. A click in an
- * open area starts from every room around it.
+ * Faces of the flat. With a click: every closed face on the floor the flood from the click reaches (floodFlat), the
+ * closed rooms mostly surrounded by it, and the planters at its edge; `touched` = every wall the flood met (the flat's
+ * unclosed walls go into the draft too). Without a click: the largest region grown across partitions and doors.
  */
 function pickFlat(
   d: Draft,
