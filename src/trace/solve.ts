@@ -92,7 +92,7 @@ interface Seg {
   conf: number
   op?: Op
   /** closed by the solver, not seen as a wall: 'ink' = along a thin line, 'gap' = over paper */
-  bridge?: 'ink' | 'gap' | 'guess' | 'track'
+  bridge?: 'ink' | 'gap' | 'guess' | 'track' | 'glaze'
 }
 
 export interface SolveInputs {
@@ -283,14 +283,35 @@ function rayHit(segs: Seg[], x: End, reach: number, slack: number, d = outDir(x)
   return best
 }
 
-/** Free ends reach onto a wall a thickness or so away (corners and T's the thinning left open). */
-function extendEnds(segs: Seg[]): void {
+/**
+ * Free ends reach onto a wall a thickness or so away (corners and T's the thinning left open) — or farther, as far as
+ * `inked` says the wall's thick ink runs on past the end (the founder's "follow the thick wall": the skeleton loses
+ * corners where a door swing, a column or erased text touches the wall; the drawing still shows the wall there).
+ */
+function extendEnds(segs: Seg[], inked?: (x: End) => number): void {
   const deg = degrees(segs)
   for (const s of segs.slice())
     for (const e of ['a', 'b'] as const) {
       if (deg.get(ekey(s[e])) !== 1 || d2(s.a, s.b) < 0.05) continue
       const x = { s, e }
-      const hit = rayHit(segs, x, KNOBS.extendFrac * s.th + 0.02, KNOBS.extendFrac * s.th)
+      const reach = Math.max(KNOBS.extendFrac * s.th + 0.02, inked ? inked(x) + s.th / 2 : 0)
+      let hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
+      // the same wall run picked up again beyond an unseen stretch: a facing free end straight ahead within the inked run
+      if (!hit && inked && reach > KNOBS.extendFrac * s.th + 0.02) {
+        const p = s[e], d = outDir(x)
+        let best: Seg | null = null, bu = Infinity, be: 'a' | 'b' = 'a'
+        for (const t of segs)
+          for (const te of ['a', 'b'] as const) {
+            if (t === s || deg.get(ekey(t[te])) !== 1 || d2(t.a, t.b) < 0.05) continue
+            const v = sub(t[te], p), u = dot(v, d)
+            if (u > 0.02 && u <= reach && Math.abs(crs(d, v)) <= Math.max(s.th, t.th) / 2 && dot(outDir({ s: t, e: te }), d) < -0.94 && u < bu) (bu = u), (best = t), (be = te)
+          }
+        if (best) {
+          segs.push({ a: { ...p }, b: { ...best[be] }, th: Math.max(s.th, best.th), conf: 0.5 })
+          deg.set(ekey(p), 2), deg.set(ekey(best[be]), 2)
+        }
+        continue
+      }
       if (!hit) continue
       const old = ekey(s[e])
       if (hit.v < 0 || hit.v > 1) {
@@ -379,7 +400,9 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
       const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
       // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
       if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
-      if (lines < 2 && (d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
+      // glazing: >= 2 lines, or one band >= 3 px wide (a light glass band); a lone pen line only with the closer
+      const glazing = lines >= 2 || vs.length >= 3
+      if (!glazing && (!KNOBS.closeGaps || d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
       let onWall = 0
       for (let t = 0; t < 10; t++) {
         const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
@@ -630,10 +653,10 @@ interface Draft {
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: { weak: Uint8Array; line: Uint8Array }, tracked: WallSeg[] = []): Draft {
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks>, tracked: WallSeg[] = []): Draft {
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
-  const segs: Seg[] = []
+  let segs: Seg[] = []
   for (const w of trace.walls) {
     const th = w.thicknessPx / pxPerM
     if (!w.mid) {
@@ -667,14 +690,17 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // thin walls the tracker followed (track.ts): weaker than drawn walls, marked so the small-loop rule can drop them
   for (const t of tracked) segs.push({ a: toM(t.a), b: toM(t.b), th: PARTITION_M, conf: t.conf, bridge: 'track' })
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
-  const { weak, line } = ink ?? inkMasks(gray)
-  // glazing / window bands / railings: double thin lines between two walls, too faint for the wall stage
-  if (KNOBS.closeGaps && Math.abs(th0) < (2 * Math.PI) / 180)
-    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'ink', op: { kind: 'window', conf: 0.4 } })
+  const { weak, line, wall } = ink ?? inkMasks(gray)
+  // glazing between two walls, too faint for the wall stage: drawn as >= 2 lines or a band it is a window in a wall gap
+  // (founder scope); a lone pen line (railing, counter) only with the gap closer
+  if (Math.abs(th0) < (2 * Math.PI) / 180)
+    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
   snapAxes(segs, th0)
   joinEnds(segs)
-  extendEnds(segs)
   const W = gray.width, H = gray.height
+  // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
+  segs = pruneSpurs(node(segs, 0.02))
+  extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM)
   if (KNOBS.closeGaps)
     bridgeGaps(
     segs,
@@ -716,7 +742,30 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   return { unit, walls: m.walls, rooms: deriveRooms(unit), th0 }
 }
 
-export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta) })
+export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta), wall: threshold(gray, inkThreshold(gray, {})) })
+
+/**
+ * How far (px) wall-thick ink runs on from `p` along unit `d`: at each step the ink run across the line (through the
+ * centre, ±1 px) must be at least half the wall's width. Capped at `max` px (the caller: 1.5 m — a filled area is no wall).
+ */
+function inkRun(mask: Uint8Array, w: number, h: number, p: Px, d: Pt, thPx: number, max: number): number {
+  const at = (x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    return xi >= 0 && yi >= 0 && xi < w && yi < h ? mask[yi * w + xi] : 0
+  }
+  const n = { x: -d.y, y: d.x }, r = Math.ceil(thPx), need = Math.max(2, 0.5 * thPx)
+  let t = 1
+  for (; t <= max; t++) {
+    const q = { x: p.x + d.x * t, y: p.y + d.y * t }
+    const c = [0, -1, 1].find((o) => at(q.x + n.x * o, q.y + n.y * o))
+    if (c === undefined) break
+    let lo = c, hi = c
+    while (lo - 1 >= -r && at(q.x + n.x * (lo - 1), q.y + n.y * (lo - 1))) lo--
+    while (hi + 1 <= r && at(q.x + n.x * (hi + 1), q.y + n.y * (hi + 1))) hi++
+    if (hi - lo + 1 < need) break
+  }
+  return t - 1
+}
 
 const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: w.openings })
 
@@ -930,7 +979,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
   let trace = inputs.walls ?? traceWalls(plan)
-  const ink = inkMasks(gray)
+  const ink = inkMasks(plan)
   opts.onProgress?.('scale', 0.5)
 
   // ── scale

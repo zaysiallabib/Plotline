@@ -424,7 +424,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
  * bath floor stands out against the floor's median grey; the floor's own stripes (lighter than the fill) and the fill
  * itself do not — the max-based line ink marks every fill pixel next to a white stripe. Evaluated on demand (probes only).
  */
-export function arcInk(g: Gray, delta = 25): (x: number, y: number) => boolean {
+export function arcInk(g: Gray, delta = 18): (x: number, y: number) => boolean {
   const { width: w, height: h, data } = g
   const win = new Uint8Array(49)
   return (x, y) => {
@@ -708,6 +708,14 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
     const b = { x: p.x + dir.x * hit, y: p.y + dir.y * hit }
     const tol = 1.5 * E.th
     if (out.some((o) => (dist(o.a, b) < tol && dist(o.b, p) < tol) || (dist(o.a, p) < tol && dist(o.b, b) < tol))) continue
+    // a ray running alongside a wall's body (the junction point sits a little off that wall's line) is no gap
+    let alongside = false
+    for (let off = -0.8 * E.th; off <= 0.8 * E.th && !alongside; off += 1) {
+      let n = 0, c = 0
+      for (let f = 0.1; f <= 0.9; f += 0.05, n++) c += at(core, p.x + dir.x * hit * f - dir.y * off, p.y + dir.y * hit * f + dir.x * off)
+      alongside = c >= 0.5 * n
+    }
+    if (alongside) continue
     const g = classifyGap(p, b, E.th, hit, pxPerM, (x, y) => (arcAt(x, y) && at(core, x, y) === 0 ? 1 : 0), (x, y) => at(ink, x, y))
     if (g && (!E.junction || g.kind === 'door' || g.kind === 'window')) out.push(g)
   }
@@ -725,7 +733,9 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcA
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (arcAt(x + dx, y + dy)) return 1
     return 0
   }
-  const RF = [0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15]
+  // radii 0.6–1.3 × the gap are probed; the swing sits at 0.75–1.15, the rings 0.15 inside and outside it must be clear
+  // (a curve, not a field of text, hatching or a fixture's clutter)
+  const RF = Array.from({ length: 15 }, (_, j) => 0.6 + 0.05 * j)
   let best = { score: 0, hinge: a, side: 1 }
   if (gap <= 1.25 * pxPerM)
     for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
@@ -740,10 +750,10 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcA
           inner += arcAt(hp.x + dx * gap * 0.5, hp.y + dy * gap * 0.5) ? 1 : 0
         }
         if (inner / 17 > 0.35) continue
-        for (let j = 0; j < RF.length; j++) {
-          let hit = 0
-          for (let k = 0; k <= 16; k++) hit += hits[j][k] | (hits[j - 1]?.[k] ?? 0) | (hits[j + 1]?.[k] ?? 0)
-          if (hit / 17 > best.score) best = { score: hit / 17, hinge: hp, side }
+        for (let j = 3; j <= 11; j++) {
+          let hit = 0, clutter = 0
+          for (let k = 0; k <= 16; k++) (hit += hits[j][k] | hits[j - 1][k] | hits[j + 1][k]), (clutter += hits[j - 3][k] | hits[j + 3][k])
+          if (clutter / 17 <= 0.65 && hit / 17 > best.score) best = { score: hit / 17, hinge: hp, side }
         }
       }
   // a single leaf is 0.6–1.1 m: wider "arcs" are furniture and text lining up by chance
