@@ -22,6 +22,12 @@ Live: https://plotline-flax.vercel.app — **wave 14 + 3" grid LIVE (founder dep
 
 **Founder correction (session 12):** the eval measures an UNFINISHED solver (the agent was cut off mid-work), and a Claude-Code trace skill is no help until the Studio can trace walls itself → **wave 17 = FINISH THE SOLVER.** One Opus agent launched on a worktree off 7637aba: diagnose every unmatched truth room by cause, fix growth/closure (cover ↑, spill ↓) + door-arc / window-gap recall within the founder scope (track/closeGaps stay off), then blue glazing + rgb wiring into the Studio worker, then stairs; files `src/trace/*`, `autotrace.worker.ts`, the TraceJob line in StudioApp; overlays `E:\dev\plotline-shots\wave17\solver\<step>\`; scratch `E:\dev\tmp\wave17\solver\`. Founder wants to check things himself — told to deploy the current Studio if he wants to try it (harmless, Studio-only) and to look at the overlays.
 
+**Founder's wall-tracing workflow (session 12, BINDING, overrides the older "stop at furniture / text" tracker wording; sent to the wave-17 solver agent):**
+1. **Text first:** read room names + all printed text, erase the glyph boxes.
+2. **Then plant sections:** mark planter / green / sunshade strips (label, green fill, foliage) before tracing walls; they bound the flat, not rooms to grow into.
+3. **Then start in the middle:** from the click, find the nearest thick wall lines and follow them and every branch outward until nothing is left.
+4. **Ignore what isn't a wall or a door, and resume:** anything in a thick wall's way (furniture, fixture, text, hatch, dimension line, a column changing thickness) is skipped. Keep going along the wall's direction; when the thick line comes back on the same alignment it is the SAME wall and tracing resumes. Door arc in a gap = door; window drawn in a gap = window.
+
 **Open small items:** the Studio worker does not send the colour image (`AutoTraceOpts.rgb`) → colour propagation (Banani fills) is off in the app; size-mismatch rows don't re-check after edits.
 
 ## ▶ RESUME HERE (session 11 ended 2026-09-28 on tokens; founder resumes in the morning) — SUPERSEDED by session 12 above
