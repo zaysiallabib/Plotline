@@ -101,7 +101,7 @@ export function planXf(unit: Unit): TruthXf {
   return { mid, c: { x: pi.originPx.x + mid.x * pi.pxPerM, y: pi.originPx.y + mid.y * pi.pxPerM }, k: pi.pxPerM, ex: 0, ey: 0 }
 }
 
-const apply = (t: TruthXf, x: number, y: number): Px => ({ x: t.c.x + (x - t.mid.x) * t.k * (1 + t.ex), y: t.c.y + (y - t.mid.y) * t.k * (1 + t.ey) })
+export const applyXf = (t: TruthXf, x: number, y: number): Px => ({ x: t.c.x + (x - t.mid.x) * t.k * (1 + t.ex), y: t.c.y + (y - t.mid.y) * t.k * (1 + t.ey) })
 
 /** Distance (px) from every pixel to the nearest thick ink (strokes ≥ ~3 px: walls, not text). */
 function distToThickInk(gray: Gray): Float32Array {
@@ -134,7 +134,7 @@ export function inkCeiling(gray: Gray, unit: Unit, xf: TruthXf, distM = 0.15): n
   const S = solidSamples(unit)
   let hit = 0
   for (const p of S) {
-    const q = apply(xf, p.x, p.y)
+    const q = applyXf(xf, p.x, p.y)
     const xi = Math.round(q.x), yi = Math.round(q.y)
     if (xi >= 0 && yi >= 0 && xi < gray.width && yi < gray.height && toInk[yi * gray.width + xi] <= distM * xf.k) hit++
   }
@@ -151,7 +151,7 @@ export function registerTruth(gray: Gray, unit: Unit): TruthXf {
   const cost = (t: TruthXf) => {
     let s = 0
     for (const p of S) {
-      const q = apply(t, p.x, p.y)
+      const q = applyXf(t, p.x, p.y)
       const xi = Math.round(q.x), yi = Math.round(q.y)
       const d = xi < 0 || yi < 0 || xi >= w || yi >= h ? cap : Math.min(cap, toInk[yi * w + xi])
       s += d * d
@@ -177,7 +177,7 @@ export function evalTrace(trace: WallTrace, unit: Unit, opts: EvalOpts = {}, xf:
   const distM = opts.distM ?? 0.15, cosTol = Math.cos(((opts.angDeg ?? 10) * Math.PI) / 180)
   const margin = opts.marginM ?? 0.3, openM = opts.openM ?? 0.3
   const k = xf.k
-  const toPx = (x: number, y: number): Px => apply(xf, x, y)
+  const toPx = (x: number, y: number): Px => applyXf(xf, x, y)
   const V = new Map(unit.vertices.map((v) => [v.id, toPx(v.x, v.y)]))
   const xs = unit.vertices.map((v) => v.x), ys = unit.vertices.map((v) => v.y)
   const r0 = toPx(Math.min(...xs) - margin, Math.min(...ys) - margin), r1 = toPx(Math.max(...xs) + margin, Math.max(...ys) + margin)
@@ -328,7 +328,7 @@ export function scoreUnit(gray: Gray, unit: Unit, opts: WallOpts = {}, evalOpts:
 
 /** The hand-traced walls in image px (for overlays). */
 export function truthLines(unit: Unit, xf: TruthXf = planXf(unit)): { a: Px; b: Px }[] {
-  const V = new Map(unit.vertices.map((v) => [v.id, apply(xf, v.x, v.y)]))
+  const V = new Map(unit.vertices.map((v) => [v.id, applyXf(xf, v.x, v.y)]))
   return unit.walls.map((w) => ({ a: V.get(w.a)!, b: V.get(w.b)! }))
 }
 

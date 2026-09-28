@@ -3,12 +3,17 @@
  * GEOMETRY FIRST (founder, after the honest text scores): walls come from the ink (walls.ts); text (text.ts) and hints
  * (hints.ts, optional) only name rooms, anchor the scale and become size checks.
  *
+ * Founder workflow (2026-09-28), in this order: (1) text first — read, then erase the glyph boxes; (2) plant sections —
+ * planter / green / foliage strips marked (planterMask); (3) start in the middle — the flat grows from the click
+ * (floodFlat) until nothing is left to follow; (4) whatever interrupts a thick wall is ignored and the same wall
+ * resumes (resumeWalls); a door arc = door, glazing in a wall gap = window (+ rule 5 blue glazing, rule 6 stairs).
+ *
  *   traceWalls → scale (printed dims ÷ the face they sit in | area label | the 5" partition prior) → re-trace at that
- *   wall width → metres → axis snap (real angles kept, arcs → chords) → close (join ends, extend onto walls, bridge
- *   facing ends ≤ 1.2 m, every opening guess = a bridge carrying the opening) → node (T / X splits) → prune spurs →
- *   5"/10" thickness → merge collinear (openings re-offset) → deriveRooms → pick the flat (grow from the click across
- *   partitions and doors; one entrance door out, never a second) → labels (text, else hint, else 'unlabelled')
- *   → opening kinds from the rooms on both sides → printed-size checks → validate (every leftover issue = review item).
+ *   wall width → metres → axis snap (real angles kept, arcs → chords) → glazing between walls (grey profile / blue
+ *   line; never stair treads) → join ends → prune hairs → free ends follow their thick ink onto the next wall →
+ *   rule-4 resume → node → merge collinear → deriveRooms → pick the flat (flood from the click; the outside, planters
+ *   and stairs bound it; rival names split it) → labels (text, else hint, else 'unlabelled') → opening kinds from the
+ *   rooms on both sides → printed-size checks → validate (every leftover issue = review item).
  */
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
@@ -16,7 +21,7 @@ import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, openingDefaults } from '../stud
 import { edt, lineInk, threshold } from './raster'
 import { normaliseName } from './text'
 import { trackThin } from './track'
-import { circle3, inkThreshold, segPieces, traceWalls, wallHalfWidth } from './walls'
+import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
 import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
@@ -33,6 +38,8 @@ export const KNOBS = {
   joinFrac: 0.75,
   /** a free end reaches onto a wall within this × thickness (a corner the thinning left open) */
   extendFrac: 1.5,
+  /** founder rule 4: a thick wall interrupted by anything but a door arc / glazing resumes as the same wall across up to this */
+  resumeM: 2.4,
   /** facing free ends / a free end and a wall ahead are bridged across gaps up to this (railings, glass, missed doors) */
   bridgeM: 1.2,
   /** … and up to this along a clear drawn line (glazing, window bands, railings): at least inkShare of it inked */
@@ -67,8 +74,8 @@ export const KNOBS = {
   closeGaps: false,
   /** a tracked line that closes a face smaller than this is furniture, not a wall */
   trackLoopSqm: 3,
-  /** a click in an open area floods at most this much floor to find the rooms around it */
-  openFloodSqm: 50,
+  /** the flood from the click stops at the printed flat area; without one printed, at this much floor */
+  defaultFlatSqm: 250,
   /** faces smaller than this are closing artefacts: merged into a neighbour */
   sliverSqm: 0.3,
   /** sum of a flat's centreline faces ÷ its printed area (walls + common share are in the printed figure) */
@@ -92,7 +99,7 @@ interface Seg {
   conf: number
   op?: Op
   /** closed by the solver, not seen as a wall: 'ink' = along a thin line, 'gap' = over paper */
-  bridge?: 'ink' | 'gap' | 'guess' | 'track'
+  bridge?: 'ink' | 'gap' | 'guess' | 'track' | 'glaze'
 }
 
 export interface SolveInputs {
@@ -104,6 +111,10 @@ export interface SolveInputs {
   findHints?: (pxPerM: number, walls: WallTrace) => HintTrace | null
   /** hints.ts propagateByColour bound to the sheet: per room (sheet px) a hint for the unnamed ones, from same-fill named rooms */
   propagate?: (rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
+  /** filled by solveTraces for the eval's diagnosis: the wall trace used, the raster it was traced on, the whole-sheet graph before the flat pick */
+  debug?: { trace?: WallTrace; plan?: Gray; full?: Unit; plants?: Uint8Array; outside?: Uint8Array }
+  /** plant-green pixels of the sheet (hints.ts greenMask of the colour image): planter strips (founder rule 2) */
+  green?: Uint8Array
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -281,14 +292,25 @@ function rayHit(segs: Seg[], x: End, reach: number, slack: number, d = outDir(x)
   return best
 }
 
-/** Free ends reach onto a wall a thickness or so away (corners and T's the thinning left open). */
-function extendEnds(segs: Seg[]): void {
+/**
+ * Free ends reach onto a wall a thickness or so away (corners and T's the thinning left open) — or farther, as far as
+ * `inked` says the wall's thick ink runs on past the end (the founder's "follow the thick wall": the skeleton loses
+ * corners where a door swing, a column or erased text touches the wall; the drawing still shows the wall there).
+ */
+function extendEnds(segs: Seg[], inked?: (x: End) => number, solid?: (p: Pt, q: Pt) => number): void {
   const deg = degrees(segs)
   for (const s of segs.slice())
     for (const e of ['a', 'b'] as const) {
       if (deg.get(ekey(s[e])) !== 1 || d2(s.a, s.b) < 0.05) continue
       const x = { s, e }
-      const hit = rayHit(segs, x, KNOBS.extendFrac * s.th + 0.02, KNOBS.extendFrac * s.th)
+      const reach = Math.max(KNOBS.extendFrac * s.th + 0.02, inked ? inked(x) + s.th / 2 : 0)
+      let hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
+      // meeting a wall's line up to 0.6 m past its end: only where that stretch is solid wall ink (a column or shaft
+      // block the skeleton lost at a corner) — the stretch is then added as wall
+      if (!hit && solid) {
+        const far = rayHit(segs, x, reach, 0.6)
+        if (far && solid(far.t[far.v < 0 ? 'a' : 'b'], far.X) >= 0.9) hit = far
+      }
       if (!hit) continue
       const old = ekey(s[e])
       if (hit.v < 0 || hit.v > 1) {
@@ -296,12 +318,54 @@ function extendEnds(segs: Seg[]): void {
         if (deg.get(ekey(hit.t[te])) === 1) {
           deg.set(ekey(hit.t[te]), 0)
           hit.t[te] = { ...hit.X }
+        } else if (solid && d2(hit.t[te], hit.X) > 0.02 && solid(hit.t[te], hit.X) >= 0.9) {
+          segs.push({ a: { ...hit.t[te] }, b: { ...hit.X }, th: hit.t.th, conf: hit.t.conf })
+          deg.set(ekey(hit.t[te]), (deg.get(ekey(hit.t[te])) ?? 0) + 1)
+          deg.set(ekey(hit.X), (deg.get(ekey(hit.X)) ?? 0) - 1) // the +2 below counts the new piece's end and s's
         } else hit.X = { ...hit.t[te] }
       }
       deg.set(old, 0)
       s[e] = { ...hit.X }
       deg.set(ekey(hit.X), (deg.get(ekey(hit.X)) ?? 0) + 2)
     }
+}
+
+/** A gap founder rule 4 carried a wall across: a → b, its midpoint, length, and whether nothing is drawn along it. */
+type Resumed = { a: Pt; b: Pt; at: Pt; L: number; empty: boolean }
+
+/**
+ * Founder rule 4 (2026-09-28): whatever interrupts a thick wall — furniture drawn over it, a fixture, text, hatch, a
+ * dimension line, a column — is ignored; where the thick line comes back on the same alignment it is the SAME wall.
+ * Facing free ends of one run (parallel within ~10°, off-line by at most half a wall) up to resumeM apart are joined as
+ * wall, shortest gaps first. (A gap with a door arc or drawn glazing already carries its opening and has no free ends.)
+ * Returns the resumed gaps; `empty` = nothing drawn along it (a door the arc test missed, or an opening) → review item.
+ * The growth from the click passes through them (rule 3 follows the walls' branches; a carried gap may be a door).
+ */
+function resumeWalls(segs: Seg[], inkShare: (p: Pt, q: Pt) => number, glassShare?: (p: Pt, q: Pt) => number): Resumed[] {
+  const deg = degrees(segs)
+  const ends: End[] = segs.flatMap((s) => (['a', 'b'] as const).filter((e) => deg.get(ekey(s[e])) === 1 && d2(s.a, s.b) >= 0.05).map((e) => ({ s, e })))
+  const cands: { x: End; y: End; L: number }[] = []
+  for (let i = 0; i < ends.length; i++)
+    for (let j = i + 1; j < ends.length; j++) {
+      const x = ends[i], y = ends[j], p = x.s[x.e], d = outDir(x)
+      const v = sub(y.s[y.e], p), u = dot(v, d)
+      if (u <= 0.02 || u > KNOBS.resumeM || dot(outDir(y), d) > -0.985) continue
+      if (Math.abs(crs(d, v)) > Math.max(x.s.th, y.s.th) / 2 + 0.03) continue
+      cands.push({ x, y, L: u })
+    }
+  cands.sort((p, q) => p.L - q.L)
+  const used = new Set<string>()
+  const out: Resumed[] = []
+  for (const c of cands) {
+    const p = c.x.s[c.x.e], q = c.y.s[c.y.e]
+    if (used.has(ekey(p)) || used.has(ekey(q))) continue
+    used.add(ekey(p)), used.add(ekey(q))
+    // a gap bridged by a line of the glazing colour is a window (founder rule 5), not a carried wall
+    const glassy = !!glassShare && glassShare(p, q) >= 0.6
+    segs.push({ a: { ...p }, b: { ...q }, th: Math.max(c.x.s.th, c.y.s.th), conf: 0.5, ...(glassy ? { bridge: 'glaze' as const, op: { kind: 'window' as const, conf: 0.6 } } : {}) })
+    if (!glassy) out.push({ a: { ...p }, b: { ...q }, at: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, L: c.L, empty: inkShare(p, q) < 0.5 })
+  }
+  return out
 }
 
 /** The share of `n` samples along p→q (middle 80 %) that have thin line ink within 1 px — px space. */
@@ -338,7 +402,7 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
  * front runs between two walls' middles instead.
  * ponytail: axis-aligned sheets only (a rotated scan skips this); a Hough pass if rotated scans show up.
  */
-function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number): { a: Px; b: Px }[] {
+function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number, gray?: Gray, anyLine = false): { a: Px; b: Px }[] {
   const minPx = 0.6 * k, bandPx = Math.max(3, 0.3 * k), touch = 0.3 * k
   const out: { a: Px; b: Px }[] = []
   const ends = walls.flatMap((wl) => [wl.a, wl.b])
@@ -377,7 +441,12 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
       const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
       // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
       if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
-      if (lines < 2 && (d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
+      // glazing (walls.ts `glazing`: >= 2 lines or a >= 3 px band, darker than the paper on both sides — not the edge of
+      // a colour fill); a lone pen line only with the closer
+      const L = d2(a, b)
+      const gl = gray ? glazing(a, (b.x - a.x) / L, (b.y - a.y) / L, L, Math.max(4, 0.25 * k), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))]) : null
+      const isGlazing = anyLine || (gl ? gl.lines >= 2 || gl.band >= 3 : lines >= 2 || vs.length >= 3)
+      if (!isGlazing && (!KNOBS.closeGaps || d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
       let onWall = 0
       for (let t = 0; t < 10; t++) {
         const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
@@ -625,13 +694,17 @@ interface Draft {
   walls: GWall[]
   rooms: Room[]
   th0: number
+  /** gaps founder rule 4 carried the wall across (metres, the draft frame before any shift) */
+  resumed?: Resumed[]
+  /** stair flights found on the sheet (px boxes, founder rule 6) */
+  stairs?: { x0: number; y0: number; x1: number; y1: number }[]
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: { weak: Uint8Array; line: Uint8Array }, tracked: WallSeg[] = []): Draft {
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = []): Draft {
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
-  const segs: Seg[] = []
+  let segs: Seg[] = []
   for (const w of trace.walls) {
     const th = w.thicknessPx / pxPerM
     if (!w.mid) {
@@ -665,14 +738,34 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // thin walls the tracker followed (track.ts): weaker than drawn walls, marked so the small-loop rule can drop them
   for (const t of tracked) segs.push({ a: toM(t.a), b: toM(t.b), th: PARTITION_M, conf: t.conf, bridge: 'track' })
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
-  const { weak, line } = ink ?? inkMasks(gray)
-  // glazing / window bands / railings: double thin lines between two walls, too faint for the wall stage
-  if (KNOBS.closeGaps && Math.abs(th0) < (2 * Math.PI) / 180)
-    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'ink', op: { kind: 'window', conf: 0.4 } })
+  const { weak, line, wall, glass } = { glass: undefined, ...(ink ?? inkMasks(gray)) }
+  // founder rule 6: stair flights (their treads are parallel line bundles too — never glazing)
+  const stairs = findStairs(line, gray.width, gray.height, pxPerM)
+  const m2 = 0.2 * pxPerM
+  const inStairs = (l: { a: Px; b: Px }) => stairs.some((s) => (l.a.x + l.b.x) / 2 >= s.x0 - m2 && (l.a.x + l.b.x) / 2 <= s.x1 + m2 && (l.a.y + l.b.y) / 2 >= s.y0 - m2 && (l.a.y + l.b.y) / 2 <= s.y1 + m2)
+  // glazing between two walls, too faint for the wall stage: drawn as >= 2 lines or a band it is a window in a wall gap
+  // (founder scope); a lone pen line (railing, counter) only with the gap closer
+  if (Math.abs(th0) < (2 * Math.PI) / 180)
+    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM, gray)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
+  // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
+  if (glass && Math.abs(th0) < (2 * Math.PI) / 180)
+    for (const l of thinLines(glass, gray.width, gray.height, trace.walls, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
   snapAxes(segs, th0)
   joinEnds(segs)
-  extendEnds(segs)
   const W = gray.width, H = gray.height
+  // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
+  segs = pruneSpurs(node(segs, 0.02))
+  const solidInk = (p: Pt, q: Pt) => {
+    let best = 0
+    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(wall, W, H, toPx(p), toPx(q), o))
+    return best
+  }
+  extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM, solidInk)
+  const resumed = resumeWalls(segs, (p, q) => {
+    let best = 0
+    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
+    return best
+  }, glass && ((p, q) => inkAlong(glass, W, H, toPx(p), toPx(q))))
   if (KNOBS.closeGaps)
     bridgeGaps(
     segs,
@@ -711,64 +804,332 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     areaSqft: 0,
     planImage: { src: '', pxPerM, originPx },
   }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0 }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed, stairs }
 }
 
-export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta) })
+export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta), wall: threshold(gray, inkThreshold(gray, {})) })
+
+/**
+ * How far (px) wall-thick ink runs on from `p` along unit `d`: at each step the ink run across the line (through the
+ * centre, ±1 px) must be at least half the wall's width. Capped at `max` px (the caller: 1.5 m — a filled area is no wall).
+ */
+function inkRun(mask: Uint8Array, w: number, h: number, p: Px, d: Pt, thPx: number, max: number): number {
+  const at = (x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    return xi >= 0 && yi >= 0 && xi < w && yi < h ? mask[yi * w + xi] : 0
+  }
+  const n = { x: -d.y, y: d.x }, r = Math.ceil(thPx), need = Math.max(2, 0.5 * thPx)
+  let t = 1
+  for (; t <= max; t++) {
+    const q = { x: p.x + d.x * t, y: p.y + d.y * t }
+    const c = [0, -1, 1].find((o) => at(q.x + n.x * o, q.y + n.y * o))
+    if (c === undefined) break
+    let lo = c, hi = c
+    while (lo - 1 >= -r && at(q.x + n.x * (lo - 1), q.y + n.y * (lo - 1))) lo--
+    while (hi + 1 <= r && at(q.x + n.x * (hi + 1), q.y + n.y * (hi + 1))) hi++
+    if (hi - lo + 1 < need) break
+  }
+  return t - 1
+}
 
 const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: w.openings })
 
-// ───────────────────────────────────────────────────────────────── picking the flat
+// ───────────────────────────────────────────────────────────────── plants, outside, picking the flat
 
 /**
- * The walls a flood from `at` over open floor touches (walls as barriers, 0.1 m cells, within `R` m): the rooms
- * around an area whose own walls did not close — e.g. an open-plan living / dining the click landed in.
+ * Founder rule 5: thin lines of a glazing colour — blue / cyan tinted (Banani draws windows and veranda glass as thin
+ * light-blue lines). A blue FILL (a wet room's floor tint) is no glass: blue regions deeper than 3 px are cut out.
  */
-function openNeighbours(d: Draft, at: Pt, R = 9): Set<string> {
-  const cell = 0.1, n = Math.ceil((2 * R) / cell)
-  const x0 = at.x - R, y0 = at.y - R
-  const grid = new Int32Array(n * n).fill(-1)
+export function glassMask(rgb: NonNullable<AutoTraceOpts['rgb']>): Uint8Array {
+  const { width: w, height: h, data } = rgb
+  const m = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) m[i] = data[i * 4 + 2] - Math.max(data[i * 4], data[i * 4 + 1]) >= 25 ? 1 : 0
+  const deep = edt(m, w, h)
+  const fill = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) fill[i] = deep[i] >= 3 ? 1 : 0
+  const fillAll = dilate(fill, w, h, 3)
+  for (let i = 0; i < w * h; i++) if (fillAll[i]) m[i] = 0
+  return m
+}
+
+/**
+ * Founder rule 6: stairs have lines but no text — a run of at least 5 short parallel treads (0.7–1.8 m long, one
+ * start and end) evenly spaced 0.18–0.4 m apart, on the sheet's axes. Returns each flight's box (px). No AI, no text.
+ * ponytail: axis-aligned sheets only, like thinLines; winders / spiral stairs are not found.
+ */
+export function findStairs(mask: Uint8Array, w: number, h: number, k: number): { x0: number; y0: number; x1: number; y1: number }[] {
+  const out: { x0: number; y0: number; x1: number; y1: number }[] = []
+  for (const horiz of [true, false]) {
+    const U = horiz ? w : h, N = horiz ? h : w
+    // tread candidates: runs 0.7–1.8 m long; runs on neighbouring rows with the same extent are one line
+    const lines: { v: number; u0: number; u1: number }[] = []
+    let recent: typeof lines = []
+    for (let v = 0; v < N; v++) {
+      recent = recent.filter((l) => v - l.v <= 2)
+      let u0 = -1
+      for (let u = 0; u <= U; u++) {
+        const on = u < U && (horiz ? mask[v * w + u] : mask[u * w + v])
+        if (on && u0 < 0) u0 = u
+        if (!on && u0 >= 0) {
+          const L = u - u0
+          if (L >= 0.7 * k && L <= 1.8 * k) {
+            const prev = recent.find((l) => Math.abs(l.u0 - u0) <= 3 && Math.abs(l.u1 - u) <= 3)
+            if (prev) prev.v = v
+            else lines.push({ v, u0, u1: u }), recent.push(lines[lines.length - 1])
+          }
+          u0 = -1
+        }
+      }
+    }
+    lines.sort((p, q) => p.v - q.v)
+    const used = new Uint8Array(lines.length)
+    for (let i = 0; i < lines.length; i++) {
+      if (used[i]) continue
+      // treads: same start and end (±0.15 m), then evenly spaced
+      const run = [lines[i]]
+      for (let j = i + 1; j < lines.length && lines[j].v - run[run.length - 1].v <= 0.4 * k; j++) {
+        const last = run[run.length - 1], l = lines[j], gap = l.v - last.v
+        if (used[j] || Math.abs(l.u0 - lines[i].u0) > 0.15 * k || Math.abs(l.u1 - lines[i].u1) > 0.15 * k || gap < 0.18 * k) continue
+        if (run.length >= 2 && Math.abs(gap - (last.v - run[run.length - 2].v)) > 0.3 * gap) continue
+        run.push(l), (used[j] = 1)
+      }
+      if (run.length < 5) continue
+      const u0 = Math.min(...run.map((l) => l.u0)), u1 = Math.max(...run.map((l) => l.u1)), v0 = run[0].v, v1 = run[run.length - 1].v
+      out.push(horiz ? { x0: u0, y0: v0, x1: u1, y1: v1 } : { x0: v0, y0: u0, x1: v1, y1: u1 })
+    }
+  }
+  return out
+}
+
+/** Dilate a mask by r px (exact, through the distance transform). */
+function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  const inv = new Uint8Array(m.length)
+  for (let i = 0; i < m.length; i++) inv[i] = m[i] ? 0 : 1
+  const d = edt(inv, w, h)
+  const out = new Uint8Array(m.length)
+  for (let i = 0; i < m.length; i++) out[i] = d[i] <= r ? 1 : 0
+  return out
+}
+
+/**
+ * Founder rule 2 (2026-09-28): planter / sunshade / green strips are marked before the walls are followed — they bound
+ * the flat as planters, the growth never enters them. From the raster: plant-green pixels (colour sheets) and foliage
+ * drawings (solid dark ink at least 0.4 m across with a leafy texture — a column or a black fill is flat). A printed
+ * SUNSHADE / PLANTER label marks its face (solveTraces). Blobs under 0.5 m² (a pot plant) are dropped.
+ */
+export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, green?: Uint8Array): Uint8Array {
+  const { width: w, height: h, data } = plan
+  const seed = new Uint8Array(w * h)
+  const dt = edt(wallInk, w, h)
+  const deep = 0.2 * pxPerM
+  for (let y = 2; y < h - 2; y++)
+    for (let x = 2; x < w - 2; x++) {
+      const i = y * w + x
+      if (green?.[i]) seed[i] = 1
+      if (dt[i] < deep) continue
+      // leafy: the 5×5 neighbourhood varies (foliage 50–120 mottled); a fill or a column is one grey
+      let s = 0, s2 = 0
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) (s += data[i + dy * w + dx]), (s2 += data[i + dy * w + dx] ** 2)
+      if (s2 / 25 - (s / 25) ** 2 > 150) seed[i] = 1
+    }
+  const m = dilate(seed, w, h, deep)
+  // drop small blobs
+  const lab = new Int32Array(w * h).fill(-1)
+  const stack: number[] = []
+  const minPx = 0.5 * pxPerM * pxPerM
+  for (let i = 0; i < w * h; i++) {
+    if (!m[i] || lab[i] >= 0) continue
+    const comp: number[] = []
+    stack.push(i)
+    lab[i] = i
+    while (stack.length) {
+      const p = stack.pop()!
+      comp.push(p)
+      const x = p % w
+      for (const q of [p - 1, p + 1, p - w, p + w]) if (q >= 0 && q < w * h && m[q] && lab[q] < 0 && Math.abs((q % w) - x) <= 1) (lab[q] = i), stack.push(q)
+    }
+    if (comp.length < minPx) for (const p of comp) m[p] = 0
+  }
+  return m
+}
+
+/**
+ * The sheet's outside: paper that reaches the sheet border without crossing a drawn line (any line — railings and
+ * glazing count; gaps under ~0.8 m are closed first). A flat's growth never enters it.
+ */
+export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h: number, pxPerM: number): Uint8Array {
+  // barriers: wall ink, and drawn lines at least 1.2 m long — the dashes of a site boundary or a slab outline (and specks)
+  // are no barrier, else closing the gaps would wall the outside off
+  const bar = new Uint8Array(w * h)
+  for (let i = 0; i < bar.length; i++) bar[i] = wallInk[i]
+  {
+    const seen = new Uint8Array(w * h), comp: number[] = [], minLen = 1.2 * pxPerM
+    for (let s = 0; s < w * h; s++) {
+      if (!lines[s] || seen[s]) continue
+      comp.length = 0
+      comp.push(s)
+      seen[s] = 1
+      let x0 = w, x1 = 0, y0 = h, y1 = 0
+      for (let head = 0; head < comp.length; head++) {
+        const p = comp[head], x = p % w, y = (p - x) / w
+        ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const X = x + dx, Y = y + dy, q = Y * w + X
+            if (X >= 0 && Y >= 0 && X < w && Y < h && lines[q] && !seen[q]) (seen[q] = 1), comp.push(q)
+          }
+      }
+      if (Math.max(x1 - x0, y1 - y0) >= minLen) for (const p of comp) bar[p] = 1
+    }
+  }
+  const r = 0.4 * pxPerM
+  const closed = dilate(bar, w, h, r)
+  // paper regions: those touching the sheet border, and the largest one (a sheet with a drawn frame: the paper around
+  // the building lies inside the frame line)
+  const lab = new Int32Array(w * h).fill(-1)
+  const size: number[] = [], border: boolean[] = []
+  const queue: number[] = []
+  for (let s = 0; s < w * h; s++) {
+    if (closed[s] || lab[s] >= 0) continue
+    const id = size.length
+    let n = 0, edge = false
+    queue.length = 0
+    queue.push(s)
+    lab[s] = id
+    for (let head = 0; head < queue.length; head++) {
+      const p = queue[head], x = p % w
+      n++
+      if (x === 0 || x === w - 1 || p < w || p >= w * (h - 1)) edge = true
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < w * h && !closed[q] && lab[q] < 0) (lab[q] = id), queue.push(q)
+    }
+    size.push(n), border.push(edge)
+  }
+  const big = size.indexOf(Math.max(0, ...size))
+  const reach = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) if (lab[i] >= 0 && (border[lab[i]] || lab[i] === big)) reach[i] = 1
+  // grow back over the closing margin (not across a line)
+  const out = dilate(reach, w, h, r)
+  for (let i = 0; i < out.length; i++) if (bar[i]) out[i] = 0
+  return out
+}
+
+/**
+ * Founder rule 3, "start in the middle": flood the open floor from the click on a 0.1 m grid. Walls are barriers except
+ * their door / passage / slider spans (a window looks out); `blocked` cells (the outside, planters) are never entered.
+ * Breadth first until nothing is left — or `capSqm` of floor (the printed flat area: what leaks on through an unclosed
+ * spot stops there). Then a one-per-flat name printed twice on that floor seeds a rival at the farther print: click and
+ * rivals flood together, each cell goes to its nearest source, the click's share is the flat. Returns its cells and
+ * every wall they touch.
+ */
+function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number, names: { p: Pt; name: string }[] = []): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number } {
+  const cell = 0.1
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+  const xs = d.unit.vertices.map((v) => v.x).concat(at.x), ys = d.unit.vertices.map((v) => v.y).concat(at.y)
+  const x0 = Math.min(...xs) - 1, y0 = Math.min(...ys) - 1
+  const nx = Math.ceil((Math.max(...xs) + 1 - x0) / cell), ny = Math.ceil((Math.max(...ys) + 1 - y0) / cell)
+  const grid = new Int32Array(nx * ny).fill(-1)
   d.walls.forEach((w, wi) => {
     const a = V.get(w.a)!, b = V.get(w.b)!
-    const steps = Math.ceil(d2(a, b) / (cell / 2)) + 1
+    const L = d2(a, b)
+    const steps = Math.ceil(L / (cell / 2)) + 1
     const r = Math.max(1, Math.round(w.thicknessM / 2 / cell))
     for (let k = 0; k <= steps; k++) {
+      const m = (L * k) / steps
+      if (w.openings.some((o) => o.kind !== 'window' && m > o.offsetM + 0.05 && m < o.offsetM + o.widthM - 0.05)) continue
       const cx = Math.floor((a.x + ((b.x - a.x) * k) / steps - x0) / cell), cy = Math.floor((a.y + ((b.y - a.y) * k) / steps - y0) / cell)
       for (let dy = -r; dy <= r; dy++)
         for (let dx = -r; dx <= r; dx++) {
           const x = cx + dx, y = cy + dy
-          if (x >= 0 && y >= 0 && x < n && y < n) grid[y * n + x] = wi
+          if (x >= 0 && y >= 0 && x < nx && y < ny) grid[y * nx + x] = wi
         }
     }
   })
-  const touched = new Set<string>()
-  const start = Math.floor(R / cell) * n + Math.floor(R / cell)
-  if (grid[start] >= 0) return touched
-  const seen = new Uint8Array(n * n)
-  const queue = [start]
-  seen[start] = 1
-  // breadth first, at most openFloodSqm of floor: the open room fills first; what leaks on down a corridor stops early
-  for (let head = 0; head < queue.length && head < KNOBS.openFloodSqm / (cell * cell); head++) {
-    const i = queue[head]
-    const x = i % n, y = (i / n) | 0
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const X = x + dx, Y = y + dy
-      if (X < 0 || Y < 0 || X >= n || Y >= n || (X - n / 2) ** 2 + (Y - n / 2) ** 2 > (n / 2) ** 2) continue
-      const j = Y * n + X
-      if (grid[j] >= 0) touched.add(d.walls[grid[j]].id)
-      else if (!seen[j]) (seen[j] = 1), queue.push(j)
+  // gaps rule 4 carried a wall across stay passable (maybe a door the swing test missed)
+  for (const g of d.resumed ?? []) {
+    const L = d2(g.a, g.b), steps = Math.ceil(L / (cell / 2)) + 1
+    for (let k = 1; k < steps; k++) {
+      const cx = Math.floor((g.a.x + ((g.b.x - g.a.x) * k) / steps - x0) / cell), cy = Math.floor((g.a.y + ((g.b.y - g.a.y) * k) / steps - y0) / cell)
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && cx + dx >= 0 && cy + dy >= 0 && cx + dx < nx && cy + dy < ny) grid[(cy + dy) * nx + cx + dx] = -1
     }
   }
-  return touched
+  const centre = (i: number): Pt => ({ x: x0 + ((i % nx) + 0.5) * cell, y: y0 + (Math.floor(i / nx) + 0.5) * cell })
+  const seen = new Uint8Array(nx * ny)
+  const touched = new Set<string>()
+  // the click, or the nearest free cell within 0.5 m (a click on a wall line)
+  const sx = Math.floor((at.x - x0) / cell), sy = Math.floor((at.y - y0) / cell)
+  let start = -1
+  for (let r = 0; r <= 5 && start < 0; r++)
+    for (let dy = -r; dy <= r && start < 0; dy++)
+      for (let dx = -r; dx <= r && start < 0; dx++) {
+        const x = sx + dx, y = sy + dy, i = y * nx + x
+        if (x >= 0 && y >= 0 && x < nx && y < ny && grid[i] < 0) start = i
+      }
+  if (start < 0) return { inFlood: () => false, touched, sqm: 0 }
+  const free = blocked(centre(start)) ? () => true : (i: number) => !blocked(centre(i))
+  const cellOf = (p: Pt) => {
+    const x = Math.floor((p.x - x0) / cell), y = Math.floor((p.y - y0) / cell)
+    return x >= 0 && y >= 0 && x < nx && y < ny ? y * nx + x : -1
+  }
+  const near4 = (i: number) => {
+    const x = i % nx
+    return [x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1, i - nx, i + nx < nx * ny ? i + nx : -1]
+  }
+  // pass 1: from the click, breadth first, until nothing is left or the cap
+  const dist = new Int32Array(nx * ny).fill(-1)
+  const queue = [start]
+  seen[start] = 1
+  dist[start] = 0
+  const cap = capSqm / (cell * cell)
+  for (let head = 0; head < queue.length && head < cap; head++) {
+    const i = queue[head]
+    for (const j of near4(i)) if (j >= 0 && !seen[j] && grid[j] < 0 && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
+  }
+  // pass 2: a name a flat has once, printed twice on that floor — the farther print is the next flat's. The click and
+  // those rivals flood together; every cell goes to the nearest source, the click's share is the flat.
+  const byName = new Map<string, { c: number; d: number }[]>()
+  for (const l of names) {
+    const c = cellOf(l.p)
+    if (c >= 0 && seen[c]) byName.set(l.name, [...(byName.get(l.name) ?? []), { c, d: dist[c] }])
+  }
+  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).filter((c) => c !== start)
+  const own = new Int8Array(nx * ny).fill(-1)
+  const q2 = [start, ...rivals]
+  own[start] = 0
+  for (const r of rivals) own[r] = 1
+  for (let head = 0; head < q2.length; head++) {
+    const i = q2[head]
+    for (const j of near4(i)) if (j >= 0 && seen[j] && own[j] < 0) (own[j] = own[i]), q2.push(j)
+  }
+  let n = 0
+  for (let i = 0; i < nx * ny; i++) {
+    if (own[i] !== 0) continue
+    n++
+    for (const j of near4(i)) if (j >= 0 && grid[j] >= 0) touched.add(d.walls[grid[j]].id)
+  }
+  const inFlood = (p: Pt) => {
+    const c = cellOf(p)
+    return c >= 0 && own[c] === 0
+  }
+  return { inFlood, touched, sqm: n * cell * cell }
 }
 
+
 /**
- * Faces of the flat: from the clicked face, grow across partitions (5") and walls with a door / passage / slider;
- * a door in a 10" wall is the entrance — the face behind it (the lobby) joins, but grows no further. A click in an
- * open area starts from every room around it.
+ * Faces of the flat. With a click: every closed face on the floor the flood from the click reaches (floodFlat), the
+ * closed rooms mostly surrounded by it, and the planters at its edge; `touched` = every wall the flood met (the flat's
+ * unclosed walls go into the draft too). Without a click: the largest region grown across partitions and doors.
  */
-function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity, names: { p: Pt; name: string }[] = []): { rooms: Set<Room>; open: boolean } {
+function pickFlat(
+  d: Draft,
+  at: Pt | null,
+  core: Pt[] = [],
+  budgetSqm = Infinity,
+  names: { p: Pt; name: string }[] = [],
+  /** cells the flood never enters: the outside, planters */
+  blocked: (p: Pt) => boolean = () => false,
+  /** of those, the planters: a planter face on the flooded floor's edge joins the flat as a planter */
+  planter: (p: Pt) => boolean = () => false,
+): { rooms: Set<Room>; open: boolean; touched: Set<string> } {
   const byWall = new Map<string, Room[]>()
   for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
   const W = new Map(d.walls.map((w) => [w.id, w]))
@@ -802,37 +1163,28 @@ function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity
     return new Set(cost.keys())
   }
   if (at) {
-    // nearest rooms first up to the printed flat area: what leaks round the core into the next flat is farther away
-    const cap = (rs: Set<Room>) => {
-      let sum = 0
-      return new Set([...rs].sort((p, q) => d2(p.centroid, at) - d2(q.centroid, at)).filter((r) => (sum += r.areaSqm) - r.areaSqm < budgetSqm))
+    // founder rule 3: the floor the flood from the click reaches; every closed face on it, the planters at its edge
+    // the printed figure includes walls and a common share: the floor is about areaShare of it
+    const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm, names)
+    const inner = new Map(d.rooms.map((r) => [r, insidePoint(r, d.unit, d.rooms)]))
+    const onFloor = d.rooms.filter((r) => ok(r) && fl.inFlood(inner.get(r)!))
+    // a closed room the flood could not enter (its door not found, or carried over as wall) but mostly surrounded by
+    // the flat — at least 60 % of its perimeter on walls the flood touched or the flat's rooms own — is the flat's too;
+    // the next flat's room shares one party wall only
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    const len = (wid: string) => d2(V.get(W.get(wid)!.a)!, V.get(W.get(wid)!.b)!)
+    for (let it = 0; it < 3; it++) {
+      const flatWalls = new Set([...fl.touched, ...onFloor.flatMap((r) => r.wallIds)])
+      const more = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && !blocked(inner.get(r)!) && r.areaSqm < 30 && r.wallIds.reduce((t, w) => t + (flatWalls.has(w) ? len(w) : 0), 0) >= 0.6 * r.wallIds.reduce((t, w) => t + len(w), 0))
+      if (!more.length) break
+      onFloor.push(...more)
     }
-    // a one-per-flat name printed twice in the region (two LIVINGs, two BED 3s): the far one is the next flat's — every
-    // face fewer rooms away from it than from the click goes with it
-    const split = (rs: Set<Room>, starts: Room[]): Set<Room> => {
-      const faceAt = (p: Pt) => [...rs].filter((r) => pointInPolygon(p, polys.get(r)!)).sort((a, b) => a.areaSqm - b.areaSqm)[0]
-      const byName = new Map<string, Set<Room>>()
-      for (const l of names) {
-        const f = faceAt(l.p)
-        if (f) byName.set(l.name, (byName.get(l.name) ?? new Set()).add(f))
-      }
-      const rivals = [...byName.values()].flatMap((fs) => [...fs].sort((a, b) => d2(a.centroid, at) - d2(b.centroid, at)).slice(1)).filter((r) => !starts.includes(r))
-      if (!rivals.length) return rs
-      const hops = (from: Room[]) => {
-        const h = new Map(from.map((r) => [r, 0]))
-        for (let i = 0, q = [...from]; i < q.length; i++)
-          for (const w of q[i].wallIds) for (const n of byWall.get(w) ?? []) if (rs.has(n) && !h.has(n)) h.set(n, h.get(q[i])! + 1), q.push(n)
-        return h
-      }
-      const hp = hops(starts), hr = hops(rivals)
-      return new Set([...rs].filter((r) => (hp.get(r) ?? Infinity) <= (hr.get(r) ?? Infinity)))
-    }
-    let hit: Room | null = null
-    for (const r of d.rooms) if (pointInPolygon(at, polys.get(r)!) && (!hit || r.areaSqm < hit.areaSqm)) hit = r
-    if (hit) return { rooms: ok(hit) ? cap(split(grow([hit], true), [hit])) : new Set(), open: false }
-    const touched = openNeighbours(d, at)
-    const starts = d.rooms.filter((r) => ok(r) && r.wallIds.some((w) => touched.has(w)))
-    return { rooms: starts.length ? cap(split(grow(starts, true), starts)) : new Set(), open: true }
+    const edge = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && planter(inner.get(r)!) && r.wallIds.some((w) => fl.touched.has(w)))
+    if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched }
+    const rooms = new Set([...onFloor, ...edge])
+    // open = flooded floor no closed face covers (an open plan, or walls the tracer could not close)
+    const covered = onFloor.reduce((t, r) => t + r.areaSqm, 0)
+    return { rooms, open: fl.sqm > covered + 2, touched: fl.touched }
   }
   // no click: the largest closed region (grown the same way, without the entrance step)
   let best = new Set<Room>(), bestA = 0
@@ -844,7 +1196,7 @@ function pickFlat(d: Draft, at: Pt | null, core: Pt[] = [], budgetSqm = Infinity
     const A = [...g].reduce((t, x) => t + x.areaSqm, 0)
     if (A > bestA) (bestA = A), (best = g)
   }
-  return { rooms: best, open: false }
+  return { rooms: best, open: false, touched: new Set() }
 }
 
 /**
@@ -875,9 +1227,12 @@ function dropSlivers(d: Draft): Draft {
   return { ...d, rooms: deriveRooms(d.unit) }
 }
 
-/** Keep only the picked faces' walls (+ loose walls inside them), re-merge, re-derive. */
-function restrict(d: Draft, keep: Set<Room>): Draft {
-  const ids = new Set([...keep].flatMap((r) => r.wallIds))
+/**
+ * Keep the picked faces' walls (+ loose walls inside them) and `extra` walls (those the flood touched: the flat's walls
+ * that close no face yet, so the human closes a gap instead of redrawing a wall), re-merge, re-derive.
+ */
+function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Draft {
+  const ids = new Set([...[...keep].flatMap((r) => r.wallIds), ...extra])
   const polys = [...keep].map((r) => roomPolygon(r, d.unit))
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
   for (const w of d.walls) {
@@ -889,7 +1244,7 @@ function restrict(d: Draft, keep: Set<Room>): Draft {
   const used = new Set(walls.flatMap((w) => [w.a, w.b]))
   const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
   const unit: Unit = { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0 }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed, stairs: d.stairs }
 }
 
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
@@ -927,8 +1282,10 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const text = inputs.text ?? { items: [] }
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
+  const ink = { ...inkMasks(plan), glass: opts.rgb ? glassMask(opts.rgb) : undefined }
+  // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
+  const plants = planterMask(plan, ink.wall, opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(ink.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M, inputs.green)
   let trace = inputs.walls ?? traceWalls(plan)
-  const ink = inkMasks(gray)
   opts.onProgress?.('scale', 0.5)
 
   // ── scale
@@ -1010,12 +1367,31 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked)
+  if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, plants })
   const pick = pickM(pxPerM, origin0)
-  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM))
+  // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
+  // SUNSHADE / PLANTER label counts as planter too)
+  const outside = outsideMask(ink.weak, ink.wall, gray.width, gray.height, pxPerM)
+  const greenFaces = text.items
+    .filter((it) => it.kind === 'room' && it.green)
+    .flatMap((it) => {
+      const c = { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }
+      const f = draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).sort((p, q) => p.areaSqm - q.areaSqm)[0]
+      return f ? [roomPolygon(f, draft.unit)] : []
+    })
+  const px = (m: Uint8Array) => (p: Pt) => {
+    const x = Math.round(origin0.x + p.x * pxPerM), y = Math.round(origin0.y + p.y * pxPerM)
+    return x >= 0 && y >= 0 && x < gray.width && y < gray.height && m[y * gray.width + x] === 1
+  }
+  const inPlants = px(plants), inOutside = px(outside)
+  const isPlanter = (p: Pt) => inPlants(p) || greenFaces.some((f) => pointInPolygon(p, f))
+  // a stair flight is the building's core: the flat never grows through it
+  const inStair = (p: Pt) => (draft.stairs ?? []).some((s) => { const x = origin0.x + p.x * pxPerM, y = origin0.y + p.y * pxPerM; return x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 })
+  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p), isPlanter)
   let flat = picked.rooms
-  if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'The clicked area is open — its walls did not close (open plan, glass or a railing the tracer missed). Draw the missing wall.' })
-  if (!flat.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
-  if (flat.size) draft = dropSlivers(restrict(draft, flat))
+  if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
+  if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
+  if (flat.size || picked.touched.size) draft = dropSlivers(restrict(draft, flat, picked.touched))
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }
@@ -1044,7 +1420,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     if (f) labelsIn.set(f.id, [...(labelsIn.get(f.id) ?? []), it])
   }
   const hintsIn = new Map<string, RoomHint[]>()
-  for (const h of hints?.hints ?? []) {
+  // a stair flight names its face when no label does (founder rule 6), flagged like every other guess
+  const stairHints: RoomHint[] = (draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 }, kind: 'other', source: 'fixture', what: 'stair treads', conf: 0.9 }))
+  for (const h of [...(hints?.hints ?? []), ...stairHints]) {
     const f = faceOf(toM(h.at))
     if (f && h.kind) hintsIn.set(f.id, [...(hintsIn.get(f.id) ?? []), h])
   }
@@ -1072,7 +1450,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     count.set(kind, n)
     const at = insidePoint(r, u, rooms)
     const id = newId()
-    roomLabels.push({ id, name: h.green ? 'Planter' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
+    roomLabels.push({ id, name: h.green ? 'Planter' : h.what === 'stair treads' ? 'Stair' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
     labelled++
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : (h.what ?? 'a drawn fixture')
     review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what} — check`, entityId: id })
@@ -1192,6 +1570,13 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const a = V.get(w.a)!, b = V.get(w.b)!
       review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'low-confidence', message: 'Closed along a thin line — railing, glass or a window?', entityId: w.id })
     }
+  // founder rule 4 carried a wall across a gap with nothing drawn in it: a door whose swing was not found, or an opening
+  for (const r of draft.resumed ?? []) {
+    if (!r.empty || r.L < 0.5) continue
+    const at = { x: r.at.x - shift.x, y: r.at.y - shift.y }
+    const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
+    if (w) review.push({ id: newId(), at, kind: 'opening-guess', message: `Wall carried on across a ${formatFeetInches(r.L)} gap with nothing drawn in it — a door (no swing found) or an opening?`, entityId: w.id })
+  }
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it from one printed length' })
 
@@ -1238,6 +1623,7 @@ function fixAndReport(u: Unit, review: ReviewItem[]): void {
 type HintsModule = {
   findHints?: (gray: Gray, rgb?: AutoTraceOpts['rgb'], o?: { pxPerM?: number; walls?: WallTrace }) => HintTrace
   propagateByColour?: (rgb: NonNullable<AutoTraceOpts['rgb']>, trace: HintTrace, rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
+  greenMask?: (rgb: NonNullable<AutoTraceOpts['rgb']>) => Uint8Array
 }
 /** hints.ts: loaded when it exists (Vite resolves the glob at build time), skipped when not. */
 const HINTS = import.meta.glob<HintsModule>('./hints.ts')
@@ -1259,6 +1645,7 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   let hints: HintTrace | null = null
   opts.onProgress?.('walls', 0.4)
   const inputs: SolveInputs = {
+    green: opts.rgb && m.greenMask ? m.greenMask(opts.rgb) : undefined,
     text,
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
