@@ -84,9 +84,13 @@ function withCloser<T>(fn: () => T): T {
 }
 
 describe('solveTraces on a synthetic flat', () => {
-  test('plain door gaps (no arcs) stay open by default and close with the gap closer', () => {
+  test('plain door gaps (no arcs): the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
     const { g, text } = synthetic(false)
-    expect(deriveRooms(solveTraces(g, { text }, { pickPx: P(2, 2.5) }).unit).length).toBeLessThan(4)
+    const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })
+    expect(deriveRooms(r.unit).length).toBe(4)
+    expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
+    expect(r.review.filter((x) => x.kind === 'opening-guess' && /carried on/.test(x.message)).length).toBe(3)
+    // and with the (default-off) gap closer on, the same 4 rooms
     expect(deriveRooms(withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) })).unit).length).toBe(4)
   })
 

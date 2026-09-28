@@ -33,6 +33,8 @@ export const KNOBS = {
   joinFrac: 0.75,
   /** a free end reaches onto a wall within this × thickness (a corner the thinning left open) */
   extendFrac: 1.5,
+  /** founder rule 4: a thick wall interrupted by anything but a door arc / glazing resumes as the same wall across up to this */
+  resumeM: 2.4,
   /** facing free ends / a free end and a wall ahead are bridged across gaps up to this (railings, glass, missed doors) */
   bridgeM: 1.2,
   /** … and up to this along a clear drawn line (glazing, window bands, railings): at least inkShare of it inked */
@@ -295,23 +297,7 @@ function extendEnds(segs: Seg[], inked?: (x: End) => number): void {
       if (deg.get(ekey(s[e])) !== 1 || d2(s.a, s.b) < 0.05) continue
       const x = { s, e }
       const reach = Math.max(KNOBS.extendFrac * s.th + 0.02, inked ? inked(x) + s.th / 2 : 0)
-      let hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
-      // the same wall run picked up again beyond an unseen stretch: a facing free end straight ahead within the inked run
-      if (!hit && inked && reach > KNOBS.extendFrac * s.th + 0.02) {
-        const p = s[e], d = outDir(x)
-        let best: Seg | null = null, bu = Infinity, be: 'a' | 'b' = 'a'
-        for (const t of segs)
-          for (const te of ['a', 'b'] as const) {
-            if (t === s || deg.get(ekey(t[te])) !== 1 || d2(t.a, t.b) < 0.05) continue
-            const v = sub(t[te], p), u = dot(v, d)
-            if (u > 0.02 && u <= reach && Math.abs(crs(d, v)) <= Math.max(s.th, t.th) / 2 && dot(outDir({ s: t, e: te }), d) < -0.94 && u < bu) (bu = u), (best = t), (be = te)
-          }
-        if (best) {
-          segs.push({ a: { ...p }, b: { ...best[be] }, th: Math.max(s.th, best.th), conf: 0.5 })
-          deg.set(ekey(p), 2), deg.set(ekey(best[be]), 2)
-        }
-        continue
-      }
+      const hit = rayHit(segs, x, reach, KNOBS.extendFrac * s.th)
       if (!hit) continue
       const old = ekey(s[e])
       if (hit.v < 0 || hit.v > 1) {
@@ -325,6 +311,38 @@ function extendEnds(segs: Seg[], inked?: (x: End) => number): void {
       s[e] = { ...hit.X }
       deg.set(ekey(hit.X), (deg.get(ekey(hit.X)) ?? 0) + 2)
     }
+}
+
+/**
+ * Founder rule 4 (2026-09-28): whatever interrupts a thick wall — furniture drawn over it, a fixture, text, hatch, a
+ * dimension line, a column — is ignored; where the thick line comes back on the same alignment it is the SAME wall.
+ * Facing free ends of one run (parallel within ~10°, off-line by at most half a wall) up to resumeM apart are joined as
+ * wall, shortest gaps first. (A gap with a door arc or drawn glazing already carries its opening and has no free ends.)
+ * Returns the resumed gaps; `empty` = nothing drawn along it (a door the arc test missed, or an opening) → review item.
+ */
+function resumeWalls(segs: Seg[], inkShare: (p: Pt, q: Pt) => number): { at: Pt; L: number; empty: boolean }[] {
+  const deg = degrees(segs)
+  const ends: End[] = segs.flatMap((s) => (['a', 'b'] as const).filter((e) => deg.get(ekey(s[e])) === 1 && d2(s.a, s.b) >= 0.05).map((e) => ({ s, e })))
+  const cands: { x: End; y: End; L: number }[] = []
+  for (let i = 0; i < ends.length; i++)
+    for (let j = i + 1; j < ends.length; j++) {
+      const x = ends[i], y = ends[j], p = x.s[x.e], d = outDir(x)
+      const v = sub(y.s[y.e], p), u = dot(v, d)
+      if (u <= 0.02 || u > KNOBS.resumeM || dot(outDir(y), d) > -0.985) continue
+      if (Math.abs(crs(d, v)) > Math.max(x.s.th, y.s.th) / 2 + 0.03) continue
+      cands.push({ x, y, L: u })
+    }
+  cands.sort((p, q) => p.L - q.L)
+  const used = new Set<string>()
+  const out: { at: Pt; L: number; empty: boolean }[] = []
+  for (const c of cands) {
+    const p = c.x.s[c.x.e], q = c.y.s[c.y.e]
+    if (used.has(ekey(p)) || used.has(ekey(q))) continue
+    used.add(ekey(p)), used.add(ekey(q))
+    segs.push({ a: { ...p }, b: { ...q }, th: Math.max(c.x.s.th, c.y.s.th), conf: 0.5 })
+    out.push({ at: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, L: c.L, empty: inkShare(p, q) < 0.5 })
+  }
+  return out
 }
 
 /** The share of `n` samples along p→q (middle 80 %) that have thin line ink within 1 px — px space. */
@@ -650,6 +668,8 @@ interface Draft {
   walls: GWall[]
   rooms: Room[]
   th0: number
+  /** gaps founder rule 4 carried the wall across (metres, the draft frame before any shift) */
+  resumed?: { at: Pt; L: number; empty: boolean }[]
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
@@ -701,6 +721,11 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
   segs = pruneSpurs(node(segs, 0.02))
   extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM)
+  const resumed = resumeWalls(segs, (p, q) => {
+    let best = 0
+    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
+    return best
+  })
   if (KNOBS.closeGaps)
     bridgeGaps(
     segs,
@@ -739,7 +764,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     areaSqft: 0,
     planImage: { src: '', pxPerM, originPx },
   }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0 }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed }
 }
 
 export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta), wall: threshold(gray, inkThreshold(gray, {})) })
@@ -940,7 +965,7 @@ function restrict(d: Draft, keep: Set<Room>): Draft {
   const used = new Set(walls.flatMap((w) => [w.a, w.b]))
   const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
   const unit: Unit = { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0 }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed }
 }
 
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
@@ -1244,6 +1269,13 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const a = V.get(w.a)!, b = V.get(w.b)!
       review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'low-confidence', message: 'Closed along a thin line — railing, glass or a window?', entityId: w.id })
     }
+  // founder rule 4 carried a wall across a gap with nothing drawn in it: a door whose swing was not found, or an opening
+  for (const r of draft.resumed ?? []) {
+    if (!r.empty || r.L < 0.5) continue
+    const at = { x: r.at.x - shift.x, y: r.at.y - shift.y }
+    const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
+    if (w) review.push({ id: newId(), at, kind: 'opening-guess', message: `Wall carried on across a ${formatFeetInches(r.L)} gap with nothing drawn in it — a door (no swing found) or an opening?`, entityId: w.id })
+  }
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it from one printed length' })
 
