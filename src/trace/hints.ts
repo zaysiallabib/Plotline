@@ -425,10 +425,17 @@ const isGreen = (r: number, g: number, b: number) => g >= r + 6 && g >= b + 10 &
  * ~0.25 m merge; blobs under 0.6 m² (a pot plant, a tree dot) are dropped; a PALE green blob wider than 2.4 m is a tinted
  * flat (DMD Type B), not a planter.
  */
+/** 1 where a pixel is plant green (planter fill, lawn, foliage) — the solver marks planter strips with it (founder rule 2). */
+export function greenMask(rgb: Rgba): Uint8Array {
+  const { width: w, height: h, data } = rgb
+  const m = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) m[i] = isGreen(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) ? 1 : 0
+  return m
+}
+
 export function greenHints(rgb: Rgba, k: number): RoomHint[] {
   const { width: w, height: h, data } = rgb
-  const notGreen = new Uint8Array(w * h)
-  for (let i = 0; i < w * h; i++) notGreen[i] = isGreen(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]) ? 0 : 1
+  const notGreen = greenMask(rgb).map((v) => 1 - v)
   const toGreen = edt(notGreen, w, h)
   const rd = Math.max(1, 0.12 * k)
   const dil = new Uint8Array(w * h)

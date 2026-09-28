@@ -8,7 +8,7 @@
  *   → Zhang–Suen skeleton → pixel graph (junctions, ends, chains) → spur pruning → line / arc fitting
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
-import { edt, lineInk, otsu, thin, threshold } from './raster'
+import { edt, otsu, thin, threshold } from './raster'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
@@ -414,8 +414,8 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }),
     2.5 * thicknessOf(half),
   )
-  // door arcs and window lines are often thin light-grey strokes on a light floor fill: "line ink" = darker than the local background
-  const openings = findOpenings(walls, core, rCore, lineInk(gray, 18), w, h, half, o.partitionM, arcInk(gray))
+  // door arcs: ink darker than the local median (arcInk); windows: the grey profile across the gap (glazing)
+  const openings = findOpenings(walls, core, rCore, w, h, half, o.partitionM, arcInk(gray), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))])
   return { walls, openings }
 }
 
@@ -665,10 +665,9 @@ function refine(segs: Seg[], nodes: Node[], dtAt: (p: Px) => number): void {
  * Gaps: from every free wall end, march on along the wall's direction over the wall core; the first wall pixel between
  * ~0.45 m and ~3.2 m away (at the assumed partition scale) is the far jamb — another free end (a gap in one wall run)
  * or the side of a cross wall (a door beside a corner). Kind: a thin arc of radius ≈ gap around either jamb → door;
- * ≥ 2 thin ink lines running across the gap → window; else passage (≤ 1.4 m) / unknown.
+ * glazing across the gap (see `glazing`) → window; else passage (≤ 1.4 m) / unknown.
  */
-function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk: Uint8Array, w: number, h: number, half: number, partitionM: number, arcAt: (x: number, y: number) => boolean): OpeningGuess[] {
-  const ink = lineInk
+function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, w: number, h: number, half: number, partitionM: number, arcAt: (x: number, y: number) => boolean, grayAt: (x: number, y: number) => number): OpeningGuess[] {
   const pxPerM = thicknessOf(half) / partitionM
   const key = (p: Px) => `${Math.round(p.x)},${Math.round(p.y)}`
   const deg = new Map<string, number>()
@@ -716,14 +715,14 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
       alongside = c >= 0.5 * n
     }
     if (alongside) continue
-    const g = classifyGap(p, b, E.th, hit, pxPerM, (x, y) => (arcAt(x, y) && at(core, x, y) === 0 ? 1 : 0), (x, y) => at(ink, x, y))
+    const g = classifyGap(p, b, E.th, hit, pxPerM, (x, y) => (arcAt(x, y) && at(core, x, y) === 0 ? 1 : 0), grayAt)
     if (g && (!E.junction || g.kind === 'door' || g.kind === 'window')) out.push(g)
   }
   return out
 }
 
 /** Door / window / passage / unknown for a gap a→b; null = no evidence and too wide to be a plain passage. */
-function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcAt: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess | null {
+function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcAt: (x: number, y: number) => number, grayAt: (x: number, y: number) => number): OpeningGuess | null {
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
   // door: a quarter arc around either jamb, on either side, at ONE radius (0.75–1.15 × the gap) over most of its sweep,
@@ -761,24 +760,38 @@ function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcA
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
     return { a, b, kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
   }
-  // window: glazing drawn across the gap within the wall's thickness — ≥ 2 thin lines (frame / panes), or one band at
-  // least 3 px wide (a light glazing band, the lines merged at low resolution). A lone 1–2 px line is a pen line
-  // (railing, sill, furniture edge): no evidence.
-  let lines = 0, band = 0, widest = 0
-  for (let off = -th * 0.8; off <= th * 0.8; off += 0.5) {
-    let hit = 0, n = 0
-    for (let t = 0.1; t <= 0.9; t += 0.05) {
-      hit += inkAt(a.x + ux * gap * t + nx * off, a.y + uy * gap * t + ny * off)
-      n++
-    }
-    if (hit / n >= 0.85) {
-      if (!band) lines++
-      widest = Math.max(widest, (band += 0.5))
-    } else band = 0
-  }
-  if (lines >= 2) return { a, b, kind: 'window', conf: 0.6 }
-  if (widest >= 3) return { a, b, kind: 'window', conf: 0.5 }
+  const g = glazing(a, ux, uy, gap, th, grayAt)
+  if (g.lines >= 2) return { a, b, kind: 'window', conf: 0.6 }
+  if (g.band >= 3) return { a, b, kind: 'window', conf: 0.5 }
   return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : gap <= 2 * pxPerM ? { a, b, kind: 'unknown', conf: 0.2 } : null
+}
+
+/**
+ * Glazing drawn along a→(a + u·len) within ±0.8·th of the line: the grey profile across it (at each offset the 80th
+ * percentile along the middle 80 %, so a line must run nearly the whole length) has dark intervals — darker by 15 than
+ * the brightest profile value on EACH side (a line or a glass band, not the edge of a room's colour fill ending there).
+ * `lines` = such intervals, `band` = the widest one's width (px). ≥ 2 lines (frame / panes) or a band ≥ 3 px (a light
+ * glass band, lines merged at low resolution) is a window; a lone 1–2 px line is a pen line (railing, sill, furniture).
+ */
+export function glazing(a: Px, ux: number, uy: number, len: number, th: number, grayAt: (x: number, y: number) => number): { lines: number; band: number } {
+  const nx = -uy, ny = ux
+  const prof: number[] = []
+  for (let off = -th * 0.8; off <= th * 0.8; off += 0.5) {
+    const v: number[] = []
+    for (let t = 0.1; t <= 0.9; t += 0.05) v.push(grayAt(a.x + ux * len * t + nx * off, a.y + uy * len * t + ny * off))
+    v.sort((p, q) => p - q)
+    prof.push(v[Math.floor(0.8 * (v.length - 1))])
+  }
+  const n = prof.length
+  const left = prof.map((_, i) => Math.max(...prof.slice(0, i + 1)))
+  const right = prof.map((_, i) => Math.max(...prof.slice(i)))
+  let lines = 0, band = 0, run = 0
+  for (let i = 0; i <= n; i++) {
+    const dark = i < n && prof[i] <= Math.min(left[i], right[i]) - 15
+    if (dark) run++
+    else if (run) (lines++), (band = Math.max(band, run * 0.5)), (run = 0)
+  }
+  return { lines, band }
 }
 
 /** A traced wall as straight pieces (an arc → `n` chords). */
