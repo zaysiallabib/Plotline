@@ -4,7 +4,25 @@ Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDriv
 Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
 Live: https://plotline-flax.vercel.app — **wave 14 + 3" grid LIVE (founder deployed 2026-09-28; bundle index-BJCmxwev.js).** Staff editing: `/u/type-a` → "Staff mode" → Edit furniture. `npx vercel --prod --yes` is denied to sessions by the classifier — the founder deploys.
 
-## ▶ RESUME HERE (session 11 ended 2026-09-28 on tokens; founder resumes in the morning)
+## ▶ SESSION 12 (2026-09-28 morning, Fable 5.1 manager) — SOLVER MERGED 401c98a
+
+**Done:** the solver agent's last uncommitted change (founder scope: walls + door arcs only → `KNOBS.track = false`, new `KNOBS.closeGaps = false` gating bridges / passages / glazing double lines / run-ons / evidence-free gap openings; test with door arcs) committed as 2fdcc60; scratch `_dbg*.test.ts` + `vite.solver.config.ts` dropped; merged `--no-ff` = **401c98a** (one conflict in `evalio.ts`: kept the solver's `writeUnitOverlay` + main's exported `writePng`); **tsc + 510 tests (1 skipped) + build green, pushed**; worktree removed (junction unlinked first), branch deleted (0 unmerged). The Studio Auto-trace button now runs the real solver (worker bundle 115 kB; viewer chunk unchanged).
+
+**Raw end-to-end eval (default = founder scope; `TRACE_SHOTS=E:/dev/plotline-shots/wave16/solver/merged npx vitest run src/trace/solve.test.ts --silent=false`):**
+
+| unit | draft rooms / truth rooms | matched IoU ≥ 0.6 | area err | scale err | scale from | kind right | cover | spill | openings found | kind ok | extra | review | ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Sheltech A | 11/21 | **1** | 14 % | +10.8 % | thickness | 1/1 | 15 % | 40 % | 5/16 | 4 | 14 | 10 | 468 |
+| Sheltech B | 8/20 | **2** | 16 % | +10.8 % | thickness | 2/2 | 20 % | 37 % | 3/16 | 3 | 12 | 7 | 463 |
+| BTI Type A | 4/27 | **2** | 14 % | +1.1 % | thickness | 2/2 | 14 % | 0 % | 4/23 | 3 | 2 | 8 | 812 |
+| BTI Type B | 8/22 | **6** | 13 % | +1.3 % | dims | 2/6 | 21 % | 0 % | 8/15 | 6 | 4 | 8 | 1015 |
+| BTI Type C | 4/26 | **3** | 19 % | +1.3 % | dims | 0/3 | 6 % | 4 % | 3/14 | 3 | 2 | 7 | 1001 |
+
+**Total: 14 of 116 truth rooms matched (12 %).** Area err / kind right are over the matched rooms only. Smoke: Banani L2-6 = 7 walls / 2 rooms / 0 labelled; DMD L3-14 = 61 walls / 10 rooms / 0 labelled; 0 crashes. **With `track` + `closeGaps` ON (the agent's pre-scope code): matched Sheltech A 1 → 2, B 2 → 3, BTI unchanged** → the founder's scope costs ~2 rooms, it is NOT the bottleneck. Overlays `E:\dev\plotline-shots\wave16\solver\merged\` (+ `merged-closer\`). **Reading of the overlays:** the draft covers only 6–21 % of the flat — a few rooms around the click (BTI A: Bed-2 merged with Bath-2, H. toilet, closet); most truth rooms are "no face"; Sheltech's region spills 37–40 % into the other flat / planters; Sheltech's printed labels are not read (7 px glyphs) so rooms stay unlabelled; planters show as `other`. **Verdict: the button works end to end, but 12 % of rooms come out right — not yet worth a demo.**
+
+**Open small items:** the Studio worker does not send the colour image (`AutoTraceOpts.rgb`) → colour propagation (Banani fills) is off in the app; size-mismatch rows don't re-check after edits.
+
+## ▶ RESUME HERE (session 11 ended 2026-09-28 on tokens; founder resumes in the morning) — SUPERSEDED by session 12 above
 
 **State:** `feat/phase-0` pushed, 501 tests, build green. Live = wave 14 + 3" grid (founder deployed). **Do NOT ask the founder to deploy until the solver is merged** (the Auto-trace button is merged but shows "solver is not built yet").
 **Running when the session ended: the wave-16 SOLVER agent** — worktree `.claude/worktrees/agent-ac35fd0c3827cc0e8`, branch `worktree-agent-ac35fd0c3827cc0e8` (≥ 12 green commits: text-first erase, label-decides-kind, flat pick, corner closure, door hinge in metres, basin never names a room, eval of unmatched rooms/openings). Its final report may be lost with the session. **Next session, first:** `git log --oneline feat/phase-0..worktree-agent-ac35fd0c3827cc0e8`, read the commit messages, check the worktree is clean (commit or drop leftovers), run `npm test` + `npx tsc -b` in it, then merge (`--no-ff`), run the solve eval (fixtures: `node scripts/trace-fixtures.mjs` → `E:\dev\tmp\wave15\walls\fixtures`; overlays `E:\dev\plotline-shots\wave16\solver\`), report the RAW end-to-end table to the founder (rooms matched IoU ≥ 0.6, area error, scale error, labelled right, review items, ms), unlink the worktree's node_modules junction (PowerShell `(Get-Item …\node_modules -Force).Delete()` only if LinkType is set — never a recursive delete), remove the worktree, update this file, then tell the founder to deploy and how to try it (`/studio` → Choose plan image → Auto-trace → click inside the flat → Check these).
