@@ -139,8 +139,11 @@ function init(): StudioState {
 /** dev only: Auto-trace returns the fixed Sheltech A result (autotraceMock.ts) until the solver lands */
 const MOCK_TRACE = import.meta.env.DEV && new URLSearchParams(location.search).has('mock-trace')
 
-/** The loaded plan as auto-trace's grey raster (luminance; transparent pixels read as paper). */
-function grayOf(im: HTMLImageElement): Gray {
+/**
+ * The loaded plan as auto-trace's rasters: grey (luminance) and the colour image (RGBA, for planter greens and blue
+ * glazing); transparent pixels read as paper. Both buffers are transferred to the worker, not copied.
+ */
+function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJob['rgb']> } {
   const c = document.createElement('canvas')
   c.width = im.naturalWidth
   c.height = im.naturalHeight
@@ -151,7 +154,7 @@ function grayOf(im: HTMLImageElement): Gray {
   const rgba = ctx.getImageData(0, 0, c.width, c.height).data
   const data = new Uint8Array(c.width * c.height)
   for (let i = 0; i < data.length; i++) data[i] = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]
-  return { width: c.width, height: c.height, data }
+  return { gray: { width: c.width, height: c.height, data }, rgb: { width: c.width, height: c.height, data: rgba } }
 }
 
 const download = (name: string, text: string) => {
@@ -471,7 +474,8 @@ export default function StudioApp() {
     } catch {
       /* storage blocked: no AI helper */
     }
-    const job: TraceJob = { gray: grayOf(img), pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, mock: MOCK_TRACE }
+    const { gray, rgb } = rastersOf(img)
+    const job: TraceJob = { gray, rgb, pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, mock: MOCK_TRACE }
     const worker = new Worker(new URL('./autotrace.worker.ts', import.meta.url), { type: 'module' })
     const stop = () => {
       worker.terminate()
@@ -510,7 +514,7 @@ export default function StudioApp() {
       fail(e.message || 'the tracer could not start')
     }
     setTrace({ stage: 'Starting', fraction: 0 })
-    worker.postMessage(job, [job.gray.data.buffer])
+    worker.postMessage(job, [job.gray.data.buffer, rgb.data.buffer])
   }
 
   // ----- hit testing (screen px)

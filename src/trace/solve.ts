@@ -326,7 +326,7 @@ type Resumed = { a: Pt; b: Pt; at: Pt; L: number; empty: boolean }
  * Returns the resumed gaps; `empty` = nothing drawn along it (a door the arc test missed, or an opening) → review item.
  * The growth from the click passes through them (rule 3 follows the walls' branches; a carried gap may be a door).
  */
-function resumeWalls(segs: Seg[], inkShare: (p: Pt, q: Pt) => number): Resumed[] {
+function resumeWalls(segs: Seg[], inkShare: (p: Pt, q: Pt) => number, glassShare?: (p: Pt, q: Pt) => number): Resumed[] {
   const deg = degrees(segs)
   const ends: End[] = segs.flatMap((s) => (['a', 'b'] as const).filter((e) => deg.get(ekey(s[e])) === 1 && d2(s.a, s.b) >= 0.05).map((e) => ({ s, e })))
   const cands: { x: End; y: End; L: number }[] = []
@@ -345,8 +345,10 @@ function resumeWalls(segs: Seg[], inkShare: (p: Pt, q: Pt) => number): Resumed[]
     const p = c.x.s[c.x.e], q = c.y.s[c.y.e]
     if (used.has(ekey(p)) || used.has(ekey(q))) continue
     used.add(ekey(p)), used.add(ekey(q))
-    segs.push({ a: { ...p }, b: { ...q }, th: Math.max(c.x.s.th, c.y.s.th), conf: 0.5 })
-    out.push({ a: { ...p }, b: { ...q }, at: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, L: c.L, empty: inkShare(p, q) < 0.5 })
+    // a gap bridged by a line of the glazing colour is a window (founder rule 5), not a carried wall
+    const glassy = !!glassShare && glassShare(p, q) >= 0.6
+    segs.push({ a: { ...p }, b: { ...q }, th: Math.max(c.x.s.th, c.y.s.th), conf: 0.5, ...(glassy ? { bridge: 'glaze' as const, op: { kind: 'window' as const, conf: 0.6 } } : {}) })
+    if (!glassy) out.push({ a: { ...p }, b: { ...q }, at: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, L: c.L, empty: inkShare(p, q) < 0.5 })
   }
   return out
 }
@@ -385,7 +387,7 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
  * front runs between two walls' middles instead.
  * ponytail: axis-aligned sheets only (a rotated scan skips this); a Hough pass if rotated scans show up.
  */
-function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number, gray?: Gray): { a: Px; b: Px }[] {
+function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number, gray?: Gray, anyLine = false): { a: Px; b: Px }[] {
   const minPx = 0.6 * k, bandPx = Math.max(3, 0.3 * k), touch = 0.3 * k
   const out: { a: Px; b: Px }[] = []
   const ends = walls.flatMap((wl) => [wl.a, wl.b])
@@ -428,7 +430,7 @@ function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['wal
       // a colour fill); a lone pen line only with the closer
       const L = d2(a, b)
       const gl = gray ? glazing(a, (b.x - a.x) / L, (b.y - a.y) / L, L, Math.max(4, 0.25 * k), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))]) : null
-      const isGlazing = gl ? gl.lines >= 2 || gl.band >= 3 : lines >= 2 || vs.length >= 3
+      const isGlazing = anyLine || (gl ? gl.lines >= 2 || gl.band >= 3 : lines >= 2 || vs.length >= 3)
       if (!isGlazing && (!KNOBS.closeGaps || d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
       let onWall = 0
       for (let t = 0; t < 10; t++) {
@@ -679,10 +681,12 @@ interface Draft {
   th0: number
   /** gaps founder rule 4 carried the wall across (metres, the draft frame before any shift) */
   resumed?: Resumed[]
+  /** stair flights found on the sheet (px boxes, founder rule 6) */
+  stairs?: { x0: number; y0: number; x1: number; y1: number }[]
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks>, tracked: WallSeg[] = []): Draft {
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = []): Draft {
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
   let segs: Seg[] = []
@@ -719,11 +723,18 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // thin walls the tracker followed (track.ts): weaker than drawn walls, marked so the small-loop rule can drop them
   for (const t of tracked) segs.push({ a: toM(t.a), b: toM(t.b), th: PARTITION_M, conf: t.conf, bridge: 'track' })
   const th0 = dominantAxis(segs.filter((s) => !s.bridge))
-  const { weak, line, wall } = ink ?? inkMasks(gray)
+  const { weak, line, wall, glass } = { glass: undefined, ...(ink ?? inkMasks(gray)) }
+  // founder rule 6: stair flights (their treads are parallel line bundles too — never glazing)
+  const stairs = findStairs(line, gray.width, gray.height, pxPerM)
+  const m2 = 0.2 * pxPerM
+  const inStairs = (l: { a: Px; b: Px }) => stairs.some((s) => (l.a.x + l.b.x) / 2 >= s.x0 - m2 && (l.a.x + l.b.x) / 2 <= s.x1 + m2 && (l.a.y + l.b.y) / 2 >= s.y0 - m2 && (l.a.y + l.b.y) / 2 <= s.y1 + m2)
   // glazing between two walls, too faint for the wall stage: drawn as >= 2 lines or a band it is a window in a wall gap
   // (founder scope); a lone pen line (railing, counter) only with the gap closer
   if (Math.abs(th0) < (2 * Math.PI) / 180)
-    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM, gray)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
+    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM, gray)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
+  // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
+  if (glass && Math.abs(th0) < (2 * Math.PI) / 180)
+    for (const l of thinLines(glass, gray.width, gray.height, trace.walls, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
   snapAxes(segs, th0)
   joinEnds(segs)
   const W = gray.width, H = gray.height
@@ -734,7 +745,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     let best = 0
     for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
     return best
-  })
+  }, glass && ((p, q) => inkAlong(glass, W, H, toPx(p), toPx(q))))
   if (KNOBS.closeGaps)
     bridgeGaps(
     segs,
@@ -773,7 +784,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     areaSqft: 0,
     planImage: { src: '', pxPerM, originPx },
   }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed, stairs }
 }
 
 export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta), wall: threshold(gray, inkThreshold(gray, {})) })
@@ -804,6 +815,71 @@ function inkRun(mask: Uint8Array, w: number, h: number, p: Px, d: Pt, thPx: numb
 const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: w.openings })
 
 // ───────────────────────────────────────────────────────────────── plants, outside, picking the flat
+
+/**
+ * Founder rule 5: thin lines of a glazing colour — blue / cyan tinted (Banani draws windows and veranda glass as thin
+ * light-blue lines). A blue FILL (a wet room's floor tint) is no glass: blue regions deeper than 3 px are cut out.
+ */
+export function glassMask(rgb: NonNullable<AutoTraceOpts['rgb']>): Uint8Array {
+  const { width: w, height: h, data } = rgb
+  const m = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) m[i] = data[i * 4 + 2] - Math.max(data[i * 4], data[i * 4 + 1]) >= 25 ? 1 : 0
+  const deep = edt(m, w, h)
+  const fill = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) fill[i] = deep[i] >= 3 ? 1 : 0
+  const fillAll = dilate(fill, w, h, 3)
+  for (let i = 0; i < w * h; i++) if (fillAll[i]) m[i] = 0
+  return m
+}
+
+/**
+ * Founder rule 6: stairs have lines but no text — a run of at least 5 short parallel treads (0.7–1.8 m long, one
+ * start and end) evenly spaced 0.18–0.4 m apart, on the sheet's axes. Returns each flight's box (px). No AI, no text.
+ * ponytail: axis-aligned sheets only, like thinLines; winders / spiral stairs are not found.
+ */
+export function findStairs(mask: Uint8Array, w: number, h: number, k: number): { x0: number; y0: number; x1: number; y1: number }[] {
+  const out: { x0: number; y0: number; x1: number; y1: number }[] = []
+  for (const horiz of [true, false]) {
+    const U = horiz ? w : h, N = horiz ? h : w
+    // tread candidates: runs 0.7–1.8 m long; runs on neighbouring rows with the same extent are one line
+    const lines: { v: number; u0: number; u1: number }[] = []
+    let recent: typeof lines = []
+    for (let v = 0; v < N; v++) {
+      recent = recent.filter((l) => v - l.v <= 2)
+      let u0 = -1
+      for (let u = 0; u <= U; u++) {
+        const on = u < U && (horiz ? mask[v * w + u] : mask[u * w + v])
+        if (on && u0 < 0) u0 = u
+        if (!on && u0 >= 0) {
+          const L = u - u0
+          if (L >= 0.7 * k && L <= 1.8 * k) {
+            const prev = recent.find((l) => Math.abs(l.u0 - u0) <= 3 && Math.abs(l.u1 - u) <= 3)
+            if (prev) prev.v = v
+            else lines.push({ v, u0, u1: u }), recent.push(lines[lines.length - 1])
+          }
+          u0 = -1
+        }
+      }
+    }
+    lines.sort((p, q) => p.v - q.v)
+    const used = new Uint8Array(lines.length)
+    for (let i = 0; i < lines.length; i++) {
+      if (used[i]) continue
+      // treads: same start and end (±0.15 m), then evenly spaced
+      const run = [lines[i]]
+      for (let j = i + 1; j < lines.length && lines[j].v - run[run.length - 1].v <= 0.4 * k; j++) {
+        const last = run[run.length - 1], l = lines[j], gap = l.v - last.v
+        if (used[j] || Math.abs(l.u0 - lines[i].u0) > 0.15 * k || Math.abs(l.u1 - lines[i].u1) > 0.15 * k || gap < 0.18 * k) continue
+        if (run.length >= 2 && Math.abs(gap - (last.v - run[run.length - 2].v)) > 0.3 * gap) continue
+        run.push(l), (used[j] = 1)
+      }
+      if (run.length < 5) continue
+      const u0 = Math.min(...run.map((l) => l.u0)), u1 = Math.max(...run.map((l) => l.u1)), v0 = run[0].v, v1 = run[run.length - 1].v
+      out.push(horiz ? { x0: u0, y0: v0, x1: u1, y1: v1 } : { x0: v0, y0: u0, x1: v1, y1: u1 })
+    }
+  }
+  return out
+}
 
 /** Dilate a mask by r px (exact, through the distance transform). */
 function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
@@ -1135,7 +1211,7 @@ function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Dr
   const used = new Set(walls.flatMap((w) => [w.a, w.b]))
   const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
   const unit: Unit = { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed, stairs: d.stairs }
 }
 
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
@@ -1173,7 +1249,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const text = inputs.text ?? { items: [] }
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
-  const ink = inkMasks(plan)
+  const ink = { ...inkMasks(plan), glass: opts.rgb ? glassMask(opts.rgb) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(ink.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M, inputs.green)
   let trace = inputs.walls ?? traceWalls(plan)
@@ -1276,7 +1352,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   const inPlants = px(plants), inOutside = px(outside)
   const isPlanter = (p: Pt) => inPlants(p) || greenFaces.some((f) => pointInPolygon(p, f))
-  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p), isPlanter)
+  // a stair flight is the building's core: the flat never grows through it
+  const inStair = (p: Pt) => (draft.stairs ?? []).some((s) => { const x = origin0.x + p.x * pxPerM, y = origin0.y + p.y * pxPerM; return x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 })
+  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p), isPlanter)
   let flat = picked.rooms
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
   if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
@@ -1309,7 +1387,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     if (f) labelsIn.set(f.id, [...(labelsIn.get(f.id) ?? []), it])
   }
   const hintsIn = new Map<string, RoomHint[]>()
-  for (const h of hints?.hints ?? []) {
+  // a stair flight names its face when no label does (founder rule 6), flagged like every other guess
+  const stairHints: RoomHint[] = (draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 }, kind: 'other', source: 'fixture', what: 'stair treads', conf: 0.9 }))
+  for (const h of [...(hints?.hints ?? []), ...stairHints]) {
     const f = faceOf(toM(h.at))
     if (f && h.kind) hintsIn.set(f.id, [...(hintsIn.get(f.id) ?? []), h])
   }
@@ -1337,7 +1417,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     count.set(kind, n)
     const at = insidePoint(r, u, rooms)
     const id = newId()
-    roomLabels.push({ id, name: h.green ? 'Planter' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
+    roomLabels.push({ id, name: h.green ? 'Planter' : h.what === 'stair treads' ? 'Stair' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
     labelled++
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : (h.what ?? 'a drawn fixture')
     review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what} — check`, entityId: id })
@@ -1510,6 +1590,7 @@ function fixAndReport(u: Unit, review: ReviewItem[]): void {
 type HintsModule = {
   findHints?: (gray: Gray, rgb?: AutoTraceOpts['rgb'], o?: { pxPerM?: number; walls?: WallTrace }) => HintTrace
   propagateByColour?: (rgb: NonNullable<AutoTraceOpts['rgb']>, trace: HintTrace, rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
+  greenMask?: (rgb: NonNullable<AutoTraceOpts['rgb']>) => Uint8Array
 }
 /** hints.ts: loaded when it exists (Vite resolves the glob at build time), skipped when not. */
 const HINTS = import.meta.glob<HintsModule>('./hints.ts')
@@ -1531,6 +1612,7 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   let hints: HintTrace | null = null
   opts.onProgress?.('walls', 0.4)
   const inputs: SolveInputs = {
+    green: opts.rgb && m.greenMask ? m.greenMask(opts.rgb) : undefined,
     text,
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,

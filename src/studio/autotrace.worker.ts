@@ -9,6 +9,8 @@ import type { AutoTraceResult, Gray, Px } from '../trace/types'
 
 export interface TraceJob {
   gray: Gray
+  /** the sheet in colour (RGBA, same size): planter greens, blue glazing, colour fills */
+  rgb?: { width: number; height: number; data: Uint8ClampedArray }
   pickPx: Px
   /** the Scale tool's, when it was set */
   pxPerM?: number
@@ -25,7 +27,7 @@ onmessage = async ({ data: job }: MessageEvent<TraceJob>) => {
   try {
     const trace = import.meta.env.DEV && job.mock ? (await import('./autotraceMock')).mockAutoTrace : autoTrace
     const onProgress = (stage: string, fraction: number) => post({ type: 'progress', stage, fraction })
-    post({ type: 'done', result: await trace(job.gray, { pickPx: job.pickPx, pxPerM: job.pxPerM, ai: job.aiKey ? geminiReader(job.aiKey) : undefined, onProgress }) })
+    post({ type: 'done', result: await trace(job.gray, { pickPx: job.pickPx, pxPerM: job.pxPerM, rgb: job.rgb, ai: job.aiKey ? geminiReader(job.aiKey) : undefined, onProgress }) })
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) })
   }

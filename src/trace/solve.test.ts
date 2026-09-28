@@ -4,8 +4,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { deriveRooms, validate } from '../core'
 import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
-import { FIXTURES, SHOTS, loadPgm, writeUnitOverlay } from './evalio'
-import { KNOBS, solveTraces, type SolveInputs } from './solve'
+import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
+import { findHints, greenMask } from './hints'
+import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
+import { glazing } from './walls'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
 import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
@@ -82,6 +84,41 @@ function withCloser<T>(fn: () => T): T {
     KNOBS.closeGaps = false
   }
 }
+
+describe('marks: stairs, glazing profile, glass colour', () => {
+  test('a flight of 8 evenly spaced 1.2 m treads is a stair; 3 treads, or uneven lines, are not', () => {
+    const w = 300, h = 300, k = 50
+    const mask = new Uint8Array(w * h)
+    const tread = (y: number, x0 = 40, x1 = 100) => { for (let x = x0; x < x1; x++) mask[y * w + x] = 1 }
+    for (let i = 0; i < 8; i++) tread(40 + i * 14) // 0.28 m risers
+    for (let i = 0; i < 3; i++) tread(40 + i * 14, 180, 240)
+    for (const y of [180, 186, 215, 223, 260]) tread(y, 180, 240) // no rhythm
+    const s = findStairs(mask, w, h, k)
+    expect(s.length).toBe(1)
+    expect(s[0]).toMatchObject({ x0: 40, y0: 40, y1: 40 + 7 * 14 })
+  })
+
+  test('glazing profile: a glass band or two lines count; the edge of a room fill does not', () => {
+    const img = (f: (y: number) => number) => (_x: number, y: number) => f(Math.round(y))
+    const band = glazing({ x: 0, y: 0 }, 1, 0, 100, 12, img((y) => (Math.abs(y) <= 3 ? 200 : 250)))
+    expect(band.band).toBeGreaterThanOrEqual(3)
+    const two = glazing({ x: 0, y: 0 }, 1, 0, 100, 12, img((y) => (y === -3 || y === 3 ? 150 : 250)))
+    expect(two.lines).toBe(2)
+    const fillEdge = glazing({ x: 0, y: 0 }, 1, 0, 100, 12, img((y) => (y < 0 ? 195 : 237)))
+    expect(fillEdge.lines).toBe(0)
+  })
+
+  test('glass colour: a thin light-blue line is glass, a blue floor fill is not', () => {
+    const w = 60, h = 60
+    const data = new Uint8Array(w * h * 4).fill(255)
+    const paint = (x: number, y: number, c: number[]) => data.set([...c, 255], (y * w + x) * 4)
+    for (let x = 5; x < 55; x++) paint(x, 5, [184, 216, 248])
+    for (let y = 20; y < 50; y++) for (let x = 10; x < 50; x++) paint(x, y, [150, 190, 240])
+    const m = glassMask({ width: w, height: h, data })
+    expect(m[5 * w + 30]).toBe(1)
+    expect(m[35 * w + 30]).toBe(0)
+  })
+})
 
 describe('solveTraces on a synthetic flat', () => {
   test('plain door gaps (no arcs): the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
@@ -176,6 +213,16 @@ describe('solveTraces on a synthetic flat', () => {
 
 // ---------- the real plans: end to end vs the hand-traced units (fixtures + cached OCR; skipped when absent) ----------
 const TEXT = process.env.TRACE_TEXT ?? 'E:/dev/tmp/wave16/solver/text/'
+/**
+ * TRACE_RGB=<dir of trace-fixtures.mjs --rgb PPMs>: run the product path — the colour image (planter greens, blue glazing)
+ * and the hints stage, as the Studio worker has them. Unset: text only (the wave-16 baseline).
+ */
+const RGB = process.env.TRACE_RGB ?? ''
+const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?: ReturnType<typeof loadPpm> } => {
+  const rgb = RGB ? loadPpm(`${RGB}${name}.ppm`) : null
+  if (!rgb) return { inputs: {} }
+  return { rgb, inputs: { green: greenMask(rgb), findHints: (pxPerM, walls) => findHints(g, rgb, { pxPerM, walls }) } }
+}
 const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
@@ -188,7 +235,8 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
     for (const u of Object.values(units)) {
       const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
       const debug: NonNullable<SolveInputs['debug']> = {}
-      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug }, { pickPx: truthPick(u) })
+      const c = withColour(g, `assets__${sheet(u)}`)
+      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
       const row = scoreSolve(res, u)
       rows.push(row)
       if (process.env.TRACE_DIAG) {
@@ -212,7 +260,8 @@ describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays
     for (const s of SMOKE) {
       const g = loadPgm(FIXTURES + s.file)
       if (!g) continue
-      const res = solveTraces(g, { text: existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined }, { pickPx: s.pick })
+      const c = withColour(g, s.file.replace(/.pgm$/, ''))
+      const res = solveTraces(g, { text: existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
       writeUnitOverlay(`${SHOTS}/solve-${s.text}.png`, g, res.unit, res.review)
       console.log(s.text, JSON.stringify(res.stats), res.review.length, 'review')
       expect(validate(res.unit).filter((i) => i.level === 'error'), s.file).toEqual([])
