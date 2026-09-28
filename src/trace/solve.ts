@@ -104,6 +104,8 @@ export interface SolveInputs {
   findHints?: (pxPerM: number, walls: WallTrace) => HintTrace | null
   /** hints.ts propagateByColour bound to the sheet: per room (sheet px) a hint for the unnamed ones, from same-fill named rooms */
   propagate?: (rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
+  /** filled by solveTraces for the eval's diagnosis: the wall trace used, the raster it was traced on, the whole-sheet graph before the flat pick */
+  debug?: { trace?: WallTrace; plan?: Gray; full?: Unit }
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -1010,6 +1012,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked)
+  if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit })
   const pick = pickM(pxPerM, origin0)
   const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM))
   let flat = picked.rooms

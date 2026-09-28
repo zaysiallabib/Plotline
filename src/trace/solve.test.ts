@@ -5,8 +5,9 @@ import { deriveRooms, validate } from '../core'
 import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, writeUnitOverlay } from './evalio'
-import { KNOBS, solveTraces } from './solve'
-import { formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
+import { KNOBS, solveTraces, type SolveInputs } from './solve'
+import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
+import { traceWalls } from './walls'
 import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic: a 3-room flat with printed sizes → the exact Unit ----------
@@ -179,14 +180,21 @@ const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEX
 describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', () => {
   test('rooms matched / area / scale / kinds / review per unit', () => {
     const rows: SolveReport[] = []
+    const why: string[] = []
     for (const u of Object.values(units)) {
       const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
-      const res = solveTraces(g, { text: readTextJson(sheet(u)) }, { pickPx: truthPick(u) })
-      rows.push(scoreSolve(res, u))
+      const debug: NonNullable<SolveInputs['debug']> = {}
+      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug }, { pickPx: truthPick(u) })
+      const row = scoreSolve(res, u)
+      rows.push(row)
+      if (process.env.TRACE_DIAG) {
+        const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
+        why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+      }
       if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
       expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
     }
-    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n`)
+    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}\n`)
   }, 300000)
 })
 

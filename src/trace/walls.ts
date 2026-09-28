@@ -415,8 +415,26 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     2.5 * thicknessOf(half),
   )
   // door arcs and window lines are often thin light-grey strokes on a light floor fill: "line ink" = darker than the local background
-  const openings = findOpenings(walls, core, rCore, lineInk(gray, 18), dt, w, h, half, o.partitionM)
+  const openings = findOpenings(walls, core, rCore, lineInk(gray, 18), w, h, half, o.partitionM, arcInk(gray))
   return { walls, openings }
+}
+
+/**
+ * "Arc ink" at a point: darker than the MEDIAN of its 7×7 neighbourhood by `delta`. A door swing drawn over a striped
+ * bath floor stands out against the floor's median grey; the floor's own stripes (lighter than the fill) and the fill
+ * itself do not — the max-based line ink marks every fill pixel next to a white stripe. Evaluated on demand (probes only).
+ */
+export function arcInk(g: Gray, delta = 25): (x: number, y: number) => boolean {
+  const { width: w, height: h, data } = g
+  const win = new Uint8Array(49)
+  return (x, y) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    if (xi < 3 || yi < 3 || xi >= w - 3 || yi >= h - 3) return false
+    let n = 0
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) win[n++] = data[(yi + dy) * w + xi + dx]
+    win.sort()
+    return data[yi * w + xi] <= win[24] - delta
+  }
 }
 
 /** Skeleton → fitted, junction-snapped wall pieces (components shorter than `minComp` px dropped). */
@@ -649,7 +667,7 @@ function refine(segs: Seg[], nodes: Node[], dtAt: (p: Px) => number): void {
  * or the side of a cross wall (a door beside a corner). Kind: a thin arc of radius ≈ gap around either jamb → door;
  * ≥ 2 thin ink lines running across the gap → window; else passage (≤ 1.4 m) / unknown.
  */
-function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk: Uint8Array, dt: Float32Array, w: number, h: number, half: number, partitionM: number): OpeningGuess[] {
+function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk: Uint8Array, w: number, h: number, half: number, partitionM: number, arcAt: (x: number, y: number) => boolean): OpeningGuess[] {
   const ink = lineInk
   const pxPerM = thicknessOf(half) / partitionM
   const key = (p: Px) => `${Math.round(p.x)},${Math.round(p.y)}`
@@ -669,17 +687,6 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
     const xi = Math.round(x), yi = Math.round(y)
     return xi >= 0 && yi >= 0 && xi < w && yi < h ? m[yi * w + xi] : 0
   }
-  const thinInk = (x: number, y: number) => {
-    // ink but not wall-deep, within ±1 px (door arcs and window lines are 1–2 px; jpeg shifts them)
-    for (let dy = -1; dy <= 1; dy++)
-      for (let dx = -1; dx <= 1; dx++) {
-        const xi = Math.round(x) + dx, yi = Math.round(y) + dy
-        if (xi < 0 || yi < 0 || xi >= w || yi >= h) continue
-        const i = yi * w + xi
-        if (ink[i] && dt[i] < rCore) return 1
-      }
-    return 0
-  }
   const out: OpeningGuess[] = []
   for (const E of ends) {
     const { dir } = E
@@ -691,7 +698,8 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
     const a0 = E.junction ? t - 1 + rCore : 0
     const p = { x: E.p.x + dir.x * a0, y: E.p.y + dir.y * a0 }
     let hit = -1
-    for (; t <= a0 + 3.2 * pxPerM + rCore; t++)
+    // up to 6 m: a bedroom's glazing runs 3–4 m (only window evidence is accepted past 2 m, see classifyGap)
+    for (; t <= a0 + 6 * pxPerM + rCore; t++)
       if (at(core, E.p.x + dir.x * t, E.p.y + dir.y * t)) {
         hit = t - rCore - a0 // the core is the wall eroded by rCore
         break
@@ -700,53 +708,66 @@ function findOpenings(walls: WallSeg[], core: Uint8Array, rCore: number, lineInk
     const b = { x: p.x + dir.x * hit, y: p.y + dir.y * hit }
     const tol = 1.5 * E.th
     if (out.some((o) => (dist(o.a, b) < tol && dist(o.b, p) < tol) || (dist(o.a, p) < tol && dist(o.b, b) < tol))) continue
-    const g = classifyGap(p, b, E.th, hit, pxPerM, thinInk, (x, y) => at(ink, x, y))
+    const g = classifyGap(p, b, E.th, hit, pxPerM, (x, y) => (arcAt(x, y) && at(core, x, y) === 0 ? 1 : 0), (x, y) => at(ink, x, y))
     if (g && (!E.junction || g.kind === 'door' || g.kind === 'window')) out.push(g)
   }
   return out
 }
 
 /** Door / window / passage / unknown for a gap a→b; null = no evidence and too wide to be a plain passage. */
-function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, thinInk: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess | null {
+function classifyGap(a: Px, b: Px, th: number, gap: number, pxPerM: number, arcAt: (x: number, y: number) => number, inkAt: (x: number, y: number) => number): OpeningGuess | null {
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
-  // door: a quarter arc of radius ≈ gap (0.8–1.1) around either jamb, on either side, with empty floor inside it
-  // (the control ring at half the radius stops hatching, tiles and furniture clutter passing as an arc)
+  // door: a quarter arc around either jamb, on either side, at ONE radius (0.75–1.15 × the gap) over most of its sweep,
+  // with empty floor inside it (control ring at half the radius). One radius: tile grids and furniture edges cross the
+  // probe ring here and there, a swing follows it. Arc ink is judged against the local median (striped bath floors).
+  const arcNear = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (arcAt(x + dx, y + dy)) return 1
+    return 0
+  }
+  const RF = [0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15]
   let best = { score: 0, hinge: a, side: 1 }
-  for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
-    for (const side of [1, -1]) {
-      let hit = 0, inner = 0, n = 0
-      for (let k = 0; k <= 16; k++) {
-        const ang = ((0.1 + (0.8 * k) / 16) * Math.PI) / 2
-        const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side
-        const dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
-        let got = 0
-        for (const rf of [0.8, 0.9, 1.0, 1.1]) if (thinInk(hp.x + dx * gap * rf, hp.y + dy * gap * rf)) got = 1
-        hit += got
-        inner += inkAt(hp.x + dx * gap * 0.5, hp.y + dy * gap * 0.5)
-        n++
+  if (gap <= 1.25 * pxPerM)
+    for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
+      for (const side of [1, -1]) {
+        const hits = RF.map(() => new Uint8Array(17))
+        let inner = 0
+        for (let k = 0; k <= 16; k++) {
+          const ang = ((0.1 + (0.8 * k) / 16) * Math.PI) / 2
+          const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side
+          const dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
+          RF.forEach((rf, j) => (hits[j][k] = arcNear(hp.x + dx * gap * rf, hp.y + dy * gap * rf)))
+          inner += arcAt(hp.x + dx * gap * 0.5, hp.y + dy * gap * 0.5) ? 1 : 0
+        }
+        if (inner / 17 > 0.35) continue
+        for (let j = 0; j < RF.length; j++) {
+          let hit = 0
+          for (let k = 0; k <= 16; k++) hit += hits[j][k] | (hits[j - 1]?.[k] ?? 0) | (hits[j + 1]?.[k] ?? 0)
+          if (hit / 17 > best.score) best = { score: hit / 17, hinge: hp, side }
+        }
       }
-      const score = inner / n > 0.35 ? 0 : hit / n
-      if (score > best.score) best = { score, hinge: hp, side }
-    }
   // a single leaf is 0.6–1.1 m: wider "arcs" are furniture and text lining up by chance
-  if (best.score >= 0.7 && gap <= 1.25 * pxPerM) {
+  if (best.score >= 0.7) {
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
     return { a, b, kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
   }
-  // window: ≥ 2 thin ink lines running across the gap, within the wall's thickness
-  let lines = 0, prev = false
+  // window: glazing drawn across the gap within the wall's thickness — ≥ 2 thin lines (frame / panes), or one band at
+  // least 3 px wide (a light glazing band, the lines merged at low resolution). A lone 1–2 px line is a pen line
+  // (railing, sill, furniture edge): no evidence.
+  let lines = 0, band = 0, widest = 0
   for (let off = -th * 0.8; off <= th * 0.8; off += 0.5) {
     let hit = 0, n = 0
     for (let t = 0.1; t <= 0.9; t += 0.05) {
       hit += inkAt(a.x + ux * gap * t + nx * off, a.y + uy * gap * t + ny * off)
       n++
     }
-    const on = hit / n >= 0.85
-    if (on && !prev) lines++
-    prev = on
+    if (hit / n >= 0.85) {
+      if (!band) lines++
+      widest = Math.max(widest, (band += 0.5))
+    } else band = 0
   }
   if (lines >= 2) return { a, b, kind: 'window', conf: 0.6 }
+  if (widest >= 3) return { a, b, kind: 'window', conf: 0.5 }
   return gap <= 1.4 * pxPerM ? { a, b, kind: 'passage', conf: 0.3 } : gap <= 2 * pxPerM ? { a, b, kind: 'unknown', conf: 0.2 } : null
 }
 
