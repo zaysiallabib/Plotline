@@ -84,6 +84,12 @@ export const KNOBS = {
   areaTrust: 0.05,
   /** the wall stage: 'bands' = the founder's tracker (straight, exact thickness; walls.ts WallOpts.tracker), 'skeleton' = the wave-15 path */
   tracker: 'bands' as 'skeleton' | 'bands',
+  /**
+   * Founder, 2026-09-30: the draft is WALLS AND DOORS, nothing else — no window guesses from the wall stage, no glazing
+   * lines, no glass-colour lines. What walls and door arcs close is a room; everything else stays open for the human.
+   * true (or the closer) brings the window rules back.
+   */
+  windows: false,
 }
 
 type Pt = { x: number; y: number }
@@ -799,7 +805,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // opening guesses = bridges carrying the opening; thickness of the wall they continue
   for (const o of trace.openings) {
     // without the closer: only openings the drawing shows (a door arc, a window's lines), not evidence-free gaps
-    if (!KNOBS.closeGaps && o.kind !== 'door' && o.kind !== 'window') continue
+    if (!KNOBS.closeGaps && o.kind !== 'door' && (!KNOBS.windows || o.kind !== 'window')) continue
     let th = PARTITION_M, bd = Infinity
     for (const w of trace.walls)
       for (const p of [w.a, w.b]) {
@@ -822,10 +828,11 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // reaching a corner where the wall's other side is a window too meets no traced wall there)
   const thMed = [...trace.walls].map((w) => w.thicknessPx).sort((p, q) => p - q)[trace.walls.length >> 1] ?? PARTITION_M * pxPerM
   const wallsPlus: WallSeg[] = [...trace.walls, ...trace.openings.filter((o) => o.kind === 'door' || o.kind === 'window').map((o) => ({ a: o.a, b: o.b, thicknessPx: thMed, conf: o.conf, guess: true }) as WallSeg)]
-  if (Math.abs(th0) < (2 * Math.PI) / 180)
+  const windows = KNOBS.windows || KNOBS.closeGaps
+  if (windows && Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(line, gray.width, gray.height, wallsPlus, pxPerM, gray, false, weak)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
   // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
-  if (glass && Math.abs(th0) < (2 * Math.PI) / 180)
+  if (windows && glass && Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(glass, gray.width, gray.height, wallsPlus, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
   snapAxes(segs, th0)
   joinEnds(segs)
@@ -1465,9 +1472,30 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const isPlanter = (p: Pt) => inPlants(p) || greenFaces.some((f) => pointInPolygon(p, f))
   // a stair flight is the building's core: the flat never grows through it
   const inStair = (p: Pt) => (draft.stairs ?? []).some((s) => { const x = origin0.x + p.x * pxPerM, y = origin0.y + p.y * pxPerM; return x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 })
-  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p), isPlanter)
+  // the building's core (a closed face a LOBBY / LIFT / STAIR label sits in) is never the flat's floor: the flood does
+  // not walk through it into the next flat's foyer
+  const coreFaces = coreAt(pxPerM).flatMap((c) => draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).map((r) => roomPolygon(r, draft.unit)))
+  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f))
+  const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p), isPlanter)
   let flat = picked.rooms
-  if (inputs.debug) Object.assign(inputs.debug, { inFlood: picked.inFlood, touched: picked.touched })
+  // founder (2026-09-30): the draft is the flat's WALLS. Every wall beside the flooded floor is the flat's — not only
+  // the ones a flooded cell touches (a wall behind a closet or a fixture, the far side of a room the flood did not
+  // fill): any wall with a point within 1 m of the floor, tested across it, stays
+  if (picked.inFlood) {
+    const VV = new Map(draft.unit.vertices.map((v) => [v.id, v]))
+    for (const w of draft.walls) {
+      if (picked.touched.has(w.id)) continue
+      const a = VV.get(w.a)!, b = VV.get(w.b)!
+      const L = d2(a, b)
+      if (L < 1e-6) continue
+      const dir = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, nrm = { x: -dir.y, y: dir.x }
+      let near = false
+      for (let m = 0.15; m < L && !near; m += 0.3)
+        for (const off of [0.3, -0.3, 0.6, -0.6, 1, -1]) if (picked.inFlood({ x: a.x + dir.x * m + nrm.x * off, y: a.y + dir.y * m + nrm.y * off })) { near = true; break }
+      if (near) picked.touched.add(w.id)
+    }
+  }
+  if (inputs.debug) Object.assign(inputs.debug, { inFlood: picked.inFlood, touched: picked.touched, outside })
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
   if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
   if (flat.size || picked.touched.size) draft = dropSlivers(restrict(draft, flat, picked.touched))
