@@ -407,6 +407,10 @@ export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTr
   const out: { a: Px; b: Px }[] = []
   const ends = walls.flatMap((wl) => [wl.a, wl.b])
   const freeEnds = ends.filter((p) => ends.filter((q) => d2(p, q) < 2).length === 1)
+  // a drawn wall's end nothing else reaches — no other wall, and no door / window guess carrying the wall on (a door
+  // jamb is not where the wall stops): the corners a glazed side runs between
+  const allEnds = walls.flatMap((wl) => [wl.a, wl.b].map((e) => ({ e, wl })))
+  const stops = allEnds.filter(({ e, wl }) => !(wl as { guess?: boolean }).guess && allEnds.filter((o) => d2(o.e, e) <= wl.thicknessPx / 2 + 1).length === 1)
   const COS10 = Math.cos((10 * Math.PI) / 180)
   const COS35 = Math.cos((35 * Math.PI) / 180), shortPx = 0.3 * k
   // the same way within 10°; a piece under 0.3 m (the skeleton's corner bits at a thick wall's end) within 35°
@@ -430,6 +434,8 @@ export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTr
         offLine(p, wl) <= wl.thicknessPx / 2 + 2 &&
         [wl.a, wl.b].some((e) => d2(e, p) <= touch + wl.thicknessPx / 2 && !walls.some((o) => o !== wl && d2(o.a, o.b) >= shortPx && !along(o, p, q) && (d2(o.a, e) < 2 || d2(o.b, e) < 2))),
     )
+  /** p meets where a wall crosswise to p→q stops: the corner a glazed side runs from */
+  const cornerAt = (p: Px, q: Px): boolean => stops.some(({ e, wl }) => !along(wl, p, q) && d2(e, p) <= touch + wl.thicknessPx / 2)
   const scan = (mask: Uint8Array, stubOnly: boolean) => {
     for (const horiz of [true, false]) {
       const U = horiz ? w : h, N = horiz ? h : w
@@ -465,9 +471,10 @@ export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTr
         const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
         // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
         if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
-        // the second pass (wall bodies cut out of the mask) only adds lines that continue a wall stub: a window sits in
-        // a wall's gap — a double line from one wall's side to the other's (shower glass, a counter, a wardrobe) does not
-        if (stubOnly && !inLine(a, b) && !inLine(b, a)) continue
+        // the second pass (wall bodies cut out of the mask) only adds lines that continue a wall stub, or run from where
+        // one crosswise wall stops to where another does (a room's whole glazed side): a window sits in a wall's gap —
+        // a double line from one wall's side to the other's (shower glass, a counter, a wardrobe) does not
+        if (stubOnly && (d2(a, b) < 0.8 * k || (!inLine(a, b) && !inLine(b, a) && !(cornerAt(a, b) && cornerAt(b, a))))) continue
         // glazing (walls.ts `glazing`: >= 2 lines or a >= 3 px band, darker than the paper on both sides — not the edge of
         // a colour fill); a lone pen line only with the closer
         const L = d2(a, b)
@@ -799,7 +806,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // (a wall stretch the wall stage already read as a door / window gap counts as wall for "between walls": a window
   // reaching a corner where the wall's other side is a window too meets no traced wall there)
   const thMed = [...trace.walls].map((w) => w.thicknessPx).sort((p, q) => p - q)[trace.walls.length >> 1] ?? PARTITION_M * pxPerM
-  const wallsPlus: WallSeg[] = [...trace.walls, ...trace.openings.filter((o) => o.kind === 'door' || o.kind === 'window').map((o) => ({ a: o.a, b: o.b, thicknessPx: thMed, conf: o.conf }))]
+  const wallsPlus: WallSeg[] = [...trace.walls, ...trace.openings.filter((o) => o.kind === 'door' || o.kind === 'window').map((o) => ({ a: o.a, b: o.b, thicknessPx: thMed, conf: o.conf, guess: true }) as WallSeg)]
   if (Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(line, gray.width, gray.height, wallsPlus, pxPerM, gray, false, weak)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
   // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
