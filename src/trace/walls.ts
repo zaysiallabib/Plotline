@@ -8,6 +8,7 @@
  *   → Zhang–Suen skeleton → pixel graph (junctions, ends, chains) → spur pruning → line / arc fitting
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
+import { bandWalls, coveredByBands } from './bands'
 import { edt, otsu, thin, threshold } from './raster'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
@@ -30,6 +31,12 @@ export interface WallOpts {
   upscale?: number
   /** drop walls whose lighter side is less than this many grey levels above their centre (foliage, textures). */
   minContrast?: number
+  /**
+   * 'bands' (founder, wave 18): axis-aligned walls as straight bands of exactly their drawn thickness (bands.ts); the
+   * skeleton only adds what no band covers (angled walls, arcs). 'skeleton' (default here — the solver passes
+   * 'bands'): the skeleton for everything.
+   */
+  tracker?: 'skeleton' | 'bands'
 }
 
 const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
@@ -402,16 +409,25 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       })),
     }
   }
-  const { o, w, h, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes
+  const bands =
+    o.tracker === 'bands'
+      ? bandWalls(gray, ink, { minThPx: 2 * rCore, maxThPx: 2 * half * o.blobFrac, minLenPx: 3 * half }).filter((b) => sideContrast(gray, b, b.thicknessPx) >= o.minContrast)
+      : []
   const walls = tidy(
-    segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
-      const len = dist(s.a, s.b)
-      const thicknessPx = thicknessOf(s.half)
-      // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
-      const c = sideContrast(gray, s, thicknessPx)
-      if (len < 1 || c < o.minContrast) return []
-      return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
-    }),
+    [
+      ...bands,
+      ...segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
+        const len = dist(s.a, s.b)
+        const thicknessPx = thicknessOf(s.half)
+        // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
+        const c = sideContrast(gray, s, thicknessPx)
+        if (len < 1 || c < o.minContrast) return []
+        if (bands.length && coveredByBands(s, bands)) return []
+        return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
+      }),
+    ],
     2.5 * thicknessOf(half),
   )
   // door arcs: ink darker than the local median (arcInk); windows: the grey profile across the gap (glazing)

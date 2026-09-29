@@ -152,8 +152,9 @@ describe('solveTraces on a synthetic flat', () => {
     const ops = r.unit.walls.flatMap((w) => w.openings)
     expect(ops.length).toBe(3)
     for (const o of ops) expect(Math.abs(o.widthM - 0.85)).toBeLessThan(0.12)
-    // outer walls 10", partitions 5"
-    expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
+    // outer walls 10", partitions 5" — the skeleton classes them; the band tracker carries the measured width (within ½")
+    if (KNOBS.tracker === 'bands') for (const w of r.unit.walls) expect(Math.min(Math.abs(w.thicknessM - 0.127), Math.abs(w.thicknessM - 0.254)), `${w.thicknessM}`).toBeLessThanOrEqual(0.0127 + 1e-9)
+    else expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
   })
 
   test('hints name the unlabelled store: a table outvotes a lone basin; colour propagation fills what is left', () => {
@@ -223,6 +224,8 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
   if (!rgb) return { inputs: {} }
   return { rgb, inputs: { green: greenMask(rgb), findHints: (pxPerM, walls) => findHints(g, rgb, { pxPerM, walls }) } }
 }
+/** TRACE_TRACKER=skeleton: the wave-15 skeleton wall stage instead of the band tracker (KNOBS.tracker), for comparison */
+if (process.env.TRACE_TRACKER === 'skeleton') KNOBS.tracker = 'skeleton'
 const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))

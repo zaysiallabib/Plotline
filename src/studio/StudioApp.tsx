@@ -23,7 +23,7 @@ import {
   type StudioState,
   type Tool,
 } from './model'
-import { AI_KEY, studioReducer, type Review } from './review'
+import { AI_KEY, TRACKER_KEY, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
@@ -469,13 +469,15 @@ export default function StudioApp() {
   const runAutoTrace = (pickPx: Pt) => {
     if (!img) return
     let aiKey: string | undefined
+    let tracker: TraceJob['tracker']
     try {
       aiKey = localStorage.getItem(AI_KEY) || undefined
+      tracker = localStorage.getItem(TRACKER_KEY) === 'skeleton' ? 'skeleton' : undefined
     } catch {
-      /* storage blocked: no AI helper */
+      /* storage blocked: no AI helper, the default tracker */
     }
     const { gray, rgb } = rastersOf(img)
-    const job: TraceJob = { gray, rgb, pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, mock: MOCK_TRACE }
+    const job: TraceJob = { gray, rgb, pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
     const worker = new Worker(new URL('./autotrace.worker.ts', import.meta.url), { type: 'module' })
     const stop = () => {
       worker.terminate()

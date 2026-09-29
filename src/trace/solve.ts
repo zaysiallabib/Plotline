@@ -82,6 +82,8 @@ export const KNOBS = {
   areaShare: 0.88,
   /** … and an area-label scale is used only within this share of the wall-thickness prior */
   areaTrust: 0.05,
+  /** the wall stage: 'bands' = the founder's tracker (straight, exact thickness; walls.ts WallOpts.tracker), 'skeleton' = the wave-15 path */
+  tracker: 'bands' as 'skeleton' | 'bands',
 }
 
 type Pt = { x: number; y: number }
@@ -662,7 +664,11 @@ function pruneSpurs(segs: Seg[]): Seg[] {
 }
 
 /** Segments → core vertices / walls (each bridge opening spans its whole piece). */
-function toUnitGraph(segs: Seg[]): { vertices: Vertex[]; walls: (Wall & { conf: number; bridge?: Seg['bridge']; guess?: Map<string, Op> })[] } {
+/**
+ * Segments → a core wall graph. Thickness: the 5" / 10" class (the skeleton's width is a guess), or with `exactTh`
+ * (the band tracker) the measured width to the nearest half inch — a 7" or 15" wall stays what it is drawn.
+ */
+function toUnitGraph(segs: Seg[], exactTh = false): { vertices: Vertex[]; walls: (Wall & { conf: number; bridge?: Seg['bridge']; guess?: Map<string, Op> })[] } {
   const ids = new Map<string, Vertex>()
   const vid = (p: Pt) => {
     const k = ekey(p)
@@ -673,7 +679,9 @@ function toUnitGraph(segs: Seg[]): { vertices: Vertex[]; walls: (Wall & { conf: 
     const L = d2(s.a, s.b)
     const openings: Opening[] = s.op ? [{ id: newId(), kind: s.op.kind === 'unknown' ? 'passage' : s.op.kind, offsetM: 0, widthM: L, heightM: 0, sillM: 0 }] : []
     const guess = new Map<string, Op>(s.op ? [[openings[0].id, s.op]] : [])
-    return { id: newId(), a: vid(s.a), b: vid(s.b), thicknessM: s.th >= KNOBS.thickM ? EXTERIOR_M : PARTITION_M, heightM: WALL_HEIGHT_M, openings, conf: s.conf, bridge: s.bridge, guess }
+    const halfInch = 0.0254 / 2
+    const thicknessM = exactTh && !s.bridge ? Math.max(PARTITION_M / 2, Math.round(s.th / halfInch) * halfInch) : s.th >= KNOBS.thickM ? EXTERIOR_M : PARTITION_M
+    return { id: newId(), a: vid(s.a), b: vid(s.b), thicknessM, heightM: WALL_HEIGHT_M, openings, conf: s.conf, bridge: s.bridge, guess }
   })
   return { vertices: [...ids.values()], walls }
 }
@@ -766,7 +774,7 @@ interface Draft {
 }
 
 /** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = []): Draft {
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = [], exactTh = false): Draft {
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
   let segs: Seg[] = []
@@ -849,7 +857,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   )
   let noded = pruneSpurs(node(segs, 0.02))
   noded = noded.filter((s) => d2(s.a, s.b) > 0.01)
-  const g = toUnitGraph(noded)
+  const g = toUnitGraph(noded, exactTh)
   let m = mergeCollinear(g.vertices, g.walls)
   // a tracked line closing a small loop with the walls is furniture (bed, wardrobe, counter): take it out again
   for (let it = 0; it < 50 && tracked.length; it++) {
@@ -1354,14 +1362,15 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const ink = { ...inkMasks(plan), glass: opts.rgb ? glassMask(opts.rgb) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(ink.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M, inputs.green)
-  let trace = inputs.walls ?? traceWalls(plan)
+  const tracker = opts.tracker ?? KNOBS.tracker
+  let trace = inputs.walls ?? traceWalls(plan, { tracker })
   opts.onProgress?.('scale', 0.5)
 
   // ── scale
   let pxPerM = opts.pxPerM ?? thicknessScale(trace.walls)
   let scaleFrom: AutoTraceStats['scaleFrom'] = opts.pxPerM ? 'given' : 'thickness'
   const origin0 = { x: 0, y: 0 }
-  let draft = buildGraph(trace, pxPerM, origin0, gray, ink)
+  let draft = buildGraph(trace, pxPerM, origin0, gray, ink, [], tracker === 'bands')
   // the building core's labels (lobby, lifts, stair) and planter strips: part of the draft when reached, never a way
   // into the next flat
   const coreAt = (k: number) =>
@@ -1421,7 +1430,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   // re-trace at the scale's wall width when it moved (the wall stage's own width guess is its weakest link)
   const halfPx = (PARTITION_M / 2) * pxPerM
-  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(plan, { halfPx })
+  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(plan, { halfPx, tracker })
   let hints = inputs.hints ?? null
   try {
     hints ??= inputs.findHints?.(pxPerM, trace) ?? null
@@ -1435,7 +1444,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   opts.onProgress?.('graph', 0.7)
 
   // ── graph at the final scale, the flat, then its own origin
-  draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked)
+  draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker === 'bands')
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants })
   const pick = pickM(pxPerM, origin0)
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
@@ -1669,7 +1678,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   return {
     unit: u,
     review,
-    stats: { ms: Math.round(performance.now() - t0), pxPerM, scaleFrom, walls: u.walls.length, rooms: named.length, labelled, ...(fixtures.length ? { fixtures } : {}) },
+    stats: { ms: Math.round(performance.now() - t0), pxPerM, scaleFrom, tracker, walls: u.walls.length, rooms: named.length, labelled, ...(fixtures.length ? { fixtures } : {}) },
   }
 }
 

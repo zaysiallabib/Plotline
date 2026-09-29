@@ -140,6 +140,8 @@ export interface AutoTraceStats {
   ms: number
   pxPerM: number
   scaleFrom: 'dims' | 'area' | 'thickness' | 'given'
+  /** which wall stage ran (AutoTraceOpts.tracker) */
+  tracker?: 'skeleton' | 'bands'
   walls: number
   rooms: number
   labelled: number
@@ -167,4 +169,9 @@ export interface AutoTraceOpts {
   onProgress?: (stage: string, fraction: number) => void
   /** the sheet in colour (ImageData-like, the layout hints.ts findHints / propagateByColour take) — colour fills name rooms — extension (solver, wave 16) */
   rgb?: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
+  /**
+   * The wall stage (wave 18): 'bands' (default) = the founder's tracker — straight bands of exactly the drawn
+   * thickness, carried into the draft as measured; 'skeleton' = the wave-15 skeleton, walls classed 5" / 10".
+   */
+  tracker?: 'skeleton' | 'bands'
 }

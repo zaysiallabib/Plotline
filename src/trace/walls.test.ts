@@ -186,7 +186,8 @@ describe.skipIf(!haveFixtures)('traceWalls vs the hand-traced units (eval report
     const rows: EvalReport[] = []
     for (const u of Object.values(units)) {
       const g = loadPgm(fixture(u))!
-      const { report, trace, xf } = scoreUnit(g, u)
+      // the band tracker (the default since wave 18); TRACE_TRACKER=skeleton compares the wave-15 skeleton path
+      const { report, trace, xf } = scoreUnit(g, u, { tracker: process.env.TRACE_TRACKER === 'skeleton' ? 'skeleton' : 'bands' })
       rows.push(report)
       if (SHOTS) writeOverlay(`${SHOTS}/eval-${u.id}.png`, g, trace, truthLines(u, xf), undefined, report)
     }

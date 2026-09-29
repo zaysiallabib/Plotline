@@ -4,7 +4,7 @@ import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '.
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, findEntity, type StudioIssue, type StudioState } from './model'
-import { AI_KEY, openReview, type Review, type StudioAction as Action } from './review'
+import { AI_KEY, TRACKER_KEY, openReview, type Review, type StudioAction as Action } from './review'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
 /** icon + what the icon means, per review kind */
@@ -19,7 +19,7 @@ const REVIEW_ICON: Record<ReviewItem['kind'], [string, string]> = {
 }
 const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
 const statsLine = (s: AutoTraceStats) =>
-  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]} · ${(s.ms / 1000).toFixed(1)} s`
+  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
 export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² · ${Math.round(sqmToSqft(sqm))} sqft`
@@ -152,6 +152,7 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
           ) : (
             <p className="muted">{stats ? 'Nothing left to check.' : 'Auto-trace (top bar) lists here what it is unsure of.'}</p>
           )}
+          <TrackerField />
           <AiKeyField />
         </section>
       )}
@@ -378,6 +379,31 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
         </button>
       </div>
     </div>
+  )
+}
+
+/** Auto-trace's wall stage (founder, wave 18): the band tracker — straight walls of exactly their drawn thickness — or the skeleton. This browser only. */
+function TrackerField() {
+  const [bands, setBands] = useState(() => {
+    try {
+      return localStorage.getItem(TRACKER_KEY) !== 'skeleton'
+    } catch {
+      return true
+    }
+  })
+  const save = (on: boolean) => {
+    setBands(on)
+    try {
+      if (on) localStorage.removeItem(TRACKER_KEY)
+      else localStorage.setItem(TRACKER_KEY, 'skeleton')
+    } catch {
+      /* storage blocked: the choice lives until reload */
+    }
+  }
+  return (
+    <label className="tracker" title="On: every wall a straight band exactly as thick as it is drawn (wave 18). Off: the older skeleton tracer, walls classed 5&quot; or 10&quot;.">
+      <input type="checkbox" checked={bands} onChange={(e) => save(e.target.checked)} /> Band tracker (exact wall thickness)
+    </label>
   )
 }
 
