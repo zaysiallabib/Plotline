@@ -427,13 +427,17 @@ export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTr
    * p meets the end of a wall running the same way as p→q, ON that wall's line (a door leaf drawn a little inside the
    * room runs beside the wall, not on it), an end no crosswise wall shares: the line continues a wall stub
    */
-  const inLine = (p: Px, q: Px): boolean =>
-    walls.some(
-      (wl) =>
-        along(wl, p, q) &&
-        offLine(p, wl) <= wl.thicknessPx / 2 + 2 &&
-        [wl.a, wl.b].some((e) => d2(e, p) <= touch + wl.thicknessPx / 2 && !walls.some((o) => o !== wl && d2(o.a, o.b) >= shortPx && !along(o, p, q) && (d2(o.a, e) < 2 || d2(o.b, e) < 2))),
-    )
+  const stubEnd = (p: Px, q: Px): Px | null => {
+    for (const wl of walls) {
+      if (!along(wl, p, q) || offLine(p, wl) > wl.thicknessPx / 2 + 2) continue
+      // a door / window guess carrying the line on counts even past a partition's end (the next room's window on
+      // the same outer wall); a drawn wall's end must be a stub, not a corner
+      const guess = (wl as { guess?: boolean }).guess
+      for (const e of [wl.a, wl.b]) if (d2(e, p) <= touch + wl.thicknessPx / 2 && (guess || !walls.some((o) => o !== wl && d2(o.a, o.b) >= shortPx && !along(o, p, q) && (d2(o.a, e) < 2 || d2(o.b, e) < 2)))) return e
+    }
+    return null
+  }
+  const inLine = (p: Px, q: Px): boolean => stubEnd(p, q) !== null
   /** p meets where a wall crosswise to p→q stops: the corner a glazed side runs from */
   const cornerAt = (p: Px, q: Px): boolean => stops.some(({ e, wl }) => !along(wl, p, q) && d2(e, p) <= touch + wl.thicknessPx / 2)
   const scan = (mask: Uint8Array, stubOnly: boolean) => {
@@ -489,7 +493,10 @@ export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTr
         if (onWall > 3) continue
         // one line per place: the first pass's line wins
         const dup = out.some((o) => segDist(a, o.a, o.b) <= bandPx && segDist(b, o.a, o.b) <= bandPx)
-        if (!dup) out.push({ a, b })
+        if (dup) continue
+        // a line continuing a stub starts at the stub's end (the panes start a little past the wall's end cap)
+        if (stubOnly) out.push({ a: stubEnd(a, b) ?? a, b: stubEnd(b, a) ?? b })
+        else out.push({ a, b })
       }
     }
   }
