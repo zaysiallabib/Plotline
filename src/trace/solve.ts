@@ -112,7 +112,7 @@ export interface SolveInputs {
   /** hints.ts propagateByColour bound to the sheet: per room (sheet px) a hint for the unnamed ones, from same-fill named rooms */
   propagate?: (rooms: { poly: Px[]; kind?: string }[]) => (RoomHint | null)[]
   /** filled by solveTraces for the eval's diagnosis: the wall trace used, the raster it was traced on, the whole-sheet graph before the flat pick */
-  debug?: { trace?: WallTrace; plan?: Gray; full?: Unit; plants?: Uint8Array; outside?: Uint8Array }
+  debug?: { trace?: WallTrace; plan?: Gray; full?: Unit; fullWalls?: GWall[]; plants?: Uint8Array; outside?: Uint8Array; inFlood?: (p: Pt) => boolean; touched?: Set<string> }
   /** plant-green pixels of the sheet (hints.ts greenMask of the colour image): planter strips (founder rule 2) */
   green?: Uint8Array
 }
@@ -402,59 +402,110 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
  * front runs between two walls' middles instead.
  * ponytail: axis-aligned sheets only (a rotated scan skips this); a Hough pass if rotated scans show up.
  */
-function thinLines(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number, gray?: Gray, anyLine = false): { a: Px; b: Px }[] {
+export function thinLines(mask0: Uint8Array, w: number, h: number, walls: WallTrace['walls'], k: number, gray?: Gray, anyLine = false, weak?: Uint8Array): { a: Px; b: Px }[] {
   const minPx = 0.6 * k, bandPx = Math.max(3, 0.3 * k), touch = 0.3 * k
   const out: { a: Px; b: Px }[] = []
   const ends = walls.flatMap((wl) => [wl.a, wl.b])
   const freeEnds = ends.filter((p) => ends.filter((q) => d2(p, q) < 2).length === 1)
-  for (const horiz of [true, false]) {
-    const U = horiz ? w : h, N = horiz ? h : w
-    const runs: { v: number; u0: number; u1: number }[] = []
-    for (let v = 0; v < N; v++) {
-      let u0 = -1, gap = 0
-      for (let u = 0; u <= U; u++) {
-        const on = u < U && (horiz ? mask[v * w + u] : mask[u * w + v])
-        if (on) {
-          if (u0 < 0) u0 = u
-          gap = 0
-        } else if (u0 >= 0 && ++gap > 2) {
-          if (u - gap - u0 >= minPx) runs.push({ v, u0, u1: u - gap })
-          ;(u0 = -1), (gap = 0)
+  const COS10 = Math.cos((10 * Math.PI) / 180)
+  const COS35 = Math.cos((35 * Math.PI) / 180), shortPx = 0.3 * k
+  // the same way within 10°; a piece under 0.3 m (the skeleton's corner bits at a thick wall's end) within 35°
+  const along = (wl: WallSeg, p: Px, q: Px) => {
+    const L = d2(wl.a, wl.b), M = d2(p, q)
+    return L >= 1 && M >= 1 && !wl.mid && Math.abs(((wl.b.x - wl.a.x) * (q.x - p.x) + (wl.b.y - wl.a.y) * (q.y - p.y)) / (L * M)) >= (L < shortPx ? COS35 : COS10)
+  }
+  /** the distance from p to the line through wl (its centre line carried on) */
+  const offLine = (p: Px, wl: WallSeg) => {
+    const L = d2(wl.a, wl.b)
+    return L < 1 ? d2(p, wl.a) : Math.abs((wl.b.x - wl.a.x) * (p.y - wl.a.y) - (wl.b.y - wl.a.y) * (p.x - wl.a.x)) / L
+  }
+  /**
+   * p meets the end of a wall running the same way as p→q, ON that wall's line (a door leaf drawn a little inside the
+   * room runs beside the wall, not on it), an end no crosswise wall shares: the line continues a wall stub
+   */
+  const inLine = (p: Px, q: Px): boolean =>
+    walls.some(
+      (wl) =>
+        along(wl, p, q) &&
+        offLine(p, wl) <= wl.thicknessPx / 2 + 2 &&
+        [wl.a, wl.b].some((e) => d2(e, p) <= touch + wl.thicknessPx / 2 && !walls.some((o) => o !== wl && d2(o.a, o.b) >= shortPx && !along(o, p, q) && (d2(o.a, e) < 2 || d2(o.b, e) < 2))),
+    )
+  const scan = (mask: Uint8Array, stubOnly: boolean) => {
+    for (const horiz of [true, false]) {
+      const U = horiz ? w : h, N = horiz ? h : w
+      const runs: { v: number; u0: number; u1: number }[] = []
+      for (let v = 0; v < N; v++) {
+        let u0 = -1, gap = 0
+        for (let u = 0; u <= U; u++) {
+          const on = u < U && (horiz ? mask[v * w + u] : mask[u * w + v])
+          if (on) {
+            if (u0 < 0) u0 = u
+            gap = 0
+          } else if (u0 >= 0 && ++gap > 2) {
+            if (u - gap - u0 >= minPx) runs.push({ v, u0, u1: u - gap })
+            ;(u0 = -1), (gap = 0)
+          }
         }
       }
-    }
-    runs.sort((p, q) => p.v - q.v || p.u0 - q.u0)
-    const used = new Uint8Array(runs.length)
-    for (let i = 0; i < runs.length; i++) {
-      if (used[i]) continue
-      const band = [runs[i]]
-      used[i] = 1
-      for (let j = i + 1; j < runs.length && runs[j].v - runs[i].v <= bandPx; j++) {
-        const r = runs[j], s = runs[i]
-        if (!used[j] && Math.min(s.u1, r.u1) - Math.max(s.u0, r.u0) >= 0.7 * Math.min(s.u1 - s.u0, r.u1 - r.u0)) (used[j] = 1), band.push(r)
+      runs.sort((p, q) => p.v - q.v || p.u0 - q.u0)
+      const used = new Uint8Array(runs.length)
+      for (let i = 0; i < runs.length; i++) {
+        if (used[i]) continue
+        const band = [runs[i]]
+        used[i] = 1
+        for (let j = i + 1; j < runs.length && runs[j].v - runs[i].v <= bandPx; j++) {
+          const r = runs[j], s = runs[i]
+          if (!used[j] && Math.min(s.u1, r.u1) - Math.max(s.u0, r.u0) >= 0.7 * Math.min(s.u1 - s.u0, r.u1 - r.u0)) (used[j] = 1), band.push(r)
+        }
+        const vs = [...new Set(band.map((r) => r.v))].sort((p, q) => p - q)
+        let lines = 1
+        for (let t = 1; t < vs.length; t++) if (vs[t] - vs[t - 1] >= 2) lines++
+        const med = (xs: number[]) => xs.sort((p, q) => p - q)[xs.length >> 1]
+        const v = (vs[0] + vs[vs.length - 1]) / 2, u0 = med(band.map((r) => r.u0)), u1 = med(band.map((r) => r.u1))
+        const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
+        // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
+        if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
+        // the second pass (wall bodies cut out of the mask) only adds lines that continue a wall stub: a window sits in
+        // a wall's gap — a double line from one wall's side to the other's (shower glass, a counter, a wardrobe) does not
+        if (stubOnly && !inLine(a, b) && !inLine(b, a)) continue
+        // glazing (walls.ts `glazing`: >= 2 lines or a >= 3 px band, darker than the paper on both sides — not the edge of
+        // a colour fill); a lone pen line only with the closer
+        const L = d2(a, b)
+        const gl = gray ? glazing(a, (b.x - a.x) / L, (b.y - a.y) / L, L, Math.max(4, 0.25 * k), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))]) : null
+        const isGlazing = anyLine || (gl ? gl.lines >= 2 || gl.band >= 3 : lines >= 2 || vs.length >= 3)
+        if (!isGlazing && (!KNOBS.closeGaps || d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
+        let onWall = 0
+        for (let t = 0; t < 10; t++) {
+          const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
+          if (walls.some((wl) => segDist(p, wl.a, wl.b) <= wl.thicknessPx / 2 + bandPx / 2)) onWall++
+        }
+        if (onWall > 3) continue
+        // one line per place: the first pass's line wins
+        const dup = out.some((o) => segDist(a, o.a, o.b) <= bandPx && segDist(b, o.a, o.b) <= bandPx)
+        if (!dup) out.push({ a, b })
       }
-      const vs = [...new Set(band.map((r) => r.v))].sort((p, q) => p - q)
-      let lines = 1
-      for (let t = 1; t < vs.length; t++) if (vs[t] - vs[t - 1] >= 2) lines++
-      const med = (xs: number[]) => xs.sort((p, q) => p - q)[xs.length >> 1]
-      const v = (vs[0] + vs[vs.length - 1]) / 2, u0 = med(band.map((r) => r.u0)), u1 = med(band.map((r) => r.u1))
-      const a = horiz ? { x: u0, y: v } : { x: v, y: u0 }, b = horiz ? { x: u1, y: v } : { x: v, y: u1 }
-      // both ends on a wall; not the two edges of a wall already traced (most of it within the wall's band)
-      if (![a, b].every((p) => walls.some((wl) => segDist(p, wl.a, wl.b) <= touch + wl.thicknessPx / 2))) continue
-      // glazing (walls.ts `glazing`: >= 2 lines or a >= 3 px band, darker than the paper on both sides — not the edge of
-      // a colour fill); a lone pen line only with the closer
-      const L = d2(a, b)
-      const gl = gray ? glazing(a, (b.x - a.x) / L, (b.y - a.y) / L, L, Math.max(4, 0.25 * k), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))]) : null
-      const isGlazing = anyLine || (gl ? gl.lines >= 2 || gl.band >= 3 : lines >= 2 || vs.length >= 3)
-      if (!isGlazing && (!KNOBS.closeGaps || d2(a, b) < KNOBS.singleLineM * k || ![a, b].some((p) => freeEnds.some((q) => d2(p, q) <= touch)))) continue
-      let onWall = 0
-      for (let t = 0; t < 10; t++) {
-        const p = { x: a.x + ((b.x - a.x) * (t + 0.5)) / 10, y: a.y + ((b.y - a.y) * (t + 0.5)) / 10 }
-        if (walls.some((wl) => segDist(p, wl.a, wl.b) <= wl.thicknessPx / 2 + bandPx / 2)) onWall++
-      }
-      if (onWall <= 3) out.push({ a, b })
     }
   }
+  scan(mask0, false)
+  // second pass: a pane's line that goes on as the wall's own edge line (the same pen draws both) drags the candidate's
+  // ends through the walls and past them in the first pass — the traced wall bodies cut out of the mask, it ends where
+  // the walls start, and it must continue a wall stub
+  scan(clipWalls(mask0, w, h, walls), true)
+  // and once more on the fainter mask when given: a pane's lines inside a tinted room fall short of the clear-line cut
+  if (weak) scan(clipWalls(weak, w, h, walls), true)
+  return out
+}
+
+/** `mask` without the pixels inside the traced walls (their centre line ± half the thickness + 1 px). */
+function clipWalls(mask: Uint8Array, w: number, h: number, walls: WallTrace['walls']): Uint8Array {
+  const out = mask.slice()
+  for (const wl of walls)
+    for (const pc of segPieces(wl)) {
+      const r = wl.thicknessPx / 2 + 1
+      const x0 = Math.max(0, Math.floor(Math.min(pc.a.x, pc.b.x) - r)), x1 = Math.min(w - 1, Math.ceil(Math.max(pc.a.x, pc.b.x) + r))
+      const y0 = Math.max(0, Math.floor(Math.min(pc.a.y, pc.b.y) - r)), y1 = Math.min(h - 1, Math.ceil(Math.max(pc.a.y, pc.b.y) + r))
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (out[y * w + x] && segDist({ x, y }, pc.a, pc.b) <= r) out[y * w + x] = 0
+    }
   return out
 }
 
@@ -745,11 +796,15 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const inStairs = (l: { a: Px; b: Px }) => stairs.some((s) => (l.a.x + l.b.x) / 2 >= s.x0 - m2 && (l.a.x + l.b.x) / 2 <= s.x1 + m2 && (l.a.y + l.b.y) / 2 >= s.y0 - m2 && (l.a.y + l.b.y) / 2 <= s.y1 + m2)
   // glazing between two walls, too faint for the wall stage: drawn as >= 2 lines or a band it is a window in a wall gap
   // (founder scope); a lone pen line (railing, counter) only with the gap closer
+  // (a wall stretch the wall stage already read as a door / window gap counts as wall for "between walls": a window
+  // reaching a corner where the wall's other side is a window too meets no traced wall there)
+  const thMed = [...trace.walls].map((w) => w.thicknessPx).sort((p, q) => p - q)[trace.walls.length >> 1] ?? PARTITION_M * pxPerM
+  const wallsPlus: WallSeg[] = [...trace.walls, ...trace.openings.filter((o) => o.kind === 'door' || o.kind === 'window').map((o) => ({ a: o.a, b: o.b, thicknessPx: thMed, conf: o.conf }))]
   if (Math.abs(th0) < (2 * Math.PI) / 180)
-    for (const l of thinLines(line, gray.width, gray.height, trace.walls, pxPerM, gray)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
+    for (const l of thinLines(line, gray.width, gray.height, wallsPlus, pxPerM, gray, false, weak)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
   // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
   if (glass && Math.abs(th0) < (2 * Math.PI) / 180)
-    for (const l of thinLines(glass, gray.width, gray.height, trace.walls, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
+    for (const l of thinLines(glass, gray.width, gray.height, wallsPlus, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
   snapAxes(segs, th0)
   joinEnds(segs)
   const W = gray.width, H = gray.height
@@ -1129,7 +1184,7 @@ function pickFlat(
   blocked: (p: Pt) => boolean = () => false,
   /** of those, the planters: a planter face on the flooded floor's edge joins the flat as a planter */
   planter: (p: Pt) => boolean = () => false,
-): { rooms: Set<Room>; open: boolean; touched: Set<string> } {
+): { rooms: Set<Room>; open: boolean; touched: Set<string>; inFlood?: (p: Pt) => boolean } {
   const byWall = new Map<string, Room[]>()
   for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
   const W = new Map(d.walls.map((w) => [w.id, w]))
@@ -1180,11 +1235,11 @@ function pickFlat(
       onFloor.push(...more)
     }
     const edge = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && planter(inner.get(r)!) && r.wallIds.some((w) => fl.touched.has(w)))
-    if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched }
+    if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched, inFlood: fl.inFlood }
     const rooms = new Set([...onFloor, ...edge])
     // open = flooded floor no closed face covers (an open plan, or walls the tracer could not close)
     const covered = onFloor.reduce((t, r) => t + r.areaSqm, 0)
-    return { rooms, open: fl.sqm > covered + 2, touched: fl.touched }
+    return { rooms, open: fl.sqm > covered + 2, touched: fl.touched, inFlood: fl.inFlood }
   }
   // no click: the largest closed region (grown the same way, without the entrance step)
   let best = new Set<Room>(), bestA = 0
@@ -1367,7 +1422,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked)
-  if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, plants })
+  if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants })
   const pick = pickM(pxPerM, origin0)
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
   // SUNSHADE / PLANTER label counts as planter too)
@@ -1389,6 +1444,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const inStair = (p: Pt) => (draft.stairs ?? []).some((s) => { const x = origin0.x + p.x * pxPerM, y = origin0.y + p.y * pxPerM; return x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 })
   const picked = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p), isPlanter)
   let flat = picked.rooms
+  if (inputs.debug) Object.assign(inputs.debug, { inFlood: picked.inFlood, touched: picked.touched })
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
   if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
   if (flat.size || picked.touched.size) draft = dropSlivers(restrict(draft, flat, picked.touched))
@@ -1518,6 +1574,16 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     const outside = rs.length < 2
     const a = V.get(w.a)!, b = V.get(w.b)!
     const dir = unit(sub(b, a)), nrm = { x: -dir.y, y: dir.x }
+    // a wide opening the wall stage read in pieces (a slider's leaf line splits its gap): touching openings on one
+    // wall are one run, and the run's width decides slider or window
+    const runOf = new Map<string, number>()
+    const sorted = [...w.openings].sort((p, q) => p.offsetM - q.offsetM)
+    for (let i = 0; i < sorted.length; ) {
+      let j = i, end = sorted[i].offsetM + sorted[i].widthM
+      while (j + 1 < sorted.length && sorted[j + 1].offsetM <= end + 0.15) end = Math.max(end, sorted[++j].offsetM + sorted[j].widthM)
+      for (let t = i; t <= j; t++) runOf.set(sorted[t].id, end - sorted[i].offsetM)
+      i = j + 1
+    }
     w.openings = w.openings.flatMap((o) => {
       if (o.widthM < 0.3) return []
       const gs = g?.guess?.get(o.id)
@@ -1526,7 +1592,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const veranda = kinds.includes('balcony')
       // one room only: the outside (or an unclosed open area — then the review item says so)
       if (gs?.kind === 'window' || (outside && (kind !== 'door' || wet))) kind = 'window'
-      if (veranda && o.widthM >= 1.2 && !outside) kind = 'slider'
+      if (veranda && (runOf.get(o.id) ?? o.widthM) >= 1.2 && !outside) kind = 'slider'
       if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other')) kind = 'door'
       const conf = gs?.conf ?? 0.2
       const def = openingDefaults(kind, wet)
