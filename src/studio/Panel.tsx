@@ -70,7 +70,7 @@ interface Props {
 export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusReview, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
-  const review = openReview(state)
+  const review = openReview(state, rooms)
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [

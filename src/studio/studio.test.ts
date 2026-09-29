@@ -4,7 +4,7 @@ import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
-import { AI_KEY, openReview, studioReducer } from './review'
+import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
 import { snapMove, snapOpeningOffset } from './snap'
@@ -881,10 +881,44 @@ describe('auto-trace import and its review list', () => {
     expect(openReview(after).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
     const dismissed = studioReducer(after, { type: 'dismiss-review', id: 'r-open' })
     expect(openReview(dismissed).map((i) => i.id)).toEqual(['r-size', 'r-scale'])
+    const win = after.unit.walls.flatMap((w) => w.openings).find((o) => o.kind === 'window')!
+    const undismissed = studioReducer(after, { type: 'update-opening', id: win.id, patch: { kind: 'slider' } })
+    expect(openReview(undismissed).map((i) => i.id)).toEqual(['r-size', 'r-scale']) // the opening was decided by editing it
+    expect(openReview(studioReducer(undismissed, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale']) // undo re-opens it
+  })
+
+  it('a size-mismatch row re-checks itself: it stays (with the current figures) while the room differs from its printed size, and goes once it matches', () => {
+    const { after } = traced()
     const living = after.unit.roomLabels.find((l) => l.name === 'Living')!
-    const edited = studioReducer(dismissed, { type: 'update-label', id: living.id, patch: { printedSize: "14'-4\" × 16'-0\"" } })
-    expect(openReview(edited).map((i) => i.id)).toEqual(['r-scale'])
-    expect(openReview(studioReducer(edited, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-scale']) // undo re-opens it
+    // the hand trace's Living is 13'-6" × 16'-3" inside, the plan prints 13'-6" × 16'-0"
+    expect(sizeCheck(after.unit, living.id, deriveRooms(after.unit))).toEqual({ off: true, message: `Living: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"` })
+    expect(openReview(after).find((i) => i.id === 'r-size')!.message).toBe(`Living: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"`)
+    // renaming the label is not fixing the size: the row stays, reworded
+    const renamed = studioReducer(after, { type: 'update-label', id: living.id, patch: { name: 'Living room' } })
+    expect(openReview(renamed).find((i) => i.id === 'r-size')!.message).toBe(`Living room: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"`)
+    // a printed size that still differs keeps it; the drawn size (either way round) closes it; no printed size = nothing to check
+    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "14'-4\" × 16'-0\"" } })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
+    const fixed = studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "16'-3\" × 13'-6\"" } })
+    expect(openReview(fixed).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+    expect(openReview(studioReducer(fixed, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
+    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: '' } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+    // within 2" is the printed size
+    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "13'-5\" × 16'-2\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+  })
+
+  it('sheetAxis: the axis most wall length runs along, folded to ±45°', () => {
+    const u = traced().after.unit
+    expect(Math.abs(sheetAxis(u))).toBeLessThan(1e-6)
+    const rot = (deg: number) => {
+      const t = (deg * Math.PI) / 180
+      return { ...u, vertices: u.vertices.map((v) => ({ ...v, x: v.x * Math.cos(t) - v.y * Math.sin(t), y: v.x * Math.sin(t) + v.y * Math.cos(t) })) }
+    }
+    expect((sheetAxis(rot(7)) * 180) / Math.PI).toBeCloseTo(7, 6)
+    expect((sheetAxis(rot(-30)) * 180) / Math.PI).toBeCloseTo(-30, 6)
+    expect((sheetAxis(rot(90)) * 180) / Math.PI).toBeCloseTo(0, 6) // 90° = the same axes
+    const a = drawnSize(rot(7), deriveRooms(rot(7))[0]), b = drawnSize(u, deriveRooms(u)[0]) // the size follows the sheet, not the page
+    expect(a.w).toBeCloseTo(b.w, 9)
+    expect(a.h).toBeCloseTo(b.h, 9)
   })
 
   it('the review list survives a draft restore; load-unit and reset drop it', () => {
