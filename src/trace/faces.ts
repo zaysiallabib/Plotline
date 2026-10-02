@@ -3,16 +3,20 @@
  * verandas. What bounds them is no thick wall but THIN ink: a 1–3 px pen line (railing, slab edge, glass), a dashed
  * grille, a light-grey band lighter than the wall cut. Pure, sheet pixels (pixel centres at integer coordinates).
  *
- *   draft walls + decided openings (+ every undecided gap: never bridged) cut out → the rest of the ink up to THIN_CUT
- *   grey (plant green never) → axis lines: per row / column runs ≥ 0.4 m (dash gaps ≤ 6 cm bridged), stacked into one
- *   line ≤ 0.35 m thick → each end lands on a wall's centre line (or a wall's end on its own line, or another line) →
- *   lines well inside a fitted room, or across a drawn fixture, are furniture → the faces they close (raster, 1 px graph
- *   lines, 4-connected) are tested: a face split off a region (the region's largest part keeps its old self) must be
- *   0.5–40 m², ≥ 0.35 m wide, hold at most one room label, no fixture unless labelled, split no fitted room, and lean on
- *   real walls for ≥ 40 % of its rim — a part failing it takes its thin lines out again, until nothing fails.
+ *   draft walls + decided openings cut out → the rest of the ink up to FACES.thinCut grey (plant green never) → axis
+ *   lines: per row / column runs ≥ 0.4 m (dash gaps ≤ 6 cm bridged), stacked into one line ≤ 0.35 m thick (+ the four
+ *   sides of a box-shaped plant-green blob of planter size: a planter's edges hidden under its foliage) → a SOLID line
+ *   along an undecided gap is dropped (founder: never bridged; a dashed grille is positive evidence and may cross it) →
+ *   lines well inside a fitted room, or across a drawn fixture, are furniture → each end lands on a wall's centre line
+ *   (or a wall's end on its own line, or another line) → the faces they close (raster, 1 px graph lines, 4-connected)
+ *   are tested: a face split off a region (the region's largest part keeps its old self) must be 0.5–40 m², ≥ 0.35 m
+ *   wide, hold at most one room label, not be a corner of a closed room with one name, no fixture unless labelled, no
+ *   label ⇒ ≤ 4 m² or plant green, split no fitted room nor be much bigger than the one it holds, and lean on real walls
+ *   for ≥ 40 % of its rim (planters exempt) — slivers lose the line along them first, then a failing part loses the
+ *   lines no passing face needs; a light-grey band between two new faces is a pier; until nothing fails.
  * Every line kept closes a face: a LOW wall (1.1 m railing / parapet / shaft wall; 0.45 m beside plant green — a planter
- * edge), never a full-height wall, each a review item. Unlabelled faces ≤ 4 m² with no fixture are offered as an AOD
- * (flagged, no door). Axis-aligned lines only (the sheets' thin lines are), like tracks.ts.
+ * edge), never a full-height wall, each a review item. Unlabelled faces ≤ 4 m² with no fixture and no green are offered
+ * as an AOD (flagged, no door). Axis-aligned lines only (the sheets' thin lines are), like tracks.ts.
  */
 import { components } from './hints'
 import type { RectPx } from './rooms'

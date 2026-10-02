@@ -19,9 +19,11 @@
  *   traceWalls (tracks: exact walls, openings only on drawn evidence, undecided gaps left open) → scale = the rooms'
  *   printed sizes on the ink (rooms.ts calibrateScale; the guesses above are the fallback) → fitRooms (edges snap to the
  *   track faces) → merge.ts roomsOnTracks (room edges decide undecided gaps, add what no track has: walls, openings,
- *   low walls along railings / planter edges, open-plan passages; the rest is review) → the graph → the flat = the
- *   fitted rooms around the click (pickByRooms) ∪ the flood from it, bounded by the next flat's / the core's rooms →
- *   labels → checks (+ room-edge stretches left open, the rooms' area sum vs the printed sft, sizes to type).
+ *   low walls along railings / planter edges, open-plan passages; the rest is review) → faces.ts (lever 2: the faces only
+ *   thin ink or plant green closes — AODs, planters, service verandas — as LOW walls, flagged) → the graph → the flat =
+ *   the fitted rooms around the click (pickByRooms) ∪ the flood from it, bounded by the next flat's / the core's rooms,
+ *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
+ *   area sum vs the printed sft, sizes to type).
  */
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
@@ -1680,8 +1682,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   const picked = byRooms ? { ...flood, rooms: new Set([...byRooms.rooms, ...flood.rooms]), touched: new Set([...byRooms.touched, ...flood.touched]), open: false } : flood
   if (inputs.debug && byRooms) inputs.debug.flatFits = byRooms.fits
   let flat = picked.rooms
-  if (byRooms && thin?.walls.length) {
-    const ns = thinFacesOfFlat(draft, picked.rooms, fits, byRooms.fits, byRooms.others, pxPerM, thin.walls)
+  if (thin?.walls.length) {
+    // (with too few fitted rooms to say whose a face is — the flood picked the flat — only AOD-sized ones join)
+    const ns = byRooms ? thinFacesOfFlat(draft, picked.rooms, fits, byRooms.fits, byRooms.others, pxPerM, thin) : thinFacesOfFlat(draft, picked.rooms, fits, [], [], pxPerM, thin, FACES.aodMax)
     flat = ns.rooms
     ns.drop.forEach((w) => picked.touched.delete(w))
   }
@@ -1986,9 +1989,9 @@ const AOD_HINT = 'AOD (thin-line face)'
  * edges, railings, light-grey shaft walls) — low walls, never full height. Lines inside a fitted room or across a drawn
  * fixture are furniture; printed labels say which side is which room.
  */
-function closeThinFaces(plan: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array): ThinFaces {
+function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array): ThinFaces {
   const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]) }))
-  return thinFaces(plan, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green })
+  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green })
 }
 
 /**
@@ -1997,10 +2000,11 @@ function closeThinFaces(plan: Gray, trace: WallTrace, k: number, text: TextTrace
  * inside the box of its fitted rooms + 0.4 m) — also when the pick did not reach them — unless they are shared: against
  * a room fitted to another flat or the core, or between two rooms of one name (a planter strip between two flats).
  */
-function thinFacesOfFlat(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: number[], others: number[], k: number, thin: WallSeg[]): { rooms: Set<Room>; drop: Set<string> } {
-  // (the draft's pieces of faces.ts's walls: the draft is in sheet px / k here, before the shift)
+function thinFacesOfFlat(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: number[], others: number[], k: number, thin: ThinFaces, maxSqm = Infinity): { rooms: Set<Room>; drop: Set<string> } {
+  // (the draft's pieces of faces.ts's walls and its new faces: the draft is in sheet px / k here, before the shift)
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
-  const onThin = (p: Pt) => thin.some((s) => segDist(p, { x: s.a.x / k, y: s.a.y / k }, { x: s.b.x / k, y: s.b.y / k }) < 0.01)
+  const onThin = (p: Pt) => thin.walls.some((s) => segDist(p, { x: s.a.x / k, y: s.a.y / k }, { x: s.b.x / k, y: s.b.y / k }) < 0.01)
+  const newAt = thin.faces.map((f) => ({ x: f.at.x / k, y: f.at.y / k, named: f.labelled }))
   const low = new Set(d.walls.filter((w) => w.heightM < WALL_HEIGHT_M && onThin({ x: (V.get(w.a)!.x + V.get(w.b)!.x) / 2, y: (V.get(w.a)!.y + V.get(w.b)!.y) / 2 })).map((w) => w.id))
   const rect = (i: number, m: number) => ({ x0: (fits[i].rect.x0 - 0.5) / k - m, y0: (fits[i].rect.y0 - 0.5) / k - m, x1: (fits[i].rect.x1 - 0.5) / k + m, y1: (fits[i].rect.y1 - 0.5) / k + m })
   const inB = (b: ReturnType<typeof rect>, v: Pt) => v.x >= b.x0 && v.x <= b.x1 && v.y >= b.y0 && v.y <= b.y1
@@ -2009,7 +2013,8 @@ function thinFacesOfFlat(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: numb
   const ours = mine.map((i) => ({ x: fits[i].at.x / k, y: fits[i].at.y / k }))
   const bs = mine.map((i) => rect(i, 0.4))
   const box = { x0: Math.min(...bs.map((b) => b.x0)), y0: Math.min(...bs.map((b) => b.y0)), x1: Math.max(...bs.map((b) => b.x1)), y1: Math.max(...bs.map((b) => b.y1)) }
-  const isThin = (r: Room) => r.wallIds.some((w) => low.has(w))
+  // (a face faces.ts made: what was left of a closed room it split is that room still)
+  const isThin = (r: Room) => r.wallIds.some((w) => low.has(w)) && newAt.some((p) => pointInPolygon(p, roomPolygon(r, d.unit)))
   const own = [...rooms].filter((r) => !isThin(r))
   const ownWalls = new Set(own.flatMap((r) => r.wallIds.filter((w) => !low.has(w))))
   const fitSeeds = fits.map((f) => ({ x: f.at.x / k, y: f.at.y / k }))
@@ -2019,7 +2024,8 @@ function thinFacesOfFlat(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: numb
   const ok = (r: Room) => {
     const poly = roomPolygon(r, d.unit)
     if (ours.some((p) => pointInPolygon(p, poly))) return true
-    if (seeded.has(r)) return false // another flat's fitted room
+    // another flat's fitted room; with no name printed in it, too big to take on no evidence
+    if (seeded.has(r) || (r.areaSqm > maxSqm && !newAt.some((p) => p.named && pointInPolygon(p, poly)))) return false
     // against a fitted room this flat does not have: the next flat's
     if (r.wallIds.some((w) => (byWall.get(w) ?? []).some((n) => n !== r && seeded.has(n) && !rooms.has(n)))) return false
     // between two rooms of one name (BED 2 | strip | BED 2): two flats' rooms, the strip is shared
