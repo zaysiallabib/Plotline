@@ -177,7 +177,9 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const empty: ThinFaces = { walls: [], faces: [], review: [], lines: [] }
   if (!(k > 0) || !o.walls.length) return empty
   const halo = Math.max(2, 0.03 * k)
-  const tol = Math.max(3, 0.08 * k)
+  const gap = Math.max(2, Math.round(FACES.dashGap * k))
+  // (how far short of the wall a line's ink may stop: a dashed line's last dash a gap short)
+  const tol = Math.max(3, 0.08 * k) + gap
   const decided = o.openings.filter((x) => x.kind !== 'unknown')
   const thOf = (x: WallSeg | OpeningGuess) => ('thicknessPx' in x && x.thicknessPx ? x.thicknessPx : 0.127 * k)
 
@@ -186,8 +188,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   for (const s of [...o.walls, ...decided]) stamp(E, W, H, s.a, s.b, thOf(s) / 2 + halo)
   const C = new Uint8Array(W * H)
   for (let i = 0; i < C.length; i++) C[i] = gray.data[i] <= FACES.thinCut && !E[i] && !o.green?.[i] ? 1 : 0
-  const gap = Math.max(2, Math.round(FACES.dashGap * k))
-  const raw = [true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
+  const raw =[true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
 
   // furniture: well inside a fitted room, or across a drawn fixture
   const m = FACES.fitMargin * k
@@ -287,11 +288,15 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   for (const s of [...o.walls, ...decided]) draw(B0, W, H, s.a, s.b, 1)
   const free0 = new Uint8Array(W * H)
   for (let i = 0; i < free0.length; i++) free0[i] = B0[i] ? 0 : 1
-  const lab0 = components(free0, W, H).lab
+  const cc0 = components(free0, W, H)
+  const lab0 = cc0.lab
+  const edge0 = new Set(cc0.comps.flatMap((c, j) => (c.edge ? [j + 1] : [])))
   const b0px: number[] = []
   for (let i = 0; i < B0.length; i++) if (B0[i]) b0px.push(i)
   const labelPx = (o.labels ?? []).map((l) => ({ i: Math.round(l.at.y) * W + Math.round(l.at.x), name: l.name })).filter((l) => l.i >= 0 && l.i < W * H)
   const fixPx = (o.fixtures ?? []).map((f) => Math.round(f.at.y) * W + Math.round(f.at.x)).filter((i) => i >= 0 && i < W * H)
+  const namesIn = new Map<number, Set<string>>()
+  for (const l of labelPx) if (lab0[l.i]) namesIn.set(lab0[l.i], new Set([...(namesIn.get(lab0[l.i]) ?? []), l.name]))
   const k2 = k * k
   type Part = { id: number; n: number; G: number; x0: number; y0: number; x1: number; y1: number; cx: number; cy: number; edge: boolean; walls: number; thin: number; green: number; lines: Set<number>; ok?: boolean; why?: string }
   const greenPx: number[] = []
@@ -335,6 +340,8 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       if (p.walls < FACES.wallShare * (p.walls + p.thin)) return 'thin rim'
       const names = new Set(labelPx.filter((l) => lab1[l.i] === p.id).map((l) => l.name))
       if (names.size > 1) return 'two labels'
+      // a corner of a closed room with one name (a shower tray, a closet in the toilet): not a room of its own
+      if (!names.size && !edge0.has(p.G) && (namesIn.get(p.G)?.size ?? 0) === 1) return 'inside a named room'
       if (!names.size && fixPx.some((i) => lab1[i] === p.id)) return 'fixture'
       // no label: an AOD-sized space, or a planter (plant green over half of it); anything bigger is no evidence of a room
       if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n) return 'unlabelled, too big for an AOD'
@@ -358,9 +365,12 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     // slivers first (a double pen line, a frame line beside a wall): the longest of a sliver's lines stays; the faces they
     // cut are judged again without them
     const slivers = failing.filter((p) => p.why === 'sliver')
+    // (otherwise a failing part loses the lines no passing face needs — a strip beyond a planter's edge goes, the edge stays)
+    const needed = new Set(parts.filter((p) => p.ok).flatMap((p) => [...p.lines]))
     for (const p of slivers.length ? slivers : failing) {
       const ls = [...p.lines].sort((x, y) => Math.abs(cands[y].e[1]!.u - cands[y].e[0]!.u) - Math.abs(cands[x].e[1]!.u - cands[x].e[0]!.u))
-      for (const li of p.why === 'sliver' && ls.length > 1 ? ls.slice(1) : ls) (alive[li] = false), (fate[li] ||= `face: ${p.why} (${(p.n / k2).toFixed(1)} m², ${p.x0},${p.y0}–${p.x1},${p.y1}, ${p.lines.size} lines, iter ${iter})`)
+      const spare = ls.filter((li) => !needed.has(li))
+      for (const li of p.why === 'sliver' ? (ls.length > 1 ? ls.slice(1) : ls) : spare.length ? spare : ls) (alive[li] = false), (fate[li] ||= `face: ${p.why} (${(p.n / k2).toFixed(1)} m², ${p.x0},${p.y0}–${p.x1},${p.y1}, ${p.lines.size} lines, iter ${iter})`)
     }
     prune()
   }
