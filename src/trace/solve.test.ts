@@ -224,8 +224,9 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
   if (!rgb) return { inputs: {} }
   return { rgb, inputs: { green: greenMask(rgb), findHints: (pxPerM, walls) => findHints(g, rgb, { pxPerM, walls }) } }
 }
-/** TRACE_TRACKER=skeleton: the wave-15 skeleton wall stage instead of the band tracker (KNOBS.tracker), for comparison */
-if (process.env.TRACE_TRACKER === 'skeleton') KNOBS.tracker = 'skeleton'
+/** TRACE_TRACKER=skeleton | bands | tracks: that wall stage instead of the default (KNOBS.tracker), for comparison */
+const TRACKER = process.env.TRACE_TRACKER
+if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
 const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))

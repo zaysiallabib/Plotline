@@ -528,20 +528,26 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         // walls on parallel tracks whose bodies overlap ours side by side: a gap running alongside one is no opening;
         // one starting across the gap is the far side of a stepped wall (a jog joins it)
         const sides = byDir[T.horiz ? 0 : 1].flatMap((T2) => (T2 === T ? [] : T2.ivs.filter((j) => Math.abs(T2.c - T.c) < (iv.th + j.th) / 2).map((j) => ({ j, c: T2.c }))))
+        // walk over everything that is no wall: paper, thin lines, a window frame's little marks, wall-class bits too short
+        // to be kept — until a kept wall of this track, a crossing body / block, or a stepped wall beside the track
         let i = Math.round(face + dir * 0.5) - T.a
-        let g = 0, side: (typeof sides)[number] | undefined
-        while (i >= 0 && i < n && !T.lab[i] && g <= maxGapPx && !(side = sides.find((s) => s.j.f0 <= T.a + i && T.a + i <= s.j.f1))) (i += dir), g++
-        if (i < 0 || i >= n || g > maxGapPx || g < M.minGap * k) continue
-        const far = side ? (dir > 0 ? side.j.f0 : side.j.f1) : T.a + i - dir * 0.5
+        let g = 0, side: (typeof sides)[number] | undefined, nb: Iv | undefined
+        for (; i >= 0 && i < n && g <= maxGapPx; i += dir, g++) {
+          const u = T.a + i
+          if (T.lab[i] === B_) break
+          if (T.lab[i] === W_ && (nb = T.ivs.find((j) => j !== iv && j.f0 <= u && u <= j.f1))) break
+          if ((side = sides.find((s) => s.j.f0 <= u && u <= s.j.f1))) break
+        }
+        if (i < 0 || i >= n || g > maxGapPx) continue
+        const far = side ? (dir > 0 ? side.j.f0 : side.j.f1) : nb ? (dir > 0 ? nb.f0 : nb.f1) : T.a + i - dir * 0.5
+        if ((far - face) * dir < M.minGap * k) continue
         let node: number
         let jog: Gap['jog']
         if (side) {
           if (dir > 0 ? !free0(side.j) : !free1(side.j)) continue
           node = far
           jog = { u: far, c: side.c }
-        } else if (T.lab[i] === W_) {
-          const nb = T.ivs.find((j) => (dir > 0 ? Math.abs(j.f0 - far) < 1 : Math.abs(j.f1 - far) < 1))
-          if (!nb) continue // wall-class ink no wall was kept for (too short, foliage): nothing to carry on to
+        } else if (nb) {
           node = dir > 0 ? nb.n0 : nb.n1
         } else if (T.lab[i] === B_) {
           // a crossing wall whose body this is: its centre line; else a block's face
@@ -552,7 +558,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         const key = `${T.horiz}|${T.c.toFixed(1)}|${u0.toFixed(1)}|${u1.toFixed(1)}`
         if (seen.has(key)) continue
         seen.add(key)
-        const cls = classifyGap(P(u0), P(u1), iv.th, k, (x, y) => arcAt(x, y) && !inWall(x, y), grayAt, opts.glass, W, H)
+        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, (x, y) => arcAt(x, y) && !inWall(x, y), grayAt, opts.glass, W, H)
         gaps.push({ horiz: T.horiz, c: T.c, u0, u1, node0: dir > 0 ? face : node, node1: dir > 0 ? node : face, thPx: iv.th, ...(jog ? { jog } : {}), ...cls })
       }
   }
