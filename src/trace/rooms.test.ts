@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { evalTrace, registerTruth } from './eval'
 import { SHOTS, loadPgm, loadPpm, writePng } from './evalio'
 import { calibrateScale, classifyProfile, darkMaxOf, deriveWallsFromRooms, fitRooms, type RectPx, type RoomFit, type Side } from './rooms'
-import { addEdgeReports, centreRect, edgeReport, emptyEdgeReport, expectedClass, formatEdgeReport, oracleLabels, roomsOverlay, scoreRooms, truthRoomsPx } from './roomsEval'
+import { addEdgeReports, centreRect, edgeReport, emptyEdgeReport, expectedClass, formatEdgeReport, oracleLabels, roomsOverlay, scoreRooms, truthRoomsPx, type TruthEdgeClass } from './roomsEval'
 import type { Gray, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic plans: 50 px/m, walls grey 70, thin lines grey 120, paper 255 ----------
@@ -173,6 +173,8 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 const ONLY = process.env.ROOMS_ONLY ?? ''
 const part = (p: string) => !process.env.ROOMS_PARTS || process.env.ROOMS_PARTS.split(',').includes(p)
 const FAIL = (process.env.ROOMS_FAIL ?? '').split(',').filter(Boolean)
+/** ROOMS_MISS=door,window: list hand-traced items of those classes a stretch of another class covers */
+const MISS = (process.env.ROOMS_MISS ?? '').split(',').filter(Boolean)
 
 /** overlays at 3×, tiled ≤ 700 source px so every tile can be looked at */
 function shots(path: string, g: Gray, region: RectPx, o: Parameters<typeof roomsOverlay>[3]): void {
@@ -228,11 +230,15 @@ describe.skipIf(!haveFixtures)('rooms first vs the hand-traced units (eval repor
       scaleRows.push(`${u.id.padEnd(11)} truth ${k.toFixed(2)} | oracle labels ${sc(cO)} ${Math.round(msC)} ms | real OCR ${sc(cR)}`)
       // edge classes on the oracle fits that matched (the classifier given a right rectangle)
       const okIdx = new Set(so.per.filter((p) => p.iou >= 0.6).map((p) => p.d))
-      const er = edgeReport(g, u, xf, fo.filter((_, i) => okIdx.has(i)), darkMaxOf(g))
+      const er = edgeReport(g, u, xf, fo.filter((_, i) => okIdx.has(i)), darkMaxOf(g), rgb)
       addEdgeReports(allEdges, er)
       edgeText.push(`-- ${u.id} (edges of the ${okIdx.size} matched oracle rooms)\n${formatEdgeReport(er)}`)
-      for (const d of er.details.filter((x) => FAIL.includes(x.kind) && expectedClass(x.truth) !== x.kind && x.truth !== 'none' && x.lenM >= 0.1))
-        edgeText.push(`   ✗ ${d.kind} on ${d.truth}: ${d.room} ${d.side} ${d.lenM.toFixed(2)} m  (${Math.round(d.a.x)},${Math.round(d.a.y)})→(${Math.round(d.b.x)},${Math.round(d.b.y)})`)
+      for (const d of er.details) {
+        const wrong = Object.entries(d.mix).filter(([t, m]) => t !== 'none' && expectedClass(t as TruthEdgeClass) !== d.kind && m >= 0.1)
+        for (const [t, mm] of Object.entries(d.mix)) if (MISS.includes(t) && expectedClass(t as TruthEdgeClass) !== d.kind && mm >= 0.25) edgeText.push(`   ○ missed ${t} ${mm.toFixed(2)} m as ${d.kind}: ${d.room} ${d.side} (${Math.round(d.a.x)},${Math.round(d.a.y)})→(${Math.round(d.b.x)},${Math.round(d.b.y)})`)
+        if (FAIL.includes(d.kind) && wrong.length)
+          edgeText.push(`   ✗ ${d.kind} ${d.lenM.toFixed(2)} m on ${wrong.map(([t, m]) => `${t} ${m.toFixed(2)} m`).join(', ')}: ${d.room} ${d.side} (${Math.round(d.a.x)},${Math.round(d.a.y)})→(${Math.round(d.b.x)},${Math.round(d.b.y)})`)
+      }
       // walls from the oracle rooms vs the hand-traced walls (eval.ts, centre lines within 0.15 m)
       const rw = deriveWallsFromRooms(fo, k)
       const ev = evalTrace({ walls: rw.walls, openings: rw.openings }, u, {}, xf)

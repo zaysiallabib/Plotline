@@ -650,20 +650,28 @@ function ridge(g: Gray, x: number, y: number, dx: number, dy: number): boolean {
   return px(x, y) <= Math.min(px(x - 3 * dx, y - 3 * dy), px(x + 3 * dx, y + 3 * dy)) - 15
 }
 
-/** share of a quarter arc (10°…80°) hinged at H, from direction e (across the gap) to m (into the swing room), with ink */
+/**
+ * Share of a quarter arc (10°…80°) hinged at H, from direction e (across the gap) to m (into the swing room), with
+ * ink — at ONE radius (0.85…1.08 × r, ±1 px): hatched floors cross every radius somewhere, an arc keeps its own.
+ */
 export function arcCoverage(g: Gray, H: Px, e: Px, m: Px, r: number): number {
-  let hit = 0
   const N = 24
+  const r0 = Math.round(0.85 * r), r1 = Math.round(1.08 * r), w = r >= 60 ? 2 : 1
+  const hits: Uint8Array[] = []
   for (let t = 0; t < N; t++) {
     const a = ((10 + (70 * t) / (N - 1)) * Math.PI) / 180
     const dx = Math.cos(a) * e.x + Math.sin(a) * m.x, dy = Math.cos(a) * e.y + Math.sin(a) * m.y
-    for (let rr = Math.round(0.85 * r); rr <= Math.round(1.08 * r); rr++)
-      if (ridge(g, H.x + dx * rr, H.y + dy * rr, dx, dy)) {
-        hit++
-        break
-      }
+    const h = new Uint8Array(r1 - r0 + 1 + 2 * w)
+    for (let rr = r0 - w; rr <= r1 + w; rr++) h[rr - r0 + w] = ridge(g, H.x + dx * rr, H.y + dy * rr, dx, dy) ? 1 : 0
+    hits.push(h)
   }
-  return hit / N
+  let best = 0
+  for (let i = w; i <= r1 - r0 + w; i++) {
+    let n = 0
+    for (const h of hits) if (h.subarray(i - w, i + w + 1).some((x) => x)) n++
+    best = Math.max(best, n / N)
+  }
+  return best
 }
 
 /** point on the face line (pixel centres) at u, `d` px outward */
@@ -673,51 +681,81 @@ function facePoint(side: Side, c: number, u: number, d: number): Px {
 }
 
 /**
+ * A door in the gap g0 … g1 of an edge: a quarter arc of radius ≈ the gap hinged on either jamb, on either face of the
+ * wall (a stub ending on the face carries the hinge), swinging either way — or two (a double door, equal leaves or a
+ * main door's 0.75 + 0.4 m). Best coverage ≥ 0.7, else null.
+ */
+function doorArc(cx: ClassCtx, side: Side, c: number, g0: number, g1: number, th: number): { cov: number; hinge: Px; swing: Px } | null {
+  const gap = g1 - g0
+  if (gap < 0.55 * cx.k || gap > 1.25 * cx.k) return null
+  const along: Px = horizSide(side) ? { x: 1, y: 0 } : { x: 0, y: 1 }
+  const back: Px = { x: -along.x, y: -along.y }
+  const outN: Px = horizSide(side) ? { x: 0, y: side === 'top' ? -1 : 1 } : { x: side === 'left' ? -1 : 1, y: 0 }
+  let best: { cov: number; hinge: Px; swing: Px } | null = null
+  const fr = [0.3, 0.4, 0.5, 0.6, 0.7]
+  for (const swingIn of [true, false])
+    for (const d of [0, th]) {
+      const m = swingIn ? { x: -outN.x, y: -outN.y } : outN
+      const j0 = facePoint(side, c, g0 - 0.5, d), j1 = facePoint(side, c, g1 - 0.5, d)
+      for (const [H, e] of [[j0, along], [j1, back]] as const) {
+        const cov = arcCoverage(cx.g, H, e, m, gap)
+        if (cov >= 0.7 && (!best || cov > best.cov)) best = { cov, hinge: H, swing: { x: H.x + m.x * gap, y: H.y + m.y * gap } }
+      }
+      const cA = fr.map((f) => arcCoverage(cx.g, j0, along, m, f * gap)), cB = fr.map((f) => arcCoverage(cx.g, j1, back, m, f * gap))
+      fr.forEach((fa, i) =>
+        fr.forEach((fb, j) => {
+          const cov = Math.min(cA[i], cB[j])
+          if (fa + fb >= 0.85 && fa + fb <= 1.15 && cov >= 0.7 && (!best || cov > best.cov)) best = { cov, hinge: j0, swing: { x: j0.x + m.x * fa * gap, y: j0.y + m.y * fa * gap } }
+        }),
+      )
+    }
+  return best
+}
+
+/**
  * Doors: a run of non-wall stretches 0.55–1.25 m long between two wall stretches (an edge end counts when the
  * perpendicular edge is wall at that corner) with a quarter arc of radius ≈ the gap (or two of half the gap) hinged on
  * a jamb, swinging into this room or out of it.
  */
 function findDoors(cx: ClassCtx, fitEdges: { side: Side; c: number; u0: number; u1: number; stretches: Stretch[] }[]): void {
   const k = cx.k
-  const cornerWall = (side: Side, atStart: boolean): boolean => {
+  const cornerInk = (side: Side, atStart: boolean): boolean => {
     // the perpendicular edge meeting this one's start (u0) or end (u1)
     const perp = horizSide(side) ? (atStart ? 'left' : 'right') : atStart ? 'top' : 'bottom'
     const pe = fitEdges.find((e) => e.side === perp)!
     const near = horizSide(side) ? (side === 'top' ? pe.stretches[0] : pe.stretches[pe.stretches.length - 1]) : side === 'left' ? pe.stretches[0] : pe.stretches[pe.stretches.length - 1]
-    return near?.kind === 'wall'
+    return !!near && near.kind !== 'open'
   }
-  // second pass: a door leaf drawn shut across the gap reads as lines (window-like); an arc on the jamb still makes it a door
-  for (const isGap of [(s: Stretch) => s.kind === 'open' || s.kind === 'thin' || s.kind === 'unsure', (s: Stretch) => s.kind !== 'wall' && s.kind !== 'door'])
+  // second pass: a door leaf drawn shut across the gap reads as grey lines (window-like); an arc on the jamb still makes
+  // it a door. Not where the sheet draws its glass blue: there a window is glass, never a door.
+  const passes = [(s: Stretch) => s.kind === 'open' || s.kind === 'thin' || s.kind === 'unsure', (s: Stretch) => s.kind !== 'wall' && s.kind !== 'door']
+  for (const isGap of cx.blueGlass ? passes.slice(0, 1) : passes)
   for (const E of fitEdges) {
     const S = E.stretches
     for (let a = 0; a < S.length; a++) {
       if (!isGap(S[a])) continue
       let b = a
       while (b + 1 < S.length && isGap(S[b + 1])) b++
-      const g0 = S[a].u0, g1 = S[b].u1, gap = g1 - g0
-      const leftOk = a > 0 ? S[a - 1].kind === 'wall' : cornerWall(E.side, true)
-      const rightOk = b < S.length - 1 ? S[b + 1].kind === 'wall' : cornerWall(E.side, false)
-      if (gap >= 0.55 * k && gap <= 1.25 * k && leftOk && rightOk) {
-        const ths = [S[a - 1]?.thPx, S[b + 1]?.thPx].filter((t): t is number => !!t)
-        const th = ths.length ? ths.reduce((p, q) => p + q, 0) / ths.length : 0.15 * k
-        const along: Px = horizSide(E.side) ? { x: 1, y: 0 } : { x: 0, y: 1 }
-        const outN: Px = horizSide(E.side) ? { x: 0, y: E.side === 'top' ? -1 : 1 } : { x: E.side === 'left' ? -1 : 1, y: 0 }
-        let best: { cov: number; hinge: Px; swing: Px } | null = null
-        for (const swingIn of [true, false]) {
-          const m = swingIn ? { x: -outN.x, y: -outN.y } : outN
-          const d = swingIn ? 0 : th
-          const j0 = facePoint(E.side, E.c, g0 - 0.5, d), j1 = facePoint(E.side, E.c, g1 - 0.5, d)
-          for (const [H, e] of [[j0, along], [j1, { x: -along.x, y: -along.y }]] as const) {
-            const cov = arcCoverage(cx.g, H, e, m, gap)
-            if (cov >= 0.7 && (!best || cov > best.cov)) best = { cov, hinge: H, swing: { x: H.x + m.x * gap, y: H.y + m.y * gap } }
-          }
-          const cA = arcCoverage(cx.g, j0, along, m, gap / 2), cB = arcCoverage(cx.g, j1, { x: -along.x, y: -along.y }, m, gap / 2)
-          if (Math.min(cA, cB) >= 0.7 && (!best || Math.min(cA, cB) > best.cov)) best = { cov: Math.min(cA, cB), hinge: j0, swing: { x: j0.x + m.x * gap / 2, y: j0.y + m.y * gap / 2 } }
+      // between two wall stretches; at a corner the perpendicular edge only needs some ink there (a leaf drawn open
+      // along it reads as lines) — but one side must be this edge's own wall
+      const leftOk = a > 0 ? S[a - 1].kind === 'wall' : cornerInk(E.side, true)
+      const rightOk = b < S.length - 1 ? S[b + 1].kind === 'wall' : cornerInk(E.side, false)
+      // the wall's thickness: the thinner neighbour (a perpendicular wall ending on the face reads as a long run)
+      const ths = [S[a - 1]?.thPx, S[b + 1]?.thPx].filter((t): t is number => !!t)
+      const th = Math.max(0.08 * k, Math.min(0.35 * k, ths.length ? Math.min(...ths) : 0.15 * k))
+      // the jambs: the run's ends, or inside a short 'unsure' bit at either end (a jamb's shadow / frame)
+      const short = (s: Stretch) => s.kind === 'unsure' && s.u1 - s.u0 < 0.1 * k
+      const cand: [number, number][] = []
+      for (const ta of b > a && short(S[a]) ? [0, 1] : [0]) for (const tb of b - ta > a && short(S[b]) ? [0, 1] : [0]) cand.push([a + ta, b - tb])
+      let found: { cov: number; hinge: Px; swing: Px; i: number; j: number } | null = null
+      if (leftOk && rightOk && (a > 0 || b < S.length - 1))
+        for (const [i, j] of cand) {
+          const d = doorArc(cx, E.side, E.c, S[i].u0, S[j].u1, th)
+          if (d && (!found || d.cov > found.cov)) found = { ...d, i, j }
         }
-        if (best) {
-          S.splice(a, b - a + 1, { kind: 'door', u0: g0, u1: g1, hingeAt: best.hinge, swingTo: best.swing })
-          b = a
-        }
+      if (found) {
+        S.splice(found.i, found.j - found.i + 1, { kind: 'door', u0: S[found.i].u0, u1: S[found.j].u1, hingeAt: found.hinge, swingTo: found.swing })
+        b -= found.j - found.i
       }
       a = b
     }

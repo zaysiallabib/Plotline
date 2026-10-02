@@ -6,7 +6,7 @@
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Room, Unit } from '../core'
 import { applyXf, type TruthXf } from './eval'
-import type { EdgeClass, RectPx, RoomFit, RoomWalls, Side } from './rooms'
+import type { EdgeClass, RectPx, RgbImage, RoomFit, RoomWalls, Side } from './rooms'
 import type { Dims, Gray, Px, TextItem } from './types'
 
 /** "15'-0\" × 11'-10\"" → metres (first printed number first) */
@@ -99,25 +99,28 @@ export function scoreRooms(truth: Unit, rects: RectPx[]): RoomScore {
 
 // ─────────────────────────────────────────────────────────────────────────────── edge classes vs the hand trace
 
-export type TruthEdgeClass = 'wall' | 'wall-thin' | 'window' | 'window-solid' | 'door' | 'passage' | 'none'
-export const TRUTH_CLASSES: TruthEdgeClass[] = ['wall', 'wall-thin', 'window', 'window-solid', 'door', 'passage', 'none']
+export type TruthEdgeClass = 'wall' | 'wall-thin' | 'wall-glass' | 'window' | 'window-solid' | 'door' | 'passage' | 'none'
+export const TRUTH_CLASSES: TruthEdgeClass[] = ['wall', 'wall-thin', 'wall-glass', 'window', 'window-solid', 'door', 'passage', 'none']
 export const OUR_CLASSES: EdgeClass[] = ['wall', 'window', 'door', 'thin', 'open', 'unsure']
 /**
- * The class a truth item should get from what is DRAWN: a hand-traced wall drawn thin is a thin line; a hand-traced
- * window the drawing shows as a solid dark band of wall thickness (no glazing lines) is drawn as a wall; a passage is open.
+ * The class a truth item should get from what is DRAWN: a hand-traced wall drawn thin is a thin line — unless the
+ * colour image has blue glass there ('wall-glass': the hand trace closed a glazed side without a window opening); a
+ * hand-traced window the drawing shows as a solid dark band (no glazing lines) is drawn as a wall; a passage is open.
  */
-const expect_: Record<TruthEdgeClass, EdgeClass | null> = { wall: 'wall', 'wall-thin': 'thin', window: 'window', 'window-solid': 'wall', door: 'door', passage: 'open', none: null }
+const expect_: Record<TruthEdgeClass, EdgeClass | null> = { wall: 'wall', 'wall-thin': 'thin', 'wall-glass': 'window', window: 'window', 'window-solid': 'wall', door: 'door', passage: 'open', none: null }
 export const expectedClass = (t: TruthEdgeClass) => expect_[t]
-/** the same against the hand trace alone (a hand-traced window is a window, however it is drawn) */
-const strict_: Record<TruthEdgeClass, EdgeClass | null> = { ...expect_, 'window-solid': 'window' }
+/** the same against the hand trace alone (a hand-traced window is a window, a hand-traced solid wall is no window, however drawn) */
+const strict_: Record<TruthEdgeClass, EdgeClass | null> = { ...expect_, 'window-solid': 'window', 'wall-glass': 'thin' }
 
 export interface EdgeReport {
-  /** metres of fitted edge: truth class → our class */
+  /** metres of fitted edge: truth class → our class (outside the ±0.1 m band around each change of the truth class) */
   confusion: Record<TruthEdgeClass, Record<EdgeClass, number>>
+  /** the same inside that band (the start / stop zone) */
+  band: Record<TruthEdgeClass, Record<EdgeClass, number>>
   /** truth items (a wall piece, an opening) on fitted edges: count, class right (≥ 50 % of it), and both ends within 0.1 m */
   items: Record<TruthEdgeClass, { n: number; classOk: number; endsOk: number }>
   /** every stretch with the truth class under most of it (for failure lists) */
-  details: { room: string; side: Side; kind: EdgeClass; truth: TruthEdgeClass; a: Px; b: Px; lenM: number }[]
+  details: { room: string; side: Side; kind: EdgeClass; truth: TruthEdgeClass; mix: Partial<Record<TruthEdgeClass, number>>; a: Px; b: Px; lenM: number }[]
 }
 
 /**
@@ -126,14 +129,14 @@ export interface EdgeReport {
  * or a solid wall — 'wall' when the drawing has a dark band there, 'wall-thin' when the hand trace closes the room
  * with a wall the drawing shows only as thin lines (railing, glass, shaft).
  */
-export function edgeReport(gray: Gray, truth: Unit, xf: TruthXf, fits: RoomFit[], darkMax: number): EdgeReport {
+export function edgeReport(gray: Gray, truth: Unit, xf: TruthXf, fits: RoomFit[], darkMax: number, rgb?: RgbImage): EdgeReport {
   const k = xf.k
   const V = new Map(truth.vertices.map((v) => [v.id, v]))
   const W = truth.walls.map((w) => {
     const a = V.get(w.a)!, b = V.get(w.b)!
     return { w, a: applyXf(xf, a.x, a.y), b: applyXf(xf, b.x, b.y), L: Math.hypot(b.x - a.x, b.y - a.y) }
   })
-  const { confusion, items, details } = emptyEdgeReport()
+  const { confusion, items, details, band: bandM } = emptyEdgeReport()
   const dark = (x: number, y: number) => {
     const xi = Math.round(x), yi = Math.round(y)
     return xi >= 0 && yi >= 0 && xi < gray.width && yi < gray.height && gray.data[yi * gray.width + xi] <= darkMax
@@ -169,17 +172,32 @@ export function edgeReport(gray: Gray, truth: Unit, xf: TruthXf, fits: RoomFit[]
             bestRun = Math.max(bestRun, run)
           }
           const band = bestRun >= Math.max(2, Math.round(0.07 * k))
-          const cls: TruthEdgeClass = op ? (op.kind === 'door' ? 'door' : op.kind === 'passage' ? 'passage' : band ? 'window-solid' : 'window') : band ? 'wall' : 'wall-thin'
+          let glass = false
+          if (rgb && !band && !op)
+            for (let q = -r; q <= r && !glass; q++) {
+              const x = Math.round(horiz ? u : cLine + q), y = Math.round(horiz ? cLine + q : u)
+              const i = (y * rgb.width + x) * 4
+              glass = x >= 0 && y >= 0 && x < rgb.width && y < rgb.height && rgb.data[i + 2] - Math.max(rgb.data[i], rgb.data[i + 1]) >= 25
+            }
+          const cls: TruthEdgeClass = op ? (op.kind === 'door' ? 'door' : op.kind === 'passage' ? 'passage' : band ? 'window-solid' : 'window') : band ? 'wall' : glass ? 'wall-glass' : 'wall-thin'
           best = { cls, d }
         }
         tc.push(best?.cls ?? 'none')
       }
-      tc.forEach((t, i) => (confusion[t][ours[i]] += 1 / k))
+      // pixels within 0.1 m of a change of the hand-traced class are the start / stop question (items below), not class
+      // confusion: the hand trace's ends sit a few cm off the drawing
+      const band = Math.round(0.1 * k)
+      tc.forEach((t, i) => {
+        const nearChange = tc.slice(Math.max(0, i - band), i + band + 1).some((x) => x !== t)
+        if (nearChange) bandM[t][ours[i]] += 1 / k
+        else confusion[t][ours[i]] += 1 / k
+      })
       for (const s of e.stretches) {
         const n: Partial<Record<TruthEdgeClass, number>> = {}
         for (let u = s.u0; u < s.u1; u++) n[tc[u - e.u0]] = (n[tc[u - e.u0]] ?? 0) + 1
         const top = (Object.entries(n) as [TruthEdgeClass, number][]).sort((p, q) => q[1] - p[1])[0]
-        details.push({ room: f.label.text.split('\n')[0], side: e.side, kind: s.kind, truth: top[0], a: horiz ? { x: s.u0, y: face } : { x: face, y: s.u0 }, b: horiz ? { x: s.u1, y: face } : { x: face, y: s.u1 }, lenM: (s.u1 - s.u0) / k })
+        const mix = Object.fromEntries(Object.entries(n).map(([t, c]) => [t, c / k])) as Partial<Record<TruthEdgeClass, number>>
+        details.push({ room: f.label.text.split('\n')[0], side: e.side, kind: s.kind, truth: top[0], mix, a: horiz ? { x: s.u0, y: face } : { x: face, y: s.u0 }, b: horiz ? { x: s.u1, y: face } : { x: face, y: s.u1 }, lenM: (s.u1 - s.u0) / k })
       }
       // items = runs of one truth class along the edge
       for (let i = 0; i < tc.length; ) {
@@ -198,12 +216,14 @@ export function edgeReport(gray: Gray, truth: Unit, xf: TruthXf, fits: RoomFit[]
         i = j
       }
     }
-  return { confusion, items, details }
+  return { confusion, items, details, band: bandM }
 }
 
 export function emptyEdgeReport(): EdgeReport {
+  const table = () => Object.fromEntries(TRUTH_CLASSES.map((t) => [t, Object.fromEntries(OUR_CLASSES.map((o) => [o, 0]))])) as EdgeReport['confusion']
   return {
-    confusion: Object.fromEntries(TRUTH_CLASSES.map((t) => [t, Object.fromEntries(OUR_CLASSES.map((o) => [o, 0]))])) as EdgeReport['confusion'],
+    confusion: table(),
+    band: table(),
     items: Object.fromEntries(TRUTH_CLASSES.map((t) => [t, { n: 0, classOk: 0, endsOk: 0 }])) as EdgeReport['items'],
     details: [],
   }
@@ -211,7 +231,7 @@ export function emptyEdgeReport(): EdgeReport {
 
 export function addEdgeReports(a: EdgeReport, b: EdgeReport): EdgeReport {
   for (const t of TRUTH_CLASSES) {
-    for (const o of OUR_CLASSES) a.confusion[t][o] += b.confusion[t][o]
+    for (const o of OUR_CLASSES) (a.confusion[t][o] += b.confusion[t][o]), (a.band[t][o] += b.band[t][o])
     a.items[t].n += b.items[t].n
     a.items[t].classOk += b.items[t].classOk
     a.items[t].endsOk += b.items[t].endsOk
@@ -224,11 +244,12 @@ export function addEdgeReports(a: EdgeReport, b: EdgeReport): EdgeReport {
  * Precision of our class X: its length on a truth item that should get X ÷ its length on any hand-traced boundary
  * ('none' excluded: the fitted edge is off every hand-traced wall). `strict`: against the hand trace alone.
  */
-export function precision(r: EdgeReport, ours: EdgeClass, strict = false): { p: number; on: number; offTruth: number } {
-  const good = TRUTH_CLASSES.filter((t) => (strict ? strict_ : expect_)[t] === ours)
-  const on = TRUTH_CLASSES.filter((t) => t !== 'none').reduce((s, t) => s + r.confusion[t][ours], 0)
-  const hit = good.reduce((s, t) => s + r.confusion[t][ours], 0)
-  return { p: on ? hit / on : NaN, on, offTruth: r.confusion.none[ours] }
+export function precision(r: EdgeReport, ours: EdgeClass, o: { strict?: boolean; withBand?: boolean } = {}): { p: number; on: number; offTruth: number } {
+  const m = (t: TruthEdgeClass) => r.confusion[t][ours] + (o.withBand ? r.band[t][ours] : 0)
+  const good = TRUTH_CLASSES.filter((t) => (o.strict ? strict_ : expect_)[t] === ours)
+  const on = TRUTH_CLASSES.filter((t) => t !== 'none').reduce((s, t) => s + m(t), 0)
+  const hit = good.reduce((s, t) => s + m(t), 0)
+  return { p: on ? hit / on : NaN, on, offTruth: m('none') }
 }
 
 export function recall(r: EdgeReport, truthCls: TruthEdgeClass): number {
@@ -239,16 +260,15 @@ export function recall(r: EdgeReport, truthCls: TruthEdgeClass): number {
 
 export function formatEdgeReport(r: EdgeReport): string {
   const pad = (s: string, n: number) => s.padStart(n)
-  const lines = [`truth \\ ours (m)  ${OUR_CLASSES.map((o) => pad(o, 7)).join(' ')}   items: n  class-ok  ends≤0.1m`]
+  const lines = [`truth \\ ours (m, ±0.1 m band at truth changes excluded)  ${OUR_CLASSES.map((o) => pad(o, 7)).join(' ')}   items: n  class-ok  ends≤0.1m`]
   for (const t of TRUTH_CLASSES)
-    lines.push(`${t.padEnd(17)} ${OUR_CLASSES.map((o) => pad(r.confusion[t][o].toFixed(1), 7)).join(' ')}   ${pad(String(r.items[t].n), 7)} ${pad(String(r.items[t].classOk), 9)} ${pad(String(r.items[t].endsOk), 10)}`)
-  const pr = (['wall', 'window', 'door', 'thin'] as EdgeClass[]).map((o) => {
-    const p = precision(r, o)
-    return `${o} P ${(p.p * 100).toFixed(1)}% of ${p.on.toFixed(1)} m (+${p.offTruth.toFixed(1)} m on no hand-traced wall)`
-  })
-  lines.push(`precision (vs the drawing): ${pr.join(' · ')}`)
-  lines.push(`precision (vs the hand trace alone): ${(['wall', 'window', 'door'] as EdgeClass[]).map((o) => `${o} ${(precision(r, o, true).p * 100).toFixed(1)}%`).join(' · ')}`)
-  lines.push(`recall: ${(['wall', 'window', 'door', 'wall-thin', 'passage'] as TruthEdgeClass[]).map((t) => `${t} ${(recall(r, t) * 100).toFixed(1)}%`).join(' · ')}`)
+    lines.push(`${t.padEnd(55)} ${OUR_CLASSES.map((o) => pad(r.confusion[t][o].toFixed(1), 7)).join(' ')}   ${pad(String(r.items[t].n), 7)} ${pad(String(r.items[t].classOk), 9)} ${pad(String(r.items[t].endsOk), 10)}`)
+  const P = (o: EdgeClass, x: { strict?: boolean; withBand?: boolean }) => `${(precision(r, o, x).p * 100).toFixed(1)}%`
+  lines.push(
+    `precision vs the drawing: ${(['wall', 'window', 'door', 'thin'] as EdgeClass[]).map((o) => `${o} ${P(o, {})} of ${precision(r, o).on.toFixed(1)} m (+${precision(r, o).offTruth.toFixed(1)} m on no hand-traced wall)`).join(' · ')}`,
+  )
+  lines.push(`  incl. the ±0.1 m bands: ${(['wall', 'window', 'door'] as EdgeClass[]).map((o) => `${o} ${P(o, { withBand: true })}`).join(' · ')}   vs the hand trace alone: ${(['wall', 'window', 'door'] as EdgeClass[]).map((o) => `${o} ${P(o, { strict: true })}`).join(' · ')}`)
+  lines.push(`recall: ${(['wall', 'window', 'door', 'wall-thin', 'wall-glass', 'passage'] as TruthEdgeClass[]).map((t) => `${t} ${(recall(r, t) * 100).toFixed(1)}%`).join(' · ')}`)
   return lines.join('\n')
 }
 
