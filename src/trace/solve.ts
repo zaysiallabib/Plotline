@@ -1898,12 +1898,16 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     if (Math.abs(sum / want - 1) > 0.12)
       review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — a room ${sum < want ? 'is missing or still open' : 'too many (the next flat\'s, or the lobby)'}` })
   }
-  // a printed size the reader saw but could not read: the human types it
+  // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
+  // guessed rectangle, is offered — never taken as the printed size)
   for (const it of text.items) {
     if (it.kind !== 'room' || !it.sizeUnread || it.dims) continue
     const at = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
     const r = named.find((x) => pointInPolygon(at, roomPolygon(x, u)))
-    if (r) review.push({ id: newId(), at, kind: 'other', message: `${r.name}: its printed size could not be read — type it (e.g. 12'-6" × 10'-0")`, entityId: r.id })
+    if (!r) continue
+    const fitted = fits.some((f) => f.guessed && f.label === it)
+    const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
+    review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
   }
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it from one printed length' })
