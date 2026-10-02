@@ -226,9 +226,12 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
   }
   const along = (l: L, p: Px) => (l.horiz ? p.x : p.y)
   const span = (l: L) => [Math.min(along(l, l.s.a), along(l, l.s.b)), Math.max(along(l, l.s.a), along(l, l.s.b))]
-  const R = Math.max(3, 0.1 * k), Rc = Math.max(3, 0.15 * k), Rs = Math.max(3, 0.1 * k), Rj = 0.4 * k, Rh = Math.max(2, 0.04 * k)
+  const R = Math.max(3, 0.1 * k), Rc = Math.max(3, 0.15 * k), Rs = Math.max(3, 0.15 * k), Rj = 0.4 * k, Rh = Math.max(2, 0.04 * k)
   const added: WallSeg[] = []
   const bump = (p: Px, n: number) => deg.set(key(p), (deg.get(key(p)) ?? 0) + n)
+  /** a wall beside S's line (bodies touching) over u … v: the ink there is that wall's, not S's to run on */
+  const alongside = (S: L, u: number, v: number) =>
+    lines.some((W) => W.wall && W.s !== S.s && W.horiz === S.horiz && Math.abs(W.c - S.c) > 0.01 && Math.abs(W.c - S.c) < (W.th + S.th) / 2 && Math.min(span(W)[1], Math.max(u, v)) - Math.max(span(W)[0], Math.min(u, v)) > 1)
   // a connector / stub / jog joins the lines at once, so the ends handled after it meet it (degrees: the caller bumps)
   const addWall = (w: WallSeg) => {
     added.push(w)
@@ -256,7 +259,7 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
           const s = (Q.c - u) * dir
           if (s < -Q.th / 2 || S.c < q0 - R - S.th / 2 || S.c > q1 + R + S.th / 2) continue
           // farther only across solid ink (a column or a junction block the wall runs through), up to 0.6 m
-          if (s > Q.th / 2 + R && (s > Q.th / 2 + 0.6 * k || solid(E, P(Q.c - (dir * Q.th) / 2, S.c)) < 0.9)) continue
+          if (s > Q.th / 2 + R && (s > Q.th / 2 + 0.6 * k || solid(E, P(Q.c - (dir * Q.th) / 2, S.c)) < 0.9 || alongside(S, u, Q.c))) continue
           if (S.wall && Math.abs(Q.c - along(S, o)) < 1) continue
           const lo = S.c < q0, hi = S.c > q1
           let qe: 'a' | 'b' | null = null
@@ -420,15 +423,19 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       else review.push({ a, b, kind: 'unsure', message: `${w} of a room's side: not sure what is drawn (wall, window, door, open?) — nothing traced` })
     }
   }
-  // two rooms' readings of one boundary (not paired as facing edges): the longer piece keeps a body both claim
-  pieces.sort((p, q) => len(q) - len(p))
-  for (let i = 0; i < pieces.length; i++)
-    for (let j = i + 1; j < pieces.length; j++) {
-      const p = pieces[i], q = pieces[j]
-      if (p.horiz !== q.horiz || Math.abs(p.c - q.c) >= (p.th + q.th) / 2 + 1) continue
-      const ov = Math.min(p.u1, q.u1) - Math.max(p.u0, q.u0)
-      if (ov >= 0.5 * len(q)) pieces.splice(j--, 1)
-    }
+  // two rooms' readings of one boundary (not paired as facing edges): the longer piece keeps a body both claim (again
+  // once the ends are snapped: snapping can bring two readings onto one line)
+  const dedupe = () => {
+    pieces.sort((p, q) => len(q) - len(p))
+    for (let i = 0; i < pieces.length; i++)
+      for (let j = i + 1; j < pieces.length; j++) {
+        const p = pieces[i], q = pieces[j]
+        if (p.horiz !== q.horiz || Math.abs(p.c - q.c) >= (p.th + q.th) / 2 + 1) continue
+        const ov = Math.min(p.u1, q.u1) - Math.max(p.u0, q.u0)
+        if (ov >= 0.5 * len(q)) pieces.splice(j--, 1)
+      }
+  }
+  dedupe()
 
   // ── ends: onto the track walls (collinear ends first, else a perpendicular centre line), then onto each other
   const traced = trackWalls({ ...tt, gaps: gaps.filter((g) => !walled.has(g)) })
@@ -492,12 +499,22 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
     faces.set(p, fc)
   }
 
+  dedupe()
+
   // ── out: walls (low ones marked), openings with connectors from the jamb face into the corner
   const walls: WallSeg[] = [...trackSegs, ...angled, ...extraWalls]
   const openings: OpeningGuess[] = [...traced.openings]
   const passages: { ends: Px[]; segs: (WallSeg | OpeningGuess)[]; at: number }[] = []
+  // a piece whose body lies mostly alongside a traced wall / opening (bodies touching) reads that wall's own line from a
+  // room face a little off it: it is that wall, already there
+  const traced2 = [...trackSegs, ...traced.openings.filter((o) => o.kind !== 'unknown')].map((x) => ({ l: lineOf({ ...x, thicknessPx: 'thicknessPx' in x ? (x.thicknessPx ?? 0) : 0, conf: 1 }), th: x.thicknessPx ?? 0 }))
+  const besideTraced = (p: Piece) => {
+    let cov = 0
+    for (const { l, th } of traced2) if (l && l.horiz === p.horiz && Math.abs(l.c - p.c) > 0.01 && Math.abs(l.c - p.c) < (p.th + th) / 2 + 2) cov += Math.max(0, Math.min(l.u1, p.u1) - Math.max(l.u0, p.u0))
+    return cov >= 0.5 * (p.u1 - p.u0)
+  }
   for (const p of pieces) {
-    if (p.u1 - p.u0 < 1) continue
+    if (p.u1 - p.u0 < 1 || besideTraced(p)) continue
     const a = P(p.horiz, p.c, p.u0), b = P(p.horiz, p.c, p.u1)
     if (p.kind === 'passage') passages.push({ ends: [a, b], segs: [], at: added.length })
     added.push({ a, b, kind: p.kind, th: p.th })
