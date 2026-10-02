@@ -128,6 +128,12 @@ const M = {
   /** a single door leaf */
   doorMin: 0.45,
   doorMax: 1.25,
+  /** a double door (two leaves from the two jambs) */
+  doubleMin: 0.9,
+  doubleMax: 1.9,
+  /** one leaf of a double door */
+  leafMin: 0.35,
+  leafMax: 1,
 }
 
 /** along a track: 0 paper (thin lines included), W_ its wall, B_ thick both ways (a crossing body, a column), O_ another wall's band */
@@ -587,10 +593,52 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         const key = `${T.horiz}|${T.c.toFixed(1)}|${u0.toFixed(1)}|${u1.toFixed(1)}`
         if (seen.has(key)) continue
         seen.add(key)
-        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H)
+        // (a double door's jamb is a wall, not a stub: two arcs by chance — a WC and a basin — face each other across a floor)
+        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H, iv.f1 - iv.f0 >= Math.max(0.3 * k, 2 * iv.th))
         gaps.push({ horiz: T.horiz, c: T.c, u0, u1, node0: dir > 0 ? face : node, node1: dir > 0 ? node : face, thPx: iv.th, ...(jog ? { jog } : {}), ...cls })
       }
   }
+
+  // ── a door across a wall's END: a leaf hinged on a free end's corner, closing sideways along the end face over paper
+  // onto the next ink within a door's width (a door set in a recess between two parallel walls, an L-shaped entry) — the
+  // track has no gap there. Kept only where its swing is drawn (doorArcs); an end whose own track gap is a door or window
+  // already has its arc explained. The far side's wall (parallel, its body on the chord) carries the connector.
+  const isInk = (horiz: boolean, u: number, v: number) => {
+    const x = Math.round(horiz ? u : v), y = Math.round(horiz ? v : u)
+    return x >= 0 && y >= 0 && x < W && y < H && ink[y * W + x] === 1
+  }
+  for (const T of tracks)
+    for (const iv of T.ivs)
+      for (const end of [0, 1] as const) {
+        if (!(end ? free1(iv) : free0(iv))) continue
+        const face = end ? iv.f1 : iv.f0, dir = end ? 1 : -1
+        // (a thickness split or a jog is no end: the wall carries on)
+        if (T.ivs.some((j) => j !== iv && Math.abs((end ? j.f0 : j.f1) - face) <= 1) || joins.some((j) => j.horiz === T.horiz && Math.abs(j.u - face) <= 1 && (j.c0 === T.c || j.c1 === T.c))) continue
+        // (a door's width of gap on the track itself: an arc on this corner is that gap's door, decided there or by the rooms)
+        if (gaps.some((g) => g.horiz === T.horiz && g.c === T.c && (g.u0 === face || g.u1 === face) && (g.kind !== 'unknown' || g.u1 - g.u0 <= M.doorMax * k))) continue
+        // the wall's last row of ink along the track: beside it, the recess
+        const ul = face - dir * 0.5
+        for (const s of [1, -1] as const) {
+          let v = Math.round(T.c)
+          while (Math.abs(v - T.c) <= iv.th / 2 + 2 && isInk(T.horiz, ul, v)) v += s
+          if (isInk(T.horiz, ul, v)) continue
+          const vNear = v - s * 0.5
+          while (Math.abs(v - vNear) <= M.doorMax * k && !isInk(T.horiz, ul, v)) v += s
+          const vFar = v - s * 0.5
+          if (!isInk(T.horiz, ul, v) || Math.abs(vFar - vNear) < M.doorMin * k) continue
+          // the other jamb: a wall parallel to this one, its body on the chord (it carries the connector), facing this wall
+          // across the recess for ≥ 0.3 m back from the chord — or turning there into a wall the chord carries on (an L
+          // corner: the door continues that wall's line); the leaf swings into the recess
+          const back = (j: Iv) => (dir > 0 ? face - j.f0 : j.f1 - face)
+          const corner = (Q: Tr) => byDir[T.horiz ? 1 : 0].some((P) => P.ivs.some((j) => Math.abs(P.c - face) <= j.th / 2 + 1 && Math.abs((s > 0 ? j.n0 : j.n1) - Q.c) <= 1))
+          const far = byDir[T.horiz ? 0 : 1].find((Q) => Q !== T && Q.ivs.some((j) => j.f0 <= face && face <= j.f1 && Math.abs(Q.c - (s * j.th) / 2 - vFar) <= 1.5) && (Q.ivs.some((j) => j.f0 <= face && face <= j.f1 && back(j) >= M.minGap * k) || corner(Q)))
+          if (!far) continue
+          const Pc = (w: number): Px => (T.horiz ? { x: face, y: w } : { x: w, y: face })
+          const d = doorArcs(Pc(vNear), Pc(vFar), k, arcAt, false)
+          if (!d || ((T.horiz ? d.swingTo!.x : d.swingTo!.y) - face) * dir > 0) continue
+          gaps.push({ horiz: !T.horiz, c: face, u0: Math.min(vNear, vFar), u1: Math.max(vNear, vFar), node0: s > 0 ? T.c : far.c, node1: s > 0 ? far.c : T.c, thPx: iv.th, ...d })
+        }
+      }
 
   // one opening per place: two near tracks (a jamb and the wall beyond it, a stepped wall) can find the same gap
   // (the better-evidenced one stays)
@@ -657,7 +705,7 @@ function wallBodies(tracks: Tr[], W: number, H: number): (x: number, y: number) 
  * Door / window / nothing for the gap a → b (on a track; `th` the wall's thickness). Positive evidence only:
  * - door: a quarter arc around either jamb, on either side, at ONE radius 0.75–1.15 × the gap over most of its sweep,
  *   the floor inside it clear, and the ring NOT running on past the open leaf (a WC bowl, a basin, a shower tray are
- *   closed shapes; a swing stops at the leaf);
+ *   closed shapes; a swing stops at the leaf) — or two such arcs, one from each jamb, meeting: a double door (doorArcs);
  * - window: glass-colour pixels along ≥ 60 % of the gap inside the wall's band, or ≥ 2 thin lines running jamb to jamb
  *   inside it (walls.ts `glazing`);
  * - else 'unknown' (conf 0): nothing is drawn that says what the gap is.
@@ -672,55 +720,14 @@ export function classifyGap(
   glass: Uint8Array | undefined,
   W: number,
   H: number,
+  /** a double door may be read here */
+  double = true,
 ): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
-  if (gap >= M.doorMin * pxPerM && gap <= M.doorMax * pxPerM) {
-    const near = (x: number, y: number) => {
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (arcAt(x + dx, y + dy)) return 1
-      return 0
-    }
-    const RF = Array.from({ length: 15 }, (_, j) => 0.6 + 0.05 * j)
-    let best = { score: 0, hinge: a, side: 1 }
-    // the leaf may hang inside a frame (its hinge up to 0.3 of the gap in from the jamb) or stand on the jamb's end (up
-    // to 0.2 out); its radius is the rest of the gap
-    for (const [jb, sgn] of [[a, 1], [b, -1]] as const)
-      for (let o = -0.2; o <= 0.3001; o += 0.05) {
-        const hp = { x: jb.x + ux * sgn * o * gap, y: jb.y + uy * sgn * o * gap }, R = gap * (1 - o)
-        for (const side of [1, -1]) {
-          // angles 0.1–0.9 of the quarter (the swing) and 1.1–1.5 (past the open leaf: a closed shape goes on there)
-          const ring = (j: number, f: number) => {
-            const ang = (f * Math.PI) / 2
-            const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side, dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
-            return near(hp.x + dx * R * RF[j], hp.y + dy * R * RF[j])
-          }
-          let inner = 0
-          for (let q = 0; q <= 16; q++) {
-            const ang = ((0.1 + (0.8 * q) / 16) * Math.PI) / 2
-            inner += arcAt(hp.x + (Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side) * R * 0.5, hp.y + (Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side) * R * 0.5) ? 1 : 0
-          }
-          if (inner / 17 > 0.35) continue
-          const hits = RF.map((_, j) => Array.from({ length: 17 }, (_, q) => ring(j, 0.1 + (0.8 * q) / 16)))
-          for (let j = 3; j <= 11; j++) {
-            let hit = 0, clutter = 0
-            for (let q = 0; q <= 16; q++) (hit += hits[j][q] | hits[j - 1][q] | hits[j + 1][q]), (clutter += hits[j - 3][q] | hits[j + 3][q])
-            // a swing is ONE ring: the rings 0.15 inside and outside it are much emptier (tiles, a window's frame lines
-            // and furniture edges cross every ring alike)
-            if (clutter / 17 > 0.65 || clutter > 0.5 * hit || hit / 17 <= best.score) continue
-            // past the open leaf (0.6–0.95 of a quarter beyond it): a swing has stopped; a bowl or basin outline goes on
-            let past = 0
-            for (let q = 0; q <= 8; q++) past += ring(j, 1.12 + (0.38 * q) / 8) | ring(j - 1, 1.12 + (0.38 * q) / 8) | ring(j + 1, 1.12 + (0.38 * q) / 8)
-            if (past / 9 > 0.5) continue
-            best = { score: hit / 17, hinge: hp, side }
-          }
-        }
-      }
-    if (best.score >= 0.7) {
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
-      return { kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
-    }
-  }
+  const door = doorArcs(a, b, pxPerM, arcAt, double)
+  if (door) return door
   // glass colour along the gap, inside the wall's band
   if (glass) {
     let n = 0, hit = 0
@@ -739,6 +746,100 @@ export function classifyGap(
   }
   if (glazing(a, ux, uy, gap, th, grayAt).lines >= 2) return { kind: 'window', conf: 0.6 }
   return { kind: 'unknown', conf: 0 }
+}
+
+/**
+ * The door rules of classifyGap (positive evidence: the swing drawn). A leaf hinges on either jamb, hanging inside a
+ * frame (hinge up to 0.3 of the gap in from the jamb) or on the jamb's end (up to 0.2 out), its radius the rest of the
+ * gap: ONE door. Or two leaves from the two jambs, swinging to one side, each 0.35–1 m and clearly drawn, whose radii add
+ * up to the span between their hinges (± 15 %): a DOUBLE door, one opening of the gap's width (main doors: equal leaves
+ * or 0.9 + 0.5 m; the hand traces draw one door there).
+ */
+function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) => boolean, double = true): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> | null {
+  const gap = Math.hypot(b.x - a.x, b.y - a.y)
+  const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
+  const nx = -uy, ny = ux
+  const near = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (arcAt(x + dx, y + dy)) return 1
+    return 0
+  }
+  /**
+   * The best one-ring quarter arc hinged at hp, from direction e (the closed leaf, across the gap) to m (the open leaf),
+   * radius 0.75–1.15 × R: the share of its sweep (0.1–0.9 of the quarter) on that ring (± 0.05 R). None when the floor
+   * inside it is not clear, the rings max(0.15 R, 3 px) inside and outside are as full (tiles, a window's frame lines and
+   * furniture edges cross every ring alike), or the ring runs on past the open leaf (0.6–0.95 of a quarter beyond it: a
+   * swing stops at the leaf; a WC bowl, a basin, a shower tray are closed shapes).
+   */
+  const quarter = (hp: Px, ex: number, ey: number, mx: number, my: number, R: number): { score: number; r: number } => {
+    const on = (f: number, r: number) => {
+      const ang = (f * Math.PI) / 2, c = Math.cos(ang), s = Math.sin(ang)
+      return near(hp.x + (c * ex + s * mx) * r, hp.y + (c * ey + s * my) * r)
+    }
+    let inner = 0
+    for (let q = 0; q <= 16; q++) {
+      const ang = ((0.1 + (0.8 * q) / 16) * Math.PI) / 2, c = Math.cos(ang), s = Math.sin(ang)
+      inner += arcAt(hp.x + (c * ex + s * mx) * R * 0.5, hp.y + (c * ey + s * my) * R * 0.5) ? 1 : 0
+    }
+    const best = { score: 0, r: R }
+    if (inner / 17 > 0.35) return best
+    const d = Math.max(1, 0.05 * R), D = Math.max(3, 0.15 * R)
+    for (let j = 3; j <= 11; j++) {
+      const r = R * (0.6 + 0.05 * j)
+      let hit = 0, clutter = 0
+      for (let q = 0; q <= 16; q++) {
+        const f = 0.1 + (0.8 * q) / 16
+        ;(hit += on(f, r - d) | on(f, r) | on(f, r + d)), (clutter += on(f, r - D) | on(f, r + D))
+      }
+      if (clutter / 17 > 0.65 || clutter > 0.5 * hit || hit / 17 <= best.score) continue
+      let past = 0
+      for (let q = 0; q <= 8; q++) past += on(1.12 + (0.38 * q) / 8, r - d) | on(1.12 + (0.38 * q) / 8, r) | on(1.12 + (0.38 * q) / 8, r + d)
+      if (past / 9 > 0.5) continue
+      ;(best.score = hit / 17), (best.r = r)
+    }
+    return best
+  }
+  type Leaf = { score: number; r: number; hp: Px; t: number; side: number }
+  /** leaves hinged near one jamb (sgn +1 at a, −1 at b): hinge `o` of the gap in from it, radius R */
+  const leaves = (jb: Px, sgn: 1 | -1, side: number, os: number[], Rs: (o: number) => number[]): Leaf[] => {
+    const out: Leaf[] = []
+    for (const o of os) {
+      const hp = { x: jb.x + ux * sgn * o * gap, y: jb.y + uy * sgn * o * gap }
+      for (const R of Rs(o)) {
+        const q = quarter(hp, ux * sgn, uy * sgn, nx * side, ny * side, R)
+        if (q.score > 0) out.push({ ...q, hp, t: sgn > 0 ? o * gap : gap - o * gap, side })
+      }
+    }
+    return out
+  }
+  const swing = (side: number, r: number): Px => ({ x: (a.x + b.x) / 2 + nx * side * r, y: (a.y + b.y) / 2 + ny * side * r })
+  if (gap >= M.doorMin * pxPerM && gap <= M.doorMax * pxPerM) {
+    const os = Array.from({ length: 11 }, (_, i) => -0.2 + 0.05 * i)
+    let best: Leaf | null = null
+    for (const side of [1, -1])
+      for (const [jb, sgn] of [[a, 1], [b, -1]] as const)
+        for (const l of leaves(jb, sgn, side, os, (o) => [gap * (1 - o)])) if (!best || l.score > best.score) best = l
+    if (best && best.score >= 0.7) return { kind: 'door', conf: best.score, hingeAt: best.hp, swingTo: swing(best.side, gap * 0.5) }
+  }
+  if (double && gap >= M.doubleMin * pxPerM && gap <= M.doubleMax * pxPerM) {
+    const os = Array.from({ length: 8 }, (_, i) => -0.05 + 0.05 * i)
+    const Rs = () => [0.3, 0.4, 0.5, 0.6, 0.7].map((f) => f * gap)
+    let best: { score: number; L: Leaf } | null = null
+    // each leaf clearer than a single door's swing need be (two arcs side by side are easier to find by chance), 0.35–1 m,
+    // the larger at most 2.2× the smaller
+    const leaf = (l: Leaf) => l.score >= 0.8 && l.r >= M.leafMin * pxPerM && l.r <= M.leafMax * pxPerM
+    for (const side of [1, -1]) {
+      const A = leaves(a, 1, side, os, Rs).filter(leaf), B = leaves(b, -1, side, os, Rs).filter(leaf)
+      for (const p of A)
+        for (const q of B) {
+          const span = q.t - p.t
+          if (span <= 0 || Math.abs(p.r + q.r - span) > 0.15 * span || Math.max(p.r, q.r) > 2.2 * Math.min(p.r, q.r)) continue
+          const s = Math.min(p.score, q.score)
+          if (!best || s > best.score) best = { score: s, L: p.r >= q.r ? p : q }
+        }
+    }
+    if (best) return { kind: 'door', conf: best.score, hingeAt: best.L.hp, swingTo: swing(best.L.side, gap * 0.5) }
+  }
+  return null
 }
 
 /** Bounding boxes of ink thick both ways (both runs through the pixel longer than the thickest wall class). */
