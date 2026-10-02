@@ -1317,8 +1317,8 @@ function pickFlat(
 /**
  * The flat from the fitted rooms (tracks + rooms, wave 19): the room the click is in, and every fitted room reached from
  * it across shared boundaries — a door or nothing drawn costs 1, a window 2, a wall 3 — each room going to the nearest
- * of the click and the rival seeds (a one-per-flat name printed twice: the farther print is the next flat's). Lobby /
- * lift / stair rooms are never the flat's and never passed through; planters join but lead nowhere. Faces: those holding
+ * of the click and the rival seeds (a one-per-flat name printed twice: the farther print on the sheet is the next flat's). Lobby /
+ * lift / stair rooms and planters join when reached but lead nowhere (the next flat lies beyond them). Faces: those holding
  * a picked room's seed and no other room's (nor a core label); then closed faces with no seed at all (AOD, shafts,
  * rooms with no size read) beside them, inside the picked rooms' box. Walls kept: the faces', and every wall lying
  * mostly along / inside a picked room (its sides that close no face). A click in no fitted room (an unsized dining)
@@ -1379,7 +1379,7 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
       done[i] = true
       if (isCore(i) || (leaf(i) && dist[i] > 0)) continue
       for (const { j, cost } of adj[i]) {
-        if (isCore(j) || outside(seed(j))) continue
+        if (outside(seed(j))) continue
         const nd = dist[i] + cost
         if (nd < dist[j] || (nd === dist[j] && own[i] > own[j])) (dist[j] = nd), (own[j] = own[i])
       }
@@ -1391,13 +1391,16 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
     const nm = name(i)
     if (alone.dist[i] < Infinity && /\d|\b(LIVING|DINING|KITCHEN|FOYER)\b/.test(nm) && !/\b(AOD|LIFTS?|STAIRS?|LOBBY|VER|VERANDAH?)\b/.test(nm)) byName.set(nm, [...(byName.get(nm) ?? []), i])
   }
-  const rivals = [...byName.values()].flatMap((is) => is.sort((p, q) => alone.dist[p] - alone.dist[q]).slice(1)).filter((i) => i !== start)
+  // (the print nearer the click on the sheet is this flat's: a room behind walls is far in steps, not on the floor)
+  const far = (i: number) => d2(seed(i), at)
+  const rivals = [...byName.values()].flatMap((is) => is.sort((p, q) => far(p) - far(q)).slice(1)).filter((i) => i !== start)
   const { own } = dijkstra([start, ...rivals])
   const mine = fits.map((_, i) => i).filter((i) => own[i] === 0)
   // faces: a picked room's seed and nobody else's; then seedless closed faces beside them
   const polys = new Map(d.rooms.map((r) => [r, roomPolygon(r, d.unit)]))
   const holds = (r: Room, p: Pt) => pointInPolygon(p, polys.get(r)!)
-  const others = [...fits.map((_, i) => i).filter((i) => own[i] !== 0).map(seed), ...core]
+  // (a core room reached joins as a leaf — never passed through: the next flat's rooms beyond it are a rival's)
+  const others = [...fits.map((_, i) => i).filter((i) => own[i] !== 0).map(seed), ...core.filter((p) => !mine.some((i) => inR(R[i], p)))]
   const ok = (r: Room) => r.areaSqm <= KNOBS.maxRoomSqm && !others.some((p) => holds(r, p))
   const rooms = new Set(d.rooms.filter((r) => ok(r) && mine.some((i) => holds(r, seed(i)))))
   const box: Box = { x0: Math.min(...mine.map((i) => R[i].x0)), y0: Math.min(...mine.map((i) => R[i].y0)), x1: Math.max(...mine.map((i) => R[i].x1)), y1: Math.max(...mine.map((i) => R[i].y1)) }
