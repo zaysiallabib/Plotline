@@ -1670,7 +1670,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const wet = kinds.includes('bath')
       const veranda = kinds.includes('balcony')
       // one room only: the outside (or an unclosed open area — then the review item says so)
-      if (gs?.kind === 'window' || (outside && (kind !== 'door' || wet))) kind = 'window'
+      // (a swing the drawing shows stays a door: with gaps left open, "one room only" is often an open neighbour)
+      if (gs?.kind === 'window' || (outside && gs?.kind !== 'door' && (kind !== 'door' || wet))) kind = 'window'
       if (veranda && (runOf.get(o.id) ?? o.widthM) >= 1.2 && !outside) kind = 'slider'
       if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other')) kind = 'door'
       const conf = gs?.conf ?? 0.2
