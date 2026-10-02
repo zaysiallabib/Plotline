@@ -1528,10 +1528,13 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   let pxPerM = opts.pxPerM ?? thicknessScale(trace.walls)
   let scaleFrom: AutoTraceStats['scaleFrom'] = opts.pxPerM ? 'given' : 'thickness'
   // tracks: the rooms' printed sizes fitted onto the ink ARE the scale (rooms.ts calibrateScale: ≥ 3 sized labels whose
-  // fits agree); the line weight / dims-in-faces / area guesses below stay the fallback
+  // fits agree); the line weight / dims-in-faces / area guesses below stay the fallback. With too few clear sides for
+  // its refinement (rooms 0) the scan alone is still the scale where ≥ 4 printed sizes sit best on the ink — flagged
+  let scaleFew = false
   if (!opts.pxPerM && tracker === 'tracks') {
     const s = calibrateScale(gray, text.items, { tracks: trace.tracks?.lines.tracks })
-    if (s && s.rooms >= 3 && s.spread <= 0.08) (pxPerM = s.pxPerM), (scaleFrom = 'dims')
+    const sized = text.items.filter((it) => (it.kind === 'room' || it.kind === 'dims') && it.dims).length
+    if (s && ((s.rooms >= 3 && s.spread <= 0.08) || (s.rooms === 0 && sized >= 4))) (pxPerM = s.pxPerM), (scaleFrom = 'dims'), (scaleFew = s.rooms === 0)
   }
   const origin0 = { x: 0, y: 0 }
   let draft: Draft
@@ -1918,6 +1921,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
     review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
   }
+  if (scaleFew) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: 'Scale from a few printed room sizes only — check one printed length' })
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it from one printed length' })
 
