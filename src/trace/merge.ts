@@ -454,7 +454,8 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       if (best) {
         if (end) p.u1 = best.at
         else p.u0 = best.at
-        if (!p.pinned) (p.c = best.L.c), (p.pinned = true)
+        // on a traced wall's line it carries that wall on: its thickness too (the graph then makes them one wall)
+        if (!p.pinned) (p.c = best.L.c), (p.pinned = true), p.kind !== 'low' && best.L.seg && (p.th = best.L.th)
         continue
       }
       // perpendicular: a wall across this end (its body within reach), whose span reaches this line
