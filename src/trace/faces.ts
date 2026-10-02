@@ -396,7 +396,11 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     for (const p of slivers.length ? slivers : failing) {
       const ls = [...p.lines].sort((x, y) => Math.abs(cands[y].e[1]!.u - cands[y].e[0]!.u) - Math.abs(cands[x].e[1]!.u - cands[x].e[0]!.u))
       const spare = ls.filter((li) => !needed.has(li))
-      for (const li of p.why === 'sliver' ? (ls.length > 1 ? ls.slice(1) : ls) : spare.length ? spare : ls) (alive[li] = false), (fate[li] ||= `face: ${p.why} (${(p.n / k2).toFixed(1)} m², ${p.x0},${p.y0}–${p.x1},${p.y1}, ${p.lines.size} lines, iter ${iter})`)
+      // (a sliver's cause is a line along it — beside a wall, or the second pen of a double line: the longest of those
+      // stays when there are two; a line across its end only bounds it)
+      const along = ls.filter((li) => cands[li].horiz === p.x1 - p.x0 > p.y1 - p.y0)
+      const drop = p.why === 'sliver' ? (along.length > 1 ? along.slice(1) : along.length ? along : ls.length > 1 ? ls.slice(1) : ls) : spare.length ? spare : ls
+      for (const li of drop) (alive[li] = false), (fate[li] ||= `face: ${p.why} (${(p.n / k2).toFixed(1)} m², ${p.x0},${p.y0}–${p.x1},${p.y1}, ${p.lines.size} lines, iter ${iter})`)
     }
     prune()
   }
