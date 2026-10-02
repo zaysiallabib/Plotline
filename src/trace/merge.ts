@@ -458,10 +458,12 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       const e = end ? p.u1 : p.u0
       const reach = reachOf(p)
       const all: Line[] = [...tracks, ...pieces.filter((q) => q !== p)]
-      // collinear: a wall on this line ending near here
+      // collinear: a wall on this line ending near here (a passage has no ink of its own: it takes the line of a wall
+      // whose body touches its line — the open-plan boundary carries that wall on)
       let best: { L: Line; at: number } | null = null
       for (const L of all) {
-        if (L.horiz !== p.horiz || Math.abs(L.c - p.c) > Math.max(1.5, 0.35 * Math.max(L.th, p.th)) || (p.pinned && Math.abs(L.c - p.c) > 0.5)) continue
+        const lat = p.kind === 'passage' && !p.pinned && (L.seg || (L as Piece).kind === 'wall') ? (L.th + p.th) / 2 : Math.max(1.5, 0.35 * Math.max(L.th, p.th))
+        if (L.horiz !== p.horiz || Math.abs(L.c - p.c) > lat || (p.pinned && Math.abs(L.c - p.c) > 0.5)) continue
         for (const q of [L.u0, L.u1]) if (Math.abs(q - e) <= reach + p.th && (!best || Math.abs(q - e) < Math.abs(best.at - e))) best = { L, at: q }
       }
       if (best) {
