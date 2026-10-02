@@ -1330,7 +1330,7 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
   const inR = (r: Box, p: Pt, m = 0) => p.x >= r.x0 - m && p.x <= r.x1 + m && p.y >= r.y0 - m && p.y <= r.y1 + m
   const seed = (i: number): Pt => ({ x: fits[i].at.x / k, y: fits[i].at.y / k })
   const name = (i: number) => normaliseName(fits[i].label.text.split('\n')[0])
-  const isCore = (i: number) => /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(name(i))
+  const isCore = (i: number) => CORE_NAME.test(name(i))
   const leaf = (i: number) => !!fits[i].label.green || /\b(PLANTER|SUNSHADE)\b/.test(name(i))
   const n = fits.length
   let start = R.findIndex((r) => inR(r, at))
@@ -1481,6 +1481,8 @@ function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Dr
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
 
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
+/** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
+const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
 const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space' }
 
 /** A point strictly inside the room and in no smaller room (label anchor). */
@@ -1537,7 +1539,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // into the next flat
   const coreAt = (k: number) =>
     text.items
-      .filter((it) => it.kind === 'room' && (it.green || /\b(LOBBY|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/.test(normaliseName(it.text.split('\n')[0]))))
+      .filter((it) => it.kind === 'room' && (it.green || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))))
       .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
   // names a flat has once (LIVING, KITCHEN, numbered BED 3 / TOILET 2): a second one belongs to the next flat
   const namesAt = (k: number) =>
