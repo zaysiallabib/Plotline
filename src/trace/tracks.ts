@@ -563,6 +563,18 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
       }
   }
 
+  // one opening per place: two near tracks (a jamb and the wall beyond it, a stepped wall) can find the same gap
+  // (the better-evidenced one stays)
+  const drop = new Set<Gap>()
+  const rank = (g: Gap) => (g.kind === 'unknown' ? 0 : g.conf)
+  for (let i = 0; i < gaps.length; i++)
+    for (let j = i + 1; j < gaps.length; j++) {
+      const p = gaps[i], q = gaps[j]
+      if (q.horiz !== p.horiz || Math.abs(q.c - p.c) >= (q.thPx + p.thPx) / 2 || Math.min(q.u1, p.u1) - Math.max(q.u0, p.u0) < 0.5 * Math.min(q.u1 - q.u0, p.u1 - p.u0)) continue
+      drop.add(rank(q) > rank(p) ? p : q)
+    }
+  const kept = gaps.filter((g) => !drop.has(g))
+
   const blocks = blockBoxes(ink, W, H, maxTh)
   return {
     tracks: tracks.map((T) => ({ horiz: T.horiz, c: T.c, intervals: T.ivs.map((iv) => ({ u0: iv.n0, u1: iv.n1, thPx: iv.th })) })),
@@ -573,7 +585,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
     plantMask: opts.plant,
     glass: opts.glass,
     pxPerM: k,
-    gaps,
+    gaps: kept,
   }
 }
 
@@ -626,36 +638,43 @@ export function classifyGap(
     }
     const RF = Array.from({ length: 15 }, (_, j) => 0.6 + 0.05 * j)
     let best = { score: 0, hinge: a, side: 1 }
-    for (const [hp, sgn] of [[a, 1], [b, -1]] as const)
-      for (const side of [1, -1]) {
-        // angles 0.1–0.9 of the quarter (the swing) and 1.1–1.5 (past the open leaf: a closed shape goes on there)
-        const ring = (j: number, f: number) => {
-          const ang = (f * Math.PI) / 2
-          const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side, dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
-          return near(hp.x + dx * gap * RF[j], hp.y + dy * gap * RF[j])
-        }
-        let inner = 0
-        for (let q = 0; q <= 16; q++) {
-          const ang = ((0.1 + (0.8 * q) / 16) * Math.PI) / 2
-          inner += arcAt(hp.x + (Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side) * gap * 0.5, hp.y + (Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side) * gap * 0.5) ? 1 : 0
-        }
-        if (inner / 17 > 0.35) continue
-        const hits = RF.map((_, j) => Array.from({ length: 17 }, (_, q) => ring(j, 0.1 + (0.8 * q) / 16)))
-        for (let j = 3; j <= 11; j++) {
-          let hit = 0, clutter = 0
-          for (let q = 0; q <= 16; q++) (hit += hits[j][q] | hits[j - 1][q] | hits[j + 1][q]), (clutter += hits[j - 3][q] | hits[j + 3][q])
-          if (clutter / 17 > 0.65 || hit / 17 <= best.score) continue
-          // past the open leaf (0.6–0.95 of a quarter beyond it): a swing has stopped; a bowl or basin outline goes on
-          let past = 0
-          for (let q = 0; q <= 8; q++) past += ring(j, 1.12 + (0.38 * q) / 8) | ring(j - 1, 1.12 + (0.38 * q) / 8) | ring(j + 1, 1.12 + (0.38 * q) / 8)
-          if (past / 9 > 0.5) continue
-          best = { score: hit / 17, hinge: hp, side }
+    // the leaf may hang inside a frame (its hinge up to 0.3 of the gap in from the jamb) or stand on the jamb's end (up
+    // to 0.2 out); its radius is the rest of the gap
+    for (const [jb, sgn] of [[a, 1], [b, -1]] as const)
+      for (let o = -0.2; o <= 0.3001; o += 0.05) {
+        const hp = { x: jb.x + ux * sgn * o * gap, y: jb.y + uy * sgn * o * gap }, R = gap * (1 - o)
+        for (const side of [1, -1]) {
+          // angles 0.1–0.9 of the quarter (the swing) and 1.1–1.5 (past the open leaf: a closed shape goes on there)
+          const ring = (j: number, f: number) => {
+            const ang = (f * Math.PI) / 2
+            const dx = Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side, dy = Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side
+            return near(hp.x + dx * R * RF[j], hp.y + dy * R * RF[j])
+          }
+          let inner = 0
+          for (let q = 0; q <= 16; q++) {
+            const ang = ((0.1 + (0.8 * q) / 16) * Math.PI) / 2
+            inner += arcAt(hp.x + (Math.cos(ang) * ux * sgn + Math.sin(ang) * nx * side) * R * 0.5, hp.y + (Math.cos(ang) * uy * sgn + Math.sin(ang) * ny * side) * R * 0.5) ? 1 : 0
+          }
+          if (inner / 17 > 0.35) continue
+          const hits = RF.map((_, j) => Array.from({ length: 17 }, (_, q) => ring(j, 0.1 + (0.8 * q) / 16)))
+          for (let j = 3; j <= 11; j++) {
+            let hit = 0, clutter = 0
+            for (let q = 0; q <= 16; q++) (hit += hits[j][q] | hits[j - 1][q] | hits[j + 1][q]), (clutter += hits[j - 3][q] | hits[j + 3][q])
+            if (clutter / 17 > 0.65 || hit / 17 <= best.score) continue
+            // past the open leaf (0.6–0.95 of a quarter beyond it): a swing has stopped; a bowl or basin outline goes on
+            let past = 0
+            for (let q = 0; q <= 8; q++) past += ring(j, 1.12 + (0.38 * q) / 8) | ring(j - 1, 1.12 + (0.38 * q) / 8) | ring(j + 1, 1.12 + (0.38 * q) / 8)
+            if (past / 9 > 0.5) continue
+            best = { score: hit / 17, hinge: hp, side }
+          }
         }
       }
     if (best.score >= 0.7) {
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
       return { kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
     }
+    // most of a swing but not clearly one: undecided — never a window (a door's threshold lines look like glazing)
+    if (best.score >= 0.45) return { kind: 'unknown', conf: 0 }
   }
   // glass colour along the gap, inside the wall's band
   if (glass) {

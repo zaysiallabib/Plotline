@@ -390,7 +390,7 @@ export function upsample(g: Gray, f: number): Gray {
 const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
 
 /** Nearest-neighbour enlargement of a mask to the upsampled raster's size. */
-function upMask(m: Uint8Array, w: number, h: number, W: number, H: number): Uint8Array {
+export function upMask(m: Uint8Array, w: number, h: number, W: number, H: number): Uint8Array {
   const out = new Uint8Array(W * H)
   for (let y = 0; y < H; y++) {
     const sy = Math.min(h - 1, Math.floor((y * h) / H))
