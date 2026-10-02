@@ -478,8 +478,9 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         for (const P of perp) {
           const J = reaches(P, T.c, iv.th)
           if (!J) continue
-          // its centre between where our wall-class ink stops and just past our face (its near face within 2 px)
-          const lo = end ? wEnd - tolC : face - J.th / 2 - 2, hi = end ? face + J.th / 2 + 2 : wEnd + tolC
+          // its centre between where our wall-class ink stops (or, when its body covers our end — it stands on our
+          // wall there — its own far face) and just past our face (its near face within 2 px)
+          const lo = end ? Math.min(wEnd, face - J.th / 2) - tolC : face - J.th / 2 - 2, hi = end ? face + J.th / 2 + 2 : Math.max(wEnd, face + J.th / 2) + tolC
           if (P.c < lo || P.c > hi) continue
           const d = Math.abs(P.c - face)
           if (d < bd) (bd = d), (best = P.c)
@@ -673,8 +674,6 @@ export function classifyGap(
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
       return { kind: 'door', conf: best.score, hingeAt: best.hinge, swingTo: { x: mx + nx * best.side * gap * 0.5, y: my + ny * best.side * gap * 0.5 } }
     }
-    // most of a swing but not clearly one: undecided — never a window (a door's threshold lines look like glazing)
-    if (best.score >= 0.45) return { kind: 'unknown', conf: 0 }
   }
   // glass colour along the gap, inside the wall's band
   if (glass) {
