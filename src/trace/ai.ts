@@ -87,9 +87,29 @@ export function parseMontageAnswer(answer: string, tiles: number): Map<number, {
   return out
 }
 
-/** Labels worth asking about: a size seen but unread, a room label with no size, a size line with no parse, a size with no name over it. */
+/**
+ * Labels worth asking about, most useful first: a room whose size is unread; a size with no name over it; any other
+ * unparsed label; last, on tiny print (≤ 7 px glyphs), an unreadable two-line block (name + size the OCR made nothing of).
+ */
 export function montageItems(trace: TextTrace): TextItem[] {
-  return trace.items.filter((it) => it.source !== 'ai' && (it.sizeUnread || (it.kind === 'dims' && it.dims) || (reaskReason(it) !== null && reaskReason(it) !== 'low-confidence')))
+  const h = trace.glyphPx ?? 10
+  const rank = (it: TextItem) =>
+    it.source === 'ai'
+      ? 0
+      : it.kind === 'room' && it.sizeUnread
+        ? 4
+        : it.kind === 'dims' && it.dims
+          ? 3
+          : it.sizeUnread || (reaskReason(it) !== null && reaskReason(it) !== 'low-confidence')
+            ? 2
+            : h <= 7 && it.kind === 'other' && it.box.h >= 1.5 * h && it.box.w <= 20 * h // tiny print only (BTI's 8–9 px: furniture junk)
+              ? 1
+              : 0
+  return trace.items
+    .map((it) => ({ it, r: rank(it) }))
+    .filter((x) => x.r > 0)
+    .sort((a, b) => b.r - a.r)
+    .map((x) => x.it)
 }
 
 /** The crop around a label: wide (a size line is wider than its name) and tall enough for the line under it. */
