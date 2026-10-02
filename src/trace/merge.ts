@@ -225,6 +225,14 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
   const R = Math.max(3, 0.1 * k), Rc = Math.max(3, 0.15 * k), Rs = Math.max(3, 0.1 * k), Rj = 0.4 * k, Rh = Math.max(2, 0.04 * k)
   const added: WallSeg[] = []
   const bump = (p: Px, n: number) => deg.set(key(p), (deg.get(key(p)) ?? 0) + n)
+  // a connector / stub / jog joins the lines at once, so the ends handled after it meet it (degrees: the caller bumps)
+  const addWall = (w: WallSeg) => {
+    added.push(w)
+    const horiz = Math.abs(w.a.y - w.b.y) < 1e-6
+    if (horiz || Math.abs(w.a.x - w.b.x) < 1e-6) lines.push({ s: w, wall: true, horiz, c: horiz ? w.a.y : w.a.x, th: w.thicknessPx })
+  }
+  // twice: a connector made for a later end can be what an earlier end meets
+  for (let pass = 0; pass < 2; pass++)
   for (const S of lines)
     for (const e of ['a', 'b'] as const) {
       const E = S.s[e]
@@ -259,7 +267,7 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
               ;(Q.s as WallSeg)[qe] = X
               bump(X, 1)
             } else if (qe) {
-              added.push({ a: { ...Q.s[qe] }, b: X, thicknessPx: Q.th, conf: 0.6 })
+              addWall({ a: { ...Q.s[qe] }, b: X, thicknessPx: Q.th, conf: 0.6 })
               bump(Q.s[qe], 1)
               bump(X, 1)
             }
@@ -280,7 +288,7 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
             offer(Math.abs(Q.c - S.c) + Math.abs(uf - u), () => {
               const X = P(uf, S.c)
               reach(X)
-              added.push({ a: { ...X }, b: { ...F }, thicknessPx: Math.min(S.th, Q.th), conf: 0.6 })
+              addWall({ a: { ...X }, b: { ...F }, thicknessPx: Math.min(S.th, Q.th), conf: 0.6 })
               bump(F, 1)
             })
           }
@@ -292,7 +300,7 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
           deg.set(key(E), 0)
           ;(S.s as WallSeg)[e] = X
         } else {
-          added.push({ a: { ...E }, b: X, thicknessPx: S.th, conf: 0.6 })
+          addWall({ a: { ...E }, b: X, thicknessPx: S.th, conf: 0.6 })
           deg.set(key(E), 2)
         }
         deg.set(key(X), (deg.get(key(X)) ?? 0) + 2)
