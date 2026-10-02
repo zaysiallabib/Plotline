@@ -8,11 +8,12 @@ import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
-import type { TextItem, TextTrace } from './types'
-import { parseAiAnswer } from './ai'
+import type { Gray, TextItem, TextTrace } from './types'
+import { askAi, buildMontage, parseAiAnswer, parseMontageAnswer, strictSize } from './ai'
 import { FIXTURES, loadPgm } from './evalio'
 import { sameLabel, scoreText } from './textEval'
-import { chunkWords, classifyRoom, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
+import { H as SIZE_H, SIZE_RULE, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont } from './sizes'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -283,6 +284,142 @@ describe('scoreText (eval vs a hand-traced unit)', () => {
   })
 })
 
+// ---------------------------------------------------------------- the size reader (sizes.ts)
+
+/** A plan-like raster with `text` printed in the stroke font at `capPx` px glyphs, top-left at (x, y). */
+function printSize(g: Gray, text: string, x: number, y: number, capPx: number, sw = 0.14, ws = 0.85): void {
+  const T = renderFont(sw, ws)
+  const s = capPx / SIZE_H
+  let cx = x
+  for (const ch of text) {
+    const t = T[ch === 'X' ? 'xX' : ch]
+    const rows = t.d.length / t.w
+    for (let yy = 0; yy < Math.ceil(rows * s); yy++)
+      for (let xx = 0; xx < Math.ceil(t.w * s); xx++) {
+        // box-filter the template cell under this pixel
+        let sum = 0
+        let n = 0
+        for (let v = Math.floor(yy / s); v < Math.min(rows, Math.ceil((yy + 1) / s)); v++)
+          for (let u = Math.floor(xx / s); u < Math.min(t.w, Math.ceil((xx + 1) / s)); u++) (sum += t.d[v * t.w + u]), n++
+        const px = Math.round(cx + xx)
+        const py = Math.round(y - 3 * s + yy) // the template's 3 pad rows sit above the cap
+        if (n && px < g.width && py >= 0 && py < g.height) g.data[py * g.width + px] = Math.min(g.data[py * g.width + px], Math.round(240 - 200 * (sum / n)))
+      }
+    cx += t.w * s + 0.12 * capPx
+  }
+}
+const paper = (w: number, h: number): Gray => ({ width: w, height: h, data: new Uint8Array(w * h).fill(240) })
+
+describe('size reader', () => {
+  test('decode reads a clean band exactly, with the runner-up string far behind', () => {
+    const g = paper(400, 60)
+    printSize(g, `13'-0"x15'-6"`, 40, 20, 20)
+    const { gray: clean, glyphs, charH } = cleanForOcr(g)
+    const [line] = findTextLines(glyphs, charH)
+    const b = band(clean, line.box, capBand(glyphs, line.box))!
+    const d = decode(b.D, b.W, renderFont(0.14, 0.85))!
+    expect(d.text).toBe(`13'-0"x15'-6"`)
+    expect(d.margin).toBeGreaterThan(SIZE_RULE.sureMargin)
+  })
+  test('the grammar: inches 0–11, feet ≤ 39 — a misprint cannot come out as text the grammar forbids', () => {
+    const g = paper(400, 60)
+    printSize(g, `13'-0"x15'-6"`, 40, 20, 20)
+    const { gray: clean, glyphs, charH } = cleanForOcr(g)
+    const [line] = findTextLines(glyphs, charH)
+    const b = band(clean, line.box, capBand(glyphs, line.box))!
+    // only templates for 4 and 9 among the digits: nothing grammatical fits better than "49" feet? no: feet ≤ 39
+    const T = renderFont(0.14, 0.85)
+    const only = Object.fromEntries(Object.entries(T).filter(([k]) => !/[0-35-8]/.test(k[0])))
+    const d = decode(b.D, b.W, only)
+    expect(d === null || !/4\d|9\d|\D1[2-9]"/.test(d.text)).toBe(true)
+  })
+  test('readSizes on small print: sure when tesseract agrees, unsure (not sure) when nothing confirms a far-behind runner-up', () => {
+    const g = paper(900, 200)
+    const texts = [`13'-0"x15'-6"`, `11'-0"x7'-8"`, `9'-3"x7'-1"`, `12'-0"x14'-2"`, `10'-5"x11'-6"`, `6'-0"x6'-8"`, `18'-8"x6'-0"`, `7'-9"x5'-2"`]
+    texts.forEach((t, i) => printSize(g, t, 30 + (i % 2) * 420, 20 + Math.floor(i / 2) * 45, 9))
+    const { gray: clean, glyphs, charH } = cleanForOcr(g)
+    const lines = findTextLines(glyphs, charH).sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x)
+    expect(lines).toHaveLength(texts.length)
+    // tesseract "agrees" on every line but the last, where it read junk
+    const reads = readSizes(clean, glyphs, lines.map((l, i) => ({ box: l.box, tess: i < texts.length - 1 ? [texts[i].replace(/'/g, '')] : ['7I9xS2'] })))
+    reads.forEach((r, i) => expect(r?.text).toBe(texts[i]))
+    expect(reads.slice(0, -1).every((r) => r!.sure && r!.agree)).toBe(true)
+    expect(reads[texts.length - 1]!.agree).toBe(false)
+  }, 30_000)
+  test('confirmed glyphs: LCS of the digit strings, marks only on a well-confirmed line', () => {
+    expect(lcsMatches('130156', '1301565')).toEqual([0, 1, 2, 3, 4, 5])
+    expect(lcsMatches('130156', '1906')).toEqual([0, 2, 5])
+    const d = { text: `13'-0"x15'-6"`, cost: 0, margin: 9, fit: 0.01, glyphs: [...`13'-0"x15'-6"`].map((k, x) => ({ k, x, dy: 0 })) }
+    expect(confirmed(d, ['130156'])!.map((g) => g.k).join('')).toBe(`13'-0"x15'-6"`)
+    expect(confirmed(d, ['13x1'])).toBeNull() // 3 of 6 digits: under 60 %
+    expect(confirmed(d, ['13x15']!)!.map((g) => g.k).join('')).toBe(`13'-"x15'-"`) // 4 of 6: digits matched + the marks
+  })
+})
+
+describe('AI montage (no key in tests: the reader is mocked)', () => {
+  test('strictSize: only well-formed sizes', () => {
+    expect(strictSize(`12'-0"X14'-6"`)).toEqual({ aM: ft(12), bM: ft(14, 6) })
+    expect(strictSize(`5'-11½" x 7'-0"`)!.aM).toBeCloseTo(ft(5, 11.5), 6)
+    expect(strictSize(`15X18'-3"`)).toEqual({ aM: ft(15), bM: ft(18, 3) })
+    expect(strictSize(`13’-0”×15’-6”`)).toEqual({ aM: ft(13), bM: ft(15, 6) })
+    for (const bad of [`12'-0"`, `12-0X14-6`, `1x2`, `12'-13"X14'-6"`, `52'-0"X14'-6"`, `12'-0"X14'-6" approx`, `l2'-0"X14'-6"`, `?`]) expect(strictSize(bad)).toBeNull()
+  })
+  test('parseMontageAnswer: tile numbers in range, sizes through the strict grammar, junk ignored', () => {
+    const a = parseMontageAnswer('```json\n[{"n":1,"name":"BED-2","size":"12\'-0\\"X14\'-6\\""},{"n":2,"name":"TOILET","size":"6-4x6-7"},{"n":9,"name":"X","size":""},{"n":"3"},{"n":1,"name":"dup"}]\n```', 3)
+    expect([...a.keys()]).toEqual([1, 2])
+    expect(a.get(1)).toMatchObject({ name: 'BED-2', dims: { aM: ft(12), bM: ft(14, 6) } })
+    expect(a.get(2)!.dims).toBeUndefined() // not well-formed: no size
+    expect(parseMontageAnswer('I cannot read this', 3).size).toBe(0)
+  })
+  const sheet = () => {
+    const g = paper(400, 200)
+    printSize(g, `11'-0"x7'-8"`, 60, 40, 9)
+    printSize(g, `9'-3"x7'-1"`, 60, 120, 9)
+    return g
+  }
+  const unsure = (y: number, over: Partial<TextItem> = {}): TextItem => ({ text: `BED 3\n1-619`, box: { x: 60, y, w: 90, h: 22 }, kind: 'room', roomKind: 'bed', conf: 0.5, source: 'ocr', sizeUnread: true, sizeBox: { x: 60, y: y + 12, w: 90, h: 9 }, ...over })
+  test('the montage: one image, a numbered tile per label, upscaled', () => {
+    const m = buildMontage(sheet(), [unsure(28), unsure(108)], 9)
+    expect(m.height).toBeGreaterThan(2 * 28 * 2) // two tiles of ≥ 2 upscaled lines each
+    expect(m.width).toBeGreaterThan(14 * 9 * 3)
+    expect(Math.min(...m.data.subarray(0, 30 * m.width))).toBeLessThan(80) // the tile number is drawn
+  })
+  test('askAi: ONE call for the unsure labels; a strict answer fills the size, a garbled one leaves the flag', async () => {
+    const items = [unsure(28), unsure(108, { text: 'KITCHEN', roomKind: 'kitchen', sizeBox: undefined }), item({ dims: { aM: 4, bM: 5 } })]
+    const calls: string[] = []
+    const ask = async (_png: Blob, prompt: string) => {
+      calls.push(prompt)
+      return JSON.stringify([
+        { n: 1, name: 'BED 3', size: `11'-0"x7'-8"` },
+        { n: 2, name: 'KITCHEN', size: `9-3 x 7-1` },
+      ])
+    }
+    const reader = Object.assign(async () => [], { ask })
+    const out = await askAi({ items, glyphPx: 9 }, sheet(), reader, { encode: async () => new Blob([]) })
+    expect(calls).toHaveLength(1)
+    expect(out.items[0]).toMatchObject({ source: 'ai', dims: { aM: ft(11), bM: ft(7, 8) } })
+    expect(out.items[0].sizeUnread).toBeUndefined()
+    expect(out.items[1]).toMatchObject({ source: 'ocr', sizeUnread: true })
+    expect(out.items[2]).toBe(items[2])
+    // a reader with no montage support changes nothing
+    expect(await askAi({ items }, sheet(), async () => [])).toEqual({ items })
+  })
+})
+
+describe('glyph mask', () => {
+  test('a size printed onto a floor line comes back (the line is cut away, the glyphs touching it return)', () => {
+    const g = paper(300, 120)
+    printSize(g, `3'-9"X4'-5"`, 40, 20, 10)
+    printSize(g, `12'-0"X13'-8"`, 40, 60, 10) // more print on the sheet, so the glyph height is the digits'
+    printSize(g, `10'-6"X8'-0"`, 40, 90, 10)
+    for (let x = 0; x < 60; x++) for (const y of [30, 31]) g.data[y * 300 + x] = 60 // a floor line under the "3'", touching it
+    const { glyphs, charH } = cleanForOcr(g)
+    const lines = findTextLines(glyphs, charH).filter((l) => l.box.y < 40)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].box.x).toBeLessThanOrEqual(41)
+  })
+})
+
 // ---------------------------------------------------------------- the reader eval on the real sheets (node tesseract)
 /**
  * TRACE_OCR=1 npx vitest run src/trace/text.test.ts --disableConsoleIntercept
@@ -303,7 +440,7 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
   test('sized labels found / sizes read / misreads', async () => {
     const rows: Record<string, string | number>[] = []
     const misses: string[] = []
-    const tot = { sized: 0, found: 0, parsed: 0, exact: 0, misread: 0 }
+    const tot = { sized: 0, found: 0, parsed: 0, exact: 0, misread: 0, unsure: 0 }
     for (const { sheet, units } of SHEETS) {
       const g = loadPgm(`${FIXTURES}${sheet}.pgm`)
       if (!g) continue
@@ -315,7 +452,15 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
         writeFileSync(`${TEXT_OUT}${sheet}.json`, JSON.stringify(trace, null, 1))
       }
       const rooms = trace.items.filter((i) => i.kind === 'room')
-      const base = { sheet: sheet.replace(/^assets__/, ''), glyphPx: trace.glyphPx ?? 0, rooms: rooms.length, sized: rooms.filter((i) => i.dims).length, ms }
+      const base = {
+        sheet: sheet.replace(/^assets__/, ''),
+        glyphPx: trace.glyphPx ?? 0,
+        rooms: rooms.length,
+        sized: rooms.filter((i) => i.dims).length,
+        'unsure (sheet)': trace.items.filter((i) => i.sizeUnread).length,
+        'to AI (sheet)': reaskList(trace).length,
+        ms,
+      }
       if (!units.length) rows.push({ unit: '(no truth)', ...base })
       for (const u of units) {
         const s = scoreText(trace, u)
@@ -324,11 +469,12 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
         tot.exact += s.dimsExact
         tot.misread += s.dimsMisread
         tot.parsed += s.dimsExact + s.dimsMisread
-        rows.push({ unit: u.id, ...base, 'labels found': `${s.found}/${s.labels}`, 'sized found': `${s.sizedFound}/${s.dimsTotal}`, 'size right': s.dimsExact, misread: s.dimsMisread })
+        tot.unsure += s.dimsUnsure
+        rows.push({ unit: u.id, ...base, 'labels found': `${s.found}/${s.labels}`, 'sized found': `${s.sizedFound}/${s.dimsTotal}`, 'size right': s.dimsExact, misread: s.dimsMisread, unsure: s.dimsUnsure })
         misses.push(`${u.id}: missed ${s.missed.join(', ')}\n  wrong/none: ${s.wrongDims.join(' · ')}`)
       }
     }
     console.table(rows)
-    console.log(`TOTAL sized labels ${tot.sized}: found ${tot.found}, size parsed ${tot.parsed}, right ${tot.exact}, MISREAD ${tot.misread}\n${misses.join('\n')}`)
+    console.log(`TOTAL sized labels ${tot.sized}: found ${tot.found}, size parsed ${tot.parsed}, right ${tot.exact}, MISREAD ${tot.misread}, unsure (flagged) ${tot.unsure}\n${misses.join('\n')}`)
   }, 3_600_000)
 })
