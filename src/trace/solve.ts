@@ -1681,7 +1681,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   if (inputs.debug && byRooms) inputs.debug.flatFits = byRooms.fits
   let flat = picked.rooms
   if (byRooms && thin?.walls.length) {
-    const ns = notShared(draft, picked.rooms, fits, byRooms.fits, byRooms.others, pxPerM, thin.walls)
+    const ns = thinFacesOfFlat(draft, picked.rooms, fits, byRooms.fits, byRooms.others, pxPerM, thin.walls)
     flat = ns.rooms
     ns.drop.forEach((w) => picked.touched.delete(w))
   }
@@ -1992,12 +1992,12 @@ function closeThinFaces(plan: Gray, trace: WallTrace, k: number, text: TextTrace
 }
 
 /**
- * Lever 2: a picked face with one of faces.ts's low walls on its rim (a thin-line boundary), holding none of this
- * flat's fitted rooms, that lies against a room fitted to another flat or the core is shared — a planter strip between
- * two flats, the next flat's planter reached past an open lobby — not this flat's; nor is one beyond the box of this flat's
- * fitted rooms (+ 0.4 m, pickByRooms' rule for faces with no seed).
+ * Lever 2: the faces faces.ts's low walls closed (an AOD, a planter, a veranda's open side), holding none of this flat's
+ * fitted rooms, belong to the flat when they lie against its rooms (a full-height wall shared with a picked room, or
+ * inside the box of its fitted rooms + 0.4 m) — also when the pick did not reach them — unless they are shared: against
+ * a room fitted to another flat or the core, or between two rooms of one name (a planter strip between two flats).
  */
-function notShared(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: number[], others: number[], k: number, thin: WallSeg[]): { rooms: Set<Room>; drop: Set<string> } {
+function thinFacesOfFlat(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: number[], others: number[], k: number, thin: WallSeg[]): { rooms: Set<Room>; drop: Set<string> } {
   // (the draft's pieces of faces.ts's walls: the draft is in sheet px / k here, before the shift)
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
   const onThin = (p: Pt) => thin.some((s) => segDist(p, { x: s.a.x / k, y: s.a.y / k }, { x: s.b.x / k, y: s.b.y / k }) < 0.01)
@@ -2009,17 +2009,27 @@ function notShared(d: Draft, rooms: Set<Room>, fits: RoomFit[], mine: number[], 
   const ours = mine.map((i) => ({ x: fits[i].at.x / k, y: fits[i].at.y / k }))
   const bs = mine.map((i) => rect(i, 0.4))
   const box = { x0: Math.min(...bs.map((b) => b.x0)), y0: Math.min(...bs.map((b) => b.y0)), x1: Math.max(...bs.map((b) => b.x1)), y1: Math.max(...bs.map((b) => b.y1)) }
-  const keep = new Set(
-    [...rooms].filter((r) => {
-      if (!r.wallIds.some((w) => low.has(w))) return true
-      const poly = roomPolygon(r, d.unit)
-      if (ours.some((p) => pointInPolygon(p, poly))) return true
-      // between two rooms of one name (BED 2 | strip | BED 2): two flats' rooms, the strip is shared
-      const names = all.filter((f) => poly.some((v) => inB(f.b, v))).map((f) => f.name)
-      if (names.length !== new Set(names).size) return false
-      return inB(box, insidePoint(r, d.unit, d.rooms)) && !poly.some((v) => theirs.some((b) => inB(b, v)))
-    }),
-  )
+  const isThin = (r: Room) => r.wallIds.some((w) => low.has(w))
+  const own = [...rooms].filter((r) => !isThin(r))
+  const ownWalls = new Set(own.flatMap((r) => r.wallIds.filter((w) => !low.has(w))))
+  const fitSeeds = fits.map((f) => ({ x: f.at.x / k, y: f.at.y / k }))
+  const seeded = new Set(d.rooms.filter((r) => fitSeeds.some((p) => pointInPolygon(p, roomPolygon(r, d.unit)))))
+  const byWall = new Map<string, Room[]>()
+  for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
+  const ok = (r: Room) => {
+    const poly = roomPolygon(r, d.unit)
+    if (ours.some((p) => pointInPolygon(p, poly))) return true
+    if (seeded.has(r)) return false // another flat's fitted room
+    // against a fitted room this flat does not have: the next flat's
+    if (r.wallIds.some((w) => (byWall.get(w) ?? []).some((n) => n !== r && seeded.has(n) && !rooms.has(n)))) return false
+    // between two rooms of one name (BED 2 | strip | BED 2): two flats' rooms, the strip is shared
+    const names = all.filter((f) => poly.some((v) => inB(f.b, v))).map((f) => f.name)
+    if (names.length !== new Set(names).size || poly.some((v) => theirs.some((b) => inB(b, v)))) return false
+    return inB(box, insidePoint(r, d.unit, d.rooms)) || r.wallIds.some((w) => ownWalls.has(w))
+  }
+  const keep = new Set([...own, ...[...rooms].filter((r) => isThin(r) && ok(r))])
+  // (and those the pick did not reach)
+  for (const r of d.rooms) if (!rooms.has(r) && r.areaSqm <= 30 && isThin(r) && r.wallIds.some((w) => ownWalls.has(w)) && ok(r)) keep.add(r)
   // its thin-line walls go too (else the walls kept around it close it again), unless a kept room uses them
   const used = new Set([...keep].flatMap((r) => r.wallIds))
   const drop = new Set([...rooms].filter((r) => !keep.has(r)).flatMap((r) => r.wallIds.filter((w) => low.has(w) && !used.has(w))))
