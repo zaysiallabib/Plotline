@@ -394,7 +394,7 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       return !tt.tracks.some((T) => T.horiz === it.horiz && (T.c - it.c) * it.out! > 2 && (T.c - it.c) * it.out! < d && T.intervals.some((iv) => iv.u0 <= u && u <= iv.u1))
     })
   }
-  const minLen: Record<Item['kind'], number> = { wall: 0.1, door: 0.45, window: 0.45, thin: 0.5, open: 0.5, unsure: 0.3, glazing: 0.45, planter: 0.5 }
+  const minLen: Record<Item['kind'], number> = { wall: 0.1, door: 0.45, window: 0.3, thin: 0.5, open: 0.5, unsure: 0.3, glazing: 0.3, planter: 0.5 }
   for (const it of items) {
     const cut: [number, number][] = []
     for (const T of tt.tracks) for (const iv of T.intervals) if (on(it, T.horiz, T.c, iv.thPx)) cut.push([iv.u0, iv.u1])
