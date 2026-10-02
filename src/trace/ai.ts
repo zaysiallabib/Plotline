@@ -99,7 +99,8 @@ export function tileCrop(it: TextItem, lineH: number): { x: number; y: number; w
   const y1 = Math.max(it.box.y + it.box.h, it.sizeBox ? it.sizeBox.y + it.sizeBox.h : 0)
   const cx = (b.x + x1) / 2
   const w = Math.max(x1 - b.x + 4 * lineH, 14 * lineH)
-  return { x: cx - w / 2, y: b.y - 1.2 * lineH, w, h: y1 - b.y + (it.sizeBox ? 2.4 : 3.6) * lineH }
+  const up = it.kind === 'dims' ? 2.8 : 1.2 // a lone size: its name sits above
+  return { x: cx - w / 2, y: b.y - up * lineH, w, h: y1 - b.y + (up - 1.2 + (it.sizeBox ? 2.4 : 3.6)) * lineH }
 }
 
 /**
