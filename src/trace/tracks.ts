@@ -4,17 +4,20 @@
  * represented at all, and nothing downstream has to stitch them.
  *
  *   plant green whitened (founder rule 2) → ink → per column / row every ink run across a would-be wall: its centre and
- *   sub-pixel width → bands (the same cross-section column after column) → the sheet's own thickness classes
- *   (length-weighted band widths, 2–3 peaks) → tracks: bands on one line, longest first; two lines closer than half the
- *   thinnest class are one track (a flush thickness step is one track, its offset absorbed) → along each track:
- *   W = a wall-class cross-section centred on it, B = ink thick both ways (a crossing wall's body, a column, a junction
- *   block), paper → an INTERVAL = W stretches bridged through B, never across paper; its ends are where the ink stops;
- *   thickness snapped to the classes, split where the class changes → an end inside a crossing wall's body or block sits
- *   exactly on that wall's track (corners, T's: one shared point, nothing averaged) → GAPS from each free end to the
- *   next ink on the track (another interval, or a crossing wall's face): a quarter arc centred on a jamb, radius ≈ gap,
- *   not a closed shape (WC bowl, basin) = door; glass colour or ≥ 2 thin lines jamb to jamb = window; otherwise NO
- *   opening — the gap stays open and both walls stop where their ink stops (founder: never draw wall over a window or
- *   an undecided gap).
+ *   sub-pixel width → bands (the same cross-section column after column, centre held within 1 px) → the sheet's own
+ *   thickness classes (length-weighted band widths, 2–4 peaks, ≤ 0.35 m) → tracks: bands on ONE centre line (within
+ *   30 % of the thinnest class), longest first; every wall-class cross-section belongs to the nearest track only →
+ *   along each track: W = its own wall's cross-section, O = another wall's band, B = ink thick both ways (a crossing
+ *   wall's body, a column, a junction block), paper (thin lines included) → an INTERVAL = W stretches bridged through
+ *   B (≤ 0.8 m), never across paper or another wall; its ends are where the ink stops; thickness snapped to the
+ *   classes, split where it changes (two near classes on one centre line are one wall) → an end inside (or covered by)
+ *   a crossing wall's body or block sits exactly on that wall's track (corners, T's: one shared point, nothing
+ *   averaged) → a flush thickness step is two tracks whose touching ends are joined by a short crosswise JOG (each wall
+ *   stays on its own ink) → GAPS from each free end over everything that is no wall to the next wall of the track, a
+ *   crossing body, or a stepped wall beside it: a quarter arc centred on a jamb (or a frame / the jamb's end), radius
+ *   ≈ the leaf, standing out from the rings beside it and not a closed shape (WC bowl, basin) = door; glass colour or
+ *   ≥ 2 thin lines jamb to jamb inside the wall's band = window; otherwise NO opening — the gap stays open and both
+ *   walls stop where their ink stops (founder: never draw wall over a window or an undecided gap).
  *
  * Axis-aligned walls only; walls.ts adds the skeleton's angled walls and arcs where no track owns the ink. Pure, px
  * (pixel centres at integer coordinates).
