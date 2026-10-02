@@ -266,13 +266,17 @@ const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, impo
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))
+/** the wave-19 reader's traces of the same sheets (E:/dev/tmp/wave19/reader/final/assets__<sheet>.json): the product reader now */
+const NEW_TEXT = process.env.TRACE_NEW_TEXT ?? 'E:/dev/tmp/wave19/reader/final/'
+const readNew = (file: string): TextTrace | null => (existsSync(`${NEW_TEXT}${file}.json`) ? JSON.parse(readFileSync(`${NEW_TEXT}${file}.json`, 'utf8')) : null)
 
 /**
- * TRACE_LABELS=ocr | oracle | ocr,oracle (default both): the cached real OCR (the product today), and the ORACLE — the hand
- * trace's own labels (name, kind, printed size at its label point; OCR's area / other items kept): what a reader that
- * never misreads would hand over. The oracle table is the CEILING of the rest of the pipeline, never the product number.
+ * TRACE_LABELS=ocr,new,oracle (default all three): the wave-16 OCR cache; NEW = the wave-19 reader's traces (the product
+ * now; units without one are skipped); the ORACLE — the hand trace's own labels inside the flat (name, kind, printed size
+ * at its label point; the reader's reads outside it, area / other items kept): what a reader that never misreads would
+ * hand over. The oracle table is the CEILING of the rest of the pipeline, never the product number.
  */
-const LABELS = (process.env.TRACE_LABELS ?? 'ocr,oracle').split(',')
+const LABELS = (process.env.TRACE_LABELS ?? 'ocr,new,oracle').split(',')
 describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', () => {
   test('rooms matched / area / scale / kinds / review per unit', () => {
     const out: string[] = []
@@ -283,8 +287,9 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
         const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
         const debug: NonNullable<SolveInputs['debug']> = {}
         const c = withColour(g, `assets__${sheet(u)}`)
-        const ocr = readTextJson(sheet(u))
-        const text: TextTrace = lab === 'oracle' ? oracleText(u, ocr) : ocr
+        const ocr = readTextJson(sheet(u)), fresh = readNew(`assets__${sheet(u)}`)
+        if (lab === 'new' && !fresh) continue
+        const text: TextTrace = lab === 'oracle' ? oracleText(u, fresh ?? ocr) : lab === 'new' ? fresh! : ocr
         const res = solveTraces(g, { text, debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
         const row = scoreSolve(res, u)
         rows.push(row)
@@ -295,7 +300,7 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
         if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
         expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
       }
-      const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : 'CACHED REAL OCR (the product today)'
+      const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : lab === 'new' ? 'NEW READER (wave 19: the product now)' : 'WAVE-16 OCR CACHE'
       const total = rows.reduce((t, r) => t + r.matched, 0), truthN = rows.reduce((t, r) => t + r.truthRooms, 0)
       out.push(`\n== ${head}: ${total} of ${truthN} rooms matched\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}`)
     }
@@ -314,7 +319,8 @@ describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays
       const g = loadPgm(FIXTURES + s.file)
       if (!g) continue
       const c = withColour(g, s.file.replace(/.pgm$/, ''))
-      const res = solveTraces(g, { text: existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
+      const text = readNew(s.file.replace(/.pgm$/, '')) ?? (existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined)
+      const res = solveTraces(g, { text, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
       writeUnitOverlay(`${SHOTS}/solve-${s.text}.png`, g, res.unit, res.review)
       console.log(s.text, JSON.stringify(res.stats), res.review.length, 'review')
       expect(validate(res.unit).filter((i) => i.level === 'error'), s.file).toEqual([])
