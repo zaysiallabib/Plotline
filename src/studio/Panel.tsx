@@ -19,7 +19,7 @@ const REVIEW_ICON: Record<ReviewItem['kind'], [string, string]> = {
 }
 const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
 const statsLine = (s: AutoTraceStats) =>
-  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`
+  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'tracks' ? ' · wall tracks' : s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`
 
 export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
 export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² · ${Math.round(sqmToSqft(sqm))} sqft`
@@ -382,7 +382,7 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
   )
 }
 
-/** Auto-trace's wall stage (founder, wave 18): the band tracker — straight walls of exactly their drawn thickness — or the skeleton. This browser only. */
+/** Auto-trace's wall stage (wave 19): the wall tracks — straight walls of exactly their drawn thickness, stopping where the ink stops — or the skeleton. This browser only. */
 function TrackerField() {
   const [bands, setBands] = useState(() => {
     try {
@@ -401,8 +401,8 @@ function TrackerField() {
     }
   }
   return (
-    <label className="tracker" title="On: every wall a straight band exactly as thick as it is drawn (wave 18). Off: the older skeleton tracer, walls classed 5&quot; or 10&quot;.">
-      <input type="checkbox" checked={bands} onChange={(e) => save(e.target.checked)} /> Band tracker (exact wall thickness)
+    <label className="tracker" title="On: one straight wall per drawn wall, exactly as thick as drawn, stopping where its ink stops; a door or window only where a swing or glazing is drawn (wave 19). Off: the older skeleton tracer, walls classed 5&quot; or 10&quot;.">
+      <input type="checkbox" checked={bands} onChange={(e) => save(e.target.checked)} /> Wall tracks (exact walls, drawn openings only)
     </label>
   )
 }

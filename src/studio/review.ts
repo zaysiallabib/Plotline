@@ -9,7 +9,7 @@ import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type Stu
 
 /** = trace/ai AI_KEY_STORAGE (a test pins it), spelled out so the Studio chunk never pulls in the trace code */
 export const AI_KEY = 'plotline.geminiKey'
-/** localStorage: 'skeleton' = Auto-trace runs the older skeleton wall stage; unset = the band tracker (wave 18) */
+/** localStorage: 'skeleton' = Auto-trace runs the older skeleton wall stage; unset = the default (wall tracks, wave 19) */
 export const TRACKER_KEY = 'plotline.tracker'
 
 /**

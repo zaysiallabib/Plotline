@@ -82,8 +82,12 @@ export const KNOBS = {
   areaShare: 0.88,
   /** … and an area-label scale is used only within this share of the wall-thickness prior */
   areaTrust: 0.05,
-  /** the wall stage: 'bands' = the founder's tracker (straight, exact thickness; walls.ts WallOpts.tracker), 'skeleton' = the wave-15 path */
-  tracker: 'bands' as 'skeleton' | 'bands',
+  /**
+   * the wall stage: 'tracks' (wave 19, tracks.ts) = one wall per occupied stretch of a track, exact thickness, openings
+   * only where a door arc / glazing is drawn, no repair passes; 'bands' = the wave-18 band tracker (straight, exact
+   * thickness; walls.ts WallOpts.tracker) + the repair passes; 'skeleton' = the wave-15 path
+   */
+  tracker: 'tracks' as 'skeleton' | 'bands' | 'tracks',
   /**
    * Founder, 2026-09-30: the draft is WALLS AND DOORS, nothing else — no window guesses from the wall stage, no glazing
    * lines, no glass-colour lines. What walls and door arcs close is a room; everything else stays open for the human.
@@ -674,7 +678,7 @@ function pruneSpurs(segs: Seg[]): Seg[] {
  * Segments → a core wall graph. Thickness: the 5" / 10" class (the skeleton's width is a guess), or with `exactTh`
  * (the band tracker) the measured width to the nearest half inch — a 7" or 15" wall stays what it is drawn.
  */
-function toUnitGraph(segs: Seg[], exactTh = false): { vertices: Vertex[]; walls: (Wall & { conf: number; bridge?: Seg['bridge']; guess?: Map<string, Op> })[] } {
+function toUnitGraph(segs: Seg[], exactTh = false, openingsExact = false): { vertices: Vertex[]; walls: (Wall & { conf: number; bridge?: Seg['bridge']; guess?: Map<string, Op> })[] } {
   const ids = new Map<string, Vertex>()
   const vid = (p: Pt) => {
     const k = ekey(p)
@@ -686,7 +690,8 @@ function toUnitGraph(segs: Seg[], exactTh = false): { vertices: Vertex[]; walls:
     const openings: Opening[] = s.op ? [{ id: newId(), kind: s.op.kind === 'unknown' ? 'passage' : s.op.kind, offsetM: 0, widthM: L, heightM: 0, sillM: 0 }] : []
     const guess = new Map<string, Op>(s.op ? [[openings[0].id, s.op]] : [])
     const halfInch = 0.0254 / 2
-    const thicknessM = exactTh && !s.bridge ? Math.max(PARTITION_M / 2, Math.round(s.th / halfInch) * halfInch) : s.th >= KNOBS.thickM ? EXTERIOR_M : PARTITION_M
+    // (tracks: an opening's piece is its wall's own thickness, so wall – opening – wall merge into one wall)
+    const thicknessM = exactTh && (!s.bridge || (openingsExact && s.bridge === 'guess')) ? Math.max(PARTITION_M / 2, Math.round(s.th / halfInch) * halfInch) : s.th >= KNOBS.thickM ? EXTERIOR_M : PARTITION_M
     return { id: newId(), a: vid(s.a), b: vid(s.b), thicknessM, heightM: WALL_HEIGHT_M, openings, conf: s.conf, bridge: s.bridge, guess }
   })
   return { vertices: [...ids.values()], walls }
@@ -777,10 +782,18 @@ interface Draft {
   resumed?: Resumed[]
   /** stair flights found on the sheet (px boxes, founder rule 6) */
   stairs?: { x0: number; y0: number; x1: number; y1: number }[]
+  /** tracks: gaps in a wall with nothing drawn in them (metres, the draft frame before any shift) — review items, never bridged */
+  gaps?: { a: Pt; b: Pt }[]
 }
 
-/** WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). */
-export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = [], exactTh = false): Draft {
+/**
+ * WallTrace (px) → a noded, pruned, merged wall graph in metres (origin = `originPx`). `tracker` 'bands' / 'tracks':
+ * thickness as measured (½"), not the 5" / 10" classes. 'tracks': the walls arrive straight, exact and joined at track
+ * crossings — none of the repair passes run (axis snap, end joining, spur pruning, end extension, rule-4 resume), the
+ * openings are the trace's drawn doors / windows (children of the wall they are cut in), 'unknown' gaps stay open.
+ */
+export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray: Gray, ink?: ReturnType<typeof inkMasks> & { glass?: Uint8Array }, tracked: WallSeg[] = [], tracker: 'skeleton' | 'bands' | 'tracks' = 'skeleton'): Draft {
+  const exactTh = tracker !== 'skeleton', tracks = tracker === 'tracks'
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const toPx = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
   let segs: Seg[] = []
@@ -803,7 +816,14 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     for (const pc of segPieces(w, n)) segs.push({ a: toM(pc.a), b: toM(pc.b), th, conf: w.conf })
   }
   // opening guesses = bridges carrying the opening; thickness of the wall they continue
+  const gaps: { a: Pt; b: Pt }[] = []
   for (const o of trace.openings) {
+    if (tracks) {
+      // a drawn door / window (positive evidence only) is a child of its wall; a gap with nothing drawn is never bridged
+      if (o.kind === 'door' || o.kind === 'window') segs.push({ a: toM(o.a), b: toM(o.b), th: (o.thicknessPx ?? PARTITION_M * pxPerM) / pxPerM, conf: o.conf, bridge: 'guess', op: { kind: o.kind, conf: o.conf, hinge: o.hingeAt && toM(o.hingeAt), swingTo: o.swingTo && toM(o.swingTo) } })
+      else gaps.push({ a: toM(o.a), b: toM(o.b) })
+      continue
+    }
     // without the closer: only openings the drawing shows (a door arc, a window's lines), not evidence-free gaps
     if (!KNOBS.closeGaps && o.kind !== 'door' && (!KNOBS.windows || o.kind !== 'window')) continue
     let th = PARTITION_M, bd = Infinity
@@ -828,28 +848,34 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   // reaching a corner where the wall's other side is a window too meets no traced wall there)
   const thMed = [...trace.walls].map((w) => w.thicknessPx).sort((p, q) => p - q)[trace.walls.length >> 1] ?? PARTITION_M * pxPerM
   const wallsPlus: WallSeg[] = [...trace.walls, ...trace.openings.filter((o) => o.kind === 'door' || o.kind === 'window').map((o) => ({ a: o.a, b: o.b, thicknessPx: thMed, conf: o.conf, guess: true }) as WallSeg)]
-  const windows = KNOBS.windows || KNOBS.closeGaps
+  // (tracks: windows come only from the trace's positive evidence — never these line passes, unless the closer is on)
+  const windows = tracks ? KNOBS.closeGaps : KNOBS.windows || KNOBS.closeGaps
   if (windows && Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(line, gray.width, gray.height, wallsPlus, pxPerM, gray, false, weak)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.4, bridge: 'glaze', op: { kind: 'window', conf: 0.4 } })
   // founder rule 5: a line of the sheet's glazing colour (Banani: thin blue) spanning between two walls is glass, even single
   if (windows && glass && Math.abs(th0) < (2 * Math.PI) / 180)
     for (const l of thinLines(glass, gray.width, gray.height, wallsPlus, pxPerM, undefined, true)) if (!inStairs(l)) segs.push({ a: toM(l.a), b: toM(l.b), th: PARTITION_M, conf: 0.6, bridge: 'glaze', op: { kind: 'window', conf: 0.6 } })
-  snapAxes(segs, th0)
-  joinEnds(segs)
   const W = gray.width, H = gray.height
-  // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
-  segs = pruneSpurs(node(segs, 0.02))
-  const solidInk = (p: Pt, q: Pt) => {
-    let best = 0
-    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(wall, W, H, toPx(p), toPx(q), o))
-    return best
+  let resumed: Resumed[] = []
+  // (tracks: every point is exact — node at a hair's width, else a jog's two corners would merge and tilt a wall)
+  if (tracks) segs = node(segs, 0.002)
+  else {
+    snapAxes(segs, th0)
+    joinEnds(segs)
+    // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
+    segs = pruneSpurs(node(segs, 0.02))
+    const solidInk = (p: Pt, q: Pt) => {
+      let best = 0
+      for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(wall, W, H, toPx(p), toPx(q), o))
+      return best
+    }
+    extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM, solidInk)
+    resumed = resumeWalls(segs, (p, q) => {
+      let best = 0
+      for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
+      return best
+    }, glass && ((p, q) => inkAlong(glass, W, H, toPx(p), toPx(q))))
   }
-  extendEnds(segs, (x) => inkRun(wall, W, H, toPx(x.s[x.e]), outDir(x), x.s.th * pxPerM, 1.5 * pxPerM) / pxPerM, solidInk)
-  const resumed = resumeWalls(segs, (p, q) => {
-    let best = 0
-    for (let o = -2; o <= 2 && best < 1; o++) best = Math.max(best, inkAlong(weak, W, H, toPx(p), toPx(q), o))
-    return best
-  }, glass && ((p, q) => inkAlong(glass, W, H, toPx(p), toPx(q))))
   if (KNOBS.closeGaps)
     bridgeGaps(
     segs,
@@ -862,9 +888,9 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
       return best
     },
   )
-  let noded = pruneSpurs(node(segs, 0.02))
-  noded = noded.filter((s) => d2(s.a, s.b) > 0.01)
-  const g = toUnitGraph(noded, exactTh)
+  let noded = tracks ? node(segs, 0.002) : pruneSpurs(node(segs, 0.02))
+  noded = noded.filter((s) => d2(s.a, s.b) > (tracks ? 0.002 : 0.01))
+  const g = toUnitGraph(noded, exactTh, tracks)
   let m = mergeCollinear(g.vertices, g.walls)
   // a tracked line closing a small loop with the walls is furniture (bed, wardrobe, counter): take it out again
   for (let it = 0; it < 50 && tracked.length; it++) {
@@ -888,7 +914,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     areaSqft: 0,
     planImage: { src: '', pxPerM, originPx },
   }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed, stairs }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0, resumed, stairs, gaps }
 }
 
 export const inkMasks = (gray: Gray) => ({ weak: lineInk(gray, 18), line: lineInk(gray, KNOBS.lineDelta), wall: threshold(gray, inkThreshold(gray, {})) })
@@ -1328,7 +1354,7 @@ function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Dr
   const used = new Set(walls.flatMap((w) => [w.a, w.b]))
   const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
   const unit: Unit = { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }
-  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed, stairs: d.stairs }
+  return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed, stairs: d.stairs, gaps: d.gaps }
 }
 
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
@@ -1370,14 +1396,16 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(ink.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M, inputs.green)
   const tracker = opts.tracker ?? KNOBS.tracker
-  let trace = inputs.walls ?? traceWalls(plan, { tracker })
+  // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
+  const masks = tracker === 'tracks' ? { plant: inputs.green, glass: ink.glass } : {}
+  let trace = inputs.walls ?? traceWalls(plan, { tracker, ...masks })
   opts.onProgress?.('scale', 0.5)
 
   // ── scale
   let pxPerM = opts.pxPerM ?? thicknessScale(trace.walls)
   let scaleFrom: AutoTraceStats['scaleFrom'] = opts.pxPerM ? 'given' : 'thickness'
   const origin0 = { x: 0, y: 0 }
-  let draft = buildGraph(trace, pxPerM, origin0, gray, ink, [], tracker === 'bands')
+  let draft = buildGraph(trace, pxPerM, origin0, gray, ink, [], tracker)
   // the building core's labels (lobby, lifts, stair) and planter strips: part of the draft when reached, never a way
   // into the next flat
   const coreAt = (k: number) =>
@@ -1437,7 +1465,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   // re-trace at the scale's wall width when it moved (the wall stage's own width guess is its weakest link)
   const halfPx = (PARTITION_M / 2) * pxPerM
-  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(plan, { halfPx, tracker })
+  if (Math.abs(pxPerM / thicknessScale(trace.walls) - 1) > 0.15) trace = traceWalls(plan, { halfPx, tracker, ...masks })
   let hints = inputs.hints ?? null
   try {
     hints ??= inputs.findHints?.(pxPerM, trace) ?? null
@@ -1451,7 +1479,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   opts.onProgress?.('graph', 0.7)
 
   // ── graph at the final scale, the flat, then its own origin
-  draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker === 'bands')
+  draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker)
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants })
   const pick = pickM(pxPerM, origin0)
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
@@ -1642,7 +1670,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       const wet = kinds.includes('bath')
       const veranda = kinds.includes('balcony')
       // one room only: the outside (or an unclosed open area — then the review item says so)
-      if (gs?.kind === 'window' || (outside && (kind !== 'door' || wet))) kind = 'window'
+      // (a swing the drawing shows stays a door: with gaps left open, "one room only" is often an open neighbour)
+      if (gs?.kind === 'window' || (outside && gs?.kind !== 'door' && (kind !== 'door' || wet))) kind = 'window'
       if (veranda && (runOf.get(o.id) ?? o.widthM) >= 1.2 && !outside) kind = 'slider'
       if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other')) kind = 'door'
       const conf = gs?.conf ?? 0.2
@@ -1678,7 +1707,16 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // ── loose ends, low-confidence bridges, scale
   const deg = new Map<string, number>()
   for (const w of u.walls) for (const v of [w.a, w.b]) deg.set(v, (deg.get(v) ?? 0) + 1)
-  for (const [vid, n] of deg) if (n === 1) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
+  // tracks: a gap in a wall with nothing drawn in it (no arc, no glazing) stays open — one item for both of its jambs
+  const jambs = new Set<string>()
+  for (const g of draft.gaps ?? []) {
+    const a = { x: g.a.x - shift.x, y: g.a.y - shift.y }, b = { x: g.b.x - shift.x, y: g.b.y - shift.y }
+    const ends = u.vertices.filter((v) => deg.get(v.id) === 1 && (d2(v, a) < 0.03 || d2(v, b) < 0.03))
+    if (!ends.length) continue // not this flat's
+    ends.forEach((v) => jambs.add(v.id))
+    review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'unclosed', message: `A ${formatFeetInches(d2(a, b))} gap in the wall with no door swing or window drawn in it — a door, a window, or open?`, entityId: ends[0].id })
+  }
+  for (const [vid, n] of deg) if (n === 1 && !jambs.has(vid)) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
   for (const w of draft.walls)
     if (w.bridge === 'track' && d2(V.get(w.a)!, V.get(w.b)!) >= 3) {
       const a = V.get(w.a)!, b = V.get(w.b)!

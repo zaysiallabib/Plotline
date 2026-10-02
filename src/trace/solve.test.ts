@@ -85,6 +85,17 @@ function withCloser<T>(fn: () => T): T {
   }
 }
 
+/** run with one wall stage, whatever the default */
+function withTracker<T>(t: (typeof KNOBS)['tracker'], fn: () => T): T {
+  const prev = KNOBS.tracker
+  KNOBS.tracker = t
+  try {
+    return fn()
+  } finally {
+    KNOBS.tracker = prev
+  }
+}
+
 describe('marks: stairs, glazing profile, glass colour', () => {
   test('a flight of 8 evenly spaced 1.2 m treads is a stair; 3 treads, or uneven lines, are not', () => {
     const w = 300, h = 300, k = 50
@@ -121,14 +132,24 @@ describe('marks: stairs, glazing profile, glass colour', () => {
 })
 
 describe('solveTraces on a synthetic flat', () => {
-  test('plain door gaps (no arcs): the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
+  test('plain door gaps (no arcs), tracks: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
     const { g, text } = synthetic(false)
-    const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })
+    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+    expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
+    // the three gaps stay open (founder: a wall stops where its ink stops): the living, bed and store are one space
+    expect(deriveRooms(r.unit).length).toBeLessThan(4)
+    expect(r.review.filter((x) => /gap in the wall/.test(x.message)).length).toBe(3)
+    expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+  })
+
+  test('plain door gaps (no arcs), bands: the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
+    const { g, text } = synthetic(false)
+    const r = withTracker('bands', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
     expect(deriveRooms(r.unit).length).toBe(4)
     expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
     expect(r.review.filter((x) => x.kind === 'opening-guess' && /carried on/.test(x.message)).length).toBe(3)
     // and with the (default-off) gap closer on, the same 4 rooms
-    expect(deriveRooms(withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) })).unit).length).toBe(4)
+    expect(deriveRooms(withTracker('bands', () => withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))).unit).length).toBe(4)
   })
 
   test('3 named rooms + 1 unnamed, scale from the printed sizes, doors in the partitions, a Unit that validates', () => {
@@ -152,8 +173,8 @@ describe('solveTraces on a synthetic flat', () => {
     const ops = r.unit.walls.flatMap((w) => w.openings)
     expect(ops.length).toBe(3)
     for (const o of ops) expect(Math.abs(o.widthM - 0.85)).toBeLessThan(0.12)
-    // outer walls 10", partitions 5" — the skeleton classes them; the band tracker carries the measured width (within ½")
-    if (KNOBS.tracker === 'bands') for (const w of r.unit.walls) expect(Math.min(Math.abs(w.thicknessM - 0.127), Math.abs(w.thicknessM - 0.254)), `${w.thicknessM}`).toBeLessThanOrEqual(0.0127 + 1e-9)
+    // outer walls 10", partitions 5" — the skeleton classes them; bands / tracks carry the measured width (within ½")
+    if (KNOBS.tracker !== 'skeleton') for (const w of r.unit.walls) expect(Math.min(Math.abs(w.thicknessM - 0.127), Math.abs(w.thicknessM - 0.254)), `${w.thicknessM}`).toBeLessThanOrEqual(0.0127 + 1e-9)
     else expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
   })
 
@@ -224,8 +245,9 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
   if (!rgb) return { inputs: {} }
   return { rgb, inputs: { green: greenMask(rgb), findHints: (pxPerM, walls) => findHints(g, rgb, { pxPerM, walls }) } }
 }
-/** TRACE_TRACKER=skeleton: the wave-15 skeleton wall stage instead of the band tracker (KNOBS.tracker), for comparison */
-if (process.env.TRACE_TRACKER === 'skeleton') KNOBS.tracker = 'skeleton'
+/** TRACE_TRACKER=skeleton | bands | tracks: that wall stage instead of the default (KNOBS.tracker), for comparison */
+const TRACKER = process.env.TRACE_TRACKER
+if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
 const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
