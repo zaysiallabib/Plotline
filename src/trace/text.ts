@@ -583,7 +583,18 @@ export interface ReadTextOptions {
   workers?: number
   /** where eng.traineddata comes from; default = tesseract.js's own jsdelivr CDN (4.0.0_best_int, ≈ 2.9 MB gz, cached in IndexedDB) */
   langPath?: string
+  /** node only (the eval): the folder holding eng.traineddata, so no download */
+  cachePath?: string
   onProgress?: (done: number, total: number) => void
+}
+
+/** Gray → binary PGM bytes. tesseract.js decodes it (leptonica) in the browser worker and in node alike — no canvas. */
+export function toPgm(g: Gray): Uint8Array {
+  const head = new TextEncoder().encode(`P5\n${g.width} ${g.height}\n255\n`)
+  const out = new Uint8Array(head.length + g.data.length)
+  out.set(head)
+  out.set(g.data, head.length)
+  return out
 }
 
 async function toGray(src: ImageBitmapSource): Promise<Gray> {
@@ -625,7 +636,9 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
   const T = await import('tesseract.js')
   const scheduler = T.createScheduler()
   const workers = await Promise.all(
-    Array.from({ length: opts.workers ?? 3 }, () => T.createWorker('eng', T.OEM.LSTM_ONLY, opts.langPath ? { langPath: opts.langPath } : {})),
+    Array.from({ length: opts.workers ?? 3 }, () =>
+      T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) }),
+    ),
   )
   workers.forEach((w) => scheduler.addWorker(w))
   const setAll = (params: Record<string, string>) => Promise.all(workers.map((w) => w.setParameters(params)))
@@ -635,7 +648,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       const pad = 0.4 * Math.min(l.box.w, l.box.h)
       let g = cropGray(from, { x: l.box.x - pad, y: l.box.y - pad, w: l.box.w + 2 * pad, h: l.box.h + 2 * pad })
       if (l.vertical) g = rotateCW(g)
-      return toCanvas(scaleGray(g, Math.max(1, Math.min(8, glyphPx / (l.vertical ? l.box.w : l.box.h)))))
+      // raw image bytes are fine for tesseract.js (its loadImage wraps them in a Uint8Array); its types only list Blob & co.
+      return toPgm(scaleGray(g, Math.max(1, Math.min(8, glyphPx / (l.vertical ? l.box.w : l.box.h))))) as unknown as Blob
     }
     let done = 0
     const readAll = (idx: number[], from = clean, glyphPx = GLYPH_PX) =>

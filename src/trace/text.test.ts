@@ -1,11 +1,18 @@
+/// <reference types="node" />
 import { describe, expect, test } from 'vitest'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { FT } from '../core'
 import type { Unit } from '../core'
+import typeA from '../data/units/type-a.json'
 import typeB from '../data/units/type-b.json'
-import type { TextItem } from './types'
+import typeC from '../data/units/type-c.json'
+import sheltechA from '../data/units/sheltech-a.json'
+import sheltechB from '../data/units/sheltech-b.json'
+import type { TextItem, TextTrace } from './types'
 import { parseAiAnswer } from './ai'
+import { FIXTURES, loadPgm } from './evalio'
 import { sameLabel, scoreText } from './textEval'
-import { chunkWords, classifyRoom, groupWords, itemFromAi, parseArea, parseDims, reaskList, reaskReason, type OcrWord } from './text'
+import { chunkWords, classifyRoom, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -274,4 +281,54 @@ describe('scoreText (eval vs a hand-traced unit)', () => {
     expect(sameLabel('Bed-1', 'BED-2')).toBe(false)
     expect(sameLabel('Kitchen', 'BED-2')).toBe(false)
   })
+})
+
+// ---------------------------------------------------------------- the reader eval on the real sheets (node tesseract)
+/**
+ * TRACE_OCR=1 npx vitest run src/trace/text.test.ts --disableConsoleIntercept
+ * Reads the three Phase-0 sheets (five hand-traced units) + Banani L2-6 + DMD L3-14 with the app's own `readText`.
+ * TRACE_TESS = folder with eng.traineddata (no download); TRACE_TEXT_OUT = write each sheet's TextTrace JSON there.
+ */
+const TESS = process.env.TRACE_TESS ?? 'E:/dev/tmp/wave19/reader/tess'
+const TEXT_OUT = process.env.TRACE_TEXT_OUT ?? ''
+const SHEETS: { sheet: string; units: Unit[] }[] = [
+  { sheet: 'assets__plan-2nd-floor', units: [typeA as unknown as Unit] },
+  { sheet: 'assets__plan-3rd-floor', units: [typeB as unknown as Unit, typeC as unknown as Unit] },
+  { sheet: 'assets__plan-sheltech-l2', units: [sheltechA as unknown as Unit, sheltechB as unknown as Unit] },
+  { sheet: 'Sheltech_Banani__Level_2-6', units: [] },
+  { sheet: 'Sheltech_dmd__Level_3-14', units: [] },
+]
+
+describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2nd-floor.pgm`))('readText on the demo sheets (eval report)', () => {
+  test('sized labels found / sizes read / misreads', async () => {
+    const rows: Record<string, string | number>[] = []
+    const misses: string[] = []
+    const tot = { sized: 0, found: 0, parsed: 0, exact: 0, misread: 0 }
+    for (const { sheet, units } of SHEETS) {
+      const g = loadPgm(`${FIXTURES}${sheet}.pgm`)
+      if (!g) continue
+      const t0 = performance.now()
+      const trace: TextTrace = await readText(g, { cachePath: TESS })
+      const ms = Math.round(performance.now() - t0)
+      if (TEXT_OUT) {
+        mkdirSync(TEXT_OUT, { recursive: true })
+        writeFileSync(`${TEXT_OUT}${sheet}.json`, JSON.stringify(trace, null, 1))
+      }
+      const rooms = trace.items.filter((i) => i.kind === 'room')
+      const base = { sheet: sheet.replace(/^assets__/, ''), glyphPx: trace.glyphPx ?? 0, rooms: rooms.length, sized: rooms.filter((i) => i.dims).length, ms }
+      if (!units.length) rows.push({ unit: '(no truth)', ...base })
+      for (const u of units) {
+        const s = scoreText(trace, u)
+        tot.sized += s.dimsTotal
+        tot.found += s.sizedFound
+        tot.exact += s.dimsExact
+        tot.misread += s.dimsMisread
+        tot.parsed += s.dimsExact + s.dimsMisread
+        rows.push({ unit: u.id, ...base, 'labels found': `${s.found}/${s.labels}`, 'sized found': `${s.sizedFound}/${s.dimsTotal}`, 'size right': s.dimsExact, misread: s.dimsMisread })
+        misses.push(`${u.id}: missed ${s.missed.join(', ')}\n  wrong/none: ${s.wrongDims.join(' · ')}`)
+      }
+    }
+    console.table(rows)
+    console.log(`TOTAL sized labels ${tot.sized}: found ${tot.found}, size parsed ${tot.parsed}, right ${tot.exact}, MISREAD ${tot.misread}\n${misses.join('\n')}`)
+  }, 3_600_000)
 })

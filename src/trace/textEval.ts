@@ -30,6 +30,8 @@ export interface TextScore {
   labels: number
   found: number
   dimsTotal: number
+  /** labels with a printed size that were found (the rooms-first fit needs these) — wave 19 */
+  sizedFound: number
   dimsExact: number
   /** parsed, but not the printed value (worse than no reading: the solver would trust it) */
   dimsMisread: number
@@ -48,7 +50,7 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
   const toPx = (p: { x: number; y: number }) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM })
   const rooms = new Map(deriveRooms(unit).map((r) => [r.id, roomPolygon(r, unit).map(toPx)]))
   const used = new Set<TextItem>()
-  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, dimsExact: 0, dimsMisread: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
+  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, sizedFound: 0, dimsExact: 0, dimsMisread: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
   for (const label of unit.roomLabels) {
     const p = toPx(label)
     const poly = rooms.get(label.id)
@@ -78,6 +80,7 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
     else s.wrongKind.push(`${label.name}: ${best.roomKind} (truth ${label.kind})`)
     if (green && best.green) s.greenFound++
     if (truthDims) {
+      s.sizedFound++
       const d = best.dims
       if (d && Math.abs(d.aM - truthDims.aM) <= INCH && Math.abs(d.bM - truthDims.bM) <= INCH) s.dimsExact++
       else {
