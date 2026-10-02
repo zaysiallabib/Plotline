@@ -384,8 +384,14 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
           } else if (along[u - a] >= minTh) lab[u - a] = B_
           break
         }
-      // a lone paper pixel inside a wall (anti-aliasing) is wall
-      for (let i = 1; i + 1 < n; i++) if (!lab[i] && lab[i - 1] === W_ && lab[i + 1] === W_) (lab[i] = W_), (wid[i] = (wid[i - 1] + wid[i + 1]) / 2)
+      // one or two pixels inside a wall that read as paper (anti-aliasing) or as another band (a line touching the
+      // wall's face there) are the wall
+      for (let i = 1; i + 1 < n; i++) {
+        if (lab[i] === W_ || lab[i] === B_ || lab[i - 1] !== W_) continue
+        const j = lab[i + 1] === W_ ? i + 1 : i + 2 < n && lab[i + 1] !== B_ && lab[i + 2] === W_ ? i + 2 : -1
+        if (j < 0) continue
+        for (let q = i; q < j; q++) (lab[q] = W_), (wid[q] = (wid[i - 1] + wid[j]) / 2)
+      }
       const ivs: Iv[] = []
       // pieces = maximal W / B stretches, cut at blocks longer than maxBlock
       const pieces: [number, number][] = []
@@ -428,14 +434,18 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
           if (last && last.th === th) (last.to = i), last.n++
           else cls.push({ from: i, to: i, th, n: 1 })
         }
-        // absorb short class runs into the longer neighbour, until stable
+        // absorb short class runs into the longer neighbour, until stable; and on one centre line two NEAR classes
+        // (within 25 %: 0.25 / 0.30 m) are one wall — a face line touching it widens a stretch, a wall does not swell
+        const nearCls = (p: { th: number }, x: { th: number }) => Math.abs(p.th - x.th) < 0.25 * Math.min(p.th, x.th)
         for (let changed = true; changed && cls.length > 1; ) {
           changed = false
           for (let q = 0; q < cls.length; q++) {
             const r = cls[q]
-            if (r.n >= Math.max(2 * r.th, 6)) continue
             const p = cls[q - 1], x = cls[q + 1]
-            const into = !p ? x : !x ? p : p.n >= x.n ? p : x
+            const short = r.n < Math.max(2 * r.th, 6)
+            const pNear = p && nearCls(p, r) && p.n >= r.n, xNear = x && nearCls(x, r) && x.n >= r.n
+            if (!short && !pNear && !xNear) continue
+            const into = short ? (!p ? x : !x ? p : p.n >= x.n ? p : x) : pNear && xNear ? (p.n >= x.n ? p : x) : pNear ? p : x
             ;(into.from = Math.min(into.from, r.from)), (into.to = Math.max(into.to, r.to)), (into.n += r.n)
             cls.splice(q, 1)
             for (let z2 = 0; z2 + 1 < cls.length; z2++) if (cls[z2].th === cls[z2 + 1].th) (cls[z2].to = cls[z2 + 1].to), (cls[z2].n += cls[z2 + 1].n), cls.splice(z2 + 1, 1), z2--
