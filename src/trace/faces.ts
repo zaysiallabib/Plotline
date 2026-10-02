@@ -244,11 +244,13 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   type Cand = FaceLine & { e: [End | null, End | null]; c2: number; seg?: Seg }
   const cands: Cand[] = lines.map((L) => ({ ...L, e: [attach(L, 0, edges, () => -1), attach(L, 1, edges, () => -1)], c2: L.c }))
   // the line's own position: inside both wall ends' spans (a slab line at the walls' outer ends moves onto them)
-  const slack = (L: Cand) => L.th / 2 + halo + 2
+  // (a line ending on a wall's end on its own line — a grille carrying the wall on — takes that wall's line: the attach
+  // test already bounded how far off it may lie)
+  const slack = (L: Cand) => (L.e.some((x) => x && x.lo === x.hi) ? Infinity : L.th / 2 + halo + 2)
   for (const L of cands) {
     let lo = L.c - slack(L), hi = L.c + slack(L)
     for (const x of L.e) if (x) (lo = Math.max(lo, x.lo)), (hi = Math.min(hi, x.hi))
-    L.c2 = lo <= hi ? Math.min(hi, Math.max(lo, L.c)) : NaN
+    L.c2 = lo <= hi + 1e-6 ? Math.min(hi, Math.max(lo, L.c)) : NaN
   }
   // free ends onto another line across them (thin-to-thin corners and T's)
   const asEdges: Edge[] = cands.map((L) => ({ horiz: L.horiz, c: L.c2, u0: L.u0, u1: L.u1, th: Math.max(1, L.th) }))
@@ -331,10 +333,13 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     linePx.forEach((px, li) => {
       for (const i of px) for (const q of nb(i)) if (q >= 0 && q < W * H && lab1[q]) parts[lab1[q] - 1].thin++, parts[lab1[q] - 1].lines.add(li)
     })
-    // each fitted room's pixels by part (a part covering a fit's share without being it splits it)
-    const fitHist = (o.fits ?? []).map((r) => {
+    // each fitted room's pixels by part, the rect grown by half a wall to the centre lines a face follows (a part covering
+    // a fit's share without being it splits it; one holding it must not be much more than it)
+    const g = Math.round(0.1 * k)
+    const fitHist = (o.fits ?? []).map((r0) => {
+      const r = { x0: Math.max(0, r0.x0 - g), y0: Math.max(0, r0.y0 - g), x1: Math.min(W, r0.x1 + g), y1: Math.min(H, r0.y1 + g) }
       const h = new Map<number, number>()
-      for (let y = Math.max(0, r.y0); y < Math.min(H, r.y1); y++) for (let x = Math.max(0, r.x0); x < Math.min(W, r.x1); x++) if (lab1[y * W + x]) h.set(lab1[y * W + x], (h.get(lab1[y * W + x]) ?? 0) + 1)
+      for (let y = r.y0; y < r.y1; y++) for (let x = r.x0; x < r.x1; x++) if (lab1[y * W + x]) h.set(lab1[y * W + x], (h.get(lab1[y * W + x]) ?? 0) + 1)
       return { ra: (r.x1 - r.x0) * (r.y1 - r.y0), h }
     })
     // per region: its parts; the largest keeps its old self, every other part must be a face
@@ -355,8 +360,10 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       // no label: an AOD-sized space, or a planter (plant green over half of it); anything bigger is no evidence of a room
       if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n) return 'unlabelled, too big for an AOD'
       for (const { ra, h } of fitHist) {
-        const ov = h.get(p.id) ?? 0
-        if (ov >= 0.15 * ra && ov / (p.n + ra - ov) < 0.5) return 'splits a fitted room'
+        const ov = h.get(p.id) ?? 0, iou = ov / (p.n + ra - ov)
+        if (ov >= 0.15 * ra && iou < 0.5) return 'splits a fitted room'
+        // (a thin line closing a fitted room's open side far beyond it: the room is not that big)
+        if (ov >= 0.8 * ra && iou < 0.7) return 'much bigger than its fitted room'
       }
       return null
     }
