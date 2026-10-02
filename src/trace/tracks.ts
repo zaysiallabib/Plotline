@@ -571,7 +571,10 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
           node = dir > 0 ? nb.n0 : nb.n1
         } else if (T.lab[i] === B_) {
           // a crossing wall whose body this is: its centre line; else a block's face
-          const Q = perp.find((q) => (q.c - far) * dir > 0 && (q.c - far) * dir <= maxBlock && reaches(q, T.c, iv.th))
+          // (the nearest such wall whose body spans this line; a stepped wall has two tracks there)
+          const Q = perp
+            .filter((q) => (q.c - far) * dir > 0 && (q.c - far) * dir <= maxBlock && q.ivs.some((j) => j.f0 <= T.c && T.c <= j.f1))
+            .sort((p, q) => Math.abs(p.c - far) - Math.abs(q.c - far))[0]
           node = Q ? Q.c : far
         } else continue
         const u0 = Math.min(face, far), u1 = Math.max(face, far)
@@ -680,7 +683,9 @@ export function classifyGap(
           for (let j = 3; j <= 11; j++) {
             let hit = 0, clutter = 0
             for (let q = 0; q <= 16; q++) (hit += hits[j][q] | hits[j - 1][q] | hits[j + 1][q]), (clutter += hits[j - 3][q] | hits[j + 3][q])
-            if (clutter / 17 > 0.65 || hit / 17 <= best.score) continue
+            // a swing is ONE ring: the rings 0.15 inside and outside it are much emptier (tiles, a window's frame lines
+            // and furniture edges cross every ring alike)
+            if (clutter / 17 > 0.65 || clutter > 0.5 * hit || hit / 17 <= best.score) continue
             // past the open leaf (0.6–0.95 of a quarter beyond it): a swing has stopped; a bowl or basin outline goes on
             let past = 0
             for (let q = 0; q <= 8; q++) past += ring(j, 1.12 + (0.38 * q) / 8) | ring(j - 1, 1.12 + (0.38 * q) / 8) | ring(j + 1, 1.12 + (0.38 * q) / 8)
