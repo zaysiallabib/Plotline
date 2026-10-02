@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { deriveRooms } from '../core'
 import { KNOBS, solveTraces } from './solve'
 import { traceTracks, trackWalls } from './tracks'
+import { traceWalls } from './walls'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -97,6 +98,27 @@ describe('wall tracks on synthetic rasters', () => {
     } finally {
       KNOBS.tracker = prev
     }
+  })
+
+  test('a 45° chamfer: the skeleton adds it as an angled wall whose ends sit on the track walls it meets', () => {
+    const { g, P } = sheet(6, 5)
+    const line = (p: { x: number; y: number }, q: { x: number; y: number }, th: number) => {
+      const r = th / 2, L = Math.hypot(q.x - p.x, q.y - p.y)
+      for (let y = 0; y < g.height; y++)
+        for (let x = 0; x < g.width; x++) {
+          const t = Math.max(0, Math.min(1, ((x - p.x) * (q.x - p.x) + (y - p.y) * (q.y - p.y)) / (L * L)))
+          if (Math.hypot(x - p.x - (q.x - p.x) * t, y - p.y - (q.y - p.y) * t) <= r) g.data[y * g.width + x] = 0
+        }
+    }
+    const pts = [P(0, 0), P(3, 0), P(4, 1), P(4, 3.5), P(0, 3.5)]
+    pts.forEach((p, i) => line(p, pts[(i + 1) % pts.length], 0.127 * K))
+    const { walls } = traceWalls(g, { tracker: 'tracks' })
+    const diag = walls.filter((w) => Math.abs(Math.abs(w.b.x - w.a.x) - Math.abs(w.b.y - w.a.y)) < 0.2 * Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y))
+    expect(diag.length).toBe(1)
+    const axis = walls.filter((w) => w !== diag[0])
+    for (const w of axis) expect(w.a.x === w.b.x || w.a.y === w.b.y, JSON.stringify(walls)).toBe(true)
+    // both diagonal ends are ends (or points) of the axis walls it meets: on their centre lines
+    for (const e of [diag[0].a, diag[0].b]) expect(axis.some((w) => (w.a.y === w.b.y && Math.abs(e.y - w.a.y) < 1e-6) || (w.a.x === w.b.x && Math.abs(e.x - w.a.x) < 1e-6)), JSON.stringify(walls.map((w) => [w.a, w.b]))).toBe(true)
   })
 
   test('crossings: an L corner and a T meet at the exact track crossing (one shared point)', () => {

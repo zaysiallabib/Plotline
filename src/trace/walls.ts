@@ -426,7 +426,10 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
       })),
     }
   }
-  if (opts.tracker === 'tracks') return trackWalls(traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast }))
+  if (opts.tracker === 'tracks') {
+    const t = trackWalls(traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast }))
+    return { walls: [...t.walls, ...angledWalls(gray, t.walls, opts)], openings: t.openings }
+  }
   const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes
   const bands =
@@ -451,6 +454,66 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   // door arcs: ink darker than the local median (arcInk); windows: the grey profile across the gap (glazing)
   const openings = findOpenings(walls, core, rCore, w, h, half, o.partitionM, arcInk(gray), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))])
   return { walls, openings }
+}
+
+/**
+ * Tracks (wave 19): the walls off the sheet's axes — skeleton pieces more than 5° from both axes, and arcs — on ink no
+ * track wall owns. An end that stops at a track wall is put on that wall's centre line (where the angled wall's line
+ * crosses it, or the track wall's end beside it): the track wall is only noded there, never moved or tilted.
+ */
+function angledWalls(gray0: Gray, axis: WallSeg[], opts: WallOpts): WallSeg[] {
+  let gray = gray0
+  if (opts.plant) {
+    const d = new Uint8Array(gray0.data)
+    for (let i = 0; i < d.length; i++) if (opts.plant[i]) d[i] = 255
+    gray = { width: gray0.width, height: gray0.height, data: d }
+  }
+  const { o, w, h, dt, half, sk } = wallSkeleton(gray, opts)
+  const offAxis = (p: Px, q: Px) => {
+    const g = (((Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI) % 90 + 90) % 90
+    return Math.min(g, 90 - g)
+  }
+  const out: WallSeg[] = []
+  for (const s of segsOf(sk, dt, w, h, o.minCompFrac * half)) {
+    const len = dist(s.a, s.b), th = thicknessOf(s.half)
+    // on (or near) the axes it is the tracks' ink — a corner scrap of the skeleton, never a wall of its own
+    if (!s.mid && offAxis(s.a, s.b) <= 10) continue
+    if (len < Math.max(6 * half, 1.5 * th) || sideContrast(gray, s, th) < o.minContrast) continue
+    if (s.mid) {
+      // an arc: a real bow (sagitta ≥ half a wall), and not lying along a track wall's body
+      const sag = Math.abs((s.b.x - s.a.x) * (s.a.y - s.mid.y) - (s.a.x - s.mid.x) * (s.b.y - s.a.y)) / (len || 1)
+      const pcs = segPieces({ a: s.a, b: s.b, mid: s.mid, thicknessPx: th, conf: 1 })
+      if (sag < Math.max(2, 0.5 * th) || pcs.filter((p) => coveredByBands(p, axis, 0.5)).length >= 0.5 * pcs.length) continue
+    } else if (coveredByBands(s, axis, 0.5)) continue
+    const seg: WallSeg = { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx: th, conf: Math.min(1, len / (4 * th)) }
+    for (const end of ['a', 'b'] as const) {
+      const p = seg[end], q = end === 'a' ? seg.b : seg.a
+      const L = dist(p, q) || 1, dx = (p.x - q.x) / L, dy = (p.y - q.y) / L
+      let best: Px | null = null, bd = Infinity
+      for (const t of axis) {
+        const horiz = t.a.y === t.b.y
+        const c = horiz ? t.a.y : t.a.x, u0 = Math.min(horiz ? t.a.x : t.a.y, horiz ? t.b.x : t.b.y), u1 = Math.max(horiz ? t.a.x : t.a.y, horiz ? t.b.x : t.b.y)
+        const reach = t.thicknessPx / 2 + th + 2
+        // where the angled wall's line crosses the track wall's centre line, if that is on the wall and near our end
+        const dc = horiz ? dy : dx
+        if (!seg.mid && Math.abs(dc) > 0.05) {
+          const k = (c - (horiz ? p.y : p.x)) / dc
+          const X = { x: p.x + dx * k, y: p.y + dy * k }
+          const u = horiz ? X.x : X.y
+          if (k > -reach && k < reach && u >= u0 - t.thicknessPx / 2 && u <= u1 + t.thicknessPx / 2 && Math.abs(k) < bd) {
+            ;(bd = Math.abs(k)), (best = { x: horiz ? Math.min(u1, Math.max(u0, u)) : c, y: horiz ? c : Math.min(u1, Math.max(u0, u)) })
+            continue
+          }
+        }
+        // else the track wall's end beside ours
+        for (const e of [t.a, t.b]) if (dist(e, p) < 1.5 * th && dist(e, p) < bd) (bd = dist(e, p)), (best = e)
+      }
+      if (best) seg[end] = { ...best }
+    }
+    if (!seg.mid && offAxis(seg.a, seg.b) <= 10) continue // joining turned it onto an axis: a scrap after all
+    out.push(seg)
+  }
+  return out
 }
 
 /**

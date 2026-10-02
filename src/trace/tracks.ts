@@ -199,8 +199,9 @@ function bandsOf(L: Lines, U: number, maxW: number): Band[] {
         for (let j = L.off[u - 1]; j < L.off[u]; j++) {
           const b = bandOf[j]
           if (b < 0 || acc[b].u1 !== u - 1) continue
+          // within 1 px of the previous column AND of the band's own mean (an angled band drifts away: no track)
           const d = Math.abs(L.c[j] - c)
-          if (d < bd && Math.abs(L.w[j] - w) <= Math.max(1.5, 0.2 * w)) (bd = d), (best = b)
+          if (d < bd && Math.abs(acc[b].sc / acc[b].ws.length - c) <= 1 && Math.abs(L.w[j] - w) <= Math.max(1.5, 0.2 * w)) (bd = d), (best = b)
         }
       if (best >= 0) {
         const b = acc[best]
