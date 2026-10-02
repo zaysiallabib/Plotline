@@ -10,7 +10,7 @@
  */
 import { bandWalls, coveredByBands } from './bands'
 import { edt, otsu, thin, threshold } from './raster'
-import { traceTracks, trackWalls } from './tracks'
+import { scaleTracks, traceTracks, trackWalls } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
@@ -414,8 +414,10 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
     const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
+    const sc = (s: WallSeg): WallSeg => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })
     return {
-      walls: t.walls.map((s) => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })),
+      ...(t.tracks ? { tracks: { lines: scaleTracks(t.tracks.lines, k), angled: t.tracks.angled.map(sc) } } : {}),
+      walls: t.walls.map(sc),
       openings: t.openings.map((op) => ({
         ...op,
         a: scalePx(op.a, k),
@@ -427,8 +429,10 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }
   }
   if (opts.tracker === 'tracks') {
-    const t = trackWalls(traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast }))
-    return { walls: [...t.walls, ...angledWalls(gray, t.walls, opts)], openings: t.openings }
+    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast })
+    const t = trackWalls(tt)
+    const angled = angledWalls(gray, t.walls, opts)
+    return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }
   }
   const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes

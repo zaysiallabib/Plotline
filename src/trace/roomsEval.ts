@@ -27,6 +27,17 @@ export function oracleLabels(u: Unit): TextItem[] {
   })
 }
 
+/**
+ * The eval's ORACLE text (simulates the fixed reader on this flat): inside the hand-traced flat, the OCR's room / size
+ * items give way to oracleLabels; outside it (the next flat, the core) the OCR's own reads stay, as do every area and
+ * other item — a fixed reader would read those labels too, the OCR's reads are the honest lower bound for them.
+ */
+export function oracleText(u: Unit, ocr: { items: TextItem[]; glyphPx?: number }): { items: TextItem[]; glyphPx?: number } {
+  const T = truthRoomsPx(u)
+  const inFlat = (i: TextItem) => T.some((t) => pointInPolygon({ x: i.box.x + i.box.w / 2, y: i.box.y + i.box.h / 2 }, t.poly))
+  return { ...ocr, items: [...ocr.items.filter((i) => (i.kind !== 'room' && i.kind !== 'dims') || !inFlat(i)), ...oracleLabels(u)] }
+}
+
 export interface TruthRoomPx {
   r: Room
   poly: Px[]

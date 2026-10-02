@@ -94,7 +94,8 @@ export interface Gap {
   thPx: number
   /** the far side is a wall on a parallel track (a stepped wall): joined at along-track u to its centre line c */
   jog?: { u: number; c: number }
-  kind: 'door' | 'window' | 'unknown'
+  /** 'passage': nothing drawn here and nothing drawn on the room edges either (merge.ts) — an opening, flagged */
+  kind: 'door' | 'window' | 'passage' | 'unknown'
   conf: number
   hingeAt?: Px
   swingTo?: Px
@@ -617,6 +618,22 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   }
 }
 
+/** What the solver keeps of a trace (the masks stay with the tracer). */
+export type TrackLines = Pick<TrackTrace, 'tracks' | 'joins' | 'gaps' | 'blocks' | 'classes' | 'pxPerM'>
+
+/** The trace's lines × k (an upscaled sheet's trace back to the sheet: walls.ts scales its walls the same way, p × k). */
+export function scaleTracks(t: TrackLines, k: number): TrackLines {
+  const p = (q: Px): Px => ({ x: q.x * k, y: q.y * k })
+  return {
+    tracks: t.tracks.map((T) => ({ horiz: T.horiz, c: T.c * k, intervals: T.intervals.map((iv) => ({ u0: iv.u0 * k, u1: iv.u1 * k, thPx: iv.thPx * k })) })),
+    joins: t.joins.map((j) => ({ ...j, u: j.u * k, c0: j.c0 * k, c1: j.c1 * k, thPx: j.thPx * k })),
+    gaps: t.gaps.map((g) => ({ ...g, c: g.c * k, u0: g.u0 * k, u1: g.u1 * k, node0: g.node0 * k, node1: g.node1 * k, thPx: g.thPx * k, ...(g.jog ? { jog: { u: g.jog.u * k, c: g.jog.c * k } } : {}), ...(g.hingeAt ? { hingeAt: p(g.hingeAt) } : {}), ...(g.swingTo ? { swingTo: p(g.swingTo) } : {}) })),
+    blocks: t.blocks.map((b) => ({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k })),
+    classes: t.classes.map((c) => c * k),
+    pxPerM: t.pxPerM * k,
+  }
+}
+
 /** A point-in-wall test over every interval's body (centre line ± half the thickness + 1 px). */
 function wallBodies(tracks: Tr[], W: number, H: number): (x: number, y: number) => boolean {
   const m = new Uint8Array(W * H)
@@ -774,7 +791,7 @@ function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): Box[]
  * far face to the far wall's centre line, so the solver joins wall – opening – wall into ONE wall with the opening as
  * its child. Gaps with nothing drawn come out as 'unknown' guesses with conf 0: the solver never bridges them.
  */
-export function trackWalls(tt: TrackTrace): { walls: WallSeg[]; openings: OpeningGuess[] } {
+export function trackWalls(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>): { walls: WallSeg[]; openings: OpeningGuess[] } {
   const walls: WallSeg[] = []
   const P = (horiz: boolean, c: number, u: number): Px => (horiz ? { x: u, y: c } : { x: c, y: u })
   for (const T of tt.tracks) for (const iv of T.intervals) walls.push({ a: P(T.horiz, T.c, iv.u0), b: P(T.horiz, T.c, iv.u1), thicknessPx: iv.thPx, conf: 1 })

@@ -24,9 +24,10 @@
  * ≈ the gap hinged on a jamb) · thin (one thin line: railing / parapet / partition) · open (nothing drawn) · unsure.
  * Only wall / window / door need positive evidence; anything doubtful is 'unsure' (a review item later).
  *
- * Tracks (src/trace/tracks.ts, being built in parallel): pass `tracks` and every track interval's two wall faces add
- * evidence, so rectangle edges snap onto them. Nothing here depends on it.
+ * Tracks (src/trace/tracks.ts): pass `tracks` and every track interval's two wall faces add evidence, so rectangle edges
+ * snap onto them (the solver does). merge.ts turns the fits' edges into the one draft with the tracks.
  */
+import { parseDims } from './text'
 import type { Dims, Gray, OpeningGuess, Px, TextItem, WallSeg } from './types'
 
 export interface RectPx {
@@ -78,6 +79,8 @@ export interface RoomFit {
   conf: number
   /** top, bottom, left, right */
   edges: RoomEdge[]
+  /** the size is the reader's guess (TextItem.sizeGuess) the drawing confirmed — a review item, never a printed size */
+  guessed?: true
 }
 
 /** An axis-aligned wall track (tracks.ts): centre line `c` (px) with occupied intervals along it. */
@@ -118,26 +121,43 @@ interface Seed {
   at: Px
   dims?: Dims
   label: TextItem
+  /** the size is the reader's GUESS for a line it flagged unread (TextItem.sizeGuess): a hypothesis, fitted last */
+  guessed?: boolean
 }
 
-/** Room labels → seeds; a label without its own size takes a size line read as a separate item just beside it. */
-function roomSeeds(labels: TextItem[]): Seed[] {
+/**
+ * Room labels → seeds; a label without its own size takes a size line read as a separate item just beside it. A sure
+ * size no label claims (the name above it unread: Sheltech's FOYER / LIVING / K.VER) seeds a room of its own, its label
+ * the size item. `guesses`: a label whose size line the reader flagged unread tries its `sizeGuess` (fitRooms keeps it
+ * only when the drawing confirms it).
+ */
+function roomSeeds(labels: TextItem[], guesses = false): Seed[] {
   const dimsItems = labels.filter((i) => i.kind === 'dims' && plausible(i.dims))
-  return labels
+  const claimed = new Set<TextItem>()
+  const seeds: Seed[] = labels
     .filter((i) => i.kind === 'room')
     .map((it) => {
       const at = centre(it.box)
       let dims = plausible(it.dims) ? it.dims : undefined
+      const r = 2.5 * Math.max(12, it.box.h)
+      // (the label's own size read a second time as an item beside it: the same size, no room of its own)
+      if (dims) for (const d of dimsItems) if (Math.hypot(centre(d.box).x - at.x, centre(d.box).y - at.y) < r) claimed.add(d)
       if (!dims) {
-        const r = 2.5 * Math.max(12, it.box.h)
-        let best = Infinity
+        let best = Infinity, from: TextItem | null = null
         for (const d of dimsItems) {
           const dist = Math.hypot(centre(d.box).x - at.x, centre(d.box).y - at.y)
-          if (dist < r && dist < best) (best = dist), (dims = d.dims)
+          if (dist < r && dist < best) (best = dist), (dims = d.dims), (from = d)
         }
+        if (from) claimed.add(from)
+      }
+      if (!dims && guesses && it.sizeUnread && it.sizeGuess) {
+        const g = parseDims(it.sizeGuess)
+        if (plausible(g ?? undefined)) return { at, dims: g!, label: it, guessed: true }
       }
       return { at, dims, label: it }
     })
+  for (const d of dimsItems) if (!claimed.has(d)) seeds.push({ at: centre(d.box), dims: d.dims, label: d })
+  return seeds
 }
 
 // ─────────────────────────────────────────────────────────────────────────────── evidence
@@ -290,16 +310,20 @@ function jointFit(E: Evidence, seeds: Seed[], k: number, slack: number, step: nu
     return fitRect(E, seeds[i].at, W, H, swapped, { slack, step, exclude: others(i), avoid })
   }
   let cur: (Fit | null)[]
+  // guessed sizes take no part in the vote or the joint passes: fitted last, around the others
+  const sure = (i: number) => !seeds[i].guessed
+  let swappedSheet = orient === 'v'
   if (orient === 'vote') {
-    const A = seeds.map((_, i) => fitOne(i, false)), B = seeds.map((_, i) => fitOne(i, true))
+    const A = seeds.map((_, i) => (sure(i) ? fitOne(i, false) : null)), B = seeds.map((_, i) => (sure(i) ? fitOne(i, true) : null))
     let hv = 0, vv = 0
     seeds.forEach((s, i) => {
       if (!A[i] || !B[i] || Math.abs(s.dims!.aM - s.dims!.bM) / Math.max(s.dims!.aM, s.dims!.bM) < 0.12) return
       if (A[i]!.score > B[i]!.score + 0.2) hv++
       else if (B[i]!.score > A[i]!.score + 0.2) vv++
     })
+    swappedSheet = hv < vv
     cur = hv >= vv ? A : B
-  } else cur = seeds.map((_, i) => fitOne(i, orient === 'v'))
+  } else cur = seeds.map((_, i) => (sure(i) ? fitOne(i, orient === 'v') : null))
   const order = cur.map((f, i) => ({ f, i })).filter((x) => x.f).sort((a, b) => b.f!.score - a.f!.score).map((x) => x.i)
   order.forEach((i, oi) => {
     for (const j of order.slice(oi + 1)) if (cur[i] && cur[j] && overlap(cur[i]!, cur[j]!) > 0.5 * Math.min(area(cur[i]!), area(cur[j]!))) cur[j] = null
@@ -310,6 +334,9 @@ function jointFit(E: Evidence, seeds: Seed[], k: number, slack: number, step: nu
       const f = fitOne(i, cur[i]!.swapped, cur.filter((x, j) => x && j !== i) as RectPx[])
       if (f) cur[i] = f
     }
+  seeds.forEach((s, i) => {
+    if (s.guessed) cur[i] = fitOne(i, swappedSheet, cur.filter((x) => x) as RectPx[])
+  })
   return cur
 }
 
@@ -793,9 +820,14 @@ function classifyRoom(cx: ClassCtx, r: RectPx): { side: Side; c: number; out: 1 
 
 // ─────────────────────────────────────────────────────────────────────────────── fitRooms
 
-/** One inner rectangle per sized room label, its edges classified. Empty when no scale is given or found. */
+/**
+ * One inner rectangle per sized room label, its edges classified. Empty when no scale is given or found. A size the
+ * reader only guessed (TextItem.sizeGuess on a flagged line) is a hypothesis: its rectangle is kept only when the drawing
+ * confirms it — all four sides on clear evidence (mean ink step ≥ 0.35, track faces count) and no overlap with any
+ * other room (RoomFit.guessed); else the room stays unsized (the Studio asks for the size).
+ */
 export function fitRooms(gray: Gray, labels: TextItem[], opts: RoomsOpts = {}): RoomFit[] {
-  const seeds = roomSeeds(labels)
+  const seeds = roomSeeds(labels, true)
   const k = opts.pxPerM ?? calibrateScale(gray, labels, { tracks: opts.tracks })?.pxPerM
   if (!k) return []
   const E = evidence(gray, opts.tracks)
@@ -803,10 +835,12 @@ export function fitRooms(gray: Gray, labels: TextItem[], opts: RoomsOpts = {}): 
   const fits = jointFit(E, seeds, k, opts.slack ?? 0.05, step, opts.orient ?? 'vote')
   const cx = classCtx(gray, k, opts.rgb)
   const out: RoomFit[] = []
+  const rects = fits.map((f) => f && refineSides(gray, f, step + 2))
   fits.forEach((f, i) => {
     if (!f) return
-    const rect = refineSides(gray, f, step + 2)
+    const rect = rects[i]!
     const ev = edgeMeans(E, rect)
+    if (seeds[i].guessed && (Math.min(...ev) < 0.35 || rects.some((r, j) => r && j !== i && overlap(r, rect) > 0.03 * area(rect)))) return
     const edges = classifyRoom(cx, rect)
     out.push({
       label: seeds[i].label,
@@ -816,6 +850,7 @@ export function fitRooms(gray: Gray, labels: TextItem[], opts: RoomsOpts = {}): 
       rect,
       conf: Math.max(0, Math.min(1, ev.reduce((a, b) => a + b, 0) / 4)),
       edges: edges.map((e, j) => ({ ...e, evidence: ev[j] })),
+      ...(seeds[i].guessed ? { guessed: true as const } : {}),
     })
   })
   return out
@@ -871,6 +906,9 @@ export function deriveWallsFromRooms(fits: RoomFit[], pxPerM: number): RoomWalls
       const a = x.s?.kind ?? 'unsure', b = x.t ? x.t.kind : a
       if (a === b) return a
       if ((a === 'door' && b !== 'wall' && b !== 'window') || (b === 'door' && a !== 'wall' && a !== 'window')) return 'door'
+      // (both sides look across the same boundary: a thin line one of them sees, with nothing or a doubt on the other,
+      // is a thin line — it makes no wall either way, the integration decides what it is)
+      if ((a === 'thin' && (b === 'open' || b === 'unsure')) || (b === 'thin' && (a === 'open' || a === 'unsure'))) return 'thin'
       return 'unsure'
     }
     const kinds = samples.map(kindOf)

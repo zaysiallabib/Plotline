@@ -8,6 +8,7 @@ import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
 import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
+import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
 import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
@@ -132,14 +133,27 @@ describe('marks: stairs, glazing profile, glass colour', () => {
 })
 
 describe('solveTraces on a synthetic flat', () => {
-  test('plain door gaps (no arcs), tracks: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
-    const { g, text } = synthetic(false)
-    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+  test('plain door gaps (no arcs), tracks, no labels: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
+    const { g } = synthetic(false)
+    const r = withTracker('tracks', () => solveTraces(g, {}, { pickPx: P(2, 2.5) }))
     expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
     // the three gaps stay open (founder: a wall stops where its ink stops): the living, bed and store are one space
     expect(deriveRooms(r.unit).length).toBeLessThan(4)
     expect(r.review.filter((x) => /gap in the wall/.test(x.message)).length).toBe(3)
     expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+  })
+
+  test('plain door gaps (no arcs), tracks + fitted rooms: nothing drawn there nor on the rooms\' edges → a passage (an opening, never wall), each one flagged', () => {
+    const { g, text } = synthetic(false)
+    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+    const ops = r.unit.walls.flatMap((w) => w.openings)
+    expect(ops.map((o) => o.kind)).toEqual(['passage', 'passage', 'passage'])
+    for (const o of ops) expect(Math.abs(o.widthM - 0.9)).toBeLessThan(0.12)
+    // the rooms stay separate labelled rooms (the hand traces' open-plan convention: a wall that is all opening)
+    expect(deriveRooms(r.unit).length).toBe(4)
+    expect(r.review.filter((x) => x.kind === 'opening-guess' && /Passage/.test(x.message)).length).toBe(3)
+    expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+    expect(r.stats.gapsDecided).toBe(3)
   })
 
   test('plain door gaps (no arcs), bands: the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
@@ -252,27 +266,46 @@ const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, impo
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))
+/** the wave-19 reader's traces of the same sheets (E:/dev/tmp/wave19/reader/final/assets__<sheet>.json): the product reader now */
+const NEW_TEXT = process.env.TRACE_NEW_TEXT ?? 'E:/dev/tmp/wave19/reader/final/'
+const readNew = (file: string): TextTrace | null => (existsSync(`${NEW_TEXT}${file}.json`) ? JSON.parse(readFileSync(`${NEW_TEXT}${file}.json`, 'utf8')) : null)
 
+/**
+ * TRACE_LABELS=ocr,new,oracle (default all three): the wave-16 OCR cache; NEW = the wave-19 reader's traces (the product
+ * now; units without one are skipped); the ORACLE — the hand trace's own labels inside the flat (name, kind, printed size
+ * at its label point; the reader's reads outside it, area / other items kept): what a reader that never misreads would
+ * hand over. The oracle table is the CEILING of the rest of the pipeline, never the product number.
+ */
+const LABELS = (process.env.TRACE_LABELS ?? 'ocr,new,oracle').split(',')
 describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', () => {
   test('rooms matched / area / scale / kinds / review per unit', () => {
-    const rows: SolveReport[] = []
-    const why: string[] = []
-    for (const u of Object.values(units)) {
-      const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
-      const debug: NonNullable<SolveInputs['debug']> = {}
-      const c = withColour(g, `assets__${sheet(u)}`)
-      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
-      const row = scoreSolve(res, u)
-      rows.push(row)
-      if (process.env.TRACE_DIAG) {
-        const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
-        why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+    const out: string[] = []
+    for (const lab of LABELS) {
+      const rows: SolveReport[] = []
+      const why: string[] = []
+      for (const u of Object.values(units)) {
+        const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
+        const debug: NonNullable<SolveInputs['debug']> = {}
+        const c = withColour(g, `assets__${sheet(u)}`)
+        const ocr = readTextJson(sheet(u)), fresh = readNew(`assets__${sheet(u)}`)
+        if (lab === 'new' && !fresh) continue
+        const text: TextTrace = lab === 'oracle' ? oracleText(u, fresh ?? ocr) : lab === 'new' ? fresh! : ocr
+        const res = solveTraces(g, { text, debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
+        const row = scoreSolve(res, u)
+        rows.push(row)
+        if (process.env.TRACE_DIAG) {
+          const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
+          why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+        }
+        if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
+        expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
       }
-      if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
-      expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
+      const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : lab === 'new' ? 'NEW READER (wave 19: the product now)' : 'WAVE-16 OCR CACHE'
+      const total = rows.reduce((t, r) => t + r.matched, 0), truthN = rows.reduce((t, r) => t + r.truthRooms, 0)
+      out.push(`\n== ${head}: ${total} of ${truthN} rooms matched\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}`)
     }
-    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}\n`)
-  }, 300000)
+    console.log(out.join('\n'))
+  }, 900000)
 })
 
 /** One flat each on the sheets nobody traced by hand (click = a spot in its living room). */
@@ -286,7 +319,8 @@ describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays
       const g = loadPgm(FIXTURES + s.file)
       if (!g) continue
       const c = withColour(g, s.file.replace(/.pgm$/, ''))
-      const res = solveTraces(g, { text: existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
+      const text = readNew(s.file.replace(/.pgm$/, '')) ?? (existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined)
+      const res = solveTraces(g, { text, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
       writeUnitOverlay(`${SHOTS}/solve-${s.text}.png`, g, res.unit, res.review)
       console.log(s.text, JSON.stringify(res.stats), res.review.length, 'review')
       expect(validate(res.unit).filter((i) => i.level === 'error'), s.file).toEqual([])
