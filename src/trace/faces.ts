@@ -44,6 +44,8 @@ export interface FaceLine {
   th: number
   /** inked share of its length: a solid pen line ≈ 1, a dashed grille ≈ 0.5–0.75 */
   fill: number
+  /** a side of a plant-green box (no ink: where the green stops) */
+  green?: boolean
 }
 
 export interface ThinFaces {
@@ -71,6 +73,8 @@ export const FACES = {
   /** at least this share of a face's rim is real wall */
   wallShare: 0.4,
   aodMax: 4,
+  /** a plant-green blob up to this big (m²) and box-shaped is a planter box; bigger is a lawn */
+  planterMax: 20,
   /** a line deeper than this inside a fitted room is furniture */
   fitMargin: 0.15,
   railingM: 1.1,
@@ -188,7 +192,16 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   for (const s of [...o.walls, ...decided]) stamp(E, W, H, s.a, s.b, thOf(s) / 2 + halo)
   const C = new Uint8Array(W * H)
   for (let i = 0; i < C.length; i++) C[i] = gray.data[i] <= FACES.thinCut && !E[i] && !o.green?.[i] ? 1 : 0
-  const raw =[true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
+  const raw = [true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
+  // (b) a planter box: a plant-green blob of planter size and box shape (its foliage hides the edge lines) gives its four
+  // sides as candidate edges — where the green stops; the faces they close are judged like any other
+  if (o.green)
+    for (const b of components(o.green, W, H).comps) {
+      const bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1
+      if (b.edge || b.n < FACES.minArea * k * k || b.n > FACES.planterMax * k * k || b.n < 0.6 * bw * bh || Math.min(bw, bh) < FACES.minWidth * k) continue
+      const side = (horiz: boolean, c: number, u0: number, u1: number): FaceLine => ({ horiz, c, u0, u1, th: 1, fill: 1, green: true })
+      raw.push(side(true, b.y0 - 0.5, b.x0, b.x1), side(true, b.y1 + 0.5, b.x0, b.x1), side(false, b.x0 - 0.5, b.y0, b.y1), side(false, b.x1 + 0.5, b.y0, b.y1))
+    }
 
   // furniture: well inside a fitted room, or across a drawn fixture
   const m = FACES.fitMargin * k
@@ -222,21 +235,23 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     if (!horiz && !vert) continue
     edges.push({ horiz, c: horiz ? s.a.y : s.a.x, u0: Math.min(horiz ? s.a.x : s.a.y, horiz ? s.b.x : s.b.y), u1: Math.max(horiz ? s.a.x : s.a.y, horiz ? s.b.x : s.b.y), th: thOf(s) })
   }
-  type End = { u: number; lo: number; hi: number; d: number; to: number } // to: −1 an edge, else a candidate index
+  /** to: −1 an edge, else a candidate index; slack: how far the line may move across to lie on it */
+  type End = { u: number; lo: number; hi: number; d: number; to: number; slack: number }
   const attach = (L: FaceLine, end: 0 | 1, pool: Edge[], to: (i: number) => number): End | null => {
     const e = end ? L.u1 : L.u0, dir = end ? 1 : -1
     let best: End | null = null
     pool.forEach((Q, i) => {
       if (Q.horiz !== L.horiz) {
+        // (a band's ink runs on through a crossing band's body: it may end up to half that body past its centre line)
         const d = dir * (Q.c - e)
-        if (d < -(halo + 2) || d > Q.th / 2 + halo + tol) return
+        if (d < -(Q.th / 2 + halo + 2) || d > Q.th / 2 + halo + tol) return
         if (L.c < Q.u0 - Q.th / 2 - halo - 1 || L.c > Q.u1 + Q.th / 2 + halo + 1) return
-        if (!best || Math.abs(d) < Math.abs(best.d)) best = { u: Q.c, lo: Q.u0, hi: Q.u1, d, to: to(i) }
+        if (!best || Math.abs(d) < Math.abs(best.d)) best = { u: Q.c, lo: Q.u0, hi: Q.u1, d, to: to(i), slack: Q.th / 2 + halo + 1 }
       } else if (Math.abs(Q.c - L.c) <= Q.th / 2 + halo + 1) {
         const qe = end ? Q.u0 : Q.u1
         const d = dir * (qe - e)
         if (d < -(halo + 2) || d > halo + tol) return
-        if (!best || Math.abs(d) < Math.abs(best.d)) best = { u: qe, lo: Q.c, hi: Q.c, d, to: to(i) }
+        if (!best || Math.abs(d) < Math.abs(best.d)) best = { u: qe, lo: Q.c, hi: Q.c, d, to: to(i), slack: Infinity }
       }
     })
     return best
@@ -244,9 +259,9 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   type Cand = FaceLine & { e: [End | null, End | null]; c2: number; seg?: Seg }
   const cands: Cand[] = lines.map((L) => ({ ...L, e: [attach(L, 0, edges, () => -1), attach(L, 1, edges, () => -1)], c2: L.c }))
   // the line's own position: inside both wall ends' spans (a slab line at the walls' outer ends moves onto them)
-  // (a line ending on a wall's end on its own line — a grille carrying the wall on — takes that wall's line: the attach
-  // test already bounded how far off it may lie)
-  const slack = (L: Cand) => (L.e.some((x) => x && x.lo === x.hi) ? Infinity : L.th / 2 + halo + 2)
+  // (a line ending on a wall's end on its own line — a grille carrying the wall on — takes that wall's line; one ending
+  // just past a crossing wall's end moves onto it: the attach test already bounded how far off either may lie)
+  const slack = (L: Cand) => Math.max(L.th / 2 + halo + 2, ...L.e.map((x) => x?.slack ?? 0))
   for (const L of cands) {
     let lo = L.c - slack(L), hi = L.c + slack(L)
     for (const x of L.e) if (x) (lo = Math.max(lo, x.lo)), (hi = Math.min(hi, x.hi))
@@ -351,7 +366,8 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       if (a < FACES.minArea) return 'sliver'
       if (p.n / Math.max(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1) < FACES.minWidth * k) return 'sliver'
       if (a > FACES.maxArea) return 'too big'
-      if (p.walls < FACES.wallShare * (p.walls + p.thin)) return 'thin rim'
+      // (a planter box is all parapet and green edge: no furniture is green)
+      if (p.walls < FACES.wallShare * (p.walls + p.thin) && p.green < 0.5 * p.n) return 'thin rim'
       const names = new Set(labelPx.filter((l) => lab1[l.i] === p.id).map((l) => l.name))
       if (names.size > 1) return 'two labels'
       // a corner of a closed room with one name (a shower tray, a closet in the toilet): not a room of its own
