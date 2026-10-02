@@ -226,6 +226,7 @@ describe.skipIf(!haveFixtures)('rooms first vs the hand-traced units (eval repor
       const se = scoreRooms(u, fe.map(centreRect))
       tot.oracle += so.matched, tot.oracleSized += oSized, tot.sized += sized, tot.rooms += T.length, tot.ocr += sr.matched, tot.ocrFlat += srF.matched, tot.ocrSelf += se.matched
       rows.push(`${u.id.padEnd(11)} | ${String(so.matched).padStart(2)}/${T.length} (sized ${oSized}/${sized}) mIoU ${so.meanIoU.toFixed(2)} | ${String(sr.matched).padStart(2)} | ${String(srF.matched).padStart(2)} | ${String(se.matched).padStart(2)} | fits ${fo.length}/${fr.length} | ${Math.round(msO)} ms`)
+      rows.push(`    oracle misses (sized): ${T.flatMap((t, i) => (t.r.printedSize && so.per[i].iou < 0.6 ? [`${t.r.name} IoU ${so.per[i].iou.toFixed(2)}`] : [])).join(' · ')}`)
       const sc = (c: ReturnType<typeof calibrateScale>) => (c ? `${c.pxPerM.toFixed(2)} (${c.pxPerM / k - 1 >= 0 ? '+' : ''}${pct(c.pxPerM / k - 1)}, ${c.rooms} rooms, spread ${pct(c.spread)}, widths / heights ${c.axes.map((a) => a.toFixed(2)).join(" / ")}, bracket ${c.bracket.map((b) => b.toFixed(0)).join('–')})` : 'none (< 3 sized labels)')
       scaleRows.push(`${u.id.padEnd(11)} truth ${k.toFixed(2)} | oracle labels ${sc(cO)} ${Math.round(msC)} ms | real OCR ${sc(cR)}`)
       // edge classes on the oracle fits that matched (the classifier given a right rectangle)
