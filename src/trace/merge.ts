@@ -394,6 +394,23 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       return !tt.tracks.some((T) => T.horiz === it.horiz && (T.c - it.c) * it.out! > 2 && (T.c - it.c) * it.out! < d && T.intervals.some((iv) => iv.u0 <= u && u <= iv.u1))
     })
   }
+  /**
+   * inside the building beyond a one-sided stretch: looking out from it (a quarter, the middle, three quarters along), a
+   * wall's ink or a drawn door / window of the tracks 0.3–6 m away every time
+   */
+  const darkIn = darkMaxOf(img.gray)
+  const shut = tt.gaps.filter((g) => g.kind === 'door' || g.kind === 'window')
+  const enclosed = (it: Item, u0: number, u1: number) =>
+    [0.25, 0.5, 0.75].every((f) => {
+      const u = u0 + f * (u1 - u0)
+      for (let d = Math.round(0.3 * k); d <= 6 * k; d++) {
+        const p = P(it.horiz, it.c + it.out! * d, u), x = Math.round(p.x), y = Math.round(p.y)
+        if (x < 0 || y < 0 || x >= img.gray.width || y >= img.gray.height) return false
+        if (img.gray.data[y * img.gray.width + x] <= darkIn) return true
+        if (shut.some((g) => g.horiz === it.horiz &&Math.abs((g.horiz ? p.y : p.x) - g.c) <= g.thPx / 2 + 1 && (g.horiz ? p.x : p.y) >= g.u0 && (g.horiz ? p.x : p.y) <= g.u1)) return true
+      }
+      return false
+    })
   const minLen: Record<Item['kind'], number> = { wall: 0.1, door: 0.45, window: 0.3, thin: 0.5, open: 0.5, unsure: 0.3, glazing: 0.3, planter: 0.5 }
   for (const it of items) {
     const cut: [number, number][] = []
@@ -419,7 +436,12 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       else if (it.kind === 'open' && it.rooms.length === 2) pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.127 * k, kind: 'passage' })
       // open toward another labelled space (a name printed beyond it, no wall between): the same open-plan boundary
       else if (it.kind === 'open' && it.out && labelBeyond(it, u0, u1)) pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.0635 * k, u0, u1, th: 0.127 * k, kind: 'passage' })
-      else if (it.kind === 'open') review.push({ a, b, kind: 'open', message: `${w} of a room's side has nothing drawn on it — open to the next space, or a wall missing?` })
+      // open toward a space whose name was not read, inside the building (a wall beyond it all along): the same open-plan
+      // boundary — a passage (one whose ends meet no wall dangles and goes below), flagged
+      else if (it.kind === 'open' && it.out && enclosed(it, u0, u1)) {
+        pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.0635 * k, u0, u1, th: 0.127 * k, kind: 'passage' })
+        review.push({ a, b, kind: 'open', message: `Open-plan boundary — check: ${w} of a room's side has nothing drawn on it and no room name was read beyond; traced as a passage` })
+      } else if (it.kind === 'open') review.push({ a, b, kind: 'open', message: `${w} of a room's side has nothing drawn on it — open to the next space, or a wall missing?` })
       else review.push({ a, b, kind: 'unsure', message: `${w} of a room's side: not sure what is drawn (wall, window, door, open?) — nothing traced` })
     }
   }
