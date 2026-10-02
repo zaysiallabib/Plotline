@@ -82,7 +82,7 @@ export interface RoomsOnTracks {
   /** stretches left for the human */
   review: MergeReview[]
   /** for the eval: every added piece by kind, px */
-  added: { a: Px; b: Px; kind: Piece['kind'] | 'gap-door' | 'gap-window' | 'gap-passage' | 'gap-wall' | 'corner'; th: number }[]
+  added: { a: Px; b: Px; kind: Piece['kind'] | 'gap-door' | 'gap-window' | 'gap-passage' | 'gap-wall' | 'corner' | 'dropped'; th: number }[]
   stats: { unknownGaps: number; decided: Record<string, number> }
   /** for the eval: every track gap, what the room edges read along it (share of its width per class), what it became */
   gapReads: { a: Px; b: Px; was: string; now: string; read: Record<string, number> }[]
@@ -488,9 +488,11 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
   // ── out: walls (low ones marked), openings with connectors from the jamb face into the corner
   const walls: WallSeg[] = [...trackSegs, ...angled, ...extraWalls]
   const openings: OpeningGuess[] = [...traced.openings]
+  const passages: { ends: Px[]; segs: (WallSeg | OpeningGuess)[]; at: number }[] = []
   for (const p of pieces) {
     if (p.u1 - p.u0 < 1) continue
     const a = P(p.horiz, p.c, p.u0), b = P(p.horiz, p.c, p.u1)
+    if (p.kind === 'passage') passages.push({ ends: [a, b], segs: [], at: added.length })
     added.push({ a, b, kind: p.kind, th: p.th })
     if (p.kind === 'wall' || p.kind === 'low') {
       walls.push({ a, b, thicknessPx: p.th, conf: 0.6, ...(p.heightM ? { heightM: p.heightM } : {}) })
@@ -501,12 +503,38 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
     }
     const [f0, f1] = faces.get(p)!
     const o0 = f0 !== null && f0 < p.u1 ? f0 : p.u0, o1 = f1 !== null && f1 > o0 ? f1 : p.u1
-    for (const [x, y] of [[p.u0, o0], [o1, p.u1]] as const) if (y - x > 0.25) walls.push({ a: P(p.horiz, p.c, x), b: P(p.horiz, p.c, y), thicknessPx: p.th, conf: 0.6 })
-    openings.push({ a: P(p.horiz, p.c, o0), b: P(p.horiz, p.c, o1), kind: p.kind, conf: p.kind === 'passage' ? 0.3 : 0.6, thicknessPx: p.th, ...(p.hingeAt ? { hingeAt: p.hingeAt, swingTo: p.swingTo } : {}) })
+    const group = p.kind === 'passage' ? passages[passages.length - 1].segs : []
+    for (const [x, y] of [[p.u0, o0], [o1, p.u1]] as const)
+      if (y - x > 0.25) {
+        const w = { a: P(p.horiz, p.c, x), b: P(p.horiz, p.c, y), thicknessPx: p.th, conf: 0.6 }
+        walls.push(w)
+        group.push(w)
+      }
+    const op: OpeningGuess = { a: P(p.horiz, p.c, o0), b: P(p.horiz, p.c, o1), kind: p.kind, conf: p.kind === 'passage' ? 0.3 : 0.6, thicknessPx: p.th, ...(p.hingeAt ? { hingeAt: p.hingeAt, swingTo: p.swingTo } : {}) }
+    openings.push(op)
+    group.push(op)
   }
   for (const w of closeCorners(walls, openings, k)) {
     walls.push(w)
     added.push({ a: w.a, b: w.b, kind: 'corner', th: w.thicknessPx })
   }
-  return { walls, openings, review, added, stats: { unknownGaps, decided }, gapReads }
+  // a passage is no drawn thing — only a boundary between two spaces: one left dangling (an end meeting nothing) goes
+  const key = (p: Px) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`
+  const deg = new Map<string, number>()
+  for (const s of [...walls, ...openings.filter((o) => o.kind !== 'unknown')]) for (const p of [s.a, s.b]) deg.set(key(p), (deg.get(key(p)) ?? 0) + 1)
+  const gone = new Set<WallSeg | OpeningGuess>()
+  const all = [...walls, ...openings.filter((o) => o.kind !== 'unknown')]
+  const onSome = (p: Px, own: (WallSeg | OpeningGuess)[]) =>
+    all.some((s) => {
+      if (own.includes(s)) return false
+      const vx = s.b.x - s.a.x, vy = s.b.y - s.a.y, L2 = vx * vx + vy * vy || 1, t = Math.max(0, Math.min(1, ((p.x - s.a.x) * vx + (p.y - s.a.y) * vy) / L2))
+      return Math.hypot(p.x - s.a.x - vx * t, p.y - s.a.y - vy * t) < 0.5
+    })
+  for (const g of passages) {
+    const ends = g.segs.flatMap((s) => [s.a, s.b]).filter((p) => (deg.get(key(p)) ?? 0) === 1 && !onSome(p, g.segs))
+    if (!ends.length) continue
+    g.segs.forEach((s) => gone.add(s))
+    added[g.at] = { ...added[g.at], kind: 'dropped' }
+  }
+  return { walls: walls.filter((w) => !gone.has(w)), openings: openings.filter((o) => !gone.has(o)), review, added: added.filter((x) => x.kind !== 'dropped'), stats: { unknownGaps, decided }, gapReads }
 }
