@@ -77,11 +77,6 @@ export interface TextItem {
   /** kind 'area': the printed area in m² ("±2,736 SFT" → 254.2) — extension (text agent, wave 15) */
   areaSqm?: number
   conf: number
-  /**
-   * kind 'room': a size line is printed under the label but could not be read — the Studio asks the user to type it
-   * (set by the reader; absent = no such line seen) — extension (integration, wave 19)
-   */
-  sizeUnread?: boolean
   /** who read it: the local OCR or the backup AI reader */
   source: 'ocr' | 'ai'
   /**
