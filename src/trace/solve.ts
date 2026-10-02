@@ -1415,15 +1415,12 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
   const ok = (r: Room) => r.areaSqm <= KNOBS.maxRoomSqm && !others.some((p) => holds(r, p))
   const rooms = new Set(d.rooms.filter((r) => ok(r) && mine.some((i) => holds(r, seed(i)))))
   const box: Box = { x0: Math.min(...mine.map((i) => R[i].x0)), y0: Math.min(...mine.map((i) => R[i].y0)), x1: Math.max(...mine.map((i) => R[i].x1)), y1: Math.max(...mine.map((i) => R[i].y1)) }
-  // (a seedless face against a room of the next flat is shared — a planter strip between two flats — not this flat's)
-  const theirs = fits.map((_, i) => i).filter((i) => own[i] !== 0)
-  const shared = (r: Room) => polys.get(r)!.some((v) => theirs.some((i) => inR(R[i], v, 0.3)))
   for (let it = 0; it < 2; it++) {
     const walls = new Set([...rooms].flatMap((r) => r.wallIds))
     for (const r of d.rooms) {
       if (rooms.has(r) || !ok(r) || r.areaSqm > 30 || fits.some((_, i) => holds(r, seed(i)))) continue
       const p = insidePoint(r, d.unit, d.rooms)
-      if (inR(box, p, 0.4) && !outside(p) && r.wallIds.some((w) => walls.has(w)) && !shared(r)) rooms.add(r)
+      if (inR(box, p, 0.4) && !outside(p) && r.wallIds.some((w) => walls.has(w))) rooms.add(r)
     }
   }
   const touched = new Set([...rooms].flatMap((r) => r.wallIds))
