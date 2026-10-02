@@ -462,7 +462,9 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       // whose body touches its line — the open-plan boundary carries that wall on)
       let best: { L: Line; at: number } | null = null
       for (const L of all) {
-        const lat = p.kind === 'passage' && !p.pinned && (L.seg || (L as Piece).kind === 'wall') ? (L.th + p.th) / 2 : Math.max(1.5, 0.35 * Math.max(L.th, p.th))
+        // (a wall: a room-edge wall piece or a traced wall — not an opening's short connector)
+        const wallish = L.seg ? L.u1 - L.u0 >= 0.3 * k : (L as Piece).kind === 'wall'
+        const lat = p.kind === 'passage' && !p.pinned && wallish ? (L.th + p.th) / 2 : Math.max(1.5, 0.35 * Math.max(L.th, p.th))
         if (L.horiz !== p.horiz || Math.abs(L.c - p.c) > lat || (p.pinned && Math.abs(L.c - p.c) > 0.5)) continue
         for (const q of [L.u0, L.u1]) if (Math.abs(q - e) <= reach + p.th && (!best || Math.abs(q - e) < Math.abs(best.at - e))) best = { L, at: q }
       }

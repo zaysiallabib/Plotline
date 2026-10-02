@@ -593,10 +593,52 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         const key = `${T.horiz}|${T.c.toFixed(1)}|${u0.toFixed(1)}|${u1.toFixed(1)}`
         if (seen.has(key)) continue
         seen.add(key)
-        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H)
+        // (a double door's jamb is a wall, not a stub: two arcs by chance — a WC and a basin — face each other across a floor)
+        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H, iv.f1 - iv.f0 >= Math.max(0.3 * k, 2 * iv.th))
         gaps.push({ horiz: T.horiz, c: T.c, u0, u1, node0: dir > 0 ? face : node, node1: dir > 0 ? node : face, thPx: iv.th, ...(jog ? { jog } : {}), ...cls })
       }
   }
+
+  // ── a door across a wall's END: a leaf hinged on a free end's corner, closing sideways along the end face over paper
+  // onto the next ink within a door's width (a door set in a recess between two parallel walls, an L-shaped entry) — the
+  // track has no gap there. Kept only where its swing is drawn (doorArcs); an end whose own track gap is a door or window
+  // already has its arc explained. The far side's wall (parallel, its body on the chord) carries the connector.
+  const isInk = (horiz: boolean, u: number, v: number) => {
+    const x = Math.round(horiz ? u : v), y = Math.round(horiz ? v : u)
+    return x >= 0 && y >= 0 && x < W && y < H && ink[y * W + x] === 1
+  }
+  for (const T of tracks)
+    for (const iv of T.ivs)
+      for (const end of [0, 1] as const) {
+        if (!(end ? free1(iv) : free0(iv))) continue
+        const face = end ? iv.f1 : iv.f0, dir = end ? 1 : -1
+        // (a thickness split or a jog is no end: the wall carries on)
+        if (T.ivs.some((j) => j !== iv && Math.abs((end ? j.f0 : j.f1) - face) <= 1) || joins.some((j) => j.horiz === T.horiz && Math.abs(j.u - face) <= 1 && (j.c0 === T.c || j.c1 === T.c))) continue
+        // (a door's width of gap on the track itself: an arc on this corner is that gap's door, decided there or by the rooms)
+        if (gaps.some((g) => g.horiz === T.horiz && g.c === T.c && (g.u0 === face || g.u1 === face) && (g.kind !== 'unknown' || g.u1 - g.u0 <= M.doorMax * k))) continue
+        // the wall's last row of ink along the track: beside it, the recess
+        const ul = face - dir * 0.5
+        for (const s of [1, -1] as const) {
+          let v = Math.round(T.c)
+          while (Math.abs(v - T.c) <= iv.th / 2 + 2 && isInk(T.horiz, ul, v)) v += s
+          if (isInk(T.horiz, ul, v)) continue
+          const vNear = v - s * 0.5
+          while (Math.abs(v - vNear) <= M.doorMax * k && !isInk(T.horiz, ul, v)) v += s
+          const vFar = v - s * 0.5
+          if (!isInk(T.horiz, ul, v) || Math.abs(vFar - vNear) < M.doorMin * k) continue
+          // the other jamb: a wall parallel to this one, its body on the chord (it carries the connector), facing this wall
+          // across the recess for ≥ 0.3 m back from the chord — or turning there into a wall the chord carries on (an L
+          // corner: the door continues that wall's line); the leaf swings into the recess
+          const back = (j: Iv) => (dir > 0 ? face - j.f0 : j.f1 - face)
+          const corner = (Q: Tr) => byDir[T.horiz ? 1 : 0].some((P) => P.ivs.some((j) => Math.abs(P.c - face) <= j.th / 2 + 1 && Math.abs((s > 0 ? j.n0 : j.n1) - Q.c) <= 1))
+          const far = byDir[T.horiz ? 0 : 1].find((Q) => Q !== T && Q.ivs.some((j) => j.f0 <= face && face <= j.f1 && Math.abs(Q.c - (s * j.th) / 2 - vFar) <= 1.5) && (Q.ivs.some((j) => j.f0 <= face && face <= j.f1 && back(j) >= M.minGap * k) || corner(Q)))
+          if (!far) continue
+          const Pc = (w: number): Px => (T.horiz ? { x: face, y: w } : { x: w, y: face })
+          const d = doorArcs(Pc(vNear), Pc(vFar), k, arcAt, false)
+          if (!d || ((T.horiz ? d.swingTo!.x : d.swingTo!.y) - face) * dir > 0) continue
+          gaps.push({ horiz: !T.horiz, c: face, u0: Math.min(vNear, vFar), u1: Math.max(vNear, vFar), node0: s > 0 ? T.c : far.c, node1: s > 0 ? far.c : T.c, thPx: iv.th, ...d })
+        }
+      }
 
   // one opening per place: two near tracks (a jamb and the wall beyond it, a stepped wall) can find the same gap
   // (the better-evidenced one stays)
@@ -678,11 +720,13 @@ export function classifyGap(
   glass: Uint8Array | undefined,
   W: number,
   H: number,
+  /** a double door may be read here */
+  double = true,
 ): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
-  const door = doorArcs(a, b, pxPerM, arcAt)
+  const door = doorArcs(a, b, pxPerM, arcAt, double)
   if (door) return door
   // glass colour along the gap, inside the wall's band
   if (glass) {
@@ -711,7 +755,7 @@ export function classifyGap(
  * up to the span between their hinges (± 15 %): a DOUBLE door, one opening of the gap's width (main doors: equal leaves
  * or 0.9 + 0.5 m; the hand traces draw one door there).
  */
-function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) => boolean): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> | null {
+function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) => boolean, double = true): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> | null {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
   const nx = -uy, ny = ux
@@ -776,7 +820,7 @@ function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) =>
         for (const l of leaves(jb, sgn, side, os, (o) => [gap * (1 - o)])) if (!best || l.score > best.score) best = l
     if (best && best.score >= 0.7) return { kind: 'door', conf: best.score, hingeAt: best.hp, swingTo: swing(best.side, gap * 0.5) }
   }
-  if (gap >= M.doubleMin * pxPerM && gap <= M.doubleMax * pxPerM) {
+  if (double && gap >= M.doubleMin * pxPerM && gap <= M.doubleMax * pxPerM) {
     const os = Array.from({ length: 8 }, (_, i) => -0.05 + 0.05 * i)
     const Rs = () => [0.3, 0.4, 0.5, 0.6, 0.7].map((f) => f * gap)
     let best: { score: number; L: Leaf } | null = null

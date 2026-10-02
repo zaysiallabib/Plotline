@@ -133,6 +133,28 @@ describe('wall tracks on synthetic rasters', () => {
     expect(run(false)).toEqual(['unknown'])
   })
 
+  test('a door set in a recess: the leaf hinges on a wall END and closes sideways onto the parallel wall — a door across the end face', () => {
+    const run = (withArc: boolean) => {
+      const { g, P, box } = sheet(5, 5)
+      vw(box, 1, 0, 4, 0.127) // the recess's far side, running on past the door
+      vw(box, 1.9, 0, 2.5, 0.127) // the hinge wall, ending at y = 2.5
+      hw(box, 0, 0.9, 2, 0.127) // the recess's back
+      if (withArc) {
+        const c = P(1.9 - 0.0635, 2.5), r = 0.9 - 0.127
+        for (let i = 0; i <= 300; i++) {
+          const t = Math.PI + (Math.PI / 2) * (i / 300) // from pointing at the far wall (shut) to up the hinge wall's face (open)
+          g.data[Math.round(c.y + r * K * Math.sin(t)) * g.width + Math.round(c.x + r * K * Math.cos(t))] = 60
+        }
+      }
+      return traceTracks(g, {}).gaps.filter((x) => x.horiz && Math.abs(x.c / K - 1 - 2.5) < 0.05)
+    }
+    const doors = run(true)
+    expect(doors.map((x) => x.kind)).toEqual(['door'])
+    expect(Math.abs(doors[0].u0 / K - 1 - (1 + 0.0635))).toBeLessThan(0.04) // face to face across the recess
+    expect(Math.abs(doors[0].u1 / K - 1 - (1.9 - 0.0635))).toBeLessThan(0.04)
+    expect(run(false)).toEqual([]) // nothing drawn: no door, no gap there
+  })
+
   test('a 45° chamfer: the skeleton adds it as an angled wall whose ends sit on the track walls it meets', () => {
     const { g, P } = sheet(6, 5)
     const line = (p: { x: number; y: number }, q: { x: number; y: number }, th: number) => {
