@@ -282,6 +282,15 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     }
   }
   prune()
+  // one drawn line read twice (two stacks of one pen line): the longer stays
+  const order = cands.map((_, i) => i).filter((i) => alive[i]).sort((i, j) => Math.abs(cands[j].e[1]!.u - cands[j].e[0]!.u) - Math.abs(cands[i].e[1]!.u - cands[i].e[0]!.u))
+  for (let x = 0; x < order.length; x++)
+    for (let y = x + 1; y < order.length; y++) {
+      const A = cands[order[x]], B = cands[order[y]]
+      if (!alive[order[x]] || !alive[order[y]] || A.horiz !== B.horiz || Math.abs(A.c2 - B.c2) > 1.5) continue
+      if (Math.min(A.e[1]!.u, B.e[1]!.u) - Math.max(A.e[0]!.u, B.e[0]!.u) > 0.5 * (B.e[1]!.u - B.e[0]!.u)) (alive[order[y]] = false), (fate[order[y]] = 'the same line read twice')
+    }
+  prune()
 
   // ── faces: the graph as 1 px lines; components before (B0) and with the live lines (B1)
   const B0 = new Uint8Array(W * H)
@@ -361,7 +370,17 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
         if (!p.ok && p.lines.size) failing.push(p)
       }
     }
-    if (!failing.length) break
+    // a light-grey BAND (a pier, a beam drawn in plan) between two new faces divides one space: a band is a boundary only
+    // as the outer side of a face (the region beyond it keeps its old self)
+    const sides = new Map<number, Part[]>()
+    for (const p of parts) for (const li of p.lines) sides.set(li, [...(sides.get(li) ?? []), p])
+    const piers = [...sides].filter(([li, ps]) => alive[li] && cands[li].th > 0.1 * k && ps.length > 1 && ps.every((p) => p.ok !== undefined)).map(([li]) => li)
+    for (const li of piers) (alive[li] = false), (fate[li] ||= 'a band between two new faces (a pier)')
+    if (!failing.length && !piers.length) break
+    if (piers.length) {
+      prune()
+      continue
+    }
     // slivers first (a double pen line, a frame line beside a wall): the longest of a sliver's lines stays; the faces they
     // cut are judged again without them
     const slivers = failing.filter((p) => p.why === 'sliver')
