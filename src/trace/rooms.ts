@@ -174,10 +174,12 @@ function evidence(g: Gray, tracks?: Track[], trackBonus = 0.5): Evidence {
       if (t.horiz !== horizEdge) continue
       for (const iv of t.intervals) {
         const r = lower ? Math.round(t.c + (iv.thPx - 1) / 2) + 1 : Math.round(t.c - (iv.thPx - 1) / 2)
-        for (let u = Math.max(0, Math.round(iv.u0)); u <= Math.min((horizEdge ? w : h) - 1, Math.round(iv.u1)); u++) {
-          const x = horizEdge ? u : r, y = horizEdge ? r : u
-          if (x >= 0 && y >= 0 && x < w && y < h) m[y * w + x] = trackBonus
-        }
+        for (let u = Math.max(0, Math.round(iv.u0)); u <= Math.min((horizEdge ? w : h) - 1, Math.round(iv.u1)); u++)
+          for (let d = -1; d <= 1; d++) {
+            // ±1 px like the steps, so the 2 px search grid cannot miss it
+            const x = horizEdge ? u : r + d, y = horizEdge ? r + d : u
+            if (x >= 0 && y >= 0 && x < w && y < h) m[y * w + x] = trackBonus
+          }
       }
     }
     return m

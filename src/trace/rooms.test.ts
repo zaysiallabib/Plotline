@@ -139,6 +139,20 @@ describe('rooms first on a synthetic flat', () => {
   })
 })
 
+test('a wall track snaps an edge nothing is drawn on (tracks.ts hook)', () => {
+  // 4 × 3 m room, the right side not drawn at all: without a track its edge can sit anywhere within the size slack
+  const g = sheet(4, 3)
+  wall(g, [-0.125, 0], [4.125, 0], 0.25)
+  wall(g, [-0.125, 3], [4.125, 3], 0.25)
+  wall(g, [0, 0], [0, 3], 0.25)
+  const lab = [label('ROOM', 1.5, 1.5, 4 - 0.25, 3 - 0.25)]
+  const face = P(4 - 0.125, 0).x // where the right wall's inner face would be
+  const track = { horiz: false, c: P(4, 0).x - 0.5, intervals: [{ u0: P(0, 0).y, u1: P(0, 3).y, thPx: 0.25 * K }] }
+  const withTrack = fitRooms(g, lab, { pxPerM: K, tracks: [track], slack: 0.08 })[0]
+  expect(Math.abs(withTrack.rect.x1 - face)).toBeLessThanOrEqual(1)
+  expect(edge(withTrack, 'right').stretches.every((s) => s.kind !== 'wall')).toBe(true) // the track places the edge, it does not draw a wall
+})
+
 describe('classifyProfile', () => {
   const cx = { k: 50, darkMax: 115, tol: 2, minWall: 4, lineW: 2 }
   const prof = (f: (d: number) => number) => Array.from({ length: 30 }, (_, i) => f(i - 2))
