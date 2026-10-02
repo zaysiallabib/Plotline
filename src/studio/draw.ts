@@ -289,13 +289,19 @@ export function draw(a: DrawArgs): void {
 
   if (a.furniture) drawFurniture(ctx, a, sel, px)
 
-  // vertices
+  // vertices; a selected wall's ends are its drag handles (ringed so they show on an ink-filled wall)
+  const ends = new Set(state.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b]))
   for (const v of vs) {
-    const active = sel.has(v.id) || chainIds.has(v.id)
+    const active = sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id)
     ctx.beginPath()
     ctx.arc(v.x, v.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
     ctx.fillStyle = active ? C.accent : C.ink
     ctx.fill()
+    if (ends.has(v.id)) {
+      ctx.strokeStyle = C.bg
+      ctx.lineWidth = px(1.5)
+      ctx.stroke()
+    }
   }
 
   // snap ring

@@ -3,7 +3,7 @@ import { deriveRooms, roomAt, roomInnerPolygon, validate, wallFrame } from '../c
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -578,6 +578,53 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     expect(s.unit.walls.filter((w) => w.a === 'loose' || w.b === 'loose')).toHaveLength(3)
     expect(deriveRooms(s.unit)).toHaveLength(2)
     expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+  })
+
+  it('extend a wall end alone out of an L corner (the drafted toilet): detach, slide along the axis, T-split the wall it reaches', () => {
+    // 4×3 box; an unfinished partition (2,3)→(2,1.5)→(3,1.5) — its end at (3,1.5) stops short of the right wall (x = 4)
+    const base = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 3], [2, 1.5], [3, 1.5]])
+    const stub = wallAt(base, [2, 1.5], [3, 1.5])
+    const corner = at(base, 2, 1.5)! // shared with the vertical piece: the end the founder pulls
+    let s = reducer(base, { type: 'drag-begin' })
+    s = reducer(s, { type: 'detach', wallId: stub.id, vertexId: corner.id, newId: 'end' })
+    expect(s.unit.walls.find((w) => w.id === stub.id)).toMatchObject({ a: 'end' })
+    expect(wallAt(s, [2, 3], [2, 1.5])).toBeDefined() // the vertical piece keeps its corner
+    // the loose end slides along the stub's own line only (lengthMoves on a degree-1 end moves just it)
+    const moves = lengthMoves(s.unit, stub.id, 'end', 3) // anchor (3,1.5), the end goes to x = 0
+    expect(moves).toEqual([{ id: 'end', x: 0, y: 1.5 }])
+    s = reducer(s, { type: 'drag', vertices: lengthMoves(s.unit, stub.id, 'end', 1) })
+    s = reducer(s, { type: 'drag-end', ids: ['end'] })
+    expect(at(s, 2, 1.5)).toBeDefined() // the old corner is still there, and (2,1.5)…(3,1.5) still open: no rooms yet
+    // the dangling end (3,1.5) needs no detach (degree 1: the reducer ignores it); pulled onto the right wall at
+    // (4,1.5) that wall splits there, two rooms, nothing dangling
+    const loose = at(base, 3, 1.5)!.id
+    s = reducer(base, { type: 'drag-begin' })
+    expect(reducer(s, { type: 'detach', wallId: stub.id, vertexId: loose, newId: 'end' })).toBe(s)
+    s = reducer(s, { type: 'drag', vertices: lengthMoves(s.unit, stub.id, loose, 2) })
+    s = reducer(s, { type: 'drag-end', ids: [loose] })
+    expect(at(s, 4, 1.5)).toBeDefined()
+    expect(s.unit.walls.filter((w) => w.a === loose || w.b === loose)).toHaveLength(3)
+    expect(deriveRooms(s.unit)).toHaveLength(2)
+    expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+  })
+
+  it('Ctrl+D copies a wall 1 ft along its normal with new corners, same thickness / height, selected', () => {
+    let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const top = wallAt(s, [0, 0], [4, 0])
+    s = reducer(s, { type: 'select', ids: [top.id] })
+    s = reducer(s, { type: 'duplicate' })
+    expect(s.unit.walls).toHaveLength(5)
+    const copy = s.unit.walls.find((w) => w.id === s.selection[0])!
+    expect(copy.id).not.toBe(top.id)
+    expect(copy).toMatchObject({ thicknessM: top.thicknessM, heightM: top.heightM })
+    expect(new Set([copy.a, copy.b]).has(top.a) || new Set([copy.a, copy.b]).has(top.b)).toBe(false)
+    const f = wallFrame(copy, s.unit.vertices)
+    expect(f.lengthM).toBeCloseTo(4)
+    expect(Math.abs(f.origin.y)).toBeCloseTo(0.3048)
+    expect(s.unit.vertices).toHaveLength(6)
+    s = reducer(s, { type: 'set-wall-length', id: copy.id, lengthM: 0.5 }) // the short piece a column gap needs
+    expect(wallFrame(s.unit.walls.find((w) => w.id === copy.id)!, s.unit.vertices).lengthM).toBeCloseTo(0.5)
+    expect(reducer(s, { type: 'undo' }).unit.walls).toHaveLength(5)
   })
 
   it('a dragged wall snaps like the Wall tool: an end aligns with a corner (guide), a corner snap wins', () => {

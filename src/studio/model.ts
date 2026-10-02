@@ -100,7 +100,8 @@ export type Action =
   | { type: 'delete'; ids?: Id[] }
   | { type: 'add-label'; label: Omit<RoomLabel, 'id'> }
   | { type: 'update-label'; id: Id; patch: Partial<Omit<RoomLabel, 'id'>> }
-  | { type: 'duplicate-label' }
+  /** Ctrl+D: selected walls copied 1 ft along their normal (same thickness / height / openings, corners shared only among the copies), labels 0.5 m off; the copies are the selection */
+  | { type: 'duplicate' }
   | { type: 'flip'; what: 'hinge' | 'swing' }
   /** Furniture tool: piece to centre (x, y) on the 3" grid + wall snap (furniture.movePiece); refused → toast, nothing moves */
   | { type: 'move-piece'; id: Id; x: number; y: number }
@@ -647,11 +648,24 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const relabel = a.patch.kind && a.patch.kind !== s.unit.roomLabels.find((l) => l.id === a.id)?.kind
       return commit(s, { ...s.unit, roomLabels, ...(relabel ? { furniture: forgetPresets(s.unit, deriveRooms(s.unit), a.id) } : {}) })
     }
-    case 'duplicate-label': {
+    case 'duplicate': {
       const sel = new Set(s.selection)
-      const copies = s.unit.roomLabels.filter((l) => sel.has(l.id)).map((l) => ({ ...l, id: newId(), x: l.x + 0.5, y: l.y + 0.5 }))
-      if (!copies.length) return s
-      return commit(s, { ...s.unit, roomLabels: [...s.unit.roomLabels, ...copies] }, { selection: copies.map((c) => c.id) })
+      const labels = s.unit.roomLabels.filter((l) => sel.has(l.id)).map((l) => ({ ...l, id: newId(), x: l.x + 0.5, y: l.y + 0.5 }))
+      const walls = s.unit.walls.filter((w) => sel.has(w.id))
+      if (!labels.length && !walls.length) return s
+      // one offset for all the copied walls (the first one's normal), so a copied corner stays a corner
+      const n = walls.length ? wallFrame(walls[0], s.unit.vertices).normal : { x: 0, y: 0 }
+      const corner = new Map<Id, Vertex>()
+      for (const id of new Set(walls.flatMap((w) => [w.a, w.b]))) {
+        const v = vertexById(s.unit.vertices, id)
+        corner.set(id, { id: newId(), x: v.x + n.x * FT, y: v.y + n.y * FT })
+      }
+      const copies = walls.map((w) => ({ ...w, id: newId(), a: corner.get(w.a)!.id, b: corner.get(w.b)!.id, openings: w.openings.map((o) => ({ ...o, id: newId() })) }))
+      return commit(
+        s,
+        { ...s.unit, vertices: [...s.unit.vertices, ...corner.values()], walls: [...s.unit.walls, ...copies], roomLabels: [...s.unit.roomLabels, ...labels] },
+        { selection: [...copies, ...labels].map((c) => c.id) },
+      )
     }
     case 'flip': {
       const sel = new Set(s.selection)

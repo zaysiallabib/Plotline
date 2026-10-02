@@ -46,7 +46,7 @@ const TOOLS: [Tool, string, string][] = [
 ]
 const HINTS: Record<Tool, string> = {
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's end to resize it, Alt-drag a corner to detach, Del deletes, arrows nudge 1" (Shift 1')`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's end handle to extend it to the wall it reaches (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1')`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · Click the first corner',
   opening: 'Opening · click a wall',
@@ -82,8 +82,12 @@ interface Note {
 }
 /** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt } & CornerDrag
-/** Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end, `detach` = Alt on a corner, `ids` = the corners the drop joins */
-type CornerDrag = { lengthOf?: Id; detach?: boolean; ids?: Id[] }
+/**
+ * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
+ * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
+ * `detach` = Alt on a corner of an unselected wall (pulls one wall free); `ids` = the corners the drop joins
+ */
+type CornerDrag = { lengthOf?: Id; rigid?: boolean; detach?: boolean; ids?: Id[] }
 const loose = (p: Pt): Snap => ({ x: p.x, y: p.y, kind: 'free', guides: [] })
 
 // the Studio's user is staff: the viewer shows them its Arrange button from now on (arrange.ts isStaff)
@@ -687,11 +691,12 @@ export default function StudioApp() {
           const w = unit.walls.find((x) => x.id === hit.id)!
           for (const id of [w.a, w.b]) orig.set(id, { ...vertexById(unit.vertices, id) })
         }
-        // a corner: Alt detaches a wall end from it (on the first move); an end of the selected wall resizes that wall
-        const detach = hit.kind === 'vertex' && e.altKey
+        // an end of the selected wall extends / shortens that wall alone (Alt: its neighbours stay straight instead);
+        // Alt on any other corner detaches the wall the pointer pulls (on the first move)
         const selWall = hit.kind === 'vertex' && state.selection.length === 1 ? unit.walls.find((w) => w.id === state.selection[0] && (w.a === hit.id || w.b === hit.id)) : undefined
-        const lengthOf = detach ? undefined : selWall?.id
-        dragRef.current = { hit, sx, sy, m, moved: false, orig, detach, lengthOf }
+        const detach = hit.kind === 'vertex' && e.altKey && !selWall
+        const lengthOf = selWall?.id
+        dragRef.current = { hit, sx, sy, m, moved: false, orig, detach, lengthOf, rigid: !!selWall && e.altKey }
         if (!e.shiftKey && !state.selection.includes(hit.id) && !detach && !lengthOf) dispatch({ type: 'select', ids: [hit.id] })
         return
       }
@@ -733,7 +738,14 @@ export default function StudioApp() {
         d.moved = true
         dispatch({ type: 'drag-begin' })
         const id = d.hit.id
-        const at = d.detach ? unit.walls.filter((w) => w.a === id || w.b === id) : []
+        const at = d.detach || (d.lengthOf && !d.rigid) ? unit.walls.filter((w) => w.a === id || w.b === id) : []
+        if (d.lengthOf && at.length >= 2) {
+          // the selected wall's end leaves the shared corner; the next move slides the new end along the wall
+          const nid = newId()
+          dispatch({ type: 'detach', wallId: d.lengthOf, vertexId: id, newId: nid })
+          d.hit = { kind: 'vertex', id: nid }
+          return
+        }
         if (at.length >= 2) {
           // detach the selected wall if it ends here, else the wall the pointer pulls along; the new end then drags as a corner
           const v = vertexById(unit.vertices, id)
@@ -921,7 +933,7 @@ export default function StudioApp() {
       }
       if (ctrl && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault()
-        return dispatch({ type: 'duplicate-label' })
+        return dispatch({ type: 'duplicate' })
       }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
