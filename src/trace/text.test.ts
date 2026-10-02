@@ -9,8 +9,8 @@ import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import type { Gray, TextItem, TextTrace } from './types'
-import { askAi, buildMontage, parseAiAnswer, parseMontageAnswer, strictSize } from './ai'
-import { FIXTURES, loadPgm } from './evalio'
+import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, strictSize } from './ai'
+import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
 import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
@@ -413,6 +413,18 @@ describe('AI montage (no key in tests: the reader is mocked)', () => {
   })
 })
 
+describe('text lines', () => {
+  test('a door-arc piece next to a label does not glue the name and the size under it into one line', () => {
+    const glyph = (x: number, y: number, w = 6, h = 8) => ({ x, y, w, h })
+    const name = [0, 1, 2, 3, 4].map((k) => glyph(100 + 8 * k, 100)) // BATH-
+    const size = [0, 1, 2, 3, 4, 5, 6].map((k) => glyph(96 + 8 * k, 112)) // 6'-0"X8'-2"
+    const arc = glyph(80, 98, 12, 20) // a door-arc piece, as tall as both lines together
+    const lines = findTextLines([...name, ...size, arc], 8).filter((l) => !l.vertical)
+    expect(lines.map((l) => [l.box.y, l.box.h])).toEqual(expect.arrayContaining([[100, 8], [112, 8]]))
+    expect(lines.every((l) => l.box.h <= 12)).toBe(true)
+  })
+})
+
 describe('glyph mask', () => {
   test('a size printed onto a floor line comes back (the line is cut away, the glyphs touching it return)', () => {
     const g = paper(300, 120)
@@ -443,6 +455,42 @@ const SHEETS: { sheet: string; units: Unit[] }[] = [
   { sheet: 'Sheltech_dmd__Level_3-14', units: [] },
 ]
 
+/**
+ * TRACE_SHOTS=<dir>: reader-<sheet>.png = the sheet faded, every item boxed (green: room with a sure size, orange: room
+ * flagged "type this size", red: room with no size, blue: a lone size, grey: other) with its number (the log lists the
+ * numbers' texts); montage-<sheet>.png = exactly the image the AI fallback would get.
+ */
+function writeReaderShots(sheet: string, g: Gray, trace: TextTrace, ai: TextItem[]): void {
+  mkdirSync(SHOTS, { recursive: true })
+  const px = new Uint8Array(g.width * g.height * 3)
+  for (let i = 0; i < g.data.length; i++) px.fill(150 + (g.data[i] * 105) / 255, i * 3, i * 3 + 3)
+  const font = renderFont(0.16, 0.8)
+  const lines: string[] = []
+  trace.items.forEach((it, n) => {
+    const col: [number, number, number] =
+      it.kind === 'room' ? (it.dims ? [0, 150, 60] : it.sizeUnread ? [240, 140, 0] : [220, 0, 0]) : it.kind === 'dims' ? (it.dims ? [0, 90, 230] : [240, 140, 0]) : [130, 130, 130]
+    const put = (x: number, y: number) => x >= 0 && y >= 0 && x < g.width && y < g.height && px.set(col, (Math.round(y) * g.width + Math.round(x)) * 3)
+    const { x, y, w, h } = it.box
+    for (let k = -2; k <= w + 2; k++) put(x + k, y - 2), put(x + k, y + h + 2)
+    for (let k = -2; k <= h + 2; k++) put(x - 2, y + k), put(x + w + 2, y + k)
+    // its number, 8 px digits, above-left of the box
+    let cx = x - 2
+    for (const ch of String(n + 1)) {
+      const t = font[ch]
+      const rows = t.d.length / t.w
+      for (let yy = 0; yy < rows; yy += 3) for (let xx = 0; xx < t.w; xx += 3) if (t.d[yy * t.w + xx] > 0.4) put(cx + xx / 3, y - 12 + yy / 3)
+      cx += t.w / 3 + 1
+    }
+    if (it.kind !== 'other') lines.push(`  ${n + 1} ${it.kind}${it.roomKind ? ` ${it.roomKind}` : ''}: ${JSON.stringify(it.text)}${it.dims ? ' SIZE' : ''}${it.sizeUnread ? ` FLAGGED (guess ${it.sizeGuess ?? '-'})` : ''}`)
+  })
+  writePng(`${SHOTS}reader-${sheet}.png`, g.width, g.height, px)
+  if (ai.length) {
+    const m = buildMontage(g, ai.slice(0, 20), trace.glyphPx ?? 10)
+    writePng(`${SHOTS}montage-${sheet}.png`, m.width, m.height, Uint8Array.from({ length: m.data.length * 3 }, (_, i) => m.data[Math.floor(i / 3)]))
+  }
+  console.log(`${sheet} items:\n${lines.join('\n')}`)
+}
+
 describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2nd-floor.pgm`))('readText on the demo sheets (eval report)', () => {
   test('sized labels found / sizes read / misreads', async () => {
     const rows: Record<string, string | number>[] = []
@@ -459,13 +507,15 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
         writeFileSync(`${TEXT_OUT}${sheet}.json`, JSON.stringify(trace, null, 1))
       }
       const rooms = trace.items.filter((i) => i.kind === 'room')
+      const ai = montageItems(trace)
+      if (SHOTS) writeReaderShots(sheet, g, trace, ai)
       const base = {
         sheet: sheet.replace(/^assets__/, ''),
         glyphPx: trace.glyphPx ?? 0,
         rooms: rooms.length,
         sized: rooms.filter((i) => i.dims).length,
-        'unsure (sheet)': trace.items.filter((i) => i.sizeUnread).length,
-        'to AI (sheet)': reaskList(trace).length,
+        'flagged (sheet)': trace.items.filter((i) => i.sizeUnread).length,
+        'to AI (sheet)': ai.length,
         ms,
       }
       if (!units.length) rows.push({ unit: '(no truth)', ...base })

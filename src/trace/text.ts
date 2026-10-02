@@ -104,8 +104,10 @@ function editDistanceAtMost1(a: string, b: string): boolean {
 const SHORT = 'PDR BED VER AOD ODU WIC KIT'.split(' ')
 const LOOKALIKE = new Set(['OD', 'DO', 'OQ', 'QO', 'DQ', 'QD', 'EF', 'FE', 'IL', 'LI', 'ER', 'RE', 'BE', 'EB', 'BR', 'RB', 'UV', 'VU', 'CG', 'GC', 'PR', 'RP'])
 function snapShort(tok: string): string {
-  if (tok.length !== 3 || SHORT.includes(tok)) return tok
-  return SHORT.find((w) => [...w].filter((c, i) => c !== tok[i]).length === 1 && [...w].every((c, i) => c === tok[i] || LOOKALIKE.has(c + tok[i]))) ?? tok
+  const core = tok.replace(/\.+$/, '') // "POR." → PDR.
+  if (core.length !== 3 || SHORT.includes(core)) return tok
+  const w = SHORT.find((s) => [...s].filter((c, i) => c !== core[i]).length === 1 && [...s].every((c, i) => c === core[i] || LOOKALIKE.has(c + core[i])))
+  return w ? w + tok.slice(3) : tok
 }
 
 /** Upper-case, OCR digit/letter confusions inside words undone, near-miss words snapped to the vocabulary. */
@@ -667,6 +669,8 @@ export function findTextLines(glyphs: Box[], charH: number): TextLine[] {
     y1: number
     n: number
     tall: number
+    /** height of the line's first tall glyph */
+    ref: number
   }
   const lines: L[] = []
   let active: L[] = []
@@ -678,6 +682,9 @@ export function findTextLines(glyphs: Box[], charH: number): TextLine[] {
     for (const l of active) {
       const band = l.y1 - l.y0
       if (cy < l.y0 - 0.25 * band || cy > l.y1 + 0.25 * band || g.h > 1.6 * Math.max(band, 0.6 * charH)) continue
+      // a tall blob joins only lines of its own glyph height: a door-arc piece or a wall-end bar next to a label used to
+      // stretch the band until the name and the size line under it were one "line"
+      if (tall(g) && l.ref && (g.h > 1.6 * l.ref || g.h < 0.6 * l.ref)) continue
       const d = Math.abs(cy - (l.y0 + l.y1) / 2)
       if (d < bestD) {
         best = l
@@ -690,10 +697,11 @@ export function findTextLines(glyphs: Box[], charH: number): TextLine[] {
       if (tall(g)) {
         best.y0 = best.tall ? Math.min(best.y0, g.y) : g.y
         best.y1 = best.tall ? Math.max(best.y1, g.y + g.h) : g.y + g.h
+        best.ref ||= g.h
         best.tall++
       }
     } else {
-      const l = { box: g, y0: g.y, y1: g.y + g.h, n: 1, tall: +tall(g) }
+      const l = { box: g, y0: g.y, y1: g.y + g.h, n: 1, tall: +tall(g), ref: tall(g) ? g.h : 0 }
       lines.push(l)
       active.push(l)
     }
@@ -772,16 +780,21 @@ export function toCanvas(g: Gray): OffscreenCanvas {
 const UNSURE_FIT = 0.05
 /** The size line's alphabet (tesseract whitelist for the size passes). */
 const SIZE_CHARS = `0123456789'"-xX`
-/** Tesseract's views of a size line (wave 19 eval): raw crop, Lanczos to 48 px glyphs / cubic to 40 px; the glyph-only mask, cubic 40 px. */
-const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubic' }[] = [
+/**
+ * Tesseract's views of a size line (wave 19 eval, sizes confirmed of 87: these four 51, the first three 48, cap-only
+ * views 46–49): raw crop Lanczos to 48 px glyphs / cubic to 40 px; the glyph-only mask cubic 40 px; the raw crop cut to
+ * the digits' cap band, Lanczos 48 px.
+ */
+const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubic'; cap?: boolean }[] = [
   { from: 'raw', px: 48, kernel: 'lanczos' },
   { from: 'raw', px: 40, kernel: 'cubic' },
   { from: 'clean', px: 40, kernel: 'cubic' },
+  { from: 'raw', px: 48, kernel: 'lanczos', cap: true },
 ]
 
 /** Second looks at a room name tesseract misread (the line over a size): capitals only, two other views. */
 const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-&/ '
-const NAME_VIEWS: typeof SIZE_VIEWS = [
+const NAME_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubic' }[] = [
   { from: 'raw', px: 40, kernel: 'cubic' },
   { from: 'clean', px: 48, kernel: 'lanczos' },
 ]
@@ -843,7 +856,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     await setAll({ tessedit_char_whitelist: SIZE_CHARS })
     const views: string[][] = cand.map(() => [])
     const caps = new Map(cand.map((i) => [lines[i], capBand(glyphs, lines[i].box)]))
-    for (const v of SIZE_VIEWS) (await readAll(cand, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel, caps.get(l)))).forEach((r, k) => views[k].push(r.text))
+    for (const v of SIZE_VIEWS) (await readAll(cand, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel, v.cap ? caps.get(l) : undefined))).forEach((r, k) => views[k].push(r.text))
     const sizes = readSizes(
       clean,
       glyphs,
@@ -856,7 +869,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       const r = size.get(i)?.read
       if (!r || r.fit > UNSURE_FIT) return false
       const t = read[i].text
-      return r.sure || topMarks(glyphs, lines[i].box) > 0 || t.replace(/\D/g, '').length >= t.replace(/[^A-Za-z]/g, '').length
+      const digits = t.replace(/\D/g, '').length
+      return r.sure || topMarks(glyphs, lines[i].box) > 0 || (digits > 0 && digits >= t.replace(/[^A-Za-z]/g, '').length)
     }
     // the line right above a size is a room name: when tesseract did not read it as one, two more views of it
     const names = lines.flatMap((n, j) => {

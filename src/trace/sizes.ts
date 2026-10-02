@@ -129,23 +129,39 @@ export function decode(D: Float32Array, W: number, T: Font, maxGap = Math.round(
     for (let y = 0; y < ROWS; y++) s += D[y * W + x] ** 2
     blank[x + 1] = blank[x] + s
   }
-  // each template's squared error at every column, best of three vertical shifts
+  // each template's squared error at every column, best of three vertical shifts:
+  // Σ(t − v)² = Σt² + Σv² − 2Σt·v, the last only over the template's inked pixels (the slow part, now sparse)
+  const vv = [-1, 0, 1].map((dy) => {
+    const pre = new Float64Array(W + 1)
+    for (let x = 0; x < W; x++) {
+      let s = 0
+      for (let r = Math.max(0, dy); r < ROWS + Math.min(0, dy); r++) s += D[r * W + x] ** 2
+      pre[x + 1] = pre[x] + s
+    }
+    return pre
+  })
   const cost = new Map<string, { c: Float64Array; dy: Int8Array }>()
   for (const [k, t] of Object.entries(T)) {
+    let tt = 0
+    const ys: number[] = []
+    const xs: number[] = []
+    const vs: number[] = []
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < t.w; x++) {
+        const v = t.d[y * t.w + x]
+        tt += v * v
+        if (v > 0.02) ys.push(y), xs.push(x), vs.push(v)
+      }
     const c = new Float64Array(W).fill(Infinity)
     const dyA = new Int8Array(W)
     for (let x0 = 0; x0 + t.w <= W; x0++)
       for (let dy = -1; dy <= 1; dy++) {
-        let sum = 0
-        for (let y = 0; y < ROWS; y++) {
-          const yy = y + dy
-          const row = yy * W + x0
-          const inside = yy >= 0 && yy < ROWS
-          for (let x = 0; x < t.w; x++) {
-            const e = t.d[y * t.w + x] - (inside ? D[row + x] : 0)
-            sum += e * e
-          }
+        let cross = 0
+        for (let i = 0; i < vs.length; i++) {
+          const r = ys[i] + dy
+          if (r >= 0 && r < ROWS) cross += vs[i] * D[r * W + x0 + xs[i]]
         }
+        const sum = tt + vv[dy + 1][x0 + t.w] - vv[dy + 1][x0] - 2 * cross
         if (sum < c[x0]) {
           c[x0] = sum
           dyA[x0] = dy
@@ -161,31 +177,36 @@ export function decode(D: Float32Array, W: number, T: Font, maxGap = Math.round(
   const cell: E[][][] = Array.from({ length: W + 1 }, () => Array.from({ length: NS }, () => []))
   // pref[x][state]: the K best (distinct texts) of cell[≤ x][state] keyed by cost − blank[end] — an unbounded gap in O(1)
   const pref: E[][][] = Array.from({ length: W + 1 }, () => Array.from({ length: NS }, () => []))
-  /** keep `list` the K cheapest distinct texts; a candidate worse than a full list's last is dropped before it is built */
-  const push = (list: E[], cost: number, text: () => string, make: (text: string) => E) => {
-    if (list.length === K && cost >= list[K - 1].cost) return
-    const t = text()
-    const i = list.findIndex((o) => o.text === t)
+  // win[x][state]: the same over cell[x − maxGap … x][state] — a bounded gap, merged once per column, not per glyph tried
+  const win: E[][][] = Array.from({ length: W + 1 }, () => Array.from({ length: NS }, () => []))
+  /** would `cost` enter `list` (the K cheapest, distinct texts)? */
+  const fits = (list: E[], cost: number) => list.length < K || cost < list[list.length - 1].cost
+  /** insert, keeping the list sorted, K long, one entry per text */
+  const add = (list: E[], e: E) => {
+    const i = list.findIndex((o) => o.text === e.text)
     if (i >= 0) {
-      if (list[i].cost <= cost) return
+      if (list[i].cost <= e.cost) return
       list.splice(i, 1)
     }
-    list.push(make(t))
-    list.sort((a, b) => a.cost - b.cost)
+    let j = list.length
+    while (j > 0 && list[j - 1].cost > e.cost) j--
+    list.splice(j, 0, e)
     if (list.length > K) list.length = K
   }
+  // pref / win entries: cost − blank[end], `prev` = the cell entry itself (k / x / dy unused there)
+  const fold = (list: E[], e: E, end: number) => {
+    const c = e.cost - blank[end]
+    if (fits(list, c)) add(list, { cost: c, text: e.text, prev: e, k: e.k, x: e.x, dy: e.dy })
+  }
   for (let xe = 1; xe <= W; xe++) {
-    const xf = xe - 1 // column xf is final now: fold it into the prefix lists
+    const xf = xe - 1 // column xf is final now: fold it into the prefix / window lists
     for (let st = 0; st < NS; st++) {
-      const list = xf > 0 ? [...pref[xf - 1][st]] : []
-      for (const e of cell[xf][st])
-        push(
-          list,
-          e.cost - blank[xf],
-          () => e.text,
-          (text) => ({ ...e, text, cost: e.cost - blank[xf], prev: e }),
-        )
+      const list = xf > 0 ? pref[xf - 1][st].slice() : []
+      for (const e of cell[xf][st]) fold(list, e, xf)
       pref[xf][st] = list
+      const w: E[] = []
+      for (let xp = Math.max(1, xf - maxGap); xp <= xf; xp++) for (const e of cell[xp][st]) fold(w, e, xp)
+      win[xf][st] = w
     }
     for (let st = 0; st < NS; st++)
       for (const a of ARCS[st])
@@ -193,26 +214,21 @@ export function decode(D: Float32Array, W: number, T: Font, maxGap = Math.round(
           for (const k of byChar[ch] ?? []) {
             const x0 = xe - T[k].w
             if (x0 < 0) continue
+            const src = st === 0 ? null : (ch === 'x' || st === AFTER_X ? pref : win)[x0][st]
+            if (src && !src.length) continue
             const g = cost.get(k)!
             const gc = g.c[x0]
             if (!isFinite(gc)) continue
-            const dy = g.dy[x0]
             const out = cell[xe][a.to]
-            if (st === 0) {
+            if (!src) {
               const c0 = blank[x0] + gc
-              push(out, c0, () => ch, (text) => ({ cost: c0, text, prev: null, k, x: x0, dy }))
-            } else if (ch === 'x' || st === AFTER_X)
-              // any gap before / after the x: pref entries carry their own end in `prev`
-              for (const p of pref[x0][st]) {
+              if (fits(out, c0)) add(out, { cost: c0, text: ch, prev: null, k, x: x0, dy: g.dy[x0] })
+            } else
+              // any gap before / after the x, else at most maxGap: the lists' entries carry their own end in `prev`
+              for (const p of src) {
                 const c1 = p.cost + blank[x0] + gc
-                push(out, c1, () => p.text + ch, (text) => ({ cost: c1, text, prev: p.prev, k, x: x0, dy }))
+                if (fits(out, c1)) add(out, { cost: c1, text: p.text + ch, prev: p.prev, k, x: x0, dy: g.dy[x0] })
               }
-            else
-              for (let xp = Math.max(1, x0 - maxGap); xp <= x0; xp++)
-                for (const p of cell[xp][st]) {
-                  const c2 = p.cost + blank[x0] - blank[xp] + gc
-                  push(out, c2, () => p.text + ch, (text) => ({ cost: c2, text, prev: p, k, x: x0, dy }))
-                }
           }
   }
   const fin: E[] = []
@@ -220,12 +236,7 @@ export function decode(D: Float32Array, W: number, T: Font, maxGap = Math.round(
     for (const st of ACCEPT)
       for (const e of cell[xe][st]) {
         const c = e.cost + blank[W] - blank[xe]
-        push(
-          fin,
-          c,
-          () => e.text,
-          () => ({ ...e, cost: c }),
-        )
+        if (fits(fin, c)) add(fin, { ...e, cost: c })
       }
   if (!fin.length) return null
   const best = fin[0]
@@ -370,7 +381,7 @@ export interface SizeRead {
   /** margin to the runner-up string (squared-error units of a H = 20 band) — diagnostics only: alone it is NOT safe */
   margin: number
   fit: number
-  /** tesseract confirms the value: one view reads it whole, or each side is read by some view, or every digit lies on an LCS with a view */
+  /** tesseract confirms the value: one view reads it whole, or each side is read by some view, or one view holds all its digits in order */
   agree: boolean
   /** safe to use without asking: fits, carries marks, and tesseract confirms it */
   sure: boolean
@@ -380,12 +391,20 @@ export interface SizeRead {
  * Knobs (wave 19, five units): fit ≤ 0.04 separates sizes from names forced through the grammar; a large margin alone
  * was wrong 5 times in 13 (margin ≥ 6), tesseract confirmation 0 times in 45 — so only confirmation makes a size sure.
  */
-export const SIZE_RULE = { maxFit: 0.04, iterations: 3 }
+export const SIZE_RULE = { maxFit: 0.04, iterations: 2 }
+/** the stroke-font grid, tried on the 12 most digit-rich size-looking lines (3 iterations or a 3 × 3 grid: no better / worse) */
+const FONT_LINES = 12
+const FONT_SW = [0.1, 0.14, 0.18, 0.22]
+const FONT_WS = [0.7, 0.8, 0.9, 1]
 
 const INCH = 0.0254
 const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < INCH / 2
 
-/** Does tesseract confirm this reading? Whole value, each side in some view, or every digit on a ≥ 60 % LCS with a view. */
+/**
+ * Does tesseract confirm this reading? One view parses to the value; or side A parses in one view and side B in one
+ * (marks lost / x misread elsewhere); or ONE view holds all the digits in order ("1301566" for 13'-0"x15'-6"). Digits
+ * pooled from different views confirmed a wrong 8 once (6 in one view, 8 in another) — never pooled.
+ */
 export function tessConfirms(text: string, dims: Dims, tess: string[]): boolean {
   if (tess.some((t) => ((e) => !!e && near(e.aM, dims.aM) && near(e.bM, dims.bM))(parseDims(t)))) return true
   const sides = tess.flatMap((t) => {
@@ -394,12 +413,7 @@ export function tessConfirms(text: string, dims: Dims, tess: string[]): boolean 
   })
   if (sides.some((v) => near(v.a, dims.aM)) && sides.some((v) => near(v.b, dims.bM))) return true
   const ds = text.replace(/\D/g, '')
-  const hit = new Set<number>()
-  for (const t of tess) {
-    const m = lcsMatches(ds, t.replace(/\D/g, ''))
-    if (m.length >= 0.6 * ds.length) m.forEach((k) => hit.add(k))
-  }
-  return ds.length > 0 && hit.size === ds.length
+  return ds.length > 0 && tess.some((t) => lcsMatches(ds, t.replace(/\D/g, '')).length === ds.length)
 }
 
 /**
@@ -407,14 +421,18 @@ export function tessConfirms(text: string, dims: Dims, tess: string[]): boolean 
  * readings of line i (digit-whitelist variants). Null where the line reads as no size at all.
  */
 export function readSizes(clean: Gray, glyphs: Box[], lines: { box: Box; tess: string[] }[]): (SizeRead | null)[] {
-  const bands = lines.map((l) => band(clean, l.box, capBand(glyphs, l.box)))
+  // only lines that can be a size are decoded (the matcher is the slow part): foot / inch marks seen, or digits read
+  const digits = lines.map((l) => Math.max(0, ...l.tess.map((t) => t.replace(/\D/g, '').length)))
+  const bands = lines.map((l, i) => (digits[i] >= 2 || topMarks(glyphs, l.box) > 0 ? band(clean, l.box, capBand(glyphs, l.box)) : null))
   const run = (T: Font, only?: boolean[]) => bands.map((b, i) => (b && (!only || only[i]) ? decode(b.D, b.W, T) : null))
-  // the stroke font that fits the size-looking lines best (tesseract saw digits and a mark or an x)
-  const sizeish = lines.map((l) => l.tess.some((t) => /\d.*['"xX].*\d/.test(t)))
+  // the stroke font that fits the size-looking lines best (tesseract saw digits and a mark or an x; the 12 most digit-rich)
+  const looks = lines.flatMap((l, i) => (bands[i] && l.tess.some((t) => /\d.*['"xX].*\d/.test(t)) ? [i] : []))
+  const top = new Set(looks.sort((a, b) => digits[b] - digits[a]).slice(0, FONT_LINES))
+  const sizeish = lines.map((_, i) => top.has(i))
   let generic: Font | null = null
   let bestFit = Infinity
-  for (const sw of [0.1, 0.14, 0.18, 0.22])
-    for (const ws of [0.7, 0.8, 0.9, 1]) {
+  for (const sw of FONT_SW)
+    for (const ws of FONT_WS) {
       const T = renderFont(sw, ws)
       const fits = run(T, sizeish).flatMap((r) => (r ? [r.fit] : []))
       const mean = fits.length ? fits.reduce((a, b) => a + b, 0) / fits.length : Infinity
