@@ -740,6 +740,9 @@ function findDoors(cx: ClassCtx, fitEdges: { side: Side; c: number; u0: number; 
       // along it reads as lines) — but one side must be this edge's own wall
       const leftOk = a > 0 ? S[a - 1].kind === 'wall' : cornerInk(E.side, true)
       const rightOk = b < S.length - 1 ? S[b + 1].kind === 'wall' : cornerInk(E.side, false)
+      // …and one jamb a wall seen ACROSS (≤ 0.4 m deep): a wall running away from the face reads deeper than any wall
+      const across = (s?: Stretch) => s?.kind === 'wall' && (s.thPx ?? 0) <= 0.4 * k
+      const jambOk = across(S[a - 1]) || across(S[b + 1])
       // the wall's thickness: the thinner neighbour (a perpendicular wall ending on the face reads as a long run)
       const ths = [S[a - 1]?.thPx, S[b + 1]?.thPx].filter((t): t is number => !!t)
       const th = Math.max(0.08 * k, Math.min(0.35 * k, ths.length ? Math.min(...ths) : 0.15 * k))
@@ -748,7 +751,7 @@ function findDoors(cx: ClassCtx, fitEdges: { side: Side; c: number; u0: number; 
       const cand: [number, number][] = []
       for (const ta of b > a && short(S[a]) ? [0, 1] : [0]) for (const tb of b - ta > a && short(S[b]) ? [0, 1] : [0]) cand.push([a + ta, b - tb])
       let found: { cov: number; hinge: Px; swing: Px; i: number; j: number } | null = null
-      if (leftOk && rightOk && (a > 0 || b < S.length - 1))
+      if (leftOk && rightOk && jambOk)
         for (const [i, j] of cand) {
           const d = doorArc(cx, E.side, E.c, S[i].u0, S[j].u1, th)
           if (d && (!found || d.cov > found.cov)) found = { ...d, i, j }
@@ -946,8 +949,20 @@ export function deriveWallsFromRooms(fits: RoomFit[], pxPerM: number): RoomWalls
         if (p.c < best.u0) best.u0 = p.c
         if (p.c > best.u1) best.u1 = p.c
       }
-  const walls: WallSeg[] = pieces.map((p) => ({ a: pt(p.horiz, p.c, p.u0), b: pt(p.horiz, p.c, p.u1), thicknessPx: p.th, conf: p.shared ? 0.9 : 0.7 }))
-  const openings = pieces.flatMap((p, w) =>
+  // clean-up: overlapping openings of one kind on a wall are one; slivers go — an opening < 0.25 m, a wall < 0.05 m,
+  // a one-sided wall shorter than its own thickness with no opening (a perpendicular wall's end seen from the side)
+  for (const p of pieces) {
+    const ops: Piece['ops'] = []
+    for (const o of [...p.ops].sort((a, b) => a.u0 - b.u0)) {
+      const last = ops[ops.length - 1]
+      if (last && last.kind === o.kind && o.u0 <= last.u1 + 1) last.u1 = Math.max(last.u1, o.u1)
+      else ops.push({ ...o })
+    }
+    p.ops = ops.filter((o) => o.u1 - o.u0 >= 0.25 * k)
+  }
+  const kept = pieces.filter((p) => p.u1 - p.u0 >= Math.max(2, 0.05 * k) && (p.shared || p.ops.length > 0 || p.u1 - p.u0 >= p.th))
+  const walls: WallSeg[] = kept.map((p) => ({ a: pt(p.horiz, p.c, p.u0), b: pt(p.horiz, p.c, p.u1), thicknessPx: p.th, conf: p.shared ? 0.9 : 0.7 }))
+  const openings = kept.flatMap((p, w) =>
     p.ops.map((o) => ({ a: pt(p.horiz, p.c, o.u0), b: pt(p.horiz, p.c, o.u1), kind: o.kind, ...(o.hingeAt ? { hingeAt: o.hingeAt, swingTo: o.swingTo } : {}), conf: 0.8, wall: w })),
   )
   return { walls, openings, unwalled }
