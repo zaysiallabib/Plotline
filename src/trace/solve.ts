@@ -1324,7 +1324,7 @@ function pickFlat(
  * mostly along / inside a picked room (its sides that close no face). A click in no fitted room (an unsized dining)
  * starts from the nearest one within 4 m; null when there is none (the caller floods instead).
  */
-function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; inFlood?: (p: Pt) => boolean } | null {
+function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; others: number[]; inFlood?: (p: Pt) => boolean } | null {
   type Box = { x0: number; y0: number; x1: number; y1: number }
   const R: Box[] = fits.map((f) => ({ x0: (f.rect.x0 - 0.5) / k, y0: (f.rect.y0 - 0.5) / k, x1: (f.rect.x1 - 0.5) / k, y1: (f.rect.y1 - 0.5) / k }))
   const inR = (r: Box, p: Pt, m = 0) => p.x >= r.x0 - m && p.x <= r.x1 + m && p.y >= r.y0 - m && p.y <= r.y1 + m
@@ -1422,7 +1422,9 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
     }
     if (inside >= 0.5 * N || (inside * L) / N >= 0.5) touched.add(w.id)
   }
-  return { rooms, open: false, touched, fits: mine }
+  // the next flat's rooms (a rival reached them first) and the core: what bounds the flood; rooms reached by neither are open
+  const bound = fits.map((_, i) => i).filter((i) => own[i] > 0 || isCore(i))
+  return { rooms, open: false, touched, fits: mine, others: bound }
 }
 
 /**
@@ -1643,7 +1645,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
   // the core (those rooms bound it, so it cannot leak through an open gap into them)
   const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside) : null
-  const otherRects = byRooms ? fits.filter((_, i) => !byRooms.fits.includes(i)).map((f) => f.rect) : []
+  const otherRects = byRooms ? byRooms.others.map((i) => fits[i].rect) : []
   const inOther = (p: Pt) => otherRects.some((r) => p.x * pxPerM >= r.x0 && p.x * pxPerM <= r.x1 - 1 && p.y * pxPerM >= r.y0 && p.y * pxPerM <= r.y1 - 1)
   const flood = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p) || inOther(p), isPlanter)
   const picked = byRooms ? { ...flood, rooms: new Set([...byRooms.rooms, ...flood.rooms]), touched: new Set([...byRooms.touched, ...flood.touched]), open: false } : flood
