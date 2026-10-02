@@ -24,8 +24,8 @@
  * ≈ the gap hinged on a jamb) · thin (one thin line: railing / parapet / partition) · open (nothing drawn) · unsure.
  * Only wall / window / door need positive evidence; anything doubtful is 'unsure' (a review item later).
  *
- * Tracks (src/trace/tracks.ts, being built in parallel): pass `tracks` and every track interval's two wall faces add
- * evidence, so rectangle edges snap onto them. Nothing here depends on it.
+ * Tracks (src/trace/tracks.ts): pass `tracks` and every track interval's two wall faces add evidence, so rectangle edges
+ * snap onto them (the solver does). merge.ts turns the fits' edges into the one draft with the tracks.
  */
 import { parseDims } from './text'
 import type { Dims, Gray, OpeningGuess, Px, TextItem, WallSeg } from './types'

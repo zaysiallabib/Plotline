@@ -14,6 +14,14 @@
  *   rule-4 resume → node → merge collinear → deriveRooms → pick the flat (flood from the click; the outside, planters
  *   and stairs bound it; rival names split it) → labels (text, else hint, else 'unlabelled') → opening kinds from the
  *   rooms on both sides → printed-size checks → validate (every leftover issue = review item).
+ *
+ * Wave 19, tracker 'tracks' (the default): ONE draft from walls on tracks + rooms fitted from their printed sizes —
+ *   traceWalls (tracks: exact walls, openings only on drawn evidence, undecided gaps left open) → scale = the rooms'
+ *   printed sizes on the ink (rooms.ts calibrateScale; the guesses above are the fallback) → fitRooms (edges snap to the
+ *   track faces) → merge.ts roomsOnTracks (room edges decide undecided gaps, add what no track has: walls, openings,
+ *   low walls along railings / planter edges, open-plan passages; the rest is review) → the graph → the flat = the
+ *   fitted rooms around the click (pickByRooms) ∪ the flood from it, bounded by the next flat's / the core's rooms →
+ *   labels → checks (+ room-edge stretches left open, the rooms' area sum vs the printed sft, sizes to type).
  */
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
