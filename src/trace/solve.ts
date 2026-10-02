@@ -1646,7 +1646,10 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // the building's core (a closed face a LOBBY / LIFT / STAIR label sits in) is never the flat's floor: the flood does
   // not walk through it into the next flat's foyer
   const coreFaces = coreAt(pxPerM).flatMap((c) => draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).map((r) => roomPolygon(r, draft.unit)))
-  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f))
+  // …and where that face is not closed (a lobby whose double doors were not read), the floor within 1.2 m of its label:
+  // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
+  const corePts = coreAt(pxPerM)
+  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2)
   // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (pickByRooms) — plus what the flood from the
   // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
   // the core (those rooms bound it, so it cannot leak through an open gap into them)

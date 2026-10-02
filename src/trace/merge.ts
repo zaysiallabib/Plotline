@@ -22,7 +22,7 @@
  *    `closeCorners` carries free ends a few cm onto the wall they obviously meet.
  * Never a wall over a window or an undecided gap: those are openings, or left open.
  */
-import { deriveWallsFromRooms, type EdgeClass, type RgbImage, type RoomFit } from './rooms'
+import { darkMaxOf, deriveWallsFromRooms, type EdgeClass, type RgbImage, type RoomFit } from './rooms'
 import { trackWalls, type Gap, type TrackTrace } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg } from './types'
 import { glazing } from './walls'
@@ -212,7 +212,7 @@ function reread(it: Item, k: number, img: Img): 'planter' | 'glazing' | null {
  * from right here (its end within 0.1 m along), by a jog onto it. An opening's end gets a connector wall (the opening
  * keeps its jamb-to-jamb span). Mutates `walls`, returns the connectors / stubs / jogs added. Axis walls only.
  */
-export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: number): WallSeg[] {
+export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: number, solid: (a: Px, b: Px) => number = () => 0): WallSeg[] {
   type L = { s: WallSeg | OpeningGuess; wall: boolean; horiz: boolean; c: number; th: number }
   const key = (p: Px) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`
   const deg = new Map<string, number>()
@@ -254,7 +254,9 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
         if (Q.horiz !== S.horiz) {
           // a wall (or a decided opening) across this end, its body just ahead
           const s = (Q.c - u) * dir
-          if (s < -Q.th / 2 || s > Q.th / 2 + R || S.c < q0 - R - S.th / 2 || S.c > q1 + R + S.th / 2) continue
+          if (s < -Q.th / 2 || S.c < q0 - R - S.th / 2 || S.c > q1 + R + S.th / 2) continue
+          // farther only across solid ink (a column or a junction block the wall runs through), up to 0.6 m
+          if (s > Q.th / 2 + R && (s > Q.th / 2 + 0.6 * k || solid(E, P(Q.c - (dir * Q.th) / 2, S.c)) < 0.9)) continue
           if (S.wall && Math.abs(Q.c - along(S, o)) < 1) continue
           const lo = S.c < q0, hi = S.c > q1
           let qe: 'a' | 'b' | null = null
@@ -281,7 +283,7 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
           // the next wall of this track, a hair away
           for (const qe of ['a', 'b'] as const) {
             const g = (along(Q, Q.s[qe]) - u) * dir
-            if (g > 0 && g <= Rc) offer(g, () => reach(Q.s[qe]))
+            if (g > 0 && (g <= Rc || (g <= 0.6 * k && solid(E, Q.s[qe]) >= 0.9))) offer(g, () => reach(Q.s[qe]))
           }
         } else if (Q.wall && Math.abs(Q.c - S.c) <= Rj) {
           // a stepped wall carrying on from right here: a jog across, at its end
@@ -519,7 +521,20 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
     openings.push(op)
     group.push(op)
   }
-  for (const w of closeCorners(walls, openings, k)) {
+  // solid ink between two points: the share of samples with a pixel of the sheet's wall grey within 1 px
+  const dark = darkMaxOf(img.gray)
+  const solid = (a: Px, b: Px) => {
+    const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)))
+    let hit = 0
+    for (let i = 1; i < n; i++) {
+      const x = Math.round(a.x + ((b.x - a.x) * i) / n), y = Math.round(a.y + ((b.y - a.y) * i) / n)
+      let on = false
+      for (let dy = -1; dy <= 1 && !on; dy++) for (let dx = -1; dx <= 1 && !on; dx++) on = img.gray.data[Math.min(img.gray.height - 1, Math.max(0, y + dy)) * img.gray.width + Math.min(img.gray.width - 1, Math.max(0, x + dx))] <= dark
+      if (on) hit++
+    }
+    return hit / Math.max(1, n - 1)
+  }
+  for (const w of closeCorners(walls, openings, k, solid)) {
     walls.push(w)
     added.push({ a: w.a, b: w.b, kind: 'corner', th: w.thicknessPx })
   }
