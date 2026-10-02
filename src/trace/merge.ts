@@ -126,7 +126,8 @@ function itemsOf(fits: RoomFit[], k: number, img: Img): Item[] {
   // with short wall bits (< 0.3 m) between them — is read again as one
   const und = (it: Item) => it.kind === 'open' || it.kind === 'thin' || it.kind === 'unsure'
   const bits = (it: Item, c: number, horiz: boolean) => it.kind === 'wall' && it.horiz === horiz && it.u1 - it.u0 < 0.3 * k && Math.abs(it.c - c) <= it.th / 2 + 2
-  const lines = out.filter(und).sort((p, q) => Number(p.horiz) - Number(q.horiz) || p.c - q.c || p.u0 - q.u0)
+  // (grouped by the rooms they bound first: another room's stretch on a near line never cuts a run)
+  const lines = out.filter(und).sort((p, q) => Number(p.horiz) - Number(q.horiz) || p.rooms.join().localeCompare(q.rooms.join()) || Math.round(p.c) - Math.round(q.c) || p.u0 - q.u0)
   const drop = new Set<Item>()
   const merged: Item[] = []
   for (let i = 0; i < lines.length; ) {
@@ -153,7 +154,10 @@ function itemsOf(fits: RoomFit[], k: number, img: Img): Item[] {
     const M: Item = { ...run[0], u1: run[run.length - 1].u1, kind: 'unsure', hingeAt: undefined, swingTo: undefined }
     const L = M.u1 - M.u0
     const f = (kd: string) => run.filter((x) => x.kind === kd).reduce((t, x) => t + x.u1 - x.u0, 0) / L
-    const say = M.rooms.length === 2 && f('open') + f('thin') >= 0.8 ? 'open' : reread(M, k, img)
+    // between two fitted rooms with nothing on it that makes a wall (open, a thin line, doubts: furniture drawn against
+    // the line) the boundary is open plan: a passage — no wall drawn, both rooms keep their name, flagged
+    // (one-sided, 'open' too: whether another named space lies beyond decides passage or review, below)
+    const say = f('open') + f('thin') >= 0.4 && f('wall') + f('window') + f('door') < 0.1 && (M.rooms.length === 2 || f('open') >= 0.4) ? 'open' : reread(M, k, img)
     if (!say) {
       for (const it of run) if (it.kind === 'unsure' || it.kind === 'thin') it.kind = reread(it, k, img) ?? it.kind
       continue
