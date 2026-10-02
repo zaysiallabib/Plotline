@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -408,8 +408,24 @@ describe('AI montage (no key in tests: the reader is mocked)', () => {
     expect(out.items[0].sizeUnread).toBeUndefined()
     expect(out.items[1]).toMatchObject({ source: 'ocr', sizeUnread: true })
     expect(out.items[2]).toBe(items[2])
+    // a lone sure size is asked for its name only; its own size stays
+    const lone: TextItem = { text: `11'-0"x7'-8"`, box: { x: 60, y: 40, w: 90, h: 9 }, kind: 'dims', dims: { aM: ft(11), bM: ft(7, 8) }, conf: 0.95, source: 'ocr' }
+    const ask2 = async () => JSON.stringify([{ n: 1, name: 'FOYER', size: `11'-0"x7'-6"` }])
+    const out2 = await askAi({ items: [lone] }, sheet(), Object.assign(async () => [], { ask: ask2 }), { encode: async () => new Blob([]) })
+    expect(out2.items[0]).toMatchObject({ kind: 'room', roomKind: 'other', text: `FOYER\n11'-0"x7'-8"`, dims: { bM: ft(7, 8) } })
     // a reader with no montage support changes nothing
     expect(await askAi({ items }, sheet(), async () => [])).toEqual({ items })
+  })
+})
+
+describe('room words over a size', () => {
+  test('snap hard to the room lexicon, only when one word is clearly nearest', () => {
+    expect(snapRoomWords('|KrTeHen')).toBe('KITCHEN')
+    expect(snapRoomWords('OPEN IOTCHEN')).toBe('OPEN KITCHEN')
+    expect(snapRoomWords('STAR & UFTLOBBY')).toBe('STAIR & UFTLOBBY')
+    expect(snapRoomWords('DINNING')).toBe('DINNING')
+    expect(snapRoomWords('NOTE')).toBe('NOTE') // nothing within 1 edit
+    expect(classifyRoom(snapRoomWords('TOILLT 2'))).toEqual({ kind: 'bath', green: false })
   })
 })
 

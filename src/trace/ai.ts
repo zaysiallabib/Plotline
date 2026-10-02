@@ -87,9 +87,9 @@ export function parseMontageAnswer(answer: string, tiles: number): Map<number, {
   return out
 }
 
-/** Labels worth asking about: a size seen but unread, a room label with no size, a size line with no parse. */
+/** Labels worth asking about: a size seen but unread, a room label with no size, a size line with no parse, a size with no name over it. */
 export function montageItems(trace: TextTrace): TextItem[] {
-  return trace.items.filter((it) => it.source !== 'ai' && (it.sizeUnread || (reaskReason(it) !== null && reaskReason(it) !== 'low-confidence')))
+  return trace.items.filter((it) => it.source !== 'ai' && (it.sizeUnread || (it.kind === 'dims' && it.dims) || (reaskReason(it) !== null && reaskReason(it) !== 'low-confidence')))
 }
 
 /** The crop around a label: wide (a size line is wider than its name) and tall enough for the line under it. */
@@ -207,8 +207,9 @@ export async function askAi(
       if (!a || (!a.dims && !named)) return
       const lines = it.text.split('\n')
       const next: TextItem = { ...it, source: 'ai' }
-      if (named) Object.assign(next, { kind: 'room', roomKind: named.kind, green: named.green || undefined }, { text: [a.name, ...lines.slice(1)].join('\n') })
-      if (a.dims) {
+      if (named) Object.assign(next, { kind: 'room', roomKind: named.kind, green: named.green || undefined, text: it.kind === 'dims' ? `${a.name}\n${it.text}` : [a.name, ...lines.slice(1)].join('\n') })
+      // a sure local size is kept over the model's reading (a lone size only asked for its name)
+      if (a.dims && !it.dims) {
         Object.assign(next, { dims: a.dims, text: `${named ? a.name : lines[0]}\n${a.size}` })
         delete next.sizeUnread
         delete next.sizeGuess

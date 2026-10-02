@@ -110,6 +110,40 @@ function snapShort(tok: string): string {
   return w ? w + tok.slice(3) : tok
 }
 
+/** Words of room names, for the loose snap below (incl. plan spellings like DINNING). */
+const LEXICON = [...WORDS, ...SHORT, 'BEDROOM', 'ROOM', 'HELP', 'OPEN', 'DRY', 'FORMAL', 'DINNING', 'TOILET', 'VERANDA']
+function levenshtein(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+/**
+ * A line that sits right over a size is a room name, so its words may be snapped harder than anywhere else: each word of
+ * ≥ 4 letters to the one lexicon word within ⌊len / 3⌋ edits ("KRTEHEN" → KITCHEN, "STAR" → STAIR); a tie snaps nothing.
+ */
+export function snapRoomWords(raw: string): string {
+  return raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9.&/ -]+/g, ' ')
+    .split(/\s+/)
+    .map((tok) => {
+      const w = tok.replace(/[^A-Z]/g, '')
+      if (w.length < 4 || LEXICON.includes(w)) return tok
+      const max = Math.floor(w.length / 3)
+      const hits = LEXICON.map((l) => ({ l, d: levenshtein(w, l) })).filter((h) => h.d <= max)
+      const best = Math.min(...hits.map((h) => h.d))
+      const at = hits.filter((h) => h.d === best)
+      return at.length === 1 ? at[0].l : tok
+    })
+    .join(' ')
+    .trim()
+}
+
 /** Upper-case, OCR digit/letter confusions inside words undone, near-miss words snapped to the vocabulary. */
 export function normaliseName(raw: string): string {
   return raw
@@ -778,6 +812,8 @@ export function toCanvas(g: Gray): OffscreenCanvas {
 
 /** Above this per-pixel residual a line is not taken for a size at all (name lines read as sizes fit ≥ ~0.06). */
 const UNSURE_FIT = 0.05
+/** A full two-sided reading this close is a size line even with no separate mark blobs (names forced through: ≥ 0.013, never full form). */
+const FULL_FORM_FIT = 0.03
 /** The size line's alphabet (tesseract whitelist for the size passes). */
 const SIZE_CHARS = `0123456789'"-xX`
 /**
@@ -870,7 +906,9 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       if (!r || r.fit > UNSURE_FIT) return false
       const t = read[i].text
       const digits = t.replace(/\D/g, '').length
-      return r.sure || topMarks(glyphs, lines[i].box) > 0 || (digits > 0 && digits >= t.replace(/[^A-Za-z]/g, '').length)
+      // or the matcher reads the full F'-I"xF'-I" form closely (marks merged into the digits on 6–7 px print)
+      const full = /^\d{1,2}'-\d{1,2}"x\d{1,2}'-\d{1,2}"$/.test(r.text) && r.fit <= FULL_FORM_FIT
+      return r.sure || full || topMarks(glyphs, lines[i].box) > 0 || (digits > 0 && digits >= t.replace(/[^A-Za-z]/g, '').length)
     }
     // the line right above a size is a room name: when tesseract did not read it as one, two more views of it
     const names = lines.flatMap((n, j) => {
@@ -885,10 +923,17 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     if (names.length) {
       total += 2 * names.length
       await setAll({ tessedit_char_whitelist: NAME_CHARS })
+      const seen = names.map((j) => [read[j].text])
       for (const v of NAME_VIEWS) {
         const again = await readAll(names, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel))
-        names.forEach((j, k) => !classifyRoom(read[j].text) && classifyRoom(again[k].text) && (read[j] = again[k]))
+        names.forEach((j, k) => (seen[k].push(again[k].text), !classifyRoom(read[j].text) && classifyRoom(again[k].text) && (read[j] = again[k])))
       }
+      // still no room name: the views' words snapped hard to the room lexicon (only here, over a size)
+      names.forEach((j, k) => {
+        if (classifyRoom(read[j].text)) return
+        const snapped = seen[k].map(snapRoomWords).find((t) => classifyRoom(t))
+        if (snapped) read[j] = { text: snapped, conf: 0.5 }
+      })
     }
     const words = (vertical: boolean): OcrWord[] =>
       lines.flatMap((l, i): OcrWord[] => {
@@ -901,7 +946,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       })
     const items = [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] // a vertical word stands alone
     // a room that should carry a printed size and has none read: the Studio asks for it (unless the AI reads it first)
-    for (const it of items) if (!it.dims && reaskReason(it) === 'room-without-dims') it.sizeUnread = true
+    for (const it of items) if (!it.dims && (reaskReason(it) === 'room-without-dims' || (it.kind === 'room' && reaskReason(it) === 'unparsed-dims'))) it.sizeUnread = true
     return { items, glyphPx: charH }
   } finally {
     await scheduler.terminate()
