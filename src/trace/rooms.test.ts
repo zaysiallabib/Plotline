@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { evalTrace, registerTruth } from './eval'
 import { SHOTS, loadPgm, loadPpm, writePng } from './evalio'
 import { calibrateScale, classifyProfile, darkMaxOf, deriveWallsFromRooms, fitRooms, type RectPx, type RoomFit, type Side } from './rooms'
-import { addEdgeReports, centreRect, edgeReport, emptyEdgeReport, expectedClass, formatEdgeReport, oracleLabels, roomsOverlay, scoreRooms, truthRoomsPx, type TruthEdgeClass } from './roomsEval'
+import { addEdgeReports, centreRect, edgeReport, emptyEdgeReport, expectedClass, formatEdgeReport, oracleLabels, printedDims, roomsOverlay, scoreRooms, truthRoomsPx, type TruthEdgeClass } from './roomsEval'
 import type { Gray, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic plans: 50 px/m, walls grey 70, thin lines grey 120, paper 255 ----------
@@ -226,7 +226,7 @@ describe.skipIf(!haveFixtures)('rooms first vs the hand-traced units (eval repor
       const se = scoreRooms(u, fe.map(centreRect))
       tot.oracle += so.matched, tot.oracleSized += oSized, tot.sized += sized, tot.rooms += T.length, tot.ocr += sr.matched, tot.ocrFlat += srF.matched, tot.ocrSelf += se.matched
       rows.push(`${u.id.padEnd(11)} | ${String(so.matched).padStart(2)}/${T.length} (sized ${oSized}/${sized}) mIoU ${so.meanIoU.toFixed(2)} | ${String(sr.matched).padStart(2)} | ${String(srF.matched).padStart(2)} | ${String(se.matched).padStart(2)} | fits ${fo.length}/${fr.length} | ${Math.round(msO)} ms`)
-      const sc = (c: ReturnType<typeof calibrateScale>) => (c ? `${c.pxPerM.toFixed(2)} (${c.pxPerM / k - 1 >= 0 ? '+' : ''}${pct(c.pxPerM / k - 1)}, ${c.rooms} rooms, spread ${pct(c.spread)}, bracket ${c.bracket.map((b) => b.toFixed(0)).join('–')})` : 'none (< 3 sized labels)')
+      const sc = (c: ReturnType<typeof calibrateScale>) => (c ? `${c.pxPerM.toFixed(2)} (${c.pxPerM / k - 1 >= 0 ? '+' : ''}${pct(c.pxPerM / k - 1)}, ${c.rooms} rooms, spread ${pct(c.spread)}, widths / heights ${c.axes.map((a) => a.toFixed(2)).join(" / ")}, bracket ${c.bracket.map((b) => b.toFixed(0)).join('–')})` : 'none (< 3 sized labels)')
       scaleRows.push(`${u.id.padEnd(11)} truth ${k.toFixed(2)} | oracle labels ${sc(cO)} ${Math.round(msC)} ms | real OCR ${sc(cR)}`)
       // edge classes on the oracle fits that matched (the classifier given a right rectangle)
       const okIdx = new Set(so.per.filter((p) => p.iou >= 0.6).map((p) => p.d))
@@ -270,4 +270,38 @@ describe.skipIf(!haveFixtures)('rooms first vs the hand-traced units (eval repor
     )
     expect(tot.oracle).toBeGreaterThan(0)
   }, 900000)
+})
+
+/**
+ * Banani L2-6 has no hand-traced unit: its labels read by eye at 3–4× (centre px, printed size) and its scale measured
+ * by hand on five rooms' inner faces (BED-02 29.5 / 29.7, M BED 29.2 / 29.5, BED-04 28.9 / 29.0, BED-03 28.9 / 28.7,
+ * BED ROOM 29.4 / 29.5 px/m → 29.2). DMD's printed sizes are 3–4 px glyphs, illegible to OCR and to the eye: no test.
+ */
+const BANANI = 'Sheltech_Banani__Level_2-6'
+const BANANI_K = 29.2
+const BANANI_LABELS: [string, number, number, string][] = [
+  ['BED-02', 234, 181, `12'-4" X 13'-5"`],
+  ['M BED', 519, 172, `14'-2" X 15'-2"`],
+  ['BED-04', 262, 288, `10'-7" X 10'-0"`],
+  ['BED-03', 238, 450, `12'-6" X 12'-0"`],
+  ['BED ROOM', 727, 537, `17'-6" X 12'-8"`],
+  ['LIVING', 732, 402, `17'-2" X 10'-6"`],
+  ['OPEN KITCHEN', 613, 390, `10'-0" X 9'-10"`],
+  ['VERANDA', 765, 607, `8'-0" X 5'-10"`],
+  ['VERANDA', 250, 111, `8'-0" X 4'-6"`],
+  ['DRY KITCHEN', 350, 468, `7'-0" X 11'-6"`],
+  ['STAIR & LIFT LOBBY', 465, 462, `20'-0" X 7'-1"`],
+]
+describe.skipIf(!existsSync(`${FIXT}${BANANI}.pgm`))('rooms first on Banani (no hand trace)', () => {
+  test('scale from the rooms alone vs the hand-measured scale; fits overlay', () => {
+    const g = loadPgm(`${FIXT}${BANANI}.pgm`)!
+    const rgb = (RGBD !== 'none' && loadPpm(`${RGBD}${BANANI}.ppm`)) || undefined
+    const labels: TextItem[] = BANANI_LABELS.map(([name, x, y, size]) => ({ text: `${name}\n${size}`, box: { x: x - 20, y: y - 8, w: 40, h: 16 }, kind: 'room', dims: printedDims(size)!, conf: 1, source: 'ocr' }))
+    const c = calibrateScale(g, labels)!
+    const fits = fitRooms(g, labels, { pxPerM: c.pxPerM, rgb })
+    console.log(`\nBANANI scale from ${labels.length} hand-read labels: ${c.pxPerM.toFixed(2)} px/m (${c.pxPerM / BANANI_K - 1 >= 0 ? '+' : ''}${pct(c.pxPerM / BANANI_K - 1)} vs ${BANANI_K} measured by hand), ${c.rooms} rooms agreeing, spread ${pct(c.spread)}, widths / heights ${c.axes.map((a) => a.toFixed(2)).join(" / ")}, bracket ${c.bracket.map((b) => b.toFixed(0)).join('–')}; fits ${fits.length}/${labels.length}`)
+    shots('banani', g, { x0: 170, y0: 60, x1: 840, y1: 650 }, { fits, ok: fits.map(() => true) })
+    shots('banani-walls', g, { x0: 170, y0: 60, x1: 840, y1: 650 }, { walls: deriveWallsFromRooms(fits, c.pxPerM) })
+    expect(Math.abs(c.pxPerM / BANANI_K - 1)).toBeLessThan(0.05)
+  }, 300000)
 })

@@ -351,6 +351,8 @@ export interface ScaleFit {
   spread: number
   /** the px/m range searched */
   bracket: [number, number]
+  /** the same median from the widths alone and from the heights alone (a scan or export stretched on one axis) */
+  axes: [number, number]
 }
 
 /** The sheet's wall grey: the most common grey among dark pixels (≤ 160), 9-bin smoothed. */
@@ -405,9 +407,9 @@ function bestExact(E: Evidence, seed: Px, W: number, H: number, st: number, excl
 
 /**
  * Consensus px/m from the rooms themselves: scan a px/m range (`guess` ± 30 %, else the wall-thickness bracket) for
- * the scale at which the printed sizes sit best on the ink (sum over rooms, the sheet's better orientation), then fit
- * at that scale with ±10 % slack and take the median fitted ÷ printed ratio of the confident rooms; once more at ±5 %.
- * Needs ≥ 3 sized labels.
+ * the scale at which the printed sizes sit best on the ink (sum over rooms, the sheet's better orientation; 2 % steps),
+ * then twice: every room placed at that scale, its sides moved onto their sharpest steps nearby, the median fitted ÷
+ * printed ratio of the sides on clear ink. Needs ≥ 3 sized labels.
  */
 export function calibrateScale(gray: Gray, labels: TextItem[], opts: { guess?: number; tracks?: Track[] } = {}): ScaleFit | null {
   const seeds = roomSeeds(labels)
@@ -427,26 +429,41 @@ export function calibrateScale(gray: Gray, labels: TextItem[], opts: { guess?: n
     }
     if (Math.max(sa, sb) > scBest) (scBest = Math.max(sa, sb)), (sBest = s)
   }
-  let k = sBest, rooms = 0, spread = NaN
-  for (const slack of [0.1, 0.05]) {
-    const st = k >= 40 ? 2 : 1
-    const fits = jointFit(E, seeds, k, slack, st, 'vote')
-    const ratios: number[] = []
-    fits.forEach((f, i) => {
-      if (!f) return
-      const r = refineSides(gray, f, st + 2)
-      if (edgeMeans(E, r).some((e) => e < 0.35)) return
-      const d = seeds[i].dims!
-      const [W, H] = f.swapped ? [d.bM, d.aM] : [d.aM, d.bM]
-      ratios.push((r.x1 - r.x0) / W, (r.y1 - r.y0) / H)
-    })
+  // refine twice: each room's exact-size placement at the current scale, each side onto its sharpest step nearby
+  // (±5 %, then ±2 %), the fitted ÷ printed ratios' median. Per axis: a width counts when both side edges sit on clear
+  // ink, a height when top and bottom do (a pale-blue glazed side next to a tinted floor is a weak step).
+  let k = sBest, rooms = 0, spread = NaN, axes: [number, number] = [NaN, NaN]
+  for (const reach of [0.05, 0.02]) {
+    const st = Math.max(1, Math.round(0.02 * k))
+    const place = (swapped: boolean) =>
+      sized.map(({ s: seed, i }) => {
+        const d = seed.dims!
+        const [W, H] = swapped ? [d.bM, d.aM] : [d.aM, d.bM]
+        const others = seeds.filter((q, j) => j !== i && Math.hypot(q.at.x - seed.at.x, q.at.y - seed.at.y) > 1.2 * k).map((q) => q.at)
+        return { f: fitRect(E, seed.at, W * k, H * k, swapped, { slack: 0, step: st, exclude: others }), W, H }
+      })
+    const A = place(false), B = place(true)
+    const sum = (P: typeof A) => P.reduce((t, p) => t + (p.f?.score ?? 0), 0)
+    const P = sum(A) >= sum(B) ? A : B
+    const rx: number[] = [], ry: number[] = []
+    let used = 0
+    for (const { f, W, H } of P) {
+      if (!f) continue
+      const r = refineSides(gray, f, Math.round(reach * k * Math.max(W, H)) + 2)
+      const [t, b, l, rr] = edgeMeans(E, r)
+      if (Math.min(l, rr) >= 0.35) rx.push((r.x1 - r.x0) / W)
+      if (Math.min(t, b) >= 0.35) ry.push((r.y1 - r.y0) / H)
+      if (Math.min(l, rr) >= 0.35 || Math.min(t, b) >= 0.35) used++
+    }
+    const ratios = [...rx, ...ry].sort((a, b) => a - b)
     if (ratios.length < 4) break
-    ratios.sort((a, b) => a - b)
-    k = ratios[ratios.length >> 1]
-    rooms = ratios.length / 2
+    const med = (v: number[]) => (v.length ? [...v].sort((a, b) => a - b)[v.length >> 1] : NaN)
+    k = med(ratios)
+    axes = [med(rx), med(ry)]
+    rooms = used
     spread = (ratios[Math.floor(ratios.length * 0.75)] - ratios[Math.floor(ratios.length * 0.25)]) / k
   }
-  return { pxPerM: k, rooms, spread, bracket }
+  return { pxPerM: k, rooms, spread, bracket, axes }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────── edge classes
