@@ -526,9 +526,17 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   // body (B) ends it — another wall beside the track (O) means it is no opening
   const gaps: Gap[] = []
   const seen = new Set<string>()
-  const arcAt = arcInk(gray)
+  // arc ink outside every wall body, each pixel judged once (the door probe asks the same pixels many times)
+  const arcAt0 = arcInk(gray), arcMemo = new Uint8Array(W * H)
   const grayAt = (x: number, y: number) => gray.data[Math.min(H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))]
   const inWall = wallBodies(tracks, W, H)
+  const arcAt = (x: number, y: number) => {
+    const xi = Math.round(x), yi = Math.round(y)
+    if (xi < 0 || yi < 0 || xi >= W || yi >= H) return false
+    const i = yi * W + xi
+    if (!arcMemo[i]) arcMemo[i] = arcAt0(xi, yi) && !inWall(xi, yi) ? 2 : 1
+    return arcMemo[i] === 2
+  }
   for (const T of tracks) {
     const perp = byDir[T.horiz ? 1 : 0]
     const P = (u: number): Px => (T.horiz ? { x: u, y: T.c } : { x: T.c, y: u })
@@ -570,7 +578,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         const key = `${T.horiz}|${T.c.toFixed(1)}|${u0.toFixed(1)}|${u1.toFixed(1)}`
         if (seen.has(key)) continue
         seen.add(key)
-        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, (x, y) => arcAt(x, y) && !inWall(x, y), grayAt, opts.glass, W, H)
+        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H)
         gaps.push({ horiz: T.horiz, c: T.c, u0, u1, node0: dir > 0 ? face : node, node1: dir > 0 ? node : face, thPx: iv.th, ...(jog ? { jog } : {}), ...cls })
       }
   }
