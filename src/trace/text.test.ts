@@ -12,7 +12,7 @@ import type { Gray, TextItem, TextTrace } from './types'
 import { askAi, buildMontage, parseAiAnswer, parseMontageAnswer, strictSize } from './ai'
 import { FIXTURES, loadPgm } from './evalio'
 import { sameLabel, scoreText } from './textEval'
-import { H as SIZE_H, SIZE_RULE, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont } from './sizes'
+import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
 import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
@@ -319,7 +319,7 @@ describe('size reader', () => {
     const b = band(clean, line.box, capBand(glyphs, line.box))!
     const d = decode(b.D, b.W, renderFont(0.14, 0.85))!
     expect(d.text).toBe(`13'-0"x15'-6"`)
-    expect(d.margin).toBeGreaterThan(SIZE_RULE.sureMargin)
+    expect(d.margin).toBeGreaterThan(6)
   })
   test('the grammar: inches 0–11, feet ≤ 39 — a misprint cannot come out as text the grammar forbids', () => {
     const g = paper(400, 60)
@@ -346,6 +346,13 @@ describe('size reader', () => {
     expect(reads.slice(0, -1).every((r) => r!.sure && r!.agree)).toBe(true)
     expect(reads[texts.length - 1]!.agree).toBe(false)
   }, 30_000)
+  test('tesseract confirms a reading: whole, side by side across views, or digit by digit — else not', () => {
+    const d = { aM: ft(13), bM: ft(15, 6) }
+    expect(tessConfirms(`13'-0"x15'-6"`, d, [`13-0"X15'-6"`])).toBe(true)
+    expect(tessConfirms(`13'-0"x15'-6"`, d, [`13'-0"x16'`, `1'-0"x15'-6"`, `13'-0"X15-0"`])).toBe(true) // side A in one view, B in another
+    expect(tessConfirms(`13'-0"x15'-6"`, d, [`1301566`])).toBe(true) // every digit on the LCS
+    expect(tessConfirms(`13'-0"x15'-6"`, d, [`13-0"x16-6"`, `15'-0"X16'`])).toBe(false) // the 5 of side B never seen there
+  })
   test('confirmed glyphs: LCS of the digit strings, marks only on a well-confirmed line', () => {
     expect(lcsMatches('130156', '1301565')).toEqual([0, 1, 2, 3, 4, 5])
     expect(lcsMatches('130156', '1906')).toEqual([0, 2, 5])

@@ -5,7 +5,7 @@
  */
 import { FT, parseLength } from '../core'
 import type { RoomKind } from '../core'
-import { readSizes } from './sizes'
+import { readSizes, topMarks } from './sizes'
 import type { Dims, Gray, TextItem, TextKind, TextTrace } from './types'
 
 type Box = TextItem['box']
@@ -100,6 +100,14 @@ function editDistanceAtMost1(a: string, b: string): boolean {
   return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1)
 }
 
+/** Short plan abbreviations, and the letter pairs small print confuses: one such swap is read as the word ("POR" → PDR). */
+const SHORT = 'PDR BED VER AOD ODU WIC KIT'.split(' ')
+const LOOKALIKE = new Set(['OD', 'DO', 'OQ', 'QO', 'DQ', 'QD', 'EF', 'FE', 'IL', 'LI', 'ER', 'RE', 'BE', 'EB', 'BR', 'RB', 'UV', 'VU', 'CG', 'GC', 'PR', 'RP'])
+function snapShort(tok: string): string {
+  if (tok.length !== 3 || SHORT.includes(tok)) return tok
+  return SHORT.find((w) => [...w].filter((c, i) => c !== tok[i]).length === 1 && [...w].every((c, i) => c === tok[i] || LOOKALIKE.has(c + tok[i]))) ?? tok
+}
+
 /** Upper-case, OCR digit/letter confusions inside words undone, near-miss words snapped to the vocabulary. */
 export function normaliseName(raw: string): string {
   return raw
@@ -113,7 +121,7 @@ export function normaliseName(raw: string): string {
     .map((tok) => {
       if (/[A-Z]/.test(tok) && /\d/.test(tok) && tok.replace(/[^A-Z]/g, '').length >= 2) tok = tok.replace(/\d/g, (d) => DIGIT_AS_LETTER[d] ?? d)
       if (tok.length >= 5 && !WORDS.includes(tok)) tok = WORDS.find((w) => w.length >= 5 && editDistanceAtMost1(tok, w)) ?? tok
-      return tok
+      return snapShort(tok)
     })
     .join(' ')
     .trim()
@@ -771,6 +779,13 @@ const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubi
   { from: 'clean', px: 40, kernel: 'cubic' },
 ]
 
+/** Second looks at a room name tesseract misread (the line over a size): capitals only, two other views. */
+const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-&/ '
+const NAME_VIEWS: typeof SIZE_VIEWS = [
+  { from: 'raw', px: 40, kernel: 'cubic' },
+  { from: 'clean', px: 48, kernel: 'lanczos' },
+]
+
 /** A text line as tesseract gets it: cropped (vertical ones turned upright), resampled to ~`px` glyphs, stretched, padded. */
 function lineImage(g: Gray, l: TextLine, px: number, kernel: 'lanczos' | 'cubic'): Blob {
   const p = 0.4 * Math.min(l.box.w, l.box.h)
@@ -829,15 +844,39 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       cand.map((i, k) => ({ box: lines[i].box, tess: views[k] })),
     )
     const size = new Map(cand.map((i, k) => [i, { read: sizes[k], views: views[k] }]))
+    // looks like a size line at all: fits the size templates and shows foot / inch marks or reads digit-heavy — a room name
+    // forced through the grammar ("TOILET 2" → 10'x41) has neither
+    const isSize = (i: number) => {
+      const r = size.get(i)?.read
+      if (!r || r.fit > UNSURE_FIT) return false
+      const t = read[i].text
+      return r.sure || topMarks(glyphs, lines[i].box) > 0 || t.replace(/\D/g, '').length >= t.replace(/[^A-Za-z]/g, '').length
+    }
+    // the line right above a size is a room name: when tesseract did not read it as one, two more views of it
+    const names = lines.flatMap((n, j) => {
+      if (n.vertical || isSize(j) || classifyRoom(read[j].text)) return []
+      const over = lines.some((s, i) => {
+        if (!isSize(i)) return false
+        const gap = s.box.y - (n.box.y + n.box.h)
+        return gap > -0.3 * s.box.h && gap < 1.1 * Math.max(s.box.h, n.box.h) && Math.abs(n.box.x + n.box.w / 2 - (s.box.x + s.box.w / 2)) < 0.6 * Math.max(n.box.w, s.box.w)
+      })
+      return over ? [j] : []
+    })
+    if (names.length) {
+      total += 2 * names.length
+      await setAll({ tessedit_char_whitelist: NAME_CHARS })
+      for (const v of NAME_VIEWS) {
+        const again = await readAll(names, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel))
+        names.forEach((j, k) => !classifyRoom(read[j].text) && classifyRoom(again[k].text) && (read[j] = again[k]))
+      }
+    }
     const words = (vertical: boolean): OcrWord[] =>
       lines.flatMap((l, i): OcrWord[] => {
         if (l.vertical !== vertical) return []
         const s = size.get(i)
         if (s?.read?.sure) return [{ text: s.read.text, conf: 0.95, box: l.box, size: 'sure' }]
-        // a size the reader or tesseract saw but nobody is sure of: flagged, never parsed (a name line reads as a bad fit)
-        const fit = s?.read?.fit ?? 1
-        const guess = s?.read && /['"]/.test(s.read.text) && fit <= UNSURE_FIT ? s.read.text : fit <= UNSURE_FIT ? s?.views.find((t) => parseDims(t)) : undefined
-        if (guess) return [{ text: read[i].text || guess, conf: 0.3, box: l.box, size: 'unsure', guess }]
+        // a size line nobody can confirm: flagged, never parsed
+        if (isSize(i)) return [{ text: read[i].text || s!.read!.text, conf: 0.3, box: l.box, size: 'unsure', guess: s!.read!.text }]
         return read[i].text ? [{ text: read[i].text, conf: read[i].conf, box: l.box }] : []
       })
     const items = [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] // a vertical word stands alone

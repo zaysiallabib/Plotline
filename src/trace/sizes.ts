@@ -9,11 +9,12 @@
  * 3. Templates start as a tiny stroke font (`FONT`, stroke width and width scale picked per sheet), then are re-learnt
  *    from the sheet's own glyphs — only glyphs whose digit a tesseract reading of the same line confirms (LCS of the
  *    digit strings), so the matcher never trains on its own guesses.
- * 4. A read is SURE when it fits well and either a tesseract variant gives the same value or the runner-up string is
- *    far behind. Everything else is unsure: shown to the AI montage / the user, never silently used.
+ * 4. A read is SURE when it fits well and tesseract confirms it (`tessConfirms`): the matcher finds the right string far
+ *    more often than tesseract, tesseract checks it. A big margin alone is not enough (measured). Everything else is
+ *    unsure: shown to the AI montage / the user, never silently used.
  * Pure (no DOM); tested in text.test.ts, measured by the reader eval there.
  */
-import { parseDims } from './text'
+import { parseDims, parseSide } from './text'
 import type { Dims, Gray } from './types'
 
 type Box = { x: number; y: number; w: number; h: number }
@@ -243,6 +244,16 @@ export function capBand(glyphs: Box[], box: Box): { y0: number; y1: number } {
 }
 
 /**
+ * Foot / inch marks in a line: small blobs sitting in the top half of the cap band. A size line has them (' and "), a
+ * room name ("TOILET 2", "PDR.", "K.VER") does not — so a name line is never taken for a size.
+ */
+export function topMarks(glyphs: Box[], box: Box): number {
+  const cap = capBand(glyphs, box)
+  const capH = cap.y1 - cap.y0
+  return glyphs.filter((b) => b.x >= box.x - 1 && b.x + b.w <= box.x + box.w + 1 && b.y >= box.y - 1 && b.y + b.h <= box.y + box.h + 1 && b.h <= 0.6 * capH && b.w <= 0.6 * capH && b.y + b.h <= cap.y0 + 0.6 * capH).length
+}
+
+/**
  * The line as a darkness band: cap rows → rows P..P+H, the same scale across, 1.5 line heights of margin left and right
  * (a glyph the line finder missed at an end is still read). Darkness from the crop's own paper and ink levels.
  */
@@ -356,20 +367,40 @@ export interface SizeRead {
   /** canonical text, e.g. 13'-0"x15'-6" */
   text: string
   dims: Dims
-  /** margin to the runner-up string (squared-error units of a H = 20 band) */
+  /** margin to the runner-up string (squared-error units of a H = 20 band) — diagnostics only: alone it is NOT safe */
   margin: number
   fit: number
-  /** a tesseract variant read the same value */
+  /** tesseract confirms the value: one view reads it whole, or each side is read by some view, or every digit lies on an LCS with a view */
   agree: boolean
-  /** safe to use without asking: fits, and agreed or far ahead of the runner-up */
+  /** safe to use without asking: fits, carries marks, and tesseract confirms it */
   sure: boolean
 }
 
-/** Knobs of the sure rule (measured on the five units, wave 19). */
-export const SIZE_RULE = { maxFit: 0.04, sureMargin: 6, iterations: 3 }
+/**
+ * Knobs (wave 19, five units): fit ≤ 0.04 separates sizes from names forced through the grammar; a large margin alone
+ * was wrong 5 times in 13 (margin ≥ 6), tesseract confirmation 0 times in 45 — so only confirmation makes a size sure.
+ */
+export const SIZE_RULE = { maxFit: 0.04, iterations: 3 }
 
 const INCH = 0.0254
-const sameDims = (a: Dims, b: Dims) => Math.abs(a.aM - b.aM) < INCH / 2 && Math.abs(a.bM - b.bM) < INCH / 2
+const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < INCH / 2
+
+/** Does tesseract confirm this reading? Whole value, each side in some view, or every digit on a ≥ 60 % LCS with a view. */
+export function tessConfirms(text: string, dims: Dims, tess: string[]): boolean {
+  if (tess.some((t) => ((e) => !!e && near(e.aM, dims.aM) && near(e.bM, dims.bM))(parseDims(t)))) return true
+  const sides = tess.flatMap((t) => {
+    const p = t.split(/\s*[xX×*%]\s*/)
+    return p.length === 2 ? [{ a: parseSide(p[0], true), b: parseSide(p[1], true) }] : []
+  })
+  if (sides.some((v) => near(v.a, dims.aM)) && sides.some((v) => near(v.b, dims.bM))) return true
+  const ds = text.replace(/\D/g, '')
+  const hit = new Set<number>()
+  for (const t of tess) {
+    const m = lcsMatches(ds, t.replace(/\D/g, ''))
+    if (m.length >= 0.6 * ds.length) m.forEach((k) => hit.add(k))
+  }
+  return ds.length > 0 && hit.size === ds.length
+}
 
 /**
  * Read every candidate line as a size. `clean` = the glyph-only raster, `glyphs` its blobs, `tess[i]` = tesseract's
@@ -405,12 +436,8 @@ export function readSizes(clean: Gray, glyphs: Box[], lines: { box: Box; tess: s
   return reads.map((r, i) => {
     const dims = r ? parseDims(r.text) : null
     if (!r || !dims) return null
-    const agree = lines[i].tess.some((t) => {
-      const e = parseDims(t)
-      return !!e && sameDims(e, dims)
-    })
+    const agree = tessConfirms(r.text, dims, lines[i].tess)
     // a reading with no foot / inch mark at all ("84x71") is as likely a name line forced through the grammar
-    const sure = r.fit <= SIZE_RULE.maxFit && /['"]/.test(r.text) && (agree || r.margin >= SIZE_RULE.sureMargin)
-    return { text: r.text, dims, margin: r.margin, fit: r.fit, agree, sure }
+    return { text: r.text, dims, margin: r.margin, fit: r.fit, agree, sure: agree && r.fit <= SIZE_RULE.maxFit && /['"]/.test(r.text) }
   })
 }

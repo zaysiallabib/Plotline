@@ -4,7 +4,7 @@
  */
 import { FT, deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Unit } from '../core'
-import { parseDims } from './text'
+import { normaliseName, parseDims } from './text'
 import type { TextItem, TextTrace } from './types'
 
 const INCH = 0.0254
@@ -21,7 +21,7 @@ function tokens(s: string): { words: Set<string>; nums: Set<number> } {
 /** Same label? A shared name word (with plan abbreviations: VER. = veranda, PDR = powder) and no conflicting number. */
 export function sameLabel(truthName: string, ocrText: string): boolean {
   const a = tokens(truthName)
-  const b = tokens(ocrText.split('\n')[0])
+  const b = tokens(normaliseName(ocrText.split('\n')[0])) // as the solver reads it ("L088Y" → LOBBY, "BeD1" → BED 1)
   if (![...a.words].some((w) => b.words.has(w))) return false
   return !(a.nums.size && b.nums.size && ![...a.nums].some((n) => b.nums.has(n)))
 }
