@@ -35,7 +35,9 @@ export interface Interval {
 
 /**
  * One wall alignment. `horiz`: the track runs along x at y = c (its intervals' u are x); else along y at x = c.
- * Intervals are sorted by u0 and never overlap; their ends sit on crossing tracks where the ink joins them.
+ * Intervals are sorted by u0 and never overlap; u0 / u1 are centre-line ends: on a crossing track's c where the ink
+ * joins them (corner, T), else where the drawn wall's ink stops. Two tracks a few px apart with a Join between them are
+ * one stepped wall (a flush thickness step) — snap a room edge to the one whose interval covers it.
  */
 export interface Track {
   horiz: boolean

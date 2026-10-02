@@ -100,6 +100,17 @@ describe('wall tracks on synthetic rasters', () => {
     }
   })
 
+  test('a gap with glass-colour pixels inside the wall band is a window; the same gap without them stays undecided', () => {
+    const { g, box } = sheet(8, 4)
+    hw(box, 1, 0, 3, 0.127)
+    hw(box, 1, 4.5, 8, 0.127)
+    hw(box, 3, 0, 8, 0.127)
+    const glass = new Uint8Array(g.width * g.height)
+    for (let x = Math.round(4 * K); x < Math.round(5.5 * K); x++) glass[Math.round(2 * K) * g.width + x] = 1 // a 1 px blue line
+    expect(traceTracks(g, { glass }).gaps.map((x) => x.kind)).toEqual(['window'])
+    expect(traceTracks(g, {}).gaps.map((x) => x.kind)).toEqual(['unknown'])
+  })
+
   test('a 45° chamfer: the skeleton adds it as an angled wall whose ends sit on the track walls it meets', () => {
     const { g, P } = sheet(6, 5)
     const line = (p: { x: number; y: number }, q: { x: number; y: number }, th: number) => {
