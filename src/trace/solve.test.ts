@@ -8,6 +8,7 @@ import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
 import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
+import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
 import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
@@ -266,26 +267,40 @@ const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, 
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))
 
+/**
+ * TRACE_LABELS=ocr | oracle | ocr,oracle (default both): the cached real OCR (the product today), and the ORACLE — the hand
+ * trace's own labels (name, kind, printed size at its label point; OCR's area / other items kept): what a reader that
+ * never misreads would hand over. The oracle table is the CEILING of the rest of the pipeline, never the product number.
+ */
+const LABELS = (process.env.TRACE_LABELS ?? 'ocr,oracle').split(',')
 describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', () => {
   test('rooms matched / area / scale / kinds / review per unit', () => {
-    const rows: SolveReport[] = []
-    const why: string[] = []
-    for (const u of Object.values(units)) {
-      const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
-      const debug: NonNullable<SolveInputs['debug']> = {}
-      const c = withColour(g, `assets__${sheet(u)}`)
-      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
-      const row = scoreSolve(res, u)
-      rows.push(row)
-      if (process.env.TRACE_DIAG) {
-        const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
-        why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+    const out: string[] = []
+    for (const lab of LABELS) {
+      const rows: SolveReport[] = []
+      const why: string[] = []
+      for (const u of Object.values(units)) {
+        const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
+        const debug: NonNullable<SolveInputs['debug']> = {}
+        const c = withColour(g, `assets__${sheet(u)}`)
+        const ocr = readTextJson(sheet(u))
+        const text: TextTrace = lab === 'oracle' ? oracleText(u, ocr) : ocr
+        const res = solveTraces(g, { text, debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
+        const row = scoreSolve(res, u)
+        rows.push(row)
+        if (process.env.TRACE_DIAG) {
+          const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
+          why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+        }
+        if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
+        expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
       }
-      if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
-      expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
+      const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : 'CACHED REAL OCR (the product today)'
+      const total = rows.reduce((t, r) => t + r.matched, 0), truthN = rows.reduce((t, r) => t + r.truthRooms, 0)
+      out.push(`\n== ${head}: ${total} of ${truthN} rooms matched\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}`)
     }
-    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}\n`)
-  }, 300000)
+    console.log(out.join('\n'))
+  }, 900000)
 })
 
 /** One flat each on the sheets nobody traced by hand (click = a spot in its living room). */

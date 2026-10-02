@@ -200,17 +200,19 @@ function reread(it: Item, k: number, img: Img): 'planter' | 'glazing' | null {
 /**
  * Corner holes: a free end (a wall's, or an opening's whose far jamb met no wall) that stops a few centimetres short of
  * the wall it obviously meets — under the tracks' own smallest gap (0.3 m), so it is no opening — is carried on along its
- * own axis (never tilted): onto a perpendicular wall's centre line ahead (≤ 0.1 m past its face; that wall's free end
- * comes the same few cm to meet it when it stops short), across ≤ 0.15 m to the next wall of the same track, or, where
- * a wall steps sideways (≤ 0.4 m) and carries on from right here, by a jog onto it. An opening's end gets a connector
- * wall (the opening keeps its jamb-to-jamb span). Mutates `walls`, returns the connectors / jogs added. Axis walls only.
+ * own axis (never tilted): onto a perpendicular wall's (or opening's) centre line ahead (≤ 0.1 m past its face; when that
+ * wall stops a hair short of this line — ≤ 0.04 m — it carries on to meet it: its own free end moves, else a stub on its
+ * own line), across ≤ 0.15 m to the next wall of the same track, or, where a wall steps sideways (≤ 0.4 m) and carries on
+ * from right here (its end within 0.1 m along), by a jog onto it. An opening's end gets a connector wall (the opening
+ * keeps its jamb-to-jamb span). Mutates `walls`, returns the connectors / stubs / jogs added. Axis walls only.
  */
 export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: number): WallSeg[] {
   type L = { s: WallSeg | OpeningGuess; wall: boolean; horiz: boolean; c: number; th: number }
   const key = (p: Px) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`
   const deg = new Map<string, number>()
   const lines: L[] = []
-  for (const [s, wall] of [...walls.map((w) => [w, true] as const), ...openings.map((o) => [o, false] as const)]) {
+  // (an undecided gap is no graph edge: the wall ends beside it are free)
+  for (const [s, wall] of [...walls.map((w) => [w, true] as const), ...openings.filter((o) => o.kind !== 'unknown').map((o) => [o, false] as const)]) {
     if (s.a.x === s.b.x && s.a.y === s.b.y) continue
     for (const p of [s.a, s.b]) deg.set(key(p), (deg.get(key(p)) ?? 0) + 1)
     const horiz = Math.abs(s.a.y - s.b.y) < 1e-6, vert = Math.abs(s.a.x - s.b.x) < 1e-6
@@ -218,9 +220,9 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
   }
   const along = (l: L, p: Px) => (l.horiz ? p.x : p.y)
   const span = (l: L) => [Math.min(along(l, l.s.a), along(l, l.s.b)), Math.max(along(l, l.s.a), along(l, l.s.b))]
-  const R = Math.max(3, 0.1 * k), Rc = Math.max(3, 0.15 * k), Rs = Math.max(2, 0.05 * k), Rj = 0.4 * k
+  const R = Math.max(3, 0.1 * k), Rc = Math.max(3, 0.15 * k), Rs = Math.max(3, 0.1 * k), Rj = 0.4 * k, Rh = Math.max(2, 0.04 * k)
   const added: WallSeg[] = []
-  const wallLines = () => lines.filter((l) => l.wall)
+  const bump = (p: Px, n: number) => deg.set(key(p), (deg.get(key(p)) ?? 0) + n)
   for (const S of lines)
     for (const e of ['a', 'b'] as const) {
       const E = S.s[e]
@@ -232,27 +234,32 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
       const offer = (cost: number, go: () => void) => {
         if (!best || cost < best.cost) best = { cost, go }
       }
-      for (const Q of wallLines()) {
+      for (const Q of lines) {
         if (Q.s === S.s) continue
         const [q0, q1] = span(Q)
         if (Q.horiz !== S.horiz) {
-          // a wall across this end, its body just ahead
+          // a wall (or a decided opening) across this end, its body just ahead
           const s = (Q.c - u) * dir
           if (s < -Q.th / 2 || s > Q.th / 2 + R || S.c < q0 - R - S.th / 2 || S.c > q1 + R + S.th / 2) continue
-          const qEnd = S.c < q0 ? 'lo' : S.c > q1 ? 'hi' : null
-          let qe: 'a' | 'b' | null = null
-          if (qEnd) {
-            const at = qEnd === 'lo' ? q0 : q1
-            qe = Math.abs(along(Q, Q.s.a) - at) < 1e-6 ? 'a' : 'b'
-            if (deg.get(key(Q.s[qe])) !== 1) continue
-          }
           if (S.wall && Math.abs(Q.c - along(S, o)) < 1) continue
-          offer(Math.abs(s) + (qEnd ? Math.abs(S.c - (qEnd === 'lo' ? q0 : q1)) : 0), () => {
+          const lo = S.c < q0, hi = S.c > q1
+          let qe: 'a' | 'b' | null = null
+          if (lo || hi) {
+            // past its end: only a wall, and then by a hair unless its end is free to come over
+            const at = lo ? q0 : q1
+            qe = Math.abs(along(Q, Q.s.a) - at) < 1e-6 ? 'a' : 'b'
+            if (!Q.wall || (deg.get(key(Q.s[qe])) !== 1 && Math.abs(S.c - at) > Rh)) continue
+          }
+          offer(Math.abs(s) + (qe ? Math.abs(S.c - along(Q, Q.s[qe])) : 0), () => {
             const X = P(Q.c, S.c)
-            if (qe) {
+            if (qe && deg.get(key(Q.s[qe])) === 1) {
               deg.set(key(Q.s[qe]), 0)
               ;(Q.s as WallSeg)[qe] = X
-              deg.set(key(X), (deg.get(key(X)) ?? 0) + 1)
+              bump(X, 1)
+            } else if (qe) {
+              added.push({ a: { ...Q.s[qe] }, b: X, thicknessPx: Q.th, conf: 0.6 })
+              bump(Q.s[qe], 1)
+              bump(X, 1)
             }
             reach(X)
           })
@@ -260,20 +267,19 @@ export function closeCorners(walls: WallSeg[], openings: OpeningGuess[], k: numb
           // the next wall of this track, a hair away
           for (const qe of ['a', 'b'] as const) {
             const g = (along(Q, Q.s[qe]) - u) * dir
-            if (g > 0 && g <= Rc && deg.get(key(Q.s[qe])) === 1) offer(g, () => reach(Q.s[qe]))
+            if (g > 0 && g <= Rc) offer(g, () => reach(Q.s[qe]))
           }
-        } else if (Math.abs(Q.c - S.c) <= Rj) {
-          // a stepped wall carrying on from right here
+        } else if (Q.wall && Math.abs(Q.c - S.c) <= Rj) {
+          // a stepped wall carrying on from right here: a jog across, at its end
           for (const qe of ['a', 'b'] as const) {
             const F = Q.s[qe], fo = Q.s[qe === 'a' ? 'b' : 'a']
-            if (deg.get(key(F)) !== 1 || Math.abs(along(Q, F) - u) > Rs || (along(Q, fo) - along(Q, F)) * dir <= 0) continue
-            offer(Math.abs(Q.c - S.c), () => {
-              const F2 = P(u, Q.c)
-              deg.set(key(F), 0)
-              ;(Q.s as WallSeg)[qe] = F2
-              deg.set(key(F2), (deg.get(key(F2)) ?? 0) + 2)
-              added.push({ a: { ...E }, b: F2, thicknessPx: Math.min(S.th, Q.th), conf: 0.6 })
-              deg.set(key(E), 2)
+            const uf = along(Q, F)
+            if (Math.abs(uf - u) > Rs || (along(Q, fo) - uf) * dir <= 0) continue
+            offer(Math.abs(Q.c - S.c) + Math.abs(uf - u), () => {
+              const X = P(uf, S.c)
+              reach(X)
+              added.push({ a: { ...X }, b: { ...F }, thicknessPx: Math.min(S.th, Q.th), conf: 0.6 })
+              bump(F, 1)
             })
           }
         }
