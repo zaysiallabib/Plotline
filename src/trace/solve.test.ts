@@ -132,14 +132,27 @@ describe('marks: stairs, glazing profile, glass colour', () => {
 })
 
 describe('solveTraces on a synthetic flat', () => {
-  test('plain door gaps (no arcs), tracks: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
-    const { g, text } = synthetic(false)
-    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+  test('plain door gaps (no arcs), tracks, no labels: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
+    const { g } = synthetic(false)
+    const r = withTracker('tracks', () => solveTraces(g, {}, { pickPx: P(2, 2.5) }))
     expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
     // the three gaps stay open (founder: a wall stops where its ink stops): the living, bed and store are one space
     expect(deriveRooms(r.unit).length).toBeLessThan(4)
     expect(r.review.filter((x) => /gap in the wall/.test(x.message)).length).toBe(3)
     expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+  })
+
+  test('plain door gaps (no arcs), tracks + fitted rooms: nothing drawn there nor on the rooms\' edges → a passage (an opening, never wall), each one flagged', () => {
+    const { g, text } = synthetic(false)
+    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+    const ops = r.unit.walls.flatMap((w) => w.openings)
+    expect(ops.map((o) => o.kind)).toEqual(['passage', 'passage', 'passage'])
+    for (const o of ops) expect(Math.abs(o.widthM - 0.9)).toBeLessThan(0.12)
+    // the rooms stay separate labelled rooms (the hand traces' open-plan convention: a wall that is all opening)
+    expect(deriveRooms(r.unit).length).toBe(4)
+    expect(r.review.filter((x) => x.kind === 'opening-guess' && /Passage/.test(x.message)).length).toBe(3)
+    expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+    expect(r.stats.gapsDecided).toBe(3)
   })
 
   test('plain door gaps (no arcs), bands: the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
