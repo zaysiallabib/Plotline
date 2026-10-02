@@ -5,7 +5,7 @@
  */
 import { FT, parseLength } from '../core'
 import type { RoomKind } from '../core'
-import { readSizes, topMarks } from './sizes'
+import { capBand, readSizes, topMarks } from './sizes'
 import type { Dims, Gray, TextItem, TextKind, TextTrace } from './types'
 
 type Box = TextItem['box']
@@ -786,12 +786,17 @@ const NAME_VIEWS: typeof SIZE_VIEWS = [
   { from: 'clean', px: 48, kernel: 'lanczos' },
 ]
 
-/** A text line as tesseract gets it: cropped (vertical ones turned upright), resampled to ~`px` glyphs, stretched, padded. */
-function lineImage(g: Gray, l: TextLine, px: number, kernel: 'lanczos' | 'cubic'): Blob {
-  const p = 0.4 * Math.min(l.box.w, l.box.h)
-  let c = cropGray(g, { x: l.box.x - p, y: l.box.y - p, w: l.box.w + 2 * p, h: l.box.h + 2 * p })
+/**
+ * A text line as tesseract gets it: cropped (vertical ones turned upright), resampled to ~`px` glyphs, stretched, padded.
+ * With `cap` (a size line's cap band) the crop and the scale follow the digits, not the line box — a box swollen by a wall
+ * stub or the name above made the digits small and the crop noisy, and tesseract read nothing.
+ */
+export function lineImage(g: Gray, l: TextLine, px: number, kernel: 'lanczos' | 'cubic', cap?: { y0: number; y1: number }): Blob {
+  const ch = cap ? cap.y1 - cap.y0 : l.vertical ? l.box.w : l.box.h
+  const p = cap ? 0.6 * ch : 0.4 * Math.min(l.box.w, l.box.h)
+  let c = cropGray(g, cap ? { x: l.box.x - p, y: cap.y0 - 0.5 * ch, w: l.box.w + 2 * p, h: 2 * ch } : { x: l.box.x - p, y: l.box.y - p, w: l.box.w + 2 * p, h: l.box.h + 2 * p })
   if (l.vertical) c = rotateCW(c)
-  c = pad(stretch(resample(c, Math.max(1, Math.min(8, px / (l.vertical ? l.box.w : l.box.h))), kernel)), 12)
+  c = pad(stretch(resample(c, Math.max(1, Math.min(8, px / ch)), kernel)), 12)
   // raw image bytes are fine for tesseract.js (its loadImage wraps them in a Uint8Array); its types only list Blob & co.
   return toPgm(c) as unknown as Blob
 }
@@ -837,7 +842,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     total += cand.length * SIZE_VIEWS.length
     await setAll({ tessedit_char_whitelist: SIZE_CHARS })
     const views: string[][] = cand.map(() => [])
-    for (const v of SIZE_VIEWS) (await readAll(cand, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel))).forEach((r, k) => views[k].push(r.text))
+    const caps = new Map(cand.map((i) => [lines[i], capBand(glyphs, lines[i].box)]))
+    for (const v of SIZE_VIEWS) (await readAll(cand, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel, caps.get(l)))).forEach((r, k) => views[k].push(r.text))
     const sizes = readSizes(
       clean,
       glyphs,
