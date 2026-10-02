@@ -111,6 +111,28 @@ describe('wall tracks on synthetic rasters', () => {
     expect(traceTracks(g, {}).gaps.map((x) => x.kind)).toEqual(['unknown'])
   })
 
+  test('a double door: two quarter arcs from the two jambs meeting in the gap are ONE door; one arc alone over half the gap is none', () => {
+    const run = (both: boolean) => {
+      const { g, P, box } = sheet(8, 4)
+      hw(box, 1, 0, 3, 0.127)
+      hw(box, 1, 4.5, 8, 0.127)
+      hw(box, 3, 0, 8, 0.127)
+      // a 1 px grey quarter arc, hinge (cx, cy) m, radius r m, from angle a0 to a1 (radians, y down)
+      const arc = (cx: number, cy: number, r: number, a0: number, a1: number) => {
+        const c = P(cx, cy)
+        for (let i = 0; i <= 300; i++) {
+          const t = a0 + ((a1 - a0) * i) / 300
+          g.data[Math.round(c.y + r * K * Math.sin(t)) * g.width + Math.round(c.x + r * K * Math.cos(t))] = 60
+        }
+      }
+      arc(3, 1.0635, 0.75, 0, Math.PI / 2) // leaf hinged on the left jamb, swinging down
+      if (both) arc(4.5, 1.0635, 0.75, Math.PI / 2, Math.PI) // …and its mirror on the right jamb
+      return traceTracks(g, {}).gaps.map((x) => x.kind)
+    }
+    expect(run(true)).toEqual(['door'])
+    expect(run(false)).toEqual(['unknown'])
+  })
+
   test('a 45° chamfer: the skeleton adds it as an angled wall whose ends sit on the track walls it meets', () => {
     const { g, P } = sheet(6, 5)
     const line = (p: { x: number; y: number }, q: { x: number; y: number }, th: number) => {
