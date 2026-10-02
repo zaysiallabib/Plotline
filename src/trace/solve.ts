@@ -1610,7 +1610,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   if (tracker === 'tracks' && trace.tracks) {
     fits = fitRooms(gray, text.items, { pxPerM, rgb: opts.rgb, tracks: trace.tracks.lines.tracks })
     if (fits.length) {
-      merged = roomsOnTracks(trace.tracks.lines, trace.tracks.angled, fits, pxPerM, { gray, rgb: opts.rgb })
+      const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
+      merged = roomsOnTracks(trace.tracks.lines, trace.tracks.angled, fits, pxPerM, { gray, rgb: opts.rgb, labels: [...labels, ...fits.map((f) => f.at)] })
       trace = { ...trace, walls: merged.walls, openings: merged.openings }
     }
   }

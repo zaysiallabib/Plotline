@@ -46,6 +46,8 @@ interface Item {
 }
 
 interface Img {
+  /** every room label / seed point on the sheet (px): what lies beyond an open side */
+  labels?: Px[]
   gray: Gray
   rgb?: RgbImage
 }
@@ -151,7 +153,7 @@ function itemsOf(fits: RoomFit[], k: number, img: Img): Item[] {
     const M: Item = { ...run[0], u1: run[run.length - 1].u1, kind: 'unsure', hingeAt: undefined, swingTo: undefined }
     const L = M.u1 - M.u0
     const f = (kd: string) => run.filter((x) => x.kind === kd).reduce((t, x) => t + x.u1 - x.u0, 0) / L
-    const say = M.rooms.length === 2 && f('open') + f('thin') >= 0.8 && f('open') >= 0.3 ? 'open' : reread(M, k, img)
+    const say = M.rooms.length === 2 && f('open') + f('thin') >= 0.8 ? 'open' : reread(M, k, img)
     if (!say) {
       for (const it of run) if (it.kind === 'unsure' || it.kind === 'thin') it.kind = reread(it, k, img) ?? it.kind
       continue
@@ -363,6 +365,18 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
 
   // ── room-edge stretches on no track wall and no track gap
   const pieces: Piece[] = []
+  /** a room label 0.3–4 m beyond a one-sided stretch, facing it (along its span ± 0.3 m), with no track wall between */
+  const labelBeyond = (it: Item, u0: number, u1: number) => {
+    const own = fits[it.rooms[0]]?.at
+    return (img.labels ?? []).some((L) => {
+      if (own && Math.hypot(L.x - own.x, L.y - own.y) < 2) return false
+      const lu = it.horiz ? L.x : L.y, lc = it.horiz ? L.y : L.x
+      const d = (lc - it.c) * it.out!
+      if (lu < u0 - 0.3 * k || lu > u1 + 0.3 * k || d < 0.3 * k || d > 4 * k) return false
+      const u = Math.min(u1, Math.max(u0, lu))
+      return !tt.tracks.some((T) => T.horiz === it.horiz && (T.c - it.c) * it.out! > 2 && (T.c - it.c) * it.out! < d && T.intervals.some((iv) => iv.u0 <= u && u <= iv.u1))
+    })
+  }
   const minLen: Record<Item['kind'], number> = { wall: 0.1, door: 0.45, window: 0.45, thin: 0.5, open: 0.5, unsure: 0.3, glazing: 0.45, planter: 0.5 }
   for (const it of items) {
     const cut: [number, number][] = []
@@ -378,12 +392,16 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
     for (const [u0, u1] of rest) {
       const a = P(it.horiz, it.c, u0), b = P(it.horiz, it.c, u1), w = `${((u1 - u0) / k).toFixed(1)} m`
       if (it.kind === 'wall' || it.kind === 'door' || it.kind === 'window') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: it.th, kind: it.kind, hingeAt: it.hingeAt, swingTo: it.swingTo })
+      // a thin line between two labelled rooms: no railing indoors — an open-plan boundary (passage), flagged
+      else if (it.kind === 'thin' && it.rooms.length === 2) pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.127 * k, kind: 'passage' })
       else if (it.kind === 'thin') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M })
       else if (it.kind === 'planter') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.0635 * k, kind: 'low', heightM: PLANTER_M })
       // glazing: a window — on a veranda's open side (no room beyond) its parapet / railing
       else if (it.kind === 'glazing' && it.out && fits[it.rooms[0]].label.roomKind === 'balcony') pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.03 * k, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M })
       else if (it.kind === 'glazing') pieces.push({ horiz: it.horiz, c: it.out ? it.c + it.out * 0.0635 * k : it.c, u0, u1, th: 0.127 * k, kind: 'window' })
       else if (it.kind === 'open' && it.rooms.length === 2) pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.127 * k, kind: 'passage' })
+      // open toward another labelled space (a name printed beyond it, no wall between): the same open-plan boundary
+      else if (it.kind === 'open' && it.out && labelBeyond(it, u0, u1)) pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.0635 * k, u0, u1, th: 0.127 * k, kind: 'passage' })
       else if (it.kind === 'open') review.push({ a, b, kind: 'open', message: `${w} of a room's side has nothing drawn on it — open to the next space, or a wall missing?` })
       else review.push({ a, b, kind: 'unsure', message: `${w} of a room's side: not sure what is drawn (wall, window, door, open?) — nothing traced` })
     }

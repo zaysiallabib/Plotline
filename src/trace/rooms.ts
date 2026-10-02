@@ -906,6 +906,9 @@ export function deriveWallsFromRooms(fits: RoomFit[], pxPerM: number): RoomWalls
       const a = x.s?.kind ?? 'unsure', b = x.t ? x.t.kind : a
       if (a === b) return a
       if ((a === 'door' && b !== 'wall' && b !== 'window') || (b === 'door' && a !== 'wall' && a !== 'window')) return 'door'
+      // (both sides look across the same boundary: a thin line one of them sees, with nothing or a doubt on the other,
+      // is a thin line — it makes no wall either way, the integration decides what it is)
+      if ((a === 'thin' && (b === 'open' || b === 'unsure')) || (b === 'thin' && (a === 'open' || a === 'unsure'))) return 'thin'
       return 'unsure'
     }
     const kinds = samples.map(kindOf)
