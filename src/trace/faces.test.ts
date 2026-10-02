@@ -69,6 +69,17 @@ describe('thinFaces', () => {
     expect(r.faces[0]).toMatchObject({ planter: true, aod: false })
   })
 
+  test('a planter box with no edge line drawn (foliage over it): the green\'s own edge closes it, a 0.45 m planter edge', () => {
+    const walls = [...box, ...stubs]
+    const g = sheet(walls)
+    const green = new Uint8Array(g.width * g.height)
+    for (let y = 154; y < 247; y++) for (let x = 304; x < 351; x++) green[y * g.width + x] = 1
+    const r = thinFaces(g, { k: K, walls, openings: [], green })
+    expect(r.walls.length).toBe(1)
+    expect(r.walls[0]).toMatchObject({ a: { x: 350.5, y: 150 }, b: { x: 350.5, y: 250 }, heightM: 0.45 })
+    expect(r.faces[0]).toMatchObject({ planter: true, aod: false })
+  })
+
   test('furniture: a line across a fitted room, or a bed drawn against a wall, closes nothing', () => {
     const g = sheet(box)
     pen(g, { x: 104, y: 200 }, { x: 296, y: 200 })
