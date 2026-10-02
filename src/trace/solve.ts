@@ -1639,9 +1639,14 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // not walk through it into the next flat's foyer
   const coreFaces = coreAt(pxPerM).flatMap((c) => draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && pointInPolygon(c, roomPolygon(r, draft.unit))).map((r) => roomPolygon(r, draft.unit)))
   const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f))
-  // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (no flood to leak through open gaps)
+  // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (pickByRooms) — plus what the flood from the
+  // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
+  // the core (those rooms bound it, so it cannot leak through an open gap into them)
   const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside) : null
-  const picked = byRooms ?? pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p), isPlanter)
+  const otherRects = byRooms ? fits.filter((_, i) => !byRooms.fits.includes(i)).map((f) => f.rect) : []
+  const inOther = (p: Pt) => otherRects.some((r) => p.x * pxPerM >= r.x0 && p.x * pxPerM <= r.x1 - 1 && p.y * pxPerM >= r.y0 && p.y * pxPerM <= r.y1 - 1)
+  const flood = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p) || inOther(p), isPlanter)
+  const picked = byRooms ? { ...flood, rooms: new Set([...byRooms.rooms, ...flood.rooms]), touched: new Set([...byRooms.touched, ...flood.touched]), open: false } : flood
   if (inputs.debug && byRooms) inputs.debug.flatFits = byRooms.fits
   let flat = picked.rooms
   // founder (2026-09-30): the draft is the flat's WALLS. Every wall beside the flooded floor is the flat's — not only
