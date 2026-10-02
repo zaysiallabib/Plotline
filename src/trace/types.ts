@@ -172,8 +172,10 @@ export interface AutoTraceOpts {
   /** the sheet in colour (ImageData-like, the layout hints.ts findHints / propagateByColour take) — colour fills name rooms — extension (solver, wave 16) */
   rgb?: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
   /**
-   * The wall stage (wave 18): 'bands' (default) = the founder's tracker — straight bands of exactly the drawn
-   * thickness, carried into the draft as measured; 'skeleton' = the wave-15 skeleton, walls classed 5" / 10".
+   * The wall stage: 'tracks' (default, wave 19, tracks.ts) = one wall per occupied stretch of a track, exactly as
+   * thick as drawn, ending where its ink ends, openings only where a door swing / glazing is drawn; 'bands' (wave 18) =
+   * straight bands of the drawn thickness + the solver's repair passes; 'skeleton' = the wave-15 skeleton, walls
+   * classed 5" / 10".
    */
   tracker?: 'skeleton' | 'bands' | 'tracks'
 }

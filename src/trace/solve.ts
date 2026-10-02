@@ -82,8 +82,12 @@ export const KNOBS = {
   areaShare: 0.88,
   /** … and an area-label scale is used only within this share of the wall-thickness prior */
   areaTrust: 0.05,
-  /** the wall stage: 'bands' = the founder's tracker (straight, exact thickness; walls.ts WallOpts.tracker), 'skeleton' = the wave-15 path */
-  tracker: 'bands' as 'skeleton' | 'bands' | 'tracks',
+  /**
+   * the wall stage: 'tracks' (wave 19, tracks.ts) = one wall per occupied stretch of a track, exact thickness, openings
+   * only where a door arc / glazing is drawn, no repair passes; 'bands' = the wave-18 band tracker (straight, exact
+   * thickness; walls.ts WallOpts.tracker) + the repair passes; 'skeleton' = the wave-15 path
+   */
+  tracker: 'tracks' as 'skeleton' | 'bands' | 'tracks',
   /**
    * Founder, 2026-09-30: the draft is WALLS AND DOORS, nothing else — no window guesses from the wall stage, no glazing
    * lines, no glass-colour lines. What walls and door arcs close is a room; everything else stays open for the human.
