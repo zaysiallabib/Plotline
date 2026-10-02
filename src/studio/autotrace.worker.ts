@@ -17,7 +17,7 @@ export interface TraceJob {
   /** the Gemini key from this browser (workers have no localStorage) */
   aiKey?: string
   /** the wall stage (AutoTraceOpts.tracker): the founder's band tracker, or the skeleton */
-  tracker?: 'skeleton' | 'bands'
+  tracker?: 'skeleton' | 'bands' | 'tracks'
   /** dev only (/studio?mock-trace): the fixed Sheltech A result instead of the solver */
   mock?: boolean
 }

@@ -10,6 +10,7 @@
  */
 import { bandWalls, coveredByBands } from './bands'
 import { edt, otsu, thin, threshold } from './raster'
+import { traceTracks, trackWalls } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
@@ -34,9 +35,13 @@ export interface WallOpts {
   /**
    * 'bands' (founder, wave 18): axis-aligned walls as straight bands of exactly their drawn thickness (bands.ts); the
    * skeleton only adds what no band covers (angled walls, arcs). 'skeleton' (default here — the solver passes
-   * 'bands'): the skeleton for everything.
+   * 'bands'): the skeleton for everything. 'tracks' (wave 19, tracks.ts): one wall per occupied stretch of a track,
+   * openings as children of the wall they are cut in, only where a door arc or glazing is drawn.
    */
-  tracker?: 'skeleton' | 'bands'
+  tracker?: 'skeleton' | 'bands' | 'tracks'
+  /** 'tracks': plant pixels (the colour image's green) whitened before tracing; glass pixels = window evidence */
+  plant?: Uint8Array
+  glass?: Uint8Array
 }
 
 const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
@@ -384,6 +389,16 @@ export function upsample(g: Gray, f: number): Gray {
 
 const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
 
+/** Nearest-neighbour enlargement of a mask to the upsampled raster's size. */
+function upMask(m: Uint8Array, w: number, h: number, W: number, H: number): Uint8Array {
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(h - 1, Math.floor((y * h) / H))
+    for (let x = 0; x < W; x++) out[y * W + x] = m[sy * w + Math.min(w - 1, Math.floor((x * w) / W))]
+  }
+  return out
+}
+
 export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   let f = opts.upscale
   let half0 = opts.halfPx
@@ -396,7 +411,8 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     // re-estimate on the enlarged raster (finer), but never above the native estimate: on a sheet with few walls the
     // enlarged histogram can lock onto the columns
     const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
-    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig })
+    const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
+    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
     return {
       walls: t.walls.map((s) => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })),
@@ -406,9 +422,11 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
         b: scalePx(op.b, k),
         ...(op.hingeAt ? { hingeAt: scalePx(op.hingeAt, k) } : {}),
         ...(op.swingTo ? { swingTo: scalePx(op.swingTo, k) } : {}),
+        ...(op.thicknessPx ? { thicknessPx: op.thicknessPx * k } : {}),
       })),
     }
   }
+  if (opts.tracker === 'tracks') return trackWalls(traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast }))
   const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes
   const bands =
