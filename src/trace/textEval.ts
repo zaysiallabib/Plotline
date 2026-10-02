@@ -4,7 +4,7 @@
  */
 import { FT, deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Unit } from '../core'
-import { parseDims } from './text'
+import { normaliseName, parseDims } from './text'
 import type { TextItem, TextTrace } from './types'
 
 const INCH = 0.0254
@@ -21,7 +21,7 @@ function tokens(s: string): { words: Set<string>; nums: Set<number> } {
 /** Same label? A shared name word (with plan abbreviations: VER. = veranda, PDR = powder) and no conflicting number. */
 export function sameLabel(truthName: string, ocrText: string): boolean {
   const a = tokens(truthName)
-  const b = tokens(ocrText.split('\n')[0])
+  const b = tokens(normaliseName(ocrText.split('\n')[0])) // as the solver reads it ("L088Y" → LOBBY, "BeD1" → BED 1)
   if (![...a.words].some((w) => b.words.has(w))) return false
   return !(a.nums.size && b.nums.size && ![...a.nums].some((n) => b.nums.has(n)))
 }
@@ -30,9 +30,13 @@ export interface TextScore {
   labels: number
   found: number
   dimsTotal: number
+  /** labels with a printed size that were found (the rooms-first fit needs these) — wave 19 */
+  sizedFound: number
   dimsExact: number
   /** parsed, but not the printed value (worse than no reading: the solver would trust it) */
   dimsMisread: number
+  /** found, no size, but flagged `sizeUnread` (the AI / the user is asked) — wave 19 */
+  dimsUnsure: number
   kindOk: number
   greenTotal: number
   greenFound: number
@@ -48,7 +52,7 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
   const toPx = (p: { x: number; y: number }) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM })
   const rooms = new Map(deriveRooms(unit).map((r) => [r.id, roomPolygon(r, unit).map(toPx)]))
   const used = new Set<TextItem>()
-  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, dimsExact: 0, dimsMisread: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
+  const s: TextScore = { labels: 0, found: 0, dimsTotal: 0, sizedFound: 0, dimsExact: 0, dimsMisread: 0, dimsUnsure: 0, kindOk: 0, greenTotal: 0, greenFound: 0, areaFound: false, missed: [], wrongDims: [], wrongKind: [] }
   for (const label of unit.roomLabels) {
     const p = toPx(label)
     const poly = rooms.get(label.id)
@@ -78,11 +82,13 @@ export function scoreText(trace: TextTrace, unit: Unit, tolM = 1.5): TextScore {
     else s.wrongKind.push(`${label.name}: ${best.roomKind} (truth ${label.kind})`)
     if (green && best.green) s.greenFound++
     if (truthDims) {
+      s.sizedFound++
       const d = best.dims
       if (d && Math.abs(d.aM - truthDims.aM) <= INCH && Math.abs(d.bM - truthDims.bM) <= INCH) s.dimsExact++
       else {
         if (d) s.dimsMisread++
-        s.wrongDims.push(`${label.name}: ${JSON.stringify(best.text)} (truth ${label.printedSize})`)
+        else if (best.sizeUnread) s.dimsUnsure++
+        s.wrongDims.push(`${label.name}: ${JSON.stringify(best.text)}${d ? ' MISREAD' : best.sizeUnread ? ` unsure (guess ${best.sizeGuess ?? '-'})` : ''} (truth ${label.printedSize})`)
       }
     }
   }
