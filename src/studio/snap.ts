@@ -94,10 +94,10 @@ export function snapPoint(
   }
   const onLine = (l: NonNullable<typeof line>) => {
     q = { x: l.x, y: l.y }
-    kind = 'in line'
     // an axis line keeps its guide and still aligns across (a diagonal one has no guide: nothing else may move it)
     if (Math.abs(l.dir.y) < 1e-9) guides.push({ axis: 'y', at: l.y }), alignX()
     else if (Math.abs(l.dir.x) < 1e-9) guides.push({ axis: 'x', at: l.x }), alignY()
+    kind = 'in line'
   }
 
   if (o.from && !o.free) {
