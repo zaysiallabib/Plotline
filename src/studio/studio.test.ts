@@ -10,7 +10,7 @@ import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, 
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
-import { snapMove, snapOpeningOffset } from './snap'
+import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { doorClearZones, furnish, quadsOverlap } from '../furnish/presets'
@@ -651,6 +651,35 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     expect(cornered.dx).toBeCloseTo(0.03)
     expect(cornered.dy).toBeCloseTo(-0.03)
     expect(snapMove(ends(0.5, 0.5), s.unit, 0.1).snap.kind).toBe('free')
+  })
+
+  it('in line: an end within 3 cm of a wall\'s line past its end snaps onto it; corner and body snaps first; a chain drawn on from its end follows it', () => {
+    // a diagonal wall (0,0)→(3,1) (not on the 45° rays) with a loose stub elsewhere
+    const s = poly([[0, 0], [3, 1], [3, 4], [0, 4]])
+    const L = Math.hypot(3, 1)
+    const dir = { x: 3 / L, y: 1 / L }, nrm = { x: -dir.y, y: dir.x }
+    const off = (along: number, side: number) => ({ x: dir.x * along + nrm.x * side, y: dir.y * along + nrm.y * side })
+    const lateral = (p: { x: number; y: number }) => p.x * nrm.x + p.y * nrm.y
+    const a = snapPoint(off(L + 1, 0.02), s.unit, { tolM: 0.1 })
+    expect(a.kind).toBe('in line')
+    expect(lateral(a)).toBeCloseTo(0, 9)
+    expect(a.x * dir.x + a.y * dir.y).toBeCloseTo(L + 1, 9) // slid sideways only
+    expect(snapPoint(off(L + 1, 0.04), s.unit, { tolM: 0.1 }).kind).toBe('free') // 4 cm off: not "a hair"
+    expect(snapPoint(off(L / 2, 0.02), s.unit, { tolM: 0.1 }).kind).toBe('wall') // beside the wall: its body
+    expect(snapPoint(off(L + 0.05, 0.02), s.unit, { tolM: 0.1 }).kind).toBe('vertex') // at its end: the corner
+    expect(snapPoint(off(-1, -0.02), s.unit, { tolM: 0.1 }).kind).toBe('in line') // past the other end too
+    // the dragged corner's own walls never pull it (exclude): (3,1) dragged off the line is not snapped back by them
+    const c = at(s, 3, 1)!
+    expect(snapPoint(off(L + 1, 0.02), s.unit, { tolM: 0.1, exclude: [c.id] }).kind).not.toBe('in line')
+    // drawing on from (3,1): the ray would round to 0° or 45°; within 1.5° of the wall's line it follows the line
+    const d = snapPoint(off(L + 2, 0.02), s.unit, { tolM: 0.1, from: at(s, 3, 1)! })
+    expect(d.kind).toBe('in line')
+    expect(lateral(d)).toBeCloseTo(0, 9)
+    // an axis wall's line keeps its guide (the drag of a whole wall reads guides: snapMove is unchanged)
+    const box = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const h = snapPoint({ x: 5, y: 0.02 }, box.unit, { tolM: 0.1 })
+    expect(h).toMatchObject({ kind: 'in line', x: 5, y: 0 })
+    expect(h.guides).toContainEqual({ axis: 'y', at: 0 })
   })
 
   it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
