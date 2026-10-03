@@ -1564,12 +1564,26 @@ function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Dr
  * face holding a foreign point (the core's label, the next flat's stamp or fitted room) loses the walls no other face
  * uses, until none is left — the walls it shares with the flat's rooms stay.
  */
-function dropForeign(d: Draft, foreign: Pt[]): Draft {
+function dropForeign(d: Draft, foreign: Pt[], inFlood?: (p: Pt) => boolean): Draft {
+  // (a wall with the flat's floor beside it is the flat's boundary to that face — cut the face's far walls first)
+  const V0 = () => new Map(d.unit.vertices.map((v) => [v.id, v]))
+  const bySide = (w: GWall, V: Map<string, Vertex>) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!, L = d2(a, b) || 1, n = { x: -(b.y - a.y) / L, y: (b.x - a.x) / L }
+    for (const t of [0.25, 0.5, 0.75])
+      for (const o of [-1, 1]) {
+        const off = o * (w.thicknessM / 2 + 0.25)
+        if (inFlood?.({ x: a.x + (b.x - a.x) * t + n.x * off, y: a.y + (b.y - a.y) * t + n.y * off })) return true
+      }
+    return false
+  }
   for (let it = 0; it < 6 && foreign.length; it++) {
     const bad = d.rooms.filter((r) => foreign.some((p) => pointInPolygon(p, roomPolygon(r, d.unit))))
     if (!bad.length) break
     const good = new Set(d.rooms.filter((r) => !bad.includes(r)).flatMap((r) => r.wallIds))
-    const cut = new Set(bad.flatMap((r) => r.wallIds).filter((w) => !good.has(w)))
+    const V = V0(), G = new Map(d.walls.map((w) => [w.id, w]))
+    const only = bad.flatMap((r) => r.wallIds).filter((w) => !good.has(w))
+    const far = only.filter((w) => !bySide(G.get(w)!, V))
+    const cut = new Set(far.length ? far : only)
     if (!cut.size) break // only walls of the flat's own rooms left: leave it for the human
     const walls = d.walls.filter((w) => !cut.has(w.id))
     const used = new Set(walls.flatMap((w) => [w.a, w.b]))
@@ -1824,7 +1838,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       ]
     : []
   flat = new Set([...flat].filter((r) => !foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))))
-  if (flat.size || picked.touched.size) draft = dropSlivers(dropForeign(restrict(draft, flat, picked.touched), foreign))
+  if (flat.size || picked.touched.size) draft = dropSlivers(dropForeign(restrict(draft, flat, picked.touched), foreign, picked.inFlood))
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }

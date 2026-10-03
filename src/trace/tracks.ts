@@ -52,6 +52,12 @@ export interface Box {
   y1: number
 }
 
+/** a column: its box and its middle point, px (the Studio's sticky points: the middle, and where each wall's own centre line meets its faces) */
+export interface Pillar extends Box {
+  cx: number
+  cy: number
+}
+
 /**
  * A jog: two walls on parallel tracks c0 / c1 drawn as one band (a flush thickness step, a wall built onto another)
  * meet end to end at u — joined there by a short crosswise piece.
@@ -62,6 +68,11 @@ export interface Join {
   c0: number
   c1: number
   thPx: number
+  /**
+   * the centre lines step by less than the thicker wall's half width (a thin wall meeting a thick one end to end, faces not
+   * aligned): ONE junction — no crosswise piece is drawn (founder 2026-10-03: no zigzag); the graph's join step closes it
+   */
+  flush?: boolean
 }
 
 export interface TrackTrace {
@@ -69,6 +80,12 @@ export interface TrackTrace {
   joins: Join[]
   /** ink thick in both directions (columns, junction blocks, shear walls, cores): bounding boxes, px — never walls */
   blocks: Box[]
+  /**
+   * the blocks that are COLUMNS (findPillars), each with its middle point. A wall keeps its own centre line and thickness
+   * (never shifted onto the column's axis — walls are often flush with one face): in its line the column never cuts it
+   * (one wall carried through, under the column's block), and a wall ending in it reaches its far face (corners close)
+   */
+  pillars: Pillar[]
   /** the sheet's wall thickness classes, px, thinnest first */
   classes: number[]
   /** the masks used: wall ink (after the plants came out), plant (removed before tracing), glass */
@@ -299,7 +316,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   const half = opts.halfPx ?? wallHalfWidth(edt(ink, W, H), W, H)
   const minTh = Math.max(2, 1.4 * half)
   let k = (2 * half) / 0.127
-  const empty: TrackTrace = { tracks: [], joins: [], blocks: [], classes: [], ink, plantMask: opts.plant, glass: opts.glass, pxPerM: k, gaps: [] }
+  const empty: TrackTrace = { tracks: [], joins: [], blocks: [], pillars: [], classes: [], ink, plantMask: opts.plant, glass: opts.glass, pxPerM: k, gaps: [] }
   const runs = [crossRuns(gray, ink, true, minTh), crossRuns(gray, ink, false, minTh)]
   const cap = M.maxWall * k
   const bands0 = [bandsOf(runs[0], W, cap), bandsOf(runs[1], H, cap)]
@@ -311,6 +328,19 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   const maxBlock = M.maxBlock * k
   const snapTh = (w: number) => classes.reduce((b, c) => (Math.abs(c - w) < Math.abs(b - w) ? c : b))
   const minContrast = opts.minContrast ?? 60
+  // founder's order (2026-10-03): names → plants → PILLARS → walls. A column in a wall's line is that wall (founder rule
+  // 2026-09-28): its block never cuts the wall, however long it is along the line
+  const blocks = blockBoxes(ink, W, H, maxTh)
+  const pillars = pillarsOf(blocks, maxTh, k)
+  /** of the stretch u0 … u1 along a track at c, the part no pillar holds */
+  const outsidePillars = (horiz: boolean, c: number, u0: number, u1: number) => {
+    let out = u1 - u0
+    for (const b of pillars) {
+      const [p0, p1, q0, q1] = horiz ? [b.x0, b.x1, b.y0, b.y1] : [b.y0, b.y1, b.x0, b.x1]
+      if (c >= q0 - 1 && c <= q1 + 1) out -= Math.max(0, Math.min(u1, p1 + 1) - Math.max(u0, p0 - 1))
+    }
+    return out
+  }
 
   // tracks: bands on ONE centre line (jitter only, ≤ 30 % of the thinnest class); a flush thickness step is two tracks
   // whose touching ends are joined (a jog), so neither wall is drawn off its ink
@@ -423,7 +453,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
           }
           let r = q
           while (r < j && lab[r] === B_) r++
-          if (r - q > maxBlock) {
+          if (r - q > maxBlock && outsidePillars(horiz, l.c, a + q - 0.5, a + r - 0.5) > maxBlock) {
             if (q > s) pieces.push([s, q - 1])
             s = r
           }
@@ -515,10 +545,31 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   // an interval its two snapped ends collapsed (a stub inside a junction) is no wall
   for (const T of tracks) T.ivs = T.ivs.filter((iv) => iv.n1 - iv.n0 >= Math.max(2, 0.5 * iv.th))
 
+  const free0 = (iv: Iv) => iv.n0 === iv.f0, free1 = (iv: Iv) => iv.n1 === iv.f1
+  // ── a column between two walls on near parallel tracks (Sheltech: a partition meeting the facade wall inside a column,
+  // each on its own centre line): both run into it from either side — they meet end to end at its middle, one junction,
+  // never two walls side by side through it
+  for (const dir of byDir)
+    for (const T of dir)
+      for (const iv of T.ivs) {
+        if (!free1(iv)) continue
+        for (const T2 of dir) {
+          const J = T2 === T ? undefined : T2.ivs.find((j) => free0(j) && j.f0 < iv.f1 && j.f1 > iv.f1 && Math.abs(T2.c - T.c) < (iv.th + j.th) / 2)
+          if (!J) continue
+          const [lo, hi, c0, c1] = T.horiz ? ['x0', 'x1', 'y0', 'y1'] as const : ['y0', 'y1', 'x0', 'x1'] as const
+          const p = pillars.find((b) => b[lo] - 1 <= J.f0 && iv.f1 <= b[hi] + 1 && [T.c, T2.c].every((c) => c >= b[c0] - 1 && c <= b[c1] + 1))
+          // (the thicker wall runs on through the column; the thinner one ends exactly at its end cross-section — founder:
+          // thin into thick is one junction; two equal ones meet at the column's middle)
+          const u = !p ? undefined : iv.th < J.th - 0.5 ? J.f0 : J.th < iv.th - 0.5 ? iv.f1 : T.horiz ? p.cx : p.cy
+          if (u === undefined || u <= iv.n0 + 1 || u >= J.n1 - 1) continue
+          ;(iv.n1 = iv.f1 = u), (J.n0 = J.f0 = u)
+          break
+        }
+      }
+
   // ── jogs: a free end touching the free end of a wall on a parallel track beside it (a flush thickness step, two walls
   // drawn side by side as one band) — joined by a short crosswise piece, both walls exactly on their ink
   const joins: Join[] = []
-  const free0 = (iv: Iv) => iv.n0 === iv.f0, free1 = (iv: Iv) => iv.n1 === iv.f1
   for (const dir of byDir)
     for (const T of dir)
       for (const iv of T.ivs) {
@@ -529,7 +580,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
           if (!J) continue
           const u = (iv.f1 + J.f0) / 2
           ;(iv.n1 = u), (J.n0 = u), (iv.f1 = u), (J.f0 = u)
-          joins.push({ horiz: T.horiz, u, c0: T.c, c1: T2.c, thPx: Math.min(iv.th, J.th) })
+          joins.push({ horiz: T.horiz, u, c0: T.c, c1: T2.c, thPx: Math.min(iv.th, J.th), ...(Math.abs(T2.c - T.c) < Math.max(iv.th, J.th) / 2 ? { flush: true } : {}) })
           break
         }
       }
@@ -652,11 +703,11 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
     }
   const kept = gaps.filter((g) => !drop.has(g))
 
-  const blocks = blockBoxes(ink, W, H, maxTh)
   return {
     tracks: tracks.map((T) => ({ horiz: T.horiz, c: T.c, intervals: T.ivs.map((iv) => ({ u0: iv.n0, u1: iv.n1, thPx: iv.th })) })),
     joins,
-    blocks,
+    blocks: blocks.map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 })),
+    pillars,
     classes,
     ink,
     plantMask: opts.plant,
@@ -667,7 +718,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
 }
 
 /** What the solver keeps of a trace (the masks stay with the tracer). */
-export type TrackLines = Pick<TrackTrace, 'tracks' | 'joins' | 'gaps' | 'blocks' | 'classes' | 'pxPerM'>
+export type TrackLines = Pick<TrackTrace, 'tracks' | 'joins' | 'gaps' | 'blocks' | 'pillars' | 'classes' | 'pxPerM'>
 
 /** The trace's lines × k (an upscaled sheet's trace back to the sheet: walls.ts scales its walls the same way, p × k). */
 export function scaleTracks(t: TrackLines, k: number): TrackLines {
@@ -677,6 +728,7 @@ export function scaleTracks(t: TrackLines, k: number): TrackLines {
     joins: t.joins.map((j) => ({ ...j, u: j.u * k, c0: j.c0 * k, c1: j.c1 * k, thPx: j.thPx * k })),
     gaps: t.gaps.map((g) => ({ ...g, c: g.c * k, u0: g.u0 * k, u1: g.u1 * k, node0: g.node0 * k, node1: g.node1 * k, thPx: g.thPx * k, ...(g.jog ? { jog: { u: g.jog.u * k, c: g.jog.c * k } } : {}), ...(g.hingeAt ? { hingeAt: p(g.hingeAt) } : {}), ...(g.swingTo ? { swingTo: p(g.swingTo) } : {}) })),
     blocks: t.blocks.map((b) => ({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k })),
+    pillars: t.pillars.map((b) => ({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k, cx: b.cx * k, cy: b.cy * k })),
     classes: t.classes.map((c) => c * k),
     pxPerM: t.pxPerM * k,
   }
@@ -842,8 +894,37 @@ function doorArcs(a: Px, b: Px, pxPerM: number, arcAt: (x: number, y: number) =>
   return null
 }
 
-/** Bounding boxes of ink thick both ways (both runs through the pixel longer than the thickest wall class). */
-function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): Box[] {
+/** the sheet's COLUMNS: dark ink thick both ways (blockBoxes) */
+export const PILLAR = {
+  /** at most this long a side, m (Sheltech's exterior columns ~0.45 × 1.05 m; a lift core or a shear wall is longer) */
+  maxSide: 1.6,
+  /** its block pixels fill at least this share of its box (a filled column, not an L of crossing wall bodies) */
+  fill: 0.7,
+}
+
+/**
+ * The sheet's columns (founder 2026-10-03: names → plants → PILLARS → walls): a block (ink thick both ways) WIDER than
+ * every wall class in both directions — a junction of two walls is as wide as they are, a column stands out of them —
+ * at most PILLAR.maxSide m a side and solid. Black columns of Sheltech's facade, the bigger junction columns of BTI.
+ */
+export function findPillars(ink: Uint8Array, W: number, H: number, classes: number[], pxPerM: number): Pillar[] {
+  if (!classes.length) return []
+  const top = classes[classes.length - 1]
+  const maxTh = top + Math.max(1.5, 0.15 * top)
+  return pillarsOf(blockBoxes(ink, W, H, maxTh), maxTh, pxPerM)
+}
+
+function pillarsOf(blocks: (Box & { n?: number })[], maxTh: number, pxPerM: number): Pillar[] {
+  return blocks
+    .filter((b) => {
+      const w = b.x1 - b.x0, h = b.y1 - b.y0
+      return Math.min(w, h) >= maxTh && Math.max(w, h) <= PILLAR.maxSide * pxPerM && (b.n ?? w * h) >= PILLAR.fill * w * h
+    })
+    .map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }))
+}
+
+/** Bounding boxes of ink thick both ways (both runs through the pixel longer than the thickest wall class); n = its pixels. */
+function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): (Box & { n: number })[] {
   const hl = new Uint16Array(W * H), vl = new Uint16Array(W * H)
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; ) {
@@ -869,19 +950,19 @@ function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): Box[]
     }
   const blk = new Uint8Array(W * H)
   for (let i = 0; i < blk.length; i++) blk[i] = ink[i] && hl[i] > maxTh && vl[i] > maxTh ? 1 : 0
-  const out: Box[] = []
+  const out: (Box & { n: number })[] = []
   const stack: number[] = []
   for (let s = 0; s < blk.length; s++) {
     if (blk[s] !== 1) continue
-    let x0 = W, y0 = H, x1 = 0, y1 = 0
+    let x0 = W, y0 = H, x1 = 0, y1 = 0, n = 0
     blk[s] = 2
     stack.push(s)
     while (stack.length) {
       const p = stack.pop()!, x = p % W, y = (p - x) / W
-      ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+      ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y)), n++
       for (const q of [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, p - W, p + W]) if (q >= 0 && q < blk.length && blk[q] === 1) (blk[q] = 2), stack.push(q)
     }
-    out.push({ x0: x0 - 0.5, y0: y0 - 0.5, x1: x1 + 0.5, y1: y1 + 0.5 })
+    out.push({ x0: x0 - 0.5, y0: y0 - 0.5, x1: x1 + 0.5, y1: y1 + 0.5, n })
   }
   return out
 }
@@ -896,7 +977,7 @@ export function trackWalls(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>): {
   const walls: WallSeg[] = []
   const P = (horiz: boolean, c: number, u: number): Px => (horiz ? { x: u, y: c } : { x: c, y: u })
   for (const T of tt.tracks) for (const iv of T.intervals) walls.push({ a: P(T.horiz, T.c, iv.u0), b: P(T.horiz, T.c, iv.u1), thicknessPx: iv.thPx, conf: 1 })
-  for (const j of tt.joins) walls.push({ a: P(j.horiz, j.c0, j.u), b: P(j.horiz, j.c1, j.u), thicknessPx: j.thPx, conf: 1 })
+  for (const j of tt.joins) if (!j.flush) walls.push({ a: P(j.horiz, j.c0, j.u), b: P(j.horiz, j.c1, j.u), thicknessPx: j.thPx, conf: 1 })
   const openings: OpeningGuess[] = []
   for (const g of tt.gaps) {
     const a = P(g.horiz, g.c, g.u0), b = P(g.horiz, g.c, g.u1)
