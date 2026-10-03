@@ -13,6 +13,7 @@ import {
   lengthMoves,
   normalizeUnit,
   openingAt,
+  openSpotsNear,
   printedSizeOf,
   reducer,
   slug,
@@ -21,6 +22,7 @@ import {
   type Draft,
   type StudioIssue,
   type StudioState,
+  type Target,
   type Tool,
 } from './model'
 import { AI_KEY, TRACKER_KEY, studioReducer, type Review } from './review'
@@ -46,11 +48,25 @@ const TOOLS: [Tool, string, string][] = [
 ]
 const HINTS: Record<Tool, string> = {
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's end handle to extend it to the wall it reaches (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1')`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's end handle to extend it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: 'Scale · click both ends of a printed dimension',
-  wall: 'Wall · Click the first corner',
+  wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: 'Opening · click a wall',
   room: 'Room · click inside a closed room',
+}
+/** Spring-loaded tools: hold the key, act, release = back to the tool before (a tap still just switches) */
+const HOLD_HINTS: Record<string, string> = {
+  w: 'drag from corner to corner to draw one wall',
+  o: 'click a wall to add an opening',
+  r: 'click inside a room to name it',
+}
+/** a held tool key: the tool and selection to go back to, `used` = a pointer action happened, `up` = released mid wall-drag */
+interface Hold {
+  key: string
+  tool: Tool
+  selection: Id[]
+  used: boolean
+  up?: boolean
 }
 
 interface Field {
@@ -202,6 +218,10 @@ export default function StudioApp() {
   const shiftRef = useRef(false)
   const panRef = useRef<{ sx: number; sy: number; panX: number; panY: number } | null>(null)
   const dragRef = useRef<Drag | null>(null)
+  /** Wall tool press: a move of 3 px or more makes it press-drag-release (one wall to the release point); `hold` = held W */
+  const wallDragRef = useRef<{ sx: number; sy: number; at: Target; hold: boolean; moved: boolean } | null>(null)
+  const holdRef = useRef<Hold | null>(null)
+  const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
   const fitOnLoad = useRef(false)
 
@@ -594,7 +614,12 @@ export default function StudioApp() {
       const st = stateRef.current
       const existing = labelId ? st.unit.roomLabels.find((l) => l.id === labelId) : undefined
       const r = roomAt(existing ?? m, rooms, st.unit)
-      if (!r && !existing) return toast('Click inside a closed room. Is a corner not joined?')
+      if (!r && !existing) {
+        // name the nearest open spot and ring it (founder: a hand-fixed room that looks closed but is not)
+        const spot = openSpotsNear(st.unit, rooms, m)[0]
+        if (spot) setMark(spot.at)
+        return toast(spot ? `Not a closed room: ${spot.why} (ringed). Join walls (panel) fixes overlaps and crossings.` : 'Click inside a closed room. Is a corner not joined?')
+      }
       setPopover({
         x: existing?.x ?? m.x,
         y: existing?.y ?? m.y,
@@ -610,6 +635,21 @@ export default function StudioApp() {
     },
     [rooms, toast],
   )
+
+  /** a held W / O / R released: after a pointer action, back to the tool and selection before it; a tap stays in the tool */
+  const endHold = () => {
+    const h = holdRef.current
+    if (!h) return
+    if (wallDragRef.current) return void (h.up = true) // the wall being dragged comes first: its pointer up ends the hold
+    holdRef.current = null
+    setHeld(null)
+    if (h.used) dispatch({ type: 'spring-back', tool: h.tool, selection: h.selection })
+  }
+  // a tool switch (a key, a held key, its release) shows what the pointer is over in the new tool: the O ghost at once
+  useEffect(() => {
+    const p = lastPointer.current
+    if (p && hoverRef.current && !dragRef.current) setHover(computeHover(p.sx, p.sy, shiftRef.current))
+  }, [tool]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- pointer events
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -649,6 +689,7 @@ export default function StudioApp() {
     // Recompute from the event: the `hover` state may still be the previous position when a
     // click follows the move within the same frame (React defers pointermove renders).
     const h = computeHover(sx, sy, e.shiftKey)
+    if (holdRef.current) holdRef.current.used = true
     switch (tool) {
       case 'scale': {
         if (!state.planImage) return toast('Load a plan image first')
@@ -663,9 +704,12 @@ export default function StudioApp() {
       }
       case 'wall': {
         if (!scaleSet) return toast('Set the scale first (S)')
-        const snap = h.snap ?? snapPoint(m, unit, { tolM, free: e.shiftKey })
+        // held W: one fresh wall from this press to the release, nothing before the drag starts (onPointerMove)
+        const hold = holdRef.current?.key === 'w'
+        const snap = (!hold && h.snap) || snapPoint(m, unit, { tolM, free: e.shiftKey })
         const at = { x: snap.x, y: snap.y, tolM }
-        dispatch(chain ? { type: 'chain-add', at } : { type: 'chain-start', at })
+        wallDragRef.current = { sx, sy, at, hold, moved: false }
+        if (!hold) dispatch(chain ? { type: 'chain-add', at } : { type: 'chain-start', at })
         return
       }
       case 'opening': {
@@ -718,6 +762,12 @@ export default function StudioApp() {
       return
     }
     if (placing && tool === 'furniture') return void ghost(sx, sy)
+    const wd = wallDragRef.current
+    if (wd && !wd.moved && Math.hypot(sx - wd.sx, sy - wd.sy) >= 3) {
+      wd.moved = true
+      // the dragged wall starts at the press: always a fresh one for held W; in the Wall tool when that press closed the chain
+      if (wd.hold || !stateRef.current.chain) dispatch({ type: 'chain-start', at: wd.at })
+    }
     const fd = dragRef.current
     if (fd?.hit.kind === 'furniture') {
       // a piece follows the pointer on the grid; the reducer only sees the drop (one undo entry, refusals spring back)
@@ -816,6 +866,16 @@ export default function StudioApp() {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (panRef.current) setPanning(false)
     panRef.current = null
+    const wd = wallDragRef.current
+    wallDragRef.current = null
+    if (wd?.moved) {
+      // the release is the wall's other end, snapped as the Wall tool snaps its next corner (from the press)
+      const { sx, sy } = local(e)
+      const snap = snapPoint(toM(sx, sy), stateRef.current.unit, { tolM, from: wd.at, free: e.shiftKey })
+      dispatch({ type: 'chain-add', at: { x: snap.x, y: snap.y, tolM } })
+      if (wd.hold) dispatch({ type: 'chain-end' })
+    }
+    if (holdRef.current?.up) endHold()
     const d = dragRef.current
     dragRef.current = null
     if (!d) return
@@ -973,8 +1033,17 @@ export default function StudioApp() {
       const toolKey = TOOLS.find(([, k]) => k.toLowerCase() === key)
       if (toolKey && !e.shiftKey) {
         const tl = toolKey[0]
+        const spring = key in HOLD_HINTS
+        if (spring) e.preventDefault() // a held key never reaches the browser
+        if (e.repeat) return
         if (tl !== 'select' && tl !== 'scale' && !st.unit.planImage) return setNote({ text: 'Set the scale first (S)' })
         setScaleStart(null)
+        if (spring) {
+          // switch now (a tap = today's switch); the release decides whether to spring back (endHold). A second held key keeps the first one's way back.
+          const h = holdRef.current
+          holdRef.current = { key, tool: h?.tool ?? st.tool, selection: h?.selection ?? st.selection, used: h?.used ?? false }
+          setHeld({ key, back: holdRef.current.tool })
+        }
         return dispatch({ type: 'set-tool', tool: tl })
       }
       if (key === 't') return dispatch({ type: 'toggle-thickness' })
@@ -997,6 +1066,10 @@ export default function StudioApp() {
     }
     const onUp = (e: KeyboardEvent) => {
       if (e.key === ' ') spaceRef.current = false
+      if (e.key.toLowerCase() === holdRef.current?.key) {
+        e.preventDefault()
+        endHold()
+      }
       if (e.key === 'Shift') {
         shiftRef.current = false
         const t = e.target as HTMLElement
@@ -1005,9 +1078,11 @@ export default function StudioApp() {
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', endHold) // a key released in another window never sends its keyup here
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', endHold)
     }
   }, [exportJson, fitView, computeHover, popover, size, trace])
 
@@ -1051,6 +1126,8 @@ export default function StudioApp() {
   const hint =
     trace === 'pick'
       ? 'Auto-trace · click inside the flat you want to trace · Esc cancels'
+      : held
+        ? `Holding ${held.key.toUpperCase()} · ${HOLD_HINTS[held.key]} · let go to return to ${TOOLS.find(([t]) => t === held.back)![2]} (a tap switches tools)`
       : (chain
       ? chain.ids.length >= 3
         ? 'Wall · Click the start corner to close'
@@ -1140,7 +1217,8 @@ export default function StudioApp() {
         )}
         <button onClick={() => jsonRef.current?.click()}>Import</button>
         <button onClick={exportJson}>Export</button>
-        <button className="primary" disabled={errors > 0} title={errors ? 'Fix the errors first' : undefined} onClick={preview}>
+        {/* never locked on a draft (founder, 2026-10-03): the 3D shows the plan as it is, open rooms have no floor yet */}
+        <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
         <input ref={jsonRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFiles(e.target.files)} />
@@ -1237,6 +1315,7 @@ export default function StudioApp() {
                   }
                   onKeyDown={(e) => {
                     e.stopPropagation()
+                    if (e.key.toLowerCase() === holdRef.current?.key) return e.preventDefault() // the held R's key repeat types nothing
                     if (e.key === 'Enter') savePopover()
                     if (e.key === 'Escape') setPopover(null)
                   }}

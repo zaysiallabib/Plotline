@@ -33,8 +33,8 @@ export interface FaceOpts {
   labels?: { at: Px; name: string }[]
   /** rooms fitted from their printed sizes (inner rects, px): a line well inside one is furniture */
   fits?: RectPx[]
-  /** drawn fixture symbols: centre + keep-out radius, px */
-  fixtures?: { at: Px; r: number }[]
+  /** drawn fixture symbols: centre + keep-out radius, px; kind = the room kind it implies ('bath': a wc / basin) */
+  fixtures?: { at: Px; r: number; kind?: string }[]
   /** plant-green pixels: never line ink; a boundary beside them is a planter edge */
   green?: Uint8Array
 }
@@ -77,6 +77,8 @@ export const FACES = {
   /** at least this share of a face's rim is real wall */
   wallShare: 0.4,
   aodMax: 4,
+  /** a closed region up to this big (m²) with a wc / basin drawn in it is a bathroom: no thin line splits it */
+  bathMax: 15,
   /** a plant-green blob up to this big (m²) and box-shaped is a planter box; bigger is a lawn */
   planterMax: 20,
   /** a line deeper than this inside a fitted room is furniture */
@@ -327,6 +329,9 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const fixPx = (o.fixtures ?? []).map((f) => Math.round(f.at.y) * W + Math.round(f.at.x)).filter((i) => i >= 0 && i < W * H)
   const namesIn = new Map<number, Set<string>>()
   for (const l of labelPx) if (lab0[l.i]) namesIn.set(lab0[l.i], new Set([...(namesIn.get(lab0[l.i]) ?? []), l.name]))
+  // closed bathroom-sized regions holding a wc / basin: a thin line in one is a shower screen or a tub's edge (founder
+  // 2026-10-03, Sheltech A Toilet 1 — its name not read, its size not fitted)
+  const baths = new Set((o.fixtures ?? []).filter((f) => f.kind === 'bath').map((f) => lab0[Math.round(f.at.y) * W + Math.round(f.at.x)] ?? 0).filter((G) => G && !edge0.has(G) && cc0.comps[G - 1].n <= FACES.bathMax * k * k))
   const k2 = k * k
   type Part = { id: number; n: number; G: number; x0: number; y0: number; x1: number; y1: number; cx: number; cy: number; edge: boolean; walls: number; thin: number; green: number; lines: Set<number>; ok?: boolean; why?: string }
   const greenPx: number[] = []
@@ -376,6 +381,8 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       if (names.size > 1) return 'two labels'
       // a corner of a closed room with one name (a shower tray, a closet in the toilet): not a room of its own
       if (!names.size && !edge0.has(p.G) && (namesIn.get(p.G)?.size ?? 0) === 1) return 'inside a named room'
+      // …or of a closed bathroom (a wc / basin drawn in it): a shower bay, a tub — never a boundary
+      if (!names.size && baths.has(p.G)) return 'a bay of a bathroom (shower / tub)'
       if (!names.size && fixPx.some((i) => lab1[i] === p.id)) return 'fixture'
       // no label: an AOD-sized space, or a planter (plant green over half of it); anything bigger is no evidence of a room
       if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n) return 'unlabelled, too big for an AOD'

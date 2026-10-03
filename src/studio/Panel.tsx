@@ -158,6 +158,11 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
       )}
       <section>
         <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
+        {unit.walls.length > 1 && (
+          <button className="link" title="Every wall end inside another wall's body is joined there and every crossing is split — one undo step" onClick={() => dispatch({ type: 'join-walls' })}>
+            Join walls (overlaps and crossings)
+          </button>
+        )}
         {issues.length === 0 ? (
           <p className="muted">No issues. Ready to export.</p>
         ) : (
@@ -183,7 +188,7 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
     return (
       <div className="props">
         <p className="muted">Tracing · {chain.ids.length} corner{chain.ids.length === 1 ? '' : 's'}</p>
-        <Thickness value={chain.thicknessM} onChange={(t) => t !== chain.thicknessM && dispatch({ type: 'toggle-thickness' })} custom={false} />
+        <Thickness value={chain.thicknessM} onChange={(t) => dispatch({ type: 'chain-thickness', thicknessM: t })} />
       </div>
     )
   }
@@ -198,7 +203,6 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
           <Thickness
             value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
             onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
-            custom
           />
         )}
       </div>
@@ -229,7 +233,7 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
         <p className="muted">
           Wall · {formatFeetInches(len)} · {len.toFixed(2)} m
         </p>
-        <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} custom />
+        <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} />
         <Row label="Height">
           <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'update-wall', id: w.id, patch: { heightM: m } })} />
         </Row>
@@ -472,43 +476,39 @@ function NumInput({ value, onCommit }: { value: number; onCommit: (n: number) =>
   )
 }
 
-function Thickness({ value, onChange, custom }: { value: number; onChange: (t: number) => void; custom: boolean }) {
-  const isCustom = custom && value !== PARTITION_M && value !== EXTERIOR_M
-  const [inches, setInches] = useState(() => (Number.isFinite(value) ? ((value / FT) * 12).toFixed(1) : ''))
-  useEffect(() => {
-    if (Number.isFinite(value)) setInches(((value / FT) * 12).toFixed(1))
-  }, [value])
+/** Wall width: the inches field (Enter / leaving it applies) with the two usual widths as presets; NaN = mixed selection */
+function Thickness({ value, onChange }: { value: number; onChange: (t: number) => void }) {
+  const show = (m: number) => (Number.isFinite(m) ? String(+((m / FT) * 12).toFixed(1)) : '')
+  const [inches, setInches] = useState(() => show(value))
+  useEffect(() => setInches(show(value)), [value])
   const commitInches = () => {
     const n = Number(inches)
-    if (n > 0 && n < 60) onChange((n / 12) * FT)
+    const m = (n / 12) * FT
+    if (inches.trim() && n > 0 && n < 60 && !(Math.abs(m - value) < 1e-6)) onChange(m)
+    else setInches(show(value)) // bad or unchanged text: the field shows the wall's width again
   }
+  const is = (m: number) => Math.abs(value - m) < 1e-6
   return (
-    <Row label="Thickness">
+    <Row label="Width (inches)">
+      <input
+        value={inches}
+        inputMode="decimal"
+        onChange={(e) => setInches(e.target.value)}
+        onBlur={commitInches}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitInches()
+          e.stopPropagation()
+        }}
+        placeholder={Number.isFinite(value) ? 'inches' : 'mixed'}
+      />
       <div className="seg">
-        <button className={value === PARTITION_M ? 'on' : ''} onClick={() => onChange(PARTITION_M)}>
+        <button className={is(PARTITION_M) ? 'on' : ''} onClick={() => onChange(PARTITION_M)}>
           Partition 5"
         </button>
-        <button className={value === EXTERIOR_M ? 'on' : ''} onClick={() => onChange(EXTERIOR_M)}>
+        <button className={is(EXTERIOR_M) ? 'on' : ''} onClick={() => onChange(EXTERIOR_M)}>
           Exterior 10"
         </button>
-        {custom && (
-          <button className={isCustom ? 'on' : ''} onClick={() => onChange(0.2)}>
-            Custom…
-          </button>
-        )}
       </div>
-      {isCustom && (
-        <input
-          value={inches}
-          onChange={(e) => setInches(e.target.value)}
-          onBlur={commitInches}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitInches()
-            e.stopPropagation()
-          }}
-          placeholder="inches"
-        />
-      )}
     </Row>
   )
 }

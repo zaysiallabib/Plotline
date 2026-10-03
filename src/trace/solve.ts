@@ -107,6 +107,8 @@ export const KNOBS = {
    * true (or the closer) brings the window rules back.
    */
   windows: false,
+  /** tracks: a wall end inside another wall's body has ended there (joinInBodies) */
+  joinBodies: true,
 }
 
 type Pt = { x: number; y: number }
@@ -678,6 +680,89 @@ function node(segs: Seg[], tol: number): Seg[] {
   return [...seen.values()]
 }
 
+/**
+ * Overlap = joined (founder 2026-10-03: "if a wall ends inside another — not necessarily at the middle point — it has
+ * ended there"). On noded segs: a corner lying inside another wall's BODY (within its half thickness + 1 px of the
+ * centre line, onto the segment) gets a connector along the normal onto that centre line — the next node() splits the
+ * wall there and the two share the corner (a connector in line with the corner's wall merges into it: the wall just
+ * reaches the centre line). A free end of that wall within its end block moves onto the meeting point instead (an L
+ * whose ends stop short of / run past each other inside the bodies: no stub). A connector, not a moved corner: the
+ * corner's other walls keep their angle and a door's jamb stays as drawn. Two widths meeting END TO END on offset
+ * centre lines (the corner's wall runs along the other inside its end block): the connector is the crosswise piece,
+ * as thick as the thicker wall (founder: never a visible thin zigzag); two parallel walls overlapping further in are
+ * no end. Never onto an opening's piece, never onto a wall the corner already reaches along its own short walls
+ * (≤ 0.3 m: a jog, a nib inside a junction — a connector there only closes a sliver). Crossings: node() splits them.
+ */
+function joinInBodies(segs: Seg[], px: number): Seg[] {
+  const deg = degrees(segs)
+  const pts = new Map<string, Seg[]>()
+  for (const s of segs) for (const p of [s.a, s.b]) pts.set(ekey(p), [...(pts.get(ekey(p)) ?? []), s])
+  const out = segs.slice()
+  const sin10 = Math.sin((10 * Math.PI) / 180)
+  for (const [k, at] of pts) {
+    const ends = at.map((s) => (ekey(s.a) === k ? 'a' : ekey(s.b) === k ? 'b' : null))
+    if (ends.includes(null)) continue // an end moved below
+    const p = at[0][ends[0]!]
+    const hops = new Map<string, number>([[k, 0]])
+    for (const q = [k]; q.length; ) {
+      const x = q.shift()!
+      for (const s of pts.get(x) ?? []) {
+        const y = ekey(s.a) === x ? ekey(s.b) : ekey(s.a)
+        const h = hops.get(x)! + d2(s.a, s.b)
+        if (h <= 0.3 && h < (hops.get(y) ?? Infinity)) hops.set(y, h), q.push(y)
+      }
+    }
+    const dirs = at.filter((s) => d2(s.a, s.b) > 1e-6).map((s) => unit(sub(s.b, s.a)))
+    let best: { t: Seg; q: Pt; d: number; move?: 'a' | 'b'; along: boolean } | null = null
+    for (const t of segs) {
+      if (Math.min(hops.get(ekey(t.a)) ?? Infinity, hops.get(ekey(t.b)) ?? Infinity) <= t.th + px) continue
+      const L = d2(t.a, t.b)
+      if (L < 1e-6) continue
+      const u = unit(sub(t.b, t.a))
+      const s = dot(sub(p, t.a), u), d = Math.abs(crs(u, sub(p, t.a)))
+      if (d > t.th / 2 + px || (best && d >= best.d)) continue
+      const side = s < L / 2 ? 'a' : 'b', toEnd = side === 'a' ? s : L - s, cap = t.th / 2 + px
+      const along = dirs.some((v) => Math.abs(crs(u, v)) < sin10)
+      if (along && toEnd > cap) continue // parallel walls overlapping: no end
+      const corner = toEnd >= 0 && toEnd < 0.002
+      if (t.op && !corner) continue // an opening's piece is never split or moved: only its jamb corner joins
+      const onT = { x: t.a.x + u.x * s, y: t.a.y + u.y * s }
+      if (!t.op && deg.get(ekey(t[side])) === 1 && toEnd <= cap && toEnd >= -cap) best = { t, q: onT, d, move: side, along }
+      else if (!corner && toEnd >= 0) best = { t, q: onT, d, along }
+      else if (corner) best = { t, q: t[side], d, along } // at the wall's corner
+    }
+    if (!best) continue
+    if (best.move) best.t[best.move] = best.q
+    const w = at.find((s) => !s.op) ?? at[0]
+    const th = best.along ? Math.max(w.th, best.t.th) : w.th
+    if (d2(p, best.q) > 0.002) out.push({ a: p, b: { ...best.q }, th, conf: w.conf, ...(w.heightM ? { heightM: w.heightM } : {}) })
+  }
+  return out
+}
+
+/**
+ * A jog — the short crosswise piece joining two walls that meet END TO END on offset centre lines (a flush thickness
+ * step; tracks / closeCorners draw it at the thinner wall's width), other walls at its corners or not — takes the
+ * THICKER wall's thickness: drawn thin it stuck out of the thick wall's end as a visible zigzag (founder 2026-10-03).
+ * Mutates `segs`.
+ */
+function thickJogs(segs: Seg[]): void {
+  const at = new Map<string, Seg[]>()
+  for (const s of segs) for (const p of [s.a, s.b]) at.set(ekey(p), [...(at.get(ekey(p)) ?? []), s])
+  const out = (s: Seg, from: Pt) => unit(sub(d2(s.a, from) < 1e-9 ? s.b : s.a, from))
+  for (const j of segs) {
+    if (j.op) continue
+    const L = d2(j.a, j.b), u = unit(sub(j.b, j.a))
+    const square = (s: Seg, from: Pt) => s !== j && Math.abs(dot(u, out(s, from))) < 0.02
+    for (const x of at.get(ekey(j.a))!.filter((s) => square(s, j.a)))
+      for (const y of at.get(ekey(j.b))!.filter((s) => square(s, j.b))) {
+        // the two walls leave in opposite directions (a step, not a slot), the jog within the thicker one's body
+        const th = Math.max(x.th, y.th)
+        if (dot(out(x, j.a), out(y, j.b)) < -0.98 && L <= th / 2 + 1e-6 && j.th < th) j.th = th
+      }
+  }
+}
+
 /** Drop dangling walls shorter than spurM (thinning hairs, text left-overs), repeatedly. */
 function pruneSpurs(segs: Seg[]): Seg[] {
   for (;;) {
@@ -874,8 +959,10 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const W = gray.width, H = gray.height
   let resumed: Resumed[] = []
   // (tracks: every point is exact — node at a hair's width, else a jog's two corners would merge and tilt a wall)
-  if (tracks) segs = node(segs, 0.002)
-  else {
+  if (tracks) {
+    segs = KNOBS.joinBodies ? joinInBodies(node(segs, 0.002), 1 / pxPerM) : node(segs, 0.002)
+    thickJogs(segs)
+  } else {
     snapAxes(segs, th0)
     joinEnds(segs)
     // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink
@@ -1540,6 +1627,36 @@ function dropSlivers(d: Draft): Draft {
 }
 
 /**
+ * Founder 2026-10-03 (Sheltech A "Space 6" under DINING: a dashed beam line): a passage — the open-plan boundary merge.ts
+ * draws where a room's side is open — between a space whose name was read (`named`) and one with no name of its own (no
+ * label, no hint: `hinted`) never splits them: the unnamed face joins its named neighbour. A space that is no closed face
+ * is no neighbour (the passage then still closes the named room).
+ */
+export function mergeUnread(d: Draft, named: Pt[], hinted: Pt[]): Draft {
+  for (let it = 0; it < 20; it++) {
+    const rooms = deriveRooms(d.unit)
+    const polys = rooms.map((r) => roomPolygon(r, d.unit))
+    const has = (i: number, pts: Pt[]) => pts.some((p) => pointInPolygon(p, polys[i]))
+    const side = new Map<string, number[]>()
+    rooms.forEach((r, i) => new Set(r.wallIds).forEach((w) => side.set(w, [...(side.get(w) ?? []), i])))
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    const cut = d.walls.find((w) => {
+      const s = side.get(w.id) ?? []
+      const open = w.openings.filter((o) => o.kind === 'passage').reduce((t, o) => t + o.widthM, 0)
+      if (s.length !== 2 || open < 0.9 * d2(V.get(w.a)!, V.get(w.b)!)) return false
+      const [p, q] = s.map((i) => has(i, named))
+      return p !== q && !has(p ? s[1] : s[0], hinted)
+    })
+    if (!cut) return it ? { ...d, rooms: deriveRooms(d.unit) } : d
+    const walls = d.walls.filter((w) => w !== cut)
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    d = { ...d, unit: { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }, walls: m.walls }
+  }
+  return { ...d, rooms: deriveRooms(d.unit) }
+}
+
+/**
  * Keep the picked faces' walls (+ loose walls inside them) and `extra` walls (those the flood touched: the flat's walls
  * that close no face yet, so the human closes a gap instead of redrawing a wall), re-merge, re-derive.
  */
@@ -1726,7 +1843,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   // follow thin strokes from dangling wall ends; never inside a drawn fixture (bed, table, wc, basin, stove, sink)
   const FIX_R: Record<string, number> = { bed: 1, table: 0.8, dining: 0.8, wc: 0.4, basin: 0.4, sink: 0.4, stove: 0.4 }
-  const avoid = (hints?.hints ?? []).filter((h) => h.source === 'fixture').map((h) => ({ at: h.at, r: (FIX_R[h.what ?? ''] ?? 0.5) * pxPerM }))
+  const avoid = (hints?.hints ?? []).filter((h) => h.source === 'fixture').map((h) => ({ at: h.at, r: (FIX_R[h.what ?? ''] ?? 0.5) * pxPerM, kind: h.kind }))
   const tracked = KNOBS.track ? trackThin(plan, trace, { pxPerM, avoid, delta: KNOBS.lineDelta }) : []
   opts.onProgress?.('graph', 0.7)
 
@@ -1841,6 +1958,13 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     : []
   flat = new Set([...flat].filter((r) => !foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))))
   if (flat.size || picked.touched.size) draft = dropSlivers(dropForeign(restrict(draft, flat, picked.touched), foreign, picked.inFlood))
+  if (tracker === 'tracks') {
+    const at = (it: (typeof text.items)[number]) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
+    const named = text.items.filter((it) => it.kind === 'room' && it.roomKind).map(at)
+    // (any text read there — a name read wrong, a size alone, a garbage read of a label — is a name of its own)
+    const hinted = [...text.items.map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 } })), ...(hints?.hints ?? []).filter((h) => h.kind), ...(thin?.faces ?? []).filter((f) => f.aod || f.planter), ...(draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 } }))].map((h) => ({ x: h.at.x / pxPerM, y: h.at.y / pxPerM }))
+    draft = mergeUnread(draft, named, hinted)
+  }
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }
