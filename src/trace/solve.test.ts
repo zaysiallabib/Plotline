@@ -167,6 +167,24 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
     }
     expect(validate(d.unit).filter((i) => i.level === 'error')).toEqual([])
   })
+
+  test('a 5" wall meeting a 10" wall END TO END on offset centre lines: one junction, nothing tilts, the crosswise piece is 10" thick (with or without the tracks\' jog)', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k, off = (0.254 - 0.127) / 2
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const box = [wall(p(0, 0), p(2, 0), ext), wall(p(2, off), p(4, off), par), wall(p(4, off), p(4, 3), par), wall(p(4, 3), p(0, 3), par), wall(p(0, 3), p(0, 0), par)]
+    for (const walls of [box, [...box, wall(p(2, 0), p(2, off), par)]]) {
+      const d = buildGraph({ openings: [], walls }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      expect(d.rooms).toHaveLength(1)
+      const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+      const len = (w: (typeof d.unit.walls)[number]) => Math.hypot(V.get(w.b)!.x - V.get(w.a)!.x, V.get(w.b)!.y - V.get(w.a)!.y)
+      for (const w of d.unit.walls) expect(Math.min(Math.abs(V.get(w.a)!.x - V.get(w.b)!.x), Math.abs(V.get(w.a)!.y - V.get(w.b)!.y))).toBeLessThan(1e-9)
+      const jog = d.unit.walls.find((w) => len(w) < 0.1)!
+      expect(len(jog)).toBeCloseTo(off)
+      expect(jog.thicknessM).toBeCloseTo(0.254)
+    }
+  })
 })
 
 describe('solveTraces on a synthetic flat', () => {

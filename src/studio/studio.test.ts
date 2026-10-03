@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -737,6 +737,69 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(deriveRooms(undone.unit)).toHaveLength(1) // the draft as traced, its review list still showing
       expect(undone.review?.unitId).toBe(undone.unit.id)
       expect(studioReducer(undone, { type: 'undo' }).unit.walls).toEqual([]) // then the unit before the trace
+    })
+
+    /** a unit from points: walls [from, to, thickness] */
+    const build = (pts: Record<string, [number, number]>, walls: [string, string, number][]): Unit => ({
+      ...initialState().unit,
+      vertices: Object.entries(pts).map(([id, [x, y]]) => ({ id, x, y })),
+      walls: walls.map(([a, b, t], i) => ({ id: `w${i}`, a, b, thicknessM: t, heightM: 3, openings: [] })),
+    })
+    const wallKey = (w: Wall) => [w.a, w.b].sort().join('|')
+    const axisOnly = (u: Unit) =>
+      u.walls.every((w) => {
+        const f = wallFrame(w, u.vertices)
+        return Math.abs(f.dir.x) < 1e-9 || Math.abs(f.dir.y) < 1e-9
+      })
+
+    it('a 5" wall meeting a 10" wall END TO END on offset centre lines: one junction at the 10" wall\'s end, nothing tilts, the hidden piece is 10" thick', () => {
+      // top side: 10" wall (0,0)→(2,0), then a 5" wall flush with its inner face — centre line 0.0635 lower — (2,0.0635)→(4,0.0635)
+      const off = (EXTERIOR_M - PARTITION_M) / 2
+      const raw = build({ A: [0, 0], E: [2, 0], F: [2, off], B: [4, off], C: [4, 3], D: [0, 3] }, [['A', 'E', EXTERIOR_M], ['F', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
+      expect(deriveRooms(raw)).toHaveLength(0)
+      const s = reducer(initialState(), { type: 'load-unit', unit: raw })
+      expect(deriveRooms(s.unit)).toHaveLength(1)
+      expect(axisOnly(s.unit)).toBe(true)
+      for (const v of raw.vertices) expect(s.unit.vertices.find((x) => x.id === v.id)).toMatchObject({ x: v.x, y: v.y }) // nothing moved
+      const piece = s.unit.walls.find((w) => wallKey(w) === 'E|F')!
+      expect(piece.thicknessM).toBe(EXTERIOR_M) // the thick wall's, never a visible thin zigzag
+      expect(s.unit.walls).toHaveLength(raw.walls.length + 1)
+      expect(issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))).toEqual([])
+      // the same by hand: the 5" wall's loose end dropped 2 cm past the 10" wall's free end: that end comes over, nothing tilts
+      const loose = build({ A: [0, 0], E: [2, 0], F: [2.6, 0.5], B: [4, off], C: [4, 3], D: [0, 3] }, [['A', 'E', EXTERIOR_M], ['F', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
+      let d = reducer(initialState(), { type: 'load-unit', unit: loose })
+      d = run(d, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: 'F', x: 2.02, y: off }] }, { type: 'drag-end', ids: ['F'] })
+      expect(deriveRooms(d.unit)).toHaveLength(1)
+      expect(axisOnly(d.unit)).toBe(true)
+      expect(d.unit.vertices.find((x) => x.id === 'E')).toMatchObject({ x: 2.02, y: 0 })
+      expect(d.unit.vertices.find((x) => x.id === 'F')).toMatchObject({ x: 2.02, y: off })
+    })
+
+    it('join-walls: the whole unit in one undo entry; no "Walls cross" left; nothing to join = no entry', () => {
+      const raw = build({ A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3], p: [2, 0.05], q: [2, 2.95], r: [-0.5, 1.5], t: [4.5, 1.5] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M], ['p', 'q', PARTITION_M], ['r', 't', PARTITION_M]])
+      const s0 = { ...initialState(), unit: raw }
+      expect(validate(raw).map((i) => i.code)).toContain('walls-intersect')
+      const s = reducer(s0, { type: 'join-walls' })
+      expect(s.history.past).toEqual([raw])
+      expect(validate(s.unit).map((i) => i.code)).not.toContain('walls-intersect')
+      expect(deriveRooms(s.unit)).toHaveLength(4)
+      expect(s.toast?.text).toMatch(/Joined/)
+      expect(reducer(s, { type: 'join-walls' })).toBe(s)
+      expect(reducer(s, { type: 'undo' }).unit).toBe(raw)
+    })
+
+    it('openSpotsNear names why a click is in no room: an end short of a wall, a crossing, two corners apart; nearest first', () => {
+      // the right wall stops 4 cm short of the top wall's face; the left side meets the top at two corners 3 cm apart
+      const u = build({ A: [0, 0], A2: [0.03, 0], B: [4, 0], B2: [4, 0.0635 + 0.04], C: [4, 3], D: [0, 3] }, [['A2', 'B', PARTITION_M], ['B2', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
+      const spots = openSpotsNear(u, deriveRooms(u), { x: 3.5, y: 0.5 })
+      // (the top wall's own free end (4, 0) is 10 cm short of the right wall's end)
+      expect(spots.slice(0, 2).map((x) => x.why)).toEqual(['Wall end 4 cm short of the wall', 'Wall end 10 cm short of the wall'])
+      expect(spots[0].at.y).toBeCloseTo(0.1035)
+      expect(spots.map((x) => x.why)).toContain('Two corners 3 cm apart, not one corner')
+      const crossed = build({ A: [0, 0], B: [4.5, 0], C: [4, -0.5], D: [4, 3], E: [0, 3] }, [['A', 'B', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'E', PARTITION_M], ['E', 'A', PARTITION_M]])
+      expect(openSpotsNear(crossed, deriveRooms(crossed), { x: 2, y: 1 }).map((x) => x.why)).toContain('Walls cross without a shared corner')
+      const box = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+      expect(openSpotsNear(box.unit, deriveRooms(box.unit), { x: 2, y: 1 })).toEqual([])
     })
 
     it('the five hand traces load unchanged (nothing in them overlaps)', () => {

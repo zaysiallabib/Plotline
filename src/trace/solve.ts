@@ -687,9 +687,11 @@ function node(segs: Seg[], tol: number): Seg[] {
  * wall there and the two share the corner (a connector in line with the corner's wall merges into it: the wall just
  * reaches the centre line). A free end of that wall within its end block moves onto the meeting point instead (an L
  * whose ends stop short of / run past each other inside the bodies: no stub). A connector, not a moved corner: the
- * corner's other walls keep their angle and a door's jamb stays as drawn. Never onto an opening's piece, never from a
- * corner with a wall near-parallel to the other one (two parallel walls overlapping, not an end), never onto a wall
- * one step away (the corner's own short piece). Crossings: node() splits them already.
+ * corner's other walls keep their angle and a door's jamb stays as drawn. Two widths meeting END TO END on offset
+ * centre lines (the corner's wall runs along the other inside its end block): the connector is the crosswise piece,
+ * as thick as the thicker wall (founder: never a visible thin zigzag); two parallel walls overlapping further in are
+ * no end. Never onto an opening's piece, never onto a wall the corner already reaches along its own short walls
+ * (≤ 0.3 m: a jog, a nib inside a junction — a connector there only closes a sliver). Crossings: node() splits them.
  */
 function joinInBodies(segs: Seg[], px: number): Seg[] {
   const deg = degrees(segs)
@@ -701,27 +703,64 @@ function joinInBodies(segs: Seg[], px: number): Seg[] {
     const ends = at.map((s) => (ekey(s.a) === k ? 'a' : ekey(s.b) === k ? 'b' : null))
     if (ends.includes(null)) continue // an end moved below
     const p = at[0][ends[0]!]
-    const nb = new Set([k, ...at.map((s, i) => ekey(ends[i] === 'a' ? s.b : s.a))])
+    const hops = new Map<string, number>([[k, 0]])
+    for (const q = [k]; q.length; ) {
+      const x = q.shift()!
+      for (const s of pts.get(x) ?? []) {
+        const y = ekey(s.a) === x ? ekey(s.b) : ekey(s.a)
+        const h = hops.get(x)! + d2(s.a, s.b)
+        if (h <= 0.3 && h < (hops.get(y) ?? Infinity)) hops.set(y, h), q.push(y)
+      }
+    }
     const dirs = at.filter((s) => d2(s.a, s.b) > 1e-6).map((s) => unit(sub(s.b, s.a)))
-    let best: { t: Seg; q: Pt; d: number; move?: 'a' | 'b' } | null = null
+    let best: { t: Seg; q: Pt; d: number; move?: 'a' | 'b'; along: boolean } | null = null
     for (const t of segs) {
-      if (t.op || nb.has(ekey(t.a)) || nb.has(ekey(t.b))) continue
+      if (Math.min(hops.get(ekey(t.a)) ?? Infinity, hops.get(ekey(t.b)) ?? Infinity) <= t.th + px) continue
       const L = d2(t.a, t.b)
       if (L < 1e-6) continue
       const u = unit(sub(t.b, t.a))
       const s = dot(sub(p, t.a), u), d = Math.abs(crs(u, sub(p, t.a)))
-      if (d > t.th / 2 + px || (best && d >= best.d) || dirs.some((v) => Math.abs(crs(u, v)) < sin10)) continue
-      const side = s < L / 2 ? 'a' : 'b', toEnd = side === 'a' ? s : L - s
+      if (d > t.th / 2 + px || (best && d >= best.d)) continue
+      const side = s < L / 2 ? 'a' : 'b', toEnd = side === 'a' ? s : L - s, cap = t.th / 2 + px
+      const along = dirs.some((v) => Math.abs(crs(u, v)) < sin10)
+      if (along && toEnd > cap) continue // parallel walls overlapping: no end
+      const corner = toEnd >= 0 && toEnd < 0.002
+      if (t.op && !corner) continue // an opening's piece is never split or moved: only its jamb corner joins
       const onT = { x: t.a.x + u.x * s, y: t.a.y + u.y * s }
-      if (deg.get(ekey(t[side])) === 1 && toEnd <= t.th / 2 + px && toEnd >= -(t.th / 2 + px)) best = { t, q: onT, d, move: side }
-      else if (toEnd >= 0.002) best = { t, q: onT, d }
-      else if (toEnd >= 0) best = { t, q: t[side], d } // at the wall's corner
+      if (!t.op && deg.get(ekey(t[side])) === 1 && toEnd <= cap && toEnd >= -cap) best = { t, q: onT, d, move: side, along }
+      else if (!corner && toEnd >= 0) best = { t, q: onT, d, along }
+      else if (corner) best = { t, q: t[side], d, along } // at the wall's corner
     }
     if (!best) continue
     if (best.move) best.t[best.move] = best.q
     const w = at.find((s) => !s.op) ?? at[0]
-    if (d2(p, best.q) > 0.002) out.push({ a: p, b: { ...best.q }, th: w.th, conf: w.conf, ...(w.heightM ? { heightM: w.heightM } : {}) })  }
+    const th = best.along ? Math.max(w.th, best.t.th) : w.th
+    if (d2(p, best.q) > 0.002) out.push({ a: p, b: { ...best.q }, th, conf: w.conf, ...(w.heightM ? { heightM: w.heightM } : {}) })
+  }
   return out
+}
+
+/**
+ * A jog — the short crosswise piece joining two walls that meet END TO END on offset centre lines (a flush thickness
+ * step; tracks / closeCorners draw it at the thinner wall's width), other walls at its corners or not — takes the
+ * THICKER wall's thickness: drawn thin it stuck out of the thick wall's end as a visible zigzag (founder 2026-10-03).
+ * Mutates `segs`.
+ */
+function thickJogs(segs: Seg[]): void {
+  const at = new Map<string, Seg[]>()
+  for (const s of segs) for (const p of [s.a, s.b]) at.set(ekey(p), [...(at.get(ekey(p)) ?? []), s])
+  const out = (s: Seg, from: Pt) => unit(sub(d2(s.a, from) < 1e-9 ? s.b : s.a, from))
+  for (const j of segs) {
+    if (j.op) continue
+    const L = d2(j.a, j.b), u = unit(sub(j.b, j.a))
+    const square = (s: Seg, from: Pt) => s !== j && Math.abs(dot(u, out(s, from))) < 0.02
+    for (const x of at.get(ekey(j.a))!.filter((s) => square(s, j.a)))
+      for (const y of at.get(ekey(j.b))!.filter((s) => square(s, j.b))) {
+        // the two walls leave in opposite directions (a step, not a slot), the jog within the thicker one's body
+        const th = Math.max(x.th, y.th)
+        if (dot(out(x, j.a), out(y, j.b)) < -0.98 && L <= th / 2 + 1e-6 && j.th < th) j.th = th
+      }
+  }
 }
 
 /** Drop dangling walls shorter than spurM (thinning hairs, text left-overs), repeatedly. */
@@ -920,8 +959,10 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const W = gray.width, H = gray.height
   let resumed: Resumed[] = []
   // (tracks: every point is exact — node at a hair's width, else a jog's two corners would merge and tilt a wall)
-  if (tracks) segs = KNOBS.joinBodies ? joinInBodies(node(segs, 0.002), 1 / pxPerM) : node(segs, 0.002)
-  else {
+  if (tracks) {
+    segs = KNOBS.joinBodies ? joinInBodies(node(segs, 0.002), 1 / pxPerM) : node(segs, 0.002)
+    thickJogs(segs)
+  } else {
     snapAxes(segs, th0)
     joinEnds(segs)
     // thinning hairs off first (a hair at a wall's end points the wrong way), then every free end follows its thick ink

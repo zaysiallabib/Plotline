@@ -5,7 +5,7 @@
 import { deriveRooms, formatFeetInches, newId, parseLength, roomInnerPolygon } from '../core'
 import type { Id, Room, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, ReviewItem } from '../trace/types'
-import { entityPoints, findEntity, joinOverlaps, joinedToast, normalizeUnit, reducer, withToast, type Action, type StudioState } from './model'
+import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState } from './model'
 
 /** = trace/ai AI_KEY_STORAGE (a test pins it), spelled out so the Studio chunk never pulls in the trace code */
 export const AI_KEY = 'plotline.geminiKey'
@@ -47,14 +47,11 @@ export function studioReducer(s: StudioState, a: StudioAction): StudioState {
         projectName: r.projectName || s.unit.projectName,
         planImage: r.planImage && { ...r.planImage, src: s.planImage?.name ?? r.planImage.src },
       })
-      // overlapping / crossing walls joined once, its own undo step (back to the draft as traced, then to before it)
-      const j = joinOverlaps(raw)
-      const unit = j.unit
-      const items = a.result.review.map((i) => ({ ...i, sig: i.entityId ? entitySig(unit, i.entityId) : undefined }))
-      // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears
-      const t = reducer(s, { type: 'drag-begin' })
-      const next: StudioState = { ...t, unit, selection: [], chain: null, tool: 'select', review: { unitId: unit.id, items, stats: a.result.stats } }
-      return j.joined ? { ...withToast(next, joinedToast(j.joined)), history: { ...t.history, past: [...t.history.past, raw] } } : next
+      // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears;
+      // then overlapping / crossing walls joined once (join-walls), its own undo step back to the draft as traced
+      const t = reducer({ ...reducer(s, { type: 'drag-begin' }), unit: raw, selection: [], chain: null, tool: 'select' }, { type: 'join-walls' })
+      const items = a.result.review.map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined }))
+      return { ...t, review: { unitId: t.unit.id, items, stats: a.result.stats } }
     }
     case 'dismiss-review':
       return s.review ? { ...s, review: { ...s.review, items: s.review.items.filter((i) => i.id !== a.id) } } : s
