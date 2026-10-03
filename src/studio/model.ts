@@ -688,25 +688,53 @@ function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[] } {
   return { unit: moved.length ? u : unit, moved }
 }
 
+/** a nib longer than this is a wall someone meant, m */
+const STUB_M = 0.35
+/**
+ * Junk stubs (founder 2026-10-03; Join walls / load / auto-trace only): a wall with one free end and no opening, off a
+ * corner where ≥ 2 other walls meet (no new loose end), that lies inside a pillar's block, or is ≤ STUB_M long with
+ * nothing ahead within its reach — removed with its free corner. A low wall ≥ STUB_M stays. (A wall with a free end never
+ * bounds a room.) Returns the same unit when none went.
+ */
+function dropStubs(unit: Unit): { unit: Unit; dropped: number } {
+  let u = unit
+  let dropped = 0
+  for (const { id } of unit.walls) {
+    const w = u.walls.find((x) => x.id === id)!
+    const free = [w.a, w.b].filter((v) => degree(u, v) === 1)
+    if (w.openings.length || free.length !== 1 || degree(u, free[0] === w.a ? w.b : w.a) < 3) continue
+    const L = wallLen(u, w)
+    const ends = [vertexById(u.vertices, w.a), vertexById(u.vertices, w.b)]
+    const inPillar = (u.pillars ?? []).some((p) => ends.every((q) => Math.abs(q.x - p.x) <= p.wM / 2 + MERGE_M && Math.abs(q.y - p.y) <= p.hM / 2 + MERGE_M))
+    if ((w.heightM < LOW_M && L >= STUB_M) || !(inPillar || (L <= STUB_M && !ahead(u, free[0], w)))) continue
+    u = { ...u, walls: u.walls.filter((x) => x !== w), vertices: u.vertices.filter((v) => v.id !== free[0]) }
+    dropped++
+  }
+  return { unit: u, dropped }
+}
+
 /**
  * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
  * (dropOverlaid), with `reach` a loose end short of a wall slides onto it (reachEnds: the whole unit and drag-end),
- * overlaps join (joinOverlaps; an opening on the split point trimmed), a corner left between two walls on one line heals
- * into one wall (healStraight), a door left on a stub moves to the long wall or goes (fixStubs), a low wall with an
- * opening is full height. `ids` = the corners that moved — healed / checked: they, what they merged into, the dropped
- * walls' corners and the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the
- * same unit when nothing changed; `notes` = the toasts (the whole unit's trimmed count rides on the join toast).
+ * overlaps join (joinOverlaps; an opening on the split point trimmed), on the whole unit junk stubs go (dropStubs), a
+ * corner left between two walls on one line heals into one wall (healStraight), a door left on a stub moves to the long
+ * wall or goes (fixStubs), a low wall with an opening is full height. `ids` = the corners that moved — healed / checked:
+ * they, what they merged into, the dropped walls' corners and the far ends of their walls; absent = the whole unit,
+ * where only bent corners heal. Returns the same unit when nothing changed; `notes` = the toasts (the whole unit's
+ * trimmed count rides on the join toast).
  */
 function settle(unit: Unit, ids?: Id[], reach = !ids): { unit: Unit; merged: Map<Id, Id>; joined: number; trimmed: number; notes: string[] } {
   const o = dropOverlaid(unit, ids)
   const e = reach ? reachEnds(o.unit, ids) : { unit: o.unit, moved: [] as Id[] }
   const j = joinOverlaps(e.unit, ids && [...ids, ...e.moved])
+  const s = ids ? { unit: j.unit, dropped: 0 } : dropStubs(j.unit)
   const near = ids && new Set([...ids, ...e.moved, ...o.corners].map((id) => j.merged.get(id) ?? id))
-  const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
-  const t = fixStubs(healStraight(j.unit, touched, !ids), near && touched)
+  const touched = near ? new Set(s.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : s.unit.vertices.map((v) => v.id)
+  const t = fixStubs(healStraight(s.unit, touched, !ids), near && touched)
   const notes = [
     ...(o.dropped ? ['Removed a wall drawn over another'] : []),
     ...(ids && j.trimmed ? [`${j.trimmed} opening${j.trimmed === 1 ? '' : 's'} trimmed to the wall joined there`] : []),
+    ...(s.dropped ? [`Removed ${s.dropped} stub${s.dropped === 1 ? '' : 's'} (short wall ends sticking out)`] : []),
     ...(t.dropped ? [STUB_TOAST] : []),
   ]
   return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, trimmed: j.trimmed, notes }

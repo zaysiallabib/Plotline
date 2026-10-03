@@ -962,6 +962,39 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(lj.unit.walls.find((w) => w.id === 'w5')!.heightM).toBe(1.1)
     })
 
+    it('junk stubs go on load / Join walls (one undo step, toast): a nib ≤ 0.35 m past a corner with nothing ahead, a stub inside a pillar; never a longer nib, a low wall ≥ 0.35 m, one with an opening, or one whose corner would come loose; never on a drag', () => {
+      const ids = (u: Unit) => u.walls.map((w) => w.id)
+      // box of 5" walls split by a partition m→q→n at x = 2; extra walls appended per case, w6 onwards
+      const base = { A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3], m: [2, 0], q: [2, 1.5], n: [2, 3] } as Record<string, [number, number]>
+      const box: [string, string, number][] = [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'n', PARTITION_M], ['n', 'D', PARTITION_M], ['D', 'A', PARTITION_M], ['m', 'q', PARTITION_M], ['q', 'n', PARTITION_M]]
+      const with_ = (pts: Record<string, [number, number]>, extra: [string, string, number][], patch: (u: Unit) => Unit = (u) => u) => patch(build({ ...base, ...pts }, [...box, ...extra]))
+      // a 0.2 m nib past corner B (the bottom wall carried on), nothing ahead: removed with its corner
+      const raw = with_({ N: [4.2, 0] }, [['B', 'N', PARTITION_M]])
+      const s = reducer(initialState(), { type: 'load-unit', unit: raw })
+      expect(ids(s.unit)).toEqual(ids(raw).slice(0, 8))
+      expect(s.unit.vertices.some((v) => v.id === 'N')).toBe(false)
+      expect(s.toast?.text).toBe('Removed 1 stub (short wall ends sticking out)')
+      expect(s.history.past).toHaveLength(1)
+      expect(ids(reducer(s, { type: 'undo' }).unit)).toEqual(ids(raw)) // one undo step back to the file
+      // a 0.5 m nib stays (a wall someone meant)
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: with_({ N: [4.5, 0] }, [['B', 'N', PARTITION_M]]) }).unit)).toHaveLength(9)
+      // a 0.45 m stub off the partition, both ends inside a pillar's block: removed; as a 1.1 m railing it stays
+      const pillar = (u: Unit): Unit => ({ ...u, pillars: [{ id: 'P', x: 2.2, y: 1.5, wM: 0.6, hM: 0.6 }] })
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: with_({ S: [2.45, 1.5] }, [['q', 'S', PARTITION_M]], pillar) }).unit)).toHaveLength(8)
+      const rail = with_({ S: [2.45, 1.5] }, [['q', 'S', PARTITION_M]], (u) => pillar({ ...u, walls: u.walls.map((w) => (w.id === 'w8' ? { ...w, heightM: 1.1 } : w)) }))
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: rail }).unit)).toHaveLength(9)
+      // a 0.3 m nib carrying a vent stays
+      const vent = with_({ N: [4.3, 0] }, [['B', 'N', PARTITION_M]], (u) => ({ ...u, walls: u.walls.map((w) => (w.id === 'w8' ? { ...w, openings: [{ id: 'v', kind: 'window' as const, offsetM: 0, widthM: 0.3, heightM: 0.6, sillM: 1.5 }] } : w)) }))
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: vent }).unit)).toHaveLength(9)
+      // a 0.2 m piece off a corner of only one other wall (removing it would leave that wall loose) stays
+      const lone = build({ A: [0, 0], B: [3, 0], N: [3.2, 0.2] }, [['A', 'B', PARTITION_M], ['B', 'N', PARTITION_M]])
+      expect(reducer(initialState(), { type: 'load-unit', unit: lone }).unit.walls).toHaveLength(2)
+      // a drag leaving a nib: kept (whole-unit pass only)
+      let d = reducer(initialState(), { type: 'load-unit', unit: with_({ N: [4.5, 0] }, [['B', 'N', PARTITION_M]]) })
+      d = run(d, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: 'N', x: 4.2, y: 0 }] }, { type: 'drag-end', ids: ['N'] })
+      expect(ids(d.unit)).toHaveLength(9)
+    })
+
     it('openSpotsNear names why a click is in no room: an end short of a wall, a crossing, two corners apart; nearest first', () => {
       // the right wall stops 4 cm short of the top wall's face; the left side meets the top at two corners 3 cm apart
       const u = build({ A: [0, 0], A2: [0.03, 0], B: [4, 0], B2: [4, 0.0635 + 0.04], C: [4, 3], D: [0, 3] }, [['A2', 'B', PARTITION_M], ['B2', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
