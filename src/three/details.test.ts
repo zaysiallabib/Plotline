@@ -25,12 +25,12 @@ test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, p
   expect(raiseHeads(TEST_UNIT)).toBe(TEST_UNIT)
 })
 
-test('a pillar in the living / bed wall: each side in the finish of the room it faces, skirted there; 1 mm proud, top 1 mm over the walls', () => {
+test('a pillar in the living / bed wall: each side in the finish of the room it faces, skirted there; 1 mm proud, top 1 cm over the walls', () => {
   const rooms = core.deriveRooms(TEST_UNIT)
   const parts = pillarParts({ id: 'p', x: 5, y: 1, wM: 0.4, hM: 0.6 }, 3, TEST_UNIT, rooms)
   const box = new THREE.Box3()
   for (const x of parts.filter((x) => x.part !== 'skirting')) box.union((x.geo.computeBoundingBox(), x.geo.boundingBox!))
-  expect([box.min.x, box.max.x, box.min.z, box.max.z, box.min.y, box.max.y].map((v) => +v.toFixed(4))).toEqual([4.799, 5.201, 0.699, 1.301, 0, 3.001])
+  expect([box.min.x, box.max.x, box.min.z, box.max.z, box.min.y, box.max.y].map((v) => +v.toFixed(4))).toEqual([4.799, 5.201, 0.699, 1.301, 0, 3.01])
   const face = (nx: number) => parts.find((x) => x.part === 'face' && Math.round(x.geo.attributes.normal.getX(0)) === nx)?.room?.id
   expect([face(1), face(-1)]).toEqual(['bed', 'living'])
   const strips = parts.filter((x) => x.part === 'skirting')

@@ -104,13 +104,14 @@ export interface PillarPart {
 }
 
 /**
- * A column (Unit.pillars): a box from the floor to `heightM`, 1 mm proud of its plan size and of the wall tops, so a face
- * flush with a wall's (or its top on a wall top in the dollhouse) never z-fights it. Its four upright faces are each
+ * A column (Unit.pillars): a box from the floor to `heightM`, 1 mm proud of its plan size so a face flush with a wall's
+ * never z-fights it, and 1 cm over the wall tops (its top is edge plaster, pushed back in depth like theirs: at 1 mm the
+ * walls' face edges below showed through it as hairlines in the dollhouse). Its four upright faces are each
  * finished as the room they look into (probed 5 cm out from the face's middle) and skirted there like buildSkirting
  * (none in bath / balcony / shaft); where the column stands in a wall, the faces and strips inside it are simply hidden.
  */
 export function pillarParts(p: Pillar, heightM: number, unit: Unit, rooms: Room[]): PillarPart[] {
-  const [hx, hy, top] = [p.wM / 2 + 0.001, p.hM / 2 + 0.001, heightM + 0.001]
+  const [hx, hy, top] = [p.wM / 2 + 0.001, p.hM / 2 + 0.001, heightM + 0.01]
   const out: PillarPart[] = [{ geo: meterUVs(new THREE.PlaneGeometry(2 * hx, 2 * hy).rotateX(-Math.PI / 2).translate(p.x, top, p.y)), room: null, part: 'top' }]
   for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const [half, off] = nx ? [hy, hx] : [hx, hy]
