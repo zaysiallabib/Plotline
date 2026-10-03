@@ -55,7 +55,7 @@ export interface StudioState {
   lastOpeningKind: OpeningKind
   /** the O tool's picked width for lastOpeningKind; absent = the kind's default (openingDefaults: a door on a bath wall 2'-6") */
   lastOpeningWidthM?: number
-  toast:{ text: string; key: number } | null
+  toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
   /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
@@ -621,7 +621,7 @@ const replaceOpening = (u: Unit, wallId: Id, o: Opening): Unit => ({
 const bordersBath = (rooms: Room[], wallId: Id): boolean => rooms.some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
 
 /** The O tool's smallest opening (a resize stops here). */
-export const MIN_OPENING_M = 0.3
+const MIN_OPENING_M = 0.3
 
 /** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. No widthM = the kind's default. */
 export function openingAt(
