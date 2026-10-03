@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -129,6 +129,80 @@ describe('marks: stairs, glazing profile, glass colour', () => {
     const m = glassMask({ width: w, height: h, data })
     expect(m[5 * w + 30]).toBe(1)
     expect(m[35 * w + 30]).toBe(0)
+  })
+})
+
+describe('the graph: overlap = joined (founder 2026-10-03)', () => {
+  test('a wall end inside another wall\'s body, off its centre line, joins at the projection; an L whose ends stop inside each other closes; nothing tilts', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const trace = {
+      openings: [],
+      walls: [
+        wall(p(0, 0), p(3.95, 0), ext), // top: stops 5 cm short of the right wall's centre line (inside its body)
+        wall(p(4, 0.08), p(4, 3), ext), // right: starts 8 cm below the top's centre line (inside its end block)
+        wall(p(4, 3), p(0, 3), ext),
+        wall(p(0, 3), p(0, 0), ext),
+        wall(p(2.6, 0), p(2.6, 3 - 0.1), par), // partition: stops 0.1 m short of the bottom centre line, off-centre along it
+      ],
+    }
+    const graph = (on: boolean) => {
+      const prev = KNOBS.joinBodies
+      KNOBS.joinBodies = on
+      try {
+        return buildGraph(trace, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      } finally {
+        KNOBS.joinBodies = prev
+      }
+    }
+    expect(graph(false).rooms).toHaveLength(0)
+    const d = graph(true)
+    expect(d.rooms.map((r) => r.areaSqm.toFixed(1)).sort()).toEqual(['4.2', '7.8'])
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    for (const w of d.unit.walls) {
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      expect(Math.min(Math.abs(a.x - b.x), Math.abs(a.y - b.y))).toBeLessThan(1e-9) // axis-aligned
+    }
+    expect(validate(d.unit).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  test('a 5" wall meeting a 10" wall END TO END on offset centre lines: one junction, nothing tilts, the crosswise piece is 10" thick (with or without the tracks\' jog)', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k, off = (0.254 - 0.127) / 2
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const box = [wall(p(0, 0), p(2, 0), ext), wall(p(2, off), p(4, off), par), wall(p(4, off), p(4, 3), par), wall(p(4, 3), p(0, 3), par), wall(p(0, 3), p(0, 0), par)]
+    for (const walls of [box, [...box, wall(p(2, 0), p(2, off), par)]]) {
+      const d = buildGraph({ openings: [], walls }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      expect(d.rooms).toHaveLength(1)
+      const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+      const len = (w: (typeof d.unit.walls)[number]) => Math.hypot(V.get(w.b)!.x - V.get(w.a)!.x, V.get(w.b)!.y - V.get(w.a)!.y)
+      for (const w of d.unit.walls) expect(Math.min(Math.abs(V.get(w.a)!.x - V.get(w.b)!.x), Math.abs(V.get(w.a)!.y - V.get(w.b)!.y))).toBeLessThan(1e-9)
+      const jog = d.unit.walls.find((w) => len(w) < 0.1)!
+      expect(len(jog)).toBeCloseTo(off)
+      expect(jog.thicknessM).toBeCloseTo(0.254)
+    }
+  })
+})
+
+describe('open-plan passages (founder 2026-10-03: a dashed beam line under DINING is no boundary)', () => {
+  test('a passage between a named space and a closed space with no name of its own goes: one room; a hint / a read text there, or an open space beyond, keeps it', () => {
+    const k = 50, blank: Gray = { width: 400, height: 350, data: new Uint8Array(400 * 350).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: 0.127 * k, conf: 1 })
+    // 4 × 4 m box, a passage across it at y = 3: DINING above (named), a 4 × 1 m strip below
+    const walls = [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 4)), wall(p(4, 4), p(0, 4)), wall(p(0, 4), p(0, 0))]
+    const passage = { a: p(0, 3), b: p(4, 3), kind: 'passage' as const, conf: 0.3, thicknessPx: 0.127 * k }
+    const d = buildGraph({ walls, openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(d.rooms).toHaveLength(2)
+    const dining = { x: 2 + 50 / k, y: 1.5 + 50 / k }, strip = { x: 2 + 50 / k, y: 3.5 + 50 / k }
+    expect(mergeUnread(d, [dining], []).rooms.map((r) => r.areaSqm.toFixed(0))).toEqual(['16'])
+    expect(mergeUnread(d, [dining], [strip]).rooms).toHaveLength(2)
+    // the strip open at the bottom: no face beyond — the passage still closes the dining
+    const open = buildGraph({ walls: [walls[0], walls[1], walls[3], wall(p(4, 4), p(3, 4))], openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(mergeUnread(open, [dining], []).rooms).toHaveLength(1)
   })
 })
 

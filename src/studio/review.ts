@@ -45,16 +45,18 @@ export function studioReducer(s: StudioState, a: StudioAction): StudioState {
     case 'auto-trace': {
       // a fresh id binds the review list to this trace; the plan image stays the one on screen; what the user typed stays
       const r = a.result.unit
-      const unit = normalizeUnit({
+      const raw = normalizeUnit({
         ...r,
         id: newId(),
         name: r.name || s.unit.name,
         projectName: r.projectName || s.unit.projectName,
         planImage: r.planImage && { ...r.planImage, src: s.planImage?.name ?? r.planImage.src },
       })
-      const items = a.result.review.map((i) => ({ ...i, sig: i.entityId ? entitySig(unit, i.entityId) : undefined }))
-      // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears
-      return { ...reducer(s, { type: 'drag-begin' }), unit, selection: [], chain: null, tool: 'select', review: { unitId: unit.id, items, stats: a.result.stats } }
+      // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears;
+      // then overlapping / crossing walls joined once (join-walls), its own undo step back to the draft as traced
+      const t = reducer({ ...reducer(s, { type: 'drag-begin' }), unit: raw, selection: [], chain: null, tool: 'select' }, { type: 'join-walls' })
+      const items = a.result.review.map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined }))
+      return { ...t, review: { unitId: t.unit.id, items, stats: a.result.stats } }
     }
     case 'dismiss-review':
       return s.review ? { ...s, review: { ...s.review, items: s.review.items.filter((i) => i.id !== a.id) } } : s
