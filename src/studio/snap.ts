@@ -49,8 +49,16 @@ export function snapPoint(
   const guides: Snap['guides'] = []
   let ray: Pt | null = null
 
+  // the nearest coordinate within tolerance (the first one found could be a neighbour's a few cm off: a 179° corner)
+  const nearest = (k: 'x' | 'y') => {
+    const j = k === 'x' ? 'y' : 'x'
+    let best: (typeof unit.vertices)[number] | undefined
+    for (const v of unit.vertices)
+      if (!ex.has(v.id) && Math.abs(v[k] - q[k]) <= o.tolM && Math.abs(v[j] - q[j]) > o.tolM && (!best || Math.abs(v[k] - q[k]) < Math.abs(best[k] - q[k]))) best = v
+    return best
+  }
   const alignX = () => {
-    const v = unit.vertices.find((v) => !ex.has(v.id) && Math.abs(v.x - q.x) <= o.tolM && Math.abs(v.y - q.y) > o.tolM)
+    const v = nearest('x')
     if (v) {
       q = { x: v.x, y: q.y }
       guides.push({ axis: 'x', at: v.x })
@@ -58,7 +66,7 @@ export function snapPoint(
     }
   }
   const alignY = () => {
-    const v = unit.vertices.find((v) => !ex.has(v.id) && Math.abs(v.y - q.y) <= o.tolM && Math.abs(v.x - q.x) > o.tolM)
+    const v = nearest('y')
     if (v) {
       q = { x: q.x, y: v.y }
       guides.push({ axis: 'y', at: v.y })

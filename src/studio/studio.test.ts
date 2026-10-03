@@ -749,6 +749,9 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     const h = snapPoint({ x: 5, y: 0.02 }, box.unit, { tolM: 0.1 })
     expect(h).toMatchObject({ kind: 'in line', x: 5, y: 0 })
     expect(h.guides).toContainEqual({ axis: 'y', at: 0 })
+    // axis align takes the nearest corner's x, not the first one listed (a neighbour a few cm off made 179° corners)
+    const two = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[5.06, -2], [7, -2]], [[5, -4], [7, -4]])
+    expect(snapPoint({ x: 5.01, y: 1.5 }, two.unit, { tolM: 0.1 })).toMatchObject({ kind: 'aligned x', x: 5 })
   })
 
   it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
