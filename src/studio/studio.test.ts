@@ -209,6 +209,75 @@ describe('studio reducer', () => {
     expect(s.dragBlocked).toBe(false)
   })
 
+  it('O tool pick: kind + width chosen before the click, remembered; keys 1–4 = the kind at its default (bath door 2\'-6")', () => {
+    const FOOT = 0.3048
+    let s = traceRect()
+    const [top, right, bottom] = s.unit.walls // 4 m, 3 m, 4 m
+    s = reducer(s, { type: 'pick-opening', kind: 'window', widthM: 6 * FOOT })
+    expect(s.history.past).toHaveLength(traceRect().history.past.length) // a pick is no edit
+    s = reducer(s, { type: 'add-opening', wallId: top.id, t: 0.5 }) // one click: the picked window
+    expect(s.unit.walls[0].openings[0]).toMatchObject({ kind: 'window', sillM: 3 * FOOT })
+    expect(s.unit.walls[0].openings[0].widthM).toBeCloseTo(6 * FOOT)
+    s = reducer(s, { type: 'add-opening', wallId: right.id, t: 0.5 }) // still the pick
+    expect(s.unit.walls[1].openings[0].widthM).toBeCloseTo(6 * FOOT)
+    // explicit kind + width win; an explicit kind alone is that kind's default, not the picked window width
+    s = reducer(s, { type: 'add-opening', wallId: bottom.id, t: 0.2, kind: 'slider', widthM: 8 * FOOT })
+    expect(s.unit.walls[2].openings[0]).toMatchObject({ kind: 'slider' })
+    expect(s.unit.walls[2].openings[0].widthM).toBeCloseTo(8 * FOOT)
+    expect(s.lastOpeningKind).toBe('slider')
+    s = reducer(s, { type: 'add-opening', wallId: bottom.id, t: 0.85, kind: 'door' })
+    expect(s.unit.walls[2].openings[1].widthM).toBeCloseTo(3 * FOOT)
+    // editing a placed opening never changes the pick
+    s = reducer(s, { type: 'pick-opening', kind: 'door', widthM: 2.5 * FOOT })
+    s = reducer(s, { type: 'update-opening', id: s.unit.walls[2].openings[1].id, patch: { kind: 'window' } })
+    expect(s).toMatchObject({ lastOpeningKind: 'door', lastOpeningWidthM: 2.5 * FOOT })
+    // too narrow → the 0.3 m minimum
+    expect(reducer(s, { type: 'pick-opening', kind: 'passage', widthM: 0.1 }).lastOpeningWidthM).toBe(0.3)
+
+    // a bath wall: key 1 (door, default width) → 2'-6"; a picked 3'-0" door overrides the bath rule
+    let b = reducer(traceRect(), { type: 'add-label', label: { name: 'Bath', kind: 'bath', x: 2, y: 1.5 } })
+    const wallId = b.unit.walls[0].id
+    b = reducer(b, { type: 'pick-opening', kind: 'door' })
+    expect(reducer(b, { type: 'add-opening', wallId, t: 0.5 }).unit.walls[0].openings[0].widthM).toBeCloseTo(2.5 * FOOT)
+    b = reducer(b, { type: 'pick-opening', kind: 'door', widthM: 3 * FOOT })
+    expect(reducer(b, { type: 'add-opening', wallId, t: 0.5 }).unit.walls[0].openings[0].widthM).toBeCloseTo(3 * FOOT)
+  })
+
+  it('resize-opening: the dragged end moves, the far end stays; edge snap, 0.3 m minimum, refused over a sibling or past the wall', () => {
+    let s = traceRect()
+    const wall = s.unit.walls[0] // (0,0) → (4,0)
+    s = reducer(s, { type: 'add-opening', wallId: wall.id, t: 0.5, kind: 'door', widthM: 1 }) // 1.5 – 2.5
+    s = reducer(s, { type: 'add-opening', wallId: wall.id, t: 0.875, kind: 'window', widthM: 0.5 }) // 3.25 – 3.75
+    const [door, win] = s.unit.walls[0].openings
+    const past = s.history.past.length
+    const span = () => {
+      const o = s.unit.walls[0].openings[0]
+      return [o.offsetM, o.offsetM + o.widthM]
+    }
+    s = run(s, { type: 'drag-begin' }, { type: 'resize-opening', id: door.id, end: 'b', uM: 2.8 })
+    expect(span()[0]).toBe(1.5)
+    expect(span()[1]).toBeCloseTo(2.8, 9)
+    s = reducer(s, { type: 'resize-opening', id: door.id, end: 'b', uM: 3.2, tolM: 0.1 }) // flush to the window
+    expect(span()[1]).toBeCloseTo(3.25, 9)
+    expect(s.dragBlocked).toBe(false)
+    s = reducer(s, { type: 'resize-opening', id: door.id, end: 'b', uM: 3.5 }) // into the window: refused, stays
+    expect(s.dragBlocked).toBe(true)
+    expect(span()[1]).toBeCloseTo(3.25, 9)
+    s = reducer(s, { type: 'resize-opening', id: door.id, end: 'a', uM: 0.04, tolM: 0.1 }) // end a to the corner, b stays
+    expect(span()[0]).toBe(0)
+    expect(span()[1]).toBeCloseTo(3.25, 9)
+    s = reducer(s, { type: 'resize-opening', id: door.id, end: 'a', uM: 3.9 }) // past the far end: the minimum
+    expect(span()[0]).toBeCloseTo(3.25 - 0.3, 9)
+    expect(span()[1]).toBeCloseTo(3.25, 9)
+    expect(s.history.past).toHaveLength(past + 1) // the whole drag = one undo entry (drag-begin)
+    expect(reducer(s, { type: 'undo' }).unit.walls[0].openings[0]).toEqual(door)
+    // a 0.2 m window 0.2 m from the wall end: no room for the 0.3 m minimum → refused, its far end never moves
+    s = reducer(s, { type: 'update-opening', id: win.id, patch: { offsetM: 3.8, widthM: 0.2 } })
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'b', uM: 3.85 })
+    expect(s.dragBlocked).toBe(true)
+    expect(s.unit.walls[0].openings[1]).toMatchObject({ offsetM: 3.8, widthM: 0.2 })
+  })
+
   it('nudge moves the selection 1" (Shift 1\') without snapping, one history entry per press', () => {
     const IN = 0.0254
     const FOOT = 0.3048
