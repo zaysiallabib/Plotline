@@ -1,0 +1,94 @@
+/**
+ * The founder's own auto-traced + hand-fixed Sheltech Level 2 Type-A draft (exported 2026-10-03, 102 walls, 88 corners,
+ * 9 pillars) as the Studio loads it: normalizeUnit + Join walls (load-unit). Before: Bed 3's north wall a 1.1 m railing
+ * carrying a window (open to the sky in 3D), 13 loose ends, 15 closed rooms, all 9 labels inside one.
+ */
+import { describe, expect, it } from 'vitest'
+import { deriveRooms, roomAt, validate } from '../core'
+import type { Unit } from '../core'
+import draft from '../data/fixtures/founder-sheltech-a-draft.json'
+import typeA from '../data/units/type-a.json'
+import typeB from '../data/units/type-b.json'
+import typeC from '../data/units/type-c.json'
+import sheltechA from '../data/units/sheltech-a.json'
+import sheltechB from '../data/units/sheltech-b.json'
+import { initialState, normalizeUnit, reducer, type Draft } from './model'
+
+const looseEnds = (u: Unit) => u.vertices.filter((v) => u.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1).map((v) => v.id.slice(0, 8)).sort()
+
+/** The loose ends Join walls leaves, and why (none points at a wall within its reach, max(0.15 m, 1.5 × its thickness)). */
+const STAY: Record<string, string> = {
+  '791e5dbd': '(1.38, 17.98) Bed 2\'s west wall 0.65 m past its south wall: the sunshade line 0.55 m ahead > reach 0.40',
+  '179fac4e': '(5.20, 17.98) Bed 2\'s east wall, the same 0.55 m short of the sunshade line',
+  '05c6f946': '(10.52, 0.00) Bed 3\'s west wall 0.65 m past its north wall to the sheet\'s outline: nothing ahead, but > 0.35 m',
+  '9f4f74b7': '(3.54, 12.08) the toilet\'s east wall 0.75 m short of Bed 2\'s north wall > reach 0.21',
+  '8516f94c': '(-12.14, 18.66) the far end of the 24.8 m sunshade line running through the next flat (the founder\'s one-click fix)',
+}
+/** The junk stubs Join walls removes (wall id: its loose end, length, why). */
+const REMOVED: Record<string, string> = {
+  '1f5e1792': '(4.06, 5.43) 0.21 m nib of the 13.5" run past the Living / Foyer corner, nothing ahead',
+  '6be5c0da': '(5.23, 5.43) 0.27 m nib of the same run past the Kitchen corner, alongside the Kitchen wall, nothing ahead',
+  c7020516: '(0.00, 5.49) 0.27 m nib past the Living\'s SW corner, nothing ahead',
+  '5e0b3d07': '(0.14, 5.49) a second 0.27 m nib beside it, nothing ahead',
+  '0375f58f': '(12.69, 0.06) 0.59 m: Bed 3\'s east wall carried on north inside pillar 8ffa3fa7',
+  ba0b8b8a: '(12.52, 10.81) 0.47 m stub inside pillar a3e3df32 beside the exterior wall',
+}
+
+describe("founder's Sheltech Type-A draft, loaded in the Studio", () => {
+  const raw = draft as unknown as Unit
+  const s = reducer(initialState(), { type: 'load-unit', unit: raw })
+  const u = s.unit
+  const rooms = deriveRooms(u)
+
+  it('no low wall carries an opening (Bed 3\'s north wall is full height again)', () => {
+    expect(raw.walls.filter((w) => w.heightM < 2 && w.openings.length).map((w) => w.id.slice(0, 8))).toEqual(['48fa08a5'])
+    expect(u.walls.filter((w) => w.heightM < 2 && w.openings.length)).toEqual([])
+    expect(u.walls.find((w) => w.id.startsWith('48fa08a5'))!.heightM).toBe(3.048)
+    expect(u.walls.filter((w) => w.heightM < 2)).toHaveLength(8) // the planter edges (0.45 / 0.457 m) stay low
+  })
+
+  it('loose ends: 13 before, the 5 listed (and why) after; the two planter edges ending on a slider joined, the sliders trimmed to their face; 6 junk stubs removed', () => {
+    expect(looseEnds(raw)).toHaveLength(13)
+    expect(looseEnds(u)).toEqual(Object.keys(STAY).sort())
+    expect(s.toast?.text).toBe('Joined 2 overlapping / crossing walls (2 openings trimmed) — Ctrl+Z undoes · Removed 6 stubs (short wall ends sticking out)')
+    const kept = new Set(u.walls.map((w) => w.id.slice(0, 8)))
+    expect(raw.walls.map((w) => w.id.slice(0, 8)).filter((id) => !kept.has(id)).sort()).toEqual(Object.keys(REMOVED).sort())
+    for (const id of ['d5c3920f', 'a945a3a1', 'a1dc7ba3']) expect(kept.has(id), id).toBe(true) // the sunshade line, the two 0.52 m walls: his
+    expect(s.history.past).toHaveLength(1) // one undo step back to the file
+    // the slider on the veranda's side of the planter edge kept: Bed 4's 2.94 m → 2.17 m, Bed 1's 3.70 m → 1.91 m
+    const sliders = u.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'slider').map((o) => +o.widthM.toFixed(2))).sort()
+    const before = raw.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'slider').map((o) => +o.widthM.toFixed(2))).sort()
+    expect(before.filter((x) => !sliders.includes(x))).toEqual([2.94, 3.7])
+    expect(sliders.filter((x) => !before.includes(x))).toEqual([1.91, 2.17])
+  })
+
+  it('rooms: both verandas closed (15 → 17), every label inside a closed room, validate has no errors', () => {
+    expect(rooms.length).toBeGreaterThanOrEqual(deriveRooms(raw).length)
+    expect(deriveRooms(raw)).toHaveLength(15)
+    expect(rooms).toHaveLength(17)
+    for (const l of u.roomLabels) expect(roomAt(l, rooms, u), l.name).toBeTruthy()
+    expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['Bed 1', 'Bed 3', 'Kitchen', 'Living', 'Planter', 'Room', 'Room', 'Toilet 1', 'Toilet 2'])
+    expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  it('an autosaved draft is joined on restore too (the founder opened /studio on his old autosave and the preview still had the stubs); a second restore changes nothing', () => {
+    const r = reducer(initialState(), { type: 'restore', draft: { unit: raw } as Draft })
+    expect(deriveRooms(r.unit)).toHaveLength(17)
+    expect(r.toast?.text).toMatch(/^Joined 2 .*Removed 6 stubs/)
+    expect(r.history.past).toHaveLength(1) // Ctrl+Z = the draft as autosaved
+    const again = reducer(initialState(), { type: 'restore', draft: { unit: r.unit } as Draft })
+    expect(again.toast).toBeFalsy()
+    expect(again.history.past).toHaveLength(0)
+  })
+
+  it('the five hand-traced units are unchanged by Join walls (already clean)', () => {
+    for (const h of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
+      const n = normalizeUnit(h)
+      expect(n.walls.map((w) => w.heightM)).toEqual(h.walls.map((w) => w.heightM))
+      const j = reducer({ ...initialState(), unit: n }, { type: 'join-walls' })
+      expect(j.unit).toBe(n)
+      expect(j.unit.vertices).toEqual(h.vertices)
+      expect(j.unit.walls.map(({ id, a, b, thicknessM, heightM }) => ({ id, a, b, thicknessM, heightM }))).toEqual(h.walls.map(({ id, a, b, thicknessM, heightM }) => ({ id, a, b, thicknessM, heightM })))
+    }
+  })
+})

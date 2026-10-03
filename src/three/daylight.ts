@@ -24,6 +24,8 @@ type V3 = [number, number, number]
 const TEXEL = 0.25
 /** atlas byte 255 = factor RANGE */
 export const RANGE = 2
+/** walls shorter than this read the floor's daylight at their foot (mapDaylight) */
+export const SHORT_WALL_M = 0.3
 /** what an opening lets through: glass × frame (and the curtains stacked over 36 % of a window); a door stands ajar */
 const TAU: Record<string, number> = { window: 0.6, slider: 0.7, door: 0.3, passage: 1, gap: 1 }
 /** radiance below the horizon (street, the blocks opposite) / the sky's: a ceiling sees the window's lower view */
@@ -470,6 +472,10 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
     const [front, back] = d.sides.get(id) ?? [null, null]
     const prefer = front ? 1 : back ? -1 : 0
     const T2 = w.thicknessM / 2
+    // a short wall (a traced jog, a hair-long connector at a junction) is lit like the floor at its foot in the room it
+    // faces, not with a bake of its own: a 13 cm face baked alone came out darker than the wall it continues (founder's
+    // "grey line" at a passage jamb, 2026-10-03)
+    const short = f.lengthM < SHORT_WALL_M
     const local = (i: number) => {
       const [dx, dz] = [p.getX(i) - f.origin.x, p.getZ(i) - f.origin.y]
       return { u: dx * f.dir.x + dz * f.dir.y, w: dx * f.normal.x + dz * f.normal.y, v: p.getY(i) }
@@ -484,7 +490,8 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
       const gs = g === 0 && front ? 1 : g === 1 && back ? -1 : 0
       const s = gs || (Math.abs(wc) > T2 / 2 ? Math.sign(wc) : prefer)
       const room = s > 0 ? front : s < 0 ? back : null
-      vi.forEach((v, k) => put(v, room ? `wall:${id}:${s}` : null, l[k].u, l[k].v))
+      if (short) vi.forEach((v) => put(v, room ? `floor:${room.id}` : null, p.getX(v), p.getZ(v)))
+      else vi.forEach((v, k) => put(v, room ? `wall:${id}:${s}` : null, l[k].u, l[k].v))
     }
   }
   geo.setAttribute('dayUv', new THREE.BufferAttribute(uv, 2))

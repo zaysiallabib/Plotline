@@ -133,6 +133,20 @@ export interface FurniturePlacement {
   removed?: true
 }
 
+/**
+ * A structural column drawn on the plan (founder 2026-10-03): its own block, axis-aligned, centre + size in plan metres.
+ * Walls keep their own centre lines and thicknesses — the wall graph carries a wall through / into the column under its
+ * block; the column changes no room (deriveRooms / validate ignore it). Its centre, and where a wall's centre line meets
+ * its faces, are snap points.
+ */
+export interface Pillar {
+  id: Id
+  x: number
+  y: number
+  wM: number
+  hM: number
+}
+
 export interface Unit {
   id: Id
   projectName: string
@@ -142,6 +156,8 @@ export interface Unit {
   northDeg: number
   vertices: Vertex[]
   walls: Wall[]
+  /** columns (optional — older units have none) */
+  pillars?: Pillar[]
   roomLabels: RoomLabel[]
   furniture: FurniturePlacement[]
   finishSlots: FinishSlot[]

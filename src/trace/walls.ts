@@ -8,7 +8,9 @@
  *   → Zhang–Suen skeleton → pixel graph (junctions, ends, chains) → spur pruning → line / arc fitting
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
+import { bandWalls, coveredByBands } from './bands'
 import { edt, otsu, thin, threshold } from './raster'
+import { scaleTracks, traceTracks, trackWalls } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
 export interface WallOpts {
@@ -30,6 +32,16 @@ export interface WallOpts {
   upscale?: number
   /** drop walls whose lighter side is less than this many grey levels above their centre (foliage, textures). */
   minContrast?: number
+  /**
+   * 'bands' (founder, wave 18): axis-aligned walls as straight bands of exactly their drawn thickness (bands.ts); the
+   * skeleton only adds what no band covers (angled walls, arcs). 'skeleton' (default here — the solver passes
+   * 'bands'): the skeleton for everything. 'tracks' (wave 19, tracks.ts): one wall per occupied stretch of a track,
+   * openings as children of the wall they are cut in, only where a door arc or glazing is drawn.
+   */
+  tracker?: 'skeleton' | 'bands' | 'tracks'
+  /** 'tracks': plant pixels (the colour image's green) whitened before tracing; glass pixels = window evidence */
+  plant?: Uint8Array
+  glass?: Uint8Array
 }
 
 const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
@@ -377,6 +389,16 @@ export function upsample(g: Gray, f: number): Gray {
 
 const scalePx = (p: Px, k: number): Px => ({ x: p.x * k, y: p.y * k })
 
+/** Nearest-neighbour enlargement of a mask to the upsampled raster's size. */
+export function upMask(m: Uint8Array, w: number, h: number, W: number, H: number): Uint8Array {
+  const out = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(h - 1, Math.floor((y * h) / H))
+    for (let x = 0; x < W; x++) out[y * W + x] = m[sy * w + Math.min(w - 1, Math.floor((x * w) / W))]
+  }
+  return out
+}
+
 export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
   let f = opts.upscale
   let half0 = opts.halfPx
@@ -389,34 +411,113 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     // re-estimate on the enlarged raster (finer), but never above the native estimate: on a sheet with few walls the
     // enlarged histogram can lock onto the columns
     const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
-    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig })
+    const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
+    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
+    const sc = (s: WallSeg): WallSeg => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })
     return {
-      walls: t.walls.map((s) => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })),
+      ...(t.tracks ? { tracks: { lines: scaleTracks(t.tracks.lines, k), angled: t.tracks.angled.map(sc) } } : {}),
+      walls: t.walls.map(sc),
       openings: t.openings.map((op) => ({
         ...op,
         a: scalePx(op.a, k),
         b: scalePx(op.b, k),
         ...(op.hingeAt ? { hingeAt: scalePx(op.hingeAt, k) } : {}),
         ...(op.swingTo ? { swingTo: scalePx(op.swingTo, k) } : {}),
+        ...(op.thicknessPx ? { thicknessPx: op.thicknessPx * k } : {}),
       })),
     }
   }
-  const { o, w, h, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  if (opts.tracker === 'tracks') {
+    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast })
+    const t = trackWalls(tt)
+    const angled = angledWalls(gray, t.walls, opts)
+    return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, pillars: tt.pillars, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }
+  }
+  const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
+  // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes
+  const bands =
+    o.tracker === 'bands'
+      ? bandWalls(gray, ink, { minThPx: 2 * rCore, maxThPx: 2 * half * o.blobFrac, minLenPx: 3 * half }).filter((b) => sideContrast(gray, b, b.thicknessPx) >= o.minContrast)
+      : []
   const walls = tidy(
-    segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
-      const len = dist(s.a, s.b)
-      const thicknessPx = thicknessOf(s.half)
-      // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
-      const c = sideContrast(gray, s, thicknessPx)
-      if (len < 1 || c < o.minContrast) return []
-      return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
-    }),
+    [
+      ...bands,
+      ...segsOf(sk, dt, w, h, o.minCompFrac * half).flatMap((s): WallSeg[] => {
+        const len = dist(s.a, s.b)
+        const thicknessPx = thicknessOf(s.half)
+        // a wall is a dark band with clean paper / floor beside it on at least one side; foliage and textures are not
+        const c = sideContrast(gray, s, thicknessPx)
+        if (len < 1 || c < o.minContrast) return []
+        if (bands.length && coveredByBands(s, bands)) return []
+        return [{ a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx, conf: Math.min(1, len / (4 * thicknessPx), c / 120) }]
+      }),
+    ],
     2.5 * thicknessOf(half),
   )
   // door arcs: ink darker than the local median (arcInk); windows: the grey profile across the gap (glazing)
   const openings = findOpenings(walls, core, rCore, w, h, half, o.partitionM, arcInk(gray), (x, y) => gray.data[Math.min(h - 1, Math.max(0, Math.round(y))) * w + Math.min(w - 1, Math.max(0, Math.round(x)))])
   return { walls, openings }
+}
+
+/**
+ * Tracks (wave 19): the walls off the sheet's axes — skeleton pieces more than 5° from both axes, and arcs — on ink no
+ * track wall owns. An end that stops at a track wall is put on that wall's centre line (where the angled wall's line
+ * crosses it, or the track wall's end beside it): the track wall is only noded there, never moved or tilted.
+ */
+function angledWalls(gray0: Gray, axis: WallSeg[], opts: WallOpts): WallSeg[] {
+  let gray = gray0
+  if (opts.plant) {
+    const d = new Uint8Array(gray0.data)
+    for (let i = 0; i < d.length; i++) if (opts.plant[i]) d[i] = 255
+    gray = { width: gray0.width, height: gray0.height, data: d }
+  }
+  const { o, w, h, dt, half, sk } = wallSkeleton(gray, opts)
+  const offAxis = (p: Px, q: Px) => {
+    const g = (((Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI) % 90 + 90) % 90
+    return Math.min(g, 90 - g)
+  }
+  const out: WallSeg[] = []
+  for (const s of segsOf(sk, dt, w, h, o.minCompFrac * half)) {
+    const len = dist(s.a, s.b), th = thicknessOf(s.half)
+    // on (or near) the axes it is the tracks' ink — a corner scrap of the skeleton, never a wall of its own
+    if (!s.mid && offAxis(s.a, s.b) <= 10) continue
+    if (len < Math.max(6 * half, 1.5 * th) || sideContrast(gray, s, th) < o.minContrast) continue
+    if (s.mid) {
+      // an arc: a real bow (sagitta ≥ half a wall), and not lying along a track wall's body
+      const sag = Math.abs((s.b.x - s.a.x) * (s.a.y - s.mid.y) - (s.a.x - s.mid.x) * (s.b.y - s.a.y)) / (len || 1)
+      const pcs = segPieces({ a: s.a, b: s.b, mid: s.mid, thicknessPx: th, conf: 1 })
+      if (sag < Math.max(2, 0.5 * th) || pcs.filter((p) => coveredByBands(p, axis, 0.5)).length >= 0.5 * pcs.length) continue
+    } else if (coveredByBands(s, axis, 0.5)) continue
+    const seg: WallSeg = { a: s.a, b: s.b, ...(s.mid ? { mid: s.mid } : {}), thicknessPx: th, conf: Math.min(1, len / (4 * th)) }
+    for (const end of ['a', 'b'] as const) {
+      const p = seg[end], q = end === 'a' ? seg.b : seg.a
+      const L = dist(p, q) || 1, dx = (p.x - q.x) / L, dy = (p.y - q.y) / L
+      let best: Px | null = null, bd = Infinity
+      for (const t of axis) {
+        const horiz = t.a.y === t.b.y
+        const c = horiz ? t.a.y : t.a.x, u0 = Math.min(horiz ? t.a.x : t.a.y, horiz ? t.b.x : t.b.y), u1 = Math.max(horiz ? t.a.x : t.a.y, horiz ? t.b.x : t.b.y)
+        const reach = t.thicknessPx / 2 + th + 2
+        // where the angled wall's line crosses the track wall's centre line, if that is on the wall and near our end
+        const dc = horiz ? dy : dx
+        if (!seg.mid && Math.abs(dc) > 0.05) {
+          const k = (c - (horiz ? p.y : p.x)) / dc
+          const X = { x: p.x + dx * k, y: p.y + dy * k }
+          const u = horiz ? X.x : X.y
+          if (k > -reach && k < reach && u >= u0 - t.thicknessPx / 2 && u <= u1 + t.thicknessPx / 2 && Math.abs(k) < bd) {
+            ;(bd = Math.abs(k)), (best = { x: horiz ? Math.min(u1, Math.max(u0, u)) : c, y: horiz ? c : Math.min(u1, Math.max(u0, u)) })
+            continue
+          }
+        }
+        // else the track wall's end beside ours
+        for (const e of [t.a, t.b]) if (dist(e, p) < 1.5 * th && dist(e, p) < bd) (bd = dist(e, p)), (best = e)
+      }
+      if (best) seg[end] = { ...best }
+    }
+    if (!seg.mid && offAxis(seg.a, seg.b) <= 10) continue // joining turned it onto an axis: a scrap after all
+    out.push(seg)
+  }
+  return out
 }
 
 /**

@@ -4,7 +4,7 @@ import type { FurniturePlacement, Id, Opening, Pt, Room } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import type { StudioState } from './model'
 import type { OpeningSnap, Snap } from './snap'
-import { mToScreen, screenToM, type Frame } from './transform'
+import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
 /** Wall length labels only when the wall is at least this long on screen. */
@@ -99,6 +99,8 @@ export interface DrawArgs {
   furniture?: { pieces: FurniturePlacement[]; drag: Move | null }
   /** a review row's spot (plan m), ringed */
   mark?: Pt | null
+  /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint */
+  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[] } | null
 }
 
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
@@ -230,6 +232,10 @@ export function draw(a: DrawArgs): void {
     ctx.setLineDash([])
   }
 
+  // columns: a filled block in the wall ink, under the walls (walls keep their own lines through / into them)
+  ctx.fillStyle = C.ink
+  for (const p of state.unit.pillars ?? []) ctx.fillRect(p.x - p.wM / 2, p.y - p.hM / 2, p.wM, p.hM)
+
   // walls
   for (const w of state.unit.walls) {
     const f = wallFrame(w, vs)
@@ -289,13 +295,26 @@ export function draw(a: DrawArgs): void {
 
   if (a.furniture) drawFurniture(ctx, a, sel, px)
 
-  // vertices
-  for (const v of vs) {
-    const active = sel.has(v.id) || chainIds.has(v.id)
+  // vertices; a selected wall's ends are its drag handles (ringed so they show on an ink-filled wall)
+  const ends = new Set(state.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b]))
+  const dot = (p: Pt, active: boolean, ring: boolean) => {
     ctx.beginPath()
-    ctx.arc(v.x, v.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
     ctx.fillStyle = active ? C.accent : C.ink
     ctx.fill()
+    if (ring) {
+      ctx.strokeStyle = C.bg
+      ctx.lineWidth = px(1.5)
+      ctx.stroke()
+    }
+  }
+  for (const v of vs) dot(v, sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id), ends.has(v.id))
+  // a selected opening's two ends (on its wall's centre line) are its resize handles, ringed the same
+  for (const w of state.unit.walls) {
+    for (const op of w.openings.filter((o) => sel.has(o.id))) {
+      const f = wallFrame(w, vs)
+      for (const u of [op.offsetM, op.offsetM + op.widthM]) dot({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u }, true, true)
+    }
   }
 
   // snap ring
@@ -361,6 +380,29 @@ export function draw(a: DrawArgs): void {
     ctx.beginPath()
     ctx.arc(p.x, p.y, 22, 0, Math.PI * 2)
     ctx.stroke()
+  }
+
+  if (a.preview) {
+    ctx.beginPath()
+    for (const poly of a.preview.polys) {
+      poly.forEach((p, i) => {
+        const q = pxToScreen(frame, p)
+        if (i) ctx.lineTo(q.x, q.y)
+        else ctx.moveTo(q.x, q.y)
+      })
+      ctx.closePath()
+    }
+    ctx.fillStyle = 'rgba(232,193,112,0.18)'
+    ctx.fill()
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.font = '300 12px Inter, system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(242,242,240,0.6)'
+    for (const n of a.preview.names) {
+      const q = pxToScreen(frame, n.at)
+      ctx.fillText(n.text, q.x, q.y)
+    }
   }
 
   if (state.tool === 'scale' && a.scaleStart && a.hover) {

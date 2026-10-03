@@ -59,8 +59,8 @@ describe('resolveFinishRef on type-a.json', () => {
     expect(resolveFinishRef(unit.finishSlots, { s_floor_wet: 'fo_beds_oak' }, 'r_bath2', 'floor')).toMatchObject({ textureId: 'tile_floor_ceramic' })
   })
 
-  test('exterior side of a wall is plaster, unslotted room floor is the flat default', () => {
-    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'pbr', textureId: 'plaster_white' })
+  test('a wall face no room claims is the interior paint (never the exterior tint: a jog poking in read grey), unslotted room floor is the flat default', () => {
+    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'color', color: '#f1efe9' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_lifts', 'floor')).toMatchObject({ kind: 'color' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_closet', 'floor')).toMatchObject({ kind: 'pbr', textureId: 'wood_floor_oak' })
   })

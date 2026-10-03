@@ -3,7 +3,7 @@ import { nearestWall, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, Unit, Wall } from '../core'
 
 export interface Snap extends Pt {
-  kind: 'vertex' | 'wall' | 'aligned x' | 'aligned y' | 'angle' | 'free'
+  kind: 'vertex' | 'wall' | 'in line' | 'aligned x' | 'aligned y' | 'angle' | 'free'
   vertexId?: Id
   wallId?: Id
   /** direction from `from`, degrees, 0 = plan-right, clockwise on screen */
@@ -49,8 +49,16 @@ export function snapPoint(
   const guides: Snap['guides'] = []
   let ray: Pt | null = null
 
+  // the nearest coordinate within tolerance (the first one found could be a neighbour's a few cm off: a 179° corner)
+  const nearest = (k: 'x' | 'y') => {
+    const j = k === 'x' ? 'y' : 'x'
+    let best: (typeof unit.vertices)[number] | undefined
+    for (const v of unit.vertices)
+      if (!ex.has(v.id) && Math.abs(v[k] - q[k]) <= o.tolM && Math.abs(v[j] - q[j]) > o.tolM && (!best || Math.abs(v[k] - q[k]) < Math.abs(best[k] - q[k]))) best = v
+    return best
+  }
   const alignX = () => {
-    const v = unit.vertices.find((v) => !ex.has(v.id) && Math.abs(v.x - q.x) <= o.tolM && Math.abs(v.y - q.y) > o.tolM)
+    const v = nearest('x')
     if (v) {
       q = { x: v.x, y: q.y }
       guides.push({ axis: 'x', at: v.x })
@@ -58,12 +66,38 @@ export function snapPoint(
     }
   }
   const alignY = () => {
-    const v = unit.vertices.find((v) => !ex.has(v.id) && Math.abs(v.y - q.y) <= o.tolM && Math.abs(v.x - q.x) > o.tolM)
+    const v = nearest('y')
     if (v) {
       q = { x: q.x, y: v.y }
       guides.push({ axis: 'y', at: v.y })
       kind = kind === 'aligned x' ? 'aligned x' : 'aligned y'
     }
+  }
+
+  const walls = { vertices: unit.vertices, walls: unit.walls.filter((w) => !ex.has(w.a) && !ex.has(w.b)) }
+  // in line (founder 2026-10-03: hand fixes without millimetre control left two walls meeting at 179°, a wedge in 3D):
+  // within 3 cm of a wall's centre line past one of its ends, the point continues that wall — onto its line
+  let line: { x: number; y: number; dir: Pt } | null = null
+  let ld = Math.min(o.tolM, 0.03)
+  const V = new Map(unit.vertices.map((v) => [v.id, v]))
+  for (const w of walls.walls) {
+    const a = V.get(w.a)!
+    const b = V.get(w.b)!
+    const L = Math.hypot(b.x - a.x, b.y - a.y)
+    const dir = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+    const s = (p.x - a.x) * dir.x + (p.y - a.y) * dir.y
+    if (!(L > 1e-9) || (s >= 0 && s <= L)) continue // beside the wall itself: its corners / body snap
+    const x = a.x + dir.x * s
+    const y = a.y + dir.y * s
+    const d = Math.hypot(p.x - x, p.y - y)
+    if (d <= ld) (ld = d), (line = { x, y, dir })
+  }
+  const onLine = (l: NonNullable<typeof line>) => {
+    q = { x: l.x, y: l.y }
+    // an axis line keeps its guide and still aligns across (a diagonal one has no guide: nothing else may move it)
+    if (Math.abs(l.dir.y) < 1e-9) guides.push({ axis: 'y', at: l.y }), alignX()
+    else if (Math.abs(l.dir.x) < 1e-9) guides.push({ axis: 'x', at: l.x }), alignY()
+    kind = 'in line'
   }
 
   if (o.from && !o.free) {
@@ -75,14 +109,21 @@ export function snapPoint(
     const d = Math.max(0, dx * ray.x + dy * ray.y)
     q = { x: o.from.x + ray.x * d, y: o.from.y + ray.y * d }
     kind = 'angle'
-    if (Math.abs(ray.y) < 1e-9) alignX()
+    // drawing on from a wall's end along its line (the line runs through `from`): that line, not the rounded angle
+    const l = line
+    if (l && Math.abs((o.from.x - l.x) * l.dir.y - (o.from.y - l.y) * l.dir.x) < 1e-3) {
+      onLine(l)
+      ray = null
+    } else if (Math.abs(ray.y) < 1e-9) alignX()
     else if (Math.abs(ray.x) < 1e-9) alignY()
   } else if (!o.from) {
-    alignX()
-    alignY()
+    if (line) onLine(line)
+    else {
+      alignX()
+      alignY()
+    }
   }
 
-  const walls = { vertices: unit.vertices, walls: unit.walls.filter((w) => !ex.has(w.a) && !ex.has(w.b)) }
   const nw = nearestWall(q, walls)
   if (nw && nw.distanceM <= o.tolM) {
     const f = wallFrame(nw.wall, unit.vertices)

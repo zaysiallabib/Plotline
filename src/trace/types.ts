@@ -26,6 +26,11 @@ export interface WallSeg {
   thicknessPx: number
   /** 0..1: how sure the extractor is this is a wall (not furniture, hatching, text, a dimension line) */
   conf: number
+  /**
+   * a LOW wall, its height in metres: a railing / parapet drawn as a thin line or a light band (1.1, the hand traces'
+   * railing), a planter's edge under the foliage (0.45) — extension (integration, wave 19); absent = full height
+   */
+  heightM?: number
 }
 
 /** A gap in a wall run (future door / window / slider / passage). `kind` is a guess the solver may overrule. */
@@ -37,6 +42,8 @@ export interface OpeningGuess {
   hingeAt?: Px
   swingTo?: Px
   conf: number
+  /** the wall it is cut in, px — extension (tracks, wave 19): the opening is that wall's child, same thickness */
+  thicknessPx?: number
 }
 
 export interface WallTrace {
@@ -44,6 +51,11 @@ export interface WallTrace {
   openings: OpeningGuess[]
   /** the building outline / unit boundary if the extractor found one (closed polygon) */
   outline?: Px[]
+  /**
+   * tracker 'tracks': the tracks themselves (walls = trackWalls(lines) + `angled`), so the solver can decide their
+   * undecided gaps from the fitted rooms and re-emit — extension (integration, wave 19)
+   */
+  tracks?: { lines: import('./tracks').TrackLines; angled: WallSeg[] }
 }
 
 /** Parsed printed dimension, metres: "14'-5\" x 14'-4\"" → { aM: 4.394, bM: 4.369 }. */
@@ -67,6 +79,14 @@ export interface TextItem {
   conf: number
   /** who read it: the local OCR or the backup AI reader */
   source: 'ocr' | 'ai'
+  /**
+   * A size line was seen with this label but could not be read for sure (wave 19): `dims` stays empty — a wrong size is
+   * worse than none — and the Studio asks the user to type it (review row "type this size"). `sizeBox` = that line,
+   * image px; `sizeGuess` = the reader's best guess, for the review row only, never used as a size.
+   */
+  sizeUnread?: boolean
+  sizeBox?: { x: number; y: number; w: number; h: number }
+  sizeGuess?: string
 }
 
 export interface TextTrace {
@@ -83,6 +103,12 @@ export interface TextTrace {
  * matching TextItem[] (box relative to the crop). Keep prompts tiny and the task small: read what is printed, nothing else.
  */
 export type AiReader = (crop: { png: Blob; offset: Px }, question: string) => Promise<TextItem[]>
+
+/**
+ * Wave 19: the montage call — one image (numbered label crops), one prompt, the model's raw answer text (the prompt asks
+ * for JSON). A reader that also has `ask` (ai.ts geminiReader) gets the unsure labels of a sheet in ≤ 2 such calls.
+ */
+export type AiAsk = (png: Blob, prompt: string) => Promise<string>
 
 // ── wave 16: hints, solver, review (manager contract, 2026-09-28) ─────────────────────────────────────────────────────
 // Strategy (founder asked for honesty after low text scores): GEOMETRY FIRST, text only as hints. Walls come from the
@@ -140,9 +166,14 @@ export interface AutoTraceStats {
   ms: number
   pxPerM: number
   scaleFrom: 'dims' | 'area' | 'thickness' | 'given'
+  /** which wall stage ran (AutoTraceOpts.tracker) */
+  tracker?: 'skeleton' | 'bands' | 'tracks'
   walls: number
   rooms: number
   labelled: number
+  /** tracks: rooms fitted from their printed sizes, and undecided track gaps their edges decided — extension (wave 19) */
+  fitted?: number
+  gapsDecided?: number
   /**
    * Fixtures found outside wet rooms, plan metres — e.g. the hand-wash basin a Bangladeshi dining area has — for a later
    * wave to place a piece there. Extension (solver, wave 16).
@@ -167,4 +198,11 @@ export interface AutoTraceOpts {
   onProgress?: (stage: string, fraction: number) => void
   /** the sheet in colour (ImageData-like, the layout hints.ts findHints / propagateByColour take) — colour fills name rooms — extension (solver, wave 16) */
   rgb?: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }
+  /**
+   * The wall stage: 'tracks' (default, wave 19, tracks.ts) = one wall per occupied stretch of a track, exactly as
+   * thick as drawn, ending where its ink ends, openings only where a door swing / glazing is drawn; 'bands' (wave 18) =
+   * straight bands of the drawn thickness + the solver's repair passes; 'skeleton' = the wave-15 skeleton, walls
+   * classed 5" / 10".
+   */
+  tracker?: 'skeleton' | 'bands' | 'tracks'
 }

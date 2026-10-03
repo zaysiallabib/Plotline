@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { bakeDaylight, factorAt, formFactor, HI, LO, mapDaylight, RANGE } from './daylight'
+import { bakeDaylight, factorAt, formFactor, HI, LO, mapDaylight, RANGE, SHORT_WALL_M } from './daylight'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
 import typeA from '../data/units/type-a.json'
@@ -98,9 +98,10 @@ describe('smooth atlas (wave 14: no texel pattern)', () => {
       mapDaylight(d, geo, u, 'wall', w.id)
       const uv = geo.attributes.dayUv
       const [front, back] = d.sides.get(w.id)!
+      const short = core.wallFrame(w, u.vertices).lengthM < SHORT_WALL_M // reads the floor at its foot instead
       for (const g of geo.groups) {
         if (g.materialIndex === 2 || !(g.materialIndex ? back : front)) continue
-        const r = d.regions.get(`wall:${w.id}:${g.materialIndex ? -1 : 1}`)!
+        const r = d.regions.get(short ? `floor:${(g.materialIndex ? back : front)!.id}` : `wall:${w.id}:${g.materialIndex ? -1 : 1}`)!
         for (let i = g.start; i < g.start + g.count; i++) {
           const [x, y] = [uv.getX(i) * d.width, uv.getY(i) * d.height]
           expect(x >= r.x && x <= r.x + r.nu && y >= r.y && y <= r.y + r.nv, `${w.id} group ${g.materialIndex} vertex ${i}`).toBe(true)

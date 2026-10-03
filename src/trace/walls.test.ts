@@ -4,6 +4,7 @@ import { readdirSync } from 'node:fs'
 import type { Unit, Wall } from '../core/types'
 import { evalTrace, formatReports, scoreUnit, truthLines, type EvalReport } from './eval'
 import { FIXTURES, SHOTS, loadPgm, writeOverlay } from './evalio'
+import { KNOBS } from './solve'
 import { traceWalls } from './walls'
 import type { Gray, Px, WallTrace } from './types'
 
@@ -186,7 +187,8 @@ describe.skipIf(!haveFixtures)('traceWalls vs the hand-traced units (eval report
     const rows: EvalReport[] = []
     for (const u of Object.values(units)) {
       const g = loadPgm(fixture(u))!
-      const { report, trace, xf } = scoreUnit(g, u)
+      // the solver's default wall stage; TRACE_TRACKER=skeleton | bands | tracks compares another
+      const { report, trace, xf } = scoreUnit(g, u, { tracker: (['skeleton', 'bands', 'tracks'] as const).find((t) => t === process.env.TRACE_TRACKER) ?? KNOBS.tracker })
       rows.push(report)
       if (SHOTS) writeOverlay(`${SHOTS}/eval-${u.id}.png`, g, trace, truthLines(u, xf), undefined, report)
     }

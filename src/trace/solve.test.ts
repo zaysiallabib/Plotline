@@ -6,11 +6,12 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
-import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
+import { oracleText } from './roomsEval'
+import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
-import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
+import type { AutoTraceResult, Gray, HintTrace, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic: a 3-room flat with printed sizes → the exact Unit ----------
 const K = 50 // px per m
@@ -85,6 +86,17 @@ function withCloser<T>(fn: () => T): T {
   }
 }
 
+/** run with one wall stage, whatever the default */
+function withTracker<T>(t: (typeof KNOBS)['tracker'], fn: () => T): T {
+  const prev = KNOBS.tracker
+  KNOBS.tracker = t
+  try {
+    return fn()
+  } finally {
+    KNOBS.tracker = prev
+  }
+}
+
 describe('marks: stairs, glazing profile, glass colour', () => {
   test('a flight of 8 evenly spaced 1.2 m treads is a stair; 3 treads, or uneven lines, are not', () => {
     const w = 300, h = 300, k = 50
@@ -120,15 +132,112 @@ describe('marks: stairs, glazing profile, glass colour', () => {
   })
 })
 
+describe('the graph: overlap = joined (founder 2026-10-03)', () => {
+  test('a wall end inside another wall\'s body, off its centre line, joins at the projection; an L whose ends stop inside each other closes; nothing tilts', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const trace = {
+      openings: [],
+      walls: [
+        wall(p(0, 0), p(3.95, 0), ext), // top: stops 5 cm short of the right wall's centre line (inside its body)
+        wall(p(4, 0.08), p(4, 3), ext), // right: starts 8 cm below the top's centre line (inside its end block)
+        wall(p(4, 3), p(0, 3), ext),
+        wall(p(0, 3), p(0, 0), ext),
+        wall(p(2.6, 0), p(2.6, 3 - 0.1), par), // partition: stops 0.1 m short of the bottom centre line, off-centre along it
+      ],
+    }
+    const graph = (on: boolean) => {
+      const prev = KNOBS.joinBodies
+      KNOBS.joinBodies = on
+      try {
+        return buildGraph(trace, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      } finally {
+        KNOBS.joinBodies = prev
+      }
+    }
+    expect(graph(false).rooms).toHaveLength(0)
+    const d = graph(true)
+    expect(d.rooms.map((r) => r.areaSqm.toFixed(1)).sort()).toEqual(['4.2', '7.8'])
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    for (const w of d.unit.walls) {
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      expect(Math.min(Math.abs(a.x - b.x), Math.abs(a.y - b.y))).toBeLessThan(1e-9) // axis-aligned
+    }
+    expect(validate(d.unit).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  test('a 5" wall meeting a 10" wall END TO END on offset centre lines: one junction, nothing tilts, the crosswise piece is 10" thick (with or without the tracks\' jog)', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k, off = (0.254 - 0.127) / 2
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const box = [wall(p(0, 0), p(2, 0), ext), wall(p(2, off), p(4, off), par), wall(p(4, off), p(4, 3), par), wall(p(4, 3), p(0, 3), par), wall(p(0, 3), p(0, 0), par)]
+    for (const walls of [box, [...box, wall(p(2, 0), p(2, off), par)]]) {
+      const d = buildGraph({ openings: [], walls }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      expect(d.rooms).toHaveLength(1)
+      const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+      const len = (w: (typeof d.unit.walls)[number]) => Math.hypot(V.get(w.b)!.x - V.get(w.a)!.x, V.get(w.b)!.y - V.get(w.a)!.y)
+      for (const w of d.unit.walls) expect(Math.min(Math.abs(V.get(w.a)!.x - V.get(w.b)!.x), Math.abs(V.get(w.a)!.y - V.get(w.b)!.y))).toBeLessThan(1e-9)
+      const jog = d.unit.walls.find((w) => len(w) < 0.1)!
+      expect(len(jog)).toBeCloseTo(off)
+      expect(jog.thicknessM).toBeCloseTo(0.254)
+    }
+  })
+})
+
+describe('open-plan passages (founder 2026-10-03: a dashed beam line under DINING is no boundary)', () => {
+  test('a passage between a named space and a closed space with no name of its own goes: one room; a hint / a read text there, or an open space beyond, keeps it', () => {
+    const k = 50, blank: Gray = { width: 400, height: 350, data: new Uint8Array(400 * 350).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: 0.127 * k, conf: 1 })
+    // 4 × 4 m box, a passage across it at y = 3: DINING above (named), a 4 × 1 m strip below
+    const walls = [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 4)), wall(p(4, 4), p(0, 4)), wall(p(0, 4), p(0, 0))]
+    const passage = { a: p(0, 3), b: p(4, 3), kind: 'passage' as const, conf: 0.3, thicknessPx: 0.127 * k }
+    const d = buildGraph({ walls, openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(d.rooms).toHaveLength(2)
+    const dining = { x: 2 + 50 / k, y: 1.5 + 50 / k }, strip = { x: 2 + 50 / k, y: 3.5 + 50 / k }
+    expect(mergeUnread(d, [dining], []).rooms.map((r) => r.areaSqm.toFixed(0))).toEqual(['16'])
+    expect(mergeUnread(d, [dining], [strip]).rooms).toHaveLength(2)
+    // the strip open at the bottom: no face beyond — the passage still closes the dining
+    const open = buildGraph({ walls: [walls[0], walls[1], walls[3], wall(p(4, 4), p(3, 4))], openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(mergeUnread(open, [dining], []).rooms).toHaveLength(1)
+  })
+})
+
 describe('solveTraces on a synthetic flat', () => {
-  test('plain door gaps (no arcs): the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
+  test('plain door gaps (no arcs), tracks, no labels: no door is invented, no wall drawn across a gap, each gap is ONE review item', () => {
+    const { g } = synthetic(false)
+    const r = withTracker('tracks', () => solveTraces(g, {}, { pickPx: P(2, 2.5) }))
+    expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
+    // the three gaps stay open (founder: a wall stops where its ink stops): the living, bed and store are one space
+    expect(deriveRooms(r.unit).length).toBeLessThan(4)
+    expect(r.review.filter((x) => /gap in the wall/.test(x.message)).length).toBe(3)
+    expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+  })
+
+  test('plain door gaps (no arcs), tracks + fitted rooms: nothing drawn there nor on the rooms\' edges → a passage (an opening, never wall), each one flagged', () => {
     const { g, text } = synthetic(false)
-    const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })
+    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+    const ops = r.unit.walls.flatMap((w) => w.openings)
+    expect(ops.map((o) => o.kind)).toEqual(['passage', 'passage', 'passage'])
+    for (const o of ops) expect(Math.abs(o.widthM - 0.9)).toBeLessThan(0.12)
+    // the rooms stay separate labelled rooms (the hand traces' open-plan convention: a wall that is all opening)
+    expect(deriveRooms(r.unit).length).toBe(4)
+    expect(r.review.filter((x) => x.kind === 'opening-guess' && /Passage/.test(x.message)).length).toBe(3)
+    expect(r.review.filter((x) => /A wall ends here/.test(x.message))).toEqual([])
+    expect(r.stats.gapsDecided).toBe(3)
+  })
+
+  test('plain door gaps (no arcs), bands: the wall resumes across them (founder rule 4), no door is invented, each gap is a review item', () => {
+    const { g, text } = synthetic(false)
+    const r = withTracker('bands', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
     expect(deriveRooms(r.unit).length).toBe(4)
     expect(r.unit.walls.flatMap((w) => w.openings)).toEqual([])
     expect(r.review.filter((x) => x.kind === 'opening-guess' && /carried on/.test(x.message)).length).toBe(3)
     // and with the (default-off) gap closer on, the same 4 rooms
-    expect(deriveRooms(withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) })).unit).length).toBe(4)
+    expect(deriveRooms(withTracker('bands', () => withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))).unit).length).toBe(4)
   })
 
   test('3 named rooms + 1 unnamed, scale from the printed sizes, doors in the partitions, a Unit that validates', () => {
@@ -152,8 +261,9 @@ describe('solveTraces on a synthetic flat', () => {
     const ops = r.unit.walls.flatMap((w) => w.openings)
     expect(ops.length).toBe(3)
     for (const o of ops) expect(Math.abs(o.widthM - 0.85)).toBeLessThan(0.12)
-    // outer walls 10", partitions 5"
-    expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
+    // outer walls 10", partitions 5" — the skeleton classes them; bands / tracks carry the measured width (within ½")
+    if (KNOBS.tracker !== 'skeleton') for (const w of r.unit.walls) expect(Math.min(Math.abs(w.thicknessM - 0.127), Math.abs(w.thicknessM - 0.254)), `${w.thicknessM}`).toBeLessThanOrEqual(0.0127 + 1e-9)
+    else expect(new Set(r.unit.walls.map((w) => w.thicknessM))).toEqual(new Set([0.127, 0.254]))
   })
 
   test('hints name the unlabelled store: a table outvotes a lone basin; colour propagation fills what is left', () => {
@@ -183,6 +293,21 @@ describe('solveTraces on a synthetic flat', () => {
     expect(r.unit.walls).toEqual([])
     expect(validate(r.unit)).toEqual([])
     expect(r.review.length).toBeGreaterThan(0)
+  })
+
+  test('pick mode: a sheet prepared once, picked many times (the hover runs a pick per move) — a pick never changes it; the click = solveTraces', () => {
+    const { g, text } = synthetic()
+    const shape = (r: AutoTraceResult) => {
+      const V = new Map(r.unit.vertices.map((v) => [v.id, v]))
+      const walls = r.unit.walls.map((w) => JSON.stringify([[V.get(w.a), V.get(w.b)].map((v) => [v!.x, v!.y]).sort(), w.thicknessM, w.openings.map((o) => [o.kind, o.offsetM, o.widthM, o.hinge, o.swing])]))
+      // (a label's anchor moves in its last float bits with the order of the room's corners, which follows the random ids)
+      return JSON.stringify([...walls, ...r.unit.roomLabels.map((l) => JSON.stringify([l.name, l.kind, l.x.toFixed(9), l.y.toFixed(9)])), ...r.review.map((x) => x.message)].sort())
+    }
+    const p = prepareTraces(g, { text }, {})
+    expect(previewFlat(p, P(6, 1)).polys.length).toBe(4)
+    pickTraces(p, P(6, 1))
+    pickTraces(p, P(100, 100)) // (no room near: the draft is not cut down, its walls are edited in place — on a copy)
+    expect(shape(pickTraces(p, P(2, 2.5)))).toBe(shape(solveTraces(g, { text }, { pickPx: P(2, 2.5) })))
   })
 
   test('no click: the largest closed region, same rooms', () => {
@@ -223,31 +348,54 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
   if (!rgb) return { inputs: {} }
   return { rgb, inputs: { green: greenMask(rgb), findHints: (pxPerM, walls) => findHints(g, rgb, { pxPerM, walls }) } }
 }
+/** TRACE_TRACKER=skeleton | bands | tracks: that wall stage instead of the default (KNOBS.tracker), for comparison */
+const TRACKER = process.env.TRACE_TRACKER
+if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
 const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))
+/** the wave-19 reader's traces of the same sheets (E:/dev/tmp/wave19/reader/final/assets__<sheet>.json): the product reader now */
+const NEW_TEXT = process.env.TRACE_NEW_TEXT ?? 'E:/dev/tmp/wave19/reader/final/'
+const readNew = (file: string): TextTrace | null => (existsSync(`${NEW_TEXT}${file}.json`) ? JSON.parse(readFileSync(`${NEW_TEXT}${file}.json`, 'utf8')) : null)
 
+/**
+ * TRACE_LABELS=ocr,new,oracle (default all three): the wave-16 OCR cache; NEW = the wave-19 reader's traces (the product
+ * now; units without one are skipped); the ORACLE — the hand trace's own labels inside the flat (name, kind, printed size
+ * at its label point; the reader's reads outside it, area / other items kept): what a reader that never misreads would
+ * hand over. The oracle table is the CEILING of the rest of the pipeline, never the product number.
+ */
+const LABELS = (process.env.TRACE_LABELS ?? 'ocr,new,oracle').split(',')
 describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', () => {
   test('rooms matched / area / scale / kinds / review per unit', () => {
-    const rows: SolveReport[] = []
-    const why: string[] = []
-    for (const u of Object.values(units)) {
-      const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
-      const debug: NonNullable<SolveInputs['debug']> = {}
-      const c = withColour(g, `assets__${sheet(u)}`)
-      const res = solveTraces(g, { text: readTextJson(sheet(u)), debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
-      const row = scoreSolve(res, u)
-      rows.push(row)
-      if (process.env.TRACE_DIAG) {
-        const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
-        why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+    const out: string[] = []
+    for (const lab of LABELS) {
+      const rows: SolveReport[] = []
+      const why: string[] = []
+      for (const u of Object.values(units)) {
+        const g = loadPgm(`${FIXTURES}assets__${sheet(u)}.pgm`)!
+        const debug: NonNullable<SolveInputs['debug']> = {}
+        const c = withColour(g, `assets__${sheet(u)}`)
+        const ocr = readTextJson(sheet(u)), fresh = readNew(`assets__${sheet(u)}`)
+        if (lab === 'new' && !fresh) continue
+        const text: TextTrace = lab === 'oracle' ? oracleText(u, fresh ?? ocr) : lab === 'new' ? fresh! : ocr
+        const res = solveTraces(g, { text, debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
+        const xf = registerTruth(g, u)
+        const row = withWallScore(scoreSolve(res, u), res, u, xf) // rooms matched AND the draft's wall recall: the founder reads the walls
+        rows.push(row)
+        if (process.env.TRACE_DIAG) {
+          const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, xf)
+          why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
+        }
+        if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, xf))
+        expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
       }
-      if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
-      expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
+      const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : lab === 'new' ? 'NEW READER (wave 19: the product now)' : 'WAVE-16 OCR CACHE'
+      const total = rows.reduce((t, r) => t + r.matched, 0), truthN = rows.reduce((t, r) => t + r.truthRooms, 0)
+      out.push(`\n== ${head}: ${total} of ${truthN} rooms matched\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}`)
     }
-    console.log(`\n${formatSolveReports(rows)}\n\n${rows.map((r) => `${r.unitId} missed: ${r.missed.join(' · ')}`).join('\n')}\n\n${why.join('\n')}\n`)
-  }, 300000)
+    console.log(out.join('\n'))
+  }, 900000)
 })
 
 /** One flat each on the sheets nobody traced by hand (click = a spot in its living room). */
@@ -261,7 +409,8 @@ describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays
       const g = loadPgm(FIXTURES + s.file)
       if (!g) continue
       const c = withColour(g, s.file.replace(/.pgm$/, ''))
-      const res = solveTraces(g, { text: existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
+      const text = readNew(s.file.replace(/.pgm$/, '')) ?? (existsSync(`${TEXT}${s.text}.json`) ? readTextJson(s.text) : undefined)
+      const res = solveTraces(g, { text, ...c.inputs }, { pickPx: s.pick, ...(c.rgb ? { rgb: c.rgb } : {}) })
       writeUnitOverlay(`${SHOTS}/solve-${s.text}.png`, g, res.unit, res.review)
       console.log(s.text, JSON.stringify(res.stats), res.review.length, 'review')
       expect(validate(res.unit).filter((i) => i.level === 'error'), s.file).toEqual([])

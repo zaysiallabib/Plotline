@@ -13,3 +13,4 @@ dist
 # local tooling
 .claude/worktrees
 .vscode
+vite.walk.local.config.ts

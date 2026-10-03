@@ -3,8 +3,8 @@ import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core
 import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
-import { EXTERIOR_M, PARTITION_M, findEntity, type StudioIssue, type StudioState } from './model'
-import { AI_KEY, openReview, type Review, type StudioAction as Action } from './review'
+import { EXTERIOR_M, PARTITION_M, findEntity, openingDefaults, type StudioIssue, type StudioState } from './model'
+import { AI_KEY, TRACKER_KEY, openReview, type Review, type StudioAction as Action } from './review'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
 /** icon + what the icon means, per review kind */
@@ -19,9 +19,20 @@ const REVIEW_ICON: Record<ReviewItem['kind'], [string, string]> = {
 }
 const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
 const statsLine = (s: AutoTraceStats) =>
-  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]} · ${(s.ms / 1000).toFixed(1)} s`
+  `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'tracks' ? ' · wall tracks' : s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`
 
-export const ROOM_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
+/** the O tool's picker: kind + width in one click (no width = the kind's default) */
+const PICKS: [OpeningKind, string, number?][] = [
+  ['door', `Door 2'-6"`, 2.5 * FT],
+  ['door', `Door 3'-0"`, 3 * FT],
+  ['window', "Window 4'", 4 * FT],
+  ['window', "Window 6'", 6 * FT],
+  ['slider', "Slider 6'", 6 * FT],
+  ['slider', "Slider 8'", 8 * FT],
+  ['passage', 'Passage'],
+]
+
+export const ROOM_KINDS: RoomKind[] =['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
 export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² · ${Math.round(sqmToSqft(sqm))} sqft`
 
 /** Feet-inch text input; commits meters on Enter/blur, red when unparseable. */
@@ -70,7 +81,7 @@ interface Props {
 export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusReview, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
-  const review = openReview(state)
+  const review = openReview(state, rooms)
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
@@ -85,6 +96,7 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
   ]
   return (
     <aside className="panel">
+      {state.tool === 'opening' && <OpeningPick state={state} dispatch={dispatch} />}
       <section>
         <h3>Steps</h3>
         <ol className="steps">
@@ -152,11 +164,17 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
           ) : (
             <p className="muted">{stats ? 'Nothing left to check.' : 'Auto-trace (top bar) lists here what it is unsure of.'}</p>
           )}
+          <TrackerField />
           <AiKeyField />
         </section>
       )}
       <section>
         <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
+        {unit.walls.length > 1 && (
+          <button className="link" title="Every wall end inside another wall's body is joined there and every crossing is split — one undo step" onClick={() => dispatch({ type: 'join-walls' })}>
+            Join walls (overlaps and crossings)
+          </button>
+        )}
         {issues.length === 0 ? (
           <p className="muted">No issues. Ready to export.</p>
         ) : (
@@ -174,7 +192,34 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
   )
 }
 
-function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (a: Action) => void; rooms: Room[] }) {
+/** O tool: what the next click on a wall places (kind + width); the ghost on the wall shows exactly this */
+function OpeningPick({ state, dispatch }: { state: StudioState; dispatch: (a: Action) => void }) {
+  const kind = state.lastOpeningKind
+  const auto = state.lastOpeningWidthM === undefined
+  const widthM = state.lastOpeningWidthM ?? openingDefaults(kind, false).widthM
+  return (
+    <section>
+      <h3>Place an opening</h3>
+      <div className="props">
+        <div className="seg">
+          {PICKS.map(([k, label, w]) => (
+            <button key={label} className={k === kind && (w === undefined || Math.abs(w - widthM) < 1e-6) ? 'on' : ''} onClick={() => dispatch({ type: 'pick-opening', kind: k, widthM: w })}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <Row label="Width">
+          <LenInput valueM={widthM} onCommit={(m) => dispatch({ type: 'pick-opening', kind, widthM: m })} />
+        </Row>
+        <p className="muted">
+          Click a wall to place it · keys 1 door, 2 window, 3 slider, 4 passage{auto && kind === 'door' ? ` · a door on a bath wall is 2'-6"` : ''}
+        </p>
+      </div>
+    </section>
+  )
+}
+
+function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a: Action) => void; rooms: Room[] }) {
   const { unit, selection, chain } = state
   const ents = selection.map((id) => findEntity(unit, id)).filter((e) => e !== null)
 
@@ -182,7 +227,7 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
     return (
       <div className="props">
         <p className="muted">Tracing · {chain.ids.length} corner{chain.ids.length === 1 ? '' : 's'}</p>
-        <Thickness value={chain.thicknessM} onChange={(t) => t !== chain.thicknessM && dispatch({ type: 'toggle-thickness' })} custom={false} />
+        <Thickness value={chain.thicknessM} onChange={(t) => dispatch({ type: 'chain-thickness', thicknessM: t })} />
       </div>
     )
   }
@@ -197,7 +242,6 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
           <Thickness
             value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
             onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
-            custom
           />
         )}
       </div>
@@ -228,14 +272,17 @@ function Selection({ state, dispatch, rooms }: { state: StudioState; dispatch: (
         <p className="muted">
           Wall · {formatFeetInches(len)} · {len.toFixed(2)} m
         </p>
-        <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} custom />
+        <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} />
         <Row label="Height">
           <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'update-wall', id: w.id, patch: { heightM: m } })} />
         </Row>
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
         </Row>
-        <p className="muted">Walls at B stay straight. Drag an end to resize · Alt-drag a corner to detach it.</p>
+        <p className="muted">Typed length: walls at B stay straight. Drag an end handle to extend this wall alone until it meets a wall (Alt: neighbours follow).</p>
+        <button className="link" onClick={() => dispatch({ type: 'duplicate' })}>
+          Copy wall (Ctrl+D)
+        </button>
         <button className="link" onClick={() => dispatch({ type: 'delete', ids: [w.id] })}>
           Delete wall (Del)
         </button>
@@ -381,6 +428,31 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
   )
 }
 
+/** Auto-trace's wall stage (wave 19): the wall tracks — straight walls of exactly their drawn thickness, stopping where the ink stops — or the skeleton. This browser only. */
+function TrackerField() {
+  const [bands, setBands] = useState(() => {
+    try {
+      return localStorage.getItem(TRACKER_KEY) !== 'skeleton'
+    } catch {
+      return true
+    }
+  })
+  const save = (on: boolean) => {
+    setBands(on)
+    try {
+      if (on) localStorage.removeItem(TRACKER_KEY)
+      else localStorage.setItem(TRACKER_KEY, 'skeleton')
+    } catch {
+      /* storage blocked: the choice lives until reload */
+    }
+  }
+  return (
+    <label className="tracker" title="On: one straight wall per drawn wall, exactly as thick as drawn, stopping where its ink stops; a door or window only where a swing or glazing is drawn (wave 19). Off: the older skeleton tracer, walls classed 5&quot; or 10&quot;.">
+      <input type="checkbox" checked={bands} onChange={(e) => save(e.target.checked)} /> Wall tracks (exact walls, drawn openings only)
+    </label>
+  )
+}
+
 /** The optional Gemini key for auto-trace's backup label reader: this browser's localStorage only, never exported. */
 function AiKeyField() {
   const [key, setKey] = useState(() => {
@@ -443,43 +515,39 @@ function NumInput({ value, onCommit }: { value: number; onCommit: (n: number) =>
   )
 }
 
-function Thickness({ value, onChange, custom }: { value: number; onChange: (t: number) => void; custom: boolean }) {
-  const isCustom = custom && value !== PARTITION_M && value !== EXTERIOR_M
-  const [inches, setInches] = useState(() => (Number.isFinite(value) ? ((value / FT) * 12).toFixed(1) : ''))
-  useEffect(() => {
-    if (Number.isFinite(value)) setInches(((value / FT) * 12).toFixed(1))
-  }, [value])
+/** Wall width: the inches field (Enter / leaving it applies) with the two usual widths as presets; NaN = mixed selection */
+function Thickness({ value, onChange }: { value: number; onChange: (t: number) => void }) {
+  const show = (m: number) => (Number.isFinite(m) ? String(+((m / FT) * 12).toFixed(1)) : '')
+  const [inches, setInches] = useState(() => show(value))
+  useEffect(() => setInches(show(value)), [value])
   const commitInches = () => {
     const n = Number(inches)
-    if (n > 0 && n < 60) onChange((n / 12) * FT)
+    const m = (n / 12) * FT
+    if (inches.trim() && n > 0 && n < 60 && !(Math.abs(m - value) < 1e-6)) onChange(m)
+    else setInches(show(value)) // bad or unchanged text: the field shows the wall's width again
   }
+  const is = (m: number) => Math.abs(value - m) < 1e-6
   return (
-    <Row label="Thickness">
+    <Row label="Width (inches)">
+      <input
+        value={inches}
+        inputMode="decimal"
+        onChange={(e) => setInches(e.target.value)}
+        onBlur={commitInches}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitInches()
+          e.stopPropagation()
+        }}
+        placeholder={Number.isFinite(value) ? 'inches' : 'mixed'}
+      />
       <div className="seg">
-        <button className={value === PARTITION_M ? 'on' : ''} onClick={() => onChange(PARTITION_M)}>
+        <button className={is(PARTITION_M) ? 'on' : ''} onClick={() => onChange(PARTITION_M)}>
           Partition 5"
         </button>
-        <button className={value === EXTERIOR_M ? 'on' : ''} onClick={() => onChange(EXTERIOR_M)}>
+        <button className={is(EXTERIOR_M) ? 'on' : ''} onClick={() => onChange(EXTERIOR_M)}>
           Exterior 10"
         </button>
-        {custom && (
-          <button className={isCustom ? 'on' : ''} onClick={() => onChange(0.2)}>
-            Custom…
-          </button>
-        )}
       </div>
-      {isCustom && (
-        <input
-          value={inches}
-          onChange={(e) => setInches(e.target.value)}
-          onBlur={commitInches}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitInches()
-            e.stopPropagation()
-          }}
-          placeholder="inches"
-        />
-      )}
     </Row>
   )
 }
