@@ -123,6 +123,32 @@ describe('wall tracks on synthetic rasters', () => {
     }
   })
 
+  test('a facade of columns with glazing between: the line is one exterior wall through the column with two windows (flagged); a column with nothing drawn to its neighbours is no wall', () => {
+    const { g, box } = sheet(10, 6)
+    // the facade at y = 1: wall 0–2, glazing 2–3.5, a 0.5 × 0.6 m column 3.5–4, glazing 4–5.5, wall 5.5–9
+    hw(box, 1, 0, 2, 0.254)
+    for (const dy of [-0.06, 0.06]) box(2, 1 + dy - 0.01, 3.5, 1 + dy + 0.01, 120), box(4, 1 + dy - 0.01, 5.5, 1 + dy + 0.01, 120)
+    box(3.5, 0.7, 4, 1.3)
+    hw(box, 1, 5.5, 9, 0.254)
+    // a wall line at y = 4 with a column alone in a plain gap (nothing drawn either side)
+    hw(box, 4, 0, 2, 0.127)
+    box(3, 3.7, 3.5, 4.3)
+    hw(box, 4, 4.5, 9, 0.127)
+    const tt = traceTracks(g, {})
+    expect(tt.pillars.length).toBe(2)
+    const facade = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 2) < 0.05)!
+    // the column is a piece of the facade wall at the facade's own thickness
+    const col = facade.intervals.find((iv) => iv.u0 <= 4.5 * K + 1 && iv.u1 >= 5 * K - 1)
+    expect(col).toBeDefined()
+    expect(Math.abs(col!.thPx / K - 0.254)).toBeLessThan(0.03)
+    const wins = tt.gaps.filter((x) => x.horiz && Math.abs(x.c - facade.c) < 0.5 && x.kind === 'window')
+    expect(wins.length).toBe(2)
+    for (const w of wins) expect(w.conf).toBeLessThan(0.5) // "window between pillars — check"
+    // the lone column on the lower line: no wall through it, its plain gaps stay undecided (positive evidence only)
+    const lower = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 5) < 0.05)!
+    expect(lower.intervals.some((iv) => iv.u0 < 4.5 * K && iv.u1 > 4 * K)).toBe(false)
+  })
+
   test('a gap with glass-colour pixels inside the wall band is a window; the same gap without them stays undecided', () => {
     const { g, box } = sheet(8, 4)
     hw(box, 1, 0, 3, 0.127)

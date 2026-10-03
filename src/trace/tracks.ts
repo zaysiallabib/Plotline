@@ -287,6 +287,8 @@ interface Iv {
   w0: number
   w1: number
   th: number
+  /** a column alone on the wall's line (glazing on either side): kept only when a drawn opening joins it to the line */
+  pil?: boolean
 }
 interface Tr {
   horiz: boolean
@@ -462,11 +464,24 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         if (j > s) pieces.push([s, j - 1])
         i = j
       }
+      // the line's own wall thickness (a column alone on it is carried through at this thickness)
+      const lineW: number[] = []
+      for (let i = 0; i < n; i++) if (lab[i] === W_) lineW.push(wid[i])
+      const lineTh = lineW.length ? snapTh(median(lineW)) : 0
       for (const [s, e] of pieces) {
         let w0 = s, w1 = e
         while (w0 <= e && lab[w0] !== W_) w0++
         while (w1 >= s && lab[w1] !== W_) w1--
-        if (w0 > w1) continue // blocks only: never a wall
+        if (w0 > w1) {
+          // blocks only: never a wall — unless it is a COLUMN on the wall's line (founder, pillars first: a facade of
+          // columns with glazing between is an exterior wall with windows) — kept only when a drawn opening (glazing,
+          // a door) joins it to the line; the wall's own line and thickness carried through it
+          const f0 = a + s - 0.5, f1 = a + e + 0.5
+          // (once: two tracks on one line can both reach the column)
+          const twice = tracks.some((T2) => T2.horiz === horiz && Math.abs(T2.c - l.c) <= tolC && T2.ivs.some((j) => j.pil && Math.abs(j.f0 - f0) <= 1 && Math.abs(j.f1 - f1) <= 1))
+          if (!twice && lineTh && f1 - f0 >= lineTh && outsidePillars(horiz, l.c, f0, f1) <= 2) ivs.push({ f0, f1, n0: f0, n1: f1, w0: f0, w1: f1, th: lineTh, pil: true })
+          continue
+        }
         // thickness classes along the W part; a class change held over ≥ 2 thicknesses splits the interval
         const cls: { from: number; to: number; th: number; n: number }[] = []
         for (let i = w0; i <= w1; i++) {
@@ -510,6 +525,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
       }
       // a wall is a dark band with clean paper / floor beside it: foliage and textures are not
       const keep = ivs.filter((iv) => {
+        if (iv.pil) return true // (a column is its own ink both sides of the line)
         const p = (u: number): Px => (horiz ? { x: u, y: l.c } : { x: l.c, y: u })
         return sideContrast(gray, { a: p(iv.w0), b: p(iv.w1) }, iv.th) >= minContrast
       })
@@ -617,7 +633,11 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         let g = 0, side: (typeof sides)[number] | undefined, nb: Iv | undefined
         for (; i >= 0 && i < n && g <= maxGapPx; i += dir, g++) {
           const u = T.a + i
-          if (T.lab[i] === B_) break
+          // (a column carried on the line as its own piece: the gap ends at its face, the piece carries on from there)
+          if (T.lab[i] === B_) {
+            nb = T.ivs.find((j) => j !== iv && j.pil && j.f0 - 0.5 <= u && u <= j.f1 + 0.5)
+            break
+          }
           if (T.lab[i] === W_ && (nb = T.ivs.find((j) => j !== iv && j.f0 <= u && u <= j.f1))) break
           if ((side = sides.find((s) => s.j.f0 <= u && u <= s.j.f1))) break
         }
@@ -701,7 +721,22 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
       if (q.horiz !== p.horiz || Math.abs(q.c - p.c) >= (q.thPx + p.thPx) / 2 || Math.min(q.u1, p.u1) - Math.max(q.u0, p.u0) < 0.5 * Math.min(q.u1 - q.u0, p.u1 - p.u0)) continue
       drop.add(rank(q) > rank(p) ? p : q)
     }
-  const kept = gaps.filter((g) => !drop.has(g))
+  let kept = gaps.filter((g) => !drop.has(g))
+  // a column alone on the line stays only where a drawn opening (glazing, a door) joins it to the line — then it is the
+  // wall through the column, its windows flagged (conf under the solver's 0.5: "window between pillars — check");
+  // else it is no wall and its undecided gaps go with it (positive evidence only)
+  for (const T of tracks)
+    T.ivs = T.ivs.filter((iv) => {
+      if (!iv.pil) return true
+      const at = (g: Gap) => g.horiz === T.horiz && g.c === T.c && (Math.abs(g.u1 - iv.f0) <= 1 || Math.abs(g.u0 - iv.f1) <= 1)
+      const mine = kept.filter(at)
+      if (mine.some((g) => g.kind !== 'unknown')) {
+        for (const g of mine) if (g.kind === 'window') g.conf = Math.min(g.conf, 0.45)
+        return true
+      }
+      kept = kept.filter((g) => !mine.includes(g))
+      return false
+    })
 
   return {
     tracks: tracks.map((T) => ({ horiz: T.horiz, c: T.c, intervals: T.ivs.map((iv) => ({ u0: iv.n0, u1: iv.n1, thPx: iv.th })) })),
