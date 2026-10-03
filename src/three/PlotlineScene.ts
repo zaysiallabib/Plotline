@@ -23,7 +23,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { buildPlaster, buildSkirting, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
+import { buildSkirting, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
@@ -719,14 +719,6 @@ export class PlotlineScene {
     if (skirting) {
       this.staticGroup.add(skirting)
       this.surfaces.push({ mesh: skirting, sides: [{ roomId: room.id, target: 'floor' }] }) // follows the floor finish
-    }
-    // the plaster coat over the walls (details.ts buildPlaster): picked as its wall, painted as this room
-    for (const { geo, wallId } of buildPlaster(room, unit)) {
-      const mesh = new THREE.Mesh(geo)
-      mesh.receiveShadow = true // the brick wall behind it casts
-      mesh.userData = { kind: 'wall', id: wallId, front: room.id, back: room.id, label: 'Wall', objectKind: 'wall' }
-      this.staticGroup.add(mesh)
-      this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: 'wall' }] })
     }
 
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))

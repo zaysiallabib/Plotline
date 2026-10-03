@@ -31,7 +31,7 @@ export interface SkirtingSpan {
  */
 export function skirtingSpans(room: Room, graph: Graph): SkirtingSpan[] {
   if (NO_SKIRTING.includes(room.kind)) return []
-  const inner = plasterPolygon(room, graph)
+  const inner = core.roomInnerPolygon(room, graph)
   const out: SkirtingSpan[] = []
   inner.forEach((p, i) => {
     const q = inner[(i + 1) % inner.length]
@@ -63,7 +63,7 @@ export function skirtingSpans(room: Room, graph: Graph): SkirtingSpan[] {
 export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
   const spans = skirtingSpans(room, graph)
   if (!spans.length) return null
-  const inner = plasterPolygon(room, graph)
+  const inner = core.roomInnerPolygon(room, graph)
   const geoms = spans.map(({ edge, s0, s1, len }) => {
     const p = inner[edge]
     const q = inner[(edge + 1) % inner.length]
@@ -82,80 +82,6 @@ export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
   geoms.forEach((g) => g.dispose())
   mesh.receiveShadow = true
   return mesh
-}
-
-/**
- * Plaster: how far a closed room's finished wall surface sits in front of the wall faces (founder, 2026-10-03: "brick walls
- * first, then plaster, then colour"). A neighbouring wall that pokes into the room by less than this — a hand-traced end a
- * few mm long, a hidden jog piece's sliver — is buried under the plaster instead of showing as a grey strip. Must stay well
- * under the casing projection (openings.ts CP 15 mm) so door trim still stands proud.
- */
-export const PLASTER_M = 0.008
-
-/** The room's finished inner polygon: the wall faces pushed PLASTER_M into the room. The plaster and the skirting both sit on it. */
-export const plasterPolygon = (room: Room, graph: Graph): Pt[] =>
-  core.roomInnerPolygon(room, { ...graph, walls: graph.walls.map((w) => ({ ...w, thicknessM: w.thicknessM + 2 * PLASTER_M })) })
-
-/** One stretch of a room's plaster (buildPlaster): world geometry facing the room, and the wall it coats (for picking / daylight). */
-export interface PlasterPiece {
-  geo: THREE.BufferGeometry
-  wallId: Id
-}
-
-/**
- * The room's plaster coat: one continuous surface along its inner polygon pushed PLASTER_M into the room (corners are
- * the intersections of the pushed face lines, so they always close), floor to each wall's top, with that wall's openings
- * cut out. Painted in the room's wall finish by the caller — never by probing which room a wall face looks at, so a wall
- * whose probe lands outside (exterior grey) still reads as this room's wall. Only closed rooms have one; an unjoined
- * space keeps showing its bare walls.
- */
-export function buildPlaster(room: Room, graph: Graph): PlasterPiece[] {
-  const inner = plasterPolygon(room, graph)
-  const out: PlasterPiece[] = []
-  inner.forEach((p, i) => {
-    const q = inner[(i + 1) % inner.length]
-    const len = Math.hypot(q.x - p.x, q.y - p.y)
-    const wall = graph.walls.find((w) => w.id === room.wallIds[i])
-    if (len < 1e-3 || !wall) return
-    const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }
-    const n = { x: -d.y, y: d.x } // room interior (loops are positive)
-    const f = core.wallFrame(wall, graph.vertices)
-    const along = (u: number) => (f.origin.x + f.dir.x * u - p.x) * d.x + (f.origin.y + f.dir.y * u - p.y) * d.y
-    // the wall's openings re-based onto this edge (its direction may be the wall's reversed)
-    const openings = wall.openings.map((o) => {
-      const [a, b] = [along(o.offsetM), along(o.offsetM + o.widthM)].sort((x, y) => x - y)
-      return { ...o, offsetM: a, widthM: b - a }
-    })
-    const pos: number[] = []
-    const nor: number[] = []
-    const quad = (m: V3, ...q: V3[]) => {
-      const [e, k] = [0, 1].map((i) => q[i + 1].map((c, j) => c - q[0][j]))
-      if ((e[1] * k[2] - e[2] * k[1]) * m[0] + (e[2] * k[0] - e[0] * k[2]) * m[1] + (e[0] * k[1] - e[1] * k[0]) * m[2] < 0) q.reverse()
-      for (const i of [0, 1, 2, 0, 2, 3]) {
-        pos.push(...q[i])
-        nor.push(...m)
-      }
-    }
-    // w = 0 on the plaster surface, −PLASTER_M back at the brick face
-    const at = (u: number, v: number, w = 0): V3 => [p.x + d.x * u + n.x * w, v, p.y + d.y * u + n.y * w]
-    const [N, D]: V3[] = [[n.x, 0, n.y], [d.x, 0, d.y]]
-    for (const r of core.wallPieces({ ...wall, openings }, len)) {
-      quad(N, at(r.u0, r.v0), at(r.u1, r.v0), at(r.u1, r.v1), at(r.u0, r.v1))
-      // returns: the coat's thickness closes the gap to the brick at the top, around openings and at the ends (where an
-      // edge meets another piece or the next wall's coat the strip is hidden behind it, so every edge gets one)
-      quad([0, -1, 0], at(r.u0, r.v1), at(r.u1, r.v1), at(r.u1, r.v1, -PLASTER_M), at(r.u0, r.v1, -PLASTER_M))
-      if (r.v0 > 0) quad([0, 1, 0], at(r.u0, r.v0), at(r.u1, r.v0), at(r.u1, r.v0, -PLASTER_M), at(r.u0, r.v0, -PLASTER_M))
-      quad([-D[0], 0, -D[2]], at(r.u0, r.v0), at(r.u0, r.v1), at(r.u0, r.v1, -PLASTER_M), at(r.u0, r.v0, -PLASTER_M))
-      quad(D, at(r.u1, r.v0), at(r.u1, r.v1), at(r.u1, r.v1, -PLASTER_M), at(r.u1, r.v0, -PLASTER_M))
-    }
-    if (!pos.length) return
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
-    out.push({ geo: meterUVs(geo), wallId: wall.id })
-  })
-  return out
 }
 
 /**
