@@ -182,31 +182,104 @@ function rewire(u: Unit, id: Id, to: Id): Unit {
 }
 
 /**
- * A corner moved onto another corner becomes that corner (rewire). Without this a drag or nudge onto a
- * neighbour left a zero-length wall plus a corner "not joined to anything" sitting on the same spot.
- * A corner dropped on a wall mid-span (not one of its own) T-splits that wall at the corner, as the Wall
- * tool does — otherwise it only looked joined ("Walls cross", and a detached end stayed "not joined").
+ * Overlap = joined (founder 2026-10-03: "if a wall ends inside another — not necessarily at the middle point — it has
+ * ended there"). A corner moved onto another corner (≤ MERGE_M) becomes that corner (rewire: no zero-length wall, no
+ * stray corner). A corner inside another wall's BODY — perpendicular distance to its centre line ≤ half its thickness
+ * + MERGE_M, projecting onto the segment — T-splits that wall at the projection and moves onto it (a wall is one
+ * centre line); inside the wall's end block (within half its thickness of an end) it becomes that end corner instead.
+ * Two walls that cross split each other at the crossing and share the corner. A wall one step away (it shares a
+ * corner with one of this corner's walls) never counts: that is the corner's own short piece, not an overlap.
+ * `ids` = the corners that moved (checked against every wall, and every corner against their walls); absent = the
+ * whole unit (load / auto-trace). An opening on the split point refuses that join (`refused`: the toast).
  * Returns the same unit when nothing changed; `merged` maps each removed corner to its survivor.
  */
-export function mergeCoincident(unit: Unit, ids: Id[], tolM = MERGE_M): { unit: Unit; merged: Map<Id, Id> } {
+export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; refused?: string } {
   const merged = new Map<Id, Id>()
+  const scope = ids && new Set(ids)
+  const touches = (w: Wall) => !scope || scope.has(w.a) || scope.has(w.b)
   let u = unit
-  for (const id of ids) {
-    const v = u.vertices.find((x) => x.id === id)
+  let joined = 0
+  let refused: string | undefined
+  // the moved corners first (they join onto what stands still), then the corners inside a moved wall's body
+  for (const id of new Set([...(ids ?? []), ...u.vertices.map((v) => v.id)])) {
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    const v = V.get(id)
     if (!v) continue
-    const other = u.vertices.find((x) => x.id !== id && Math.hypot(x.x - v.x, x.y - v.y) <= tolM)
+    const mine = !scope || scope.has(id)
+    const other = mine && u.vertices.find((x) => x.id !== id && Math.hypot(x.x - v.x, x.y - v.y) <= MERGE_M)
     if (other) {
       u = rewire(u, id, other.id)
       merged.set(id, other.id)
+      scope?.add(other.id)
+      joined++
       continue
     }
-    const nw = nearestWall(v, { vertices: u.vertices, walls: u.walls.filter((w) => w.a !== id && w.b !== id) })
-    if (nw && nw.distanceM <= tolM && nw.t > 0 && nw.t < 1) {
-      const r = splitWall(u, nw.wall, nw.t) // an opening on that spot: left unjoined, the Issues list says so
-      if (typeof r !== 'string') u = rewire(r.unit, r.vertexId, id)
+    const near = new Set([id, ...u.walls.flatMap((w) => (w.a === id ? [w.b] : w.b === id ? [w.a] : []))])
+    if (near.size === 1) continue // a corner of no wall ends nothing
+    let best: { w: Wall; s: number; d: number; L: number } | null = null
+    for (const w of u.walls) {
+      if (near.has(w.a) || near.has(w.b) || (!mine && !touches(w))) continue
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L <= EPS) continue
+      const dx = (b.x - a.x) / L, dy = (b.y - a.y) / L
+      const s = (v.x - a.x) * dx + (v.y - a.y) * dy
+      const d = Math.abs((v.y - a.y) * dx - (v.x - a.x) * dy)
+      if (d <= w.thicknessM / 2 + MERGE_M && s >= -MERGE_M && s <= L + MERGE_M && (!best || d < best.d)) best = { w, s, d, L }
     }
+    if (!best) continue
+    const cap = Math.max(MERGE_M, best.w.thicknessM / 2)
+    if (best.s <= cap || best.s >= best.L - cap) {
+      const to = best.s < best.L / 2 ? best.w.a : best.w.b
+      u = rewire(u, id, to)
+      merged.set(id, to)
+      scope?.add(to)
+      joined++
+      continue
+    }
+    const r = splitWall(u, best.w, best.s / best.L)
+    if (typeof r === 'string') {
+      refused = r
+      continue
+    }
+    const p = vertexById(r.unit.vertices, r.vertexId)
+    u = rewire({ ...r.unit, vertices: r.unit.vertices.map((x) => (x.id === id ? { ...x, x: p.x, y: p.y } : x)) }, r.vertexId, id)
+    joined++
   }
-  return { unit: u, merged }
+  // crossings: both walls split at the crossing, one shared corner (a pair an opening blocks is tried once)
+  const skip = new Set<string>()
+  for (let guard = 0; guard < 1000; guard++) {
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    let hit: { P: Wall; Q: Wall; t: number; s: number } | null = null
+    for (let i = 0; i < u.walls.length && !hit; i++) {
+      const P = u.walls[i]
+      const a = V.get(P.a)!, b = V.get(P.b)!
+      const Lp = Math.hypot(b.x - a.x, b.y - a.y)
+      for (let j = i + 1; j < u.walls.length && !hit; j++) {
+        const Q = u.walls[j]
+        if ((!touches(P) && !touches(Q)) || [Q.a, Q.b].some((x) => x === P.a || x === P.b) || skip.has(wallKey(P.id, Q.id))) continue
+        const c = V.get(Q.a)!, e = V.get(Q.b)!
+        const Lq = Math.hypot(e.x - c.x, e.y - c.y)
+        const den = (b.x - a.x) * (e.y - c.y) - (b.y - a.y) * (e.x - c.x)
+        if (Math.abs(den) <= EPS * Lp * Lq) continue // parallel
+        const t = ((c.x - a.x) * (e.y - c.y) - (c.y - a.y) * (e.x - c.x)) / den
+        const s = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den
+        if (t * Lp > MERGE_M && (1 - t) * Lp > MERGE_M && s * Lq > MERGE_M && (1 - s) * Lq > MERGE_M) hit = { P, Q, t, s }
+      }
+    }
+    if (!hit) break
+    const r1 = splitWall(u, hit.P, hit.t)
+    const r2 = typeof r1 === 'string' ? r1 : splitWall(r1.unit, hit.Q, hit.s)
+    if (typeof r1 === 'string' || typeof r2 === 'string') {
+      refused = typeof r1 === 'string' ? r1 : (r2 as string)
+      skip.add(wallKey(hit.P.id, hit.Q.id))
+      continue
+    }
+    u = rewire(r2.unit, r2.vertexId, r1.vertexId)
+    scope?.add(r1.vertexId)
+    joined++
+  }
+  return { unit: u, merged, joined, refused }
 }
 
 /** Unit direction of wall `w` leaving its end `from`. */
@@ -451,7 +524,8 @@ function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): S
     history: { past: [...s.history.past.slice(-(HISTORY_CAP - 1)), s.unit], future: [] },
   }
 }
-const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
+export const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
+export const joinedToast = (n: number) => `Joined ${n} overlapping / crossing wall${n === 1 ? '' : 's'} — Ctrl+Z undoes`
 
 function chainAdd(s: StudioState, at: Target): StudioState {
   if (!s.chain) return s
@@ -461,8 +535,14 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   if (r.id === last) return s
   const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM)
   if (typeof u === 'string') return withToast(s, u)
-  const closes = r.id === s.chain.ids[0]
-  const next = commit(s, u, { chain: r.existing || closes ? null : { ...s.chain, ids: [...s.chain.ids, r.id] }, selection: [] })
+  // overlap = joined: an end inside another wall's body ends there, a crossed wall is split (joinOverlaps)
+  const j = joinOverlaps(u, [last, r.id])
+  const ids = [...s.chain.ids, r.id].map((id) => j.merged.get(id) ?? id)
+  const end = ids[ids.length - 1]
+  const closes = end === ids[0]
+  const stop = r.existing || closes || degree(j.unit, end) > 1
+  let next = commit(s, j.unit, { chain: stop ? null : { ...s.chain, ids }, selection: [] })
+  if (j.refused) next = withToast(next, j.refused)
   return closes && !s.loopTipShown ? { ...withToast(next, 'Drag any corner with V to adjust it'), loopTipShown: true } : next
 }
 
@@ -599,10 +679,11 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return { ...s, unit: { ...s.unit, vertices, walls } }
     }
     case 'drag-end': {
-      // drag-begin already put the pre-drag unit in history; only the merge is applied here
-      const r = mergeCoincident(s.unit, a.ids)
-      if (r.unit === s.unit) return s
-      return { ...s, unit: r.unit, selection: s.selection.map((id) => r.merged.get(id) ?? id) }
+      // drag-begin already put the pre-drag unit in history; only the join is applied here
+      const r = joinOverlaps(s.unit, a.ids)
+      const t = r.refused ? withToast(s, r.refused) : s
+      if (r.unit === s.unit) return t
+      return { ...t, unit: r.unit, selection: s.selection.map((id) => r.merged.get(id) ?? id) }
     }
     case 'drag-label':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, x: a.x, y: a.y } : l)) } }
@@ -620,8 +701,9 @@ export function reducer(s: StudioState, a: Action): StudioState {
         if (typeof placed === 'string') return withToast(s, placed)
         u = replaceOpening(u, f.wall.id, placed)
       }
-      const r = mergeCoincident(u, [...moved])
-      return commit(s, r.unit, r.merged.size ? { selection: s.selection.map((id) => r.merged.get(id) ?? id) } : {})
+      const r = joinOverlaps(u, [...moved])
+      const next = commit(s, r.unit, r.merged.size ? { selection: s.selection.map((id) => r.merged.get(id) ?? id) } : {})
+      return r.refused ? withToast(next, r.refused) : next
     }
 
     case 'delete': {
@@ -745,8 +827,13 @@ export function reducer(s: StudioState, a: Action): StudioState {
       }
     }
 
-    case 'load-unit':
-      return { ...initialState(), unit: normalizeUnit(a.unit), planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }
+    case 'load-unit': {
+      // overlapping / crossing walls are joined once; Ctrl+Z gives the file as it was
+      const raw = normalizeUnit(a.unit)
+      const j = joinOverlaps(raw)
+      const base: StudioState = { ...initialState(), unit: j.unit, planImage: s.planImage, view: s.view, timer: s.timer, tool: 'select' }
+      return j.joined ? { ...withToast(base, joinedToast(j.joined)), history: { past: [raw], future: [] } } : base
+    }
     case 'restore': {
       // a draft may be just `{ unit }` (older drafts, hand-injected JSON): every other field is optional
       const init = initialState()

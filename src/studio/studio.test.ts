@@ -3,6 +3,9 @@ import { deriveRooms, roomAt, roomInnerPolygon, validate, wallFrame } from '../c
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
+import sheltechB from '../data/units/sheltech-b.json'
+import typeB from '../data/units/type-b.json'
+import typeC from '../data/units/type-c.json'
 import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
@@ -648,6 +651,100 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     s = run(s, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: tip.id, x: 2, y: 3 }] }, { type: 'drag-end', ids: [tip.id] })
     expect(s.unit.walls.filter((w) => w.a === tip.id || w.b === tip.id)).toHaveLength(3)
     expect(issues(s).filter((c) => c.includes('walls-intersect'))).toEqual([])
+  })
+
+  describe('overlap = joined (founder 2026-10-03: a wall ending inside another has ended there)', () => {
+    /** 4×3 box, its bottom wall 10" thick (half 0.127 m), a partition from the top wall down to a loose tip at (2, 2) */
+    const boxed = () => {
+      let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 0], [2, 2]])
+      s = reducer(s, { type: 'update-wall', id: wallAt(s, [4, 3], [0, 3]).id, patch: { thicknessM: EXTERIOR_M } })
+      return { s, tip: at(s, 2, 2)! }
+    }
+    const drop = (s: StudioState, id: string, x: number, y: number) =>
+      run(s, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id, x, y }] }, { type: 'drag-end', ids: [id] })
+    const clean = (s: StudioState) => issues(s).filter((c) => c.startsWith('error') || c.includes('dangling'))
+
+    it('an end dropped inside a thick wall\'s body, off its centre line and off-centre along it, T-splits it at the projection', () => {
+      const { s: s0, tip } = boxed()
+      for (const y of [2.9, 3.08]) {
+        // short of the centre line by 0.1 m, or 0.08 m past it: both inside the 0.254 m wall
+        const s = drop(s0, tip.id, 2.6, y)
+        expect(s.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.6, y: 3 }) // onto the centre line
+        expect(s.unit.walls.filter((w) => w.a === tip.id || w.b === tip.id)).toHaveLength(3)
+        expect(deriveRooms(s.unit)).toHaveLength(2)
+        expect(clean(s)).toEqual([])
+        expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit) // the drag and its join: one undo entry
+      }
+      // outside the body (0.2 m short of the centre line): left as dropped, a loose end
+      const out = drop(s0, tip.id, 2.6, 2.8)
+      expect(out.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.6, y: 2.8 })
+      expect(issues(out)).toContain('warning:dangling-vertex')
+      // a partition-thin wall's body is thinner: 0.1 m off the left wall (5", half 0.064 m) stays loose, 0.05 m joins
+      expect(drop(s0, tip.id, 0.1, 1.5).unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 0.1 })
+      expect(drop(s0, tip.id, 0.05, 1.5).unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 0, y: 1.5 })
+    })
+
+    it('an end inside a wall\'s end block becomes that corner; a nudge joins the same way', () => {
+      const { s: s0, tip } = boxed()
+      const corner = at(s0, 4, 3)!
+      let s = drop(s0, tip.id, 3.92, 2.95)
+      expect(s.unit.vertices.find((v) => v.id === tip.id)).toBeUndefined()
+      expect(s.unit.walls.filter((w) => w.a === corner.id || w.b === corner.id)).toHaveLength(3)
+      expect(clean(s)).toEqual([])
+      s = run(s0, { type: 'select', ids: [tip.id] }, { type: 'nudge', dx: 0.5, dy: 0.9 }) // tip → (2.5, 2.9): in the body
+      expect(s.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.5, y: 3 })
+      expect(deriveRooms(s.unit)).toHaveLength(2)
+      expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit)
+    })
+
+    it('two walls that cross split each other at the crossing and share the corner', () => {
+      // a loose wall (5,-1)→(5,4) dragged to x = 2 crosses the top and bottom walls
+      const s0 = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[5, -1], [5, 4]])
+      const [p, q] = [at(s0, 5, -1)!, at(s0, 5, 4)!]
+      const s = run(s0, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: p.id, x: 2, y: -1 }, { id: q.id, x: 2, y: 4 }] }, { type: 'drag-end', ids: [p.id, q.id] })
+      for (const y of [0, 3]) expect(s.unit.walls.filter((w) => [w.a, w.b].includes(at(s, 2, y)!.id))).toHaveLength(4)
+      expect(deriveRooms(s.unit)).toHaveLength(2)
+      expect(issues(s).filter((c) => c.includes('walls-intersect'))).toEqual([])
+      // the Wall tool too: a wall drawn across the box splits what it crosses
+      const w = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[1, -1], [1, 4]])
+      expect(deriveRooms(w.unit)).toHaveLength(2)
+      expect(issues(w).filter((c) => c.includes('walls-intersect'))).toEqual([])
+    })
+
+    it('an opening on the split point refuses the join (toast), the end stays where dropped', () => {
+      let { s } = boxed()
+      const tip = at(s, 2, 2)!
+      s = reducer(s, { type: 'add-opening', wallId: wallAt(s, [4, 3], [0, 3]).id, t: 0.5, kind: 'door' }) // x 1.54–2.46
+      s = drop(s, tip.id, 2.2, 2.92)
+      expect(s.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.2, y: 2.92 })
+      expect(s.toast?.text).toMatch(/opening/i)
+    })
+
+    it('Import / auto-trace: a unit with overlaps is joined once, Ctrl+Z gives it as it was', () => {
+      const raw = poly([[0, 0], [4, 0], [4, 3], [0, 3]]).unit
+      // a partition whose ends stop 5 cm inside the top and bottom walls (never on their centre lines), not split
+      const a = { id: 'pa', x: 2, y: 0.05 }, b = { id: 'pb', x: 2, y: 2.95 }
+      const overlapping: Unit = { ...raw, vertices: [...raw.vertices, a, b], walls: [...raw.walls, { id: 'part', a: 'pa', b: 'pb', thicknessM: PARTITION_M, heightM: 3, openings: [] }] }
+      expect(deriveRooms(overlapping)).toHaveLength(1)
+      const loaded = reducer(initialState(), { type: 'load-unit', unit: overlapping })
+      expect(deriveRooms(loaded.unit)).toHaveLength(2)
+      expect(loaded.toast?.text).toMatch(/Joined 2/)
+      expect(deriveRooms(reducer(loaded, { type: 'undo' }).unit)).toHaveLength(1)
+      const r = mockTraceResult()
+      const traced = studioReducer(initialState(), { type: 'auto-trace', result: { ...r, unit: overlapping } })
+      expect(deriveRooms(traced.unit)).toHaveLength(2)
+      const undone = studioReducer(traced, { type: 'undo' })
+      expect(deriveRooms(undone.unit)).toHaveLength(1) // the draft as traced, its review list still showing
+      expect(undone.review?.unitId).toBe(undone.unit.id)
+      expect(studioReducer(undone, { type: 'undo' }).unit.walls).toEqual([]) // then the unit before the trace
+    })
+
+    it('the five hand traces load unchanged (nothing in them overlaps)', () => {
+      for (const u of [typeA, typeB, typeC, sheltechA, sheltechB]) {
+        const s = reducer(initialState(), { type: 'load-unit', unit: u as unknown as Unit })
+        expect(s.history.past).toEqual([])
+      }
+    })
   })
 
   it('delete: a rectangle side → room gone, no corner joined to nothing; the middle wall of a T → the through-wall is one wall again', () => {
