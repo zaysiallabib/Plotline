@@ -5,8 +5,38 @@ import typeA from '../data/units/type-a.json'
 import typeC from '../data/units/type-c.json'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { curtainSides, skirtingSpans, wallGeometry } from './details'
+import { curtainSides, pillarParts, raiseHeads, skirtingSpans, wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
+
+test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
+  const walls = TEST_UNIT.walls.map((w) =>
+    w.id === 'w2' ? { ...w, heightM: 1.1, openings: [{ id: 'win', kind: 'window' as const, offsetM: 1, widthM: 1.5, sillM: 0.9, heightM: 1.2 }] }
+    : w.id === 'w4' ? { ...w, heightM: 0.45, openings: [{ id: 'gap', kind: 'passage' as const, offsetM: 1, widthM: 1, sillM: 0, heightM: 2.1 }] }
+    : w,
+  )
+  const unit = raiseHeads({ ...TEST_UNIT, walls })
+  const top = (id: string) => {
+    const g = wallGeometry(unit.walls.find((w) => w.id === id)!, unit)!
+    g.computeBoundingBox()
+    return g.boundingBox!.max.y
+  }
+  expect(top('w2')).toBeCloseTo(3, 6) // ≥ 2.1: closed above the window
+  expect(top('w4')).toBeCloseTo(0.45, 6)
+  expect(raiseHeads(TEST_UNIT)).toBe(TEST_UNIT)
+})
+
+test('a pillar in the living / bed wall: each side in the finish of the room it faces, skirted there; 1 mm proud, top 1 cm over the walls', () => {
+  const rooms = core.deriveRooms(TEST_UNIT)
+  const parts = pillarParts({ id: 'p', x: 5, y: 1, wM: 0.4, hM: 0.6 }, 3, TEST_UNIT, rooms)
+  const box = new THREE.Box3()
+  for (const x of parts.filter((x) => x.part !== 'skirting')) box.union((x.geo.computeBoundingBox(), x.geo.boundingBox!))
+  expect([box.min.x, box.max.x, box.min.z, box.max.z, box.min.y, box.max.y].map((v) => +v.toFixed(4))).toEqual([4.799, 5.201, 0.699, 1.301, 0, 3.01])
+  const face = (nx: number) => parts.find((x) => x.part === 'face' && Math.round(x.geo.attributes.normal.getX(0)) === nx)?.room?.id
+  expect([face(1), face(-1)]).toEqual(['bed', 'living'])
+  const strips = parts.filter((x) => x.part === 'skirting')
+  expect(strips).toHaveLength(4)
+  expect(strips.every((x) => x.room?.id === 'bed' || x.room?.id === 'living')).toBe(true)
+})
 
 test('type-a wall faces are crack-free: a corner on a coplanar face edge is that edge’s end, bit for bit', () => {
   const unit = typeA as unknown as Unit

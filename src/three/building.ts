@@ -143,7 +143,8 @@ export class Building extends THREE.Group {
           continue
         }
         const mine = k === floor && s === stem
-        const walls = u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at)
+        const columns = (u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M))
+        const walls = [...u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g), ...columns].map(at)
         // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it
         const slab = plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
         if (mine) put(EXTERIOR_PLASTER, ...slab)

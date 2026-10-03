@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
-import type { FinishSlot, Graph, Id, Opening, Pt, Room, RoomKind, Unit, Wall } from '../core'
+import type { FinishSlot, Graph, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
 import { buildOpening, meterUVs } from './openings'
 
@@ -82,6 +82,48 @@ export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
   geoms.forEach((g) => g.dispose())
   mesh.receiveShadow = true
   return mesh
+}
+
+/**
+ * A window or door whose head is above its wall (a 1.1 m "railing" carrying a window, in older drafts) left the room
+ * open to the sky above it: such a wall goes up to the storey (the unit's tallest wall, at least the head). A passage
+ * is only a gap, so a low wall with one stays low. Unchanged units come back as the same object.
+ */
+export function raiseHeads(unit: Unit): Unit {
+  const head = (w: Wall) => Math.max(0, ...w.openings.filter((o) => o.kind !== 'passage').map((o) => o.sillM + o.heightM))
+  if (!unit.walls.some((w) => head(w) > w.heightM + 1e-6)) return unit
+  const storey = Math.max(...unit.walls.map((w) => w.heightM))
+  return { ...unit, walls: unit.walls.map((w) => (head(w) > w.heightM + 1e-6 ? { ...w, heightM: Math.max(storey, head(w)) } : w)) }
+}
+
+/** One part of a column (pillarParts): world-space geometry with metre UVs, and the room it faces (null: outside, the top). */
+export interface PillarPart {
+  geo: THREE.BufferGeometry
+  room: Room | null
+  part: 'face' | 'top' | 'skirting'
+}
+
+/**
+ * A column (Unit.pillars): a box from the floor to `heightM`, 1 mm proud of its plan size so a face flush with a wall's
+ * never z-fights it, and 1 cm over the wall tops (its top is edge plaster, pushed back in depth like theirs: at 1 mm the
+ * walls' face edges below showed through it as hairlines in the dollhouse). Its four upright faces are each
+ * finished as the room they look into (probed 5 cm out from the face's middle) and skirted there like buildSkirting
+ * (none in bath / balcony / shaft); where the column stands in a wall, the faces and strips inside it are simply hidden.
+ */
+export function pillarParts(p: Pillar, heightM: number, unit: Unit, rooms: Room[]): PillarPart[] {
+  const [hx, hy, top] = [p.wM / 2 + 0.001, p.hM / 2 + 0.001, heightM + 0.01]
+  const out: PillarPart[] = [{ geo: meterUVs(new THREE.PlaneGeometry(2 * hx, 2 * hy).rotateX(-Math.PI / 2).translate(p.x, top, p.y)), room: null, part: 'top' }]
+  for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const [half, off] = nx ? [hy, hx] : [hx, hy]
+    const c = { x: p.x + nx * off, y: p.y + ny * off }
+    const room = core.roomAt({ x: c.x + nx * 0.05, y: c.y + ny * 0.05 }, rooms, unit)
+    const yaw = Math.atan2(nx, ny) // a plane facing +Z turned to face (nx, 0, ny)
+    out.push({ geo: meterUVs(new THREE.PlaneGeometry(2 * half, top).rotateY(yaw).translate(c.x, top / 2, c.y)), room, part: 'face' })
+    if (!room || NO_SKIRTING.includes(room.kind)) continue
+    const strip = new THREE.BoxGeometry(2 * (half + SKIRTING_T), SKIRTING_H, SKIRTING_T).rotateY(yaw) // past both corners: closes them
+    out.push({ geo: meterUVs(strip.translate(c.x + (nx * SKIRTING_T) / 2, SKIRTING_H / 2, c.y + (ny * SKIRTING_T) / 2)), room, part: 'skirting' })
+  }
+  return out
 }
 
 /** The floor finish slot a room belongs to (a slot naming the room beats an 'all' slot); null outside the unit. */
