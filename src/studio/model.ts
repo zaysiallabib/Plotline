@@ -199,6 +199,20 @@ function moveEnd(u: Unit, w: Wall, end: Id, to: Pt): Unit {
 }
 
 /**
+ * A join at `s` (m from w.a) inside an opening of `w` (founder 2026-10-03: a planter edge meeting a slider): the opening
+ * is cut back to the joining wall's near face (`half` m either side of s), the longer side kept — or dropped when under
+ * MIN_OPENING_M. A door too: no leaf spans a partition. `trimmed` = 1 when one was cut / dropped.
+ */
+function trimAt(u: Unit, w: Wall, s: number, half: number): { unit: Unit; wall: Wall; trimmed: number } {
+  const o = w.openings.find((x) => x.offsetM < s - EPS && x.offsetM + x.widthM > s + EPS)
+  if (!o) return { unit: u, wall: w, trimmed: 0 }
+  const left = s - half - o.offsetM, right = o.offsetM + o.widthM - s - half
+  const keep = left >= right ? { ...o, widthM: left } : { ...o, offsetM: s + half, widthM: right }
+  const wall = { ...w, openings: w.openings.flatMap((x) => (x !== o ? [x] : keep.widthM >= MIN_OPENING_M ? [keep] : [])) }
+  return { unit: { ...u, walls: u.walls.map((x) => (x.id === w.id ? wall : x)) }, wall, trimmed: 1 }
+}
+
+/**
  * Overlap = joined (founder 2026-10-03: "if a wall ends inside another — not necessarily at the middle point — it has
  * ended there"). A corner moved onto another corner (≤ MERGE_M) becomes that corner (rewire: no zero-length wall, no
  * stray corner). A corner inside another wall W's BODY — perpendicular distance to its centre line ≤ half its
@@ -213,17 +227,23 @@ function moveEnd(u: Unit, w: Wall, end: Id, to: Pt): Unit {
  * Two walls that cross split each other at the crossing and share the corner. A wall one step away (it shares a corner
  * with one of this corner's walls) counts only when the corner lies on its centre line: else it is the corner's own
  * short piece, not an overlap. `ids` = the corners that moved (checked against every wall, and every corner against
- * their walls); absent = the whole unit (load / auto-trace / join-walls). An opening on the split point refuses that
- * join (`refused`: the toast). Returns the same unit when nothing changed; `merged` maps each removed corner to its
- * survivor. Snapping (snap.ts) is untouched: this only decides what a dropped end is joined to.
+ * their walls); absent = the whole unit (load / auto-trace / join-walls). An opening on the split point is cut back to
+ * the joining wall's face (trimAt; `trimmed` counts them). Returns the same unit when nothing changed; `merged` maps each
+ * removed corner to its survivor. Snapping (snap.ts) is untouched: this only decides what a dropped end is joined to.
  */
-export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; refused?: string } {
+export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; trimmed: number } {
   const merged = new Map<Id, Id>()
   const scope = ids && new Set(ids)
   const touches = (w: Wall) => !scope || scope.has(w.a) || scope.has(w.b)
   let u = unit
   let joined = 0
-  let refused: string | undefined
+  let trimmed = 0
+  /** split `w` at s (m) where a wall `half` m wide (along w) joins it, an opening there trimmed first */
+  const split = (w: Wall, s: number, half: number) => {
+    const t = trimAt(u, w, s, half)
+    trimmed += t.trimmed
+    return splitWall(t.unit, t.wall, s / wallFrame(t.wall, t.unit.vertices).lengthM) as { unit: Unit; vertexId: Id } // (nothing straddles s now)
+  }
   // the moved corners first (they join onto what stands still), then the corners inside a moved wall's body
   for (const id of new Set([...(ids ?? []), ...u.vertices.map((v) => v.id)])) {
     const V = new Map(u.vertices.map((v) => [v.id, v]))
@@ -275,7 +295,7 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
       best = { w, s, d, L, dir, end, toEnd, free }
     }
     if (!best) continue
-    const { w, s, L, dir, end, toEnd, free } = best
+    const { w, s, dir, end, toEnd, free } = best
     const cap = Math.max(MERGE_M, w.thicknessM / 2)
     const a = V.get(w.a)!
     const Q = { x: a.x + dir.x * s, y: a.y + dir.y * s }
@@ -290,11 +310,7 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
       if (toEnd <= cap && free) (u = moveEnd(u, w, end, Q)), (at = end)
       else if (toEnd <= EPS) at = end
       else {
-        const r = splitWall(u, w, s / L)
-        if (typeof r === 'string') {
-          refused = r
-          continue
-        }
+        const r = split(w, s, Math.max(...mineWalls.map((x, i) => x.thicknessM / 2 / Math.max(SIN10, Math.abs(dirs[i].x * dir.y - dirs[i].y * dir.x)))))
         u = { ...r.unit, vertices: r.unit.vertices.map((x) => (x.id === id ? { ...x, x: Q.x, y: Q.y } : x)) }
         u = rewire(u, r.vertexId, id)
         joined++
@@ -304,11 +320,7 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     else if (free && toEnd <= cap && (toEnd <= MERGE_M || dirs.some((p) => (p.x * dir.x + p.y * dir.y) * (end === w.b ? 1 : -1) > 0.9)))
       u = moveEnd(u, w, end, Q) // end to end: W's free end comes to the projection (≤ its end block, along its own line), the piece is square
     else if (toEnd > EPS) {
-      const r = splitWall(u, w, s / L)
-      if (typeof r === 'string') {
-        refused = r
-        continue
-      }
+      const r = split(w, s, Math.max(w.thicknessM, ...mineWalls.map((x) => x.thicknessM)) / 2) // the hidden piece's width
       ;(u = r.unit), (J = r.vertexId)
     }
     // (on W's line already: the same corner; a hair off it stays a hair-long piece — merging would tilt the wall along W)
@@ -324,40 +336,35 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     }
     joined++
   }
-  // crossings: both walls split at the crossing, one shared corner (a pair an opening blocks is tried once)
-  const skip = new Set<string>()
+  // crossings: both walls split at the crossing (an opening there trimmed to the other's face), one shared corner
   for (let guard = 0; guard < 1000; guard++) {
     const V = new Map(u.vertices.map((v) => [v.id, v]))
-    let hit: { P: Wall; Q: Wall; t: number; s: number } | null = null
+    let hit: { P: Wall; Q: Wall; t: number; s: number; Lp: number; Lq: number; sin: number } | null = null
     for (let i = 0; i < u.walls.length && !hit; i++) {
       const P = u.walls[i]
       const a = V.get(P.a)!, b = V.get(P.b)!
       const Lp = Math.hypot(b.x - a.x, b.y - a.y)
       for (let j = i + 1; j < u.walls.length && !hit; j++) {
         const Q = u.walls[j]
-        if ((!touches(P) && !touches(Q)) || [Q.a, Q.b].some((x) => x === P.a || x === P.b) || skip.has(wallKey(P.id, Q.id))) continue
+        if ((!touches(P) && !touches(Q)) || [Q.a, Q.b].some((x) => x === P.a || x === P.b)) continue
         const c = V.get(Q.a)!, e = V.get(Q.b)!
         const Lq = Math.hypot(e.x - c.x, e.y - c.y)
         const den = (b.x - a.x) * (e.y - c.y) - (b.y - a.y) * (e.x - c.x)
         if (Math.abs(den) <= EPS * Lp * Lq) continue // parallel
         const t = ((c.x - a.x) * (e.y - c.y) - (c.y - a.y) * (e.x - c.x)) / den
         const s = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den
-        if (t * Lp > MERGE_M && (1 - t) * Lp > MERGE_M && s * Lq > MERGE_M && (1 - s) * Lq > MERGE_M) hit = { P, Q, t, s }
+        if (t * Lp > MERGE_M && (1 - t) * Lp > MERGE_M && s * Lq > MERGE_M && (1 - s) * Lq > MERGE_M) hit = { P, Q, t, s, Lp, Lq, sin: Math.abs(den) / (Lp * Lq) }
       }
     }
     if (!hit) break
-    const r1 = splitWall(u, hit.P, hit.t)
-    const r2 = typeof r1 === 'string' ? r1 : splitWall(r1.unit, hit.Q, hit.s)
-    if (typeof r1 === 'string' || typeof r2 === 'string') {
-      refused = typeof r1 === 'string' ? r1 : (r2 as string)
-      skip.add(wallKey(hit.P.id, hit.Q.id))
-      continue
-    }
+    const r1 = split(hit.P, hit.t * hit.Lp, hit.Q.thicknessM / 2 / hit.sin)
+    u = r1.unit
+    const r2 = split(hit.Q, hit.s * hit.Lq, hit.P.thicknessM / 2 / hit.sin)
     u = rewire(r2.unit, r2.vertexId, r1.vertexId)
     scope?.add(r1.vertexId)
     joined++
   }
-  return { unit: u, merged, joined, refused }
+  return { unit: u, merged, joined, trimmed }
 }
 
 /**
@@ -617,88 +624,92 @@ export function fullHeightIfOpenings(u: Unit): Unit {
 
 /** sin 10°: a wall closer than this to parallel is met end to end, not crossed */
 const SIN10 = 0.1736
+const cross = (p: Pt, q: Pt) => p.x * q.y - p.y * q.x
+/** how far a loose end of `w` looks ahead for a wall to join */
+const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
 
 /**
- * A loose end short of a wall (founder 2026-10-03: an unjoined wall leaves its room open — no skirting, wrong daylight in
- * 3D). Reach = max(0.15 m, 1.5 × the end's own thickness). Looking ahead along its own wall: the first wall whose near
- * face is within reach and whose centre line it crosses on its segment → the end slides along its own line onto that
- * centre line (joinOverlaps then T-splits it, or makes the L at its end); another wall's end on its line ahead within
- * reach → the end slides onto it; a FREE end of a crossing wall within reach of where the two lines cross (each within
- * its own reach) → both slide there along their own lines (an L). Nothing tilts, nothing passes through a wall (the
- * nearest thing ahead wins), an end already inside a wall's body is joinOverlaps' own. An opening on the split point
- * refuses (`refused`, the end stays). `ids`: only these corners; absent = every loose end. Returns the same unit when
- * nothing moved; `moved` = the corners that slid.
+ * What the loose end `id` of wall `w` reaches ahead (founder 2026-10-03: an unjoined wall leaves its room open — no
+ * skirting, wrong daylight in 3D), within reachOf(w), looking along its own wall: the first wall whose near face is within
+ * reach and whose centre line it crosses on its segment → `to` on that centre line (`inside` when the end is in that
+ * wall's body already); another wall's end on its line ahead → that end; a FREE end of a crossing wall within its own
+ * reach of where the two lines cross → there, that end coming too (`also`). The nearest wins: never through a wall.
  */
-function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[]; refused?: string } {
-  const cross = (p: Pt, q: Pt) => p.x * q.y - p.y * q.x
-  const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
+function ahead(u: Unit, id: Id, w: Wall): { r: number; to: Pt; also?: { w: Wall; end: Id }; inside?: boolean } | null {
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  const v = V.get(id)!
+  const far = w.a === id ? w.b : w.a
+  const d = dirFrom(u, w, far) // ahead: away from its own wall
+  const reach = reachOf(w)
+  let best: ReturnType<typeof ahead> = null
+  for (const x of u.walls) {
+    if (x === w) continue
+    const f = wallFrame(x, u.vertices)
+    const den = cross(d, f.dir)
+    const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
+    const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
+    if (r > EPS && (!best || r < best.r)) {
+      const s = cross(rel, d) / den
+      const face = r - x.thicknessM / 2 / Math.abs(den)
+      if (s >= -EPS && s <= f.lengthM + EPS && face <= reach) best = { r, to: { x: v.x + d.x * r, y: v.y + d.y * r }, inside: face <= 0 }
+    }
+    for (const end of [x.a, x.b]) {
+      if (end === far) continue
+      const q = V.get(end)!
+      const free = degree(u, end) === 1 && r > EPS
+      // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
+      const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
+      const out = dirFrom(u, x, end === x.a ? x.b : x.a)
+      if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
+      const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
+      if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, ...(free ? { also: { w: x, end } } : {}) }
+    }
+  }
+  return best
+}
+
+/**
+ * Loose ends short of a wall slide along their own lines to what they reach (ahead); joinOverlaps then T-splits / makes
+ * the L (an opening on the split point is trimmed there). Nothing tilts; an end already inside a wall's body is
+ * joinOverlaps' own. `ids`: only these corners; absent = every loose end. Returns the same unit when nothing moved;
+ * `moved` = the corners that slid.
+ */
+function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[] } {
   let u = unit
-  let refused: string | undefined
   const moved: Id[] = []
   for (const id of ids ?? unit.vertices.map((v) => v.id)) {
     const mine = u.walls.filter((w) => w.a === id || w.b === id)
-    if (mine.length !== 1) continue
-    const w = mine[0]
-    const V = new Map(u.vertices.map((v) => [v.id, v]))
-    const v = V.get(id)!
-    const far = w.a === id ? w.b : w.a
-    const d = dirFrom(u, w, far) // ahead: away from its own wall
-    const reach = reachOf(w)
-    let best: { r: number; to: Pt; also?: { w: Wall; end: Id }; stay?: string } | null = null
-    for (const x of u.walls) {
-      if (x === w) continue
-      const f = wallFrame(x, u.vertices)
-      const den = cross(d, f.dir)
-      const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
-      const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
-      if (r > EPS && (!best || r < best.r)) {
-        const s = cross(rel, d) / den
-        const face = r - x.thicknessM / 2 / Math.abs(den)
-        // (inside its body already: joinOverlaps' — stay '' ; an opening there: refused)
-        if (s >= -EPS && s <= f.lengthM + EPS && face <= reach)
-          best = { r, to: { x: v.x + d.x * r, y: v.y + d.y * r }, stay: face <= 0 ? '' : x.openings.some((o) => o.offsetM < s - EPS && o.offsetM + o.widthM > s + EPS) ? 'An opening sits on that spot — move it first' : undefined }
-      }
-      for (const end of [x.a, x.b]) {
-        if (end === far) continue
-        const q = V.get(end)!
-        const free = degree(u, end) === 1 && r > EPS
-        // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
-        const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
-        const out = dirFrom(u, x, end === x.a ? x.b : x.a)
-        if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
-        const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
-        if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, ...(free ? { also: { w: x, end } } : {}) }
-      }
-    }
-    if (!best || best.stay !== undefined) {
-      if (best?.stay) refused = best.stay
-      continue
-    }
-    u = moveEnd(u, w, id, best.to)
+    const best = mine.length === 1 ? ahead(u, id, mine[0]) : null
+    if (!best || best.inside) continue
+    u = moveEnd(u, mine[0], id, best.to)
     moved.push(id)
     if (best.also) (u = moveEnd(u, best.also.w, best.also.end, best.to)), moved.push(best.also.end)
   }
-  return { unit: moved.length ? u : unit, moved, refused }
+  return { unit: moved.length ? u : unit, moved }
 }
 
 /**
  * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
  * (dropOverlaid), with `reach` a loose end short of a wall slides onto it (reachEnds: the whole unit and drag-end),
- * overlaps join (joinOverlaps), a corner left between two walls on one line heals into one wall (healStraight), a door
- * left on a stub moves to the long wall or goes (fixStubs), a low wall with an opening is full height. `ids` = the
- * corners that moved — healed / checked: they, what they merged into, the dropped walls' corners and the far ends of
- * their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when nothing changed;
- * `notes` = the toasts.
+ * overlaps join (joinOverlaps; an opening on the split point trimmed), a corner left between two walls on one line heals
+ * into one wall (healStraight), a door left on a stub moves to the long wall or goes (fixStubs), a low wall with an
+ * opening is full height. `ids` = the corners that moved — healed / checked: they, what they merged into, the dropped
+ * walls' corners and the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the
+ * same unit when nothing changed; `notes` = the toasts (the whole unit's trimmed count rides on the join toast).
  */
-function settle(unit: Unit, ids?: Id[], reach = !ids): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
+function settle(unit: Unit, ids?: Id[], reach = !ids): { unit: Unit; merged: Map<Id, Id>; joined: number; trimmed: number; notes: string[] } {
   const o = dropOverlaid(unit, ids)
-  const e = reach ? reachEnds(o.unit, ids) : { unit: o.unit, moved: [] as Id[], refused: undefined }
+  const e = reach ? reachEnds(o.unit, ids) : { unit: o.unit, moved: [] as Id[] }
   const j = joinOverlaps(e.unit, ids && [...ids, ...e.moved])
   const near = ids && new Set([...ids, ...e.moved, ...o.corners].map((id) => j.merged.get(id) ?? id))
   const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
   const t = fixStubs(healStraight(j.unit, touched, !ids), near && touched)
-  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...new Set([j.refused, e.refused].filter((x): x is string => !!x)), ...(t.dropped ? [STUB_TOAST] : [])]
-  return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, notes }
+  const notes = [
+    ...(o.dropped ? ['Removed a wall drawn over another'] : []),
+    ...(ids && j.trimmed ? [`${j.trimmed} opening${j.trimmed === 1 ? '' : 's'} trimmed to the wall joined there`] : []),
+    ...(t.dropped ? [STUB_TOAST] : []),
+  ]
+  return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, trimmed: j.trimmed, notes }
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
@@ -867,7 +878,8 @@ function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): S
 }
 const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
 const noted = (s: StudioState, notes: string[]): StudioState => (notes.length ? withToast(s, notes.join(' · ')) : s)
-const joinedToast = (n: number) => `Joined ${n} overlapping / crossing wall${n === 1 ? '' : 's'} — Ctrl+Z undoes`
+const joinedToast = (n: number, trimmed = 0) =>
+  `Joined ${n} overlapping / crossing wall${n === 1 ? '' : 's'}${trimmed ? ` (${trimmed} opening${trimmed === 1 ? '' : 's'} trimmed)` : ''} — Ctrl+Z undoes`
 
 function chainAdd(s: StudioState, at: Target): StudioState {
   if (!s.chain) return s
@@ -1069,7 +1081,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
 
     case 'join-walls': {
       const r = settle(s.unit)
-      const notes = [...(r.joined ? [joinedToast(r.joined)] : []), ...r.notes]
+      const notes = [...(r.joined ? [joinedToast(r.joined, r.trimmed)] : []), ...r.notes]
       if (r.unit === s.unit) return noted(s, notes)
       return noted(commit(s, r.unit, { selection: stillThere(r.unit, s.selection.map((id) => r.merged.get(id) ?? id)), chain: null }), notes)
     }

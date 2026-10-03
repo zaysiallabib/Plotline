@@ -16,10 +16,7 @@ import { initialState, normalizeUnit, reducer } from './model'
 
 const looseEnds = (u: Unit) => u.vertices.filter((v) => u.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1).map((v) => v.id.slice(0, 8)).sort()
 
-/**
- * The loose ends Join walls leaves, and why (none points at a wall within its reach, max(0.15 m, 1.5 × its thickness),
- * except the two that end on a slider: an opening on the split point refuses the join).
- */
+/** The loose ends Join walls leaves, and why (none points at a wall within its reach, max(0.15 m, 1.5 × its thickness)). */
 const STAY: Record<string, string> = {
   c2ea6959: '(4.06, 5.43) 0.21 m nib of the 13.5" run past the Living / Foyer corner, nothing ahead',
   '25f55f7c': '(5.23, 5.43) 0.27 m nib of the same run past the Kitchen corner, alongside the Kitchen wall, nothing ahead',
@@ -32,8 +29,6 @@ const STAY: Record<string, string> = {
   '9f4f74b7': '(3.54, 12.08) the toilet\'s east wall 0.75 m short of Bed 2\'s north wall > reach 0.21',
   f3165b85: '(12.52, 10.81) 0.47 m stub inside a pillar beside the exterior wall, nothing ahead on its line',
   '8516f94c': '(-12.14, 18.66) the far end of the 24.8 m sunshade line running through the next flat',
-  f6d7b875: '(10.35, 16.14) a 0.45 m planter edge ending inside Bed 1\'s 0.52 m south wall, on its 3.70 m slider: refused',
-  cf797dfa: '(7.58, 15.36) a 0.45 m planter edge 1.6 cm short of Bed 4\'s south wall, on its 2.94 m slider: refused',
 }
 
 describe("founder's Sheltech Type-A draft, loaded in the Studio", () => {
@@ -49,15 +44,21 @@ describe("founder's Sheltech Type-A draft, loaded in the Studio", () => {
     expect(u.walls.filter((w) => w.heightM < 2)).toHaveLength(8) // the planter edges (0.45 / 0.457 m) stay low
   })
 
-  it('loose ends: 13 before, the 13 listed (and why) after — none within reach of a wall without an opening there', () => {
+  it('loose ends: 13 before, the 11 listed (and why) after; the two planter edges ending on a slider joined, the sliders trimmed to their face', () => {
     expect(looseEnds(raw)).toHaveLength(13)
     expect(looseEnds(u)).toEqual(Object.keys(STAY).sort())
-    expect(s.toast?.text).toMatch(/opening/i) // the slider refusals
+    expect(s.toast?.text).toMatch(/^Joined 2 overlapping \/ crossing walls \(2 openings trimmed\)/)
+    // the slider on the veranda's side of the planter edge kept: Bed 4's 2.94 m → 2.17 m, Bed 1's 3.70 m → 1.91 m
+    const sliders = u.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'slider').map((o) => +o.widthM.toFixed(2))).sort()
+    const before = raw.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'slider').map((o) => +o.widthM.toFixed(2))).sort()
+    expect(before.filter((x) => !sliders.includes(x))).toEqual([2.94, 3.7])
+    expect(sliders.filter((x) => !before.includes(x))).toEqual([1.91, 2.17])
   })
 
-  it('rooms: none lost, every label inside a closed room, validate has no errors', () => {
+  it('rooms: both verandas closed (15 → 17), every label inside a closed room, validate has no errors', () => {
     expect(rooms.length).toBeGreaterThanOrEqual(deriveRooms(raw).length)
-    expect(rooms).toHaveLength(15)
+    expect(deriveRooms(raw)).toHaveLength(15)
+    expect(rooms).toHaveLength(17)
     for (const l of u.roomLabels) expect(roomAt(l, rooms, u), l.name).toBeTruthy()
     expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['Bed 1', 'Bed 3', 'Kitchen', 'Living', 'Planter', 'Room', 'Room', 'Toilet 1', 'Toilet 2'])
     expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
