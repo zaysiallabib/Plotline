@@ -551,20 +551,68 @@ function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; co
   return { unit: u, dropped, corners }
 }
 
+const STUB_TOAST = 'Door wider than its wall — removed; redraw it on the long wall'
+/** A wall holds a door with 5 cm to spare and is ≥ 0.6 m; any other opening (a vent, glazing or a passage filling a piece) only has to fit. */
+const holds = (o: Opening, lengthM: number): boolean => (o.kind === 'door' ? o.widthM <= lengthM - 0.05 && lengthM >= 0.6 : o.widthM <= lengthM + EPS)
+
+/**
+ * A door on a stub (founder 2026-10-03: a wall split / shortened under it left an oversized leaf on a short piece): an
+ * opening its wall no longer holds goes onto the wall continuing it straight through either corner — the end it hangs
+ * toward first; same plan place, clamped, never over another opening — else it is removed. `ids`: the walls at these
+ * corners; absent = all. Returns the same unit when nothing moved; `dropped` = openings removed (the toast).
+ */
+function fixStubs(unit: Unit, ids?: Iterable<Id>): { unit: Unit; dropped: number } {
+  const scope = ids && new Set(ids)
+  let u = unit
+  let dropped = 0
+  for (const w of unit.walls) {
+    if (scope && !scope.has(w.a) && !scope.has(w.b)) continue
+    const f = wallFrame(w, u.vertices)
+    const bad = w.openings.filter((o) => !holds(o, f.lengthM))
+    if (!bad.length) continue
+    u = { ...u, walls: u.walls.map((x) => (x.id === w.id ? { ...x, openings: x.openings.filter((o) => !bad.includes(o)) } : x)) }
+    for (const o of bad) {
+      const on = (o.offsetM + o.widthM / 2 > f.lengthM / 2 ? [w.b, w.a] : [w.a, w.b]).flatMap((end) => {
+        const d = dirFrom(u, w, end)
+        return u.walls.filter((x) => {
+          if (x.id === w.id || (x.a !== end && x.b !== end)) return false
+          const e = dirFrom(u, x, end)
+          return Math.abs(d.x * e.y - d.y * e.x) < NEAR && d.x * e.x + d.y * e.y < 0
+        })
+      })
+      let home: { id: Id; o: Opening } | null = null
+      for (const x of on) {
+        const fx = wallFrame(x, u.vertices)
+        const p = holds(o, fx.lengthM) ? placeOpening(x, fx.lengthM, rebase(o, f, fx)) : ''
+        if (typeof p === 'string') continue
+        home = { id: x.id, o: p }
+        break
+      }
+      if (!home) dropped++
+      else {
+        const h = home
+        u = { ...u, walls: u.walls.map((x) => (x.id === h.id ? { ...x, openings: [...x.openings, h.o] } : x)) }
+      }
+    }
+  }
+  return { unit: u, dropped }
+}
+
 /**
  * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
- * (dropOverlaid), overlaps join (joinOverlaps), then a corner left between two walls on one line heals into one wall
- * (healStraight). `ids` = the corners that moved — healed: they, what they merged into, the dropped walls' corners and
- * the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when
- * nothing changed; `notes` = the toasts.
+ * (dropOverlaid), overlaps join (joinOverlaps), a corner left between two walls on one line heals into one wall
+ * (healStraight), a door left on a stub moves to the long wall or goes (fixStubs). `ids` = the corners that moved —
+ * healed / checked: they, what they merged into, the dropped walls' corners and the far ends of their walls; absent =
+ * the whole unit, where only bent corners heal. Returns the same unit when nothing changed; `notes` = the toasts.
  */
 function settle(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
   const o = dropOverlaid(unit, ids)
   const j = joinOverlaps(o.unit, ids)
   const near = ids && new Set([...ids, ...o.corners].map((id) => j.merged.get(id) ?? id))
   const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
-  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...(j.refused ? [j.refused] : [])]
-  return { unit: healStraight(j.unit, touched, !ids), merged: j.merged, joined: j.joined, notes }
+  const t = fixStubs(healStraight(j.unit, touched, !ids), near && touched)
+  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...(j.refused ? [j.refused] : []), ...(t.dropped ? [STUB_TOAST] : [])]
+  return { unit: t.unit, merged: j.merged, joined: j.joined, notes }
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
@@ -852,10 +900,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (w.id === a.id ? { ...w, ...a.patch } : w)) })
     }
     case 'set-wall-length': {
-      // a is the anchor, b slides; the walls at b stay straight (lengthMoves), openings clamp
+      // a is the anchor, b slides; the walls at b stay straight (lengthMoves), openings clamp; a door left on a stub moves / goes
       const wall = s.unit.walls.find((w) => w.id === a.id)
       if (!wall || a.lengthM <= 0 || a.lengthM > 100) return s
-      return commit(s, reducer(s, { type: 'drag', vertices: lengthMoves(s.unit, wall.id, wall.b, a.lengthM) }).unit)
+      const moves = lengthMoves(s.unit, wall.id, wall.b, a.lengthM)
+      const r = fixStubs(reducer(s, { type: 'drag', vertices: moves }).unit, moves.map((m) => m.id))
+      return noted(commit(s, r.unit), r.dropped ? [STUB_TOAST] : [])
     }
     case 'detach': {
       // Alt-drag: the wall's end leaves the shared corner for a new corner of its own; drag-begin holds the undo entry

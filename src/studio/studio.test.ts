@@ -936,6 +936,33 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         const apart = drop2(reducer(initialState(), { type: 'load-unit', unit: overlaid() }), [['p', 1, 2.7], ['q', 3, 2.7]])
         expect(apart.unit.walls).toHaveLength(5)
       })
+
+      it('(d) a wall shortened under its door: the door moves onto the wall continuing it (same place), else it goes with a toast; a vent window on a short wall stays', () => {
+        // A(0,0)→B(3,0)→C(6,0) with a T at B (a partition B→T), so B never heals; a door on A–B 0.2 m from A
+        const u = build({ A: [0, 0], B: [3, 0], C: [6, 0], T: [3, 2] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['B', 'T', PARTITION_M]])
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = reducer(s, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' })
+        const door = s.unit.walls[0].openings[0]
+        s = drop2(s, [['A', 2.5, 0]]) // A–B is 0.5 m now: the 0.91 m door hangs past B
+        expect(s.unit.walls[0].openings).toEqual([])
+        const moved = s.unit.walls[1].openings
+        expect(moved.map((o) => o.id)).toEqual([door.id])
+        expect(moved[0].offsetM).toBeCloseTo(0, 9) // flush against B, where it hung over
+        expect(s.toast?.text ?? '').not.toMatch(/Door wider/)
+        expect(clean(s).filter((c) => c.includes('opening'))).toEqual([])
+        // nowhere to go (the continuing wall holds a window there already): removed, with the toast
+        let t = reducer(initialState(), { type: 'load-unit', unit: u })
+        t = run(t, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' }, { type: 'add-opening', wallId: 'w1', t: 0.2, kind: 'window' })
+        t = drop2(t, [['A', 2.5, 0]])
+        expect(t.unit.walls.flatMap((w) => w.openings.map((o) => o.kind))).toEqual(['window'])
+        expect(t.toast?.text).toBe('Door wider than its wall — removed; redraw it on the long wall')
+        // the typed length does the same
+        let l = reducer(initialState(), { type: 'load-unit', unit: u })
+        l = run(l, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' }, { type: 'set-wall-length', id: 'w0', lengthM: 0.5 })
+        expect(l.unit.walls[1].openings).toHaveLength(1)
+        // a 0.35 m vent on Sheltech A's 0.53 m wall is no door: loading keeps it (the five hand traces load unchanged)
+        expect(reducer(initialState(), { type: 'load-unit', unit: sheltechA as unknown as Unit }).unit.walls.find((w) => w.id === 'w_t3_n2')!.openings).toHaveLength(1)
+      })
     })
   })
 
