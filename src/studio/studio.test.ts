@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -857,6 +857,9 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
           })
         })
       const near = (p: { x: number; y: number }, q: { x: number; y: number }, tol: number) => expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(tol)
+      /** drag corners to new spots in one gesture and drop */
+      const drop2 = (s: StudioState, to: [string, number, number][]) =>
+        run(s, { type: 'drag-begin' }, { type: 'drag', vertices: to.map(([id, x, y]) => ({ id, x, y })) }, { type: 'drag-end', ids: to.map(([id]) => id) })
       const lateral = (u: Unit, p: string, a: string, b: string) => {
         const [P, A, B] = [p, a, b].map((id) => u.vertices.find((v) => v.id === id)!)
         return ((P.x - A.x) * (B.y - A.y) - (P.y - A.y) * (B.x - A.x)) / Math.hypot(B.x - A.x, B.y - A.y)
@@ -899,6 +902,39 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         expect(s.chain?.ids).toHaveLength(1)
         s = reducer(s, { type: 'chain-add', at: { x: 5, y: 2, tolM: TOL } })
         expect(s.unit.walls).toHaveLength(2)
+      })
+
+      /** 4×3 box (bottom wall C→D 10"), plus a loose 5" piece p→q at (1,2)→(3,2) */
+      const overlaid = (railing = false) => {
+        const u = build({ A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3], p: [1, 2], q: [3, 2] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', EXTERIOR_M], ['D', 'A', PARTITION_M], ['p', 'q', PARTITION_M]])
+        return { ...u, walls: u.walls.map((w) => (w.id === 'w4' && railing ? { ...w, heightM: 1.1 } : w)) }
+      }
+
+      it('(c) a piece laid over a wall (centre lines 2–3 cm apart) is removed with a toast; its door goes onto the wall at the same place', () => {
+        let s = reducer(initialState(), { type: 'load-unit', unit: overlaid() })
+        s = reducer(s, { type: 'add-opening', wallId: 'w4', t: 0.5, kind: 'door' }) // centred at x = 2
+        const door = s.unit.walls[4].openings[0].id
+        s = drop2(s, [['p', 1, 2.97], ['q', 3, 2.98]])
+        expect(s.toast?.text).toMatch(/Removed a wall drawn over another/)
+        expect(s.unit.walls.map((w) => w.id)).toEqual(['w0', 'w1', 'w2', 'w3'])
+        expect(s.unit.vertices).toHaveLength(4)
+        expect(s.unit.walls[2].openings.map((o) => o.id)).toEqual([door])
+        near(entityPoints(s.unit, door)[0], { x: 2, y: 3 }, 0.03)
+        expect(deriveRooms(s.unit)).toHaveLength(1)
+        expect(clean(s)).toEqual([])
+        // Join walls / load do the same on the whole unit
+        const laid = overlaid()
+        const l = reducer(initialState(), { type: 'load-unit', unit: { ...laid, vertices: laid.vertices.map((v) => (v.id === 'p' ? { ...v, y: 2.97 } : v.id === 'q' ? { ...v, y: 2.98 } : v)) } })
+        expect(l.unit.walls).toHaveLength(4)
+        expect(l.toast?.text).toMatch(/Removed a wall drawn over another/)
+      })
+
+      it('(c) a low railing beside a full wall is not a duplicate; a piece 1 ft off is not either', () => {
+        const rail = drop2(reducer(initialState(), { type: 'load-unit', unit: overlaid(true) }), [['p', 1, 2.97], ['q', 3, 2.98]])
+        expect(rail.unit.walls.some((w) => w.id === 'w4')).toBe(true)
+        expect(rail.toast?.text ?? '').not.toMatch(/Removed/)
+        const apart = drop2(reducer(initialState(), { type: 'load-unit', unit: overlaid() }), [['p', 1, 2.7], ['q', 3, 2.7]])
+        expect(apart.unit.walls).toHaveLength(5)
       })
     })
   })

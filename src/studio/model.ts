@@ -505,16 +505,66 @@ function healStraight(unit: Unit, ids: Iterable<Id>, bentOnly = false): Unit {
 }
 
 /**
- * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): overlaps join (joinOverlaps),
- * then a corner left between two walls on one line heals into one wall (healStraight). `ids` = the corners that
- * moved — healed: they, what they merged into and the far ends of their walls; absent = the whole unit, where only
- * bent corners heal. Returns the same unit when nothing changed; `notes` = the toasts.
+ * A wall drawn over another (founder 2026-10-03: a hand-drawn piece laid over a traced one): two walls of one height
+ * along each other (within 5°), the shorter's two ends within half the thinner's thickness of the longer's centre line
+ * and inside its end blocks, at least half of it beside the longer — the shorter goes (a tie: the one at `ids`), its
+ * openings onto the longer where they fit, its corners with it when nothing else ends there. A low railing beside a
+ * full wall is never a duplicate. `ids`: only pairs with a wall at one of these corners; absent = the whole unit.
+ * Returns the same unit when nothing went; `corners` = the dropped walls' corners still standing.
+ */
+function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; corners: Id[] } {
+  const at = (w: Wall) => !!ids && (ids.includes(w.a) || ids.includes(w.b))
+  let u = unit
+  let dropped = 0
+  const corners: Id[] = []
+  for (let again = true; again; ) {
+    again = false
+    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, u.vertices)]))
+    pairs: for (const [i, K] of u.walls.entries()) {
+      for (const [j, S] of u.walls.entries()) {
+        if (i === j || (ids && !at(K) && !at(S)) || Math.abs(K.heightM - S.heightM) > 0.01) continue
+        const fk = F.get(K.id)!
+        const fs = F.get(S.id)!
+        const tie = at(S) === at(K) ? i < j : at(S)
+        if (fs.lengthM > fk.lengthM || (fs.lengthM === fk.lengthM && !tie) || Math.abs(fk.dir.x * fs.dir.y - fk.dir.y * fs.dir.x) > 0.087) continue
+        const ends = [fs.origin, { x: fs.origin.x + fs.dir.x * fs.lengthM, y: fs.origin.y + fs.dir.y * fs.lengthM }]
+        const s = ends.map((p) => (p.x - fk.origin.x) * fk.dir.x + (p.y - fk.origin.y) * fk.dir.y)
+        const block = K.thicknessM / 2 + MERGE_M
+        const [lo, hi] = [Math.min(...s), Math.max(...s)]
+        const beside = ends.every((p) => Math.abs((p.x - fk.origin.x) * fk.normal.x + (p.y - fk.origin.y) * fk.normal.y) <= Math.min(K.thicknessM, S.thicknessM) / 2 + EPS)
+        if (!beside || lo < -block || hi > fk.lengthM + block || Math.min(hi, fk.lengthM) - Math.max(lo, 0) < fs.lengthM / 2) continue
+        let k = K
+        for (const o of S.openings) {
+          const p = placeOpening(k, fk.lengthM, rebase(o, fs, fk))
+          if (typeof p !== 'string') k = { ...k, openings: [...k.openings, p] }
+        }
+        const walls = u.walls.flatMap((w) => (w === S ? [] : w === K ? [k] : [w]))
+        const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+        corners.push(...[S.a, S.b].filter((id) => used.has(id)))
+        u = { ...u, walls, vertices: u.vertices.filter((v) => used.has(v.id) || (v.id !== S.a && v.id !== S.b)) }
+        dropped++
+        again = true
+        break pairs
+      }
+    }
+  }
+  return { unit: u, dropped, corners }
+}
+
+/**
+ * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
+ * (dropOverlaid), overlaps join (joinOverlaps), then a corner left between two walls on one line heals into one wall
+ * (healStraight). `ids` = the corners that moved — healed: they, what they merged into, the dropped walls' corners and
+ * the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when
+ * nothing changed; `notes` = the toasts.
  */
 function settle(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
-  const j = joinOverlaps(unit, ids)
-  const near = ids && new Set(ids.map((id) => j.merged.get(id) ?? id))
+  const o = dropOverlaid(unit, ids)
+  const j = joinOverlaps(o.unit, ids)
+  const near = ids && new Set([...ids, ...o.corners].map((id) => j.merged.get(id) ?? id))
   const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
-  return { unit: healStraight(j.unit, touched, !ids), merged: j.merged, joined: j.joined, notes: j.refused ? [j.refused] : [] }
+  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...(j.refused ? [j.refused] : [])]
+  return { unit: healStraight(j.unit, touched, !ids), merged: j.merged, joined: j.joined, notes }
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
