@@ -5,7 +5,7 @@ import typeA from '../data/units/type-a.json'
 import typeC from '../data/units/type-c.json'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { curtainSides, pillarParts, raiseHeads, skirtingSpans, wallGeometry } from './details'
+import { buildPlaster, curtainSides, pillarParts, plasterPolygon, PLASTER_M, raiseHeads, skirtingSpans, wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
 
 test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
@@ -113,12 +113,63 @@ test('type-a/c reveals (jambs, heads, sills) move with the face group asked for;
   }
 })
 
+describe('buildPlaster', () => {
+  const rooms = core.deriveRooms(TEST_UNIT)
+  const living = rooms.find((r) => r.id === 'living')!
+  const pieces = buildPlaster(living, TEST_UNIT)
+  const w8 = pieces.find((p) => p.wallId === 'w8')!
+  const pos = w8.geo.attributes.position
+  const pts = Array.from({ length: pos.count }, (_, i) => ({ x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) }))
+
+  test('one coat per wall of the room, every face looking into it', () => {
+    expect(pieces.map((p) => p.wallId).sort()).toEqual([...living.wallIds].sort())
+    for (const p of pieces) {
+      const n = p.geo.attributes.normal
+      const c = p.geo.attributes.position
+      // the normal points from the surface toward the centroid
+      const toC = { x: living.centroid.x - c.getX(0), y: living.centroid.y - c.getZ(0) }
+      expect(n.getX(0) * toC.x + n.getZ(0) * toC.y, p.wallId).toBeGreaterThan(0)
+    }
+  })
+
+  test('sits PLASTER_M in front of the wall face: a 5 mm wall end poking into the room is under it, the 15 mm door casing is not', () => {
+    // w8 is x = 5, 0.127 thick, living on its −x side: its face is at x = 4.9365
+    const face = 5 - 0.127 / 2
+    const xs = pts.map((p) => p.x)
+    expect(Math.min(...xs)).toBeCloseTo(face - PLASTER_M, 6) // the coat
+    expect(Math.max(...xs)).toBeCloseTo(face, 6) // its returns reach the brick
+    expect(pts.filter((p) => Math.abs(p.x - (face - PLASTER_M)) < 1e-6).length).toBeGreaterThan(pts.length / 3)
+    expect(face - 0.005).toBeGreaterThan(face - PLASTER_M)
+    expect(face - 0.015).toBeLessThan(face - PLASTER_M)
+  })
+
+  test('the door is cut out: nothing covers y ∈ (2.4, 3.3) below 2.1 m; the wall above the door and beside it is coated', () => {
+    const tri = (i: number) => [pts[i], pts[i + 1], pts[i + 2]]
+    const covers = (y: number, h: number) => {
+      for (let i = 0; i < pts.length; i += 3) {
+        const t = tri(i)
+        const zs = t.map((p) => p.z), ys = t.map((p) => p.y)
+        if (Math.min(...zs) < y && y < Math.max(...zs) && Math.min(...ys) < h && h < Math.max(...ys)) return true
+      }
+      return false
+    }
+    expect(covers(2.85, 1)).toBe(false)
+    expect(covers(2.85, 2.5)).toBe(true)
+    expect(covers(1, 1)).toBe(true)
+    expect(covers(3.6, 1)).toBe(true)
+  })
+
+  test('the skirting sits on the same polygon', () => {
+    expect(plasterPolygon(living, TEST_UNIT)[0]).not.toEqual(core.roomInnerPolygon(living, TEST_UNIT)[0])
+  })
+})
+
 describe('skirtingSpans', () => {
   const rooms = core.deriveRooms(TEST_UNIT)
 
   test.each(['living', 'bed'])('%s: skirting stops exactly at the door jambs of the shared wall', (id) => {
     const room = rooms.find((r) => r.id === id)!
-    const inner = core.roomInnerPolygon(room, TEST_UNIT)
+    const inner = plasterPolygon(room, TEST_UNIT)
     const edge = room.wallIds.indexOf('w8') // v2 (5,0) → v3 (5,4); door1 spans y ∈ [2.4, 3.3]
     const ys = skirtingSpans(room, TEST_UNIT)
       .filter((s) => s.edge === edge)
