@@ -5,7 +5,8 @@
 import { deriveRooms, formatFeetInches, newId, parseLength, roomInnerPolygon } from '../core'
 import type { Id, Room, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, ReviewItem } from '../trace/types'
-import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState } from './model'
+import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
+import { layoutFor } from './furniture'
 
 /** = trace/ai AI_KEY_STORAGE (a test pins it), spelled out so the Studio chunk never pulls in the trace code */
 export const AI_KEY = 'plotline.geminiKey'
@@ -28,6 +29,10 @@ export type StudioAction =
   | { type: 'auto-trace'; result: AutoTraceResult }
   /** "Looks right": a review item leaves the list */
   | { type: 'dismiss-review'; id: string }
+  /** the Width field while tracing: the chain's next walls get this thickness (m) */
+  | { type: 'chain-thickness'; thicknessM: number }
+  /** a held W / O / R released after it acted: back to `tool` with `selection`, minus what the action removed */
+  | { type: 'spring-back'; tool: Tool; selection: Id[] }
 
 /** An entity as it stands (its fields + where it is); undefined when the unit has no such entity (e.g. an unlabelled room). */
 const entitySig = (u: Unit, id: Id): string | undefined => {
@@ -55,6 +60,15 @@ export function studioReducer(s: StudioState, a: StudioAction): StudioState {
       return s.review ? { ...s, review: { ...s.review, items: s.review.items.filter((i) => i.id !== a.id) } } : s
     case 'restore':
       return { ...reducer(s, a), review: a.draft.review ?? null }
+    case 'chain-thickness':
+      return s.chain && a.thicknessM > 0 ? { ...s, chain: { ...s.chain, thicknessM: a.thicknessM } } : s
+    case 'spring-back': {
+      // = model.ts stillThere (graph entities or pieces of the furniture layer), kept here so the viewer's chunk stays as is
+      const t = reducer(s, { type: 'set-tool', tool: a.tool })
+      let pieces: Set<Id> | undefined
+      const selection = a.selection.filter((id) => findEntity(t.unit, id) || (pieces ??= new Set(layoutFor(t.unit, deriveRooms(t.unit)).map((p) => p.id))).has(id))
+      return { ...t, selection }
+    }
     default:
       return reducer(s, a) // load-unit / reset start from initialState: no review
   }

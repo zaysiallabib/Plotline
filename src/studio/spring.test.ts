@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { initialState, reducer, type Action, type StudioState } from './model'
+import { initialState, type StudioState } from './model'
+import { studioReducer as reducer, type StudioAction as Action } from './review'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
