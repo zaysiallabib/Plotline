@@ -158,6 +158,11 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
       )}
       <section>
         <h3>{issues.length ? `Issues (${issues.length})` : 'Issues'}</h3>
+        {unit.walls.length > 1 && (
+          <button className="link" title="Every wall end inside another wall's body is joined there and every crossing is split — one undo step" onClick={() => dispatch({ type: 'join-walls' })}>
+            Join walls (overlaps and crossings)
+          </button>
+        )}
         {issues.length === 0 ? (
           <p className="muted">No issues. Ready to export.</p>
         ) : (

@@ -13,6 +13,7 @@ import {
   lengthMoves,
   normalizeUnit,
   openingAt,
+  openSpotsNear,
   printedSizeOf,
   reducer,
   slug,
@@ -613,7 +614,12 @@ export default function StudioApp() {
       const st = stateRef.current
       const existing = labelId ? st.unit.roomLabels.find((l) => l.id === labelId) : undefined
       const r = roomAt(existing ?? m, rooms, st.unit)
-      if (!r && !existing) return toast('Click inside a closed room. Is a corner not joined?')
+      if (!r && !existing) {
+        // name the nearest open spot and ring it (founder: a hand-fixed room that looks closed but is not)
+        const spot = openSpotsNear(st.unit, rooms, m)[0]
+        if (spot) setMark(spot.at)
+        return toast(spot ? `Not a closed room: ${spot.why} (ringed). Join walls (panel) fixes overlaps and crossings.` : 'Click inside a closed room. Is a corner not joined?')
+      }
       setPopover({
         x: existing?.x ?? m.x,
         y: existing?.y ?? m.y,
