@@ -6,11 +6,11 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
-import { snapMove, snapOpeningOffset } from './snap'
+import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { doorClearZones, furnish, quadsOverlap } from '../furnish/presets'
@@ -722,6 +722,38 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     expect(snapMove(ends(0.5, 0.5), s.unit, 0.1).snap.kind).toBe('free')
   })
 
+  it('in line: an end within 3 cm of a wall\'s line past its end snaps onto it; corner and body snaps first; a chain drawn on from its end follows it', () => {
+    // a diagonal wall (0,0)→(3,1) (not on the 45° rays) with a loose stub elsewhere
+    const s = poly([[0, 0], [3, 1], [3, 4], [0, 4]])
+    const L = Math.hypot(3, 1)
+    const dir = { x: 3 / L, y: 1 / L }, nrm = { x: -dir.y, y: dir.x }
+    const off = (along: number, side: number) => ({ x: dir.x * along + nrm.x * side, y: dir.y * along + nrm.y * side })
+    const lateral = (p: { x: number; y: number }) => p.x * nrm.x + p.y * nrm.y
+    const a = snapPoint(off(L + 1, 0.02), s.unit, { tolM: 0.1 })
+    expect(a.kind).toBe('in line')
+    expect(lateral(a)).toBeCloseTo(0, 9)
+    expect(a.x * dir.x + a.y * dir.y).toBeCloseTo(L + 1, 9) // slid sideways only
+    expect(snapPoint(off(L + 1, 0.04), s.unit, { tolM: 0.1 }).kind).toBe('free') // 4 cm off: not "a hair"
+    expect(snapPoint(off(L / 2, 0.02), s.unit, { tolM: 0.1 }).kind).toBe('wall') // beside the wall: its body
+    expect(snapPoint(off(L + 0.05, 0.02), s.unit, { tolM: 0.1 }).kind).toBe('vertex') // at its end: the corner
+    expect(snapPoint(off(-1, -0.02), s.unit, { tolM: 0.1 }).kind).toBe('in line') // past the other end too
+    // the dragged corner's own walls never pull it (exclude): (3,1) dragged off the line is not snapped back by them
+    const c = at(s, 3, 1)!
+    expect(snapPoint(off(L + 1, 0.02), s.unit, { tolM: 0.1, exclude: [c.id] }).kind).not.toBe('in line')
+    // drawing on from (3,1): the ray would round to 0° or 45°; within 1.5° of the wall's line it follows the line
+    const d = snapPoint(off(L + 2, 0.02), s.unit, { tolM: 0.1, from: at(s, 3, 1)! })
+    expect(d.kind).toBe('in line')
+    expect(lateral(d)).toBeCloseTo(0, 9)
+    // an axis wall's line keeps its guide (the drag of a whole wall reads guides: snapMove is unchanged)
+    const box = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const h = snapPoint({ x: 5, y: 0.02 }, box.unit, { tolM: 0.1 })
+    expect(h).toMatchObject({ kind: 'in line', x: 5, y: 0 })
+    expect(h.guides).toContainEqual({ axis: 'y', at: 0 })
+    // axis align takes the nearest corner's x, not the first one listed (a neighbour a few cm off made 179° corners)
+    const two = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[5.06, -2], [7, -2]], [[5, -4], [7, -4]])
+    expect(snapPoint({ x: 5.01, y: 1.5 }, two.unit, { tolM: 0.1 })).toMatchObject({ kind: 'aligned x', x: 5 })
+  })
+
   it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
     let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 1], [2, 2]]) // a loose stub inside
     const tip = at(s, 2, 2)!
@@ -884,6 +916,125 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         const s = reducer(initialState(), { type: 'load-unit', unit: u as unknown as Unit })
         expect(s.history.past).toEqual([])
       }
+    })
+
+    describe('hand-fix precision (founder 2026-10-03: a wedge between two nearly collinear hand-fixed pieces, a door on a stub)', () => {
+      /** each opening's hinge point on the plan and the side it swings to (+1 / −1 in plan y, or x on an x-normal wall) */
+      const poses = (u: Unit) =>
+        u.walls.flatMap((w) => {
+          const f = wallFrame(w, u.vertices)
+          return w.openings.map((o) => {
+            const hu = o.hinge === 'b' ? o.offsetM + o.widthM : o.offsetM
+            return { id: o.id, x: f.origin.x + f.dir.x * hu, y: f.origin.y + f.dir.y * hu, side: (o.swing === 'out' ? 1 : -1) * Math.sign(Math.abs(f.normal.y) > 0.5 ? f.normal.y : f.normal.x) }
+          })
+        })
+      const near = (p: { x: number; y: number }, q: { x: number; y: number }, tol: number) => expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(tol)
+      /** drag corners to new spots in one gesture and drop */
+      const drop2 = (s: StudioState, to: [string, number, number][]) =>
+        run(s, { type: 'drag-begin' }, { type: 'drag', vertices: to.map(([id, x, y]) => ({ id, x, y })) }, { type: 'drag-end', ids: to.map(([id]) => id) })
+      const lateral = (u: Unit, p: string, a: string, b: string) => {
+        const [P, A, B] = [p, a, b].map((id) => u.vertices.find((v) => v.id === id)!)
+        return ((P.x - A.x) * (B.y - A.y) - (P.y - A.y) * (B.x - A.x)) / Math.hypot(B.x - A.x, B.y - A.y)
+      }
+
+      it('(b) a ~1° corner after a drop heals into one straight wall; a door on the reversed piece keeps its hinge point and swing side', () => {
+        // A(0,0)→B(2,0); a loose piece C→B whose end C is dropped 2.6 cm off A–B's line, 1.5 m on (≈ 1°)
+        const u = build({ A: [0, 0], B: [2, 0], C: [3.5, 0.3] }, [['A', 'B', PARTITION_M], ['C', 'B', PARTITION_M]])
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = reducer(s, { type: 'add-opening', wallId: 'w1', t: 0.5, kind: 'door' })
+        s = run(s, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: 'C', x: 3.5, y: 0.026 }] })
+        const before = poses(s.unit)[0]
+        s = reducer(s, { type: 'drag-end', ids: ['C'] })
+        expect(s.unit.walls).toHaveLength(1)
+        expect(s.unit.walls[0]).toMatchObject({ id: 'w0', a: 'A', b: 'C' })
+        expect(s.unit.vertices.map((v) => v.id).sort()).toEqual(['A', 'C'])
+        const after = poses(s.unit)[0]
+        near(after, before, 0.01) // the corner moved ≤ 1.5 cm sideways: the hinge with it, never along
+        expect(after.side).toBe(before.side)
+        expect(reducer(s, { type: 'undo' }).unit.walls).toHaveLength(2) // the drag and its heal: one undo entry
+      })
+
+      it('(b) two widths through a bent corner are only straightened (each keeps its own); an exact straight corner on a whole-unit pass keeps its walls', () => {
+        const u = build({ A: [0, 0], B: [2, 0.012], C: [3.5, 0], X: [0, 2], Y: [2, 2], Z: [4, 2] }, [['A', 'B', EXTERIOR_M], ['B', 'C', PARTITION_M], ['X', 'Y', PARTITION_M], ['Y', 'Z', PARTITION_M]])
+        expect(Math.abs(lateral(u, 'B', 'A', 'C'))).toBeCloseTo(0.012, 6)
+        const s = reducer(initialState(), { type: 'load-unit', unit: u }) // load = join-walls: the whole unit
+        expect(s.unit.walls).toHaveLength(4)
+        expect(lateral(s.unit, 'B', 'A', 'C')).toBeCloseTo(0, 9) // B onto the line A–C: no 179° corner left
+        expect(s.unit.vertices.find((v) => v.id === 'Y')).toMatchObject({ x: 2, y: 2 }) // straight already: untouched
+        expect(Math.abs(lateral(reducer(s, { type: 'undo' }).unit, 'B', 'A', 'C'))).toBeCloseTo(0.012, 6)
+      })
+
+      it('(b) a wall drawn on from a free wall end along its line becomes one wall with it; the chain goes on', () => {
+        const b = build({ A: [0, 0], B: [3, 0] }, [['A', 'B', PARTITION_M]])
+        const u = { ...b, walls: b.walls.map((w) => ({ ...w, heightM: 3.048 })) } // the Wall tool's height
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = run(s, { type: 'set-scale', pxPerM: 100 }, { type: 'chain-start', at: { x: 3, y: 0, tolM: TOL } }, { type: 'chain-add', at: { x: 5, y: 0, tolM: TOL } })
+        expect(s.unit.walls).toHaveLength(1)
+        expect(wallFrame(s.unit.walls[0], s.unit.vertices).lengthM).toBeCloseTo(5)
+        expect(s.chain?.ids).toHaveLength(1)
+        s = reducer(s, { type: 'chain-add', at: { x: 5, y: 2, tolM: TOL } })
+        expect(s.unit.walls).toHaveLength(2)
+      })
+
+      /** 4×3 box (bottom wall C→D 10"), plus a loose 5" piece p→q at (1,2)→(3,2) */
+      const overlaid = (railing = false) => {
+        const u = build({ A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3], p: [1, 2], q: [3, 2] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', EXTERIOR_M], ['D', 'A', PARTITION_M], ['p', 'q', PARTITION_M]])
+        return { ...u, walls: u.walls.map((w) => (w.id === 'w4' && railing ? { ...w, heightM: 1.1 } : w)) }
+      }
+
+      it('(c) a piece laid over a wall (centre lines 2–3 cm apart) is removed with a toast; its door goes onto the wall at the same place', () => {
+        let s = reducer(initialState(), { type: 'load-unit', unit: overlaid() })
+        s = reducer(s, { type: 'add-opening', wallId: 'w4', t: 0.5, kind: 'door' }) // centred at x = 2
+        const door = s.unit.walls[4].openings[0].id
+        s = drop2(s, [['p', 1, 2.97], ['q', 3, 2.98]])
+        expect(s.toast?.text).toMatch(/Removed a wall drawn over another/)
+        expect(s.unit.walls.map((w) => w.id)).toEqual(['w0', 'w1', 'w2', 'w3'])
+        expect(s.unit.vertices).toHaveLength(4)
+        expect(s.unit.walls[2].openings.map((o) => o.id)).toEqual([door])
+        near(entityPoints(s.unit, door)[0], { x: 2, y: 3 }, 0.03)
+        expect(deriveRooms(s.unit)).toHaveLength(1)
+        expect(clean(s)).toEqual([])
+        // Join walls / load do the same on the whole unit
+        const laid = overlaid()
+        const l = reducer(initialState(), { type: 'load-unit', unit: { ...laid, vertices: laid.vertices.map((v) => (v.id === 'p' ? { ...v, y: 2.97 } : v.id === 'q' ? { ...v, y: 2.98 } : v)) } })
+        expect(l.unit.walls).toHaveLength(4)
+        expect(l.toast?.text).toMatch(/Removed a wall drawn over another/)
+      })
+
+      it('(c) a low railing beside a full wall is not a duplicate; a piece 1 ft off is not either', () => {
+        const rail = drop2(reducer(initialState(), { type: 'load-unit', unit: overlaid(true) }), [['p', 1, 2.97], ['q', 3, 2.98]])
+        expect(rail.unit.walls.some((w) => w.id === 'w4')).toBe(true)
+        expect(rail.toast?.text ?? '').not.toMatch(/Removed/)
+        const apart = drop2(reducer(initialState(), { type: 'load-unit', unit: overlaid() }), [['p', 1, 2.7], ['q', 3, 2.7]])
+        expect(apart.unit.walls).toHaveLength(5)
+      })
+
+      it('(d) a wall shortened under its door: the door moves onto the wall continuing it (same place), else it goes with a toast; a vent window on a short wall stays', () => {
+        // A(0,0)→B(3,0)→C(6,0) with a T at B (a partition B→T), so B never heals; a door on A–B 0.2 m from A
+        const u = build({ A: [0, 0], B: [3, 0], C: [6, 0], T: [3, 2] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['B', 'T', PARTITION_M]])
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = reducer(s, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' })
+        const door = s.unit.walls[0].openings[0]
+        s = drop2(s, [['A', 2.5, 0]]) // A–B is 0.5 m now: the 0.91 m door hangs past B
+        expect(s.unit.walls[0].openings).toEqual([])
+        const moved = s.unit.walls[1].openings
+        expect(moved.map((o) => o.id)).toEqual([door.id])
+        expect(moved[0].offsetM).toBeCloseTo(0, 9) // flush against B, where it hung over
+        expect(s.toast?.text ?? '').not.toMatch(/Door wider/)
+        expect(clean(s).filter((c) => c.includes('opening'))).toEqual([])
+        // nowhere to go (the continuing wall holds a window there already): removed, with the toast
+        let t = reducer(initialState(), { type: 'load-unit', unit: u })
+        t = run(t, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' }, { type: 'add-opening', wallId: 'w1', t: 0.2, kind: 'window' })
+        t = drop2(t, [['A', 2.5, 0]])
+        expect(t.unit.walls.flatMap((w) => w.openings.map((o) => o.kind))).toEqual(['window'])
+        expect(t.toast?.text).toBe('Door wider than its wall — removed; redraw it on the long wall')
+        // the typed length does the same
+        let l = reducer(initialState(), { type: 'load-unit', unit: u })
+        l = run(l, { type: 'add-opening', wallId: 'w0', t: 0.2, kind: 'door' }, { type: 'set-wall-length', id: 'w0', lengthM: 0.5 })
+        expect(l.unit.walls[1].openings).toHaveLength(1)
+        // a 0.35 m vent on Sheltech A's 0.53 m wall is no door: loading keeps it (the five hand traces load unchanged)
+        expect(reducer(initialState(), { type: 'load-unit', unit: sheltechA as unknown as Unit }).unit.walls.find((w) => w.id === 'w_t3_n2')!.openings).toHaveLength(1)
+      })
     })
   })
 
