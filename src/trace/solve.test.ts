@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -129,6 +129,43 @@ describe('marks: stairs, glazing profile, glass colour', () => {
     const m = glassMask({ width: w, height: h, data })
     expect(m[5 * w + 30]).toBe(1)
     expect(m[35 * w + 30]).toBe(0)
+  })
+})
+
+describe('the graph: overlap = joined (founder 2026-10-03)', () => {
+  test('a wall end inside another wall\'s body, off its centre line, joins at the projection; an L whose ends stop inside each other closes; nothing tilts', () => {
+    const k = 50, blank: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k, par = 0.127 * k
+    const wall = (a: Px, b: Px, th: number) => ({ a, b, thicknessPx: th, conf: 1 })
+    const trace = {
+      openings: [],
+      walls: [
+        wall(p(0, 0), p(3.95, 0), ext), // top: stops 5 cm short of the right wall's centre line (inside its body)
+        wall(p(4, 0.08), p(4, 3), ext), // right: starts 8 cm below the top's centre line (inside its end block)
+        wall(p(4, 3), p(0, 3), ext),
+        wall(p(0, 3), p(0, 0), ext),
+        wall(p(2.6, 0), p(2.6, 3 - 0.1), par), // partition: stops 0.1 m short of the bottom centre line, off-centre along it
+      ],
+    }
+    const graph = (on: boolean) => {
+      const prev = KNOBS.joinBodies
+      KNOBS.joinBodies = on
+      try {
+        return buildGraph(trace, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+      } finally {
+        KNOBS.joinBodies = prev
+      }
+    }
+    expect(graph(false).rooms).toHaveLength(0)
+    const d = graph(true)
+    expect(d.rooms.map((r) => r.areaSqm.toFixed(1)).sort()).toEqual(['4.2', '7.8'])
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    for (const w of d.unit.walls) {
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      expect(Math.min(Math.abs(a.x - b.x), Math.abs(a.y - b.y))).toBeLessThan(1e-9) // axis-aligned
+    }
+    expect(validate(d.unit).filter((i) => i.level === 'error')).toEqual([])
   })
 })
 

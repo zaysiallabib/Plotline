@@ -107,6 +107,8 @@ export const KNOBS = {
    * true (or the closer) brings the window rules back.
    */
   windows: false,
+  /** tracks: a wall end inside another wall's body has ended there (joinInBodies) */
+  joinBodies: true,
 }
 
 type Pt = { x: number; y: number }
@@ -678,6 +680,50 @@ function node(segs: Seg[], tol: number): Seg[] {
   return [...seen.values()]
 }
 
+/**
+ * Overlap = joined (founder 2026-10-03: "if a wall ends inside another — not necessarily at the middle point — it has
+ * ended there"). On noded segs: a corner lying inside another wall's BODY (within its half thickness + 1 px of the
+ * centre line, onto the segment) gets a connector along the normal onto that centre line — the next node() splits the
+ * wall there and the two share the corner (a connector in line with the corner's wall merges into it: the wall just
+ * reaches the centre line). A free end of that wall within its end block moves onto the meeting point instead (an L
+ * whose ends stop short of / run past each other inside the bodies: no stub). A connector, not a moved corner: the
+ * corner's other walls keep their angle and a door's jamb stays as drawn. Never onto an opening's piece, never from a
+ * corner with a wall near-parallel to the other one (two parallel walls overlapping, not an end), never onto a wall
+ * one step away (the corner's own short piece). Crossings: node() splits them already.
+ */
+function joinInBodies(segs: Seg[], px: number): Seg[] {
+  const deg = degrees(segs)
+  const pts = new Map<string, Seg[]>()
+  for (const s of segs) for (const p of [s.a, s.b]) pts.set(ekey(p), [...(pts.get(ekey(p)) ?? []), s])
+  const out = segs.slice()
+  const sin10 = Math.sin((10 * Math.PI) / 180)
+  for (const [k, at] of pts) {
+    const ends = at.map((s) => (ekey(s.a) === k ? 'a' : ekey(s.b) === k ? 'b' : null))
+    if (ends.includes(null)) continue // an end moved below
+    const p = at[0][ends[0]!]
+    const nb = new Set([k, ...at.map((s, i) => ekey(ends[i] === 'a' ? s.b : s.a))])
+    const dirs = at.filter((s) => d2(s.a, s.b) > 1e-6).map((s) => unit(sub(s.b, s.a)))
+    let best: { t: Seg; q: Pt; d: number; move?: 'a' | 'b' } | null = null
+    for (const t of segs) {
+      if (t.op || nb.has(ekey(t.a)) || nb.has(ekey(t.b))) continue
+      const L = d2(t.a, t.b)
+      if (L < 1e-6) continue
+      const u = unit(sub(t.b, t.a))
+      const s = dot(sub(p, t.a), u), d = Math.abs(crs(u, sub(p, t.a)))
+      if (d > t.th / 2 + px || (best && d >= best.d) || dirs.some((v) => Math.abs(crs(u, v)) < sin10)) continue
+      const side = s < L / 2 ? 'a' : 'b', toEnd = side === 'a' ? s : L - s
+      const onT = { x: t.a.x + u.x * s, y: t.a.y + u.y * s }
+      if (deg.get(ekey(t[side])) === 1 && toEnd <= t.th / 2 + px && toEnd >= -(t.th / 2 + px)) best = { t, q: onT, d, move: side }
+      else if (toEnd >= 0.002) best = { t, q: onT, d }
+      else if (toEnd >= 0) best = { t, q: t[side], d } // at the wall's corner
+    }
+    if (!best) continue
+    if (best.move) best.t[best.move] = best.q
+    const w = at.find((s) => !s.op) ?? at[0]
+    if (d2(p, best.q) > 0.002) out.push({ a: p, b: { ...best.q }, th: w.th, conf: w.conf, ...(w.heightM ? { heightM: w.heightM } : {}) })  }
+  return out
+}
+
 /** Drop dangling walls shorter than spurM (thinning hairs, text left-overs), repeatedly. */
 function pruneSpurs(segs: Seg[]): Seg[] {
   for (;;) {
@@ -874,7 +920,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const W = gray.width, H = gray.height
   let resumed: Resumed[] = []
   // (tracks: every point is exact — node at a hair's width, else a jog's two corners would merge and tilt a wall)
-  if (tracks) segs = node(segs, 0.002)
+  if (tracks) segs = KNOBS.joinBodies ? joinInBodies(node(segs, 0.002), 1 / pxPerM) : node(segs, 0.002)
   else {
     snapAxes(segs, th0)
     joinEnds(segs)
