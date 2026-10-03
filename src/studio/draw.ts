@@ -230,6 +230,10 @@ export function draw(a: DrawArgs): void {
     ctx.setLineDash([])
   }
 
+  // columns: a filled block in the wall ink, under the walls (walls keep their own lines through / into them)
+  ctx.fillStyle = C.ink
+  for (const p of state.unit.pillars ?? []) ctx.fillRect(p.x - p.wM / 2, p.y - p.hM / 2, p.wM, p.hM)
+
   // walls
   for (const w of state.unit.walls) {
     const f = wallFrame(w, vs)

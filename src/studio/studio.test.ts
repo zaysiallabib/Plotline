@@ -329,6 +329,10 @@ describe('studio reducer', () => {
     expect(isUnit({ name: 'x', vertices: [{ id: 'a', x: 0 }], walls: [] })).toBe(false) // vertex without y
     expect(isUnit({ name: 'x', vertices: [{ id: 'a', x: 0, y: 0 }], walls: [{ id: 'w', a: 'a', b: 'zzz' }] })).toBe(false) // missing vertex
     expect(isUnit({ name: 'x', vertices: [], walls: [], roomLabels: [{ id: 'l', name: 'r' }] })).toBe(false) // label without x/y
+    // columns (auto-trace, optional): kept through normalizeUnit, a broken one rejects
+    expect(isUnit({ name: 'x', vertices: [], walls: [], pillars: [{ id: 'p', x: 1, y: 1, wM: 0.4, hM: 1 }] })).toBe(true)
+    expect(isUnit({ name: 'x', vertices: [], walls: [], pillars: [{ id: 'p', x: 1, y: 1 }] })).toBe(false)
+    expect(normalizeUnit({ ...(JSON.parse('{"name":"x","vertices":[],"walls":[]}') as Unit), pillars: [{ id: 'p', x: 1, y: 1, wM: 0.4, hM: 1 }] }).pillars?.length).toBe(1)
     const raw = {
       name: 'x',
       vertices: [

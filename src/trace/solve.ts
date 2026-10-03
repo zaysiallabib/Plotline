@@ -1847,6 +1847,21 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   for (const r of review) r.at = { x: r.at.x - shift.x, y: r.at.y - shift.y } // items raised before the shift
   draft.unit.planImage = { src: '', pxPerM, originPx }
   const u = draft.unit
+  // the flat's columns (founder 2026-10-03, pillars first): those a draft wall runs into or through — each its own block
+  {
+    const VP = new Map(u.vertices.map((v) => [v.id, { x: originPx.x + v.x * pxPerM, y: originPx.y + v.y * pxPerM }]))
+    const hits = (b: { x0: number; y0: number; x1: number; y1: number }) =>
+      u.walls.some((w) => {
+        const a = VP.get(w.a)!, c = VP.get(w.b)!, r = (w.thicknessM * pxPerM) / 2
+        for (let t = 0; t <= 1; t += 1 / 32) {
+          const x = a.x + (c.x - a.x) * t, y = a.y + (c.y - a.y) * t
+          if (x >= b.x0 - r && x <= b.x1 + r && y >= b.y0 - r && y <= b.y1 + r) return true
+        }
+        return false
+      })
+    const ps = (trace.tracks?.lines.pillars ?? []).filter(hits).map((b) => ({ id: newId(), x: (b.cx - originPx.x) / pxPerM, y: (b.cy - originPx.y) / pxPerM, wM: (b.x1 - b.x0) / pxPerM, hM: (b.y1 - b.y0) / pxPerM }))
+    if (ps.length) u.pillars = ps
+  }
   const rooms = deriveRooms(u)
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const G = new Map(draft.walls.map((w) => [w.id, w]))
