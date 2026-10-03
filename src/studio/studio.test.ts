@@ -831,13 +831,25 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(issues(w).filter((c) => c.includes('walls-intersect'))).toEqual([])
     })
 
-    it('an opening on the split point refuses the join (toast), the end stays where dropped', () => {
+    it('an opening on the split point is trimmed back to the joining wall\'s face: the longer side kept (≥ 0.3 m), else it goes', () => {
       let { s } = boxed()
       const tip = at(s, 2, 2)!
-      s = reducer(s, { type: 'add-opening', wallId: wallAt(s, [4, 3], [0, 3]).id, t: 0.5, kind: 'door' }) // x 1.54–2.46
-      s = drop(s, tip.id, 2.2, 2.92)
-      expect(s.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.2, y: 2.92 })
-      expect(s.toast?.text).toMatch(/opening/i)
+      const bottom = wallAt(s, [4, 3], [0, 3]).id
+      // a 3'-0" door centred on the bottom wall: 1.543–2.457 m from (4, 3), i.e. x 2.457 … 1.543
+      const t = drop(reducer(s, { type: 'add-opening', wallId: bottom, t: 0.5, kind: 'door' }), tip.id, 2.2, 2.92)
+      expect(t.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.2, y: 3 }) // joined, not refused
+      const [door, ...rest] = t.unit.walls.flatMap((w) => w.openings.map((o) => ({ o, f: wallFrame(w, t.unit.vertices) })))
+      expect(rest).toEqual([])
+      // kept: the side away from (4, 3) (0.59 m against 0.19 m), ending at the 5" partition's face (x 2.2 − 0.064)
+      expect(door.o.widthM).toBeCloseTo(0.594, 3)
+      const edge = [door.o.offsetM, door.o.offsetM + door.o.widthM].map((m) => door.f.origin.x + door.f.dir.x * m)
+      expect(Math.max(...edge)).toBeCloseTo(2.2 - 0.0636, 3)
+      expect(Math.min(...edge)).toBeCloseTo(4 - 2.457, 3)
+      expect(t.toast?.text).toMatch(/1 opening trimmed/)
+      // a 0.5 m window centred on the join: 0.19 m either side is under 0.3 m — it goes
+      const w = drop(reducer(s, { type: 'add-opening', wallId: bottom, t: 0.45, kind: 'window', widthM: 0.5 }), tip.id, 2.2, 2.92)
+      expect(w.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.2, y: 3 })
+      expect(w.unit.walls.flatMap((x) => x.openings)).toEqual([])
     })
 
     it('Import / auto-trace: a unit with overlaps is joined once, Ctrl+Z gives it as it was', () => {
@@ -908,7 +920,7 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(reducer(s, { type: 'undo' }).unit).toBe(raw)
     })
 
-    it('a loose end short of a wall (within max(0.15 m, 1.5 × its thickness) of its face, along its own line) joins on load / Join walls: T, L, never through, never on an opening', () => {
+    it('a loose end short of a wall (within max(0.15 m, 1.5 × its thickness) of its face, along its own line) joins on load / Join walls: T, L, never through, an opening there trimmed', () => {
       const ends = (u: Unit) => u.vertices.filter((v) => u.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1).map((v) => v.id)
       const load = (u: Unit) => reducer(initialState(), { type: 'load-unit', unit: u })
       // box 4×3 of 5" walls; a partition from the top down to p, 10 cm short of the bottom wall's face (y 2.9365)
@@ -926,12 +938,16 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       // reach — the nearest takes the end
       const thru = load(build({ ...box, m: [2, 0], p: [2, 2.78], q: [1, 2.86], r: [3, 2.86] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M], ['q', 'r', PARTITION_M]]))
       expect(thru.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 2.86 })
-      // an opening on the split point refuses (toast), the end stays where it was
+      // an opening on the split point: joined, the slider cut back to the partition's face (a tie: the side toward C kept)
       const door = build({ ...box, m: [2, 0], p: [2, 2.84] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M]])
       door.walls[3].openings = [{ id: 'dr', kind: 'slider', offsetM: 1, widthM: 2, heightM: 2.1, sillM: 0 }] // C→D, x 3…1
-      const refused = load(door)
-      expect(refused.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 2.84 })
-      expect(refused.toast?.text).toMatch(/opening/i)
+      const trimmed = load(door)
+      expect(trimmed.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 3 })
+      const [sl, ...more] = trimmed.unit.walls.flatMap((w) => w.openings)
+      expect(more).toEqual([])
+      expect(sl).toMatchObject({ id: 'dr', offsetM: 1 })
+      expect(sl.widthM).toBeCloseTo(1 - PARTITION_M / 2, 9)
+      expect(trimmed.toast?.text).toMatch(/Joined 1 overlapping \/ crossing wall \(1 opening trimmed\)/)
       // an L: two free ends 10 cm and 8 cm short of where their lines cross both come there; nothing tilts
       const l = load(build({ A: [0, 0], E: [1.9, 0], F: [2, 0.08], C: [2, 3], D: [0, 3] }, [['A', 'E', PARTITION_M], ['F', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]]))
       expect(ends(l.unit)).toEqual([])
@@ -944,6 +960,39 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       const lj = load({ ...low, vertices: low.vertices.map((v) => (v.id === 'p' ? { ...v, y: 3 - 0.26 - 0.1 } : v)) })
       expect(lj.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 3 })
       expect(lj.unit.walls.find((w) => w.id === 'w5')!.heightM).toBe(1.1)
+    })
+
+    it('junk stubs go on load / Join walls (one undo step, toast): a nib ≤ 0.35 m past a corner with nothing ahead, a stub inside a pillar; never a longer nib, a low wall ≥ 0.35 m, one with an opening, or one whose corner would come loose; never on a drag', () => {
+      const ids = (u: Unit) => u.walls.map((w) => w.id)
+      // box of 5" walls split by a partition m→q→n at x = 2; extra walls appended per case, w6 onwards
+      const base = { A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3], m: [2, 0], q: [2, 1.5], n: [2, 3] } as Record<string, [number, number]>
+      const box: [string, string, number][] = [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'n', PARTITION_M], ['n', 'D', PARTITION_M], ['D', 'A', PARTITION_M], ['m', 'q', PARTITION_M], ['q', 'n', PARTITION_M]]
+      const with_ = (pts: Record<string, [number, number]>, extra: [string, string, number][], patch: (u: Unit) => Unit = (u) => u) => patch(build({ ...base, ...pts }, [...box, ...extra]))
+      // a 0.2 m nib past corner B (the bottom wall carried on), nothing ahead: removed with its corner
+      const raw = with_({ N: [4.2, 0] }, [['B', 'N', PARTITION_M]])
+      const s = reducer(initialState(), { type: 'load-unit', unit: raw })
+      expect(ids(s.unit)).toEqual(ids(raw).slice(0, 8))
+      expect(s.unit.vertices.some((v) => v.id === 'N')).toBe(false)
+      expect(s.toast?.text).toBe('Removed 1 stub (short wall ends sticking out)')
+      expect(s.history.past).toHaveLength(1)
+      expect(ids(reducer(s, { type: 'undo' }).unit)).toEqual(ids(raw)) // one undo step back to the file
+      // a 0.5 m nib stays (a wall someone meant)
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: with_({ N: [4.5, 0] }, [['B', 'N', PARTITION_M]]) }).unit)).toHaveLength(9)
+      // a 0.45 m stub off the partition, both ends inside a pillar's block: removed; as a 1.1 m railing it stays
+      const pillar = (u: Unit): Unit => ({ ...u, pillars: [{ id: 'P', x: 2.2, y: 1.5, wM: 0.6, hM: 0.6 }] })
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: with_({ S: [2.45, 1.5] }, [['q', 'S', PARTITION_M]], pillar) }).unit)).toHaveLength(8)
+      const rail = with_({ S: [2.45, 1.5] }, [['q', 'S', PARTITION_M]], (u) => pillar({ ...u, walls: u.walls.map((w) => (w.id === 'w8' ? { ...w, heightM: 1.1 } : w)) }))
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: rail }).unit)).toHaveLength(9)
+      // a 0.3 m nib carrying a vent stays
+      const vent = with_({ N: [4.3, 0] }, [['B', 'N', PARTITION_M]], (u) => ({ ...u, walls: u.walls.map((w) => (w.id === 'w8' ? { ...w, openings: [{ id: 'v', kind: 'window' as const, offsetM: 0, widthM: 0.3, heightM: 0.6, sillM: 1.5 }] } : w)) }))
+      expect(ids(reducer(initialState(), { type: 'load-unit', unit: vent }).unit)).toHaveLength(9)
+      // a 0.2 m piece off a corner of only one other wall (removing it would leave that wall loose) stays
+      const lone = build({ A: [0, 0], B: [3, 0], N: [3.2, 0.2] }, [['A', 'B', PARTITION_M], ['B', 'N', PARTITION_M]])
+      expect(reducer(initialState(), { type: 'load-unit', unit: lone }).unit.walls).toHaveLength(2)
+      // a drag leaving a nib: kept (whole-unit pass only)
+      let d = reducer(initialState(), { type: 'load-unit', unit: with_({ N: [4.5, 0] }, [['B', 'N', PARTITION_M]]) })
+      d = run(d, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: 'N', x: 4.2, y: 0 }] }, { type: 'drag-end', ids: ['N'] })
+      expect(ids(d.unit)).toHaveLength(9)
     })
 
     it('openSpotsNear names why a click is in no room: an end short of a wall, a crossing, two corners apart; nearest first', () => {
