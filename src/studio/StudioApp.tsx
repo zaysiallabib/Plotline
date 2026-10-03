@@ -31,11 +31,14 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
+import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
 import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 const PREVIEW_KEY = 'plotline.preview'
+/** the staff key that lets this browser publish share links (from the migration's output); asked for once */
+const PUBLISH_KEY = 'plotline.staffKey'
 const SNAP_PX = 10
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const TOOLS: [Tool, string, string][] = [
@@ -490,6 +493,33 @@ export default function StudioApp() {
     const w = window.open('/u/preview', '_blank')
     if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
   }, [errors, toast])
+
+  // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
+  // link (append-only): a client keeps seeing what he was sent. The staff key is asked for once per browser.
+  const [sharing, setSharing] = useState(false)
+  const share = useCallback(async () => {
+    let key = localStorage.getItem(PUBLISH_KEY) ?? ''
+    if (!key) {
+      key = window.prompt('Staff key (printed when the Supabase migration ran):')?.trim() ?? ''
+      if (!key) return
+      localStorage.setItem(PUBLISH_KEY, key)
+    }
+    setSharing(true)
+    try {
+      const st = stateRef.current
+      const unit = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
+      const url = `${location.origin}/s/${await publishUnit(unit, key)}`
+      await navigator.clipboard.writeText(url).catch(() => {})
+      toast(`Link copied: ${url}`, { label: 'Open', onClick: () => window.open(url, '_blank') })
+    } catch (e) {
+      if (e instanceof RpcError && (e.status === 401 || e.status === 403)) {
+        localStorage.removeItem(PUBLISH_KEY)
+        toast('Wrong staff key — click Share again to retype it.')
+      } else toast(`Could not share: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setSharing(false)
+    }
+  }, [toast])
 
   // ----- auto-trace: pick mode starts the worker reading the sheet at once (text, walls, the whole graph); a hover
   // previews the flat a click there picks; the click picks it on the same prepared sheet → the result replaces the unit
@@ -1282,6 +1312,11 @@ export default function StudioApp() {
         <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
+        {sharingConfigured && (
+          <button disabled={sharing} title="Publish this draft and copy a buyer link (/s/…) — every click makes a new link" onClick={() => void share()}>
+            {sharing ? 'Sharing…' : 'Share link'}
+          </button>
+        )}
         <input ref={jsonRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFiles(e.target.files)} />
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => onFiles(e.target.files)} />
       </header>

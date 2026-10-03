@@ -2,7 +2,8 @@
  * Buyer-facing viewer (PRODUCT_SPEC §3): routing, load screen, HUD, finishes,
  * sun, comment pins, share, VR. No router lib, no state lib.
  * Routes: `/` → replaceState `/u/<first unit>`; `/u/preview` ← localStorage
- * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem.
+ * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem;
+ * `/s/<token>` ← Supabase (a link the Studio's Share published).
  */
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -11,6 +12,7 @@ import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../c
 import { towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { fetchSharedUnit } from '../lib/supabase'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
@@ -36,8 +38,10 @@ const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
 /** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
 const STAFF = isStaff(location.search)
+/** a published link's token (`/s/<token>`): the unit comes from Supabase */
+const TOKEN = location.pathname.match(/^\/s\/([^/]+)/)?.[1]
 /** a buyer's link: no way into staff mode from it (no "Staff mode" / Studio link) */
-const SHARED = isShareLink(location.search)
+const SHARED = isShareLink(location.search) || !!TOKEN
 /** this address with `staff=` 1 (the load screen's Staff mode link) or 0 (leave it) */
 const staffHref = (v: string): string => {
   const q = new URLSearchParams(params)
@@ -95,6 +99,9 @@ const xrEmulation =
       })
     : null
 
+/** a published unit as the viewer shows it; anything but a Unit (no such link, garbage) is "not available" */
+const asUnit = (u: unknown): Unit | null => (isUnit(u) ? normalizeUnit(u) : null)
+
 function resolveUnit(): Unit | null {
   const m = location.pathname.match(/^\/u\/([^/]+)/)
   if (!m) {
@@ -104,8 +111,7 @@ function resolveUnit(): Unit | null {
   const id = decodeURIComponent(m[1])
   if (id === 'preview') {
     try {
-      const u = JSON.parse(localStorage.getItem('plotline.preview') ?? 'null')
-      return isUnit(u) ? normalizeUnit(u) : null // a stale/garbage preview must not crash deriveRooms
+      return asUnit(JSON.parse(localStorage.getItem('plotline.preview') ?? 'null')) // a stale/garbage preview must not crash deriveRooms
     } catch {
       return null
     }
@@ -125,16 +131,26 @@ const headingOf = (scene: PlotlineScene): Pt => {
 }
 
 export default function ViewerApp() {
+  // a published link: undefined while it loads, null when it fails (the load screen says so)
+  const [fetched, setFetched] = useState<Unit | null | undefined>(TOKEN ? undefined : null)
+  useEffect(() => {
+    if (TOKEN)
+      fetchSharedUnit(TOKEN)
+        .then(asUnit)
+        .catch((e) => (console.warn('[plotline] share link', e), null))
+        .then(setFetched)
+  }, [])
   // `base` = the unit's own layout (its JSON's, presets for rooms without pieces); a layout arranged in this browser
   // (Arrange, Studio F) wins; both through layoutFor, so a room added since gets its presets
   const [unit, base] = useMemo(() => {
-    const u = onFloor(resolveUnit())
+    const u = onFloor(TOKEN ? (fetched ?? null) : resolveUnit())
     if (!u) return [null, []]
     const rooms = core.deriveRooms(u)
     const base = layoutFor(u, rooms)
     const saved = readLayout(u.id)
     return [{ ...u, furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
-  }, [])
+  }, [fetched])
+  if (TOKEN && fetched === undefined) return <div className="boot">Loading…</div>
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
   if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
   return <Viewer unit={unit} base={base} />
