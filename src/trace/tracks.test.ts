@@ -59,6 +59,29 @@ describe('wall tracks on synthetic rasters', () => {
     expect(tt.blocks.some((b) => b.x0 <= 4.7 * K + 1 && b.x1 >= 5.3 * K - 1)).toBe(true)
   })
 
+  test('pillars first: a long column on a wall is a pillar (with its middle) and never cuts the wall; a junction and a core block are no pillars', () => {
+    const { g, box } = sheet(10, 6)
+    hw(box, 1, 0, 10, 0.127)
+    hw(box, 4, 0, 10, 0.127)
+    vw(box, 2, 1, 4, 0.127) // a T / junction at (2, 1) and (2, 4): blocks, no pillars
+    box(5.75, 0.6, 6.25, 1.8) // a 0.5 × 1.2 m column along the wall (Sheltech's facade columns): longer than a crossing body
+    box(7.5, 3.0, 9.5, 5.0) // a 2 × 2 m core block on the lower wall: no pillar
+    const tt = traceTracks(g, {})
+    expect(tt.pillars.length).toBe(1)
+    const p = tt.pillars[0]
+    expect(Math.abs(p.cx / K - 1 - 6)).toBeLessThan(0.03)
+    expect(Math.abs(p.cy / K - 1 - 1.2)).toBeLessThan(0.03)
+    expect(Math.abs((p.x1 - p.x0) / K - 0.5)).toBeLessThan(0.05)
+    // the wall runs through it as ONE wall, on its own centre line, at its own thickness
+    const wall = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 2) < 0.05)!
+    const through = wall.intervals.filter((iv) => iv.u0 < 5.5 * K && iv.u1 > 7.5 * K)
+    expect(through.length).toBe(1)
+    expect(Math.abs(through[0].thPx / K - 0.127)).toBeLessThan(0.03)
+    // the core block still cuts the lower wall (never bridged)
+    const lower = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 5) < 0.05)!
+    expect(lower.intervals.some((iv) => iv.u0 < 8 * K && iv.u1 > 10.6 * K)).toBe(false)
+  })
+
   test('a plain gap: two walls, no opening; their ends stay where the ink stops', () => {
     const { g, box } = sheet(8, 4)
     hw(box, 1, 0, 3, 0.127)
@@ -98,6 +121,32 @@ describe('wall tracks on synthetic rasters', () => {
     } finally {
       KNOBS.tracker = prev
     }
+  })
+
+  test('a facade of columns with glazing between: the line is one exterior wall through the column with two windows (flagged); a column with nothing drawn to its neighbours is no wall', () => {
+    const { g, box } = sheet(10, 6)
+    // the facade at y = 1: wall 0–2, glazing 2–3.5, a 0.5 × 0.6 m column 3.5–4, glazing 4–5.5, wall 5.5–9
+    hw(box, 1, 0, 2, 0.254)
+    for (const dy of [-0.06, 0.06]) box(2, 1 + dy - 0.01, 3.5, 1 + dy + 0.01, 120), box(4, 1 + dy - 0.01, 5.5, 1 + dy + 0.01, 120)
+    box(3.5, 0.7, 4, 1.3)
+    hw(box, 1, 5.5, 9, 0.254)
+    // a wall line at y = 4 with a column alone in a plain gap (nothing drawn either side)
+    hw(box, 4, 0, 2, 0.127)
+    box(3, 3.7, 3.5, 4.3)
+    hw(box, 4, 4.5, 9, 0.127)
+    const tt = traceTracks(g, {})
+    expect(tt.pillars.length).toBe(2)
+    const facade = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 2) < 0.05)!
+    // the column is a piece of the facade wall at the facade's own thickness
+    const col = facade.intervals.find((iv) => iv.u0 <= 4.5 * K + 1 && iv.u1 >= 5 * K - 1)
+    expect(col).toBeDefined()
+    expect(Math.abs(col!.thPx / K - 0.254)).toBeLessThan(0.03)
+    const wins = tt.gaps.filter((x) => x.horiz && Math.abs(x.c - facade.c) < 0.5 && x.kind === 'window')
+    expect(wins.length).toBe(2)
+    for (const w of wins) expect(w.conf).toBeLessThan(0.5) // "window between pillars — check"
+    // the lone column on the lower line: no wall through it, its plain gaps stay undecided (positive evidence only)
+    const lower = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 5) < 0.05)!
+    expect(lower.intervals.some((iv) => iv.u0 < 4.5 * K && iv.u1 > 4 * K)).toBe(false)
   })
 
   test('a gap with glass-colour pixels inside the wall band is a window; the same gap without them stays undecided', () => {

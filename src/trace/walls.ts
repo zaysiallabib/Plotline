@@ -432,7 +432,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast })
     const t = trackWalls(tt)
     const angled = angledWalls(gray, t.walls, opts)
-    return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }
+    return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, pillars: tt.pillars, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }
   }
   const { o, w, h, ink, dt, half, rCore, core, sk } = wallSkeleton(gray, opts)
   // the founder's tracker: straight bands of exactly the drawn thickness, where the sheet is on its axes

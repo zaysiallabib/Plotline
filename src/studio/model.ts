@@ -3,7 +3,7 @@
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
 import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
-import type { Id, Opening, OpeningKind, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
 import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
@@ -1111,6 +1111,10 @@ export const isUnit = (x: unknown): x is Unit => {
   if (u.roomLabels !== undefined) {
     if (!Array.isArray(u.roomLabels)) return false
     for (const l of u.roomLabels as Partial<RoomLabel>[]) if (!l || !str(l.id) || !num(l.x) || !num(l.y)) return false
+  }
+  if (u.pillars !== undefined) {
+    if (!Array.isArray(u.pillars)) return false
+    for (const p of u.pillars as Partial<Pillar>[]) if (!p || !str(p.id) || !num(p.x) || !num(p.y) || !num(p.wM) || !num(p.hM)) return false
   }
   return true
 }
