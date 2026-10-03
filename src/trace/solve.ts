@@ -27,7 +27,7 @@
  */
 import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
-import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, openingDefaults } from '../studio/model'
+import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { edt, lineInk, threshold } from './raster'
@@ -2256,7 +2256,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   if (hints?.northDeg !== undefined) u.northDeg = hints.northDeg
   opts.onProgress?.('done', 1)
   return {
-    unit: u,
+    unit: fullHeightIfOpenings(u), // (merge.ts never puts an opening on a low piece; the rule holds whatever the passes did)
     review,
     stats: {
       ms: Math.round(p.ms + performance.now() - t1),

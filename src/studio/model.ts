@@ -604,12 +604,24 @@ function fixStubs(unit: Unit, ids?: Iterable<Id>): { unit: Unit; dropped: number
   return { unit: u, dropped }
 }
 
+/** Below this a wall is a railing / parapet / planter edge (the 1.1 / 0.45 m convention), m. */
+const LOW_M = 2
+/**
+ * A wall carrying an opening is a full-height wall (founder 2026-10-03: a window placed on a 1.1 m railing left Bed 3
+ * open to the sky above it in 3D). Returns the same unit when no low wall has one.
+ */
+export function fullHeightIfOpenings(u: Unit): Unit {
+  const low = (w: Wall) => w.openings.length > 0 && w.heightM < LOW_M
+  return u.walls.some(low) ? { ...u, walls: u.walls.map((w) => (low(w) ? { ...w, heightM: WALL_HEIGHT_M } : w)) } : u
+}
+
 /**
  * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
  * (dropOverlaid), overlaps join (joinOverlaps), a corner left between two walls on one line heals into one wall
- * (healStraight), a door left on a stub moves to the long wall or goes (fixStubs). `ids` = the corners that moved —
- * healed / checked: they, what they merged into, the dropped walls' corners and the far ends of their walls; absent =
- * the whole unit, where only bent corners heal. Returns the same unit when nothing changed; `notes` = the toasts.
+ * (healStraight), a door left on a stub moves to the long wall or goes (fixStubs), a low wall with an opening is full
+ * height. `ids` = the corners that moved — healed / checked: they, what they merged into, the dropped walls' corners and
+ * the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when nothing
+ * changed; `notes` = the toasts.
  */
 function settle(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
   const o = dropOverlaid(unit, ids)
@@ -618,7 +630,7 @@ function settle(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; join
   const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
   const t = fixStubs(healStraight(j.unit, touched, !ids), near && touched)
   const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...(j.refused ? [j.refused] : []), ...(t.dropped ? [STUB_TOAST] : [])]
-  return { unit: t.unit, merged: j.merged, joined: j.joined, notes }
+  return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, notes }
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
@@ -883,7 +895,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit), widthM)
       if (error) return withToast(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
-      return commit(s, { ...s.unit, walls }, { selection: [placed.id], lastOpeningKind: kind, lastOpeningWidthM: widthM })
+      return commit(s, fullHeightIfOpenings({ ...s.unit, walls }), { selection: [placed.id], lastOpeningKind: kind, lastOpeningWidthM: widthM })
     }
     case 'pick-opening':
       return { ...s, lastOpeningKind: a.kind, lastOpeningWidthM: a.widthM === undefined ? undefined : Math.max(MIN_OPENING_M, a.widthM) }
@@ -1285,12 +1297,12 @@ export const isUnit = (x: unknown): x is Unit => {
   return true
 }
 
-/** Fill any fields a hand-edited JSON left out; drop a planImage without a usable scale. */
+/** Fill any fields a hand-edited JSON left out; drop a planImage without a usable scale; a low wall with an opening is full height. */
 export const normalizeUnit = (u: Unit): Unit => {
   const pi = u.planImage
   const planImage =
     pi && num(pi.pxPerM) && pi.pxPerM > 0 ? { src: typeof pi.src === 'string' ? pi.src : '', pxPerM: pi.pxPerM, originPx: pi.originPx ?? { x: 0, y: 0 } } : undefined
-  return {
+  return fullHeightIfOpenings({
     ...emptyUnit(),
     ...u,
     id: str(u.id) ? u.id : newId(),
@@ -1313,5 +1325,5 @@ export const normalizeUnit = (u: Unit): Unit => {
       })),
     })),
     planImage,
-  }
+  })
 }

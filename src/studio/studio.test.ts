@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1034,6 +1034,20 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         expect(l.unit.walls[1].openings).toHaveLength(1)
         // a 0.35 m vent on Sheltech A's 0.53 m wall is no door: loading keeps it (the five hand traces load unchanged)
         expect(reducer(initialState(), { type: 'load-unit', unit: sheltechA as unknown as Unit }).unit.walls.find((w) => w.id === 'w_t3_n2')!.openings).toHaveLength(1)
+      })
+
+      it('a wall carrying an opening is full height: a window placed on a 1.1 m railing raises it; a saved draft with one heals on load; a railing without one stays low', () => {
+        const box = build({ A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
+        const railed = { ...box, walls: box.walls.map((w) => (w.id === 'w0' || w.id === 'w2' ? { ...w, heightM: 1.1 } : w)) }
+        let s = reducer(initialState(), { type: 'load-unit', unit: railed })
+        expect(s.unit.walls.map((w) => w.heightM)).toEqual([1.1, 3, 1.1, 3]) // no opening: railings stay
+        s = reducer(s, { type: 'add-opening', wallId: 'w0', t: 0.5, kind: 'window' })
+        expect(s.unit.walls.map((w) => w.heightM)).toEqual([WALL_HEIGHT_M, 3, 1.1, 3])
+        expect(reducer(s, { type: 'undo' }).unit.walls[0].heightM).toBe(1.1) // one undo entry
+        // the founder's saved draft: a window already on the railing
+        const saved = { ...railed, walls: railed.walls.map((w) => (w.id === 'w0' ? { ...w, openings: s.unit.walls[0].openings } : w)) }
+        expect(normalizeUnit(saved).walls[0].heightM).toBe(WALL_HEIGHT_M)
+        expect(reducer(initialState(), { type: 'load-unit', unit: saved }).unit.walls.map((w) => w.heightM)).toEqual([WALL_HEIGHT_M, 3, 1.1, 3])
       })
     })
   })
