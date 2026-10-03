@@ -93,6 +93,19 @@ describe('thinFaces', () => {
     expect(thinFaces(bed, { k: K, walls: box, openings: [], labels: [{ at: { x: 200, y: 150 }, name: 'BED 1' }] }).walls).toEqual([])
   })
 
+  test('a shower screen / tub edge: a thin line in a closed bathroom (a wc drawn in it, its name not read) closes no face', () => {
+    // a 2.4 × 2 m toilet, a pen line 0.8 m from its right wall: the shower bay
+    const walls = [W(100, 100, 220, 100), W(220, 100, 220, 200), W(220, 200, 100, 200), W(100, 200, 100, 100)]
+    const g = sheet(walls)
+    pen(g, { x: 180, y: 104 }, { x: 180, y: 196 })
+    const wc = { at: { x: 130, y: 150 }, r: 20 }
+    const bath = thinFaces(g, { k: K, walls, openings: [], fixtures: [{ ...wc, kind: 'bath' }] })
+    expect(bath.walls).toEqual([])
+    expect(bath.lines.some((l) => /bay of a bathroom/.test(l.fate))).toBe(true)
+    // the same line beside a fixture that is no wc / basin: a small space closed by a thin line, offered as an AOD
+    expect(thinFaces(g, { k: K, walls, openings: [], fixtures: [{ ...wc, kind: 'kitchen' }] }).walls.length).toBe(1)
+  })
+
   test('an undecided gap stays open under a solid thin line; a dashed grille across it closes the room', () => {
     const walls = [W(100, 100, 170, 100), W(230, 100, 300, 100), W(300, 100, 300, 300), W(300, 300, 100, 300), W(100, 300, 100, 100)]
     const gap: OpeningGuess = { a: { x: 170, y: 100 }, b: { x: 230, y: 100 }, kind: 'unknown', conf: 0.2, thicknessPx: TH }

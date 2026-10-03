@@ -1557,6 +1557,36 @@ function dropSlivers(d: Draft): Draft {
 }
 
 /**
+ * Founder 2026-10-03 (Sheltech A "Space 6" under DINING: a dashed beam line): a passage — the open-plan boundary merge.ts
+ * draws where a room's side is open — between a space whose name was read (`named`) and one with no name of its own (no
+ * label, no hint: `hinted`) never splits them: the unnamed face joins its named neighbour. A space that is no closed face
+ * is no neighbour (the passage then still closes the named room).
+ */
+export function mergeUnread(d: Draft, named: Pt[], hinted: Pt[]): Draft {
+  for (let it = 0; it < 20; it++) {
+    const rooms = deriveRooms(d.unit)
+    const polys = rooms.map((r) => roomPolygon(r, d.unit))
+    const has = (i: number, pts: Pt[]) => pts.some((p) => pointInPolygon(p, polys[i]))
+    const side = new Map<string, number[]>()
+    rooms.forEach((r, i) => new Set(r.wallIds).forEach((w) => side.set(w, [...(side.get(w) ?? []), i])))
+    const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+    const cut = d.walls.find((w) => {
+      const s = side.get(w.id) ?? []
+      const open = w.openings.filter((o) => o.kind === 'passage').reduce((t, o) => t + o.widthM, 0)
+      if (s.length !== 2 || open < 0.9 * d2(V.get(w.a)!, V.get(w.b)!)) return false
+      const [p, q] = s.map((i) => has(i, named))
+      return p !== q && !has(p ? s[1] : s[0], hinted)
+    })
+    if (!cut) return it ? { ...d, rooms: deriveRooms(d.unit) } : d
+    const walls = d.walls.filter((w) => w !== cut)
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    d = { ...d, unit: { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }, walls: m.walls }
+  }
+  return { ...d, rooms: deriveRooms(d.unit) }
+}
+
+/**
  * Keep the picked faces' walls (+ loose walls inside them) and `extra` walls (those the flood touched: the flat's walls
  * that close no face yet, so the human closes a gap instead of redrawing a wall), re-merge, re-derive.
  */
@@ -1705,7 +1735,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   }
   // follow thin strokes from dangling wall ends; never inside a drawn fixture (bed, table, wc, basin, stove, sink)
   const FIX_R: Record<string, number> = { bed: 1, table: 0.8, dining: 0.8, wc: 0.4, basin: 0.4, sink: 0.4, stove: 0.4 }
-  const avoid = (hints?.hints ?? []).filter((h) => h.source === 'fixture').map((h) => ({ at: h.at, r: (FIX_R[h.what ?? ''] ?? 0.5) * pxPerM }))
+  const avoid = (hints?.hints ?? []).filter((h) => h.source === 'fixture').map((h) => ({ at: h.at, r: (FIX_R[h.what ?? ''] ?? 0.5) * pxPerM, kind: h.kind }))
   const tracked = KNOBS.track ? trackThin(plan, trace, { pxPerM, avoid, delta: KNOBS.lineDelta }) : []
   opts.onProgress?.('graph', 0.7)
 
@@ -1793,6 +1823,13 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
   if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
   if (flat.size || picked.touched.size) draft = dropSlivers(restrict(draft, flat, picked.touched))
+  if (tracker === 'tracks') {
+    const at = (it: (typeof text.items)[number]) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
+    const named = text.items.filter((it) => it.kind === 'room' && it.roomKind).map(at)
+    // (any text read there — a name read wrong, a size alone, a garbage read of a label — is a name of its own)
+    const hinted = [...text.items.map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 } })), ...(hints?.hints ?? []).filter((h) => h.kind), ...(thin?.faces ?? []).filter((f) => f.aod || f.planter), ...(draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 } }))].map((h) => ({ x: h.at.x / pxPerM, y: h.at.y / pxPerM }))
+    draft = mergeUnread(draft, named, hinted)
+  }
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }

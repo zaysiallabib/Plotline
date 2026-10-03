@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -184,6 +184,25 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
       expect(len(jog)).toBeCloseTo(off)
       expect(jog.thicknessM).toBeCloseTo(0.254)
     }
+  })
+})
+
+describe('open-plan passages (founder 2026-10-03: a dashed beam line under DINING is no boundary)', () => {
+  test('a passage between a named space and a closed space with no name of its own goes: one room; a hint / a read text there, or an open space beyond, keeps it', () => {
+    const k = 50, blank: Gray = { width: 400, height: 350, data: new Uint8Array(400 * 350).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: 0.127 * k, conf: 1 })
+    // 4 × 4 m box, a passage across it at y = 3: DINING above (named), a 4 × 1 m strip below
+    const walls = [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 4)), wall(p(4, 4), p(0, 4)), wall(p(0, 4), p(0, 0))]
+    const passage = { a: p(0, 3), b: p(4, 3), kind: 'passage' as const, conf: 0.3, thicknessPx: 0.127 * k }
+    const d = buildGraph({ walls, openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(d.rooms).toHaveLength(2)
+    const dining = { x: 2 + 50 / k, y: 1.5 + 50 / k }, strip = { x: 2 + 50 / k, y: 3.5 + 50 / k }
+    expect(mergeUnread(d, [dining], []).rooms.map((r) => r.areaSqm.toFixed(0))).toEqual(['16'])
+    expect(mergeUnread(d, [dining], [strip]).rooms).toHaveLength(2)
+    // the strip open at the bottom: no face beyond — the passage still closes the dining
+    const open = buildGraph({ walls: [walls[0], walls[1], walls[3], wall(p(4, 4), p(3, 4))], openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(mergeUnread(open, [dining], []).rooms).toHaveLength(1)
   })
 })
 
