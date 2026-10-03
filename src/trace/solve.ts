@@ -1743,8 +1743,16 @@ const OP_CONF_OK = 0.5
  * Plan raster + the stage outputs → the draft. Pure (no OCR here): `solve` runs the stages, the eval feeds cached ones.
  */
 export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts = {}): AutoTraceResult {
+  return pickTraces(prepareTraces(gray, inputs, opts), opts.pickPx)
+}
+
+/**
+ * Everything the click does not change, once per sheet (the Studio's pick mode runs it before the click): the text
+ * erase, plant mask, walls, scale, fitted rooms, the whole sheet's graph and the masks the flood walks. `opts.pickPx` is
+ * read only by the printed-area scale fallback — `scaleNeedsPick` says the scale came from the pick (`pick` re-prepares).
+ */
+export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts = {}) {
   const t0 = performance.now()
-  const review: ReviewItem[] = []
   const text = inputs.text ?? { items: [] }
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
@@ -1763,7 +1771,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // tracks: the rooms' printed sizes fitted onto the ink ARE the scale (rooms.ts calibrateScale: ≥ 3 sized labels whose
   // fits agree); the line weight / dims-in-faces / area guesses below stay the fallback. With too few clear sides for
   // its refinement (rooms 0) the scan alone is still the scale where ≥ 4 printed sizes sit best on the ink — flagged
-  let scaleFew = false
+  let scaleFew = false, scaleNeedsPick = false
   if (!opts.pxPerM && tracker === 'tracks') {
     const s = calibrateScale(gray, text.items, { tracks: trace.tracks?.lines.tracks })
     const sized = text.items.filter((it) => (it.kind === 'room' || it.kind === 'dims') && it.dims).length
@@ -1786,14 +1794,6 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       // a flat has one area stamp ("TYPE-A ±2736 SFT"): another one on the floor the flood reaches is the next flat's
       .concat(stampsAt(k).map((p) => ({ p, name: '#STAMP' })))
   const stampsAt = (k: number) => text.items.filter((it) => it.kind === 'area' && it.areaSqm).map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
-  // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
-  const budget = ((): number => {
-    const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
-    if (!areas.length) return Infinity
-    const at = opts.pickPx ?? { x: 0, y: 0 }
-    const dist = (it: (typeof areas)[number]) => Math.hypot(it.box.x + it.box.w / 2 - at.x, it.box.y + it.box.h / 2 - at.y)
-    return areas.reduce((b, it) => (dist(it) < dist(b) ? it : b)).areaSqm!
-  })()
   const pickM = (k: number, o: Px) => (opts.pickPx ? { x: (opts.pickPx.x - o.x) / k, y: (opts.pickPx.y - o.y) / k } : null)
   if (!opts.pxPerM && scaleFrom !== 'dims') {
     draft = buildGraph(trace, pxPerM, origin0, gray, ink, [], tracker)
@@ -1817,6 +1817,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       pxPerM = pxPerM / (agree.reduce((t, f) => t + f, 0) / agree.length)
       scaleFrom = 'dims'
     } else {
+      scaleNeedsPick = true
       const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
       const flat = pickFlat(draft, pickM(pxPerM, origin0), coreAt(pxPerM)).rooms // uncapped: the budget is this same label
       const drawn = [...flat].reduce((t, r) => t + r.areaSqm, 0)
@@ -1866,7 +1867,6 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker)
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants, fits, merged, thin })
-  const pick = pickM(pxPerM, origin0)
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
   // SUNSHADE / PLANTER label counts as planter too)
   // (the low walls of the small faces faces.ts closed shut them to the outside too: an AOD's grille is dashes, no barrier)
@@ -1894,6 +1894,26 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
   const corePts = coreAt(pxPerM)
   const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2)
+  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, draft, origin0, outside, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore }
+}
+export type Prepared = ReturnType<typeof prepareTraces>
+
+/** The flat at `pickPx` (sheet px) on a prepared sheet → its draft. Never changes `p`: the hover preview runs it per move. */
+export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
+  const t1 = performance.now()
+  const { inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, trace, hints, fits, merged, thin, origin0, outside, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore } = p
+  // (the steps below edit the draft's walls in place)
+  let draft = structuredClone(p.draft)
+  const review: ReviewItem[] = []
+  // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
+  const budget = ((): number => {
+    const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
+    if (!areas.length) return Infinity
+    const at = pickPx ?? { x: 0, y: 0 }
+    const dist = (it: (typeof areas)[number]) => Math.hypot(it.box.x + it.box.w / 2 - at.x, it.box.y + it.box.h / 2 - at.y)
+    return areas.reduce((b, it) => (dist(it) < dist(b) ? it : b)).areaSqm!
+  })()
+  const pick = pickPx ? { x: (pickPx.x - origin0.x) / pxPerM, y: (pickPx.y - origin0.y) / pxPerM } : null
   // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (pickByRooms) — plus what the flood from the
   // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
   // the core (those rooms bound it, so it cannot leak through an open gap into them)
@@ -2239,7 +2259,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
     unit: u,
     review,
     stats: {
-      ms: Math.round(performance.now() - t0),
+      ms: Math.round(p.ms + performance.now() - t1),
       pxPerM,
       scaleFrom,
       tracker,
@@ -2349,6 +2369,11 @@ type HintsModule = {
 const HINTS = import.meta.glob<HintsModule>('./hints.ts')
 
 export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceResult> {
+  return pick(await prepare(gray, opts), opts.pickPx)
+}
+
+/** The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along. */
+export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   const review: ReviewItem[] = []
   // text first (founder): its strokes are erased before the walls are traced (solveTraces)
   opts.onProgress?.('text', 0)
@@ -2370,8 +2395,27 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
   }
-  const r = solveTraces(gray, inputs, opts)
+  const traces = prepareTraces(gray, inputs, opts)
   if (text.glyphPx !== undefined && text.glyphPx < 7)
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The print is small (${text.glyphPx.toFixed(0)} px letters) — a larger export or the PDF reads far better` })
-  return { ...r, review: [...review, ...r.review] }
+  return { traces, review }
+}
+export type PreparedSolve = Awaited<ReturnType<typeof prepare>>
+
+/** The click's draft on a prepared sheet (prepared again when its scale came from the printed area at another pick). */
+export function pick(p: PreparedSolve, pickPx?: Px): AutoTraceResult {
+  const t = p.traces, at = t.opts.pickPx
+  const r = pickTraces(t.scaleNeedsPick && (at?.x !== pickPx?.x || at?.y !== pickPx?.y) ? prepareTraces(t.gray, t.inputs, { ...t.opts, pickPx }) : t, pickPx)
+  return { ...r, review: [...p.review, ...r.review] }
+}
+
+/**
+ * The hover in pick mode: the flat a click at `pickPx` would pick — its rooms' outlines and names in sheet px (the pick
+ * itself, no progress reported). With `scaleNeedsPick` it shows the provisional scale's flat; the click redoes the scale.
+ */
+export function previewFlat(p: Prepared, pickPx: Px): { polys: Px[][]; names: { at: Px; text: string }[] } {
+  const { unit } = pickTraces({ ...p, opts: { ...p.opts, onProgress: undefined } }, pickPx)
+  const { pxPerM: k, originPx: o } = unit.planImage!
+  const toPx = (q: Pt): Px => ({ x: o.x + q.x * k, y: o.y + q.y * k })
+  return { polys: deriveRooms(unit).map((r) => roomPolygon(r, unit).map(toPx)), names: unit.roomLabels.map((l) => ({ at: toPx(l), text: l.name })) }
 }

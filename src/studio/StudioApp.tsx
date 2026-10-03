@@ -27,7 +27,7 @@ import {
 } from './model'
 import { AI_KEY, TRACKER_KEY, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
-import type { TraceJob, TraceMsg } from './autotrace.worker'
+import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
@@ -202,6 +202,11 @@ export default function StudioApp() {
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
   const cancelTrace = useRef(() => setTrace(null))
+  // pick mode: the sheet's preparing stage (null = ready), the flat a click at the pointer picks, the hover / click senders
+  const [prep, setPrep] = useState<string | null>(null)
+  const [flatPreview, setFlatPreview] = useState<Preview | null>(null)
+  const hoverTrace = useRef((_px: Pt) => {})
+  const pickTrace = useRef((_px: Pt) => {})
   /** a review row's spot, ringed on the canvas until the next click */
   const [mark, setMark] = useState<Pt | null>(null)
 
@@ -338,10 +343,10 @@ export default function StudioApp() {
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
       const furniture = pieces ? { pieces, drag: furnDrag } : undefined
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark, preview: flatPreview })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview])
 
   // ----- draft persistence
   const saveDraft = useCallback(() => {
@@ -484,14 +489,11 @@ export default function StudioApp() {
     if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
   }, [errors, toast])
 
-  // ----- auto-trace: a click inside the flat → worker → the result replaces the unit (one undo step)
+  // ----- auto-trace: pick mode starts the worker reading the sheet at once (text, walls, the whole graph); a hover
+  // previews the flat a click there picks; the click picks it on the same prepared sheet → the result replaces the unit
+  // (one undo step)
   const startAutoTrace = () => {
-    if (unit.walls.length && !window.confirm('Replace your current trace? Ctrl+Z brings it back.')) return
-    cancelTrace.current = () => setTrace(null)
-    setTrace('pick')
-  }
-  const runAutoTrace = (pickPx: Pt) => {
-    if (!img) return
+    if (!img || (unit.walls.length && !window.confirm('Replace your current trace? Ctrl+Z brings it back.'))) return
     let aiKey: string | undefined
     let tracker: TraceJob['tracker']
     try {
@@ -501,11 +503,26 @@ export default function StudioApp() {
       /* storage blocked: no AI helper, the default tracker */
     }
     const { gray, rgb } = rastersOf(img)
-    const job: TraceJob = { gray, rgb, pickPx, pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
     const worker = new Worker(new URL('./autotrace.worker.ts', import.meta.url), { type: 'module' })
+    const send = (m: TraceIn, transfer: Transferable[] = []) => worker.postMessage(m, transfer)
+    // hover: one preview in flight at a time, the latest spot sent as soon as it is back (the worker's pace is the throttle)
+    let ready = false, busy = false, picked = false, want: Pt | null = null, seq = 0
+    const next = () => {
+      if (!ready || busy || picked || !want) return
+      busy = true
+      send({ type: 'hover', px: want, seq: ++seq })
+      want = null
+    }
+    hoverTrace.current = (px) => {
+      want = px
+      next()
+    }
     const stop = () => {
       worker.terminate()
+      hoverTrace.current = pickTrace.current = () => {}
       setTrace(null)
+      setPrep(null)
+      setFlatPreview(null)
     }
     const done = (result: AutoTraceResult) => {
       stop()
@@ -525,22 +542,42 @@ export default function StudioApp() {
       stop()
       toast(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`)
     }
-    cancelTrace.current = () => {
-      stop()
-      toast('Auto-trace cancelled')
+    // (before the click Esc / Cancel just leave pick mode)
+    cancelTrace.current = stop
+    pickTrace.current = (px) => {
+      picked = true
+      setFlatPreview(null)
+      // ready: only the flat's own steps are left; else the sheet's progress carries on in the card
+      setTrace({ stage: ready ? 'flat' : 'Reading the plan', fraction: ready ? 0.8 : 0 })
+      cancelTrace.current = () => {
+        stop()
+        toast('Auto-trace cancelled')
+      }
+      send({ type: 'pick', px })
     }
     worker.onmessage = (e: MessageEvent<TraceMsg>) => {
       const m = e.data
-      if (m.type === 'progress') setTrace({ stage: m.stage, fraction: m.fraction })
-      else if (m.type === 'done') done(m.result)
+      if (m.type === 'progress') return picked ? setTrace({ stage: m.stage, fraction: m.fraction }) : setPrep(m.stage)
+      if (m.type === 'ready') {
+        ready = true
+        setPrep(null)
+        return next()
+      }
+      if (m.type === 'preview') {
+        busy = false
+        if (!picked) setFlatPreview(m.polys.length ? m : null)
+        return next()
+      }
+      if (m.type === 'done') done(m.result)
       else fail(m.message)
     }
     worker.onerror = (e) => {
       e.preventDefault()
       fail(e.message || 'the tracer could not start')
     }
-    setTrace({ stage: 'Starting', fraction: 0 })
-    worker.postMessage(job, [job.gray.data.buffer, rgb.data.buffer])
+    setPrep('starting')
+    setTrace('pick')
+    send({ type: 'prepare', job: { gray, rgb, pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE } }, [gray.data.buffer, rgb.data.buffer])
   }
 
   // ----- hit testing (screen px)
@@ -670,7 +707,7 @@ export default function StudioApp() {
       const p = toPx(sx, sy)
       const pi = state.planImage
       if (!pi || p.x < 0 || p.y < 0 || p.x > pi.naturalW || p.y > pi.naturalH) return toast('Click on the plan, inside the flat')
-      return runAutoTrace(p)
+      return pickTrace.current(p)
     }
     if (placing && tool === 'furniture') {
       // the ghost's spot: put it there (the reducer runs placePiece again and toasts a refusal); refused → keep placing
@@ -759,6 +796,11 @@ export default function StudioApp() {
     if (panRef.current) {
       const p = panRef.current
       dispatch({ type: 'set-view', view: { ...view, panX: p.panX + sx - p.sx, panY: p.panY + sy - p.sy } })
+      return
+    }
+    if (trace === 'pick') {
+      const p = toPx(sx, sy), pi = state.planImage
+      if (pi && p.x >= 0 && p.y >= 0 && p.x <= pi.naturalW && p.y <= pi.naturalH) hoverTrace.current(p)
       return
     }
     if (placing && tool === 'furniture') return void ghost(sx, sy)
@@ -980,7 +1022,7 @@ export default function StudioApp() {
         return jsonRef.current?.click()
       }
       if (typing) return
-      if (e.key === 'Escape' && trace === 'pick') return setTrace(null)
+      if (e.key === 'Escape' && trace === 'pick') return cancelTrace.current()
       if (e.key === 'Alt') return e.preventDefault() // Alt-drag detaches; a lone Alt must not focus the browser menu
       dispatch({ type: 'timer-input', now: now() })
       if (ctrl && (e.key === 'z' || e.key === 'Z')) {
@@ -1269,7 +1311,7 @@ export default function StudioApp() {
           {trace && (
             <div className="trace-card" role="status">
               {trace === 'pick' ? (
-                <span>Click inside the flat you want to trace</span>
+                <span>{prep ? `Reading the plan (${prep})… then click inside the flat` : 'Point at a flat to see it · click inside the one you want to trace'}</span>
               ) : (
                 <>
                   <span>

@@ -6,12 +6,12 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
-import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
+import type { AutoTraceResult, Gray, HintTrace, Px, TextItem, TextTrace } from './types'
 
 // ---------- synthetic: a 3-room flat with printed sizes → the exact Unit ----------
 const K = 50 // px per m
@@ -293,6 +293,21 @@ describe('solveTraces on a synthetic flat', () => {
     expect(r.unit.walls).toEqual([])
     expect(validate(r.unit)).toEqual([])
     expect(r.review.length).toBeGreaterThan(0)
+  })
+
+  test('pick mode: a sheet prepared once, picked many times (the hover runs a pick per move) — a pick never changes it; the click = solveTraces', () => {
+    const { g, text } = synthetic()
+    const shape = (r: AutoTraceResult) => {
+      const V = new Map(r.unit.vertices.map((v) => [v.id, v]))
+      const walls = r.unit.walls.map((w) => JSON.stringify([[V.get(w.a), V.get(w.b)].map((v) => [v!.x, v!.y]).sort(), w.thicknessM, w.openings.map((o) => [o.kind, o.offsetM, o.widthM, o.hinge, o.swing])]))
+      // (a label's anchor moves in its last float bits with the order of the room's corners, which follows the random ids)
+      return JSON.stringify([...walls, ...r.unit.roomLabels.map((l) => JSON.stringify([l.name, l.kind, l.x.toFixed(9), l.y.toFixed(9)])), ...r.review.map((x) => x.message)].sort())
+    }
+    const p = prepareTraces(g, { text }, {})
+    expect(previewFlat(p, P(6, 1)).polys.length).toBe(4)
+    pickTraces(p, P(6, 1))
+    pickTraces(p, P(100, 100)) // (no room near: the draft is not cut down, its walls are edited in place — on a copy)
+    expect(shape(pickTraces(p, P(2, 2.5)))).toBe(shape(solveTraces(g, { text }, { pickPx: P(2, 2.5) })))
   })
 
   test('no click: the largest closed region, same rooms', () => {

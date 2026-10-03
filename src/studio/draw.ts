@@ -4,7 +4,7 @@ import type { FurniturePlacement, Id, Opening, Pt, Room } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import type { StudioState } from './model'
 import type { OpeningSnap, Snap } from './snap'
-import { mToScreen, screenToM, type Frame } from './transform'
+import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
 /** Wall length labels only when the wall is at least this long on screen. */
@@ -99,6 +99,8 @@ export interface DrawArgs {
   furniture?: { pieces: FurniturePlacement[]; drag: Move | null }
   /** a review row's spot (plan m), ringed */
   mark?: Pt | null
+  /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint */
+  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[] } | null
 }
 
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
@@ -371,6 +373,29 @@ export function draw(a: DrawArgs): void {
     ctx.beginPath()
     ctx.arc(p.x, p.y, 22, 0, Math.PI * 2)
     ctx.stroke()
+  }
+
+  if (a.preview) {
+    ctx.beginPath()
+    for (const poly of a.preview.polys) {
+      poly.forEach((p, i) => {
+        const q = pxToScreen(frame, p)
+        if (i) ctx.lineTo(q.x, q.y)
+        else ctx.moveTo(q.x, q.y)
+      })
+      ctx.closePath()
+    }
+    ctx.fillStyle = 'rgba(232,193,112,0.18)'
+    ctx.fill()
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.font = '300 12px Inter, system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(242,242,240,0.6)'
+    for (const n of a.preview.names) {
+      const q = pxToScreen(frame, n.at)
+      ctx.fillText(n.text, q.x, q.y)
+    }
   }
 
   if (state.tool === 'scale' && a.scaleStart && a.hover) {
