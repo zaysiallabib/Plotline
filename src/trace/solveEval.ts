@@ -6,9 +6,9 @@
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Room, Unit } from '../core'
 import { edt, lineInk, threshold } from './raster'
-import { applyXf, type TruthXf } from './eval'
+import { applyXf, evalTrace, type TruthXf } from './eval'
 import { inkThreshold, segPieces, wallHalfWidth } from './walls'
-import type { AutoTraceResult, Gray, Px, WallTrace } from './types'
+import type { AutoTraceResult, Gray, Px, WallSeg, WallTrace } from './types'
 
 export interface SolveReport {
   unitId: string
@@ -40,6 +40,22 @@ export interface SolveReport {
   missed: string[]
   /** the unmatched truth rooms' ids (for diagnoseMisses) */
   missedIds: string[]
+  /** the DRAFT's walls vs the hand trace (eval.ts evalTrace, centre lines within 0.15 m): share of hand-traced wall length the draft covers / share of draft wall length on a hand-traced wall. Rooms can match while walls are missing — the founder reads the walls (session 15) */
+  wallRecall?: number
+  wallPrecision?: number
+}
+
+/** The draft's walls as sheet-pixel segments (for evalTrace). */
+export function draftWallSegs(u: Unit): WallSeg[] {
+  const k = u.planImage!.pxPerM, o = u.planImage!.originPx
+  const V = new Map(u.vertices.map((v) => [v.id, { x: o.x + v.x * k, y: o.y + v.y * k }]))
+  return u.walls.map((w) => ({ a: V.get(w.a)!, b: V.get(w.b)!, thicknessPx: w.thicknessM * k, conf: 1, ...(w.heightM < 3 ? { heightM: w.heightM } : {}) }))
+}
+
+/** Adds the draft's wall recall / precision against the hand trace laid onto the drawing (`xf` = eval.ts registerTruth). */
+export function withWallScore(row: SolveReport, res: AutoTraceResult, truth: Unit, xf: TruthXf): SolveReport {
+  const r = evalTrace({ walls: draftWallSegs(res.unit), openings: [] }, truth, {}, xf)
+  return { ...row, wallRecall: r.recall, wallPrecision: r.precision }
 }
 
 /** Opening centres in sheet px, with kind. */
@@ -278,12 +294,12 @@ function segDistPx(p: Px, a: Px, b: Px): number {
 
 export function formatSolveReports(rows: SolveReport[]): string {
   const pct = (x: number) => (Number.isNaN(x) ? '   -' : `${(x * 100).toFixed(0)}%`).padStart(5)
-  const head = 'unit                  rooms matched   area%  scale%  from       kindOk  cover  spill  opens okKind extra review    ms  review kinds'
+  const head = 'unit                  rooms matched   area%  scale%  from       kindOk  cover  spill  opens okKind extra review    ms  wallRec wallPrec  review kinds'
   return [
     head,
     ...rows.map(
       (r) =>
-        `${r.unitId.padEnd(20)} ${`${r.draftRooms}/${r.truthRooms}`.padStart(6)} ${String(r.matched).padStart(7)} ${pct(r.areaErr)}  ${(`${r.scaleErr >= 0 ? '+' : ''}${(r.scaleErr * 100).toFixed(1)}%`).padStart(6)}  ${r.scaleFrom.padEnd(9)} ${`${r.kindOk}/${r.matched}`.padStart(7)} ${pct(r.coverage)} ${pct(r.spill)} ${`${r.openingsFound}/${r.truthOpenings}`.padStart(6)} ${String(r.openingKindOk).padStart(6)} ${String(r.openingsExtra).padStart(5)} ${String(r.review).padStart(6)} ${String(r.ms).padStart(5)}  ${Object.entries(r.reviewByKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
+        `${r.unitId.padEnd(20)} ${`${r.draftRooms}/${r.truthRooms}`.padStart(6)} ${String(r.matched).padStart(7)} ${pct(r.areaErr)}  ${(`${r.scaleErr >= 0 ? '+' : ''}${(r.scaleErr * 100).toFixed(1)}%`).padStart(6)}  ${r.scaleFrom.padEnd(9)} ${`${r.kindOk}/${r.matched}`.padStart(7)} ${pct(r.coverage)} ${pct(r.spill)} ${`${r.openingsFound}/${r.truthOpenings}`.padStart(6)} ${String(r.openingKindOk).padStart(6)} ${String(r.openingsExtra).padStart(5)} ${String(r.review).padStart(6)} ${String(r.ms).padStart(5)}  ${pct(r.wallRecall ?? NaN).padStart(7)} ${pct(r.wallPrecision ?? NaN).padStart(8)}  ${Object.entries(r.reviewByKind).map(([k, n]) => `${k} ${n}`).join(', ')}`,
     ),
   ].join('\n')
 }

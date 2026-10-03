@@ -9,7 +9,7 @@ import { findHints, greenMask } from './hints'
 import { KNOBS, findStairs, glassMask, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
-import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, type SolveReport } from './solveEval'
+import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
 import type { Gray, HintTrace, Px, TextItem, TextTrace } from './types'
 
@@ -291,13 +291,14 @@ describe.skipIf(!haveFixtures)('solver vs the hand-traced units (eval report)', 
         if (lab === 'new' && !fresh) continue
         const text: TextTrace = lab === 'oracle' ? oracleText(u, fresh ?? ocr) : lab === 'new' ? fresh! : ocr
         const res = solveTraces(g, { text, debug, ...c.inputs }, { pickPx: truthPick(u), ...(c.rgb ? { rgb: c.rgb } : {}) })
-        const row = scoreSolve(res, u)
+        const xf = registerTruth(g, u)
+        const row = withWallScore(scoreSolve(res, u), res, u, xf) // rooms matched AND the draft's wall recall: the founder reads the walls
         rows.push(row)
         if (process.env.TRACE_DIAG) {
-          const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, registerTruth(g, u))
+          const d = diagnoseMisses(g, u, row.missedIds, { trace: debug.trace!, plan: debug.plan!, full: debug.full!, raw: traceWalls(g) }, xf)
           why.push(`${u.id} causes: ${Object.entries(d.counts).sort((p, q) => q[1] - p[1]).map(([c, n]) => `${c} ${n}`).join(' · ')}\n${d.rooms.map((x) => `  ${x.name}: ${x.cause} (${x.detail})`).join('\n')}`)
         }
-        if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, registerTruth(g, u)))
+        if (SHOTS) writeUnitOverlay(`${SHOTS}/solve-${lab}-${u.id}.png`, g, res.unit, res.review, truthLines(u, xf))
         expect(validate(res.unit).filter((i) => i.level === 'error'), u.id).toEqual([])
       }
       const head = lab === 'oracle' ? 'ORACLE LABELS (the hand trace\'s labels: the ceiling with a perfect reader — NOT the product number)' : lab === 'new' ? 'NEW READER (wave 19: the product now)' : 'WAVE-16 OCR CACHE'
