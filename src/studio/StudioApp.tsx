@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, Pt, RoomKind } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind } from '../core'
 import { draw, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
@@ -48,18 +48,20 @@ const TOOLS: [Tool, string, string][] = [
 ]
 const HINTS: Record<Tool, string> = {
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's end handle to extend it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: 'Scale · click both ends of a printed dimension',
   wall: 'Wall · click the first corner, or drag from corner to corner',
-  opening: 'Opening · click a wall',
+  opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
   room: 'Room · click inside a closed room',
 }
 /** Spring-loaded tools: hold the key, act, release = back to the tool before (a tap still just switches) */
 const HOLD_HINTS: Record<string, string> = {
   w: 'drag from corner to corner to draw one wall',
-  o: 'click a wall to add an opening',
+  o: 'click a wall to add the picked opening (1–4 switch kind)',
   r: 'click inside a room to name it',
 }
+/** O tool (or held O): these keys pick the kind at its default width */
+const OPENING_KEYS: Record<string, OpeningKind> = { 1: 'door', 2: 'window', 3: 'slider', 4: 'passage' }
 /** a held tool key: the tool and selection to go back to, `used` = a pointer action happened, `up` = released mid wall-drag */
 interface Hold {
   key: string
@@ -96,8 +98,8 @@ interface Note {
   text: string
   link?: { label: string; onClick: () => void }
 }
-/** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer) */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt } & CornerDrag
+/** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer); `end`: an opening's end handle (resize) */
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt; end?: 'a' | 'b' } & CornerDrag
 /**
  * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
  * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
@@ -595,7 +597,7 @@ export default function StudioApp() {
         const nw = nearestWall(m, st.unit)
         const ghost =
           nw && nw.distanceM <= Math.max(SNAP_PX / s, nw.wall.thicknessM)
-            ? { wallId: nw.wall.id, t: nw.t, ...openingAt(st.unit, nw.wall, nw.t, st.lastOpeningKind, SNAP_PX / s, rooms) }
+            ? { wallId: nw.wall.id, t: nw.t, ...openingAt(st.unit, nw.wall, nw.t, st.lastOpeningKind, SNAP_PX / s, rooms, st.lastOpeningWidthM) }
             : undefined
         return { m, px, snap: null, hit: hitTest(sx, sy), ghost }
       }
@@ -603,6 +605,19 @@ export default function StudioApp() {
     },
     [toM, toPx, s, scaleStart, hitTest, rooms],
   )
+
+  /** a selected opening's end handle under the pointer (8 px, as a corner): dragging it resizes the opening */
+  const openingEndAt = (sx: number, sy: number): { id: Id; end: 'a' | 'b' } | undefined => {
+    for (const id of state.selection) {
+      const e = findEntity(unit, id)
+      if (e?.kind !== 'opening') continue
+      const f = wallFrame(e.w, unit.vertices)
+      for (const [end, u] of [['a', e.o.offsetM], ['b', e.o.offsetM + e.o.widthM]] as const) {
+        const p = toScreen({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u })
+        if (Math.hypot(p.x - sx, p.y - sy) <= 8) return { id, end }
+      }
+    }
+  }
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = canvasRef.current!.getBoundingClientRect()
@@ -645,11 +660,11 @@ export default function StudioApp() {
     setHeld(null)
     if (h.used) dispatch({ type: 'spring-back', tool: h.tool, selection: h.selection })
   }
-  // a tool switch (a key, a held key, its release) shows what the pointer is over in the new tool: the O ghost at once
+  // a tool switch (a key, a held key, its release) or a new O pick shows what the pointer is over in the new tool: the O ghost at once
   useEffect(() => {
     const p = lastPointer.current
     if (p && hoverRef.current && !dragRef.current) setHover(computeHover(p.sx, p.sy, shiftRef.current))
-  }, [tool]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tool, state.lastOpeningKind, state.lastOpeningWidthM]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- pointer events
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -690,6 +705,9 @@ export default function StudioApp() {
     // click follows the move within the same frame (React defers pointermove renders).
     const h = computeHover(sx, sy, e.shiftKey)
     if (holdRef.current) holdRef.current.used = true
+    // a selected opening's end handle (Select, or the O tool right after placing one): drag = resize
+    const end = (tool === 'select' || tool === 'opening') && openingEndAt(sx, sy)
+    if (end) return void (dragRef.current = { hit: { kind: 'opening', id: end.id }, sx, sy, m, moved: false, orig: new Map(), end: end.end })
     switch (tool) {
       case 'scale': {
         if (!state.planImage) return toast('Load a plan image first')
@@ -853,7 +871,7 @@ export default function StudioApp() {
         if (w && o) {
           const f = wallFrame(w, unit.vertices)
           const u = (m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y
-          dispatch({ type: 'drag-opening', id: o.id, offsetM: u - o.widthM / 2, tolM })
+          dispatch(d.end ? { type: 'resize-opening', id: o.id, end: d.end, uM: u, tolM } : { type: 'drag-opening', id: o.id, offsetM: u - o.widthM / 2, tolM })
         }
       } else if (d.hit.kind === 'label') {
         dispatch({ type: 'drag-label', id: d.hit.id, x: m.x, y: m.y })
@@ -1057,6 +1075,7 @@ export default function StudioApp() {
         if (orphaned && !window.confirm(`This also removes ${orphaned} opening${orphaned === 1 ? '' : 's'}. Continue?`)) return
         return dispatch({ type: 'delete' })
       }
+      if (st.tool === 'opening' && OPENING_KEYS[e.key]) return dispatch({ type: 'pick-opening', kind: OPENING_KEYS[e.key] })
       if (e.key === '0') return fitView()
       if (/^[0-9.]$/.test(e.key) && st.chain && st.tool === 'wall') {
         e.preventDefault()
@@ -1151,7 +1170,7 @@ export default function StudioApp() {
   } else if (tool === 'opening' && hover?.ghost) {
     const g = hover.ghost
     const why = g.error ?? (g.snapped && `snapped: ${g.snapped === 'corner' ? 'corner' : `next to ${g.snapped}`}`)
-    centre = why ? `${formatFeetInches(g.opening.widthM)} · ${why}` : formatFeetInches(g.opening.widthM)
+    centre = [g.opening.kind, formatFeetInches(g.opening.widthM), why].filter(Boolean).join(' · ')
   } else if (furnDrag) {
     centre = `${pieceLabel(furnDrag.piece)} · ${furnDrag.error ?? `snapped: ${furnDrag.snapped === 'wall' ? 'wall' : '3" grid'}`}`
   } else if (hover?.hit?.kind === 'furniture') {

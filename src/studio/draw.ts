@@ -295,16 +295,23 @@ export function draw(a: DrawArgs): void {
 
   // vertices; a selected wall's ends are its drag handles (ringed so they show on an ink-filled wall)
   const ends = new Set(state.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b]))
-  for (const v of vs) {
-    const active = sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id)
+  const dot = (p: Pt, active: boolean, ring: boolean) => {
     ctx.beginPath()
-    ctx.arc(v.x, v.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
     ctx.fillStyle = active ? C.accent : C.ink
     ctx.fill()
-    if (ends.has(v.id)) {
+    if (ring) {
       ctx.strokeStyle = C.bg
       ctx.lineWidth = px(1.5)
       ctx.stroke()
+    }
+  }
+  for (const v of vs) dot(v, sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id), ends.has(v.id))
+  // a selected opening's two ends (on its wall's centre line) are its resize handles, ringed the same
+  for (const w of state.unit.walls) {
+    for (const op of w.openings.filter((o) => sel.has(o.id))) {
+      const f = wallFrame(w, vs)
+      for (const u of [op.offsetM, op.offsetM + op.widthM]) dot({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u }, true, true)
     }
   }
 
