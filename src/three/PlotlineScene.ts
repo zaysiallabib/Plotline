@@ -23,7 +23,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { buildSkirting, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
+import { buildSkirtings, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
@@ -143,8 +143,8 @@ export function clampSun(t: THREE.DataTexture): void {
 
 interface Surface {
   mesh: THREE.Mesh
-  /** one entry per material slot; null = fixed material (edges/reveals) */
-  sides: ({ roomId: Id | null; target: FinishSlot['target'] } | null)[]
+  /** one entry per material slot; null = fixed edge plaster; `edge` = the finish in its depth-offset variant (wall ends and tops) */
+  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true } | null)[]
 }
 
 export class PlotlineScene {
@@ -260,6 +260,11 @@ export class PlotlineScene {
 
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
+    // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish
+    for (const [roomId, mesh] of buildSkirtings(unit, this.rooms)) {
+      this.staticGroup.add(mesh)
+      this.surfaces.push({ mesh, sides: [{ roomId, target: 'floor' }] })
+    }
     // indirect light × where the sky reaches (daylight.ts)
     const day = bakeDaylight(unit, this.rooms)
     for (const s of this.surfaces) {
@@ -658,9 +663,11 @@ export class PlotlineScene {
       mesh.castShadow = mesh.receiveShadow = true
       mesh.userData = { kind: 'wall', id: wall.id, front, back, label: 'Wall', objectKind: 'wall' }
       this.staticGroup.add(mesh)
+      // ends and tops: the finish of the room the wall stands in (its front room, else back), not a fixed white — an end cap
+      // beside a coloured wall read as a strip (founder, 2026-10-03); still the depth-offset variant (see applyMaterials)
       this.surfaces.push({
         mesh,
-        sides: [{ roomId: front, target: 'wall' }, { roomId: back, target: 'wall' }, null],
+        sides: [{ roomId: front, target: 'wall' }, { roomId: back, target: 'wall' }, { roomId: front ?? back, target: 'wall', edge: true }],
       })
     }
     for (const o of wall.openings) local.add(...dressOpening(o, wall, unit, this.rooms))
@@ -715,11 +722,6 @@ export class PlotlineScene {
     this.staticGroup.add(floor)
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
-    const skirting = buildSkirting(room, unit)
-    if (skirting) {
-      this.staticGroup.add(skirting)
-      this.surfaces.push({ mesh: skirting, sides: [{ roomId: room.id, target: 'floor' }] }) // follows the floor finish
-    }
 
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
@@ -739,7 +741,7 @@ export class PlotlineScene {
     const plaster = materialFor(EDGE_PLASTER, true, true)
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) =>
-        side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true) : plaster,
+        side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge) : plaster,
       )
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }

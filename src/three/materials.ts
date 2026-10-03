@@ -105,7 +105,9 @@ const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
 /**
  * Finish resolution: the slot whose roomIds names this room beats a slot
  * with roomIds 'all'; chosen option = cfg[slot.id] ?? slot.defaultOptionId.
- * roomId null = exterior side of a wall.
+ * roomId null = a face no closed room claims: the interior paint, never the weathered exterior tint — a wall end or
+ * jog poking a few mm into a room read as a grey strip (founder, 2026-10-03); the tower shells (building.ts) tint
+ * their own outside. A true outer face is only ever seen through a window at a slant.
  */
 export function resolveFinishRef(
   slots: FinishSlot[],
@@ -113,7 +115,7 @@ export function resolveFinishRef(
   roomId: Id | null,
   target: FinishSlot['target'],
 ): MaterialRef {
-  if (roomId === null) return target === 'wall' ? EXTERIOR_PLASTER : DEFAULTS[target]
+  if (roomId === null) return DEFAULTS[target]
   let slot: FinishSlot | undefined
   for (const s of slots) {
     if (s.target !== target) continue
@@ -132,6 +134,7 @@ export function resolveFinish(
   roomId: Id | null,
   target: FinishSlot['target'],
   daylit = false,
+  edge = false,
 ): THREE.MeshStandardMaterial {
-  return materialFor(resolveFinishRef(slots, cfg, roomId, target), false, daylit)
+  return materialFor(resolveFinishRef(slots, cfg, roomId, target), edge, daylit)
 }

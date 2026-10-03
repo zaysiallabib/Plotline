@@ -17,41 +17,135 @@ const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
 const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
 const CURTAIN_FABRIC = { kind: 'pbr', textureId: 'fabric_curtain', tint: '#efe6d8' } as const
 
-/** Along inner-polygon edge `edge` (from its start vertex, metres): skirting runs over [s0, s1]; the edge is `len` long. */
-export interface SkirtingSpan {
-  edge: number
+/**
+ * One run of skirting (skirtingRuns): along the foot of a wall face, from world point `p` in direction `d` over
+ * [s0, s1] metres, `n` pointing into the room whose floor tile it is. Runs on one plane never overlap (unioned per
+ * room, clipped between rooms), so coplanar strips never fight.
+ */
+export interface SkirtingRun {
+  room: Room
+  p: Pt
+  d: Pt
+  n: Pt
   s0: number
   s1: number
-  len: number
 }
 
+const ROOM_PROBE_M = 0.05
+
 /**
- * Which stretches of a room's finished inner faces get skirting: every inner edge minus the spans of
- * its wall's doors/passages (and windows that reach below skirting height). None in bath/balcony/shaft.
+ * Skirting follows what is BUILT, not the room outline (founder, 2026-10-03: a traced jog that pokes 1 cm into a room
+ * past the outline left a bare wall foot — "the tile places are left empty"). Every wall face, wall end and doorless
+ * passage reveal that looks into a room (probed 5 cm out from its middle) gets a run of that room's floor tile, minus
+ * the spans of doors / sliders (their frames reach the floor) and windows below skirting height; a passage keeps its
+ * run on the face up to the jamb and the reveal carries it through, each half in its own room's tile. Runs are
+ * extended past the face ends by the skirting depth (hidden in the wall at inside corners, closing outside ones), then
+ * unioned per room and plane; where two rooms' runs overlap on one plane the longer room keeps the overlap. None in
+ * bath / balcony / shaft. Low walls (below skirting height) and walls in no room get none.
  */
-export function skirtingSpans(room: Room, graph: Graph): SkirtingSpan[] {
-  if (NO_SKIRTING.includes(room.kind)) return []
-  const inner = core.roomInnerPolygon(room, graph)
-  const out: SkirtingSpan[] = []
-  inner.forEach((p, i) => {
-    const q = inner[(i + 1) % inner.length]
-    const len = Math.hypot(q.x - p.x, q.y - p.y)
-    const wall = graph.walls.find((w) => w.id === room.wallIds[i])
-    if (len < 1e-3 || !wall) return
-    const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }
-    const f = core.wallFrame(wall, graph.vertices)
-    const along = (u: number) => (f.origin.x + f.dir.x * u - p.x) * d.x + (f.origin.y + f.dir.y * u - p.y) * d.y
-    const cuts = wall.openings
-      .filter((o) => o.kind !== 'window' || o.sillM < SKIRTING_H)
-      .map((o) => [along(o.offsetM), along(o.offsetM + o.widthM)].sort((a, b) => a - b))
+export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
+  const raw: SkirtingRun[] = []
+  const roomOf = (p: Pt) => {
+    const r = core.roomAt(p, rooms, unit)
+    return r && !NO_SKIRTING.includes(r.kind) ? r : null
+  }
+  for (const w of unit.walls) {
+    if (w.heightM < SKIRTING_H) continue
+    const f = core.wallFrame(w, unit.vertices)
+    if (f.lengthM < 1e-3) continue
+    const T2 = w.thicknessM / 2
+    const at = (u: number, v: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * v, y: f.origin.y + f.dir.y * u + f.normal.y * v })
+    const span = (o: Opening): [number, number] => [Math.max(0, o.offsetM), Math.min(f.lengthM, o.offsetM + o.widthM)]
+    const cuts = w.openings
+      .filter((o) => o.kind !== 'passage' && (o.kind !== 'window' || o.sillM < SKIRTING_H))
+      .map(span)
+      .filter(([a, b]) => b > a)
       .sort((a, b) => a[0] - b[0])
-    let s = 0
-    for (const [a, b] of cuts) {
-      if (Math.min(a, len) - s > 0.01) out.push({ edge: i, s0: s, s1: Math.min(a, len), len })
-      s = Math.max(s, b)
+    const holes = w.openings.map(span).filter(([a, b]) => b > a)
+    // the two faces, cut by doors / low windows; a passage leaves the face run (the jamb is where it turns)
+    for (const side of [1, -1] as const) {
+      const n = { x: f.normal.x * side, y: f.normal.y * side }
+      const room = roomOf(at(f.lengthM / 2, side * (T2 + ROOM_PROBE_M)))
+      if (!room) continue
+      const p = at(0, side * T2)
+      let s = -SKIRTING_T
+      for (const [a, b] of cuts) {
+        if (a - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a })
+        s = Math.max(s, b)
+      }
+      if (f.lengthM + SKIRTING_T - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + SKIRTING_T })
     }
-    if (len - s > 0.01) out.push({ edge: i, s0: s, s1: len, len })
-  })
+    // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage)
+    for (const end of [0, 1] as const) {
+      const u = end ? f.lengthM : 0
+      const out = { x: f.dir.x * (end ? 1 : -1), y: f.dir.y * (end ? 1 : -1) }
+      const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, 0))
+      if (!room) continue
+      raw.push({ room, p: at(u, -T2), d: f.normal, n: out, s0: -SKIRTING_T, s1: w.thicknessM + SKIRTING_T })
+    }
+    // passage reveals: the tile runs through, each half in the room on that side of the wall
+    for (const o of w.openings) {
+      if (o.kind !== 'passage') continue
+      const [u0, u1] = span(o)
+      for (const [u, into] of [[u0, 1], [u1, -1]] as const) {
+        if (holes.some(([a, b]) => a < u - 1e-6 && u + 1e-6 < b)) continue // inside another opening: no reveal there
+        const n = { x: f.dir.x * into, y: f.dir.y * into }
+        for (const side of [1, -1] as const) {
+          const room = roomOf(at(u + into * ROOM_PROBE_M, side * (T2 + ROOM_PROBE_M)))
+          if (!room) continue
+          // from the centre line to that face and past it by the depth (closes the outside corner with the face run)
+          raw.push({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n, s0: 0, s1: T2 + SKIRTING_T })
+        }
+      }
+    }
+  }
+  return unionRuns(raw)
+}
+
+/** Same plane (normal + offset, to the mm) and canonical direction: runs there are intervals on one line. */
+function unionRuns(raw: SkirtingRun[]): SkirtingRun[] {
+  const q = (x: number) => Math.round(x * 1000)
+  type Line = { d: Pt; n: Pt; o: Pt; byRoom: Map<Room, [number, number][]> }
+  const lines = new Map<string, Line>()
+  for (const r of raw) {
+    const c = r.p.x * r.n.x + r.p.y * r.n.y // the plane's offset along its normal
+    const key = `${q(r.n.x)},${q(r.n.y)},${q(c)}`
+    let line = lines.get(key)
+    // one direction per plane, from the first run's normal; every run's ends are projected onto it (a wall a hair off
+    // axis must not pick a different direction than an exact one on the same plane: that mirrored its run)
+    if (!line) lines.set(key, (line = { d: { x: -r.n.y, y: r.n.x }, n: r.n, o: { x: r.n.x * c, y: r.n.y * c }, byRoom: new Map() }))
+    const t = (s: number) => (r.p.x + r.d.x * s) * line!.d.x + (r.p.y + r.d.y * s) * line!.d.y
+    const [a, b] = [t(r.s0), t(r.s1)].sort((x, y) => x - y) as [number, number]
+    line.byRoom.set(r.room, [...(line.byRoom.get(r.room) ?? []), [a, b]])
+  }
+  const out: SkirtingRun[] = []
+  for (const line of lines.values()) {
+    const merged = [...line.byRoom].map(([room, iv]) => {
+      iv.sort((x, y) => x[0] - y[0])
+      const u: [number, number][] = []
+      for (const [a, b] of iv) {
+        const last = u[u.length - 1]
+        if (last && a <= last[1] + 1e-6) last[1] = Math.max(last[1], b)
+        else u.push([a, b])
+      }
+      return { room, iv: u, total: u.reduce((s, [a, b]) => s + b - a, 0) }
+    })
+    merged.sort((x, y) => y.total - x.total)
+    const taken: [number, number][] = []
+    for (const { room, iv } of merged) {
+      for (const [a0, b0] of iv) {
+        // clip against what longer rooms already hold on this plane
+        let parts: [number, number][] = [[a0, b0]]
+        for (const [ta, tb] of taken) {
+          parts = parts.flatMap(([a, b]): [number, number][] => (tb <= a || ta >= b ? [[a, b]] : ([[a, ta], [tb, b]] as [number, number][]).filter(([x, y]) => y - x > 0.005)))
+        }
+        for (const [x, y] of parts) {
+          taken.push([x, y])
+          out.push({ room, p: { x: line.o.x + line.d.x * x, y: line.o.y + line.d.y * x }, d: line.d, n: line.n, s0: 0, s1: y - x })
+        }
+      }
+    }
+  }
   return out
 }
 
@@ -60,28 +154,24 @@ export function skirtingSpans(room: Room, graph: Graph): SkirtingSpan[] {
  * the room's floor finish, as a Dhaka flat's skirting is a strip of its floor tile / stone / laminate. The white painted
  * trim it had vanished against white walls on a marble floor, so the wall–floor junction did not read.
  */
-export function buildSkirting(room: Room, graph: Graph): THREE.Mesh | null {
-  const spans = skirtingSpans(room, graph)
-  if (!spans.length) return null
-  const inner = core.roomInnerPolygon(room, graph)
-  const geoms = spans.map(({ edge, s0, s1, len }) => {
-    const p = inner[edge]
-    const q = inner[(edge + 1) % inner.length]
-    const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }
-    const n = { x: -d.y, y: d.x } // room interior (loops are positive)
-    // run past a corner by the skirting depth: hidden in the wall at inside corners, closes outside corners
-    const a = s0 < 1e-6 ? -SKIRTING_T : s0
-    const b = s1 > len - 1e-6 ? len + SKIRTING_T : s1
-    const g = new THREE.BoxGeometry(b - a, SKIRTING_H, SKIRTING_T)
-    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(d.x, 0, d.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(n.x, 0, n.y))
-    const mid = (a + b) / 2
-    m.setPosition(p.x + d.x * mid + (n.x * SKIRTING_T) / 2, SKIRTING_H / 2, p.y + d.y * mid + (n.y * SKIRTING_T) / 2)
-    return meterUVs(g.applyMatrix4(m))
-  })
-  const mesh = new THREE.Mesh(mergeGeometries(geoms)!)
-  geoms.forEach((g) => g.dispose())
-  mesh.receiveShadow = true
-  return mesh
+export function buildSkirtings(unit: Unit, rooms: Room[]): Map<Id, THREE.Mesh> {
+  const byRoom = new Map<Id, THREE.BufferGeometry[]>()
+  for (const r of skirtingRuns(unit, rooms)) {
+    const len = r.s1 - r.s0
+    const g = new THREE.BoxGeometry(len, SKIRTING_H, SKIRTING_T)
+    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(r.d.x, 0, r.d.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(r.n.x, 0, r.n.y))
+    const mid = (r.s0 + r.s1) / 2
+    m.setPosition(r.p.x + r.d.x * mid + (r.n.x * SKIRTING_T) / 2, SKIRTING_H / 2, r.p.y + r.d.y * mid + (r.n.y * SKIRTING_T) / 2)
+    byRoom.set(r.room.id, [...(byRoom.get(r.room.id) ?? []), meterUVs(g.applyMatrix4(m))])
+  }
+  const out = new Map<Id, THREE.Mesh>()
+  for (const [id, geoms] of byRoom) {
+    const mesh = new THREE.Mesh(mergeGeometries(geoms)!)
+    geoms.forEach((g) => g.dispose())
+    mesh.receiveShadow = true
+    out.set(id, mesh)
+  }
+  return out
 }
 
 /**
