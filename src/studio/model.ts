@@ -1242,13 +1242,16 @@ export function reducer(s: StudioState, a: Action): StudioState {
       // a draft may be just `{ unit }` (older drafts, hand-injected JSON): every other field is optional
       const init = initialState()
       const d = a.draft as Partial<Draft>
-      return {
+      const restored = {
         ...init,
         unit: normalizeUnit(a.draft.unit),
         planImage: d.planImage ?? null,
         view: d.view ?? init.view,
         timer: { ...init.timer, ...d.timer, lastTickAt: 0 },
       }
+      // a draft autosaved before the join rules existed (founder 2026-10-03: the live preview still showed its stubs and
+      // loose ends) is joined once here too — a no-op on every later open, Ctrl+Z gives the draft as autosaved
+      return reducer(restored, { type: 'join-walls' })
     }
     case 'reset':
       return initialState()

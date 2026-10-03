@@ -12,7 +12,7 @@ import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
-import { initialState, normalizeUnit, reducer } from './model'
+import { initialState, normalizeUnit, reducer, type Draft } from './model'
 
 const looseEnds = (u: Unit) => u.vertices.filter((v) => u.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1).map((v) => v.id.slice(0, 8)).sort()
 
@@ -69,6 +69,16 @@ describe("founder's Sheltech Type-A draft, loaded in the Studio", () => {
     for (const l of u.roomLabels) expect(roomAt(l, rooms, u), l.name).toBeTruthy()
     expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['Bed 1', 'Bed 3', 'Kitchen', 'Living', 'Planter', 'Room', 'Room', 'Toilet 1', 'Toilet 2'])
     expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  it('an autosaved draft is joined on restore too (the founder opened /studio on his old autosave and the preview still had the stubs); a second restore changes nothing', () => {
+    const r = reducer(initialState(), { type: 'restore', draft: { unit: raw } as Draft })
+    expect(deriveRooms(r.unit)).toHaveLength(17)
+    expect(r.toast?.text).toMatch(/^Joined 2 .*Removed 6 stubs/)
+    expect(r.history.past).toHaveLength(1) // Ctrl+Z = the draft as autosaved
+    const again = reducer(initialState(), { type: 'restore', draft: { unit: r.unit } as Draft })
+    expect(again.toast).toBeFalsy()
+    expect(again.history.past).toHaveLength(0)
   })
 
   it('the five hand-traced units are unchanged by Join walls (already clean)', () => {
