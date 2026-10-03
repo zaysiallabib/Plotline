@@ -971,7 +971,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'timer-start':
       return s.timer.started ? s : { ...s, timer: { ...s.timer, started: true, lastInputAt: a.now, lastTickAt: a.now } }
     case 'timer-input':
-      return { ...s, timer: { ...s.timer, lastInputAt: a.now } }
+      // any first input starts the clock (it used to start only from the Scale tool: an auto-traced draft never ran it)
+      return { ...s, timer: s.timer.started ? { ...s.timer, lastInputAt: a.now } : { ...s.timer, started: true, lastInputAt: a.now, lastTickAt: a.now } }
     case 'timer-tick': {
       const t = s.timer
       const active = t.started && !t.stopped && !a.hidden && a.now - t.lastInputAt <= IDLE_MS

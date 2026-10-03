@@ -318,6 +318,10 @@ describe('studio reducer', () => {
     expect(s.planImage).toBeNull()
     expect(s.view).toEqual({ panX: 0, panY: 0, zoom: 1 })
     expect(s.timer.started).toBe(false)
+    // the clock starts on the first input of any kind (an auto-traced draft never used the Scale tool) and then counts
+    const t = reducer(reducer(s, { type: 'timer-input', now: 1000 }), { type: 'timer-tick', now: 2000, hidden: false })
+    expect(t.timer.started).toBe(true)
+    expect(t.timer.elapsedMs).toBe(1000)
     expect(deriveRooms(s.unit)).toHaveLength(27)
     expect(validate(s.unit).filter((i) => i.level === 'error')).toHaveLength(0)
     expect(studioIssues(s.unit, deriveRooms(s.unit))).toEqual([]) // entry door opens off the traced lift lobby
