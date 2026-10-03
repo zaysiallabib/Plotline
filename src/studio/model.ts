@@ -126,6 +126,10 @@ export type Action =
   | { type: 'exported' }
   | { type: 'toast'; text: string }
   | { type: 'clear-toast' }
+  /** the Width field while tracing: the chain's next walls get this thickness (m) */
+  | { type: 'chain-thickness'; thicknessM: number }
+  /** a held W / O / R released after it acted: back to `tool` with `selection` (minus what the action removed) */
+  | { type: 'spring-back'; tool: Tool; selection: Id[] }
 
 export function emptyUnit(): Unit {
   return {
@@ -778,6 +782,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return withToast(s, a.text)
     case 'clear-toast':
       return { ...s, toast: null }
+    case 'chain-thickness':
+      return s.chain && a.thicknessM > 0 ? { ...s, chain: { ...s.chain, thicknessM: a.thicknessM } } : s
+    case 'spring-back': {
+      const t = reducer(s, { type: 'set-tool', tool: a.tool })
+      return { ...t, selection: stillThere(t.unit, a.selection) }
+    }
   }
 }
 
