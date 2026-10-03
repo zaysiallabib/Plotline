@@ -845,6 +845,62 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         expect(s.history.past).toEqual([])
       }
     })
+
+    describe('hand-fix precision (founder 2026-10-03: a wedge between two nearly collinear hand-fixed pieces, a door on a stub)', () => {
+      /** each opening's hinge point on the plan and the side it swings to (+1 / −1 in plan y, or x on an x-normal wall) */
+      const poses = (u: Unit) =>
+        u.walls.flatMap((w) => {
+          const f = wallFrame(w, u.vertices)
+          return w.openings.map((o) => {
+            const hu = o.hinge === 'b' ? o.offsetM + o.widthM : o.offsetM
+            return { id: o.id, x: f.origin.x + f.dir.x * hu, y: f.origin.y + f.dir.y * hu, side: (o.swing === 'out' ? 1 : -1) * Math.sign(Math.abs(f.normal.y) > 0.5 ? f.normal.y : f.normal.x) }
+          })
+        })
+      const near = (p: { x: number; y: number }, q: { x: number; y: number }, tol: number) => expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(tol)
+      const lateral = (u: Unit, p: string, a: string, b: string) => {
+        const [P, A, B] = [p, a, b].map((id) => u.vertices.find((v) => v.id === id)!)
+        return ((P.x - A.x) * (B.y - A.y) - (P.y - A.y) * (B.x - A.x)) / Math.hypot(B.x - A.x, B.y - A.y)
+      }
+
+      it('(b) a ~1° corner after a drop heals into one straight wall; a door on the reversed piece keeps its hinge point and swing side', () => {
+        // A(0,0)→B(2,0); a loose piece C→B whose end C is dropped 2.6 cm off A–B's line, 1.5 m on (≈ 1°)
+        const u = build({ A: [0, 0], B: [2, 0], C: [3.5, 0.3] }, [['A', 'B', PARTITION_M], ['C', 'B', PARTITION_M]])
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = reducer(s, { type: 'add-opening', wallId: 'w1', t: 0.5, kind: 'door' })
+        s = run(s, { type: 'drag-begin' }, { type: 'drag', vertices: [{ id: 'C', x: 3.5, y: 0.026 }] })
+        const before = poses(s.unit)[0]
+        s = reducer(s, { type: 'drag-end', ids: ['C'] })
+        expect(s.unit.walls).toHaveLength(1)
+        expect(s.unit.walls[0]).toMatchObject({ id: 'w0', a: 'A', b: 'C' })
+        expect(s.unit.vertices.map((v) => v.id).sort()).toEqual(['A', 'C'])
+        const after = poses(s.unit)[0]
+        near(after, before, 0.01) // the corner moved ≤ 1.5 cm sideways: the hinge with it, never along
+        expect(after.side).toBe(before.side)
+        expect(reducer(s, { type: 'undo' }).unit.walls).toHaveLength(2) // the drag and its heal: one undo entry
+      })
+
+      it('(b) two widths through a bent corner are only straightened (each keeps its own); an exact straight corner on a whole-unit pass keeps its walls', () => {
+        const u = build({ A: [0, 0], B: [2, 0.012], C: [3.5, 0], X: [0, 2], Y: [2, 2], Z: [4, 2] }, [['A', 'B', EXTERIOR_M], ['B', 'C', PARTITION_M], ['X', 'Y', PARTITION_M], ['Y', 'Z', PARTITION_M]])
+        expect(Math.abs(lateral(u, 'B', 'A', 'C'))).toBeCloseTo(0.012, 6)
+        const s = reducer(initialState(), { type: 'load-unit', unit: u }) // load = join-walls: the whole unit
+        expect(s.unit.walls).toHaveLength(4)
+        expect(lateral(s.unit, 'B', 'A', 'C')).toBeCloseTo(0, 9) // B onto the line A–C: no 179° corner left
+        expect(s.unit.vertices.find((v) => v.id === 'Y')).toMatchObject({ x: 2, y: 2 }) // straight already: untouched
+        expect(Math.abs(lateral(reducer(s, { type: 'undo' }).unit, 'B', 'A', 'C'))).toBeCloseTo(0.012, 6)
+      })
+
+      it('(b) a wall drawn on from a free wall end along its line becomes one wall with it; the chain goes on', () => {
+        const b = build({ A: [0, 0], B: [3, 0] }, [['A', 'B', PARTITION_M]])
+        const u = { ...b, walls: b.walls.map((w) => ({ ...w, heightM: 3.048 })) } // the Wall tool's height
+        let s = reducer(initialState(), { type: 'load-unit', unit: u })
+        s = run(s, { type: 'set-scale', pxPerM: 100 }, { type: 'chain-start', at: { x: 3, y: 0, tolM: TOL } }, { type: 'chain-add', at: { x: 5, y: 0, tolM: TOL } })
+        expect(s.unit.walls).toHaveLength(1)
+        expect(wallFrame(s.unit.walls[0], s.unit.vertices).lengthM).toBeCloseTo(5)
+        expect(s.chain?.ids).toHaveLength(1)
+        s = reducer(s, { type: 'chain-add', at: { x: 5, y: 2, tolM: TOL } })
+        expect(s.unit.walls).toHaveLength(2)
+      })
+    })
   })
 
   it('delete: a rectangle side → room gone, no corner joined to nothing; the middle wall of a T → the through-wall is one wall again', () => {
