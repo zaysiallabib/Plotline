@@ -53,6 +53,8 @@ export interface StudioState {
   history: { past: Unit[]; future: Unit[] }
   timer: Timer
   lastOpeningKind: OpeningKind
+  /** the O tool's picked width for lastOpeningKind; absent = the kind's default (openingDefaults: a door on a bath wall 2'-6") */
+  lastOpeningWidthM?: number
   toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
@@ -82,8 +84,10 @@ export type Action =
   | { type: 'chain-back' }
   | { type: 'chain-end' }
   | { type: 'toggle-thickness' }
-  /** tolM: edge-snap tolerance (10 screen px); absent = centred on t */
-  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; tolM?: number }
+  /** tolM: edge-snap tolerance (10 screen px); absent = centred on t. No kind / widthM = the O tool's pick (lastOpeningKind / lastOpeningWidthM) */
+  | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; widthM?: number; tolM?: number }
+  /** the O tool's picker (Panel, keys 1–4): what the next click places; no widthM = the kind's default */
+  | { type: 'pick-opening'; kind: OpeningKind; widthM?: number }
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
   | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
@@ -94,6 +98,8 @@ export type Action =
   | { type: 'drag'; vertices: { id: Id; x: number; y: number }[] }
   | { type: 'drag-end'; ids: Id[] }
   | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
+  /** mid-drag like drag-opening: the opening's `end` handle to uM (m from corner A), the other end stays; edge snap, min 0.3 m, refused past the wall end or over a sibling */
+  | { type: 'resize-opening'; id: Id; end: 'a' | 'b'; uM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
   /** arrow keys: move the selection by (dx, dy) m; openings slide along their wall by dx + dy. No snapping. */
   | { type: 'nudge'; dx: number; dy: number }
@@ -748,7 +754,10 @@ const replaceOpening = (u: Unit, wallId: Id, o: Opening): Unit => ({
 
 const bordersBath = (rooms: Room[], wallId: Id): boolean => rooms.some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
 
-/** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. */
+/** The O tool's smallest opening (a resize stops here). */
+const MIN_OPENING_M = 0.3
+
+/** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. No widthM = the kind's default. */
 export function openingAt(
   u: Unit,
   wall: Wall,
@@ -756,9 +765,10 @@ export function openingAt(
   kind: OpeningKind,
   tolM: number,
   rooms: Room[],
+  widthM?: number,
 ): { opening: Opening; snapped: OpeningSnap; error: string | null } {
   const len = wallLen(u, wall)
-  const d = openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id))
+  const d = { ...openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id)), ...(widthM !== undefined && { widthM }) }
   const { offsetM, snapped } = snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
   const opening: Opening = { id: newId(), kind, ...d, offsetM, hinge: 'a', swing: 'in' }
   const placed = placeOpening(wall, len, opening)
@@ -869,11 +879,14 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const wall = s.unit.walls.find((w) => w.id === a.wallId)
       if (!wall) return s
       const kind = a.kind ?? s.lastOpeningKind
-      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit))
+      const widthM = a.widthM ?? (kind === s.lastOpeningKind ? s.lastOpeningWidthM : undefined)
+      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit), widthM)
       if (error) return withToast(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
-      return commit(s, { ...s.unit, walls }, { selection: [placed.id], lastOpeningKind: kind })
+      return commit(s, { ...s.unit, walls }, { selection: [placed.id], lastOpeningKind: kind, lastOpeningWidthM: widthM })
     }
+    case 'pick-opening':
+      return { ...s, lastOpeningKind: a.kind, lastOpeningWidthM: a.widthM === undefined ? undefined : Math.max(MIN_OPENING_M, a.widthM) }
     case 'update-opening': {
       const f = findOpening(s.unit, a.id)
       if (!f) return s
@@ -883,7 +896,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       }
       const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), next)
       if (typeof placed === 'string') return withToast(s, placed)
-      return commit(s, replaceOpening(s.unit, f.wall.id, placed), { lastOpeningKind: placed.kind })
+      return commit(s, replaceOpening(s.unit, f.wall.id, placed)) // editing one never changes the O tool's pick
     }
     case 'drag-opening': {
       const f = findOpening(s.unit, a.id)
@@ -893,6 +906,21 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const { offsetM } = snapOpeningOffset(f.wall, len, a.offsetM + w / 2, w, a.tolM ?? 0, a.id)
       const placed = placeOpening(f.wall, len, { ...f.opening, offsetM })
       if (typeof placed === 'string') return { ...s, dragBlocked: true }
+      return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
+    }
+    case 'resize-opening': {
+      const f = findOpening(s.unit, a.id)
+      if (!f) return s
+      const o = f.opening
+      const len = wallLen(s.unit, f.wall)
+      const far = a.end === 'a' ? o.offsetM + o.widthM : o.offsetM
+      // the dragged edge snaps as an opening 0 wide would: flush to a wall end or a neighbour's edge
+      const { offsetM: e } = snapOpeningOffset(f.wall, len, a.uM, 0, a.tolM ?? 0, o.id)
+      const widthM = Math.max(MIN_OPENING_M, a.end === 'a' ? far - e : e - far)
+      const offsetM = a.end === 'a' ? far - widthM : far
+      const placed = placeOpening(f.wall, len, { ...o, offsetM, widthM })
+      // placeOpening shifting it (no room for the 0.3 m) would move the far end: refused like an overlap
+      if (typeof placed === 'string' || Math.abs(placed.offsetM - offsetM) > EPS) return { ...s, dragBlocked: true }
       return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
     }
     case 'update-wall': {
