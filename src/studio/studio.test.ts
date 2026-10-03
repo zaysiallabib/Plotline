@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -784,12 +784,23 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         expect(clean(s)).toEqual([])
         expect(reducer(s, { type: 'undo' }).unit).toBe(s0.unit) // the drag and its join: one undo entry
       }
-      // outside the body (0.2 m short of the centre line): left as dropped, a loose end
-      const out = drop(s0, tip.id, 2.6, 2.8)
-      expect(out.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.6, y: 2.8 })
+      // outside the body but within reach (7 cm short of its face; reach = max(0.15, 1.5 × 5") = 19 cm): the end goes on
+      // along its OWN line (the wall (2,0)→(2.6,2.8) never tilts) onto the centre line and T-splits it
+      const reached = drop(s0, tip.id, 2.6, 2.8)
+      const v = reached.unit.vertices.find((x) => x.id === tip.id)!
+      expect(v.y).toBeCloseTo(3, 9)
+      expect(v.x).toBeCloseTo(2 + (0.6 * 3) / 2.8, 9)
+      expect(reached.unit.walls.filter((w) => w.a === tip.id || w.b === tip.id)).toHaveLength(3)
+      expect(deriveRooms(reached.unit)).toHaveLength(2)
+      expect(clean(reached)).toEqual([])
+      // beyond reach (32 cm short of the face): left as dropped, a loose end
+      const out = drop(s0, tip.id, 2.6, 2.55)
+      expect(out.unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 2.6, y: 2.55 })
       expect(issues(out)).toContain('warning:dangling-vertex')
-      // a partition-thin wall's body is thinner: 0.1 m off the left wall (5", half 0.064 m) stays loose, 0.05 m joins
-      expect(drop(s0, tip.id, 0.1, 1.5).unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 0.1 })
+      // a partition-thin wall's body is thinner: along the line 31 cm short of the left wall's face (5") stays loose,
+      // 5 cm short reaches it, inside it (0.05 m off its centre line) joins as before
+      expect(drop(s0, tip.id, 0.3, 1.5).unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 0.3, y: 1.5 })
+      expect(drop(s0, tip.id, 0.1, 1.5).unit.vertices.find((v) => v.id === tip.id)!.x).toBeCloseTo(0, 9)
       expect(drop(s0, tip.id, 0.05, 1.5).unit.vertices.find((v) => v.id === tip.id)).toMatchObject({ x: 0, y: 1.5 })
     })
 
@@ -895,6 +906,44 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(s.toast?.text).toMatch(/Joined/)
       expect(reducer(s, { type: 'join-walls' })).toBe(s)
       expect(reducer(s, { type: 'undo' }).unit).toBe(raw)
+    })
+
+    it('a loose end short of a wall (within max(0.15 m, 1.5 × its thickness) of its face, along its own line) joins on load / Join walls: T, L, never through, never on an opening', () => {
+      const ends = (u: Unit) => u.vertices.filter((v) => u.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1).map((v) => v.id)
+      const load = (u: Unit) => reducer(initialState(), { type: 'load-unit', unit: u })
+      // box 4×3 of 5" walls; a partition from the top down to p, 10 cm short of the bottom wall's face (y 2.9365)
+      const box = { A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3] } as Record<string, [number, number]>
+      const sides: [string, string, number][] = [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]]
+      const t = load(build({ ...box, m: [2, 0], p: [2, 2.84] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M]]))
+      expect(t.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 3 }) // slid along its own line onto the centre line
+      expect(ends(t.unit)).toEqual([])
+      expect(deriveRooms(t.unit)).toHaveLength(2)
+      expect(t.toast?.text).toMatch(/Joined 1/)
+      expect(reducer(t, { type: 'undo' }).unit.vertices.find((v) => v.id === 'p')).toMatchObject({ y: 2.84 })
+      // 30 cm short: beyond reach, stays a loose end
+      expect(ends(load(build({ ...box, m: [2, 0], p: [2, 2.63] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M]])).unit)).toEqual(['p'])
+      // never through: both a 5" wall q→r (face 1.7 cm ahead) and the bottom wall behind it (face 15.7 cm) are within
+      // reach — the nearest takes the end
+      const thru = load(build({ ...box, m: [2, 0], p: [2, 2.78], q: [1, 2.86], r: [3, 2.86] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M], ['q', 'r', PARTITION_M]]))
+      expect(thru.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 2.86 })
+      // an opening on the split point refuses (toast), the end stays where it was
+      const door = build({ ...box, m: [2, 0], p: [2, 2.84] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ...sides.slice(1), ['m', 'p', PARTITION_M]])
+      door.walls[3].openings = [{ id: 'dr', kind: 'slider', offsetM: 1, widthM: 2, heightM: 2.1, sillM: 0 }] // C→D, x 3…1
+      const refused = load(door)
+      expect(refused.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 2.84 })
+      expect(refused.toast?.text).toMatch(/opening/i)
+      // an L: two free ends 10 cm and 8 cm short of where their lines cross both come there; nothing tilts
+      const l = load(build({ A: [0, 0], E: [1.9, 0], F: [2, 0.08], C: [2, 3], D: [0, 3] }, [['A', 'E', PARTITION_M], ['F', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]]))
+      expect(ends(l.unit)).toEqual([])
+      expect(deriveRooms(l.unit)).toHaveLength(1)
+      expect(axisOnly(l.unit)).toBe(true)
+      expect(l.unit.vertices.find((v) => v.id === 'E' || v.id === 'F')).toMatchObject({ x: 2, y: 0 })
+      // a 1.1 m railing joins the same way; a 0.52 m pillar-thick wall is still a wall to join (its face 10 cm ahead)
+      const low = build({ ...box, m: [2, 0], p: [2, 2.83] }, [['A', 'm', PARTITION_M], ['m', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', 0.52], ['D', 'A', PARTITION_M], ['m', 'p', 0.0635]])
+      low.walls[5].heightM = 1.1
+      const lj = load({ ...low, vertices: low.vertices.map((v) => (v.id === 'p' ? { ...v, y: 3 - 0.26 - 0.1 } : v)) })
+      expect(lj.unit.vertices.find((v) => v.id === 'p')).toMatchObject({ x: 2, y: 3 })
+      expect(lj.unit.walls.find((w) => w.id === 'w5')!.heightM).toBe(1.1)
     })
 
     it('openSpotsNear names why a click is in no room: an end short of a wall, a crossing, two corners apart; nearest first', () => {
@@ -1034,6 +1083,20 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         expect(l.unit.walls[1].openings).toHaveLength(1)
         // a 0.35 m vent on Sheltech A's 0.53 m wall is no door: loading keeps it (the five hand traces load unchanged)
         expect(reducer(initialState(), { type: 'load-unit', unit: sheltechA as unknown as Unit }).unit.walls.find((w) => w.id === 'w_t3_n2')!.openings).toHaveLength(1)
+      })
+
+      it('a wall carrying an opening is full height: a window placed on a 1.1 m railing raises it; a saved draft with one heals on load; a railing without one stays low', () => {
+        const box = build({ A: [0, 0], B: [4, 0], C: [4, 3], D: [0, 3] }, [['A', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
+        const railed = { ...box, walls: box.walls.map((w) => (w.id === 'w0' || w.id === 'w2' ? { ...w, heightM: 1.1 } : w)) }
+        let s = reducer(initialState(), { type: 'load-unit', unit: railed })
+        expect(s.unit.walls.map((w) => w.heightM)).toEqual([1.1, 3, 1.1, 3]) // no opening: railings stay
+        s = reducer(s, { type: 'add-opening', wallId: 'w0', t: 0.5, kind: 'window' })
+        expect(s.unit.walls.map((w) => w.heightM)).toEqual([WALL_HEIGHT_M, 3, 1.1, 3])
+        expect(reducer(s, { type: 'undo' }).unit.walls[0].heightM).toBe(1.1) // one undo entry
+        // the founder's saved draft: a window already on the railing
+        const saved = { ...railed, walls: railed.walls.map((w) => (w.id === 'w0' ? { ...w, openings: s.unit.walls[0].openings } : w)) }
+        expect(normalizeUnit(saved).walls[0].heightM).toBe(WALL_HEIGHT_M)
+        expect(reducer(initialState(), { type: 'load-unit', unit: saved }).unit.walls.map((w) => w.heightM)).toEqual([WALL_HEIGHT_M, 3, 1.1, 3])
       })
     })
   })
