@@ -1835,6 +1835,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
         ...text.items.filter((it) => it.kind === 'room' && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
         ...(byRooms ? byRooms.others.map((i) => ({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM })) : []),
         ...stampsAt(pxPerM).sort((p, q) => d2(p, pick) - d2(q, pick)).slice(1),
+        // (a stair flight drawn with no STAIR label — Sheltech's DN / UP — is the core too)
+        ...(draft.stairs ?? []).map((s) => ({ x: (s.x0 + s.x1) / 2 / pxPerM, y: (s.y0 + s.y1) / 2 / pxPerM })),
       ]
     : []
   flat = new Set([...flat].filter((r) => !foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))))
