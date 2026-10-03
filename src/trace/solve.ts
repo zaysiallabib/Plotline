@@ -1028,7 +1028,17 @@ export function findStairs(mask: Uint8Array, w: number, h: number, k: number): {
 }
 
 /** Dilate a mask by r px (exact, through the distance transform). */
-function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+function dilate(m: Uint8Array, w: number, h: number, r: number, borderIsSet = true): Uint8Array {
+  if (!borderIsSet) {
+    // (the distance transform counts the image border as set: pad the mask so the border closes nothing)
+    const p = Math.ceil(r) + 1, W2 = w + 2 * p, H2 = h + 2 * p
+    const big = new Uint8Array(W2 * H2)
+    for (let y = 0; y < h; y++) big.set(m.subarray(y * w, y * w + w), (y + p) * W2 + p)
+    const d = dilate(big, W2, H2, r)
+    const out = new Uint8Array(m.length)
+    for (let y = 0; y < h; y++) out.set(d.subarray((y + p) * W2 + p, (y + p) * W2 + p + w), y * w)
+    return out
+  }
   const inv = new Uint8Array(m.length)
   for (let i = 0; i < m.length; i++) inv[i] = m[i] ? 0 : 1
   const d = edt(inv, w, h)
@@ -1058,7 +1068,7 @@ export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, gre
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) (s += data[i + dy * w + dx]), (s2 += data[i + dy * w + dx] ** 2)
       if (s2 / 25 - (s / 25) ** 2 > 150) seed[i] = 1
     }
-  const m = dilate(seed, w, h, deep)
+  const m = dilate(seed, w, h, deep, false) // (the sheet's border is no plant)
   // drop small blobs
   const lab = new Int32Array(w * h).fill(-1)
   const stack: number[] = []
@@ -1080,16 +1090,21 @@ export function planterMask(plan: Gray, wallInk: Uint8Array, pxPerM: number, gre
 }
 
 /**
- * The sheet's outside: paper that reaches the sheet border without crossing a drawn line (any line — railings and
- * glazing count; gaps under ~0.8 m are closed first). A flat's growth never enters it.
+ * The sheet's outside: paper that reaches the sheet border without crossing the BUILDING — its wall ink, its planter
+ * strips, and the drawn lines that reach them (railings, glazing, slab edges; gaps under ~0.8 m are closed first). A
+ * site boundary or sheet frame drawn around the building reaches none of it and is no barrier: the paper between it and
+ * the building is outside (Sheltech: else the flood from a room with an open facade walks around the building into the
+ * next flat). A flat's growth never enters the outside.
  */
-export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h: number, pxPerM: number): Uint8Array {
-  // barriers: wall ink, and drawn lines at least 1.2 m long — the dashes of a site boundary or a slab outline (and specks)
-  // are no barrier, else closing the gaps would wall the outside off
+export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h: number, pxPerM: number, plants?: Uint8Array): Uint8Array {
+  // barriers: wall ink (+ planters), and drawn lines at least 1.2 m long that come within 0.3 m of them (directly or
+  // through another such line) — the dashes of a site boundary or a slab outline (and specks) are no barrier, else
+  // closing the gaps would wall the outside off
   const bar = new Uint8Array(w * h)
-  for (let i = 0; i < bar.length; i++) bar[i] = wallInk[i]
+  for (let i = 0; i < bar.length; i++) bar[i] = wallInk[i] || plants?.[i] ? 1 : 0
   {
     const seen = new Uint8Array(w * h), comp: number[] = [], minLen = 1.2 * pxPerM
+    const comps: number[][] = []
     for (let s = 0; s < w * h; s++) {
       if (!lines[s] || seen[s]) continue
       comp.length = 0
@@ -1105,11 +1120,24 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
             if (X >= 0 && Y >= 0 && X < w && Y < h && lines[q] && !seen[q]) (seen[q] = 1), comp.push(q)
           }
       }
-      if (Math.max(x1 - x0, y1 - y0) >= minLen) for (const p of comp) bar[p] = 1
+      if (Math.max(x1 - x0, y1 - y0) >= minLen) comps.push(comp.slice())
+    }
+    const near = 0.3 * pxPerM
+    for (let changed = true; changed && comps.length; ) {
+      changed = false
+      const free = new Uint8Array(w * h)
+      for (let i = 0; i < free.length; i++) free[i] = bar[i] ? 0 : 1
+      const d = edt(free, w, h)
+      for (let c = comps.length - 1; c >= 0; c--) {
+        if (!comps[c].some((p) => d[p] <= near)) continue
+        for (const p of comps[c]) bar[p] = 1
+        comps.splice(c, 1)
+        changed = true
+      }
     }
   }
   const r = 0.4 * pxPerM
-  const closed = dilate(bar, w, h, r)
+  const closed = dilate(bar, w, h, r, false)
   // paper regions: those touching the sheet border, and the largest one (a sheet with a drawn frame: the paper around
   // the building lies inside the frame line)
   const lab = new Int32Array(w * h).fill(-1)
@@ -1130,7 +1158,10 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
     }
     size.push(n), border.push(edge)
   }
-  const big = size.indexOf(Math.max(0, ...size))
+  // (a frame drawn tight round the building, its ink touching it: the paper around the building is the largest region;
+  // only when no sizeable paper reaches the border — else the largest can be the flat's own floor)
+  let big = size.indexOf(Math.max(0, ...size))
+  if (size.some((n, i) => border[i] && n > 0.1 * size[big])) big = -1
   const reach = new Uint8Array(w * h)
   for (let i = 0; i < w * h; i++) if (lab[i] >= 0 && (border[lab[i]] || lab[i] === big)) reach[i] = 1
   // grow back over the closing margin (not across a line)
@@ -1154,7 +1185,14 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
   const x0 = Math.min(...xs) - 1, y0 = Math.min(...ys) - 1
   const nx = Math.ceil((Math.max(...xs) + 1 - x0) / cell), ny = Math.ceil((Math.max(...ys) + 1 - y0) / cell)
   const grid = new Int32Array(nx * ny).fill(-1)
-  d.walls.forEach((w, wi) => {
+  // a low wall (a thin-line boundary inside the building: a beam line, a railing between two of the flat's spaces) is
+  // touched but walked through — no way out of the flat: the outside, planters, core and the next flat's rooms are
+  // blocked cells (low walls are drawn first, a full wall over them wins)
+  const low = new Uint8Array(nx * ny), win = new Uint8Array(nx * ny)
+  const order = d.walls.map((w, wi) => ({ w, wi })).sort((p, q) => Number(p.w.heightM >= WALL_HEIGHT_M) - Number(q.w.heightM >= WALL_HEIGHT_M))
+  order.forEach(({ w, wi }) => {
+    const isLow = w.heightM < WALL_HEIGHT_M ? 1 : 0
+    const glazed = (m: number) => w.openings.some((o) => o.kind === 'window' && m > o.offsetM + 0.05 && m < o.offsetM + o.widthM - 0.05)
     const a = V.get(w.a)!, b = V.get(w.b)!
     const L = d2(a, b)
     const steps = Math.ceil(L / (cell / 2)) + 1
@@ -1166,7 +1204,7 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
       for (let dy = -r; dy <= r; dy++)
         for (let dx = -r; dx <= r; dx++) {
           const x = cx + dx, y = cy + dy
-          if (x >= 0 && y >= 0 && x < nx && y < ny) grid[y * nx + x] = wi
+          if (x >= 0 && y >= 0 && x < nx && y < ny) (grid[y * nx + x] = wi), (low[y * nx + x] = isLow), (win[y * nx + x] = glazed(m) ? 1 : 0)
         }
     }
   })
@@ -1191,6 +1229,16 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
         if (x >= 0 && y >= 0 && x < nx && y < ny && grid[i] < 0) start = i
       }
   if (start < 0) return { inFlood: () => false, touched, sqm: 0 }
+  // a click on a blocked spot (a planter strip two flats share, the paper outside) starts from the nearest floor within
+  // 3 m — the flood never runs unbounded from there
+  if (blocked(centre(start)))
+    for (let r = 1, done = false; r <= 30 && !done; r++)
+      for (let dy = -r; dy <= r && !done; dy++)
+        for (let dx = -r; dx <= r && !done; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const x = sx + dx, y = sy + dy, i = y * nx + x
+          if (x >= 0 && y >= 0 && x < nx && y < ny && grid[i] < 0 && !blocked(centre(i))) (start = i), (done = true)
+        }
   const free = blocked(centre(start)) ? () => true : (i: number) => !blocked(centre(i))
   const cellOf = (p: Pt) => {
     const x = Math.floor((p.x - x0) / cell), y = Math.floor((p.y - y0) / cell)
@@ -1206,9 +1254,20 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
   seen[start] = 1
   dist[start] = 0
   const cap = capSqm / (cell * cell)
-  for (let head = 0; head < queue.length && head < cap; head++) {
-    const i = queue[head]
-    for (const j of near4(i)) if (j >= 0 && !seen[j] && grid[j] < 0 && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
+  const walk = (through: (j: number) => boolean) => {
+    for (let head = 0; head < queue.length && head < cap; head++) {
+      const i = queue[head]
+      for (const j of near4(i)) if (j >= 0 && !seen[j] && (grid[j] < 0 || low[j] || through(j)) && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
+    }
+  }
+  walk(() => false)
+  // a click in a small space whose only ways out are windows (a veranda behind its slider, a balcony): its windows lead
+  // in — once (the outside, planters, core and the next flat's rooms stay blocked)
+  if (queue.length * cell * cell < 10) {
+    const n0 = queue.length
+    for (let h = 0; h < n0; h++) for (const j of near4(queue[h])) if (j >= 0 && !seen[j] && win[j] && free(j)) (seen[j] = 1), (dist[j] = dist[queue[h]] + 1), queue.push(j)
+    for (let h = n0; h < queue.length; h++) for (const j of near4(queue[h])) if (j >= 0 && !seen[j] && win[j] && free(j)) (seen[j] = 1), (dist[j] = dist[queue[h]] + 1), queue.push(j)
+    walk(() => false)
   }
   // pass 2: a name a flat has once, printed twice on that floor — the farther print is the next flat's. The click and
   // those rivals flood together; every cell goes to the nearest source, the click's share is the flat.
@@ -1305,6 +1364,10 @@ function pickFlat(
       if (!more.length) break
       onFloor.push(...more)
     }
+    // a window looks out: the closed veranda / balcony beyond a window of the flooded floor (inside the building — never
+    // the outside, a planter, the core or the next flat's rooms: those are blocked) joins as a leaf, no way on from it
+    const glazed = new Set(onFloor.flatMap((r) => r.wallIds.filter((w) => W.get(w)!.openings.some((o) => o.kind === 'window'))))
+    onFloor.push(...d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && !blocked(inner.get(r)!) && r.areaSqm < 30 && r.wallIds.some((w) => glazed.has(w))))
     const edge = d.rooms.filter((r) => ok(r) && !onFloor.includes(r) && planter(inner.get(r)!) && r.wallIds.some((w) => fl.touched.has(w)))
     if (!onFloor.length) return { rooms: new Set(edge), open: true, touched: fl.touched, inFlood: fl.inFlood }
     const rooms = new Set([...onFloor, ...edge])
@@ -1335,7 +1398,7 @@ function pickFlat(
  * mostly along / inside a picked room (its sides that close no face). A click in no fitted room (an unsized dining)
  * starts from the nearest one within 4 m; null when there is none (the caller floods instead).
  */
-function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; others: number[]; inFlood?: (p: Pt) => boolean } | null {
+function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean, stamps: Pt[] = []): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; others: number[]; inFlood?: (p: Pt) => boolean } | null {
   type Box = { x0: number; y0: number; x1: number; y1: number }
   const R: Box[] = fits.map((f) => ({ x0: (f.rect.x0 - 0.5) / k, y0: (f.rect.y0 - 0.5) / k, x1: (f.rect.x1 - 0.5) / k, y1: (f.rect.y1 - 0.5) / k }))
   const inR = (r: Box, p: Pt, m = 0) => p.x >= r.x0 - m && p.x <= r.x1 + m && p.y >= r.y0 - m && p.y <= r.y1 + m
@@ -1405,8 +1468,15 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
   // (the print nearer the click on the sheet is this flat's: a room behind walls is far in steps, not on the floor)
   const far = (i: number) => d2(seed(i), at)
   const rivals = [...byName.values()].flatMap((is) => is.sort((p, q) => far(p) - far(q)).slice(1)).filter((i) => i !== start)
+  // (founder: a flat has one area stamp — the fitted room holding another stamp, or nearest it within 3 m, is the next flat's)
+  const near = (p: Pt) => R.map((r, i) => ({ i, d: Math.hypot(Math.max(r.x0 - p.x, 0, p.x - r.x1), Math.max(r.y0 - p.y, 0, p.y - r.y1)) })).filter((x) => x.d <= 3 && !isCore(x.i)).sort((p, q) => p.d - q.d)[0]?.i
+  for (const p of stamps.slice().sort((p, q) => d2(p, at) - d2(q, at)).slice(1)) {
+    const i = near(p)
+    if (i !== undefined && i !== start && !rivals.includes(i)) rivals.push(i)
+  }
   const { own } = dijkstra([start, ...rivals])
-  const mine = fits.map((_, i) => i).filter((i) => own[i] === 0)
+  // (founder: the core — lobby, lifts, stair — is never part of a flat; reached, it only bounds)
+  const mine = fits.map((_, i) => i).filter((i) => own[i] === 0 && !isCore(i))
   // faces: a picked room's seed and nobody else's; then seedless closed faces beside them
   const polys = new Map(d.rooms.map((r) => [r, roomPolygon(r, d.unit)]))
   const holds = (r: Room, p: Pt) => pointInPolygon(p, polys.get(r)!)
@@ -1489,6 +1559,27 @@ function restrict(d: Draft, keep: Set<Room>, extra: Set<string> = new Set()): Dr
   return { unit, walls: m.walls, rooms: deriveRooms(unit), th0: d.th0, resumed: d.resumed, stairs: d.stairs, gaps: d.gaps }
 }
 
+/**
+ * The kept walls can close a face the pick never chose (a lobby whose walls all lie within 1 m of the flat's floor): a
+ * face holding a foreign point (the core's label, the next flat's stamp or fitted room) loses the walls no other face
+ * uses, until none is left — the walls it shares with the flat's rooms stay.
+ */
+function dropForeign(d: Draft, foreign: Pt[]): Draft {
+  for (let it = 0; it < 6 && foreign.length; it++) {
+    const bad = d.rooms.filter((r) => foreign.some((p) => pointInPolygon(p, roomPolygon(r, d.unit))))
+    if (!bad.length) break
+    const good = new Set(d.rooms.filter((r) => !bad.includes(r)).flatMap((r) => r.wallIds))
+    const cut = new Set(bad.flatMap((r) => r.wallIds).filter((w) => !good.has(w)))
+    if (!cut.size) break // only walls of the flat's own rooms left: leave it for the human
+    const walls = d.walls.filter((w) => !cut.has(w.id))
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    const unit: Unit = { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }
+    d = { ...d, unit, walls: m.walls, rooms: deriveRooms(unit) }
+  }
+  return d
+}
+
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
 
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
@@ -1561,6 +1652,9 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
       .filter((it) => it.kind === 'room')
       .map((it) => ({ p: { x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }, name: normaliseName(it.text.split('\n')[0]) }))
       .filter((l) => /\d|\b(LIVING|DINING|KITCHEN|FOYER)\b/.test(l.name) && !/\b(AOD|LIFTS?|STAIRS?|LOBBY|VER|VERANDAH?)\b/.test(l.name))
+      // a flat has one area stamp ("TYPE-A ±2736 SFT"): another one on the floor the flood reaches is the next flat's
+      .concat(stampsAt(k).map((p) => ({ p, name: '#STAMP' })))
+  const stampsAt = (k: number) => text.items.filter((it) => it.kind === 'area' && it.areaSqm).map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
   // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
   const budget = ((): number => {
     const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm)
@@ -1646,7 +1740,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // SUNSHADE / PLANTER label counts as planter too)
   // (the low walls of the small faces faces.ts closed shut them to the outside too: an AOD's grille is dashes, no barrier)
   const shut = (thin?.faces ?? []).filter((f) => f.areaSqm <= FACES.aodMax).flatMap((f) => f.walls.map((i) => thin!.walls[i]))
-  const outside = outsideMask(ink.weak, shut.length ? withWalls(ink.wall, gray.width, gray.height, shut) : ink.wall, gray.width, gray.height, pxPerM)
+  const outside = outsideMask(ink.weak, shut.length ? withWalls(ink.wall, gray.width, gray.height, shut) : ink.wall, gray.width, gray.height, pxPerM, plants)
   const greenFaces = text.items
     .filter((it) => it.kind === 'room' && it.green)
     .flatMap((it) => {
@@ -1672,7 +1766,7 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
   // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (pickByRooms) — plus what the flood from the
   // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
   // the core (those rooms bound it, so it cannot leak through an open gap into them)
-  const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside) : null
+  const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside, stampsAt(pxPerM)) : null
   const otherRects = byRooms ? byRooms.others.map((i) => fits[i].rect) : []
   const inOther = (p: Pt) => otherRects.some((r) => p.x * pxPerM >= r.x0 && p.x * pxPerM <= r.x1 - 1 && p.y * pxPerM >= r.y0 && p.y * pxPerM <= r.y1 - 1)
   const flood = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p) || inOther(p), isPlanter)
@@ -1701,11 +1795,36 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
         for (const off of [0.3, -0.3, 0.6, -0.6, 1, -1]) if (picked.inFlood({ x: a.x + dir.x * m + nrm.x * off, y: a.y + dir.y * m + nrm.y * off })) { near = true; break }
       if (near) picked.touched.add(w.id)
     }
+    // the flat's edge faces closed by LOW walls (a veranda's railing, a planter strip's edge, outside the floor the flood
+    // walks): a face whose full-height walls are all kept and whose missing walls are all low walls gets those too — not
+    // a face of the core, nor one beside it
+    const kept = new Set([...picked.touched, ...[...flat].flatMap((r) => r.wallIds)])
+    const G0 = new Map(draft.walls.map((w) => [w.id, w]))
+    const core0 = text.items.filter((it) => it.kind === 'room' && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }))
+    const coreWalls = new Set(draft.rooms.filter((r) => core0.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))).flatMap((r) => r.wallIds))
+    for (const r of draft.rooms) {
+      if (r.areaSqm > 30 || r.wallIds.some((w) => coreWalls.has(w))) continue
+      const miss = r.wallIds.filter((w) => !kept.has(w))
+      if (!miss.length || miss.length === r.wallIds.length || miss.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M) || !r.wallIds.some((w) => G0.get(w)!.heightM >= WALL_HEIGHT_M)) continue
+      const poly = roomPolygon(r, draft.unit)
+      if (core0.some((p) => pointInPolygon(p, poly)) || (byRooms?.others ?? []).some((i) => pointInPolygon({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM }, poly))) continue
+      miss.forEach((w) => picked.touched.add(w))
+    }
   }
   if (inputs.debug) Object.assign(inputs.debug, { inFlood: picked.inFlood, touched: picked.touched, outside })
   if (picked.open) review.push({ id: newId(), at: pick!, kind: 'unclosed', message: 'Part of the floor around the click has no closed room — an open plan, or walls the tracer could not close (see the wall ends marked). Draw the missing walls.' })
   if (!flat.size && !picked.touched.size) flat = new Set(draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && (!pick || d2(r.centroid, pick) < 10)))
-  if (flat.size || picked.touched.size) draft = dropSlivers(restrict(draft, flat, picked.touched))
+  // founder (2026-10-03): a flat's draft never holds the core (a LOBBY / LIFT / STAIR label) nor a room the next flat
+  // claims (its area stamp, a room fitted to it) — whatever path reached them
+  const foreign: Pt[] = pick
+    ? [
+        ...text.items.filter((it) => it.kind === 'room' && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
+        ...(byRooms ? byRooms.others.map((i) => ({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM })) : []),
+        ...stampsAt(pxPerM).sort((p, q) => d2(p, pick) - d2(q, pick)).slice(1),
+      ]
+    : []
+  flat = new Set([...flat].filter((r) => !foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))))
+  if (flat.size || picked.touched.size) draft = dropSlivers(dropForeign(restrict(draft, flat, picked.touched), foreign))
   // shift so the draft starts near (0, 0)
   const xs = draft.unit.vertices.map((v) => v.x), ys = draft.unit.vertices.map((v) => v.y)
   const shift = xs.length ? { x: Math.min(...xs), y: Math.min(...ys) } : { x: 0, y: 0 }
