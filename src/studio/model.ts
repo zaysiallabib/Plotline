@@ -615,21 +615,89 @@ export function fullHeightIfOpenings(u: Unit): Unit {
   return u.walls.some(low) ? { ...u, walls: u.walls.map((w) => (low(w) ? { ...w, heightM: WALL_HEIGHT_M } : w)) } : u
 }
 
+/** sin 10°: a wall closer than this to parallel is met end to end, not crossed */
+const SIN10 = 0.1736
+
+/**
+ * A loose end short of a wall (founder 2026-10-03: an unjoined wall leaves its room open — no skirting, wrong daylight in
+ * 3D). Reach = max(0.15 m, 1.5 × the end's own thickness). Looking ahead along its own wall: the first wall whose near
+ * face is within reach and whose centre line it crosses on its segment → the end slides along its own line onto that
+ * centre line (joinOverlaps then T-splits it, or makes the L at its end); another wall's end on its line ahead within
+ * reach → the end slides onto it; a FREE end of a crossing wall within reach of where the two lines cross (each within
+ * its own reach) → both slide there along their own lines (an L). Nothing tilts, nothing passes through a wall (the
+ * nearest thing ahead wins), an end already inside a wall's body is joinOverlaps' own. An opening on the split point
+ * refuses (`refused`, the end stays). `ids`: only these corners; absent = every loose end. Returns the same unit when
+ * nothing moved; `moved` = the corners that slid.
+ */
+function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[]; refused?: string } {
+  const cross = (p: Pt, q: Pt) => p.x * q.y - p.y * q.x
+  const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
+  let u = unit
+  let refused: string | undefined
+  const moved: Id[] = []
+  for (const id of ids ?? unit.vertices.map((v) => v.id)) {
+    const mine = u.walls.filter((w) => w.a === id || w.b === id)
+    if (mine.length !== 1) continue
+    const w = mine[0]
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    const v = V.get(id)!
+    const far = w.a === id ? w.b : w.a
+    const d = dirFrom(u, w, far) // ahead: away from its own wall
+    const reach = reachOf(w)
+    let best: { r: number; to: Pt; also?: { w: Wall; end: Id }; stay?: string } | null = null
+    for (const x of u.walls) {
+      if (x === w) continue
+      const f = wallFrame(x, u.vertices)
+      const den = cross(d, f.dir)
+      const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
+      const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
+      if (r > EPS && (!best || r < best.r)) {
+        const s = cross(rel, d) / den
+        const face = r - x.thicknessM / 2 / Math.abs(den)
+        // (inside its body already: joinOverlaps' — stay '' ; an opening there: refused)
+        if (s >= -EPS && s <= f.lengthM + EPS && face <= reach)
+          best = { r, to: { x: v.x + d.x * r, y: v.y + d.y * r }, stay: face <= 0 ? '' : x.openings.some((o) => o.offsetM < s - EPS && o.offsetM + o.widthM > s + EPS) ? 'An opening sits on that spot — move it first' : undefined }
+      }
+      for (const end of [x.a, x.b]) {
+        if (end === far) continue
+        const q = V.get(end)!
+        const free = degree(u, end) === 1 && r > EPS
+        // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
+        const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
+        const out = dirFrom(u, x, end === x.a ? x.b : x.a)
+        if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
+        const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
+        if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, ...(free ? { also: { w: x, end } } : {}) }
+      }
+    }
+    if (!best || best.stay !== undefined) {
+      if (best?.stay) refused = best.stay
+      continue
+    }
+    u = moveEnd(u, w, id, best.to)
+    moved.push(id)
+    if (best.also) (u = moveEnd(u, best.also.w, best.also.end, best.to)), moved.push(best.also.end)
+  }
+  return { unit: moved.length ? u : unit, moved, refused }
+}
+
 /**
  * After a drop / nudge / new wall / Join walls (founder 2026-10-03, hand-fix precision): a wall drawn over another goes
- * (dropOverlaid), overlaps join (joinOverlaps), a corner left between two walls on one line heals into one wall
- * (healStraight), a door left on a stub moves to the long wall or goes (fixStubs), a low wall with an opening is full
- * height. `ids` = the corners that moved — healed / checked: they, what they merged into, the dropped walls' corners and
- * the far ends of their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when nothing
- * changed; `notes` = the toasts.
+ * (dropOverlaid), with `reach` a loose end short of a wall slides onto it (reachEnds: the whole unit and drag-end),
+ * overlaps join (joinOverlaps), a corner left between two walls on one line heals into one wall (healStraight), a door
+ * left on a stub moves to the long wall or goes (fixStubs), a low wall with an opening is full height. `ids` = the
+ * corners that moved — healed / checked: they, what they merged into, the dropped walls' corners and the far ends of
+ * their walls; absent = the whole unit, where only bent corners heal. Returns the same unit when nothing changed;
+ * `notes` = the toasts.
  */
-function settle(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
+function settle(unit: Unit, ids?: Id[], reach = !ids): { unit: Unit; merged: Map<Id, Id>; joined: number; notes: string[] } {
   const o = dropOverlaid(unit, ids)
-  const j = joinOverlaps(o.unit, ids)
-  const near = ids && new Set([...ids, ...o.corners].map((id) => j.merged.get(id) ?? id))
+  const e = reach ? reachEnds(o.unit, ids) : { unit: o.unit, moved: [] as Id[], refused: undefined }
+  const j = joinOverlaps(e.unit, ids && [...ids, ...e.moved])
+  const near = ids && new Set([...ids, ...e.moved, ...o.corners].map((id) => j.merged.get(id) ?? id))
   const touched = near ? new Set(j.unit.walls.filter((w) => near.has(w.a) || near.has(w.b)).flatMap((w) => [w.a, w.b])) : j.unit.vertices.map((v) => v.id)
   const t = fixStubs(healStraight(j.unit, touched, !ids), near && touched)
-  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...(j.refused ? [j.refused] : []), ...(t.dropped ? [STUB_TOAST] : [])]
+  const notes = [...(o.dropped ? ['Removed a wall drawn over another'] : []), ...new Set([j.refused, e.refused].filter((x): x is string => !!x)), ...(t.dropped ? [STUB_TOAST] : [])]
   return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, notes }
 }
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
@@ -974,7 +1042,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
     case 'drag-end': {
       // drag-begin already put the pre-drag unit in history; only the join (settle) is applied here
-      const r = settle(s.unit, a.ids)
+      const r = settle(s.unit, a.ids, true)
       const t = noted(s, r.notes)
       if (r.unit === s.unit) return t
       return { ...t, unit: r.unit, selection: stillThere(r.unit, s.selection.map((id) => r.merged.get(id) ?? id)) }
