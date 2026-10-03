@@ -16,14 +16,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { buildSkirting, dressOpening, wallGeometry } from './details'
-import { bakeDaylight, mapDaylight, setDaylight } from './daylight'
+import { buildSkirting, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
+import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
 import { PANES } from './openings'
@@ -248,6 +249,7 @@ export class PlotlineScene {
 
   /** Rebuilds all static geometry (walls, openings, floors, ceilings) and reloads furniture. */
   setUnit(unit: Unit): void {
+    unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     this.ready = false
     this.clearStatic()
     this.unit = unit
@@ -264,6 +266,8 @@ export class PlotlineScene {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
     }
+    const storey = Math.max(0, ...unit.walls.map((w) => w.heightM)) || 3.048
+    for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
     this.applyMaterials()
     this.look.setUnit(present(unit), this.rooms) // fixtures, lights, slab, shadow fit box
@@ -660,6 +664,28 @@ export class PlotlineScene {
       })
     }
     for (const o of wall.openings) local.add(...dressOpening(o, wall, unit, this.rooms))
+  }
+
+  /**
+   * A column (details.ts pillarParts): one mesh finished, shadowed and picked like a wall (no wall frame: a comment
+   * anchors at its plan point), each upright face in its own room's wall finish; its skirting in the floor finish.
+   * Every part reads the daylight at its foot in the room it faces.
+   */
+  private buildPillar(p: Pillar, unit: Unit, day: Daylight, heightM: number): void {
+    const parts = pillarParts(p, heightM, unit, this.rooms)
+    for (const x of parts) mapDaylight(day, x.geo, unit, 'floor', x.room?.id ?? '') // no room: neutral
+    const room = (core.roomAt(p, this.rooms, unit) ?? parts.find((x) => x.room)?.room)?.id ?? null
+    for (const skirting of [false, true]) {
+      const list = parts.filter((x) => (x.part === 'skirting') === skirting)
+      if (!list.length) continue
+      const mesh = new THREE.Mesh(mergeGeometries(list.map((x) => x.geo), true)!)
+      list.forEach((x) => x.geo.dispose())
+      mesh.receiveShadow = true
+      mesh.castShadow = !skirting
+      if (!skirting) mesh.userData = { kind: 'wall', id: p.id, front: room, back: room, roomId: room, label: 'Column', objectKind: 'wall' }
+      this.staticGroup.add(mesh)
+      this.surfaces.push({ mesh, sides: list.map((x) => (x.part === 'top' ? null : { roomId: x.room?.id ?? null, target: skirting ? 'floor' : 'wall' })) })
+    }
   }
 
   private buildRoom(room: Room, unit: Unit): void {
