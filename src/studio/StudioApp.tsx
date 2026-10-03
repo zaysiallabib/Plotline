@@ -1211,7 +1211,8 @@ export default function StudioApp() {
         )}
         <button onClick={() => jsonRef.current?.click()}>Import</button>
         <button onClick={exportJson}>Export</button>
-        <button className="primary" disabled={errors > 0} title={errors ? 'Fix the errors first' : undefined} onClick={preview}>
+        {/* never locked on a draft (founder, 2026-10-03): the 3D shows the plan as it is, open rooms have no floor yet */}
+        <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
         <input ref={jsonRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFiles(e.target.files)} />
