@@ -10,7 +10,6 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
-import { finishSlotsFor } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { fetchSharedUnit } from '../lib/supabase'
@@ -24,6 +23,7 @@ import Hud from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
+import { withDefaults } from './defaults'
 import { decodeConfig, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import './viewer.css'
@@ -149,8 +149,8 @@ export default function ViewerApp() {
     const rooms = core.deriveRooms(u)
     const base = layoutFor(u, rooms)
     const saved = readLayout(u.id)
-    // a Studio draft / auto-trace / its share link has no slots of its own: the catalog by room kind (furnish/finishes.ts)
-    return [{ ...u, finishSlots: finishSlotsFor(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
+    // what a Studio draft / auto-trace / its share link lacks (finishes, area, name): defaults.ts
+    return [{ ...withDefaults(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
   }, [fetched])
   if (TOKEN && fetched === undefined) return <div className="boot">Loading…</div>
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
