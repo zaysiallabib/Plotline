@@ -67,11 +67,27 @@ const STRIP = 0.5
 /** the rooms whose median sets factor 1: the tuned living-room look stays the average look */
 const HABITABLE: RoomKind[] = ['living', 'dining', 'bed', 'study', 'kitchen']
 
-/** No storey above: AOD shafts, the planter and the small recessed verandas get sky from above (render.ts's roof skips them). */
-export const openToSky = (r: Room) => r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5)
-const outdoor = (r: Room | null) => !r || r.kind === 'balcony' || r.kind === 'shaft'
+/**
+ * A zone (core.isOutdoor) under one of `cover`'s polygons (PlotlineScene.cover: the slab of the floor above) — by its
+ * centroid. ponytail: a zone half under the slab is all covered or all open; split it with a flush line if that shows.
+ */
+export const isCovered = (r: Room, cover: Pt[][]) => core.isOutdoor(r.kind) && cover.some((poly) => core.pointInPolygon(r.centroid, poly))
+/**
+ * No storey above: AOD shafts, the planter and the small recessed verandas get sky from above (render.ts's roof skips
+ * them), and every outdoor zone not under the `cover`.
+ */
+export const openToSky = (r: Room, cover: Pt[][] = []) =>
+  r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5) || (core.isOutdoor(r.kind) && !isCovered(r, cover))
+const outdoor = (r: Room | null) => !r || r.kind === 'balcony' || r.kind === 'shaft' || core.isOutdoor(r.kind)
+/**
+ * The indirect-light factor on a covered zone and the walls facing it (a parking deck under the slab): a flat shade, its
+ * light comes from the rule's battens (render.ts), not a bake through openings it does not have.
+ */
+const COVERED = 0.6
+
 /** sky radiance seen through an opening onto `r`: open sky 1; a covered veranda's slab hides the upper sky; a shaft is a well */
-const skyOf = (r: Room | null) => (!r ? 1 : r.kind === 'shaft' ? 0.3 : openToSky(r) ? 0.85 : 0.55)
+const skyOf = (r: Room | null, cover: Pt[][]) =>
+  !r ? 1 : r.kind === 'shaft' ? 0.3 : core.isOutdoor(r.kind) ? (isCovered(r, cover) ? 0.55 : 1) : openToSky(r) ? 0.85 : 0.55
 
 export interface Region {
   /** atlas texel of (u0, v0) */
@@ -191,7 +207,7 @@ function blur(F: Float32Array, nu: number, nv: number): Float32Array {
 }
 
 /** Bake every room surface of the unit (pure: no GL). */
-export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
+export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Daylight {
   const t0 = performance.now()
   const frames = new Map(unit.walls.map((w) => [w.id, core.wallFrame(w, unit.vertices)]))
   const sides = new Map<Id, [Room | null, Room | null]>()
@@ -208,7 +224,9 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   // ── apertures, per room ──
   const apertures = new Map<Id, Aperture[]>()
   const blockers = new Map<Id, { id: Id; a: Pt; b: Pt }[] | null>()
-  for (const r of rooms) {
+  // an outdoor zone is not baked: open, it reads neutral (full daylight); covered, the flat COVERED shade
+  const baked = rooms.filter((r) => !core.isOutdoor(r.kind))
+  for (const r of baked) {
     const list: Aperture[] = []
     const h = heightOf(r)
     const rect = (w: Wall, u0: number, u1: number, z0: number, z1: number, L: number, from: Room | null) => {
@@ -228,7 +246,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
       const other = s[0]?.id === r.id ? s[1] : s[1]?.id === r.id ? s[0] : null
       if ((s[0]?.id !== r.id && s[1]?.id !== r.id) || other === r) continue
       const through = (tau: number, u0: number, u1: number, z0: number, z1: number) =>
-        outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other), null) : rect(w, u0, u1, z0, z1, tau, other)
+        outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null) : rect(w, u0, u1, z0, z1, tau, other)
       for (const o of w.openings) through(TAU[o.kind] ?? 0.5, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
@@ -257,7 +275,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
     const n = Math.max(2, Math.ceil((hi - lo) / TEXEL) + 1)
     return { n, d: (hi - lo) / (n - 1) || TEXEL }
   }
-  for (const r of rooms) {
+  for (const r of baked) {
     const poly = core.roomPolygon(r, unit)
     const inner = core.roomInnerPolygon(r, unit)
     const xs = poly.map((p) => p.x)
@@ -276,7 +294,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
     const gu = grid(0, f.lengthM)
     const gv = grid(0, w.heightM)
     sides.get(w.id)!.forEach((room, i) => {
-      if (!room) return
+      if (!room || core.isOutdoor(room.kind)) return
       const s = i ? -1 : 1
       const off = (s * w.thicknessM) / 2
       jobs.push({
@@ -364,7 +382,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   // per room and class: the PIVOT texel; per class: the habitable rooms' median of those
   const median = (v: number[], q = 0.5) => (v.sort((a, b) => a - b), v.length ? v[Math.floor(q * (v.length - 1))] : 0)
   const roomMed = new Map<string, number>()
-  for (const r of rooms) {
+  for (const r of baked) {
     for (const c of [0, 1, 2]) {
       const v: number[] = []
       jobs.forEach((j, k) => j.cls === c && j.room === r && pts[k].forEach((p, i) => p && v.push(E[k][i])))
@@ -383,7 +401,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const order = jobs.map((_, k) => k).sort((a, b) => jobs[b].nv - jobs[a].nv)
   const width = Math.max(256, ...jobs.map((j) => j.nu + 1))
   const pos: [number, number][] = []
-  let [cx, cy, rowH] = [3, 0, 2]
+  let [cx, cy, rowH] = [6, 0, 2]
   for (const k of order) {
     const j = jobs[k]
     if (cx + j.nu > width) [cx, cy, rowH] = [0, cy + rowH + 1, 0]
@@ -395,6 +413,11 @@ export function bakeDaylight(unit: Unit, rooms: Room[]): Daylight {
   const neutral = Math.round((255 * 1) / RANGE)
   const data = new Uint8Array(width * height).fill(neutral)
   const regions = new Map<string, Region>()
+  // the COVERED block, 2 × 2 at (3, 0): a covered zone's floor and every wall face toward it read its centre texel
+  for (const i of [3, 4, width + 3, width + 4]) data[i] = Math.round((255 * COVERED) / RANGE)
+  const shade = (key: string, roomId: Id) => regions.set(key, { x: 3, y: 0, nu: 1, nv: 1, u0: 0, v0: 0, du: 1, dv: 1, E: new Float32Array(1), roomId })
+  for (const r of rooms) if (isCovered(r, cover)) shade(`floor:${r.id}`, r.id)
+  for (const [id, pair] of sides) pair.forEach((r, i) => r && isCovered(r, cover) && shade(`wall:${id}:${i ? -1 : 1}`, r.id))
   jobs.forEach((j, k) => {
     const [x0, y0] = pos[k]
     const F = blur(E[k].map((e) => factor(e, j.room, j.cls)), j.nu, j.nv)

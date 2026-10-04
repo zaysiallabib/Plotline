@@ -12,6 +12,8 @@ import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
 const NO_SKIRTING: RoomKind[] = ['bath', 'balcony', 'shaft']
+/** No skirting in a wet or open room, nor in any outdoor zone (a lobby's outer face standing in a lawn gets none from the lawn side). */
+const skirted = (k: RoomKind) => !NO_SKIRTING.includes(k) && !core.isOutdoor(k)
 const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
 /** Rooms that are open to the sky: a window onto one is an outside window. */
 const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
@@ -48,7 +50,7 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
   const raw: SkirtingRun[] = []
   const roomOf = (p: Pt) => {
     const r = core.roomAt(p, rooms, unit)
-    return r && !NO_SKIRTING.includes(r.kind) ? r : null
+    return r && skirted(r.kind) ? r : null
   }
   // a short strip (a wall end, a reveal) keeps only what lies on its own room's floor or inside a wall: where two ends
   // cross at a traced jog, two rooms' strips filled the same corner and their tops z-fought
@@ -384,7 +386,7 @@ export function pillarParts(p: Pillar, heightM: number, unit: Unit, rooms: Room[
     const room = core.roomAt({ x: c.x + nx * 0.05, y: c.y + ny * 0.05 }, rooms, unit)
     const yaw = Math.atan2(nx, ny) // a plane facing +Z turned to face (nx, 0, ny)
     out.push({ geo: meterUVs(new THREE.PlaneGeometry(2 * half, top).rotateY(yaw).translate(c.x, top / 2, c.y)), room, part: 'face' })
-    if (!room || NO_SKIRTING.includes(room.kind)) continue
+    if (!room || !skirted(room.kind)) continue
     const strip = new THREE.BoxGeometry(2 * (half + SKIRTING_T), SKIRTING_H, SKIRTING_T).rotateY(yaw) // past both corners: closes them
     out.push({ geo: meterUVs(strip.translate(c.x + (nx * SKIRTING_T) / 2, SKIRTING_H / 2, c.y + (ny * SKIRTING_T) / 2)), room, part: 'skirting' })
   }
@@ -414,7 +416,7 @@ function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room 
 export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
   if (o.kind !== 'window') return []
   const [front, back] = openingRooms(o, wall, unit, rooms)
-  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind)
+  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || core.isOutdoor(r.kind)
   const out: [Room, 1 | -1][] = []
   if (front && CURTAIN_ROOMS.includes(front.kind) && open(back)) out.push([front, 1])
   if (back && CURTAIN_ROOMS.includes(back.kind) && open(front)) out.push([back, -1])

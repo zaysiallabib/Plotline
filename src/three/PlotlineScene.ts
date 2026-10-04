@@ -26,7 +26,7 @@ import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, buildSkirtings, closeGaps, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
-import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
+import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES } from './openings'
 import { Look, type Quality } from './render'
 
@@ -303,7 +303,7 @@ export class PlotlineScene {
       this.surfaces.push({ mesh, sides: [{ roomId, target: 'floor' }] })
     }
     // indirect light × where the sky reaches (daylight.ts)
-    const day = bakeDaylight(unit, this.rooms)
+    const day = bakeDaylight(unit, this.rooms, this.cover)
     for (const s of this.surfaces) {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
@@ -312,7 +312,7 @@ export class PlotlineScene {
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
     this.applyMaterials()
-    this.look.setUnit(present(unit), this.rooms) // fixtures, lights, slab, shadow fit box
+    this.look.setUnit(present(unit), this.rooms, this.cover) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
 
     this.ready = true
@@ -823,8 +823,11 @@ export class PlotlineScene {
     const off = wall.thicknessM / 2 + 0.05
     const side = (s: number) =>
       core.roomAt({ x: mid.x + n.x * off * s, y: mid.y + n.y * off * s }, this.rooms, unit)?.id ?? null
-    const front = side(1)
-    const back = side(-1)
+    // a face toward nothing beside an outdoor zone (a boundary wall's street face, a screen's far side) is outdoors too
+    const zone = (r: Id | null) => (r && core.isOutdoor(this.rooms.find((x) => x.id === r)!.kind) ? r : null)
+    const [f0, b0] = [side(1), side(-1)]
+    const front = f0 ?? zone(b0)
+    const back = b0 ?? zone(f0)
 
     // world space, groups 0 = front (+n), 1 = back, 2 = ends/tops: every wall shares the identity transform,
     // so a corner two walls share reaches the GPU as the same numbers (no hairline crack between them).
@@ -896,6 +899,7 @@ export class PlotlineScene {
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
 
+    if (core.isOutdoor(room.kind)) return // a zone is open to the sky (a covered one: render.ts's roof is its soffit)
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
     ceilGeo.setIndex([...idx].reverse())
@@ -912,10 +916,13 @@ export class PlotlineScene {
     // wall ends and tops: pushed back in depth so they lose ties to the faces they meet (an end cap at a
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
     const plaster = materialFor(EDGE_PLASTER, true, true)
+    const zones = new Map(this.rooms.filter((r) => core.isOutdoor(r.kind)).map((r) => [r.id, r.kind]))
     for (const s of this.surfaces) {
-      const mats = s.sides.map((side) =>
-        side ? resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge) : plaster,
-      )
+      const mats = s.sides.map((side) => {
+        if (!side) return plaster
+        const zone = side.roomId && zones.get(side.roomId) // an outdoor zone: no buyer finish, its look by kind (materials.ts)
+        return zone ? materialFor(zoneFinishRef(zone, side.target), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge)
+      })
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }
   }

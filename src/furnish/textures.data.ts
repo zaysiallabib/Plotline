@@ -18,6 +18,20 @@ const ACG = (id: string, label: string, asset: string, repeatM: number, maps: { 
   license: 'CC0',
 })
 
+/** A Poly Haven set fetched as its 1k jpgs (Diffuse → albedo, nor_gl → normal, Rough → roughness, AO → ao); repeatM = its dimensions. */
+const PH = (id: string, label: string, asset: string, repeatM: number, author: string): TextureSet => ({
+  id,
+  label,
+  albedo: `/assets/textures/${id}/albedo.jpg`,
+  normal: `/assets/textures/${id}/normal.jpg`,
+  roughness: `/assets/textures/${id}/roughness.jpg`,
+  ao: `/assets/textures/${id}/ao.jpg`,
+  repeatM,
+  source: `https://polyhaven.com/a/${asset}`,
+  author,
+  license: 'CC0',
+})
+
 export const TEXTURES: Record<string, TextureSet> = {
   wood_floor_oak: {
     id: "wood_floor_oak",
@@ -96,4 +110,15 @@ export const TEXTURES: Record<string, TextureSet> = {
   tile_floor_terracotta: ACG('tile_floor_terracotta', 'Terracotta floor tiles 300 × 300', 'Tiles027', 1.8, { ao: true }),
   // mown lawn for ground-floor and rooftop green strips (turf; storey-height planters get a planter_bed instead), 1.4 m a repeat
   turf: ACG('turf', 'Lawn (turf)', 'Grass004', 1.4),
+  // session 19, the levels' zones and common rooms (materials.ts ZONE_FLOOR, finishes.ts): Poly Haven 1k maps as downloaded
+  paving_pavers: PH('paving_pavers', 'Concrete brick pavers', 'concrete_pavers_02', 2, 'Amal Kumar'),
+  asphalt: PH('asphalt', 'Clean asphalt', 'clean_asphalt', 2.1, 'Dimitrios Savva'),
+  // smooth troweled garage concrete: parking, kerbs, risers, the pool's coping
+  concrete: PH('concrete', 'Garage floor concrete', 'garage_floor', 1.886, 'Jenelle van Heerden'),
+  deck_boards: PH('deck_boards', 'Timber deck boards', 'wood_floor_deck', 1.8, 'Dimitrios Savva'),
+  rubber_play: PH('rubber_play', 'Rubber playground surface', 'rubberized_track', 2, 'Charlotte Baglioni'),
+  rubber_gym: PH('rubber_gym', 'Rubber gym floor tiles', 'rubber_tiles', 2, 'Amal Kumar'),
+  soil: PH('soil', 'Planter soil', 'farm_soil', 2, 'Amal Kumar'),
+  // the porcelain tile's own maps at twice the size: 1200 × 1200 large-format tiles (a lobby)
+  tile_floor_large: { ...ACG('tile_floor_large', 'Large porcelain floor tiles 1200 × 1200', 'Tiles105', 9.6, { ao: true }), albedo: '/assets/textures/tile_floor_ceramic/albedo.jpg', normal: '/assets/textures/tile_floor_ceramic/normal.jpg', roughness: '/assets/textures/tile_floor_ceramic/roughness.jpg', ao: '/assets/textures/tile_floor_ceramic/ao.jpg', tint: '#d7d7d7' },
 }

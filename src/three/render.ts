@@ -18,7 +18,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
-import type { Room, Unit } from '../core'
+import type { Pt, Room, Unit } from '../core'
 import { isCeilingLight, placementSize } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
@@ -165,7 +165,7 @@ export class Look {
   }
 
   /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
-  setUnit(unit: Unit, rooms: Room[]): void {
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = []): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     this.unitGroup.clear()
@@ -192,9 +192,12 @@ export class Look {
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
-    const lifted = roomParts.filter((_, i) => !openToSky(rooms[i])).map((g) => g.clone().translate(0, ROOF_LIFT, 0))
+    // an outdoor zone is open to the sky unless the slab above (`cover`, the floor above's footprint) hangs over it: that
+    // slab is in the roof too, and from below it is the zone's soffit
+    const over = cover.map((poly) => new THREE.ShapeGeometry(new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, p.y)))).rotateX(Math.PI / 2).translate(0, -SLAB_M, 0))
+    const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover)), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
     const roofGeo = mergeGeometries([...lifted, ...wallParts])
-    ;[...roomParts, ...wallParts, ...lifted].forEach((g) => g.dispose())
+    ;[...roomParts, ...wallParts, ...lifted, ...over].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
