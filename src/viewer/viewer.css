@@ -75,8 +75,15 @@
 .minimap-name { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
 .minimap svg { display: block; overflow: hidden; }
 .minimap .room { fill: rgba(242, 242, 240, 0.07); }
+.minimap .room.zone { fill: rgba(190, 186, 176, 0.12); }
+.minimap .room.z-lawn, .minimap .room.z-planter, .minimap .room.z-play { fill: rgba(120, 170, 100, 0.22); }
+.minimap .room.z-pool { fill: rgba(90, 160, 200, 0.3); }
+.minimap .room.z-driveway, .minimap .room.z-parking { fill: rgba(120, 120, 124, 0.18); }
+.minimap .room.z-deck { fill: rgba(170, 130, 90, 0.2); }
 .minimap .room.here { fill: rgba(232, 193, 112, 0.42); }
 .minimap .wall { stroke: #c9c9c4; stroke-linecap: square; fill: none; }
+.minimap .wall.flush { stroke: rgba(201, 201, 196, 0.45); stroke-dasharray: 0.4 0.3; stroke-linecap: butt; }
+.minimap .wall.kerb { stroke: rgba(201, 201, 196, 0.7); }
 .minimap .cone { fill: rgba(232, 193, 112, 0.35); }
 .minimap .me { fill: var(--accent); stroke: #17181a; stroke-width: 0.08; }
 .viewer:has(.minimap) .panel { bottom: 290px; }

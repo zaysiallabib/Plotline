@@ -35,6 +35,7 @@ const outside = (r: Room | null): boolean => !r || (r.kind === 'other' && isComm
  * name within a group.
  */
 export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
+  if (isLevel(rooms)) return levelRooms(rooms)
   const walls = new Map(unit.walls.map((w) => [w.id, w]))
   const doorWalls = (r: Room) => r.wallIds.filter((id) => walls.get(id)?.openings.some((o) => o.kind !== 'window'))
   const listed = rooms
@@ -61,6 +62,84 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
 }
 
 /**
+ * A LEVEL — a ground floor, basement, rooftop, a common floor: a unit with outdoor zones (core.isOutdoor) besides
+ * planters, or with common rooms (lobby, gym, community, guard: a flat has none) — is entered and listed by its own
+ * rules (levelEntry, levelRooms), by kind and geometry; a flat keeps its own.
+ */
+const COMMON: Room['kind'][] = ['lobby', 'gym', 'community', 'guard']
+export const isLevel = (rooms: Room[]): boolean => rooms.some((r) => (core.isOutdoor(r.kind) && r.kind !== 'planter') || COMMON.includes(r.kind))
+/** what a walker can stand in: not a shaft, a pool or a planter */
+const walkable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && r.kind !== 'pool' && r.kind !== 'planter'
+/** a wall this low is no barrier: a flush line (0) or a kerb */
+const KERB_M = 0.2
+
+/**
+ * A level's Rooms list: its rooms (lobbies first, then by size), then its zones (by size; parking bays last, by
+ * number) — not shafts, pools, planters or unnamed / core faces ('other': stair, hoistway), none under 2 m².
+ */
+function levelRooms(rooms: Room[]): Room[] {
+  const ok = rooms.filter((r) => walkable(r) && r.kind !== 'other' && r.areaSqm >= 2)
+  const indoor = ok.filter((r) => !core.isOutdoor(r.kind)).sort((a, b) => Number(b.kind === 'lobby') - Number(a.kind === 'lobby') || b.areaSqm - a.areaSqm)
+  const bay = (r: Room) => Number(r.kind === 'parking')
+  const outdoor = ok
+    .filter((r) => core.isOutdoor(r.kind))
+    .sort((a, b) => bay(a) - bay(b) || (bay(a) ? a.name.localeCompare(b.name, 'en', { numeric: true }) : b.areaSqm - a.areaSqm))
+  return [...indoor, ...outdoor]
+}
+
+/**
+ * Where a level is entered, the way a visitor arrives: (1) through its widest GATE — an opening with nothing traced
+ * on one side (the street) — standing just inside, facing its largest lobby (else on into the zone); else (2) out of
+ * its largest lobby (the lift / stair landing of a rooftop or basement) onto a zone through its widest way — an
+ * opening, or a flush line / kerb along their shared wall — facing on into the zone; else (3) the same from any room
+ * onto a zone (a basement whose stair lands in a drivers' waiting area); else the largest zone's middle; no zone at
+ * all (a common floor of rooms): null — entered like a flat.
+ */
+function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
+  const ways = unit.walls.flatMap((w) => {
+    const f = core.wallFrame(w, unit.vertices)
+    const spans = w.heightM <= KERB_M ? [{ u: f.lengthM / 2, widthM: f.lengthM }] : w.openings.filter((o) => o.kind !== 'window').map((o) => ({ u: o.offsetM + o.widthM / 2, widthM: o.widthM }))
+    const off = w.thicknessM / 2 + 0.05
+    return spans.map(({ u, widthM }) => {
+      const at = add(f.origin, f.dir, u)
+      return { w, f, at, widthM, front: core.roomAt(add(at, f.normal, off), rooms, unit), back: core.roomAt(add(at, f.normal, -off), rooms, unit) }
+    })
+  })
+  type W = (typeof ways)[number]
+  const lobbies = rooms.filter((r) => r.kind === 'lobby').sort((a, b) => b.areaSqm - a.areaSqm)
+  /** 1.2 m (else 0.5) into `room` from way `x`, facing `target` when it is ahead and not at the feet, else straight in */
+  const stand = (x: W, room: Room, target: Pt) => {
+    const s = x.front?.id === room.id ? 1 : -1
+    const n = { x: x.f.normal.x * s, y: x.f.normal.y * s }
+    const inner = core.roomPolygon(room, unit)
+    const p = [1.2, 0.5].map((m) => add(x.at, n, x.w.thicknessM / 2 + m)).find((q) => core.pointInPolygon(q, inner)) ?? add(x.at, n, x.w.thicknessM / 2 + 0.5)
+    const d = Math.hypot(target.x - p.x, target.y - p.y)
+    const to = { x: (target.x - p.x) / d, y: (target.y - p.y) / d }
+    return { p, face: d > 1 && to.x * n.x + to.y * n.y > 0 ? to : n }
+  }
+  const widest = (xs: W[]) => xs.reduce<W | undefined>((m, x) => (!m || x.widthM > m.widthM ? x : m), undefined)
+  // (1) the gate
+  const gate = widest(ways.filter((x) => (!x.front && walkable(x.back)) || (!x.back && walkable(x.front))))
+  if (gate) {
+    const inside = (gate.front ?? gate.back)!
+    return stand(gate, inside, lobbies[0]?.centroid ?? inside.centroid)
+  }
+  // (2) out of the largest lobby onto a zone, (3) out of any room onto a zone; onto a drive or path before a parking bay
+  const zoneOf = (x: W) => [x.front, x.back].find((r) => walkable(r) && core.isOutdoor(r.kind))
+  const outOf = (from: (r: Room) => boolean) => {
+    const xs = ways.filter((x) => zoneOf(x) && [x.front, x.back].some((r) => walkable(r) && !core.isOutdoor(r.kind) && from(r)))
+    return widest(xs.filter((x) => zoneOf(x)!.kind !== 'parking')) ?? widest(xs)
+  }
+  const exit = (lobbies[0] && outOf((r) => r.id === lobbies[0].id)) ?? outOf(() => true)
+  if (exit) {
+    const zone = zoneOf(exit)!
+    return stand(exit, zone, zone.centroid)
+  }
+  const zone = rooms.filter((r) => walkable(r) && core.isOutdoor(r.kind)).sort((a, b) => b.areaSqm - a.areaSqm)[0]
+  return zone ? { p: zone.centroid, face: { x: 0, y: -1 } } : null
+}
+
+/**
  * Entry spawn (PM rule): the FIRST `door` in walls[] order; stand 1.2 m from the door centre on the
  * side whose room is not 'other'/'shaft' (larger room wins when both qualify), facing that room's centre —
  * a long room is seen down its length, not across into the nearest wall — or straight in from the door
@@ -70,6 +149,8 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
  * Falls back to the centroid of the largest living room (then any room).
  */
 export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
+  const level = isLevel(rooms) && levelEntry(unit, rooms)
+  if (level) return level
   // the entrance: the first door from outside the flat (or its common core) into it — a Studio draft lists its walls
   // in drawing order, not entrance first as the hand-authored units do — else the first door
   const doors = unit.walls.flatMap((w) => {
