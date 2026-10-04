@@ -634,13 +634,13 @@ const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
  * reach and whose centre line it crosses on its segment → `to` on that centre line (`inside` when the end is in that
  * wall's body already); another wall's end on its line ahead → that end; a FREE end of a crossing wall within its own
  * reach of where the two lines cross → there, that end coming too (`also`). The nearest wins: never through a wall.
+ * `reach`: how far to look instead (the Issues list's "Extend" fix looks further: the founder sees its ghost first).
  */
-function ahead(u: Unit, id: Id, w: Wall): { r: number; to: Pt; also?: { w: Wall; end: Id }; inside?: boolean } | null {
+export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number; to: Pt; also?: { w: Wall; end: Id }; inside?: boolean } | null {
   const V = new Map(u.vertices.map((v) => [v.id, v]))
   const v = V.get(id)!
   const far = w.a === id ? w.b : w.a
   const d = dirFrom(u, w, far) // ahead: away from its own wall
-  const reach = reachOf(w)
   let best: ReturnType<typeof ahead> = null
   for (const x of u.walls) {
     if (x === w) continue
@@ -874,7 +874,7 @@ const replaceOpening = (u: Unit, wallId: Id, o: Opening): Unit => ({
 const bordersBath = (rooms: Room[], wallId: Id): boolean => rooms.some((r) => r.kind === 'bath' && r.wallIds.includes(wallId))
 
 /** The O tool's smallest opening (a resize stops here). */
-const MIN_OPENING_M = 0.3
+export const MIN_OPENING_M = 0.3
 
 /** The opening a click at `t` on `wall` creates; the O tool's ghost draws the same. `error` = the click is refused. No widthM = the kind's default. */
 export function openingAt(

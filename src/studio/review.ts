@@ -33,6 +33,8 @@ export type StudioAction =
   | { type: 'chain-thickness'; thicknessM: number }
   /** a held W / O / R released after it acted: back to `tool` with `selection`, minus what the action removed */
   | { type: 'spring-back'; tool: Tool; selection: Id[] }
+  /** an Issues fix (issues.ts): its reducer actions in one go — one undo step (every fix holds exactly one commit / drag-begin) */
+  | { type: 'apply-fix'; actions: Action[]; label: string }
 
 /** An entity as it stands (its fields + where it is); undefined when the unit has no such entity (e.g. an unlabelled room). */
 const entitySig = (u: Unit, id: Id): string | undefined => {
@@ -70,6 +72,10 @@ export function studioReducer(s: StudioState, a: StudioAction): StudioState {
       let pieces: Set<Id> | undefined
       const selection = a.selection.filter((id) => findEntity(t.unit, id) || (pieces ??= new Set(layoutFor(t.unit, deriveRooms(t.unit)).map((p) => p.id))).has(id))
       return { ...t, selection }
+    }
+    case 'apply-fix': {
+      const t = a.actions.reduce(reducer, s)
+      return reducer(t.unit === s.unit ? s : t, { type: 'toast', text: t.unit === s.unit ? 'Nothing to fix there any more' : `${a.label} — Ctrl+Z undoes it` })
     }
     default:
       return reducer(s, a) // load-unit / reset start from initialState: no review

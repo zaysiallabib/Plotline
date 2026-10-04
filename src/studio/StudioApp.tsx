@@ -20,15 +20,18 @@ import {
   studioIssues,
   wallLabelSides,
   type Draft,
-  type StudioIssue,
   type StudioState,
   type Target,
   type Tool,
 } from './model'
-import { AI_KEY, TRACKER_KEY, studioReducer, type Review } from './review'
+import { AI_KEY, TRACKER_KEY, openReview, studioReducer } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
+import { IssueLayer } from './IssueLayer'
+import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
+import { ProjectPanel } from './ProjectPanel'
+import { readProjects, saveProjects, syncUnit } from '../data/building/projects'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
@@ -245,6 +248,30 @@ export default function StudioApp() {
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
+  // the Issues and "Check these" rows as marks on the plan; their fixes are checked by applying them (issues.ts): once the
+  // plan has stood still for 150 ms (never mid-drag), one mark per task so a long list never freezes the page; any edit
+  // drops them (never a fix from a stale plan)
+  const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
+  const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
+  const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
+  useEffect(() => {
+    setFixes(null)
+    const found = new Map<string, MarkFixes>()
+    let k = 0
+    let id = 0
+    const step = () => {
+      if (k >= marks.length) return setFixes(found)
+      for (const [key, f] of fixesOf(unit, [marks[k++]], issues)) found.set(key, f)
+      id = window.setTimeout(step, 0)
+    }
+    id = window.setTimeout(step, 150)
+    return () => clearTimeout(id)
+  }, [unit, marks, issues])
+  /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [hotKey, setHotKey] = useState<string | null>(null)
+  const activeRef = useRef(activeKey)
+  activeRef.current = activeKey
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
   const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
@@ -362,6 +389,9 @@ export default function StudioApp() {
     } catch {
       setNote({ text: 'Draft too large to autosave — export your JSON often.' })
     }
+    // a building made from this flat shows it as it is now (data/building/projects.ts)
+    const ps = syncUnit(readProjects(), st.unit)
+    if (ps) saveProjects(ps)
   }, [])
   useEffect(() => {
     const id = setTimeout(saveDraft, 400)
@@ -483,8 +513,8 @@ export default function StudioApp() {
     toast(traced)
   }, [issues, toast])
 
+  // never locked by errors (founder 2026-10-03, 310fe76 unlocked the button but left this early return: a click did nothing)
   const preview = useCallback(() => {
-    if (errors) return
     try {
       localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
     } catch {
@@ -492,7 +522,24 @@ export default function StudioApp() {
     }
     const w = window.open('/u/preview', '_blank')
     if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
-  }, [errors, toast])
+  }, [toast])
+  // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
+  const [buildingOpen, setBuildingOpen] = useState(false)
+  const showBuilding = (from: number, to: number) => {
+    let u = stateRef.current.unit
+    if (u.floor === undefined || u.floor < from || u.floor > to) {
+      dispatch({ type: 'set-meta', patch: { floor: from } })
+      u = { ...u, floor: from }
+    }
+    try {
+      localStorage.setItem(PREVIEW_KEY, JSON.stringify(u))
+    } catch {
+      return toast('Draft too large to autosave — export your JSON often.')
+    }
+    setBuildingOpen(false)
+    const url = '/u/preview?view=building'
+    if (!window.open(url, '_blank')) toast('The building opens in a new tab: the browser blocked it.', { label: 'Open building', onClick: () => window.open(url, '_blank') })
+  }
 
   // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
   // link (append-only): a client keeps seeing what he was sent. The staff key is asked for once per browser.
@@ -748,6 +795,7 @@ export default function StudioApp() {
     }
     if (e.button !== 0) return
     if (mark) setMark(null)
+    if (activeKey) setActiveKey(null)
     if (trace === 'pick') {
       const p = toPx(sx, sy)
       const pi = state.planImage
@@ -1071,6 +1119,7 @@ export default function StudioApp() {
       }
       if (typing) return
       if (e.key === 'Escape' && trace === 'pick') return cancelTrace.current()
+      if (e.key === 'Escape' && activeRef.current) return setActiveKey(null)
       if (e.key === 'Alt') return e.preventDefault() // Alt-drag detaches; a lone Alt must not focus the browser menu
       dispatch({ type: 'timer-input', now: now() })
       if (ctrl && (e.key === 'z' || e.key === 'Z')) {
@@ -1177,15 +1226,22 @@ export default function StudioApp() {
     }
   }, [exportJson, fitView, computeHover, popover, size, trace])
 
-  // ----- issues and review rows → pan/zoom/select
-  const focusIssue = (i: StudioIssue) =>
-    focusOn(
-      i.ids.flatMap((id) => entityPoints(unit, id)),
-      i.ids.filter((id) => !id.startsWith('space-')),
-    )
-  const focusReview = (r: Review['items'][number]) => {
-    focusOn([r.at], r.entityId && findEntity(unit, r.entityId) ? [r.entityId] : [], 4) // a spot: a room's worth around it
-    setMark(r.at)
+  // ----- issues and review rows → pan/zoom to the mark, select what it is about (a loose corner: ready to drag), open it
+  const openMark = (row: Mark) => {
+    const m = (row.twinOf && marks.find((x) => x.key === row.twinOf)) || row // a "Check these" row on an issue's spot opens that issue
+    const ids = m.issue ? (m.issue.code === 'unlabelled-room' ? [] : m.issue.ids) : m.review?.entityId ? [m.review.entityId] : []
+    const sel = ids.filter((id) => findEntity(unit, id))
+    focusOn([...(m.at ? [m.at] : []), ...sel.flatMap((id) => entityPoints(unit, id))], sel, 3)
+    setActiveKey(m.key)
+  }
+  const applyFix = (f: Fix) => {
+    dispatch({ type: 'apply-fix', actions: f.actions, label: f.label })
+    setActiveKey(null)
+  }
+  const nameRoom = (at: Pt, name: string) => {
+    const r = roomAt(at, rooms, unit)
+    dispatch({ type: 'add-label', label: { name, kind: guessKind(name), x: at.x, y: at.y, printedSize: r ? printedSizeOf(r, unit) : undefined } })
+    setActiveKey(null)
   }
   const focusOn = (pts: Pt[], selectable: Id[], padM = 2) => {
     dispatch({ type: 'select', ids: selectable })
@@ -1312,6 +1368,9 @@ export default function StudioApp() {
         <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
+        <button className={buildingOpen ? 'on' : ''} title="Make a whole building from this flat: floors, a mirrored neighbour, then the Building view" onClick={() => setBuildingOpen((v) => !v)}>
+          Building
+        </button>
         {sharingConfigured && (
           <button disabled={sharing} title="Publish this draft and copy a buyer link (/s/…) — every click makes a new link" onClick={() => void share()}>
             {sharing ? 'Sharing…' : 'Share link'}
@@ -1340,6 +1399,21 @@ export default function StudioApp() {
             onDoubleClick={onDoubleClick}
             onContextMenu={(e) => e.preventDefault()}
           />
+          {buildingOpen && <ProjectPanel unit={unit} roomCount={rooms.length} onShow={showBuilding} onClose={() => setBuildingOpen(false)} onToast={toast} />}
+          {trace !== 'pick' && (
+            <IssueLayer
+              marks={marks}
+              fixes={fixes}
+              toScreen={toScreen}
+              width={size.w}
+              height={size.h}
+              active={activeKey}
+              hot={hotKey}
+              onActivate={setActiveKey}
+              onFix={applyFix}
+              onName={nameRoom}
+            />
+          )}
           <div className="tools">
             {TOOLS.map(([t, k, label]) => {
               const locked = t !== 'select' && t !== 'scale' && !scaleSet
@@ -1488,8 +1562,12 @@ export default function StudioApp() {
           dispatch={dispatch}
           rooms={rooms}
           issues={issues}
-          onFocusIssue={focusIssue}
-          onFocusReview={focusReview}
+          marks={marks}
+          fixes={fixes}
+          active={activeKey}
+          onHot={setHotKey}
+          onOpen={openMark}
+          onFix={applyFix}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => setPlacing(assetId ? { id: newId(), assetId, rot: 0 } : null)}

@@ -44,9 +44,13 @@ Docs/PRODUCT_PHILOSOPHY.md.
   rules: grid, wall snap, no overlaps / blocked doors); every piece gets
   dimensions (scanned models scale within sane limits). A longer table may
   gain chairs. Staff-only; buyers still only look, choose finishes, comment.
-- Level templates (ground / basement / typical floor / rooftop, each with
-  its own furnishing rules) are parked until the living floors are done
-  (founder, 2026-09-26).
+- **Whole-building projects (founder, 2026-10-04 — un-parks the level
+  templates parked 2026-09-26):** "build whole-building projects from traced
+  units". Stage 1 = a Project made in the Studio (top bar → Building): floors
+  of traced flats (offset + mirrored neighbour), "repeat on floors N–M", saved
+  in the browser like drafts, drawn by the Building view. Stage 2 = ground /
+  basement / rooftop as traced levels shown as shells (walls, slabs, no
+  furnishing). Per-level furnishing rules are still parked.
 
 ## Stack
 

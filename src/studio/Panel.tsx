@@ -4,18 +4,21 @@ import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '.
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, findEntity, openingDefaults, type StudioIssue, type StudioState } from './model'
-import { AI_KEY, TRACKER_KEY, openReview, type Review, type StudioAction as Action } from './review'
+import { AI_KEY, TRACKER_KEY, type StudioAction as Action } from './review'
+import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
-/** icon + what the icon means, per review kind */
-const REVIEW_ICON: Record<ReviewItem['kind'], [string, string]> = {
-  'size-mismatch': ['↔', 'Size differs from the printed size'],
-  unclosed: ['⊐', 'Outline not closed'],
-  unlabelled: ['?', 'Room has no name'],
-  'opening-guess': ['⌒', 'Opening kind is a guess'],
-  'low-confidence': ['≈', 'Not sure about this'],
-  scale: ['⤢', 'Scale'],
-  other: ['•', 'Check this'],
+const SEVERITY: Record<Severity, string> = { red: 'Breaks the 3D', amber: 'Worth a look', grey: 'Cosmetic' }
+
+/** what a review row is about, per kind (its number's tooltip) */
+const REVIEW_KIND: Record<ReviewItem['kind'], string> = {
+  'size-mismatch': 'Size differs from the printed size',
+  unclosed: 'Outline not closed',
+  unlabelled: 'Room has no name',
+  'opening-guess': 'Opening kind is a guess',
+  'low-confidence': 'Not sure about this',
+  scale: 'Scale',
+  other: 'Check this',
 }
 const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
 const statsLine = (s: AutoTraceStats) =>
@@ -69,8 +72,17 @@ interface Props {
   dispatch: (a: Action) => void
   rooms: Room[]
   issues: StudioIssue[]
-  onFocusIssue: (i: StudioIssue) => void
-  onFocusReview: (r: Review['items'][number]) => void
+  /** the "Check these" rows, then the Issues, as marked on the plan (issues.ts markIssues) */
+  marks: Mark[]
+  /** working fixes per mark key; null while the plan is still changing */
+  fixes: Map<string, MarkFixes> | null
+  /** the mark open on the plan */
+  active: string | null
+  /** a row hovered: its mark pulses (null: none) */
+  onHot: (key: string | null) => void
+  /** a row clicked: the plan goes to its mark and opens it */
+  onOpen: (m: Mark) => void
+  onFix: (f: Fix) => void
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
@@ -78,10 +90,61 @@ interface Props {
   onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusReview, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, onHot, onOpen, onFix, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
-  const review = openReview(state, rooms)
+  const review = marks.filter((m) => m.review)
+  const listed = marks.filter((m) => m.issue)
+  // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
+  useEffect(() => {
+    if (active) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
+  }, [active])
+  /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
+  const row = (m: Mark, extra?: React.ReactNode) => {
+    const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
+    const f = fixes?.get(key)
+    const acts = !!(f?.fixes.length || f?.nameAt || extra)
+    return (
+      <li
+        key={m.key}
+        className={`${m.at ? 'find' : ''}${key === active ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
+        title={m.at ? 'Click to go to it on the plan' : undefined}
+        onMouseEnter={() => m.at && onHot(key)}
+        onMouseLeave={() => onHot(null)}
+        onClick={() => m.at && onOpen(m)}
+      >
+        <span className={`num ${m.severity}`} title={m.review ? REVIEW_KIND[m.review.kind] : SEVERITY[m.severity]}>
+          {m.n ?? ''}
+        </span>
+        <span className="grow">
+          {m.message}
+          {acts && (
+            <span className="acts">
+              {f?.fixes.map((x) => (
+                <button
+                  key={x.label}
+                  className="link"
+                  title={x.title}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFix(x)
+                  }}
+                >
+                  {x.label}
+                </button>
+              ))}
+              {f?.nameAt && (
+                <button className="link" title="Type the name on the plan">
+                  Name it
+                </button>
+              )}
+              {extra}
+            </span>
+          )}
+        </span>
+      </li>
+    )
+  }
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
@@ -142,24 +205,21 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
           {stats && <p className="muted">{statsLine(stats)}</p>}
           {review.length ? (
             <ul className="issues">
-              {review.map((r) => (
-                <li key={r.id} className="find" title="Click to find it" onClick={() => onFocusReview(r)}>
-                  <span className="rk" title={REVIEW_ICON[r.kind][1]}>
-                    {REVIEW_ICON[r.kind][0]}
-                  </span>
-                  <span className="grow">{r.message}</span>
+              {review.map((m) =>
+                row(
+                  m,
                   <button
                     className="link"
                     title="Take it off the list"
                     onClick={(e) => {
                       e.stopPropagation()
-                      dispatch({ type: 'dismiss-review', id: r.id })
+                      dispatch({ type: 'dismiss-review', id: m.review!.id })
                     }}
                   >
                     Looks right
-                  </button>
-                </li>
-              ))}
+                  </button>,
+                ),
+              )}
             </ul>
           ) : (
             <p className="muted">{stats ? 'Nothing left to check.' : 'Auto-trace (top bar) lists here what it is unsure of.'}</p>
@@ -175,17 +235,15 @@ export function Panel({ state, dispatch, rooms, issues, onFocusIssue, onFocusRev
             Join walls (overlaps and crossings)
           </button>
         )}
-        {issues.length === 0 ? (
+        {listed.length === 0 ? (
           <p className="muted">No issues. Ready to export.</p>
         ) : (
-          <ul className="issues">
-            {issues.map((i, k) => (
-              <li key={k} className={i.ids.length ? 'find' : undefined} title={i.ids.length ? 'Click to find it' : undefined} onClick={() => onFocusIssue(i)}>
-                <span className={`dot ${i.level}`} />
-                {i.message}
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="muted legend">
+              <span className="num red" /> breaks the 3D <span className="num amber" /> worth a look <span className="num grey" /> cosmetic
+            </p>
+            <ul className="issues">{listed.map((m) => row(m))}</ul>
+          </>
         )}
       </section>
     </aside>

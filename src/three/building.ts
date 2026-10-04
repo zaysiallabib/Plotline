@@ -14,7 +14,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { towerOf, type Tower } from '../data/building'
+import { floorIn, towerOf, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
@@ -101,11 +101,11 @@ export class Building extends THREE.Group {
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
 
-  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=). */
+  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
   static for(unit: Unit): Building | null {
     const t = towerOf(unit)
     const stem = t && Object.keys(t.FLATS).find((s) => t.FLATS[s].unit.id === unit.id)
-    return t && stem ? new Building(unit, t, stem, unit.floor ?? 2) : null
+    return t && stem ? new Building(unit, t, stem, floorIn(t, stem, unit.floor)) : null
   }
 
   private constructor(unit: Unit, t: Tower, stem: string, floor: number) {
@@ -145,8 +145,9 @@ export class Building extends THREE.Group {
         const mine = k === floor && s === stem
         const columns = (u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M))
         const walls = [...u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g), ...columns].map(at)
-        // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it
-        const slab = plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
+        // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
+        // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
+        const slab = k === 0 ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
         if (mine) put(EXTERIOR_PLASTER, ...slab)
         const mesh = new THREE.Mesh(merge(mine ? walls : [...walls, ...slab]), materialFor(EXTERIOR_PLASTER))
         mesh.castShadow = mesh.receiveShadow = true
@@ -200,12 +201,15 @@ export class Building extends THREE.Group {
     }
     this.box.setFromObject(this)
 
-    // the street: the site's two roads, and neighbour blocks (context.ts) around the plot and the roads
-    const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
-    roads.receiveShadow = true
+    // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads
+    if (GROUND.roads.length) {
+      const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
+      roads.receiveShadow = true
+      this.add(roads)
+    }
     const b = this.box
     this.street = buildStreet(unit, { minX: b.min.x - 12, maxX: b.max.x + 12, minY: b.min.z - 12, maxY: b.max.z + 12 }, this.streetY)
-    this.add(roads, this.street)
+    this.add(this.street)
 
     const markMat = new THREE.MeshBasicMaterial({ color: '#e8c170' }) // --accent
     this.own.push(markMat)
