@@ -50,7 +50,7 @@ Docs/PRODUCT_PHILOSOPHY.md.
   of traced flats (offset + mirrored neighbour), "repeat on floors N–M", saved
   in the browser like drafts, drawn by the Building view. Stage 2 = ground /
   basement / rooftop as traced levels shown as shells (walls, slabs, no
-  furnishing). Per-level furnishing rules are still parked.
+  furnishing). Per-level furnishing rules: un-parked the same evening (below).
 - **Openings in 3D (founder, 2026-10-04):** staff may edit OPENINGS in the 3D
   view too — walk and dollhouse: remove, resize, move along their wall, change
   kind / width / height / sill, with the Studio's own rules (one reducer,
@@ -64,7 +64,13 @@ Docs/PRODUCT_PHILOSOPHY.md.
   it is never an error by itself. Claude hand-authors the ground floors,
   basements and rooftops (as the five flats were), with their new elements
   (ramps, floor levels, glass walls, lawn / paving / parking / pool zones,
-  planters, screens). Plan in HANDOFF "SESSION 19 PLAN".
+  planters, screens) — for ALL the projects in `Demo drawings/`. They are a
+  BENCHMARK: data only; how they look comes from general rules by kind and
+  geometry, and a level he traces in the Studio must come out the same — what
+  Claude shows is the minimum. Buyers walk these levels too. Common levels are
+  furnished by kind (lobby, rooftop, gym, pool, play area) — this un-parks the
+  per-level furnishing rules; greenery (lawns, big trees, planters) is in the
+  library for flats' balconies as well. Plan in HANDOFF "SESSION 19 PLAN".
 - **Browser tests run in Firefox** (Playwright's build on E:, HANDOFF), never
   Edge with swiftshader — it burned the founder's CPU (2026-10-04).
 
