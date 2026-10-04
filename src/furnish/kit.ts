@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { ART, PLANTER, planterAsset, PROCEDURAL, tableSeats, wardrobeDoors } from './procedural.meta'
+import { ART, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -39,6 +39,7 @@ export type ObjectKind =
   | 'ceiling-light' | 'ceiling-fan' | 'ac' | 'stair'
   | 'kitchen-cabinet' | 'sink' | 'hob' | 'hood' | 'fridge'
   | 'toilet' | 'vanity' | 'basin' | 'mixer' | 'mirror' | 'shower' | 'shower-tray' | 'shower-glass' | 'shower-head'
+  | 'bench' | 'lounger' | 'table-set' | 'pergola' | 'play' | 'gym' | 'reception-desk' | 'car'
 
 export interface KitAsset {
   id: string
@@ -88,6 +89,9 @@ const KIND: Record<string, ObjectKind> = {
   throw_pillows_01: 'cushions',
   ottoman_01: 'ottoman',
   electric_stove: 'hob',
+  modular_street_seating: 'bench',
+  outdoor_table_chair_set_01: 'table-set',
+  covered_car: 'car',
 }
 
 // bottom heights: clock centred at 2.4 m, above the 2.1 m door heads; the pillows sit on sofa_3seat's 0.45 m seat cushions
@@ -193,6 +197,8 @@ const REBUILD: Record<string, ResizeLimits> = {
   cot: COT,
   cot_s: COT,
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, BED])),
+  // a planter box gets more plants as it grows, never stretched ones
+  ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, lim([0.6, 0.95, PLANTER_BOX_D + 0.05], [3.0, 0.95, PLANTER_BOX_D + 0.05])])),
 }
 /** Built at its sizeM (REBUILD), not built at its kit size and scaled. */
 export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD
@@ -221,6 +227,7 @@ const SCALE: Record<string, Rule> = {
   modern_coffee_table_01: [['x', 'z'], 0.75, 1.25],
   shower_screen: [['x', 'z'], 0.9, 1.35],
   ...each(['modern_ceiling_lamp_01', 'potted_plant_01', 'potted_plant_02', 'potted_plant_04', 'ceramic_vase_01', 'ceiling_fan', 'wall_clock', 'ceiling_light', 'ceiling_light_large'], DECOR),
+  ...each([...Object.keys(POTTED), ...Object.keys(SHRUBS), ...Object.keys(TREES), 'tree_mast'], DECOR),
   ...each(['hanging_picture_frame_01', ...ART], ART_RULE),
   tv_55: TV_RULE,
   tv_55_wall: TV_RULE,

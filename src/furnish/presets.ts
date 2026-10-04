@@ -26,9 +26,9 @@
  * Plants and the glass shower screen may stand in front of a window.
  */
 import type { FurniturePlacement, Room, RoomKind, Unit } from '../core'
-import { pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
-import { heightRange, isCeilingLight, kitAsset } from './kit'
-import { ART_SETS, ART_W, BED_STYLES, planterId, STAIR_W, stairId } from './procedural.meta'
+import { isOutdoor, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
+import { heightRange, isCeilingLight, kitAsset, objectKind } from './kit'
+import { ART_SETS, ART_W, BED_STYLES, PERGOLA_POST, planterId, STAIR_W, stairId, TRUNK_CLEAR } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -59,6 +59,8 @@ interface Side {
   n: Pt // inward normal
   len: number
   thick: number
+  /** the walls along it (collinear ones merged) */
+  wallIds: string[]
   /** [u0, u1] along the side from p0, clear depth into the room, entry-path depth (ENTRY; a slider: its step-in) */
   doors: [number, number, number, number][]
   wins: { u0: number; u1: number; sill: number; top: number }[]
@@ -159,7 +161,7 @@ function buildSides(room: Room, unit: Unit): Side[] {
         doors.push([u0, u0 + o.widthM, sweeps ? DOOR_CLEAR : STEP_IN, slides ? STEP_IN : ENTRY])
       }
     }
-    return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, doors, wins }
+    return { p0: p, d, n: { x: -d.y, y: d.x }, len, thick: w?.thicknessM ?? 0.127, wallIds: [room.wallIds[i]], doors, wins }
   })
   const collinear = (a: Side, b: Side) => a.d.x * b.d.x + a.d.y * b.d.y > 0.9999
   const merge = (a: Side, b: Side) => {
@@ -167,6 +169,7 @@ function buildSides(room: Room, unit: Unit): Side[] {
     for (const w of b.wins) a.wins.push({ ...w, u0: w.u0 + a.len, u1: w.u1 + a.len })
     a.len += b.len
     a.thick = Math.max(a.thick, b.thick)
+    a.wallIds.push(...b.wallIds)
   }
   const out: Side[] = []
   for (const s of raw) {
@@ -220,8 +223,9 @@ function makeCtx(room: Room, unit: Unit, rooms: Room[], kitchen: Pt | null, bedS
 }
 
 /** The footprint if `assetId` may stand at c (see header for modes), else null. */
-function fits(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode): Pt[] | null {
-  const quad = footprint(c, rotationDeg, size(assetId))
+function fits(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode, scale = 1): Pt[] | null {
+  const s = size(assetId)
+  const quad = footprint(c, rotationDeg, { x: s.x * scale, z: s.z * scale })
   if (!quad.every((p) => pointInPolygon(p, ctx.inner))) return null
   if (mode === 'free') return quad
   if (ctx.clear.some((q) => quadsOverlap(q, quad))) return null
@@ -230,13 +234,13 @@ function fits(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode)
   const a = kitAsset(assetId)
   const [y0, y1] = a ? heightRange(a) : [0, 1]
   const coversWindow = (w: Ctx['wins'][number]) => y1 > w.sill + SILL_SLACK && y0 < w.top && quadsOverlap(w.q, quad)
-  if (!SEE_THROUGH.has(assetId) && a?.category !== 'plant' && ctx.wins.some(coversWindow)) return null
+  if (!SEE_THROUGH.has(assetId) && !(a && objectKind(a) === 'plant') && ctx.wins.some(coversWindow)) return null
   if (mode === 'solid' && ctx.quads.some((o) => o.y1 > y0 + 0.02 && o.y0 < y1 - 0.02 && quadsOverlap(o.q, quad))) return null
   return quad
 }
 
 function tryPlace(ctx: Ctx, assetId: string, c: Pt, rotationDeg: number, mode: Mode = 'solid', scale?: number): FurniturePlacement | null {
-  const quad = fits(ctx, assetId, c, rotationDeg, mode)
+  const quad = fits(ctx, assetId, c, rotationDeg, mode, scale)
   if (!quad) return null
   const n = (ctx.counts.get(assetId) ?? 0) + 1
   ctx.counts.set(assetId, n)
@@ -700,7 +704,8 @@ function planter(ctx: Ctx): void {
     const w = walls.get(id)
     return w && w.heightM < 1.5 && !ctx.rooms.some((r) => r !== ctx.room && r.wallIds.includes(id)) ? { h: w.heightM, t: w.thicknessM } : { h: 0, t: 0 }
   })
-  const { id, c } = planterId(ctx.inner, edges)
+  // a planter ZONE is drawn with its own soil floor (at its levelM) and copings: the bed is only its planting
+  const { id, c } = planterId(ctx.inner, edges, ctx.room.kind === 'planter')
   ctx.out.push({ id: `${ctx.room.id}:planter_bed:1`, assetId: id, roomId: ctx.room.id, x: c.x, y: c.y, rotationDeg: 0 })
 }
 
@@ -712,6 +717,280 @@ function balcony(ctx: Ctx): void {
     inCorner(ctx, 'mid_century_lounge_chair', plant ? [plant.corner] : []) ??
       tryPlace(ctx, 'ottoman_01', polygonCentroid(ctx.inner), 0)
   }
+  planterSet(ctx)
+}
+
+/** Its open edges: sides whose walls are all lower than 1.5 m (a railing, a parapet) and border no other room or zone. */
+const outerSides = (ctx: Ctx): Side[] => {
+  const walls = new Map(ctx.unit.walls.map((w) => [w.id, w]))
+  return rankLongest(ctx).filter((s) => s.wallIds.every((id) => (walls.get(id)?.heightM ?? 3) < 1.5 && !ctx.rooms.some((r) => r !== ctx.room && r.wallIds.includes(id))))
+}
+
+/**
+ * A balcony's default planter set (founder 2026-10-04: planters inside the flat too; staff choose, no price): the longest
+ * planter box that fits along its railing, after the pot and the chair, so it never crowds them; none on a ledge under
+ * 1.4 m deep (the box would leave no way along it).
+ */
+function planterSet(ctx: Ctx): void {
+  if (bounds(ctx).short < 1.4) return
+  for (const s of outerSides(ctx)) for (const id of ['planter_box_240', 'planter_box_150', 'planter_box_90']) if (onSide(ctx, s, id)) return
+}
+
+// ───────────────────────────── outdoor zones (session 19): by kind and geometry only ─────────────────────────────
+
+/** Plan points on a `step` grid inside the inner polygon, `order`ed (ties by y, then x): spots for free-standing pieces. */
+function gridSpots(ctx: Ctx, step: number, order: (p: Pt) => number): Pt[] {
+  const xs = ctx.inner.map((p) => p.x)
+  const ys = ctx.inner.map((p) => p.y)
+  const out: Pt[] = []
+  for (let y = Math.min(...ys) + step / 2; y < Math.max(...ys); y += step) for (let x = Math.min(...xs) + step / 2; x < Math.max(...xs); x += step) if (pointInPolygon({ x, y }, ctx.inner)) out.push({ x, y })
+  return out.map((p) => ({ p, k: order(p) })).sort((a, b) => a.k - b.k || a.p.y - b.p.y || a.p.x - b.p.x).map((e) => e.p)
+}
+const square = (c: Pt, s: number): Pt[] => footprint(c, 0, { x: s, z: s })
+const toCentre = (ctx: Ctx) => {
+  const c = polygonCentroid(ctx.inner)
+  return (p: Pt) => dist(p, c)
+}
+/** Walls as tall as `h` or taller along a side: something to put a back to. */
+const high = (ctx: Ctx, h: number) => {
+  const walls = new Map(ctx.unit.walls.map((w) => [w.id, w]))
+  return (s: Side) => s.wallIds.every((id) => (walls.get(id)?.heightM ?? 0) >= h)
+}
+
+/** Trees, biggest first, then smaller or scaled down where a crown does not fit (a crown stays inside the face); mast trees line strips too narrow for a spreading one. */
+const TREE_SIZES: [string, number][] = [['tree_large', 1], ['tree_large', 0.85], ['tree_medium', 1], ['tree_medium', 0.85], ['tree_small', 1], ['tree_mast', 1], ['tree_mast', 0.85], ['tree_mast', 0.7]]
+/** Mast trees stand at least this far apart (planted as a row, not a hedge). */
+const MAST_SPACING = 2.6
+/** ...and 4 m apart in a row along a boundary wall. */
+const MAST_ROW = 4
+/** A crown r round at c is over this face only: its circle inside, no corner of the face under it (a C-shaped lawn's arms hold a square's corners while it spans what lies between). */
+const crownFits = (ctx: Ctx, c: Pt, r: number) =>
+  Array.from({ length: 16 }, (_, i) => ({ x: c.x + r * Math.cos((i * Math.PI) / 8), y: c.y + r * Math.sin((i * Math.PI) / 8) })).every((p) => pointInPolygon(p, ctx.inner)) && !ctx.inner.some((v) => dist(v, c) < r)
+
+/**
+ * Trees on a lawn (or a wide planter): biggest first, each where its whole crown stays inside the face, spots nearest the
+ * edges first (they line the edges and fill the corners), trunks TRUNK_CLEAR square clear of door zones and of pieces,
+ * crowns at most ~15 % into each other, until crowns cover `cover` of the face. Turned by quarters in order. Deterministic.
+ */
+function trees(ctx: Ctx, cover: number, sizes = TREE_SIZES): void {
+  const edge = (p: Pt) => wallClearance(p, ctx.inner)
+  const spots = gridSpots(ctx, 0.5, edge)
+  const placed: { c: Pt; r: number }[] = []
+  let area = 0
+  for (const [id, k] of sizes) {
+    const r = (size(id).x * k) / 2
+    for (const c of spots) {
+      if (area + Math.PI * r * r > cover * ctx.room.areaSqm) break // a smaller one may still fit the budget
+      if (placed.some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + r), id === 'tree_mast' ? MAST_SPACING : 0))) continue
+      const trunk = square(c, TRUNK_CLEAR)
+      if (ctx.clear.some((q) => quadsOverlap(q, trunk)) || ctx.quads.some((o) => quadsOverlap(o.q, trunk))) continue
+      if (!crownFits(ctx, c, r) || !tryPlace(ctx, id, c, 90 * (placed.length % 4), 'free', k === 1 ? undefined : k)) continue
+      placed.push({ c, r })
+      area += Math.PI * r * r
+      ctx.quads.push({ q: trunk, y0: 0, y1: 3 })
+    }
+  }
+}
+
+/** Shrubs along the walls at least `h` tall (boundary, building, screens): one every ~1.8 m, at most `max`. How many. */
+function shrubs(ctx: Ctx, h: number, max: number): number {
+  let n = 0
+  for (const s of rankLongest(ctx).filter(high(ctx, h)))
+    for (let u = 0.6; u <= s.len - 0.6 && n < max; u += 1.8) if (tryPlace(ctx, 'shrub_round', againstSide(s, 'shrub_round', u), rotationFacing(s.n))) n++
+  return n
+}
+
+/** A bench with its back to the longest wall at least 0.9 m tall, facing in. */
+const benchOnWall = (ctx: Ctx, id = 'modular_street_seating') => onSides(ctx, rankNoOpenings(ctx).filter(high(ctx, 0.9)), id)
+
+/**
+ * `place` (one piece or a group) at the free spot nearest the middle whose extent `ext` at rotation `rot` plus `margin`
+ * all round lies inside the face, clear of door zones and of pieces; the margin is then reserved (floor pieces keep out).
+ */
+function spaced(ctx: Ctx, ext: { x: number; z: number }, rot: number, margin: number, place: (c: Pt) => boolean, order = toCentre(ctx)): boolean {
+  for (const c of gridSpots(ctx, 0.25, order)) {
+    const safe = footprint(c, rot, { x: ext.x + 2 * margin, z: ext.z + 2 * margin })
+    if (!safe.every((q) => pointInPolygon(q, ctx.inner)) || ctx.quads.some((o) => o.y0 < 0.5 && quadsOverlap(o.q, safe)) || ctx.clear.some((q) => quadsOverlap(q, safe))) continue
+    if (!atomic(ctx, () => place(c))) continue
+    ctx.quads.push({ q: safe, y0: 0, y1: 0.5 })
+    return true
+  }
+  return false
+}
+
+/**
+ * A row of mast trees along the plot's boundary: sides whose walls are all 1.5–2.6 m tall (a boundary wall or a screen,
+ * not the building) with no opening, one every 3 m where its crown (full size, else 0.85 / 0.7) stays inside the face and
+ * clear of the crowns already there — Dhaka's Debdaru rows. Outside the crown-cover budget of `trees`.
+ */
+function mastRow(ctx: Ctx): void {
+  const walls = new Map(ctx.unit.walls.map((w) => [w.id, w]))
+  const boundary = (s: Side) => !s.doors.length && s.wallIds.every((id) => (walls.get(id)?.heightM ?? 0) >= 1.5 && (walls.get(id)?.heightM ?? 9) < 2.6)
+  const crown = size('tree_mast').x
+  const trunks = () => ctx.out.filter((p) => kitAsset(p.assetId)?.category === 'rug' && objectKind(kitAsset(p.assetId)!) === 'plant' && !p.assetId.startsWith('planter_bed@')).map((p) => ({ c: { x: p.x, y: p.y }, r: (size(p.assetId).x * (p.scale ?? 1)) / 2 }))
+  for (const s of rankLongest(ctx).filter(boundary))
+    for (let u = 1.2; u <= s.len - 1.2; u += 0.5)
+      for (const k of [1, 0.85, 0.7]) {
+        const c = add(add(s.p0, s.d, u), s.n, s.thick / 2 + GAP + (crown * k) / 2)
+        if (trunks().some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + (crown * k) / 2), MAST_ROW))) continue
+        const trunk = square(c, TRUNK_CLEAR)
+        if (ctx.clear.some((q) => quadsOverlap(q, trunk)) || ctx.quads.some((o) => quadsOverlap(o.q, trunk))) continue
+        if (!crownFits(ctx, c, (crown * k) / 2) || !tryPlace(ctx, 'tree_mast', c, 90 * (u % 4 | 0), 'free', k === 1 ? undefined : k)) continue
+        ctx.quads.push({ q: trunk, y0: 0, y1: 3 })
+        break
+      }
+}
+
+/** Lawn: trees by size and space, a mast row along its boundary walls, shrubs along its walls; a small or narrow lawn gets shrubs only; a big one a bench too. */
+function lawn(ctx: Ctx): void {
+  const big = ctx.room.areaSqm >= 12 && bounds(ctx).short >= 2.5
+  if (big) trees(ctx, 0.5)
+  if (ctx.room.areaSqm >= 12) mastRow(ctx)
+  if (ctx.room.areaSqm >= 60) benchOnWall(ctx)
+  // a strip with no wall to line still gets one
+  if (!shrubs(ctx, 0.9, big ? 10 : 4)) for (const s of rankLongest(ctx)) if (onSide(ctx, s, 'shrub_round')) break
+}
+
+/** Planter zone: one planted bed filling it (as a balcony's planter strip), shrubs down its middle if it is 0.9 m wide, a small tree if 2 m. */
+function planterZone(ctx: Ctx): void {
+  planter(ctx)
+  const b = bounds(ctx)
+  if (b.short >= 2) trees(ctx, 0.6, TREE_SIZES.filter(([id]) => id === 'tree_small').concat([['tree_small', 0.65]]))
+  if (b.short < 0.9) return
+  const { c0, axis, lo, hi } = mainAxis(ctx)
+  for (let t = lo + 0.6; t <= hi - 0.6; t += 1.4) tryPlace(ctx, 'shrub_round', add(c0, axis, t), 0)
+}
+
+/**
+ * Deck: loungers facing the swimming pool it borders (a pool face of 25 m² or more, at least 1.8 times as long as it is
+ * wide: a lap pool, not a fountain or a water body); else a pergola over a bistro set, more sets, a bench; pots in two corners.
+ */
+function deck(ctx: Ctx): void {
+  const swim = (r: Room) => {
+    const b = bounds(makeCtx(r, ctx.unit, ctx.rooms, null, ''))
+    return r.kind === 'pool' && r.areaSqm >= 25 && b.long >= 1.8 * b.short
+  }
+  const pool = ctx.rooms.find((r) => r.wallIds.some((id) => ctx.room.wallIds.includes(id)) && swim(r))
+  const edge = pool && rankLongest(ctx).find((s) => s.wallIds.some((id) => pool.wallIds.includes(id)))
+  if (edge) {
+    // feet to the water: a row along the pool's edge (0.3 m back from it, or tight on a narrow deck), turned to face it
+    const face = rotationFacing({ x: -edge.n.x, y: -edge.n.y })
+    for (let u = 0.5; u + 0.45 <= edge.len && (ctx.counts.get('lounger') ?? 0) < 8; u += 0.25) if ([0.3, 0.05].some((out) => tryPlace(ctx, 'lounger', againstSide(edge, 'lounger', u, out), face))) u += 0.7
+  } else {
+    if (ctx.room.areaSqm >= 20) pergolaSet(ctx)
+    const set = size('outdoor_table_chair_set_01')
+    const rot = rotationFacing(rankLongest(ctx)[0].n)
+    for (let n = Math.min(3, Math.floor(ctx.room.areaSqm / 12)); n > 0; n--) if (!spaced(ctx, set, rot, 0.4, (c) => !!tryPlace(ctx, 'outdoor_table_chair_set_01', c, rot))) break
+    // a big deck: two loungers side by side, heads to its blankest high wall
+    if (ctx.room.areaSqm >= 40)
+      for (const s of rankNoOpenings(ctx).filter(high(ctx, 0.9)))
+        if ([...slots(s, 0.85)].some((u) => atomic(ctx, () => [0, 0.85].every((du) => !!tryPlace(ctx, 'lounger', againstSide(s, 'lounger', u - 0.425 + du), rotationFacing(s.n)))))) break
+    if (ctx.room.areaSqm >= 8) benchOnWall(ctx, 'bench_timber')
+  }
+  // planter boxes along its parapets (its open edges), one every ~3.2 m, at most 6
+  let boxes = 0
+  for (const s of outerSides(ctx)) for (let u = 1.3; u <= s.len - 1.3 && boxes < 6; u += 0.4) if (tryPlace(ctx, 'planter_box_240', againstSide(s, 'planter_box_240', u), rotationFacing(s.n)) && ++boxes) u += 2.8
+  const pot = inCorner(ctx, 'pot_money_tree')
+  inCorner(ctx, 'pot_anthurium', pot ? [pot.corner] : [])
+}
+
+/** A pergola (category rug: pieces may stand under it, its four posts kept clear) at the spot nearest the middle where it fits, a bistro set under it. */
+function pergolaSet(ctx: Ctx): boolean {
+  const s = size('pergola')
+  const p = s.x / 2 - 0.15 - PERGOLA_POST / 2
+  for (const c of gridSpots(ctx, 0.25, toCentre(ctx))) {
+    const posts = [-1, 1].flatMap((i) => [-1, 1].map((j) => square({ x: c.x + i * p, y: c.y + j * p }, PERGOLA_POST + 0.1)))
+    if (posts.some((q) => ctx.quads.some((o) => quadsOverlap(o.q, q)))) continue
+    if (!tryPlace(ctx, 'pergola', c, 0, 'flat')) continue
+    for (const q of posts) ctx.quads.push({ q, y0: 0, y1: 2.6 })
+    tryPlace(ctx, 'outdoor_table_chair_set_01', c, 90)
+    return true
+  }
+  return false
+}
+
+/** Play area: swing set, slide, seesaw (each where it and a safety margin round it fit), benches for the parents along its walls. */
+function play(ctx: Ctx): void {
+  // round the edges, the middle left open to run in; each along the area's length if it fits so (swings swing and the
+  // seesaw rocks along it, the slide runs down it), else across; in its own safety zone: the swings' arc 1.2 m before
+  // and behind, 0.3 m at the frame's ends; 0.5–0.6 m round the others
+  const along = rotationFacing(bounds(ctx).axis)
+  const edge = (p: Pt) => wallClearance(p, ctx.inner)
+  for (const [id, mx, mz] of [['swing_frame', 0.3, 1.2], ['slide', 0.6, 0.5], ['seesaw', 0.5, 0.3]] as const) {
+    const s = size(id)
+    ;[along, along + 90].some((turn) => spaced(ctx, { x: s.x + 2 * mx, z: s.z + 2 * mz }, turn, 0, (c) => !!tryPlace(ctx, id, c, turn), edge))
+  }
+  for (const s of rankNoOpenings(ctx).filter(high(ctx, 0.9)).slice(0, 2)) onSide(ctx, s, 'bench_timber')
+}
+
+/** Paving: empty, but a big one (25 m², not a ramp) gets a bench against its longest wall. */
+function paving(ctx: Ctx): void {
+  if (ctx.room.areaSqm >= 25) benchOnWall(ctx)
+}
+
+// ───────────────────────────── common rooms (session 19) ─────────────────────────────
+
+/**
+ * Lobby by size: under 20 m² or narrower than 3 m (a lift lobby, a passage) a tall plant or two and nothing else; from
+ * 20 m² a seating group too; from 30 m² and 4 m across a reception desk first, backed by a 1 m receptionist's zone to its
+ * wall, the chair in it — on the blankest wall farthest from the doors.
+ */
+function lobby(ctx: Ctx): void {
+  const b = bounds(ctx)
+  if (ctx.room.areaSqm >= 30 && b.short >= 4) {
+    const walls = rankNoOpenings(ctx).sort((a, c) => sideDoorDist(ctx, c) - sideDoorDist(ctx, a))
+    for (const s of walls) {
+      const ok = atomic(ctx, () => {
+        const d = onSide(ctx, s, 'reception_desk', s.len / 2, 1.0)
+        if (!d) return false
+        const behind = add(d.c, s.n, -(size('reception_desk').z / 2 + 0.45))
+        ctx.quads.push({ q: footprint(add(d.c, s.n, -(size('reception_desk').z / 2 + 0.5)), d.rot, { x: size('reception_desk').x, z: 1.0 }), y0: 0, y1: 1 })
+        tryPlace(ctx, 'dining_chair', behind, d.rot, 'free')
+        return true
+      })
+      if (ok) break
+    }
+  }
+  if (ctx.room.areaSqm >= 20 && b.short >= 3) lounge(ctx, rankNoOpenings(ctx), null)
+  const tall = inCorner(ctx, 'pot_money_tree_tall') ?? inCorner(ctx, 'potted_plant_01')
+  if (ctx.room.areaSqm >= 12) inCorner(ctx, 'pot_calathea', tall ? [tall.corner] : [])
+}
+
+/**
+ * Gym: a mirror on the blankest wall with the dumbbell rack before it, treadmills backed onto other walls (one per 8 m²,
+ * at most 3), a squat rack from 20 m², an exercise mat on the floor that is left.
+ */
+function gym(ctx: Ctx): void {
+  const blank = rankNoOpenings(ctx)
+  const m = onSides(ctx, blank, 'mirror_panel', FLUSH)
+  if (m) onSide(ctx, m.side, 'dumbbell_rack', m.u)
+  const rest = m ? others(ctx, [m.side]) : rankLongest(ctx)
+  const want = Math.min(3, Math.max(1, Math.floor(ctx.room.areaSqm / 8)))
+  for (const s of rest) for (let u = 0.6; u <= s.len - 0.4 && (ctx.counts.get('treadmill') ?? 0) < want; u += 0.25) if (tryPlace(ctx, 'treadmill', againstSide(s, 'treadmill', u), rotationFacing(s.n))) u += 0.85
+  if (ctx.room.areaSqm >= 20) onSides(ctx, rest, 'gym_rack', 0.1)
+  const turn = rotationFacing(bounds(ctx).axis) + 90
+  spaced(ctx, size('gym_mat'), turn, 0.3, (c) => !!tryPlace(ctx, 'gym_mat', c, turn))
+}
+
+/** Community room: a sofa corner from 25 m², then dining sets (six seats, else four) through the room, one per 12 m², 0.6 m apart round their chairs; a plant. */
+function community(ctx: Ctx): void {
+  if (ctx.room.areaSqm >= 25) lounge(ctx, rankNoOpenings(ctx), null)
+  const { axis } = mainAxis(ctx)
+  const rot = rotationFacing({ x: -axis.y, y: axis.x })
+  const t = size('dining_table')
+  const chair = size('dining_chair').z
+  for (let n = Math.max(1, Math.floor(ctx.room.areaSqm / 12)); n > 0; n--)
+    if (![6, 4].some((seats) => spaced(ctx, { x: t.x + 2 * chair, z: t.z + 2 * chair }, rot, 0.3, (c) => diningSet(ctx, c, rot, seats)))) break
+  inCorner(ctx, 'potted_plant_01')
+}
+
+/** Guard room / drivers' waiting / staff room: a desk on the window wall (the guard looks out) with its chair, benches on the other walls, one per 6 m² (at most 3). */
+function guard(ctx: Ctx): void {
+  const ranked = [...ctx.sides].sort((a, b) => (b.wins.length > 0 ? 1 : 0) - (a.wins.length > 0 ? 1 : 0) || b.len - a.len)
+  const desk = onSides(ctx, ranked, 'desk_oak')
+  if (desk) tryPlace(ctx, 'dining_chair', add(desk.c, desk.side.n, size('desk_oak').z / 2 + 0.05 + size('dining_chair').z / 2), desk.rot + 180)
+  const want = Math.min(3, Math.floor(ctx.room.areaSqm / 6))
+  for (const s of others(ctx, desk ? [desk.side] : [])) if ((ctx.counts.get('bench_timber') ?? 0) < want) onSide(ctx, s, 'bench_timber')
 }
 
 /**
@@ -759,9 +1038,9 @@ export const isHelpRoom = (room: Room): boolean =>
 // ───────────────────────────── ceiling light, AC (every room kind) ─────────────────────────────
 
 /** Rooms that get a ceiling light: the preset's fan or pendant, else a flush fixture (ceilingLight). render.ts lights them. */
-export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath']
+export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath', 'lobby', 'gym', 'community', 'guard']
 /** Rooms that get a wall-mounted split AC. */
-export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study']
+export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study', 'gym', 'community', 'guard']
 /** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of the room's corners. */
 const AC_CLEAR = 0.5
 
@@ -826,6 +1105,7 @@ function wallAC(ctx: Ctx): void {
   }
 }
 
+/** By kind (and the room's geometry) only — never a unit, project or room name (the benchmark rule, session 19). No preset: pool, driveway, parking (nothing stands there). */
 const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
   bed,
   living,
@@ -835,6 +1115,15 @@ const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
   bath,
   balcony,
   closet,
+  lobby,
+  gym,
+  community,
+  guard,
+  lawn,
+  planter: planterZone,
+  deck,
+  play,
+  paving,
 }
 
 /** Deterministic preset placements for every room (rooms in the given order). */
@@ -845,8 +1134,8 @@ export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const kitchenAt = k && k.loop.length >= 3 ? polygonCentroid(roomInnerPolygon(k, unit)) : null
   for (const room of rooms) {
     const help = isHelpRoom(room)
-    const fn = isStair(room) ? stairwell : help ? helpRoom : BY_KIND[room.kind]
-    if (!fn || room.loop.length < 3) continue
+    const fn = isStair(room) && !isOutdoor(room.kind) ? stairwell : help ? helpRoom : BY_KIND[room.kind]
+    if (!fn || room.loop.length < 3 || room.slope) continue // nothing stands on a ramp
     const ctx = makeCtx(room, unit, rooms, kitchenAt, BED_STYLES[Math.max(0, beds.indexOf(room)) % BED_STYLES.length])
     fn(ctx)
     // after the room's own pieces, so their ids stay put; 'free' placements, so they move nothing
