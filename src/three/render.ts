@@ -238,7 +238,7 @@ export class Look {
     const footParts = unit.walls.flatMap((w) => (w.heightM > 0 ? [box(w, Math.min(...wallLift(w, unit, rooms).foot))] : []))
     // the roof closes no wall that stands only among open zones (a kerb, a boundary wall, a screen in a lawn): a beam at the
     // storey's top over it would hang in the sky and stripe the lawn with its shadow
-    const open = (r: Room | null) => !r || (core.isOutdoor(r.kind) && !isCovered(r, cover))
+    const open = (r: Room | null) => !r || r.kind === 'shaft' || (core.isOutdoor(r.kind) && !isCovered(r, cover)) // a void in a roof deck too
     // — and a wall among zones only (a boundary wall, a ramp's side) closes the roof only where the cover is over it: a
     // drive half under the tower kept a beam along its whole wall, out into the sky
     const roofWalls = unit.walls.flatMap((w, i) => {
