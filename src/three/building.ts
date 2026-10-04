@@ -14,7 +14,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { floorIn, topFloor, towerOf, type Tower } from '../data/building'
+import { floorIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
@@ -104,7 +104,7 @@ export class Building extends THREE.Group {
   /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
   static for(unit: Unit): Building | null {
     const t = towerOf(unit)
-    const stem = t && Object.keys(t.FLATS).find((s) => t.FLATS[s].unit.id === unit.id)
+    const stem = t && stemIn(t, unit)
     return t && stem ? new Building(unit, t, stem, floorIn(t, stem, unit.floor)) : null
   }
 
@@ -135,7 +135,10 @@ export class Building extends THREE.Group {
     }
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
-    for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: FLOORS.find((f) => f.floor === top)!.flats }]) {
+    // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
+    const topF = FLOORS.find((f) => f.floor === top)
+    const roofOn = topF ? [...topF.flats, ...(topF.standIns ?? []).filter((s) => t.LEVELS?.[s] === undefined)] : []
+    for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: roofOn }]) {
       const y = this.levelOf(k)
       const roof = k === top + 1
       for (const s of [...flats, ...standIns]) {
@@ -191,6 +194,7 @@ export class Building extends THREE.Group {
     // his traced rooftop on the roof slab: its walls (parapets as high as he set them, stair head, lift room) and columns,
     // a slab over every room it closes with full-height walls (not a shaft: open to the sky), its windows glazed
     for (const s of roofLevel) {
+      if (s === stem && floor === top + 1) continue // the rooftop walked: the scene draws it
       const { unit: u } = FLATS[s]
       const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, R, this.shift(s).y)
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
@@ -236,6 +240,7 @@ export class Building extends THREE.Group {
         const mesh = new THREE.Mesh(merge(geos), materialFor(EXTERIOR_PLASTER))
         mesh.castShadow = mesh.receiveShadow = true
         mesh.userData.level = k
+        mesh.visible = !(k === floor && s === stem) // the basement walked: the scene draws it
         this.add(mesh)
       }
     }
@@ -287,15 +292,14 @@ export class Building extends THREE.Group {
 
   /**
    * Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of
-   * them; on a Studio project's traced level (ground, basement, rooftop) its outline. A cut floor (cuts(k)): everything
+   * them; on a floor without flats its stand-ins' outline (a traced level: ground, basement, rooftop; massing). A cut floor (cuts(k)): everything
    * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground).
    */
   highlight(k: number): void {
-    const { FLATS, FLOORS, FLOOR_M, LEVELS } = this.t
+    const { FLATS, FLOORS, FLOOR_M } = this.t
     const PLATE_M = FLOOR_M - WALL_M
     const entry = FLOORS.find((f) => f.floor === k)
-    const level = (entry?.standIns ?? []).filter((s) => LEVELS?.[s] !== undefined)
-    const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : level
+    const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : (entry.standIns ?? [])
     const cut = this.cuts(k)
     for (const o of this.children) {
       if (o === this.mark) continue

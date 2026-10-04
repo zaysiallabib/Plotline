@@ -43,10 +43,14 @@ interface Props {
   mode: SceneMode
   /** the flat's floor (?floor= or the unit's own) */
   floor?: number
+  /** under the room chip: "Floor 3", or a level's name ("Ground floor", "Basement 1", "Rooftop") */
+  floorLabel?: string
   /** Building view floor picker, top down; null: the flat is not part of a tower (no Building button) */
   floors: { k: number; label: string }[] | null
   picked: number
   onPickFloor: (k: number) => void
+  /** Building view: the picked floor is a level (ground, basement, rooftop): walk it; null: no button */
+  onWalkLevel: (() => void) | null
   finishesOpen: boolean
   commenting: boolean
   locked: boolean
@@ -83,7 +87,7 @@ export default function Hud(p: Props) {
         {p.room && (
           <div className="glass chip-room">
             <div className="room-name">{p.room.name}</div>
-            {p.floor !== undefined && <div className="muted">Floor {p.floor}</div>}
+            {p.floorLabel && <div className="muted">{p.floorLabel}</div>}
             {p.room.printedSize && <div className="muted">{p.room.printedSize}</div>}
             <div className="muted">
               {p.room.areaSqm.toFixed(1)} m² · {sqft(p.room.areaSqm)} sqft
@@ -186,6 +190,11 @@ export default function Hud(p: Props) {
               </button>
             ))}
           </div>
+          {p.onWalkLevel && (
+            <button className="btn primary walk-level" onClick={p.onWalkLevel}>
+              Walk this level
+            </button>
+          )}
           <div className="glass hint hint-bottom">Click a flat to open it · drag to turn · scroll to zoom</div>
         </>
       )}

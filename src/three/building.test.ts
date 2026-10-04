@@ -6,7 +6,9 @@ import { floorIn, towerOf } from '../data/building'
 import * as bti from '../data/building/demo-tower'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
 import { alignColumns, flatBounds, levelOf, makeProject, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
-import { topFloor } from '../data/building'
+import { baseLevel, coverOf, levelName, roleIn, topFloor } from '../data/building'
+import * as banani from '../data/building/banani-tower'
+import * as dmd from '../data/building/dmd-tower'
 import * as sheltech from '../data/building/sheltech-tower'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
@@ -93,9 +95,9 @@ describe('Sheltech tower', () => {
     }
   })
 
-  test('floor map: 1 = stand-ins (lounge + gym), 2–6 = A + B, the hand-authored levels on theirs; flats and levels sit on their JSON floor; core rooms exist', () => {
+  test('floor map: 1 = the common level (lounge + gym), 2–6 = A + B, the hand-authored levels on theirs; flats and levels sit on their JSON floor; core rooms exist', () => {
     expect(T.FLOORS.map((f) => [f.floor, f.flats.length])).toEqual([[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 0]])
-    expect(T.LEVELS).toEqual({ 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-roof': 7 })
+    expect(T.LEVELS).toEqual({ 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-l1': 1, 'sheltech-roof': 7 })
     for (const f of T.FLOORS) for (const s of [...f.flats, ...(f.standIns ?? [])]) expect(T.FLATS[s], s).toBeDefined()
     for (const [s, { unit }] of Object.entries(T.FLATS)) {
       if (T.LEVELS[s] !== undefined) expect(T.FLOORS.find((f) => f.floor === unit.floor)?.standIns, unit.name).toEqual([s])
@@ -305,5 +307,89 @@ describe('stage 2: his traced ground floor, basements and rooftop as shells (pro
     expect(t.FLOORS.at(-1)).toEqual({ floor: 8, flats: [], standIns: ['angled'] })
     const b = flatBounds(r)
     expect([b.maxX, b.maxY].map((v) => +v.toFixed(3))).toEqual([+(8 + 4 * s).toFixed(3), 8])
+  })
+})
+
+describe('towers of common levels (session 19): Banani and dmd registered, levels walked, the slab over a level', () => {
+  const u = reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
+  const B = banani
+  const unitOf = (t: { FLATS: Record<string, { unit: Unit }> }, s: string) => t.FLATS[s].unit
+  const poly = (x: Unit, name: string) => JSON.stringify(core.roomPolygon(core.deriveRooms(x).find((r) => r.name === name)!, x))
+  const has = (cover: Pt[][], p: string) => cover.some((c) => JSON.stringify(c) === p)
+
+  test('towerOf a level or a massing shell; top floor = the flats or massing, never a level; floorIn; roles; level names', () => {
+    for (const [t, ids] of [[B, ['banani-ground', 'banani-b1', 'banani-b2', 'banani-roof', 'banani-typical']], [dmd, ['dmd-ground', 'dmd-b1', 'dmd-b2', 'dmd-roof', 'dmd-typical']]] as const)
+      for (const s of ids) expect(towerOf(unitOf(t, s))?.FLATS, s).toBe(t.FLATS)
+    expect([bti, sheltech, B, dmd].map((t) => topFloor(t))).toEqual([8, 6, 12, 13])
+    expect(floorIn(B, 'banani-typical')).toBe(1)
+    expect(floorIn(B, 'banani-roof')).toBe(13)
+    expect(floorIn(dmd, 'dmd-b2', 5)).toBe(-2)
+    expect(['banani-ground', 'banani-typical'].map((s) => roleIn(B, s))).toEqual(['level', 'massing'])
+    expect(roleIn(sheltech, 'sheltech-a')).toBe('flat')
+    expect([-2, 0, 1, 7].map((k) => levelName(sheltech, k))).toEqual(['Basement 2', 'Ground floor', 'Level 1', 'Rooftop'])
+  })
+
+  test('a level’s base is the floor inside its lowest gate (Banani −1.5, dmd −0.38); a basement has none', () => {
+    const base = (x: Unit) => baseLevel(x, core.deriveRooms(x))
+    expect(base(unitOf(B, 'banani-ground'))).toBeCloseTo(-1.5, 6)
+    expect(base(unitOf(dmd, 'dmd-ground'))).toBeCloseTo(-0.38, 2)
+    expect(base(unitOf(B, 'banani-b1'))).toBe(0)
+  })
+
+  test('cover: every floor above, but shafts and ramps going down; none over a rooftop or a flat', () => {
+    const g = unitOf(B, 'banani-ground')
+    const b1 = coverOf(B, 'banani-b1')
+    expect(has(b1, poly(g, 'Lawn (east)'))).toBe(true) // a sunken lawn over the basement is a slab
+    expect(has(b1, poly(g, 'Drop off area'))).toBe(true)
+    for (const n of ['Car ramp', 'Car ramp (curve 1)', 'Car ramp (curve 3)']) expect(has(b1, poly(g, n)), n).toBe(false) // the void the ramp goes down
+    expect(has(b1, poly(unitOf(B, 'banani-typical'), 'Typical floor'))).toBe(true)
+    expect(has(coverOf(B, 'banani-b2'), poly(unitOf(B, 'banani-b1'), 'Driveway'))).toBe(true)
+    expect(has(coverOf(B, 'banani-b2'), poly(unitOf(B, 'banani-b1'), 'Ramp down (to B2)'))).toBe(false)
+    expect(coverOf(B, 'banani-roof')).toEqual([])
+    expect(coverOf(B, 'banani-typical')).toEqual([]) // massing: never walked
+    expect(coverOf(sheltech, 'sheltech-a')).toEqual([])
+    // Sheltech's ground: under level 1's north half AND under the flats over its open south half
+    const sg = coverOf(sheltech, 'sheltech-ground')
+    expect(has(sg, poly(unitOf(sheltech, 'sheltech-l1'), 'Gym'))).toBe(true)
+    expect(has(sg, poly(unitOf(sheltech, 'sheltech-a'), 'Living'))).toBe(true)
+  })
+
+  test('a Studio project’s traced levels get the same cover, in the level’s own frame', () => {
+    const v = (id: string, x: number, y: number) => ({ id, x, y })
+    // a ground: a drive at −1 behind a 4 m gate, a ramp beside it falling to −3.5 (a flush line between them)
+    const g: Unit = {
+      ...u,
+      id: 'g',
+      name: 'g',
+      vertices: [v('v0', 0, 0), v('v1', 10, 0), v('v2', 20, 0), v('v3', 20, 10), v('v4', 10, 10), v('v5', 0, 10)],
+      walls: [
+        { id: 'w0', a: 'v0', b: 'v1', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'w1', a: 'v1', b: 'v2', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'w2', a: 'v2', b: 'v3', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'w3', a: 'v3', b: 'v4', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'w4', a: 'v4', b: 'v5', thicknessM: 0.25, heightM: 2.1, openings: [{ id: 'gate', kind: 'passage', offsetM: 3, widthM: 4, heightM: 2.1, sillM: 0 }] },
+        { id: 'w5', a: 'v5', b: 'v0', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'w6', a: 'v1', b: 'v4', thicknessM: 0.05, heightM: 0, openings: [] },
+      ],
+      roomLabels: [
+        { id: 'drive', name: 'Drive', kind: 'driveway', x: 5, y: 5, levelM: -1 },
+        { id: 'ramp', name: 'Ramp', kind: 'driveway', x: 15, y: 5, levelM: -1, slope: { toLevelM: -3.5, dirDeg: 90 } },
+      ],
+      furniture: [],
+      pillars: [],
+    }
+    const b1: Unit = { ...g, id: 'b1', name: 'b1', walls: g.walls.map((w) => ({ ...w, openings: [] })), roomLabels: [{ id: 'park', name: 'Parking', kind: 'parking', x: 5, y: 5 }] }
+    let p = makeProject('p', u, 2, 7, 'none')
+    p = placeLevel(p, g, 'ground', undefined, { x: 1, y: 2 }, 'typed')
+    p = placeLevel(p, b1, 'basement', 1, { x: 1, y: 2 }, 'typed')
+    const t = projectTower(p)
+    expect(baseLevel(g, core.deriveRooms(g))).toBe(-1)
+    const flat = core.deriveRooms(u).filter((r) => r.kind !== 'shaft').map((r) => core.roomPolygon(r, u).map((q) => ({ x: q.x - 1, y: q.y - 2 })))
+    expect(coverOf(t, 'g')).toEqual(flat) // the flats' faces, building frame → the ground's
+    const under = coverOf(t, 'b1')
+    expect(has(under, poly(g, 'Drive'))).toBe(true)
+    expect(has(under, poly(g, 'Ramp'))).toBe(false)
+    expect(under).toHaveLength(flat.length + 1)
+    expect(coverOf(t, u.id)).toEqual([])
   })
 })

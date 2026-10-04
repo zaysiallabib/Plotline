@@ -50,6 +50,8 @@
 .load-nav a { color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
 .load-nav a:hover { color: var(--ink); }
 .load-nav a.current { color: var(--ink); border-bottom-color: var(--accent); }
+.load-levels { margin-top: 12px; }
+.load-levels .tower { color: var(--ink); }
 .load .enter { margin-top: 22px; padding: 10px 36px; font-size: 14px; }
 
 /* HUD */
@@ -151,6 +153,7 @@
 .floor-picker { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; padding: 6px; }
 .floor-picker .btn { width: 38px; padding: 6px 0; }
 .floor-picker .btn.own { text-decoration: underline; text-underline-offset: 3px; }
+.walk-level { position: absolute; left: 50%; transform: translateX(-50%); bottom: 112px; padding: 10px 28px; font-size: 14px; }
 
 /* Arrange (staff): bottom-left, clear of the sun pill */
 .arrange { position: absolute; left: 16px; bottom: 20px; width: 300px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
