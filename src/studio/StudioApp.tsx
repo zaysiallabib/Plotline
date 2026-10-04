@@ -30,6 +30,8 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { Panel, ROOM_KINDS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
+import { ProjectPanel } from './ProjectPanel'
+import { readProjects, saveProjects, syncUnit } from '../data/building/projects'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
@@ -387,6 +389,9 @@ export default function StudioApp() {
     } catch {
       setNote({ text: 'Draft too large to autosave — export your JSON often.' })
     }
+    // a building made from this flat shows it as it is now (data/building/projects.ts)
+    const ps = syncUnit(readProjects(), st.unit)
+    if (ps) saveProjects(ps)
   }, [])
   useEffect(() => {
     const id = setTimeout(saveDraft, 400)
@@ -518,6 +523,23 @@ export default function StudioApp() {
     const w = window.open('/u/preview', '_blank')
     if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
   }, [toast])
+  // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
+  const [buildingOpen, setBuildingOpen] = useState(false)
+  const showBuilding = (from: number, to: number) => {
+    let u = stateRef.current.unit
+    if (u.floor === undefined || u.floor < from || u.floor > to) {
+      dispatch({ type: 'set-meta', patch: { floor: from } })
+      u = { ...u, floor: from }
+    }
+    try {
+      localStorage.setItem(PREVIEW_KEY, JSON.stringify(u))
+    } catch {
+      return toast('Draft too large to autosave — export your JSON often.')
+    }
+    setBuildingOpen(false)
+    const url = '/u/preview?view=building'
+    if (!window.open(url, '_blank')) toast('The building opens in a new tab: the browser blocked it.', { label: 'Open building', onClick: () => window.open(url, '_blank') })
+  }
 
   // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
   // link (append-only): a client keeps seeing what he was sent. The staff key is asked for once per browser.
@@ -1345,6 +1367,9 @@ export default function StudioApp() {
         <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
+        <button className={buildingOpen ? 'on' : ''} title="Make a whole building from this flat: floors, a mirrored neighbour, then the Building view" onClick={() => setBuildingOpen((v) => !v)}>
+          Building
+        </button>
         {sharingConfigured && (
           <button disabled={sharing} title="Publish this draft and copy a buyer link (/s/…) — every click makes a new link" onClick={() => void share()}>
             {sharing ? 'Sharing…' : 'Share link'}
@@ -1368,6 +1393,7 @@ export default function StudioApp() {
             onDoubleClick={onDoubleClick}
             onContextMenu={(e) => e.preventDefault()}
           />
+          {buildingOpen && <ProjectPanel unit={unit} roomCount={rooms.length} onShow={showBuilding} onClose={() => setBuildingOpen(false)} onToast={toast} />}
           {trace !== 'pick' && (
             <IssueLayer
               marks={marks}

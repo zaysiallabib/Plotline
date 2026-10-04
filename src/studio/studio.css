@@ -106,6 +106,10 @@
 .popover { width: 260px; }
 .popover label { display: flex; flex-direction: column; gap: 3px; }
 .popover .actions { display: flex; gap: 8px; }
+.popover.project { top: 12px; right: 12px; width: 320px; gap: 10px; }
+.popover.project .head { display: flex; justify-content: space-between; align-items: center; }
+.popover.project .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.popover.project p { margin: 0; font-size: 12px; }
 
 .toast {
   position: absolute;

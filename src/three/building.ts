@@ -14,7 +14,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { towerOf, type Tower } from '../data/building'
+import { floorIn, towerOf, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
@@ -101,11 +101,11 @@ export class Building extends THREE.Group {
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
 
-  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=). */
+  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
   static for(unit: Unit): Building | null {
     const t = towerOf(unit)
     const stem = t && Object.keys(t.FLATS).find((s) => t.FLATS[s].unit.id === unit.id)
-    return t && stem ? new Building(unit, t, stem, unit.floor ?? 2) : null
+    return t && stem ? new Building(unit, t, stem, floorIn(t, stem, unit.floor)) : null
   }
 
   private constructor(unit: Unit, t: Tower, stem: string, floor: number) {
@@ -200,12 +200,15 @@ export class Building extends THREE.Group {
     }
     this.box.setFromObject(this)
 
-    // the street: the site's two roads, and neighbour blocks (context.ts) around the plot and the roads
-    const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
-    roads.receiveShadow = true
+    // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads
+    if (GROUND.roads.length) {
+      const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
+      roads.receiveShadow = true
+      this.add(roads)
+    }
     const b = this.box
     this.street = buildStreet(unit, { minX: b.min.x - 12, maxX: b.max.x + 12, minY: b.min.z - 12, maxY: b.max.z + 12 }, this.streetY)
-    this.add(roads, this.street)
+    this.add(this.street)
 
     const markMat = new THREE.MeshBasicMaterial({ color: '#e8c170' }) // --accent
     this.own.push(markMat)

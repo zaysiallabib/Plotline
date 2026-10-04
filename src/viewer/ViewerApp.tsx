@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { towerOf } from '../data/building'
+import { projectUnit, towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { fetchSharedUnit } from '../lib/supabase'
@@ -116,7 +116,7 @@ function resolveUnit(): Unit | null {
       return null
     }
   }
-  return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? null
+  return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? projectUnit(id) // a flat of a building made in the Studio (this browser)
 }
 
 const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0): void => scene.spawnAt(p, yawFor(face), pitch)
@@ -369,6 +369,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
+    else if (params.get('view') === 'building' && stem) go('building') // the Studio's "Show building"
     else scene.lockPointer()
   }
 
@@ -379,9 +380,9 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     setPicked(unit.floor ?? 0)
   }
   const toggleMode = () => go(mode === 'walk' ? 'orbit' : 'walk')
-  // a flat picked in the Building view opens straight into its dollhouse once loaded
+  // a flat picked in the Building view opens straight into its dollhouse once loaded; the Studio's building into the tower
   useEffect(() => {
-    if (ready && !entered && params.get('view') === 'dollhouse') enter()
+    if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building')) enter()
   })
 
   const showToast = (msg: string, ms = 2500) => {
