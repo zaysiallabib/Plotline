@@ -177,7 +177,8 @@ describe('classifyProfile', () => {
 // ---------- the real plans vs the hand-traced units (fixtures + cached OCR; skipped when absent) ----------
 const FIXT = process.env.TRACE_FIXTURES ?? 'E:/dev/tmp/wave15/walls/fixtures/'
 const TEXT = process.env.TRACE_TEXT ?? 'E:/dev/tmp/wave16/solver/text/'
-const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
+// the traced flats (a level authored without a plan image is no auto-trace target)
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const sheetOf = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXT}assets__${sheetOf(u)}.pgm`) && existsSync(`${TEXT}${sheetOf(u)}.json`))
 /** TRACE_RGB=<dir of trace-fixtures.mjs --rgb PPMs> (default the wave-16 ones): blue glass lines for windows; TRACE_RGB=none = grey only */

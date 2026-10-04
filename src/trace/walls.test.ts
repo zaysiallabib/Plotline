@@ -169,7 +169,8 @@ describe('traceWalls on synthetic plans', () => {
 })
 
 // ---------- the real plans (fixtures from scripts/trace-fixtures.mjs; skipped when absent) ----------
-const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
+// the traced flats (a level authored without a plan image is no auto-trace target)
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const fixture = (u: Unit) => `${FIXTURES}assets__${u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')}.pgm`
 const haveFixtures = Object.values(units).every((u) => loadPgm(fixture(u)) !== null)
 

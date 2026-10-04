@@ -351,7 +351,8 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
 /** TRACE_TRACKER=skeleton | bands | tracks: that wall stage instead of the default (KNOBS.tracker), for comparison */
 const TRACKER = process.env.TRACE_TRACKER
 if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
-const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
+// the traced flats (a level authored without a plan image is no auto-trace target)
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))

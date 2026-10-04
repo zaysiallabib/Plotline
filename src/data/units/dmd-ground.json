@@ -366,7 +366,7 @@
       "a": "v29",
       "b": "v71",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": []
     },
     {
@@ -374,7 +374,7 @@
       "a": "v71",
       "b": "v70",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": []
     },
     {
@@ -382,7 +382,7 @@
       "a": "v70",
       "b": "v1",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": []
     },
     {
@@ -390,7 +390,7 @@
       "a": "v1",
       "b": "v2",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": []
     },
     {
@@ -398,7 +398,7 @@
       "a": "v2",
       "b": "v14",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": []
     },
     {
@@ -406,14 +406,14 @@
       "a": "v14",
       "b": "v20",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": [
         {
           "id": "o_gate_car",
           "kind": "passage",
           "offsetM": 0,
           "widthM": 4.7498,
-          "heightM": 1.8,
+          "heightM": 2,
           "sillM": 0
         }
       ]
@@ -423,14 +423,14 @@
       "a": "v20",
       "b": "v29",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2,
       "openings": [
         {
           "id": "o_gate_walk",
           "kind": "passage",
           "offsetM": 0,
           "widthM": 1.5748,
-          "heightM": 1.8,
+          "heightM": 2,
           "sillM": 0
         }
       ]

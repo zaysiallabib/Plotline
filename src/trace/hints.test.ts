@@ -129,7 +129,8 @@ describe('findHints on drawn symbols', () => {
 
 // ---------- the real plans (fixtures: node scripts/trace-fixtures.mjs --rgb E:/dev/tmp/wave16/hints/fixtures) ----------
 const FIX = process.env.HINT_FIXTURES ?? 'E:/dev/tmp/wave16/hints/fixtures/'
-const units = import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })
+// the traced flats (a level authored without a plan image is no auto-trace target)
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const stem = (u: Unit) => `${FIX}assets__${u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')}`
 const haveFixtures = Object.values(units).every((u) => loadPpm(stem(u) + '.ppm') !== null)
 
