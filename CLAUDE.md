@@ -71,6 +71,17 @@ Docs/PRODUCT_PHILOSOPHY.md.
   furnished by kind (lobby, rooftop, gym, pool, play area) — this un-parks the
   per-level furnishing rules; greenery (lawns, big trees, planters) is in the
   library for flats' balconies as well. Plan in HANDOFF "SESSION 19 PLAN".
+- **Levels are data, the look is rules (session 19, 2026-10-04 night — built under the benchmark rule above):**
+  `Wall.standsAlone` (a kept free-standing wall); `Wall.heightM` 0 = a flush "zone line" (bounds a zone, drawn as
+  nothing, never carries an opening), ≤ 0.2 = kerb; wall height is measured from the lower adjacent floor; a low wall
+  (< 2 m) whose openings are all passages keeps its height (a gate), a window / door still raises it. `RoomKind` has
+  common rooms `lobby gym community guard` and zones `lawn paving driveway parking deck pool planter play`
+  (`core.isOutdoor`: no ceiling, no flat furnishing); one `parking` face per bay, named by its number. A label's
+  `levelM` / `slope` set the floor (a `pool`'s level = its water surface; steps = a sloped `paving` face). A face with an
+  island inside is bridged by a zone line. A window with sill 0 and ≥ 1.5 m tall is glazing; a door ≥ 1.5 m wide is a
+  pair of leaves. Levels carry no furniture / finishes — presets and the catalog apply by kind. A tower lists its
+  levels in `LEVELS` (built-in and Studio towers share one shape); nothing in `src/three` / `src/furnish` may name a
+  unit, project or room (`greenery.test.ts` enforces it).
 - **Browser tests run in Firefox** (Playwright's build on E:, HANDOFF), never
   Edge with swiftshader — it burned the founder's CPU (2026-10-04).
 
