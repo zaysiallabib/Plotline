@@ -217,16 +217,7 @@
       "b": "v2",
       "thicknessM": 0.102,
       "heightM": 1.1,
-      "openings": [
-        {
-          "id": "o_rail_n_glass",
-          "kind": "window",
-          "offsetM": 0,
-          "widthM": 12.192,
-          "heightM": 1.1,
-          "sillM": 0
-        }
-      ]
+      "openings": []
     },
     {
       "id": "w_rail_e",
@@ -234,16 +225,7 @@
       "b": "v3",
       "thicknessM": 0.102,
       "heightM": 1.1,
-      "openings": [
-        {
-          "id": "o_rail_e_glass",
-          "kind": "window",
-          "offsetM": 0,
-          "widthM": 3.8607,
-          "heightM": 1.1,
-          "sillM": 0
-        }
-      ]
+      "openings": []
     },
     {
       "id": "w_screen_w_1",

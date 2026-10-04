@@ -511,7 +511,7 @@
       "a": "v1",
       "b": "v2",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -519,7 +519,7 @@
       "a": "v2",
       "b": "v100",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -527,7 +527,7 @@
       "a": "v100",
       "b": "v3",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -535,7 +535,7 @@
       "a": "v1",
       "b": "v4",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -543,14 +543,14 @@
       "a": "v4",
       "b": "v5",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_gate_main_gate",
           "kind": "passage",
           "offsetM": 0,
           "widthM": 4.5466,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -560,14 +560,14 @@
       "a": "v5",
       "b": "v6",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_gate_ped_gate",
           "kind": "passage",
           "offsetM": 0,
           "widthM": 1.6002,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -585,14 +585,14 @@
       "a": "v7",
       "b": "v8",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_n2_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 12.0904,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -602,7 +602,7 @@
       "a": "v8",
       "b": "v9",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -610,14 +610,14 @@
       "a": "v9",
       "b": "v10",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e1_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 2.3114,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -627,7 +627,7 @@
       "a": "v10",
       "b": "v11",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -635,14 +635,14 @@
       "a": "v11",
       "b": "v16",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e3_1_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 1.397,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -652,14 +652,14 @@
       "a": "v16",
       "b": "v18",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e3_2_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 8.6106,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -669,14 +669,14 @@
       "a": "v18",
       "b": "v19",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e3_3_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 1.3716,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -686,14 +686,14 @@
       "a": "v19",
       "b": "v12",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e3_4_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 0.8127,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -703,7 +703,7 @@
       "a": "v12",
       "b": "v13",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": []
     },
     {
@@ -711,14 +711,14 @@
       "a": "v13",
       "b": "v14",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_bnd_e5_glass",
           "kind": "window",
           "offsetM": 0,
           "widthM": 1.143,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -728,14 +728,14 @@
       "a": "v14",
       "b": "v3",
       "thicknessM": 0.254,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "openings": [
         {
           "id": "o_gate_service_gate",
           "kind": "passage",
           "offsetM": 0,
           "widthM": 3.0987,
-          "heightM": 1.8,
+          "heightM": 2.1,
           "sillM": 0
         }
       ]
@@ -745,7 +745,7 @@
       "a": "v15",
       "b": "v16",
       "thicknessM": 0.2,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "standsAlone": true,
       "openings": []
     },
@@ -754,7 +754,7 @@
       "a": "v17",
       "b": "v18",
       "thicknessM": 0.2,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "standsAlone": true,
       "openings": []
     },
@@ -763,7 +763,7 @@
       "a": "v19",
       "b": "v20",
       "thicknessM": 0.2,
-      "heightM": 1.8,
+      "heightM": 2.1,
       "standsAlone": true,
       "openings": []
     },
