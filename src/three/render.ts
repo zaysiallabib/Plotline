@@ -23,7 +23,7 @@ import { isCeilingLight, placementSize } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { dayMix, isCovered, openToSky } from './daylight'
-import { storeyTop, wallLift } from './details'
+import { roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, setGlassSky } from './openings'
 
@@ -179,10 +179,9 @@ export class Look {
     this.indoor.clear()
     this.lights = []
 
-    const heights = new Map(unit.walls.map((w) => [w.id, w.heightM]))
-    // floor levels (session 19): a room's floor at its label's level (a ramp: its plane), its ceiling that much higher
+    // floor levels (session 19): a room's floor at its label's level (a ramp: its plane), its ceiling at its walls' top
     const level = (r: Room, x: number, y: number) => core.roomLevelAt(r, unit, x, y)
-    const ceilingOf = (r: Room, at: { x: number; y: number }) => level(r, at.x, at.y) + Math.max(...r.wallIds.map((id) => heights.get(id) ?? 3)) // as buildRoom
+    const ceilingOf = (r: Room) => roomCeiling(r, unit, rooms) // as buildRoom (a covered storey: PlotlineScene lifts it to the slab)
     this.topY = storeyTop(unit, rooms)
     const lowest = Math.min(0, ...rooms.flatMap((r) => core.roomPolygon(r, unit).map((p) => level(r, p.x, p.y))))
 
@@ -259,7 +258,7 @@ export class Look {
       if (!hung || this.lights.length >= MAX_ROOM_LIGHTS) continue
       const at = { x: hung.x, y: hung.y }
       // just under a flush diffuser; at the fan's light kit / the pendant's globe
-      const lightY = ceilingOf(room, at) - Math.max(0.12, 0.8 * placementSize(hung).y)
+      const lightY = ceilingOf(room) - Math.max(0.12, 0.8 * placementSize(hung).y)
       const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.

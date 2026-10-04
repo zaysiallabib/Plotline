@@ -23,7 +23,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, bayMarkings, buildSkirtings, closeGaps, dressOpening, liftDrop, liftWall, pillarParts, poolBasin, raiseHeads, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
+import { GAP_PREFIX, KERB_M, bayMarkings, buildSkirtings, closeGaps, dressOpening, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
@@ -75,6 +75,8 @@ const REFUSED = '#ff4d4d'
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
 const WALK_RADIUS = 0.3
+/** A wall this tall is a storey wall (not a parapet, a screen, a planter edge): under the slab above it reaches it. */
+const STOREY_WALL_M = 2.4
 /** The tallest step the walker takes, up or down (canStep). */
 const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
@@ -215,6 +217,8 @@ export class PlotlineScene {
   private walker: Pt = { x: 0, y: 0 }
   /** the floor under the walker, eased toward levelAt(walker): a step is climbed like a stair, not a jump */
   private floorY = 0
+  /** the storey's top (details.ts storeyTop): the slab above, where a covered storey wall reaches */
+  private top = 3.048
   /** each wall's floors (details.ts wallLift) */
   private lifts = new Map<Id, WallLift>()
   /** the walls that stop the walker (not the flush lines and kerbs): what a blocked step slides along */
@@ -328,6 +332,7 @@ export class PlotlineScene {
 
     this.lifts = new Map(unit.walls.map((w) => [w.id, wallLift(w, unit, this.rooms)]))
     this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
+    this.top = storeyTop(unit, this.rooms) || 3.048
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.buildMarkings(unit)
@@ -351,9 +356,10 @@ export class PlotlineScene {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
       // the bake reads a wall on 0; then it stands on its floors (details.ts liftWall)
-      if (kind === 'wall' && this.lifts.has(s.mesh.userData.id)) liftWall(s.mesh.geometry, unit.walls.find((w) => w.id === s.mesh.userData.id)!, unit, this.lifts.get(s.mesh.userData.id)!)
+      const w = kind === 'wall' ? unit.walls.find((x) => x.id === s.mesh.userData.id) : undefined
+      if (w) liftWall(s.mesh.geometry, w, unit, this.lifts.get(w.id)!, this.reachesSlab(w) ? this.top : undefined)
     }
-    const storey = storeyTop(unit, this.rooms) || 3.048
+    const storey = this.top
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
     this.applyMaterials()
@@ -887,7 +893,7 @@ export class PlotlineScene {
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
     const lift = this.lifts.get(wall.id)!
-    const geo = wallGeometry(wall, unit, back === null && front !== null ? 1 : 0, liftDrop(lift))
+    const geo = wallGeometry(liftedWall(wall, unit, lift), unit, back === null && front !== null ? 1 : 0) // its openings on the higher floor
     if (geo) {
       const mesh = new THREE.Mesh(geo)
       mesh.castShadow = mesh.receiveShadow = true
@@ -983,10 +989,10 @@ export class PlotlineScene {
       this.staticGroup.add(w)
     }
     if (core.isOutdoor(room.kind)) return // a zone is open to the sky (a covered one: render.ts's roof is its soffit)
-    const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
     ceilGeo.setIndex([...idx].reverse())
-    ceilGeo.translate(0, height, 0)
+    const top = this.ceilingOf(room.id) // flat, at its walls' top
+    for (let i = 0; i < poly.length; i++) ceilGeo.attributes.position.setY(i, top)
     ceilGeo.computeVertexNormals()
     const ceiling = new THREE.Mesh(ceilGeo)
     ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id, label: `${room.name} ceiling`, objectKind: 'ceiling' }
@@ -1040,11 +1046,23 @@ export class PlotlineScene {
     }
   }
 
-  /** The ceiling over a room, m above the datum: its floor level + its tallest wall (as buildRoom). */
+  /**
+   * The ceiling over a room, m above the datum: its tallest wall's top (details.ts roomCeiling); a room under the slab
+   * above (`cover`) with storey walls: that slab, the storey's top.
+   */
   private ceilingOf(roomId: Id): number {
     const r = this.rooms.find((x) => x.id === roomId)
-    const hs = r?.wallIds.map((id) => this.unit?.walls.find((w) => w.id === id)?.heightM ?? 3.048) ?? []
-    return (r && this.unit ? core.roomLevelAt(r, this.unit, r.centroid.x, r.centroid.y) : 0) + (hs.length ? Math.max(...hs) : 3.048)
+    if (!r || !this.unit) return 3.048
+    const own = roomCeiling(r, this.unit, this.rooms)
+    return own >= STOREY_WALL_M && this.cover.some((c) => core.pointInPolygon(r.centroid, c)) ? this.top : own
+  }
+
+  /** A storey wall (≥ STOREY_WALL_M) under the slab above (`cover`, by its middle) goes up to it, wherever it stands. */
+  private reachesSlab(w: Wall): boolean {
+    if (w.heightM < STOREY_WALL_M || !this.cover.length) return false
+    const [a, b] = [core.vertexById(this.unit!.vertices, w.a), core.vertexById(this.unit!.vertices, w.b)]
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    return this.cover.some((c) => core.pointInPolygon(mid, c))
   }
 
   /** The floor level at a plan point (core.floorLevelAt: the smallest face round it; 0 outside every face). */

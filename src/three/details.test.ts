@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, WATER_DROP_M, bayMarkings, buildSkirtings, casingPlan, closeGaps, curtainSides, liftDrop, liftWall, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, WATER_DROP_M, bayMarkings, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -472,19 +472,24 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(() => entrySpawn(u, rooms)).not.toThrow()
   })
 
-  test('levels: a wall stands on its higher floor (height, openings) with a plinth down to the lower; a flat unit has none', () => {
-    const lob = u.walls.find((w) => w.id === 'lob1')!
+  test('levels: a wall stands on its LOWER floor, heightM from there; its openings on the higher floor (the riser under the door); a flat unit is untouched', () => {
+    const lob = u.walls.find((w) => w.id === 'lob4')! // the lobby (+1.067) over the lawn (0), its door
     const l = wallLift(lob, u, rooms)
     expect(l.base[0]).toBeCloseTo(1.067, 6)
     expect(l.foot[0]).toBeCloseTo(0, 6)
-    const g = wallGeometry(lob, u, 0, liftDrop(l))!
+    const lifted = liftedWall(lob, u, l)
+    expect(lifted.openings[0].sillM).toBeCloseTo(1.067, 6) // the door opens at the lobby's floor
+    const g = wallGeometry(lifted, u)!
     liftWall(g, lob, u, l)
     expect(g.boundingBox!.min.y).toBeCloseTo(0, 6)
-    expect(g.boundingBox!.max.y).toBeCloseTo(1.067 + 3, 6)
+    expect(g.boundingBox!.max.y).toBeCloseTo(3, 6)
+    liftWall(g, lob, u, l, 3.5) // under the slab above: its top reaches it
+    expect(g.boundingBox!.max.y).toBeCloseTo(3.5, 6)
+    expect(roomCeiling(rooms.find((r) => r.id === 'Lobby')!, u, rooms)).toBeCloseTo(3, 6)
     const a = TEST_UNIT.walls[0]
     expect(wallLift(a, TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual({ base: [0, 0], foot: [0, 0] })
     expect(storeyTop(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toBe(Math.max(...TEST_UNIT.walls.map((w) => w.heightM)))
-    expect(storeyTop(u, rooms)).toBeCloseTo(1.067 + 3, 6) // the raised lobby's walls
+    expect(storeyTop(u, rooms)).toBeCloseTo(3, 6)
   })
 
   test('levels: a step along a flush line gets a riser on the line, from the lower floor to the upper, facing down-side', () => {
@@ -548,6 +553,18 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     }
     expect(leaves(0.9)).toBe(1)
     expect(leaves(1.8)).toBe(2)
+  })
+
+  test('a gate: a passage in a 1.8 m boundary wall keeps the wall low (raiseHeads), is a clear gap to its top, no casing; a window there still raises it', () => {
+    const gate = { id: 'gate', kind: 'passage' as const, offsetM: 3, widthM: 3, heightM: 2.1, sillM: 0 }
+    const walls = u.walls.map((w) => (w.id === 'b7' ? { ...w, openings: [gate] } : w)) // b7: the 1.8 m boundary along the lawn
+    const gated = { ...u, walls }
+    expect(raiseHeads(gated)).toBe(gated)
+    const b7 = walls.find((w) => w.id === 'b7')!
+    expect(buildOpening(gate, b7).children).toHaveLength(0)
+    expect(core.wallPieces(b7, core.wallFrame(b7, u.vertices).lengthM).every((p) => p.u1 <= 3 + 1e-9 || p.u0 >= 6 - 1e-9)).toBe(true)
+    const win = { ...gated, walls: walls.map((w) => (w.id === 'b7' ? { ...w, openings: [{ ...gate, kind: 'window' as const, sillM: 0.9, heightM: 1.2 }] } : w)) }
+    expect(raiseHeads(win).walls.find((w) => w.id === 'b7')!.heightM).toBeGreaterThan(1.8)
   })
 
   /** a w × d rectangle of flush lines (x right, y down) and extra faces / labels */

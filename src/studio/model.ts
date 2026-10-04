@@ -660,7 +660,9 @@ const LOW_M = 2
  * open to the sky above it in 3D). Returns the same unit when no low wall has one.
  */
 export function fullHeightIfOpenings(u: Unit): Unit {
-  const low = (w: Wall) => w.openings.length > 0 && w.heightM < LOW_M
+  // a passage is only a gap (a gate in a boundary wall, a gap in a glass rail): a low wall whose openings are all passages
+  // keeps its height (session 19); a window or door still raises it
+  const low = (w: Wall) => w.openings.some((o) => o.kind !== 'passage') && w.heightM < LOW_M
   return u.walls.some(low) ? { ...u, walls: u.walls.map((w) => (low(w) ? { ...w, heightM: WALL_HEIGHT_M } : w)) } : u
 }
 

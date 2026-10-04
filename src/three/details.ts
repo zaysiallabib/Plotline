@@ -557,7 +557,7 @@ function wallPoint(wall: Wall, graph: Pick<Unit, 'vertices'>): (u: number, v: nu
  * sills) go into face group `reveals` (the caller passes the exterior side's, so they stay exterior plaster): unlike
  * an end cap they share every edge with the faces and have no depth tie to lose, and no extra group = no extra draw call.
  */
-export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>, reveals: 0 | 1 = 0, drop = 0): THREE.BufferGeometry | null {
+export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>, reveals: 0 | 1 = 0): THREE.BufferGeometry | null {
   const f = core.wallFrame(wall, graph.vertices)
   const pieces = core.wallPieces(wall, f.lengthM)
   if (!pieces.length) return null
@@ -566,10 +566,8 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
   const at = wallPoint(wall, graph)
   const levels = graph.walls.flatMap((w) => [w.heightM, ...w.openings.flatMap((o) => [o.sillM, o.sillM + o.heightM])])
   const cuts = (top: number) => [...new Set([0, top, ...levels.filter((v) => v > 0 && v < top)])].sort((a, b) => a - b)
-  // `drop` (floor levels, liftWall): a plinth row [−drop, 0] down to the lower side's floor, solid end to end (under a door it
-  // is the step's riser); liftWall puts its foot on that floor
-  const us = [...new Set([...(drop > 0 ? [0, f.lengthM] : []), ...pieces.flatMap((p) => [p.u0, p.u1])])].sort((a, b) => a - b)
-  const vs = drop > 0 ? [-drop, ...cuts(H)] : cuts(H)
+  const us = [...new Set(pieces.flatMap((p) => [p.u0, p.u1]))].sort((a, b) => a - b)
+  const vs = cuts(H)
   const pos: number[][] = [[], [], []]
   const nor: number[][] = [[], [], []]
   const quad = (g: number, m: V3, ...q: V3[]) => {
@@ -583,7 +581,7 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
   const solid = (i: number, j: number) => {
     const u = (us[i] + us[i + 1]) / 2
     const v = (vs[j] + vs[j + 1]) / 2
-    return i >= 0 && j >= 0 && i < us.length - 1 && j < vs.length - 1 && (v < 0 || pieces.some((p) => p.u0 < u && u < p.u1 && p.v0 < v && v < p.v1))
+    return i >= 0 && j >= 0 && i < us.length - 1 && j < vs.length - 1 && pieces.some((p) => p.u0 < u && u < p.u1 && p.v0 < v && v < p.v1)
   }
   const [n, d]: V3[] = [[f.normal.x, 0, f.normal.y], [f.dir.x, 0, f.dir.y]]
   const neg = (m: V3): V3 => [-m[0], -m[1], -m[2]]
@@ -632,7 +630,7 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
     const side = sA * nA.y > 0 ? 0 : 1
     const mA: V3 = [sA * nA.y * f.normal.x, 0, sA * nA.y * f.normal.y]
     const mB: V3 = [sB * away * g.normal.x, 0, sB * away * g.normal.y]
-    const fv = drop > 0 ? [-drop, ...cuts(Math.min(H, other.heightM))] : cuts(Math.min(H, other.heightM)) // down the plinth too
+    const fv = cuts(Math.min(H, other.heightM))
     for (let j = 0; j + 1 < fv.length; j++) {
       const [v0, v1] = [fv[j], fv[j + 1]]
       quad(side, mA, at(P1.x, v0, P1.y), at(P2.x, v0, P2.y), at(P2.x, v1, P2.y), at(P1.x, v1, P1.y))
@@ -668,9 +666,10 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
 export const KERB_M = 0.2
 
 /**
- * A wall's floors (floor levels, session 19), at its ends a and b: `base` = the higher side's floor — its height, openings
- * and skirting stand on it, so heightM is the wall's height in the room it serves; `foot` = the lower side's (a plinth, the
- * riser under a door, down to it). A side with no face counts for nothing; a wall in no face stands on 0. Rooms carry their
+ * A wall's floors (floor levels, session 19), at its ends a and b: `foot` = the LOWER side's floor — the wall stands on it
+ * and heightM is measured from it (the data lanes' convention: a parapet round a +1.2 m deck from the terrace below is 2.3 m);
+ * `base` = the higher side's floor — its openings stand on that (a door from a raised lobby down to its lawn: the wall below
+ * its sill is the step's riser). A side with no face counts for nothing; a wall in no face stands on 0. Rooms carry their
  * level from their label (core.roomLevelAt; a ramp is a plane, so along a straight wall the level is linear between ends).
  */
 export interface WallLift {
@@ -692,10 +691,23 @@ export function wallLift(wall: Wall, unit: Unit, rooms: Room[]): WallLift {
   return { base: pick(Math.max), foot: pick(Math.min) }
 }
 
-/** How far a wall's plinth reaches below its base (0: none). */
-export const liftDrop = (l: WallLift): number => Math.max(l.base[0] - l.foot[0], l.base[1] - l.foot[1])
+/** The step from a wall's foot up to its higher floor at u along it (its length L). */
+const stepAt = (l: WallLift, u: number, L: number) => {
+  const t = THREE.MathUtils.clamp(u / (L || 1), 0, 1)
+  return l.base[0] - l.foot[0] + t * (l.base[1] - l.foot[1] - (l.base[0] - l.foot[0]))
+}
 
-/** Puts a wall solid (wallGeometry, built on 0 with a `drop` plinth) on its floors: every vertex up by `base`, the plinth's foot onto `foot`. */
+/** The wall as wallGeometry builds it on its foot: each opening's sill raised by the step to the higher floor there. */
+export function liftedWall(wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift): Wall {
+  if (l === FLAT || !wall.openings.length) return wall
+  const L = core.wallFrame(wall, unit.vertices).lengthM
+  return { ...wall, openings: wall.openings.map((o) => ({ ...o, sillM: o.sillM + stepAt(l, o.offsetM + o.widthM / 2, L) })) }
+}
+
+/**
+ * Puts a wall solid (wallGeometry of liftedWall, built on 0) on its foot: every vertex up by `foot` there. `top` (a storey
+ * wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands.
+ */
 export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift, top?: number): void {
   if (l === FLAT && top === undefined) return
   const f = core.wallFrame(wall, unit.vertices)
@@ -703,18 +715,22 @@ export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit,
   for (let i = 0; i < p.count; i++) {
     const t = THREE.MathUtils.clamp(((p.getX(i) - f.origin.x) * f.dir.x + (p.getZ(i) - f.origin.y) * f.dir.y) / (f.lengthM || 1), 0, 1)
     const y = p.getY(i)
-    // `top` (a storey wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands
-    if (top !== undefined && y > wall.heightM - 1e-6) p.setY(i, top)
-    else p.setY(i, y < -1e-6 ? l.foot[0] + t * (l.foot[1] - l.foot[0]) : y + l.base[0] + t * (l.base[1] - l.base[0]))
+    p.setY(i, top !== undefined && y > wall.heightM - 1e-6 ? top : y + l.foot[0] + t * (l.foot[1] - l.foot[0]))
   }
   p.needsUpdate = true
   geo.computeBoundingBox()
   geo.computeBoundingSphere()
 }
 
+/** A room's ceiling, m above the datum: its tallest wall's top (each wall from its foot); 3 m when it has none. */
+export function roomCeiling(room: Room, unit: Unit, rooms: Room[]): number {
+  const tops = room.wallIds.flatMap((id) => unit.walls.filter((w) => w.id === id).map((w) => Math.max(...wallLift(w, unit, rooms).foot) + w.heightM))
+  return tops.length ? Math.max(...tops) : 3
+}
+
 /** The top of the storey: the highest wall top over its floor (render.ts's roof, the columns). 0 without walls. */
 export function storeyTop(unit: Unit, rooms: Room[]): number {
-  return Math.max(0, ...unit.walls.filter((w) => w.heightM > 0).map((w) => Math.max(...wallLift(w, unit, rooms).base) + w.heightM))
+  return Math.max(0, ...unit.walls.filter((w) => w.heightM > 0).map((w) => Math.max(...wallLift(w, unit, rooms).foot) + w.heightM))
 }
 
 /**

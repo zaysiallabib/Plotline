@@ -26,6 +26,8 @@ export function meterUVs(g: THREE.BufferGeometry): THREE.BufferGeometry {
   return g
 }
 
+/** Lower than this, a wall's passage is only a gap (a gate in a boundary wall): no lintel, no casing — as the Studio keeps the wall low (model.ts fullHeightIfOpenings). */
+export const LOW_WALL_M = 2
 /** Frame, lining and casing of interior doors: the same veneer as the leaf, tinted to a darker teak. */
 const DOOR_WOOD: MaterialRef = { kind: 'pbr', textureId: 'wood_veneer_light', tint: '#7a5a42' }
 /** Painted trim (skirting, the architrave of a doorless opening): a teak casing on a 4.7 m opening read as a dark timber lintel. */
@@ -170,7 +172,9 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
     const c = opts.casing
-    const trim = c
+    const trim = wall.heightM < LOW_WALL_M
+      ? [] // a gate: only a gap
+      : c
       ? [
           ...c.legs.map(([a, b, f]) => slab(a, b, s, c.top, f * T2, f * (T2 + CP))),
           ...c.heads.map(([a, b, f]) => slab(a, b, c.top, c.top + CW, f * T2, f * (T2 + CP))),
