@@ -295,6 +295,31 @@ describe('stage 2: his traced ground floor, basements and rooftop as shells (pro
     expect(parseProjects(JSON.stringify([q]))).toEqual([q])
   })
 
+  test('a common floor (Building → Common floor, floor n): takes that floor\'s place as a walked level, like the built-in Sheltech Level 1', () => {
+    const l1 = box('l1', -14, -1, 14, 21)
+    let p = placeLevel(makeProject('p', u, 2, 7, 'left'), l1, 'common', 1, { x: 0.5, y: 0 }, 'typed')
+    const t = projectTower(p)
+    // the built-in tower's shape for its Level 1: a level stand-in on floor 1, LEVELS = 1
+    expect(t.FLOORS.find((f) => f.floor === 1)).toEqual({ floor: 1, flats: [], standIns: ['l1'] })
+    expect(sheltech.FLOORS.find((f) => f.floor === 1)).toEqual({ floor: 1, flats: [], standIns: ['sheltech-l1'] })
+    expect(t.LEVELS).toEqual({ l1: 1 })
+    expect([topFloor(t), levelName(t, 1), roleIn(t, 'l1'), floorIn(t, 'l1')]).toEqual([7, 'Level 1', 'level', 1])
+    expect(coverOf(t, 'l1').length).toBeGreaterThan(0) // the flats' slab above it
+    // on a floor of flats: it takes the floor (its flats go on the others); one per floor number; above the flats: not drawn
+    p = placeLevel(p, box('l3', 0, 0, 5, 5), 'common', 3, { x: 0, y: 0 }, 'typed')
+    p = placeLevel(p, box('l3b', 0, 0, 5, 5), 'common', 3, { x: 0, y: 0 }, 'typed')
+    const t2 = projectTower(p)
+    expect(t2.FLOORS.filter((f) => f.floor >= 1 && f.floor <= 4).map((f) => [f.floor, f.flats.length, (f.standIns ?? []).join()])).toEqual([
+      [1, 0, 'l1'],
+      [2, 2, ''],
+      [3, 0, 'l3b'],
+      [4, 2, ''],
+    ])
+    expect(levelOf(p, 'l3b')).toMatchObject({ kind: 'common', n: 3 })
+    expect(projectTower(placeLevel(p, box('l9', 0, 0, 5, 5), 'common', 9, { x: 0, y: 0 }, 'typed')).LEVELS?.l9).toBeUndefined()
+    expect(parseProjects(JSON.stringify([p]))).toEqual([p])
+  })
+
   test('an angled level (a chamfered rooftop, walls at 30° and 45°): placed on its columns and towered as traced, nothing squared', () => {
     const [c, s] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)]
     const r = level('angled', [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 8, y: 2 }, { x: 8 + 4 * s, y: 2 + 4 * c }, { x: 3, y: 8 }, { x: 0, y: 5 }], shifted({ x: 0, y: 0 }))

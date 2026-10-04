@@ -45,6 +45,7 @@ const ROLES: [Role, string][] = [
   ['flat', 'A flat'],
   ['ground', 'Ground floor'],
   ['basement', 'Basement'],
+  ['common', 'Common floor'],
   ['rooftop', 'Rooftop'],
 ]
 const SIDES: [Neighbour, string][] = [
@@ -52,7 +53,7 @@ const SIDES: [Neighbour, string][] = [
   ['left', 'Mirrored, left'],
   ['right', 'Mirrored, right'],
 ]
-const levelName = (kind: LevelKind, n = 1) => (kind === 'ground' ? 'ground floor' : kind === 'rooftop' ? 'rooftop' : `basement ${n}`)
+const levelName = (kind: LevelKind, n = 1) => (kind === 'ground' ? 'ground floor' : kind === 'rooftop' ? 'rooftop' : kind === 'common' ? `common floor ${n}` : `basement ${n}`)
 
 /** A shift in feet-inches (14'-5", 4.4m …), negative allowed; commits metres on Enter / leaving the field. */
 function ShiftInput({ valueM, onCommit }: { valueM: number; onCommit: (m: number) => void }) {
@@ -88,6 +89,8 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
   const [n, setN] = useState(lv?.n ?? 1)
   const [typed, setTyped] = useState<Pt | null>(lv?.by === 'typed' ? lv.offset : null)
   const hostP = hosts.find((p) => p.id === host) ?? hosts[0]
+  /** the host's top floor of flats: a common floor goes under it */
+  const topOf = hostP ? Math.max(1, ...hostP.floors.map((g) => g.to)) : 1
   const auto = useMemo(() => (hostP && role !== 'flat' ? placeOfLevel(removeFlat(hostP, unit.id) ?? hostP, unit) : null), [hostP, unit, role])
   const offset = typed ?? auto?.offset ?? { x: 0, y: 0 }
   const by: Placement = typed || !auto ? 'typed' : auto.by
@@ -118,9 +121,10 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
   }
   const showLevel = () => {
     if (!hostP || role === 'flat') return
+    if (role === 'common' && topOf < 2) return onToast('A common floor goes under the flats: put the flats on higher floors first')
     const rest = others(hostP.id)
     if (!rest) return
-    const made = placeLevel(hostP, unit, role, n, offset, by)
+    const made = placeLevel(hostP, unit, role, role === 'common' ? Math.min(n, topOf - 1) : n, offset, by)
     if (made === hostP) return onToast(`This plan is the only flat of ${hostP.name}: add another flat first`)
     if (!store([...rest, made])) return
     // the Building view of the building's first flat, this level's floor picked (a basement: what stands above it hidden)
@@ -247,6 +251,12 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
               <input type="number" min={1} max={9} value={n} onChange={(e) => setN(Math.max(1, Math.min(9, Number(e.target.value) || 1)))} />
             </label>
           )}
+          {role === 'common' && (
+            <label>
+              <span>On floor (it takes that floor's place; under the top flats)</span>
+              <input type="number" min={1} max={topOf - 1} value={Math.min(n, topOf - 1)} onChange={(e) => setN(Math.max(1, Math.min(topOf - 1, Number(e.target.value) || 1)))} />
+            </label>
+          )}
           <p className="muted">
             {typed ? 'Placed by your shift.' : how}
             {typed && auto && (
@@ -265,7 +275,7 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
               <ShiftInput valueM={offset.y} onCommit={(y) => setTyped({ ...offset, y })} />
             </label>
           </div>
-          <p className="muted">Drawn as a shell: walls, slabs, columns, openings as holes — no furniture. Columns run through every level: auto-trace this plan after setting its scale (S) and its columns place it.</p>
+          <p className="muted">Drawn in full and walkable (Building view → its floor → Walk this level), furnished by its rooms' and zones' kinds. Columns run through every level: auto-trace this plan after setting its scale (S) and its columns place it.</p>
           <div className="actions">
             <button className="primary" onClick={showLevel}>
               Show building
