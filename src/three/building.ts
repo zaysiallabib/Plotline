@@ -56,8 +56,11 @@ function alongWall(w: Wall, unit: Unit, u0: number, u1: number, v0: number, v1: 
   return box(u0, w0, u1, w1, v0, v1).applyMatrix4(m)
 }
 
-/** A flat's floor plate, top at `top`, `h` thick: room polygons (not shafts: open to the sky) + a strip under every wall to its faces. */
-function plate(unit: Unit, rooms: Room[], top: number, h: number): THREE.BufferGeometry[] {
+/**
+ * A flat's floor plate, top at `top`, `h` thick: room polygons (not shafts: open to the sky) + a strip under every wall
+ * to its faces (`walls`: only those — a rooftop's slab over its closed rooms must not lay a beam over every parapet).
+ */
+function plate(unit: Unit, rooms: Room[], top: number, h: number, walls: Wall[] = unit.walls): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = rooms
     .filter((r) => r.kind !== 'shaft')
     .map((r) =>
@@ -65,7 +68,7 @@ function plate(unit: Unit, rooms: Room[], top: number, h: number): THREE.BufferG
         .rotateX(Math.PI / 2) // plan (x, y) → world (x, z), extruded down from 0
         .translate(0, top, 0),
     )
-  for (const w of unit.walls) {
+  for (const w of walls) {
     const L = core.wallFrame(w, unit.vertices).lengthM
     const t = w.thicknessM / 2
     out.push(alongWall(w, unit, -t, L + t, top - h, top, -t, t))
@@ -360,7 +363,9 @@ export class Building extends THREE.Group {
     if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, 0, PLATE_M))
     if (k > top) {
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
-      put(EXTERIOR_PLASTER, ...plate(u, rooms.filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id))), WALL_M + PLATE_M, PLATE_M))
+      const caps = rooms.filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id)))
+      const capWalls = new Set(caps.flatMap((r) => r.wallIds))
+      put(EXTERIOR_PLASTER, ...plate(u, caps, WALL_M + PLATE_M, PLATE_M, u.walls.filter((w) => capWalls.has(w.id))))
     }
     const group = new THREE.Group()
     group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
