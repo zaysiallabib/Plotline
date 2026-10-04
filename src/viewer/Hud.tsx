@@ -67,6 +67,9 @@ interface Props {
   hand: HandInfo | null
   /** staff (arrange.ts isStaff): G picks up furniture; the dot and the keys show in walk */
   staff: boolean
+  /** staff only: toggles Edit openings (doors, windows, sliders, passages in 3D); null hides the button */
+  onOpenings: (() => void) | null
+  editingOpenings: boolean
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
@@ -135,6 +138,11 @@ export default function Hud(p: Props) {
             Edit furniture
           </button>
         )}
+        {p.onOpenings && (
+          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider or passage" onClick={p.onOpenings}>
+            Edit openings
+          </button>
+        )}
         {p.onEditPlan && (
           <button className="btn" onClick={p.onEditPlan}>
             Edit plan
@@ -150,6 +158,10 @@ export default function Hud(p: Props) {
       {p.commenting && <div className="glass hint hint-top">Click anything to leave a note</div>}
       {p.hand && p.mode !== 'building' ? (
         <HandTag hand={p.hand} locked={p.locked} />
+      ) : p.editingOpenings && p.mode !== 'building' ? (
+        <div className="glass hint hint-bottom">
+          {`Click a door or window · drag it along its wall · drag a dot to resize · Del removes · Ctrl+Z undoes${p.mode === 'walk' ? ' · drag the room to look' : ''}`}
+        </div>
       ) : p.arranging && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
           {`Drag a piece, or G on it · R turns · Ctrl+Z undoes · Esc lets go${p.mode === 'walk' ? ' · drag the room to look, WASD to walk' : ''}`}

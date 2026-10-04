@@ -8,16 +8,16 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
+import type { Configuration, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { fetchSharedUnit } from '../lib/supabase'
-import { isUnit, normalizeUnit } from '../studio/model'
-import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action, type StudioState } from '../studio/model'
+import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { dropHeld, holdAt, isShareLink, isStaff, pickUp, pushStep, readLayout, saveLayout, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
@@ -242,7 +242,92 @@ function ArrangePanel(p: {
   )
 }
 
-function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
+/** Edit openings: why a change could not go into the Studio draft (arrange.ts saveOpenings / draftState) */
+const OPENINGS_WHY = {
+  other: 'Not saved: the Studio has another unit open now. Click Edit openings again to make this one the draft.',
+  changed: 'The plan was changed in the Studio after this preview. Click Preview 3D in the Studio again, then edit the openings here.',
+  full: 'Not saved: this browser’s storage is full. Export the Studio draft, then try again.',
+}
+/** the Studio's 10 px edge snap (flush to a wall end / a neighbour), in metres: about 4" */
+const OPENING_SNAP_M = 0.1
+const KINDS: [OpeningKind, string][] = [
+  ['door', 'Door'],
+  ['window', 'Window'],
+  ['slider', 'Slider'],
+  ['passage', 'Passage'],
+]
+
+/** A length typed in feet-inches (core parseLength: 3'-6", 3.5, 1.07m), set on Enter (which leaves the field, so Del / Ctrl+Z act on the opening again) or when the field is left. */
+function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number) => void }) {
+  const [text, setText] = useState(core.formatFeetInches(m))
+  const [bad, setBad] = useState(false)
+  useEffect(() => setText(core.formatFeetInches(m)), [m])
+  const set = () => {
+    const v = core.parseLength(text)
+    if (v === null || v < 0) return setBad(true)
+    setBad(false)
+    if (Math.abs(v - m) > 1e-4) onSet(v)
+  }
+  return (
+    <label className="ftin">
+      {label}
+      <input value={text} className={bad ? 'bad' : ''} onChange={(e) => (setText(e.target.value), setBad(false))} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onBlur={set} />
+    </label>
+  )
+}
+
+/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches, delete, undo — and where it saves. */
+function OpeningPanel(p: {
+  opening: Opening | null
+  where: string
+  refused: boolean
+  canUndo: boolean
+  onKind: (k: OpeningKind) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onDelete: () => void
+  onUndo: () => void
+}) {
+  const o = p.opening
+  return (
+    <aside className="glass arrange">
+      {o ? (
+        <>
+          <div className="arrange-name">
+            {KINDS.find(([k]) => k === o.kind)?.[1]} · {core.formatFeetInches(o.widthM)} wide
+          </div>
+          <div className={`small ${p.refused ? 'refused' : 'muted'}`}>{p.refused ? 'Not there: another opening is in the way' : p.where}</div>
+          <div className="arrange-row">
+            {KINDS.map(([k, label]) => (
+              <button key={k} className={`btn${o.kind === k ? ' active' : ''}`} onClick={() => k !== o.kind && p.onKind(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="arrange-row">
+            <FtIn label="Width" m={o.widthM} onSet={(widthM) => p.onSize({ widthM })} />
+            <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
+            <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
+          </div>
+        </>
+      ) : (
+        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag an end dot to resize it.</div>
+      )}
+      <div className="arrange-row">
+        <button className="btn" disabled={!o} title="Remove it (Del)" onClick={p.onDelete}>
+          Delete
+        </button>
+        <button className="btn" disabled={!p.canUndo} title="Ctrl+Z" onClick={p.onUndo}>
+          Undo
+        </button>
+      </div>
+      <div className="muted small">Saved into your Studio draft — the floor plan shows it too.</div>
+    </aside>
+  )
+}
+
+function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] }) {
+  // the plan as the 3D shows it: `given`, then whatever Edit openings commits (the scene is rebuilt in place, not re-made)
+  const [unit, setPlanUnit] = useState(given)
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
   const listed = useMemo(() => listedRooms(unit, rooms), [unit, rooms])
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -283,10 +368,10 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     [unit.finishSlots, cfg],
   )
 
-  // engine
+  // engine (made once per unit loaded; an opening edit rebuilds it in place — its rooms, so the closures below, stay the same)
   useEffect(() => {
     const s = new PlotlineScene(canvasRef.current!, { quality: new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high' })
-    s.setUnit(unit)
+    s.setUnit(given)
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
@@ -324,7 +409,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       alive = false
       s.dispose()
     }
-  }, [unit, rooms])
+  }, [given]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     scene?.setConfiguration(fullCfg)
@@ -374,6 +459,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
+    else if (STAFF && params.get('edit') === 'openings') toggleOpenings() // a built-in unit just made the Studio draft
     else scene.lockPointer()
   }
 
@@ -430,6 +516,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
   const toggleArrange = () => {
     letGo()
+    if (editingOpenings) toggleOpenings() // one editor at a time
     setAdding(false)
     setArranging(!arranging)
     scene?.setArrange(!arranging)
@@ -525,6 +612,92 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     return () => document.removeEventListener('pointerlockchange', onLock)
   })
 
+  // ── Edit openings (staff, founder 2026-10-04): the Studio's own reducer over this plan (model.ts drag-opening /
+  // resize-opening / update-opening / delete / undo — one source of rules); a drag shows its outline live, every committed
+  // change goes into the Studio draft + the preview (arrange.ts saveOpenings) and rebuilds the 3D in place, camera kept
+  const [editingOpenings, setEditingOpenings] = useState(false)
+  const [opSel, setOpSel] = useState<Id | null>(null)
+  const plan = useRef<StudioState>({ ...initialState(), unit: given })
+  /** the plan before the gesture in progress (a drag: from its first move to its drop) */
+  const gesture = useRef<StudioState | null>(null)
+  const showOp = (id = opSel) => {
+    const f = id ? findOpening(plan.current.unit, id) : null
+    const { offsetM, widthM, heightM, sillM } = f?.opening ?? { offsetM: 0, widthM: 0, heightM: 0, sillM: 0 }
+    scene?.showOpening(f && { id: f.opening.id, wallId: f.wall.id, offsetM, widthM, heightM, sillM, refused: plan.current.dragBlocked })
+  }
+  /** a plan action, live (a drag's frames, or the first step of a commit); the reducer's refusals toast */
+  const planDo = (a: Action) => {
+    gesture.current ??= plan.current
+    const next = reducer(plan.current, a)
+    if (next.toast) showToast(next.toast.text)
+    plan.current = { ...next, toast: null }
+    showOp()
+    redraw()
+  }
+  /** the gesture done: saved into the draft and the preview, the 3D rebuilt in place; refused there, the plan goes back */
+  const commitPlan = () => {
+    const before = gesture.current
+    gesture.current = null
+    const after = plan.current.unit
+    plan.current = { ...plan.current, dragBlocked: false }
+    if (!before) return showOp()
+    if (JSON.stringify(after.walls) === JSON.stringify(unit.walls)) {
+      plan.current = { ...before, dragBlocked: false } // nothing changed (a drag back to where it was): no undo step, no rebuild
+      return showOp()
+    }
+    const why = saveOpenings(unit, after)
+    if (why !== 'ok') {
+      plan.current = before
+      showOp()
+      return showToast(OPENINGS_WHY[why], 7000)
+    }
+    setPlanUnit(after)
+    scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
+    showOp()
+    redraw()
+  }
+  const planCommit = (a: Action) => {
+    planDo(a)
+    commitPlan()
+  }
+  const onOpening = (e: OpeningEvent) => {
+    if (e.kind === 'select') {
+      setOpSel(e.id)
+      return showOp(e.id)
+    }
+    if (e.kind === 'drop') return commitPlan()
+    if (!gesture.current) planDo({ type: 'drag-begin' }) // one undo step for the whole drag
+    planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
+  }
+  useEffect(() => scene?.onOpening(onOpening))
+  const toggleOpenings = () => {
+    if (editingOpenings) {
+      setEditingOpenings(false)
+      setOpSel(null)
+      return scene?.setOpeningEdit(false)
+    }
+    const at = draftState(unit)
+    if (at === 'changed') return showToast(OPENINGS_WHY.changed, 7000)
+    if (at === 'other') {
+      // its doors and windows live in the Studio draft: this unit becomes the draft (as Edit plan does), asked first
+      const builtIn = location.pathname !== '/u/preview'
+      const ask = builtIn
+        ? `${unit.name} is a built-in unit. Its doors and windows are edited on your Studio draft: this makes it your Studio draft (replacing the unit open in the Studio — export that first if you need it) and reopens it here. Continue?`
+        : 'Edit openings saves into your Studio draft, and the Studio has another unit open. Make this unit your Studio draft instead? (Export that one first if you need it.)'
+      if (!window.confirm(ask)) return
+      if (!makeDraft(unit)) return showToast(OPENINGS_WHY.full, 7000)
+      if (builtIn) return location.assign('/u/preview?edit=openings')
+    }
+    letGo()
+    setAdding(false)
+    setArranging(false)
+    scene?.setArrange(false)
+    setSel(null)
+    setCommenting(false)
+    setEditingOpenings(true)
+    scene?.setOpeningEdit(true)
+  }
+
   // keys: Enter (load screen), O, F, C, Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -537,11 +710,19 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
       const h = held.current
-      if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
+      if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
+        if (plan.current.history.past.length) planCommit({ type: 'undo' })
+      } else if (editingOpenings && opSel && (k === 'delete' || k === 'backspace')) {
+        setOpSel(null)
+        planCommit({ type: 'delete', ids: [opSel] })
+      } else if (editingOpenings && opSel && k === 'escape') {
+        setOpSel(null)
+        showOp(null)
+      } else if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
         letGo()
         undo()
       } else if (h && k === 'r') showHeld(turnHeld(unit, rooms, steps.current.pieces, h))
-      else if (STAFF && k === 'g' && mode !== 'building' && !e.repeat) {
+      else if (STAFF && k === 'g' && mode !== 'building' && !editingOpenings && !e.repeat) {
         // G: pick up the piece under the crosshair (or the pointer); G again puts it down where it fits
         if (h) dropHand()
         else pickUpAtPointer()
@@ -598,6 +779,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const h = held.current
   const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
   const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
+  const opF = editingOpenings && opSel ? findOpening(plan.current.unit, opSel) : null
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -683,6 +865,8 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             hand={handInfo}
             staff={STAFF}
             onArrange={STAFF ? toggleArrange : null}
+            editingOpenings={editingOpenings}
+            onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
             onEditPlan={
               STAFF
                 ? () => {
@@ -711,6 +895,22 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
                 onReset={() => setCfg({})}
               />
             </aside>
+          )}
+          {editingOpenings && (
+            <OpeningPanel
+              opening={opF?.opening ?? null}
+              where={opF ? rooms.filter((r) => r.wallIds.includes(opF.wall.id)).map((r) => r.name).join(' ↔ ') || 'On an outside wall' : ''}
+              refused={plan.current.dragBlocked}
+              canUndo={plan.current.history.past.length > 0}
+              onKind={(kind) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch: { kind } })}
+              onSize={(patch) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch })}
+              onDelete={() => {
+                if (!opF) return
+                setOpSel(null)
+                planCommit({ type: 'delete', ids: [opF.opening.id] })
+              }}
+              onUndo={() => planCommit({ type: 'undo' })}
+            />
           )}
           {arranging && adding && <AddPanel onPick={startPlacing} />}
           {arranging && (

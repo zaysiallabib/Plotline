@@ -4,7 +4,8 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { baseOf, dragTo, dropHeld, holdAt, isShareLink, isStaff, layoutKey, pickUp, pushStep, readLayout, saveLayout, surfaceOf, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, surfaceOf, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { findOpening } from '../studio/model'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -216,6 +217,83 @@ describe('a piece in hand (founder 2026-10-04: refused = red and kept in hand, n
     const bad = reducer(s0, { type: 'move-piece', id: 'side', x: 2.5, y: 4.3, rotationDeg: 90 })
     expect(bad.unit).toBe(s0.unit)
     expect(bad.toast?.text).toBe('Overlaps the 3-seat fabric sofa')
+  })
+})
+
+describe('Edit openings in 3D (founder 2026-10-04): the Studio’s rules along any wall, saved into the draft the Studio opens', () => {
+  // 6 × 4 m, a partition at an angle from (3, 0) to (2, 4) (4.12 m long) with a door at 0.5 m and a window at 3.0 m
+  const AV = [[0, 0], [3, 0], [6, 0], [6, 4], [2, 4], [0, 4]].map(([x, y], i) => ({ id: `a${i}`, x, y }))
+  const win: Opening = { id: 'win', kind: 'window', offsetM: 3.0, widthM: 0.8, heightM: 1.2, sillM: 0.9 }
+  const aw = (id: string, a: number, b: number, openings: Opening[] = []): Wall => ({ id, a: `a${a}`, b: `a${b}`, thicknessM: 0.15, heightM: 3, openings })
+  const angled: Unit = {
+    ...initialState().unit,
+    id: 'angled',
+    name: 'Angled',
+    vertices: AV,
+    walls: [aw('s1', 0, 1), aw('s2', 1, 2), aw('e', 2, 3), aw('n2', 3, 4), aw('n1', 4, 5), aw('w', 5, 0), aw('p', 1, 4, [door('pd', 0.5, 0.9), win])],
+    roomLabels: [
+      { id: 'L', name: 'Left', kind: 'bed', x: 1, y: 2 },
+      { id: 'R', name: 'Right', kind: 'living', x: 4.5, y: 2 },
+    ],
+  }
+  const s0: StudioState = { ...initialState(), unit: angled }
+  const run = (...as: Parameters<typeof reducer>[1][]) => as.reduce(reducer, s0)
+  const pd = (s: StudioState) => findOpening(s.unit, 'pd')?.opening
+
+  it('a drag slides the door along its angled wall in metres from its corner; an end dot resizes it, the far end staying', () => {
+    const slid = run({ type: 'drag-begin' }, { type: 'drag-opening', id: 'pd', offsetM: 1.4, tolM: 0.1 })
+    expect(pd(slid)).toMatchObject({ offsetM: expect.closeTo(1.4, 9), widthM: 0.9 })
+    expect(slid.history.past).toHaveLength(1) // the whole drag: one undo step
+    const wider = run({ type: 'drag-begin' }, { type: 'resize-opening', id: 'pd', end: 'b', uM: 1.75, tolM: 0.1 })
+    expect(pd(wider)).toMatchObject({ offsetM: 0.5, widthM: expect.closeTo(1.25, 9) })
+    // both rooms are bounded by that one wall: the change is in both (the wall graph, invariant 1)
+    expect(deriveRooms(wider.unit).filter((r) => r.wallIds.includes('p')).map((r) => r.name).sort()).toEqual(['Left', 'Right'])
+  })
+
+  it('over the window it is refused (red): the door stays where it last fitted', () => {
+    const s = run({ type: 'drag-begin' }, { type: 'resize-opening', id: 'pd', end: 'b', uM: 2.0, tolM: 0 }, { type: 'resize-opening', id: 'pd', end: 'b', uM: 3.3, tolM: 0 })
+    expect(s.dragBlocked).toBe(true)
+    expect(pd(s)).toMatchObject({ offsetM: 0.5, widthM: expect.closeTo(1.5, 9) })
+  })
+
+  it('the panel: another kind takes its defaults; a typed width; Del removes it; undo brings it back', () => {
+    const passage = run({ type: 'update-opening', id: 'pd', patch: { kind: 'passage' } })
+    expect(pd(passage)).toMatchObject({ kind: 'passage', widthM: expect.closeTo(4 * 0.3048, 9), sillM: 0 })
+    expect(pd(run({ type: 'update-opening', id: 'pd', patch: { widthM: 0.75 } }))!.widthM).toBe(0.75)
+    const gone = run({ type: 'delete', ids: ['pd'] })
+    expect(pd(gone)).toBeUndefined()
+    expect(gone.unit.walls.find((w) => w.id === 'p')!.openings.map((o) => o.id)).toEqual(['win'])
+    expect(pd(reducer(gone, { type: 'undo' }))).toMatchObject({ offsetM: 0.5, widthM: 0.9 })
+  })
+
+  it('saves into the Studio draft and the preview, their other fields kept; refused when the Studio changed the plan since', () => {
+    const s = memStore()
+    const after = run({ type: 'delete', ids: ['pd'] }).unit
+    expect(draftState(angled, s)).toBe('other') // no draft yet
+    s.setItem(DRAFT_KEY, JSON.stringify({ unit: { ...angled, furniture: [piece('x', 'sofa_3seat', 'R', 4, 2)] }, planImage: { dataUrl: 'data:', naturalW: 1, naturalH: 1, name: 'p.png' }, view: { panX: 1, panY: 2, zoom: 3 } }))
+    s.setItem(PREVIEW_KEY, JSON.stringify(angled))
+    expect(draftState(angled, s)).toBe('ok')
+    expect(saveOpenings(angled, after, s)).toBe('ok')
+    const d = JSON.parse(s.getItem(DRAFT_KEY)!)
+    expect(d.unit.walls).toEqual(after.walls)
+    expect(d.unit.furniture).toHaveLength(1) // the draft's own furniture, plan image and view are untouched
+    expect(d.view).toEqual({ panX: 1, panY: 2, zoom: 3 })
+    expect(d.planImage.name).toBe('p.png')
+    expect(JSON.parse(s.getItem(PREVIEW_KEY)!).walls).toEqual(after.walls)
+    // the next edit starts from what was saved; an edit from the old plan is refused, nothing written
+    expect(draftState(after, s)).toBe('ok')
+    expect(saveOpenings(angled, angled, s)).toBe('changed')
+    expect(JSON.parse(s.getItem(DRAFT_KEY)!).unit.walls).toEqual(after.walls)
+    // another unit in the Studio: not written
+    s.setItem(DRAFT_KEY, JSON.stringify({ unit: { ...angled, id: 'someone-else' } }))
+    expect(saveOpenings(after, angled, s)).toBe('other')
+  })
+
+  it('a built-in unit (or another draft) is made the Studio draft and the preview first', () => {
+    const s = memStore()
+    expect(makeDraft(angled, s)).toBe(true)
+    expect(draftState(angled, s)).toBe('ok')
+    expect(JSON.parse(s.getItem(PREVIEW_KEY)!).id).toBe('angled')
   })
 })
 

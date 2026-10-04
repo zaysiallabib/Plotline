@@ -44,6 +44,13 @@ Docs/PRODUCT_PHILOSOPHY.md.
   rules: grid, wall snap, no overlaps / blocked doors); every piece gets
   dimensions (scanned models scale within sane limits). A longer table may
   gain chairs. Staff-only; buyers still only look, choose finishes, comment.
+- **Openings in 3D (founder, 2026-10-04):** staff may edit OPENINGS in the 3D
+  view too — walk and dollhouse: remove, resize, move along their wall, change
+  kind / width / height / sill, with the Studio's own rules (one reducer,
+  `studio/model.ts`). Saved into the Studio draft (and the preview) so plan and
+  3D never disagree; a built-in unit becomes the Studio draft first. A refused
+  furniture spot keeps the piece in hand, red with the reason (same day).
+  Buyers never. Moving WALLS in 3D is not part of it.
 - Level templates (ground / basement / typical floor / rooftop, each with
   its own furnishing rules) are parked until the living floors are done
   (founder, 2026-09-26).
@@ -109,4 +116,6 @@ public/assets/{models,textures,hdri}/ + MANIFEST.md (licenses)
 - No drag-and-drop furniture placement editor in the first 6 weeks — per-room
   presets + the per-unit JSON are the mechanism until paying customers demand more.
   Exception: the founder's staff-only arranging (Decisions, 2026-09-27) — nothing
-  beyond move / turn / resize / delete / add-from-the-kit-library (Decisions, 2026-09-27 late) without asking.
+  beyond move / turn / resize / delete / add-from-the-kit-library (Decisions, 2026-09-27 late) without asking;
+  and staff opening edits in 3D (Decisions, 2026-10-04) — nothing beyond remove / resize / move along the
+  wall / change kind and size without asking (no wall moves in 3D).

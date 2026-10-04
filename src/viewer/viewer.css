@@ -121,6 +121,10 @@
 .arrange-row .btn { padding: 6px 12px; font-size: 12px; }
 .arrange-row .btn:disabled { opacity: 0.4; cursor: default; }
 .arrange .refused, .hand-tag .refused { color: #ff6b6b; }
+/* Edit openings: width / height / sill in feet-inches */
+.ftin { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.ftin input { width: 74px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 12px; }
+.ftin input.bad { border-color: #ff6b6b; }
 /* the piece in hand: beside the pointer, or under the dot while the mouse is locked; the dot = what G and a click aim at */
 .hand-tag { position: absolute; left: 0; top: 0; max-width: 340px; padding: 7px 11px; font-size: 12px; line-height: 1.5; pointer-events: none; }
 .hand-tag.at-dot { left: 50%; top: calc(50% + 18px); transform: translateX(-50%); }

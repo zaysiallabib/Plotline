@@ -56,6 +56,16 @@ export type ArrangeEvent =
   | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null }
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
+/**
+ * Edit openings (staff): `select` a door / window / slider / passage (null: empty space); `slide` = its body dragged, the
+ * offset (m from its wall's corner A) the pointer asks for; `resize` = an end dot dragged to uM along the wall; `drop` ends
+ * the gesture. The Studio reducer (model.ts drag-opening / resize-opening) applies its rules to these.
+ */
+export type OpeningEvent =
+  | { kind: 'select'; id: Id | null }
+  | { kind: 'slide'; id: Id; offsetM: number }
+  | { kind: 'resize'; id: Id; end: 'a' | 'b'; uM: number }
+  | { kind: 'drop'; id: Id }
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 /** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
 const present = (u: Unit): Unit => (u.furniture.some((p) => p.removed) ? { ...u, furniture: u.furniture.filter((p) => !p.removed) } : u)
@@ -206,6 +216,12 @@ export class PlotlineScene {
   private readonly selBox = new THREE.Group()
   private readonly selMat = new THREE.MeshBasicMaterial({ color: SEL, depthTest: false, transparent: true, opacity: 0.9 })
   private readonly selFoot = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: SEL, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }))
+  // Edit openings (staff): the mouse stays free as in Arrange; a grab slides the opening along its wall or moves one end
+  private editingOpenings = false
+  private openingCb: ((e: OpeningEvent) => void) | null = null
+  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b'; off: number; moved: boolean } | null = null
+  /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
+  private readonly opBox = new THREE.Group()
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -239,7 +255,7 @@ export class PlotlineScene {
     this.selFoot.geometry.setIndex([0, 1, 2, 0, 2, 3])
     this.selFoot.frustumCulled = false
     this.selFoot.visible = false
-    this.scene.add(this.selFoot)
+    this.scene.add(this.selFoot, this.opBox)
 
     window.addEventListener('keydown', this.onKey)
     window.addEventListener('keyup', this.onKey)
@@ -255,10 +271,16 @@ export class PlotlineScene {
 
   // ───────────────────────────── public API ─────────────────────────────
 
-  /** Rebuilds all static geometry (walls, openings, floors, ceilings) and reloads furniture. */
-  setUnit(unit: Unit): void {
+  /**
+   * Rebuilds all static geometry (walls, openings, floors, ceilings) and reloads furniture. `keepView` (an opening edited
+   * in 3D): the camera stays, and the furniture — unchanged — keeps its built objects (reloading them blinked every piece
+   * out for ~150 ms on top of the 190–300 ms rebuild, measured 2026-10-04 on type-a and the founder's draft).
+   */
+  setUnit(unit: Unit, keepView = false): void {
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     this.ready = false
+    const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
+    for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
     this.clearStatic()
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
@@ -286,10 +308,14 @@ export class PlotlineScene {
     this.look.setUnit(present(unit), this.rooms) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
 
+    this.ready = true
+    if (keepView) {
+      for (const [g, o] of kept) g.add(o)
+      return
+    }
     const first = this.rooms[0]
     this.walker = first ? { ...first.centroid } : { x: this.center.x, y: this.center.z }
     this.moveTarget = null
-    this.ready = true
     this.setMode(this.mode)
     void this.loadFurniture(unit)
   }
@@ -411,9 +437,9 @@ export class PlotlineScene {
     return core.roomAt(this.walker, this.rooms, this.unit)?.id ?? null
   }
 
-  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging. */
+  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging or editing openings. */
   lockPointer(): void {
-    if (this.mode === 'walk' && !this.arranging) this.plc.lock()
+    if (this.mode === 'walk' && !this.arranging && !this.editingOpenings) this.plc.lock()
   }
 
   // ───────────────────────────── arrange (staff) ─────────────────────────────
@@ -596,6 +622,100 @@ export class PlotlineScene {
     if (selected) this.fitSelection(obj, this.selBox.userData.axesList)
   }
 
+  // ───────────────────────────── openings (staff) ─────────────────────────────
+
+  /**
+   * Edit openings (staff, founder 2026-10-04): the mouse stays free (no pointer lock; dragging empty space looks around in
+   * walk mode); a click picks a door / window / slider / passage — its frame, leaf or glass, or the hole itself; a drag slides
+   * it along its wall, an end dot resizes it (`OpeningEvent`s; the caller runs the Studio's rules).
+   */
+  setOpeningEdit(on: boolean): void {
+    this.editingOpenings = on
+    if (on && this.plc.isLocked) this.plc.unlock()
+    if (!on) this.showOpening(null)
+  }
+
+  onOpening(cb: (e: OpeningEvent) => void): void {
+    this.openingCb = cb
+  }
+
+  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end (a dot drag resizes it); red while refused. null clears. */
+  showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
+    this.opBox.traverse((o) => {
+      ;(o as THREE.Mesh).geometry?.dispose()
+      ;((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose?.()
+    })
+    this.opBox.clear()
+    const f = s && this.wallFrames.get(s.wallId)
+    const w = s && this.unit?.walls.find((x) => x.id === s.wallId)
+    this.opBox.userData = { id: f && w ? s.id : undefined, wallId: s?.wallId }
+    if (!s || !f || !w) return
+    // the wall's own frame (any angle): u along it, v up, w across (buildWall's basis)
+    this.opBox.matrixAutoUpdate = false
+    this.opBox.matrix.makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(f.normal.x, 0, f.normal.y)).setPosition(f.origin.x, 0, f.origin.y)
+    const mat = { color: s.refused ? REFUSED : SEL, depthTest: false, transparent: true }
+    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(s.widthM, s.heightM, w.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
+    box.position.set(s.offsetM + s.widthM / 2, s.sillM + s.heightM / 2, 0)
+    box.raycast = () => {}
+    this.opBox.add(box)
+    for (const end of ['a', 'b'] as const) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
+      dot.position.set(end === 'a' ? s.offsetM : s.offsetM + s.widthM, s.sillM + s.heightM / 2, 0)
+      dot.userData.end = end
+      this.opBox.add(dot)
+    }
+    for (const c of this.opBox.children) c.renderOrder = 11
+  }
+
+  /** The vertical plane through wall `wallId`'s centre line, and u along it where the ray at `ndc` meets it (null: it does not). */
+  private alongWall(ndc: THREE.Vector2, wallId: Id): { u: number; v: number; d: number } | null {
+    const f = this.wallFrames.get(wallId)
+    if (!f) return null
+    this.raycaster.setFromCamera(ndc, this.camera)
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(f.normal.x, 0, f.normal.y), new THREE.Vector3(f.origin.x, 0, f.origin.y))
+    const P = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3())
+    return P && { u: (P.x - f.origin.x) * f.dir.x + (P.z - f.origin.y) * f.dir.y, v: P.y, d: this.raycaster.ray.origin.distanceTo(P) }
+  }
+
+  /** The opening under the pointer: one of its parts (frame, leaf, glass), else its hole when nothing nearer hides it. */
+  private openingAt(ndc: THREE.Vector2): { id: Id; wallId: Id; u: number } | null {
+    const hit = this.pick(ndc)
+    const direct = hit?.kind === 'opening' ? hit.id.split('/')[0] : null
+    const seen = hit ? this.camera.getWorldPosition(new THREE.Vector3()).distanceTo(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)) : Infinity
+    let best: { id: Id; wallId: Id; u: number; d: number } | null = null
+    for (const w of this.unit?.walls ?? []) {
+      if (!w.openings.length) continue
+      const p = this.alongWall(ndc, w.id)
+      if (!p) continue
+      for (const o of w.openings) {
+        const inside = p.u >= o.offsetM && p.u <= o.offsetM + o.widthM && p.v >= o.sillM - 0.05 && p.v <= o.sillM + o.heightM + 0.05
+        if ((o.id === direct || (inside && p.d <= seen + w.thicknessM)) && (!best || p.d < best.d)) best = { id: o.id, wallId: w.id, u: p.u, d: p.d }
+      }
+    }
+    return best
+  }
+
+  /** Edit openings: an end dot of the selected opening (resize), else an opening (selects it, slide), else empty space (walk: look around). */
+  private openingDown(e: PointerEvent): void {
+    const ndc = this.ndcOf(e)
+    this.raycaster.setFromCamera(ndc, this.camera)
+    const sel = this.opBox.userData as { id?: Id; wallId?: Id }
+    const dot = sel.id && this.opBox.children.length ? this.raycaster.intersectObjects(this.opBox.children.filter((c) => c.userData.end), false)[0] : undefined
+    if (dot && sel.id && sel.wallId) this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false }
+    else {
+      const o = this.openingAt(ndc)
+      if (!o) {
+        if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
+        return
+      }
+      const at = this.unit?.walls.find((w) => w.id === o.wallId)?.openings.find((x) => x.id === o.id)
+      this.openingCb?.({ kind: 'select', id: o.id })
+      this.opGrab = { id: o.id, wallId: o.wallId, off: o.u - (at?.offsetM ?? o.u), moved: false }
+    }
+    this.orbit.enabled = false // the opening moves, not the dollhouse camera
+    this.canvas.setPointerCapture(e.pointerId)
+  }
+
   private xr: XRControls | null = null
 
   /** Turns WebXR on (once isSessionSupported('immersive-vr') is true). Rays, teleport, snap turn, room chip: xr.ts. */
@@ -639,6 +759,7 @@ export class PlotlineScene {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
+    this.showOpening(null)
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()
@@ -841,6 +962,7 @@ export class PlotlineScene {
 
   private onPointerDown = (e: PointerEvent): void => {
     this.pointerDown = { x: e.clientX, y: e.clientY }
+    if (this.editingOpenings && this.mode !== 'building') return this.openingDown(e)
     if (this.arranging && this.mode !== 'building') {
       if (!this.hand) this.arrangeDown(e)
       else if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
@@ -900,6 +1022,15 @@ export class PlotlineScene {
       this.look2 = { x: e.clientX, y: e.clientY }
       return
     }
+    const og = this.opGrab
+    if (og) {
+      const d = this.pointerDown
+      if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3) return
+      og.moved = true
+      const p = this.alongWall(this.ndcOf(e), og.wallId) // along ITS wall, at any angle
+      if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
+      return
+    }
     if (this.hand) {
       if (!e.buttons && this.mode !== 'building') this.aimHand()
       return
@@ -951,6 +1082,14 @@ export class PlotlineScene {
   private onPointerUp = (e: PointerEvent): void => {
     const d = this.pointerDown
     this.pointerDown = null
+    if (this.editingOpenings && this.mode !== 'building') {
+      const g = this.opGrab
+      this.opGrab = this.look2 = null
+      this.orbit.enabled = this.mode !== 'walk'
+      if (g?.moved) this.openingCb?.({ kind: 'drop', id: g.id })
+      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) this.openingCb?.({ kind: 'select', id: null })
+      return
+    }
     if (this.hand && this.mode !== 'building') {
       this.look2 = null
       if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) {

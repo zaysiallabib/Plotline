@@ -5,6 +5,7 @@
  */
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
+import { isUnit, normalizeUnit } from '../studio/model'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
@@ -132,3 +133,56 @@ export const turnHeld = (unit: Unit, rooms: Room[], pieces: FurniturePlacement[]
 
 /** What a click / G / release commits: the layout with the piece where it is — only where it fits (null: it stays in hand). */
 export const dropHeld = (h: Held): FurniturePlacement[] | null => (h.move && !h.move.error ? h.move.furniture : null)
+
+// ── Edit openings (staff, founder 2026-10-04): a door / window / passage changed in the 3D view is a change to the plan
+// the Studio opens — written into the Studio draft and the preview, so plan and 3D never disagree.
+export const DRAFT_KEY = 'plotline.studio.draft'
+export const PREVIEW_KEY = 'plotline.preview'
+const planOf = (u: Unit): string => JSON.stringify([u.vertices, u.walls])
+/** a stored draft is a Draft `{ unit, … }` or a bare Unit (StudioApp init accepts both) */
+const unitIn = (x: unknown): Unit | null => (isUnit(x) ? x : isUnit((x as { unit?: unknown } | null)?.unit) ? (x as { unit: Unit }).unit : null)
+
+/** Can this page's opening edits go into the Studio draft? 'ok': it holds this unit, its plan as shown here; 'other': another unit, or none; 'changed': this unit, its plan edited in the Studio since. */
+export function draftState(unit: Unit, store?: Store): 'ok' | 'other' | 'changed' {
+  try {
+    const u = unitIn(JSON.parse((store ?? localStorage).getItem(DRAFT_KEY) ?? 'null'))
+    if (!u || u.id !== unit.id) return 'other'
+    return planOf(normalizeUnit(u)) === planOf(unit) ? 'ok' : 'changed'
+  } catch {
+    return 'other'
+  }
+}
+
+/**
+ * A committed opening edit: `after`'s walls (their openings) into the Studio draft and the preview, every other field of
+ * theirs kept — only while the draft still holds `before`'s plan; else why not, and nothing is written.
+ */
+export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | 'other' | 'changed' | 'full' {
+  const s = store ?? localStorage
+  const why = draftState(before, s)
+  if (why !== 'ok') return why
+  try {
+    for (const key of [DRAFT_KEY, PREVIEW_KEY]) {
+      const d: unknown = JSON.parse(s.getItem(key) ?? 'null')
+      const u = unitIn(d)
+      if (!u || u.id !== after.id) continue
+      const v = { ...u, walls: after.walls }
+      s.setItem(key, JSON.stringify(isUnit(d) ? v : { ...(d as object), unit: v }))
+    }
+    return 'ok'
+  } catch {
+    return 'full' // ponytail: the draft may be written and the preview not; the Studio warns the same way when a draft outgrows storage
+  }
+}
+
+/** `unit` as this page shows it becomes the Studio draft and the preview (a built-in unit, or not the draft) — what Edit openings then edits. */
+export function makeDraft(unit: Unit, store?: Store): boolean {
+  try {
+    const s = store ?? localStorage
+    s.setItem(DRAFT_KEY, JSON.stringify({ unit }))
+    s.setItem(PREVIEW_KEY, JSON.stringify(unit))
+    return true
+  } catch {
+    return false
+  }
+}

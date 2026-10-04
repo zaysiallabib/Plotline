@@ -385,6 +385,25 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, state.review, saveDraft])
+  // a door / window changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the plan takes
+  // it at once, so this tab's next autosave never writes the old openings back
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DRAFT_KEY || !e.newValue) return
+      try {
+        const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']
+        const u = isUnit(d) ? d : (d as Partial<Draft>).unit
+        const now = stateRef.current.unit
+        if (!isUnit(u) || u.id !== now.id || JSON.stringify(u.walls) === JSON.stringify(now.walls)) return
+        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: withLayout(u) } as Draft }) // a bare unit restores too (init does the same)
+        setNote({ text: 'Doors and windows changed in the 3D view — the plan shows them now' })
+      } catch {
+        /* not a draft */
+      }
+    }
+    addEventListener('storage', onStorage)
+    return () => removeEventListener('storage', onStorage)
+  }, [])
   // shared layout: every furniture change (move, turn, resize, delete, reset, a relabel's re-furnish, their undo, an
   // import) is what the viewer shows after a reload; loading one is not a change
   const lastFurniture = useRef(unit.furniture)
