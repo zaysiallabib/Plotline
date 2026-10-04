@@ -11,6 +11,7 @@ import l1 from '../data/units/sheltech-l1.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import founderA from '../data/fixtures/founder-sheltech-a-draft.json'
+import { FLOOR_M } from '../data/building/demo-tower'
 import * as core from './index'
 import type { Unit } from './index'
 
@@ -175,5 +176,34 @@ describe('the common levels sit on the flats’ core', () => {
     expect(Math.min(...px)).toBeCloseTo(Math.min(...xs), 3)
     expect(Math.max(...px)).toBeCloseTo(Math.max(...xs), 3)
     expect(Math.min(...ys)).toBeLessThan(Math.min(...core.roomPolygon(r, u).map((p) => p.y)))
+  })
+})
+
+describe('levels and ramps', () => {
+  const at = (key: string, x: number, y: number) => core.floorLevelAt(LEVELS[key], x, y)
+
+  test(`printed levels: ground +3'-6" lobby / reception, +3'-3" EME, +4'-6" by the meter room, +2'-0" by the gate, lawns +1'-6"; B2 pump room -1'-6"`, () => {
+    expect(at('ground', -2.5, 6.3)).toBeCloseTo(1.067, 3)
+    expect(at('ground', -6.6, 11)).toBeCloseTo(1.067, 3)
+    expect(at('ground', -9.8, 5)).toBeCloseTo(0.991, 3)
+    expect(at('ground', -3, 4)).toBeCloseTo(1.372, 3)
+    expect(at('ground', 10, 18.5)).toBeCloseTo(0.61, 3)
+    expect(at('ground', -6, 19)).toBeCloseTo(0.457, 3)
+    expect(at('b2', 10.1, 2.7)).toBeCloseTo(-0.457, 3)
+  })
+
+  test('the ramp from the ground down to B1 runs on across the two levels (one storey = FLOOR_M) and lands on the B1 driveway', () => {
+    for (const x of [-1.0, 3, 7.4]) expect(at('ground', x, 2.7) + FLOOR_M, `x ${x}`).toBeCloseTo(at('b1', x, 2.7), 2)
+    expect(at('ground', 7.5, 2.7)).toBeCloseTo(0, 1) // the top: the north-east turn at ±0
+    // west ramp top = the turn = the north ramp's start (either side of the flush lines between them)
+    expect(at('b1', -9.6, 5.34)).toBeCloseTo(at('b1', -9.6, 5.32), 2)
+    expect(at('b1', -6.99, 2.7)).toBeCloseTo(at('b1', -7.01, 2.7), 2)
+    expect(at('b1', -9.6, 10.8)).toBeCloseTo(0, 1) // the foot: the B1 driveway
+  })
+
+  test(`the 1:20 ramp climbs from the paver path (+2'-0") to the reception door (+3'-6") and its two runs meet`, () => {
+    expect(at('ground', 5.1, 15.4)).toBeCloseTo(0.61, 2)
+    expect(at('ground', -4.3, 12.8)).toBeCloseTo(1.067, 2)
+    expect(at('ground', 0.33, 12.5)).toBeCloseTo(at('ground', 0.2, 12.5), 1)
   })
 })
