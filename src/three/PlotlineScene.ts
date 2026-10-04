@@ -222,6 +222,12 @@ export class PlotlineScene {
   private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean } | null = null
   /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
   private readonly opBox = new THREE.Group()
+  /**
+   * Where a slab hangs over this unit (plan polygons in the unit's frame, at its storey height): the footprint of the
+   * floor above when the unit is a level of a tower (a basement under the ground floor, a ground floor under the flats).
+   * Set BEFORE setUnit. Under it an outdoor zone is covered: a soffit, no sky in the daylight, lit by rule. Empty = open sky.
+   */
+  cover: Pt[][] = []
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
