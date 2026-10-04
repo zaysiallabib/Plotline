@@ -685,7 +685,7 @@ export class PlotlineScene {
     const seen = hit ? this.camera.getWorldPosition(new THREE.Vector3()).distanceTo(new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z)) : Infinity
     let best: { id: Id; wallId: Id; u: number; d: number } | null = null
     for (const w of this.unit?.walls ?? []) {
-      if (!w.openings.length) continue
+      if (!w.openings.length || w.id.startsWith(GAP_PREFIX)) continue // a gap's stand-in passage (closeGaps) is not in the plan: nothing to edit
       const p = this.alongWall(ndc, w.id)
       if (!p) continue
       for (const o of w.openings) {
