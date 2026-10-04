@@ -23,7 +23,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { buildSkirtings, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
+import { GAP_PREFIX, buildSkirtings, closeGaps, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy } from './materials'
@@ -278,6 +278,7 @@ export class PlotlineScene {
    */
   setUnit(unit: Unit, keepView = false): void {
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
+    unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
     this.ready = false
     const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
     for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
@@ -1140,9 +1141,11 @@ export class PlotlineScene {
       if (hidden) continue
       while (o && !o.userData.kind) o = o.parent
       if (!o) continue
-      const { kind, id, roomId, wallId, front, back, label, objectKind } = o.userData as {
-        kind: PickKind; id: Id; roomId?: Id; wallId?: Id; front?: Id | null; back?: Id | null; label: string; objectKind: ObjectKind
-      }
+      let { kind, id, wallId, objectKind } = o.userData as { kind: PickKind; id: Id; wallId?: Id; objectKind: ObjectKind }
+      const { roomId, front, back, label } = o.userData as { roomId?: Id; front?: Id | null; back?: Id | null; label: string }
+      // a gap's stand-in wall and its casing (details.ts closeGaps) are no entity of the plan: picked as the wall the gap continues
+      const gap = [id, wallId].find((x) => x?.startsWith(GAP_PREFIX))
+      if (gap) [kind, id, wallId, objectKind] = ['wall', gap.slice(GAP_PREFIX.length).split('|')[0], undefined, 'wall']
       const P = h.point
       const hit: PickHit = { kind, id, label, objectKind, point: { x: P.x, y: P.y, z: P.z } }
       if (roomId) hit.roomId = roomId

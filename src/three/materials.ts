@@ -98,7 +98,9 @@ export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
   floor: { kind: 'color', color: '#b8a58c', roughness: 0.7 },
-  wall: { kind: 'color', color: '#f1efe9', roughness: 0.95 },
+  // the hand-authored units' warm-white paint: a flat #f1efe9 was the white casing's own colour, so a Studio draft's cased
+  // openings vanished into their walls (founder, 2026-10-04)
+  wall: EDGE_PLASTER,
   ceiling: { kind: 'color', color: '#f7f5f0', roughness: 1 },
 }
 

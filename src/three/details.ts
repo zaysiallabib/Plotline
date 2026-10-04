@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Graph, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
-import { buildOpening, meterUVs } from './openings'
+import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
@@ -37,8 +37,9 @@ const ROOM_PROBE_M = 0.05
  * Skirting follows what is BUILT, not the room outline (founder, 2026-10-03: a traced jog that pokes 1 cm into a room
  * past the outline left a bare wall foot — "the tile places are left empty"). Every wall face, wall end and doorless
  * passage reveal that looks into a room (probed 5 cm out from its middle) gets a run of that room's floor tile, minus
- * the spans of doors / sliders (their frames reach the floor) and windows below skirting height; a passage keeps its
- * run on the face up to the jamb and the reveal carries it through, each half in its own room's tile. Runs are
+ * the spans of doors / sliders / passages and windows below skirting height (never a kerb across an opening); at a
+ * passage the reveal carries it round the jamb, each half in its own room's tile — none where the opening reaches its
+ * wall's end, as no jamb of this wall stands there (the next wall's face carries it). Runs are
  * extended past the face ends by the skirting depth (hidden in the wall at inside corners, closing outside ones), then
  * unioned per room and plane; where two rooms' runs overlap on one plane the longer room keeps the overlap. None in
  * bath / balcony / shaft. Low walls (below skirting height) and walls in no room get none.
@@ -49,6 +50,23 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
     const r = core.roomAt(p, rooms, unit)
     return r && !NO_SKIRTING.includes(r.kind) ? r : null
   }
+  // a short strip (a wall end, a reveal) keeps only what lies on its own room's floor or inside a wall: where two ends
+  // cross at a traced jog, two rooms' strips filled the same corner and their tops z-fought
+  const solid = solidAt(unit)
+  const short = (r: SkirtingRun) => {
+    const k = Math.max(1, Math.ceil((r.s1 - r.s0) / 0.004))
+    const at = (i: number) => r.s0 + ((r.s1 - r.s0) * i) / k
+    const keep: [number, number][] = []
+    for (let i = 0; i < k; i++) {
+      const s = (at(i) + at(i + 1)) / 2
+      const q = { x: r.p.x + r.d.x * s + (r.n.x * SKIRTING_T) / 2, y: r.p.y + r.d.y * s + (r.n.y * SKIRTING_T) / 2 }
+      if (!solid(q, SKIRTING_H / 2) && core.roomAt(q, rooms, unit) !== r.room) continue
+      const last = keep[keep.length - 1]
+      if (last && last[1] === at(i)) last[1] = at(i + 1)
+      else keep.push([at(i), at(i + 1)])
+    }
+    for (const [s0, s1] of keep) raw.push({ ...r, s0, s1 })
+  }
   for (const w of unit.walls) {
     if (w.heightM < SKIRTING_H) continue
     const f = core.wallFrame(w, unit.vertices)
@@ -57,44 +75,52 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
     const at = (u: number, v: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * v, y: f.origin.y + f.dir.y * u + f.normal.y * v })
     const span = (o: Opening): [number, number] => [Math.max(0, o.offsetM), Math.min(f.lengthM, o.offsetM + o.widthM)]
     const cuts = w.openings
-      .filter((o) => o.kind !== 'passage' && (o.kind !== 'window' || o.sillM < SKIRTING_H))
+      .filter((o) => o.kind !== 'window' || o.sillM < SKIRTING_H)
       .map(span)
       .filter(([a, b]) => b > a)
       .sort((a, b) => a[0] - b[0])
     const holes = w.openings.map(span).filter(([a, b]) => b > a)
-    // the two faces, cut by doors / low windows; a passage leaves the face run (the jamb is where it turns)
+    // the two faces, cut by doors / passages / low windows (at a passage the jamb is where the tile turns)
     for (const side of [1, -1] as const) {
       const n = { x: f.normal.x * side, y: f.normal.y * side }
       const room = roomOf(at(f.lengthM / 2, side * (T2 + ROOM_PROBE_M)))
       if (!room) continue
       const p = at(0, side * T2)
-      let s = -SKIRTING_T
+      // past each end by the depth (closes an outside corner with the end's strip), unless that is another room's floor
+      const over = (u: number) => (roomOf(at(u, side * (T2 + SKIRTING_T / 2))) === room ? SKIRTING_T : 0)
+      let s = -over(-SKIRTING_T / 2)
       for (const [a, b] of cuts) {
-        if (a - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a })
+        if (a - Math.max(s, 0) > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a }) // an opening at the end: no 12 mm stub
         s = Math.max(s, b)
       }
-      if (f.lengthM + SKIRTING_T - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + SKIRTING_T })
+      if (f.lengthM - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + over(f.lengthM + SKIRTING_T / 2) })
     }
-    // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage)
+    // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage), each
+    // half in the room on its side and flush with the faces — the face runs' 12 mm overrun closes the corners. Whole and
+    // overrun, an end buried in the next wall poked its 12 mm past that wall's face, in the tile of whichever room the
+    // centre line fell in: a brown oak sliver in the living room's marble skirting (founder: "a tiny brown upright")
     for (const end of [0, 1] as const) {
       const u = end ? f.lengthM : 0
+      if (cuts.some(([a, b]) => a < u + 1e-6 && u - 1e-6 < b)) continue // an opening reaches this end: nothing stands there
       const out = { x: f.dir.x * (end ? 1 : -1), y: f.dir.y * (end ? 1 : -1) }
-      const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, 0))
-      if (!room) continue
-      raw.push({ room, p: at(u, -T2), d: f.normal, n: out, s0: -SKIRTING_T, s1: w.thicknessM + SKIRTING_T })
+      for (const side of [1, -1] as const) {
+        const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, (side * T2) / 2))
+        if (room) short({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n: out, s0: 0, s1: T2 })
+      }
     }
     // passage reveals: the tile runs through, each half in the room on that side of the wall
     for (const o of w.openings) {
       if (o.kind !== 'passage') continue
       const [u0, u1] = span(o)
       for (const [u, into] of [[u0, 1], [u1, -1]] as const) {
-        if (holes.some(([a, b]) => a < u - 1e-6 && u + 1e-6 < b)) continue // inside another opening: no reveal there
+        // inside another opening, or at the wall's end (no jamb of this wall: the next wall's face carries the tile)
+        if (u < 1e-6 || u > f.lengthM - 1e-6 || holes.some(([a, b]) => a < u - 1e-6 && u + 1e-6 < b)) continue
         const n = { x: f.dir.x * into, y: f.dir.y * into }
         for (const side of [1, -1] as const) {
           const room = roomOf(at(u + into * ROOM_PROBE_M, side * (T2 + ROOM_PROBE_M)))
           if (!room) continue
           // from the centre line to that face and past it by the depth (closes the outside corner with the face run)
-          raw.push({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n, s0: 0, s1: T2 + SKIRTING_T })
+          short({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n, s0: 0, s1: T2 + SKIRTING_T })
         }
       }
     }
@@ -159,7 +185,10 @@ export function buildSkirtings(unit: Unit, rooms: Room[]): Map<Id, THREE.Mesh> {
   for (const r of skirtingRuns(unit, rooms)) {
     const len = r.s1 - r.s0
     const g = new THREE.BoxGeometry(len, SKIRTING_H, SKIRTING_T)
-    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(r.d.x, 0, r.d.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(r.n.x, 0, r.n.y))
+    // x = up × n, so the basis is right-handed whichever way the run points (the box is symmetric along it): a mirrored
+    // basis turned every strip inside out — its back face drawn on the wall face, z-fighting it as the view moved
+    // (the founder's "small blips whenever I move my view", 2026-10-04)
+    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(r.n.y, 0, -r.n.x), new THREE.Vector3(0, 1, 0), new THREE.Vector3(r.n.x, 0, r.n.y))
     const mid = (r.s0 + r.s1) / 2
     m.setPosition(r.p.x + r.d.x * mid + (r.n.x * SKIRTING_T) / 2, SKIRTING_H / 2, r.p.y + r.d.y * mid + (r.n.y * SKIRTING_T) / 2)
     byRoom.set(r.room.id, [...(byRoom.get(r.room.id) ?? []), meterUVs(g.applyMatrix4(m))])
@@ -184,6 +213,152 @@ export function raiseHeads(unit: Unit): Unit {
   if (!unit.walls.some((w) => head(w) > w.heightM + 1e-6)) return unit
   const storey = Math.max(...unit.walls.map((w) => w.heightM))
   return { ...unit, walls: unit.walls.map((w) => (head(w) > w.heightM + 1e-6 ? { ...w, heightM: Math.max(storey, head(w)) } : w)) }
+}
+
+/** The Studio's Passage head (model.ts openingDefaults): a gap between wall ends gets the same. */
+const PASSAGE_HEAD_M = 2.7
+/** Prefix of a stand-in wall's id (closeGaps): `gap:<wall id>|<wall id>`; it is picked as the first. */
+export const GAP_PREFIX = 'gap:'
+
+/**
+ * Two full-height wall ends in line with a gap between them and nothing in it — a partition the founder drew with an
+ * opening left in it (2026-10-04: "when I did it manually I did not get" the white cased look). In 3D the gap is dressed
+ * as the Studio's Passage would be: a lintel down to 2.7 m (≤ the wall height − 0.3) with the white casing, on a stand-in
+ * wall between the two ends with vertices of its own — so the rooms (deriveRooms) are exactly the plan's. Ends: one wall
+ * each, ≤ 2° and 2 cm off one line, facing each other 0.3–6 m apart, nearest pairs first. Unchanged units come back as the
+ * same object.
+ */
+export function closeGaps(unit: Unit): Unit {
+  const degree = new Map<Id, number>()
+  for (const w of unit.walls) for (const v of [w.a, w.b]) degree.set(v, (degree.get(v) ?? 0) + 1)
+  const ends = unit.walls.flatMap((w) => {
+    if (w.heightM < 2.4) return [] // a railing, a planter edge: not a partition
+    const f = core.wallFrame(w, unit.vertices)
+    return (['a', 'b'] as const)
+      .filter((e) => degree.get(w[e]) === 1 && f.lengthM > 1e-3)
+      .map((e) => ({ w, p: core.vertexById(unit.vertices, w[e]), out: e === 'b' ? f.dir : { x: -f.dir.x, y: -f.dir.y } }))
+  })
+  const pairs: { i: number; j: number; L: number }[] = []
+  for (let i = 0; i < ends.length; i++)
+    for (let j = i + 1; j < ends.length; j++) {
+      const [A, B] = [ends[i], ends[j]]
+      const g = { x: B.p.x - A.p.x, y: B.p.y - A.p.y }
+      const L = Math.hypot(g.x, g.y)
+      if (A.w === B.w || L < 0.3 || L > 6) continue
+      const cos2 = Math.cos((2 * Math.PI) / 180)
+      if ((A.out.x * g.x + A.out.y * g.y) / L < cos2 || -(B.out.x * g.x + B.out.y * g.y) / L < cos2) continue
+      if (Math.abs(A.out.x * g.y - A.out.y * g.x) > 0.02) continue
+      // nothing standing in the gap: no other wall crosses or touches the segment between the two ends
+      const blocked = unit.walls.some((w) => {
+        if (w === A.w || w === B.w) return false
+        const [p, q] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
+        const side = (o: Pt, a: Pt, b: Pt) => (b.x - a.x) * (o.y - a.y) - (b.y - a.y) * (o.x - a.x)
+        return side(p, A.p, B.p) * side(q, A.p, B.p) <= 0 && side(A.p, p, q) * side(B.p, p, q) <= 0
+      })
+      if (!blocked) pairs.push({ i, j, L })
+    }
+  if (!pairs.length) return unit
+  const used = new Set<number>()
+  const vertices = [...unit.vertices]
+  const walls = [...unit.walls]
+  for (const { i, j, L } of pairs.sort((x, y) => x.L - y.L)) {
+    if (used.has(i) || used.has(j)) continue
+    used.add(i).add(j)
+    const [A, B] = [ends[i], ends[j]]
+    const id = `${GAP_PREFIX}${A.w.id}|${B.w.id}`
+    const heightM = Math.min(A.w.heightM, B.w.heightM)
+    vertices.push({ id: `${id}:a`, x: A.p.x, y: A.p.y }, { id: `${id}:b`, x: B.p.x, y: B.p.y })
+    const head = Math.min(PASSAGE_HEAD_M, heightM - 0.3)
+    walls.push({ id, a: `${id}:a`, b: `${id}:b`, thicknessM: Math.min(A.w.thicknessM, B.w.thicknessM), heightM, openings: [{ id: `${id}:o`, kind: 'passage', offsetM: 0, widthM: L, sillM: 0, heightM: head }] })
+  }
+  return { ...unit, vertices, walls }
+}
+
+const solidCache = new WeakMap<Pick<Unit, 'vertices' | 'walls' | 'pillars'>, (p: Pt, v: number) => boolean>()
+/**
+ * Is plan point p at height v inside a wall's solid (1 mm in from its faces; ends closed, so two walls meeting end to end
+ * on a junction's centre line leave no seam) or a column?
+ */
+function solidAt(unit: Pick<Unit, 'vertices' | 'walls' | 'pillars'>): (p: Pt, v: number) => boolean {
+  let fn = solidCache.get(unit)
+  if (fn) return fn
+  const IN = 0.001
+  const parts = unit.walls.flatMap((w) => {
+    const f = core.wallFrame(w, unit.vertices)
+    return core.wallPieces(w, f.lengthM).map((p) => ({ f, p, T2: w.thicknessM / 2 }))
+  })
+  const storey = Math.max(0, ...unit.walls.map((w) => w.heightM))
+  fn = (q, v) =>
+    parts.some(({ f, p, T2 }) => {
+      if (v <= p.v0 || v >= p.v1) return false
+      const [x, y] = [q.x - f.origin.x, q.y - f.origin.y]
+      const u = x * f.dir.x + y * f.dir.y
+      return u >= p.u0 && u <= p.u1 && Math.abs(x * f.normal.x + y * f.normal.y) < T2 - IN
+    }) || (v < storey && (unit.pillars ?? []).some((c) => Math.abs(q.x - c.x) < c.wM / 2 - IN && Math.abs(q.y - c.y) < c.hM / 2 - IN))
+  solidCache.set(unit, fn)
+  return fn
+}
+
+/** A passage's white trim in its wall's local frame (u along, w across): [u0, u1, side] legs and heads, [u0, u1, w0, w1] linings. */
+export interface CasingPlan {
+  legs: [number, number, 1 | -1][]
+  heads: [number, number, 1 | -1][]
+  linings: [number, number, number, number][]
+  /** legs and linings run from the sill to here (the head's underside) */
+  top: number
+}
+
+/**
+ * Where a passage's casing can stand, whatever the founder drew around it. A leg goes on a face beside a jamb only as far
+ * as a wall stands behind it and nothing stands in front (up to the 7 cm casing width): a passage dragged out to its
+ * wall's end, or one whose jamb is inside a crossing wall, has no face there — its legs used to hang in the air or vanish
+ * inside the crossing wall, so the frame was lost. Where neither face of an end can take a leg, the jamb that is actually
+ * there (the crossing wall's face, the next wall's end) gets a lining board over the opening's depth instead, and the head
+ * runs over the clear opening. A passage up to its wall's top has no head.
+ */
+export function casingPlan(o: Opening, wall: Wall, unit: Pick<Unit, 'vertices' | 'walls' | 'pillars'>): CasingPlan {
+  const solid = solidAt(unit)
+  const f = core.wallFrame(wall, unit.vertices)
+  const T2 = wall.thicknessM / 2
+  const at = (u: number, w: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * w, y: f.origin.y + f.dir.y * u + f.normal.y * w })
+  const [u0, u1] = [o.offsetM, o.offsetM + o.widthM]
+  const top = Math.min(o.sillM + o.heightM, wall.heightM)
+  const head = top + CASING_W < wall.heightM - 1e-6
+  const STEP = 0.005
+  // how far trim runs from u along `dir` on face `s` at height v: a wall behind it, nothing in front, ≤ CASING_W
+  const reach = (u: number, dir: 1 | -1, s: 1 | -1, v: number) => {
+    let d = 0
+    while (d < CASING_W - 1e-9 && solid(at(u + dir * (d + STEP / 2), s * (T2 - 0.002)), v) && !solid(at(u + dir * (d + STEP / 2), s * (T2 + CASING_P / 2)), v)) d += STEP
+    return Math.min(d, CASING_W)
+  }
+  const plan: CasingPlan = { legs: [], heads: [], linings: [], top }
+  const mid = (o.sillM + top) / 2
+  for (const [jamb, out] of [[u0, -1], [u1, 1]] as const) {
+    let legs = 0
+    for (const s of [1, -1] as const) {
+      const d = reach(jamb, out, s, mid)
+      if (d < 0.015) continue
+      plan.legs.push([Math.min(jamb, jamb + out * d), Math.max(jamb, jamb + out * d), s])
+      legs++
+    }
+    if (legs) continue
+    // no face for a leg: line the jamb that is there — march into the opening past whatever stands in it
+    let J = jamb
+    while (Math.abs(J - jamb) < o.widthM / 2 && solid(at(J - out * 0.0005, 0), mid)) J -= out * 0.001
+    // the board over the opening's depth (both casings' projection included), only where that jamb has a wall behind it
+    const W = T2 + CASING_P
+    const n = Math.ceil((2 * W) / STEP)
+    const runs: [number, number][] = []
+    for (let k = 0; k < n; k++) {
+      if (!solid(at(J + out * 0.002, -W + ((k + 0.5) * 2 * W) / n), mid)) continue
+      const last = runs[runs.length - 1]
+      if (last && last[1] === k) last[1] = k + 1
+      else runs.push([k, k + 1])
+    }
+    for (const [k0, k1] of runs) if (k1 - k0 >= 2) plan.linings.push([Math.min(J, J - out * CASING_P), Math.max(J, J - out * CASING_P), -W + (k0 * 2 * W) / n, -W + (k1 * 2 * W) / n])
+  }
+  if (head) for (const s of [1, -1] as const) plan.heads.push([u0 - reach(u0, -1, s, top + CASING_W / 2), u1 + reach(u1, 1, s, top + CASING_W / 2), s])
+  return plan
 }
 
 /** One part of a column (pillarParts): world-space geometry with metre UVs, and the room it faces (null: outside, the top). */
@@ -259,6 +434,7 @@ export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]):
       front: !!front,
       back: !!back,
       threshold: floorSlotId(unit.finishSlots, front?.id) !== floorSlotId(unit.finishSlots, back?.id),
+      casing: o.kind === 'passage' ? casingPlan(o, wall, unit) : undefined,
     }),
   ]
   for (const [room, side] of curtainSides(o, wall, unit, rooms)) out.push(buildCurtain(o, wall, side, room, unit))
