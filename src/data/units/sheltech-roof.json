@@ -451,21 +451,12 @@
       "openings": []
     },
     {
-      "id": "w_plw_glass",
+      "id": "w_plw_rail",
       "a": "v_m968_857",
       "b": "v_m968_1152",
       "thicknessM": 0.127,
       "heightM": 1.1,
-      "openings": [
-        {
-          "id": "o_plw_glass",
-          "kind": "window",
-          "offsetM": 0,
-          "widthM": 2.944,
-          "heightM": 1.1,
-          "sillM": 0
-        }
-      ]
+      "openings": []
     },
     {
       "id": "w_screen_en_1",

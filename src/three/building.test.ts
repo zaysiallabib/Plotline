@@ -94,8 +94,8 @@ describe('Sheltech tower', () => {
   })
 
   test('floor map: 1 = stand-ins (lounge + gym), 2–6 = A + B, the hand-authored levels on theirs; flats and levels sit on their JSON floor; core rooms exist', () => {
-    expect(T.FLOORS.map((f) => [f.floor, f.flats.length])).toEqual([[-2, 0], [-1, 0], [1, 0], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 0]])
-    expect(T.LEVELS).toEqual({ 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-roof': 7 })
+    expect(T.FLOORS.map((f) => [f.floor, f.flats.length])).toEqual([[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 0]])
+    expect(T.LEVELS).toEqual({ 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-roof': 7 })
     for (const f of T.FLOORS) for (const s of [...f.flats, ...(f.standIns ?? [])]) expect(T.FLATS[s], s).toBeDefined()
     for (const [s, { unit }] of Object.entries(T.FLATS)) {
       if (T.LEVELS[s] !== undefined) expect(T.FLOORS.find((f) => f.floor === unit.floor)?.standIns, unit.name).toEqual([s])

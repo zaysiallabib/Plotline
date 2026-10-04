@@ -3,6 +3,7 @@
  * (src/data/units/sheltech-{ground,b1,b2,roof}.json, read off `Demo drawings/Sheltech/`), in the flats' building frame.
  */
 import { describe, expect, test } from 'vitest'
+import ground from '../data/units/sheltech-ground.json'
 import b1 from '../data/units/sheltech-b1.json'
 import b2 from '../data/units/sheltech-b2.json'
 import roof from '../data/units/sheltech-roof.json'
@@ -13,6 +14,7 @@ import * as core from './index'
 import type { Unit } from './index'
 
 const LEVELS: Record<string, Unit> = {
+  ground: ground as unknown as Unit,
   b1: b1 as unknown as Unit,
   b2: b2 as unknown as Unit,
   roof: roof as unknown as Unit,
