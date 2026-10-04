@@ -12,7 +12,7 @@ import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
-import { studioReducer } from './review'
+import { openReview, studioReducer } from './review'
 import { KEEP, fixesOf, issueKey, markIssues, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
@@ -210,6 +210,56 @@ describe('issues on the plan', () => {
       ['review:r2', 2, 'red'],
       [marks[2].key, 3, 'amber'],
     ])
+  })
+})
+
+describe('walls that stand alone, flush lines (session 19)', () => {
+  const load = (u: Unit) => reducer(initialState(), { type: 'load-unit', unit: u }).unit
+
+  it('a free-standing wall in type-A: "Keep — it stands alone" clears both its ends, one undo; export + re-open keep it', () => {
+    const a = load(typeA as unknown as Unit)
+    const c = deriveRooms(a).sort((p, q) => q.areaSqm - p.areaSqm)[0].centroid
+    const u: Unit = { ...a, vertices: [...a.vertices, v('f1', c.x - 0.6, c.y), v('f2', c.x + 0.6, c.y)], walls: [...a.walls, { ...w('fin', 'f1', 'f2'), heightM: 1.8 }] }
+    const { marks, fixes } = marked(u)
+    const m = markOf(marks, 'dangling-vertex', 'f1')
+    expect(m).toMatchObject({ severity: 'red', message: 'Loose wall end (room open in 3D)' })
+    expect(fixes.get(m.key)!.fixes.at(-1)!.label).toBe(KEEP)
+    const after = applyAndUndo(u, m, KEEP)
+    expect(after.walls.find((x) => x.id === 'fin')).toMatchObject({ standsAlone: true, heightM: 1.8 })
+    expect(marked(after).marks).toEqual([]) // both ends: one choice
+    const back = load(JSON.parse(JSON.stringify(after)))
+    expect(back.walls.find((x) => x.id === 'fin')).toEqual(after.walls.find((x) => x.id === 'fin'))
+    expect(marked(back).marks).toEqual([])
+  })
+
+  it('a kept short piece past a corner survives Join walls on load (unkept, it is removed as a stub)', () => {
+    const stub = (keep?: true) => box([v('s', 4.3, 0)], [{ ...w('stub', 'v2', 's'), ...(keep ? { standsAlone: keep } : {}) }])
+    expect(load(stub()).walls.some((x) => x.id === 'stub')).toBe(false)
+    expect(load(stub(true)).walls.find((x) => x.id === 'stub')).toMatchObject({ standsAlone: true })
+  })
+
+  it("the trace's dead-end row goes once its wall is kept standing alone", () => {
+    const u = splitBottom(box([v('p2', 2, 0.6)], [w('part', 'p1', 'p2')]))
+    const row = { id: 'r1', at: { x: 2, y: 0.6 }, kind: 'unclosed' as const, message: 'A wall ends here without meeting another', entityId: 'p2' }
+    const s: StudioState = { ...stateOf(u), review: { unitId: u.id, items: [row], stats: {} as never } }
+    expect(openReview(s)).toEqual([row])
+    expect(openReview(studioReducer(s, { type: 'update-wall', id: 'part', patch: { standsAlone: true } }))).toEqual([])
+  })
+
+  it('a flush line (height 0) between a lawn and paving survives load; zones with their kinds and levels, no issue', () => {
+    const z = splitBottom(box([v('p0', 2, 0)], [], []))
+    const u: Unit = {
+      ...z,
+      walls: [...z.walls.filter((x) => x.id !== 'top'), w('t1', 'v1', 'p0', [door('d', 0.5)]), w('t2', 'p0', 'v2'), { ...w('edge', 'p0', 'p1'), heightM: 0 }],
+      roomLabels: [
+        { id: 'lawn', name: 'Lawn', kind: 'lawn', x: 1, y: 1.5 },
+        { id: 'pav', name: 'Paving', kind: 'paving', x: 3, y: 1.5, levelM: 0.15 },
+      ],
+    }
+    const t = load(u)
+    expect(t.walls.find((x) => x.id === 'edge')!.heightM).toBe(0)
+    expect(deriveRooms(t).map((r) => [r.kind, r.levelM ?? 0]).sort()).toEqual([['lawn', 0], ['paving', 0.15]])
+    expect(marked(t).marks).toEqual([])
   })
 })
 
