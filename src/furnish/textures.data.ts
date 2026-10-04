@@ -109,7 +109,7 @@ export const TEXTURES: Record<string, TextureSet> = {
   // warm clay quarry tiles, 6 × 6 per map → 300 × 300 mm
   tile_floor_terracotta: ACG('tile_floor_terracotta', 'Terracotta floor tiles 300 × 300', 'Tiles027', 1.8, { ao: true }),
   // mown lawn for ground-floor and rooftop green strips (turf; storey-height planters get a planter_bed instead), 1.4 m a repeat
-  turf: ACG('turf', 'Lawn (turf)', 'Grass004', 1.4),
+  turf: { ...ACG('turf', 'Lawn (turf)', 'Grass004', 1.4), matte: true },
   // session 19, the levels' zones and common rooms (materials.ts ZONE_FLOOR, finishes.ts): Poly Haven 1k maps as downloaded
   paving_pavers: PH('paving_pavers', 'Concrete brick pavers', 'concrete_pavers_02', 2, 'Amal Kumar'),
   asphalt: PH('asphalt', 'Clean asphalt', 'clean_asphalt', 2.1, 'Dimitrios Savva'),
@@ -118,7 +118,7 @@ export const TEXTURES: Record<string, TextureSet> = {
   deck_boards: PH('deck_boards', 'Timber deck boards', 'wood_floor_deck', 1.8, 'Dimitrios Savva'),
   rubber_play: PH('rubber_play', 'Rubber playground surface', 'rubberized_track', 2, 'Charlotte Baglioni'),
   rubber_gym: PH('rubber_gym', 'Rubber gym floor tiles', 'rubber_tiles', 2, 'Amal Kumar'),
-  soil: PH('soil', 'Planter soil', 'farm_soil', 2, 'Amal Kumar'),
+  soil: { ...PH('soil', 'Planter soil', 'farm_soil', 2, 'Amal Kumar'), matte: true },
   // the porcelain tile's own maps at twice the size: 1200 × 1200 large-format tiles (a lobby)
   tile_floor_large: { ...ACG('tile_floor_large', 'Large porcelain floor tiles 1200 × 1200', 'Tiles105', 9.6, { ao: true }), albedo: '/assets/textures/tile_floor_ceramic/albedo.jpg', normal: '/assets/textures/tile_floor_ceramic/normal.jpg', roughness: '/assets/textures/tile_floor_ceramic/roughness.jpg', ao: '/assets/textures/tile_floor_ceramic/ao.jpg', tint: '#d7d7d7' },
 }

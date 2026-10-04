@@ -20,13 +20,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, Pillar, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, buildSkirtings, closeGaps, dressOpening, pillarParts, raiseHeads, wallGeometry } from './details'
+import { GAP_PREFIX, KERB_M, buildSkirtings, closeGaps, dressOpening, liftDrop, liftWall, pillarParts, raiseHeads, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
-import { EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES } from './openings'
 import { Look, type Quality } from './render'
 
@@ -75,6 +75,8 @@ const REFUSED = '#ff4d4d'
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
 const WALK_RADIUS = 0.3
+/** The tallest step the walker takes, up or down (canStep). */
+const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
 const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
 
@@ -154,7 +156,8 @@ export function clampSun(t: THREE.DataTexture): void {
 interface Surface {
   mesh: THREE.Mesh
   /** one entry per material slot; null = fixed edge plaster; `edge` = the finish in its depth-offset variant (wall ends and tops) */
-  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true } | null)[]
+  /** `ref`: a fixed material by rule (a kerb's concrete, a zone's riser), not the room's finish */
+  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef } | null)[]
 }
 
 export class PlotlineScene {
@@ -188,6 +191,12 @@ export class PlotlineScene {
   private mode: SceneMode = 'walk'
   private hour = 13
   private walker: Pt = { x: 0, y: 0 }
+  /** the floor under the walker, eased toward levelAt(walker): a step is climbed like a stair, not a jump */
+  private floorY = 0
+  /** each wall's floors (details.ts wallLift) */
+  private lifts = new Map<Id, WallLift>()
+  /** the walls that stop the walker (not the flush lines and kerbs): what a blocked step slides along */
+  private solid: Pick<Unit, 'vertices' | 'walls'> = { vertices: [], walls: [] }
   private yaw = 0
   private moveTarget: Pt | null = null
   private center = new THREE.Vector3()
@@ -295,20 +304,33 @@ export class PlotlineScene {
     this.center.set((b.minX + b.maxX) / 2, 0, (b.minY + b.maxY) / 2)
     this.radius = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2 + 1
 
+    this.lifts = new Map(unit.walls.map((w) => [w.id, wallLift(w, unit, this.rooms)]))
+    this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
-    // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish
+    // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish, on its floor
     for (const [roomId, mesh] of buildSkirtings(unit, this.rooms)) {
+      const r = this.rooms.find((x) => x.id === roomId)!
+      mesh.position.y = core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y)
       this.staticGroup.add(mesh)
       this.surfaces.push({ mesh, sides: [{ roomId, target: 'floor' }] })
+    }
+    // a step between two faces at different levels along a flush line: its riser, in the upper face's floor
+    for (const { room, geo } of stepFaces(unit, this.rooms)) {
+      const mesh = new THREE.Mesh(geo)
+      mesh.receiveShadow = true
+      this.staticGroup.add(mesh)
+      this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: 'floor', ...(core.isOutdoor(room.kind) ? { ref: CONCRETE } : {}) }] }) // a zone's edge: concrete
     }
     // indirect light × where the sky reaches (daylight.ts)
     const day = bakeDaylight(unit, this.rooms, this.cover)
     for (const s of this.surfaces) {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
+      // the bake reads a wall on 0; then it stands on its floors (details.ts liftWall)
+      if (kind === 'wall' && this.lifts.has(s.mesh.userData.id)) liftWall(s.mesh.geometry, unit.walls.find((w) => w.id === s.mesh.userData.id)!, unit, this.lifts.get(s.mesh.userData.id)!)
     }
-    const storey = Math.max(0, ...unit.walls.map((w) => w.heightM)) || 3.048
+    const storey = storeyTop(unit, this.rooms) || 3.048
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
     this.applyMaterials()
@@ -322,6 +344,7 @@ export class PlotlineScene {
     }
     const first = this.rooms[0]
     this.walker = first ? { ...first.centroid } : { x: this.center.x, y: this.center.z }
+    this.floorY = this.levelAt(this.walker)
     this.moveTarget = null
     this.setMode(this.mode)
     void this.loadFurniture(unit)
@@ -387,7 +410,7 @@ export class PlotlineScene {
       this.orbit.target.copy(v?.target ?? this.center)
       this.orbit.update()
     } else {
-      this.rig.position.set(this.walker.x, 0, this.walker.y)
+      this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
       this.camera.position.set(0, EYE, 0)
       this.camera.quaternion.setFromEuler(new THREE.Euler(0, this.yaw, 0, 'YXZ'))
     }
@@ -398,6 +421,7 @@ export class PlotlineScene {
     const room = this.rooms.find((r) => r.id === roomId)
     if (!room) return
     this.walker = { ...room.centroid }
+    this.floorY = this.levelAt(this.walker)
     this.moveTarget = null
     this.setMode('walk')
   }
@@ -405,6 +429,7 @@ export class PlotlineScene {
   /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left), pitchRad down when < 0. Switches to walk mode. */
   spawnAt(p: Pt, yawRad: number, pitchRad = 0): void {
     this.walker = { ...p }
+    this.floorY = this.levelAt(p)
     this.yaw = yawRad
     this.moveTarget = null
     this.setMode('walk')
@@ -519,7 +544,8 @@ export class PlotlineScene {
     const color = s.refused ? REFUSED : SEL
     for (const m of [this.selMat, this.selFoot.material, (this.selBox.userData.lines as THREE.LineSegments).material] as THREE.MeshBasicMaterial[]) m.color.set(color)
     const pos = this.selFoot.geometry.getAttribute('position') as THREE.BufferAttribute
-    s.quad.forEach((p, i) => pos.setXYZ(i, p.x, 0.015, p.y)) // over the 14 mm contact shadows and 12 mm rugs
+    const floor = (o.userData.floorM as number | undefined) ?? 0
+    s.quad.forEach((p, i) => pos.setXYZ(i, p.x, floor + 0.015, p.y)) // over the 14 mm contact shadows and 12 mm rugs
     pos.needsUpdate = true
     this.selFoot.visible = true
   }
@@ -547,6 +573,9 @@ export class PlotlineScene {
       }
       o.position.x = p.x
       o.position.z = p.y
+      const floor = this.floorOf(p) // moved onto another level: up or down with it
+      o.position.y += floor - (o.userData.floorM ?? 0)
+      o.userData.floorM = floor
       o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
       o.userData.roomId = p.roomId
       o.visible = !p.removed
@@ -560,7 +589,7 @@ export class PlotlineScene {
     this.adding.set(p.id, p)
     if (building) return
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
     const now = this.adding.get(p.id)
     this.adding.delete(p.id)
     if (token !== this.buildToken || this.pieceObject(p.id)) return
@@ -623,10 +652,11 @@ export class PlotlineScene {
   private async rebuildPiece(old: THREE.Object3D, p: FurniturePlacement, size: string): Promise<void> {
     old.userData.size = size // a newer size supersedes this build
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
     const parent = old.parent
     if (token !== this.buildToken || !parent || old.userData.size !== size) return
     obj.userData.size = size
+    obj.userData.floorM = this.floorOf(p)
     obj.visible = !p.removed
     const selected = this.selBox.parent === old
     if (selected) this.selBox.removeFromParent()
@@ -745,7 +775,7 @@ export class PlotlineScene {
       rig: this.rig,
       sun: this.sun,
       targets: this.staticGroup,
-      canStand: (p) => !!this.unit && !!core.roomAt(p, this.rooms, this.unit) && !this.blocked(p),
+      canStand: (p) => !!this.unit && !!core.roomAt(p, this.rooms, this.unit) && core.roomAt(p, this.rooms, this.unit)!.kind !== 'pool' && !this.blocked(p),
       roomAt: (p) => (this.unit ? core.roomAt(p, this.rooms, this.unit) : null),
       start: () => this.setMode('walk'),
       moved: (p) => (this.walker = p),
@@ -833,7 +863,8 @@ export class PlotlineScene {
     // so a corner two walls share reaches the GPU as the same numbers (no hairline crack between them).
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
-    const geo = wallGeometry(wall, unit, back === null && front !== null ? 1 : 0)
+    const lift = this.lifts.get(wall.id)!
+    const geo = wallGeometry(wall, unit, back === null && front !== null ? 1 : 0, liftDrop(lift))
     if (geo) {
       const mesh = new THREE.Mesh(geo)
       mesh.castShadow = mesh.receiveShadow = true
@@ -841,12 +872,24 @@ export class PlotlineScene {
       this.staticGroup.add(mesh)
       // ends and tops: the finish of the room the wall stands in (its front room, else back), not a fixed white — an end cap
       // beside a coloured wall read as a strip (founder, 2026-10-03); still the depth-offset variant (see applyMaterials)
+      // a kerb is concrete all over; a planter's low edge (≤ 0.6 m) a rendered box with a concrete coping on top
+      const kerb = wall.heightM <= KERB_M ? { ref: CONCRETE } : {}
+      const planter = wall.heightM <= 0.6 && [front, back].some((id) => this.rooms.find((r) => r.id === id)?.kind === 'planter')
       this.surfaces.push({
         mesh,
-        sides: [{ roomId: front, target: 'wall' }, { roomId: back, target: 'wall' }, { roomId: front ?? back, target: 'wall', edge: true }],
+        sides: [
+          { roomId: front, target: 'wall', ...kerb },
+          { roomId: back, target: 'wall', ...kerb },
+          { roomId: front ?? back, target: 'wall', edge: true, ...(planter ? { ref: CONCRETE } : kerb) },
+        ],
       })
     }
-    for (const o of wall.openings) local.add(...dressOpening(o, wall, unit, this.rooms))
+    for (const o of wall.openings) {
+      const t = (o.offsetM + o.widthM / 2) / (f.lengthM || 1) // on the wall's floor at its middle
+      const parts = dressOpening(o, wall, unit, this.rooms)
+      for (const p of parts) p.position.y += lift.base[0] + t * (lift.base[1] - lift.base[0])
+      local.add(...parts)
+    }
   }
 
   /**
@@ -855,8 +898,12 @@ export class PlotlineScene {
    * Every part reads the daylight at its foot in the room it faces.
    */
   private buildPillar(p: Pillar, unit: Unit, day: Daylight, heightM: number): void {
-    const parts = pillarParts(p, heightM, unit, this.rooms)
-    for (const x of parts) mapDaylight(day, x.geo, unit, 'floor', x.room?.id ?? '') // no room: neutral
+    const level = this.levelAt(p) // on its face's floor, up to the storey's top
+    const parts = pillarParts(p, heightM - level, unit, this.rooms)
+    for (const x of parts) {
+      mapDaylight(day, x.geo, unit, 'floor', x.room?.id ?? '') // no room: neutral
+      x.geo.translate(0, level, 0)
+    }
     const room = (core.roomAt(p, this.rooms, unit) ?? parts.find((x) => x.room)?.room)?.id ?? null
     for (const skirting of [false, true]) {
       const list = parts.filter((x) => (x.part === 'skirting') === skirting)
@@ -877,7 +924,7 @@ export class PlotlineScene {
     const pos = new Float32Array(poly.length * 3)
     const uv = new Float32Array(poly.length * 2)
     poly.forEach((p, i) => {
-      pos.set([p.x, 0, p.y], i * 3)
+      pos.set([p.x, core.roomLevelAt(room, unit, p.x, p.y), p.y], i * 3) // its level; a ramp's vertices on its plane
       uv.set([p.x, p.y], i * 2)
     })
     const idx: number[] = []
@@ -920,6 +967,7 @@ export class PlotlineScene {
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) => {
         if (!side) return plaster
+        if (side.ref) return materialFor(side.ref, side.edge, true)
         const zone = side.roomId && zones.get(side.roomId) // an outdoor zone: no buyer finish, its look by kind (materials.ts)
         return zone ? materialFor(zoneFinishRef(zone, side.target), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge)
       })
@@ -927,9 +975,22 @@ export class PlotlineScene {
     }
   }
 
+  /** The ceiling over a room, m above the datum: its floor level + its tallest wall (as buildRoom). */
   private ceilingOf(roomId: Id): number {
-    const hs = this.rooms.find((r) => r.id === roomId)?.wallIds.map((id) => this.unit?.walls.find((w) => w.id === id)?.heightM ?? 3.048) ?? []
-    return hs.length ? Math.max(...hs) : 3.048
+    const r = this.rooms.find((x) => x.id === roomId)
+    const hs = r?.wallIds.map((id) => this.unit?.walls.find((w) => w.id === id)?.heightM ?? 3.048) ?? []
+    return (r && this.unit ? core.roomLevelAt(r, this.unit, r.centroid.x, r.centroid.y) : 0) + (hs.length ? Math.max(...hs) : 3.048)
+  }
+
+  /** The floor level at a plan point (core.floorLevelAt: the smallest face round it; 0 outside every face). */
+  private levelAt(p: Pt): number {
+    return this.unit && this.rooms.some((r) => r.levelM || r.slope) ? core.floorLevelAt(this.unit, p.x, p.y, this.rooms) : 0
+  }
+
+  /** The floor a piece stands on: its room's level at its spot (its room gone: whatever face it is in). */
+  private floorOf(p: FurniturePlacement): number {
+    const r = this.rooms.find((x) => x.id === p.roomId)
+    return r && this.unit ? core.roomLevelAt(r, this.unit, p.x, p.y) : this.levelAt(p)
   }
 
   private async loadFurniture(unit: Unit): Promise<void> {
@@ -938,7 +999,7 @@ export class PlotlineScene {
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
     for (const p of byDistance) {
-      const obj = await buildFurniture(p, this.ceilingOf(p.roomId))
+      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed
@@ -947,6 +1008,7 @@ export class PlotlineScene {
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
     obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
+    obj.userData.floorM = this.floorOf(p)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)
     ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
@@ -1198,7 +1260,7 @@ export class PlotlineScene {
   private blocked(p: Pt): boolean {
     const unit = this.unit!
     for (const w of unit.walls) {
-      if (w.heightM <= 0) continue // a flush line (a zone's edge) is walked across
+      if (w.heightM <= KERB_M) continue // a flush line (a zone's edge) is walked across, a kerb stepped over
       const a = core.vertexById(unit.vertices, w.a)
       const b = core.vertexById(unit.vertices, w.b)
       const dx = b.x - a.x
@@ -1214,19 +1276,29 @@ export class PlotlineScene {
     return false
   }
 
+  /**
+   * A step from the walker to p across floor levels: up or down a step of at most MAX_STEP_M (a kerb, a plinth, the lobby's
+   * steps — climbed like a stair), never further (a sunken generator yard, a retaining edge), never into a pool.
+   */
+  private canStep(p: Pt): boolean {
+    if (core.roomAt(p, this.rooms, this.unit!)?.kind === 'pool') return false
+    return Math.abs(this.levelAt(p) - this.levelAt(this.walker)) <= MAX_STEP_M
+  }
+
   private tryMove(vx: number, vz: number): void {
     const next = { x: this.walker.x + vx, y: this.walker.y + vz }
-    if (!this.blocked(next)) {
+    const ok = (p: Pt) => !this.blocked(p) && this.canStep(p)
+    if (ok(next)) {
       this.walker = next
       return
     }
-    // slide: project the step onto the nearest wall's direction
-    const nw = core.nearestWall(next, this.unit!)
+    // slide: project the step onto the nearest wall's direction (a wall that stops him: never a flush line or a kerb)
+    const nw = core.nearestWall(next, this.solid)
     if (!nw) return
     const { dir } = core.wallFrame(nw.wall, this.unit!.vertices)
     const along = vx * dir.x + vz * dir.y
     const slide = { x: this.walker.x + dir.x * along, y: this.walker.y + dir.y * along }
-    if (!this.blocked(slide)) this.walker = slide
+    if (ok(slide)) this.walker = slide
   }
 
   private tick = (): void => {
@@ -1272,7 +1344,9 @@ export class PlotlineScene {
           if (before === this.walker) this.moveTarget = null // stuck against a wall
         }
       }
-      this.rig.position.set(this.walker.x, 0, this.walker.y)
+      // the eye follows the floor: eased (≈ 0.1 s), so a step is climbed like a stair and a ramp is walked, never a jump
+      this.floorY += (this.levelAt(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
+      this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
     }
     if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
     this.look.render()

@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
+import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, liftDrop, liftWall, pillarParts, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -469,6 +469,35 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(() => furnish(u, rooms)).not.toThrow()
     expect(() => finishSlotsFor(u, rooms)).not.toThrow()
     expect(() => entrySpawn(u, rooms)).not.toThrow()
+  })
+
+  test('levels: a wall stands on its higher floor (height, openings) with a plinth down to the lower; a flat unit has none', () => {
+    const lob = u.walls.find((w) => w.id === 'lob1')!
+    const l = wallLift(lob, u, rooms)
+    expect(l.base[0]).toBeCloseTo(1.067, 6)
+    expect(l.foot[0]).toBeCloseTo(0, 6)
+    const g = wallGeometry(lob, u, 0, liftDrop(l))!
+    liftWall(g, lob, u, l)
+    expect(g.boundingBox!.min.y).toBeCloseTo(0, 6)
+    expect(g.boundingBox!.max.y).toBeCloseTo(1.067 + 3, 6)
+    const a = TEST_UNIT.walls[0]
+    expect(wallLift(a, TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual({ base: [0, 0], foot: [0, 0] })
+    expect(storeyTop(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toBe(Math.max(...TEST_UNIT.walls.map((w) => w.heightM)))
+    expect(storeyTop(u, rooms)).toBeCloseTo(1.067 + 3, 6) // the raised lobby's walls
+  })
+
+  test('levels: a step along a flush line gets a riser on the line, from the lower floor to the upper, facing down-side', () => {
+    const steps = stepFaces(u, rooms)
+    // the lawn (0) beside the ramp (0 at its top → −1 at the far end): one triangle, the lawn above
+    expect(steps).toHaveLength(1)
+    const [{ room, geo }] = steps
+    expect(room.id).toBe('Lawn')
+    geo.computeBoundingBox()
+    expect(geo.boundingBox!.max.y).toBeCloseTo(0, 6)
+    expect(geo.boundingBox!.min.y).toBeCloseTo(-1, 6)
+    const n = geo.attributes.normal
+    expect(n.getX(0)).toBeGreaterThan(0.99) // toward the ramp (+x of the line x = 9)
+    expect(stepFaces(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual([])
   })
 
   test('zones: no skirting in an outdoor zone (the lobby has its own), the lawn floor turf, its wall faces the exterior render', () => {

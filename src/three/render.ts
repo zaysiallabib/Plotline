@@ -22,7 +22,8 @@ import type { Pt, Room, Unit } from '../core'
 import { isCeilingLight, placementSize } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
-import { dayMix, openToSky } from './daylight'
+import { dayMix, isCovered, openToSky } from './daylight'
+import { storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, setGlassSky } from './openings'
 
@@ -173,22 +174,48 @@ export class Look {
     this.lights = []
 
     const heights = new Map(unit.walls.map((w) => [w.id, w.heightM]))
-    const ceilingOf = (r: Room) => Math.max(...r.wallIds.map((id) => heights.get(id) ?? 3)) // as buildRoom
-    this.topY = Math.max(0, ...heights.values())
+    // floor levels (session 19): a room's floor at its label's level (a ramp: its plane), its ceiling that much higher
+    const level = (r: Room, x: number, y: number) => core.roomLevelAt(r, unit, x, y)
+    const ceilingOf = (r: Room, at: { x: number; y: number }) => level(r, at.x, at.y) + Math.max(...r.wallIds.map((id) => heights.get(id) ?? 3)) // as buildRoom
+    this.topY = storeyTop(unit, rooms)
+    const lowest = Math.min(0, ...rooms.flatMap((r) => core.roomPolygon(r, unit).map((p) => level(r, p.x, p.y))))
 
-    // slab: room undersides (centreline polygons) + a box under every wall to reach the outer face
+    // slab: room undersides (centreline polygons, each under its floor) + a box under every wall to reach the outer face
     const roomParts = rooms.map((r) =>
       new THREE.ShapeGeometry(new THREE.Shape(core.roomPolygon(r, unit).map((p) => new THREE.Vector2(p.x, p.y))))
         .rotateX(Math.PI / 2) // plan (x, y) → world (x, 0, z=y), facing down
         .translate(0, -SLAB_M, 0),
     )
-    const wallParts = unit.walls.map((w) => {
+    const underFloors = roomParts.map((g, i) => {
+      const c = g.clone()
+      const p = c.attributes.position
+      for (let k = 0; k < p.count; k++) p.setY(k, level(rooms[i], p.getX(k), p.getZ(k)) - SLAB_M)
+      return c
+    })
+    const sidesOf = (w: Unit['walls'][number]) => {
+      const f = core.wallFrame(w, unit.vertices)
+      const off = w.thicknessM / 2 + 0.05
+      const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+      return [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * off * s, y: mid.y + f.normal.y * off * s }, rooms, unit))
+    }
+    const box = (w: Unit['walls'][number], y: number) => {
       const f = core.wallFrame(w, unit.vertices)
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
-      m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, -(SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
+      m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, y - (SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
       return meterUVs(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
+    }
+    const wallParts = unit.walls.map((w) => box(w, 0))
+    // under the floors: each wall's box under its lower side's floor; none under a flush line (the floors meet on it, and a
+    // box there poked up through a ramp beside it)
+    const footParts = unit.walls.flatMap((w) => (w.heightM > 0 ? [box(w, Math.min(...wallLift(w, unit, rooms).foot))] : []))
+    // the roof closes no wall that stands only among open zones (a kerb, a boundary wall, a screen in a lawn): a beam at the
+    // storey's top over it would hang in the sky and stripe the lawn with its shadow
+    const open = (r: Room | null) => !r || (core.isOutdoor(r.kind) && !isCovered(r, cover))
+    const roofWalls = unit.walls.flatMap((w, i) => {
+      const s = sidesOf(w)
+      return w.heightM > 0 && !(s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open)) ? [wallParts[i]] : []
     })
-    const slabGeo = mergeGeometries([...roomParts, ...wallParts])
+    const slabGeo = mergeGeometries([...underFloors, ...footParts])
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
     // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
     // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
@@ -196,8 +223,8 @@ export class Look {
     // slab is in the roof too, and from below it is the zone's soffit
     const over = cover.map((poly) => new THREE.ShapeGeometry(new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, p.y)))).rotateX(Math.PI / 2).translate(0, -SLAB_M, 0))
     const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover)), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
-    const roofGeo = mergeGeometries([...lifted, ...wallParts])
-    ;[...roomParts, ...wallParts, ...lifted, ...over].forEach((g) => g.dispose())
+    const roofGeo = mergeGeometries([...lifted, ...roofWalls])
+    ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
@@ -207,11 +234,11 @@ export class Look {
     this.indoor.add(roof)
 
     const b = core.unitBounds(unit)
-    this.catcher.position.set((b.minX + b.maxX) / 2, -SLAB_M - 0.01, (b.minY + b.maxY) / 2)
+    this.catcher.position.set((b.minX + b.maxX) / 2, lowest - SLAB_M - 0.01, (b.minY + b.maxY) / 2)
     // a flat with no floor typed (a Studio draft) stands where the Building view puts one (building.ts: floor 2), not on
-    // the street: Dhaka flats start above the ground-floor parking
-    this.ground.position.y = -(unit.floor ?? 2) * STOREY_M - 0.2
-    this.fitBox.set(new THREE.Vector3(b.minX - 0.5, -SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
+    // the street: Dhaka flats start above the ground-floor parking. A ground level's sunken zones stay above the street plane.
+    this.ground.position.y = Math.min(-(unit.floor ?? 2) * STOREY_M - 0.2, lowest - 0.05)
+    this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)
     this.street = buildStreet(unit, b, this.ground.position.y)
@@ -225,13 +252,13 @@ export class Look {
       if (!hung || this.lights.length >= MAX_ROOM_LIGHTS) continue
       const at = { x: hung.x, y: hung.y }
       // just under a flush diffuser; at the fan's light kit / the pendant's globe
-      const lightY = ceilingOf(room) - Math.max(0.12, 0.8 * placementSize(hung).y)
+      const lightY = ceilingOf(room, at) - Math.max(0.12, 0.8 * placementSize(hung).y)
       const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2.6, 0.6, 2)
       light.position.set(at.x, lightY, at.y)
-      light.target.position.set(at.x, 0, at.y)
+      light.target.position.set(at.x, level(room, at.x, at.y), at.y)
       this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm), id: hung.id })
       this.unitGroup.add(light, light.target)
     }
@@ -255,7 +282,8 @@ export class Look {
       if (!p) continue
       light.position.x = p.x
       light.position.z = p.y
-      light.target.position.set(p.x, 0, p.y)
+      light.target.position.x = p.x // its y: the floor under it (setUnit)
+      light.target.position.z = p.y
     }
   }
 

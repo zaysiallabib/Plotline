@@ -84,7 +84,8 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       }
       apply('map', set.albedo, true)
       apply('normalMap', set.normal)
-      apply('roughnessMap', set.roughness)
+      if (set.matte) Object.assign(m, { roughness: 1, normalScale: new THREE.Vector2(0.5, 0.5) })
+      else apply('roughnessMap', set.roughness)
       apply('aoMap', set.ao)
     }
   }
