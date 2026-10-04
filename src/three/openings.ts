@@ -57,6 +57,11 @@ export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughnes
 /** The shower screen: 10 mm clear glass, 10 %. Tinted like the windows it laid a grey sheet across the bath view. */
 export const CLEAR_GLASS = Object.assign(GLASS.clone(), { opacity: 0.1 })
 /**
+ * A glass wall's panes (a lobby's 10–12 mm toughened glass): the faint green of thick float glass, 18 %. As clear as the
+ * shower screen a lobby's glazing read as an empty frame of mullions from the lawn and from inside.
+ */
+export const GLAZING_GLASS = Object.assign(GLASS.clone(), { color: new THREE.Color('#2f4644'), opacity: 0.18 })
+/**
  * A pool's water: clear blue-green over its tiled basin, glossy, a slight ripple (a tileable sum of sines, 1.5 m a repeat,
  * drifting — PlotlineScene.tick); it mirrors the sky as the panes do. No refraction / caustics: a plain standard material.
  */
@@ -87,7 +92,7 @@ export const WATER = new THREE.MeshStandardMaterial({ color: '#2a7d86', roughnes
   WATER.normalScale.set(0.6, 0.6)
 }
 /** Every pane material: PlotlineScene gives them the sky's PMREM, Look.setHour their reflection strength. */
-export const PANES = [GLASS, CLEAR_GLASS, WATER]
+export const PANES = [GLASS, CLEAR_GLASS, GLAZING_GLASS, WATER]
 /** Sky luminance (1 by day) → each pane's reflection at full strength, whatever its opacity. */
 export function setGlassSky(sky: number): void {
   for (const m of PANES) m.envMapIntensity = sky / m.opacity
@@ -417,5 +422,5 @@ function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
     panes.push(slab(a + (i ? F / 2 : 0), a + bay - (i < n - 1 ? F / 2 : 0), s + F, top - F, -0.003, 0.003))
   }
   g.add(part(g, 'frame', 'Glazing frame', 'window-frame', merged(alu, MULLION, true)))
-  g.add(part(g, 'glass', 'Glass', 'window-glass', merged(panes, CLEAR_GLASS)))
+  g.add(part(g, 'glass', 'Glass', 'window-glass', merged(panes, GLAZING_GLASS)))
 }
