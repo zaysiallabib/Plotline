@@ -5,11 +5,12 @@
  */
 import { describe, expect, test } from 'vitest'
 import b1 from '../data/units/banani-b1.json'
+import b2 from '../data/units/banani-b2.json'
 import ground from '../data/units/banani-ground.json'
 import * as core from './index'
 import type { Unit } from './index'
 
-const LEVELS: Unit[] = [ground, b1].map((u) => u as unknown as Unit)
+const LEVELS: Unit[] = [ground, b1, b2].map((u) => u as unknown as Unit)
 
 /** Length of the chord of `poly` through p along x (or y): the clear span a tape measure would give at p. */
 function chord(poly: core.Pt[], p: core.Pt, axis: 'x' | 'y'): number {
