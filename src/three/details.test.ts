@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
+import { GAP_PREFIX, WATER_DROP_M, bayMarkings, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -17,6 +17,8 @@ import { bakeDaylight } from './daylight'
 import { furnish } from '../furnish/presets'
 import { finishSlotsFor } from '../furnish/finishes'
 import { entrySpawn } from '../viewer/spawn'
+import { EXTERIOR_PLASTER, ZONE_FLOOR, zoneFinishRef } from './materials'
+import { buildOpening } from './openings'
 
 test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
   const walls = TEST_UNIT.walls.map((w) =>
@@ -468,5 +470,189 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(() => furnish(u, rooms)).not.toThrow()
     expect(() => finishSlotsFor(u, rooms)).not.toThrow()
     expect(() => entrySpawn(u, rooms)).not.toThrow()
+  })
+
+  test('levels: a wall stands on its LOWER floor, heightM from there; its openings on the higher floor (the riser under the door); a flat unit is untouched', () => {
+    const lob = u.walls.find((w) => w.id === 'lob4')! // the lobby (+1.067) over the lawn (0), its door
+    const l = wallLift(lob, u, rooms)
+    expect(l.base[0]).toBeCloseTo(1.067, 6)
+    expect(l.foot[0]).toBeCloseTo(0, 6)
+    const lifted = liftedWall(lob, u, l)
+    expect(lifted.openings[0].sillM).toBeCloseTo(1.067, 6) // the door opens at the lobby's floor
+    const g = wallGeometry(lifted, u)!
+    liftWall(g, lob, u, l)
+    expect(g.boundingBox!.min.y).toBeCloseTo(0, 6)
+    expect(g.boundingBox!.max.y).toBeCloseTo(3, 6)
+    liftWall(g, lob, u, l, 3.5) // under the slab above: its top reaches it
+    expect(g.boundingBox!.max.y).toBeCloseTo(3.5, 6)
+    expect(roomCeiling(rooms.find((r) => r.id === 'Lobby')!, u, rooms)).toBeCloseTo(3, 6)
+    const a = TEST_UNIT.walls[0]
+    expect(wallLift(a, TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual({ base: [0, 0], foot: [0, 0] })
+    expect(storeyTop(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toBe(Math.max(...TEST_UNIT.walls.map((w) => w.heightM)))
+    expect(storeyTop(u, rooms)).toBeCloseTo(3, 6)
+  })
+
+  test('levels: a step along a flush line gets a riser on the line, from the lower floor to the upper, facing down-side', () => {
+    const steps = stepFaces(u, rooms)
+    // the lawn (0) beside the ramp (0 at its top → −1 at the far end): one triangle, the lawn above
+    expect(steps).toHaveLength(1)
+    const [{ room, geo }] = steps
+    expect(room.id).toBe('Lawn')
+    geo.computeBoundingBox()
+    expect(geo.boundingBox!.max.y).toBeCloseTo(0, 6)
+    expect(geo.boundingBox!.min.y).toBeCloseTo(-1, 6)
+    const n = geo.attributes.normal
+    expect(n.getX(0)).toBeGreaterThan(0.99) // toward the ramp (+x of the line x = 9)
+    expect(stepFaces(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual([])
+  })
+
+  test.each([1.2, 2.1])("a %s m wall standing alone in type-a's living room: no issue, painted and skirted on both faces and both ends, its top capped", (h) => {
+    const a = typeA as unknown as Unit
+    const living = core.deriveRooms(a).find((r) => r.kind === 'living')!
+    const c = living.centroid
+    const u: Unit = {
+      ...a,
+      vertices: [...a.vertices, { id: 'fs1', x: c.x - 0.8, y: c.y }, { id: 'fs2', x: c.x + 0.8, y: c.y }],
+      walls: [...a.walls, { id: 'fs', a: 'fs1', b: 'fs2', thicknessM: 0.127, heightM: h, openings: [], standsAlone: true }],
+    }
+    const issues = (x: Unit) => core.validate(x).map((i) => `${i.level} ${i.code}`).sort()
+    expect(issues(u)).toEqual(issues(a))
+    const rs = core.deriveRooms(u)
+    const w = u.walls.find((x) => x.id === 'fs')!
+    // both faces (probed as buildWall does) are the living room: its paint on each, its finish on the ends and the top
+    const f = core.wallFrame(w, u.vertices)
+    for (const s of [1, -1]) expect(core.roomAt({ x: c.x + f.normal.x * 0.12 * s, y: c.y + f.normal.y * 0.12 * s }, rs, u)?.id).toBe(living.id)
+    const g = wallGeometry(w, u)!
+    const edge = g.groups.find((x) => x.materialIndex === 2)!
+    const p = g.attributes.position
+    const ys: number[] = []
+    const xs: number[] = []
+    for (let i = edge.start; i < edge.start + edge.count; i++) [ys[ys.length], xs[xs.length]] = [p.getY(i), p.getX(i)]
+    expect(ys.filter((y) => Math.abs(y - h) < 1e-6).length).toBeGreaterThanOrEqual(6) // the cap: a quad at the top
+    expect(Math.min(...xs)).toBeCloseTo(c.x - 0.8, 6) // an end cap at each end
+    expect(Math.max(...xs)).toBeCloseTo(c.x + 0.8, 6)
+    const runs = skirtingRuns(u, rs).filter((r) => r.room.id === living.id && Math.abs(r.p.y + r.d.y * r.s0 - c.y) < 0.1 && Math.abs(r.p.x + r.d.x * ((r.s0 + r.s1) / 2) - c.x) < 0.9)
+    expect(new Set(runs.map((r) => `${Math.round(r.n.x)},${Math.round(r.n.y)}`))).toEqual(new Set(['0,1', '0,-1', '1,0', '-1,0']))
+  })
+
+  test('a window to the floor ≥ 1.5 m tall is a glass wall: equal bays ≤ 1.4 m between mullions, no sill board, no curtain; a door ≥ 1.5 m is a pair of leaves', () => {
+    const wall = { id: 'gw', a: 'p1', b: 'p2', thicknessM: 0.25, heightM: 3, openings: [] }
+    const glass = { id: 'g', kind: 'window' as const, offsetM: 0.5, widthM: 6, heightM: 2.7, sillM: 0 }
+    const g = buildOpening(glass, wall)
+    const parts = g.children.map((c) => c.userData.id)
+    expect(parts).toEqual(['g/frame', 'g/glass']) // no stone sill mesh
+    const panes = (g.children[1].children[0] as THREE.Mesh).geometry.attributes.position.count / 24 // a box: 24 vertices
+    expect(panes).toBe(Math.ceil((6 - 0.1) / 1.4))
+    const living = core.deriveRooms(TEST_UNIT).find((r) => r.kind === 'living')!
+    expect(curtainSides(glass, wall, TEST_UNIT, [living])).toEqual([])
+    const leaves = (w: number) => {
+      const d = buildOpening({ id: 'd', kind: 'door', offsetM: 0, widthM: w, heightM: 2.1, sillM: 0, hinge: 'a', swing: 'in' }, wall)
+      const n: string[] = []
+      d.traverse((o) => o.userData.id === 'd/leaf' && n.push(o.userData.id))
+      return n.length
+    }
+    expect(leaves(0.9)).toBe(1)
+    expect(leaves(1.8)).toBe(2)
+  })
+
+  test('a gate: a passage in a 1.8 m boundary wall keeps the wall low (raiseHeads), is a clear gap to its top, no casing; a window there still raises it', () => {
+    const gate = { id: 'gate', kind: 'passage' as const, offsetM: 3, widthM: 3, heightM: 2.1, sillM: 0 }
+    const walls = u.walls.map((w) => (w.id === 'b7' ? { ...w, openings: [gate] } : w)) // b7: the 1.8 m boundary along the lawn
+    const gated = { ...u, walls }
+    expect(raiseHeads(gated)).toBe(gated)
+    const b7 = walls.find((w) => w.id === 'b7')!
+    expect(buildOpening(gate, b7).children).toHaveLength(0)
+    expect(core.wallPieces(b7, core.wallFrame(b7, u.vertices).lengthM).every((p) => p.u1 <= 3 + 1e-9 || p.u0 >= 6 - 1e-9)).toBe(true)
+    const win = { ...gated, walls: walls.map((w) => (w.id === 'b7' ? { ...w, openings: [{ ...gate, kind: 'window' as const, sillM: 0.9, heightM: 1.2 }] } : w)) }
+    expect(raiseHeads(win).walls.find((w) => w.id === 'b7')!.heightM).toBeGreaterThan(1.8)
+  })
+
+  /** a w × d rectangle of flush lines (x right, y down) and extra faces / labels */
+  const rect = (w: number, d: number, kind: core.RoomKind, name = 'P'): Unit => ({
+    ...GROUND_SAMPLE,
+    id: 'r',
+    vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: w, y: 0 }, { id: 'c', x: w, y: d }, { id: 'd', x: 0, y: d }],
+    walls: (['ab', 'bc', 'cd', 'da'] as const).map((k) => ({ id: k, a: k[0], b: k[1], thicknessM: 0.2, heightM: 0, openings: [] })),
+    roomLabels: [{ id: name, name, kind, x: w / 2, y: d / 2, levelM: -0.5 }],
+    pillars: [],
+  })
+
+  test('a pool: 1.2 m deep when it is ≥ 1.5 m wide on average (2 × area / perimeter), else a 0.45 m water body; tiled walls facing in, water just under the rim', () => {
+    for (const [w, d, deep] of [[4, 10, 1.2], [1, 6, 0.45], [3, 3, 1.2], [2, 2, 0.45]] as const) {
+      const u = rect(w, d, 'pool')
+      const [room] = core.deriveRooms(u)
+      const { depth, walls, water } = poolBasin(room, u)
+      expect(depth, `${w} × ${d}`).toBe(deep)
+      walls.computeBoundingBox()
+      expect(walls.boundingBox!.min.y).toBeCloseTo(-0.5 - deep, 6)
+      expect(walls.boundingBox!.max.y).toBeCloseTo(-0.5, 6)
+      const p = walls.attributes.position
+      const n = walls.attributes.normal
+      for (let i = 0; i < p.count; i += 3) {
+        // every wall triangle faces the pool's middle
+        const toC = { x: w / 2 - p.getX(i), z: d / 2 - p.getZ(i) }
+        expect(n.getX(i) * toC.x + n.getZ(i) * toC.z).toBeGreaterThan(0)
+      }
+      water.computeBoundingBox()
+      expect(water.boundingBox!.max.y).toBeCloseTo(-0.5 - WATER_DROP_M, 6)
+      expect(water.attributes.normal.getY(0)).toBeCloseTo(1, 6)
+    }
+  })
+
+  test('a sloped face steeper than 1:3 is a flight of steps (risers ≈ 0.16 m, first tread on the low floor, last on the high); a 1:8 ramp stays a plane', () => {
+    const steps = (run: number, rise: number) => {
+      const u = rect(3, run, 'paving')
+      u.roomLabels = [{ ...u.roomLabels[0], levelM: 0, slope: { toLevelM: rise, dirDeg: 180 } }]
+      const [room] = core.deriveRooms(u)
+      return { flight: isSteps(room, u), g: stepGeometry(room, u) }
+    }
+    const { flight, g } = steps(2, 1)
+    expect(flight).toBe(true)
+    g!.computeBoundingBox()
+    expect(g!.boundingBox!.min.y).toBeCloseTo(0, 6)
+    expect(g!.boundingBox!.max.y).toBeCloseTo(1, 6)
+    const p = g!.attributes.position
+    const treads = new Set<number>()
+    for (let i = 0; i < p.count; i++) if (g!.attributes.normal.getY(i) > 0.99) treads.add(+p.getY(i).toFixed(4))
+    expect(treads.size).toBe(Math.round(1 / 0.16) + 1)
+    expect(steps(8, 1)).toEqual({ flight: false, g: null })
+  })
+
+  test('parking paint: a line on every flush line bounding a bay; each numbered bay its number, reading from the aisle', () => {
+    const u: Unit = {
+      ...rect(7.5, 11, 'driveway', 'Drive'),
+      vertices: [
+        ...[0, 2.5, 5, 7.5].flatMap((x, i) => [{ id: `t${i}`, x, y: 0 }, { id: `m${i}`, x, y: 5 }]),
+        { id: 'c', x: 7.5, y: 11 }, { id: 'd', x: 0, y: 11 },
+      ],
+      walls: [
+        ...[0, 1, 2].map((i) => ({ id: `top${i}`, a: `t${i}`, b: `t${i + 1}`, thicknessM: 0.25, heightM: 3, openings: [] })),
+        ...[0, 1, 2].map((i) => ({ id: `front${i}`, a: `m${i}`, b: `m${i + 1}`, thicknessM: 0.1, heightM: 0, openings: [] })),
+        ...[1, 2].map((i) => ({ id: `sep${i}`, a: `t${i}`, b: `m${i}`, thicknessM: 0.1, heightM: 0, openings: [] })),
+        { id: 'l0', a: 't0', b: 'm0', thicknessM: 0.25, heightM: 3, openings: [] }, { id: 'r0', a: 't3', b: 'm3', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'l1', a: 'm0', b: 'd', thicknessM: 0.25, heightM: 3, openings: [] }, { id: 'r1', a: 'm3', b: 'c', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'bot', a: 'c', b: 'd', thicknessM: 0.25, heightM: 3, openings: [] },
+      ],
+      roomLabels: [
+        { id: 'drive', name: 'Driveway', kind: 'driveway', x: 3.75, y: 8 },
+        ...['12', 'B-7', 'Visitor'].map((name, i) => ({ id: `bay${i}`, name, kind: 'parking' as const, x: 1.25 + 2.5 * i, y: 2.5 })),
+      ],
+    }
+    const { lines, numbers } = bayMarkings(u, core.deriveRooms(u))
+    expect(lines).toHaveLength(5) // two separators + the three bays' fronts; the 3 m walls carry none
+    expect(numbers.map((n) => n.text)).toEqual(['12', 'B-7']) // "Visitor" is no number
+    for (const n of numbers) {
+      expect(n.up.x).toBeCloseTo(0, 6)
+      expect(n.up.y).toBeCloseTo(-1, 6) // from the aisle (y = 5) into the bay
+    }
+  })
+
+  test('zones: no skirting in an outdoor zone (the lobby has its own), the lawn floor turf, its wall faces the exterior render', () => {
+    const runs = skirtingRuns(u, rooms)
+    expect(runs.some((r) => r.room.id === 'Lobby')).toBe(true)
+    expect(runs.filter((r) => core.isOutdoor(r.room.kind))).toEqual([])
+    expect(zoneFinishRef('lawn', 'floor')).toEqual({ kind: 'pbr', textureId: 'turf' })
+    expect(zoneFinishRef('lawn', 'wall')).toBe(EXTERIOR_PLASTER)
+    for (const k of ['lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play'] as const) expect(ZONE_FLOOR[k], k).toBeDefined()
   })
 })
