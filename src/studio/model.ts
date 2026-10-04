@@ -89,7 +89,8 @@ export type Action =
   /** the O tool's picker (Panel, keys 1–4): what the next click places; no widthM = the kind's default */
   | { type: 'pick-opening'; kind: OpeningKind; widthM?: number }
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
-  | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM'>> }
+  /** `standsAlone: true` = "Keep — it stands alone" on a loose end (issues.ts): its free ends are meant */
+  | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM' | 'standsAlone'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
   /** mid-drag (no history of its own): wall `wallId`'s end at `vertexId` moves to a new corner `newId` at the same spot */
   | { type: 'detach'; wallId: Id; vertexId: Id; newId: Id }
@@ -503,7 +504,7 @@ function healStraight(unit: Unit, ids: Iterable<Id>, bentOnly = false): Unit {
     const v = vertexById(u.vertices, id)
     const off = (v.x - fc.origin.x) * fc.normal.x + (v.y - fc.origin.y) * fc.normal.y
     if (Math.abs(off) > 0.02 || fc.lengthM <= EPS || (bentOnly && Math.abs(off) <= EPS)) continue
-    const same = w1.thicknessM === w2.thicknessM && w1.heightM === w2.heightM
+    const same = w1.thicknessM === w2.thicknessM && w1.heightM === w2.heightM && !w1.standsAlone === !w2.standsAlone
     if (!same || u.walls.some((w) => w.id !== w1.id && w.id !== w2.id && wallKey(w.a, w.b) === wallKey(c.a, c.b))) {
       // two widths (or a merge that would double a wall): only straightened, each keeps its own
       if (Math.abs(off) <= EPS) continue
@@ -680,7 +681,8 @@ function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[] } {
   const moved: Id[] = []
   for (const id of ids ?? unit.vertices.map((v) => v.id)) {
     const mine = u.walls.filter((w) => w.a === id || w.b === id)
-    const best = mine.length === 1 ? ahead(u, id, mine[0]) : null
+    // a kept free end (standsAlone) stays put on a whole-unit pass (load / Join walls); dragged, it still joins
+    const best = mine.length === 1 && !(mine[0].standsAlone && !ids) ? ahead(u, id, mine[0]) : null
     if (!best || best.inside) continue
     u = moveEnd(u, mine[0], id, best.to)
     moved.push(id)
@@ -703,7 +705,7 @@ function dropStubs(unit: Unit): { unit: Unit; dropped: number } {
   for (const { id } of unit.walls) {
     const w = u.walls.find((x) => x.id === id)!
     const free = [w.a, w.b].filter((v) => degree(u, v) === 1)
-    if (w.openings.length || free.length !== 1 || degree(u, free[0] === w.a ? w.b : w.a) < 3) continue
+    if (w.standsAlone || w.openings.length || free.length !== 1 || degree(u, free[0] === w.a ? w.b : w.a) < 3) continue
     const L = wallLen(u, w)
     const ends = [vertexById(u.vertices, w.a), vertexById(u.vertices, w.b)]
     const inPillar = (u.pillars ?? []).some((p) => ends.every((q) => Math.abs(q.x - p.x) <= p.wM / 2 + MERGE_M && Math.abs(q.y - p.y) <= p.hM / 2 + MERGE_M))
@@ -1296,6 +1298,7 @@ export const ISSUE_COPY: Record<ValidationIssue['code'], string> = {
   'unlabelled-room': 'Room has no name',
   'label-outside-any-room': 'Label is not inside a closed room',
   'walls-intersect': 'Walls cross — end one wall on the other instead',
+  'island-in-room': 'Walls stand inside a room joined to nothing — join them with a flush line (height 0)',
 }
 
 export interface StudioIssue {
@@ -1435,7 +1438,7 @@ export const normalizeUnit = (u: Unit): Unit => {
     walls: u.walls.map((w) => ({
       ...w,
       thicknessM: num(w.thicknessM) && w.thicknessM > 0 ? w.thicknessM : PARTITION_M,
-      heightM: num(w.heightM) && w.heightM > 0 ? w.heightM : WALL_HEIGHT_M,
+      heightM: num(w.heightM) && w.heightM >= 0 ? w.heightM : WALL_HEIGHT_M, // 0 = a flush line (a zone's edge)
       openings: (w.openings ?? []).map((o) => ({
         ...o,
         // before 'slider' was a kind, a hingeless door ≥ 1.2 m rendered as one: old exports keep their sliders

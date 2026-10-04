@@ -282,6 +282,26 @@ export function nearestWall(
   return best
 }
 
+/**
+ * The floor height of `room` at plan point (x, y), m: its `levelM` (0 when absent); on a ramp (`slope`) the floor runs
+ * linearly from `levelM` at the face's near extent along `dirDeg` (its centreline polygon's lowest projection) to
+ * `slope.toLevelM` at its far extent — a plane, so the 3D floor's vertices at this height are the exact ramp. Clamped to
+ * the two levels outside the face.
+ */
+export function roomLevelAt(room: Pick<Room, 'loop' | 'levelM' | 'slope'>, graph: Pick<Unit, 'vertices'>, x: number, y: number): number {
+  const lo = room.levelM ?? 0
+  const s = room.slope
+  if (!s) return lo
+  const r = (s.dirDeg * Math.PI) / 180
+  const d = { x: Math.sin(r), y: -Math.cos(r) } // clockwise from plan-up (−y), like northDeg
+  const vs = vertexMap(graph.vertices)
+  const along = room.loop.map((id) => vs.get(id)!).map((p) => p.x * d.x + p.y * d.y)
+  const s0 = Math.min(...along)
+  const span = Math.max(...along) - s0
+  const t = span > EPS ? Math.max(0, Math.min(1, (x * d.x + y * d.y - s0) / span)) : 0
+  return lo + t * (s.toLevelM - lo)
+}
+
 /** Smallest containing room wins, so a shaft nested inside a living face resolves to the shaft. */
 export function roomAt(p: Pt, rooms: Room[], graph: Graph): Room | null {
   let best: Room | null = null
