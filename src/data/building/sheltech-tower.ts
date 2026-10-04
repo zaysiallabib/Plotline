@@ -9,20 +9,30 @@
 import type { Pt, Unit } from '../../core'
 import sheltechA from '../units/sheltech-a.json'
 import sheltechB from '../units/sheltech-b.json'
+import sheltechRoof from '../units/sheltech-roof.json'
 import type { Rect } from './demo-tower'
 
 export { FLOOR_M } from './demo-tower'
 
+/**
+ * The flats, and the common levels hand-authored from the same sheets (session 19) — in the building frame (offset 0),
+ * the same shape projectTower emits for a Studio project's traced levels: FLATS entries, FLOORS stand-ins, LEVELS.
+ */
 export const FLATS: Record<string, { unit: Unit; offset: Pt }> = {
   'sheltech-a': { unit: sheltechA as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-b': { unit: sheltechB as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-roof': { unit: sheltechRoof as unknown as Unit, offset: { x: 0, y: 0 } },
 }
 
-/** Level 1 is the community lounge + gym (not flats): the flats' shells stand in for its massing. Levels 2–6: A + B. */
+/** Level 1 is the community lounge + gym (not flats): the flats' shells stand in for its massing. Levels 2–6: A + B. The rooftop on the roof slab (7). */
 export const FLOORS: { floor: number; flats: string[]; standIns?: string[] }[] = [
   { floor: 1, flats: [], standIns: ['sheltech-a', 'sheltech-b'] },
   ...[2, 3, 4, 5, 6].map((floor) => ({ floor, flats: ['sheltech-a', 'sheltech-b'] })),
+  { floor: 7, flats: [], standIns: ['sheltech-roof'] },
 ]
+
+/** The common levels and the floor each stands on (as projectTower's LEVELS). */
+export const LEVELS: Record<string, number> = { 'sheltech-roof': 7 }
 
 /** Lobby, stair and lift shaft, ground to roof head (Rooftop.jpg: lobby 6.71 × 2.08 m, stair 4.50 × 2.69 m, lift machine room 4.36 × 2.49 m). */
 export const CORE: [stem: string, room: string][] = [
@@ -79,16 +89,8 @@ export const GROUND = {
   ] as Rect[],
 }
 
-/** Rooftop.jpg: planters along the parapets and the south sunshade; no tanks drawn */
+/** Rooftop.jpg is the real level sheltech-roof (its planters, screens and voids are its own zones and walls) */
 export const ROOF = {
-  gardens: [
-    [-12.5, 0, -11.7, 8.6],
-    [-11, 8.8, -9.7, 11.4],
-    [-12.5, 11.4, -11.7, 18.9],
-    [11.9, 0, 12.7, 5.6],
-    [9.3, 5.4, 11.9, 8.8],
-    [11.9, 8.8, 12.7, 16.7],
-    [1.4, 16.7, 12.7, 18.4],
-  ] as Rect[],
+  gardens: [] as Rect[],
   tanks: [] as Rect[],
 }
