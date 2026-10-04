@@ -1,6 +1,7 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit } from '../core'
+import { isLevel } from '../furnish/finishes'
 import { heightRange, kitAsset, objectKind, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
 import { EYE, RAY, boxInFrame, floorShare, frameHits, pieceInFrame, project, swings } from './frame'
@@ -61,13 +62,8 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   return [...out]
 }
 
-/**
- * A LEVEL — a ground floor, basement, rooftop, a common floor: a unit with outdoor zones (core.isOutdoor) besides
- * planters, or with common rooms (lobby, gym, community, guard: a flat has none) — is entered and listed by its own
- * rules (levelEntry, levelRooms), by kind and geometry; a flat keeps its own.
- */
-const COMMON: Room['kind'][] = ['lobby', 'gym', 'community', 'guard']
-export const isLevel = (rooms: Room[]): boolean => rooms.some((r) => (core.isOutdoor(r.kind) && r.kind !== 'planter') || COMMON.includes(r.kind))
+/** A LEVEL (furnish/finishes.ts isLevel) is entered and listed by its own rules (levelEntry, levelRooms); a flat keeps its own. */
+export { isLevel }
 /** what a walker can stand in: not a shaft, a pool or a planter */
 const walkable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && r.kind !== 'pool' && r.kind !== 'planter'
 /** a wall this low is no barrier: a flush line (0) or a kerb */

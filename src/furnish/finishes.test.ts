@@ -10,7 +10,7 @@ import sheltechB from '../data/units/sheltech-b.json'
 import { initialState, normalizeUnit, reducer } from '../studio/model'
 import { floorSlotId } from '../three/details'
 import { resolveFinishRef } from '../three/materials'
-import { FINISH_CATALOG, finishSlotsFor } from './finishes'
+import { FINISH_CATALOG, finishSlotsFor, isLevel } from './finishes'
 
 const HAND = { 'type-a': typeA, 'type-b': typeB, 'type-c': typeC, 'sheltech-a': sheltechA, 'sheltech-b': sheltechB } as unknown as Record<string, Unit>
 /** the founder's draft as Preview 3D hands it to the viewer: Studio load (Join walls), then the viewer's normalizeUnit */
@@ -44,7 +44,7 @@ describe('finish catalog', () => {
     // a slot only for kinds the flat has none of (the levels' lobby, gym) is not carried
     const mine = FINISH_CATALOG.filter((s) => own(s.id) || (s.kinds !== 'all' && s.kinds.some((k) => kinds.has(k))))
     expect(FINISH_CATALOG.length - mine.length).toBe(2)
-    expect(u.finishSlots).toEqual(mine.map(({ kinds: _, ...s }) => ({ ...s, roomIds: own(s.id) })))
+    expect(u.finishSlots).toEqual(mine.map(({ kinds: _, levelKinds: __, ...s }) => ({ ...s, roomIds: own(s.id) })))
     // the viewer resolves a unit with slots to those very slots: what it renders cannot change
     expect(finishSlotsFor(u, core.deriveRooms(u))).toBe(u.finishSlots)
   })
@@ -77,6 +77,24 @@ describe('finish catalog', () => {
         'type-c Powder room floor: s_floor_living → s_floor_wet',
       ].sort(),
     )
+  })
+})
+
+describe('finishes on a level (by kind, no slots of its own)', () => {
+  const levels = Object.entries(import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>)
+    .map(([p, u]) => ({ p, u, rooms: core.deriveRooms(u) }))
+    .filter(({ rooms }) => isLevel(rooms))
+  it('the stair / lift core walks on the lobby floor, never "Living & dining floors"; a lounge keeps it; each slot touches a room', () => {
+    expect(levels.length).toBeGreaterThanOrEqual(13)
+    for (const { p, u, rooms } of levels) {
+      const slots = finishSlotsFor(u, rooms)
+      for (const r of rooms.filter((x) => x.kind === 'other')) expect(slotOf(slots, r.id, 'floor'), `${p} ${r.name}`).toBe('s_floor_lobby')
+      const living = slots.find((s) => s.id === 's_floor_living')
+      if (living) expect((living.roomIds as string[]).every((id) => rooms.find((r) => r.id === id)!.kind !== 'other'), p).toBe(true)
+      for (const s of slots) expect(s.roomIds === 'all' ? rooms.some((r) => !core.isOutdoor(r.kind)) : s.roomIds.length > 0, `${p} ${s.id}`).toBe(true)
+    }
+    // the founder's flat draft (unnamed 'other' spaces) is no level: they stay on the living floor
+    expect(isLevel(core.deriveRooms(founder))).toBe(false)
   })
 })
 
