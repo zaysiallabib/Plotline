@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, casingPlan, closeGaps, curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
+import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -260,6 +260,65 @@ describe('skirtingRuns', () => {
     const gap = gapTo(u)
     const floating = skirtingRuns(u, core.deriveRooms(u)).filter((r) => along(r).some((q) => gap(q) > 0.02))
     expect(floating.map((r) => `${r.room.name} at ${r.p.x.toFixed(2)},${r.p.y.toFixed(2)}`)).toEqual([])
+  })
+
+  test.each([
+    ['type-a', () => typeA as unknown as Unit],
+    ['the founder draft', founder],
+  ])('%s: every skirting strip is built right side out — each triangle winds the way its normal points, its face 12 mm off the wall', (_, load) => {
+    // a mirrored basis turned the strips inside out: only their back faces drew, on the wall face, z-fighting it (2026-10-04)
+    const u = load()
+    const meshes = [...buildSkirtings(u, core.deriveRooms(u)).values()]
+    expect(meshes.length).toBeGreaterThan(5)
+    let bad = 0
+    let tris = 0
+    for (const m of meshes) {
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry
+      const [p, n] = [g.attributes.position, g.attributes.normal]
+      for (let i = 0; i < p.count; i += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(p, i + k))
+        const wind = b.sub(a).cross(c.sub(a))
+        if (wind.dot(new THREE.Vector3().fromBufferAttribute(n, i)) <= 0) bad++
+        tris++
+      }
+    }
+    expect(tris).toBeGreaterThan(1000)
+    expect(bad).toBe(0)
+  })
+
+  test.each([
+    ['type-a', typeA],
+    ['type-b', typeB],
+    ['type-c', typeC],
+    ['sheltech-a', sheltechA],
+    ['sheltech-b', sheltechB],
+    ['the founder draft', null],
+  ])("%s: no two rooms' strips overlap where it shows (coplanar faces in two tiles z-fight: the founder's tiny brown upright)", (_, json) => {
+    const u = json ? (json as unknown as Unit) : founder()
+    const gap = gapTo(u)
+    const rs = skirtingRuns(u, core.deriveRooms(u))
+    // each strip as its 12 mm footprint in plan: points in it, and an inside test
+    const box = (r: SkirtingRun) => ({ r, lo: Math.min(r.p.x + r.d.x * r.s0, r.p.x + r.d.x * r.s1) - 0.02, hi: Math.max(r.p.x + r.d.x * r.s0, r.p.x + r.d.x * r.s1) + 0.02, lo2: Math.min(r.p.y + r.d.y * r.s0, r.p.y + r.d.y * r.s1) - 0.02, hi2: Math.max(r.p.y + r.d.y * r.s0, r.p.y + r.d.y * r.s1) + 0.02 })
+    // 0.5 mm in from every side: a thinner sliver is below a pixel from anywhere one can stand
+    const inside = (r: SkirtingRun, q: Pt) => {
+      const [x, y] = [q.x - r.p.x, q.y - r.p.y]
+      const [s, t] = [x * r.d.x + y * r.d.y, x * r.n.x + y * r.n.y]
+      return s > r.s0 + 5e-4 && s < r.s1 - 5e-4 && t > 5e-4 && t < 0.012 - 5e-4
+    }
+    const bs = rs.map(box)
+    const bad: string[] = []
+    for (const A of bs)
+      for (const B of bs) {
+        if (A.r.room === B.r.room || A.lo > B.hi || B.lo > A.hi || A.lo2 > B.hi2 || B.lo2 > A.hi2) continue
+        let n = 0
+        for (let s = A.r.s0; s <= A.r.s1; s += 0.002)
+          for (let t = 0.001; t < 0.012; t += 0.002) {
+            const q = { x: A.r.p.x + A.r.d.x * s + A.r.n.x * t, y: A.r.p.y + A.r.d.y * s + A.r.n.y * t }
+            if (inside(B.r, q) && gap(q) > 1e-4) n++
+          }
+        if (n) bad.push(`${A.r.room.name} × ${B.r.room.name} at ${A.r.p.x.toFixed(2)},${A.r.p.y.toFixed(2)}`)
+      }
+    expect(bad).toEqual([])
   })
 
   test("the founder's jamb: the 13 cm jog that pokes 1.25 cm into Space 1 past its outline gets Space 1's tile on its face", () => {

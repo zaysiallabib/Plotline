@@ -50,6 +50,23 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
     const r = core.roomAt(p, rooms, unit)
     return r && !NO_SKIRTING.includes(r.kind) ? r : null
   }
+  // a short strip (a wall end, a reveal) keeps only what lies on its own room's floor or inside a wall: where two ends
+  // cross at a traced jog, two rooms' strips filled the same corner and their tops z-fought
+  const solid = solidAt(unit)
+  const short = (r: SkirtingRun) => {
+    const k = Math.max(1, Math.ceil((r.s1 - r.s0) / 0.004))
+    const at = (i: number) => r.s0 + ((r.s1 - r.s0) * i) / k
+    const keep: [number, number][] = []
+    for (let i = 0; i < k; i++) {
+      const s = (at(i) + at(i + 1)) / 2
+      const q = { x: r.p.x + r.d.x * s + (r.n.x * SKIRTING_T) / 2, y: r.p.y + r.d.y * s + (r.n.y * SKIRTING_T) / 2 }
+      if (!solid(q, SKIRTING_H / 2) && core.roomAt(q, rooms, unit) !== r.room) continue
+      const last = keep[keep.length - 1]
+      if (last && last[1] === at(i)) last[1] = at(i + 1)
+      else keep.push([at(i), at(i + 1)])
+    }
+    for (const [s0, s1] of keep) raw.push({ ...r, s0, s1 })
+  }
   for (const w of unit.walls) {
     if (w.heightM < SKIRTING_H) continue
     const f = core.wallFrame(w, unit.vertices)
@@ -69,21 +86,27 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
       const room = roomOf(at(f.lengthM / 2, side * (T2 + ROOM_PROBE_M)))
       if (!room) continue
       const p = at(0, side * T2)
-      let s = -SKIRTING_T
+      // past each end by the depth (closes an outside corner with the end's strip), unless that is another room's floor
+      const over = (u: number) => (roomOf(at(u, side * (T2 + SKIRTING_T / 2))) === room ? SKIRTING_T : 0)
+      let s = -over(-SKIRTING_T / 2)
       for (const [a, b] of cuts) {
         if (a - Math.max(s, 0) > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a }) // an opening at the end: no 12 mm stub
         s = Math.max(s, b)
       }
-      if (f.lengthM - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + SKIRTING_T })
+      if (f.lengthM - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + over(f.lengthM + SKIRTING_T / 2) })
     }
-    // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage)
+    // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage), each
+    // half in the room on its side and flush with the faces — the face runs' 12 mm overrun closes the corners. Whole and
+    // overrun, an end buried in the next wall poked its 12 mm past that wall's face, in the tile of whichever room the
+    // centre line fell in: a brown oak sliver in the living room's marble skirting (founder: "a tiny brown upright")
     for (const end of [0, 1] as const) {
       const u = end ? f.lengthM : 0
       if (cuts.some(([a, b]) => a < u + 1e-6 && u - 1e-6 < b)) continue // an opening reaches this end: nothing stands there
       const out = { x: f.dir.x * (end ? 1 : -1), y: f.dir.y * (end ? 1 : -1) }
-      const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, 0))
-      if (!room) continue
-      raw.push({ room, p: at(u, -T2), d: f.normal, n: out, s0: -SKIRTING_T, s1: w.thicknessM + SKIRTING_T })
+      for (const side of [1, -1] as const) {
+        const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, (side * T2) / 2))
+        if (room) short({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n: out, s0: 0, s1: T2 })
+      }
     }
     // passage reveals: the tile runs through, each half in the room on that side of the wall
     for (const o of w.openings) {
@@ -97,7 +120,7 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
           const room = roomOf(at(u + into * ROOM_PROBE_M, side * (T2 + ROOM_PROBE_M)))
           if (!room) continue
           // from the centre line to that face and past it by the depth (closes the outside corner with the face run)
-          raw.push({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n, s0: 0, s1: T2 + SKIRTING_T })
+          short({ room, p: at(u, 0), d: { x: f.normal.x * side, y: f.normal.y * side }, n, s0: 0, s1: T2 + SKIRTING_T })
         }
       }
     }
@@ -162,7 +185,10 @@ export function buildSkirtings(unit: Unit, rooms: Room[]): Map<Id, THREE.Mesh> {
   for (const r of skirtingRuns(unit, rooms)) {
     const len = r.s1 - r.s0
     const g = new THREE.BoxGeometry(len, SKIRTING_H, SKIRTING_T)
-    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(r.d.x, 0, r.d.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(r.n.x, 0, r.n.y))
+    // x = up × n, so the basis is right-handed whichever way the run points (the box is symmetric along it): a mirrored
+    // basis turned every strip inside out — its back face drawn on the wall face, z-fighting it as the view moved
+    // (the founder's "small blips whenever I move my view", 2026-10-04)
+    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(r.n.y, 0, -r.n.x), new THREE.Vector3(0, 1, 0), new THREE.Vector3(r.n.x, 0, r.n.y))
     const mid = (r.s0 + r.s1) / 2
     m.setPosition(r.p.x + r.d.x * mid + (r.n.x * SKIRTING_T) / 2, SKIRTING_H / 2, r.p.y + r.d.y * mid + (r.n.y * SKIRTING_T) / 2)
     byRoom.set(r.room.id, [...(byRoom.get(r.room.id) ?? []), meterUVs(g.applyMatrix4(m))])

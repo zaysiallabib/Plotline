@@ -55,6 +55,12 @@ const LIGHT_CD_PER_M2 = 0.1
 const DUSK_BOOST = 8
 /** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
 const MAX_ROOM_LIGHTS = 8
+/**
+ * Debug switches, one cause each, for the founder's "small blips whenever I move my view" (2026-10-04) — add to any viewer
+ * URL: `?ao=0` no ambient occlusion pass, `?shadows=0` no sun shadow map. Not shown anywhere in the UI.
+ */
+const SWITCHES = new URLSearchParams(globalThis.location?.search ?? '')
+export const switchedOff = (name: 'ao' | 'shadows'): boolean => SWITCHES.get(name) === '0'
 
 export class Look {
   private readonly composer: EffectComposer | null = null
@@ -94,7 +100,7 @@ export class Look {
   ) {
     renderer.toneMapping = THREE.NeutralToneMapping
     renderer.toneMappingExposure = EXPOSURE
-    renderer.shadowMap.enabled = true
+    renderer.shadowMap.enabled = !switchedOff('shadows')
     renderer.shadowMap.type = THREE.PCFShadowMap
     sun.castShadow = true
     sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
@@ -124,9 +130,16 @@ export class Look {
       this.composer = new EffectComposer(renderer, rt)
       this.composer.addPass(new RenderPass(scene, camera))
       const ao = (this.ao = new GTAOPass(scene, camera, 1, 1))
+      // a horizon sample off the screen read the edge pixel's depth (clamp): a false-occlusion band along the screen edge
+      // that crawled as the view turned (measured 2026-10-04: all the AO flicker of a pan). Off-screen counts as open.
+      ao.gtaoMaterial.fragmentShader = ao.gtaoMaterial.fragmentShader.replace(
+        'float sampleSceneDepth = getDepth(sampleUv);',
+        'float sampleSceneDepth = any(notEqual(sampleUv, clamp(sampleUv, 0.0, 1.0))) ? 1.0 : getDepth(sampleUv);',
+      )
       ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1, thickness: 0.5, scale: 1, samples: 16 })
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
       ao.blendIntensity = 0.9
+      ao.enabled = !switchedOff('ao')
       this.composer.addPass(ao)
       this.composer.addPass(new OutputPass())
     }
