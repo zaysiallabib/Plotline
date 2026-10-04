@@ -235,9 +235,8 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
       const L0 = dist(far, v)
       const d = { x: (v.x - far.x) / L0, y: (v.y - far.y) / L0 }
       const facing = u.walls
-        .flatMap((x) => {
-          const qid = x === w ? null : degreeOf(u, x.a) === 1 ? x.a : degreeOf(u, x.b) === 1 ? x.b : null
-          if (!qid) return []
+        .flatMap((x) => (x === w ? [] : [x.a, x.b].filter((e) => degreeOf(u, e) === 1).map((qid) => ({ x, qid }))))
+        .flatMap(({ x, qid }) => {
           const q = V.get(qid)!, qf = V.get(qid === x.a ? x.b : x.a)!
           const Lq = dist(qf, q)
           const r = (q.x - v.x) * d.x + (q.y - v.y) * d.y

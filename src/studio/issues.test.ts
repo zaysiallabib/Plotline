@@ -86,6 +86,8 @@ describe('issues on the plan', () => {
     expect(rooms).toHaveLength(0)
     const m = markOf(marks, 'dangling-vertex', 'g1')
     expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`])
+    // the same gap seen from the other end (a's end: the facing piece's b end) offers the same fix
+    expect(fixes.get(markOf(marks, 'dangling-vertex', 'g2').key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`])
     const after = applyAndUndo(u, m, 'Close the gap')
     expect(deriveRooms(after)).toHaveLength(1)
     const left = studioIssues(after, deriveRooms(after)).map((i) => i.code)

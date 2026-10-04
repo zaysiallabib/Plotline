@@ -369,7 +369,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
-    else if (params.get('view') === 'building' && stem) go('building') // the Studio's "Show building"
+    else if (params.get('view') === 'building') go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
     else scene.lockPointer()
   }
 
