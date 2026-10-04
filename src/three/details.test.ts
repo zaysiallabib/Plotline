@@ -2,9 +2,12 @@
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import typeA from '../data/units/type-a.json'
+import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
+import sheltechA from '../data/units/sheltech-a.json'
+import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
-import type { Unit } from '../core'
+import type { Pt, Unit } from '../core'
 import { curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
@@ -192,6 +195,71 @@ describe('skirtingRuns', () => {
     expect(rs.length).toBeGreaterThan(200)
     const bad = rs.filter((r) => [r.p, { x: r.p.x + r.d.x * r.s1, y: r.p.y + r.d.y * r.s1 }].some((p) => p.x < b.minX - 0.5 || p.x > b.maxX + 0.5 || p.y < b.minY - 0.5 || p.y > b.maxY + 0.5))
     expect(bad.map((r) => `${r.room.name} ${r.p.x.toFixed(2)},${r.p.y.toFixed(2)}`)).toEqual([])
+  })
+
+  const founder = () => reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
+  const local = (f: ReturnType<typeof core.wallFrame>, q: Pt) => {
+    const [x, y] = [q.x - f.origin.x, q.y - f.origin.y]
+    return [x * f.dir.x + y * f.dir.y, x * f.normal.x + y * f.normal.y]
+  }
+  /** How far `q` is from anything standing on the floor: every wall's solid pieces from v = 0, and the columns. */
+  const gapTo = (u: Unit) => {
+    const solids = u.walls.flatMap((w) => {
+      const f = core.wallFrame(w, u.vertices)
+      return core.wallPieces(w, f.lengthM).filter((p) => p.v0 <= 0).map((p) => ({ f, p, T2: w.thicknessM / 2 }))
+    })
+    return (q: Pt) =>
+      Math.min(
+        ...solids.map(({ f, p, T2 }) => {
+          const [uu, ww] = local(f, q)
+          return Math.hypot(Math.max(p.u0 - uu, 0, uu - p.u1), Math.max(Math.abs(ww) - T2, 0))
+        }),
+        ...(u.pillars ?? []).map((p) => Math.hypot(Math.max(Math.abs(q.x - p.x) - p.wM / 2, 0), Math.max(Math.abs(q.y - p.y) - p.hM / 2, 0))),
+      )
+  }
+  /** Points along the middle of a strip (6 mm off its wall face), every 4 mm. */
+  const along = (r: SkirtingRun) => Array.from({ length: Math.floor((r.s1 - r.s0) / 0.004) + 1 }, (_, i) => ({ x: r.p.x + r.d.x * (r.s0 + i * 0.004) + r.n.x * 0.006, y: r.p.y + r.d.y * (r.s0 + i * 0.004) + r.n.y * 0.006 }))
+
+  test.each([
+    ['type-a', () => typeA as unknown as Unit],
+    ['the founder draft', founder],
+  ])('%s: no skirting run crosses a passage span (the tile only turns round its jambs)', (_, load) => {
+    const u = load()
+    const rs = skirtingRuns(u, core.deriveRooms(u))
+    const gap = gapTo(u)
+    let passages = 0
+    const bad: string[] = []
+    for (const w of u.walls) {
+      const f = core.wallFrame(w, u.vertices)
+      for (const o of w.openings.filter((o) => o.kind === 'passage')) {
+        passages++
+        // a strip inside the opening's floor footprint must hug something built (a jamb, a wall end), never span the gap
+        const [a, b, h] = [o.offsetM, o.offsetM + o.widthM, w.thicknessM / 2 + 0.012]
+        for (const r of rs) {
+          const q = along(r).find((q) => {
+            const [uu, ww] = local(f, q)
+            return uu > a && uu < b && Math.abs(ww) < h && gap(q) > 0.025
+          })
+          if (q) bad.push(`${r.room.name} across ${o.id} at u=${local(f, q)[0].toFixed(2)}`)
+        }
+      }
+    }
+    expect(passages).toBeGreaterThan(0)
+    expect(bad).toEqual([])
+  })
+
+  test.each([
+    ['type-a', typeA],
+    ['type-b', typeB],
+    ['type-c', typeC],
+    ['sheltech-a', sheltechA],
+    ['sheltech-b', sheltechB],
+    ['the founder draft', null],
+  ])('%s: every strip stands against something built — none floats (a passage at its wall end has no jamb there)', (_, json) => {
+    const u = json ? (json as unknown as Unit) : founder()
+    const gap = gapTo(u)
+    const floating = skirtingRuns(u, core.deriveRooms(u)).filter((r) => along(r).some((q) => gap(q) > 0.02))
+    expect(floating.map((r) => `${r.room.name} at ${r.p.x.toFixed(2)},${r.p.y.toFixed(2)}`)).toEqual([])
   })
 
   test("the founder's jamb: the 13 cm jog that pokes 1.25 cm into Space 1 past its outline gets Space 1's tile on its face", () => {

@@ -37,8 +37,9 @@ const ROOM_PROBE_M = 0.05
  * Skirting follows what is BUILT, not the room outline (founder, 2026-10-03: a traced jog that pokes 1 cm into a room
  * past the outline left a bare wall foot — "the tile places are left empty"). Every wall face, wall end and doorless
  * passage reveal that looks into a room (probed 5 cm out from its middle) gets a run of that room's floor tile, minus
- * the spans of doors / sliders (their frames reach the floor) and windows below skirting height; a passage keeps its
- * run on the face up to the jamb and the reveal carries it through, each half in its own room's tile. Runs are
+ * the spans of doors / sliders / passages and windows below skirting height (never a kerb across an opening); at a
+ * passage the reveal carries it round the jamb, each half in its own room's tile — none where the opening reaches its
+ * wall's end, as no jamb of this wall stands there (the next wall's face carries it). Runs are
  * extended past the face ends by the skirting depth (hidden in the wall at inside corners, closing outside ones), then
  * unioned per room and plane; where two rooms' runs overlap on one plane the longer room keeps the overlap. None in
  * bath / balcony / shaft. Low walls (below skirting height) and walls in no room get none.
@@ -57,12 +58,12 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
     const at = (u: number, v: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * v, y: f.origin.y + f.dir.y * u + f.normal.y * v })
     const span = (o: Opening): [number, number] => [Math.max(0, o.offsetM), Math.min(f.lengthM, o.offsetM + o.widthM)]
     const cuts = w.openings
-      .filter((o) => o.kind !== 'passage' && (o.kind !== 'window' || o.sillM < SKIRTING_H))
+      .filter((o) => o.kind !== 'window' || o.sillM < SKIRTING_H)
       .map(span)
       .filter(([a, b]) => b > a)
       .sort((a, b) => a[0] - b[0])
     const holes = w.openings.map(span).filter(([a, b]) => b > a)
-    // the two faces, cut by doors / low windows; a passage leaves the face run (the jamb is where it turns)
+    // the two faces, cut by doors / passages / low windows (at a passage the jamb is where the tile turns)
     for (const side of [1, -1] as const) {
       const n = { x: f.normal.x * side, y: f.normal.y * side }
       const room = roomOf(at(f.lengthM / 2, side * (T2 + ROOM_PROBE_M)))
@@ -70,14 +71,15 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
       const p = at(0, side * T2)
       let s = -SKIRTING_T
       for (const [a, b] of cuts) {
-        if (a - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a })
+        if (a - Math.max(s, 0) > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: a }) // an opening at the end: no 12 mm stub
         s = Math.max(s, b)
       }
-      if (f.lengthM + SKIRTING_T - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + SKIRTING_T })
+      if (f.lengthM - s > 0.01) raw.push({ room, p, d: f.dir, n, s0: s, s1: f.lengthM + SKIRTING_T })
     }
     // the two ends, across the thickness (an end that stands in a room: a stub, a jog, a wall ending at a passage)
     for (const end of [0, 1] as const) {
       const u = end ? f.lengthM : 0
+      if (cuts.some(([a, b]) => a < u + 1e-6 && u - 1e-6 < b)) continue // an opening reaches this end: nothing stands there
       const out = { x: f.dir.x * (end ? 1 : -1), y: f.dir.y * (end ? 1 : -1) }
       const room = roomOf(at(u + (end ? 1 : -1) * ROOM_PROBE_M, 0))
       if (!room) continue
@@ -88,7 +90,8 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
       if (o.kind !== 'passage') continue
       const [u0, u1] = span(o)
       for (const [u, into] of [[u0, 1], [u1, -1]] as const) {
-        if (holes.some(([a, b]) => a < u - 1e-6 && u + 1e-6 < b)) continue // inside another opening: no reveal there
+        // inside another opening, or at the wall's end (no jamb of this wall: the next wall's face carries the tile)
+        if (u < 1e-6 || u > f.lengthM - 1e-6 || holes.some(([a, b]) => a < u - 1e-6 && u + 1e-6 < b)) continue
         const n = { x: f.dir.x * into, y: f.dir.y * into }
         for (const side of [1, -1] as const) {
           const room = roomOf(at(u + into * ROOM_PROBE_M, side * (T2 + ROOM_PROBE_M)))
