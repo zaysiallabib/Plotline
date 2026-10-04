@@ -4,7 +4,11 @@ import * as bti from './demo-tower'
 import { PROJECTS_KEY, parseProjects, projectTower } from './projects'
 import * as sheltech from './sheltech-tower'
 
-export type Tower = typeof bti
+/**
+ * A built-in tower module's shape; a Studio project's tower adds LEVELS: the stems of his traced ground floor / basements /
+ * rooftop (stand-in shells in FLOORS) and the floor each stands on.
+ */
+export type Tower = typeof bti & { LEVELS?: Record<string, number> }
 
 const TOWERS: Tower[] = [bti, sheltech]
 
@@ -31,6 +35,9 @@ export const towerOf = (unit: Unit, towers: Tower[] = [...projectTowers(), ...TO
 /** `/u/<stem>` of a flat in a Studio project (a click on it in the Building view), or null. */
 export const projectUnit = (stem: string): Unit | null => projectTowers().find((t) => t.FLATS[stem])?.FLATS[stem].unit ?? null
 
-/** The floor a flat stands on in its tower: `floor` when it is listed there, else the first floor that lists it. */
+/** The floor a flat stands on in its tower: `floor` when it is listed there, else the first floor that lists it; a level's own floor. */
 export const floorIn = (t: Tower, stem: string, floor?: number): number =>
-  t.FLOORS.find((f) => f.floor === floor && f.flats.includes(stem))?.floor ?? t.FLOORS.find((f) => f.flats.includes(stem))?.floor ?? floor ?? 2
+  t.LEVELS?.[stem] ?? t.FLOORS.find((f) => f.floor === floor && f.flats.includes(stem))?.floor ?? t.FLOORS.find((f) => f.flats.includes(stem))?.floor ?? floor ?? 2
+
+/** The top floor with flats on it: the rooftop sits above it (a Studio rooftop level is listed one floor higher). */
+export const topFloor = (t: Tower): number => Math.max(...t.FLOORS.filter((f) => f.flats.length).map((f) => f.floor))

@@ -536,8 +536,10 @@ export default function StudioApp() {
     } catch {
       return toast('Draft too large to autosave — export your JSON often.')
     }
+    openBuilding('/u/preview?view=building')
+  }
+  const openBuilding = (url: string) => {
     setBuildingOpen(false)
-    const url = '/u/preview?view=building'
     if (!window.open(url, '_blank')) toast('The building opens in a new tab: the browser blocked it.', { label: 'Open building', onClick: () => window.open(url, '_blank') })
   }
 
@@ -1399,7 +1401,7 @@ export default function StudioApp() {
             onDoubleClick={onDoubleClick}
             onContextMenu={(e) => e.preventDefault()}
           />
-          {buildingOpen && <ProjectPanel unit={unit} roomCount={rooms.length} onShow={showBuilding} onClose={() => setBuildingOpen(false)} onToast={toast} />}
+          {buildingOpen && <ProjectPanel unit={unit} roomCount={rooms.length} onShow={showBuilding} onOpen={openBuilding} onClose={() => setBuildingOpen(false)} onToast={toast} />}
           {trace !== 'pick' && (
             <IssueLayer
               marks={marks}

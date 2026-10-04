@@ -5,7 +5,8 @@ import type { Pt, Unit } from '../core'
 import { floorIn, towerOf } from '../data/building'
 import * as bti from '../data/building/demo-tower'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
-import { flatBounds, makeProject, parseProjects, placeFlat, placementOf, projectTower, removeFlat, sheetOffset, syncUnit } from '../data/building/projects'
+import { alignColumns, flatBounds, levelOf, makeProject, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
+import { topFloor } from '../data/building'
 import * as sheltech from '../data/building/sheltech-tower'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
@@ -191,5 +192,116 @@ describe('a building made in the Studio (projects.ts): floors of traced flats', 
     expect(Math.min(...xs(projectTower(q).FLATS[`${u.id}-m`].unit))).toBeCloseTo(east + 0.5, 6)
     expect(parseProjects('not json')).toEqual([])
     expect(parseProjects(JSON.stringify([{ id: 1 }, p]))).toEqual([p])
+  })
+})
+
+describe('stage 2: his traced ground floor, basements and rooftop as shells (projects.ts levels)', () => {
+  const u = reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
+  const cols = u.pillars ?? []
+  /** a traced level: one closed outline (any angles), its columns, optionally the drawing it was traced off */
+  const level = (id: string, pts: Pt[], pillars: Unit['pillars'] = [], planImage?: Unit['planImage']): Unit => ({
+    ...u,
+    id,
+    name: id,
+    vertices: pts.map((p, i) => ({ id: `${id}-v${i}`, ...p })),
+    walls: pts.map((_, i) => ({ id: `${id}-w${i}`, a: `${id}-v${i}`, b: `${id}-v${(i + 1) % pts.length}`, thicknessM: 0.25, heightM: 3.048, openings: [] })),
+    roomLabels: [],
+    furniture: [],
+    pillars,
+    planImage,
+  })
+  const box = (id: string, x0: number, y0: number, x1: number, y1: number, pillars?: Unit['pillars'], pi?: Unit['planImage']) =>
+    level(id, [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], pillars, pi)
+  const shifted = (d: Pt, noise = 0) => cols.map((q, i) => ({ ...q, id: `c${i}`, x: q.x - d.x + (i % 2 ? noise : -noise), y: q.y - d.y + (i % 3 ? -noise : noise) }))
+
+  test("columns: a level traced in its own frame lands on the flat's columns (shift found; extra / missing columns, 2 cm drawing error)", () => {
+    const d = { x: 3.2, y: -1.7 }
+    const mine = [...shifted(d).slice(2), { id: 'x1', x: 40, y: 40, wM: 0.3, hM: 0.5 }, { id: 'x2', x: -30, y: 5, wM: 0.3, hM: 0.5 }]
+    const a = alignColumns(cols, mine)!
+    expect(a.matched).toBe(cols.length - 2)
+    expect(a.offset.x).toBeCloseTo(d.x, 9)
+    expect(a.offset.y).toBeCloseTo(d.y, 9)
+    const n = alignColumns(cols, shifted(d, 0.02))!
+    expect(Math.hypot(n.offset.x - d.x, n.offset.y - d.y)).toBeLessThan(0.02)
+    expect(n.errM).toBeLessThan(0.04)
+    expect(alignColumns(cols, shifted(d).slice(0, 2))).toBeNull() // two columns: chance on a grid, not an alignment
+    expect(alignColumns(cols, shifted(d).map((q) => ({ ...q, wM: q.wM + 0.4 })))).toBeNull() // other sizes: other columns
+  })
+
+  test('placeOfLevel says how it placed the level: columns, the same drawing, or nothing (he types the shift)', () => {
+    const p = makeProject('p', u, 2, 7, 'left')
+    const d = { x: -4, y: 2.5 }
+    const byCols = placeOfLevel(p, box('g', -14, -1, 14, 21, shifted(d)))!
+    expect(byCols.by).toBe('columns')
+    expect(byCols.matched).toBe(cols.length)
+    expect(byCols.offset.x).toBeCloseTo(d.x, 9)
+    expect(byCols.offset.y).toBeCloseTo(d.y, 9)
+    const pi = u.planImage!
+    const byDrawing = placeOfLevel(p, box('r', 0, 0, 12, 18, [], { ...pi, originPx: { x: pi.originPx.x - pi.pxPerM, y: pi.originPx.y } }))!
+    expect(byDrawing.by).toBe('drawing')
+    expect(byDrawing.offset.x).toBeCloseTo(-1, 9)
+    expect(byDrawing.offset.y).toBeCloseTo(0, 9)
+    expect(placeOfLevel(p, box('b', 0, 0, 30, 20, [], { src: 'Basement 1.jpg', pxPerM: 26, originPx: { x: 0, y: 0 } }))).toBeNull()
+  })
+
+  test('the levels in the tower: B2, B1 below, his ground at 0 (no columns, no stand-ins), the rooftop on the roof above floor 7', () => {
+    const g = box('g', -14, -1, 14, 21)
+    let p = makeProject('p', u, 2, 7, 'left')
+    for (const [x, kind, n] of [[g, 'ground', undefined], [box('b1', -15, -2, 15, 22), 'basement', 1], [box('b2', -15, -2, 15, 22), 'basement', 2], [box('r', 2, 4, 9, 10), 'rooftop', undefined]] as const)
+      p = placeLevel(p, x, kind, n, { x: 0.5, y: 0 }, 'typed')
+    const t = projectTower(p)
+    expect(t.FLOORS.map((f) => [f.floor, f.flats.length, (f.standIns ?? []).join()])).toEqual([
+      [-2, 0, 'b2'],
+      [-1, 0, 'b1'],
+      [0, 0, 'g'],
+      [1, 0, `${u.id},${u.id}-m`],
+      [2, 2, ''],
+      [3, 2, ''],
+      [4, 2, ''],
+      [5, 2, ''],
+      [6, 2, ''],
+      [7, 2, ''],
+      [8, 0, 'r'],
+    ])
+    expect(t.LEVELS).toEqual({ g: 0, b1: -1, b2: -2, r: 8 })
+    expect(topFloor(t)).toBe(7)
+    expect(t.GROUND.columns).toEqual([]) // his ground floor carries its own columns
+    expect(t.FLATS.g).toEqual({ unit: g, offset: { x: 0.5, y: 0 } })
+    expect(t.GROUND.plot[0].x).toBeCloseTo(-14 + 0.5 - 2, 9) // the plot covers his ground floor
+    for (const [s, k] of [['g', 0], ['b1', -1], ['r', 8], [u.id, 2]] as const) expect(floorIn(t, s, undefined), s).toBe(k)
+    expect(projectTower(makeProject('p', u, 2, 7, 'left')).LEVELS).toEqual({}) // no levels: the stage-1 tower
+  })
+
+  test('slots: one ground / rooftop, one basement per number; a flat becomes a level; the only flat stays; take a level out', () => {
+    const p = makeProject('p', u, 2, 7, 'none')
+    let q = placeLevel(placeLevel(p, box('g1', 0, 0, 10, 10), 'ground', undefined, { x: 0, y: 0 }, 'typed'), box('g2', 0, 0, 11, 11), 'ground', undefined, { x: 1, y: 0 }, 'columns')
+    expect(q.levels!.map((l) => [l.unitId, l.kind, l.by])).toEqual([['g2', 'ground', 'columns']])
+    expect(Object.keys(q.units).sort()).toEqual(['g2', u.id].sort()) // g1's copy pruned
+    q = placeLevel(placeLevel(q, box('a', 0, 0, 5, 5), 'basement', 1, { x: 0, y: 0 }, 'typed'), box('b', 0, 0, 5, 5), 'basement', 2, { x: 0, y: 0 }, 'typed')
+    q = placeLevel(q, box('c', 0, 0, 5, 5), 'basement', 1, { x: 0, y: 0 }, 'typed')
+    expect(q.levels!.map((l) => `${l.unitId}:${l.kind}${l.n ?? ''}`).sort()).toEqual(['b:basement2', 'c:basement1', 'g2:ground'])
+    expect(levelOf(q, 'c')).toMatchObject({ kind: 'basement', n: 1 })
+    expect(placeLevel(q, u, 'rooftop', undefined, { x: 0, y: 0 }, 'typed')).toBe(q) // his only flat cannot become the rooftop
+    const sb = sheltech.FLATS['sheltech-b'].unit
+    const two = placeLevel(placeFlat(q, sb, 2, 7, 'none'), sb, 'rooftop', undefined, { x: 0, y: 0 }, 'typed')
+    expect(Object.keys(two.flats)).toEqual([u.id])
+    expect(levelOf(two, sb.id)?.kind).toBe('rooftop')
+    expect(removeLevel(q, 'c').levels!.map((l) => l.unitId).sort()).toEqual(['b', 'g2'])
+    expect(removeLevel(q, 'c').units.c).toBeUndefined()
+    expect(parseProjects(JSON.stringify([q]))).toEqual([q])
+  })
+
+  test('an angled level (a chamfered rooftop, walls at 30° and 45°): placed on its columns and towered as traced, nothing squared', () => {
+    const [c, s] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)]
+    const r = level('angled', [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 8, y: 2 }, { x: 8 + 4 * s, y: 2 + 4 * c }, { x: 3, y: 8 }, { x: 0, y: 5 }], shifted({ x: 0, y: 0 }))
+    expect(core.deriveRooms(r)).toHaveLength(1)
+    const p = makeProject('p', u, 2, 7, 'none')
+    const at = placeOfLevel(p, r)!
+    expect(at.by).toBe('columns')
+    const t = projectTower(placeLevel(p, r, 'rooftop', undefined, at.offset, at.by))
+    expect(t.FLATS.angled.unit).toBe(r) // its walls as traced
+    expect(t.FLOORS.at(-1)).toEqual({ floor: 8, flats: [], standIns: ['angled'] })
+    const b = flatBounds(r)
+    expect([b.maxX, b.maxY].map((v) => +v.toFixed(3))).toEqual([+(8 + 4 * s).toFixed(3), 8])
   })
 })
