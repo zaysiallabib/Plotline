@@ -2,10 +2,13 @@
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import typeA from '../data/units/type-a.json'
+import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
+import sheltechA from '../data/units/sheltech-a.json'
+import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
-import type { Unit } from '../core'
-import { curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
+import type { Pt, Unit } from '../core'
+import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, pillarParts, raiseHeads, skirtingRuns, wallGeometry, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -194,6 +197,130 @@ describe('skirtingRuns', () => {
     expect(bad.map((r) => `${r.room.name} ${r.p.x.toFixed(2)},${r.p.y.toFixed(2)}`)).toEqual([])
   })
 
+  const founder = () => reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
+  const local = (f: ReturnType<typeof core.wallFrame>, q: Pt) => {
+    const [x, y] = [q.x - f.origin.x, q.y - f.origin.y]
+    return [x * f.dir.x + y * f.dir.y, x * f.normal.x + y * f.normal.y]
+  }
+  /** How far `q` is from anything standing on the floor: every wall's solid pieces from v = 0, and the columns. */
+  const gapTo = (u: Unit) => {
+    const solids = u.walls.flatMap((w) => {
+      const f = core.wallFrame(w, u.vertices)
+      return core.wallPieces(w, f.lengthM).filter((p) => p.v0 <= 0).map((p) => ({ f, p, T2: w.thicknessM / 2 }))
+    })
+    return (q: Pt) =>
+      Math.min(
+        ...solids.map(({ f, p, T2 }) => {
+          const [uu, ww] = local(f, q)
+          return Math.hypot(Math.max(p.u0 - uu, 0, uu - p.u1), Math.max(Math.abs(ww) - T2, 0))
+        }),
+        ...(u.pillars ?? []).map((p) => Math.hypot(Math.max(Math.abs(q.x - p.x) - p.wM / 2, 0), Math.max(Math.abs(q.y - p.y) - p.hM / 2, 0))),
+      )
+  }
+  /** Points along the middle of a strip (6 mm off its wall face), every 4 mm. */
+  const along = (r: SkirtingRun) => Array.from({ length: Math.floor((r.s1 - r.s0) / 0.004) + 1 }, (_, i) => ({ x: r.p.x + r.d.x * (r.s0 + i * 0.004) + r.n.x * 0.006, y: r.p.y + r.d.y * (r.s0 + i * 0.004) + r.n.y * 0.006 }))
+
+  test.each([
+    ['type-a', () => typeA as unknown as Unit],
+    ['the founder draft', founder],
+  ])('%s: no skirting run crosses a passage span (the tile only turns round its jambs)', (_, load) => {
+    const u = load()
+    const rs = skirtingRuns(u, core.deriveRooms(u))
+    const gap = gapTo(u)
+    let passages = 0
+    const bad: string[] = []
+    for (const w of u.walls) {
+      const f = core.wallFrame(w, u.vertices)
+      for (const o of w.openings.filter((o) => o.kind === 'passage')) {
+        passages++
+        // a strip inside the opening's floor footprint must hug something built (a jamb, a wall end), never span the gap
+        const [a, b, h] = [o.offsetM, o.offsetM + o.widthM, w.thicknessM / 2 + 0.012]
+        for (const r of rs) {
+          const q = along(r).find((q) => {
+            const [uu, ww] = local(f, q)
+            return uu > a && uu < b && Math.abs(ww) < h && gap(q) > 0.025
+          })
+          if (q) bad.push(`${r.room.name} across ${o.id} at u=${local(f, q)[0].toFixed(2)}`)
+        }
+      }
+    }
+    expect(passages).toBeGreaterThan(0)
+    expect(bad).toEqual([])
+  })
+
+  test.each([
+    ['type-a', typeA],
+    ['type-b', typeB],
+    ['type-c', typeC],
+    ['sheltech-a', sheltechA],
+    ['sheltech-b', sheltechB],
+    ['the founder draft', null],
+  ])('%s: every strip stands against something built — none floats (a passage at its wall end has no jamb there)', (_, json) => {
+    const u = json ? (json as unknown as Unit) : founder()
+    const gap = gapTo(u)
+    const floating = skirtingRuns(u, core.deriveRooms(u)).filter((r) => along(r).some((q) => gap(q) > 0.02))
+    expect(floating.map((r) => `${r.room.name} at ${r.p.x.toFixed(2)},${r.p.y.toFixed(2)}`)).toEqual([])
+  })
+
+  test.each([
+    ['type-a', () => typeA as unknown as Unit],
+    ['the founder draft', founder],
+  ])('%s: every skirting strip is built right side out — each triangle winds the way its normal points, its face 12 mm off the wall', (_, load) => {
+    // a mirrored basis turned the strips inside out: only their back faces drew, on the wall face, z-fighting it (2026-10-04)
+    const u = load()
+    const meshes = [...buildSkirtings(u, core.deriveRooms(u)).values()]
+    expect(meshes.length).toBeGreaterThan(5)
+    let bad = 0
+    let tris = 0
+    for (const m of meshes) {
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry
+      const [p, n] = [g.attributes.position, g.attributes.normal]
+      for (let i = 0; i < p.count; i += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(p, i + k))
+        const wind = b.sub(a).cross(c.sub(a))
+        if (wind.dot(new THREE.Vector3().fromBufferAttribute(n, i)) <= 0) bad++
+        tris++
+      }
+    }
+    expect(tris).toBeGreaterThan(1000)
+    expect(bad).toBe(0)
+  })
+
+  test.each([
+    ['type-a', typeA],
+    ['type-b', typeB],
+    ['type-c', typeC],
+    ['sheltech-a', sheltechA],
+    ['sheltech-b', sheltechB],
+    ['the founder draft', null],
+  ])("%s: no two rooms' strips overlap where it shows (coplanar faces in two tiles z-fight: the founder's tiny brown upright)", (_, json) => {
+    const u = json ? (json as unknown as Unit) : founder()
+    const gap = gapTo(u)
+    const rs = skirtingRuns(u, core.deriveRooms(u))
+    // each strip as its 12 mm footprint in plan: points in it, and an inside test
+    const box = (r: SkirtingRun) => ({ r, lo: Math.min(r.p.x + r.d.x * r.s0, r.p.x + r.d.x * r.s1) - 0.02, hi: Math.max(r.p.x + r.d.x * r.s0, r.p.x + r.d.x * r.s1) + 0.02, lo2: Math.min(r.p.y + r.d.y * r.s0, r.p.y + r.d.y * r.s1) - 0.02, hi2: Math.max(r.p.y + r.d.y * r.s0, r.p.y + r.d.y * r.s1) + 0.02 })
+    // 0.5 mm in from every side: a thinner sliver is below a pixel from anywhere one can stand
+    const inside = (r: SkirtingRun, q: Pt) => {
+      const [x, y] = [q.x - r.p.x, q.y - r.p.y]
+      const [s, t] = [x * r.d.x + y * r.d.y, x * r.n.x + y * r.n.y]
+      return s > r.s0 + 5e-4 && s < r.s1 - 5e-4 && t > 5e-4 && t < 0.012 - 5e-4
+    }
+    const bs = rs.map(box)
+    const bad: string[] = []
+    for (const A of bs)
+      for (const B of bs) {
+        if (A.r.room === B.r.room || A.lo > B.hi || B.lo > A.hi || A.lo2 > B.hi2 || B.lo2 > A.hi2) continue
+        let n = 0
+        for (let s = A.r.s0; s <= A.r.s1; s += 0.002)
+          for (let t = 0.001; t < 0.012; t += 0.002) {
+            const q = { x: A.r.p.x + A.r.d.x * s + A.r.n.x * t, y: A.r.p.y + A.r.d.y * s + A.r.n.y * t }
+            if (inside(B.r, q) && gap(q) > 1e-4) n++
+          }
+        if (n) bad.push(`${A.r.room.name} × ${B.r.room.name} at ${A.r.p.x.toFixed(2)},${A.r.p.y.toFixed(2)}`)
+      }
+    expect(bad).toEqual([])
+  })
+
   test("the founder's jamb: the 13 cm jog that pokes 1.25 cm into Space 1 past its outline gets Space 1's tile on its face", () => {
     // his draft as the Studio loads it (normalizeUnit + Join walls); the jog e420befe runs x = 4.958, y 7.584 → 7.716, 0.152 thick
     const u = reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
@@ -220,4 +347,85 @@ test('curtains only where the other side is open air: never on the study/dining 
     expect(sides('o_bed2_win_e'), `${u.id} onto a veranda`).toEqual(['Bed-2:1'])
     expect(sides('o_bed3_win'), `${u.id} onto an air shaft`).toEqual(['Bed-3:-1'])
   }
+})
+
+describe('the white cased opening, however the partition was drawn (founder, 2026-10-04)', () => {
+  /** TEST_UNIT with the living / bed wall w8 (x = 5, y 0 → 4, 0.127 thick, between the 0.25 m outer walls) given `openings` */
+  const withW8 = (openings: Unit['walls'][number]['openings']): Unit => ({ ...TEST_UNIT, walls: TEST_UNIT.walls.map((w) => (w.id === 'w8' ? { ...w, openings } : w)) })
+  const plan = (u: Unit, id: string) => {
+    const w = u.walls.find((x) => x.openings.some((o) => o.id === id))!
+    return casingPlan(w.openings.find((o) => o.id === id)!, w, u)
+  }
+  const passage = (offsetM: number, widthM: number) => ({ id: 'p', kind: 'passage' as const, offsetM, widthM, sillM: 0, heightM: 2.7 })
+  const mm = (xs: number[]) => xs.map((x) => Math.round(x * 1000))
+
+  test('mid-wall (the Passage tool): legs 7 cm wide on both faces at both jambs, a head on each face, no lining', () => {
+    const c = plan(withW8([passage(1.5, 1.2)]), 'p')
+    expect(c.legs.map(([a, b, s]) => [...mm([a, b]), s])).toEqual([[1430, 1500, 1], [1430, 1500, -1], [2700, 2770, 1], [2700, 2770, -1]])
+    expect(c.heads.map(([a, b]) => mm([a, b]))).toEqual([[1430, 2770], [1430, 2770]])
+    expect(c.linings).toEqual([])
+    expect(c.top).toBe(2.7)
+  })
+
+  test('dragged out to both wall ends (between the outer walls): no leg hangs or hides — each jamb, the outer wall face, is lined over the depth', () => {
+    const c = plan(withW8([passage(0, 4)]), 'p')
+    expect(c.legs).toEqual([])
+    // jambs at the 0.25 m outer walls' faces (y = 0.125, 3.875), 15 mm boards over 0.127 + 2 × 15 mm (±78.5), within 1 mm
+    expect(c.linings.map((l) => mm(l))).toEqual([
+      [124, 139, -78, 79],
+      [3861, 3876, -78, 79],
+    ])
+    expect(c.heads).toHaveLength(2)
+  })
+
+  test("the founder's draft: both passages framed at every jamb (a leg on a face, or a lining where a crossing wall / the next wall forms it)", () => {
+    const u = reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
+    const ps = u.walls.flatMap((w) => w.openings.filter((o) => o.kind === 'passage').map((o) => ({ w, o })))
+    expect(ps).toHaveLength(2)
+    for (const { w, o } of ps) {
+      const c = casingPlan(o, w, u)
+      for (const jamb of [o.offsetM, o.offsetM + o.widthM]) {
+        const framed = c.legs.some(([a, b]) => Math.abs(a - jamb) < 1e-6 || Math.abs(b - jamb) < 1e-6) || c.linings.some(([a, b]) => Math.abs(a - jamb) < 0.08 || Math.abs(b - jamb) < 0.08)
+        expect(framed, `${o.id.slice(0, 8)} at ${jamb.toFixed(3)}`).toBe(true)
+      }
+      expect(c.heads).toHaveLength(2)
+    }
+  })
+
+  test("type-a's 4.66 m passage keeps its look: legs on the faces (one buried in Living's crossing wall is dropped), no lining", () => {
+    const c = plan(typeA as unknown as Unit, 'o_liv_din_open')
+    expect(c.legs).toHaveLength(3)
+    expect(c.linings).toEqual([])
+    expect(c.heads).toHaveLength(2)
+  })
+
+  describe('closeGaps', () => {
+    // w8 split into two walls with a 1.2 m gap and no opening: y 0 → 1.4 and 2.6 → 4
+    const w8 = TEST_UNIT.walls.find((w) => w.id === 'w8')!
+    const gapped: Unit = {
+      ...TEST_UNIT,
+      vertices: [...TEST_UNIT.vertices, { id: 'ga', x: 5, y: 1.4 }, { id: 'gb', x: 5, y: 2.6 }],
+      walls: [...TEST_UNIT.walls.filter((w) => w !== w8), { ...w8, id: 'w8a', b: 'ga', openings: [] }, { ...w8, id: 'w8b', a: 'gb', openings: [] }],
+    }
+
+    test('two wall ends in line with a gap: a stand-in wall with a full-width 2.7 m passage, cased on both walls; rooms unchanged', () => {
+      const u = closeGaps(gapped)
+      const stand = u.walls.filter((w) => w.id.startsWith(GAP_PREFIX))
+      expect(stand.map((w) => [w.id, w.thicknessM, w.heightM, w.openings.map((o) => [o.kind, o.offsetM, +o.widthM.toFixed(3), o.heightM])])).toEqual([['gap:w8a|w8b', 0.127, 3, [['passage', 0, 1.2, 2.7]]]])
+      expect(core.deriveRooms(u)).toEqual(core.deriveRooms(gapped))
+      const c = casingPlan(stand[0].openings[0], stand[0], u)
+      expect(c.legs).toHaveLength(4) // on w8a's and w8b's faces, 7 cm each
+      expect(c.legs.every(([a, b]) => Math.abs(b - a - 0.07) < 1e-9)).toBe(true)
+      expect(c.heads.map(([a, b]) => +(b - a).toFixed(3))).toEqual([1.34, 1.34])
+    })
+
+    test('nothing to close: unchanged units come back as the same object (a railing gap, a wall standing in the gap, no gap)', () => {
+      expect(closeGaps(TEST_UNIT)).toBe(TEST_UNIT)
+      const low = { ...gapped, walls: gapped.walls.map((w) => (w.id.startsWith('w8') ? { ...w, heightM: 1.1 } : w)) }
+      expect(closeGaps(low)).toBe(low)
+      const crossed = { ...gapped, vertices: [...gapped.vertices, { id: 'gs', x: 6, y: 2 }, { id: 'gt', x: 4, y: 2 }], walls: [...gapped.walls, { ...w8, id: 'cross', a: 'gs', b: 'gt', openings: [] }] }
+      expect(closeGaps(crossed)).toBe(crossed)
+      for (const u of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) expect(closeGaps(u), u.id).toBe(u)
+    })
+  })
 })

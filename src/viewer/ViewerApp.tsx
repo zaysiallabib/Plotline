@@ -8,19 +8,19 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
+import type { Configuration, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
 import { projectUnit, topFloor, towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
-import { isUnit, normalizeUnit } from '../studio/model'
-import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action, type StudioState } from '../studio/model'
+import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
+import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
-import Hud from './Hud'
+import Hud, { type HandInfo } from './Hud'
 import Minimap from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
@@ -191,10 +191,10 @@ function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
   )
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; while placing, what and why not. */
+/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand: what and why not. */
 function ArrangePanel(p: {
   piece: FurniturePlacement | null
-  placing: { label: string; error: string | null; ready: boolean } | null
+  held: HandInfo | null
   adding: boolean
   canUndo: boolean
   onTurn: () => void
@@ -206,10 +206,14 @@ function ArrangePanel(p: {
   const s = p.piece && placementSize(p.piece)
   return (
     <aside className="glass arrange">
-      {p.placing ? (
+      {p.held ? (
         <>
-          <div className="arrange-name">Placing: {p.placing.label}</div>
-          <div className={`small ${p.placing.error ? 'refused' : 'muted'}`}>{p.placing.error ?? (p.placing.ready ? 'Click to put it here · R turns · Esc cancels' : 'Point at the floor, a wall or the ceiling')}</div>
+          <div className="arrange-name">
+            {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
+          </div>
+          <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
+            {p.held.error ?? (p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
+          </div>
         </>
       ) : p.piece && s ? (
         <>
@@ -227,10 +231,10 @@ function ArrangePanel(p: {
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
           Add
         </button>
-        <button className="btn" disabled={!p.piece} onClick={p.onTurn}>
+        <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
-        <button className="btn" disabled={!p.piece} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+        <button className="btn" disabled={!p.piece || !!p.held} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
@@ -244,7 +248,92 @@ function ArrangePanel(p: {
   )
 }
 
-function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
+/** Edit openings: why a change could not go into the Studio draft (arrange.ts saveOpenings / draftState) */
+const OPENINGS_WHY = {
+  other: 'Not saved: the Studio has another unit open now. Click Edit openings again to make this one the draft.',
+  changed: 'The plan was changed in the Studio after this preview. Click Preview 3D in the Studio again, then edit the openings here.',
+  full: 'Not saved: this browser’s storage is full. Export the Studio draft, then try again.',
+}
+/** the Studio's 10 px edge snap (flush to a wall end / a neighbour), in metres: about 4" */
+const OPENING_SNAP_M = 0.1
+const KINDS: [OpeningKind, string][] = [
+  ['door', 'Door'],
+  ['window', 'Window'],
+  ['slider', 'Slider'],
+  ['passage', 'Passage'],
+]
+
+/** A length typed in feet-inches (core parseLength: 3'-6", 3.5, 1.07m), set on Enter (which leaves the field, so Del / Ctrl+Z act on the opening again) or when the field is left. */
+function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number) => void }) {
+  const [text, setText] = useState(core.formatFeetInches(m))
+  const [bad, setBad] = useState(false)
+  useEffect(() => setText(core.formatFeetInches(m)), [m])
+  const set = () => {
+    const v = core.parseLength(text)
+    if (v === null || v < 0) return setBad(true)
+    setBad(false)
+    if (Math.abs(v - m) > 1e-4) onSet(v)
+  }
+  return (
+    <label className="ftin">
+      {label}
+      <input value={text} className={bad ? 'bad' : ''} onChange={(e) => (setText(e.target.value), setBad(false))} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onBlur={set} />
+    </label>
+  )
+}
+
+/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches, delete, undo — and where it saves. */
+function OpeningPanel(p: {
+  opening: Opening | null
+  where: string
+  refused: boolean
+  canUndo: boolean
+  onKind: (k: OpeningKind) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onDelete: () => void
+  onUndo: () => void
+}) {
+  const o = p.opening
+  return (
+    <aside className="glass arrange">
+      {o ? (
+        <>
+          <div className="arrange-name">
+            {KINDS.find(([k]) => k === o.kind)?.[1]} · {core.formatFeetInches(o.widthM)} wide
+          </div>
+          <div className={`small ${p.refused ? 'refused' : 'muted'}`}>{p.refused ? 'Not there: another opening is in the way' : p.where}</div>
+          <div className="arrange-row">
+            {KINDS.map(([k, label]) => (
+              <button key={k} className={`btn${o.kind === k ? ' active' : ''}`} onClick={() => k !== o.kind && p.onKind(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="arrange-row">
+            <FtIn label="Width" m={o.widthM} onSet={(widthM) => p.onSize({ widthM })} />
+            <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
+            <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
+          </div>
+        </>
+      ) : (
+        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag an end dot to resize it.</div>
+      )}
+      <div className="arrange-row">
+        <button className="btn" disabled={!o} title="Remove it (Del)" onClick={p.onDelete}>
+          Delete
+        </button>
+        <button className="btn" disabled={!p.canUndo} title="Ctrl+Z" onClick={p.onUndo}>
+          Undo
+        </button>
+      </div>
+      <div className="muted small">Saved into your Studio draft — the floor plan shows it too.</div>
+    </aside>
+  )
+}
+
+function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] }) {
+  // the plan as the 3D shows it: `given`, then whatever Edit openings commits (the scene is rebuilt in place, not re-made)
+  const [unit, setPlanUnit] = useState(given)
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
   const listed = useMemo(() => listedRooms(unit, rooms), [unit, rooms])
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -264,14 +353,15 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
   const [picked, setPicked] = useState(unit.floor ?? 0)
-  // Arrange (staff): the committed layout and its undo steps; a drag's candidate lives in `live` until the drop
+  // Arrange (staff): the committed layout and its undo steps; a resize's candidate lives in `live` until the drop
   const [arranging, setArranging] = useState(false)
   const [sel, setSel] = useState<Id | null>(null)
   const steps = useRef<Steps>({ pieces: unit.furniture, past: [] })
   const live = useRef<Move | null>(null)
-  // the library: open or not; the new piece following the pointer (its id, asset, turn, the last pointer target)
+  // the library: open or not
   const [adding, setAdding] = useState(false)
-  const placing = useRef<{ id: Id; assetId: string; rot: number; last: DragTarget | null } | null>(null)
+  // the piece in hand (arrange.ts Held): dragged, picked up with G, or new from the library; committed only where it fits
+  const held = useRef<Held | null>(null)
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const stem = towerStem(unit)
   const commentingRef = useRef(commenting)
@@ -284,10 +374,10 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     [unit.finishSlots, cfg],
   )
 
-  // engine
+  // engine (made once per unit loaded; an opening edit rebuilds it in place — its rooms, so the closures below, stay the same)
   useEffect(() => {
     const s = new PlotlineScene(canvasRef.current!, { quality: new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high' })
-    s.setUnit(unit)
+    s.setUnit(given)
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
@@ -325,7 +415,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       alive = false
       s.dispose()
     }
-  }, [unit, rooms])
+  }, [given]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     scene?.setConfiguration(fullCfg)
@@ -388,7 +478,8 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
       const k = Number(params.get('pick')) // a level shown from the Studio: its floor picked (a basement: what is above it hidden)
       if (stem && params.has('pick') && Number.isFinite(k)) (setPicked(k), scene.showFloor(k))
-    } else scene.lockPointer()
+    } else if (STAFF && params.get('edit') === 'openings') toggleOpenings() // a built-in unit just made the Studio draft
+    else scene.lockPointer()
   }
 
   const go = (m: SceneMode) => {
@@ -443,7 +534,8 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
   const toggleArrange = () => {
-    stopPlacing()
+    letGo()
+    if (editingOpenings) toggleOpenings() // one editor at a time
     setAdding(false)
     setArranging(!arranging)
     scene?.setArrange(!arranging)
@@ -454,86 +546,177 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       store(HINTED)
     }
   }
-  // ── the library: a picked piece follows the pointer (placePiece: the same rules as a move) until a click drops it
+  // ── the piece in hand (ask 10 / 7): it follows the pointer, or the crosshair while walking with the mouse locked, on
+  // the Studio's rules; a refused spot keeps it in hand, red with the reason; a click / G drops it only where it fits; Esc
+  // puts it back where it was picked up (nothing was committed). The library's new piece is held the same way.
+  const ceilingM = Math.max(...unit.walls.map((w) => w.heightM))
+  /** the candidate shown: the whole layout with the held piece where it is (red when refused) */
+  const showHeld = (h: Held | null) => {
+    held.current = h
+    scene?.placePieces(h?.move?.furniture ?? steps.current.pieces, true)
+    const p = h ? h.move?.piece : arranging ? pieceOf(sel) : null // a walk carry leaves nothing selected
+    scene?.showSelection(p ? { id: p.id, quad: pieceQuad(p), refused: !!h?.move?.error, axes: h ? [] : resizeAxes(p.assetId) } : null) // in hand: no resize dots
+    redraw()
+  }
+  /** Picks `h` up; the scene moves it with the pointer on the floor (or the ceiling: lights, fans), wall pieces by the wall in view. */
+  const grip = (h: Held) => {
+    letGo()
+    held.current = h
+    scene?.setHand({ id: h.id, y: surfaceOf(h.assetId ? { assetId: h.assetId } : (pieceOf(h.id) ?? { assetId: '' })) === 'ceiling' ? ceilingM : 0 })
+  }
   const startPlacing = (assetId: string) => {
-    stopPlacing()
-    const id = core.newId()
-    placing.current = { id, assetId, rot: 0, last: null }
-    const ceiling = Math.max(...unit.walls.map((w) => w.heightM))
-    scene?.setPlacing({ id, y: surfaceOf({ assetId }) === 'ceiling' ? ceiling : 0 })
+    grip({ id: core.newId(), assetId, rot: 0, at: null, move: null })
     setAdding(false)
     setSel(null)
     showSel(null)
   }
-  /** Esc, or done: the ghost goes (ponytail: a cancelled ghost stays in the scene graph, hidden, until the page reloads) */
-  const stopPlacing = () => {
-    if (!placing.current) return
-    placing.current = null
-    live.current = null
-    scene?.setPlacing(null)
-    scene?.placePieces(steps.current.pieces, true)
-    showSel(null)
-    redraw()
+  /** G: the piece under the crosshair / pointer into the hand; nothing there says so */
+  const pickUpAtPointer = () => {
+    const id = scene?.pieceUnderPointer()
+    if (!id) return showToast(`Point ${locked ? 'the dot' : 'the mouse'} at a piece of furniture, then press G`)
+    if (arranging) setSel(id)
+    grip(pickUp(steps.current.pieces, id))
   }
-  const previewPlacing = () => {
-    const pl = placing.current
-    if (!pl) return
-    const at = pl.last && (pl.last.at ?? pl.last.wall?.p)
-    const m = at && placePiece(unit, rooms, steps.current.pieces, pl.assetId, at, pl.rot, pl.id, pl.last!.wall)
-    if (!m) {
-      // the sky out of a window: nothing to put it on
-      live.current = null
-      scene?.placePieces(steps.current.pieces, true)
-      showSel(null)
-      return redraw()
-    }
-    live.current = m
-    scene?.placePieces(m.furniture, true)
-    showSel(m.piece, !!m.error)
-    redraw()
+  /** Esc (or the mouse lock lost mid-carry, or done): the hand empties; the layout is the committed one again */
+  const letGo = () => {
+    if (!held.current) return
+    scene?.setHand(null)
+    showHeld(null) // ponytail: a cancelled library ghost stays in the scene graph, hidden, until the page reloads
+  }
+  /** A click / G / a drag's release: drops it where it fits; refused, it stays in hand (red, the reason on screen) */
+  const dropHand = () => {
+    const h = held.current
+    const furniture = h && dropHeld(h)
+    if (!h?.move || !furniture) return
+    held.current = null
+    scene?.setHand(null)
+    const id = arranging ? h.move.piece.id : null // Arrange keeps it selected; a walk carry leaves nothing selected
+    setSel(id)
+    settle(pushStep(steps.current, furniture), id)
   }
   const onArrange = (e: ArrangeEvent) => {
-    const pl = placing.current
-    if (pl && e.kind === 'drag' && e.id === pl.id) {
-      pl.last = e
-      return previewPlacing()
-    }
-    if (pl && e.kind === 'drop' && e.id === pl.id) {
-      const m = live.current
-      if (!m) return
-      if (m.error) return showToast(m.error)
-      placing.current = null
-      live.current = null
-      scene?.setPlacing(null)
-      setSel(m.piece.id)
-      return settle(pushStep(steps.current, m.furniture), m.piece.id)
-    }
     if (e.kind === 'select') {
       // the piece clicked, so Delete takes just the TV off its unit; a drag of it moves what it rests on (dragTo)
       const p = pieceOf(e.id)
       setSel(p?.id ?? null)
       return showSel(p)
     }
+    if (e.kind === 'drag') {
+      const h = held.current ?? pickUp(steps.current.pieces, e.id) // a drag's first frame picks the piece up
+      if (h.id === e.id) showHeld(holdAt(unit, rooms, steps.current.pieces, h, e))
+      return
+    }
+    if (e.kind === 'drop' && held.current) return dropHand()
     const m = live.current
     if (e.kind === 'drop') {
       live.current = null
       if (!m) return
       if (!m.error) return settle(pushStep(steps.current, m.furniture), m.piece.id)
-      scene?.placePieces(steps.current.pieces, true) // springs back (chairs a resize added go)
+      scene?.placePieces(steps.current.pieces, true) // a refused resize springs back (chairs it added go)
       showSel(pieceOf(m.piece.id))
       return showToast(m.error)
     }
     const p = pieceOf(e.id)
-    const next =
-      e.kind === 'drag'
-        ? dragTo(unit, rooms, steps.current.pieces, e.id, e)
-        : p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
+    const next = p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
     if (!next) return
     live.current = next
-    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this drag added goes again
+    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this resize added goes again
     showSel(next.piece, !!next.error)
   }
   useEffect(() => scene?.onArrange(onArrange))
+  // the browser's Esc frees a locked mouse without telling the page: a carry in walk ends there, the piece back where it was
+  useEffect(() => {
+    const onLock = () => !document.pointerLockElement && !arranging && letGo()
+    document.addEventListener('pointerlockchange', onLock)
+    return () => document.removeEventListener('pointerlockchange', onLock)
+  })
+
+  // ── Edit openings (staff, founder 2026-10-04): the Studio's own reducer over this plan (model.ts drag-opening /
+  // resize-opening / update-opening / delete / undo — one source of rules); a drag shows its outline live, every committed
+  // change goes into the Studio draft + the preview (arrange.ts saveOpenings) and rebuilds the 3D in place, camera kept
+  const [editingOpenings, setEditingOpenings] = useState(false)
+  const [opSel, setOpSel] = useState<Id | null>(null)
+  const plan = useRef<StudioState>({ ...initialState(), unit: given })
+  /** the plan before the gesture in progress (a drag: from its first move to its drop) */
+  const gesture = useRef<StudioState | null>(null)
+  const showOp = (id = opSel) => {
+    const f = id ? findOpening(plan.current.unit, id) : null
+    const { offsetM, widthM, heightM, sillM } = f?.opening ?? { offsetM: 0, widthM: 0, heightM: 0, sillM: 0 }
+    scene?.showOpening(f && { id: f.opening.id, wallId: f.wall.id, offsetM, widthM, heightM, sillM, refused: plan.current.dragBlocked })
+  }
+  /** a plan action, live (a drag's frames, or the first step of a commit); the reducer's refusals toast */
+  const planDo = (a: Action) => {
+    gesture.current ??= plan.current
+    const next = reducer(plan.current, a)
+    if (next.toast) showToast(next.toast.text)
+    plan.current = { ...next, toast: null }
+    showOp()
+    redraw()
+  }
+  /** the gesture done: saved into the draft and the preview, the 3D rebuilt in place; refused there, the plan goes back */
+  const commitPlan = () => {
+    const before = gesture.current
+    gesture.current = null
+    const after = plan.current.unit
+    plan.current = { ...plan.current, dragBlocked: false }
+    if (!before) return showOp()
+    if (JSON.stringify(after.walls) === JSON.stringify(unit.walls)) {
+      // nothing changed (a drag back to where it was, a refused width): no undo step, no rebuild — but an undo keeps its step
+      if (before.history.past.length <= plan.current.history.past.length) plan.current = { ...before, dragBlocked: false }
+      return showOp()
+    }
+    const why = saveOpenings(unit, after)
+    if (why !== 'ok') {
+      plan.current = before
+      showOp()
+      return showToast(OPENINGS_WHY[why], 7000)
+    }
+    setPlanUnit(after)
+    scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
+    showOp()
+    redraw()
+  }
+  const planCommit = (a: Action) => {
+    planDo(a)
+    commitPlan()
+  }
+  const onOpening = (e: OpeningEvent) => {
+    if (e.kind === 'select') {
+      setOpSel(e.id)
+      return showOp(e.id)
+    }
+    if (e.kind === 'drop') return commitPlan()
+    if (!gesture.current) planDo({ type: 'drag-begin' }) // one undo step for the whole drag
+    planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
+  }
+  useEffect(() => scene?.onOpening(onOpening))
+  const toggleOpenings = () => {
+    if (editingOpenings) {
+      setEditingOpenings(false)
+      setOpSel(null)
+      return scene?.setOpeningEdit(false)
+    }
+    const at = draftState(unit)
+    if (at === 'changed') return showToast(OPENINGS_WHY.changed, 7000)
+    if (at === 'other') {
+      // its doors and windows live in the Studio draft: this unit becomes the draft (as Edit plan does), asked first
+      const builtIn = location.pathname !== '/u/preview'
+      const ask = builtIn
+        ? `${unit.name} is a built-in unit. Its doors and windows are edited on your Studio draft: this makes it your Studio draft (replacing the unit open in the Studio — export that first if you need it) and reopens it here. Continue?`
+        : 'Edit openings saves into your Studio draft, and your Studio draft is not this unit. Make this unit your Studio draft? (It replaces the unit open in the Studio — export that one first if you need it.)'
+      if (!window.confirm(ask)) return
+      if (!makeDraft(unit)) return showToast(OPENINGS_WHY.full, 7000)
+      if (builtIn) return location.assign('/u/preview?edit=openings')
+    }
+    letGo()
+    setAdding(false)
+    setArranging(false)
+    scene?.setArrange(false)
+    setSel(null)
+    setCommenting(false)
+    setEditingOpenings(true)
+    scene?.setOpeningEdit(true)
+  }
 
   // keys: Enter (load screen), O, F, C, Esc
   useEffect(() => {
@@ -546,17 +729,27 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       }
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
-      const pl = placing.current
-      if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
-        stopPlacing()
+      const h = held.current
+      if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
+        if (plan.current.history.past.length) planCommit({ type: 'undo' })
+      } else if (editingOpenings && opSel && (k === 'delete' || k === 'backspace')) {
+        setOpSel(null)
+        planCommit({ type: 'delete', ids: [opSel] })
+      } else if (editingOpenings && opSel && k === 'escape') {
+        setOpSel(null)
+        showOp(null)
+      } else if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
+        letGo()
         undo()
-      } else if (pl && k === 'r') {
-        pl.rot += 90
-        previewPlacing()
-      } else if (arranging && k === 'r') turn()
-      else if (arranging && !pl && (k === 'delete' || k === 'backspace')) remove()
+      } else if (h && k === 'r') showHeld(turnHeld(unit, rooms, steps.current.pieces, h))
+      else if (STAFF && k === 'g' && mode !== 'building' && !editingOpenings && !e.repeat) {
+        // G: pick up the piece under the crosshair (or the pointer); G again puts it down where it fits
+        if (h) dropHand()
+        else pickUpAtPointer()
+      } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
+      else if (arranging && k === 'r') turn()
+      else if (arranging && !h && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
-        stopPlacing()
         setAdding(false)
         setSel(null)
         showSel(null)
@@ -610,6 +803,10 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   }
 
   const sqm = Math.round(unit.areaSqft * 0.09290304)
+  const h = held.current
+  const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
+  const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
+  const opF = editingOpenings && opSel ? findOpening(plan.current.unit, opSel) : null
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -692,8 +889,11 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
             arranging={arranging}
-            placing={!!placing.current}
+            hand={handInfo}
+            staff={STAFF}
             onArrange={STAFF ? toggleArrange : null}
+            editingOpenings={editingOpenings}
+            onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
             onEditPlan={
               STAFF
                 ? () => {
@@ -736,25 +936,41 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
               />
             </aside>
           )}
+          {editingOpenings && (
+            <OpeningPanel
+              opening={opF?.opening ?? null}
+              where={opF ? rooms.filter((r) => r.wallIds.includes(opF.wall.id)).map((r) => r.name).join(' ↔ ') || 'On an outside wall' : ''}
+              refused={plan.current.dragBlocked}
+              canUndo={plan.current.history.past.length > 0}
+              onKind={(kind) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch: { kind } })}
+              onSize={(patch) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch })}
+              onDelete={() => {
+                if (!opF) return
+                setOpSel(null)
+                planCommit({ type: 'delete', ids: [opF.opening.id] })
+              }}
+              onUndo={() => planCommit({ type: 'undo' })}
+            />
+          )}
           {arranging && adding && <AddPanel onPick={startPlacing} />}
           {arranging && (
             <ArrangePanel
               piece={pieceOf(sel)}
-              placing={placing.current && { label: placementLabel(placing.current), error: live.current?.error ?? null, ready: !!live.current }}
+              held={handInfo}
               adding={adding}
               canUndo={steps.current.past.length > 0}
-              onTurn={turn}
+              onTurn={() => (held.current ? showHeld(turnHeld(unit, rooms, steps.current.pieces, held.current)) : turn())}
               onDelete={remove}
               onUndo={() => {
-                stopPlacing()
+                letGo()
                 undo()
               }}
               onReset={() => {
-                stopPlacing()
+                letGo()
                 settle(pushStep(steps.current, base))
               }}
               onAdd={() => {
-                stopPlacing()
+                letGo()
                 setAdding((v) => !v)
               }}
             />

@@ -60,7 +60,8 @@ describe('resolveFinishRef on type-a.json', () => {
   })
 
   test('a wall face no room claims is the interior paint (never the exterior tint: a jog poking in read grey), unslotted room floor is the flat default', () => {
-    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'color', color: '#f1efe9' })
+    // the hand-authored warm-white plaster, not a flat colour the white casing vanished into (founder, 2026-10-04)
+    expect(resolveFinishRef(unit.finishSlots, {}, null, 'wall')).toMatchObject({ kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_lifts', 'floor')).toMatchObject({ kind: 'color' })
     expect(resolveFinishRef(unit.finishSlots, {}, 'r_closet', 'floor')).toMatchObject({ kind: 'pbr', textureId: 'wood_floor_oak' })
   })

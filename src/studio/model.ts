@@ -111,8 +111,8 @@ export type Action =
   /** Ctrl+D: selected walls copied 1 ft along their normal (same thickness / height / openings, corners shared only among the copies), labels 0.5 m off; the copies are the selection */
   | { type: 'duplicate' }
   | { type: 'flip'; what: 'hinge' | 'swing' }
-  /** Furniture tool: piece to centre (x, y) on the 3" grid + wall snap (furniture.movePiece); refused → toast, nothing moves */
-  | { type: 'move-piece'; id: Id; x: number; y: number }
+  /** Furniture tool: piece to centre (x, y) on the 3" grid + wall snap (furniture.movePiece), turned to rotationDeg (default: as it stands); refused → toast, nothing moves */
+  | { type: 'move-piece'; id: Id; x: number; y: number; rotationDeg?: number }
   /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
   | { type: 'rotate-piece'; id: Id }
   /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
@@ -849,7 +849,7 @@ function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number)
 
 export function openingDefaults(kind: OpeningKind, bath: boolean): Pick<Opening, 'widthM' | 'heightM' | 'sillM'> {
   if (kind === 'window') return { widthM: 4 * FT, heightM: 4 * FT, sillM: 3 * FT }
-  if (kind === 'passage') return { widthM: 4 * FT, heightM: 7 * FT, sillM: 0 }
+  if (kind === 'passage') return { widthM: 4 * FT, heightM: 2.7, sillM: 0 } // the hand-authored passages' head (lintel below a 3 m slab)
   if (kind === 'slider') return { widthM: 6 * FT, heightM: 7 * FT, sillM: 0 }
   return { widthM: (bath ? 2.5 : 3) * FT, heightM: 7 * FT, sillM: 0 }
 }
@@ -1183,7 +1183,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
           ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM)
           : a.type === 'rotate-piece'
             ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
-            : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, p.rotationDeg)
+            : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)
       if (!r) return s
       if (r.error) return withToast(s, r.error)
       const q = r.piece
