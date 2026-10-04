@@ -125,11 +125,14 @@ export class Building extends THREE.Group {
     const R = this.levelOf(top + 1)
     /** his traced rooftop (a Studio project): its own walls stand on the roof slab instead of the automatic parapet */
     const roofLevel = FLOORS.find((f) => f.floor === top + 1)?.standIns ?? []
-    /** a shell's walls with its openings cut, and its columns, storey high */
-    const shellWalls = (u: Unit) => [
-      ...u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g),
-      ...(u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M)),
-    ]
+    /** a shell's walls with its openings cut, and its columns, storey high (a basement's: no higher than `cap`, under the street) */
+    const shellWalls = (u: Unit, cap = Infinity) => {
+      const g = { vertices: u.vertices, walls: u.walls.map((w) => (w.heightM > cap ? { ...w, heightM: cap } : w)) }
+      return [
+        ...g.walls.map((w) => wallGeometry(w, g)).filter((x) => !!x),
+        ...(u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, Math.min(WALL_M, cap))),
+      ]
+    }
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
     for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: FLOORS.find((f) => f.floor === top)!.flats }]) {
@@ -224,7 +227,9 @@ export class Building extends THREE.Group {
     for (const { floor: k, standIns = [] } of FLOORS.filter((f) => f.floor < 0)) {
       for (const s of standIns) {
         const { unit: u } = FLATS[s]
-        const geos = [...shellWalls(u), ...plate(u, this.roomsOf(s), 0, PLATE_M)].map((g) => g.translate(this.shift(s).x, this.levelOf(k), this.shift(s).y))
+        // under the street: a basement reaching past the plinth must not show its wall tops on the road
+        const cap = this.streetY - this.levelOf(k) - 0.01
+        const geos = [...shellWalls(u, cap), ...plate(u, this.roomsOf(s), 0, PLATE_M)].map((g) => g.translate(this.shift(s).x, this.levelOf(k), this.shift(s).y))
         if (!geos.length) continue
         const mesh = new THREE.Mesh(merge(geos), materialFor(EXTERIOR_PLASTER))
         mesh.castShadow = mesh.receiveShadow = true
