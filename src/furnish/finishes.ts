@@ -1,0 +1,126 @@
+/**
+ * The finish catalog (session 18, ask 3): the buyer-selectable slots every unit offers — ONE source for the options,
+ * their brands / SKUs / integer BDT deltas and their ids. PURE (Vitest runs it in node).
+ *
+ * A unit that carries its own `finishSlots` keeps them: the five hand-authored JSONs carry exactly these slots with the
+ * room lists their author chose (finishes.test.ts holds them to this catalog). A unit with none — a Studio draft, an
+ * auto-trace, a share link of either — gets them here, by ROOM KIND, never by a room's name or a unit's id.
+ * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
+ * after the plan is edited and re-published.
+ */
+import type { FinishSlot, Room, RoomKind, Unit } from '../core'
+
+export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
+  /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
+  kinds: RoomKind[] | 'all'
+}
+
+/** Every kind but the wet rooms' tiled walls: a shaft or an unnamed "Space N" ('other') is painted like a room. */
+const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
+
+export const FINISH_CATALOG: CatalogSlot[] = [
+  {
+    id: 's_floor_beds',
+    label: 'Bedroom floors',
+    target: 'floor',
+    kinds: ['bed', 'study', 'closet'],
+    defaultOptionId: 'fo_beds_oak',
+    options: [
+      { id: 'fo_beds_oak', brand: 'RAK Ceramics', sku: 'RAK-WOOD-OAK', label: 'Oak wood', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'wood_floor_oak' } },
+      { id: 'fo_beds_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 185000, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
+      { id: 'fo_beds_tile', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-600', label: 'Porcelain tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_ceramic' } },
+      { id: 'fo_beds_walnut', brand: 'RAK Ceramics', sku: 'RAK-WOOD-WALNUT', label: 'Dark walnut wood', priceDeltaBdt: 45000, material: { kind: 'pbr', textureId: 'wood_floor_walnut' } },
+    ],
+  },
+  {
+    id: 's_floor_living',
+    label: 'Living & dining floors',
+    target: 'floor',
+    // lobby, foyer, passage and every unnamed closed space walk on the living floor
+    kinds: ['living', 'dining', 'other'],
+    defaultOptionId: 'fo_living_marble',
+    options: [
+      { id: 'fo_living_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
+      { id: 'fo_living_tile', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-600', label: 'Porcelain tile', priceDeltaBdt: -95000, material: { kind: 'pbr', textureId: 'tile_floor_ceramic' } },
+      { id: 'fo_living_oak', brand: 'RAK Ceramics', sku: 'RAK-WOOD-OAK', label: 'Oak wood', priceDeltaBdt: 120000, material: { kind: 'pbr', textureId: 'wood_floor_oak' } },
+      { id: 'fo_living_walnut', brand: 'RAK Ceramics', sku: 'RAK-WOOD-WALNUT', label: 'Dark walnut wood', priceDeltaBdt: 140000, material: { kind: 'pbr', textureId: 'wood_floor_walnut' } },
+    ],
+  },
+  {
+    id: 's_floor_wet',
+    label: 'Kitchen & bath floors',
+    target: 'floor',
+    kinds: ['kitchen', 'bath', 'utility'],
+    defaultOptionId: 'fo_wet_tile',
+    options: [
+      { id: 'fo_wet_tile', brand: 'Akij Ceramics', sku: 'AKIJ-CER-300', label: 'Ceramic tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_ceramic' } },
+      { id: 'fo_wet_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 60000, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
+      { id: 'fo_wet_grey', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-GR600', label: 'Grey porcelain tile', priceDeltaBdt: 15000, material: { kind: 'pbr', textureId: 'tile_floor_ceramic', tint: '#b4b3b0' } },
+    ],
+  },
+  {
+    id: 's_floor_veranda',
+    label: 'Veranda floors',
+    target: 'floor',
+    kinds: ['balcony'],
+    defaultOptionId: 'fo_veranda_tile',
+    options: [
+      { id: 'fo_veranda_tile', brand: 'RAK Ceramics', sku: 'RAK-OUTDOOR-R11', label: 'Outdoor tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_outdoor' } },
+      { id: 'fo_veranda_terracotta', brand: 'Mir Ceramic', sku: 'MIR-TERRA-300', label: 'Terracotta tile', priceDeltaBdt: 18000, material: { kind: 'pbr', textureId: 'tile_floor_terracotta' } },
+    ],
+  },
+  {
+    id: 's_wall_paint',
+    label: 'Wall paint',
+    target: 'wall',
+    kinds: NOT_BATH,
+    defaultOptionId: 'fo_paint_warm_white',
+    options: [
+      { id: 'fo_paint_warm_white', brand: 'Berger', sku: 'BGR-SILK-1027', label: 'Berger Silk Warm White', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' } },
+      { id: 'fo_paint_off_white', brand: 'Asian Paints', sku: 'AP-ROY-L101', label: 'Asian Paints Royale Off White', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#eeebe4' } },
+      { id: 'fo_paint_cream', brand: 'Berger', sku: 'BGR-SILK-2011', label: 'Berger Silk Cream', priceDeltaBdt: 12000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#e9e2d0' } },
+      { id: 'fo_paint_sand', brand: 'Elite Paint', sku: 'ELT-SLK-2108', label: 'Elite Silk Sandstone', priceDeltaBdt: 12000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#e3d6c0' } },
+      { id: 'fo_paint_greige', brand: 'Nippon Paint', sku: 'NP-ODL-1203', label: 'Nippon Warm Greige', priceDeltaBdt: 15000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#d8d0c4' } },
+      { id: 'fo_paint_pale_grey', brand: 'Nippon Paint', sku: 'NP-ODL-0917', label: 'Nippon Pale Grey', priceDeltaBdt: 15000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#d9dad7' } },
+      { id: 'fo_paint_sage', brand: 'Asian Paints', sku: 'AP-ROY-7872', label: 'Asian Paints Royale Sage', priceDeltaBdt: 18000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#d0d8c9' } },
+      { id: 'fo_paint_dusty_blue', brand: 'Asian Paints', sku: 'AP-ROY-8255', label: 'Asian Paints Royale Dusty Blue', priceDeltaBdt: 20000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#bfcad2' } },
+      { id: 'fo_paint_terracotta', brand: 'Elite Paint', sku: 'ELT-SLK-3302', label: 'Elite Silk Soft Terracotta', priceDeltaBdt: 22000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#d8aa92' } },
+      { id: 'fo_paint_slate_blue', brand: 'Berger', sku: 'BGR-SILK-6153', label: 'Berger Silk Slate Blue', priceDeltaBdt: 35000, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#6b7d8f' } },
+    ],
+  },
+  {
+    id: 's_wall_bath',
+    label: 'Bath walls',
+    target: 'wall',
+    kinds: ['bath'],
+    defaultOptionId: 'fo_bathwall_white',
+    options: [
+      { id: 'fo_bathwall_white', brand: 'RAK Ceramics', sku: 'RAK-WALL-WHITE-300', label: 'White wall tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_wall_white' } },
+      { id: 'fo_bathwall_beige', brand: 'Akij Ceramics', sku: 'AKIJ-WALL-BG-3060', label: 'Warm beige wall tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_wall_white', tint: '#ecdfc8' } },
+      { id: 'fo_bathwall_grey_marble', brand: 'DBL Ceramics', sku: 'DBL-WALL-GRM-3060', label: 'Grey marble-look tile', priceDeltaBdt: 45000, material: { kind: 'pbr', textureId: 'tile_wall_marble_grey' } },
+    ],
+  },
+  {
+    id: 's_ceiling',
+    label: 'Ceiling',
+    target: 'ceiling',
+    kinds: 'all',
+    defaultOptionId: 'fo_ceiling_white',
+    options: [
+      { id: 'fo_ceiling_white', brand: 'Berger', sku: 'BERGER-CEILING-WHITE', label: 'Ceiling white', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'plaster_white', tint: '#ffffff' } },
+    ],
+  },
+]
+
+/**
+ * The slots a unit offers: its own when it has any, else the catalog by room kind over `rooms` (core.deriveRooms of the
+ * unit; an unnamed closed face is 'other' → the living floor and the paint). A slot no room falls in is left out, so a
+ * flat without a veranda shows no "Veranda floors". Shafts get no floor slot (the hand-authored units leave theirs out).
+ */
+export function finishSlotsFor(unit: Unit, rooms: Room[]): FinishSlot[] {
+  if (unit.finishSlots?.length) return unit.finishSlots
+  return FINISH_CATALOG.flatMap(({ kinds, ...slot }): FinishSlot[] => {
+    const roomIds = kinds === 'all' ? rooms.map((r) => r.id) : rooms.filter((r) => kinds.includes(r.kind)).map((r) => r.id)
+    return roomIds.length ? [{ ...slot, roomIds: kinds === 'all' ? 'all' : roomIds }] : []
+  })
+}

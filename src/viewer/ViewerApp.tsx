@@ -10,6 +10,7 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
+import { finishSlotsFor } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { fetchSharedUnit } from '../lib/supabase'
@@ -148,7 +149,8 @@ export default function ViewerApp() {
     const rooms = core.deriveRooms(u)
     const base = layoutFor(u, rooms)
     const saved = readLayout(u.id)
-    return [{ ...u, furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
+    // a Studio draft / auto-trace / its share link has no slots of its own: the catalog by room kind (furnish/finishes.ts)
+    return [{ ...u, finishSlots: finishSlotsFor(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
   }, [fetched])
   if (TOKEN && fetched === undefined) return <div className="boot">Loading…</div>
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
