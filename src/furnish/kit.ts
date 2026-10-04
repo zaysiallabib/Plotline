@@ -227,7 +227,7 @@ const SCALE: Record<string, Rule> = {
   modern_coffee_table_01: [['x', 'z'], 0.75, 1.25],
   shower_screen: [['x', 'z'], 0.9, 1.35],
   ...each(['modern_ceiling_lamp_01', 'potted_plant_01', 'potted_plant_02', 'potted_plant_04', 'ceramic_vase_01', 'ceiling_fan', 'wall_clock', 'ceiling_light', 'ceiling_light_large'], DECOR),
-  ...each([...Object.keys(POTTED), ...Object.keys(SHRUBS), ...Object.keys(TREES)], DECOR),
+  ...each([...Object.keys(POTTED), ...Object.keys(SHRUBS), ...Object.keys(TREES), 'tree_mast'], DECOR),
   ...each(['hanging_picture_frame_01', ...ART], ART_RULE),
   tv_55: TV_RULE,
   tv_55_wall: TV_RULE,

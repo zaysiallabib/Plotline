@@ -69,17 +69,23 @@ export const PLANTER_TOP = 1.15
 export type PlanterEdge = { h: number; t: number }
 const cm = (v: number) => Math.round(v * 100)
 
-export function planterId(poly: Pt[], edges: PlanterEdge[]): { id: string; c: Pt } {
+/**
+ * `soil`: a raised planter zone (session 19) whose floor IS the soil (its label's levelM) and whose kerbs are its walls: the
+ * bed is only its planting, rooted on that floor — no kerb, no soil of its own (id `planter_bed@soil;…`).
+ */
+const SOIL = 'soil;'
+export function planterId(poly: Pt[], edges: PlanterEdge[], soil = false): { id: string; c: Pt } {
   const xs = poly.map((p) => p.x)
   const ys = poly.map((p) => p.y)
   const c = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 }
-  return { id: PLANTER + poly.map((p, i) => [cm(p.x - c.x), cm(p.y - c.y), cm(edges[i].h), cm(edges[i].t)].join(',')).join(';'), c }
+  return { id: PLANTER + (soil ? SOIL : '') + poly.map((p, i) => [cm(p.x - c.x), cm(p.y - c.y), cm(edges[i].h), cm(edges[i].t)].join(',')).join(';'), c }
 }
 
-export function parsePlanter(id: string): { poly: Pt[]; edges: PlanterEdge[] } | null {
+export function parsePlanter(id: string): { poly: Pt[]; edges: PlanterEdge[]; soil: boolean } | null {
   if (!id.startsWith(PLANTER)) return null
-  const v = id.slice(PLANTER.length).split(';').map((s) => s.split(',').map((n) => Number(n) / 100))
-  return { poly: v.map(([x, y]) => ({ x, y })), edges: v.map(([, , h, t]) => ({ h, t })) }
+  const soil = id.startsWith(PLANTER + SOIL)
+  const v = id.slice(PLANTER.length + (soil ? SOIL.length : 0)).split(';').map((s) => s.split(',').map((n) => Number(n) / 100))
+  return { poly: v.map(([x, y]) => ({ x, y })), edges: v.map(([, , h, t]) => ({ h, t })), soil }
 }
 
 /**
@@ -91,7 +97,7 @@ export function planterAsset(id: string): KitAsset | undefined {
   const s = parsePlanter(id)
   if (!s) return undefined
   const ext = (k: 'x' | 'y') => Math.max(...s.poly.map((p) => p[k])) - Math.min(...s.poly.map((p) => p[k]))
-  return { ...P(id, 'Planter bed, trailing plants', 'rug', ext('x'), PLANTER_TOP, ext('y')), kind: 'plant' }
+  return { ...P(id, s.soil ? 'Planting, groundcover' : 'Planter bed, trailing plants', 'rug', ext('x'), s.soil ? PLANTER_TOP - PLANTER_KERB : PLANTER_TOP, ext('y')), kind: 'plant' }
 }
 
 /** Doors the wardrobe builder hangs across W: one per ≤ 0.6 m (procedural.ts wardrobe). */
@@ -175,6 +181,11 @@ export const TREES = {
 }
 export type TreeId = keyof typeof TREES
 export const TRUNK_CLEAR = 1.0
+/**
+ * Mast tree (Debdaru, Polyalthia longifolia: Dhaka's boundary and avenue tree), code-built: a straight trunk in a narrow
+ * cone of drooping leaves (island_tree_02's, CC0) — for lawn strips too narrow for a spreading crown.
+ */
+export const MAST_TREE = { label: 'Mast tree (Debdaru), columnar (8 m)', crown: 2.2, h: 8, r: 0.11, seed: 5 }
 
 /** Shrubs (code-built mounds of Poly Haven island_tree_02's leaves, CC0): diameter and height. */
 export const SHRUBS = { shrub_round: { d: 0.9, h: 0.8, label: 'Shrub, clipped (0.9 m)' }, shrub_large: { d: 1.5, h: 1.25, label: 'Shrub, large (1.5 m)' } }
@@ -248,6 +259,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   ...Object.fromEntries(Object.entries(PLANTER_BOXES).map(([id, L]) => [id, { ...P(id, `Planter box with plants (${L.toFixed(1)} m)`, 'other', L, 0.95, 0.5), kind: 'plant' as const }])),
   ...Object.fromEntries(Object.entries(SHRUBS).map(([id, s]) => [id, P(id, s.label, 'plant', s.d, s.h, s.d)])),
   ...Object.fromEntries(Object.entries(TREES).map(([id, t]) => [id, { ...P(id, t.label, 'rug', t.crown, t.h, t.crown), kind: 'plant' as const }])),
+  tree_mast: { ...P('tree_mast', MAST_TREE.label, 'rug', MAST_TREE.crown, MAST_TREE.h, MAST_TREE.crown), kind: 'plant' },
   // outdoor (decks, roofs, lawns, play areas) and common rooms (lobby, gym, guard room)
   lounger: { ...P('lounger', 'Sun lounger, teak', 'chair', 0.7, 0.88, 2.0), kind: 'lounger' }, // backrest at the back (−z): you face +z
   bench_timber: { ...P('bench_timber', 'Timber bench, backless (1.5 m)', 'chair', 1.5, 0.45, 0.4), kind: 'bench' },

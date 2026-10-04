@@ -17,7 +17,7 @@ import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
 import {
-  ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, BOX_PLANTS, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
+  ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, BOX_PLANTS, MAST_TREE, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
   SCANS, SHRUBS, STAIR_D, STAIR_RISE, STAIR_W, stairId, TREES, wardrobeDoors, type Scan, type ScanId, type TreeId,
 } from './procedural.meta'
 
@@ -1201,14 +1201,14 @@ function loadLeaves(): Promise<THREE.BufferGeometry[]> {
  * outside it) so furniture.ts centres and grounds the bed on its polygon; they appear once the scan has loaded.
  */
 function planterBed(id: string): THREE.Object3D[] {
-  const { poly, edges } = parsePlanter(id)!
+  const { poly, edges, soil: onFloor } = parsePlanter(id)!
   const m = M()
   const V2 = (p: Pt) => new THREE.Vector2(p.x, -p.y) // plan y → world z after rotateX(−90°)
   const soilPoly = inset(poly, 0.08)
   const ring = new THREE.Shape(poly.map(V2))
   ring.holes.push(new THREE.Path(soilPoly.map(V2)))
   const kerb = new THREE.ExtrudeGeometry(ring, { depth: PLANTER_KERB, bevelEnabled: false }).rotateX(-Math.PI / 2)
-  const ySoil = PLANTER_KERB - 0.04
+  const ySoil = onFloor ? 0.01 : PLANTER_KERB - 0.04 // a raised planter zone: its floor is the soil
   const soil = new THREE.ShapeGeometry(new THREE.Shape(soilPoly.map(V2))).rotateX(-Math.PI / 2).translate(0, ySoil, 0)
   // leaves: [kind][] of matrix + tint
   const kinds: { m: THREE.Matrix4; v: number }[][] = Array.from({ length: LEAF_KINDS }, () => [])
@@ -1290,7 +1290,7 @@ function planterBed(id: string): THREE.Object3D[] {
       }
     }
   })
-  const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
+  const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), onFloor ? PLANTER_TOP - PLANTER_KERB : PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
   const tint = new THREE.Color()
   const ims = kinds.map((ls, kind) => {
     const im = new THREE.InstancedMesh(new THREE.BufferGeometry(), leafMat, ls.length)
@@ -1315,7 +1315,7 @@ function planterBed(id: string): THREE.Object3D[] {
         }),
       )
       .catch((e) => console.warn('[plotline] planter leaves failed to load', e))
-  return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...ims.filter((im) => im.count)]
+  return [...(onFloor ? [] : [mesh(kerb, m.kerb), mesh(soil, m.soil)]), ...ims.filter((im) => im.count)]
 }
 
 // ───────────────────────────── greenery (session 19) ─────────────────────────────
@@ -1643,6 +1643,33 @@ function tree(id: TreeId): THREE.Object3D[] {
   return [...limbs.map((l) => limb(l.a, l.b, l.bow, l.r0, l.r1)), ...leafMeshes(geos, 'tree_shade', 'jacaranda_tree', kinds, box)]
 }
 
+/**
+ * Mast tree (procedural.meta MAST_TREE): a straight tapering trunk; from 1.1 m up, whorls of leaves every 0.1 m hang
+ * out and down from it (Debdaru's drooping habit) inside a cone rounded at its skirt, a dark core behind them.
+ */
+function mastTree(): THREE.Object3D[] {
+  const t = MAST_TREE
+  const R = rng(t.seed)
+  const y0 = 1.1
+  const kinds: { m: THREE.Matrix4; v: number }[][] = SIMPLE.map(() => [])
+  for (let y = y0; y < t.h - 0.1; y += 0.1) {
+    const f = (y - y0) / (t.h - y0) // 0 at the skirt, 1 at the tip
+    const rr = (t.crown / 2) * Math.min(1, 1.15 * (1 - f) ** 0.85) * (f < 0.06 ? 0.7 + 5 * f : 1)
+    const n = Math.round(14 + 60 * rr)
+    for (let i = 0; i < n; i++) {
+      const a = 2 * Math.PI * R()
+      const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a))
+      const reach = rr * (0.3 + 0.7 * Math.sqrt(R()))
+      const at = new THREE.Vector3(out.x * reach, y + (R() - 0.5) * 0.08, out.z * reach)
+      const d = out.clone().multiplyScalar(0.35).add(new THREE.Vector3((R() - 0.5) * 0.3, -0.9, (R() - 0.5) * 0.3)).normalize()
+      kinds[i % SIMPLE.length].push({ m: leafMatrix(at, d, out, (R() - 0.5) * 1.0, 0.2 * (0.75 + 0.5 * R())), v: 0.45 + 0.5 * R() })
+    }
+  }
+  const core = mesh(new THREE.ConeGeometry(t.crown * 0.26, t.h - y0 - 0.4, 16), flat('#1c2614', 1), 0, y0 + 0.2 + (t.h - y0 - 0.4) / 2, 0)
+  const box = new THREE.Box3(new THREE.Vector3(-t.crown / 2, 0, -t.crown / 2), new THREE.Vector3(t.crown / 2, t.h, t.crown / 2))
+  return [limb(new THREE.Vector3(), new THREE.Vector3(0, t.h * 0.96, 0), new THREE.Vector3(0.04, 0, 0.03), t.r * 1.4, t.r * 0.2), core, ...leafMeshes(SIMPLE.map((c) => cardGeo(c, 1, 2, 0.2)), 'shrub_leaves', 'island_tree_02', kinds, box)]
+}
+
 // ───────────────────────────── outdoor + common rooms (session 19) ─────────────────────────────
 
 /** A round bar r thick from a to b; a slanted leg's foot is cut level with the ground it stands on. */
@@ -1877,6 +1904,7 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, planterBox])),
   ...Object.fromEntries(Object.entries(SHRUBS).map(([id, s]) => [id, () => shrub(s.d, s.h)])),
   ...Object.fromEntries(Object.keys(TREES).map((id) => [id, () => tree(id as TreeId)])),
+  tree_mast: mastTree,
   lounger,
   bench_timber: benchTimber,
   pergola,
