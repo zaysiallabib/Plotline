@@ -1,17 +1,21 @@
 /**
  * The hand-authored levels of the Sheltech Banani tower (`Demo drawings/Sheltech Banani/`): every printed room / zone is
  * its own face, printed sizes hold, nothing fails validation, each level is one connected graph (no face with a hole),
- * and the columns + the lift core stand in the same place on every level (one building frame).
+ * the columns + the lift core stand in the same place on every level (one building frame), and banani-tower.ts puts them
+ * on their floors.
  */
 import { describe, expect, test } from 'vitest'
 import b1 from '../data/units/banani-b1.json'
 import b2 from '../data/units/banani-b2.json'
 import ground from '../data/units/banani-ground.json'
 import roof from '../data/units/banani-roof.json'
+import typical from '../data/units/banani-typical.json'
+import type { Tower } from '../data/building'
+import * as banani from '../data/building/banani-tower'
 import * as core from './index'
 import type { Unit } from './index'
 
-const LEVELS: Unit[] = [ground, b1, b2, roof].map((u) => u as unknown as Unit)
+const LEVELS: Unit[] = [ground, b1, b2, roof, typical].map((u) => u as unknown as Unit)
 
 /** Length of the chord of `poly` through p along x (or y): the clear span a tape measure would give at p. */
 function chord(poly: core.Pt[], p: core.Pt, axis: 'x' | 'y'): number {
@@ -65,4 +69,11 @@ test('columns and the lift core coincide level to level within 5 cm', () => {
       else seen.set(p.id, { x: p.x, y: p.y })
     }
   }
+})
+
+test('banani-tower: a Tower whose stand-ins and levels are its FLATS, each level on its own floor', () => {
+  const t: Tower = banani
+  for (const f of t.FLOORS) for (const s of [...f.flats, ...(f.standIns ?? [])]) expect(t.FLATS[s], s).toBeDefined()
+  expect(t.FLOORS.map((f) => f.floor)).toEqual([-2, -1, 0, ...Array.from({ length: 12 }, (_, i) => i + 1), 13])
+  for (const [stem, floor] of Object.entries(t.LEVELS!)) expect(t.FLOORS.find((f) => f.floor === floor)?.standIns).toEqual([stem])
 })
