@@ -893,7 +893,8 @@ export class PlotlineScene {
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
     const lift = this.lifts.get(wall.id)!
-    const geo = wallGeometry(liftedWall(wall, unit, lift), unit, back === null && front !== null ? 1 : 0) // its openings on the higher floor
+    const built = liftedWall(wall, unit, lift) // on its foot, its openings on the higher floor
+    const geo = wallGeometry(built, unit, back === null && front !== null ? 1 : 0)
     if (geo) {
       const mesh = new THREE.Mesh(geo)
       mesh.castShadow = mesh.receiveShadow = true
@@ -913,12 +914,14 @@ export class PlotlineScene {
         ],
       })
     }
-    for (const o of wall.openings) {
-      const t = (o.offsetM + o.widthM / 2) / (f.lengthM || 1) // on the wall's floor at its middle
-      const parts = dressOpening(o, wall, unit, this.rooms)
+    wall.openings.forEach((o, i) => {
+      // on the higher floor at its middle (its sill as drawn: a glass wall stays a glass wall), its head within the wall
+      const t = (o.offsetM + o.widthM / 2) / (f.lengthM || 1)
+      const h = built.openings[i].heightM
+      const parts = dressOpening(h === o.heightM ? o : { ...o, heightM: h }, wall, unit, this.rooms) // the same object: dressOpening knows the main door by it
       for (const p of parts) p.position.y += lift.base[0] + t * (lift.base[1] - lift.base[0])
       local.add(...parts)
-    }
+    })
   }
 
   /**

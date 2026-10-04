@@ -697,11 +697,20 @@ const stepAt = (l: WallLift, u: number, L: number) => {
   return l.base[0] - l.foot[0] + t * (l.base[1] - l.foot[1] - (l.base[0] - l.foot[0]))
 }
 
-/** The wall as wallGeometry builds it on its foot: each opening's sill raised by the step to the higher floor there. */
+/**
+ * The wall as it is built on its foot (wallGeometry and its joinery): each opening's sill raised by the step to the higher
+ * floor there, its head kept within the wall (a 2.7 m glass wall over a 0.6 m step in a 3 m wall: glass to the top).
+ */
 export function liftedWall(wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift): Wall {
   if (l === FLAT || !wall.openings.length) return wall
   const L = core.wallFrame(wall, unit.vertices).lengthM
-  return { ...wall, openings: wall.openings.map((o) => ({ ...o, sillM: o.sillM + stepAt(l, o.offsetM + o.widthM / 2, L) })) }
+  return {
+    ...wall,
+    openings: wall.openings.map((o) => {
+      const sillM = o.sillM + stepAt(l, o.offsetM + o.widthM / 2, L)
+      return { ...o, sillM, heightM: Math.max(0.1, Math.min(o.heightM, wall.heightM - sillM)) }
+    }),
+  }
 }
 
 /**

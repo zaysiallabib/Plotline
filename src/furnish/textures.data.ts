@@ -115,7 +115,7 @@ export const TEXTURES: Record<string, TextureSet> = {
   asphalt: PH('asphalt', 'Clean asphalt', 'clean_asphalt', 2.1, 'Dimitrios Savva'),
   // smooth troweled garage concrete: parking, kerbs, risers, the pool's coping
   concrete: PH('concrete', 'Garage floor concrete', 'garage_floor', 1.886, 'Jenelle van Heerden'),
-  deck_boards: PH('deck_boards', 'Timber deck boards', 'wood_floor_deck', 1.8, 'Dimitrios Savva'),
+  deck_boards: PH('deck_boards', 'Timber deck boards', 'wooden_planks', 2, 'Dario Barresi, Charlotte Baglioni'),
   rubber_gym: PH('rubber_gym', 'Rubber gym floor tiles', 'rubber_tiles', 2, 'Amal Kumar'),
   soil: { ...PH('soil', 'Planter soil', 'farm_soil', 2, 'Amal Kumar'), matte: true },
   // the porcelain tile's own maps at twice the size: 1200 × 1200 large-format tiles (a lobby)

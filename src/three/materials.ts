@@ -114,7 +114,7 @@ export const ZONE_FLOOR: Partial<Record<RoomKind, MaterialRef>> = {
   paving: { kind: 'pbr', textureId: 'paving_pavers', tint: '#d6d2cc' },
   driveway: { kind: 'pbr', textureId: 'asphalt' },
   parking: CONCRETE,
-  deck: { kind: 'pbr', textureId: 'deck_boards', tint: '#c9b6a2' },
+  deck: { kind: 'pbr', textureId: 'deck_boards' },
   play: { kind: 'pbr', textureId: 'turf' }, // artificial grass: the CC0 rubber surface came out a heavy maroon slab
   planter: { kind: 'pbr', textureId: 'soil' },
   pool: POOL_TILE,
