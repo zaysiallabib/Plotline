@@ -58,6 +58,15 @@ Docs/PRODUCT_PHILOSOPHY.md.
   3D never disagree; a built-in unit becomes the Studio draft first. A refused
   furniture spot keeps the piece in hand, red with the reason (same day).
   Buyers never. Moving WALLS in 3D is not part of it.
+- **Free-standing walls + the other levels (founder, 2026-10-04 evening):** not
+  every wall has to be extended to close a room — a wall may stand alone as
+  decoration, a design choice or a wind screen, on any level and inside a flat;
+  it is never an error by itself. Claude hand-authors the ground floors,
+  basements and rooftops (as the five flats were), with their new elements
+  (ramps, floor levels, glass walls, lawn / paving / parking / pool zones,
+  planters, screens). Plan in HANDOFF "SESSION 19 PLAN".
+- **Browser tests run in Firefox** (Playwright's build on E:, HANDOFF), never
+  Edge with swiftshader — it burned the founder's CPU (2026-10-04).
 
 ## Stack
 
