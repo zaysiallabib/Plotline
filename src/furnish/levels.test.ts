@@ -67,20 +67,28 @@ describe('presets for the levels: by kind and geometry (session 19)', () => {
     expect(ids('guard').has('desk_oak')).toBe(true)
   })
 
-  test('a lap pool gets loungers facing it from its deck; a squarish water feature does not', () => {
+  test('a lap pool gets loungers facing it from its deck; a squarish water feature does not; a big deck without one gets a pair', () => {
+    let facing = 0
     for (const { u, rooms, ps } of all)
       for (const deck of rooms.filter((r) => r.kind === 'deck')) {
         const loungers = ps.filter((p) => p.roomId === deck.id && p.assetId === 'lounger')
         const pool = rooms.find((r) => r.kind === 'pool' && r.wallIds.some((id) => deck.wallIds.includes(id)))
-        if (!loungers.length) continue
-        expect(pool, `${u.id} ${deck.name}`).toBeDefined()
+        const q = pool && roomInnerPolygon(pool, u)
+        const ext = (k: 'x' | 'y') => (q ? Math.max(...q.map((p) => p[k])) - Math.min(...q.map((p) => p[k])) : 0)
+        const lap = !!pool && pool.areaSqm >= 25 && Math.max(ext('x'), ext('y')) >= 1.8 * Math.min(ext('x'), ext('y')) // these pools are axis-aligned
+        if (!pool || !lap) {
+          expect(loungers.length, `${u.id} ${deck.name}`).toBeLessThanOrEqual(2)
+          continue
+        }
+        facing += loungers.length
         // each lounger's front (feet) points toward the pool
         for (const l of loungers) {
           const t = (l.rotationDeg * Math.PI) / 180
           const f = { x: -Math.sin(t), y: Math.cos(t) }
-          expect(f.x * (pool!.centroid.x - l.x) + f.y * (pool!.centroid.y - l.y), l.id).toBeGreaterThan(0)
+          expect(f.x * (pool.centroid.x - l.x) + f.y * (pool.centroid.y - l.y), l.id).toBeGreaterThan(0)
         }
       }
+    expect(facing).toBeGreaterThan(0)
   })
 
   test('the same zone traced anywhere furnishes the same: a lawn moved and relabelled keeps its layout, shifted', () => {

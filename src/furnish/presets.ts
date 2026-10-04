@@ -689,9 +689,6 @@ function bath(ctx: Ctx): void {
   onSides(ctx, t ? others(ctx, [t.side]) : rankLongest(ctx), 'basin') ?? onSides(ctx, rankLongest(ctx), 'basin')
 }
 
-/** A planter face raised this much or more is a filled bed: its floor is the soil (the bed plants it, no kerb of its own). */
-const RAISED_SOIL = 0.3
-
 /** A planter strip (Dhaka drawings' SUNSHADE/PLANTER): a balcony named planter, or one no door opens onto. Not somewhere to stand. */
 export const isPlanter = (room: Room, unit: Unit): boolean =>
   room.kind === 'balcony' &&
@@ -707,7 +704,8 @@ function planter(ctx: Ctx): void {
     const w = walls.get(id)
     return w && w.heightM < 1.5 && !ctx.rooms.some((r) => r !== ctx.room && r.wallIds.includes(id)) ? { h: w.heightM, t: w.thicknessM } : { h: 0, t: 0 }
   })
-  const { id, c } = planterId(ctx.inner, edges, (ctx.room.levelM ?? 0) >= RAISED_SOIL)
+  // a planter ZONE is drawn with its own soil floor (at its levelM) and copings: the bed is only its planting
+  const { id, c } = planterId(ctx.inner, edges, ctx.room.kind === 'planter')
   ctx.out.push({ id: `${ctx.room.id}:planter_bed:1`, assetId: id, roomId: ctx.room.id, x: c.x, y: c.y, rotationDeg: 0 })
 }
 
@@ -883,8 +881,15 @@ function deck(ctx: Ctx): void {
     const set = size('outdoor_table_chair_set_01')
     const rot = rotationFacing(rankLongest(ctx)[0].n)
     for (let n = Math.min(3, Math.floor(ctx.room.areaSqm / 12)); n > 0; n--) if (!spaced(ctx, set, rot, 0.4, (c) => !!tryPlace(ctx, 'outdoor_table_chair_set_01', c, rot))) break
+    // a big deck: two loungers side by side, heads to its blankest high wall
+    if (ctx.room.areaSqm >= 40)
+      for (const s of rankNoOpenings(ctx).filter(high(ctx, 0.9)))
+        if ([...slots(s, 0.85)].some((u) => atomic(ctx, () => [0, 0.85].every((du) => !!tryPlace(ctx, 'lounger', againstSide(s, 'lounger', u - 0.425 + du), rotationFacing(s.n)))))) break
     if (ctx.room.areaSqm >= 8) benchOnWall(ctx, 'bench_timber')
   }
+  // planter boxes along its parapets (its open edges), one every ~3.2 m, at most 6
+  let boxes = 0
+  for (const s of outerSides(ctx)) for (let u = 1.3; u <= s.len - 1.3 && boxes < 6; u += 0.4) if (tryPlace(ctx, 'planter_box_240', againstSide(s, 'planter_box_240', u), rotationFacing(s.n)) && ++boxes) u += 2.8
   const pot = inCorner(ctx, 'pot_money_tree')
   inCorner(ctx, 'pot_anthurium', pot ? [pot.corner] : [])
 }

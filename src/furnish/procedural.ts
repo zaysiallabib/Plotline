@@ -1208,7 +1208,7 @@ function planterBed(id: string): THREE.Object3D[] {
   const ring = new THREE.Shape(poly.map(V2))
   ring.holes.push(new THREE.Path(soilPoly.map(V2)))
   const kerb = new THREE.ExtrudeGeometry(ring, { depth: PLANTER_KERB, bevelEnabled: false }).rotateX(-Math.PI / 2)
-  const ySoil = onFloor ? 0.01 : PLANTER_KERB - 0.04 // a raised planter zone: its floor is the soil
+  const ySoil = onFloor ? 0.01 : PLANTER_KERB - 0.04 // a planter zone: its floor is the soil
   const soil = new THREE.ShapeGeometry(new THREE.Shape(soilPoly.map(V2))).rotateX(-Math.PI / 2).translate(0, ySoil, 0)
   // leaves: [kind][] of matrix + tint
   const kinds: { m: THREE.Matrix4; v: number }[][] = Array.from({ length: LEAF_KINDS }, () => [])
@@ -1696,7 +1696,7 @@ function lounger(): THREE.Mesh[] {
   for (let z = -0.36; z <= 0.96; z += 0.1) out.push(box(0.58, 0.018, 0.075, m.teak, 0, 0.329, z))
   const a = (50 * Math.PI) / 180
   const back = (o: THREE.Mesh) => {
-    o.rotation.x = a // its +y tips back toward −z
+    o.rotation.x = a - Math.PI / 2 // its +y runs up the back toward −z, its +z (face) to the seat
     return o
   }
   // the back: slats on two stiles hinged at z −0.4, y 0.33, 0.65 long

@@ -70,7 +70,7 @@ export type PlanterEdge = { h: number; t: number }
 const cm = (v: number) => Math.round(v * 100)
 
 /**
- * `soil`: a raised planter zone (session 19) whose floor IS the soil (its label's levelM) and whose kerbs are its walls: the
+ * `soil`: a planter zone (session 19) whose floor IS the soil (at its label's levelM) and whose copings are its walls: the
  * bed is only its planting, rooted on that floor — no kerb, no soil of its own (id `planter_bed@soil;…`).
  */
 const SOIL = 'soil;'
