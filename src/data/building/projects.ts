@@ -10,7 +10,7 @@
  * Pure: storage is read / written only by the helpers at the bottom.
  */
 import { deriveRooms, mirrorUnit, roomPolygon, unitBounds } from '../../core'
-import type { Id, Pt, Unit } from '../../core'
+import type { Id, Pillar, Pt, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
 
@@ -29,12 +29,28 @@ export interface ProjectFlat {
 export interface Project {
   id: Id
   name: string
-  /** the traced flats as the Studio last saved them */
+  /** the traced flats (and levels) as the Studio last saved them */
   units: Record<Id, Unit>
   /** by stem: the unit's id, its mirrored copy's `<id>-m` (= mirrorUnit's id, so a stem is always its unit's id) */
   flats: Record<string, ProjectFlat>
   /** "repeat this floor on floors from–to": the flats (stems) standing on each of those floors */
   floors: { from: number; to: number; flats: string[] }[]
+  /** stage 2: the ground, basements and rooftop he traced, drawn as shells (no furnishing); absent in older projects */
+  levels?: ProjectLevel[]
+}
+
+/** A level besides the flats: the ground floor (floor 0), basement n (floor −n), the rooftop (on the roof slab, top + 1). */
+export type LevelKind = 'ground' | 'basement' | 'rooftop'
+/** how a level's offset was found (the Studio says which): its columns on the flats', the same drawing, or typed by him */
+export type Placement = 'columns' | 'drawing' | 'typed'
+export interface ProjectLevel {
+  unitId: Id
+  kind: LevelKind
+  /** basements: 1 = the first below ground */
+  n?: number
+  /** the level's plan frame → the building frame */
+  offset: Pt
+  by: Placement
 }
 
 /** where the mirrored copy goes: none, or reflected about the flat's own left (west on the plan) / right wall line */
@@ -100,15 +116,99 @@ export function placementOf(p: Project, unitId: Id): { from: number; to: number;
  * scales more than 5 % apart (one of the two is wrong) — the flat keeps its own frame.
  */
 export function sheetOffset(p: Project, u: Unit): Pt {
+  return sameDrawing(p, u) ?? { x: 0, y: 0 }
+}
+
+/** sheetOffset, or null when `u` was not traced off the building's first flat's drawing (another image, or scales > 5 % apart). */
+function sameDrawing(p: Project, u: Unit): Pt | null {
   const ref = Object.values(p.flats).find((f) => !f.mirror && f.unitId !== u.id && p.units[f.unitId])
   const a = ref && p.units[ref.unitId].planImage
   const b = u.planImage
-  if (!ref || !a || !b || a.src !== b.src || Math.abs(a.pxPerM - b.pxPerM) > a.pxPerM * 0.05) return { x: 0, y: 0 }
+  if (!ref || !a || !b || a.src !== b.src || Math.abs(a.pxPerM - b.pxPerM) > a.pxPerM * 0.05) return null
   const fb = flatBounds(u)
   const c = { x: (fb.minX + fb.maxX) / 2, y: (fb.minY + fb.maxY) / 2 }
   const px = { x: b.originPx.x + c.x * b.pxPerM, y: b.originPx.y + c.y * b.pxPerM }
   return { x: ref.offset.x + (px.x - a.originPx.x) / a.pxPerM - c.x, y: ref.offset.y + (px.y - a.originPx.y) / a.pxPerM - c.y }
 }
+
+/** a level's column lands on a flat's column when their centres are this close after the shift (m) and their sizes this alike */
+const COLUMN_TOL_M = 0.25
+/** fewer matched columns than this is chance on a column grid, not an alignment */
+export const MIN_COLUMNS = 3
+
+/**
+ * The shift that puts the most of `mine` (a level's columns, its own frame) on `ref` (the flats' columns, building
+ * frame): every pair proposes one; the one matching the most columns wins (ties: the tighter fit), refined to the mean
+ * of its matched pairs. Columns run down through every level, so a traced ground floor / basement / rooftop finds the
+ * flats' columns this way whatever its own drawing's origin. Translation only: a level is traced the way up its flats are.
+ */
+export function alignColumns(ref: Pillar[], mine: Pillar[]): { offset: Pt; matched: number; errM: number } | null {
+  let best: { offset: Pt; matched: number; errM: number } | null = null
+  const alike = (a: Pillar, b: Pillar) => Math.abs(a.wM - b.wM) <= 0.15 && Math.abs(a.hM - b.hM) <= 0.15
+  const fit = (d: Pt) => {
+    const pairs = mine.flatMap((q) => {
+      const r = ref.filter((x) => alike(x, q)).reduce<{ x: Pillar; e: number } | null>((b, x) => {
+        const e = Math.hypot(q.x + d.x - x.x, q.y + d.y - x.y)
+        return e <= COLUMN_TOL_M && (!b || e < b.e) ? { x, e } : b
+      }, null)
+      return r ? [{ q, x: r.x }] : []
+    })
+    if (!pairs.length) return null
+    const offset = { x: pairs.reduce((s, p) => s + p.x.x - p.q.x, 0) / pairs.length, y: pairs.reduce((s, p) => s + p.x.y - p.q.y, 0) / pairs.length }
+    const errM = Math.sqrt(pairs.reduce((s, p) => s + (p.q.x + offset.x - p.x.x) ** 2 + (p.q.y + offset.y - p.x.y) ** 2, 0) / pairs.length)
+    return { offset, matched: pairs.length, errM }
+  }
+  for (const r of ref)
+    for (const q of mine) {
+      if (!alike(r, q)) continue
+      const f = fit({ x: r.x - q.x, y: r.y - q.y })
+      if (f && (!best || f.matched > best.matched || (f.matched === best.matched && f.errM < best.errM))) best = f
+    }
+  return best && best.matched >= MIN_COLUMNS ? best : null
+}
+
+/**
+ * Where a traced level goes in `p`: on the flats' columns when at least MIN_COLUMNS of its columns match theirs (the
+ * lowest floor's flats, mirrored ones too), else where the same drawing puts it, else null — he types the shift.
+ */
+export function placeOfLevel(p: Project, u: Unit): { offset: Pt; by: Exclude<Placement, 'typed'>; matched?: number; errM?: number } | null {
+  const t = projectTower(p)
+  const base = t.FLOORS.find((f) => f.floor >= 1 && f.flats.length)?.flats ?? []
+  const ref = base.flatMap((s) => (t.FLATS[s].unit.pillars ?? []).map((q) => ({ ...q, x: q.x + t.FLATS[s].offset.x, y: q.y + t.FLATS[s].offset.y })))
+  const cols = ref.length && u.pillars?.length ? alignColumns(ref, u.pillars) : null
+  if (cols) return { offset: cols.offset, by: 'columns', matched: cols.matched, errM: cols.errM }
+  const d = sameDrawing(p, u)
+  return d ? { offset: d, by: 'drawing' } : null
+}
+
+/** The floor a level stands on: ground 0, basement n at −n, the rooftop on the roof slab above floor `top`. */
+export const levelFloor = (l: Pick<ProjectLevel, 'kind' | 'n'>, top: number): number => (l.kind === 'ground' ? 0 : l.kind === 'basement' ? -Math.max(1, l.n ?? 1) : top + 1)
+
+/** `p` with only the units its flats and levels use. */
+const prune = (p: Project): Project => {
+  const used = new Set([...Object.values(p.flats).map((f) => f.unitId), ...(p.levels ?? []).map((l) => l.unitId)])
+  return { ...p, units: Object.fromEntries(Object.entries(p.units).filter(([id]) => used.has(id))) }
+}
+
+/**
+ * `u` as the building's ground floor / basement n / rooftop, at `offset` (found `by`). It leaves the flats if it stood
+ * there, and takes the place of the level already in that slot (one ground, one rooftop, one basement per number). The
+ * unit is stored as it is now. Unchanged when it is the building's only flat (a building needs one).
+ */
+export function placeLevel(p: Project, u: Unit, kind: LevelKind, n: number | undefined, offset: Pt, by: Placement): Project {
+  const out = p.flats[stemOf(u.id, false)] ? removeFlat(p, u.id) : p
+  if (!out) return p
+  const slot = (l: ProjectLevel) => l.kind === kind && (kind !== 'basement' || (l.n ?? 1) === Math.max(1, n ?? 1))
+  const levels = (out.levels ?? []).filter((l) => l.unitId !== u.id && !slot(l))
+  const level: ProjectLevel = { unitId: u.id, kind, ...(kind === 'basement' ? { n: Math.max(1, Math.round(n ?? 1)) } : {}), offset, by }
+  return prune({ ...out, units: { ...out.units, [u.id]: u }, levels: [...levels, level] })
+}
+
+/** `p` without level `unitId`. */
+export const removeLevel = (p: Project, unitId: Id): Project => prune({ ...p, levels: (p.levels ?? []).filter((l) => l.unitId !== unitId) })
+
+/** The level `unitId` is in `p`, if it is one. */
+export const levelOf = (p: Project, unitId: Id): ProjectLevel | undefined => p.levels?.find((l) => l.unitId === unitId)
 
 /** `ps` with `u` as it is now wherever it stands (the Studio's autosave); null when nothing changed. */
 export function syncUnit(ps: Project[], u: Unit): Project[] | null {
@@ -144,22 +244,33 @@ export function projectTower(p: Project): Tower {
     while (near > 0 && !onFloor(p, near).length) near--
     FLOORS.push(flats.length ? { floor: k, flats } : { floor: k, flats: [], standIns: near > 0 ? onFloor(p, near) : base })
   }
-  // the ground: the lowest flats' columns carry the tower; a flat with no column drawn stands in with its shell (never a floating flat)
-  const columns: Rect[] = base.flatMap((s) => {
-    const { unit, offset: o } = FLATS[s]
-    return (unit.pillars ?? []).map((q): Rect => [q.x - q.wM / 2 + o.x, q.y - q.hM / 2 + o.y, q.x + q.wM / 2 + o.x, q.y + q.hM / 2 + o.y])
-  })
-  const shells = base.filter((s) => !FLATS[s].unit.pillars?.length)
+  // stage 2: his traced levels are shells on their own floors (stand-ins: nobody opens them, nothing is furnished)
+  const levels = (p.levels ?? []).filter((l) => p.units[l.unitId])
+  for (const l of levels) FLATS[l.unitId] = { unit: p.units[l.unitId], offset: l.offset }
+  const LEVELS = Object.fromEntries(levels.map((l) => [l.unitId, levelFloor(l, top)]))
+  const ground = levels.find((l) => l.kind === 'ground')
+  // the ground: his traced ground floor; else the lowest flats' columns carry the tower and a flat with no column drawn
+  // stands in with its shell (never a floating flat)
+  const columns: Rect[] = ground
+    ? []
+    : base.flatMap((s) => {
+        const { unit, offset: o } = FLATS[s]
+        return (unit.pillars ?? []).map((q): Rect => [q.x - q.wM / 2 + o.x, q.y - q.hM / 2 + o.y, q.x + q.wM / 2 + o.x, q.y + q.hM / 2 + o.y])
+      })
+  const shells = ground ? [ground.unitId] : base.filter((s) => !FLATS[s].unit.pillars?.length)
   if (shells.length) FLOORS.unshift({ floor: 0, flats: [], standIns: shells })
-  // the plot: the flats' extent and 2 m round it
-  const bs = base.map((s) => {
+  for (const b of levels.filter((l) => l.kind === 'basement').sort((l, m) => (l.n ?? 1) - (m.n ?? 1))) FLOORS.unshift({ floor: LEVELS[b.unitId], flats: [], standIns: [b.unitId] })
+  const roof = levels.find((l) => l.kind === 'rooftop')
+  if (roof) FLOORS.push({ floor: top + 1, flats: [], standIns: [roof.unitId] })
+  // the plot: the flats' (and his ground floor's) extent and 2 m round it
+  const bs = [...base, ...(ground ? [ground.unitId] : [])].map((s) => {
     const b = flatBounds(FLATS[s].unit)
     const o = FLATS[s].offset
     return [b.minX + o.x, b.minY + o.y, b.maxX + o.x, b.maxY + o.y]
   })
   const [x0, y0, x1, y1] = [Math.min(...bs.map((b) => b[0])) - 2, Math.min(...bs.map((b) => b[1])) - 2, Math.max(...bs.map((b) => b[2])) + 2, Math.max(...bs.map((b) => b[3])) + 2]
   const plot: Pt[] = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
-  return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] } }
+  return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS }
 }
 
 /** A stored project list, shape-checked (a corrupt store reads as none). */
@@ -174,7 +285,8 @@ export function parseProjects(raw: string | null): Project[] {
         typeof p.units === 'object' &&
         Object.values(p.units as Record<string, Unit>).every((u) => Array.isArray(u?.vertices) && Array.isArray(u?.walls) && Array.isArray(u?.roomLabels)) &&
         typeof p.flats === 'object' &&
-        Array.isArray(p.floors),
+        Array.isArray(p.floors) &&
+        (p.levels === undefined || Array.isArray(p.levels)),
     )
   } catch {
     return []

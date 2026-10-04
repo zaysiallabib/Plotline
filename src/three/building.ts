@@ -14,7 +14,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { floorIn, towerOf, type Tower } from '../data/building'
+import { floorIn, topFloor, towerOf, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { buildStreet } from './context'
 import { wallGeometry } from './details'
@@ -120,12 +120,22 @@ export class Building extends THREE.Group {
     const put = (m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
       if (g.length) lists.set(m, [...(lists.get(m) ?? []), ...g]) // an empty list (no tanks, no bays) must not reach merge
     }
-    const top = Math.max(...FLOORS.map((f) => f.floor))
+    const top = topFloor(t) // a Studio project's traced rooftop is listed one floor above it
     const G = this.levelOf(0)
     const R = this.levelOf(top + 1)
+    /** his traced rooftop (a Studio project): its own walls stand on the roof slab instead of the automatic parapet */
+    const roofLevel = FLOORS.find((f) => f.floor === top + 1)?.standIns ?? []
+    /** a shell's walls with its openings cut, and its columns, storey high (a basement's: no higher than `cap`, under the street) */
+    const shellWalls = (u: Unit, cap = Infinity) => {
+      const g = { vertices: u.vertices, walls: u.walls.map((w) => (w.heightM > cap ? { ...w, heightM: cap } : w)) }
+      return [
+        ...g.walls.map((w) => wallGeometry(w, g)).filter((x) => !!x),
+        ...(u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, Math.min(WALL_M, cap))),
+      ]
+    }
 
-    // floors 1..top: a shell per flat; the roof (top + 1): the top floor's plates and parapet
-    for (const { floor: k, flats, standIns = [] } of [...FLOORS, { floor: top + 1, flats: [], standIns: FLOORS.at(-1)!.flats }]) {
+    // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
+    for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: FLOORS.find((f) => f.floor === top)!.flats }]) {
       const y = this.levelOf(k)
       const roof = k === top + 1
       for (const s of [...flats, ...standIns]) {
@@ -134,6 +144,7 @@ export class Building extends THREE.Group {
         const rooms = this.roomsOf(s)
         if (roof) {
           put(EXTERIOR_PLASTER, ...plate(u, rooms, 0, PLATE_M).map(at))
+          if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m, no openings
           const others = standIns.filter((o) => o !== s)
           const outside = (p: Pt) => !core.roomAt(p, rooms, u) && !others.some((o) => this.inFlat(o, { x: p.x + this.shift(s).x - this.shift(o).x, y: p.y + this.shift(s).y - this.shift(o).y }))
@@ -143,8 +154,7 @@ export class Building extends THREE.Group {
           continue
         }
         const mine = k === floor && s === stem
-        const columns = (u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M))
-        const walls = [...u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g), ...columns].map(at)
+        const walls = shellWalls(u).map(at)
         // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
         // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
         const slab = k === 0 ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
@@ -153,6 +163,7 @@ export class Building extends THREE.Group {
         mesh.castShadow = mesh.receiveShadow = true
         mesh.visible = !mine // the furnished flat is drawn by the scene; this one is only its pick proxy
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
+        mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
         if (mine) continue
         for (const w of u.walls) {
@@ -177,6 +188,17 @@ export class Building extends THREE.Group {
       put(EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
     }
 
+    // his traced rooftop on the roof slab: its walls (parapets as high as he set them, stair head, lift room) and columns,
+    // a slab over every room it closes with full-height walls (not a shaft: open to the sky), its windows glazed
+    for (const s of roofLevel) {
+      const { unit: u } = FLATS[s]
+      const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, R, this.shift(s).y)
+      const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
+      const caps = this.roomsOf(s).filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id)))
+      put(EXTERIOR_PLASTER, ...shellWalls(u).map(at), ...plate(u, caps, WALL_M + PLATE_M, PLATE_M).map(at))
+      for (const w of u.walls) for (const o of w.openings) if (o.kind === 'window' || o.kind === 'slider') put('glass', at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01)))
+    }
+
     // ground floor: plinth, gardens, ramp, bays, blocks, columns; roads at street level
     const c = this.shift() // building frame → scene: + c
     const plan = (r: Rect): Rect => [r[0] + c.x, r[1] + c.y, r[2] + c.x, r[3] + c.y]
@@ -197,9 +219,26 @@ export class Building extends THREE.Group {
       mesh.castShadow = m !== 'glass' && m !== GREEN && m !== PAINT && m !== ASPHALT
       mesh.receiveShadow = m !== 'glass'
       if (m === 'glass') mesh.raycast = () => {}
+      if (m === PAVING) mesh.userData.level = 0 // the plinth: his traced ground floor stands on it when cut there
       this.add(mesh)
     }
     this.box.setFromObject(this)
+
+    // his traced basements (after the box: the view frames the tower above ground): one mesh per level — walls, columns,
+    // slab — so picking one in the floor picker can hide everything that stands above it (cut)
+    for (const { floor: k, standIns = [] } of FLOORS.filter((f) => f.floor < 0)) {
+      for (const s of standIns) {
+        const { unit: u } = FLATS[s]
+        // under the street: a basement reaching past the plinth must not show its wall tops on the road
+        const cap = this.streetY - this.levelOf(k) - 0.01
+        const geos = [...shellWalls(u, cap), ...plate(u, this.roomsOf(s), 0, PLATE_M)].map((g) => g.translate(this.shift(s).x, this.levelOf(k), this.shift(s).y))
+        if (!geos.length) continue
+        const mesh = new THREE.Mesh(merge(geos), materialFor(EXTERIOR_PLASTER))
+        mesh.castShadow = mesh.receiveShadow = true
+        mesh.userData.level = k
+        this.add(mesh)
+      }
+    }
 
     // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads
     if (GROUND.roads.length) {
@@ -246,12 +285,24 @@ export class Building extends THREE.Group {
     return !!core.roomAt(p, this.roomsOf(stem), this.t.FLATS[stem].unit)
   }
 
-  /** Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of them. */
+  /**
+   * Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of
+   * them; on a Studio project's traced level (ground, basement, rooftop) its outline. A cut floor (cuts(k)): everything
+   * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground).
+   */
   highlight(k: number): void {
-    const { FLATS, FLOORS, FLOOR_M } = this.t
+    const { FLATS, FLOORS, FLOOR_M, LEVELS } = this.t
     const PLATE_M = FLOOR_M - WALL_M
     const entry = FLOORS.find((f) => f.floor === k)
-    const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats
+    const level = (entry?.standIns ?? []).filter((s) => LEVELS?.[s] !== undefined)
+    const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : level
+    const cut = this.cuts(k)
+    for (const o of this.children) {
+      if (o === this.mark) continue
+      const hide = cut && !(typeof o.userData.level === 'number' && o.userData.level <= k)
+      if (hide && o.visible) (o.visible = false), (o.userData.cut = true)
+      else if (!hide && o.userData.cut) (o.visible = true), delete o.userData.cut
+    }
     const y = this.levelOf(k)
     const geos: THREE.BufferGeometry[] = []
     for (const s of stems) {
@@ -269,9 +320,14 @@ export class Building extends THREE.Group {
     this.mark.geometry = geos.length ? merge(geos) : new THREE.BufferGeometry()
   }
 
-  /** The flat under a ray (walls, plates and proxies occlude; stand-ins, the core, ground and roof give null). */
+  /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
+  cuts(k: number): boolean {
+    return k < 0 || (k === 0 && Object.values(this.t.LEVELS ?? {}).includes(0))
+  }
+
+  /** The flat under a ray (walls, plates and proxies occlude; stand-ins, the core, ground and roof give null; what a basement's cut hides is not there). */
   flatAt(ray: THREE.Raycaster): FlatRef | null {
-    const hit = ray.intersectObjects(this.children.filter((o) => o !== this.street), false)[0]
+    const hit = ray.intersectObjects(this.children.filter((o) => o !== this.street && (o.visible || !o.userData.cut)), false)[0]
     return (hit?.object.userData.flat as FlatRef | undefined) ?? null
   }
 

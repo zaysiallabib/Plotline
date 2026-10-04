@@ -357,6 +357,7 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
@@ -431,6 +432,13 @@ export class PlotlineScene {
     this.orbit.target.y += dy
     this.camera.position.y += dy
     b.highlight(k)
+    this.cutAbove(b.cuts(k) && k < b.floor, k < 0)
+  }
+
+  /** A basement / his traced ground floor picked in the Building view: the furnished flat above it hidden, and under ground the street plane (building.ts hides its own floors above it). */
+  private cutAbove(on: boolean, street = on): void {
+    this.staticGroup.visible = this.furnitureGroup.visible = !on
+    this.look.showGround(!street, !on)
   }
 
   currentRoomId(): Id | null {

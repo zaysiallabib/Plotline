@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
-import { projectUnit, towerOf } from '../data/building'
+import { projectUnit, topFloor, towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
@@ -73,9 +73,11 @@ if (params.has('staff')) {
 }
 /** Building view floor picker of the flat's tower, top down: roof, the floors with flats, ground */
 function PICKER(u: Unit) {
-  const FLOORS = towerOf(u)?.FLOORS ?? []
-  const top = Math.max(...FLOORS.map((f) => f.floor))
-  return [{ k: top + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }]
+  const t = towerOf(u)
+  const FLOORS = t?.FLOORS ?? []
+  const top = t ? topFloor(t) : 0 // (a Studio rooftop level is listed above it: R)
+  const basements = FLOORS.filter((f) => f.floor < 0).map((f) => ({ k: f.floor, label: `B${-f.floor}` })).reverse()
+  return [{ k: top + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }, ...basements]
 }
 /** the flat's route stem in its tower, if it is in one */
 const towerStem = (u: Unit) => {
@@ -472,8 +474,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
-    else if (params.get('view') === 'building') go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
-    else if (STAFF && params.get('edit') === 'openings') toggleOpenings() // a built-in unit just made the Studio draft
+    else if (params.get('view') === 'building') {
+      go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
+      const k = Number(params.get('pick')) // a level shown from the Studio: its floor picked (a basement: what is above it hidden)
+      if (stem && params.has('pick') && Number.isFinite(k)) (setPicked(k), scene.showFloor(k))
+    } else if (STAFF && params.get('edit') === 'openings') toggleOpenings() // a built-in unit just made the Studio draft
     else scene.lockPointer()
   }
 
