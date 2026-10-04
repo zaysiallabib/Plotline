@@ -423,6 +423,7 @@ export class PlotlineScene {
       if (this.building) this.scene.add(this.building)
     }
     if (this.building) this.building.visible = mode === 'building'
+    this.look.setStreetY(mode === 'building' ? (this.building?.streetY ?? null) : null) // the tower's street (a traced ground floor's)
     // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
     const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
     if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'

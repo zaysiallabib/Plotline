@@ -159,6 +159,12 @@ export class Look {
   }
 
   /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
+  /** The Building view's street (building.ts streetY: under a traced ground floor's lowest floor) for the ground plane; null: the unit's own again. */
+  setStreetY(y: number | null): void {
+    this.ground.position.y = y ?? this.groundY
+  }
+  private groundY = 0
+
   showGround(plane: boolean, flat = plane): void {
     this.ground.visible = plane
     this.unitGroup.visible = flat
@@ -263,7 +269,9 @@ export class Look {
     this.catcher.position.set((b.minX + b.maxX) / 2, lowest - SLAB_M - 0.01, (b.minY + b.maxY) / 2)
     // a flat with no floor typed (a Studio draft) stands where the Building view puts one (building.ts: floor 2), not on
     // the street: Dhaka flats start above the ground-floor parking. A ground level's sunken zones stay above the street plane.
-    this.ground.position.y = Math.min(-(unit.floor ?? 2) * STOREY_M - 0.2, lowest - 0.05)
+    // (a basement's street is above it, whatever its ramps go down to: never lowered to them)
+    const street = -(unit.floor ?? 2) * STOREY_M - 0.2
+    this.ground.position.y = this.groundY = street > 0 ? street : Math.min(street, lowest - 0.05)
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)

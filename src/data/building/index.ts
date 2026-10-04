@@ -114,9 +114,28 @@ export function coverOf(t: Tower, stem: string): Pt[][] {
   return [...above].flatMap((s) => {
     const { unit, offset } = t.FLATS[s]
     const rooms = core.deriveRooms(unit)
-    const base = baseLevel(unit, rooms)
-    return rooms
-      .filter((r) => r.kind !== 'shaft' && lowestOf(r) >= base - 1e-6)
-      .map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x - me.x, y: p.y + offset.y - me.y })))
+    const sinks = sinking(unit, rooms)
+    return rooms.filter((r) => r.kind !== 'shaft' && !sinks(r)).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x - me.x, y: p.y + offset.y - me.y })))
+  })
+}
+
+/** Does a face's floor drop below its unit's base (a ramp going down through the slab to the level below)? */
+const sinking = (unit: Unit, rooms: Room[]) => {
+  const base = baseLevel(unit, rooms)
+  return (r: Room) => lowestOf(r) < base - 1e-6
+}
+
+/**
+ * The voids in the slab over floor k, building frame: the faces on floor k + 1 that drop below their unit's base (a ramp
+ * going down). The Building view draws such a ramp once: the upper level's face wins, a face of floor k rising into the
+ * void (the same ramp on the lower sheet) is skipped.
+ */
+export function voidsOver(t: Tower, k: number): Pt[][] {
+  const f = t.FLOORS.find((x) => x.floor === k + 1)
+  return (f ? [...f.flats, ...(f.standIns ?? [])] : []).flatMap((s) => {
+    const { unit, offset } = t.FLATS[s]
+    const rooms = core.deriveRooms(unit)
+    const sinks = sinking(unit, rooms)
+    return rooms.filter(sinks).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x, y: p.y + offset.y })))
   })
 }
