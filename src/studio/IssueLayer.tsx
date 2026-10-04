@@ -38,7 +38,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
   const placed: Pt[] = []
   const badgeAt = new Map<string, Pt>()
   for (const m of marks) {
-    if (!m.at) continue
+    if (!m.at || m.twinOf) continue
     const p = toScreen(m.at)
     const o = OFFSETS.find((d) => placed.every((q) => Math.hypot(p.x + d.x - q.x, p.y + d.y - q.y) >= 18)) ?? OFFSETS[0]
     placed.push({ x: p.x + o.x, y: p.y + o.y })
@@ -77,7 +77,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
           return <circle className="g-ring hint" cx={p.x} cy={p.y} r={14} />
         })()}
         {marks.map((m) => {
-          if (!m.at) return null
+          if (!m.at || m.twinOf) return null // a "Check these" row on an issue's spot: the issue's mark stands for both
           const p = toScreen(m.at)
           return (
             <g key={m.key} className={`mark ${m.severity}${m.key === active ? ' on' : ''}${m.key === hot ? ' hot' : ''}`} transform={`translate(${p.x} ${p.y})`}>

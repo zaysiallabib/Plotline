@@ -97,15 +97,16 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
   const listed = marks.filter((m) => m.issue)
   /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
   const row = (m: Mark, extra?: React.ReactNode) => {
-    const f = fixes?.get(m.key)
+    const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
+    const f = fixes?.get(key)
     const acts = !!(f?.fixes.length || f?.nameAt || extra)
     return (
       <li
         key={m.key}
         ref={m.key === active ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
-        className={`${m.at ? 'find' : ''}${m.key === active ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
+        className={`${m.at ? 'find' : ''}${key === active ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
         title={m.at ? 'Click to go to it on the plan' : undefined}
-        onMouseEnter={() => m.at && onHot(m.key)}
+        onMouseEnter={() => m.at && onHot(key)}
         onMouseLeave={() => onHot(null)}
         onClick={() => m.at && onOpen(m)}
       >

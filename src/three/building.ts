@@ -145,8 +145,9 @@ export class Building extends THREE.Group {
         const mine = k === floor && s === stem
         const columns = (u.pillars ?? []).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M))
         const walls = [...u.walls.map((w) => wallGeometry(w, u)).filter((g) => !!g), ...columns].map(at)
-        // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it
-        const slab = plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
+        // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
+        // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
+        const slab = k === 0 ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
         if (mine) put(EXTERIOR_PLASTER, ...slab)
         const mesh = new THREE.Mesh(merge(mine ? walls : [...walls, ...slab]), materialFor(EXTERIOR_PLASTER))
         mesh.castShadow = mesh.receiveShadow = true

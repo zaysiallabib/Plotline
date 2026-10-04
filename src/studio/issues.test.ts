@@ -58,7 +58,7 @@ function applyAndUndo(u: Unit, m: Mark, label: string, { fixes, issues }: Pick<R
   const after = studioIssues(t.unit, deriveRooms(t.unit))
   const had = new Set(issues.map(issueKey))
   expect(after.map(issueKey)).not.toContain(m.key)
-  expect(after.filter((i) => !had.has(issueKey(i)) && i.code !== 'unlabelled-room')).toEqual([])
+  expect(after.filter((i) => !had.has(issueKey(i)) && i.code !== 'unlabelled-room' && i.code !== 'no-entry-door')).toEqual([])
   expect(t.toast?.text).toBe(`${f!.label} — Ctrl+Z undoes it`)
   expect(studioReducer(t, { type: 'undo' }).unit).toBe(u)
   return t.unit
@@ -74,6 +74,41 @@ describe('issues on the plan', () => {
     expect(marked(u).fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Extend 2'-0"`]) // to the top wall's centre line
     const after = applyAndUndo(u, m, 'Extend')
     expect(deriveRooms(after)).toHaveLength(2)
+  })
+
+  it('a gap the trace left in one wall (two ends facing, 2 cm off one line): "Close the gap" closes the room, both ends gone, no tilt', () => {
+    // the top wall in two pieces, 0.6 m apart, the right one 2 cm low; the only room's door on the left wall
+    const u: Unit = {
+      ...box([v('g1', 1.5, 0), v('g2', 2.1, 0.02)], [], []),
+      walls: [w('t1', 'v1', 'g1'), w('t2', 'g2', 'v2'), w('right', 'v2', 'v3'), w('bottom', 'v3', 'v4'), w('left', 'v4', 'v1', [door('d', 1)])],
+    }
+    const { marks, fixes, rooms } = marked(u)
+    expect(rooms).toHaveLength(0)
+    const m = markOf(marks, 'dangling-vertex', 'g1')
+    expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`])
+    const after = applyAndUndo(u, m, 'Close the gap')
+    expect(deriveRooms(after)).toHaveLength(1)
+    const left = studioIssues(after, deriveRooms(after)).map((i) => i.code)
+    expect(left).not.toContain('dangling-vertex')
+    // g1 slid along its own line only: t1 is still level
+    const t1 = after.walls.find((x) => x.id === 't1')!
+    const [a, b] = [after.vertices.find((p) => p.id === t1.a)!, after.vertices.find((p) => p.id === t1.b)!]
+    expect(a.y).toBe(0)
+    expect(b.y).toBe(0)
+  })
+
+  it('a "Check these" row on an issue\'s spot shares its mark and number (one badge, not two)', () => {
+    const u = splitBottom(box([v('p2', 2, 0.6)], [w('part', 'p1', 'p2')]))
+    const rooms = deriveRooms(u)
+    const marks = markIssues(u, rooms, studioIssues(u, rooms), [
+      { id: 'r1', at: { x: 2.01, y: 0.6 }, kind: 'unclosed', message: 'A wall ends here without meeting another' },
+      { id: 'r2', at: { x: 1, y: 1 }, kind: 'size-mismatch', message: 'Room: drawn …' },
+    ])
+    const loose = markOf(marks, 'dangling-vertex', 'p2')
+    expect(marks[0]).toMatchObject({ key: 'review:r1', twinOf: loose.key, n: loose.n, severity: 'red' })
+    expect(marks[1].n).toBe(1)
+    expect(loose.n).toBe(2)
+    expect(marks.filter((m) => m.n !== null && !m.twinOf).map((m) => m.n)).toEqual([1, 2, 3])
   })
 
   it('a short piece past a junction: "Remove end" takes it off', () => {

@@ -1227,7 +1227,8 @@ export default function StudioApp() {
   }, [exportJson, fitView, computeHover, popover, size, trace])
 
   // ----- issues and review rows → pan/zoom to the mark, select what it is about (a loose corner: ready to drag), open it
-  const openMark = (m: Mark) => {
+  const openMark = (row: Mark) => {
+    const m = (row.twinOf && marks.find((x) => x.key === row.twinOf)) || row // a "Check these" row on an issue's spot opens that issue
     const ids = m.issue ? (m.issue.code === 'unlabelled-room' ? [] : m.issue.ids) : m.review?.entityId ? [m.review.entityId] : []
     const sel = ids.filter((id) => findEntity(unit, id))
     focusOn([...(m.at ? [m.at] : []), ...sel.flatMap((id) => entityPoints(unit, id))], sel, 3)

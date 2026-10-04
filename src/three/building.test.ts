@@ -140,10 +140,15 @@ describe('a building made in the Studio (projects.ts): floors of traced flats', 
     expect(floorIn(sheltech, 'sheltech-a', sa.floor)).toBe(sa.floor)
   })
 
-  test('a flat with no column drawn: its shells stand in for the ground floor (the tower never floats)', () => {
+  test('a flat with no column drawn: its shell stands in for the ground floor (no flat floats), beside a flat on its columns', () => {
     const t = projectTower(makeProject('p', FLATS['type-b'].unit, 2, 4, 'none'))
     expect(t.GROUND.columns).toEqual([])
     expect(t.FLOORS[0]).toEqual({ floor: 0, flats: [], standIns: [FLATS['type-b'].unit.id] })
+    // his flat (9 columns) and Sheltech B (none) on one floor: his columns, B's shell
+    const sb = sheltech.FLATS['sheltech-b'].unit
+    const both = projectTower(placeFlat(makeProject('p', u, 2, 7, 'none'), sb, 2, 7, 'none'))
+    expect(both.GROUND.columns).toHaveLength((u.pillars ?? []).length)
+    expect(both.FLOORS[0]).toEqual({ floor: 0, flats: [], standIns: [sb.id] })
   })
 
   test('two traced flats off one drawing land where they were traced; editing a flat re-places it; taking it out', () => {
@@ -156,6 +161,14 @@ describe('a building made in the Studio (projects.ts): floors of traced flats', 
     expect(off.x).toBeCloseTo(1, 9)
     expect(off.y).toBeCloseTo(2, 9)
     expect(sheetOffset(p, { ...b, planImage: { ...b.planImage, src: 'another.jpg' } })).toEqual({ x: 0, y: 0 })
+    // its own read of the scale 2 % off: its centre still lands on the same drawing pixel in A's metres; 6 % off: one is wrong
+    const b2 = { ...b, planImage: { ...b.planImage, pxPerM: pi.pxPerM * 1.02 } }
+    const o2 = sheetOffset(p, b2)
+    const fb = flatBounds(b2)
+    const c = { x: (fb.minX + fb.maxX) / 2, y: (fb.minY + fb.maxY) / 2 }
+    expect(pi.originPx.x + (c.x + o2.x) * pi.pxPerM).toBeCloseTo(b2.planImage.originPx.x + c.x * b2.planImage.pxPerM, 6)
+    expect(pi.originPx.y + (c.y + o2.y) * pi.pxPerM).toBeCloseTo(b2.planImage.originPx.y + c.y * b2.planImage.pxPerM, 6)
+    expect(sheetOffset(p, { ...b, planImage: { ...b.planImage, pxPerM: pi.pxPerM * 1.06 } })).toEqual({ x: 0, y: 0 })
     p = placeFlat(p, b, 2, 6, 'none', off)
     expect(p.floors).toEqual([{ from: 2, to: 6, flats: [a.id, b.id] }])
     expect(projectTower(p).FLATS[b.id].offset).toEqual(off)

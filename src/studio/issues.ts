@@ -14,10 +14,10 @@ import type { Review } from './review'
 export type Severity = 'red' | 'amber' | 'grey'
 /** an unnamed space smaller than this is a duct / wall pocket: cosmetic, m² */
 export const SMALL_SQM = 2
-/** "Extend": how far a loose end looks along its own line for a wall to join (the founder's gaps: 0.55–0.75 m) */
+/** "Extend" / "Close the gap": how far a loose end looks along its own line for a wall / another end (the founder's gaps: 0.55–0.75 m) */
 export const GAP_M = 1.2
-/** "Remove end" / "End it here": a loose piece of wall up to this long past a junction / a crossing is an overshoot */
-export const OVERSHOOT_M = 1
+/** "Remove end" / "End it here": a loose piece of wall up to this long past a junction / a crossing is an overshoot (a fresh Sheltech B trace: 1.04 m) */
+export const OVERSHOOT_M = 1.2
 
 /** what breaks the 3D: an open room (no floor, skirting or daylight), doubled or crossing walls, an opening off its wall */
 const BREAKS = new Set<StudioIssue['code']>(['dangling-vertex', 'zero-length-wall', 'duplicate-wall', 'opening-out-of-bounds', 'openings-overlap', 'walls-intersect'])
@@ -51,6 +51,8 @@ export interface Mark {
   nameAt?: Pt
   /** a label in no closed room: the nearest open spot and why */
   hint?: { at: Pt; why: string }
+  /** a "Check these" row on an issue's spot (the trace's dead end = that loose end): it shares the issue's mark, number and fixes */
+  twinOf?: string
 }
 
 /** A mark's working fixes; `nameAt` = an unnamed room's name typed in place becomes a label here. */
@@ -171,25 +173,38 @@ function issueMark(u: Unit, rooms: Room[], i: StudioIssue): Omit<Mark, 'n'> {
 
 const RANK: Record<Severity, number> = { red: 0, amber: 1, grey: 2 }
 
-/** The marks in list order: "Check these" rows, then the issues by severity (whole-plan ones last); numbered where they have a spot. */
-export function markIssues(u: Unit, rooms: Room[], issues: StudioIssue[], review: Review['items'] = []): Mark[] {
-  const fromReview: Omit<Mark, 'n'>[] = review.map((r) => ({ key: `review:${r.id}`, severity: r.kind === 'unclosed' ? 'red' : 'amber', at: r.at, message: r.message, review: r }))
-  const fromIssues = issues.map((i) => issueMark(u, rooms, i)).sort((p, q) => Number(!p.at) - Number(!q.at) || RANK[p.severity] - RANK[q.severity])
-  let n = 0
-  return [...fromReview, ...fromIssues].map((m) => ({ ...m, n: m.at ? ++n : null }))
-}
+/** a "Check these" spot this close to an issue's is that issue (m) */
+const TWIN_M = 0.1
 
 /**
- * Applying `actions` to `u` leaves no issue with `issue`'s key and no issue that was not there before (a room a fix
- * closes may be a new unnamed space — that one is allowed). The reducer's own rules run, so what is offered is exactly
- * what a click does.
+ * The marks in list order: "Check these" rows, then the issues by severity (whole-plan ones last); numbered where they
+ * have a spot. A "Check these" row on an issue's spot gets no mark of its own: it carries the issue's number (twinOf).
+ */
+export function markIssues(u: Unit, rooms: Room[], issues: StudioIssue[], review: Review['items'] = []): Mark[] {
+  const fromIssues = issues.map((i) => issueMark(u, rooms, i)).sort((p, q) => Number(!p.at) - Number(!q.at) || RANK[p.severity] - RANK[q.severity])
+  const fromReview: Omit<Mark, 'n'>[] = review.map((r) => {
+    const twin = fromIssues.find((m) => m.at && dist(m.at, r.at) <= TWIN_M)
+    return { key: `review:${r.id}`, severity: twin?.severity ?? (r.kind === 'unclosed' ? 'red' : 'amber'), at: r.at, message: r.message, review: r, ...(twin ? { twinOf: twin.key } : {}) }
+  })
+  let n = 0
+  const marks = [...fromReview, ...fromIssues].map((m) => ({ ...m, n: m.at && !m.twinOf ? ++n : null }))
+  const nOf = new Map(marks.map((m) => [m.key, m.n]))
+  return marks.map((m) => (m.twinOf ? { ...m, n: nOf.get(m.twinOf) ?? null } : m))
+}
+
+/** what a room a fix closes brings with it, never a new problem: an unnamed space, the first room's "no entry door yet" */
+const CLOSED_A_ROOM = new Set<StudioIssue['code']>(['unlabelled-room', 'no-entry-door'])
+
+/**
+ * Applying `actions` to `u` leaves no issue with `issue`'s key and no issue that was not there before (but what a newly
+ * closed room brings: CLOSED_A_ROOM). The reducer's own rules run, so what is offered is exactly what a click does.
  */
 export function closes(u: Unit, actions: Action[], issue: StudioIssue, before: StudioIssue[]): boolean {
   const s = actions.reduce(reducer, { ...initialState(), unit: u })
   if (s.unit === u) return false
   const had = new Set(before.map(issueKey))
   const k = issueKey(issue)
-  return studioIssues(s.unit, deriveRooms(s.unit)).every((i) => issueKey(i) !== k && (had.has(issueKey(i)) || i.code === 'unlabelled-room'))
+  return studioIssues(s.unit, deriveRooms(s.unit)).every((i) => issueKey(i) !== k && (had.has(issueKey(i)) || CLOSED_A_ROOM.has(i.code)))
 }
 
 /** drag-begin (the one undo entry) → corners to `moves` → drag-end joins them where they landed (settle) */
@@ -215,18 +230,37 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
       const far = V.get(w.a === id ? w.b : w.a)!
       const out: Fix[] = []
       const hit = ahead(u, id, w, GAP_M)
-      if (hit?.inside) out.push({ label: 'Join', title: 'Join this end to the wall it sits in', actions: dragTo([], [id]), ghost: [{ kind: 'ring', at: v }] })
+      // a gap the trace left in one wall: another loose end facing this one, a few cm off its line at most (ahead takes
+      // only an end ON the line) — this end slides along its own line to it; the end-to-end join does the rest, no tilt
+      const L0 = dist(far, v)
+      const d = { x: (v.x - far.x) / L0, y: (v.y - far.y) / L0 }
+      const facing = u.walls
+        .flatMap((x) => {
+          const qid = x === w ? null : degreeOf(u, x.a) === 1 ? x.a : degreeOf(u, x.b) === 1 ? x.b : null
+          if (!qid) return []
+          const q = V.get(qid)!, qf = V.get(qid === x.a ? x.b : x.a)!
+          const Lq = dist(qf, q)
+          const r = (q.x - v.x) * d.x + (q.y - v.y) * d.y
+          const off = Math.abs((q.y - v.y) * d.x - (q.x - v.x) * d.y)
+          const back = Lq > 0 && ((q.x - qf.x) * d.x + (q.y - qf.y) * d.y) / Lq < -0.985 // its wall points back at this end (within 10°)
+          return r > 1e-6 && r <= GAP_M && off <= Math.max(w.thicknessM, x.thicknessM) && back ? [{ q, r }] : []
+        })
+        .sort((p, q) => p.r - q.r)[0]
+      if (facing && (!hit || facing.r < hit.r)) {
+        const to = { x: v.x + d.x * facing.r, y: v.y + d.y * facing.r }
+        out.push({ label: `Close the gap ${ft(facing.r)}`, title: `Carry this wall ${ft(facing.r)} along its own line to the wall end facing it: one wall, no gap (add a window or door there with O if the gap was one)`, actions: dragTo([{ id, ...to }]), ghost: [{ kind: 'line', from: v, to: facing.q }] })
+      } else if (hit?.inside) out.push({ label: 'Join', title: 'Join this end to the wall it sits in', actions: dragTo([], [id]), ghost: [{ kind: 'ring', at: v }] })
       else if (hit) {
         const moves = [{ id, ...hit.to }, ...(hit.also ? [{ id: hit.also.end, ...hit.to }] : [])]
         const ghost: Ghost[] = [{ kind: 'line', from: v, to: hit.to }, ...(hit.also ? [{ kind: 'line' as const, from: V.get(hit.also.end)!, to: hit.to }] : [])]
         out.push({ label: `Extend ${ft(hit.r)}`, title: `Carry this wall ${ft(hit.r)} along its own line to the wall ahead and join it there`, actions: dragTo(moves), ghost })
       }
       // a short loose piece past a junction (nothing else ends at its free corner): an overshoot — it can simply go
-      const L = dist(far, v)
       const pastJunction = degreeOf(u, far.id) >= 3
-      if (pastJunction && !w.openings.length && L <= OVERSHOOT_M)
-        out.push({ label: 'Remove end', title: `Remove this ${ft(L)} piece of wall sticking out past the corner`, actions: [{ type: 'delete', ids: [w.id] }], ghost: [{ kind: 'cut', from: far, to: v }] })
-      return pastJunction ? out.reverse() : out
+      if (pastJunction && !w.openings.length && L0 <= OVERSHOOT_M)
+        out.push({ label: 'Remove end', title: `Remove this ${ft(L0)} piece of wall sticking out past the corner`, actions: [{ type: 'delete', ids: [w.id] }], ghost: [{ kind: 'cut', from: far, to: v }] })
+      // an overshoot first — unless a gap in one wall is what is open: closing it comes first then
+      return pastJunction && !(facing && out[0]?.label.startsWith('Close')) ? out.reverse() : out
     }
     case 'zero-length-wall': {
       const w = W.get(i.ids[0])

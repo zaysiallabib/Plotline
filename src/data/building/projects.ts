@@ -94,15 +94,20 @@ export function placementOf(p: Project, unitId: Id): { from: number; to: number;
 
 /**
  * Where a flat traced from the same drawing as the building's first flat lands in the building frame (founder: both
- * Sheltech flats are auto-traced off one Level 2 sheet, each draft with its own metre origin): the two plan-image
- * origins apart, in metres, plus that flat's own offset. {0, 0} for another drawing or scale — the flat keeps its frame.
+ * Sheltech flats are auto-traced off one Level 2 sheet, each draft with its own metre origin and its own read of the
+ * scale): the flat's centre goes through the drawing's pixels into the first flat's metres (a scale read 1 % apart
+ * moves its far walls by centimetres, not its middle), plus that flat's own offset. {0, 0} for another drawing, or
+ * scales more than 5 % apart (one of the two is wrong) — the flat keeps its own frame.
  */
 export function sheetOffset(p: Project, u: Unit): Pt {
   const ref = Object.values(p.flats).find((f) => !f.mirror && f.unitId !== u.id && p.units[f.unitId])
   const a = ref && p.units[ref.unitId].planImage
   const b = u.planImage
-  if (!ref || !a || !b || a.src !== b.src || Math.abs(a.pxPerM - b.pxPerM) > a.pxPerM * 0.005) return { x: 0, y: 0 }
-  return { x: ref.offset.x + (b.originPx.x - a.originPx.x) / b.pxPerM, y: ref.offset.y + (b.originPx.y - a.originPx.y) / b.pxPerM }
+  if (!ref || !a || !b || a.src !== b.src || Math.abs(a.pxPerM - b.pxPerM) > a.pxPerM * 0.05) return { x: 0, y: 0 }
+  const fb = flatBounds(u)
+  const c = { x: (fb.minX + fb.maxX) / 2, y: (fb.minY + fb.maxY) / 2 }
+  const px = { x: b.originPx.x + c.x * b.pxPerM, y: b.originPx.y + c.y * b.pxPerM }
+  return { x: ref.offset.x + (px.x - a.originPx.x) / a.pxPerM - c.x, y: ref.offset.y + (px.y - a.originPx.y) / a.pxPerM - c.y }
 }
 
 /** `ps` with `u` as it is now wherever it stands (the Studio's autosave); null when nothing changed. */
@@ -139,12 +144,13 @@ export function projectTower(p: Project): Tower {
     while (near > 0 && !onFloor(p, near).length) near--
     FLOORS.push(flats.length ? { floor: k, flats } : { floor: k, flats: [], standIns: near > 0 ? onFloor(p, near) : base })
   }
-  // the ground: the lowest flats' columns carry the tower; with no column drawn their shells stand in (never a floating tower)
+  // the ground: the lowest flats' columns carry the tower; a flat with no column drawn stands in with its shell (never a floating flat)
   const columns: Rect[] = base.flatMap((s) => {
     const { unit, offset: o } = FLATS[s]
     return (unit.pillars ?? []).map((q): Rect => [q.x - q.wM / 2 + o.x, q.y - q.hM / 2 + o.y, q.x + q.wM / 2 + o.x, q.y + q.hM / 2 + o.y])
   })
-  if (!columns.length) FLOORS.unshift({ floor: 0, flats: [], standIns: base })
+  const shells = base.filter((s) => !FLATS[s].unit.pillars?.length)
+  if (shells.length) FLOORS.unshift({ floor: 0, flats: [], standIns: shells })
   // the plot: the flats' extent and 2 m round it
   const bs = base.map((s) => {
     const b = flatBounds(FLATS[s].unit)
