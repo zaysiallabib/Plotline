@@ -726,7 +726,9 @@ export class PlotlineScene {
     if (!s || !f || !w) return
     // the wall's own frame (any angle): u along it, v up, w across (buildWall's basis)
     this.opBox.matrixAutoUpdate = false
-    this.opBox.matrix.makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(f.normal.x, 0, f.normal.y)).setPosition(f.origin.x, 0, f.origin.y)
+    // …standing on the higher floor beside the wall, as the opening is built (liftedWall)
+    const base = this.openingBase(s.wallId, s.offsetM + s.widthM / 2)
+    this.opBox.matrix.makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(f.normal.x, 0, f.normal.y)).setPosition(f.origin.x, base, f.origin.y)
     const mat = { color: s.refused ? REFUSED : SEL, depthTest: false, transparent: true }
     const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(s.widthM, s.heightM, w.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
     box.position.set(s.offsetM + s.widthM / 2, s.sillM + s.heightM / 2, 0)
@@ -751,7 +753,16 @@ export class PlotlineScene {
     this.raycaster.setFromCamera(ndc, this.camera)
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(f.normal.x, 0, f.normal.y), new THREE.Vector3(f.origin.x, 0, f.origin.y))
     const P = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3())
-    return P && { u: (P.x - f.origin.x) * f.dir.x + (P.z - f.origin.y) * f.dir.y, v: P.y, d: this.raycaster.ray.origin.distanceTo(P) }
+    if (!P) return null
+    const u = (P.x - f.origin.x) * f.dir.x + (P.z - f.origin.y) * f.dir.y
+    return { u, v: P.y - this.openingBase(wallId, u), d: this.raycaster.ray.origin.distanceTo(P) }
+  }
+
+  /** The floor a wall's openings stand on at u along it (details.ts wallLift: the higher side's level), 0 on a flat floor. */
+  private openingBase(wallId: Id, u: number): number {
+    const l = this.lifts.get(wallId)
+    const t = THREE.MathUtils.clamp(u / (this.wallFrames.get(wallId)?.lengthM || 1), 0, 1)
+    return l ? l.base[0] + t * (l.base[1] - l.base[0]) : 0
   }
 
   /** The opening under the pointer: one of its parts (frame, leaf, glass), else its hole when nothing nearer hides it. */
