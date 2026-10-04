@@ -129,3 +129,13 @@ describe('dmd-tower.ts', () => {
     ].map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) })))
   })
 })
+
+describe('the car ramps run on from level to level (one storey = FLOOR_M)', () => {
+  const label = (u: unknown, name: string) => (u as Unit).roomLabels.find((l) => l.name === name)!
+  test('ground → Basement 1, Basement 1 → Basement 2', () => {
+    expect(label(ground, 'Ramp down to the basements').slope!.toLevelM + dmd.FLOOR_M).toBeCloseTo(label(b1, 'Ramp up to the ground level (curve)').slope!.toLevelM, 2)
+    expect(label(b1, 'Ramp down to Basement 2').slope!.toLevelM + dmd.FLOOR_M).toBeCloseTo(label(b2, 'Ramp up to Basement 1 (curve)').slope!.toLevelM, 2)
+    expect(label(b1, 'Ramp up to the ground level').slope!.toLevelM).toBe(label(b1, 'Ramp up to the ground level (curve)').levelM)
+    expect(label(b2, 'Ramp up to Basement 1').slope!.toLevelM).toBe(label(b2, 'Ramp up to Basement 1 (curve)').levelM)
+  })
+})
