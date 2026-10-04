@@ -12,6 +12,7 @@ import { kitAsset } from '../furnish/kit'
 import { layoutFor } from '../studio/furniture'
 import { initialState, normalizeUnit, reducer } from '../studio/model'
 import { withDefaults } from './defaults'
+import { conePath, mapOf } from './Minimap'
 import { decodeConfig, encodeConfig } from './share'
 import { entrySpawn, listedRooms, roomView } from './spawn'
 
@@ -62,6 +63,32 @@ describe("parity: the founder's draft gets what the hand-authored units show", {
       const v = roomView(r, unit)
       expect([v.p.x, v.p.y, v.face.x, v.face.y].every(Number.isFinite), r.name).toBe(true)
     }
+  })
+
+  it('minimap: an outline per closed room inside its frame, door gaps in the walls — at any wall angle', () => {
+    const turn = (deg: number): Unit => {
+      const [c, s] = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)]
+      const rot = <P extends { x: number; y: number }>(p: P): P => ({ ...p, x: p.x * c - p.y * s, y: p.x * s + p.y * c })
+      return { ...unit, vertices: unit.vertices.map(rot), roomLabels: unit.roomLabels.map(rot) }
+    }
+    for (const u of [unit, turn(30)]) {
+      const rs = core.deriveRooms(u)
+      const m = mapOf(u, rs)
+      expect(m.rooms.map((r) => r.id)).toEqual(rs.map((r) => r.id))
+      expect(rs.length).toBe(rooms.length)
+      for (const p of rs.flatMap((r) => core.roomPolygon(r, u))) {
+        expect(p.x).toBeGreaterThan(m.box.x)
+        expect(p.y).toBeGreaterThan(m.box.y)
+        expect(p.x).toBeLessThan(m.box.x + m.box.w)
+        expect(p.y).toBeLessThan(m.box.y + m.box.h)
+      }
+      // a wall with a door in its middle stands as two stretches on the map; one with only windows as one
+      const mid = u.walls.find((w) => w.openings.length === 1 && w.openings[0].kind === 'door' && w.openings[0].offsetM > 0.1)!
+      const win = u.walls.filter((w) => w.openings.length && w.openings.every((o) => o.kind === 'window'))
+      expect(mapOf({ ...u, walls: [mid] }, []).walls).toHaveLength(2)
+      expect(mapOf({ ...u, walls: win }, []).walls).toHaveLength(win.length)
+    }
+    expect(conePath(Math.PI / 4, 2)).toBe('M0 0L1.414 -1.414A2 2 0 0 1 1.414 1.414Z')
   })
 
   it('the hand-authored units keep what they carry', () => {

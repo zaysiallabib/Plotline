@@ -20,6 +20,7 @@ import type { XRControls } from '../three/xr'
 import { dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
 import Hud from './Hud'
+import Minimap from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
@@ -731,6 +732,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             }}
           />
           <PinLayer scene={scene} pins={pins} draft={draft} onSave={savePin} onCancel={() => setDraft(null)} />
+          <Minimap scene={scene} unit={unit} rooms={rooms} walking={mode === 'walk'} />
         </>
       )}
     </div>

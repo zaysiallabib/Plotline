@@ -67,6 +67,18 @@
 .toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); padding: 8px 16px; font-size: 13px; }
 .footer { position: absolute; right: 16px; bottom: 12px; font-size: 11px; color: var(--muted); }
 
+/* Minimap (walk mode, everyone): bottom right above the footer, clear of the sun pill; the side panel stops above it */
+.minimap { position: absolute; right: 16px; bottom: 34px; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.minimap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.minimap-name { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+.minimap svg { display: block; overflow: hidden; }
+.minimap .room { fill: rgba(242, 242, 240, 0.07); }
+.minimap .room.here { fill: rgba(232, 193, 112, 0.42); }
+.minimap .wall { stroke: #c9c9c4; stroke-linecap: square; fill: none; }
+.minimap .cone { fill: rgba(232, 193, 112, 0.35); }
+.minimap .me { fill: var(--accent); stroke: #17181a; stroke-width: 0.08; }
+.viewer:has(.minimap) .panel { bottom: 290px; }
+
 /* sun pill */
 .sun-pill { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
 .compass { color: var(--ink); flex: none; }
