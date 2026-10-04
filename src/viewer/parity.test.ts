@@ -6,6 +6,8 @@
 import { describe, expect, it } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
+import { floorIn, towerOf } from '../data/building'
+import { makeProject, projectTower } from '../data/building/projects'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import typeA from '../data/units/type-a.json'
 import { kitAsset } from '../furnish/kit'
@@ -99,6 +101,12 @@ describe("parity: the founder's draft gets what the hand-authored units show", {
     expect([d.name, d.areaSqft, d.finishSlots]).toEqual([a.name, a.areaSqft, a.finishSlots])
   })
 
-  it.todo('Building view: towerOf for a Studio project (Lane C, ask 2)')
+  it('Building view: none until he makes one in the Studio; then towerOf finds his building and floorIn his floor', () => {
+    expect(towerOf(unit)).toBeNull() // nothing stored here: no Building button, as before
+    const t = projectTower(makeProject('p', loaded, 2, 7, 'left'))
+    expect(towerOf(unit, [t])).toBe(t)
+    expect(floorIn(t, unit.id, unit.floor)).toBe(2)
+    expect(t.FLOORS.filter((f) => f.flats.includes(unit.id)).map((f) => f.floor)).toEqual([2, 3, 4, 5, 6, 7])
+  })
   it.todo('passage height default for Studio passages (Lane A, ask 5)')
 })
