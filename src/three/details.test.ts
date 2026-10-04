@@ -500,6 +500,35 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(stepFaces(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual([])
   })
 
+  test.each([1.2, 2.1])("a %s m wall standing alone in type-a's living room: no issue, painted and skirted on both faces and both ends, its top capped", (h) => {
+    const a = typeA as unknown as Unit
+    const living = core.deriveRooms(a).find((r) => r.kind === 'living')!
+    const c = living.centroid
+    const u: Unit = {
+      ...a,
+      vertices: [...a.vertices, { id: 'fs1', x: c.x - 0.8, y: c.y }, { id: 'fs2', x: c.x + 0.8, y: c.y }],
+      walls: [...a.walls, { id: 'fs', a: 'fs1', b: 'fs2', thicknessM: 0.127, heightM: h, openings: [], standsAlone: true }],
+    }
+    const issues = (x: Unit) => core.validate(x).map((i) => `${i.level} ${i.code}`).sort()
+    expect(issues(u)).toEqual(issues(a))
+    const rs = core.deriveRooms(u)
+    const w = u.walls.find((x) => x.id === 'fs')!
+    // both faces (probed as buildWall does) are the living room: its paint on each, its finish on the ends and the top
+    const f = core.wallFrame(w, u.vertices)
+    for (const s of [1, -1]) expect(core.roomAt({ x: c.x + f.normal.x * 0.12 * s, y: c.y + f.normal.y * 0.12 * s }, rs, u)?.id).toBe(living.id)
+    const g = wallGeometry(w, u)!
+    const edge = g.groups.find((x) => x.materialIndex === 2)!
+    const p = g.attributes.position
+    const ys: number[] = []
+    const xs: number[] = []
+    for (let i = edge.start; i < edge.start + edge.count; i++) [ys[ys.length], xs[xs.length]] = [p.getY(i), p.getX(i)]
+    expect(ys.filter((y) => Math.abs(y - h) < 1e-6).length).toBeGreaterThanOrEqual(6) // the cap: a quad at the top
+    expect(Math.min(...xs)).toBeCloseTo(c.x - 0.8, 6) // an end cap at each end
+    expect(Math.max(...xs)).toBeCloseTo(c.x + 0.8, 6)
+    const runs = skirtingRuns(u, rs).filter((r) => r.room.id === living.id && Math.abs(r.p.y + r.d.y * r.s0 - c.y) < 0.1 && Math.abs(r.p.x + r.d.x * ((r.s0 + r.s1) / 2) - c.x) < 0.9)
+    expect(new Set(runs.map((r) => `${Math.round(r.n.x)},${Math.round(r.n.y)}`))).toEqual(new Set(['0,1', '0,-1', '1,0', '-1,0']))
+  })
+
   test('zones: no skirting in an outdoor zone (the lobby has its own), the lawn floor turf, its wall faces the exterior render', () => {
     const runs = skirtingRuns(u, rooms)
     expect(runs.some((r) => r.room.id === 'Lobby')).toBe(true)
