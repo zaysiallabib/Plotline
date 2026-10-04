@@ -28,6 +28,11 @@ import { GLASS, WATER, meterUVs } from './openings'
 const WALL_M = 3
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
+/**
+ * A traced level drawn in full stands on a plate whose top is this far under its floors (screed + tile): a plate top in
+ * the floors' own plane fought them in stripes from the Building view's distance (the roof deck read as a moiré).
+ */
+export const UNDER_LEVEL_M = 0.05
 const UP = new THREE.Vector3(0, 1, 0)
 const PAVING: MaterialRef = { kind: 'color', color: '#9d988f', roughness: 0.9 }
 /** lawn strips on the ground floor and the roof: the turf scan (furnish, wave 11), metre UVs so it tiles at its real size */
@@ -178,7 +183,7 @@ export class Building extends THREE.Group {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         const rooms = this.roomsOf(s)
         if (roof) {
-          put(EXTERIOR_PLASTER, ...plate(u, rooms, 0, PLATE_M).map(at))
+          put(EXTERIOR_PLASTER, ...plate(u, rooms, roofLevel.length ? -UNDER_LEVEL_M : 0, PLATE_M).map(at))
           if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m, no openings
           const others = standIns.filter((o) => o !== s)
@@ -360,7 +365,7 @@ export class Building extends THREE.Group {
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
     for (const p of u.pillars ?? []) put(EXTERIOR_PLASTER, box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, core.floorLevelAt(u, p.x, p.y, rooms), storey))
-    if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, 0, PLATE_M))
+    if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, -UNDER_LEVEL_M, PLATE_M))
     if (k > top) {
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
       const caps = rooms.filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id)))
