@@ -642,7 +642,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     plan.current = { ...plan.current, dragBlocked: false }
     if (!before) return showOp()
     if (JSON.stringify(after.walls) === JSON.stringify(unit.walls)) {
-      plan.current = { ...before, dragBlocked: false } // nothing changed (a drag back to where it was): no undo step, no rebuild
+      // nothing changed (a drag back to where it was, a refused width): no undo step, no rebuild — but an undo keeps its step
+      if (before.history.past.length <= plan.current.history.past.length) plan.current = { ...before, dragBlocked: false }
       return showOp()
     }
     const why = saveOpenings(unit, after)
@@ -683,7 +684,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       const builtIn = location.pathname !== '/u/preview'
       const ask = builtIn
         ? `${unit.name} is a built-in unit. Its doors and windows are edited on your Studio draft: this makes it your Studio draft (replacing the unit open in the Studio — export that first if you need it) and reopens it here. Continue?`
-        : 'Edit openings saves into your Studio draft, and the Studio has another unit open. Make this unit your Studio draft instead? (Export that one first if you need it.)'
+        : 'Edit openings saves into your Studio draft, and your Studio draft is not this unit. Make this unit your Studio draft? (It replaces the unit open in the Studio — export that one first if you need it.)'
       if (!window.confirm(ask)) return
       if (!makeDraft(unit)) return showToast(OPENINGS_WHY.full, 7000)
       if (builtIn) return location.assign('/u/preview?edit=openings')
