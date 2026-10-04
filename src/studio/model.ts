@@ -2,7 +2,7 @@
  * Studio state + pure reducer. No DOM, no React: Vitest-covered.
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
-import { FT, deriveRooms, formatFeetInches, nearestWall, newId, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
+import { FT, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
@@ -16,7 +16,25 @@ const EPS = 1e-6
 const HISTORY_CAP = 200
 const IDLE_MS = 3 * 60_000
 
-export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room' | 'furniture'
+export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room' | 'furniture' | 'pillar'
+
+/** The W tool's wall types (session 19: picked before placing, remembered until changed); a type IS a height. */
+export type WallType = 'wall' | 'low' | 'kerb' | 'zone'
+export const WALL_TYPES: Record<WallType, { label: string; heightM: number }> = {
+  wall: { label: 'Wall', heightM: WALL_HEIGHT_M },
+  low: { label: 'Low wall', heightM: 1.1 }, // a parapet, a screen: its height typed after
+  kerb: { label: 'Kerb', heightM: 0.15 },
+  zone: { label: 'Zone line', heightM: 0 }, // a zone's edge (lawn | paving …): drawn as nothing in 3D
+}
+/** a zone line's plan width (a graph edge, never a wall in 3D) */
+export const ZONE_LINE_M = 0.05
+/** up to this a wall is a kerb (core: ≤ ~0.2) */
+export const KERB_M = 0.2
+/** the type a height reads as: 0 a zone line, ≤ KERB_M a kerb, under the storey a low wall (a 7' screen, a 6' boundary) */
+export const wallTypeOf = (heightM: number): WallType => (heightM === 0 ? 'zone' : heightM <= KERB_M ? 'kerb' : heightM < WALL_HEIGHT_M - 0.01 ? 'low' : 'wall')
+/** the C tool's click: a 12" × 20" column */
+export const PILLAR_M = { wM: FT, hM: (20 / 12) * FT }
+const MIN_PILLAR_M = 0.1
 export interface View {
   panX: number
   panY: number
@@ -42,6 +60,8 @@ export interface Timer {
 export interface Chain {
   ids: Id[]
   thicknessM: number
+  /** the walls it draws: the W tool's type (WALL_TYPES) */
+  heightM: number
 }
 export interface StudioState {
   unit: Unit
@@ -55,6 +75,10 @@ export interface StudioState {
   lastOpeningKind: OpeningKind
   /** the O tool's picked width for lastOpeningKind; absent = the kind's default (openingDefaults: a door on a bath wall 2'-6") */
   lastOpeningWidthM?: number
+  /** the W tool's picked wall type; absent = 'wall' */
+  wallType?: WallType
+  /** the W tool's low-wall height typed before drawing (a 6' boundary wall, a 7' screen); absent = WALL_TYPES.low */
+  lowWallM?: number
   toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
@@ -78,7 +102,23 @@ export type Action =
   | { type: 'set-scale'; pxPerM: number }
   | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg'>> }
   | { type: 'select'; ids: Id[]; add?: boolean }
-  | { type: 'chain-start'; at: Target }
+  /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
+  | { type: 'chain-start'; at: Target; wall?: WallType }
+  /** the W tool's type picker (keys 1–4): what the next walls are, the chain being drawn too; `lowWallM` = the low wall's typed height */
+  | { type: 'pick-wall'; wall: WallType; lowWallM?: number }
+  /**
+   * walls to another type: its height, or `heightM` (the typed Height of one or several walls); a zone line 0.05 thin, out of
+   * one back to a partition; refused onto a zone line while they have openings. One undo.
+   */
+  | { type: 'set-wall-type'; ids: Id[]; wall: WallType; heightM?: number }
+  /** "Stands alone (screen / decoration)" / "Keep — it stands alone": its loose ends are meant (Wall.standsAlone); one undo */
+  | { type: 'stand-alone'; ids: Id[]; on: boolean }
+  /** the C tool: a column centred at (x, y) (Unit.pillars), selected */
+  | { type: 'add-pillar'; x: number; y: number; wM: number; hM: number }
+  /** a column moved / resized; `live` = mid-drag (drag-begin holds the undo entry) */
+  | { type: 'set-pillar'; id: Id; patch: Partial<Omit<Pillar, 'id'>>; live?: boolean }
+  /** mid-drag (drag-begin holds the undo entry): a ramp label's arrow aimed (slope.dirDeg) */
+  | { type: 'aim-ramp'; id: Id; dirDeg: number }
   | { type: 'chain-add'; at: Target }
   | { type: 'chain-typed'; lengthM: number; dirDeg: number; tolM: number }
   | { type: 'chain-back' }
@@ -758,6 +798,7 @@ export type Entity =
   | { kind: 'wall'; w: Wall }
   | { kind: 'opening'; o: Opening; w: Wall }
   | { kind: 'label'; l: RoomLabel }
+  | { kind: 'pillar'; p: Pillar }
 
 export function findEntity(u: Unit, id: Id): Entity | null {
   const v = u.vertices.find((x) => x.id === id)
@@ -768,6 +809,8 @@ export function findEntity(u: Unit, id: Id): Entity | null {
   if (o) return { kind: 'opening', o: o.opening, w: o.wall }
   const l = u.roomLabels.find((x) => x.id === id)
   if (l) return { kind: 'label', l }
+  const p = u.pillars?.find((x) => x.id === id)
+  if (p) return { kind: 'pillar', p }
   return null
 }
 
@@ -783,6 +826,7 @@ export function entityPoints(u: Unit, id: Id): Pt[] {
   if (!e) return []
   if (e.kind === 'vertex') return [e.v]
   if (e.kind === 'label') return [e.l]
+  if (e.kind === 'pillar') return [e.p]
   const w = e.kind === 'wall' ? e.w : e.w
   const f = wallFrame(w, u.vertices)
   if (e.kind === 'wall') return [f.origin, { x: f.origin.x + f.dir.x * f.lengthM, y: f.origin.y + f.dir.y * f.lengthM }]
@@ -827,7 +871,7 @@ function resolveTarget(unit: Unit, at: Target): { unit: Unit; id: Id; existing: 
 }
 
 /** Add wall a→b, split at any vertex it passes through. Refuses zero-length and duplicates. */
-function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number): Unit | string {
+function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number, heightM = WALL_HEIGHT_M): Unit | string {
   if (aId === bId) return 'Wall has no length'
   const a = vertexById(unit.vertices, aId)
   const b = vertexById(unit.vertices, bId)
@@ -845,7 +889,7 @@ function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number)
   for (let i = 0; i + 1 < ids.length; i++) {
     const key = wallKey(ids[i], ids[i + 1])
     if (walls.some((w) => wallKey(w.a, w.b) === key)) return 'That wall already exists'
-    walls.push({ id: newId(), a: ids[i], b: ids[i + 1], thicknessM, heightM: WALL_HEIGHT_M, openings: [] })
+    walls.push({ id: newId(), a: ids[i], b: ids[i + 1], thicknessM, heightM, openings: [] })
   }
   return { ...unit, walls }
 }
@@ -893,6 +937,7 @@ export function openingAt(
   const d = { ...openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id)), ...(widthM !== undefined && { widthM }) }
   const { offsetM, snapped } = snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
   const opening: Opening = { id: newId(), kind, ...d, offsetM, hinge: 'a', swing: 'in' }
+  if (wall.heightM <= KERB_M) return { opening, snapped, error: wall.heightM === 0 ? 'A zone line takes no doors or windows (it is not a wall)' : 'A kerb takes no doors or windows — leave a gap in it instead' }
   const placed = placeOpening(wall, len, opening)
   return typeof placed === 'string' ? { opening, snapped, error: placed } : { opening: placed, snapped, error: null }
 }
@@ -909,6 +954,9 @@ function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): S
 }
 const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
 const noted = (s: StudioState, notes: string[]): StudioState => (notes.length ? withToast(s, notes.join(' · ')) : s)
+/** a wall of type `wall` (`heightM` instead of the type's own) from one `thicknessM` wide: a zone line is ZONE_LINE_M thin, a wall out of one a partition again */
+const chainType = (thicknessM: number, wall: WallType, heightM?: number): { thicknessM: number; heightM: number } =>
+  wall === 'zone' ? { thicknessM: ZONE_LINE_M, heightM: 0 } : { thicknessM: thicknessM <= ZONE_LINE_M + EPS ? PARTITION_M : thicknessM, heightM: heightM ?? WALL_TYPES[wall].heightM }
 const joinedToast = (n: number, trimmed = 0) =>
   `Joined ${n} overlapping / crossing wall${n === 1 ? '' : 's'}${trimmed ? ` (${trimmed} opening${trimmed === 1 ? '' : 's'} trimmed)` : ''} — Ctrl+Z undoes`
 
@@ -918,7 +966,7 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   if (typeof r === 'string') return withToast(s, r)
   const last = s.chain.ids[s.chain.ids.length - 1]
   if (r.id === last) return s
-  const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM)
+  const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM, s.chain.heightM)
   if (typeof u === 'string') return withToast(s, u)
   // overlap = joined: an end inside another wall's body ends there, a crossed wall is split; a straight run heals (settle)
   const j = settle(u, [last, r.id])
@@ -958,9 +1006,48 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'chain-start': {
       const r = resolveTarget(s.unit, a.at)
       if (typeof r === 'string') return withToast(s, r)
-      const chain = { ids: [r.id], thicknessM: s.chain?.thicknessM ?? PARTITION_M }
+      const wall = a.wall ?? s.wallType ?? 'wall'
+      const chain = { ids: [r.id], ...chainType(s.chain?.thicknessM ?? PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined) }
       return r.unit === s.unit ? { ...s, chain, selection: [] } : commit(s, r.unit, { chain, selection: [] })
     }
+    case 'pick-wall': {
+      const lowWallM = a.lowWallM ?? s.lowWallM
+      return { ...s, wallType: a.wall, lowWallM, chain: s.chain && { ...s.chain, ...chainType(s.chain.thicknessM, a.wall, a.wall === 'low' ? lowWallM : undefined) } }
+    }
+    case 'set-wall-type': {
+      const ids = new Set(a.ids)
+      const walls = s.unit.walls.filter((w) => ids.has(w.id))
+      if (!walls.length) return s
+      if (a.wall === 'zone' && walls.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line carries none')
+      // its own height when it is that type already (a 7' screen stays 7'), else the W tool's low-wall height / the type's
+      const t = (w: Wall) => chainType(w.thicknessM, a.wall, a.heightM ?? (wallTypeOf(w.heightM) === a.wall ? w.heightM : a.wall === 'low' ? s.lowWallM : undefined))
+      return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...t(w) } : w)) })
+    }
+    case 'stand-alone': {
+      const ids = new Set(a.ids)
+      if (!s.unit.walls.some((w) => ids.has(w.id) && !w.standsAlone === a.on)) return s
+      const walls = s.unit.walls.map((w) => {
+        if (!ids.has(w.id)) return w
+        const { standsAlone: _, ...rest } = w
+        return a.on ? { ...rest, standsAlone: true as const } : rest
+      })
+      return commit(s, { ...s.unit, walls })
+    }
+    case 'add-pillar': {
+      const p: Pillar = { id: newId(), x: a.x, y: a.y, wM: Math.max(MIN_PILLAR_M, a.wM), hM: Math.max(MIN_PILLAR_M, a.hM) }
+      return commit(s, { ...s.unit, pillars: [...(s.unit.pillars ?? []), p] }, { selection: [p.id] })
+    }
+    case 'set-pillar': {
+      const p = s.unit.pillars?.find((x) => x.id === a.id)
+      if (!p) return s
+      const q = { ...p, ...a.patch, id: p.id }
+      q.wM = Math.max(MIN_PILLAR_M, q.wM)
+      q.hM = Math.max(MIN_PILLAR_M, q.hM)
+      const unit = { ...s.unit, pillars: s.unit.pillars!.map((x) => (x.id === p.id ? q : x)) }
+      return a.live ? { ...s, unit } : commit(s, unit)
+    }
+    case 'aim-ramp':
+      return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id && l.slope ? { ...l, slope: { ...l.slope, dirDeg: a.dirDeg } } : l)) } }
     case 'chain-add':
       return chainAdd(s, a.at)
     case 'chain-typed': {
@@ -1055,7 +1142,9 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
     }
     case 'update-wall': {
-      if (!s.unit.walls.some((w) => w.id === a.id)) return s
+      const w0 = s.unit.walls.find((w) => w.id === a.id)
+      if (!w0) return s
+      if (a.patch.heightM === 0 && w0.openings.length) return withToast(s, 'Remove its doors / windows first: a zone line (height 0) carries none')
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (w.id === a.id ? { ...w, ...a.patch } : w)) })
     }
     case 'set-wall-length': {
@@ -1107,6 +1196,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const vertices = s.unit.vertices.filter((v) => moved.has(v.id)).map((v) => ({ id: v.id, x: v.x + a.dx, y: v.y + a.dy }))
       let u = reducer(s, { type: 'drag', vertices }).unit // walls follow, their openings clamp
       u = { ...u, roomLabels: u.roomLabels.map((l) => (sel.has(l.id) ? { ...l, x: l.x + a.dx, y: l.y + a.dy } : l)) }
+      if (u.pillars?.some((p) => sel.has(p.id))) u = { ...u, pillars: u.pillars.map((p) => (sel.has(p.id) ? { ...p, x: p.x + a.dx, y: p.y + a.dy } : p)) }
       for (const id of s.selection) {
         const f = findOpening(u, id)
         if (!f) continue
@@ -1136,7 +1226,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const vertices = s.unit.vertices.filter((v) => !ids.has(v.id) && used.has(v.id))
       const roomLabels = s.unit.roomLabels.filter((l) => !ids.has(l.id))
       const touched = s.unit.walls.filter((w) => !walls.some((x) => x.id === w.id)).flatMap((w) => [w.a, w.b])
-      return commit(s, healStraight({ ...s.unit, walls, vertices, roomLabels }, touched), { selection: [], chain: null })
+      const pillars = s.unit.pillars?.some((p) => ids.has(p.id)) ? { pillars: s.unit.pillars.filter((p) => !ids.has(p.id)) } : {}
+      return commit(s, healStraight({ ...s.unit, walls, vertices, roomLabels, ...pillars }, touched), { selection: [], chain: null })
     }
 
     case 'add-label': {
@@ -1144,7 +1235,13 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return commit(s, { ...s.unit, roomLabels: [...s.unit.roomLabels, label] }, { selection: [label.id] })
     }
     case 'update-label': {
-      const roomLabels = s.unit.roomLabels.map((l) => (l.id === a.id ? { ...l, ...a.patch } : l))
+      // a field cleared (no level, no ramp, no printed size) leaves the label, not an `undefined` in it
+      const set = (l: RoomLabel): RoomLabel => {
+        const n = { ...l, ...a.patch }
+        for (const k of ['levelM', 'slope', 'printedSize'] as const) if (n[k] === undefined) delete n[k]
+        return n
+      }
+      const roomLabels = s.unit.roomLabels.map((l) => (l.id === a.id ? set(l) : l))
       // another kind: a room still holding only its presets gets the new kind's (furniture.forgetPresets)
       const relabel = a.patch.kind && a.patch.kind !== s.unit.roomLabels.find((l) => l.id === a.id)?.kind
       return commit(s, { ...s.unit, roomLabels, ...(relabel ? { furniture: forgetPresets(s.unit, deriveRooms(s.unit), a.id) } : {}) })
@@ -1298,7 +1395,7 @@ export const ISSUE_COPY: Record<ValidationIssue['code'], string> = {
   'unlabelled-room': 'Room has no name',
   'label-outside-any-room': 'Label is not inside a closed room',
   'walls-intersect': 'Walls cross — end one wall on the other instead',
-  'island-in-room': 'Walls stand inside a room joined to nothing — join them with a flush line (height 0)',
+  'island-in-room': 'Walls stand inside a room joined to nothing (its floor runs under them) — join them with a zone line',
 }
 
 export interface StudioIssue {
@@ -1318,7 +1415,8 @@ export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
   if (rooms.length) {
     const count = new Map<Id, number>()
     for (const r of rooms) for (const id of r.wallIds) count.set(id, (count.get(id) ?? 0) + 1)
-    const outer = unit.walls.filter((w) => (count.get(w.id) ?? 0) < 2 || rooms.some((r) => r.kind === 'other' && r.wallIds.includes(w.id))) // a traced lobby is still outside
+    // a traced lobby is still outside; so is a zone (a lobby's door onto its lawn is a level's entry)
+    const outer = unit.walls.filter((w) => (count.get(w.id) ?? 0) < 2 || rooms.some((r) => (r.kind === 'other' || isOutdoor(r.kind)) && r.wallIds.includes(w.id)))
     if (!outer.some((w) => w.openings.some((o) => o.kind === 'door'))) {
       out.push({ level: 'warning', code: 'no-entry-door', message: 'No entry door on an outer wall', ids: [] })
     }
@@ -1329,6 +1427,18 @@ export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
 export function guessKind(name: string): RoomKind {
   const n = name.toLowerCase()
   const has = (...ws: string[]) => ws.some((w) => n.includes(w))
+  if (/^\s*(p-?)?\d+\s*$/.test(n) || has('parking', 'car park')) return 'parking' // a bay's number: "1", "12", "P-3"
+  if (has('pool', 'water body', 'swimming')) return 'pool'
+  if (has('planter')) return 'planter'
+  if (has('lawn', 'garden')) return 'lawn'
+  if (has('driveway', 'drive way', 'ramp')) return 'driveway'
+  if (has('paver', 'paving', 'paved')) return 'paving'
+  if (has('deck')) return 'deck'
+  if (has('play')) return 'play'
+  if (has('gym')) return 'gym'
+  if (has('community')) return 'community'
+  if (has('guard', 'security')) return 'guard'
+  if (has('reception') || (has('lobby') && !has('lift'))) return 'lobby' // a lift lobby stays 'other' (a flat's way in)
   if (has('bed')) return 'bed'
   if (has('bath', 'toilet', 'pdr', 'wc')) return 'bath'
   if (has('veranda', 'balcony')) return 'balcony'
@@ -1348,6 +1458,50 @@ export function printedSizeOf(room: Room, unit: Unit): string {
   const xs = poly.map((p) => p.x)
   const ys = poly.map((p) => p.y)
   return `${formatFeetInches(Math.max(...xs) - Math.min(...xs))} × ${formatFeetInches(Math.max(...ys) - Math.min(...ys))}`
+}
+
+/** A typed floor level → m (signed, as a sheet prints it: +3'-6", -1.5m, −10', ±0); '' = none; null = unreadable. */
+export function parseLevel(text: string): number | null | undefined {
+  const m = text.trim().match(/^([+\-−±]?)\s*(.*)$/)!
+  if (!m[1] && !m[2]) return undefined
+  const v = m[1] === '±' && /^0*(\.0*)?$/.test(m[2]) ? 0 : parseLength(m[2])
+  return v == null ? null : m[1] === '-' || m[1] === '−' ? -v : v
+}
+/** A floor level as sheets print it: +3'-6", −10'-0", ±0. */
+export const formatLevel = (m: number): string => (Math.abs(m) < 0.0127 ? '±0' : `${m > 0 ? '+' : '−'}${formatFeetInches(Math.abs(m))}`)
+
+/** A plan direction → degrees clockwise from plan-up (−y), [0, 360): Slope.dirDeg, like Unit.northDeg. */
+export const dirDegOf = (d: Pt): number => ((((Math.atan2(d.x, -d.y) * 180) / Math.PI) % 360) + 360) % 360
+const dirOf = (deg: number): Pt => ({ x: Math.sin((deg * Math.PI) / 180), y: -Math.cos((deg * Math.PI) / 180) })
+const r2 = (deg: number) => (Math.round(deg * 100) / 100) % 360
+const turn = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180)
+const edgeDirs = (room: Room, unit: Unit): { deg: number; L: number }[] => {
+  const poly = roomPolygon(room, unit)
+  return poly.map((p, i) => {
+    const q = poly[(i + 1) % poly.length]
+    return { deg: dirDegOf({ x: q.x - p.x, y: q.y - p.y }), L: Math.hypot(q.x - p.x, q.y - p.y) }
+  })
+}
+
+/** A ramp's four quick directions: along its zone's longest edge, then a quarter turn on each time (↑ → ↓ ← on an upright zone). */
+export function rampDirs(room: Room, unit: Unit): number[] {
+  const base = edgeDirs(room, unit).reduce((p, q) => (q.L > p.L ? q : p), { deg: 0, L: -1 }).deg % 90
+  return [0, 90, 180, 270].map((k) => r2(base + k))
+}
+
+/** A dragged ramp arrow's direction: one of its zone's edge directions within 8°, else whole 5°. */
+export function snapRampDir(room: Room, unit: Unit, deg: number): number {
+  const edges = edgeDirs(room, unit).flatMap((e) => [e.deg, (e.deg + 180) % 360])
+  const near = edges.reduce((p, q) => (turn(q, deg) < turn(p, deg) ? q : p), edges[0] ?? deg)
+  return turn(near, deg) <= 8 ? r2(near) : (Math.round(deg / 5) * 5) % 360
+}
+
+/** A ramp label's arrow: through the label along `dirDeg`, across its zone 15 % in from each end — tail = levelM, head = toLevelM. */
+export function rampArrow(room: Room, unit: Unit, at: Pt, dirDeg: number): { from: Pt; to: Pt } {
+  const d = dirOf(dirDeg)
+  const along = roomPolygon(room, unit).map((p) => (p.x - at.x) * d.x + (p.y - at.y) * d.y)
+  const lo = Math.min(...along), hi = Math.max(...along), pad = (hi - lo) * 0.15
+  return { from: { x: at.x + d.x * (lo + pad), y: at.y + d.y * (lo + pad) }, to: { x: at.x + d.x * (hi - pad), y: at.y + d.y * (hi - pad) } }
 }
 
 /**

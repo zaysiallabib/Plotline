@@ -1,16 +1,27 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, roomAt, roomPolygon, unitBounds, wallFrame } from '../core'
-import type { FurniturePlacement, Id, Opening, Pt, Room } from '../core'
+import type { FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
-import type { StudioState } from './model'
+import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import type { OpeningSnap, Snap } from './snap'
 import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
 /** Wall length labels only when the wall is at least this long on screen. */
 export const MIN_LABEL_PX = 40
+/** zones tinted by kind so a ground floor reads at a glance (rooms keep the faint accent wash) */
+const ZONE_TINT: Partial<Record<RoomKind, string>> = {
+  lawn: 'rgba(96,170,80,0.30)',
+  planter: 'rgba(60,128,58,0.45)',
+  pool: 'rgba(64,140,220,0.40)',
+  driveway: 'rgba(150,150,150,0.28)',
+  parking: 'rgba(110,130,175,0.26)',
+  paving: 'rgba(200,184,150,0.24)',
+  deck: 'rgba(176,122,70,0.34)',
+  play: 'rgba(228,140,80,0.26)',
+}
 
-export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label' | 'furniture'; id: Id }
+export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label' | 'furniture' | 'pillar'; id: Id }
 export interface Hover {
   m: Pt
   px: Pt
@@ -20,6 +31,8 @@ export interface Hover {
   ghost?: { wallId: Id; t: number; opening: Opening; snapped: OpeningSnap; error: string | null }
   /** Select drag: the corners moving — every wall at them gets a live length label */
   moving?: Id[]
+  /** C tool drag: the new column's box (plan m) */
+  box?: { a: Pt; b: Pt }
 }
 type WallFrame = ReturnType<typeof wallFrame>
 
@@ -207,8 +220,12 @@ export function draw(a: DrawArgs): void {
     ctx.beginPath()
     poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
     ctx.closePath()
-    ctx.fillStyle = r === hotRoom ? 'rgba(232,193,112,0.16)' : 'rgba(232,193,112,0.05)'
+    ctx.fillStyle = ZONE_TINT[r.kind] ?? 'rgba(232,193,112,0.05)'
     ctx.fill()
+    if (r === hotRoom) {
+      ctx.fillStyle = 'rgba(232,193,112,0.16)'
+      ctx.fill()
+    }
   }
 
   // guides
@@ -233,19 +250,40 @@ export function draw(a: DrawArgs): void {
   }
 
   // columns: a filled block in the wall ink, under the walls (walls keep their own lines through / into them)
-  ctx.fillStyle = C.ink
-  for (const p of state.unit.pillars ?? []) ctx.fillRect(p.x - p.wM / 2, p.y - p.hM / 2, p.wM, p.hM)
+  for (const p of state.unit.pillars ?? []) {
+    ctx.fillStyle = sel.has(p.id) ? C.accent : C.ink
+    ctx.fillRect(p.x - p.wM / 2, p.y - p.hM / 2, p.wM, p.hM)
+  }
+  // C tool drag: the new column's box
+  const box = a.hover?.box
+  if (box) {
+    ctx.fillStyle = 'rgba(232,193,112,0.45)'
+    ctx.fillRect(Math.min(box.a.x, box.b.x), Math.min(box.a.y, box.b.y), Math.abs(box.b.x - box.a.x), Math.abs(box.b.y - box.a.y))
+  }
 
-  // walls
+  // walls, by type (model.wallTypeOf): a zone line dashed on its centre line (nothing in 3D), a kerb a thin solid line, a
+  // low wall lighter than a full one
   for (const w of state.unit.walls) {
     const f = wallFrame(w, vs)
     const h = w.thicknessM / 2
-    slab(ctx, f, h)
     const selected = sel.has(w.id)
+    const type = wallTypeOf(w.heightM)
+    if (type === 'zone' || type === 'kerb') {
+      ctx.beginPath()
+      ctx.moveTo(f.origin.x, f.origin.y)
+      ctx.lineTo(f.origin.x + f.dir.x * f.lengthM, f.origin.y + f.dir.y * f.lengthM)
+      ctx.setLineDash(type === 'zone' ? [px(6), px(4)] : [])
+      ctx.strokeStyle = selected ? C.accent : type === 'zone' ? 'rgba(242,242,240,0.7)' : C.ink
+      ctx.lineWidth = px(selected ? 3 : type === 'zone' ? 1.5 : 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+      continue // (never an opening: the O tool refuses them)
+    }
+    slab(ctx, f, h)
     const exterior = w.thicknessM >= 0.2
-    ctx.fillStyle = selected ? 'rgba(232,193,112,0.35)' : exterior ? C.ink : 'rgba(242,242,240,0.22)'
+    ctx.fillStyle = selected ? 'rgba(232,193,112,0.35)' : type === 'low' ? 'rgba(242,242,240,0.08)' : exterior ? C.ink : 'rgba(242,242,240,0.22)'
     ctx.fill()
-    ctx.strokeStyle = selected ? C.accent : C.ink
+    ctx.strokeStyle = selected ? C.accent : type === 'low' ? 'rgba(242,242,240,0.6)' : C.ink
     ctx.lineWidth = px(selected ? 2 : 1)
     ctx.stroke()
 
@@ -284,12 +322,24 @@ export function draw(a: DrawArgs): void {
     if (last && L > 1e-6) {
       const dir = { x: (snap.x - last.x) / L, y: (snap.y - last.y) / L }
       ghostWall = { origin: last, dir, normal: { x: -dir.y, y: dir.x }, lengthM: L }
-      slab(ctx, ghostWall, chain.thicknessM / 2)
-      ctx.fillStyle = 'rgba(232,193,112,0.45)'
-      ctx.fill()
-      ctx.strokeStyle = C.accent
-      ctx.lineWidth = px(1)
-      ctx.stroke()
+      if (chain.heightM <= 0.2) {
+        // a zone line / kerb: drawn as it will be
+        ctx.beginPath()
+        ctx.moveTo(last.x, last.y)
+        ctx.lineTo(snap.x, snap.y)
+        ctx.setLineDash(chain.heightM === 0 ? [px(6), px(4)] : [])
+        ctx.strokeStyle = C.accent
+        ctx.lineWidth = px(2)
+        ctx.stroke()
+        ctx.setLineDash([])
+      } else {
+        slab(ctx, ghostWall, chain.thicknessM / 2)
+        ctx.fillStyle = 'rgba(232,193,112,0.45)'
+        ctx.fill()
+        ctx.strokeStyle = C.accent
+        ctx.lineWidth = px(1)
+        ctx.stroke()
+      }
     }
   }
 
@@ -315,6 +365,33 @@ export function draw(a: DrawArgs): void {
       const f = wallFrame(w, vs)
       for (const u of [op.offsetM, op.offsetM + op.widthM]) dot({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u }, true, true)
     }
+  }
+  // a selected column's four corners are its resize handles
+  for (const p of state.unit.pillars ?? []) {
+    if (!sel.has(p.id)) continue
+    for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) dot({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 }, true, true)
+  }
+
+  // ramps: an arrow across the zone from its floor level (tail) to its to level (head); selected, the head is a handle
+  const ramps = state.unit.roomLabels.flatMap((l) => {
+    const r = l.slope && a.rooms.find((x) => x.id === l.id)
+    return r && l.slope ? [{ l, ...rampArrow(r, state.unit, l, l.slope.dirDeg) }] : []
+  })
+  for (const { l, from, to } of ramps) {
+    const on = sel.has(l.id)
+    const L = Math.hypot(to.x - from.x, to.y - from.y) || 1
+    const d = { x: (to.x - from.x) / L, y: (to.y - from.y) / L }
+    const k = px(12)
+    ctx.beginPath()
+    ctx.moveTo(from.x, from.y)
+    ctx.lineTo(to.x, to.y)
+    ctx.moveTo(to.x - d.x * k - d.y * k * 0.5, to.y - d.y * k + d.x * k * 0.5)
+    ctx.lineTo(to.x, to.y)
+    ctx.lineTo(to.x - d.x * k + d.y * k * 0.5, to.y - d.y * k - d.x * k * 0.5)
+    ctx.strokeStyle = on ? C.accent : C.ink
+    ctx.lineWidth = px(on ? 2.5 : 1.5)
+    ctx.stroke()
+    if (on) dot(to, true, true)
   }
 
   // snap ring
@@ -363,11 +440,20 @@ export function draw(a: DrawArgs): void {
     const active = sel.has(l.id)
     ctx.font = '300 13px Inter, system-ui, sans-serif'
     ctx.fillStyle = active ? C.accent : C.ink
-    ctx.fillText(l.name || 'Room', p.x, p.y)
+    // a floor level beside the name, as the sheets print it (a ramp's two levels sit at its arrow's ends instead)
+    ctx.fillText(`${l.name || 'Room'}${l.levelM !== undefined && !l.slope ? `  ${formatLevel(l.levelM)}` : ''}`, p.x, p.y)
     if (l.printedSize) {
       ctx.font = '300 11px Inter, system-ui, sans-serif'
       ctx.fillStyle = active ? C.accent : C.muted
       ctx.fillText(l.printedSize, p.x, p.y + 14)
+    }
+  }
+  ctx.font = '400 11px Inter, system-ui, sans-serif'
+  for (const { l, from, to } of ramps) {
+    ctx.fillStyle = sel.has(l.id) ? C.accent : C.ink
+    for (const [at, m] of [[from, l.levelM ?? 0], [to, l.slope!.toLevelM]] as const) {
+      const q = toScreen(at)
+      ctx.fillText(formatLevel(m), q.x, q.y - 8)
     }
   }
   if (a.furniture) labelFurniture(ctx, a, sel, toScreen)

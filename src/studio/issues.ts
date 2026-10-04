@@ -119,6 +119,24 @@ const wallMid = (u: Unit, w: Wall): Pt => {
   return { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
 }
 
+/** Segments a–b and p–q cross (strictly inside both). */
+const cuts = (a: Pt, b: Pt, p: Pt, q: Pt): boolean => {
+  const c = (o: Pt, s: Pt, t: Pt) => (s.x - o.x) * (t.y - o.y) - (s.y - o.y) * (t.x - o.x)
+  return c(a, b, p) * c(a, b, q) < 0 && c(p, q, a) * c(p, q, b) < 0
+}
+
+/** The walls of the run a loose end `id` of `w` starts: on through every corner where only two walls meet, to a junction or a free end. */
+function runOf(u: Unit, id: Id, w: Wall): Id[] {
+  const out = [w.id]
+  for (let at = w.a === id ? w.b : w.a, cur = w; degreeOf(u, at) === 2; ) {
+    const next = u.walls.find((x) => x !== cur && (x.a === at || x.b === at))!
+    if (out.includes(next.id)) break // a closed loop
+    out.push(next.id)
+    ;(cur = next), (at = next.a === at ? next.b : next.a)
+  }
+  return out
+}
+
 /** One issue's mark (number still unset). */
 function issueMark(u: Unit, rooms: Room[], i: StudioIssue): Omit<Mark, 'n'> {
   const base = { key: issueKey(i), issue: i, message: i.message, severity: BREAKS.has(i.code) ? ('red' as const) : ('amber' as const), at: null as Pt | null }
@@ -266,9 +284,26 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
         out.push({ label: 'Remove end', title: `Remove this ${ft(L0)} piece of wall sticking out past the corner`, actions: [{ type: 'delete', ids: [w.id] }], ghost: [{ kind: 'cut', from: far, to: v }] })
       // an overshoot first — unless a gap in one wall is what is open: closing it comes first then
       if (pastJunction && !(facing && out[0]?.label.startsWith('Close'))) out.reverse()
-      // or it is meant to end there (founder 2026-10-04: a screen, a fin, a decorative or wind wall): stored on the wall
-      out.push({ label: KEEP, title: 'This wall is meant to end here (a screen, fin, decorative or wind wall): keep it standing alone', actions: [{ type: 'update-wall', id: w.id, patch: { standsAlone: true } }], ghost: [{ kind: 'ring', at: v }] })
+      // or it is meant to end there (founder 2026-10-04: a screen, a fin, a decorative or wind wall): stored on the walls of
+      // its run — the walls from this end through plain bends to a junction or its other free end, so a drawn screen is one click
+      out.push({ label: KEEP, title: 'This wall is meant to end here (a screen, fin, decorative or wind wall): keep it standing alone', actions: [{ type: 'stand-alone', ids: runOf(u, id, w), on: true }], ghost: [{ kind: 'ring', at: v }] })
       return out
+    }
+    case 'island-in-room': {
+      // one zone line (height 0) from the island's corner nearest a corner of the room around it, crossing no wall: that
+      // room becomes a keyhole going round it (core.validate)
+      const outer = deriveRooms(u).find((r) => r.id === i.ids[0])
+      const isle = new Set(i.ids.slice(1).flatMap((id) => (W.get(id) ? [W.get(id)!.a, W.get(id)!.b] : [])))
+      if (!outer) return []
+      let best: { p: Pt; q: Pt; d: number } | null = null
+      for (const a of isle)
+        for (const b of new Set(outer.loop)) {
+          const p = V.get(a)!, q = V.get(b)!, d = dist(p, q)
+          if (d > 1e-6 && (!best || d < best.d) && !u.walls.some((x) => x.a !== a && x.b !== a && x.a !== b && x.b !== b && cuts(V.get(x.a)!, V.get(x.b)!, p, q))) best = { p, q, d }
+        }
+      if (!best) return []
+      const [p, q] = [best.p, best.q].map(({ x, y }) => ({ x, y }))
+      return [{ label: 'Join with a zone line', title: `Draw a ${ft(best.d)} zone line (height 0, nothing in 3D) from it to the room around it: that room's floor then goes round it`, actions: [{ type: 'chain-start', at: { ...p, tolM: 1e-3 }, wall: 'zone' }, { type: 'chain-add', at: { ...q, tolM: 1e-3 } }, { type: 'chain-end' }], ghost: [{ kind: 'line', from: p, to: q }] }]
     }
     case 'zero-length-wall': {
       const w = W.get(i.ids[0])
