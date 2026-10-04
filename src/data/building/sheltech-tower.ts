@@ -3,92 +3,75 @@
  *
  * Building frame = Type A's plan frame. Type B is traced in that same frame (A's plan-image fit and A's lobby lines),
  * so both offsets are 0 and the lobby walls coincide. Every Sheltech drawing is 1000×833 px with the same framing, so
- * the ground floor and the rooftop were read off with the same fit: x = (px − 492.3) / 26.64, y = (py − 140.7) / 26.64
- * (rough, ±0.5 m; the brochure scale drifts 25–28 px/m).
+ * the common levels (sheltech-ground / -b1 / -b2 / -roof, hand-authored session 19) were read off with the same fit:
+ * x = (px − 492.3) / 26.64, y = (py − 140.7) / 26.64 (±0.1 m on these sheets: G / B1 / B2 / L1 / L2 put the building's
+ * columns within 4 cm of each other), anchored where they must coincide on the flats' lift shaft and stair walls.
  */
 import type { Pt, Unit } from '../../core'
 import sheltechA from '../units/sheltech-a.json'
 import sheltechB from '../units/sheltech-b.json'
+import sheltechGround from '../units/sheltech-ground.json'
+import sheltechB1 from '../units/sheltech-b1.json'
+import sheltechB2 from '../units/sheltech-b2.json'
+import sheltechRoof from '../units/sheltech-roof.json'
 import type { Rect } from './demo-tower'
 
 export { FLOOR_M } from './demo-tower'
 
+/**
+ * The flats, and the common levels hand-authored from the same sheets (session 19) — in the building frame (offset 0),
+ * the same shape projectTower emits for a Studio project's traced levels: FLATS entries, FLOORS stand-ins, LEVELS.
+ */
 export const FLATS: Record<string, { unit: Unit; offset: Pt }> = {
   'sheltech-a': { unit: sheltechA as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-b': { unit: sheltechB as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-ground': { unit: sheltechGround as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-b1': { unit: sheltechB1 as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-b2': { unit: sheltechB2 as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-roof': { unit: sheltechRoof as unknown as Unit, offset: { x: 0, y: 0 } },
 }
 
-/** Level 1 is the community lounge + gym (not flats): the flats' shells stand in for its massing. Levels 2–6: A + B. */
+/**
+ * Basements 2 and 1 (−2, −1), the ground floor (0); level 1 is the community lounge + gym (not flats): the flats'
+ * shells stand in for its massing; levels 2–6: A + B; the rooftop on the roof slab (7).
+ */
 export const FLOORS: { floor: number; flats: string[]; standIns?: string[] }[] = [
+  { floor: -2, flats: [], standIns: ['sheltech-b2'] },
+  { floor: -1, flats: [], standIns: ['sheltech-b1'] },
+  { floor: 0, flats: [], standIns: ['sheltech-ground'] },
   { floor: 1, flats: [], standIns: ['sheltech-a', 'sheltech-b'] },
   ...[2, 3, 4, 5, 6].map((floor) => ({ floor, flats: ['sheltech-a', 'sheltech-b'] })),
+  { floor: 7, flats: [], standIns: ['sheltech-roof'] },
 ]
 
-/** Lobby, stair and lift shaft, ground to roof head (Rooftop.jpg: lobby 6.71 × 2.08 m, stair 4.50 × 2.69 m, lift machine room 4.36 × 2.49 m). */
-export const CORE: [stem: string, room: string][] = [
-  ['sheltech-a', 'Lobby'],
-  ['sheltech-a', 'Stair'],
-  ['sheltech-b', 'Lifts'],
-]
+/** The common levels and the floor each stands on (as projectTower's LEVELS). */
+export const LEVELS: Record<string, number> = { 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-roof': 7 }
 
-/** Ground floor.jpg: lawn all round, the 1:8 driveway ramp down along the north-east, the gate at the south-east. */
+/** The core (lobby, stair, lift shaft) at the ground and the roof head: the real levels draw their own (as projectTower). */
+export const CORE: [stem: string, room: string][] = []
+
+/**
+ * Ground floor.jpg is the real level sheltech-ground (lawns, driveway, ramps, rooms, columns are its own zones, walls and
+ * pillars): the hand-typed rects it replaced are empty, as projectTower leaves them when a ground floor is traced. The plot
+ * is its boundary wall's outside; the street south of it stays.
+ */
 export const GROUND = {
   plot: [
-    { x: -13.7, y: -2.1 },
-    { x: 14.2, y: -2.1 },
-    { x: 14.2, y: 22.7 },
-    { x: -13.7, y: 22.7 },
+    { x: -13.843, y: -2.184 },
+    { x: 14.275, y: -2.184 },
+    { x: 14.275, y: 22.784 },
+    { x: -13.843, y: 22.784 },
   ] as Pt[],
   roads: [[-40, 23.2, 60, 35.4]] as Rect[],
-  gardens: [
-    [-13.7, -2.1, 14.2, 0],
-    [-13.7, 0, -12.4, 22.7],
-    [-12.4, 14.1, 5.2, 22.7],
-    [-12.4, 7.9, -9.1, 14.1],
-    [12.7, 0, 14.2, 14.1],
-    [7.6, 18, 10.2, 22.7],
-  ] as Rect[],
-  /** the driveway: 1:8 ramp down to the basements (drawn flat), then round to the gate */
-  ramp: [
-    [-1.2, 0, 7.6, 5],
-    [7.6, 5, 12.7, 11.4],
-    [7.4, 11.4, 12.7, 18],
-    [10.2, 18, 14.2, 22.7],
-  ] as Rect[],
-  /** parking is in the two basements */
+  gardens: [] as Rect[],
+  ramp: [] as Rect[],
   bays: [] as Rect[],
-  /** driver's waiting + toilet, meter room, E.M.E. room, lobby west of the core, toilet, reception, guard room (the lift shaft is CORE) */
-  blocks: [
-    [-12.4, 0, -5.5, 2.6],
-    [-4, 0, -1.2, 2.8],
-    [-12.4, 2.6, -6.8, 7.7],
-    [-6.8, 5.1, -4.3, 7.9],
-    [-9.1, 6.2, -6.8, 7.9],
-    [-9.1, 7.9, -4.4, 14.1],
-    [12.3, 14.1, 14, 17.4],
-  ] as Rect[],
-  /** the free-standing columns under the upper floors' south half (Level 1.jpg) */
-  columns: [
-    [-12.4, 11.95, -11.91, 12.96],
-    [-12.4, 17.92, -11.91, 18.89],
-    [-4.67, 16.57, -4.22, 17.58],
-    [1, 15.82, 1.45, 16.79],
-    [4.83, 15.82, 5.32, 16.79],
-    [12.41, 10.33, 12.87, 11.35],
-    [12.41, 15.82, 12.87, 16.79],
-  ] as Rect[],
+  blocks: [] as Rect[],
+  columns: [] as Rect[],
 }
 
-/** Rooftop.jpg: planters along the parapets and the south sunshade; no tanks drawn */
+/** Rooftop.jpg is the real level sheltech-roof (its planters, screens and voids are its own zones and walls) */
 export const ROOF = {
-  gardens: [
-    [-12.5, 0, -11.7, 8.6],
-    [-11, 8.8, -9.7, 11.4],
-    [-12.5, 11.4, -11.7, 18.9],
-    [11.9, 0, 12.7, 5.6],
-    [9.3, 5.4, 11.9, 8.8],
-    [11.9, 8.8, 12.7, 16.7],
-    [1.4, 16.7, 12.7, 18.4],
-  ] as Rect[],
+  gardens: [] as Rect[],
   tanks: [] as Rect[],
 }
