@@ -316,7 +316,7 @@ function OpeningPanel(p: {
           </div>
         </>
       ) : (
-        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag an end dot to resize it.</div>
+        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill.</div>
       )}
       <div className="arrange-row">
         <button className="btn" disabled={!o} title="Remove it (Del)" onClick={p.onDelete}>

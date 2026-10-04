@@ -64,7 +64,7 @@ export type ArrangeEvent =
 export type OpeningEvent =
   | { kind: 'select'; id: Id | null }
   | { kind: 'slide'; id: Id; offsetM: number }
-  | { kind: 'resize'; id: Id; end: 'a' | 'b'; uM: number }
+  | { kind: 'resize'; id: Id; end: 'a' | 'b' | 'top' | 'sill'; uM: number }
   | { kind: 'drop'; id: Id }
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 /** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
@@ -219,7 +219,7 @@ export class PlotlineScene {
   // Edit openings (staff): the mouse stays free as in Arrange; a grab slides the opening along its wall or moves one end
   private editingOpenings = false
   private openingCb: ((e: OpeningEvent) => void) | null = null
-  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b'; off: number; moved: boolean } | null = null
+  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean } | null = null
   /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
   private readonly opBox = new THREE.Group()
 
@@ -648,7 +648,7 @@ export class PlotlineScene {
     this.openingCb = cb
   }
 
-  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end (a dot drag resizes it); red while refused. null clears. */
+  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
   showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
     this.opBox.traverse((o) => {
       ;(o as THREE.Mesh).geometry?.dispose()
@@ -667,9 +667,12 @@ export class PlotlineScene {
     box.position.set(s.offsetM + s.widthM / 2, s.sillM + s.heightM / 2, 0)
     box.raycast = () => {}
     this.opBox.add(box)
-    for (const end of ['a', 'b'] as const) {
+    const window = w.openings.find((o) => o.id === s.id)?.kind === 'window' // only a window's bottom is off the floor
+    for (const end of ['a', 'b', 'top', ...(window ? (['sill'] as const) : [])] as const) {
       const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
-      dot.position.set(end === 'a' ? s.offsetM : s.offsetM + s.widthM, s.sillM + s.heightM / 2, 0)
+      const mid = s.offsetM + s.widthM / 2
+      if (end === 'top' || end === 'sill') dot.position.set(mid, end === 'top' ? s.sillM + s.heightM : s.sillM, 0)
+      else dot.position.set(end === 'a' ? s.offsetM : s.offsetM + s.widthM, s.sillM + s.heightM / 2, 0)
       dot.userData.end = end
       this.opBox.add(dot)
     }
@@ -1037,7 +1040,7 @@ export class PlotlineScene {
       if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3) return
       og.moved = true
       const p = this.alongWall(this.ndcOf(e), og.wallId) // along ITS wall, at any angle
-      if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
+      if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: og.end === 'top' || og.end === 'sill' ? p.v : p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
       return
     }
     if (this.hand) {

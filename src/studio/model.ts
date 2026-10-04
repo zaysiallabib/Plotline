@@ -99,7 +99,8 @@ export type Action =
   | { type: 'drag-end'; ids: Id[] }
   | { type: 'drag-opening'; id: Id; offsetM: number; tolM?: number }
   /** mid-drag like drag-opening: the opening's `end` handle to uM (m from corner A), the other end stays; edge snap, min 0.3 m, refused past the wall end or over a sibling */
-  | { type: 'resize-opening'; id: Id; end: 'a' | 'b'; uM: number; tolM?: number }
+  /** end a / b: uM along the wall. top / sill (the 3D's top and bottom dots): uM is the height above the floor. */
+  | { type: 'resize-opening'; id: Id; end: 'a' | 'b' | 'top' | 'sill'; uM: number; tolM?: number }
   | { type: 'drag-label'; id: Id; x: number; y: number }
   /** arrow keys: move the selection by (dx, dy) m; openings slide along their wall by dx + dy. No snapping. */
   | { type: 'nudge'; dx: number; dy: number }
@@ -1032,6 +1033,14 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const f = findOpening(s.unit, a.id)
       if (!f) return s
       const o = f.opening
+      if (a.end === 'top' || a.end === 'sill') {
+        // the head or the sill dragged, the other stays; whole inches; between the floor and the wall's top, 0.3 m at least
+        const v = Math.round((a.uM * 12) / FT) * (FT / 12)
+        const top = o.sillM + o.heightM
+        const sillM = a.end === 'sill' ? Math.min(Math.max(0, v), top - MIN_OPENING_M) : o.sillM
+        const heightM = a.end === 'sill' ? top - sillM : Math.min(Math.max(MIN_OPENING_M, v - o.sillM), f.wall.heightM - o.sillM)
+        return { ...s, unit: replaceOpening(s.unit, f.wall.id, { ...o, sillM, heightM }), dragBlocked: false }
+      }
       const len = wallLen(s.unit, f.wall)
       const far = a.end === 'a' ? o.offsetM + o.widthM : o.offsetM
       // the dragged edge snaps as an opening 0 wide would: flush to a wall end or a neighbour's edge

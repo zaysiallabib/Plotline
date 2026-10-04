@@ -278,6 +278,36 @@ describe('studio reducer', () => {
     expect(s.unit.walls[0].openings[1]).toMatchObject({ offsetM: 3.8, widthM: 0.2 })
   })
 
+  it('resize-opening top / sill (the 3D dots): the head or the sill moves, the other stays; whole inches, floor to wall top, 0.3 m minimum, one undo', () => {
+    let s = traceRect()
+    const wall = s.unit.walls[0]
+    s = reducer(s, { type: 'add-opening', wallId: wall.id, t: 0.5, kind: 'window', widthM: 1 })
+    const win = s.unit.walls[0].openings[0] // sill 3', height 4'
+    const past = s.history.past.length
+    const o = () => s.unit.walls[0].openings[0]
+    s = run(s, { type: 'drag-begin' }, { type: 'resize-opening', id: win.id, end: 'top', uM: 2.5 })
+    expect(o().sillM).toBe(win.sillM)
+    expect(o().sillM + o().heightM).toBeCloseTo(Math.round(2.5 / 0.0254) * 0.0254, 9) // the head, to the inch
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'top', uM: 99 }) // past the wall top: stops there
+    expect(o().sillM + o().heightM).toBeCloseTo(wall.heightM, 9)
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'top', uM: 0 }) // below the sill: the minimum
+    expect(o().heightM).toBeCloseTo(0.3, 9)
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'top', uM: 2.1336 }) // 7'
+    const top = o().sillM + o().heightM
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'sill', uM: 0.3048 }) // sill down to 1': the head stays
+    expect(o().sillM).toBeCloseTo(0.3048, 9)
+    expect(o().sillM + o().heightM).toBeCloseTo(top, 9)
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'sill', uM: -1 }) // under the floor: the floor
+    expect(o().sillM).toBe(0)
+    s = reducer(s, { type: 'resize-opening', id: win.id, end: 'sill', uM: 99 }) // over the head: the minimum
+    expect(o().heightM).toBeCloseTo(0.3, 9)
+    expect(o().sillM + o().heightM).toBeCloseTo(top, 9)
+    expect([o().offsetM, o().widthM]).toEqual([win.offsetM, win.widthM]) // never its place along the wall
+    expect(s.dragBlocked).toBe(false)
+    expect(s.history.past).toHaveLength(past + 1)
+    expect(reducer(s, { type: 'undo' }).unit.walls[0].openings[0]).toEqual(win)
+  })
+
   it('nudge moves the selection 1" (Shift 1\') without snapping, one history entry per press', () => {
     const IN = 0.0254
     const FOOT = 0.3048
