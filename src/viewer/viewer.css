@@ -120,7 +120,11 @@
 .arrange-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .arrange-row .btn { padding: 6px 12px; font-size: 12px; }
 .arrange-row .btn:disabled { opacity: 0.4; cursor: default; }
-.arrange .refused { color: #ff6b6b; }
+.arrange .refused, .hand-tag .refused { color: #ff6b6b; }
+/* the piece in hand: beside the pointer, or under the dot while the mouse is locked; the dot = what G and a click aim at */
+.hand-tag { position: absolute; left: 0; top: 0; max-width: 340px; padding: 7px 11px; font-size: 12px; line-height: 1.5; pointer-events: none; }
+.hand-tag.at-dot { left: 50%; top: calc(50% + 18px); transform: translateX(-50%); }
+.dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); pointer-events: none; }
 /* the staff library: above the Arrange panel */
 .library { position: absolute; left: 16px; bottom: 190px; width: 340px; max-height: calc(100vh - 330px); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .library-list { display: flex; flex-direction: column; overflow: auto; min-height: 0; }

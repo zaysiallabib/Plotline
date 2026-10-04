@@ -192,8 +192,16 @@ export class PlotlineScene {
   private arrangeCb: ((e: ArrangeEvent) => void) | null = null
   private grab: { id: Id; y: number; off: Pt; moved: boolean; handle?: Handle & { inv: THREE.Matrix4; half: number; plane: THREE.Plane } } | null = null
   private look2: { x: number; y: number } | null = null
-  /** Library (staff): the new piece following the pointer on the plane at height y until a click drops it */
-  private placing: { id: Id; y: number } | null = null
+  /**
+   * The piece in hand (staff; arrange.ts Held): a refused drop, a G pick-up or a library piece. It follows the pointer —
+   * the crosshair while the mouse is locked — on the plane at height y (grab offset `off`), also as the camera moves,
+   * until a click sends `drop`; the drop's handler lets go (setHand(null)) once the spot fits.
+   */
+  private hand: { id: Id; y: number; off: Pt } | null = null
+  /** the free pointer's last spot (NDC): what G picks up and the hand aims at when the mouse is not locked */
+  private pointerNdc: THREE.Vector2 | null = null
+  /** the camera the hand was last aimed from (it re-aims when the camera moves) */
+  private aimedFrom = ''
   /** the selected piece's box and resize handles, parented to its pivot; its footprint on the floor */
   private readonly selBox = new THREE.Group()
   private readonly selMat = new THREE.MeshBasicMaterial({ color: SEL, depthTest: false, transparent: true, opacity: 0.9 })
@@ -416,7 +424,7 @@ export class PlotlineScene {
     if (on && this.plc.isLocked) this.plc.unlock()
     if (!on) {
       this.showSelection(null)
-      this.placing = null
+      this.hand = null
     }
   }
 
@@ -425,11 +433,37 @@ export class PlotlineScene {
   }
 
   /**
-   * Library (staff): new piece `id` follows the pointer — `drag` events on the plane at height `y` (floor 0, ceiling),
-   * with the wall under the pointer — and a click sends `drop` (a drag-look in walk mode just looks). null stops.
+   * Piece `id` in hand (staff): it follows the pointer — the crosshair while the mouse is locked — as `drag` events on
+   * the plane at height `y` (floor 0, ceiling) plus `off`, with the wall under the pointer, never past the wall in view;
+   * it is aimed at once and again whenever the camera moves. A click sends `drop` (a drag-look in walk mode just looks).
+   * null lets go. Works in Arrange and in plain walk (G).
    */
-  setPlacing(p: { id: Id; y: number } | null): void {
-    this.placing = p
+  setHand(h: { id: Id; y: number; off?: Pt } | null): void {
+    this.hand = h && { ...h, off: h.off ?? { x: 0, y: 0 } }
+    this.aimedFrom = ''
+    if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
+    if (this.hand && this.mode !== 'building') this.aimHand()
+  }
+
+  /** The piece under the crosshair (mouse locked) or the pointer, as G picks it up; null: none, or something nearer hides it. */
+  pieceUnderPointer(): Id | null {
+    const hit = this.pick(this.aimNdc())
+    const o = hit?.kind === 'furniture' ? this.pieceObject(hit.id.split('/')[0]) : undefined // a part → its piece
+    return (o?.userData.id as Id | undefined) ?? null
+  }
+
+  private aimNdc(): THREE.Vector2 {
+    return this.plc.isLocked || !this.pointerNdc ? new THREE.Vector2(0, 0) : this.pointerNdc
+  }
+
+  /** The hand to where the crosshair / pointer meets its plane (or the wall in front): a `drag` event, when the view changed. */
+  private aimHand(): void {
+    const h = this.hand!
+    this.camera.updateWorldMatrix(true, false)
+    const from = `${this.camera.matrixWorld.elements.join()}|${this.plc.isLocked || this.pointerNdc?.toArray()}`
+    if (from === this.aimedFrom) return
+    this.aimedFrom = from
+    this.dragEvent(this.aimNdc(), h.id, h.y, h.off, true)
   }
 
   /** Highlights piece `id`: its box, resize handles for `axes`, its footprint `quad` on the floor; red while refused. null clears. */
@@ -808,7 +842,7 @@ export class PlotlineScene {
   private onPointerDown = (e: PointerEvent): void => {
     this.pointerDown = { x: e.clientX, y: e.clientY }
     if (this.arranging && this.mode !== 'building') {
-      if (!this.placing) this.arrangeDown(e)
+      if (!this.hand) this.arrangeDown(e)
       else if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
     }
   }
@@ -856,6 +890,7 @@ export class PlotlineScene {
   }
 
   private onPointerMove = (e: PointerEvent): void => {
+    if (!this.plc.isLocked) this.pointerNdc = this.ndcOf(e) // locked: the client position is frozen, the crosshair aims
     if (this.look2) {
       // grab-the-room look (no pointer lock while arranging)
       const eu = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ')
@@ -865,8 +900,8 @@ export class PlotlineScene {
       this.look2 = { x: e.clientX, y: e.clientY }
       return
     }
-    if (this.placing) {
-      if (!e.buttons) this.dragEvent(e, this.placing.id, this.placing.y, { x: 0, y: 0 }, true)
+    if (this.hand) {
+      if (!e.buttons && this.mode !== 'building') this.aimHand()
       return
     }
     const g = this.grab
@@ -880,16 +915,16 @@ export class PlotlineScene {
       if (P) this.arrangeCb?.({ kind: 'resize', id: g.id, axis, sign, sizeM: axis === 'y' ? P.y + half : sign * P[axis] + half })
       return
     }
-    this.dragEvent(e, g.id, g.y, g.off)
+    this.dragEvent(this.ndcOf(e), g.id, g.y, g.off)
   }
 
   /**
-   * A `drag` of piece `id` to the pointer: `at` on the plane at height y (plus the grab offset), `wall` the face toward
-   * us of the wall under it — its window, door or reveal counts as the wall (the TV never goes through a window onto the
-   * veranda's wall). `stopAtWalls` (placing): a wall nearer than the plane point stops `at` 0.3 m before it.
+   * A `drag` of piece `id` to the pointer at `ndc`: `at` on the plane at height y (plus the grab offset), `wall` the face
+   * toward us of the wall under it — its window, door or reveal counts as the wall (the TV never goes through a window
+   * onto the veranda's wall). `stopAtWalls` (the hand): a wall nearer than the plane point stops `at` 0.3 m before it.
    */
-  private dragEvent(e: PointerEvent, id: Id, y: number, off: Pt, stopAtWalls = false): void {
-    this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+  private dragEvent(ndc: THREE.Vector2, id: Id, y: number, off: Pt, stopAtWalls = false): void {
+    this.raycaster.setFromCamera(ndc, this.camera)
     const ray = this.raycaster.ray
     const P = ray.intersectPlane(new THREE.Plane(UP, -y), new THREE.Vector3())
     let wall: { p: Pt; n: Pt } | null = null
@@ -916,11 +951,11 @@ export class PlotlineScene {
   private onPointerUp = (e: PointerEvent): void => {
     const d = this.pointerDown
     this.pointerDown = null
-    if (this.arranging && this.mode !== 'building' && this.placing) {
+    if (this.hand && this.mode !== 'building') {
       this.look2 = null
       if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) {
-        this.dragEvent(e, this.placing.id, this.placing.y, { x: 0, y: 0 }, true) // where the click is, then drop there
-        this.arrangeCb?.({ kind: 'drop', id: this.placing.id })
+        this.aimHand() // where the click is (the crosshair while locked), then drop there
+        this.arrangeCb?.({ kind: 'drop', id: this.hand.id })
       }
       return
     }
@@ -928,6 +963,8 @@ export class PlotlineScene {
       const g = this.grab
       this.grab = this.look2 = null
       this.orbit.enabled = this.mode !== 'walk'
+      // a dragged piece stays in hand until the drop fits (ask 10: a refused spot keeps it, red); the handler lets go
+      if (g?.moved && !g.handle) this.hand = { id: g.id, y: g.y, off: g.off }
       if (g?.moved) this.arrangeCb?.({ kind: 'drop', id: g.id })
       else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) this.arrangeCb?.({ kind: 'select', id: null })
       return
@@ -1070,6 +1107,7 @@ export class PlotlineScene {
       }
       this.rig.position.set(this.walker.x, 0, this.walker.y)
     }
+    if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
     this.look.render()
   }
 }

@@ -4,7 +4,7 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { baseOf, dragTo, isShareLink, isStaff, layoutKey, pushStep, readLayout, saveLayout, surfaceOf, undoStep, type Steps } from './arrange'
+import { baseOf, dragTo, dropHeld, holdAt, isShareLink, isStaff, layoutKey, pickUp, pushStep, readLayout, saveLayout, surfaceOf, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -159,6 +159,63 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     expect(fan.piece.roomId).toBe('A')
     expect(dragTo(unit, rooms, ps, 'side', { at: { x: 2.5, y: 4.3 }, wall: null })!.error).toBe('Overlaps the 3-seat fabric sofa')
     expect(dragTo(unit, rooms, ps, 'side', { at: { x: 0.6, y: 1.0 }, wall: null })!.error).toBe('Blocks the entrance')
+  })
+})
+
+describe('a piece in hand (founder 2026-10-04: refused = red and kept in hand, never thrown back)', () => {
+  const floor = (x: number, y: number) => ({ at: { x, y }, wall: null })
+  const hold = (h: Held, x: number, y: number) => holdAt(unit, rooms, ps, h, floor(x, y))
+
+  it('over another piece it stays where the pointer put it, red with the reason, and a drop commits nothing', () => {
+    const h = hold(pickUp(ps, 'side'), 2.5, 4.3)
+    expect(h.move!.error).toBe('Overlaps the 3-seat fabric sofa')
+    expect(h.move!.piece).toMatchObject({ id: 'side', roomId: 'A', x: expect.closeTo(2.5, 0), y: expect.closeTo(4.3, 0) }) // shown there, not sent home
+    expect(dropHeld(h)).toBeNull()
+    expect(at(ps, 'side')).toMatchObject({ x: 7.0, y: 0.95, roomId: 'B' }) // the committed layout never moved
+    const steps: Steps = { pieces: ps, past: [] }
+    const after = dropHeld(h) ? pushStep(steps, dropHeld(h)!) : steps
+    expect(after).toBe(steps) // nothing to undo either
+  })
+
+  it('R turns it while red; it drops only where it fits, as one layout with just that piece moved', () => {
+    const red = hold(pickUp(ps, 'side'), 2.5, 4.3)
+    const turned = turnHeld(unit, rooms, ps, red)
+    expect(turned.rot).toBe(90)
+    expect(turned.move!.piece.rotationDeg).toBe(90)
+    expect(turned.move!.error).toBe('Overlaps the 3-seat fabric sofa') // still over the sofa, still in hand
+    const ok = holdAt(unit, rooms, ps, turned, floor(2.0, 2.0))
+    expect(ok.move!.error).toBeNull()
+    const f = dropHeld(ok)!
+    expect(at(f, 'side')).toMatchObject({ rotationDeg: 90, roomId: 'A' })
+    expect(f.filter((p) => p.id !== 'side')).toEqual(ps.filter((p) => p.id !== 'side'))
+  })
+
+  it('a target that puts it nowhere (no wall under a TV, the sky) keeps it where it last was', () => {
+    const tv = holdAt(unit, rooms, ps, pickUp(ps, 'tv'), { at: null, wall: { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 } } })
+    expect(tv.move!.error).toBeNull()
+    expect(hold(tv, 2, 2).move).toBe(tv.move)
+    expect(holdAt(unit, rooms, ps, tv, null).move).toBe(tv.move)
+  })
+
+  it('a library piece is held the same way: refused stays in hand, then drops into the layout where it fits', () => {
+    const h: Held = { id: 'new', assetId: 'dining_chair', rot: 0, at: null, move: null }
+    expect(dropHeld(h)).toBeNull() // nowhere yet
+    const red = hold(h, 0.6, 1.0)
+    expect(red.move!.error).toBe('Blocks the entrance')
+    expect(dropHeld(red)).toBeNull()
+    const f = dropHeld(hold(red, 2.0, 2.5))!
+    expect(f).toHaveLength(ps.length + 1)
+    expect(at(f, 'new')).toMatchObject({ assetId: 'dining_chair', roomId: 'A' })
+  })
+
+  it('Studio tool F commits a held, turned piece in one step; a refused spot changes nothing', () => {
+    const s0: StudioState = { ...initialState(), tool: 'furniture', unit }
+    const s = reducer(s0, { type: 'move-piece', id: 'side', x: 2.0, y: 2.0, rotationDeg: 90 })
+    expect(at(s.unit.furniture, 'side')).toMatchObject({ rotationDeg: 90, roomId: 'A' })
+    expect(s.history.past).toHaveLength(1)
+    const bad = reducer(s0, { type: 'move-piece', id: 'side', x: 2.5, y: 4.3, rotationDeg: 90 })
+    expect(bad.unit).toBe(s0.unit)
+    expect(bad.toast?.text).toBe('Overlaps the 3-seat fabric sofa')
   })
 })
 

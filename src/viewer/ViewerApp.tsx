@@ -11,15 +11,15 @@ import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { fetchSharedUnit } from '../lib/supabase'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { dragTo, isShareLink, isStaff, pushStep, readLayout, saveLayout, undoStep, type DragTarget, type Steps } from './arrange'
+import { dropHeld, holdAt, isShareLink, isStaff, pickUp, pushStep, readLayout, saveLayout, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import FinishesPanel from './FinishesPanel'
-import Hud from './Hud'
+import Hud, { type HandInfo } from './Hud'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
@@ -185,10 +185,10 @@ function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
   )
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; while placing, what and why not. */
+/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand: what and why not. */
 function ArrangePanel(p: {
   piece: FurniturePlacement | null
-  placing: { label: string; error: string | null; ready: boolean } | null
+  held: HandInfo | null
   adding: boolean
   canUndo: boolean
   onTurn: () => void
@@ -200,10 +200,14 @@ function ArrangePanel(p: {
   const s = p.piece && placementSize(p.piece)
   return (
     <aside className="glass arrange">
-      {p.placing ? (
+      {p.held ? (
         <>
-          <div className="arrange-name">Placing: {p.placing.label}</div>
-          <div className={`small ${p.placing.error ? 'refused' : 'muted'}`}>{p.placing.error ?? (p.placing.ready ? 'Click to put it here · R turns · Esc cancels' : 'Point at the floor, a wall or the ceiling')}</div>
+          <div className="arrange-name">
+            {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
+          </div>
+          <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
+            {p.held.error ?? (p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
+          </div>
         </>
       ) : p.piece && s ? (
         <>
@@ -221,10 +225,10 @@ function ArrangePanel(p: {
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
           Add
         </button>
-        <button className="btn" disabled={!p.piece} onClick={p.onTurn}>
+        <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
-        <button className="btn" disabled={!p.piece} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+        <button className="btn" disabled={!p.piece || !!p.held} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
@@ -258,14 +262,15 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
   const [picked, setPicked] = useState(unit.floor ?? 0)
-  // Arrange (staff): the committed layout and its undo steps; a drag's candidate lives in `live` until the drop
+  // Arrange (staff): the committed layout and its undo steps; a resize's candidate lives in `live` until the drop
   const [arranging, setArranging] = useState(false)
   const [sel, setSel] = useState<Id | null>(null)
   const steps = useRef<Steps>({ pieces: unit.furniture, past: [] })
   const live = useRef<Move | null>(null)
-  // the library: open or not; the new piece following the pointer (its id, asset, turn, the last pointer target)
+  // the library: open or not
   const [adding, setAdding] = useState(false)
-  const placing = useRef<{ id: Id; assetId: string; rot: number; last: DragTarget | null } | null>(null)
+  // the piece in hand (arrange.ts Held): dragged, picked up with G, or new from the library; committed only where it fits
+  const held = useRef<Held | null>(null)
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const stem = towerStem(unit)
   const commentingRef = useRef(commenting)
@@ -424,7 +429,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
   const toggleArrange = () => {
-    stopPlacing()
+    letGo()
     setAdding(false)
     setArranging(!arranging)
     scene?.setArrange(!arranging)
@@ -435,86 +440,89 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       store(HINTED)
     }
   }
-  // ── the library: a picked piece follows the pointer (placePiece: the same rules as a move) until a click drops it
+  // ── the piece in hand (ask 10 / 7): it follows the pointer, or the crosshair while walking with the mouse locked, on
+  // the Studio's rules; a refused spot keeps it in hand, red with the reason; a click / G drops it only where it fits; Esc
+  // puts it back where it was picked up (nothing was committed). The library's new piece is held the same way.
+  const ceilingM = Math.max(...unit.walls.map((w) => w.heightM))
+  /** the candidate shown: the whole layout with the held piece where it is (red when refused) */
+  const showHeld = (h: Held | null) => {
+    held.current = h
+    scene?.placePieces(h?.move?.furniture ?? steps.current.pieces, true)
+    const p = h ? h.move?.piece : pieceOf(sel)
+    scene?.showSelection(p ? { id: p.id, quad: pieceQuad(p), refused: !!h?.move?.error, axes: h ? [] : resizeAxes(p.assetId) } : null) // in hand: no resize dots
+    redraw()
+  }
+  /** Picks `h` up; the scene moves it with the pointer on the floor (or the ceiling: lights, fans), wall pieces by the wall in view. */
+  const grip = (h: Held) => {
+    letGo()
+    held.current = h
+    scene?.setHand({ id: h.id, y: surfaceOf(h.assetId ? { assetId: h.assetId } : (pieceOf(h.id) ?? { assetId: '' })) === 'ceiling' ? ceilingM : 0 })
+  }
   const startPlacing = (assetId: string) => {
-    stopPlacing()
-    const id = core.newId()
-    placing.current = { id, assetId, rot: 0, last: null }
-    const ceiling = Math.max(...unit.walls.map((w) => w.heightM))
-    scene?.setPlacing({ id, y: surfaceOf({ assetId }) === 'ceiling' ? ceiling : 0 })
+    grip({ id: core.newId(), assetId, rot: 0, at: null, move: null })
     setAdding(false)
     setSel(null)
     showSel(null)
   }
-  /** Esc, or done: the ghost goes (ponytail: a cancelled ghost stays in the scene graph, hidden, until the page reloads) */
-  const stopPlacing = () => {
-    if (!placing.current) return
-    placing.current = null
-    live.current = null
-    scene?.setPlacing(null)
-    scene?.placePieces(steps.current.pieces, true)
-    showSel(null)
-    redraw()
+  /** G: the piece under the crosshair / pointer into the hand; nothing there says so */
+  const pickUpAtPointer = () => {
+    const id = scene?.pieceUnderPointer()
+    if (!id) return showToast('Point the dot at a piece of furniture, then press G')
+    setSel(id)
+    grip(pickUp(steps.current.pieces, id))
   }
-  const previewPlacing = () => {
-    const pl = placing.current
-    if (!pl) return
-    const at = pl.last && (pl.last.at ?? pl.last.wall?.p)
-    const m = at && placePiece(unit, rooms, steps.current.pieces, pl.assetId, at, pl.rot, pl.id, pl.last!.wall)
-    if (!m) {
-      // the sky out of a window: nothing to put it on
-      live.current = null
-      scene?.placePieces(steps.current.pieces, true)
-      showSel(null)
-      return redraw()
-    }
-    live.current = m
-    scene?.placePieces(m.furniture, true)
-    showSel(m.piece, !!m.error)
-    redraw()
+  /** Esc (or the mouse lock lost mid-carry, or done): the hand empties; the layout is the committed one again */
+  const letGo = () => {
+    if (!held.current) return
+    scene?.setHand(null)
+    showHeld(null) // ponytail: a cancelled library ghost stays in the scene graph, hidden, until the page reloads
+  }
+  /** A click / G / a drag's release: drops it where it fits; refused, it stays in hand (red, the reason on screen) */
+  const dropHand = () => {
+    const h = held.current
+    const furniture = h && dropHeld(h)
+    if (!h?.move || !furniture) return
+    held.current = null
+    scene?.setHand(null)
+    setSel(h.move.piece.id)
+    settle(pushStep(steps.current, furniture), h.move.piece.id)
   }
   const onArrange = (e: ArrangeEvent) => {
-    const pl = placing.current
-    if (pl && e.kind === 'drag' && e.id === pl.id) {
-      pl.last = e
-      return previewPlacing()
-    }
-    if (pl && e.kind === 'drop' && e.id === pl.id) {
-      const m = live.current
-      if (!m) return
-      if (m.error) return showToast(m.error)
-      placing.current = null
-      live.current = null
-      scene?.setPlacing(null)
-      setSel(m.piece.id)
-      return settle(pushStep(steps.current, m.furniture), m.piece.id)
-    }
     if (e.kind === 'select') {
       // the piece clicked, so Delete takes just the TV off its unit; a drag of it moves what it rests on (dragTo)
       const p = pieceOf(e.id)
       setSel(p?.id ?? null)
       return showSel(p)
     }
+    if (e.kind === 'drag') {
+      const h = held.current ?? pickUp(steps.current.pieces, e.id) // a drag's first frame picks the piece up
+      if (h.id === e.id) showHeld(holdAt(unit, rooms, steps.current.pieces, h, e))
+      return
+    }
+    if (e.kind === 'drop' && held.current) return dropHand()
     const m = live.current
     if (e.kind === 'drop') {
       live.current = null
       if (!m) return
       if (!m.error) return settle(pushStep(steps.current, m.furniture), m.piece.id)
-      scene?.placePieces(steps.current.pieces, true) // springs back (chairs a resize added go)
+      scene?.placePieces(steps.current.pieces, true) // a refused resize springs back (chairs it added go)
       showSel(pieceOf(m.piece.id))
       return showToast(m.error)
     }
     const p = pieceOf(e.id)
-    const next =
-      e.kind === 'drag'
-        ? dragTo(unit, rooms, steps.current.pieces, e.id, e)
-        : p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
+    const next = p && resizePiece(unit, rooms, steps.current.pieces, e.id, { ...placementSize(p), [e.axis]: e.sizeM }, { x: e.axis === 'x' ? e.sign : 0, z: e.axis === 'z' ? e.sign : 0 })
     if (!next) return
     live.current = next
-    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this drag added goes again
+    scene?.placePieces(next.furniture, true) // the whole layout: a chair an earlier frame of this resize added goes again
     showSel(next.piece, !!next.error)
   }
   useEffect(() => scene?.onArrange(onArrange))
+  // the browser's Esc frees a locked mouse without telling the page: a carry in walk ends there, the piece back where it was
+  useEffect(() => {
+    const onLock = () => !document.pointerLockElement && !arranging && letGo()
+    document.addEventListener('pointerlockchange', onLock)
+    return () => document.removeEventListener('pointerlockchange', onLock)
+  })
 
   // keys: Enter (load screen), O, F, C, Esc
   useEffect(() => {
@@ -527,17 +535,19 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       }
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
-      const pl = placing.current
+      const h = held.current
       if (arranging && k === 'z' && (e.ctrlKey || e.metaKey)) {
-        stopPlacing()
+        letGo()
         undo()
-      } else if (pl && k === 'r') {
-        pl.rot += 90
-        previewPlacing()
-      } else if (arranging && k === 'r') turn()
-      else if (arranging && !pl && (k === 'delete' || k === 'backspace')) remove()
+      } else if (h && k === 'r') showHeld(turnHeld(unit, rooms, steps.current.pieces, h))
+      else if (STAFF && k === 'g' && mode !== 'building' && !e.repeat) {
+        // G: pick up the piece under the crosshair (or the pointer); G again puts it down where it fits
+        if (h) dropHand()
+        else pickUpAtPointer()
+      } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
+      else if (arranging && k === 'r') turn()
+      else if (arranging && !h && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
-        stopPlacing()
         setAdding(false)
         setSel(null)
         showSel(null)
@@ -584,6 +594,9 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   }
 
   const sqm = Math.round(unit.areaSqft * 0.09290304)
+  const h = held.current
+  const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
+  const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -666,7 +679,8 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
             onToggleComment={() => setCommenting((v) => !v)}
             onShare={share}
             arranging={arranging}
-            placing={!!placing.current}
+            hand={handInfo}
+            staff={STAFF}
             onArrange={STAFF ? toggleArrange : null}
             onEditPlan={
               STAFF
@@ -701,21 +715,21 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
           {arranging && (
             <ArrangePanel
               piece={pieceOf(sel)}
-              placing={placing.current && { label: placementLabel(placing.current), error: live.current?.error ?? null, ready: !!live.current }}
+              held={handInfo}
               adding={adding}
               canUndo={steps.current.past.length > 0}
-              onTurn={turn}
+              onTurn={() => (held.current ? showHeld(turnHeld(unit, rooms, steps.current.pieces, held.current)) : turn())}
               onDelete={remove}
               onUndo={() => {
-                stopPlacing()
+                letGo()
                 undo()
               }}
               onReset={() => {
-                stopPlacing()
+                letGo()
                 settle(pushStep(steps.current, base))
               }}
               onAdd={() => {
-                stopPlacing()
+                letGo()
                 setAdding((v) => !v)
               }}
             />
