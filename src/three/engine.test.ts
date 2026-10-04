@@ -122,7 +122,7 @@ describe('resize (sizeM)', () => {
         expect(min[k], `${id}.${k}`).toBeGreaterThan(0)
         expect(min[k], `${id}.${k}`).toBeLessThanOrEqual(kit[k] + 1e-9)
         expect(max[k], `${id}.${k}`).toBeGreaterThanOrEqual(kit[k] - 1e-9)
-        expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(4)
+        expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(Math.max(4, 1.4 * kit[k] + 1e-9)) // trees and a car are bigger than 4 m already
         if (rebuildsAtSize(id)) continue
         const flat = ['art', 'tv'].includes(objectKind(kitAsset(id)!)) || id === 'rug_round'
         expect(min[k] / kit[k], `${id}.${k}`).toBeGreaterThanOrEqual(flat ? 0.5 - 1e-9 : 0.7 - 1e-9)

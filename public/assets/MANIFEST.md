@@ -37,6 +37,15 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 | hanging_picture_frame_01 | model (other) | https://polyhaven.com/a/hanging_picture_frame_01 | James Ray Cock | CC0 | 2026-09-24 | models/hanging_picture_frame_01/ (8 files) | 397466 |
 | throw_pillows_01 | model (other) | https://polyhaven.com/a/throw_pillows_01 | Serhii Khromov | CC0 | 2026-09-24 | models/throw_pillows_01/ (5 files) | 1159835 |
 | ceramic_vase_01 | model (other) | https://polyhaven.com/a/ceramic_vase_01 | James Ray Cock | CC0 | 2026-09-24 | models/ceramic_vase_01/ (5 files) | 418457 |
+| pachira_aquatica_01 | model (plant: money tree, variants c, d in code-built pots) | https://polyhaven.com/a/pachira_aquatica_01 | Rob Tuytel (scanning), Rico Cilliers (modeling) | CC0 | 2026-10-04 | models/pachira_aquatica_01/ (8 files) | 5138831 |
+| calathea_orbifolia_01 | model (plant: pots, planter boxes) + its 1k Alpha mask (PNG; the 1k glTF's JPG base colour has none) | https://polyhaven.com/a/calathea_orbifolia_01 | Rob Tuytel (scanning), Rico Cilliers (modeling) | CC0 | 2026-10-04 | models/calathea_orbifolia_01/ (6 files) | 1933491 |
+| anthurium_botany_01 | model (plant: pots, planter boxes) + 1k Alpha mask | https://polyhaven.com/a/anthurium_botany_01 | Rob Tuytel (scanning), Rico Cilliers (modeling) | CC0 | 2026-10-04 | models/anthurium_botany_01/ (6 files) | 3285901 |
+| fern_02 | model (plant: pots, planter boxes) + 1k Alpha mask | https://polyhaven.com/a/fern_02 | Rob Tuytel (scanning), Rico Cilliers (modeling) | CC0 | 2026-10-04 | models/fern_02/ (6 files) | 1260950 |
+| modular_street_seating | model (bench) — the kit's bench with back and arms only: scene pruned to 10 nodes (right leg + arm = the left ones mirrored), connector parts and their 3 maps dropped | https://polyhaven.com/a/modular_street_seating | Stuart Attenborrow | CC0 | 2026-10-04 | models/modular_street_seating/ (11 files) | 6407050 |
+| outdoor_table_chair_set_01 | model (bistro table + 2 folding chairs) | https://polyhaven.com/a/outdoor_table_chair_set_01 | James Ray Cock | CC0 | 2026-10-04 | models/outdoor_table_chair_set_01/ (8 files) | 1242380 |
+| covered_car | model (car under a dust cover; library only, no preset places it) | https://polyhaven.com/a/covered_car | MP | CC0 | 2026-10-04 | models/covered_car/ (5 files) | 2349276 |
+| jacaranda_tree (maps only) | leaf + bark maps for the code-built trees (procedural.ts tree): leaves_{diff,alpha,nor_gl,arm}, branches_{diff,nor_gl,arm} 1k — the model's 208 MB .bin is not used | https://polyhaven.com/a/jacaranda_tree | Rico Cilliers, Rob Tuytel (guidance) | CC0 | 2026-10-04 | models/tree_shade/ (7 files) | 3908995 |
+| island_tree_02 (maps only) | leaf maps for the code-built shrubs (procedural.ts shrub): leaves_{diff,alpha,nor_gl,arm} 1k — the model's 41 MB .bin is not used | https://polyhaven.com/a/island_tree_02 | Rob Tuytel, Rico Cilliers | CC0 | 2026-10-04 | models/shrub_leaves/ (4 files) | 1118243 |
 | wood_floor_oak | texture | https://polyhaven.com/a/laminate_floor_03 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-09-24 | textures/wood_floor_oak/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} | 1980643 |
 | marble_floor_white | texture | https://ambientcg.com/view?id=Marble001 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/marble_floor_white/{albedo.jpg,roughness.jpg} — white polished marble; roughness flattened to an even ~0.2 polish, normal map dropped | 203091 |
 | tile_floor_ceramic | texture | https://ambientcg.com/view?id=Tiles105 | ambientCG (Lennart Demes) | CC0 | 2026-09-25 | textures/tile_floor_ceramic/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — white porcelain 600 × 600, thin grout; roughness +40/255, normal strength 50 % | 265412 |
@@ -57,6 +66,7 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 | kloofendal_43d_clear_puresky | hdri | https://polyhaven.com/a/kloofendal_43d_clear_puresky | Greg Zaal | CC0 | 2026-09-24 | hdri/sky.hdr | 1184531 |
 
 **Total: 48507911 bytes (46.3 MB)** across 22 models, 14 texture sets, 2 art diptychs, 2 HDRIs.
+Session 19 greenery + outdoor (rows above from pachira_aquatica_01): **+26645117 bytes (25.4 MB)**, 7 models and 2 leaf/bark map sets; each loads only where a piece using it is placed.
 
 ### Removed
 
@@ -72,6 +82,11 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 - Beds, sofa, dining set, desk, TVs, rugs, the fitted kitchen, bathroom fixtures, wardrobe
   and picture frames are procedural (src/furnish/procedural.ts) and use the textures above;
   Poly Haven has no modern bed, bathroom fixtures, fridge, kitchen run or rug.
+- Session 19: pots, planter boxes, shrubs, trees, the sun lounger, backless bench, pergola, reception
+  desk, gym pieces (treadmill, rack, dumbbells, mat, mirror) and play pieces (swing, slide, seesaw) are
+  procedural too; the plants in pots / boxes are the scans above, shrubs and trees wear the leaf and
+  bark maps above. Poly Haven's only light trees are 41–215 MB of geometry, it has no lounger, gym or
+  play equipment.
 - `hanging_picture_frame_01` stays in the kit but is not placed: its glass exports as opaque
   black (JPG base colour, no alpha) over a "Ray Homes" placeholder card. Frames are procedural
   with the art above.
