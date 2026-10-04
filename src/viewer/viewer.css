@@ -79,6 +79,28 @@
 .minimap .me { fill: var(--accent); stroke: #17181a; stroke-width: 0.08; }
 .viewer:has(.minimap) .panel { bottom: 290px; }
 
+/* the staff change list (/changes): one card per share link, newest first; replaced / removed rows greyed */
+.changes { height: 100%; overflow: auto; box-sizing: border-box; padding: 24px 32px 48px; display: flex; flex-direction: column; gap: 16px; }
+.changes header { display: flex; align-items: center; gap: 12px; }
+.changes h1, .changes-key h1 { font-size: 20px; font-weight: 300; margin: 0; }
+.changes .grow { flex: 1; }
+.changes .refused, .changes-key .refused { color: #ff6b6b; }
+.changes-key > div { display: flex; flex-direction: column; gap: 10px; width: 360px; }
+.changes-key input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.link-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.link-head { display: flex; align-items: center; gap: 8px; }
+.link-head .btn { text-decoration: none; font-size: 12px; padding: 6px 12px; }
+.unit-title { font-size: 15px; }
+.chosen { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.chosen-item b { font-weight: 500; color: var(--accent); }
+.changes table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.changes th { text-align: left; font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.changes td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: pre-wrap; }
+.changes .num { text-align: right; }
+.changes .nowrap { white-space: nowrap; }
+.changes tr.superseded td { color: var(--muted); opacity: 0.55; }
+.changes .tag { margin-left: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; }
+
 /* sun pill */
 .sun-pill { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
 .compass { color: var(--ink); flex: none; }
@@ -97,6 +119,10 @@
 .chip-text .muted { font-size: 11px; }
 .delta { font-size: 12px; white-space: nowrap; }
 .panel-footer { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* a share link's name field, above the notes (the change list says who asked) */
+.buyer-name { display: flex; flex-direction: column; gap: 6px; }
+.buyer-name input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; }
 
 /* notes */
 .notes { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }

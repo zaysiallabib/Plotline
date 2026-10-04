@@ -12,6 +12,7 @@ import type { Configuration, FurniturePlacement, Id, Pt, Room, Unit } from '../c
 import { towerOf } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, placePiece, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
 import { isUnit, normalizeUnit } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
@@ -328,6 +329,15 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     scene?.setConfiguration(fullCfg)
   }, [scene, fullCfg])
 
+  // a share link: what waited in this browser's outbox (sent offline) goes now, and whenever the network comes back
+  useEffect(() => {
+    if (!TOKEN) return
+    const send = () => void flushOutbox()
+    send()
+    addEventListener('online', send)
+    return () => removeEventListener('online', send)
+  }, [])
+
   // load progress: a room counts once every placement it owns is in the scene graph
   useEffect(() => {
     if (!scene) return
@@ -569,10 +579,17 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
       createdAt: new Date().toISOString(),
     }
     appendPin(unit.id, pin)
+    if (TOKEN) void sendEvent(TOKEN, 'comment', pin.id, { text, object: draft.label, anchor: pin.anchor, roomId: pin.roomId })
     setPins(readPins(unit.id))
     setDraft(null)
     setCommenting(false)
     setFinishesOpen(true)
+  }
+  /** a share link's finish choice goes to the change list (lib/events.ts); picking the chip already chosen logs nothing */
+  const choose = (slotId: Id, optionId: Id) => {
+    const s = unit.finishSlots.find((x) => x.id === slotId)
+    const p = s && fullCfg[slotId] !== optionId && selectionPayload(s, optionId)
+    if (TOKEN && p) void sendEvent(TOKEN, 'selection', slotId, p)
   }
 
   const focusPin = (pin: Pin) => {
@@ -682,6 +699,12 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
           />
           {finishesOpen && (
             <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>
+              {TOKEN && (
+                <label className="buyer-name">
+                  <span className="label">Your name</span>
+                  <input defaultValue={buyer().name} placeholder="So the developer knows who asked" maxLength={80} onChange={(e) => setBuyerName(e.target.value)} />
+                </label>
+              )}
               {/* Notes first: a just-saved note must be visible without scrolling past the finishes */}
               <NotesList
                 pins={pins}
@@ -689,14 +712,21 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
                 onFocus={focusPin}
                 onRemove={(p) => {
                   removePin(unit.id, p.id)
+                  if (TOKEN) void sendEvent(TOKEN, 'comment', p.id, { removed: true })
                   setPins(readPins(unit.id))
                 }}
               />
               <FinishesPanel
                 slots={unit.finishSlots}
                 cfg={cfg}
-                onSelect={(slotId, optionId) => setCfg((c) => ({ ...c, [slotId]: optionId }))}
-                onReset={() => setCfg({})}
+                onSelect={(slotId, optionId) => {
+                  choose(slotId, optionId)
+                  setCfg((c) => ({ ...c, [slotId]: optionId }))
+                }}
+                onReset={() => {
+                  for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
+                  setCfg({})
+                }}
               />
             </aside>
           )}

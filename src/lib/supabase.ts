@@ -1,6 +1,6 @@
 /**
- * Supabase, Phase 0: two RPCs over plain fetch (supabase/migrations/20261003120000_share_links.sql).
- * ponytail: no supabase-js — two POSTs don't need a client library; add it with auth (Phase A).
+ * Supabase, Phase 0: RPCs over plain fetch (supabase/migrations/: share links here, the change list in events.ts).
+ * ponytail: no supabase-js — a few POSTs don't need a client library; add it with auth (Phase A).
  * `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` come from .env.local / Vercel env (never git).
  */
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -17,7 +17,7 @@ export class RpcError extends Error {
   }
 }
 
-async function rpc<T>(fn: string, args: object): Promise<T> {
+export async function rpc<T>(fn: string, args: object): Promise<T> {
   if (!URL || !KEY) throw new RpcError(0, 'Supabase is not configured')
   const r = await fetch(`${URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',

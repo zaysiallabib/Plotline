@@ -1317,6 +1317,11 @@ export default function StudioApp() {
             {sharing ? 'Sharing…' : 'Share link'}
           </button>
         )}
+        {sharingConfigured && (
+          <button title="What buyers noted and chose on your share links: who, when, which finish, the price" onClick={() => window.open('/changes', '_blank')}>
+            Change list
+          </button>
+        )}
         <input ref={jsonRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFiles(e.target.files)} />
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => onFiles(e.target.files)} />
       </header>
