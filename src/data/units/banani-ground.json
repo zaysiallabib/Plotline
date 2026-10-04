@@ -1,0 +1,2398 @@
+{
+  "id": "banani-ground",
+  "projectName": "Sheltech Banani",
+  "name": "Ground level",
+  "northDeg": 0,
+  "vertices": [
+    {
+      "id": "v1",
+      "x": -13.3096,
+      "y": -14.859
+    },
+    {
+      "id": "v2",
+      "x": -13.3096,
+      "y": 7.8994
+    },
+    {
+      "id": "v3",
+      "x": 13.2588,
+      "y": 7.8994
+    },
+    {
+      "id": "v4",
+      "x": -9.7028,
+      "y": -14.859
+    },
+    {
+      "id": "v5",
+      "x": -5.1562,
+      "y": -14.859
+    },
+    {
+      "id": "v6",
+      "x": -3.556,
+      "y": -14.859
+    },
+    {
+      "id": "v7",
+      "x": -1.143,
+      "y": -14.859
+    },
+    {
+      "id": "v8",
+      "x": 10.9474,
+      "y": -14.859
+    },
+    {
+      "id": "v9",
+      "x": 13.2588,
+      "y": -14.859
+    },
+    {
+      "id": "v10",
+      "x": 13.2588,
+      "y": -12.5476
+    },
+    {
+      "id": "v11",
+      "x": 13.2588,
+      "y": -9.2964
+    },
+    {
+      "id": "v12",
+      "x": 13.2588,
+      "y": 2.8956
+    },
+    {
+      "id": "v13",
+      "x": 13.2588,
+      "y": 3.6576
+    },
+    {
+      "id": "v14",
+      "x": 13.2588,
+      "y": 4.8006
+    },
+    {
+      "id": "v15",
+      "x": 12.7254,
+      "y": -9.4234
+    },
+    {
+      "id": "v16",
+      "x": 13.2588,
+      "y": -7.8994
+    },
+    {
+      "id": "v17",
+      "x": 12.7254,
+      "y": -0.254
+    },
+    {
+      "id": "v18",
+      "x": 13.2588,
+      "y": 0.7112
+    },
+    {
+      "id": "v19",
+      "x": 13.2588,
+      "y": 2.0828
+    },
+    {
+      "id": "v20",
+      "x": 12.7254,
+      "y": 3.1496
+    },
+    {
+      "id": "v21",
+      "x": -9.7028,
+      "y": -13.97
+    },
+    {
+      "id": "v22",
+      "x": -9.7028,
+      "y": -12.1412
+    },
+    {
+      "id": "v23",
+      "x": -9.7028,
+      "y": 3.556
+    },
+    {
+      "id": "v24",
+      "x": -9.652,
+      "y": 4.191
+    },
+    {
+      "id": "v25",
+      "x": -9.4996,
+      "y": 4.826
+    },
+    {
+      "id": "v26",
+      "x": -9.2202,
+      "y": 5.4102
+    },
+    {
+      "id": "v27",
+      "x": -8.8392,
+      "y": 5.9436
+    },
+    {
+      "id": "v28",
+      "x": -8.382,
+      "y": 6.4008
+    },
+    {
+      "id": "v29",
+      "x": -7.8486,
+      "y": 6.7564
+    },
+    {
+      "id": "v30",
+      "x": -7.2644,
+      "y": 7.0358
+    },
+    {
+      "id": "v31",
+      "x": -6.6548,
+      "y": 7.2136
+    },
+    {
+      "id": "v32",
+      "x": -5.9944,
+      "y": 7.2644
+    },
+    {
+      "id": "v33",
+      "x": -4.0132,
+      "y": 7.2644
+    },
+    {
+      "id": "v34",
+      "x": -5.1562,
+      "y": -12.1412
+    },
+    {
+      "id": "v35",
+      "x": -5.1562,
+      "y": -12.4206
+    },
+    {
+      "id": "v36",
+      "x": -3.556,
+      "y": -12.4206
+    },
+    {
+      "id": "v37",
+      "x": -3.556,
+      "y": -12.954
+    },
+    {
+      "id": "v38",
+      "x": -9.7028,
+      "y": -7.6962
+    },
+    {
+      "id": "v39",
+      "x": -5.0292,
+      "y": -7.6962
+    },
+    {
+      "id": "v40",
+      "x": -9.7028,
+      "y": 1.3462
+    },
+    {
+      "id": "v41",
+      "x": -5.0292,
+      "y": 1.3462
+    },
+    {
+      "id": "v42",
+      "x": -4.9022,
+      "y": 1.8542
+    },
+    {
+      "id": "v43",
+      "x": -4.5212,
+      "y": 2.2352
+    },
+    {
+      "id": "v44",
+      "x": -4.0132,
+      "y": 4.8006
+    },
+    {
+      "id": "v45",
+      "x": -5.0292,
+      "y": -8.2804
+    },
+    {
+      "id": "v46",
+      "x": -5.0038,
+      "y": 1.524
+    },
+    {
+      "id": "v47",
+      "x": -4.9784,
+      "y": 1.7018
+    },
+    {
+      "id": "v48",
+      "x": -4.8006,
+      "y": 2.0066
+    },
+    {
+      "id": "v49",
+      "x": -4.6736,
+      "y": 2.1336
+    },
+    {
+      "id": "v50",
+      "x": -4.3688,
+      "y": 2.3114
+    },
+    {
+      "id": "v51",
+      "x": -4.191,
+      "y": 2.3622
+    },
+    {
+      "id": "v52",
+      "x": -4.0132,
+      "y": 2.3622
+    },
+    {
+      "id": "v53",
+      "x": -2.159,
+      "y": -8.2804
+    },
+    {
+      "id": "v54",
+      "x": -5.0292,
+      "y": -6.8834
+    },
+    {
+      "id": "v55",
+      "x": -2.159,
+      "y": -6.8834
+    },
+    {
+      "id": "v56",
+      "x": -5.0292,
+      "y": -2.286
+    },
+    {
+      "id": "v57",
+      "x": -1.4986,
+      "y": -2.286
+    },
+    {
+      "id": "v58",
+      "x": 2.2606,
+      "y": -2.286
+    },
+    {
+      "id": "v59",
+      "x": -1.143,
+      "y": -12.954
+    },
+    {
+      "id": "v60",
+      "x": -2.159,
+      "y": -12.954
+    },
+    {
+      "id": "v61",
+      "x": -2.159,
+      "y": -12.319
+    },
+    {
+      "id": "v62",
+      "x": -2.159,
+      "y": -5.1308
+    },
+    {
+      "id": "v63",
+      "x": 2.159,
+      "y": -12.319
+    },
+    {
+      "id": "v64",
+      "x": 2.159,
+      "y": -5.1308
+    },
+    {
+      "id": "v65",
+      "x": 3.2766,
+      "y": -5.1308
+    },
+    {
+      "id": "v66",
+      "x": 4.7752,
+      "y": -5.1308
+    },
+    {
+      "id": "v67",
+      "x": 5.8674,
+      "y": -5.1308
+    },
+    {
+      "id": "v68",
+      "x": 3.2766,
+      "y": -12.954
+    },
+    {
+      "id": "v69",
+      "x": 3.2766,
+      "y": -6.1468
+    },
+    {
+      "id": "v70",
+      "x": 4.7752,
+      "y": -6.1468
+    },
+    {
+      "id": "v71",
+      "x": -1.143,
+      "y": -14.1732
+    },
+    {
+      "id": "v72",
+      "x": 4.7752,
+      "y": -14.1732
+    },
+    {
+      "id": "v73",
+      "x": 11.0998,
+      "y": -14.1732
+    },
+    {
+      "id": "v74",
+      "x": 11.0998,
+      "y": -4.1656
+    },
+    {
+      "id": "v75",
+      "x": 11.0998,
+      "y": 4.8006
+    },
+    {
+      "id": "v76",
+      "x": 4.7752,
+      "y": -4.1656
+    },
+    {
+      "id": "v77",
+      "x": 6.5786,
+      "y": -4.1656
+    },
+    {
+      "id": "v78",
+      "x": 6.5786,
+      "y": -1.27
+    },
+    {
+      "id": "v79",
+      "x": 11.0998,
+      "y": -1.27
+    },
+    {
+      "id": "v80",
+      "x": 8.001,
+      "y": -1.27
+    },
+    {
+      "id": "v81",
+      "x": 8.001,
+      "y": 2.0828
+    },
+    {
+      "id": "v82",
+      "x": 4.9022,
+      "y": -0.0762
+    },
+    {
+      "id": "v83",
+      "x": 8.001,
+      "y": -0.0762
+    },
+    {
+      "id": "v84",
+      "x": 6.5786,
+      "y": -0.0762
+    },
+    {
+      "id": "v85",
+      "x": 6.5786,
+      "y": 2.0828
+    },
+    {
+      "id": "v86",
+      "x": 4.9022,
+      "y": 2.0828
+    },
+    {
+      "id": "v87",
+      "x": 11.0998,
+      "y": 2.0828
+    },
+    {
+      "id": "v88",
+      "x": 4.9022,
+      "y": 4.8006
+    },
+    {
+      "id": "v89",
+      "x": 2.2606,
+      "y": -2.7686
+    },
+    {
+      "id": "v90",
+      "x": 2.2606,
+      "y": 4.8006
+    },
+    {
+      "id": "v91",
+      "x": 4.9022,
+      "y": -2.7686
+    },
+    {
+      "id": "v92",
+      "x": -2.2352,
+      "y": 0.0254
+    },
+    {
+      "id": "v93",
+      "x": 2.2606,
+      "y": 0.0254
+    },
+    {
+      "id": "v94",
+      "x": -2.2352,
+      "y": 2.3622
+    },
+    {
+      "id": "v95",
+      "x": 0,
+      "y": 0.0254
+    },
+    {
+      "id": "v96",
+      "x": 0,
+      "y": 2.3622
+    },
+    {
+      "id": "v97",
+      "x": 2.2606,
+      "y": 2.3622
+    },
+    {
+      "id": "v98",
+      "x": 5.08,
+      "y": 7.2644
+    },
+    {
+      "id": "v99",
+      "x": 5.08,
+      "y": 4.8006
+    },
+    {
+      "id": "v100",
+      "x": 5.08,
+      "y": 7.8994
+    }
+  ],
+  "walls": [
+    {
+      "id": "w_bnd_w",
+      "a": "v1",
+      "b": "v2",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_s_1",
+      "a": "v2",
+      "b": "v100",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_s_2",
+      "a": "v100",
+      "b": "v3",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_n1",
+      "a": "v1",
+      "b": "v4",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_gate_main",
+      "a": "v4",
+      "b": "v5",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_gate_main_gate",
+          "kind": "passage",
+          "offsetM": 0,
+          "widthM": 4.5466,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_gate_ped",
+      "a": "v5",
+      "b": "v6",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_gate_ped_gate",
+          "kind": "passage",
+          "offsetM": 0,
+          "widthM": 1.6002,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_guard_n",
+      "a": "v6",
+      "b": "v7",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_n2",
+      "a": "v7",
+      "b": "v8",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_n2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 12.0904,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_n3",
+      "a": "v8",
+      "b": "v9",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_e1",
+      "a": "v9",
+      "b": "v10",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 2.3114,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_e2",
+      "a": "v10",
+      "b": "v11",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_e3_1",
+      "a": "v11",
+      "b": "v16",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e3_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.397,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_e3_2",
+      "a": "v16",
+      "b": "v18",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e3_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 8.6106,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_e3_3",
+      "a": "v18",
+      "b": "v19",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e3_3_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.3716,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_e3_4",
+      "a": "v19",
+      "b": "v12",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e3_4_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.8127,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_bnd_e4",
+      "a": "v12",
+      "b": "v13",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": []
+    },
+    {
+      "id": "w_bnd_e5",
+      "a": "v13",
+      "b": "v14",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_bnd_e5_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.143,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_gate_service",
+      "a": "v14",
+      "b": "v3",
+      "thicknessM": 0.254,
+      "heightM": 1.8,
+      "openings": [
+        {
+          "id": "o_gate_service_gate",
+          "kind": "passage",
+          "offsetM": 0,
+          "widthM": 3.0987,
+          "heightM": 1.8,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_screen_e1",
+      "a": "v15",
+      "b": "v16",
+      "thicknessM": 0.2,
+      "heightM": 1.8,
+      "standsAlone": true,
+      "openings": []
+    },
+    {
+      "id": "w_screen_e2",
+      "a": "v17",
+      "b": "v18",
+      "thicknessM": 0.2,
+      "heightM": 1.8,
+      "standsAlone": true,
+      "openings": []
+    },
+    {
+      "id": "w_screen_e3",
+      "a": "v19",
+      "b": "v20",
+      "thicknessM": 0.2,
+      "heightM": 1.8,
+      "standsAlone": true,
+      "openings": []
+    },
+    {
+      "id": "w_drive_edge1",
+      "a": "v4",
+      "b": "v21",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_entry_wall",
+      "a": "v21",
+      "b": "v22",
+      "thicknessM": 0.2,
+      "heightM": 1.2,
+      "openings": []
+    },
+    {
+      "id": "w_drive_edge2_1",
+      "a": "v22",
+      "b": "v38",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_drive_edge2_2",
+      "a": "v38",
+      "b": "v40",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_drive_edge2_3",
+      "a": "v40",
+      "b": "v23",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_1",
+      "a": "v23",
+      "b": "v24",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_2",
+      "a": "v24",
+      "b": "v25",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_3",
+      "a": "v25",
+      "b": "v26",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_4",
+      "a": "v26",
+      "b": "v27",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_5",
+      "a": "v27",
+      "b": "v28",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_6",
+      "a": "v28",
+      "b": "v29",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_7",
+      "a": "v29",
+      "b": "v30",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_8",
+      "a": "v30",
+      "b": "v31",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_9",
+      "a": "v31",
+      "b": "v32",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_outer_10",
+      "a": "v32",
+      "b": "v33",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_entry_end_1",
+      "a": "v22",
+      "b": "v34",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_entry_end_2",
+      "a": "v34",
+      "b": "v35",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_gate_steps_w",
+      "a": "v5",
+      "b": "v35",
+      "thicknessM": 0.2,
+      "heightM": 1.2,
+      "openings": []
+    },
+    {
+      "id": "w_gate_steps_s",
+      "a": "v35",
+      "b": "v36",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_gate_steps_e",
+      "a": "v37",
+      "b": "v36",
+      "thicknessM": 0.2,
+      "heightM": 1.2,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_top",
+      "a": "v38",
+      "b": "v39",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_mid",
+      "a": "v40",
+      "b": "v41",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_div1",
+      "a": "v42",
+      "b": "v26",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_div2",
+      "a": "v43",
+      "b": "v29",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_ramp_end",
+      "a": "v44",
+      "b": "v33",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_rec_glass_w_1",
+      "a": "v45",
+      "b": "v39",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_rec_glass_w_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.5842,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_rec_glass_w_2",
+      "a": "v39",
+      "b": "v54",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_rec_glass_w_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.8128,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_rec_glass_w_3",
+      "a": "v54",
+      "b": "v56",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_rec_glass_w_3_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 4.5974,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_rec_glass_w_4",
+      "a": "v56",
+      "b": "v41",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_rec_glass_w_4_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 3.6322,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_1",
+      "a": "v41",
+      "b": "v46",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1796,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_2",
+      "a": "v46",
+      "b": "v47",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1796,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_3",
+      "a": "v47",
+      "b": "v42",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_3_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1703,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_4",
+      "a": "v42",
+      "b": "v48",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_4_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1831,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_5",
+      "a": "v48",
+      "b": "v49",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_5_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1796,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_6",
+      "a": "v49",
+      "b": "v43",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_6_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1831,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_7",
+      "a": "v43",
+      "b": "v50",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_7_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1703,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_8",
+      "a": "v50",
+      "b": "v51",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_8_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1849,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lobby_curve_9",
+      "a": "v51",
+      "b": "v52",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_curve_9_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.1777,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_steps_top",
+      "a": "v45",
+      "b": "v53",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_steps_bot",
+      "a": "v54",
+      "b": "v55",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_lobby_split",
+      "a": "v56",
+      "b": "v57",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_lobby_glass",
+      "a": "v57",
+      "b": "v58",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lobby_glass_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 3.7592,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_guard_w",
+      "a": "v6",
+      "b": "v37",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_guard_w_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.9049,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_guard_e_1",
+      "a": "v7",
+      "b": "v71",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_guard_e_2",
+      "a": "v71",
+      "b": "v59",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_guard_s_1",
+      "a": "v37",
+      "b": "v60",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_guard_door",
+          "kind": "door",
+          "offsetM": 0.133,
+          "widthM": 0.75,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_guard_s_2",
+      "a": "v60",
+      "b": "v59",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_comm_col",
+      "a": "v60",
+      "b": "v61",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_comm_w_1",
+      "a": "v61",
+      "b": "v53",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_w_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 4.0386,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_comm_w_2",
+      "a": "v53",
+      "b": "v55",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_w_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.397,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_comm_w_3",
+      "a": "v55",
+      "b": "v62",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_w_3_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.7526,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_comm_n",
+      "a": "v61",
+      "b": "v63",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_n_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 4.3179,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_comm_e",
+      "a": "v63",
+      "b": "v64",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_e_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 7.1882,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_comm_s",
+      "a": "v62",
+      "b": "v64",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_comm_s_glass_a",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.5605,
+          "heightM": 2.7,
+          "sillM": 0
+        },
+        {
+          "id": "o_comm_door",
+          "kind": "door",
+          "offsetM": 1.5605,
+          "widthM": 1.4,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        },
+        {
+          "id": "o_comm_s_glass_b",
+          "kind": "window",
+          "offsetM": 2.9606000000000003,
+          "widthM": 1.3572,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_deck_door",
+      "a": "v64",
+      "b": "v65",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_deck_door_glass_a",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.058,
+          "heightM": 2.7,
+          "sillM": 0
+        },
+        {
+          "id": "o_deck_door",
+          "kind": "door",
+          "offsetM": 0.058,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        },
+        {
+          "id": "o_deck_door_glass_b",
+          "kind": "window",
+          "offsetM": 0.9581,
+          "widthM": 0.1594,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_rec_wall_n",
+      "a": "v65",
+      "b": "v66",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_feature_wall",
+      "a": "v66",
+      "b": "v67",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "standsAlone": true,
+      "openings": []
+    },
+    {
+      "id": "w_water_deck_1",
+      "a": "v59",
+      "b": "v68",
+      "thicknessM": 0.15,
+      "heightM": 0.15,
+      "openings": []
+    },
+    {
+      "id": "w_water_deck_2",
+      "a": "v68",
+      "b": "v69",
+      "thicknessM": 0.15,
+      "heightM": 0.15,
+      "openings": []
+    },
+    {
+      "id": "w_water_deck_3",
+      "a": "v69",
+      "b": "v70",
+      "thicknessM": 0.15,
+      "heightM": 0.15,
+      "openings": []
+    },
+    {
+      "id": "w_water_edge_1",
+      "a": "v71",
+      "b": "v72",
+      "thicknessM": 0.15,
+      "heightM": 0.15,
+      "openings": []
+    },
+    {
+      "id": "w_water_edge_2",
+      "a": "v72",
+      "b": "v70",
+      "thicknessM": 0.15,
+      "heightM": 0.15,
+      "openings": []
+    },
+    {
+      "id": "w_deck_edge",
+      "a": "v70",
+      "b": "v66",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_play_n",
+      "a": "v72",
+      "b": "v73",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_play_e",
+      "a": "v73",
+      "b": "v74",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_lawn_s",
+      "a": "v75",
+      "b": "v14",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_rec_glass_ne",
+      "a": "v66",
+      "b": "v76",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_rec_glass_ne_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 0.9651,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_gym_glass_n_1",
+      "a": "v76",
+      "b": "v77",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_gym_glass_n_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.8034,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_gym_glass_n_2",
+      "a": "v77",
+      "b": "v74",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_gym_glass_n_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 4.5212,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_glass_e_1",
+      "a": "v74",
+      "b": "v79",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_glass_e_1_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 2.8956,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_glass_e_2",
+      "a": "v79",
+      "b": "v87",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_glass_e_2_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 3.3528,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_glass_e_3",
+      "a": "v87",
+      "b": "v75",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_glass_e_3_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 2.7178,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_gym_w",
+      "a": "v77",
+      "b": "v78",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_gym_door",
+          "kind": "door",
+          "offsetM": 0.2366,
+          "widthM": 1,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_gym_s_1",
+      "a": "v78",
+      "b": "v80",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_gym_s_2",
+      "a": "v80",
+      "b": "v79",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_staff_w_1",
+      "a": "v80",
+      "b": "v83",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_staff_door",
+          "kind": "door",
+          "offsetM": 0.1087,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_staff_w_2",
+      "a": "v83",
+      "b": "v81",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_toilets_n_1",
+      "a": "v82",
+      "b": "v84",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_toilet1_door",
+          "kind": "door",
+          "offsetM": 0.6152,
+          "widthM": 0.7,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_toilets_n_2",
+      "a": "v84",
+      "b": "v83",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_toilet2_door",
+          "kind": "door",
+          "offsetM": 0.3358,
+          "widthM": 0.7,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_toilets_mid",
+      "a": "v84",
+      "b": "v85",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_mep_n_1",
+      "a": "v86",
+      "b": "v85",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_mep_n_2",
+      "a": "v85",
+      "b": "v81",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_mep_n_3",
+      "a": "v81",
+      "b": "v87",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_mep_s_1",
+      "a": "v88",
+      "b": "v99",
+      "thicknessM": 0.2,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_mep_s_2",
+      "a": "v99",
+      "b": "v75",
+      "thicknessM": 0.2,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_mep_door",
+          "kind": "door",
+          "offsetM": 0.0905,
+          "widthM": 1.8,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_e_w_1",
+      "a": "v89",
+      "b": "v58",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_w_2",
+      "a": "v58",
+      "b": "v93",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_e_door2",
+          "kind": "door",
+          "offsetM": 0.2365,
+          "widthM": 1,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_e_w_3",
+      "a": "v93",
+      "b": "v97",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_w_4",
+      "a": "v97",
+      "b": "v90",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_n",
+      "a": "v89",
+      "b": "v91",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_e_door",
+          "kind": "door",
+          "offsetM": 1.38,
+          "widthM": 1.05,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_e_e_1",
+      "a": "v91",
+      "b": "v82",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_e_2",
+      "a": "v82",
+      "b": "v86",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_e_3",
+      "a": "v86",
+      "b": "v88",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_s",
+      "a": "v90",
+      "b": "v88",
+      "thicknessM": 0.102,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_e_s_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 2.6415,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lift_n_1",
+      "a": "v92",
+      "b": "v95",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lift1",
+          "kind": "passage",
+          "offsetM": 0.7183,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lift_n_2",
+      "a": "v95",
+      "b": "v93",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lift2",
+          "kind": "passage",
+          "offsetM": 0.6422,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "w_lift_w",
+      "a": "v92",
+      "b": "v94",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_div",
+      "a": "v95",
+      "b": "v96",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_stair_n_1",
+      "a": "v52",
+      "b": "v94",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_door",
+          "kind": "door",
+          "offsetM": 0.185,
+          "widthM": 0.9,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_n_2",
+      "a": "v94",
+      "b": "v96",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_n_3",
+      "a": "v96",
+      "b": "v97",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_w",
+      "a": "v52",
+      "b": "v44",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s",
+      "a": "v44",
+      "b": "v90",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_win",
+          "kind": "window",
+          "offsetM": 0.1882,
+          "widthM": 1.3,
+          "heightM": 1.5,
+          "sillM": 0.9
+        }
+      ]
+    },
+    {
+      "id": "w_gen_s",
+      "a": "v33",
+      "b": "v98",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_gen_e_1",
+      "a": "v99",
+      "b": "v98",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "w_gen_e_2",
+      "a": "v98",
+      "b": "v100",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    }
+  ],
+  "pillars": [
+    {
+      "id": "c_w1",
+      "x": -9.9314,
+      "y": -11.811,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_w2",
+      "x": -9.9314,
+      "y": -8.3058,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_w3",
+      "x": -9.9314,
+      "y": -2.4638,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_w4",
+      "x": -9.9314,
+      "y": 2.032,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_n",
+      "x": 1.9558,
+      "y": -13.1572,
+      "wM": 0.914,
+      "hM": 0.381
+    },
+    {
+      "id": "c_cw",
+      "x": -1.9558,
+      "y": -8.0264,
+      "wM": 0.914,
+      "hM": 0.381
+    },
+    {
+      "id": "c_ce",
+      "x": 1.9558,
+      "y": -8.0264,
+      "wM": 0.914,
+      "hM": 0.381
+    },
+    {
+      "id": "c_e1",
+      "x": 11.0998,
+      "y": -4.0132,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_e2",
+      "x": 11.0998,
+      "y": 2.4892,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_st1",
+      "x": 2.2352,
+      "y": -2.5654,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_rec",
+      "x": -1.9304,
+      "y": -2.413,
+      "wM": 0.914,
+      "hM": 0.381
+    },
+    {
+      "id": "c_st2",
+      "x": 4.9022,
+      "y": -0.7874,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_st3",
+      "x": 4.9022,
+      "y": 2.032,
+      "wM": 0.381,
+      "hM": 0.914
+    },
+    {
+      "id": "c_core",
+      "x": 0,
+      "y": 0,
+      "wM": 0.914,
+      "hM": 0.381
+    },
+    {
+      "id": "c_guard",
+      "x": -2.2352,
+      "y": -12.6238,
+      "wM": 0.381,
+      "hM": 1.397
+    }
+  ],
+  "roomLabels": [
+    {
+      "id": "r_drop_off",
+      "name": "Drop off area",
+      "kind": "driveway",
+      "x": -6.7818,
+      "y": -10.1092,
+      "levelM": -0.75
+    },
+    {
+      "id": "r_entry_ramp",
+      "name": "Entry ramp",
+      "kind": "driveway",
+      "x": -7.3914,
+      "y": -13.5636,
+      "levelM": -1.5,
+      "slope": {
+        "toLevelM": -0.75,
+        "dirDeg": 180
+      }
+    },
+    {
+      "id": "r_gate_steps",
+      "name": "Gate steps",
+      "kind": "paving",
+      "x": -4.3434,
+      "y": -13.5636,
+      "levelM": -1.5,
+      "slope": {
+        "toLevelM": -0.75,
+        "dirDeg": 180
+      }
+    },
+    {
+      "id": "r_guard",
+      "name": "Guard room",
+      "kind": "guard",
+      "x": -2.3114,
+      "y": -13.8938,
+      "levelM": -0.75
+    },
+    {
+      "id": "r_water",
+      "name": "Water body",
+      "kind": "pool",
+      "x": 4.0132,
+      "y": -9.7028,
+      "levelM": -0.6
+    },
+    {
+      "id": "r_deck",
+      "name": "Deck",
+      "kind": "deck",
+      "x": 2.7178,
+      "y": -8.89
+    },
+    {
+      "id": "r_community",
+      "name": "Community",
+      "kind": "community",
+      "x": 0,
+      "y": -7.2898,
+      "printedSize": "14'-2\" × 23'-5\""
+    },
+    {
+      "id": "r_play",
+      "name": "Children play area",
+      "kind": "play",
+      "x": 7.8232,
+      "y": -8.89,
+      "levelM": -0.6
+    },
+    {
+      "id": "r_lawn_e",
+      "name": "Lawn (east)",
+      "kind": "lawn",
+      "x": 12.2936,
+      "y": -5.6642,
+      "levelM": -0.6
+    },
+    {
+      "id": "r_lawn_w",
+      "name": "Lawn (west)",
+      "kind": "lawn",
+      "x": -11.6332,
+      "y": -2.8194,
+      "levelM": -0.75
+    },
+    {
+      "id": "r_steps",
+      "name": "Steps",
+      "kind": "paving",
+      "x": -3.5306,
+      "y": -7.5692,
+      "levelM": -0.75,
+      "slope": {
+        "toLevelM": 0,
+        "dirDeg": 180
+      }
+    },
+    {
+      "id": "r_reception",
+      "name": "Reception",
+      "kind": "lobby",
+      "x": 0.127,
+      "y": -3.6322
+    },
+    {
+      "id": "r_lift_lobby",
+      "name": "Lift lobby",
+      "kind": "lobby",
+      "x": -3.5306,
+      "y": -0.7874
+    },
+    {
+      "id": "r_hoist1",
+      "name": "Hoistway 1",
+      "kind": "other",
+      "x": -1.0922,
+      "y": 1.2446,
+      "printedSize": "6'-10\" × 6'-10\""
+    },
+    {
+      "id": "r_hoist2",
+      "name": "Hoistway 2",
+      "kind": "other",
+      "x": 1.143,
+      "y": 1.2446,
+      "printedSize": "6'-10\" × 6'-10\""
+    },
+    {
+      "id": "r_stair",
+      "name": "Stair",
+      "kind": "other",
+      "x": -0.6858,
+      "y": 3.6576
+    },
+    {
+      "id": "r_stair_e",
+      "name": "Stair (east)",
+      "kind": "other",
+      "x": 3.556,
+      "y": 1.2446
+    },
+    {
+      "id": "r_gym",
+      "name": "Gym area",
+      "kind": "gym",
+      "x": 8.8392,
+      "y": -2.8194
+    },
+    {
+      "id": "r_toilet1",
+      "name": "Toilet 1",
+      "kind": "bath",
+      "x": 5.715,
+      "y": 1.0414
+    },
+    {
+      "id": "r_toilet2",
+      "name": "Toilet 2",
+      "kind": "bath",
+      "x": 7.2644,
+      "y": 1.0414
+    },
+    {
+      "id": "r_staff",
+      "name": "Staff room",
+      "kind": "guard",
+      "x": 9.525,
+      "y": 0.4318
+    },
+    {
+      "id": "r_mep",
+      "name": "MEP area",
+      "kind": "utility",
+      "x": 8.0264,
+      "y": 3.4798,
+      "printedSize": "20'-0\" × 8'-7\""
+    },
+    {
+      "id": "r_generator",
+      "name": "Generator",
+      "kind": "utility",
+      "x": 0.5334,
+      "y": 6.096,
+      "levelM": -1.05
+    },
+    {
+      "id": "r_car_wash",
+      "name": "Car wash",
+      "kind": "driveway",
+      "x": 9.4488,
+      "y": 6.2992,
+      "levelM": -1.2
+    },
+    {
+      "id": "r_ramp",
+      "name": "Car ramp",
+      "kind": "driveway",
+      "x": -7.3914,
+      "y": -3.2258,
+      "levelM": -0.75,
+      "slope": {
+        "toLevelM": -1.9,
+        "dirDeg": 180
+      }
+    },
+    {
+      "id": "r_ramp_c1",
+      "name": "Car ramp (curve 1)",
+      "kind": "driveway",
+      "x": -8.001,
+      "y": 2.8702,
+      "levelM": -1.9,
+      "slope": {
+        "toLevelM": -2.15,
+        "dirDeg": 165
+      }
+    },
+    {
+      "id": "r_ramp_c2",
+      "name": "Car ramp (curve 2)",
+      "kind": "driveway",
+      "x": -7.1882,
+      "y": 4.8768,
+      "levelM": -2.15,
+      "slope": {
+        "toLevelM": -2.4,
+        "dirDeg": 135
+      }
+    },
+    {
+      "id": "r_ramp_c3",
+      "name": "Car ramp (curve 3)",
+      "kind": "driveway",
+      "x": -5.1562,
+      "y": 5.8928,
+      "levelM": -2.4,
+      "slope": {
+        "toLevelM": -2.65,
+        "dirDeg": 105
+      }
+    }
+  ],
+  "furniture": [],
+  "finishSlots": [],
+  "areaSqft": 0
+}
