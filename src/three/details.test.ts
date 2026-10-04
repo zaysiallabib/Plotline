@@ -19,7 +19,7 @@ import { bakeDaylight } from './daylight'
 import { furnish } from '../furnish/presets'
 import { finishSlotsFor } from '../furnish/finishes'
 import { entrySpawn } from '../viewer/spawn'
-import { EXTERIOR_PLASTER, ZONE_FLOOR, zoneFinishRef } from './materials'
+import { CONCRETE, DECK_PAINT, EXTERIOR_PLASTER, ZONE_FLOOR, zoneFinishRef } from './materials'
 import { buildOpening } from './openings'
 
 test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
@@ -682,6 +682,9 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(runs.filter((r) => core.isOutdoor(r.room.kind))).toEqual([])
     expect(zoneFinishRef('lawn', 'floor')).toEqual({ kind: 'pbr', textureId: 'turf' })
     expect(zoneFinishRef('lawn', 'wall')).toBe(EXTERIOR_PLASTER)
+    // a parking deck (a level whose every zone is under the slab above): cool grey painted walls and columns; else the render
+    expect([zoneFinishRef('parking', 'wall', true), zoneFinishRef('driveway', 'wall', true)]).toEqual([DECK_PAINT, DECK_PAINT])
+    expect([zoneFinishRef('parking', 'wall'), zoneFinishRef('parking', 'floor', true)]).toEqual([EXTERIOR_PLASTER, CONCRETE])
     for (const k of ['lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play'] as const) expect(ZONE_FLOOR[k], k).toBeDefined()
   })
 })
