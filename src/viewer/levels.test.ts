@@ -7,6 +7,7 @@ import bananiB2 from '../data/units/banani-b2.json'
 import bananiGround from '../data/units/banani-ground.json'
 import bananiRoof from '../data/units/banani-roof.json'
 import dmdB1 from '../data/units/dmd-b1.json'
+import dmdRoof from '../data/units/dmd-roof.json'
 import sheltechL1 from '../data/units/sheltech-l1.json'
 import typeA from '../data/units/type-a.json'
 import { withDefaults } from './defaults'
@@ -40,6 +41,15 @@ describe('a level is walked by its own rules', () => {
     const lobby = b1.named('Lift lobby')
     expect(Math.min(...core.roomPolygon(lobby, bananiB1 as unknown as Unit).map((q) => Math.hypot(q.x - b1.e.p.x, q.y - b1.e.p.y)))).toBeLessThan(4)
     for (const u of [bananiB2, dmdB1]) expect(at(u as unknown as Unit).room.kind, (u as unknown as Unit).id).toBe('driveway')
+  })
+
+  it('out of the lobby onto a level zone before steps or a ramp, even a wider way (dmd roof: the terrace, not the pool-deck steps)', () => {
+    const roof = at(dmdRoof as unknown as Unit)
+    expect(roof.room.slope).toBeUndefined()
+    expect(roof.room.kind).toBe('paving')
+    const lobby = roof.rooms.find((r) => r.kind === 'lobby')!
+    expect(Math.min(...core.roomPolygon(lobby, dmdRoof as unknown as Unit).map((q) => Math.hypot(q.x - roof.e.p.x, q.y - roof.e.p.y)))).toBeLessThan(2)
+    for (const u of [bananiB1, bananiB2, dmdB1]) expect(at(u as unknown as Unit).room.slope, (u as unknown as Unit).id).toBeUndefined()
   })
 
   it('a common floor of rooms only (Level 1: lounge, gym) is entered like a flat; a flat is not a level', () => {

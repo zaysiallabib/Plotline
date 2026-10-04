@@ -124,11 +124,13 @@ function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
     const inside = (gate.front ?? gate.back)!
     return stand(gate, inside, lobbies[0]?.centroid ?? inside.centroid)
   }
-  // (2) out of the largest lobby onto a zone, (3) out of any room onto a zone; onto a drive or path before a parking bay
+  // (2) out of the largest lobby onto a zone, (3) out of any room onto a zone; onto a level terrace, drive or path before
+  // steps or a ramp (a first view up a flight into a planter wall, dmd roof), before a parking bay
   const zoneOf = (x: W) => [x.front, x.back].find((r) => walkable(r) && core.isOutdoor(r.kind))
   const outOf = (from: (r: Room) => boolean) => {
     const xs = ways.filter((x) => zoneOf(x) && [x.front, x.back].some((r) => walkable(r) && !core.isOutdoor(r.kind) && from(r)))
-    return widest(xs.filter((x) => zoneOf(x)!.kind !== 'parking')) ?? widest(xs)
+    const open = xs.filter((x) => zoneOf(x)!.kind !== 'parking')
+    return widest(open.filter((x) => !zoneOf(x)!.slope)) ?? widest(open) ?? widest(xs)
   }
   const exit = (lobbies[0] && outOf((r) => r.id === lobbies[0].id)) ?? outOf(() => true)
   if (exit) {
