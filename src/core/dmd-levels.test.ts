@@ -7,6 +7,9 @@ import b1 from '../data/units/dmd-b1.json'
 import b2 from '../data/units/dmd-b2.json'
 import ground from '../data/units/dmd-ground.json'
 import roof from '../data/units/dmd-roof.json'
+import typical from '../data/units/dmd-typical.json'
+import type { Tower } from '../data/building'
+import * as dmd from '../data/building/dmd-tower'
 import * as core from './index'
 import type { Unit } from './index'
 
@@ -23,6 +26,10 @@ const LEVELS: Record<string, { unit: Unit; zones: string[] }> = {
   'dmd-ground': {
     unit: ground as unknown as Unit,
     zones: ['Substation & generator', 'HT meter room', 'Ramp down to the basements', 'Lounge', 'Lift lobby', 'Fire stair', 'Stair', 'Lift', 'Lift 2', 'Car drop & pick up area', 'Entry & exit', 'Guard room', 'Children play area', 'Fountain', 'Deck', 'Green area'],
+  },
+  'dmd-typical': {
+    unit: typical as unknown as Unit,
+    zones: ['Typical floor', 'Fire stair', 'Stair', 'Lift', 'Lift 2', 'Lift lobby'],
   },
   'dmd-roof': {
     unit: roof as unknown as Unit,
@@ -98,5 +105,27 @@ describe('the core and the columns coincide level to level (within 5 cm)', () =>
         if (seen) expect(Math.hypot(seen.x - c.x, seen.y - c.y), c.id).toBeLessThan(0.05)
         else at.set(c.id, c)
       }
+  })
+})
+
+describe('dmd-tower.ts', () => {
+  const tower: Tower = dmd
+  test('every level stands on its floor once, the typical shell on floors 1–13, all in one frame', () => {
+    expect(tower.LEVELS).toEqual({ 'dmd-b2': -2, 'dmd-b1': -1, 'dmd-ground': 0, 'dmd-roof': 14 })
+    for (const [stem, floor] of Object.entries(tower.LEVELS!)) expect(tower.FLOORS.filter((f) => f.standIns?.includes(stem)).map((f) => f.floor)).toEqual([floor])
+    expect(tower.FLOORS.filter((f) => f.standIns?.includes('dmd-typical')).map((f) => f.floor)).toEqual(Array.from({ length: 13 }, (_, i) => i + 1))
+    for (const [stem, f] of Object.entries(tower.FLATS)) {
+      expect(f.offset, stem).toEqual({ x: 0, y: 0 })
+      expect(LEVELS[f.unit.id], stem).toBeDefined()
+    }
+  })
+  test('the plot is the boundary wall of the ground level', () => {
+    const xs = ground.vertices.map((v) => v.x), ys = ground.vertices.map((v) => v.y)
+    expect(tower.GROUND.plot).toEqual([
+      { x: Math.min(...xs), y: Math.min(...ys) },
+      { x: Math.max(...xs), y: Math.min(...ys) },
+      { x: Math.max(...xs), y: Math.max(...ys) },
+      { x: Math.min(...xs), y: Math.max(...ys) },
+    ].map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) })))
   })
 })

@@ -1,0 +1,702 @@
+{
+  "id": "dmd-typical",
+  "projectName": "Sheltech dmd",
+  "name": "Typical floor",
+  "northDeg": 0,
+  "vertices": [
+    {
+      "id": "v1",
+      "x": -14.1224,
+      "y": -7.1882
+    },
+    {
+      "id": "v2",
+      "x": 24.9428,
+      "y": -7.1882
+    },
+    {
+      "id": "v3",
+      "x": -0.2032,
+      "y": -0.127
+    },
+    {
+      "id": "v4",
+      "x": 5.2578,
+      "y": -0.127
+    },
+    {
+      "id": "v5",
+      "x": 7.6708,
+      "y": -0.127
+    },
+    {
+      "id": "v6",
+      "x": 11.0236,
+      "y": -0.127
+    },
+    {
+      "id": "v7",
+      "x": -14.1224,
+      "y": 1.778
+    },
+    {
+      "id": "v8",
+      "x": -0.2032,
+      "y": 1.778
+    },
+    {
+      "id": "v9",
+      "x": 11.0236,
+      "y": 1.778
+    },
+    {
+      "id": "v10",
+      "x": 24.9428,
+      "y": 1.778
+    },
+    {
+      "id": "v11",
+      "x": -0.2032,
+      "y": 2.2606
+    },
+    {
+      "id": "v12",
+      "x": 2.3622,
+      "y": 2.2606
+    },
+    {
+      "id": "v13",
+      "x": 5.2578,
+      "y": 2.2606
+    },
+    {
+      "id": "v14",
+      "x": 2.3622,
+      "y": 4.2926
+    },
+    {
+      "id": "v15",
+      "x": 5.2578,
+      "y": 4.2926
+    },
+    {
+      "id": "v16",
+      "x": 7.6708,
+      "y": 4.6228
+    },
+    {
+      "id": "v17",
+      "x": 9.3726,
+      "y": 4.6228
+    },
+    {
+      "id": "v18",
+      "x": 11.0236,
+      "y": 4.6228
+    },
+    {
+      "id": "v19",
+      "x": -6.858,
+      "y": 6.0706
+    },
+    {
+      "id": "v20",
+      "x": 2.3622,
+      "y": 6.0706
+    },
+    {
+      "id": "v21",
+      "x": 9.3726,
+      "y": 6.0706
+    },
+    {
+      "id": "v22",
+      "x": 16.1544,
+      "y": 6.0706
+    },
+    {
+      "id": "v23",
+      "x": 2.3622,
+      "y": 6.3754
+    },
+    {
+      "id": "v24",
+      "x": 5.2578,
+      "y": 6.3754
+    },
+    {
+      "id": "v25",
+      "x": 7.6708,
+      "y": 6.3754
+    },
+    {
+      "id": "v26",
+      "x": 9.3726,
+      "y": 6.3754
+    },
+    {
+      "id": "v27",
+      "x": -6.858,
+      "y": 14.6304
+    },
+    {
+      "id": "v28",
+      "x": 16.1544,
+      "y": 14.6304
+    }
+  ],
+  "walls": [
+    {
+      "id": "w_north_1",
+      "a": "v8",
+      "b": "v7",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_north_2",
+      "a": "v7",
+      "b": "v1",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_north_3",
+      "a": "v1",
+      "b": "v2",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_north_4",
+      "a": "v2",
+      "b": "v10",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_north_5",
+      "a": "v10",
+      "b": "v9",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_south_1",
+      "a": "v20",
+      "b": "v19",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_south_2",
+      "a": "v19",
+      "b": "v27",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_south_3",
+      "a": "v27",
+      "b": "v28",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_south_4",
+      "a": "v28",
+      "b": "v22",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_south_5",
+      "a": "v22",
+      "b": "v21",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_w_1",
+      "a": "v3",
+      "b": "v8",
+      "thicknessM": 0.4,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_w_2",
+      "a": "v8",
+      "b": "v11",
+      "thicknessM": 0.4,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_n",
+      "a": "v3",
+      "b": "v4",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_e",
+      "a": "v4",
+      "b": "v13",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_fire_door",
+          "kind": "door",
+          "offsetM": 0.1778,
+          "widthM": 0.9906,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_fire_s_1",
+      "a": "v11",
+      "b": "v12",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_s_2",
+      "a": "v12",
+      "b": "v13",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_w_1",
+      "a": "v12",
+      "b": "v14",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_w_2",
+      "a": "v14",
+      "b": "v20",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_w_3",
+      "a": "v20",
+      "b": "v23",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_s",
+      "a": "v23",
+      "b": "v24",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_mid",
+      "a": "v14",
+      "b": "v15",
+      "thicknessM": 0.127,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_lift_e_1",
+      "a": "v13",
+      "b": "v15",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lift1",
+          "kind": "door",
+          "offsetM": 0.5842,
+          "widthM": 0.889,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_lift_e_2",
+      "a": "v15",
+      "b": "v24",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_lift2",
+          "kind": "door",
+          "offsetM": 0.5588,
+          "widthM": 0.889,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "a",
+          "swing": "in"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_w",
+      "a": "v5",
+      "b": "v16",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_stair_door",
+          "kind": "door",
+          "offsetM": 3.5306,
+          "widthM": 0.9906,
+          "heightM": 2.1,
+          "sillM": 0,
+          "hinge": "b",
+          "swing": "out"
+        }
+      ]
+    },
+    {
+      "id": "w_stair_n",
+      "a": "v5",
+      "b": "v6",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_1",
+      "a": "v6",
+      "b": "v9",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_e_2",
+      "a": "v9",
+      "b": "v18",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s_1",
+      "a": "v16",
+      "b": "v17",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_stair_s_2",
+      "a": "v17",
+      "b": "v18",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "k_planter_1",
+      "a": "v25",
+      "b": "v26",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "k_planter_2",
+      "a": "v26",
+      "b": "v21",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "k_planter_3",
+      "a": "v21",
+      "b": "v17",
+      "thicknessM": 0.127,
+      "heightM": 0.45,
+      "openings": []
+    },
+    {
+      "id": "w_planter_w",
+      "a": "v16",
+      "b": "v25",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": [
+        {
+          "id": "o_planter_glass",
+          "kind": "window",
+          "offsetM": 0,
+          "widthM": 1.7526,
+          "heightM": 2.7,
+          "sillM": 0
+        }
+      ]
+    },
+    {
+      "id": "f_lobby_n",
+      "a": "v4",
+      "b": "v5",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    },
+    {
+      "id": "f_lobby_s",
+      "a": "v24",
+      "b": "v25",
+      "thicknessM": 0.05,
+      "heightM": 0,
+      "openings": []
+    }
+  ],
+  "pillars": [
+    {
+      "id": "c_n1",
+      "x": -14.0716,
+      "y": -6.604,
+      "wM": 0.4826,
+      "hM": 1.4224
+    },
+    {
+      "id": "c_n6",
+      "x": -7.7724,
+      "y": -6.604,
+      "wM": 0.4318,
+      "hM": 1.3716
+    },
+    {
+      "id": "c_n5",
+      "x": 0.6096,
+      "y": -6.604,
+      "wM": 0.4572,
+      "hM": 1.397
+    },
+    {
+      "id": "c_n2",
+      "x": 10.287,
+      "y": -6.5786,
+      "wM": 0.4826,
+      "hM": 1.4224
+    },
+    {
+      "id": "c_n3",
+      "x": 18.669,
+      "y": -6.6548,
+      "wM": 0.4572,
+      "hM": 1.27
+    },
+    {
+      "id": "c_n4",
+      "x": 24.9428,
+      "y": -6.7564,
+      "wM": 0.4572,
+      "hM": 1.0668
+    },
+    {
+      "id": "c_w1",
+      "x": -14.0716,
+      "y": 1.2954,
+      "wM": 0.4826,
+      "hM": 1.4224
+    },
+    {
+      "id": "c_w2",
+      "x": -7.7724,
+      "y": 1.2954,
+      "wM": 0.4572,
+      "hM": 1.0414
+    },
+    {
+      "id": "c_e1",
+      "x": 16.3068,
+      "y": 1.5748,
+      "wM": 0.9398,
+      "hM": 0.4572
+    },
+    {
+      "id": "c_e2",
+      "x": 22.0218,
+      "y": 1.5748,
+      "wM": 0.9398,
+      "hM": 0.4572
+    },
+    {
+      "id": "c_e3",
+      "x": 24.9682,
+      "y": 1.2954,
+      "wM": 0.4572,
+      "hM": 1.0414
+    },
+    {
+      "id": "c_m1",
+      "x": -6.7818,
+      "y": 6.477,
+      "wM": 0.4318,
+      "hM": 0.9144
+    },
+    {
+      "id": "c_m2",
+      "x": -1.0414,
+      "y": 6.5278,
+      "wM": 0.4572,
+      "hM": 1.016
+    },
+    {
+      "id": "c_m3",
+      "x": 9.3726,
+      "y": 6.5278,
+      "wM": 0.4572,
+      "hM": 1.016
+    },
+    {
+      "id": "c_m4",
+      "x": 16.1798,
+      "y": 6.477,
+      "wM": 0.4826,
+      "hM": 0.9144
+    },
+    {
+      "id": "c_s1",
+      "x": -6.7818,
+      "y": 14.1986,
+      "wM": 0.4572,
+      "hM": 1.016
+    },
+    {
+      "id": "c_s2",
+      "x": -1.0414,
+      "y": 14.0208,
+      "wM": 0.4826,
+      "hM": 1.4224
+    },
+    {
+      "id": "c_s3",
+      "x": 9.4234,
+      "y": 14.0208,
+      "wM": 0.4826,
+      "hM": 1.4224
+    },
+    {
+      "id": "c_s4",
+      "x": 16.2052,
+      "y": 14.2494,
+      "wM": 0.4826,
+      "hM": 0.9144
+    },
+    {
+      "id": "c_core",
+      "x": 2.6924,
+      "y": 3.9878,
+      "wM": 0.8382,
+      "hM": 0.6096
+    },
+    {
+      "id": "c_st",
+      "x": 10.6426,
+      "y": 4.572,
+      "wM": 1.27,
+      "hM": 0.3048
+    },
+    {
+      "id": "c_sw",
+      "x": 6.5278,
+      "y": 13.081,
+      "wM": 0.381,
+      "hM": 3.0988
+    }
+  ],
+  "roomLabels": [
+    {
+      "id": "r_plate_n",
+      "name": "Typical floor",
+      "kind": "other",
+      "x": -6,
+      "y": -3
+    },
+    {
+      "id": "r_plate_s",
+      "name": "Typical floor (south)",
+      "kind": "other",
+      "x": 4,
+      "y": 10
+    },
+    {
+      "id": "r_fire_stair",
+      "name": "Fire stair",
+      "kind": "other",
+      "x": 2.5,
+      "y": 1,
+      "printedSize": "16'-10\" × 7'-0\""
+    },
+    {
+      "id": "r_lift1",
+      "name": "Lift",
+      "kind": "other",
+      "x": 3.8,
+      "y": 3.3
+    },
+    {
+      "id": "r_lift2",
+      "name": "Lift 2",
+      "kind": "other",
+      "x": 3.8,
+      "y": 5.3
+    },
+    {
+      "id": "r_lobby",
+      "name": "Lift lobby",
+      "kind": "lobby",
+      "x": 6.4,
+      "y": 3
+    },
+    {
+      "id": "r_stair",
+      "name": "Stair",
+      "kind": "other",
+      "x": 9.3,
+      "y": 2.2,
+      "printedSize": "10'-2\" × 14'-9\""
+    },
+    {
+      "id": "r_planter",
+      "name": "Planter",
+      "kind": "planter",
+      "x": 8.5,
+      "y": 5.4
+    }
+  ],
+  "furniture": [],
+  "finishSlots": [],
+  "areaSqft": 0
+}
