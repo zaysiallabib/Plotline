@@ -5,15 +5,15 @@
  * Not here: `floor` (the 3D stands an unnumbered flat where the Building view does, render.ts — the load screen and
  * the room chip still show no floor rather than an invented one); `northDeg` (0 = plan-up, normalizeUnit).
  */
-import { sqmToSqft, type Room, type Unit } from '../core'
+import { isOutdoor, sqmToSqft, type Room, type Unit } from '../core'
 import { finishSlotsFor } from '../furnish/finishes'
 
 export function withDefaults(u: Unit, rooms: Room[]): Unit {
   return {
     ...u,
     name: u.name?.trim() || 'Untitled unit',
-    // as auto-trace does without a printed area: the closed rooms' total (shafts out)
-    areaSqft: u.areaSqft || Math.round(sqmToSqft(rooms.filter((r) => r.kind !== 'shaft').reduce((t, r) => t + r.areaSqm, 0))),
+    // as auto-trace does without a printed area: the closed rooms' total (shafts out; a lawn, drive or deck is no floor area)
+    areaSqft: u.areaSqft || Math.round(sqmToSqft(rooms.filter((r) => r.kind !== 'shaft' && !isOutdoor(r.kind)).reduce((t, r) => t + r.areaSqm, 0))),
     // no slots of its own: the catalog by room kind (furnish/finishes.ts)
     finishSlots: finishSlotsFor(u, rooms),
   }

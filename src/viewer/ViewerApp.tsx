@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
-import { projectUnit, topFloor, towerOf } from '../data/building'
+import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
@@ -71,25 +71,54 @@ if (params.has('staff')) {
   params.delete('staff')
   history.replaceState(null, '', `${location.pathname}${params.size ? `?${params}` : ''}`)
 }
-/** Building view floor picker of the flat's tower, top down: roof, the floors with flats, ground */
+/** Building view floor picker of the unit's tower, top down: roof, every floor with flats or massing, ground, basements */
 function PICKER(u: Unit) {
   const t = towerOf(u)
   const FLOORS = t?.FLOORS ?? []
-  const top = t ? topFloor(t) : 0 // (a Studio rooftop level is listed above it: R)
+  const top = t ? topFloor(t) : 0 // (a rooftop level is listed above it: R)
   const basements = FLOORS.filter((f) => f.floor < 0).map((f) => ({ k: f.floor, label: `B${-f.floor}` })).reverse()
-  return [{ k: top + 1, label: 'R' }, ...FLOORS.filter((f) => f.flats.length).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse(), { k: 0, label: 'G' }, ...basements]
+  const floors = FLOORS.filter((f) => f.floor >= 1 && f.floor <= top && (f.flats.length || f.standIns?.length)).map((f) => ({ k: f.floor, label: String(f.floor) })).reverse()
+  return [{ k: top + 1, label: 'R' }, ...floors, { k: 0, label: 'G' }, ...basements]
 }
-/** the flat's route stem in its tower, if it is in one */
+/** the unit's route stem in its tower, if it is in one */
 const towerStem = (u: Unit) => {
-  const FLATS = towerOf(u)?.FLATS ?? {}
-  return Object.keys(FLATS).find((s) => FLATS[s].unit.id === u.id)
+  const t = towerOf(u)
+  return t ? stemIn(t, u) : undefined
 }
-/** `?floor=N` (a flat picked in the Building view) puts the flat on floor N if the tower has it there; the JSON keeps its own. */
+/**
+ * `?floor=N` (a flat picked in the Building view) puts the flat on floor N if the tower has it there; the JSON keeps its
+ * own. A level (ground, basement, rooftop) stands on its tower's floor for it.
+ */
 function onFloor(u: Unit | null): Unit | null {
+  const t = u && towerOf(u)
+  const stem = t && stemIn(t, u)
+  if (!u || !t || !stem) return u
+  const level = t.LEVELS?.[stem]
+  if (level !== undefined) return { ...u, floor: level }
   const n = Number(params.get('floor'))
-  const stem = u && towerStem(u)
-  return u && stem && towerOf(u)!.FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
+  return t.FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
 }
+/**
+ * The load screen's list: the flats as they are; each tower's levels (ground, basements, rooftop) under its name, top
+ * down; a unit that only stands in for massing (a typical-floor shell) not at all.
+ */
+const NAV = (() => {
+  const flats: typeof UNITS = []
+  const towers = new Map<Tower, { name: string; levels: { stem: string; label: string; k: number }[] }>()
+  for (const x of UNITS) {
+    const t = towerOf(x.unit)
+    const stem = t && stemIn(t, x.unit)
+    const role = t && stem ? roleIn(t, stem) : 'flat'
+    if (role === 'flat') flats.push(x)
+    else if (role === 'level') {
+      const g = towers.get(t!) ?? { name: x.unit.projectName, levels: [] }
+      const k = t!.LEVELS![stem!]
+      g.levels.push({ stem: x.stem, label: levelName(t!, k), k })
+      towers.set(t!, g)
+    }
+  }
+  return { flats, towers: [...towers.values()].map((g) => ({ ...g, levels: g.levels.sort((a, b) => b.k - a.k) })) }
+})()
 
 /**
  * Dev only (stripped from production builds): `?xr=emulate` installs Meta's IWER as an emulated Quest 3 before the
@@ -364,6 +393,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const held = useRef<Held | null>(null)
   const [, redraw] = useReducer((n: number) => n + 1, 0)
   const stem = towerStem(unit)
+  const tower = stem ? towerOf(unit) : null
+  /** a common level of its tower (ground, basement, rooftop): its floor */
+  const level = stem ? tower?.LEVELS?.[stem] : undefined
+  /** the level the Building view's picked floor holds (the "Walk this level" button), if any */
+  const levelAt = (k: number) => (tower?.FLOORS.find((f) => f.floor === k)?.standIns ?? []).find((s) => tower?.LEVELS?.[s] !== undefined)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
   const modeRef = useRef(mode)
@@ -377,6 +411,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   // engine (made once per unit loaded; an opening edit rebuilds it in place — its rooms, so the closures below, stay the same)
   useEffect(() => {
     const s = new PlotlineScene(canvasRef.current!, { quality: new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high' })
+    s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
     s.setUnit(given)
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
@@ -807,6 +842,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
   const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
   const opF = editingOpenings && opSel ? findOpening(plan.current.unit, opSel) : null
+  // the level on the floor picked in the Building view (buyers too: a share link's level stays a buyer's link)
+  const walkStem = levelAt(picked)
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -816,8 +853,14 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           <div className="project">{unit.projectName}</div>
           <div className="unit-name">{unit.name}</div>
           <div className="muted">
-            {unit.floor !== undefined && `Floor ${unit.floor} · `}
-            {unit.areaSqft} sqft · {sqm} m²
+            {level !== undefined ? (
+              levelName(tower!, level)
+            ) : (
+              <>
+                {unit.floor !== undefined && `Floor ${unit.floor} · `}
+                {unit.areaSqft} sqft · {sqm} m²
+              </>
+            )}
           </div>
           <div className="progress">
             <div className="bar" style={{ width: `${rooms.length ? (loaded / rooms.length) * 100 : 100}%` }} />
@@ -830,7 +873,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           </button>
           {/* ponytail: plain links until Phase A gives each developer a project list */}
           <nav className="load-nav muted small">
-            {UNITS.map((u) => (
+            {NAV.flats.map((u) => (
               <a key={u.stem} href={`/u/${u.stem}`} className={u.unit.id === unit.id ? 'current' : ''}>
                 {u.unit.name}
               </a>
@@ -847,6 +890,16 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
                 </a>
               ))}
           </nav>
+          {NAV.towers.map((g) => (
+            <nav key={g.name} className="load-nav load-levels muted small">
+              <span className="tower">{g.name}</span>
+              {g.levels.map((l) => (
+                <a key={l.stem} href={`/u/${l.stem}`} className={l.stem === stem ? 'current' : ''}>
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+          ))}
         </div>
       )}
 
@@ -865,8 +918,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             rooms={listed}
             mode={mode}
             floor={unit.floor}
+            floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
+            onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}
             onPickFloor={(k) => {
               setPicked(k)
               scene.showFloor(k)

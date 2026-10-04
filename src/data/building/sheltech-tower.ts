@@ -13,6 +13,7 @@ import sheltechB from '../units/sheltech-b.json'
 import sheltechGround from '../units/sheltech-ground.json'
 import sheltechB1 from '../units/sheltech-b1.json'
 import sheltechB2 from '../units/sheltech-b2.json'
+import sheltechL1 from '../units/sheltech-l1.json'
 import sheltechRoof from '../units/sheltech-roof.json'
 import type { Rect } from './demo-tower'
 
@@ -29,23 +30,25 @@ export const FLATS: Record<string, { unit: Unit; offset: Pt }> = {
   'sheltech-b1': { unit: sheltechB1 as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-b2': { unit: sheltechB2 as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-roof': { unit: sheltechRoof as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-l1': { unit: sheltechL1 as unknown as Unit, offset: { x: 0, y: 0 } },
 }
 
 /**
- * Basements 2 and 1 (−2, −1), the ground floor (0); level 1 is the community lounge + gym (not flats): the flats'
- * shells stand in for its massing; levels 2–6: A + B; the rooftop on the roof slab (7).
+ * Basements 2 and 1 (−2, −1), the ground floor (0); level 1 is the community lounge + gym (not flats): a common level
+ * walked like the ground (sheltech-l1: its north half; the south half is open under the flats); levels 2–6: A + B; the
+ * rooftop on the roof slab (7).
  */
 export const FLOORS: { floor: number; flats: string[]; standIns?: string[] }[] = [
   { floor: -2, flats: [], standIns: ['sheltech-b2'] },
   { floor: -1, flats: [], standIns: ['sheltech-b1'] },
   { floor: 0, flats: [], standIns: ['sheltech-ground'] },
-  { floor: 1, flats: [], standIns: ['sheltech-a', 'sheltech-b'] },
+  { floor: 1, flats: [], standIns: ['sheltech-l1'] },
   ...[2, 3, 4, 5, 6].map((floor) => ({ floor, flats: ['sheltech-a', 'sheltech-b'] })),
   { floor: 7, flats: [], standIns: ['sheltech-roof'] },
 ]
 
 /** The common levels and the floor each stands on (as projectTower's LEVELS). */
-export const LEVELS: Record<string, number> = { 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-roof': 7 }
+export const LEVELS: Record<string, number> = { 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-ground': 0, 'sheltech-l1': 1, 'sheltech-roof': 7 }
 
 /** The core (lobby, stair, lift shaft) at the ground and the roof head: the real levels draw their own (as projectTower). */
 export const CORE: [stem: string, room: string][] = []

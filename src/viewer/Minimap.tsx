@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Id, Room, Unit } from '../core'
+import type { Id, Room, RoomKind, Unit } from '../core'
 import type { PlotlineScene } from '../three/PlotlineScene'
 
 /** the map's longer side on screen, px */
@@ -17,13 +17,21 @@ export const MAP_PX = 200
 const CONE_M = 2.6
 /** margin around the rooms, m */
 const PAD_M = 0.8
+/** a wall this low is a flush line (0, dashed) or a kerb (thin), not a wall */
+const KERB_M = 0.2
+const KERB_W = 0.08
+const FLUSH_W = 0.06
 
 export interface MapFrame {
   /** SVG viewBox in plan metres: the closed rooms' extent (+ PAD_M); a wall line running past the flat is cut off */
   box: { x: number; y: number; w: number; h: number }
-  rooms: { id: Id; name: string; points: string }[]
-  /** wall stretches standing at floor level (wallPieces with v0 = 0): a door, passage or slider leaves a gap */
-  walls: { d: string; w: number }[]
+  /** `zone`: an outdoor zone's kind (lawn, drive, pool …: tinted lightly by kind), absent for a room */
+  rooms: { id: Id; name: string; points: string; zone?: RoomKind }[]
+  /**
+   * wall stretches standing at floor level (wallPieces with v0 = 0): a door, passage or slider leaves a gap; `low`: a
+   * flush line (a zone's edge, dashed) or a kerb (≤ 0.2 m, thin), drawn whole
+   */
+  walls: { d: string; w: number; low?: 'flush' | 'kerb' }[]
 }
 
 export function mapOf(unit: Unit, rooms: Room[]): MapFrame {
@@ -35,9 +43,10 @@ export function mapOf(unit: Unit, rooms: Room[]): MapFrame {
   const [x1, y1] = [Math.max(...xs, -Infinity) + PAD_M, Math.max(...ys, -Infinity) + PAD_M]
   const box = Number.isFinite(x0 + x1 + y0 + y1) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : { x: -5, y: -5, w: 10, h: 10 }
   const f = (n: number) => +n.toFixed(3)
-  const walls = unit.walls.flatMap((w) => {
+  const walls = unit.walls.flatMap((w): MapFrame['walls'] => {
     const fr = core.wallFrame(w, unit.vertices)
     const at = (u: number) => `${f(fr.origin.x + fr.dir.x * u)} ${f(fr.origin.y + fr.dir.y * u)}`
+    if (w.heightM <= KERB_M) return [{ d: `M${at(0)}L${at(fr.lengthM)}`, w: w.heightM ? KERB_W : FLUSH_W, low: w.heightM ? 'kerb' : 'flush' }]
     // the pieces touching the floor, joined where they meet (a window's sill piece and its two sides are one stretch)
     const runs: [number, number][] = []
     for (const p of core.wallPieces(w, fr.lengthM).filter((p) => p.v0 < 0.01).sort((a, b) => a.u0 - b.u0)) {
@@ -47,7 +56,11 @@ export function mapOf(unit: Unit, rooms: Room[]): MapFrame {
     }
     return runs.map(([u0, u1]) => ({ d: `M${at(u0)}L${at(u1)}`, w: w.thicknessM }))
   })
-  return { box, rooms: polys.map(({ r, poly }) => ({ id: r.id, name: r.name, points: poly.map((p) => `${f(p.x)},${f(p.y)}`).join(' ') })), walls }
+  return {
+    box,
+    rooms: polys.map(({ r, poly }) => ({ id: r.id, name: r.name, points: poly.map((p) => `${f(p.x)},${f(p.y)}`).join(' '), ...(core.isOutdoor(r.kind) && { zone: r.kind }) })),
+    walls,
+  }
 }
 
 /** the view cone pointing +x (rotated onto the heading by its group): apex at the eye, half-angle `half` rad, radius r */
@@ -131,12 +144,12 @@ export default function Minimap({ scene, unit, rooms, walking }: Props) {
               if (el) polys.current.set(r.id, el)
               else polys.current.delete(r.id)
             }}
-            className="room"
+            className={r.zone ? `room zone z-${r.zone}` : 'room'}
             points={r.points}
           />
         ))}
         {map.walls.map((s, i) => (
-          <path key={i} className="wall" d={s.d} strokeWidth={s.w} />
+          <path key={i} className={s.low ? `wall ${s.low}` : 'wall'} d={s.d} strokeWidth={s.w} />
         ))}
         <g ref={me}>
           <path ref={cone} className="cone" />

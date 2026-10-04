@@ -457,14 +457,14 @@ describe('studio reducer', () => {
     expect(() => validate(u)).not.toThrow()
   })
 
-  it('normalizeUnit: an old export\'s hingeless door ≥ 1.2 m (it rendered as a slider) becomes a slider; nothing else changes', () => {
+  it('normalizeUnit: an old export\'s hingeless door of 1.2–1.5 m (it rendered as a slider) becomes a slider; a double door (≥ 1.5 m) stays a door; nothing else changes', () => {
     const op = (id: string, widthM: number, hinge?: 'a') => ({ id, kind: 'door' as const, offsetM: 0, widthM, heightM: 2.1, sillM: 0, ...(hinge ? { hinge } : {}) })
     const raw = {
       name: 'x',
       vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 9, y: 0 }],
-      walls: [{ id: 'w', a: 'a', b: 'b', openings: [op('wide', 1.5), op('hinged', 1.5, 'a'), op('narrow', 0.9), { ...op('win', 1.5), kind: 'window' }] }],
+      walls: [{ id: 'w', a: 'a', b: 'b', openings: [op('wide', 1.3), op('double', 1.5), op('hinged', 1.3, 'a'), op('narrow', 0.9), { ...op('win', 1.5), kind: 'window' }] }],
     }
-    expect(normalizeUnit(raw as unknown as Unit).walls[0].openings.map((o) => o.kind)).toEqual(['slider', 'door', 'door', 'window'])
+    expect(normalizeUnit(raw as unknown as Unit).walls[0].openings.map((o) => o.kind)).toEqual(['slider', 'door', 'door', 'door', 'window'])
   })
 
   it('no shipped unit JSON still has a hingeless door ≥ 1.2 m: every sliding door says kind "slider"', () => {

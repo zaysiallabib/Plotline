@@ -1597,8 +1597,9 @@ export const normalizeUnit = (u: Unit): Unit => {
       heightM: num(w.heightM) && w.heightM >= 0 ? w.heightM : WALL_HEIGHT_M, // 0 = a flush line (a zone's edge)
       openings: (w.openings ?? []).map((o) => ({
         ...o,
-        // before 'slider' was a kind, a hingeless door ≥ 1.2 m rendered as one: old exports keep their sliders
-        ...(o.kind === 'door' && !o.hinge && o.widthM >= 1.2 ? { kind: 'slider' as const } : {}),
+        // before 'slider' was a kind, a hingeless door ≥ 1.2 m rendered as one: old exports keep their sliders — but a
+        // door of DOUBLE_DOOR_M (1.5 m) or more is a pair of leaves now (a lobby's entrance), never guessed a slider
+        ...(o.kind === 'door' && !o.hinge && o.widthM >= 1.2 && o.widthM < 1.5 ? { kind: 'slider' as const } : {}),
         heightM: num(o.heightM) ? o.heightM : 7 * FT,
         sillM: num(o.sillM) ? o.sillM : 0,
       })),
