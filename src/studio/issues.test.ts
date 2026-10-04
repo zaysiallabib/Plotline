@@ -12,8 +12,8 @@ import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
-import { studioReducer } from './review'
-import { fixesOf, issueKey, markIssues, type Mark } from './issues'
+import { openReview, studioReducer } from './review'
+import { KEEP, fixesOf, issueKey, markIssues, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -71,7 +71,7 @@ describe('issues on the plan', () => {
     expect(rooms).toHaveLength(1)
     const m = markOf(marks, 'dangling-vertex', 'p2')
     expect(m).toMatchObject({ severity: 'red', at: { x: 2, y: 0.6 }, n: 1, message: 'Loose wall end (room open in 3D)' })
-    expect(marked(u).fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Extend 2'-0"`]) // to the top wall's centre line
+    expect(marked(u).fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Extend 2'-0"`, KEEP]) // to the top wall's centre line
     const after = applyAndUndo(u, m, 'Extend')
     expect(deriveRooms(after)).toHaveLength(2)
   })
@@ -85,9 +85,9 @@ describe('issues on the plan', () => {
     const { marks, fixes, rooms } = marked(u)
     expect(rooms).toHaveLength(0)
     const m = markOf(marks, 'dangling-vertex', 'g1')
-    expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`])
+    expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`, KEEP])
     // the same gap seen from the other end (a's end: the facing piece's b end) offers the same fix
-    expect(fixes.get(markOf(marks, 'dangling-vertex', 'g2').key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`])
+    expect(fixes.get(markOf(marks, 'dangling-vertex', 'g2').key)!.fixes.map((f) => f.label)).toEqual([`Close the gap 2'-0"`, KEEP])
     const after = applyAndUndo(u, m, 'Close the gap')
     expect(deriveRooms(after)).toHaveLength(1)
     const left = studioIssues(after, deriveRooms(after)).map((i) => i.code)
@@ -117,7 +117,7 @@ describe('issues on the plan', () => {
     const u = box([v('s', 4.5, 0)], [w('stub', 'v2', 's')])
     const { marks, fixes } = marked(u)
     const m = markOf(marks, 'dangling-vertex', 's')
-    expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual(['Remove end'])
+    expect(fixes.get(m.key)!.fixes.map((f) => f.label)).toEqual(['Remove end', KEEP])
     expect(applyAndUndo(u, m, 'Remove end').walls.map((x) => x.id).sort()).toEqual(['bottom', 'left', 'right', 'top'])
   })
 
@@ -188,12 +188,13 @@ describe('issues on the plan', () => {
   })
 
   it('list order = numbers: red first, then amber, grey; a whole-plan issue last and unnumbered', () => {
-    // a loose end, the big room unnamed, a 1 m² box inside it unnamed, no door
+    // a loose end, the big room unnamed, a 1 m² box inside it unnamed and joined to nothing (an island), no door
     const sq = [v('q1', 0.5, 0.5), v('q2', 1.5, 0.5), v('q3', 1.5, 1.5), v('q4', 0.5, 1.5)]
     const u = splitBottom(box([v('p2', 2, 0.6), ...sq], [w('part', 'p1', 'p2'), w('s1', 'q1', 'q2'), w('s2', 'q2', 'q3'), w('s3', 'q3', 'q4'), w('s4', 'q4', 'q1')], []))
     const { marks } = marked(u)
-    expect(marks.map((m) => m.severity)).toEqual(['red', 'amber', 'grey', 'amber'])
-    expect(marks.map((m) => m.n)).toEqual([1, 2, 3, null])
+    expect(marks.map((m) => m.severity)).toEqual(['red', 'amber', 'amber', 'grey', 'amber'])
+    expect(marks[2]).toMatchObject({ issue: { code: 'island-in-room' }, at: { x: 1, y: 0.5 } })
+    expect(marks.map((m) => m.n)).toEqual([1, 2, 3, 4, null])
     expect(marks.at(-1)!.issue!.code).toBe('no-entry-door')
   })
 
@@ -212,6 +213,56 @@ describe('issues on the plan', () => {
   })
 })
 
+describe('walls that stand alone, flush lines (session 19)', () => {
+  const load = (u: Unit) => reducer(initialState(), { type: 'load-unit', unit: u }).unit
+
+  it('a free-standing wall in type-A: "Keep — it stands alone" clears both its ends, one undo; export + re-open keep it', () => {
+    const a = load(typeA as unknown as Unit)
+    const c = deriveRooms(a).sort((p, q) => q.areaSqm - p.areaSqm)[0].centroid
+    const u: Unit = { ...a, vertices: [...a.vertices, v('f1', c.x - 0.6, c.y), v('f2', c.x + 0.6, c.y)], walls: [...a.walls, { ...w('fin', 'f1', 'f2'), heightM: 1.8 }] }
+    const { marks, fixes } = marked(u)
+    const m = markOf(marks, 'dangling-vertex', 'f1')
+    expect(m).toMatchObject({ severity: 'red', message: 'Loose wall end (room open in 3D)' })
+    expect(fixes.get(m.key)!.fixes.at(-1)!.label).toBe(KEEP)
+    const after = applyAndUndo(u, m, KEEP)
+    expect(after.walls.find((x) => x.id === 'fin')).toMatchObject({ standsAlone: true, heightM: 1.8 })
+    expect(marked(after).marks).toEqual([]) // both ends: one choice
+    const back = load(JSON.parse(JSON.stringify(after)))
+    expect(back.walls.find((x) => x.id === 'fin')).toEqual(after.walls.find((x) => x.id === 'fin'))
+    expect(marked(back).marks).toEqual([])
+  })
+
+  it('a kept short piece past a corner survives Join walls on load (unkept, it is removed as a stub)', () => {
+    const stub = (keep?: true) => box([v('s', 4.3, 0)], [{ ...w('stub', 'v2', 's'), ...(keep ? { standsAlone: keep } : {}) }])
+    expect(load(stub()).walls.some((x) => x.id === 'stub')).toBe(false)
+    expect(load(stub(true)).walls.find((x) => x.id === 'stub')).toMatchObject({ standsAlone: true })
+  })
+
+  it("the trace's dead-end row goes once its wall is kept standing alone", () => {
+    const u = splitBottom(box([v('p2', 2, 0.6)], [w('part', 'p1', 'p2')]))
+    const row = { id: 'r1', at: { x: 2, y: 0.6 }, kind: 'unclosed' as const, message: 'A wall ends here without meeting another', entityId: 'p2' }
+    const s: StudioState = { ...stateOf(u), review: { unitId: u.id, items: [row], stats: {} as never } }
+    expect(openReview(s)).toEqual([row])
+    expect(openReview(studioReducer(s, { type: 'update-wall', id: 'part', patch: { standsAlone: true } }))).toEqual([])
+  })
+
+  it('a flush line (height 0) between a lawn and paving survives load; zones with their kinds and levels, no issue', () => {
+    const z = splitBottom(box([v('p0', 2, 0)], [], []))
+    const u: Unit = {
+      ...z,
+      walls: [...z.walls.filter((x) => x.id !== 'top'), w('t1', 'v1', 'p0', [door('d', 0.5)]), w('t2', 'p0', 'v2'), { ...w('edge', 'p0', 'p1'), heightM: 0 }],
+      roomLabels: [
+        { id: 'lawn', name: 'Lawn', kind: 'lawn', x: 1, y: 1.5 },
+        { id: 'pav', name: 'Paving', kind: 'paving', x: 3, y: 1.5, levelM: 0.15 },
+      ],
+    }
+    const t = load(u)
+    expect(t.walls.find((x) => x.id === 'edge')!.heightM).toBe(0)
+    expect(deriveRooms(t).map((r) => [r.kind, r.levelM ?? 0]).sort()).toEqual([['lawn', 0], ['paving', 0.15]])
+    expect(marked(t).marks).toEqual([])
+  })
+})
+
 describe("the founder's draft: every issue findable on the plan, each fix closes its issue", () => {
   const u = reducer(initialState(), { type: 'load-unit', unit: draft as unknown as Unit }).unit
   const { marks, fixes, issues } = marked(u)
@@ -226,11 +277,11 @@ describe("the founder's draft: every issue findable on the plan, each fix closes
 
   it('the loose ends: Extend where a wall is ahead, Remove end where it overshoots a junction, nothing for the sunshade line', () => {
     const id = (p: string) => u.vertices.find((x) => x.id.startsWith(p))!.id
-    expect(labels(id('9f4f74b7'))).toEqual(['Extend']) // the toilet's east wall, 0.75 m short of Bed 2's north wall
-    expect(labels(id('05c6f946'))).toEqual(['Remove']) // Bed 3's west wall 0.65 m past its north wall
-    expect(labels(id('791e5dbd'))).toEqual(['Remove', 'Extend']) // Bed 2's side walls: past the south wall, short of the sunshade line
-    expect(labels(id('179fac4e'))).toEqual(['Remove', 'Extend'])
-    expect(labels(id('8516f94c'))).toBeUndefined() // the 24.8 m sunshade line's far end: his call (Del)
+    expect(labels(id('9f4f74b7'))).toEqual(['Extend', 'Keep']) // the toilet's east wall, 0.75 m short of Bed 2's north wall
+    expect(labels(id('05c6f946'))).toEqual(['Remove', 'Keep']) // Bed 3's west wall 0.65 m past its north wall
+    expect(labels(id('791e5dbd'))).toEqual(['Remove', 'Extend', 'Keep']) // Bed 2's side walls: past the south wall, short of the sunshade line
+    expect(labels(id('179fac4e'))).toEqual(['Remove', 'Extend', 'Keep'])
+    expect(labels(id('8516f94c'))).toEqual(['Keep']) // the 24.8 m sunshade line's far end: his call (Del, or keep it)
   })
 
   it('every unnamed space can be named in place, and the name closes exactly its issue', () => {
@@ -249,7 +300,7 @@ describe("the founder's draft: every issue findable on the plan, each fix closes
   it('every offered fix, applied, closes its issue; one undo gives the draft back', () => {
     let n = 0
     for (const m of marks) for (const f of fixes.get(m.key)?.fixes ?? []) applyAndUndo(u, m, f.label, { fixes, issues }), n++
-    expect(n).toBe(6)
+    expect(n).toBe(11) // 6 + "Keep" on each of the 5 loose ends
   })
 
   it('the five hand-authored units: no marks', () => {

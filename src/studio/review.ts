@@ -156,6 +156,8 @@ export function openReview(s: StudioState, rooms?: Room[]): Review['items'] {
       } else if (c.off) out.push(c.message === i.message ? i : { ...i, message: c.message })
       continue
     }
+    // a dead end the trace flagged on a wall the user kept standing alone: his answer
+    if (i.entityId && s.unit.walls.some((w) => w.standsAlone && (w.a === i.entityId || w.b === i.entityId))) continue
     if (!i.sig || entitySig(s.unit, i.entityId!) === i.sig) out.push(i)
   }
   return out

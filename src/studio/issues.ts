@@ -18,6 +18,8 @@ export const SMALL_SQM = 2
 export const GAP_M = 1.2
 /** "Remove end" / "End it here": a loose piece of wall up to this long past a junction / a crossing is an overshoot (a fresh Sheltech B trace: 1.04 m) */
 export const OVERSHOOT_M = 1.2
+/** a loose end's third fix: the wall stands alone on purpose (Wall.standsAlone) */
+export const KEEP = 'Keep — it stands alone'
 
 /** what breaks the 3D: an open room (no floor, skirting or daylight), doubled or crossing walls, an opening off its wall */
 const BREAKS = new Set<StudioIssue['code']>(['dangling-vertex', 'zero-length-wall', 'duplicate-wall', 'opening-out-of-bounds', 'openings-overlap', 'walls-intersect'])
@@ -152,6 +154,10 @@ function issueMark(u: Unit, rooms: Room[], i: StudioIssue): Omit<Mark, 'n'> {
       const [P, Q] = [W.get(i.ids[0]), W.get(i.ids[1])]
       return { ...base, at: P && Q ? crossing(u, P, Q).at : null }
     }
+    case 'island-in-room': {
+      const w = W.get(i.ids[1]) // ids: the room around it, then the island's walls
+      return { ...base, at: w ? wallMid(u, w) : null }
+    }
     case 'unlabelled-room': {
       const r = rooms.find((x) => x.id === i.ids[0])
       if (!r) return base
@@ -259,7 +265,10 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
       if (pastJunction && !w.openings.length && L0 <= OVERSHOOT_M)
         out.push({ label: 'Remove end', title: `Remove this ${ft(L0)} piece of wall sticking out past the corner`, actions: [{ type: 'delete', ids: [w.id] }], ghost: [{ kind: 'cut', from: far, to: v }] })
       // an overshoot first — unless a gap in one wall is what is open: closing it comes first then
-      return pastJunction && !(facing && out[0]?.label.startsWith('Close')) ? out.reverse() : out
+      if (pastJunction && !(facing && out[0]?.label.startsWith('Close'))) out.reverse()
+      // or it is meant to end there (founder 2026-10-04: a screen, a fin, a decorative or wind wall): stored on the wall
+      out.push({ label: KEEP, title: 'This wall is meant to end here (a screen, fin, decorative or wind wall): keep it standing alone', actions: [{ type: 'update-wall', id: w.id, patch: { standsAlone: true } }], ghost: [{ kind: 'ring', at: v }] })
+      return out
     }
     case 'zero-length-wall': {
       const w = W.get(i.ids[0])

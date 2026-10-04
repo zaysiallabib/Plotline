@@ -41,8 +41,17 @@ export interface Wall {
   a: Id // vertex id
   b: Id // vertex id — arbitrary angle, never assume axis-aligned
   thicknessM: number // partition ≈ 0.127 (5"), exterior/shear ≈ 0.254 (10")
+  /**
+   * 0 = a FLUSH LINE: a graph edge that bounds a zone (lawn | paving, …) and is drawn as nothing — no mesh, skirting,
+   * collision or daylight blocking; carries no openings. Up to ~0.2 = a kerb; 0.45 / 1.1 = planter edge / parapet.
+   */
   heightM: number
   openings: Opening[]
+  /**
+   * Its loose ends are meant (a screen, fin, parapet length, decorative or wind wall — any level, also inside a flat):
+   * a free end of it is never an issue. Once both its ends join other walls it is an ordinary wall anyway.
+   */
+  standsAlone?: true
 }
 
 export type RoomKind =
@@ -57,6 +66,27 @@ export type RoomKind =
   | 'utility'
   | 'shaft'
   | 'other'
+  // common rooms (ground floors, rooftops)
+  | 'lobby'
+  | 'gym'
+  | 'community'
+  | 'guard'
+  // outdoor / non-room zones (core.isOutdoor): no ceiling, no walls-to-slab, no flat auto-furnish
+  | 'lawn'
+  | 'paving'
+  | 'driveway'
+  | 'parking'
+  | 'deck'
+  | 'pool'
+  | 'planter'
+  | 'play'
+
+/** A ramp's floor: from the label's `levelM` at the face's near extent, along `dirDeg`, to `toLevelM` at its far extent. */
+export interface Slope {
+  toLevelM: number
+  /** the uphill-or-downhill run direction: degrees clockwise from plan-up (−y), like Unit.northDeg */
+  dirDeg: number
+}
 
 /** Authored: a point inside a face plus what to call it. Rooms are derived. */
 export interface RoomLabel {
@@ -67,6 +97,10 @@ export interface RoomLabel {
   y: number
   /** printed on the plan, e.g. "14'-0\" × 16'-0\"" — display only */
   printedSize?: string
+  /** the face's floor level relative to the unit's datum, m (default 0; printed +3'-6" → 1.067) */
+  levelM?: number
+  /** a ramp: the floor runs from `levelM` to `slope.toLevelM` (core.roomLevelAt) */
+  slope?: Slope
 }
 
 /** DERIVED by core.deriveRooms — never authored, never persisted. */
@@ -81,6 +115,9 @@ export interface Room {
   areaSqm: number
   centroid: { x: number; y: number }
   printedSize?: string
+  /** from its label (absent = 0) */
+  levelM?: number
+  slope?: Slope
 }
 
 export type MaterialRef =
@@ -183,6 +220,8 @@ export interface ValidationIssue {
     | 'unlabelled-room'
     | 'label-outside-any-room'
     | 'walls-intersect'
+    /** a closed group of walls inside a face, joined to nothing: that face's floor runs under it (join it with a flush line) */
+    | 'island-in-room'
   message: string
   ids: Id[]
 }

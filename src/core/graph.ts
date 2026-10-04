@@ -22,7 +22,9 @@
  *
  * Disconnected components are traced independently; an unconnected box inside
  * a bigger face is NOT subtracted from that face's area (nested faces are
- * resolved by "smallest containing face wins" in labelling and roomAt).
+ * resolved by "smallest containing face wins" in labelling and roomAt);
+ * validate warns 'island-in-room'. Joined by one flush line (heightM 0) the
+ * outer face becomes a keyhole that goes round it (area and floor without it).
  */
 import type { Id, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from './types'
 import {
@@ -30,6 +32,8 @@ import {
   cross,
   pointInPolygon,
   polygonCentroid,
+  roomAt,
+  roomLevelAt,
   roomPolygon,
   signedArea,
   vertexMap,
@@ -163,11 +167,18 @@ export function deriveRooms(graph: Graph): Room[] {
     const label = labels.get(f)
     const base = { loop: f.loop, wallIds: f.wallIds, areaSqm: f.area, centroid: polygonCentroid(f.pts) }
     if (label) {
-      return { ...base, id: label.id, name: label.name, kind: label.kind, printedSize: label.printedSize }
+      const { levelM, slope } = label
+      return { ...base, id: label.id, name: label.name, kind: label.kind, printedSize: label.printedSize, ...(levelM !== undefined ? { levelM } : {}), ...(slope ? { slope } : {}) }
     }
     spaceN++
     return { ...base, id: `space-${hashLoop(f.loop)}`, name: `Space ${spaceN}`, kind: 'other' }
   })
+}
+
+/** The floor height at a plan point, m: the smallest face around it (roomAt) by roomLevelAt; 0 outside every face. */
+export function floorLevelAt(graph: Graph, x: number, y: number, rooms: Room[] = deriveRooms(graph)): number {
+  const r = roomAt({ x, y }, rooms, graph)
+  return r ? roomLevelAt(r, graph, x, y) : 0
 }
 
 /** Faces smaller than this are not nagged about being unlabelled (shafts, wall pockets). */
@@ -253,9 +264,11 @@ export function validate(unit: Unit): ValidationIssue[] {
     }
   }
 
+  // a wall that stands alone ends free on purpose (a screen, a fin): its loose ends are no issue
+  const meant = new Set(unit.walls.filter((w) => w.standsAlone).flatMap((w) => [w.a, w.b]))
   for (const [id, d] of degree) {
     if (d === 0) err('dangling-vertex', `vertex ${id} is not used by any wall`, [id])
-    else if (d === 1) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
+    else if (d === 1 && !meant.has(id)) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
   }
 
   // ponytail: O(n²) pair scan; a unit has tens of walls, not thousands
@@ -305,6 +318,34 @@ export function validate(unit: Unit): ValidationIssue[] {
   for (const r of rooms) {
     if (!labelIds.has(r.id) && r.areaSqm >= MIN_LABELLED_AREA_SQM) {
       warn('unlabelled-room', `${r.name} (${r.areaSqm.toFixed(1)} m²) has no RoomLabel`, [r.id, ...r.wallIds])
+    }
+  }
+
+  // islands: a group of walls joined to nothing that closes a face, standing inside a face of another group (a building
+  // inside its lawn, a lift core inside a deck). deriveRooms does not cut it out, so that face's floor runs under it; one
+  // flush line (heightM 0) joining it makes the outer face a keyhole that goes round it.
+  const parent = new Map<Id, Id>()
+  const find = (id: Id): Id => {
+    const p = parent.get(id)
+    return p === undefined || p === id ? id : find(p)
+  }
+  const usable = usableWalls(unit)
+  for (const w of usable) parent.set(find(w.a), find(w.b))
+  const done = new Set<Id>()
+  for (const r of rooms) {
+    const c = find(r.loop[0])
+    if (done.has(c)) continue
+    done.add(c)
+    const p = vs.get(r.loop[0])!
+    let outer: Room | null = null
+    for (const o of rooms) {
+      if (find(o.loop[0]) !== c && (!outer || o.areaSqm < outer.areaSqm) && pointInPolygon(p, roomPolygon(o, unit))) outer = o
+    }
+    if (outer) {
+      warn('island-in-room', `walls around "${r.name}" stand inside "${outer.name}" joined to nothing: join them to it with a flush line (height 0)`, [
+        outer.id,
+        ...usable.filter((w) => find(w.a) === c).map((w) => w.id),
+      ])
     }
   }
   return issues

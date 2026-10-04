@@ -1716,7 +1716,7 @@ function dropForeign(d: Draft, foreign: Pt[], inFlood?: (p: Pt) => boolean): Dra
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
 /** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
-const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space' }
+const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
 
 /** A point strictly inside the room and in no smaller room (label anchor). */
 function insidePoint(r: Room, u: Unit, rooms: Room[], prefer?: Pt): Pt {

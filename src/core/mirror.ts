@@ -35,7 +35,8 @@ export function mirrorUnit(unit: Unit, axisX: number): Unit {
         })),
       }
     }),
-    roomLabels: unit.roomLabels.map((l) => ({ ...l, id: m(l.id), x: 2 * axisX - l.x })),
+    // a ramp's run direction mirrors too: clockwise from plan-up d → −d
+    roomLabels: unit.roomLabels.map((l) => ({ ...l, id: m(l.id), x: 2 * axisX - l.x, ...(l.slope ? { slope: { ...l.slope, dirDeg: (360 - l.slope.dirDeg) % 360 } } : {}) })),
     ...(unit.pillars ? { pillars: unit.pillars.map((p) => ({ ...p, id: m(p.id), x: 2 * axisX - p.x })) } : {}),
     furniture: [],
     finishSlots: unit.finishSlots.map((s) => ({ ...s, roomIds: s.roomIds === 'all' ? 'all' : s.roomIds.map(m) })),

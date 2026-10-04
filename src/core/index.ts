@@ -11,7 +11,7 @@
  * screen. See geometry.ts header. Walls only meet at shared vertices (no
  * T-junctions mid-wall) — see graph.ts header.
  */
-import type { Id, Vertex } from './types'
+import type { Id, RoomKind, Vertex } from './types'
 
 export * from './types'
 export { newId } from './ids'
@@ -26,7 +26,10 @@ export type { Pt, Bounds, Graph, WallPiece } from './geometry'
  */
 export { deriveRooms } from './graph'
 
-/** Dangling vertices, zero-length/duplicate walls, openings out of bounds/overlapping, labels outside faces, crossing walls. */
+/**
+ * Dangling vertices (never a `standsAlone` wall's free ends), zero-length/duplicate walls, openings out of
+ * bounds/overlapping, labels outside faces, crossing walls; warnings: unlabelled faces, an island inside a face.
+ */
 export { validate, MIN_LABELLED_AREA_SQM } from './graph'
 
 /** Wall local frame: origin at vertex a, `dir` unit vector a→b, `normal` = dir rotated +90°. */
@@ -55,6 +58,20 @@ export { nearestWall } from './geometry'
 
 /** Which derived room contains a plan point (by centerline polygon), if any. */
 export { roomAt } from './geometry'
+
+/**
+ * Floor height (m) of a room at a plan point: its label's `levelM` (default 0); a ramp (`slope`) runs linearly from
+ * `levelM` at the face's near extent along `dirDeg` to `toLevelM` at its far extent (a plane). The 3D floor mesh and the
+ * walker both use this.
+ */
+export { roomLevelAt } from './geometry'
+
+/** Floor height (m) at a plan point: the smallest face around it (roomAt) by roomLevelAt; 0 outside every face. */
+export { floorLevelAt } from './graph'
+
+/** The eight outdoor / non-room zone kinds: no ceiling, no walls-to-slab assumptions, no flat auto-furnish. */
+const OUTDOOR: ReadonlySet<RoomKind> = new Set<RoomKind>(['lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play'])
+export const isOutdoor = (kind: RoomKind): boolean => OUTDOOR.has(kind)
 
 /**
  * Parse a printed dimension to meters. Accepts 14'-5", 14'5", 14' 5", 14'5, 14.4 (feet),
