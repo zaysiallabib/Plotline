@@ -77,7 +77,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     kinds: ['lobby'],
     defaultOptionId: 'fo_lobby_porcelain',
     options: [
-      { id: 'fo_lobby_porcelain', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-1200-GR', label: 'Large greige porcelain 1200 × 1200', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_large', tint: '#d9d2c6' } },
+      { id: 'fo_lobby_porcelain', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-800-IV', label: 'Polished ivory porcelain 800 × 800', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_large', tint: '#f3eee6' } },
       { id: 'fo_lobby_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
     ],
   },

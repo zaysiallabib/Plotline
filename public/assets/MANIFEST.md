@@ -108,7 +108,7 @@ The planter bed's leaf sprites are painted at runtime (src/furnish/procedural.ts
 
 Poly Haven 1K JPG maps as downloaded through api.polyhaven.com/files (Diffuse → albedo, nor_gl → normal, Rough →
 roughness, AO → ao), not re-encoded; each asset page states CC0. `tile_floor_large` is no file: the
-tile_floor_ceramic maps at twice the repeat (1200 × 1200 tiles, the lobby floor).
+tile_floor_ceramic AO map as its colour and marble_floor_white's roughness, 800 × 800 tiles (the lobby floor).
 
 | id | type | source | author | license | checked | file(s) | bytes |
 |---|---|---|---|---|---|---|---|

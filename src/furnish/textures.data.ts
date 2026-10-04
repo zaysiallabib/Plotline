@@ -118,6 +118,14 @@ export const TEXTURES: Record<string, TextureSet> = {
   deck_boards: PH('deck_boards', 'Timber deck boards', 'wooden_planks', 2, 'Dario Barresi, Charlotte Baglioni'),
   rubber_gym: PH('rubber_gym', 'Rubber gym floor tiles', 'rubber_tiles', 2, 'Amal Kumar'),
   soil: { ...PH('soil', 'Planter soil', 'farm_soil', 2, 'Amal Kumar'), matte: true },
-  // the porcelain tile's own maps at twice the size: 1200 × 1200 large-format tiles (a lobby)
-  tile_floor_large: { ...ACG('tile_floor_large', 'Large porcelain floor tiles 1200 × 1200', 'Tiles105', 9.6, { ao: true }), albedo: '/assets/textures/tile_floor_ceramic/albedo.jpg', normal: '/assets/textures/tile_floor_ceramic/normal.jpg', roughness: '/assets/textures/tile_floor_ceramic/roughness.jpg', ao: '/assets/textures/tile_floor_ceramic/ao.jpg', tint: '#d7d7d7' },
+  // a lobby's polished porcelain, 800 × 800 (8 × 8 per map): the porcelain tile's AO map as the colour — white with a
+  // FINE LIGHT grout line — and the polished marble's gloss (no grout in it). At 800 mm every grout cue of the tile's own
+  // maps is 12–19 mm wide: its groove (normal), matte grout (roughness) and AO each drew it as a dark line in the shade;
+  // its albedo at 1200 mm read as grey slabs with 2–3 cm dark grout; the marble's veins stretched to the tile, a dirty floor.
+  tile_floor_large: {
+    ...ACG('tile_floor_large', 'Polished porcelain floor tiles 800 × 800', 'Tiles105', 6.4, { normal: false }),
+    albedo: '/assets/textures/tile_floor_ceramic/ao.jpg',
+    roughness: '/assets/textures/marble_floor_white/roughness.jpg',
+    tint: '#d7d7d7',
+  },
 }
