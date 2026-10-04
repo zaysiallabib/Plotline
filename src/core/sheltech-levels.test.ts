@@ -7,6 +7,7 @@ import ground from '../data/units/sheltech-ground.json'
 import b1 from '../data/units/sheltech-b1.json'
 import b2 from '../data/units/sheltech-b2.json'
 import roof from '../data/units/sheltech-roof.json'
+import l1 from '../data/units/sheltech-l1.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import founderA from '../data/fixtures/founder-sheltech-a-draft.json'
@@ -18,6 +19,7 @@ const LEVELS: Record<string, Unit> = {
   b1: b1 as unknown as Unit,
   b2: b2 as unknown as Unit,
   roof: roof as unknown as Unit,
+  l1: l1 as unknown as Unit, // Level 1 (community lounge + gym): authored, not wired into the tower yet
 }
 
 /** every face each level must have (as printed on its sheet), by name → kind */
@@ -40,6 +42,7 @@ const NAMES: Record<string, Record<string, core.RoomKind>> = {
   },
   b1: { Lobby: 'lobby', Lift: 'other', Stair: 'other', Driveway: 'driveway', '1:8 ramp (north)': 'driveway', '1:8 ramp (west)': 'driveway', '1:8 ramp (east)': 'driveway', ...bays(1, 11) },
   b2: { Lobby: 'lobby', 'Lift pit': 'other', Stair: 'other', Driveway: 'driveway', '1:8 ramp (north)': 'driveway', '1:8 ramp (west)': 'driveway', UGWR: 'pool', 'Pump room': 'utility', ...bays(12, 24) },
+  l1: { 'Community lounge': 'community', Lobby: 'lobby', PDR: 'bath', 'Toilet (F)': 'bath', 'Toilet (M)': 'bath', Gym: 'gym', Veranda: 'balcony', Lift: 'other', Stair: 'other' },
   roof: {
     Lobby: 'lobby',
     'Lift mech. room': 'utility',
@@ -156,7 +159,7 @@ describe('the common levels sit on the flats’ core', () => {
   const shaft = core.roomPolygon(lifts, B)
   const xs = shaft.map((p) => p.x), ys = shaft.map((p) => p.y)
 
-  test.each(Object.keys(LEVELS).filter((k) => k !== 'roof'))('%s: its lift face is Type B’s lift shaft', (key) => {
+  test.each(['ground', 'b1', 'b2', 'l1'])('%s: its lift face is Type B’s lift shaft', (key) => {
     const u = LEVELS[key]
     const r = core.deriveRooms(u).find((x) => x.name === 'Lift' || x.name === 'Lift pit')!
     const poly = core.roomPolygon(r, u)
