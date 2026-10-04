@@ -95,6 +95,10 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
   const { unit } = state
   const review = marks.filter((m) => m.review)
   const listed = marks.filter((m) => m.issue)
+  // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
+  useEffect(() => {
+    if (active) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
+  }, [active])
   /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
   const row = (m: Mark, extra?: React.ReactNode) => {
     const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
@@ -103,7 +107,6 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
     return (
       <li
         key={m.key}
-        ref={m.key === active ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
         className={`${m.at ? 'find' : ''}${key === active ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
         title={m.at ? 'Click to go to it on the plan' : undefined}
         onMouseEnter={() => m.at && onHot(key)}
