@@ -169,7 +169,7 @@ describe('traceWalls on synthetic plans', () => {
 })
 
 // ---------- the real plans (fixtures from scripts/trace-fixtures.mjs; skipped when absent) ----------
-// the eval set: the units traced off a plan image (the hand-authored common levels, session 19, have none)
+// traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
 const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const fixture = (u: Unit) => `${FIXTURES}assets__${u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')}.pgm`
 const haveFixtures = Object.values(units).every((u) => loadPgm(fixture(u)) !== null)

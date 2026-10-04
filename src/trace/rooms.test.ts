@@ -177,7 +177,7 @@ describe('classifyProfile', () => {
 // ---------- the real plans vs the hand-traced units (fixtures + cached OCR; skipped when absent) ----------
 const FIXT = process.env.TRACE_FIXTURES ?? 'E:/dev/tmp/wave15/walls/fixtures/'
 const TEXT = process.env.TRACE_TEXT ?? 'E:/dev/tmp/wave16/solver/text/'
-// the eval set: the units traced off a plan image (the hand-authored common levels, session 19, have none)
+// traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
 const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const sheetOf = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXT}assets__${sheetOf(u)}.pgm`) && existsSync(`${TEXT}${sheetOf(u)}.json`))

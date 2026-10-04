@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind } from '../core'
+import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
-import { EXTERIOR_M, PARTITION_M, findEntity, openingDefaults, type StudioIssue, type StudioState } from './model'
+import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, TRACKER_KEY, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
@@ -35,15 +35,110 @@ const PICKS: [OpeningKind, string, number?][] = [
   ['passage', 'Passage'],
 ]
 
-export const ROOM_KINDS: RoomKind[] =['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
+/** every kind in its picker group (a Record: a new RoomKind cannot be left out of the picker) */
+const KIND_GROUP: Record<RoomKind, 'Rooms' | 'Common rooms' | 'Outdoor zones'> = {
+  bed: 'Rooms', living: 'Rooms', dining: 'Rooms', kitchen: 'Rooms', bath: 'Rooms', balcony: 'Rooms', study: 'Rooms', closet: 'Rooms', utility: 'Rooms', shaft: 'Rooms', other: 'Rooms',
+  lobby: 'Common rooms', gym: 'Common rooms', community: 'Common rooms', guard: 'Common rooms',
+  lawn: 'Outdoor zones', paving: 'Outdoor zones', driveway: 'Outdoor zones', parking: 'Outdoor zones', deck: 'Outdoor zones', pool: 'Outdoor zones', planter: 'Outdoor zones', play: 'Outdoor zones',
+}
+const KIND_GROUPS = (['Rooms', 'Common rooms', 'Outdoor zones'] as const).map((g) => [g, (Object.keys(KIND_GROUP) as RoomKind[]).filter((k) => KIND_GROUP[k] === g)] as const)
+
+/** the room / zone kind picker, grouped (the panel and the R tool's popover) */
+export function KindSelect({ value, onChange }: { value: RoomKind; onChange: (k: RoomKind) => void }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value as RoomKind)}>
+      {KIND_GROUPS.map(([g, kinds]) => (
+        <optgroup key={g} label={g}>
+          {kinds.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
+/** A signed level text input (+3'-6", −1.5m, ±0); commits on Enter / blur; '' = no level; red when unreadable. */
+function LevelInput({ valueM, onCommit, placeholder }: { valueM?: number; onCommit: (m: number | undefined) => void; placeholder: string }) {
+  const show = (m?: number) => (m === undefined ? '' : formatLevel(m))
+  const [text, setText] = useState(show(valueM))
+  const [bad, setBad] = useState(false)
+  useEffect(() => {
+    setText(show(valueM))
+    setBad(false)
+  }, [valueM])
+  const commit = () => {
+    const m = parseLevel(text)
+    if (m === null || (m !== undefined && Math.abs(m) > 100)) return setBad(true)
+    setBad(false)
+    if (m !== valueM) onCommit(m)
+  }
+  return <input className={bad ? 'bad' : ''} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === 'Enter' && commit(), e.stopPropagation())} />
+}
+
+const ARROWS = ['↑', '→', '↓', '←']
+/**
+ * A label's floor level and ramp (panel and R popover): Floor level typed as printed; Ramp on → "to level" + one of the
+ * four directions along its zone's edges (`dirs`, model.rampDirs) — or drag the arrow's head on the plan (V).
+ */
+export function LevelFields({ levelM, slope, dirs, onChange }: { levelM?: number; slope?: Slope; dirs: number[]; onChange: (p: { levelM?: number; slope?: Slope }) => void }) {
+  return (
+    <>
+      <Row label={slope ? 'Floor level (at the arrow tail)' : 'Floor level'}>
+        <LevelInput valueM={levelM} placeholder={`±0 · e.g. +3'-6"`} onCommit={(m) => onChange({ levelM: m, slope })} />
+      </Row>
+      <label className="check">
+        <input type="checkbox" checked={!!slope} onChange={(e) => onChange({ levelM, slope: e.target.checked ? { toLevelM: levelM ?? 0, dirDeg: dirs[0] ?? 0 } : undefined })} /> Ramp
+      </label>
+      {slope && (
+        <>
+          <Row label="To level (at the arrow head)">
+            <LevelInput valueM={slope.toLevelM} placeholder={`e.g. -5'-0"`} onCommit={(m) => onChange({ levelM, slope: { ...slope, toLevelM: m ?? 0 } })} />
+          </Row>
+          <div className="seg" title="Which way the ramp runs (from its floor level to its to level) — or drag the arrow's head on the plan with V">
+            {dirs.map((d) => (
+              <button key={d} className={Math.abs(d - slope.dirDeg) < 0.5 ? 'on' : ''} onClick={() => onChange({ levelM, slope: { ...slope, dirDeg: d } })}>
+                {ARROWS[Math.round(d / 90) % 4]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+/** the W tool's wall types, keys 1–4 (Panel picker, the selected walls' type) */
+export const WALL_KEYS: WallType[] = ['wall', 'low', 'kerb', 'zone']
+const WALL_TIPS: Record<WallType, string> = {
+  wall: 'Wall: storey height',
+  low: "Low wall 1.1 m: a parapet, a screen — type its exact height after (select it, Height)",
+  kerb: 'Kerb 0.15 m: a planter edge, a lawn kerb (no doors or windows)',
+  zone: 'Zone line: the edge between two zones (lawn | paving | parking bay …) — drawn as nothing in 3D, no doors or windows',
+}
+function WallTypes({ value, onPick }: { value: WallType | null; onPick: (t: WallType) => void }) {
+  return (
+    <div className="seg">
+      {WALL_KEYS.map((t, i) => (
+        <button key={t} className={value === t ? 'on' : ''} title={`${WALL_TIPS[t]} (key ${i + 1})`} onClick={() => onPick(t)}>
+          {WALL_TYPES[t].label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² · ${Math.round(sqmToSqft(sqm))} sqft`
 
 /** Feet-inch text input; commits meters on Enter/blur, red when unparseable. */
 export function LenInput({ valueM, onCommit, placeholder }: { valueM: number; onCommit: (m: number) => void; placeholder?: string }) {
-  const [text, setText] = useState(formatFeetInches(valueM))
+  const fmt = (m: number) => (Number.isFinite(m) ? formatFeetInches(m) : '') // NaN: a mixed selection
+  const [text, setText] = useState(fmt(valueM))
   const [bad, setBad] = useState(false)
   useEffect(() => {
-    setText(formatFeetInches(valueM))
+    setText(fmt(valueM))
     setBad(false)
   }, [valueM])
   const commit = () => {
@@ -160,6 +255,18 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
   return (
     <aside className="panel">
       {state.tool === 'opening' && <OpeningPick state={state} dispatch={dispatch} />}
+      {state.tool === 'wall' && (
+        <section>
+          <h3>Draw a</h3>
+          <WallTypes value={state.wallType ?? 'wall'} onPick={(t) => dispatch({ type: 'pick-wall', wall: t })} />
+          {state.wallType === 'low' && (
+            <Row label="Low wall height">
+              <LenInput valueM={state.lowWallM ?? WALL_TYPES.low.heightM} onCommit={(m) => m > 0 && dispatch({ type: 'pick-wall', wall: 'low', lowWallM: m })} />
+            </Row>
+          )}
+          <p className="muted">{WALL_TIPS[state.wallType ?? 'wall']} · keys 1–4 (not while typing a length)</p>
+        </section>
+      )}
       <section>
         <h3>Steps</h3>
         <ol className="steps">
@@ -293,14 +400,23 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
 
   if (ents.length > 1) {
     const walls = ents.filter((e) => e.kind === 'wall')
+    const ids = walls.map((w) => w.w.id)
+    const type = walls.length && walls.every((w) => wallTypeOf(w.w.heightM) === wallTypeOf(walls[0].w.heightM)) ? wallTypeOf(walls[0].w.heightM) : null
     return (
       <div className="props">
         <p className="muted">{ents.length} selected</p>
         {walls.length > 0 && (
-          <Thickness
-            value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
-            onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
-          />
+          <>
+            <WallTypes value={type} onPick={(t) => dispatch({ type: 'set-wall-type', ids, wall: t })} />
+            <Row label="Height (all of them)">
+              <LenInput placeholder="mixed" valueM={walls.every((w) => w.w.heightM === walls[0].w.heightM) ? walls[0].w.heightM : NaN} onCommit={(m) => dispatch({ type: 'set-wall-type', ids, wall: wallTypeOf(m), heightM: m })} />
+            </Row>
+            <Thickness
+              value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
+              onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
+            />
+            <StandsAlone ids={ids} on={walls.every((w) => w.w.standsAlone)} dispatch={dispatch} />
+          </>
         )}
       </div>
     )
@@ -328,12 +444,14 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
     return (
       <div className="props">
         <p className="muted">
-          Wall · {formatFeetInches(len)} · {len.toFixed(2)} m
+          {WALL_TYPES[wallTypeOf(w.heightM)].label} · {formatFeetInches(len)} · {len.toFixed(2)} m
         </p>
+        <WallTypes value={wallTypeOf(w.heightM)} onPick={(t) => dispatch({ type: 'set-wall-type', ids: [w.id], wall: t })} />
         <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} />
-        <Row label="Height">
-          <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'update-wall', id: w.id, patch: { heightM: m } })} />
+        <Row label="Height (0 = zone line)">
+          <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'set-wall-type', ids: [w.id], wall: wallTypeOf(m), heightM: m })} />
         </Row>
+        <StandsAlone ids={[w.id]} on={!!w.standsAlone} dispatch={dispatch} />
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
         </Row>
@@ -413,6 +531,26 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
       </div>
     )
   }
+  if (e.kind === 'pillar') {
+    const p = e.p
+    return (
+      <div className="props">
+        <p className="muted">
+          Column · {formatFeetInches(p.wM)} × {formatFeetInches(p.hM)}
+        </p>
+        <Row label="Width (across)">
+          <LenInput valueM={p.wM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { wM: m } })} />
+        </Row>
+        <Row label="Depth (up–down)">
+          <LenInput valueM={p.hM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { hM: m } })} />
+        </Row>
+        <p className="muted">Drag it to move it (it snaps to walls and corners), drag a corner dot to size it, arrows nudge 1".</p>
+        <button className="link" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
+          Delete column (Del)
+        </button>
+      </div>
+    )
+  }
   const l = e.l
   const room = rooms.find((r) => r.id === l.id)
   return (
@@ -421,17 +559,12 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
         <input value={l.name} onChange={(ev) => dispatch({ type: 'update-label', id: l.id, patch: { name: ev.target.value } })} />
       </Row>
       <Row label="Kind">
-        <select value={l.kind} onChange={(ev) => dispatch({ type: 'update-label', id: l.id, patch: { kind: ev.target.value as RoomKind } })}>
-          {ROOM_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
+        <KindSelect value={l.kind} onChange={(kind) => dispatch({ type: 'update-label', id: l.id, patch: { kind } })} />
       </Row>
       <Row label="Printed size">
         <input value={l.printedSize ?? ''} onChange={(ev) => dispatch({ type: 'update-label', id: l.id, patch: { printedSize: ev.target.value } })} />
       </Row>
+      <LevelFields levelM={l.levelM} slope={l.slope} dirs={room ? rampDirs(room, unit) : [0, 90, 180, 270]} onChange={(patch) => dispatch({ type: 'update-label', id: l.id, patch })} />
       <p className="muted">{room ? formatArea(room.areaSqm) : 'Label is not inside a closed room'}</p>
       <button className="link" onClick={() => dispatch({ type: 'delete', ids: [l.id] })}>
         Remove
@@ -541,6 +674,15 @@ function AiKeyField() {
         ). Stays in this browser.
       </p>
     </details>
+  )
+}
+
+/** said up front: its loose ends are meant (no "Loose wall end" marks) — "Keep — it stands alone" on a mark does the same */
+function StandsAlone({ ids, on, dispatch }: { ids: string[]; on: boolean; dispatch: (a: Action) => void }) {
+  return (
+    <label className="check" title="A screen, fin, parapet length, decorative or wind wall: its free ends are meant, never an issue">
+      <input type="checkbox" checked={on} onChange={(e) => dispatch({ type: 'stand-alone', ids, on: e.target.checked })} /> Stands alone (screen / decoration)
+    </label>
   )
 }
 

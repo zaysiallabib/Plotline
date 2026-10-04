@@ -41,7 +41,7 @@ describe('trackThin on a synthetic sheet', () => {
 })
 
 // ---------- the real plans: wall recall and false walls inside truth rooms, before / after the tracker ----------
-// the eval set: the units traced off a plan image (the hand-authored common levels, session 19, have none)
+// traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
 const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`))

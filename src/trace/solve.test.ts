@@ -351,7 +351,7 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
 /** TRACE_TRACKER=skeleton | bands | tracks: that wall stage instead of the default (KNOBS.tracker), for comparison */
 const TRACKER = process.env.TRACE_TRACKER
 if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
-// the eval set: the units traced off a plan image (the hand-authored common levels, session 19, have none)
+// traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
 const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
 const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
