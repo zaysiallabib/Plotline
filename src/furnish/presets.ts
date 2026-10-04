@@ -763,6 +763,9 @@ const TREE_SIZES: [string, number][] = [['tree_large', 1], ['tree_large', 0.85],
 const MAST_SPACING = 2.6
 /** ...and 4 m apart in a row along a boundary wall. */
 const MAST_ROW = 4
+/** A tree's trunk stands at least this far off a window or a glass wall: closer, its crown lay against the lobby's glass. */
+const GLASS_CLEAR = 1.5
+const offGlass = (ctx: Ctx, c: Pt) => ctx.wins.every((w) => !pointInPolygon(c, w.q) && wallClearance(c, w.q) >= GLASS_CLEAR)
 /** A crown r round at c is over this face only: its circle inside, no corner of the face under it (a C-shaped lawn's arms hold a square's corners while it spans what lies between). */
 const crownFits = (ctx: Ctx, c: Pt, r: number) =>
   Array.from({ length: 16 }, (_, i) => ({ x: c.x + r * Math.cos((i * Math.PI) / 8), y: c.y + r * Math.sin((i * Math.PI) / 8) })).every((p) => pointInPolygon(p, ctx.inner)) && !ctx.inner.some((v) => dist(v, c) < r)
@@ -781,7 +784,7 @@ function trees(ctx: Ctx, cover: number, sizes = TREE_SIZES): void {
     const r = (size(id).x * k) / 2
     for (const c of spots) {
       if (area + Math.PI * r * r > cover * ctx.room.areaSqm) break // a smaller one may still fit the budget
-      if (placed.some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + r), id === 'tree_mast' ? MAST_SPACING : 0))) continue
+      if (placed.some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + r), id === 'tree_mast' ? MAST_SPACING : 0)) || !offGlass(ctx, c)) continue
       const trunk = square(c, TRUNK_CLEAR)
       if (ctx.clear.some((q) => quadsOverlap(q, trunk)) || ctx.quads.some((o) => quadsOverlap(o.q, trunk))) continue
       if (!crownFits(ctx, c, r) || !tryPlace(ctx, id, c, 90 * (placed.length % 4), 'free', k === 1 ? undefined : k)) continue
@@ -832,7 +835,7 @@ function mastRow(ctx: Ctx): void {
     for (let u = 1.2; u <= s.len - 1.2; u += 0.5)
       for (const k of [1, 0.85, 0.7]) {
         const c = add(add(s.p0, s.d, u), s.n, s.thick / 2 + GAP + (crown * k) / 2)
-        if (trunks().some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + (crown * k) / 2), MAST_ROW))) continue
+        if (trunks().some((t) => dist(t.c, c) < Math.max(0.85 * (t.r + (crown * k) / 2), MAST_ROW)) || !offGlass(ctx, c)) continue
         const trunk = square(c, TRUNK_CLEAR)
         if (ctx.clear.some((q) => quadsOverlap(q, trunk)) || ctx.quads.some((o) => quadsOverlap(o.q, trunk))) continue
         if (!crownFits(ctx, c, (crown * k) / 2) || !tryPlace(ctx, 'tree_mast', c, 90 * (u % 4 | 0), 'free', k === 1 ? undefined : k)) continue
