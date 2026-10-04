@@ -696,14 +696,16 @@ export function wallLift(wall: Wall, unit: Unit, rooms: Room[]): WallLift {
 export const liftDrop = (l: WallLift): number => Math.max(l.base[0] - l.foot[0], l.base[1] - l.foot[1])
 
 /** Puts a wall solid (wallGeometry, built on 0 with a `drop` plinth) on its floors: every vertex up by `base`, the plinth's foot onto `foot`. */
-export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift): void {
-  if (l === FLAT) return
+export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift, top?: number): void {
+  if (l === FLAT && top === undefined) return
   const f = core.wallFrame(wall, unit.vertices)
   const p = geo.attributes.position
   for (let i = 0; i < p.count; i++) {
     const t = THREE.MathUtils.clamp(((p.getX(i) - f.origin.x) * f.dir.x + (p.getZ(i) - f.origin.y) * f.dir.y) / (f.lengthM || 1), 0, 1)
     const y = p.getY(i)
-    p.setY(i, y < -1e-6 ? l.foot[0] + t * (l.foot[1] - l.foot[0]) : y + l.base[0] + t * (l.base[1] - l.base[0]))
+    // `top` (a storey wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands
+    if (top !== undefined && y > wall.heightM - 1e-6) p.setY(i, top)
+    else p.setY(i, y < -1e-6 ? l.foot[0] + t * (l.foot[1] - l.foot[0]) : y + l.base[0] + t * (l.base[1] - l.base[0]))
   }
   p.needsUpdate = true
   geo.computeBoundingBox()

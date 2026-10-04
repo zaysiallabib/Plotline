@@ -57,6 +57,12 @@ const LIGHT_CD_PER_M2 = 0.1
 const DUSK_BOOST = 8
 /** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
 const MAX_ROOM_LIGHTS = 8
+/** Covered zones (coverLights): a batten every GRID m, the real downlights among them, their candela. */
+const GRID = 3.6
+const COVER_LIGHTS = 4
+const COVER_CD = 18
+/** a 4000 K LED batten's diffuser */
+const BATTEN = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#f3f5ff', emissiveIntensity: 3 })
 /**
  * Debug switches, one cause each, for the founder's "small blips whenever I move my view" (2026-10-04) — add to any viewer
  * URL: `?ao=0` no ambient occlusion pass, `?shadows=0` no sun shadow map. Not shown anywhere in the UI.
@@ -222,7 +228,8 @@ export class Look {
     // an outdoor zone is open to the sky unless the slab above (`cover`, the floor above's footprint) hangs over it: that
     // slab is in the roof too, and from below it is the zone's soffit
     const over = cover.map((poly) => new THREE.ShapeGeometry(new THREE.Shape(poly.map((p) => new THREE.Vector2(p.x, p.y)))).rotateX(Math.PI / 2).translate(0, -SLAB_M, 0))
-    const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover)), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
+    // (a room under the cover: the cover's own plane is its roof — two coplanar planes fought in stripes)
+    const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
     const roofGeo = mergeGeometries([...lifted, ...roofWalls])
     ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
@@ -262,7 +269,41 @@ export class Look {
       this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm), id: hung.id })
       this.unitGroup.add(light, light.target)
     }
+    this.coverLights(unit, rooms, cover)
     this.unitGroup.add(slab, this.indoor)
+  }
+
+  /**
+   * Under the slab above (`cover`: a basement, the parking under a tower) a zone gets no sky: LED battens hang on a world
+   * 3.6 m grid from its soffit (one emissive mesh), and the battens farthest apart carry a real downlight each — up to
+   * COVER_LIGHTS, within the light budget beside the rooms' lamps. Always on, whatever the hour.
+   */
+  private coverLights(unit: Unit, rooms: Room[], cover: Pt[][]): void {
+    const spots: { x: number; y: number; floor: number }[] = []
+    for (const r of rooms.filter((x) => isCovered(x, cover))) {
+      const poly = core.roomInnerPolygon(r, unit)
+      const xs = poly.map((p) => p.x)
+      const ys = poly.map((p) => p.y)
+      for (let i = Math.floor(Math.min(...xs) / GRID); i * GRID <= Math.max(...xs); i++)
+        for (let j = Math.floor(Math.min(...ys) / GRID); j * GRID <= Math.max(...ys); j++) {
+          const p = { x: (i + 0.5) * GRID, y: (j + 0.5) * GRID }
+          if (core.pointInPolygon(p, poly) && cover.some((c) => core.pointInPolygon(p, c))) spots.push({ ...p, floor: core.roomLevelAt(r, unit, p.x, p.y) })
+        }
+    }
+    if (!spots.length) return
+    const y = this.topY - 0.03
+    const battens = mergeGeometries(spots.map((p) => new THREE.BoxGeometry(1.2, 0.04, 0.08).translate(p.x, y, p.y)))!
+    this.indoor.add(new THREE.Mesh(battens, BATTEN))
+    // farthest-point picks: the first, then each time the spot farthest from those picked
+    const picked = [spots[0]]
+    const far = (p: (typeof spots)[number]) => Math.min(...picked.map((q) => Math.hypot(p.x - q.x, p.y - q.y)))
+    while (picked.length < Math.min(COVER_LIGHTS, spots.length)) picked.push(spots.reduce((a, b) => (far(b) > far(a) ? b : a)))
+    for (const p of picked) {
+      const light = new THREE.SpotLight(BATTEN.emissive, COVER_CD, 12, Math.PI / 2.3, 0.8, 2)
+      light.position.set(p.x, y - 0.05, p.y)
+      light.target.position.set(p.x, p.floor, p.y)
+      this.unitGroup.add(light, light.target) // not in `indoor`: a light count that changes with the camera recompiles every material
+    }
   }
 
   /** Arrange moved pieces: the contact shadows are redrawn (one canvas) and each room light follows its fixture. */
