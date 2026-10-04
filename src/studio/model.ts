@@ -30,8 +30,8 @@ export const WALL_TYPES: Record<WallType, { label: string; heightM: number }> = 
 export const ZONE_LINE_M = 0.05
 /** up to this a wall is a kerb (core: ≤ ~0.2) */
 export const KERB_M = 0.2
-/** the type a height reads as: 0 a zone line, ≤ KERB_M a kerb, under LOW_M a low wall */
-export const wallTypeOf = (heightM: number): WallType => (heightM === 0 ? 'zone' : heightM <= KERB_M ? 'kerb' : heightM < LOW_M ? 'low' : 'wall')
+/** the type a height reads as: 0 a zone line, ≤ KERB_M a kerb, under the storey a low wall (a 7' screen, a 6' boundary) */
+export const wallTypeOf = (heightM: number): WallType => (heightM === 0 ? 'zone' : heightM <= KERB_M ? 'kerb' : heightM < WALL_HEIGHT_M - 0.01 ? 'low' : 'wall')
 /** the C tool's click: a 12" × 20" column */
 export const PILLAR_M = { wM: FT, hM: (20 / 12) * FT }
 const MIN_PILLAR_M = 0.1
@@ -1019,7 +1019,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const walls = s.unit.walls.filter((w) => ids.has(w.id))
       if (!walls.length) return s
       if (a.wall === 'zone' && walls.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line carries none')
-      const t = (w: Wall) => chainType(w.thicknessM, a.wall, a.heightM)
+      // its own height when it is that type already (a 7' screen stays 7'), else the W tool's low-wall height / the type's
+      const t = (w: Wall) => chainType(w.thicknessM, a.wall, a.heightM ?? (wallTypeOf(w.heightM) === a.wall ? w.heightM : a.wall === 'low' ? s.lowWallM : undefined))
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...t(w) } : w)) })
     }
     case 'stand-alone': {

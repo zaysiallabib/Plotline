@@ -15,7 +15,7 @@ const ZONE_TINT: Partial<Record<RoomKind, string>> = {
   planter: 'rgba(60,128,58,0.45)',
   pool: 'rgba(64,140,220,0.40)',
   driveway: 'rgba(150,150,150,0.28)',
-  parking: 'rgba(120,124,132,0.22)',
+  parking: 'rgba(110,130,175,0.26)',
   paving: 'rgba(200,184,150,0.24)',
   deck: 'rgba(176,122,70,0.34)',
   play: 'rgba(228,140,80,0.26)',

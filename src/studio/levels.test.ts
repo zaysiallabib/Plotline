@@ -89,13 +89,19 @@ describe('wall types: picked before placing, remembered until changed', () => {
     const n = s.history.past.length
     s = reducer(s, { type: 'set-wall-type', ids, wall: wallTypeOf(0), heightM: 0 })
     expect(s.unit.walls.map((x) => [x.heightM, x.thicknessM])).toEqual([[0, ZONE_LINE_M], [0, ZONE_LINE_M], [0, ZONE_LINE_M], [6 * FT, PARTITION_M]])
+    expect(wallTypeOf(2.4)).toBe('low')
     s = reducer(s, { type: 'set-wall-type', ids, wall: wallTypeOf(2.4), heightM: 2.4 })
     expect(s.unit.walls.map((x) => [x.heightM, x.thicknessM])).toEqual([[2.4, PARTITION_M], [2.4, PARTITION_M], [2.4, PARTITION_M], [6 * FT, PARTITION_M]])
     expect(s.history.past).toHaveLength(n + 2)
+    // its own type clicked again keeps its height; another wall made a low wall takes the W tool's low-wall height
+    s = reducer(s, { type: 'set-wall-type', ids: [ids[0]], wall: 'low' })
+    expect(s.unit.walls[0].heightM).toBe(2.4)
+    s = run(s, { type: 'set-wall-type', ids: [ids[1]], wall: 'wall' }, { type: 'set-wall-type', ids: [ids[1]], wall: 'low' })
+    expect(s.unit.walls[1].heightM).toBe(6 * FT)
   })
 
-  it('wallTypeOf reads a height: 0 zone line, ≤ 0.2 kerb, under 2 m low wall', () => {
-    expect([0, 0.1, KERB_M, 0.45, 1.1, 1.99, 2.1, WALL_HEIGHT_M].map(wallTypeOf)).toEqual(['zone', 'kerb', 'kerb', 'low', 'low', 'low', 'wall', 'wall'])
+  it('wallTypeOf reads a height: 0 zone line, ≤ 0.2 kerb, under the storey a low wall (a 7\' screen too)', () => {
+    expect([0, 0.1, KERB_M, 0.45, 1.1, 1.99, 7 * FT, WALL_HEIGHT_M, 3.6].map(wallTypeOf)).toEqual(['zone', 'kerb', 'kerb', 'low', 'low', 'low', 'low', 'wall', 'wall'])
   })
 
   it('a zone line or a kerb takes no opening (the O tool refuses with its reason); a low wall with one becomes full height', () => {
