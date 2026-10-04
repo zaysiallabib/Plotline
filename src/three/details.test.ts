@@ -12,6 +12,11 @@ import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, pillar
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
+import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
+import { bakeDaylight } from './daylight'
+import { furnish } from '../furnish/presets'
+import { finishSlotsFor } from '../furnish/finishes'
+import { entrySpawn } from '../viewer/spawn'
 
 test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
   const walls = TEST_UNIT.walls.map((w) =>
@@ -427,5 +432,41 @@ describe('the white cased opening, however the partition was drawn (founder, 202
       expect(closeGaps(crossed)).toBe(crossed)
       for (const u of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) expect(closeGaps(u), u.id).toBe(u)
     })
+  })
+})
+
+/**
+ * Session 19, core lane: a level with flush lines (heightM 0), the new zone / common kinds, a ramp and a screen standing
+ * alone goes through the pure 3D / furnish / viewer parts without tripping, and a flush line builds nothing. The look
+ * (zone floors, no ceiling outdoors, daylight, kerbs, the ramp's slope) is the 3D lane's.
+ */
+describe('a level with zones, flush lines and a free-standing screen', () => {
+  const u = GROUND_SAMPLE
+  const rooms = core.deriveRooms(u)
+  const flush = u.walls.filter((w) => w.heightM === 0)
+
+  test('a flush line has no solid (no mesh, no collision quad); the screen and the boundary wall do, at their heights', () => {
+    expect(flush).toHaveLength(4)
+    for (const w of flush) {
+      expect(wallGeometry(w, u), w.id).toBeNull()
+      expect(core.wallPieces(w, core.wallFrame(w, u.vertices).lengthM)).toEqual([])
+    }
+    const top = (id: string) => {
+      const g = wallGeometry(u.walls.find((w) => w.id === id)!, u)!
+      g.computeBoundingBox()
+      return g.boundingBox!.max.y
+    }
+    expect(top('screen')).toBeCloseTo(2, 6)
+    expect(top('b1')).toBeCloseTo(1.8, 6)
+  })
+
+  test('the pure passes run: nothing raised or gap-closed, skirting / daylight bake, furnish / finishes / spawn run', () => {
+    expect(raiseHeads(u)).toBe(u)
+    expect(closeGaps(u)).toBe(u)
+    expect(skirtingRuns(u, rooms).length).toBeGreaterThan(0) // a flush line itself gets none (below SKIRTING_H)
+    expect(() => bakeDaylight(u, rooms)).not.toThrow()
+    expect(() => furnish(u, rooms)).not.toThrow()
+    expect(() => finishSlotsFor(u, rooms)).not.toThrow()
+    expect(() => entrySpawn(u, rooms)).not.toThrow()
   })
 })

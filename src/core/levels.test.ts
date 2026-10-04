@@ -6,43 +6,10 @@ import { describe, expect, test } from 'vitest'
 import * as core from './index'
 import type { RoomKind, RoomLabel, Unit, Wall } from './index'
 import typeA from '../data/units/type-a.json'
+import { GROUND_SAMPLE as ground } from '../data/fixtures/ground-sample'
 
 const wall = (id: string, a: string, b: string, heightM = 3, extra: Partial<Wall> = {}): Wall => ({ id, a, b, thicknessM: 0.25, heightM, openings: [], ...extra })
 const label = (id: string, kind: RoomKind, x: number, y: number, extra: Partial<RoomLabel> = {}): RoomLabel => ({ id, name: id, kind, x, y, ...extra })
-
-/**
- * A 12 × 10 m plot inside a 1.8 m boundary wall: a 4 × 4 m lobby at +3'-6" in a lawn, joined to the boundary by one
- * flush line (the lawn goes round it: a keyhole); a 3 m driveway strip split off by a flush line, its last 8 m a 1:8 ramp
- * down to −1 m; a 2 m screen standing alone in the lawn.
- */
-const ground: Unit = {
-  id: 'g',
-  projectName: 'p',
-  name: 'Ground',
-  northDeg: 0,
-  vertices: [
-    ['p1', 0, 0], ['t', 2, 0], ['d1', 9, 0], ['p2', 12, 0], ['r2', 12, 2], ['p3', 12, 10], ['d2', 9, 10], ['p4', 0, 10], ['r1', 9, 2],
-    ['l1', 2, 2], ['l2', 6, 2], ['l3', 6, 6], ['l4', 2, 6],
-    ['s1', 1, 8], ['s2', 3, 8],
-  ].map(([id, x, y]) => ({ id: id as string, x: x as number, y: y as number })),
-  walls: [
-    wall('b1', 'p1', 't', 1.8), wall('b2', 't', 'd1', 1.8), wall('b3', 'd1', 'p2', 1.8), wall('b4', 'p2', 'r2', 1.8), wall('b5', 'r2', 'p3', 1.8),
-    wall('b6', 'p3', 'd2', 1.8), wall('b7', 'd2', 'p4', 1.8), wall('b8', 'p4', 'p1', 1.8),
-    wall('lob1', 'l1', 'l2'), wall('lob2', 'l2', 'l3'), wall('lob3', 'l3', 'l4'), wall('lob4', 'l4', 'l1', 3, { openings: [{ id: 'door', kind: 'door', offsetM: 1.5, widthM: 1.2, heightM: 2.1, sillM: 0 }] }),
-    wall('bridge', 't', 'l1', 0), // flush: the lawn's edge round the lobby
-    wall('drive1', 'd1', 'r1', 0), wall('drive2', 'r1', 'd2', 0), wall('rampTop', 'r1', 'r2', 0),
-    wall('screen', 's1', 's2', 2, { standsAlone: true }),
-  ],
-  roomLabels: [
-    label('Lobby', 'lobby', 4, 4, { levelM: 1.067 }),
-    label('Lawn', 'lawn', 1, 5),
-    label('Driveway', 'driveway', 10.5, 1),
-    label('Ramp', 'driveway', 10.5, 6, { slope: { toLevelM: -1, dirDeg: 180 } }),
-  ],
-  furniture: [],
-  finishSlots: [],
-  areaSqft: 0,
-}
 
 describe('zones on the wall graph', () => {
   const rooms = core.deriveRooms(ground)
@@ -63,6 +30,11 @@ describe('zones on the wall graph', () => {
     let a = 0
     for (let i = 0; i < tri.length; i += 3) a += Math.abs(core.signedArea([poly[tri[i]], poly[tri[i + 1]], poly[tri[i + 2]]]))
     expect(a).toBeCloseTo(74, 6)
+    // its finished inside (skirting, daylight, furniture) goes round the lobby too: the bridge opens into a slit
+    const inner = core.roomInnerPolygon(by('Lawn'), ground)
+    expect(core.pointInPolygon({ x: 1, y: 1 }, inner)).toBe(true)
+    expect(core.pointInPolygon({ x: 4, y: 4 }, inner)).toBe(false)
+    expect(core.pointInPolygon({ x: 2, y: 1 }, inner)).toBe(false) // on the bridge: inside its slit
   })
 
   test('a level with a free-standing screen, flush lines and the new kinds validates clean', () => {

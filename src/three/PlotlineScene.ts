@@ -1185,6 +1185,7 @@ export class PlotlineScene {
   private blocked(p: Pt): boolean {
     const unit = this.unit!
     for (const w of unit.walls) {
+      if (w.heightM <= 0) continue // a flush line (a zone's edge) is walked across
       const a = core.vertexById(unit.vertices, w.a)
       const b = core.vertexById(unit.vertices, w.b)
       const dx = b.x - a.x
