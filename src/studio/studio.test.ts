@@ -1176,6 +1176,11 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
         const saved = { ...railed, walls: railed.walls.map((w) => (w.id === 'w0' ? { ...w, openings: s.unit.walls[0].openings } : w)) }
         expect(normalizeUnit(saved).walls[0].heightM).toBe(WALL_HEIGHT_M)
         expect(reducer(initialState(), { type: 'load-unit', unit: saved }).unit.walls.map((w) => w.heightM)).toEqual([WALL_HEIGHT_M, 3, 1.1, 3])
+        // a gate: a passage in the 1.1 m railing is only a gap — the railing stays low, placed or loaded
+        const gate = reducer(reducer(initialState(), { type: 'load-unit', unit: railed }), { type: 'add-opening', wallId: 'w2', t: 0.5, kind: 'passage' })
+        expect(gate.unit.walls[2].openings[0].kind).toBe('passage')
+        expect(gate.unit.walls.map((w) => w.heightM)).toEqual([1.1, 3, 1.1, 3])
+        expect(normalizeUnit(gate.unit).walls[2].heightM).toBe(1.1)
       })
     })
   })

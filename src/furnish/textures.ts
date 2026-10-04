@@ -15,6 +15,8 @@ export interface TextureSet {
   repeatM: number
   /** × the albedo map, under any MaterialRef tint: calibrates a scan whose white is hotter than the real surface */
   tint?: string
+  /** grass / soil: its roughness map is left off (roughness 1) and its relief halved — in the sun the scan glittered white */
+  matte?: true
   source: string
   author: string
   license: 'CC0'

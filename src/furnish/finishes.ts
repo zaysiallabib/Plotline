@@ -16,7 +16,7 @@ export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
 }
 
 /** Every kind but the wet rooms' tiled walls: a shaft or an unnamed "Space N" ('other') is painted like a room. */
-const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other']
+const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'lobby', 'gym', 'community', 'guard']
 
 export const FINISH_CATALOG: CatalogSlot[] = [
   {
@@ -37,7 +37,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     label: 'Living & dining floors',
     target: 'floor',
     // lobby, foyer, passage and every unnamed closed space walk on the living floor
-    kinds: ['living', 'dining', 'other'],
+    kinds: ['living', 'dining', 'other', 'community'],
     defaultOptionId: 'fo_living_marble',
     options: [
       { id: 'fo_living_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
@@ -50,7 +50,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     id: 's_floor_wet',
     label: 'Kitchen & bath floors',
     target: 'floor',
-    kinds: ['kitchen', 'bath', 'utility'],
+    kinds: ['kitchen', 'bath', 'utility', 'guard'],
     defaultOptionId: 'fo_wet_tile',
     options: [
       { id: 'fo_wet_tile', brand: 'Akij Ceramics', sku: 'AKIJ-CER-300', label: 'Ceramic tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_ceramic' } },
@@ -68,6 +68,26 @@ export const FINISH_CATALOG: CatalogSlot[] = [
       { id: 'fo_veranda_tile', brand: 'RAK Ceramics', sku: 'RAK-OUTDOOR-R11', label: 'Outdoor tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_outdoor' } },
       { id: 'fo_veranda_terracotta', brand: 'Mir Ceramic', sku: 'MIR-TERRA-300', label: 'Terracotta tile', priceDeltaBdt: 18000, material: { kind: 'pbr', textureId: 'tile_floor_terracotta' } },
     ],
+  },
+  // the common rooms of a ground floor / rooftop (session 19): a lobby on large-format stone-look porcelain, a gym on rubber
+  {
+    id: 's_floor_lobby',
+    label: 'Lobby floors',
+    target: 'floor',
+    kinds: ['lobby'],
+    defaultOptionId: 'fo_lobby_porcelain',
+    options: [
+      { id: 'fo_lobby_porcelain', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-1200-GR', label: 'Large greige porcelain 1200 × 1200', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_large', tint: '#d9d2c6' } },
+      { id: 'fo_lobby_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
+    ],
+  },
+  {
+    id: 's_floor_gym',
+    label: 'Gym floor',
+    target: 'floor',
+    kinds: ['gym'],
+    defaultOptionId: 'fo_gym_rubber',
+    options: [{ id: 'fo_gym_rubber', brand: 'Generic', sku: 'RUBBER-TILE-15', label: 'Rubber gym tiles 15 mm', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'rubber_gym' } }],
   },
   {
     id: 's_wall_paint',
