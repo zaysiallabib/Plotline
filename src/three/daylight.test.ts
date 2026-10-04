@@ -140,8 +140,8 @@ describe('outdoor zones in the bake (ground sample)', () => {
     const lawn = rooms.find((r) => r.id === 'Lawn')!
     expect(isCovered(lawn, cover)).toBe(true)
     expect(openToSky(lawn, cover)).toBe(false)
-    expect(factorAt(d, 'floor:Lawn', 1, 5)).toBeCloseTo(0.6, 1)
-    for (const key of lawnFaces(d)) expect(factorAt(d, key, 0.5, 1), key).toBeCloseTo(0.6, 1)
+    expect(factorAt(d, 'floor:Lawn', 1, 5)).toBeCloseTo(0.75, 1)
+    for (const key of lawnFaces(d)) expect(factorAt(d, key, 0.5, 1), key).toBeCloseTo(0.75, 1)
     expect(d.regions.has('floor:Driveway')).toBe(false)
   })
 })

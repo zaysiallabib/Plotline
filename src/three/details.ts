@@ -748,7 +748,7 @@ export function stepFaces(unit: Unit, rooms: Room[]): { room: Room; geo: THREE.B
     if (f.lengthM < 1e-3) continue
     const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
     const [front, back] = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * 0.05 * s, y: mid.y + f.normal.y * 0.05 * s }, rooms, unit))
-    if (!front || !back) continue
+    if (!front || !back || isSteps(front, unit) || isSteps(back, unit)) continue // a flight's blocks close its own sides
     const [A, B] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
     const lv = (r: Room, p: Pt) => core.roomLevelAt(r, unit, p.x, p.y)
     const [fa, fb, ba, bb] = [lv(front, A), lv(front, B), lv(back, A), lv(back, B)]
@@ -897,4 +897,86 @@ export function bayMarkings(unit: Unit, rooms: Room[]): { lines: { a: V3; b: V3 
     numbers.push({ text: r.name.trim(), at: [r.centroid.x, core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y), r.centroid.y], up: up ?? long.d })
   }
   return { lines, numbers }
+}
+
+/** A sloped face steeper than this (rise / run) is a flight of steps, not a ramp: stepGeometry. */
+export const STEPS_GRADE = 1 / 3
+const RISER_M = 0.16
+
+/** Is this face a flight of steps (a slope steeper than STEPS_GRADE)? */
+export function isSteps(room: Room, unit: Unit): boolean {
+  const s = room.slope
+  if (!s) return false
+  const r = (s.dirDeg * Math.PI) / 180
+  const along = core.roomPolygon(room, unit).map((p) => p.x * Math.sin(r) - p.y * Math.cos(r))
+  const span = Math.max(...along) - Math.min(...along)
+  return span > 1e-3 && Math.abs(s.toLevelM - (room.levelM ?? 0)) / span > STEPS_GRADE
+}
+
+/** Sutherland–Hodgman: the part of plan polygon `poly` where f ≥ 0. */
+function clipPlan(poly: Pt[], f: (p: Pt) => number): Pt[] {
+  const out: Pt[] = []
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const [fa, fb] = [f(a), f(b)]
+    if (fa >= 0) out.push(a)
+    if (fa >= 0 !== fb >= 0) {
+      const t = fa / (fa - fb)
+      out.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) })
+    }
+  })
+  return out
+}
+
+/**
+ * A steep sloped face (isSteps; the data's "Steps" are sloped paving faces) built as a flight: treads of equal going across
+ * the face along its slope, each level (the first at the low floor, the last at the high, risers ≈ 0.16 m), each a solid
+ * block down to the low floor, so its sides close against whatever is beside it. The plane (core.roomLevelAt) still carries
+ * the walker smoothly. World space; treads in plan UVs, faces in metre UVs.
+ */
+export function stepGeometry(room: Room, unit: Unit): THREE.BufferGeometry | null {
+  if (!isSteps(room, unit)) return null
+  const s = room.slope!
+  const r = (s.dirDeg * Math.PI) / 180
+  const d = { x: Math.sin(r), y: -Math.cos(r) }
+  const along = (p: Pt) => p.x * d.x + p.y * d.y
+  const poly = core.roomPolygon(room, unit)
+  const s0 = Math.min(...poly.map(along))
+  const span = Math.max(...poly.map(along)) - s0
+  const [lo, hi] = [room.levelM ?? 0, s.toLevelM]
+  const n = Math.max(2, Math.round(Math.abs(hi - lo) / RISER_M) + 1)
+  const bottom = Math.min(lo, hi)
+  const pos: number[] = []
+  const tri = (a: number[], b: number[], c: number[], want: number[]) => {
+    const e = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+    const k = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+    const nrm = [e[1] * k[2] - e[2] * k[1], e[2] * k[0] - e[0] * k[2], e[0] * k[1] - e[1] * k[0]]
+    pos.push(...(nrm[0] * want[0] + nrm[1] * want[1] + nrm[2] * want[2] >= 0 ? [a, b, c] : [a, c, b]).flat())
+  }
+  for (let k = 0; k < n; k++) {
+    const [b0, b1] = [s0 + (span * k) / n, s0 + (span * (k + 1)) / n]
+    const P = clipPlan(clipPlan(poly, (p) => along(p) - b0), (p) => b1 - along(p))
+    if (P.length < 3) continue
+    const y = lo + ((hi - lo) * k) / (n - 1)
+    const t = core.triangulate(P)
+    for (let i = 0; i < t.length; i += 3) tri(...([t[i], t[i + 1], t[i + 2]].map((j) => [P[j].x, y, P[j].y]) as [number[], number[], number[]]), [0, 1, 0])
+    // its block's sides, down to the low floor, each facing out of the tread (the band's two cut lines included: the risers)
+    const c = { x: P.reduce((q, p) => q + p.x, 0) / P.length, y: P.reduce((q, p) => q + p.y, 0) / P.length }
+    P.forEach((a, i) => {
+      const b = P[(i + 1) % P.length]
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-6 || y - bottom < 1e-6) return
+      const m = { x: (a.x + b.x) / 2 - c.x, y: (a.y + b.y) / 2 - c.y }
+      const out = [b.y - a.y, 0, -(b.x - a.x)] // perpendicular in plan (x, z); its sign fixed by `m`
+      const s = out[0] * m.x + out[2] * m.y >= 0 ? 1 : -1
+      const want = [s * out[0], 0, s * out[2]]
+      tri([a.x, bottom, a.y], [b.x, bottom, b.y], [b.x, y, b.y], want)
+      tri([a.x, bottom, a.y], [b.x, y, b.y], [a.x, y, a.y], want)
+    })
+  }
+  if (!pos.length) return null
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+  g.computeVertexNormals()
+  return meterUVs(g)
 }

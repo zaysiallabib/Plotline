@@ -84,7 +84,7 @@ const outdoor = (r: Room | null) => !r || r.kind === 'balcony' || r.kind === 'sh
  * The indirect-light factor on a covered zone and the walls facing it (a parking deck under the slab): a flat shade, its
  * light comes from the rule's battens (render.ts), not a bake through openings it does not have.
  */
-const COVERED = 0.6
+const COVERED = 0.75
 
 /** sky radiance seen through an opening onto `r`: open sky 1; a covered veranda's slab hides the upper sky; a shaft is a well */
 const skyOf = (r: Room | null, cover: Pt[][]) =>

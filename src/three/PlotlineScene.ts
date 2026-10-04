@@ -23,7 +23,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, bayMarkings, buildSkirtings, closeGaps, dressOpening, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
+import { GAP_PREFIX, KERB_M, bayMarkings, buildSkirtings, closeGaps, dressOpening, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
@@ -968,7 +968,7 @@ export class PlotlineScene {
     floorGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
     floorGeo.setIndex(idx)
     floorGeo.computeVertexNormals()
-    const floor = new THREE.Mesh(floorGeo)
+    const floor = new THREE.Mesh(stepGeometry(room, unit) ?? floorGeo) // a steep slope: a flight of steps (details.ts)
     floor.receiveShadow = true
     floor.userData = { kind: 'floor', id: room.id, roomId: room.id, label: `${room.name} floor`, objectKind: 'floor' }
     this.staticGroup.add(floor)

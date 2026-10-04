@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, WATER_DROP_M, bayMarkings, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, WATER_DROP_M, bayMarkings, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -597,6 +597,25 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
       expect(water.boundingBox!.max.y).toBeCloseTo(-0.5 - WATER_DROP_M, 6)
       expect(water.attributes.normal.getY(0)).toBeCloseTo(1, 6)
     }
+  })
+
+  test('a sloped face steeper than 1:3 is a flight of steps (risers ≈ 0.16 m, first tread on the low floor, last on the high); a 1:8 ramp stays a plane', () => {
+    const steps = (run: number, rise: number) => {
+      const u = rect(3, run, 'paving')
+      u.roomLabels = [{ ...u.roomLabels[0], levelM: 0, slope: { toLevelM: rise, dirDeg: 180 } }]
+      const [room] = core.deriveRooms(u)
+      return { flight: isSteps(room, u), g: stepGeometry(room, u) }
+    }
+    const { flight, g } = steps(2, 1)
+    expect(flight).toBe(true)
+    g!.computeBoundingBox()
+    expect(g!.boundingBox!.min.y).toBeCloseTo(0, 6)
+    expect(g!.boundingBox!.max.y).toBeCloseTo(1, 6)
+    const p = g!.attributes.position
+    const treads = new Set<number>()
+    for (let i = 0; i < p.count; i++) if (g!.attributes.normal.getY(i) > 0.99) treads.add(+p.getY(i).toFixed(4))
+    expect(treads.size).toBe(Math.round(1 / 0.16) + 1)
+    expect(steps(8, 1)).toEqual({ flight: false, g: null })
   })
 
   test('parking paint: a line on every flush line bounding a bay; each numbered bay its number, reading from the aisle', () => {

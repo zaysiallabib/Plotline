@@ -102,7 +102,7 @@ export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
 /** Bare smooth concrete: parking floors, kerbs, the riser where two zones meet at different levels, a pool's coping. */
-export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#b4bcc2' } // cools the scan's brown: it read as earth
+export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#c8d0d6' } // cools the scan's brown: it read as earth
 /** A pool's basin: aqua-glazed tiles (the wall tile's grout relief and glaze). */
 export const POOL_TILE: MaterialRef = { kind: 'pbr', textureId: 'tile_wall_white', tint: '#8ccad0' }
 /**
