@@ -163,6 +163,7 @@ export class Building extends THREE.Group {
         mesh.castShadow = mesh.receiveShadow = true
         mesh.visible = !mine // the furnished flat is drawn by the scene; this one is only its pick proxy
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
+        mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
         if (mine) continue
         for (const w of u.walls) {
@@ -218,6 +219,7 @@ export class Building extends THREE.Group {
       mesh.castShadow = m !== 'glass' && m !== GREEN && m !== PAINT && m !== ASPHALT
       mesh.receiveShadow = m !== 'glass'
       if (m === 'glass') mesh.raycast = () => {}
+      if (m === PAVING) mesh.userData.level = 0 // the plinth: his traced ground floor stands on it when cut there
       this.add(mesh)
     }
     this.box.setFromObject(this)
@@ -285,8 +287,8 @@ export class Building extends THREE.Group {
 
   /**
    * Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of
-   * them; on a Studio project's traced level (ground, basement, rooftop) its outline. A basement (k < 0): everything
-   * standing above it is hidden so it can be seen (the scene hides the furnished flat and the street plane).
+   * them; on a Studio project's traced level (ground, basement, rooftop) its outline. A cut floor (cuts(k)): everything
+   * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground).
    */
   highlight(k: number): void {
     const { FLATS, FLOORS, FLOOR_M, LEVELS } = this.t
@@ -294,9 +296,10 @@ export class Building extends THREE.Group {
     const entry = FLOORS.find((f) => f.floor === k)
     const level = (entry?.standIns ?? []).filter((s) => LEVELS?.[s] !== undefined)
     const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : level
+    const cut = this.cuts(k)
     for (const o of this.children) {
       if (o === this.mark) continue
-      const hide = k < 0 && !(typeof o.userData.level === 'number' && o.userData.level <= k)
+      const hide = cut && !(typeof o.userData.level === 'number' && o.userData.level <= k)
       if (hide && o.visible) (o.visible = false), (o.userData.cut = true)
       else if (!hide && o.userData.cut) (o.visible = true), delete o.userData.cut
     }
@@ -315,6 +318,11 @@ export class Building extends THREE.Group {
     }
     this.mark.geometry.dispose()
     this.mark.geometry = geos.length ? merge(geos) : new THREE.BufferGeometry()
+  }
+
+  /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
+  cuts(k: number): boolean {
+    return k < 0 || (k === 0 && Object.values(this.t.LEVELS ?? {}).includes(0))
   }
 
   /** The flat under a ray (walls, plates and proxies occlude; stand-ins, the core, ground and roof give null; what a basement's cut hides is not there). */

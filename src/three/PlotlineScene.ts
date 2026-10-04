@@ -432,13 +432,13 @@ export class PlotlineScene {
     this.orbit.target.y += dy
     this.camera.position.y += dy
     b.highlight(k)
-    this.cutAbove(k < 0 && k < b.floor)
+    this.cutAbove(b.cuts(k) && k < b.floor, k < 0)
   }
 
-  /** A basement picked in the Building view: the furnished flat and the street plane above it hidden (building.ts hides its own floors above it). */
-  private cutAbove(on: boolean): void {
+  /** A basement / his traced ground floor picked in the Building view: the furnished flat above it hidden, and under ground the street plane (building.ts hides its own floors above it). */
+  private cutAbove(on: boolean, street = on): void {
     this.staticGroup.visible = this.furnitureGroup.visible = !on
-    this.look.showGround(!on)
+    this.look.showGround(!street, !on)
   }
 
   currentRoomId(): Id | null {

@@ -151,9 +151,10 @@ export class Look {
     }
   }
 
-  /** The street plane and this flat's own slab / lights / street: hidden while the Building view shows a basement below them. */
-  showGround(on: boolean): void {
-    this.ground.visible = this.unitGroup.visible = on
+  /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
+  showGround(plane: boolean, flat = plane): void {
+    this.ground.visible = plane
+    this.unitGroup.visible = flat
   }
 
   /** Equirect sky texture for the dome; lighting stays on the interior HDRI. */
