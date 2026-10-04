@@ -1556,6 +1556,7 @@ export default function StudioApp() {
               onActivate={setActiveKey}
               onFix={applyFix}
               onName={nameRoom}
+              clickable={tool === 'select'}
             />
           )}
           <div className="tools">

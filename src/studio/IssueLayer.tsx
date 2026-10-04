@@ -2,7 +2,8 @@
  * The Issues and "Check these" rows drawn ON the plan (issues.ts): a numbered mark at each spot in its severity's
  * colour, the first fix's ghost faintly under every mark that has one, the open one's ghosts in full with its fix
  * buttons (or the room's name field) beside it. SVG over the canvas: only the numbered badges take the pointer, so the
- * corner under a mark stays draggable.
+ * corner under a mark stays draggable — and only in V (`clickable`): with a drawing tool picked (W, O, R, C, S, F) the
+ * marks stay visible but the click goes to the tool (C on a marked corner places a column, it does not open the mark).
  */
 import type { Pt } from '../core'
 import type { Fix, Ghost, Mark, MarkFixes } from './issues'
@@ -27,12 +28,14 @@ interface Props {
   onActivate: (key: string | null) => void
   onFix: (fix: Fix) => void
   onName: (at: Pt, name: string) => void
+  /** the badges take clicks (V); false while a drawing tool is picked */
+  clickable: boolean
 }
 
 /** where a mark's numbered badge goes, from its spot: up-right, else the first other corner no earlier badge sits on */
 const OFFSETS: Pt[] = [{ x: 12, y: -12 }, { x: 12, y: 12 }, { x: -12, y: -12 }, { x: -12, y: 12 }, { x: 0, y: -26 }, { x: 0, y: 26 }, { x: 26, y: 0 }, { x: -26, y: 0 }]
 
-export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, onActivate, onFix, onName }: Props) {
+export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, onActivate, onFix, onName, clickable }: Props) {
   const pts = (ps: Pt[]) => ps.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ')
   // badges never cover each other (two issues a few cm apart, e.g. a loose end inside an unnamed space)
   const placed: Pt[] = []
@@ -63,7 +66,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
   const at = open?.at && toScreen(open.at)
   return (
     <>
-      <svg className="issue-layer" width={width} height={height}>
+      <svg className={`issue-layer${clickable ? '' : ' passive'}`} width={width} height={height}>
         {/* unnamed rooms: tinted, the open one strongly */}
         {marks.map((m) => m.outline && m.at && (m.severity === 'amber' || m.key === active || m.key === hot) && <polygon key={`t${m.key}`} className={`tint${m.key === active || m.key === hot ? ' on' : ''}`} points={pts(m.outline)} />)}
         {/* every fix's first ghost faintly; the open / hovered one's in full */}

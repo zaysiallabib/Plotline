@@ -178,6 +178,7 @@
 .issue-layer .mark.on .pulse { animation: issue-pulse 0.9s ease-out 2; }
 @keyframes issue-pulse { from { opacity: 0.95; transform: scale(1); } to { opacity: 0; transform: scale(3.2); } }
 .issue-layer .badge { pointer-events: auto; cursor: pointer; }
+.issue-layer.passive .badge { pointer-events: none; } /* a drawing tool picked: the click is the tool's (IssueLayer clickable) */
 .issue-layer .badge circle { fill: var(--c); stroke: #0f0f10; stroke-width: 1.5; }
 .issue-layer .badge text { fill: #0f0f10; font: 600 10px Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
 .issue-layer .mark.on .badge circle, .issue-layer .mark.hot .badge circle { stroke: var(--ink); }
