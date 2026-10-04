@@ -101,14 +101,16 @@ export function baseLevel(unit: Unit, rooms: Room[]): number {
  * and faces whose floor drops below that unit's base (baseLevel: a ramp going down through its slab is the void over
  * the level below; a ramp of that level rising into it passes up through it). Every floor above, not only the next: a
  * ground floor's porch under flats that overhang a smaller level 1 is under a slab, so is a basement-2 ramp under the
- * basement-1 ramp's void under the ground's lawn. [] for a flat (its Look roofs it) and for the top level (a rooftop:
- * open sky). Studio project towers get the same.
+ * basement-1 ramp's void under the ground's lawn — up to the top floor: a rooftop level stands on the top floor's slab
+ * and adds only ledges (a sunshade planter 20 m up is no soffit over the drive). [] for a flat (its Look roofs it) and
+ * for the rooftop (open sky). Studio project towers get the same.
  */
 export function coverOf(t: Tower, stem: string): Pt[][] {
   const k = t.LEVELS?.[stem]
   if (k === undefined) return []
   const me = t.FLATS[stem].offset
-  const above = new Set(t.FLOORS.filter((f) => f.floor > k).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
+  const top = topFloor(t)
+  const above = new Set(t.FLOORS.filter((f) => f.floor > k && f.floor <= top).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
   return [...above].flatMap((s) => {
     const { unit, offset } = t.FLATS[s]
     const rooms = core.deriveRooms(unit)

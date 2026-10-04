@@ -352,6 +352,8 @@ describe('towers of common levels (session 19): Banani and dmd registered, level
     const sg = coverOf(sheltech, 'sheltech-ground')
     expect(has(sg, poly(unitOf(sheltech, 'sheltech-l1'), 'Gym'))).toBe(true)
     expect(has(sg, poly(unitOf(sheltech, 'sheltech-a'), 'Living'))).toBe(true)
+    // …but not under the rooftop's ledges: it stands on the top floor's slab
+    expect(has(sg, poly(unitOf(sheltech, 'sheltech-roof'), 'Sunshade / planter (south)'))).toBe(false)
   })
 
   test('a Studio project’s traced levels get the same cover, in the level’s own frame', () => {

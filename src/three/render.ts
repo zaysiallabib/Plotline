@@ -203,11 +203,28 @@ export class Look {
       const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
       return [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * off * s, y: mid.y + f.normal.y * off * s }, rooms, unit))
     }
-    const box = (w: Unit['walls'][number], y: number) => {
+    /** a box under / over wall w from u0 to u1 along it (default: the whole wall), reaching past a wall END by half its thickness */
+    const box = (w: Unit['walls'][number], y: number, u0 = 0, u1?: number) => {
       const f = core.wallFrame(w, unit.vertices)
+      const [a, b] = [u0 - (u0 <= 1e-9 ? w.thicknessM / 2 : 0), (u1 ?? f.lengthM) + ((u1 ?? f.lengthM) >= f.lengthM - 1e-9 ? w.thicknessM / 2 : 0)]
       const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-f.dir.y, 0, f.dir.x))
-      m.setPosition(f.origin.x + (f.dir.x * f.lengthM) / 2, y - (SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * f.lengthM) / 2)
-      return meterUVs(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
+      m.setPosition(f.origin.x + (f.dir.x * (a + b)) / 2, y - (SLAB_M + 0.001) / 2, f.origin.y + (f.dir.y * (a + b)) / 2)
+      return meterUVs(new THREE.BoxGeometry(b - a, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
+    }
+    /** the stretches of wall w under the cover (0.5 m steps by their middles) */
+    const underCover = (w: Unit['walls'][number]): [number, number][] => {
+      const f = core.wallFrame(w, unit.vertices)
+      const n = Math.max(1, Math.ceil(f.lengthM / 0.5))
+      const runs: [number, number][] = []
+      for (let i = 0; i < n; i++) {
+        const [u0, u1] = [(i * f.lengthM) / n, ((i + 1) * f.lengthM) / n]
+        const p = { x: f.origin.x + (f.dir.x * (u0 + u1)) / 2, y: f.origin.y + (f.dir.y * (u0 + u1)) / 2 }
+        if (!cover.some((c) => core.pointInPolygon(p, c))) continue
+        const last = runs.at(-1)
+        if (last && Math.abs(last[1] - u0) < 1e-9) last[1] = u1
+        else runs.push([u0, u1])
+      }
+      return runs
     }
     const wallParts = unit.walls.map((w) => box(w, 0))
     // under the floors: each wall's box under its lower side's floor; none under a flush line (the floors meet on it, and a
@@ -216,9 +233,12 @@ export class Look {
     // the roof closes no wall that stands only among open zones (a kerb, a boundary wall, a screen in a lawn): a beam at the
     // storey's top over it would hang in the sky and stripe the lawn with its shadow
     const open = (r: Room | null) => !r || (core.isOutdoor(r.kind) && !isCovered(r, cover))
+    // — and a wall among zones only (a boundary wall, a ramp's side) closes the roof only where the cover is over it: a
+    // drive half under the tower kept a beam along its whole wall, out into the sky
     const roofWalls = unit.walls.flatMap((w, i) => {
       const s = sidesOf(w)
-      return w.heightM > 0 && !(s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open)) ? [wallParts[i]] : []
+      if (!(w.heightM > 0) || (s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open))) return []
+      return s.some((r) => r) && s.every((r) => !r || core.isOutdoor(r.kind)) ? underCover(w).map(([u0, u1]) => box(w, 0, u0, u1)) : [wallParts[i]]
     })
     const slabGeo = mergeGeometries([...underFloors, ...footParts])
     // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
@@ -230,7 +250,7 @@ export class Look {
     // (a room under the cover: the cover's own plane is its roof — two coplanar planes fought in stripes)
     const lifted = [...roomParts.filter((_, i) => !openToSky(rooms[i], cover) && !cover.some((c) => core.pointInPolygon(rooms[i].centroid, c))), ...over].map((g) => g.clone().translate(0, ROOF_LIFT, 0))
     const roofGeo = mergeGeometries([...lifted, ...roofWalls])
-    ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over].forEach((g) => g.dispose())
+    ;[...roomParts, ...underFloors, ...wallParts, ...footParts, ...lifted, ...over, ...roofWalls].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
