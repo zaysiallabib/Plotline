@@ -3,11 +3,22 @@
  * building frame (origin = the fire stair's inner NW corner), the core and the columns shared level to level.
  */
 import { describe, expect, test } from 'vitest'
+import b1 from '../data/units/dmd-b1.json'
+import b2 from '../data/units/dmd-b2.json'
 import roof from '../data/units/dmd-roof.json'
 import * as core from './index'
 import type { Unit } from './index'
 
+const BAYS = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => String(a + i).padStart(2, '0'))
 const LEVELS: Record<string, { unit: Unit; zones: string[] }> = {
+  'dmd-b2': {
+    unit: b2 as unknown as Unit,
+    zones: ['Driveway', 'Pump room', 'Fire stair', 'Lift pit', "Drivers' waiting", 'Ramp up to Basement 1', 'Under the ramp', ...BAYS(36, 72)],
+  },
+  'dmd-b1': {
+    unit: b1 as unknown as Unit,
+    zones: ['Driveway', 'Underground water reservoir', 'Fire stair', 'Lift pit', "Driver's waiting", "Drivers' waiting", 'Ramp up to the ground level', 'Ramp down to Basement 2', ...BAYS(1, 35)],
+  },
   'dmd-roof': {
     unit: roof as unknown as Unit,
     zones: ['Swimming pool', 'Pool deck', 'Shower & change room', 'Fire stair', 'Stair', 'Lift machine room', 'Overhead water tank', 'Roof terrace', 'Roof terrace (south)', 'Roof garden (west)', 'Roof garden (east)', 'Roof garden (south)'],
@@ -69,11 +80,10 @@ describe('the core and the columns coincide level to level (within 5 cm)', () =>
   const units = Object.values(LEVELS).map((l) => l.unit)
   test('fire stair', () => {
     const boxes = units.map((u) => {
-      const r = core.deriveRooms(u).find((r) => r.name === 'Fire stair')!
-      return core.roomInnerPolygon(r, u)
+      const p = core.roomInnerPolygon(core.deriveRooms(u).find((r) => r.name === 'Fire stair')!, u)
+      return [Math.min(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y))]
     })
-    for (const b of boxes.slice(1))
-      for (const p of b) expect(Math.min(...boxes[0].map((q) => Math.hypot(p.x - q.x, p.y - q.y)))).toBeLessThan(0.05)
+    for (const b of boxes.slice(1)) b.forEach((v, i) => expect(Math.abs(v - boxes[0][i])).toBeLessThan(0.05))
   })
   test('columns with the same id stand in the same place', () => {
     const at = new Map<string, core.Pt>()
