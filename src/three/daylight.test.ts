@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { bakeDaylight, factorAt, formFactor, HI, LO, mapDaylight, RANGE, SHORT_WALL_M } from './daylight'
+import { bakeDaylight, factorAt, formFactor, HI, isCovered, LO, mapDaylight, openToSky, RANGE, SHORT_WALL_M } from './daylight'
+import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
 import typeA from '../data/units/type-a.json'
@@ -117,4 +118,30 @@ describe('smooth atlas (wave 14: no texel pattern)', () => {
     const at = texel(d, 'wall:w_pdr_e:1')
     for (let y = 0; y < r.nv; y++) expect(Math.abs(at(0, y) - at(1, y))).toBeLessThan(0.06)
   }, 30000)
+})
+
+/** Session 19: an outdoor zone is open sky (neutral, no bake), or under the slab above (`cover`) the flat COVERED shade. */
+describe('outdoor zones in the bake (ground sample)', () => {
+  const u = GROUND_SAMPLE
+  const rooms = core.deriveRooms(u)
+  const lawnFaces = (d: ReturnType<typeof bakeDaylight>) => [...d.sides].flatMap(([id, [f, b]]) => [f?.id === 'Lawn' ? `wall:${id}:1` : null, b?.id === 'Lawn' ? `wall:${id}:-1` : null]).filter((k): k is string => !!k)
+
+  test('open: a zone and the wall faces toward it are not baked (they read the neutral block); the lobby is, and its door sees open sky', () => {
+    const d = bakeDaylight(u, rooms)
+    expect(lawnFaces(d).length).toBeGreaterThan(4)
+    for (const key of ['floor:Lawn', 'floor:Driveway', 'floor:Ramp', 'ceil:Lawn', ...lawnFaces(d)]) expect(d.regions.has(key), key).toBe(false)
+    expect(d.regions.get('floor:Lobby')!.E.some((e) => e > 0)).toBe(true)
+    expect(openToSky(rooms.find((r) => r.id === 'Lawn')!)).toBe(true)
+  })
+
+  test('covered: the zone under the slab and its wall faces read the COVERED shade; the open ones stay neutral', () => {
+    const cover = [[{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 10 }, { x: 0, y: 10 }]] // over the lawn, not the drive
+    const d = bakeDaylight(u, rooms, cover)
+    const lawn = rooms.find((r) => r.id === 'Lawn')!
+    expect(isCovered(lawn, cover)).toBe(true)
+    expect(openToSky(lawn, cover)).toBe(false)
+    expect(factorAt(d, 'floor:Lawn', 1, 5)).toBeCloseTo(0.75, 1)
+    for (const key of lawnFaces(d)) expect(factorAt(d, key, 0.5, 1), key).toBeCloseTo(0.75, 1)
+    expect(d.regions.has('floor:Driveway')).toBe(false)
+  })
 })

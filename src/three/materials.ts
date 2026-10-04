@@ -6,7 +6,7 @@
  * flat fallback colour and only receives the map once it actually loads.
  */
 import * as THREE from 'three'
-import type { Configuration, FinishSlot, Id, MaterialRef } from '../core'
+import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { TEXTURES } from '../furnish/textures'
 import { daylit as daylitPatch } from './daylight'
 
@@ -37,7 +37,11 @@ function loadTex(url: string, repeatM: number, srgb: boolean): Promise<THREE.Tex
 
 /** Flat colour that stands in for a texture set that is not on disk yet. */
 function fallbackColor(textureId: string): string {
-  if (/wood|oak|teak/.test(textureId)) return '#8a6a4a'
+  if (/wood|oak|teak|deck/.test(textureId)) return '#8a6a4a'
+  if (/turf|grass/.test(textureId)) return '#5d7040'
+  if (/asphalt|rubber/.test(textureId)) return '#3c3c3c'
+  if (/soil/.test(textureId)) return '#4a3a2c'
+  if (/paving/.test(textureId)) return '#9b9891'
   if (/marble/.test(textureId)) return '#e6e2da'
   if (/tile/.test(textureId)) return '#d8d5cf'
   if (/concrete|stone/.test(textureId)) return '#9b9891'
@@ -80,7 +84,8 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       }
       apply('map', set.albedo, true)
       apply('normalMap', set.normal)
-      apply('roughnessMap', set.roughness)
+      if (set.matte) Object.assign(m, { roughness: 1, normalScale: new THREE.Vector2(0.5, 0.5) })
+      else apply('roughnessMap', set.roughness)
       apply('aoMap', set.ao)
     }
   }
@@ -96,6 +101,29 @@ export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_
 /** Wall ends and tops (edge variant): the warm-white paint. A thick outer wall's end cap shows inside the room it stops at
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
+/** Bare smooth concrete: parking floors, kerbs, the riser where two zones meet at different levels, a pool's coping. */
+export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#c8d0d6' } // cools the scan's brown: it read as earth
+/** A pool's basin: aqua-glazed tiles (the wall tile's grout relief and glaze). */
+export const POOL_TILE: MaterialRef = { kind: 'pbr', textureId: 'tile_wall_white', tint: '#8ccad0' }
+/**
+ * The outdoor zones' floors (core.isOutdoor): a rule by kind, no buyer finish. A play area is the soft rubber surface, a
+ * planter its soil (the greenery is furniture), a pool its tiled basin (the water is its own mesh).
+ */
+export const ZONE_FLOOR: Partial<Record<RoomKind, MaterialRef>> = {
+  lawn: { kind: 'pbr', textureId: 'turf' },
+  paving: { kind: 'pbr', textureId: 'paving_pavers', tint: '#d6d2cc' },
+  driveway: { kind: 'pbr', textureId: 'asphalt' },
+  parking: CONCRETE,
+  deck: { kind: 'pbr', textureId: 'deck_boards' },
+  play: { kind: 'pbr', textureId: 'turf' }, // artificial grass: the CC0 rubber surface came out a heavy maroon slab
+  planter: { kind: 'pbr', textureId: 'soil' },
+  pool: POOL_TILE,
+}
+/** A face toward an outdoor zone: its floor by kind; every wall face, end and top the exterior render; overhead the cover's concrete. */
+export function zoneFinishRef(kind: RoomKind, target: FinishSlot['target']): MaterialRef {
+  return target === 'floor' ? (ZONE_FLOOR[kind] ?? CONCRETE) : target === 'wall' ? EXTERIOR_PLASTER : CONCRETE
+}
+
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
   floor: { kind: 'color', color: '#b8a58c', roughness: 0.7 },
   // the hand-authored units' warm-white paint: a flat #f1efe9 was the white casing's own colour, so a Studio draft's cased

@@ -37,10 +37,14 @@ describe('finish catalog', () => {
     }
   })
 
-  it.each(Object.keys(HAND))("%s carries exactly the catalog's slots (its own room lists), and keeps them", (name) => {
+  it.each(Object.keys(HAND))("%s carries exactly the catalog's slots for its kinds (its own room lists), and keeps them", (name) => {
     const u = HAND[name]
-    const own = (id: string) => u.finishSlots.find((s) => s.id === id)!.roomIds
-    expect(u.finishSlots).toEqual(FINISH_CATALOG.map(({ kinds: _, ...s }) => ({ ...s, roomIds: own(s.id) })))
+    const own = (id: string) => u.finishSlots.find((s) => s.id === id)?.roomIds
+    const kinds = new Set(core.deriveRooms(u).map((r) => r.kind))
+    // a slot only for kinds the flat has none of (the levels' lobby, gym) is not carried
+    const mine = FINISH_CATALOG.filter((s) => own(s.id) || (s.kinds !== 'all' && s.kinds.some((k) => kinds.has(k))))
+    expect(FINISH_CATALOG.length - mine.length).toBe(2)
+    expect(u.finishSlots).toEqual(mine.map(({ kinds: _, ...s }) => ({ ...s, roomIds: own(s.id) })))
     // the viewer resolves a unit with slots to those very slots: what it renders cannot change
     expect(finishSlotsFor(u, core.deriveRooms(u))).toBe(u.finishSlots)
   })
@@ -82,7 +86,7 @@ describe("finishes on the founder's draft (no slots of its own)", () => {
 
   it('gets the catalog: every closed room a wall and a ceiling finish, every room but a shaft a floor', () => {
     expect(founder.finishSlots).toEqual([])
-    expect(slots.map((s) => s.id)).toEqual(FINISH_CATALOG.map((s) => s.id))
+    expect(slots.map((s) => s.id)).toEqual(FINISH_CATALOG.map((s) => s.id).filter((id) => id !== 's_floor_lobby' && id !== 's_floor_gym'))
     expect(rooms.some((r) => r.name.startsWith('Space'))).toBe(true) // unnamed closed spaces are covered too
     for (const r of rooms) {
       expect(slotOf(slots, r.id, 'wall'), r.name).not.toBeNull()

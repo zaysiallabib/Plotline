@@ -7,11 +7,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Graph, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
-import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
+import { CASING_P, CASING_W, buildOpening, isGlazing, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
 const NO_SKIRTING: RoomKind[] = ['bath', 'balcony', 'shaft']
+/** No skirting in a wet or open room, nor in any outdoor zone (a lobby's outer face standing in a lawn gets none from the lawn side). */
+const skirted = (k: RoomKind) => !NO_SKIRTING.includes(k) && !core.isOutdoor(k)
 const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
 /** Rooms that are open to the sky: a window onto one is an outside window. */
 const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
@@ -48,7 +50,7 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
   const raw: SkirtingRun[] = []
   const roomOf = (p: Pt) => {
     const r = core.roomAt(p, rooms, unit)
-    return r && !NO_SKIRTING.includes(r.kind) ? r : null
+    return r && skirted(r.kind) ? r : null
   }
   // a short strip (a wall end, a reveal) keeps only what lies on its own room's floor or inside a wall: where two ends
   // cross at a traced jog, two rooms' strips filled the same corner and their tops z-fought
@@ -384,7 +386,7 @@ export function pillarParts(p: Pillar, heightM: number, unit: Unit, rooms: Room[
     const room = core.roomAt({ x: c.x + nx * 0.05, y: c.y + ny * 0.05 }, rooms, unit)
     const yaw = Math.atan2(nx, ny) // a plane facing +Z turned to face (nx, 0, ny)
     out.push({ geo: meterUVs(new THREE.PlaneGeometry(2 * half, top).rotateY(yaw).translate(c.x, top / 2, c.y)), room, part: 'face' })
-    if (!room || NO_SKIRTING.includes(room.kind)) continue
+    if (!room || !skirted(room.kind)) continue
     const strip = new THREE.BoxGeometry(2 * (half + SKIRTING_T), SKIRTING_H, SKIRTING_T).rotateY(yaw) // past both corners: closes them
     out.push({ geo: meterUVs(strip.translate(c.x + (nx * SKIRTING_T) / 2, SKIRTING_H / 2, c.y + (ny * SKIRTING_T) / 2)), room, part: 'skirting' })
   }
@@ -412,9 +414,9 @@ function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room 
  * the unit, a balcony or a shaft) — never an interior glass partition between two rooms.
  */
 export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
-  if (o.kind !== 'window') return []
+  if (o.kind !== 'window' || isGlazing(o)) return [] // a glass wall hangs no curtain
   const [front, back] = openingRooms(o, wall, unit, rooms)
-  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind)
+  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || core.isOutdoor(r.kind)
   const out: [Room, 1 | -1][] = []
   if (front && CURTAIN_ROOMS.includes(front.kind) && open(back)) out.push([front, 1])
   if (back && CURTAIN_ROOMS.includes(back.kind) && open(front)) out.push([back, -1])
@@ -658,4 +660,332 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
     start += p.length / 3
   })
   return geo
+}
+
+/** Walls up to this tall are kerbs: walked over (PlotlineScene), concrete. */
+export const KERB_M = 0.2
+
+/**
+ * A wall's floors (floor levels, session 19), at its ends a and b: `foot` = the LOWER side's floor — the wall stands on it
+ * and heightM is measured from it (the data lanes' convention: a parapet round a +1.2 m deck from the terrace below is 2.3 m);
+ * `base` = the higher side's floor — its openings stand on that (a door from a raised lobby down to its lawn: the wall below
+ * its sill is the step's riser). A side with no face counts for nothing; a wall in no face stands on 0. Rooms carry their
+ * level from their label (core.roomLevelAt; a ramp is a plane, so along a straight wall the level is linear between ends).
+ */
+export interface WallLift {
+  base: [number, number]
+  foot: [number, number]
+}
+const FLAT: WallLift = { base: [0, 0], foot: [0, 0] }
+export function wallLift(wall: Wall, unit: Unit, rooms: Room[]): WallLift {
+  if (!rooms.some((r) => r.levelM || r.slope)) return FLAT
+  const f = core.wallFrame(wall, unit.vertices)
+  const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+  const off = wall.thicknessM / 2 + 0.05
+  const sides = [1, -1].flatMap((s) => core.roomAt({ x: mid.x + f.normal.x * off * s, y: mid.y + f.normal.y * off * s }, rooms, unit) ?? [])
+  const lv = [wall.a, wall.b].map((id) => {
+    const p = core.vertexById(unit.vertices, id)
+    return sides.map((r) => core.roomLevelAt(r, unit, p.x, p.y))
+  })
+  const pick = (m: (...v: number[]) => number) => lv.map((l) => (l.length ? m(...l) : 0)) as [number, number]
+  return { base: pick(Math.max), foot: pick(Math.min) }
+}
+
+/** The step from a wall's foot up to its higher floor at u along it (its length L). */
+const stepAt = (l: WallLift, u: number, L: number) => {
+  const t = THREE.MathUtils.clamp(u / (L || 1), 0, 1)
+  return l.base[0] - l.foot[0] + t * (l.base[1] - l.foot[1] - (l.base[0] - l.foot[0]))
+}
+
+/**
+ * The wall as it is built on its foot (wallGeometry and its joinery): each opening's sill raised by the step to the higher
+ * floor there, its head kept within the wall (a 2.7 m glass wall over a 0.6 m step in a 3 m wall: glass to the top).
+ */
+export function liftedWall(wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift): Wall {
+  if (l === FLAT || !wall.openings.length) return wall
+  const L = core.wallFrame(wall, unit.vertices).lengthM
+  return {
+    ...wall,
+    openings: wall.openings.map((o) => {
+      const sillM = o.sillM + stepAt(l, o.offsetM + o.widthM / 2, L)
+      return { ...o, sillM, heightM: Math.max(0.1, Math.min(o.heightM, wall.heightM - sillM)) }
+    }),
+  }
+}
+
+/**
+ * Puts a wall solid (wallGeometry of liftedWall, built on 0) on its foot: every vertex up by `foot` there. `top` (a storey
+ * wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands.
+ */
+export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift, top?: number): void {
+  if (l === FLAT && top === undefined) return
+  const f = core.wallFrame(wall, unit.vertices)
+  const p = geo.attributes.position
+  for (let i = 0; i < p.count; i++) {
+    const t = THREE.MathUtils.clamp(((p.getX(i) - f.origin.x) * f.dir.x + (p.getZ(i) - f.origin.y) * f.dir.y) / (f.lengthM || 1), 0, 1)
+    const y = p.getY(i)
+    p.setY(i, top !== undefined && y > wall.heightM - 1e-6 ? top : y + l.foot[0] + t * (l.foot[1] - l.foot[0]))
+  }
+  p.needsUpdate = true
+  geo.computeBoundingBox()
+  geo.computeBoundingSphere()
+}
+
+/** A room's ceiling, m above the datum: its tallest wall's top (each wall from its foot); 3 m when it has none. */
+export function roomCeiling(room: Room, unit: Unit, rooms: Room[]): number {
+  const tops = room.wallIds.flatMap((id) => unit.walls.filter((w) => w.id === id).map((w) => Math.max(...wallLift(w, unit, rooms).foot) + w.heightM))
+  return tops.length ? Math.max(...tops) : 3
+}
+
+/** The top of the storey: the highest wall top over its floor (render.ts's roof, the columns). 0 without walls. */
+export function storeyTop(unit: Unit, rooms: Room[]): number {
+  return Math.max(0, ...unit.walls.filter((w) => w.heightM > 0).map((w) => Math.max(...wallLift(w, unit, rooms).foot) + w.heightM))
+}
+
+/**
+ * Where two faces meet along a flush line (heightM 0: no wall to carry a plinth) at different floor levels, the step's
+ * vertical face from the lower floor up to the higher, on the line, facing the lower side — a lobby's edge above its lawn,
+ * a ramp's side. Each riser is finished as the upper face's floor. Levels cross along the line (a ramp beside a flat zone):
+ * one triangle each side of the crossing.
+ */
+export function stepFaces(unit: Unit, rooms: Room[]): { room: Room; geo: THREE.BufferGeometry }[] {
+  if (!rooms.some((r) => r.levelM || r.slope)) return []
+  const out: { room: Room; geo: THREE.BufferGeometry }[] = []
+  for (const w of unit.walls) {
+    if (w.heightM > 0) continue
+    const f = core.wallFrame(w, unit.vertices)
+    if (f.lengthM < 1e-3) continue
+    const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+    const [front, back] = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * 0.05 * s, y: mid.y + f.normal.y * 0.05 * s }, rooms, unit))
+    if (!front || !back || isSteps(front, unit) || isSteps(back, unit)) continue // a flight's blocks close its own sides
+    const [A, B] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
+    const lv = (r: Room, p: Pt) => core.roomLevelAt(r, unit, p.x, p.y)
+    const [fa, fb, ba, bb] = [lv(front, A), lv(front, B), lv(back, A), lv(back, B)]
+    const [da, db] = [fa - ba, fb - bb]
+    if (Math.abs(da) < 1e-3 && Math.abs(db) < 1e-3) continue
+    // one face (a tri or a quad) between plan points p..q, floors lo / hi at each, the upper side = sign (+1 front)
+    const face = (p: Pt, q: Pt, lo: [number, number], hi: [number, number], sign: number) => {
+      const v = [
+        [p.x, lo[0], p.y],
+        [q.x, lo[1], q.y],
+        [q.x, hi[1], q.y],
+        [p.x, hi[0], p.y],
+      ]
+      const tris = [[0, 1, 2], [0, 2, 3]].filter((t) => new Set(t.map((i) => `${v[i]}`)).size === 3)
+      const want = { x: -sign * f.normal.x, y: -sign * f.normal.y } // toward the lower side
+      const pos: number[] = []
+      for (const t of tris) {
+        const [a, b, c] = t.map((i) => v[i])
+        const n = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2])]
+        pos.push(...(n[0] * want.x + n[1] * want.y >= 0 ? [a, b, c] : [a, c, b]).flat())
+      }
+      if (!pos.length) return
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+      geo.computeVertexNormals()
+      out.push({ room: sign > 0 ? front : back, geo: meterUVs(geo) })
+    }
+    if (da * db >= 0) {
+      const s = Math.sign(da || db)
+      face(A, B, [Math.min(fa, ba), Math.min(fb, bb)], [Math.max(fa, ba), Math.max(fb, bb)], s)
+    } else {
+      const t = da / (da - db)
+      const C = { x: A.x + t * (B.x - A.x), y: A.y + t * (B.y - A.y) }
+      const lc = fa + t * (fb - fa)
+      face(A, C, [Math.min(fa, ba), lc], [Math.max(fa, ba), lc], Math.sign(da))
+      face(C, B, [lc, Math.min(fb, bb)], [lc, Math.max(fb, bb)], Math.sign(db))
+    }
+  }
+  return out
+}
+
+/** A pool's water stands this far below its face's level (its rim). */
+export const WATER_DROP_M = 0.08
+/**
+ * How deep a pool face's basin goes, by its size: its mean width (2 × area / perimeter: a strip's width, half a square's
+ * side) — a swimming pool (≥ 1.5 m) 1.2 m, a narrow water body / fountain channel 0.45 m.
+ */
+export function poolDepth(room: Room, unit: Unit): number {
+  const poly = core.roomPolygon(room, unit)
+  const per = poly.reduce((s, p, i) => s + Math.hypot(poly[(i + 1) % poly.length].x - p.x, poly[(i + 1) % poly.length].y - p.y), 0)
+  return per > 0 && (2 * room.areaSqm) / per >= 1.5 ? 1.2 : 0.45
+}
+
+/**
+ * A pool face (kind 'pool'): its basin's walls, from the floor (level − depth) up to the rim (its level), on the face's
+ * outline (the centreline, as the floor) facing in; and the water's plane just below the rim. World space, metre UVs.
+ */
+export function poolBasin(room: Room, unit: Unit): { depth: number; walls: THREE.BufferGeometry; water: THREE.BufferGeometry } {
+  const poly = core.roomPolygon(room, unit)
+  const depth = poolDepth(room, unit)
+  const lv = (p: Pt) => core.roomLevelAt(room, unit, p.x, p.y)
+  const inward = core.signedArea(poly) > 0 ? 1 : -1 // plan y-down: a positive loop is clockwise on screen
+  const pos: number[] = []
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const [ta, tb] = [lv(a), lv(b)]
+    const q = [
+      [a.x, ta - depth, a.y],
+      [b.x, tb - depth, b.y],
+      [b.x, tb, b.y],
+      [a.x, ta, a.y],
+    ]
+    // facing in: the edge's left / right normal by the loop's winding
+    const n = { x: -(b.y - a.y) * inward, y: (b.x - a.x) * inward }
+    for (const t of [[0, 1, 2], [0, 2, 3]]) {
+      const [p0, p1, p2] = t.map((k) => q[k])
+      const c = [(p1[1] - p0[1]) * (p2[2] - p0[2]) - (p1[2] - p0[2]) * (p2[1] - p0[1]), (p1[2] - p0[2]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[2] - p0[2])]
+      pos.push(...(c[0] * n.x + c[1] * n.y >= 0 ? [p0, p1, p2] : [p0, p2, p1]).flat())
+    }
+  })
+  const walls = new THREE.BufferGeometry()
+  walls.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  walls.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+  walls.computeVertexNormals()
+  meterUVs(walls)
+  // the water: the face's polygon (triangulated as the floors are), facing up
+  const tri = core.triangulate(poly)
+  const wp: number[] = []
+  const uv: number[] = []
+  for (let i = 0; i < tri.length; i += 3) {
+    const [a, b, c] = [poly[tri[i]], poly[tri[i + 1]], poly[tri[i + 2]]]
+    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    for (const p of cross > 0 ? [a, c, b] : [a, b, c]) {
+      wp.push(p.x, lv(p) - WATER_DROP_M, p.y)
+      uv.push(p.x, p.y)
+    }
+  }
+  const water = new THREE.BufferGeometry()
+  water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3))
+  water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  water.computeVertexNormals()
+  return { depth, walls, water }
+}
+
+/** A parking bay's number painted on its floor: its label's name when that is a bay number (12, B-07, P12A). */
+export const BAY_NUMBER = /^[A-Z]{0,2}-?\d{1,3}[A-Z]?$/i
+/**
+ * The paint on a parking level (kind 'parking', by rule): a 100 mm white line along every flush line (heightM 0) that
+ * bounds a parking face (a wall or kerb there needs none), on that face's floor; and each bay's number at its centre,
+ * reading from its aisle — `up` is the plan direction from the edge it shares with a driveway toward the bay's centre (no
+ * such edge: along its longest edge).
+ */
+export function bayMarkings(unit: Unit, rooms: Room[]): { lines: { a: V3; b: V3 }[]; numbers: { text: string; at: V3; up: Pt }[] } {
+  const parking = rooms.filter((r) => r.kind === 'parking')
+  const lines: { a: V3; b: V3 }[] = []
+  const numbers: { text: string; at: V3; up: Pt }[] = []
+  if (!parking.length) return { lines, numbers }
+  for (const w of unit.walls) {
+    if (w.heightM > 0) continue
+    const f = core.wallFrame(w, unit.vertices)
+    const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+    const sides = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * 0.05 * s, y: mid.y + f.normal.y * 0.05 * s }, rooms, unit))
+    const bay = sides.find((r) => r?.kind === 'parking')
+    if (!bay) continue
+    const [A, B] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
+    // the higher of the two floors (a bay beside a ramp: the paint never sinks under the other floor)
+    const lv = (p: Pt) => Math.max(...sides.map((r) => (r ? core.roomLevelAt(r, unit, p.x, p.y) : -Infinity)))
+    lines.push({ a: [A.x, lv(A), A.y], b: [B.x, lv(B), B.y] })
+  }
+  for (const r of parking) {
+    if (!BAY_NUMBER.test(r.name.trim())) continue
+    const poly = core.roomPolygon(r, unit)
+    let up: Pt | null = null
+    let long = { d: { x: 0, y: -1 }, L: 0 }
+    poly.forEach((a, i) => {
+      const b = poly[(i + 1) % poly.length]
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L > long.L) long = { d: { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, L }
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      const toC = { x: r.centroid.x - m.x, y: r.centroid.y - m.y }
+      const k = Math.hypot(toC.x, toC.y) || 1
+      const out = { x: m.x - (toC.x / k) * 0.1, y: m.y - (toC.y / k) * 0.1 }
+      if (!up && core.roomAt(out, rooms, unit)?.kind === 'driveway') up = { x: toC.x / k, y: toC.y / k }
+    })
+    numbers.push({ text: r.name.trim(), at: [r.centroid.x, core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y), r.centroid.y], up: up ?? long.d })
+  }
+  return { lines, numbers }
+}
+
+/** A sloped face steeper than this (rise / run) is a flight of steps, not a ramp: stepGeometry. */
+export const STEPS_GRADE = 1 / 3
+const RISER_M = 0.16
+
+/** Is this face a flight of steps (a slope steeper than STEPS_GRADE)? */
+export function isSteps(room: Room, unit: Unit): boolean {
+  const s = room.slope
+  if (!s) return false
+  const r = (s.dirDeg * Math.PI) / 180
+  const along = core.roomPolygon(room, unit).map((p) => p.x * Math.sin(r) - p.y * Math.cos(r))
+  const span = Math.max(...along) - Math.min(...along)
+  return span > 1e-3 && Math.abs(s.toLevelM - (room.levelM ?? 0)) / span > STEPS_GRADE
+}
+
+/** Sutherland–Hodgman: the part of plan polygon `poly` where f ≥ 0. */
+function clipPlan(poly: Pt[], f: (p: Pt) => number): Pt[] {
+  const out: Pt[] = []
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const [fa, fb] = [f(a), f(b)]
+    if (fa >= 0) out.push(a)
+    if (fa >= 0 !== fb >= 0) {
+      const t = fa / (fa - fb)
+      out.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) })
+    }
+  })
+  return out
+}
+
+/**
+ * A steep sloped face (isSteps; the data's "Steps" are sloped paving faces) built as a flight: treads of equal going across
+ * the face along its slope, each level (the first at the low floor, the last at the high, risers ≈ 0.16 m), each a solid
+ * block down to the low floor, so its sides close against whatever is beside it. The plane (core.roomLevelAt) still carries
+ * the walker smoothly. World space; treads in plan UVs, faces in metre UVs.
+ */
+export function stepGeometry(room: Room, unit: Unit): THREE.BufferGeometry | null {
+  if (!isSteps(room, unit)) return null
+  const s = room.slope!
+  const r = (s.dirDeg * Math.PI) / 180
+  const d = { x: Math.sin(r), y: -Math.cos(r) }
+  const along = (p: Pt) => p.x * d.x + p.y * d.y
+  const poly = core.roomPolygon(room, unit)
+  const s0 = Math.min(...poly.map(along))
+  const span = Math.max(...poly.map(along)) - s0
+  const [lo, hi] = [room.levelM ?? 0, s.toLevelM]
+  const n = Math.max(2, Math.round(Math.abs(hi - lo) / RISER_M) + 1)
+  const bottom = Math.min(lo, hi)
+  const pos: number[] = []
+  const tri = (a: number[], b: number[], c: number[], want: number[]) => {
+    const e = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+    const k = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+    const nrm = [e[1] * k[2] - e[2] * k[1], e[2] * k[0] - e[0] * k[2], e[0] * k[1] - e[1] * k[0]]
+    pos.push(...(nrm[0] * want[0] + nrm[1] * want[1] + nrm[2] * want[2] >= 0 ? [a, b, c] : [a, c, b]).flat())
+  }
+  for (let k = 0; k < n; k++) {
+    const [b0, b1] = [s0 + (span * k) / n, s0 + (span * (k + 1)) / n]
+    const P = clipPlan(clipPlan(poly, (p) => along(p) - b0), (p) => b1 - along(p))
+    if (P.length < 3) continue
+    const y = lo + ((hi - lo) * k) / (n - 1)
+    const t = core.triangulate(P)
+    for (let i = 0; i < t.length; i += 3) tri(...([t[i], t[i + 1], t[i + 2]].map((j) => [P[j].x, y, P[j].y]) as [number[], number[], number[]]), [0, 1, 0])
+    // its block's sides, down to the low floor, each facing out of the tread (the band's two cut lines included: the risers)
+    const c = { x: P.reduce((q, p) => q + p.x, 0) / P.length, y: P.reduce((q, p) => q + p.y, 0) / P.length }
+    P.forEach((a, i) => {
+      const b = P[(i + 1) % P.length]
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-6 || y - bottom < 1e-6) return
+      const m = { x: (a.x + b.x) / 2 - c.x, y: (a.y + b.y) / 2 - c.y }
+      const out = [b.y - a.y, 0, -(b.x - a.x)] // perpendicular in plan (x, z); its sign fixed by `m`
+      const s = out[0] * m.x + out[2] * m.y >= 0 ? 1 : -1
+      const want = [s * out[0], 0, s * out[2]]
+      tri([a.x, bottom, a.y], [b.x, bottom, b.y], [b.x, y, b.y], want)
+      tri([a.x, bottom, a.y], [b.x, y, b.y], [a.x, y, a.y], want)
+    })
+  }
+  if (!pos.length) return null
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+  g.computeVertexNormals()
+  return meterUVs(g)
 }

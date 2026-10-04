@@ -88,3 +88,18 @@ Art: 512 × 717 crops of Poly Haven tonemapped HDRI JPGs (a landscape split into
 | turf | texture | https://ambientcg.com/view?id=Grass004 | ambientCG (Lennart Demes) | CC0 | 2026-09-27 | textures/turf/{albedo.jpg,normal.jpg,roughness.jpg} — mown lawn for ground-floor / rooftop green strips; 1K maps re-encoded (albedo q82, normal q80, roughness q75) | 962184 |
 
 The planter bed's leaf sprites are painted at runtime (src/furnish/procedural.ts paintLeaves): no file.
+
+### Added session 19 (3D look of the levels: zone floors, gym floor)
+
+Poly Haven 1K JPG maps as downloaded through api.polyhaven.com/files (Diffuse → albedo, nor_gl → normal, Rough →
+roughness, AO → ao), not re-encoded; each asset page states CC0. `tile_floor_large` is no file: the
+tile_floor_ceramic maps at twice the repeat (1200 × 1200 tiles, the lobby floor).
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| paving_pavers | texture | https://polyhaven.com/a/concrete_pavers_02 | Amal Kumar | CC0 | 2026-10-04 | textures/paving_pavers/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `paving` zones | 2153459 |
+| asphalt | texture | https://polyhaven.com/a/clean_asphalt | Dimitrios Savva | CC0 | 2026-10-04 | textures/asphalt/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `driveway` zones and ramps | 2811860 |
+| concrete | texture | https://polyhaven.com/a/garage_floor | Jenelle van Heerden | CC0 | 2026-10-04 | textures/concrete/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `parking`, kerbs, step risers, pool coping | 2455498 |
+| deck_boards | texture | https://polyhaven.com/a/wooden_planks | Dario Barresi, Charlotte Baglioni | CC0 | 2026-10-04 | textures/deck_boards/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `deck` zones (wood_floor_deck first: a glossy orange ipe on the roofs) | 1958076 |
+| rubber_gym | texture | https://polyhaven.com/a/rubber_tiles | Amal Kumar | CC0 | 2026-10-04 | textures/rubber_gym/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — gym floor | 1714677 |
+| soil | texture | https://polyhaven.com/a/farm_soil | Amal Kumar | CC0 | 2026-10-04 | textures/soil/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `planter` zones | 3587235 |
