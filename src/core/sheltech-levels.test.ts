@@ -3,6 +3,8 @@
  * (src/data/units/sheltech-{ground,b1,b2,roof}.json, read off `Demo drawings/Sheltech/`), in the flats' building frame.
  */
 import { describe, expect, test } from 'vitest'
+import b1 from '../data/units/sheltech-b1.json'
+import b2 from '../data/units/sheltech-b2.json'
 import roof from '../data/units/sheltech-roof.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
@@ -11,6 +13,8 @@ import * as core from './index'
 import type { Unit } from './index'
 
 const LEVELS: Record<string, Unit> = {
+  b1: b1 as unknown as Unit,
+  b2: b2 as unknown as Unit,
   roof: roof as unknown as Unit,
 }
 
@@ -136,6 +140,14 @@ for (const [key, u] of Object.entries(LEVELS)) {
   })
 }
 
+/** p lies on the polygon's outline (within 5 mm) */
+const onBoundary = (p: core.Pt, poly: core.Pt[]) =>
+  poly.some((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / ((b.x - a.x) ** 2 + (b.y - a.y) ** 2)))
+    return Math.hypot(p.x - a.x - t * (b.x - a.x), p.y - a.y - t * (b.y - a.y)) < 0.005
+  })
+
 describe('the common levels sit on the flats’ core', () => {
   const B = sheltechB as unknown as Unit
   const lifts = core.deriveRooms(B).find((r) => r.id === 'r_lifts')!
@@ -147,7 +159,8 @@ describe('the common levels sit on the flats’ core', () => {
     const r = core.deriveRooms(u).find((x) => x.name === 'Lift' || x.name === 'Lift pit')!
     const poly = core.roomPolygon(r, u)
     expect(Math.abs(core.signedArea(poly) - core.signedArea(shaft))).toBeLessThan(0.01)
-    for (const p of shaft) expect(poly.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 0.005), `${p.x},${p.y}`).toBe(true)
+    for (const p of shaft) expect(onBoundary(p, poly), `${p.x},${p.y}`).toBe(true)
+    for (const p of poly) expect(onBoundary(p, shaft), `${p.x},${p.y}`).toBe(true)
   })
 
   test('roof: the lift machine room stands on the shaft’s side walls', () => {

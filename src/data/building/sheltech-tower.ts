@@ -9,6 +9,8 @@
 import type { Pt, Unit } from '../../core'
 import sheltechA from '../units/sheltech-a.json'
 import sheltechB from '../units/sheltech-b.json'
+import sheltechB1 from '../units/sheltech-b1.json'
+import sheltechB2 from '../units/sheltech-b2.json'
 import sheltechRoof from '../units/sheltech-roof.json'
 import type { Rect } from './demo-tower'
 
@@ -21,18 +23,25 @@ export { FLOOR_M } from './demo-tower'
 export const FLATS: Record<string, { unit: Unit; offset: Pt }> = {
   'sheltech-a': { unit: sheltechA as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-b': { unit: sheltechB as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-b1': { unit: sheltechB1 as unknown as Unit, offset: { x: 0, y: 0 } },
+  'sheltech-b2': { unit: sheltechB2 as unknown as Unit, offset: { x: 0, y: 0 } },
   'sheltech-roof': { unit: sheltechRoof as unknown as Unit, offset: { x: 0, y: 0 } },
 }
 
-/** Level 1 is the community lounge + gym (not flats): the flats' shells stand in for its massing. Levels 2–6: A + B. The rooftop on the roof slab (7). */
+/**
+ * Basements 2 and 1 (−2, −1); level 1 is the community lounge + gym (not flats): the flats' shells stand in for its
+ * massing; levels 2–6: A + B; the rooftop on the roof slab (7).
+ */
 export const FLOORS: { floor: number; flats: string[]; standIns?: string[] }[] = [
+  { floor: -2, flats: [], standIns: ['sheltech-b2'] },
+  { floor: -1, flats: [], standIns: ['sheltech-b1'] },
   { floor: 1, flats: [], standIns: ['sheltech-a', 'sheltech-b'] },
   ...[2, 3, 4, 5, 6].map((floor) => ({ floor, flats: ['sheltech-a', 'sheltech-b'] })),
   { floor: 7, flats: [], standIns: ['sheltech-roof'] },
 ]
 
 /** The common levels and the floor each stands on (as projectTower's LEVELS). */
-export const LEVELS: Record<string, number> = { 'sheltech-roof': 7 }
+export const LEVELS: Record<string, number> = { 'sheltech-b2': -2, 'sheltech-b1': -1, 'sheltech-roof': 7 }
 
 /** Lobby, stair and lift shaft, ground to roof head (Rooftop.jpg: lobby 6.71 × 2.08 m, stair 4.50 × 2.69 m, lift machine room 4.36 × 2.49 m). */
 export const CORE: [stem: string, room: string][] = [
