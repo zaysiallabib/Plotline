@@ -97,7 +97,7 @@
     {
       "id": "v19",
       "x": -8.9662,
-      "y": -5.1308
+      "y": -5.1816
     },
     {
       "id": "v20",
@@ -208,11 +208,6 @@
       "id": "v41",
       "x": -13.3858,
       "y": -1.6764
-    },
-    {
-      "id": "v42",
-      "x": -13.7668,
-      "y": -0.5588
     },
     {
       "id": "v43",
@@ -1121,14 +1116,6 @@
     {
       "id": "w_ramp_curve_1",
       "a": "v52",
-      "b": "v42",
-      "thicknessM": 0.254,
-      "heightM": 3,
-      "openings": []
-    },
-    {
-      "id": "w_ramp_curve_2",
-      "a": "v42",
       "b": "v41",
       "thicknessM": 0.254,
       "heightM": 3,
@@ -1175,16 +1162,16 @@
       "openings": []
     },
     {
-      "id": "w_ramp_curve_8",
-      "a": "v19",
-      "b": "v16",
+      "id": "w_reservoir_1",
+      "a": "v16",
+      "b": "v19",
       "thicknessM": 0.254,
       "heightM": 3,
       "openings": []
     },
     {
-      "id": "w_reservoir_1",
-      "a": "v16",
+      "id": "w_reservoir_1b",
+      "a": "v19",
       "b": "v15",
       "thicknessM": 0.254,
       "heightM": 3,
