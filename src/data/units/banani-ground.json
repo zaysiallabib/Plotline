@@ -2351,7 +2351,7 @@
       "y": -3.2258,
       "levelM": -0.75,
       "slope": {
-        "toLevelM": -1.9,
+        "toLevelM": -2,
         "dirDeg": 180
       }
     },
@@ -2361,9 +2361,9 @@
       "kind": "driveway",
       "x": -8.001,
       "y": 2.8702,
-      "levelM": -1.9,
+      "levelM": -2,
       "slope": {
-        "toLevelM": -2.15,
+        "toLevelM": -2.27,
         "dirDeg": 165
       }
     },
@@ -2373,9 +2373,9 @@
       "kind": "driveway",
       "x": -7.1882,
       "y": 4.8768,
-      "levelM": -2.15,
+      "levelM": -2.27,
       "slope": {
-        "toLevelM": -2.4,
+        "toLevelM": -2.54,
         "dirDeg": 135
       }
     },
@@ -2385,9 +2385,9 @@
       "kind": "driveway",
       "x": -5.1562,
       "y": 5.8928,
-      "levelM": -2.4,
+      "levelM": -2.54,
       "slope": {
-        "toLevelM": -2.65,
+        "toLevelM": -2.8,
         "dirDeg": 105
       }
     }

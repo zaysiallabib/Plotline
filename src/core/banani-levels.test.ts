@@ -4,11 +4,12 @@
  * and the columns + the lift core stand in the same place on every level (one building frame).
  */
 import { describe, expect, test } from 'vitest'
+import b1 from '../data/units/banani-b1.json'
 import ground from '../data/units/banani-ground.json'
 import * as core from './index'
 import type { Unit } from './index'
 
-const LEVELS: Unit[] = [ground].map((u) => u as unknown as Unit)
+const LEVELS: Unit[] = [ground, b1].map((u) => u as unknown as Unit)
 
 /** Length of the chord of `poly` through p along x (or y): the clear span a tape measure would give at p. */
 function chord(poly: core.Pt[], p: core.Pt, axis: 'x' | 'y'): number {
@@ -54,9 +55,9 @@ describe.each(LEVELS.map((u) => [u.name, u] as const))('%s', (_, unit) => {
 test('columns and the lift core coincide level to level within 5 cm', () => {
   const seen = new Map<string, core.Pt>()
   for (const u of LEVELS) {
-    const hoists = core.deriveRooms(u).filter((r) => r.name.startsWith('Hoistway'))
+    const hoists = core.deriveRooms(u).filter((r) => r.id === 'r_hoist1' || r.id === 'r_hoist2')
     expect(hoists, u.name).toHaveLength(2)
-    for (const p of [...(u.pillars ?? []), ...hoists.map((r) => ({ id: r.name, ...r.centroid }))]) {
+    for (const p of [...(u.pillars ?? []), ...hoists.map((r) => ({ id: r.id, ...r.centroid }))]) {
       const q = seen.get(p.id)
       if (q) expect(Math.hypot(p.x - q.x, p.y - q.y), `${u.name} ${p.id}`).toBeLessThan(0.05)
       else seen.set(p.id, { x: p.x, y: p.y })
