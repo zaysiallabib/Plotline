@@ -103,6 +103,8 @@ export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
 /** Bare smooth concrete: parking floors, kerbs, the riser where two zones meet at different levels, a pool's coping. */
 export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#c8d0d6' } // cools the scan's brown: it read as earth
+/** Road-marking paint on a parking floor: pulled forward in depth so it never fights the floor under it. */
+export const PAINT = new THREE.MeshStandardMaterial({ color: '#e9e7e1', roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
 /** A pool's basin: aqua-glazed tiles (the wall tile's grout relief and glaze). */
 export const POOL_TILE: MaterialRef = { kind: 'pbr', textureId: 'tile_wall_white', tint: '#8ccad0' }
 /**
