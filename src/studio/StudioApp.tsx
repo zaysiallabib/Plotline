@@ -104,8 +104,8 @@ interface Note {
   text: string
   link?: { label: string; onClick: () => void }
 }
-/** `to`: a dragged piece's raw target centre (the drop re-runs the same snap in the reducer); `end`: an opening's end handle (resize) */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; to?: Pt; end?: 'a' | 'b' } & CornerDrag
+/** `end`: an opening's end handle (resize) */
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b' } & CornerDrag
 /**
  * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
  * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
@@ -277,11 +277,29 @@ export default function StudioApp() {
   const piecesRef = useRef(pieces)
   piecesRef.current = pieces
   const [furnDrag, setFurnDrag] = useState<Move | null>(null)
-  // the library (tool F): a picked kit piece follows the pointer as a candidate layout (placePiece) until a click puts it
-  const [placing, setPlacing] = useState<{ id: Id; assetId: string; rot: number } | null>(null)
+  // the piece in hand (tool F): a kit piece picked in the library (assetId), or a dragged one — it follows the pointer
+  // (grab offset `off`) as a candidate layout, red with the reason where the rules refuse it, and goes down only where it
+  // fits (a click, or the drag's release); R turns it, Esc puts it back (founder 2026-10-04, as the 3D Arrange)
+  const [placing, setPlacing] = useState<{ id: Id; assetId?: string; rot: number; off?: Pt } | null>(null)
   const placingRef = useRef(placing)
   placingRef.current = placing
-  const ghost = (sx: number, sy: number) => placing && pieces && setFurnDrag(placePiece(unit, rooms, pieces, placing.assetId, toM(sx, sy), placing.rot, placing.id))
+  const handAt = (sx: number, sy: number): Pt => {
+    const m = toM(sx, sy)
+    return { x: m.x + (placing?.off?.x ?? 0), y: m.y + (placing?.off?.y ?? 0) }
+  }
+  const handMove = (to: Pt) =>
+    placing && pieces && (placing.assetId ? placePiece(unit, rooms, pieces, placing.assetId, to, placing.rot, placing.id) : movePiece(unit, rooms, pieces, placing.id, to, placing.rot))
+  const ghost = (sx: number, sy: number) => placing && pieces && setFurnDrag(handMove(handAt(sx, sy)))
+  /** a click (or the drag's release) with a piece in hand: down where it fits, one undo step; refused, it stays in hand */
+  const putDown = (sx: number, sy: number) => {
+    const to = handAt(sx, sy)
+    const m = placing && handMove(to)
+    if (!placing || !m) return
+    if (m.error) return toast(m.error)
+    dispatch(placing.assetId ? { type: 'place-piece', id: placing.id, assetId: placing.assetId, ...to, rotationDeg: placing.rot } : { type: 'move-piece', id: placing.id, ...to, rotationDeg: placing.rot })
+    setPlacing(null)
+    setFurnDrag(null)
+  }
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
@@ -397,6 +415,25 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, state.review, saveDraft])
+  // a door / window changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the plan takes
+  // it at once, so this tab's next autosave never writes the old openings back
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DRAFT_KEY || !e.newValue) return
+      try {
+        const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']
+        const u = isUnit(d) ? d : (d as Partial<Draft>).unit
+        const now = stateRef.current.unit
+        if (!isUnit(u) || u.id !== now.id || JSON.stringify(u.walls) === JSON.stringify(now.walls)) return
+        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: withLayout(u) } as Draft }) // a bare unit restores too (init does the same)
+        setNote({ text: 'Doors and windows changed in the 3D view — the plan shows them now' })
+      } catch {
+        /* not a draft */
+      }
+    }
+    addEventListener('storage', onStorage)
+    return () => removeEventListener('storage', onStorage)
+  }, [])
   // shared layout: every furniture change (move, turn, resize, delete, reset, a relabel's re-furnish, their undo, an
   // import) is what the viewer shows after a reload; loading one is not a change
   const lastFurniture = useRef(unit.furniture)
@@ -802,16 +839,7 @@ export default function StudioApp() {
       if (!pi || p.x < 0 || p.y < 0 || p.x > pi.naturalW || p.y > pi.naturalH) return toast('Click on the plan, inside the flat')
       return pickTrace.current(p)
     }
-    if (placing && tool === 'furniture') {
-      // the ghost's spot: put it there (the reducer runs placePiece again and toasts a refusal); refused → keep placing
-      const m = placePiece(unit, rooms, pieces ?? [], placing.assetId, toM(sx, sy), placing.rot, placing.id)
-      dispatch({ type: 'place-piece', id: placing.id, assetId: placing.assetId, ...toM(sx, sy), rotationDeg: placing.rot })
-      if (m && !m.error) {
-        setPlacing(null)
-        setFurnDrag(null)
-      }
-      return
-    }
+    if (placing && tool === 'furniture') return putDown(sx, sy) // refused: it stays in hand
     if (field) setField(null)
     if (popover) setPopover(null)
     dispatch({ type: 'timer-input', now: now() })
@@ -908,14 +936,12 @@ export default function StudioApp() {
     }
     const fd = dragRef.current
     if (fd?.hit.kind === 'furniture') {
-      // a piece follows the pointer on the grid; the reducer only sees the drop (one undo entry, refusals spring back)
+      // a dragged piece goes into the hand (it follows the pointer on the grid); the reducer only sees the drop (one undo entry)
       if (!fd.moved && Math.hypot(sx - fd.sx, sy - fd.sy) < 3) return
       fd.moved = true
-      const m = toM(sx, sy)
       const o = fd.orig.get(fd.hit.id)!
       const p = pieces?.find((x) => x.id === fd.hit.id)
-      fd.to = { x: o.x + m.x - fd.m.x, y: o.y + m.y - fd.m.y }
-      if (p && pieces) setFurnDrag(movePiece(unit, rooms, pieces, p.id, fd.to, p.rotationDeg))
+      if (p) setPlacing({ id: p.id, rot: p.rotationDeg, off: { x: o.x - fd.m.x, y: o.y - fd.m.y } })
       return
     }
     const d = dragRef.current
@@ -1025,9 +1051,9 @@ export default function StudioApp() {
       dispatch({ type: 'drag-end', ids: d.ids ?? [] })
       const { sx, sy } = local(e)
       setHover(computeHover(sx, sy, e.shiftKey)) // drop the drag's guides, ring and live lengths
-    } else if (d.hit.kind === 'furniture' && d.to) {
-      setFurnDrag(null)
-      dispatch({ type: 'move-piece', id: d.hit.id, ...d.to })
+    } else if (d.hit.kind === 'furniture') {
+      const { sx, sy } = local(e)
+      putDown(sx, sy) // refused: it stays in hand, red; a click where it fits puts it down
     }
   }
 
@@ -1141,6 +1167,7 @@ export default function StudioApp() {
         const pl = placingRef.current
         if (pl && e.key === 'Escape') return setPlacing(null)
         if (pl && (e.key === 'r' || e.key === 'R')) return setPlacing({ ...pl, rot: pl.rot + 90 })
+        if (pl && (arrow || e.key === 'Delete' || e.key === 'Backspace')) return e.preventDefault() // the piece in hand is not on the plan yet
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
           e.preventDefault()
@@ -1282,7 +1309,9 @@ export default function StudioApp() {
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
         : tool === 'furniture' && placing
-          ? 'Furniture · click the plan to put the piece there, R turns it, Esc cancels'
+          ? placing.assetId
+            ? 'Furniture · click the plan to put the piece there, R turns it, Esc cancels'
+            : 'Furniture · the piece is in your hand: click where it fits (red = it does not, the reason is in red here), R turns it, Esc puts it back'
           : HINTS[tool]) +
     (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
@@ -1576,7 +1605,9 @@ export default function StudioApp() {
 
       <footer className="statusbar">
         <span>{hint}</span>
-        <span className="centre">{centre}</span>
+        <span className="centre" style={furnDrag?.error ? { color: '#e5534b' } : undefined}>
+          {centre}
+        </span>
         <span>
           {scaleText} · {Math.round(view.zoom * 100)} %
         </span>
