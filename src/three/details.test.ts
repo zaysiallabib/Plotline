@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, buildSkirtings, casingPlan, closeGaps, curtainSides, liftDrop, liftWall, pillarParts, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, WATER_DROP_M, bayMarkings, buildSkirtings, casingPlan, closeGaps, curtainSides, liftDrop, liftWall, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -548,6 +548,67 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     }
     expect(leaves(0.9)).toBe(1)
     expect(leaves(1.8)).toBe(2)
+  })
+
+  /** a w × d rectangle of flush lines (x right, y down) and extra faces / labels */
+  const rect = (w: number, d: number, kind: core.RoomKind, name = 'P'): Unit => ({
+    ...GROUND_SAMPLE,
+    id: 'r',
+    vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: w, y: 0 }, { id: 'c', x: w, y: d }, { id: 'd', x: 0, y: d }],
+    walls: (['ab', 'bc', 'cd', 'da'] as const).map((k) => ({ id: k, a: k[0], b: k[1], thicknessM: 0.2, heightM: 0, openings: [] })),
+    roomLabels: [{ id: name, name, kind, x: w / 2, y: d / 2, levelM: -0.5 }],
+    pillars: [],
+  })
+
+  test('a pool: 1.2 m deep when it is ≥ 1.5 m wide on average (2 × area / perimeter), else a 0.45 m water body; tiled walls facing in, water just under the rim', () => {
+    for (const [w, d, deep] of [[4, 10, 1.2], [1, 6, 0.45], [3, 3, 1.2], [2, 2, 0.45]] as const) {
+      const u = rect(w, d, 'pool')
+      const [room] = core.deriveRooms(u)
+      const { depth, walls, water } = poolBasin(room, u)
+      expect(depth, `${w} × ${d}`).toBe(deep)
+      walls.computeBoundingBox()
+      expect(walls.boundingBox!.min.y).toBeCloseTo(-0.5 - deep, 6)
+      expect(walls.boundingBox!.max.y).toBeCloseTo(-0.5, 6)
+      const p = walls.attributes.position
+      const n = walls.attributes.normal
+      for (let i = 0; i < p.count; i += 3) {
+        // every wall triangle faces the pool's middle
+        const toC = { x: w / 2 - p.getX(i), z: d / 2 - p.getZ(i) }
+        expect(n.getX(i) * toC.x + n.getZ(i) * toC.z).toBeGreaterThan(0)
+      }
+      water.computeBoundingBox()
+      expect(water.boundingBox!.max.y).toBeCloseTo(-0.5 - WATER_DROP_M, 6)
+      expect(water.attributes.normal.getY(0)).toBeCloseTo(1, 6)
+    }
+  })
+
+  test('parking paint: a line on every flush line bounding a bay; each numbered bay its number, reading from the aisle', () => {
+    const u: Unit = {
+      ...rect(7.5, 11, 'driveway', 'Drive'),
+      vertices: [
+        ...[0, 2.5, 5, 7.5].flatMap((x, i) => [{ id: `t${i}`, x, y: 0 }, { id: `m${i}`, x, y: 5 }]),
+        { id: 'c', x: 7.5, y: 11 }, { id: 'd', x: 0, y: 11 },
+      ],
+      walls: [
+        ...[0, 1, 2].map((i) => ({ id: `top${i}`, a: `t${i}`, b: `t${i + 1}`, thicknessM: 0.25, heightM: 3, openings: [] })),
+        ...[0, 1, 2].map((i) => ({ id: `front${i}`, a: `m${i}`, b: `m${i + 1}`, thicknessM: 0.1, heightM: 0, openings: [] })),
+        ...[1, 2].map((i) => ({ id: `sep${i}`, a: `t${i}`, b: `m${i}`, thicknessM: 0.1, heightM: 0, openings: [] })),
+        { id: 'l0', a: 't0', b: 'm0', thicknessM: 0.25, heightM: 3, openings: [] }, { id: 'r0', a: 't3', b: 'm3', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'l1', a: 'm0', b: 'd', thicknessM: 0.25, heightM: 3, openings: [] }, { id: 'r1', a: 'm3', b: 'c', thicknessM: 0.25, heightM: 3, openings: [] },
+        { id: 'bot', a: 'c', b: 'd', thicknessM: 0.25, heightM: 3, openings: [] },
+      ],
+      roomLabels: [
+        { id: 'drive', name: 'Driveway', kind: 'driveway', x: 3.75, y: 8 },
+        ...['12', 'B-7', 'Visitor'].map((name, i) => ({ id: `bay${i}`, name, kind: 'parking' as const, x: 1.25 + 2.5 * i, y: 2.5 })),
+      ],
+    }
+    const { lines, numbers } = bayMarkings(u, core.deriveRooms(u))
+    expect(lines).toHaveLength(5) // two separators + the three bays' fronts; the 3 m walls carry none
+    expect(numbers.map((n) => n.text)).toEqual(['12', 'B-7']) // "Visitor" is no number
+    for (const n of numbers) {
+      expect(n.up.x).toBeCloseTo(0, 6)
+      expect(n.up.y).toBeCloseTo(-1, 6) // from the aisle (y = 5) into the bay
+    }
   })
 
   test('zones: no skirting in an outdoor zone (the lobby has its own), the lawn floor turf, its wall faces the exterior render', () => {

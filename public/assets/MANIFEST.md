@@ -101,6 +101,5 @@ tile_floor_ceramic maps at twice the repeat (1200 × 1200 tiles, the lobby floor
 | asphalt | texture | https://polyhaven.com/a/clean_asphalt | Dimitrios Savva | CC0 | 2026-10-04 | textures/asphalt/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `driveway` zones and ramps | 2811860 |
 | concrete | texture | https://polyhaven.com/a/garage_floor | Jenelle van Heerden | CC0 | 2026-10-04 | textures/concrete/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `parking`, kerbs, step risers, pool coping | 2455498 |
 | deck_boards | texture | https://polyhaven.com/a/wood_floor_deck | Dimitrios Savva | CC0 | 2026-10-04 | textures/deck_boards/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `deck` zones | 2860445 |
-| rubber_play | texture | https://polyhaven.com/a/rubberized_track | Charlotte Baglioni | CC0 | 2026-10-04 | textures/rubber_play/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `play` zones | 3083243 |
 | rubber_gym | texture | https://polyhaven.com/a/rubber_tiles | Amal Kumar | CC0 | 2026-10-04 | textures/rubber_gym/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — gym floor | 1714677 |
 | soil | texture | https://polyhaven.com/a/farm_soil | Amal Kumar | CC0 | 2026-10-04 | textures/soil/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `planter` zones | 3587235 |

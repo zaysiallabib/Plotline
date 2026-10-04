@@ -54,8 +54,38 @@ const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
 export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false })
 /** The shower screen: 10 mm clear glass, 10 %. Tinted like the windows it laid a grey sheet across the bath view. */
 export const CLEAR_GLASS = Object.assign(GLASS.clone(), { opacity: 0.1 })
+/**
+ * A pool's water: clear blue-green over its tiled basin, glossy, a slight ripple (a tileable sum of sines, 1.5 m a repeat,
+ * drifting — PlotlineScene.tick); it mirrors the sky as the panes do. No refraction / caustics: a plain standard material.
+ */
+export const WATER = new THREE.MeshStandardMaterial({ color: '#2a7d86', roughness: 0.04, transparent: true, opacity: 0.7, depthWrite: false })
+{
+  const N = 128
+  const data = new Uint8Array(N * N * 4)
+  const waves = [[3, 1, 0.5, 0], [-2, 3, 0.35, 1.3], [5, -4, 0.2, 2.1], [1, 6, 0.15, 0.4]] // cycles per tile in x, y; amplitude; phase
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      let [dx, dy] = [0, 0]
+      for (const [kx, ky, a, p] of waves) {
+        const c = a * Math.cos((2 * Math.PI * (kx * x + ky * y)) / N + p)
+        dx += c * kx
+        dy += c * ky
+      }
+      const n = new THREE.Vector3(-dx * 0.06, -dy * 0.06, 1).normalize()
+      data.set([(n.x * 0.5 + 0.5) * 255, (n.y * 0.5 + 0.5) * 255, (n.z * 0.5 + 0.5) * 255, 255], (y * N + x) * 4)
+    }
+  const t = new THREE.DataTexture(data, N, N)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.repeat.set(1 / 1.5, 1 / 1.5)
+  t.magFilter = THREE.LinearFilter
+  t.minFilter = THREE.LinearMipmapLinearFilter
+  t.generateMipmaps = true
+  t.needsUpdate = true
+  WATER.normalMap = t
+  WATER.normalScale.set(0.6, 0.6)
+}
 /** Every pane material: PlotlineScene gives them the sky's PMREM, Look.setHour their reflection strength. */
-export const PANES = [GLASS, CLEAR_GLASS]
+export const PANES = [GLASS, CLEAR_GLASS, WATER]
 /** Sky luminance (1 by day) → each pane's reflection at full strength, whatever its opacity. */
 export function setGlassSky(sky: number): void {
   for (const m of PANES) m.envMapIntensity = sky / m.opacity

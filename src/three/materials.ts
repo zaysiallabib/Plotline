@@ -102,7 +102,7 @@ export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }
 /** Bare smooth concrete: parking floors, kerbs, the riser where two zones meet at different levels, a pool's coping. */
-export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#d4d0ca' }
+export const CONCRETE: MaterialRef = { kind: 'pbr', textureId: 'concrete', tint: '#b4bcc2' } // cools the scan's brown: it read as earth
 /** A pool's basin: aqua-glazed tiles (the wall tile's grout relief and glaze). */
 export const POOL_TILE: MaterialRef = { kind: 'pbr', textureId: 'tile_wall_white', tint: '#8ccad0' }
 /**
@@ -115,7 +115,7 @@ export const ZONE_FLOOR: Partial<Record<RoomKind, MaterialRef>> = {
   driveway: { kind: 'pbr', textureId: 'asphalt' },
   parking: CONCRETE,
   deck: { kind: 'pbr', textureId: 'deck_boards', tint: '#c9b6a2' },
-  play: { kind: 'pbr', textureId: 'rubber_play', tint: '#d0b8a8' },
+  play: { kind: 'pbr', textureId: 'turf' }, // artificial grass: the CC0 rubber surface came out a heavy maroon slab
   planter: { kind: 'pbr', textureId: 'soil' },
   pool: POOL_TILE,
 }

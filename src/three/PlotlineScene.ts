@@ -23,11 +23,11 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, buildSkirtings, closeGaps, dressOpening, liftDrop, liftWall, pillarParts, raiseHeads, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
+import { GAP_PREFIX, KERB_M, bayMarkings, buildSkirtings, closeGaps, dressOpening, liftDrop, liftWall, pillarParts, poolBasin, raiseHeads, stepFaces, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
-import { PANES } from './openings'
+import { PANES, WATER } from './openings'
 import { Look, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
@@ -151,6 +151,28 @@ export function clampSun(t: THREE.DataTexture): void {
       }
     }
   }
+}
+
+/** Road-marking paint on a parking floor: pulled forward in depth so it never fights the floor under it. */
+const PAINT = new THREE.MeshStandardMaterial({ color: '#e9e7e1', roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+const bayNumbers = new Map<string, THREE.MeshStandardMaterial>()
+/** A bay number's paint (one canvas per number, shared by every level that has it). */
+function bayNumber(text: string): THREE.MeshStandardMaterial {
+  let m = bayNumbers.get(text)
+  if (m) return m
+  const c = document.createElement('canvas')
+  ;[c.width, c.height] = [256, 128]
+  const g = c.getContext('2d')!
+  g.fillStyle = '#ffffff'
+  g.font = `bold ${text.length > 3 ? 72 : 96}px Arial, Helvetica, sans-serif`
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.fillText(text, 128, 68)
+  const map = new THREE.CanvasTexture(c)
+  map.colorSpace = THREE.SRGBColorSpace
+  m = new THREE.MeshStandardMaterial({ color: '#e9e7e1', map, transparent: true, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
+  bayNumbers.set(text, m)
+  return m
 }
 
 interface Surface {
@@ -308,6 +330,7 @@ export class PlotlineScene {
     this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
+    this.buildMarkings(unit)
     // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish, on its floor
     for (const [roomId, mesh] of buildSkirtings(unit, this.rooms)) {
       const r = this.rooms.find((x) => x.id === roomId)!
@@ -946,6 +969,19 @@ export class PlotlineScene {
     this.floors.push(floor)
     this.surfaces.push({ mesh: floor, sides: [{ roomId: room.id, target: 'floor' }] })
 
+    if (room.kind === 'pool') {
+      // a sunk basin (details.ts poolBasin): its floor down by the depth, tiled walls up to the rim, the water below it
+      const { depth, walls, water } = poolBasin(room, unit)
+      floorGeo.translate(0, -depth, 0)
+      const basin = new THREE.Mesh(walls)
+      basin.receiveShadow = true
+      this.staticGroup.add(basin)
+      this.surfaces.push({ mesh: basin, sides: [{ roomId: room.id, target: 'floor' }] })
+      const w = new THREE.Mesh(water, WATER)
+      w.receiveShadow = true
+      w.userData = { kind: 'floor', id: room.id, roomId: room.id, label: `${room.name} water`, objectKind: 'floor' }
+      this.staticGroup.add(w)
+    }
     if (core.isOutdoor(room.kind)) return // a zone is open to the sky (a covered one: render.ts's roof is its soffit)
     const height = Math.max(...room.wallIds.map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 3))
     const ceilGeo = floorGeo.clone()
@@ -956,6 +992,35 @@ export class PlotlineScene {
     ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id, label: `${room.name} ceiling`, objectKind: 'ceiling' }
     this.ceilingGroup.add(ceiling)
     this.surfaces.push({ mesh: ceiling, sides: [{ roomId: room.id, target: 'ceiling' }] })
+  }
+
+  /** A parking level's paint (details.ts bayMarkings): the bay lines (one mesh) and each bay's number, flat on its floor. */
+  private buildMarkings(unit: Unit): void {
+    const { lines, numbers } = bayMarkings(unit, this.rooms)
+    const pos: number[] = []
+    for (const { a, b } of lines) {
+      const [dx, dz] = [b[0] - a[0], b[2] - a[2]]
+      const L = Math.hypot(dx, dz)
+      if (L < 1e-3) continue
+      const [nx, nz] = [(-dz / L) * 0.05, (dx / L) * 0.05] // 100 mm wide
+      const up = 0.004
+      const q = [[a[0] + nx, a[1] + up, a[2] + nz], [b[0] + nx, b[1] + up, b[2] + nz], [b[0] - nx, b[1] + up, b[2] - nz], [a[0] - nx, a[1] + up, a[2] - nz]]
+      for (const t of [[0, 1, 2], [0, 2, 3]]) pos.push(...t.flatMap((k) => q[k])) // n is d turned left: facing up
+    }
+    if (pos.length) {
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+      g.computeVertexNormals()
+      const m = new THREE.Mesh(g, PAINT)
+      m.receiveShadow = true
+      this.staticGroup.add(m)
+    }
+    for (const { text, at, up } of numbers) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45).rotateX(-Math.PI / 2).rotateY(Math.atan2(-up.x, -up.y)), bayNumber(text))
+      m.position.set(at[0], at[1] + 0.005, at[2])
+      m.receiveShadow = true
+      this.staticGroup.add(m)
+    }
   }
 
   private applyMaterials(): void {
@@ -1348,6 +1413,7 @@ export class PlotlineScene {
       this.floorY += (this.levelAt(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
     }
+    WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
     if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
     this.look.render()
   }

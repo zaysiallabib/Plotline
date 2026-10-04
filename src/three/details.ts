@@ -772,3 +772,111 @@ export function stepFaces(unit: Unit, rooms: Room[]): { room: Room; geo: THREE.B
   }
   return out
 }
+
+/** A pool's water stands this far below its face's level (its rim). */
+export const WATER_DROP_M = 0.08
+/**
+ * How deep a pool face's basin goes, by its size: its mean width (2 × area / perimeter: a strip's width, half a square's
+ * side) — a swimming pool (≥ 1.5 m) 1.2 m, a narrow water body / fountain channel 0.45 m.
+ */
+export function poolDepth(room: Room, unit: Unit): number {
+  const poly = core.roomPolygon(room, unit)
+  const per = poly.reduce((s, p, i) => s + Math.hypot(poly[(i + 1) % poly.length].x - p.x, poly[(i + 1) % poly.length].y - p.y), 0)
+  return per > 0 && (2 * room.areaSqm) / per >= 1.5 ? 1.2 : 0.45
+}
+
+/**
+ * A pool face (kind 'pool'): its basin's walls, from the floor (level − depth) up to the rim (its level), on the face's
+ * outline (the centreline, as the floor) facing in; and the water's plane just below the rim. World space, metre UVs.
+ */
+export function poolBasin(room: Room, unit: Unit): { depth: number; walls: THREE.BufferGeometry; water: THREE.BufferGeometry } {
+  const poly = core.roomPolygon(room, unit)
+  const depth = poolDepth(room, unit)
+  const lv = (p: Pt) => core.roomLevelAt(room, unit, p.x, p.y)
+  const inward = core.signedArea(poly) > 0 ? 1 : -1 // plan y-down: a positive loop is clockwise on screen
+  const pos: number[] = []
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const [ta, tb] = [lv(a), lv(b)]
+    const q = [
+      [a.x, ta - depth, a.y],
+      [b.x, tb - depth, b.y],
+      [b.x, tb, b.y],
+      [a.x, ta, a.y],
+    ]
+    // facing in: the edge's left / right normal by the loop's winding
+    const n = { x: -(b.y - a.y) * inward, y: (b.x - a.x) * inward }
+    for (const t of [[0, 1, 2], [0, 2, 3]]) {
+      const [p0, p1, p2] = t.map((k) => q[k])
+      const c = [(p1[1] - p0[1]) * (p2[2] - p0[2]) - (p1[2] - p0[2]) * (p2[1] - p0[1]), (p1[2] - p0[2]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[2] - p0[2])]
+      pos.push(...(c[0] * n.x + c[1] * n.y >= 0 ? [p0, p1, p2] : [p0, p2, p1]).flat())
+    }
+  })
+  const walls = new THREE.BufferGeometry()
+  walls.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  walls.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+  walls.computeVertexNormals()
+  meterUVs(walls)
+  // the water: the face's polygon (triangulated as the floors are), facing up
+  const tri = core.triangulate(poly)
+  const wp: number[] = []
+  const uv: number[] = []
+  for (let i = 0; i < tri.length; i += 3) {
+    const [a, b, c] = [poly[tri[i]], poly[tri[i + 1]], poly[tri[i + 2]]]
+    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    for (const p of cross > 0 ? [a, c, b] : [a, b, c]) {
+      wp.push(p.x, lv(p) - WATER_DROP_M, p.y)
+      uv.push(p.x, p.y)
+    }
+  }
+  const water = new THREE.BufferGeometry()
+  water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3))
+  water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  water.computeVertexNormals()
+  return { depth, walls, water }
+}
+
+/** A parking bay's number painted on its floor: its label's name when that is a bay number (12, B-07, P12A). */
+export const BAY_NUMBER = /^[A-Z]{0,2}-?\d{1,3}[A-Z]?$/i
+/**
+ * The paint on a parking level (kind 'parking', by rule): a 100 mm white line along every flush line (heightM 0) that
+ * bounds a parking face (a wall or kerb there needs none), on that face's floor; and each bay's number at its centre,
+ * reading from its aisle — `up` is the plan direction from the edge it shares with a driveway toward the bay's centre (no
+ * such edge: along its longest edge).
+ */
+export function bayMarkings(unit: Unit, rooms: Room[]): { lines: { a: V3; b: V3 }[]; numbers: { text: string; at: V3; up: Pt }[] } {
+  const parking = rooms.filter((r) => r.kind === 'parking')
+  const lines: { a: V3; b: V3 }[] = []
+  const numbers: { text: string; at: V3; up: Pt }[] = []
+  if (!parking.length) return { lines, numbers }
+  for (const w of unit.walls) {
+    if (w.heightM > 0) continue
+    const f = core.wallFrame(w, unit.vertices)
+    const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+    const sides = [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * 0.05 * s, y: mid.y + f.normal.y * 0.05 * s }, rooms, unit))
+    const bay = sides.find((r) => r?.kind === 'parking')
+    if (!bay) continue
+    const [A, B] = [core.vertexById(unit.vertices, w.a), core.vertexById(unit.vertices, w.b)]
+    // the higher of the two floors (a bay beside a ramp: the paint never sinks under the other floor)
+    const lv = (p: Pt) => Math.max(...sides.map((r) => (r ? core.roomLevelAt(r, unit, p.x, p.y) : -Infinity)))
+    lines.push({ a: [A.x, lv(A), A.y], b: [B.x, lv(B), B.y] })
+  }
+  for (const r of parking) {
+    if (!BAY_NUMBER.test(r.name.trim())) continue
+    const poly = core.roomPolygon(r, unit)
+    let up: Pt | null = null
+    let long = { d: { x: 0, y: -1 }, L: 0 }
+    poly.forEach((a, i) => {
+      const b = poly[(i + 1) % poly.length]
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L > long.L) long = { d: { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, L }
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      const toC = { x: r.centroid.x - m.x, y: r.centroid.y - m.y }
+      const k = Math.hypot(toC.x, toC.y) || 1
+      const out = { x: m.x - (toC.x / k) * 0.1, y: m.y - (toC.y / k) * 0.1 }
+      if (!up && core.roomAt(out, rooms, unit)?.kind === 'driveway') up = { x: toC.x / k, y: toC.y / k }
+    })
+    numbers.push({ text: r.name.trim(), at: [r.centroid.x, core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y), r.centroid.y], up: up ?? long.d })
+  }
+  return { lines, numbers }
+}
