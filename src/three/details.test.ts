@@ -18,6 +18,7 @@ import { furnish } from '../furnish/presets'
 import { finishSlotsFor } from '../furnish/finishes'
 import { entrySpawn } from '../viewer/spawn'
 import { EXTERIOR_PLASTER, ZONE_FLOOR, zoneFinishRef } from './materials'
+import { buildOpening } from './openings'
 
 test('a window on a 1.1 m wall (sill 0.9, h 1.2): the wall reaches the storey, past the 2.1 m head; a low wall with a passage stays low', () => {
   const walls = TEST_UNIT.walls.map((w) =>
@@ -527,6 +528,26 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(Math.max(...xs)).toBeCloseTo(c.x + 0.8, 6)
     const runs = skirtingRuns(u, rs).filter((r) => r.room.id === living.id && Math.abs(r.p.y + r.d.y * r.s0 - c.y) < 0.1 && Math.abs(r.p.x + r.d.x * ((r.s0 + r.s1) / 2) - c.x) < 0.9)
     expect(new Set(runs.map((r) => `${Math.round(r.n.x)},${Math.round(r.n.y)}`))).toEqual(new Set(['0,1', '0,-1', '1,0', '-1,0']))
+  })
+
+  test('a window to the floor ≥ 1.5 m tall is a glass wall: equal bays ≤ 1.4 m between mullions, no sill board, no curtain; a door ≥ 1.5 m is a pair of leaves', () => {
+    const wall = { id: 'gw', a: 'p1', b: 'p2', thicknessM: 0.25, heightM: 3, openings: [] }
+    const glass = { id: 'g', kind: 'window' as const, offsetM: 0.5, widthM: 6, heightM: 2.7, sillM: 0 }
+    const g = buildOpening(glass, wall)
+    const parts = g.children.map((c) => c.userData.id)
+    expect(parts).toEqual(['g/frame', 'g/glass']) // no stone sill mesh
+    const panes = (g.children[1].children[0] as THREE.Mesh).geometry.attributes.position.count / 24 // a box: 24 vertices
+    expect(panes).toBe(Math.ceil((6 - 0.1) / 1.4))
+    const living = core.deriveRooms(TEST_UNIT).find((r) => r.kind === 'living')!
+    expect(curtainSides(glass, wall, TEST_UNIT, [living])).toEqual([])
+    const leaves = (w: number) => {
+      const d = buildOpening({ id: 'd', kind: 'door', offsetM: 0, widthM: w, heightM: 2.1, sillM: 0, hinge: 'a', swing: 'in' }, wall)
+      const n: string[] = []
+      d.traverse((o) => o.userData.id === 'd/leaf' && n.push(o.userData.id))
+      return n.length
+    }
+    expect(leaves(0.9)).toBe(1)
+    expect(leaves(1.8)).toBe(2)
   })
 
   test('zones: no skirting in an outdoor zone (the lobby has its own), the lawn floor turf, its wall faces the exterior render', () => {

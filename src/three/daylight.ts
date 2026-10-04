@@ -16,6 +16,7 @@
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Id, Pt, Room, RoomKind, Unit, Wall } from '../core'
+import { isGlazing } from './openings'
 
 /** plan x, plan y, height */
 type V3 = [number, number, number]
@@ -247,7 +248,8 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
       if ((s[0]?.id !== r.id && s[1]?.id !== r.id) || other === r) continue
       const through = (tau: number, u0: number, u1: number, z0: number, z1: number) =>
         outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null) : rect(w, u0, u1, z0, z1, tau, other)
-      for (const o of w.openings) through(TAU[o.kind] ?? 0.5, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
+      // a glass wall (openings.ts isGlazing) lets more through than a window's sashes and curtains
+      for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
     }

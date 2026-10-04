@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Graph, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
 import { materialFor } from './materials'
-import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
+import { CASING_P, CASING_W, buildOpening, isGlazing, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
@@ -414,7 +414,7 @@ function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room 
  * the unit, a balcony or a shaft) — never an interior glass partition between two rooms.
  */
 export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
-  if (o.kind !== 'window') return []
+  if (o.kind !== 'window' || isGlazing(o)) return [] // a glass wall hangs no curtain
   const [front, back] = openingRooms(o, wall, unit, rooms)
   const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || core.isOutdoor(r.kind)
   const out: [Room, 1 | -1][] = []

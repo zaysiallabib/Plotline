@@ -120,7 +120,7 @@ function part(g: THREE.Group, name: string, label: string, objectKind: ObjectKin
 export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): THREE.Group {
   const g = new THREE.Group()
   const [label, objectKind]: [string, ObjectKind] =
-    o.kind === 'window' ? ['Window', 'window'] : o.kind === 'passage' ? ['Cased opening', 'passage'] : [o.kind === 'slider' ? 'Sliding door' : opts.main ? 'Main door' : 'Door', 'door']
+    isGlazing(o) ? ['Glass wall', 'window'] : o.kind === 'window' ? ['Window', 'window'] : o.kind === 'passage' ? ['Cased opening', 'passage'] : [o.kind === 'slider' ? 'Sliding door' : opts.main ? 'Main door' : 'Door', 'door']
   g.userData = { kind: 'opening', id: o.id, wallId: wall.id, label, objectKind }
   const T2 = wall.thicknessM / 2
   const u0 = o.offsetM
@@ -131,7 +131,8 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
   const stone: THREE.BufferGeometry[] = []
   if (th) stone.push(slab(u0, u1, s, s + th, -T2, T2))
 
-  if (o.kind === 'window') {
+  if (isGlazing(o)) buildGlazing(g, o, T2)
+  else if (o.kind === 'window') {
     buildWindow(g, o, T2)
     // stone sill on each room side: 30 mm thick, 20 mm proud of the face, horns 50 mm past the reveal
     const df = Math.min(0.08, 2 * T2 - 0.02) / 2
@@ -170,6 +171,9 @@ function casings(u0: number, u1: number, v0: number, top: number, T2: number, in
   return out
 }
 
+/** A door this wide or wider is a pair of leaves meeting in the middle (a lobby's entrance, a double door to a terrace). */
+export const DOUBLE_DOOR_M = 1.5
+
 function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boolean): void {
   const u0 = o.offsetM
   const u1 = o.offsetM + o.widthM
@@ -179,10 +183,10 @@ function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boo
   const wood = main ? MAIN_WOOD : DOOR_WOOD
   // leaf hinged on the 'hinge' side. Unit JSON convention: 'in' = leaf on the LEFT of a→b in image
   // coords = −normal side (normal = (−dir.y, dir.x) is the right-hand side on screen).
-  const hingeB = o.hinge === 'b'
-  const sx = hingeB ? -1 : 1 // leaf extends +u from hinge a, −u from hinge b
   const sw = o.swing === 'in' ? -1 : 1 // swing side of the wall
-  const lw = o.widthM - 2 * J - 2 * GAP
+  const double = o.widthM >= DOUBLE_DOOR_M
+  // a pair: each leaf half the clear width, hinged at its own jamb, the two meeting with a 3 mm gap
+  const lw = double ? (o.widthM - 2 * J - 3 * GAP) / 2 : o.widthM - 2 * J - 2 * GAP
   const bottom = th + 0.008
   const lh = H - J - GAP - bottom
 
@@ -198,84 +202,88 @@ function buildDoor(g: THREE.Group, o: Opening, T2: number, th: number, main: boo
     slab(u0 + J + 0.012, u1 - J - 0.012, s + H - J - 0.012, s + H - J, stopW0, stopW1),
     ...casings(u0, u1, s, s + H, T2, J - REV),
   ]
+  g.add(part(g, 'frame', 'Door frame', 'door-frame', merged(frame, wood)))
 
-  // pivot at the opening edge on the swing face, ajar 20°: rotating +u about Y by +φ moves it toward −w
-  const pivot = new THREE.Group()
-  pivot.position.set(hingeB ? u1 : u0, s, sw * T2)
-  pivot.rotation.y = sx * (o.swing === 'in' ? 1 : -1) * THREE.MathUtils.degToRad(20)
-  const x0 = sx * (J + GAP) // hinge edge of the leaf, pivot-local
-  const xc = sx * (J + GAP + lw / 2)
-  const zc = (-sw * LT) / 2 // leaf's swing face is flush with the wall face (pivot z = 0)
-  const leaf = meterUVs(new THREE.BoxGeometry(lw, lh, LT).translate(xc, bottom + lh / 2, zc))
+  for (const hingeB of double ? [false, true] : [o.hinge === 'b']) {
+    const sx = hingeB ? -1 : 1 // leaf extends +u from hinge a, −u from hinge b
+    // pivot at the opening edge on the swing face, ajar 20°: rotating +u about Y by +φ moves it toward −w
+    const pivot = new THREE.Group()
+    pivot.position.set(hingeB ? u1 : u0, s, sw * T2)
+    pivot.rotation.y = sx * (o.swing === 'in' ? 1 : -1) * THREE.MathUtils.degToRad(20)
+    const x0 = sx * (J + GAP) // hinge edge of the leaf, pivot-local
+    const xc = sx * (J + GAP + lw / 2)
+    const zc = (-sw * LT) / 2 // leaf's swing face is flush with the wall face (pivot z = 0)
+    const leaf = meterUVs(new THREE.BoxGeometry(lw, lh, LT).translate(xc, bottom + lh / 2, zc))
 
-  // leaf relief, pivot-local: V-grooves on an interior flush door, bolection-moulded panels on the main door
-  const relief: THREE.BufferGeometry[] = []
-  const faces = [
-    [0, sw], // swing face (pivot-local z) and its outward direction
-    [-sw * LT, -sw],
-  ]
-  const across = (from: number, to: number) => [x0 + sx * from, x0 + sx * to].sort((a, b) => a - b) // leaf-relative → pivot x
-  if (main) {
-    // 2 × 3 moulded panels: tall, short (lock rail zone), tall
-    const mw = 0.022
-    const colW = (lw - 0.28) / 2
-    const avail = lh - 0.5
-    const rows = [
-      [0.15, 0.4 * avail],
-      [0.25 + 0.4 * avail, 0.2 * avail],
-      [0.35 + 0.6 * avail, 0.4 * avail],
+    // leaf relief, pivot-local: V-grooves on an interior flush door, bolection-moulded panels on the main door
+    const relief: THREE.BufferGeometry[] = []
+    const faces = [
+      [0, sw], // swing face (pivot-local z) and its outward direction
+      [-sw * LT, -sw],
     ]
-    for (const [zf, out] of faces) {
-      for (const c of [0.1, 0.18 + colW]) {
-        const [a, b] = across(c, c + colW)
-        for (const [ry, rh] of rows) {
-          const y0 = bottom + ry
-          const y1 = y0 + rh
-          const z1 = zf + out * 0.008
-          relief.push(
-            slab(a, b, y0, y0 + mw, zf, z1),
-            slab(a, b, y1 - mw, y1, zf, z1),
-            slab(a, a + mw, y0 + mw, y1 - mw, zf, z1),
-            slab(b - mw, b, y0 + mw, y1 - mw, zf, z1),
-          )
+    const across = (from: number, to: number) => [x0 + sx * from, x0 + sx * to].sort((a, b) => a - b) // leaf-relative → pivot x
+    if (main) {
+      // 2 × 3 moulded panels: tall, short (lock rail zone), tall (a leaf of a pair: one column)
+      const mw = 0.022
+      const cols = double ? [0.1] : [0.1, 0.18 + (lw - 0.28) / 2]
+      const colW = double ? lw - 0.2 : (lw - 0.28) / 2
+      const avail = lh - 0.5
+      const rows = [
+        [0.15, 0.4 * avail],
+        [0.25 + 0.4 * avail, 0.2 * avail],
+        [0.35 + 0.6 * avail, 0.4 * avail],
+      ]
+      for (const [zf, out] of faces) {
+        for (const c of cols) {
+          const [a, b] = across(c, c + colW)
+          for (const [ry, rh] of rows) {
+            const y0 = bottom + ry
+            const y1 = y0 + rh
+            const z1 = zf + out * 0.008
+            relief.push(
+              slab(a, b, y0, y0 + mw, zf, z1),
+              slab(a, b, y1 - mw, y1, zf, z1),
+              slab(a, a + mw, y0 + mw, y1 - mw, zf, z1),
+              slab(b - mw, b, y0 + mw, y1 - mw, zf, z1),
+            )
+          }
+        }
+      }
+    } else {
+      const [a, b] = across(0, lw)
+      for (const [zf, out] of faces) {
+        for (let i = 1; i <= 4; i++) {
+          const y = bottom + (lh * i) / 5
+          relief.push(slab(a, b, y - 0.003, y + 0.003, zf, zf + out * 0.001))
         }
       }
     }
-  } else {
-    const [a, b] = across(0, lw)
+    // the main door's mouldings are its leaf's timber: one mesh; an interior leaf's grooves are the darker frame teak
+    const leafMeshes = main ? [merged([leaf, ...relief], MAIN_WOOD, true)] : [merged([leaf], LEAF_WOOD, true), merged(relief, DOOR_WOOD)]
+    pivot.add(part(g, 'leaf', 'Door leaf', 'door-leaf', ...leafMeshes))
+
+    // hardware, pivot-local: lever handle on both faces at 1.0 m, backset 60 mm; three butt-hinge knuckles
+    const steel: THREE.BufferGeometry[] = []
+    const hx = sx * (J + GAP + lw - 0.06)
+    const hy = 1.0 - s
     for (const [zf, out] of faces) {
-      for (let i = 1; i <= 4; i++) {
-        const y = bottom + (lh * i) / 5
-        relief.push(slab(a, b, y - 0.003, y + 0.003, zf, zf + out * 0.001))
+      if (main) {
+        steel.push(slab(hx - 0.0275, hx + 0.0275, hy - 0.2, hy + 0.06, zf, zf + out * 0.008))
+        steel.push(cyl(0.012, 0.06, 'z', hx, hy, zf + out * 0.038))
+        steel.push(cyl(0.012, 0.17, 'x', hx - sx * 0.08, hy, zf + out * 0.068))
+        steel.push(cyl(0.011, 0.012, 'z', hx, hy - 0.13, zf + out * 0.012)) // key cylinder
+      } else {
+        steel.push(cyl(0.026, 0.008, 'z', hx, hy, zf + out * 0.004, 20))
+        steel.push(cyl(0.009, 0.05, 'z', hx, hy, zf + out * 0.033))
+        steel.push(cyl(0.0095, 0.13, 'x', hx - sx * 0.06, hy, zf + out * 0.058))
+        steel.push(cyl(0.016, 0.006, 'z', hx, hy - 0.075, zf + out * 0.003, 16)) // lock escutcheon
       }
     }
+    for (const y of [bottom + 0.22, bottom + lh / 2 + 0.1, bottom + lh - 0.22]) steel.push(cyl(0.008, 0.1, 'y', x0 - sx * 0.002, y, sw * 0.004, 10))
+    // ponytail: the hinge knuckles ride in the handle part (one steel draw call per leaf); split them if hinges get their own catalog slot
+    pivot.add(part(g, 'handle', 'Door handle', 'door-handle', merged(steel, STEEL)))
+    g.add(pivot)
   }
-  // the main door's mouldings are its leaf's timber: one mesh; an interior leaf's grooves are the darker frame teak
-  const leafMeshes = main ? [merged([leaf, ...relief], MAIN_WOOD, true)] : [merged([leaf], LEAF_WOOD, true), merged(relief, DOOR_WOOD)]
-  pivot.add(part(g, 'leaf', 'Door leaf', 'door-leaf', ...leafMeshes))
-  g.add(part(g, 'frame', 'Door frame', 'door-frame', merged(frame, wood)))
-
-  // hardware, pivot-local: lever handle on both faces at 1.0 m, backset 60 mm; three butt-hinge knuckles
-  const steel: THREE.BufferGeometry[] = []
-  const hx = sx * (J + GAP + lw - 0.06)
-  const hy = 1.0 - s
-  for (const [zf, out] of faces) {
-    if (main) {
-      steel.push(slab(hx - 0.0275, hx + 0.0275, hy - 0.2, hy + 0.06, zf, zf + out * 0.008))
-      steel.push(cyl(0.012, 0.06, 'z', hx, hy, zf + out * 0.038))
-      steel.push(cyl(0.012, 0.17, 'x', hx - sx * 0.08, hy, zf + out * 0.068))
-      steel.push(cyl(0.011, 0.012, 'z', hx, hy - 0.13, zf + out * 0.012)) // key cylinder
-    } else {
-      steel.push(cyl(0.026, 0.008, 'z', hx, hy, zf + out * 0.004, 20))
-      steel.push(cyl(0.009, 0.05, 'z', hx, hy, zf + out * 0.033))
-      steel.push(cyl(0.0095, 0.13, 'x', hx - sx * 0.06, hy, zf + out * 0.058))
-      steel.push(cyl(0.016, 0.006, 'z', hx, hy - 0.075, zf + out * 0.003, 16)) // lock escutcheon
-    }
-  }
-  for (const y of [bottom + 0.22, bottom + lh / 2 + 0.1, bottom + lh - 0.22]) steel.push(cyl(0.008, 0.1, 'y', x0 - sx * 0.002, y, sw * 0.004, 10))
-  // ponytail: the hinge knuckles ride in the handle part (one steel draw call per door); split them if hinges get their own catalog slot
-  pivot.add(part(g, 'handle', 'Door handle', 'door-handle', merged(steel, STEEL)))
-  g.add(pivot)
 }
 
 /** Two-panel aluminium sliding door (veranda/study sliders): thin frame, panels offset in depth. */
@@ -346,4 +354,34 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
   }
   g.add(part(g, 'frame', 'Window frame', 'window-frame', merged(alu, ALU, true)))
   g.add(part(g, 'glass', 'Window glass', 'window-glass', merged(panes, GLASS)))
+}
+
+/**
+ * A window down to the floor and at least GLAZING_MIN_H tall is a glass wall (a lobby's glazing, a glass fence): fixed
+ * clear panes between slim dark mullions, no sashes, no sill board, no curtain (details.ts curtainSides).
+ */
+export const GLAZING_MIN_H = 1.5
+export const isGlazing = (o: Pick<Opening, 'kind' | 'sillM' | 'heightM'>): boolean => o.kind === 'window' && o.sillM < 0.1 && o.heightM >= GLAZING_MIN_H
+/** Dark anodised aluminium: a glass wall's mullions read as lines against the sky, as on a real lobby. */
+const MULLION: MaterialRef = { kind: 'color', color: '#3b3e42', roughness: 0.4, metalness: 0.3 }
+
+/** Glazing: a 50 mm frame round the opening and a mullion every ≤ 1.4 m (equal bays), 6 mm clear panes between. */
+function buildGlazing(g: THREE.Group, o: Opening, T2: number): void {
+  const u0 = o.offsetM
+  const u1 = o.offsetM + o.widthM
+  const s = o.sillM
+  const top = o.sillM + o.heightM
+  const F = 0.05
+  const D = Math.min(0.12, 2 * T2 - 0.02) / 2
+  const n = Math.max(1, Math.ceil((o.widthM - 2 * F) / 1.4))
+  const bay = (o.widthM - 2 * F) / n
+  const alu = [slab(u0, u0 + F, s, top, -D, D), slab(u1 - F, u1, s, top, -D, D), slab(u0 + F, u1 - F, top - F, top, -D, D), slab(u0 + F, u1 - F, s, s + F, -D, D)]
+  const panes: THREE.BufferGeometry[] = []
+  for (let i = 0; i < n; i++) {
+    const a = u0 + F + i * bay
+    if (i) alu.push(slab(a - F / 2, a + F / 2, s + F, top - F, -D, D))
+    panes.push(slab(a + (i ? F / 2 : 0), a + bay - (i < n - 1 ? F / 2 : 0), s + F, top - F, -0.003, 0.003))
+  }
+  g.add(part(g, 'frame', 'Glazing frame', 'window-frame', merged(alu, MULLION, true)))
+  g.add(part(g, 'glass', 'Glass', 'window-glass', merged(panes, CLEAR_GLASS)))
 }
