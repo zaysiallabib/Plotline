@@ -147,6 +147,62 @@
 .dot.error { background: #e5534b; }
 .dot.warning { background: var(--accent); }
 
+/* Issues on the plan (issues.ts / IssueLayer): red = breaks the 3D, amber = worth a look, grey = cosmetic */
+.studio { --sev-red: #e5534b; --sev-amber: #f29d38; --sev-grey: #8a8a85; }
+.num {
+  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; flex: none;
+  display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; color: #0f0f10;
+}
+.num.red { background: var(--sev-red); }
+.num.amber { background: var(--sev-amber); }
+.num.grey { background: var(--sev-grey); }
+.num:empty { min-width: 10px; height: 10px; padding: 0; vertical-align: middle; }
+.issues li.on { background: var(--surface-2); outline: 1px solid var(--line); }
+.issues li.grey { color: var(--muted); }
+.issues .acts { display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: 2px; }
+.issues .acts .link { white-space: nowrap; padding: 0; }
+.legend { font-size: 11px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.issue-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.issue-layer .mark.red { --c: var(--sev-red); }
+.issue-layer .mark.amber { --c: var(--sev-amber); }
+.issue-layer .mark.grey { --c: var(--sev-grey); opacity: 0.7; }
+.issue-layer .ring { fill: none; stroke: var(--c); stroke-width: 2; }
+.issue-layer .mark.on .ring { stroke-width: 3; }
+.issue-layer .pulse { fill: none; stroke: var(--c); stroke-width: 3; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.issue-layer .mark.hot .pulse { animation: issue-pulse 0.9s ease-out infinite; }
+.issue-layer .mark.on .pulse { animation: issue-pulse 0.9s ease-out 2; }
+@keyframes issue-pulse { from { opacity: 0.95; transform: scale(1); } to { opacity: 0; transform: scale(3.2); } }
+.issue-layer .badge { pointer-events: auto; cursor: pointer; }
+.issue-layer .badge circle { fill: var(--c); stroke: #0f0f10; stroke-width: 1.5; }
+.issue-layer .badge text { fill: #0f0f10; font: 600 10px Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+.issue-layer .mark.on .badge circle, .issue-layer .mark.hot .badge circle { stroke: var(--ink); }
+.issue-layer .ghost { opacity: 0.45; }
+.issue-layer .ghost.on { opacity: 1; }
+.issue-layer .g-line line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
+.issue-layer .g-line circle { fill: var(--accent); }
+.issue-layer .g-cut line { stroke: var(--sev-red); stroke-width: 4; stroke-dasharray: 3 3; }
+.issue-layer .g-ring { fill: none; stroke: var(--accent); stroke-width: 2; }
+.issue-layer .g-ring.hint { stroke-dasharray: 4 3; }
+.issue-layer .g-area { fill: rgba(232, 193, 112, 0.3); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.issue-layer .tint { fill: rgba(242, 157, 56, 0.07); }
+.issue-layer .tint.on { fill: rgba(242, 157, 56, 0.22); stroke: var(--sev-amber); stroke-width: 1.5; }
+.issue-pop {
+  position: absolute;
+  z-index: 5;
+  width: 260px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: rgba(23, 24, 26, 0.86);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.issue-pop .head { display: flex; gap: 8px; align-items: center; }
+.issue-pop .grow { flex: 1; }
+.issue-pop p { margin: 0; font-size: 12px; }
+
 .statusbar {
   display: flex;
   align-items: center;
