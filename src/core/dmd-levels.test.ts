@@ -1,0 +1,87 @@
+/**
+ * The Sheltech dmd tower's levels, hand-authored from `Demo drawings/Sheltech dmd/` (src/data/units/dmd-*.json): one
+ * building frame (origin = the fire stair's inner NW corner), the core and the columns shared level to level.
+ */
+import { describe, expect, test } from 'vitest'
+import roof from '../data/units/dmd-roof.json'
+import * as core from './index'
+import type { Unit } from './index'
+
+const LEVELS: Record<string, { unit: Unit; zones: string[] }> = {
+  'dmd-roof': {
+    unit: roof as unknown as Unit,
+    zones: ['Swimming pool', 'Pool deck', 'Shower & change room', 'Fire stair', 'Stair', 'Lift machine room', 'Overhead water tank', 'Roof terrace', 'Roof terrace (south)', 'Roof garden (west)', 'Roof garden (east)', 'Roof garden (south)'],
+  },
+}
+
+/** Length of the chord of `poly` through p along x (or y): the clear span a tape measure would give at p. */
+function chord(poly: core.Pt[], p: core.Pt, axis: 'x' | 'y'): number {
+  const [u, v] = axis === 'x' ? (['x', 'y'] as const) : (['y', 'x'] as const)
+  const hits: number[] = []
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    if ((a[v] - p[v]) * (b[v] - p[v]) < 0) hits.push(a[u] + ((p[v] - a[v]) / (b[v] - a[v])) * (b[u] - a[u]))
+  })
+  return Math.min(...hits.filter((h) => h > p[u])) - Math.max(...hits.filter((h) => h < p[u]))
+}
+
+const components = (u: Unit): number => {
+  const parent = new Map(u.vertices.map((v) => [v.id, v.id]))
+  const find = (id: string): string => (parent.get(id) === id ? id : find(parent.get(id)!))
+  for (const w of u.walls) parent.set(find(w.a), find(w.b))
+  return new Set(u.vertices.map((v) => find(v.id))).size
+}
+
+describe.each(Object.entries(LEVELS))('%s', (_, { unit, zones }) => {
+  const rooms = core.deriveRooms(unit)
+
+  test('every face is labelled and named as printed; no validation errors, no islands; one connected graph', () => {
+    expect(new Set(rooms.map((r) => r.id))).toEqual(new Set(unit.roomLabels.map((l) => l.id)))
+    for (const z of zones) expect(rooms.map((r) => r.name), z).toContain(z)
+    const issues = core.validate(unit)
+    expect(issues.filter((i) => i.level === 'error')).toEqual([])
+    expect(issues.filter((i) => i.code === 'island-in-room' || i.code === 'unlabelled-room')).toEqual([])
+    expect(components(unit)).toBe(1)
+  })
+
+  test('printed sizes match the clear size through the label within 3 %', () => {
+    for (const l of unit.roomLabels.filter((l) => l.printedSize)) {
+      const inner = core.roomInnerPolygon(rooms.find((r) => r.id === l.id)!, unit)
+      const [pw, ph] = l.printedSize!.split('×').map((t) => core.parseLength(t.trim())!)
+      expect(Math.abs(chord(inner, l, 'x') / pw - 1), `${l.name} width`).toBeLessThan(0.03)
+      expect(Math.abs(chord(inner, l, 'y') / ph - 1), `${l.name} depth`).toBeLessThan(0.03)
+    }
+  })
+
+  test('openings fit their walls; no opening on a flush line', () => {
+    for (const w of unit.walls) {
+      const f = core.wallFrame(w, unit.vertices)
+      for (const o of w.openings) {
+        expect(w.heightM, o.id).toBeGreaterThan(0)
+        expect(o.sillM + o.heightM, o.id).toBeLessThanOrEqual(w.heightM + 1e-9)
+        expect(o.offsetM + o.widthM, o.id).toBeLessThanOrEqual(f.lengthM + 1e-9)
+      }
+    }
+  })
+})
+
+describe('the core and the columns coincide level to level (within 5 cm)', () => {
+  const units = Object.values(LEVELS).map((l) => l.unit)
+  test('fire stair', () => {
+    const boxes = units.map((u) => {
+      const r = core.deriveRooms(u).find((r) => r.name === 'Fire stair')!
+      return core.roomInnerPolygon(r, u)
+    })
+    for (const b of boxes.slice(1))
+      for (const p of b) expect(Math.min(...boxes[0].map((q) => Math.hypot(p.x - q.x, p.y - q.y)))).toBeLessThan(0.05)
+  })
+  test('columns with the same id stand in the same place', () => {
+    const at = new Map<string, core.Pt>()
+    for (const u of units)
+      for (const c of u.pillars ?? []) {
+        const seen = at.get(c.id)
+        if (seen) expect(Math.hypot(seen.x - c.x, seen.y - c.y), c.id).toBeLessThan(0.05)
+        else at.set(c.id, c)
+      }
+  })
+})
