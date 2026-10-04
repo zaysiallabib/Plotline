@@ -141,7 +141,7 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
   const flats = into ? Object.keys(into.flats).length : 0
   const pillars = unit.pillars?.length ?? 0
   const how = !auto
-    ? `Not placed automatically: ${pillars ? 'its columns do not line up with the flats\'' : 'it has no columns'} and it is another drawing. Move it right / down until it sits under the flats, then Show building to check.`
+    ? `Not placed automatically: ${pillars ? 'its columns do not line up with the flats\'' : 'it has no columns (draw them with C)'} and it is another drawing. Move it right / down until it sits under the flats, then Show building to check.`
     : auto.by === 'columns'
       ? `Placed on the flats' columns: ${auto.matched} of its ${pillars} line up (within ${Math.max(1, Math.round((auto.errM ?? 0) * 100))} cm).`
       : 'Placed where the same drawing puts it.'
