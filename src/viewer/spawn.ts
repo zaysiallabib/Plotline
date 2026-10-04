@@ -1,6 +1,7 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit } from '../core'
+import { isLevel } from '../furnish/finishes'
 import { heightRange, kitAsset, objectKind, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
 import { EYE, RAY, boxInFrame, floorShare, frameHits, pieceInFrame, project, swings } from './frame'
@@ -61,13 +62,8 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   return [...out]
 }
 
-/**
- * A LEVEL — a ground floor, basement, rooftop, a common floor: a unit with outdoor zones (core.isOutdoor) besides
- * planters, or with common rooms (lobby, gym, community, guard: a flat has none) — is entered and listed by its own
- * rules (levelEntry, levelRooms), by kind and geometry; a flat keeps its own.
- */
-const COMMON: Room['kind'][] = ['lobby', 'gym', 'community', 'guard']
-export const isLevel = (rooms: Room[]): boolean => rooms.some((r) => (core.isOutdoor(r.kind) && r.kind !== 'planter') || COMMON.includes(r.kind))
+/** A LEVEL (furnish/finishes.ts isLevel) is entered and listed by its own rules (levelEntry, levelRooms); a flat keeps its own. */
+export { isLevel }
 /** what a walker can stand in: not a shaft, a pool or a planter */
 const walkable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && r.kind !== 'pool' && r.kind !== 'planter'
 /** a wall this low is no barrier: a flush line (0) or a kerb */
@@ -124,11 +120,13 @@ function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
     const inside = (gate.front ?? gate.back)!
     return stand(gate, inside, lobbies[0]?.centroid ?? inside.centroid)
   }
-  // (2) out of the largest lobby onto a zone, (3) out of any room onto a zone; onto a drive or path before a parking bay
+  // (2) out of the largest lobby onto a zone, (3) out of any room onto a zone; onto a level terrace, drive or path before
+  // steps or a ramp (a first view up a flight into a planter wall, dmd roof), before a parking bay
   const zoneOf = (x: W) => [x.front, x.back].find((r) => walkable(r) && core.isOutdoor(r.kind))
   const outOf = (from: (r: Room) => boolean) => {
     const xs = ways.filter((x) => zoneOf(x) && [x.front, x.back].some((r) => walkable(r) && !core.isOutdoor(r.kind) && from(r)))
-    return widest(xs.filter((x) => zoneOf(x)!.kind !== 'parking')) ?? widest(xs)
+    const open = xs.filter((x) => zoneOf(x)!.kind !== 'parking')
+    return widest(open.filter((x) => !zoneOf(x)!.slope)) ?? widest(open) ?? widest(xs)
   }
   const exit = (lobbies[0] && outOf((r) => r.id === lobbies[0].id)) ?? outOf(() => true)
   if (exit) {

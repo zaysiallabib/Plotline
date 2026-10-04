@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, test } from 'vitest'
-import { deriveRooms, isOutdoor, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Room, type RoomKind, type Unit } from '../core'
+import { deriveRooms, isOutdoor, pointInPolygon, roomInnerPolygon, wallFrame, type FurniturePlacement, type Room, type RoomKind, type Unit } from '../core'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { kitAsset, objectKind } from './kit'
 import { doorClearZones, footprint, furnish, quadsOverlap } from './presets'
@@ -97,6 +97,23 @@ describe('presets for the levels: by kind and geometry (session 19)', () => {
     const a = furnish(GROUND_SAMPLE, deriveRooms(GROUND_SAMPLE))
     const b = furnish(moved, deriveRooms(moved))
     expect(b.map((p) => [p.assetId, +(p.x - dx).toFixed(6), +p.y.toFixed(6), p.rotationDeg, p.scale])).toEqual(a.map((p) => [p.assetId, +p.x.toFixed(6), +p.y.toFixed(6), p.rotationDeg, p.scale]))
+  })
+
+  test('no tree within 1.5 m of a window or glass wall of its face (its crown lay on the lobby glass)', () => {
+    let trees = 0
+    for (const { u, rooms, ps } of all)
+      for (const p of ps.filter(isTree)) {
+        trees++
+        const room = rooms.find((r) => r.id === p.roomId) as Room
+        for (const w of u.walls.filter((x) => room.wallIds.includes(x.id)))
+          for (const o of w.openings.filter((x) => x.kind === 'window')) {
+            const f = wallFrame(w, u.vertices)
+            const [a, b] = [o.offsetM, o.offsetM + o.widthM].map((s) => ({ x: f.origin.x + f.dir.x * s, y: f.origin.y + f.dir.y * s }))
+            const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / Math.hypot(b.x - a.x, b.y - a.y) ** 2))
+            expect(Math.hypot(p.x - a.x - t * (b.x - a.x), p.y - a.y - t * (b.y - a.y)), `${u.id} ${room.name} ${p.id}`).toBeGreaterThan(1.5)
+          }
+      }
+    expect(trees).toBeGreaterThan(40)
   })
 })
 

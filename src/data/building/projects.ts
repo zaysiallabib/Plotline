@@ -39,14 +39,17 @@ export interface Project {
   levels?: ProjectLevel[]
 }
 
-/** A level besides the flats: the ground floor (floor 0), basement n (floor −n), the rooftop (on the roof slab, top + 1). */
-export type LevelKind = 'ground' | 'basement' | 'rooftop'
+/**
+ * A level besides the flats: the ground floor (floor 0), basement n (floor −n), a common floor on floor n among the flats
+ * (a community / gym level, the built-in Sheltech Level 1: it takes that floor's place), the rooftop (on the roof slab, top + 1).
+ */
+export type LevelKind = 'ground' | 'basement' | 'common' | 'rooftop'
 /** how a level's offset was found (the Studio says which): its columns on the flats', the same drawing, or typed by him */
 export type Placement = 'columns' | 'drawing' | 'typed'
 export interface ProjectLevel {
   unitId: Id
   kind: LevelKind
-  /** basements: 1 = the first below ground */
+  /** basements: 1 = the first below ground; a common floor: its floor number */
   n?: number
   /** the level's plan frame → the building frame */
   offset: Pt
@@ -181,8 +184,11 @@ export function placeOfLevel(p: Project, u: Unit): { offset: Pt; by: Exclude<Pla
   return d ? { offset: d, by: 'drawing' } : null
 }
 
-/** The floor a level stands on: ground 0, basement n at −n, the rooftop on the roof slab above floor `top`. */
-export const levelFloor = (l: Pick<ProjectLevel, 'kind' | 'n'>, top: number): number => (l.kind === 'ground' ? 0 : l.kind === 'basement' ? -Math.max(1, l.n ?? 1) : top + 1)
+/** The floor a level stands on: ground 0, basement n at −n, a common floor on floor n, the rooftop on the roof slab above floor `top`. */
+export const levelFloor = (l: Pick<ProjectLevel, 'kind' | 'n'>, top: number): number =>
+  l.kind === 'ground' ? 0 : l.kind === 'basement' ? -Math.max(1, l.n ?? 1) : l.kind === 'common' ? Math.max(1, l.n ?? 1) : top + 1
+/** levels numbered by `n` (one per number): basements and common floors */
+const numbered = (kind: LevelKind): boolean => kind === 'basement' || kind === 'common'
 
 /** `p` with only the units its flats and levels use. */
 const prune = (p: Project): Project => {
@@ -191,16 +197,17 @@ const prune = (p: Project): Project => {
 }
 
 /**
- * `u` as the building's ground floor / basement n / rooftop, at `offset` (found `by`). It leaves the flats if it stood
- * there, and takes the place of the level already in that slot (one ground, one rooftop, one basement per number). The
- * unit is stored as it is now. Unchanged when it is the building's only flat (a building needs one).
+ * `u` as the building's ground floor / basement n / common floor n / rooftop, at `offset` (found `by`). It leaves the
+ * flats if it stood there, and takes the place of the level already in that slot (one ground, one rooftop, one basement
+ * or common floor per number). The unit is stored as it is now. Unchanged when it is the building's only flat (a building needs one).
  */
 export function placeLevel(p: Project, u: Unit, kind: LevelKind, n: number | undefined, offset: Pt, by: Placement): Project {
   const out = p.flats[stemOf(u.id, false)] ? removeFlat(p, u.id) : p
   if (!out) return p
-  const slot = (l: ProjectLevel) => l.kind === kind && (kind !== 'basement' || (l.n ?? 1) === Math.max(1, n ?? 1))
+  const k = Math.max(1, Math.round(n ?? 1))
+  const slot = (l: ProjectLevel) => l.kind === kind && (!numbered(kind) || (l.n ?? 1) === k)
   const levels = (out.levels ?? []).filter((l) => l.unitId !== u.id && !slot(l))
-  const level: ProjectLevel = { unitId: u.id, kind, ...(kind === 'basement' ? { n: Math.max(1, Math.round(n ?? 1)) } : {}), offset, by }
+  const level: ProjectLevel = { unitId: u.id, kind, ...(numbered(kind) ? { n: k } : {}), offset, by }
   return prune({ ...out, units: { ...out.units, [u.id]: u }, levels: [...levels, level] })
 }
 
@@ -236,16 +243,19 @@ export function projectTower(p: Project): Tower {
   const top = Math.max(0, ...p.floors.map((g) => g.to))
   const lowest = [...Array(top)].map((_, i) => i + 1).find((k) => onFloor(p, k).length) ?? 1
   const base = onFloor(p, lowest)
-  // floors 1..top; a floor without flats (below the first one listed, or a gap) stands in with the nearest listed floor below it, else above
+  // stage 2: his traced levels on their own floors (a common floor only under the top flats: the top floor carries the roof)
+  const levels = (p.levels ?? []).filter((l) => p.units[l.unitId] && (l.kind !== 'common' || levelFloor(l, top) < top))
+  const common = new Map(levels.filter((l) => l.kind === 'common').map((l) => [levelFloor(l, top), l.unitId]))
+  // floors 1..top; a common floor takes its floor's place; a floor without flats (below the first one listed, or a gap)
+  // stands in with the nearest listed floor below it, else above
   const FLOORS: Tower['FLOORS'] = []
   for (let k = 1; k <= top; k++) {
     const flats = onFloor(p, k)
     let near = k
     while (near > 0 && !onFloor(p, near).length) near--
-    FLOORS.push(flats.length ? { floor: k, flats } : { floor: k, flats: [], standIns: near > 0 ? onFloor(p, near) : base })
+    const c = common.get(k)
+    FLOORS.push(c ? { floor: k, flats: [], standIns: [c] } : flats.length ? { floor: k, flats } : { floor: k, flats: [], standIns: near > 0 ? onFloor(p, near) : base })
   }
-  // stage 2: his traced levels are shells on their own floors (stand-ins: nobody opens them, nothing is furnished)
-  const levels = (p.levels ?? []).filter((l) => p.units[l.unitId])
   for (const l of levels) FLATS[l.unitId] = { unit: p.units[l.unitId], offset: l.offset }
   const LEVELS = Object.fromEntries(levels.map((l) => [l.unitId, levelFloor(l, top)]))
   const ground = levels.find((l) => l.kind === 'ground')

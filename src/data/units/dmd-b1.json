@@ -92,7 +92,7 @@
     {
       "id": "v18",
       "x": -8.9662,
-      "y": -5.1308
+      "y": -5.1816
     },
     {
       "id": "v19",
@@ -193,11 +193,6 @@
       "id": "v38",
       "x": -13.3858,
       "y": -1.6764
-    },
-    {
-      "id": "v39",
-      "x": -13.7668,
-      "y": -0.5588
     },
     {
       "id": "v40",
@@ -322,7 +317,7 @@
     {
       "id": "v64",
       "x": 0,
-      "y": 2.3114
+      "y": 2.2606
     },
     {
       "id": "v65",
@@ -1096,14 +1091,6 @@
     {
       "id": "w_ramp_curve_1",
       "a": "v48",
-      "b": "v39",
-      "thicknessM": 0.254,
-      "heightM": 3,
-      "openings": []
-    },
-    {
-      "id": "w_ramp_curve_2",
-      "a": "v39",
       "b": "v38",
       "thicknessM": 0.254,
       "heightM": 3,
@@ -1150,16 +1137,16 @@
       "openings": []
     },
     {
-      "id": "w_ramp_curve_8",
-      "a": "v18",
-      "b": "v16",
+      "id": "w_reservoir_1",
+      "a": "v16",
+      "b": "v18",
       "thicknessM": 0.254,
       "heightM": 3,
       "openings": []
     },
     {
-      "id": "w_reservoir_1",
-      "a": "v16",
+      "id": "w_reservoir_1b",
+      "a": "v18",
       "b": "v15",
       "thicknessM": 0.254,
       "heightM": 3,
@@ -1283,6 +1270,14 @@
     {
       "id": "w_fire_s_1",
       "a": "v54",
+      "b": "v64",
+      "thicknessM": 0.254,
+      "heightM": 3,
+      "openings": []
+    },
+    {
+      "id": "w_fire_s_1b",
+      "a": "v64",
       "b": "v55",
       "thicknessM": 0.254,
       "heightM": 3,
@@ -1290,7 +1285,7 @@
         {
           "id": "o_fire_win",
           "kind": "window",
-          "offsetM": 0.2032,
+          "offsetM": 0,
           "widthM": 1.1684,
           "heightM": 1.2,
           "sillM": 0.9
@@ -2093,14 +2088,6 @@
       "id": "f_bay_31_2",
       "a": "v63",
       "b": "v86",
-      "thicknessM": 0.05,
-      "heightM": 0,
-      "openings": []
-    },
-    {
-      "id": "f_bay_32_1",
-      "a": "v64",
-      "b": "v65",
       "thicknessM": 0.05,
       "heightM": 0,
       "openings": []

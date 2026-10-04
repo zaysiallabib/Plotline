@@ -121,9 +121,16 @@ export const ZONE_FLOOR: Partial<Record<RoomKind, MaterialRef>> = {
   planter: { kind: 'pbr', textureId: 'soil' },
   pool: POOL_TILE,
 }
-/** A face toward an outdoor zone: its floor by kind; every wall face, end and top the exterior render; overhead the cover's concrete. */
-export function zoneFinishRef(kind: RoomKind, target: FinishSlot['target']): MaterialRef {
-  return target === 'floor' ? (ZONE_FLOOR[kind] ?? CONCRETE) : target === 'wall' ? EXTERIOR_PLASTER : CONCRETE
+/** A parking deck's walls and columns: cool grey paint on concrete, under the warm soffit (the garage concrete scan on a wall read as mud). */
+export const DECK_PAINT: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#c4c8cb' }
+/**
+ * A face toward an outdoor zone: its floor by kind; every wall face, end and top the exterior render — but on a parking
+ * deck (`deck`: a level whose every zone is under the slab above, a basement) the cool grey paint: walls, columns and
+ * soffit in one beige render read as a cardboard model; overhead the cover's concrete.
+ */
+export function zoneFinishRef(kind: RoomKind, target: FinishSlot['target'], deck = false): MaterialRef {
+  if (target === 'wall') return deck ? DECK_PAINT : EXTERIOR_PLASTER
+  return target === 'floor' ? (ZONE_FLOOR[kind] ?? CONCRETE) : CONCRETE
 }
 
 const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {

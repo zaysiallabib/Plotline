@@ -24,7 +24,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pi
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
-import { bakeDaylight, mapDaylight, setDaylight, type Daylight } from './daylight'
+import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
@@ -1017,12 +1017,15 @@ export class PlotlineScene {
     // junction sits edge-on against the room face and won the tie along it: a one-pixel hairline)
     const plaster = materialFor(EDGE_PLASTER, true, true)
     const zones = new Map(this.rooms.filter((r) => core.isOutdoor(r.kind)).map((r) => [r.id, r.kind]))
+    // a parking deck: every zone of the level under the slab above (a basement)
+    const outdoor = this.rooms.filter((r) => core.isOutdoor(r.kind))
+    const deck = outdoor.length > 0 && outdoor.every((r) => isCovered(r, this.cover))
     for (const s of this.surfaces) {
       const mats = s.sides.map((side) => {
         if (!side) return plaster
         if (side.ref) return materialFor(side.ref, side.edge, true)
         const zone = side.roomId && zones.get(side.roomId) // an outdoor zone: no buyer finish, its look by kind (materials.ts)
-        return zone ? materialFor(zoneFinishRef(zone, side.target), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge)
+        return zone ? materialFor(zoneFinishRef(zone, side.target, deck), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge)
       })
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }

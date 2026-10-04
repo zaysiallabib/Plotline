@@ -23,7 +23,7 @@ import { isCeilingLight, placementSize } from '../furnish/kit'
 import { fixtureGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
 import { dayMix, isCovered, openToSky } from './daylight'
-import { roomCeiling, storeyTop, wallLift } from './details'
+import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, setGlassSky } from './openings'
 
@@ -243,7 +243,7 @@ export class Look {
     // drive half under the tower kept a beam along its whole wall, out into the sky
     const roofWalls = unit.walls.flatMap((w, i) => {
       const s = sidesOf(w)
-      if (!(w.heightM > 0) || (s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open))) return []
+      if (!(w.heightM > 0) || !carriesRoof(w, s, unit, rooms, this.topY) || (s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open))) return []
       return s.some((r) => r) && s.every((r) => !r || core.isOutdoor(r.kind)) ? underCover(w).map(([u0, u1]) => box(w, 0, u0, u1)) : [wallParts[i]]
     })
     const slabGeo = mergeGeometries([...underFloors, ...footParts])

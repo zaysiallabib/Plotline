@@ -4,10 +4,13 @@
  * (C tool), the island fix. Reducer rules only — the canvas and panel just dispatch these.
  */
 import { describe, expect, it } from 'vitest'
-import { FT, deriveRooms, roomAt } from '../core'
+import { FT, deriveRooms, isOutdoor, roomAt } from '../core'
 import type { Unit, Vertex, Wall } from '../core'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { alignColumns } from '../data/building/projects'
+import { resolveFinishRef, zoneFinishRef } from '../three/materials'
+import { withDefaults } from '../viewer/defaults'
+import { layoutFor } from './furniture'
 import {
   KERB_M,
   PARTITION_M,
@@ -19,6 +22,8 @@ import {
   formatLevel,
   guessKind,
   initialState,
+  isUnit,
+  normalizeUnit,
   openingAt,
   parseLevel,
   rampArrow,
@@ -303,5 +308,33 @@ describe('an island in a zone', () => {
     const [next] = islands(t.unit)
     expect(next!.ghost).toEqual([{ kind: 'line', from: { x: 4, y: 4 }, to: { x: 3, y: 3 } }])
     expect(islands(studioReducer(t, { type: 'apply-fix', actions: next!.actions, label: next!.label }).unit)).toEqual([])
+  })
+})
+
+// Benchmark proof (b): a level opened in the Studio (Open JSON = isUnit → normalizeUnit → load-unit, which joins the
+// walls) and exported / previewed (normalizeUnit again) is its hand-authored twin — same graph, same rooms, same presets,
+// same finishes and zone floors. The levels are picked by KIND (a zone or a common room), never by name.
+const UNIT_FILES = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
+const COMMON = new Set(['lobby', 'gym', 'community', 'guard'])
+const LEVELS = Object.entries(UNIT_FILES).filter(([, u]) => deriveRooms(u).some((r) => isOutdoor(r.kind) || COMMON.has(r.kind)))
+
+describe('benchmark (b): a level through the Studio comes out as authored', () => {
+  it('covers every level of the three projects', () => expect(LEVELS.length).toBeGreaterThanOrEqual(13))
+  it.each(LEVELS)('%s', (_, u) => {
+    expect(isUnit(u)).toBe(true)
+    const opened = reducer(initialState(), { type: 'load-unit', unit: normalizeUnit(u) }).unit
+    const preview = normalizeUnit(JSON.parse(JSON.stringify(opened)) as Unit) // Export / Preview 3D → the viewer's load
+    expect(preview.vertices).toEqual(u.vertices)
+    expect(preview.walls).toEqual(u.walls) // heights (0 included), thickness, standsAlone, openings
+    expect(preview.roomLabels).toEqual(u.roomLabels) // kind, levelM, slope
+    expect(preview.pillars ?? []).toEqual(u.pillars ?? [])
+    const [r0, r1] = [deriveRooms(u), deriveRooms(preview)]
+    expect(r1).toEqual(r0)
+    expect(layoutFor(preview, r1)).toEqual(layoutFor(u, r0))
+    const [d0, d1] = [withDefaults(u, r0), withDefaults(preview, r1)]
+    expect(d1.finishSlots).toEqual(d0.finishSlots)
+    const looks = (d: Unit) =>
+      r0.map((r) => (['floor', 'wall', 'ceiling'] as const).map((t) => (isOutdoor(r.kind) ? zoneFinishRef(r.kind, t) : resolveFinishRef(d.finishSlots, {}, r.id, t))))
+    expect(looks(d1)).toEqual(looks(d0))
   })
 })

@@ -8,12 +8,21 @@
  * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
  * after the plan is edited and re-published.
  */
-import type { FinishSlot, Room, RoomKind, Unit } from '../core'
+import { isOutdoor, type FinishSlot, type Room, type RoomKind, type Unit } from '../core'
 
 export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
   /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
   kinds: RoomKind[] | 'all'
+  /** the kinds it covers on a common LEVEL instead (isLevel): there an 'other' face is the stair / lift core, not a foyer */
+  levelKinds?: RoomKind[]
 }
+
+/**
+ * A LEVEL — a ground floor, basement, rooftop, a common floor: outdoor zones (core.isOutdoor) besides planters, or common
+ * rooms (lobby, gym, community, guard: a flat has none). Walked (viewer/spawn.ts) and finished by its own rules.
+ */
+const COMMON: RoomKind[] = ['lobby', 'gym', 'community', 'guard']
+export const isLevel = (rooms: Room[]): boolean => rooms.some((r) => (isOutdoor(r.kind) && r.kind !== 'planter') || COMMON.includes(r.kind))
 
 /** Every kind but the wet rooms' tiled walls: a shaft or an unnamed "Space N" ('other') is painted like a room. */
 const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'lobby', 'gym', 'community', 'guard']
@@ -36,8 +45,9 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     id: 's_floor_living',
     label: 'Living & dining floors',
     target: 'floor',
-    // lobby, foyer, passage and every unnamed closed space walk on the living floor
+    // lobby, foyer, passage and every unnamed closed space walk on the living floor; on a level only a lounge does
     kinds: ['living', 'dining', 'other', 'community'],
+    levelKinds: ['living', 'dining', 'community'],
     defaultOptionId: 'fo_living_marble',
     options: [
       { id: 'fo_living_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
@@ -75,9 +85,10 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     label: 'Lobby floors',
     target: 'floor',
     kinds: ['lobby'],
+    levelKinds: ['lobby', 'other'], // a level's stair landings, lift cars and passages: the common core's floor
     defaultOptionId: 'fo_lobby_porcelain',
     options: [
-      { id: 'fo_lobby_porcelain', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-1200-GR', label: 'Large greige porcelain 1200 × 1200', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_large', tint: '#d9d2c6' } },
+      { id: 'fo_lobby_porcelain', brand: 'Akij Ceramics', sku: 'AKIJ-PORC-800-IV', label: 'Polished ivory porcelain 800 × 800', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_large', tint: '#f3eee6' } },
       { id: 'fo_lobby_marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', label: 'White marble', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'marble_floor_white' } },
     ],
   },
@@ -139,8 +150,11 @@ export const FINISH_CATALOG: CatalogSlot[] = [
  */
 export function finishSlotsFor(unit: Unit, rooms: Room[]): FinishSlot[] {
   if (unit.finishSlots?.length) return unit.finishSlots
-  return FINISH_CATALOG.flatMap(({ kinds, ...slot }): FinishSlot[] => {
-    const roomIds = kinds === 'all' ? rooms.map((r) => r.id) : rooms.filter((r) => kinds.includes(r.kind)).map((r) => r.id)
+  const level = isLevel(rooms)
+  return FINISH_CATALOG.flatMap(({ kinds: all, levelKinds, ...slot }): FinishSlot[] => {
+    const kinds = (level && levelKinds) || all
+    // 'all' (the ceiling) is offered when some room has one: an outdoor zone has none
+    const roomIds = kinds === 'all' ? rooms.filter((r) => !isOutdoor(r.kind)).map((r) => r.id) : rooms.filter((r) => kinds.includes(r.kind)).map((r) => r.id)
     return roomIds.length ? [{ ...slot, roomIds: kinds === 'all' ? 'all' : roomIds }] : []
   })
 }
