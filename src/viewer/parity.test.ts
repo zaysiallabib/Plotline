@@ -54,7 +54,9 @@ describe("parity: the founder's draft gets what the hand-authored units show", {
   })
 
   it('walk: an entry view, a Rooms list with every bed / living / dining / kitchen / toilet, a first view of each', () => {
-    expect(entrySpawn(unit, rooms)).not.toBeNull()
+    // in through his entrance (the 1.69 m door from outside) into the unnamed space behind it, not the fallback
+    const e = entrySpawn(unit, rooms)!
+    expect(core.roomAt(e.p, rooms, unit)?.name).toBe('Space 1')
     const listed = listedRooms(unit, rooms)
     const lived = rooms.filter((r) => ['bed', 'living', 'dining', 'kitchen', 'bath'].includes(r.kind))
     expect(lived.length).toBeGreaterThan(5)

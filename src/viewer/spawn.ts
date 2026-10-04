@@ -19,8 +19,13 @@ const segDist = (p: Pt, a: Pt, b: Pt): number => {
  */
 export const yawFor = (dir: Pt): number => Math.atan2(-dir.x, -dir.y)
 
-/** A side of the entry door to walk into: not a shaft, lobby or other common space — but a foyer (Sheltech labels it 'other'). */
-const enterable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && (r.kind !== 'other' || /foyer|entr/i.test(r.name))
+/**
+ * A side of the entry door to walk into: not a shaft, nor the common core (stair, lift, lobby) — a foyer or an unnamed
+ * "Space N" just inside a Studio draft's entrance is (both 'other').
+ */
+const enterable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && !(r.kind === 'other' && isCommonCore(r))
+/** the far side of an entrance: outside the traced flat, or its common core */
+const outside = (r: Room | null): boolean => !r || (r.kind === 'other' && isCommonCore(r))
 
 /**
  * Rooms-list rooms: ones you can walk into (a door or passage on their walls) of at least 2 m²; no shafts, planters or
@@ -65,19 +70,24 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
  * Falls back to the centroid of the largest living room (then any room).
  */
 export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
-  for (const w of unit.walls) {
+  // the entrance: the first door from outside the flat (or its common core) into it — a Studio draft lists its walls
+  // in drawing order, not entrance first as the hand-authored units do — else the first door
+  const doors = unit.walls.flatMap((w) => {
     const door = w.openings.find((o) => o.kind === 'door')
-    if (!door) continue
+    if (!door) return []
     const f = core.wallFrame(w, unit.vertices)
     const at = add(f.origin, f.dir, door.offsetM + door.widthM / 2)
     const off = w.thicknessM / 2 + 0.05
-    const front = core.roomAt(add(at, f.normal, off), rooms, unit)
-    const back = core.roomAt(add(at, f.normal, -off), rooms, unit)
+    return [{ w, door, f, at, front: core.roomAt(add(at, f.normal, off), rooms, unit), back: core.roomAt(add(at, f.normal, -off), rooms, unit) }]
+  })
+  const entrance = doors.find((d) => (outside(d.front) && enterable(d.back)) || (outside(d.back) && enterable(d.front))) ?? doors[0]
+  // (a loop of at most one: `break` = no usable entry, the fallback below)
+  for (const { w, f, at, front, back } of entrance ? [entrance] : []) {
     let side = 0
     if (enterable(front) && enterable(back)) side = front.areaSqm >= back.areaSqm ? 1 : -1
     else if (enterable(front)) side = 1
     else if (enterable(back)) side = -1
-    if (!side) break // first door only; a door between two shafts/lobbies means the unit has no usable entry
+    if (!side) break // a door between two shafts/lobbies: the unit has no usable entry
     const n = { x: f.normal.x * side, y: f.normal.y * side }
     const p = add(at, n, w.thicknessM / 2 + 1.2)
     const room = (side > 0 ? front : back)!

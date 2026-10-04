@@ -130,9 +130,15 @@ describe('viewer', { timeout: 20_000 }, () => {
     for (const n of ['Planter (bed-1)', 'Planter (living)', 'Stair', 'Lift lobby']) expect(bNames).not.toContain(n)
   })
 
+  it('entry spawn finds the entrance wherever it is in the wall list (a Studio draft lists walls in drawing order)', () => {
+    const e = entrySpawn({ ...unit, walls: [...unit.walls].reverse() }, rooms)!
+    expect(core.roomAt(e.p, rooms, unit)?.name).toBe('Dining & family living') // in from the lift lobby, as before
+    expect(e).toEqual(entrySpawn(unit, rooms))
+  })
+
   it('entry spawn falls back to the largest living room when the first door has no enterable side', () => {
-    // relabel both sides of the entry door as 'other' → fallback
-    const u: Unit = { ...unit, roomLabels: unit.roomLabels.map((l) => (l.name === 'Dining & family living' ? { ...l, kind: 'other' } : l)) }
+    // the entry door's flat side becomes a shaft (its other side is the lift lobby, common core) → no entrance → fallback
+    const u: Unit = { ...unit, roomLabels: unit.roomLabels.map((l) => (l.name === 'Dining & family living' ? { ...l, kind: 'shaft' } : l)) }
     const r = core.deriveRooms(u)
     const e = entrySpawn(u, r)!
     const living = r.filter((x) => x.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0]
