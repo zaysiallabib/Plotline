@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, OpeningKind, Pt, RoomKind } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind, Slope } from '../core'
 import { draw, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
+  PILLAR_M,
+  WALL_TYPES,
+  dirDegOf,
   entityPoints,
   findEntity,
   formatTimer,
@@ -15,8 +18,11 @@ import {
   openingAt,
   openSpotsNear,
   printedSizeOf,
+  rampArrow,
+  rampDirs,
   reducer,
   slug,
+  snapRampDir,
   studioIssues,
   wallLabelSides,
   type Draft,
@@ -27,7 +33,7 @@ import {
 import { AI_KEY, TRACKER_KEY, openReview, studioReducer } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
-import { Panel, ROOM_KINDS, formatArea } from './Panel'
+import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
@@ -50,9 +56,11 @@ const TOOLS: [Tool, string, string][] = [
   ['wall', 'W', 'Wall'],
   ['opening', 'O', 'Opening'],
   ['room', 'R', 'Room'],
+  ['pillar', 'C', 'Column'],
   ['furniture', 'F', 'Furniture'],
 ]
 const HINTS: Record<Tool, string> = {
+  pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, its corner dots to size it`,
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
   select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: 'Scale · click both ends of a printed dimension',
@@ -99,13 +107,17 @@ interface Popover {
   printedSize: string
   areaSqm: number
   labelId?: Id
+  levelM?: number
+  slope?: Slope
+  /** the ramp's four quick directions (model.rampDirs) */
+  dirs: number[]
 }
 interface Note {
   text: string
   link?: { label: string; onClick: () => void }
 }
-/** `end`: an opening's end handle (resize) */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b' } & CornerDrag
+/** `end`: an opening's end handle (resize); `fixed`: a column's corner dot (resize, the opposite corner stays); `aim`: a ramp arrow's head */
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; fixed?: Pt; aim?: boolean } & CornerDrag
 /**
  * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
  * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
@@ -233,6 +245,8 @@ export default function StudioApp() {
   const dragRef = useRef<Drag | null>(null)
   /** Wall tool press: a move of 3 px or more makes it press-drag-release (one wall to the release point); `hold` = held W */
   const wallDragRef = useRef<{ sx: number; sy: number; at: Target; hold: boolean; moved: boolean } | null>(null)
+  /** C tool press: a release where it was = a 12" × 20" column there; dragged = a column from the press to the release */
+  const pillarDragRef = useRef<{ sx: number; sy: number; at: Pt; moved: boolean } | null>(null)
   const holdRef = useRef<Hold | null>(null)
   const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
@@ -722,6 +736,8 @@ export default function StudioApp() {
         const p = toScreen(l)
         if (Math.abs(p.x - sx) <= 40 && sy >= p.y - 14 && sy <= p.y + 18) return { kind: 'label', id: l.id }
       }
+      // a column's block (3 px slack) before the walls running through it
+      for (const p of u.pillars ?? []) if (Math.abs(m.x - p.x) <= p.wM / 2 + 3 / s && Math.abs(m.y - p.y) <= p.hM / 2 + 3 / s) return { kind: 'pillar', id: p.id }
       const nw = nearestWall(m, u)
       if (nw && nw.distanceM <= Math.max(nw.wall.thicknessM / 2, 5 / s)) return { kind: 'wall', id: nw.wall.id }
       return null
@@ -772,6 +788,26 @@ export default function StudioApp() {
     }
   }
 
+  /** a selected column's corner dot under the pointer (8 px): dragging it sizes the column, the opposite corner stays */
+  const pillarCornerAt = (sx: number, sy: number): { id: Id; fixed: Pt } | undefined => {
+    for (const p of unit.pillars ?? []) {
+      if (!state.selection.includes(p.id)) continue
+      for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const c = toScreen({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 })
+        if (Math.hypot(c.x - sx, c.y - sy) <= 8) return { id: p.id, fixed: { x: p.x - (kx * p.wM) / 2, y: p.y - (ky * p.hM) / 2 } }
+      }
+    }
+  }
+  /** a selected ramp's arrow head under the pointer (10 px): dragging it aims the ramp */
+  const rampHeadAt = (sx: number, sy: number): Id | undefined => {
+    for (const l of unit.roomLabels) {
+      const r = l.slope && state.selection.includes(l.id) && rooms.find((x) => x.id === l.id)
+      if (!r || !l.slope) continue
+      const h = toScreen(rampArrow(r, unit, l, l.slope.dirDeg).to)
+      if (Math.hypot(h.x - sx, h.y - sy) <= 10) return l.id
+    }
+  }
+
   const local = (e: { clientX: number; clientY: number }) => {
     const r = canvasRef.current!.getBoundingClientRect()
     return { sx: e.clientX - r.left, sy: e.clientY - r.top }
@@ -799,6 +835,9 @@ export default function StudioApp() {
         printedSize: existing?.printedSize ?? (r ? printedSizeOf(r, st.unit) : ''),
         areaSqm: r?.areaSqm ?? 0,
         labelId,
+        levelM: existing?.levelM,
+        slope: existing?.slope,
+        dirs: r ? rampDirs(r, st.unit) : [0, 90, 180, 270],
       })
     },
     [rooms, toast],
@@ -853,6 +892,11 @@ export default function StudioApp() {
     // a selected opening's end handle (Select, or the O tool right after placing one): drag = resize
     const end = (tool === 'select' || tool === 'opening') && openingEndAt(sx, sy)
     if (end) return void (dragRef.current = { hit: { kind: 'opening', id: end.id }, sx, sy, m, moved: false, orig: new Map(), end: end.end })
+    // a selected column's corner dot: drag = its size; a selected ramp's arrow head: drag = which way it runs
+    const corner = (tool === 'select' || tool === 'pillar') && pillarCornerAt(sx, sy)
+    if (corner) return void (dragRef.current = { hit: { kind: 'pillar', id: corner.id }, sx, sy, m, moved: false, orig: new Map(), fixed: corner.fixed })
+    const head = tool === 'select' && rampHeadAt(sx, sy)
+    if (head) return void (dragRef.current = { hit: { kind: 'label', id: head }, sx, sy, m, moved: false, orig: new Map(), aim: true })
     switch (tool) {
       case 'scale': {
         if (!state.planImage) return toast('Load a plan image first')
@@ -887,6 +931,19 @@ export default function StudioApp() {
         openPopover(m, sx, sy, hit?.kind === 'label' ? hit.id : undefined)
         return
       }
+      case 'pillar': {
+        if (!scaleSet) return toast('Set the scale first (S)')
+        const hit = hitTest(sx, sy)
+        const p = hit?.kind === 'pillar' && unit.pillars?.find((x) => x.id === hit.id)
+        if (hit && p) {
+          // on a column: it moves, as in Select
+          dragRef.current = { hit, sx, sy, m, moved: false, orig: new Map([[p.id, { x: p.x, y: p.y }]]) }
+          return dispatch({ type: 'select', ids: [p.id] })
+        }
+        const at = snapPoint(m, unit, { tolM, free: e.shiftKey })
+        pillarDragRef.current = { sx, sy, at: { x: at.x, y: at.y }, moved: false }
+        return
+      }
       case 'select': {
         const hit = hitTest(sx, sy)
         if (!hit) {
@@ -898,6 +955,8 @@ export default function StudioApp() {
           const w = unit.walls.find((x) => x.id === hit.id)!
           for (const id of [w.a, w.b]) orig.set(id, { ...vertexById(unit.vertices, id) })
         }
+        const col = hit.kind === 'pillar' && unit.pillars?.find((x) => x.id === hit.id)
+        if (col) orig.set(col.id, { x: col.x, y: col.y })
         // an end of the selected wall extends / shortens that wall alone (Alt: its neighbours stay straight instead);
         // Alt on any other corner detaches the wall the pointer pulls (on the first move)
         const selWall = hit.kind === 'vertex' && state.selection.length === 1 ? unit.walls.find((w) => w.id === state.selection[0] && (w.a === hit.id || w.b === hit.id)) : undefined
@@ -930,6 +989,14 @@ export default function StudioApp() {
       return
     }
     if (placing && tool === 'furniture') return void ghost(sx, sy)
+    const pd = pillarDragRef.current
+    if (pd) {
+      // a new column dragged out: its box from the press to the pointer, snapped like a corner
+      if (!pd.moved && Math.hypot(sx - pd.sx, sy - pd.sy) < 3) return
+      pd.moved = true
+      const b = snapPoint(toM(sx, sy), unit, { tolM, free: e.shiftKey })
+      return setHover({ m: toM(sx, sy), px: toPx(sx, sy), snap: b, hit: null, box: { a: pd.at, b } })
+    }
     const wd = wallDragRef.current
     if (wd && !wd.moved && Math.hypot(sx - wd.sx, sy - wd.sy) >= 3) {
       wd.moved = true
@@ -1021,6 +1088,32 @@ export default function StudioApp() {
           const u = (m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y
           dispatch(d.end ? { type: 'resize-opening', id: o.id, end: d.end, uM: u, tolM } : { type: 'drag-opening', id: o.id, offsetM: u - o.widthM / 2, tolM })
         }
+      } else if (d.hit.kind === 'pillar') {
+        const p = unit.pillars?.find((x) => x.id === d.hit.id)
+        if (!p) return
+        if (d.fixed) {
+          // a corner dot: the opposite corner stays, whole inches, 0.1 m at least
+          const c = free ? loose(m) : snapPoint(m, unit, { tolM })
+          const inch = (v: number) => Math.max(0.1, Math.round(Math.abs(v) / 0.0254) * 0.0254)
+          const [wM, hM] = [inch(c.x - d.fixed.x), inch(c.y - d.fixed.y)]
+          const sgn = (v: number) => (v < 0 ? -1 : 1)
+          dispatch({ type: 'set-pillar', id: p.id, patch: { x: d.fixed.x + (sgn(c.x - d.fixed.x) * wM) / 2, y: d.fixed.y + (sgn(c.y - d.fixed.y) * hM) / 2, wM, hM }, live: true })
+          show(c, [])
+        } else {
+          // its centre follows the pointer and snaps as a corner does: onto a wall's centre line, a corner, in line
+          const o = d.orig.get(p.id)!
+          const to = { x: o.x + m.x - d.m.x, y: o.y + m.y - d.m.y }
+          const c = free ? loose(to) : snapPoint(to, unit, { tolM })
+          dispatch({ type: 'set-pillar', id: p.id, patch: { x: c.x, y: c.y }, live: true })
+          show(c, [])
+        }
+      } else if (d.hit.kind === 'label' && d.aim) {
+        // a ramp's arrow head: the direction from its label to the pointer, onto its zone's edge directions (8°), else 5°
+        const l = unit.roomLabels.find((x) => x.id === d.hit.id)
+        const r = rooms.find((x) => x.id === d.hit.id)
+        if (!l || !r) return
+        const deg = dirDegOf({ x: m.x - l.x, y: m.y - l.y })
+        dispatch({ type: 'aim-ramp', id: l.id, dirDeg: free ? Math.round(deg) % 360 : snapRampDir(r, unit, deg) })
       } else if (d.hit.kind === 'label') {
         dispatch({ type: 'drag-label', id: d.hit.id, x: m.x, y: m.y })
       }
@@ -1032,6 +1125,19 @@ export default function StudioApp() {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (panRef.current) setPanning(false)
     panRef.current = null
+    const pd = pillarDragRef.current
+    pillarDragRef.current = null
+    if (pd) {
+      const { sx, sy } = local(e)
+      if (!pd.moved) dispatch({ type: 'add-pillar', ...pd.at, ...PILLAR_M })
+      else {
+        // the box from the press to the release, whole inches
+        const b = snapPoint(toM(sx, sy), unit, { tolM, free: e.shiftKey })
+        const inch = (v: number) => Math.round(Math.abs(v) / 0.0254) * 0.0254
+        dispatch({ type: 'add-pillar', x: (pd.at.x + b.x) / 2, y: (pd.at.y + b.y) / 2, wM: inch(b.x - pd.at.x), hM: inch(b.y - pd.at.y) })
+      }
+      return setHover(computeHover(sx, sy, e.shiftKey))
+    }
     const wd = wallDragRef.current
     wallDragRef.current = null
     if (wd?.moved) {
@@ -1056,6 +1162,9 @@ export default function StudioApp() {
     } else if (d.hit.kind === 'furniture') {
       const { sx, sy } = local(e)
       putDown(sx, sy) // refused: it stays in hand, red; a click where it fits puts it down
+    } else if (d.hit.kind === 'pillar') {
+      const { sx, sy } = local(e)
+      setHover(computeHover(sx, sy, e.shiftKey)) // drop the drag's snap ring
     }
   }
 
@@ -1226,6 +1335,8 @@ export default function StudioApp() {
         return dispatch({ type: 'delete' })
       }
       if (st.tool === 'opening' && OPENING_KEYS[e.key]) return dispatch({ type: 'pick-opening', kind: OPENING_KEYS[e.key] })
+      // the W tool's type (mid-chain a digit starts the typed length instead)
+      if (st.tool === 'wall' && !st.chain && WALL_KEYS[Number(e.key) - 1]) return dispatch({ type: 'pick-wall', wall: WALL_KEYS[Number(e.key) - 1] })
       if (e.key === '0') return fitView()
       if (/^[0-9.]$/.test(e.key) && st.chain && st.tool === 'wall') {
         e.preventDefault()
@@ -1285,9 +1396,9 @@ export default function StudioApp() {
   const savePopover = () => {
     if (!popover) return
     const name = popover.name.trim() || 'Room'
-    const label = { name, kind: popover.kind, x: popover.x, y: popover.y, printedSize: popover.printedSize.trim() || undefined }
+    const label = { name, kind: popover.kind, x: popover.x, y: popover.y, printedSize: popover.printedSize.trim() || undefined, levelM: popover.levelM, slope: popover.slope }
     if (popover.labelId) dispatch({ type: 'update-label', id: popover.labelId, patch: label })
-    else dispatch({ type: 'add-label', label })
+    else dispatch({ type: 'add-label', label: Object.fromEntries(Object.entries(label).filter(([, x]) => x !== undefined)) as typeof label })
     setPopover(null)
   }
 
@@ -1314,7 +1425,9 @@ export default function StudioApp() {
           ? placing.assetId
             ? 'Furniture · click the plan to put the piece there, R turns it, Esc cancels'
             : 'Furniture · the piece is in your hand: click where it fits (red = it does not, the reason is in red here), R turns it, Esc puts it back'
-          : HINTS[tool]) +
+          : tool === 'wall'
+            ? `Wall · drawing a ${WALL_TYPES[state.wallType ?? 'wall'].label.toLowerCase()} (1 wall, 2 low wall, 3 kerb, 4 zone line) · click the first corner, or drag from corner to corner`
+            : HINTS[tool]) +
     (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
   let centre = ''
@@ -1510,7 +1623,7 @@ export default function StudioApp() {
             </div>
           )}
           {popover && (
-            <div className="popover" style={{ left: Math.min(popover.sx + 12, size.w - 280), top: Math.min(popover.sy + 12, size.h - 220) }}>
+            <div className="popover" style={{ left: Math.min(popover.sx + 12, size.w - 280), top: Math.max(0, Math.min(popover.sy + 12, size.h - (popover.slope ? 420 : 330))) }}>
               <label>
                 <span>Room name</span>
                 <input
@@ -1529,13 +1642,7 @@ export default function StudioApp() {
               </label>
               <label>
                 <span>Kind</span>
-                <select value={popover.kind} onChange={(e) => setPopover({ ...popover, kind: e.target.value as RoomKind, kindTouched: true })}>
-                  {ROOM_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
+                <KindSelect value={popover.kind} onChange={(kind) => setPopover({ ...popover, kind, kindTouched: true })} />
               </label>
               <label>
                 <span>Printed size</span>
@@ -1548,6 +1655,7 @@ export default function StudioApp() {
                   }}
                 />
               </label>
+              <LevelFields levelM={popover.levelM} slope={popover.slope} dirs={popover.dirs} onChange={(p) => setPopover({ ...popover, ...p })} />
               <p className="muted">{formatArea(popover.areaSqm)}</p>
               <div className="actions">
                 <button className="primary" onClick={savePopover}>

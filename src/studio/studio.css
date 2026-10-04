@@ -142,6 +142,7 @@
 .props { display: grid; gap: 8px; }
 .row { display: grid; gap: 4px; }
 .seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.check { display: flex !important; flex-direction: row !important; gap: 6px; align-items: center; font-size: 12px; cursor: pointer; }
 .seg button { padding: 4px 8px; font-size: 12px; }
 .issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .issues li { display: flex; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; }
