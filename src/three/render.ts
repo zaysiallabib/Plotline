@@ -30,6 +30,7 @@ export type Quality = 'high' | 'low'
 
 const STOREY_M = 3.2
 const SLAB_M = 0.15
+const ROOF_LIFT = 0.04
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
 // ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
 // 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aims for walls ≈ 195–205.
@@ -177,8 +178,12 @@ export class Look {
       return meterUVs(new THREE.BoxGeometry(f.lengthM + w.thicknessM, SLAB_M - 0.001, w.thicknessM).applyMatrix4(m)) // the plaster scan, not stretched 0..1 per face
     })
     const slabGeo = mergeGeometries([...roomParts, ...wallParts])
-    const roofGeo = mergeGeometries([...roomParts.filter((_, i) => !openToSky(rooms[i])), ...wallParts])
-    ;[...roomParts, ...wallParts].forEach((g) => g.dispose())
+    // the roof's room undersides (single planes the shadow map stores) sit ROOF_LIFT higher than its wall boxes: 5 mm over
+    // the wall tops, the shadow biases reached past them and lit the top few mm of every wall facing the sun — a thin sun
+    // streak at the ceiling (founder, 2026-10-04). The boxes still close the wall tops, so no low sun gets in between.
+    const lifted = roomParts.filter((_, i) => !openToSky(rooms[i])).map((g) => g.clone().translate(0, ROOF_LIFT, 0))
+    const roofGeo = mergeGeometries([...lifted, ...wallParts])
+    ;[...roomParts, ...wallParts, ...lifted].forEach((g) => g.dispose())
     const slab = new THREE.Mesh(slabGeo, materialFor(EXTERIOR_PLASTER))
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
