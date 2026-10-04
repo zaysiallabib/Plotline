@@ -1,19 +1,20 @@
 -- Share links, Phase 0 backend (HANDOFF item 2, 2026-10-03).
--- Paste into the Supabase SQL editor of the Plotline project (or `supabase db push`).
--- The last SELECT prints the staff key: keep it, the Studio asks for it once per browser.
+-- The founder pastes supabase/paste-into-sql-editor.sql (this file + the events migration) into the Supabase SQL
+-- editor of the Plotline project (or `supabase db push`). Safe to run twice: nothing is dropped, the staff key is
+-- minted once and kept. The last SELECT prints the staff key: keep it, the Studio asks for it once per browser.
 --
 -- Security (CLAUDE.md): RLS on, NO policies - anon reads nothing from the tables.
 -- The only ways in are the two security-definer RPCs: a buyer resolves a token to a
 -- unit (unguessable uuid, view-scoped), staff publish with the staff key.
 
-create table public.units (
+create table if not exists public.units (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   json jsonb not null,
   created_at timestamptz not null default now()
 );
 
-create table public.share_links (
+create table if not exists public.share_links (
   token uuid primary key default gen_random_uuid(),
   unit_id uuid not null references public.units (id),
   created_at timestamptz not null default now()
@@ -25,8 +26,8 @@ revoke all on public.units, public.share_links from anon, authenticated;
 
 -- not exposed by PostgREST; only the definer functions read it
 create schema if not exists private;
-create table private.config (key text primary key, value text not null);
-insert into private.config (key, value) values ('staff_key', encode(gen_random_bytes(24), 'hex'));
+create table if not exists private.config (key text primary key, value text not null);
+insert into private.config (key, value) values ('staff_key', encode(gen_random_bytes(24), 'hex')) on conflict (key) do nothing;
 
 create or replace function public.unit_by_token (p_token uuid)
   returns jsonb

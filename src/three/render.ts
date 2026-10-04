@@ -176,7 +176,9 @@ export class Look {
 
     const b = core.unitBounds(unit)
     this.catcher.position.set((b.minX + b.maxX) / 2, -SLAB_M - 0.01, (b.minY + b.maxY) / 2)
-    this.ground.position.y = -(unit.floor ?? 0) * STOREY_M - 0.2
+    // a flat with no floor typed (a Studio draft) stands where the Building view puts one (building.ts: floor 2), not on
+    // the street: Dhaka flats start above the ground-floor parking
+    this.ground.position.y = -(unit.floor ?? 2) * STOREY_M - 0.2
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, -SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)
