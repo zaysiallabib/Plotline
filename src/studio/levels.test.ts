@@ -81,6 +81,19 @@ describe('wall types: picked before placing, remembered until changed', () => {
     expect(rect(scaled()).unit.walls.every((x) => x.heightM === WALL_HEIGHT_M)).toBe(true)
   })
 
+  it('a low wall\'s height typed before drawing (a 6\' boundary) draws every piece at it; typed onto several walls: one undo, the type follows', () => {
+    let s = run(scaled(), { type: 'pick-wall', wall: 'low', lowWallM: 6 * FT }, { type: 'pick-wall', wall: 'wall' }, { type: 'pick-wall', wall: 'low' })
+    s = rect(s)
+    expect(s.unit.walls.map((x) => x.heightM)).toEqual([6 * FT, 6 * FT, 6 * FT, 6 * FT]) // remembered through another pick
+    const ids = s.unit.walls.slice(0, 3).map((x) => x.id)
+    const n = s.history.past.length
+    s = reducer(s, { type: 'set-wall-type', ids, wall: wallTypeOf(0), heightM: 0 })
+    expect(s.unit.walls.map((x) => [x.heightM, x.thicknessM])).toEqual([[0, ZONE_LINE_M], [0, ZONE_LINE_M], [0, ZONE_LINE_M], [6 * FT, PARTITION_M]])
+    s = reducer(s, { type: 'set-wall-type', ids, wall: wallTypeOf(2.4), heightM: 2.4 })
+    expect(s.unit.walls.map((x) => [x.heightM, x.thicknessM])).toEqual([[2.4, PARTITION_M], [2.4, PARTITION_M], [2.4, PARTITION_M], [6 * FT, PARTITION_M]])
+    expect(s.history.past).toHaveLength(n + 2)
+  })
+
   it('wallTypeOf reads a height: 0 zone line, ≤ 0.2 kerb, under 2 m low wall', () => {
     expect([0, 0.1, KERB_M, 0.45, 1.1, 1.99, 2.1, WALL_HEIGHT_M].map(wallTypeOf)).toEqual(['zone', 'kerb', 'kerb', 'low', 'low', 'low', 'wall', 'wall'])
   })

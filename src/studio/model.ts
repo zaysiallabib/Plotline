@@ -77,6 +77,8 @@ export interface StudioState {
   lastOpeningWidthM?: number
   /** the W tool's picked wall type; absent = 'wall' */
   wallType?: WallType
+  /** the W tool's low-wall height typed before drawing (a 6' boundary wall, a 7' screen); absent = WALL_TYPES.low */
+  lowWallM?: number
   toast: { text: string; key: number } | null
   dragBlocked: boolean
   exported: boolean
@@ -102,10 +104,13 @@ export type Action =
   | { type: 'select'; ids: Id[]; add?: boolean }
   /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
   | { type: 'chain-start'; at: Target; wall?: WallType }
-  /** the W tool's type picker (keys 1–4): what the next walls are, the chain being drawn too */
-  | { type: 'pick-wall'; wall: WallType }
-  /** walls to another type (its height; a zone line 0.05 thin, out of one back to a partition); refused onto a zone line with openings */
-  | { type: 'set-wall-type'; ids: Id[]; wall: WallType }
+  /** the W tool's type picker (keys 1–4): what the next walls are, the chain being drawn too; `lowWallM` = the low wall's typed height */
+  | { type: 'pick-wall'; wall: WallType; lowWallM?: number }
+  /**
+   * walls to another type: its height, or `heightM` (the typed Height of one or several walls); a zone line 0.05 thin, out of
+   * one back to a partition; refused onto a zone line while they have openings. One undo.
+   */
+  | { type: 'set-wall-type'; ids: Id[]; wall: WallType; heightM?: number }
   /** "Stands alone (screen / decoration)" / "Keep — it stands alone": its loose ends are meant (Wall.standsAlone); one undo */
   | { type: 'stand-alone'; ids: Id[]; on: boolean }
   /** the C tool: a column centred at (x, y) (Unit.pillars), selected */
@@ -949,9 +954,9 @@ function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): S
 }
 const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
 const noted = (s: StudioState, notes: string[]): StudioState => (notes.length ? withToast(s, notes.join(' · ')) : s)
-/** a wall of type `wall` from one `thicknessM` wide: a zone line is ZONE_LINE_M thin, a wall out of one a partition again */
-const chainType = (thicknessM: number, wall: WallType): { thicknessM: number; heightM: number } =>
-  wall === 'zone' ? { thicknessM: ZONE_LINE_M, heightM: 0 } : { thicknessM: thicknessM <= ZONE_LINE_M + EPS ? PARTITION_M : thicknessM, heightM: WALL_TYPES[wall].heightM }
+/** a wall of type `wall` (`heightM` instead of the type's own) from one `thicknessM` wide: a zone line is ZONE_LINE_M thin, a wall out of one a partition again */
+const chainType = (thicknessM: number, wall: WallType, heightM?: number): { thicknessM: number; heightM: number } =>
+  wall === 'zone' ? { thicknessM: ZONE_LINE_M, heightM: 0 } : { thicknessM: thicknessM <= ZONE_LINE_M + EPS ? PARTITION_M : thicknessM, heightM: heightM ?? WALL_TYPES[wall].heightM }
 const joinedToast = (n: number, trimmed = 0) =>
   `Joined ${n} overlapping / crossing wall${n === 1 ? '' : 's'}${trimmed ? ` (${trimmed} opening${trimmed === 1 ? '' : 's'} trimmed)` : ''} — Ctrl+Z undoes`
 
@@ -1001,17 +1006,20 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'chain-start': {
       const r = resolveTarget(s.unit, a.at)
       if (typeof r === 'string') return withToast(s, r)
-      const chain = { ids: [r.id], ...chainType(s.chain?.thicknessM ?? PARTITION_M, a.wall ?? s.wallType ?? 'wall') }
+      const wall = a.wall ?? s.wallType ?? 'wall'
+      const chain = { ids: [r.id], ...chainType(s.chain?.thicknessM ?? PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined) }
       return r.unit === s.unit ? { ...s, chain, selection: [] } : commit(s, r.unit, { chain, selection: [] })
     }
-    case 'pick-wall':
-      return { ...s, wallType: a.wall, chain: s.chain && { ...s.chain, ...chainType(s.chain.thicknessM, a.wall) } }
+    case 'pick-wall': {
+      const lowWallM = a.lowWallM ?? s.lowWallM
+      return { ...s, wallType: a.wall, lowWallM, chain: s.chain && { ...s.chain, ...chainType(s.chain.thicknessM, a.wall, a.wall === 'low' ? lowWallM : undefined) } }
+    }
     case 'set-wall-type': {
       const ids = new Set(a.ids)
       const walls = s.unit.walls.filter((w) => ids.has(w.id))
       if (!walls.length) return s
       if (a.wall === 'zone' && walls.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line carries none')
-      const t = (w: Wall) => chainType(w.thicknessM, a.wall)
+      const t = (w: Wall) => chainType(w.thicknessM, a.wall, a.heightM)
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...t(w) } : w)) })
     }
     case 'stand-alone': {

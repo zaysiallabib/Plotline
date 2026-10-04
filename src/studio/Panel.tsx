@@ -134,10 +134,11 @@ export const formatArea = (sqm: number): string => `Area ${sqm.toFixed(1)} m² �
 
 /** Feet-inch text input; commits meters on Enter/blur, red when unparseable. */
 export function LenInput({ valueM, onCommit, placeholder }: { valueM: number; onCommit: (m: number) => void; placeholder?: string }) {
-  const [text, setText] = useState(formatFeetInches(valueM))
+  const fmt = (m: number) => (Number.isFinite(m) ? formatFeetInches(m) : '') // NaN: a mixed selection
+  const [text, setText] = useState(fmt(valueM))
   const [bad, setBad] = useState(false)
   useEffect(() => {
-    setText(formatFeetInches(valueM))
+    setText(fmt(valueM))
     setBad(false)
   }, [valueM])
   const commit = () => {
@@ -257,7 +258,12 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
       {state.tool === 'wall' && (
         <section>
           <h3>Draw a</h3>
-          <WallTypes value={state.chain ? wallTypeOf(state.chain.heightM) : (state.wallType ?? 'wall')} onPick={(t) => dispatch({ type: 'pick-wall', wall: t })} />
+          <WallTypes value={state.wallType ?? 'wall'} onPick={(t) => dispatch({ type: 'pick-wall', wall: t })} />
+          {state.wallType === 'low' && (
+            <Row label="Low wall height">
+              <LenInput valueM={state.lowWallM ?? WALL_TYPES.low.heightM} onCommit={(m) => m > 0 && dispatch({ type: 'pick-wall', wall: 'low', lowWallM: m })} />
+            </Row>
+          )}
           <p className="muted">{WALL_TIPS[state.wallType ?? 'wall']} · keys 1–4 (not while typing a length)</p>
         </section>
       )}
@@ -402,6 +408,9 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
         {walls.length > 0 && (
           <>
             <WallTypes value={type} onPick={(t) => dispatch({ type: 'set-wall-type', ids, wall: t })} />
+            <Row label="Height (all of them)">
+              <LenInput placeholder="mixed" valueM={walls.every((w) => w.w.heightM === walls[0].w.heightM) ? walls[0].w.heightM : NaN} onCommit={(m) => dispatch({ type: 'set-wall-type', ids, wall: wallTypeOf(m), heightM: m })} />
+            </Row>
             <Thickness
               value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
               onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
@@ -440,7 +449,7 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
         <WallTypes value={wallTypeOf(w.heightM)} onPick={(t) => dispatch({ type: 'set-wall-type', ids: [w.id], wall: t })} />
         <Thickness value={w.thicknessM} onChange={(t) => dispatch({ type: 'update-wall', id: w.id, patch: { thicknessM: t } })} />
         <Row label="Height (0 = zone line)">
-          <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'update-wall', id: w.id, patch: { heightM: m } })} />
+          <LenInput valueM={w.heightM} onCommit={(m) => dispatch({ type: 'set-wall-type', ids: [w.id], wall: wallTypeOf(m), heightM: m })} />
         </Row>
         <StandsAlone ids={[w.id]} on={!!w.standsAlone} dispatch={dispatch} />
         <Row label="Length (moves B)">
