@@ -8,7 +8,9 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, WATER_DROP_M, bayMarkings, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, WATER_DROP_M, bayMarkings, carriesRoof, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, curtainSides, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import sheltechRoof from '../data/units/sheltech-roof.json'
+import bananiRoof from '../data/units/banani-roof.json'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
 import { initialState, reducer } from '../studio/model'
 import { TEST_UNIT } from './testUnit'
@@ -442,6 +444,33 @@ describe('the white cased opening, however the partition was drawn (founder, 202
  * alone goes through the pure 3D / furnish / viewer parts without tripping, and a flush line builds nothing. The look
  * (zone floors, no ceiling outdoors, daylight, kerbs, the ramp's slope) is the 3D lane's.
  */
+test('the roof lays a beam only over a wall that carries it: a room beside it, or reaching the storey top (never over a rooftop parapet by a void, a free-standing fin)', () => {
+  const sides = (u: Unit, rooms: core.Room[], w: Unit['walls'][number]) => {
+    const f = core.wallFrame(w, u.vertices)
+    const off = w.thicknessM / 2 + 0.05
+    const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
+    return [1, -1].map((s) => core.roomAt({ x: mid.x + f.normal.x * off * s, y: mid.y + f.normal.y * off * s }, rooms, u))
+  }
+  /** walls the roof laid a beam over before (render.ts: not only among open zones; no cover over a flat or a rooftop) that carry none */
+  const loose = (u: Unit) => {
+    const rooms = core.deriveRooms(u)
+    const top = storeyTop(u, rooms)
+    const open = (r: core.Room | null) => !r || r.kind === 'shaft' || core.isOutdoor(r.kind)
+    return u.walls
+      .filter((w) => {
+        const s = sides(u, rooms, w)
+        return w.heightM > 0 && !(s.some((r) => r && core.isOutdoor(r.kind)) && s.every(open)) && !carriesRoof(w, s, u, rooms, top)
+      })
+      .map((w) => w.id)
+  }
+  // the flats keep every beam they had (a veranda's 1.1 m rail is the slab edge of the storey above)
+  for (const u of [typeA, typeB, typeC, sheltechA, sheltechB]) expect(loose(u as unknown as Unit), (u as unknown as Unit).id).toEqual([])
+  expect(loose(sheltechRoof as unknown as Unit)).toContain('w_parapet_n_3') // 1.1 m, between the north void and the open
+  expect(loose(bananiRoof as unknown as Unit)).toEqual(expect.arrayContaining(['w_screen_w_1', 'w_fin_n_1', 'w_fin_n_2'])) // 2.1 m fins in the open
+  expect(loose(bananiRoof as unknown as Unit)).not.toContain('w_fin_e') // 3 m: it reaches the storey top
+  expect(loose(sheltechRoof as unknown as Unit).filter((id) => !/parapet|screen/.test(id))).toEqual([]) // the lobby, stair, machine room walls carry it
+})
+
 describe('a level with zones, flush lines and a free-standing screen', () => {
   const u = GROUND_SAMPLE
   const rooms = core.deriveRooms(u)

@@ -743,6 +743,17 @@ export function storeyTop(unit: Unit, rooms: Room[]): number {
 }
 
 /**
+ * May the roof lay a beam of its slab over wall `w` (render.ts)? When a ROOM is on a side (`sides`: the faces either side
+ * of it) — its roof, or in a flat the storey above, is there: a veranda's rail is that slab's edge — or when the wall
+ * reaches the storey's top `topY` (it carries the slab edge). A wall with only zones, voids or the outside round it and
+ * lower than the storey (a rooftop parapet beside a void, a free-standing fin or screen) carries nothing: a beam over it
+ * hung in the sky (the Sheltech roof seen from its east deck).
+ */
+export function carriesRoof(w: Wall, sides: (Room | null)[], unit: Unit, rooms: Room[], topY: number): boolean {
+  return sides.some((r) => !!r && r.kind !== 'shaft' && !core.isOutdoor(r.kind)) || Math.max(...wallLift(w, unit, rooms).foot) + w.heightM >= topY - 0.01
+}
+
+/**
  * Where two faces meet along a flush line (heightM 0: no wall to carry a plinth) at different floor levels, the step's
  * vertical face from the lower floor up to the higher, on the line, facing the lower side — a lobby's edge above its lawn,
  * a ramp's side. Each riser is finished as the upper face's floor. Levels cross along the line (a ramp beside a flat zone):
