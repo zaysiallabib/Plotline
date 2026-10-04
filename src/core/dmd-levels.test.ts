@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'vitest'
 import b1 from '../data/units/dmd-b1.json'
 import b2 from '../data/units/dmd-b2.json'
+import ground from '../data/units/dmd-ground.json'
 import roof from '../data/units/dmd-roof.json'
 import * as core from './index'
 import type { Unit } from './index'
@@ -18,6 +19,10 @@ const LEVELS: Record<string, { unit: Unit; zones: string[] }> = {
   'dmd-b1': {
     unit: b1 as unknown as Unit,
     zones: ['Driveway', 'Underground water reservoir', 'Fire stair', 'Lift pit', "Driver's waiting", "Drivers' waiting", 'Ramp up to the ground level', 'Ramp down to Basement 2', ...BAYS(1, 35)],
+  },
+  'dmd-ground': {
+    unit: ground as unknown as Unit,
+    zones: ['Substation & generator', 'HT meter room', 'Ramp down to the basements', 'Lounge', 'Lift lobby', 'Fire stair', 'Stair', 'Lift', 'Lift 2', 'Car drop & pick up area', 'Entry & exit', 'Guard room', 'Children play area', 'Fountain', 'Deck', 'Green area'],
   },
   'dmd-roof': {
     unit: roof as unknown as Unit,
