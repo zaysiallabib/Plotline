@@ -16,7 +16,10 @@ import { pointInPolygon, type Pt } from '../core'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
-import { ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, parsePlanter, PLANTER, PLANTER_KERB, PROCEDURAL, PLANTER_TOP, STAIR_D, STAIR_RISE, STAIR_W, stairId, wardrobeDoors } from './procedural.meta'
+import {
+  ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, BOX_PLANTS, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
+  SCANS, SHRUBS, STAIR_D, STAIR_RISE, STAIR_W, stairId, TREES, wardrobeDoors, type Scan, type ScanId, type TreeId,
+} from './procedural.meta'
 
 export { PROCEDURAL } from './procedural.meta'
 
@@ -123,7 +126,24 @@ function makeMats() {
     kerb: pbr('plaster_white', { tint: '#d3cdc1' }), // planter kerb: weathered plaster
     soil: flat('#33271e', 1), // damp potting soil
     nickel: flat('#d4d1ca', 0.3, 0.5), // ceiling-light canopy and trim ring
+    // outdoor + common levels (session 19)
+    teak: grained(pbr('wood_veneer_light', { tint: '#b07a50' })), // oiled teak: loungers, benches, seesaw plank
+    timberDark: grained(pbr('wood_veneer_light', { tint: '#7c5638' })), // stained pergola timber
+    fibreCement: pbr('plaster_white', { tint: '#77746f', scale: 0.5 }), // charcoal fibre-cement pots and troughs
+    fibreLight: pbr('plaster_white', { tint: '#b3aea5', scale: 0.5 }),
+    terracotta: pbr('plaster_white', { tint: '#b36a45', scale: 0.4 }),
+    powder: flat('#2f5d4f', 0.42, 0.25), // powder-coated steel, deep green (play equipment)
+    powderRed: flat('#a8452c', 0.42, 0.25),
+    rubber: flat('#1c1c1d', 0.88), // dumbbells, plates, swing seats, treadmill belt
+    vinyl: flat('#141416', 0.45), // gym bench pad
+    gymMat: flat('#46525a', 0.9), // exercise mat
+    chrome: flat('#d9dadb', 0.18, 1),
   }
+}
+/** Wood whose figure runs along each panel's long side (boxUV grain). */
+function grained(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  m.userData.grain = true
+  return m
 }
 const M = () => (mats ??= makeMats())
 /** The ceiling lights' shared diffuser material (emissive follows the hour). */
@@ -1298,6 +1318,522 @@ function planterBed(id: string): THREE.Object3D[] {
   return [mesh(kerb, m.kerb), mesh(soil, m.soil), ...ims.filter((im) => im.count)]
 }
 
+// ───────────────────────────── greenery (session 19) ─────────────────────────────
+
+const browser = () => typeof globalThis.document?.createElement === 'function'
+
+/** An empty mesh with a bounding box: furniture.ts sizes and grounds a piece by its bbox, before its scans have loaded. */
+function layoutBox(min: [number, number, number], max: [number, number, number]): THREE.Mesh {
+  const g = new THREE.BufferGeometry()
+  g.boundingBox = new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max))
+  const o = new THREE.Mesh(g)
+  o.userData.solo = true
+  return o
+}
+
+const scanFiles = new Map<string, Promise<THREE.Object3D>>()
+/** A plant scan file, its MASK leaf cards given their alpha mask (glTF textures: flipY off). One load per file. */
+function scanFile(s: Scan): Promise<THREE.Object3D> {
+  let p = scanFiles.get(s.url)
+  if (!p) {
+    p = new GLTFLoader().loadAsync(s.url).then(async (g) => {
+      if (s.alpha) {
+        const a = await loader.loadAsync(s.alpha)
+        a.flipY = false
+        g.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
+          if (m?.alphaTest) Object.assign(m, { alphaMap: a, needsUpdate: true })
+        })
+      }
+      return g.scene
+    })
+    scanFiles.set(s.url, p)
+  }
+  return p
+}
+
+/** Scan `id` (procedural.meta SCANS) rooted at `at`, turned rotY, scaled k: a holder now, the scan's variant nodes once loaded. */
+function plant(id: ScanId, at: [number, number, number], rotY = 0, k = 1): THREE.Group {
+  const s = SCANS[id]
+  const g = new THREE.Group()
+  g.position.set(...at)
+  g.rotation.y = rotY
+  g.scale.setScalar(k)
+  g.userData.solo = true
+  if (browser())
+    scanFile(s)
+      .then((scene) => {
+        for (const name of s.nodes) {
+          const n = scene.getObjectByName(name)?.clone()
+          if (!n) continue
+          n.position.set(0, 0, 0) // the file lays its variants side by side
+          n.traverse((o) => (o.castShadow = o.receiveShadow = true))
+          g.add(n)
+        }
+      })
+      .catch((e) => console.warn(`[plotline] plant scan ${id} failed to load`, e))
+  return g
+}
+
+/** A pot (procedural.meta POTTED) with its scan: tapered fibre-cement or terracotta, rim lip, soil, the plant rooted in it. */
+function potted(id: string): THREE.Object3D[] {
+  const p = POTTED[id]
+  const m = M()
+  const mat = p.pot === 'clay' ? m.terracotta : p.pot === 'bowl' ? m.fibreLight : m.fibreCement
+  const s = SCANS[p.plant]
+  const soil = p.h - 0.04
+  const [rB, rT] = [p.d * (p.pot === 'bowl' ? 0.3 : 0.38), p.d / 2]
+  // one turned profile: foot, wall, rolled rim, the inside face down to the soil
+  const profile = [[0, 0], [rB - 0.01, 0], [rB, 0.012], [rT - 0.006, p.h - 0.03], [rT + 0.006, p.h - 0.022], [rT + 0.004, p.h], [rT - 0.02, p.h], [rT - 0.026, soil], [0, soil]].map(([x, y]) => new THREE.Vector2(x, y))
+  const [x0, z0, x1, z1] = [Math.min(-rT, s.min[0]), Math.min(-rT, s.min[2]), Math.max(rT, s.max[0]), Math.max(rT, s.max[2])]
+  // the whole piece centred on its footprint (pot and plant together: an off-centre crown moves the pot, not the trunk)
+  const [cx, cz] = [(x0 + x1) / 2, (z0 + z1) / 2]
+  return [
+    mesh(new THREE.LatheGeometry(profile, 48), mat, -cx, 0, -cz),
+    cyl(rT - 0.024, 0.008, m.soil, -cx, soil + 0.004, -cz),
+    plant(p.plant, [-cx, soil, -cz]),
+    layoutBox([x0 - cx, 0, z0 - cz], [x1 - cx, soil + s.max[1], z1 - cz]),
+  ]
+}
+
+/** Fibre-cement trough L long (it rebuilds at its length: more plants, never stretched ones), soil, BOX_PLANTS every ~0.42 m. */
+function planterBox({ x: L }: Size3): THREE.Object3D[] {
+  const m = M()
+  const [H, D, t] = [PLANTER_BOX_H, PLANTER_BOX_D, 0.03]
+  const out: THREE.Object3D[] = [
+    ...[-1, 1].map((s) => box(L, H, t, m.fibreCement, 0, H / 2, s * (D / 2 - t / 2))),
+    ...[-1, 1].map((s) => box(t, H, D - 2 * t, m.fibreCement, s * (L / 2 - t / 2), H / 2, 0)),
+    box(L - 2 * t, 0.02, D - 2 * t, m.soil, 0, H - 0.05, 0),
+  ]
+  const n = Math.max(2, Math.round(L / 0.42))
+  for (let i = 0; i < n; i++) {
+    const id = BOX_PLANTS[i % BOX_PLANTS.length]
+    const s = SCANS[id]
+    const k = Math.min(1, (D + 0.12) / (s.max[2] - s.min[2]), (L / n + 0.2) / (s.max[0] - s.min[0]))
+    out.push(plant(id, [-L / 2 + ((i + 0.5) * L) / n - ((s.min[0] + s.max[0]) / 2) * k, H - 0.05, -((s.min[2] + s.max[2]) / 2) * k], 0, k))
+  }
+  out.push(layoutBox([-L / 2, 0, -0.25], [L / 2, 0.95, 0.25]))
+  return out
+}
+
+/** Deterministic PRNG in [0, 1) (mulberry32). */
+function rng(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** A leaf card on a 1024 px atlas: base point, unit direction to the tip, length (px), extent across [t0, t1] (px, along (−d.y, d.x)). */
+type Card = { b: [number, number]; d: [number, number]; L: number; t: [number, number] }
+/** jacaranda_tree's three bipinnate leaves (stalk at the base). */
+const COMPOUND: Card[] = [
+  { b: [160, 232], d: [1, 0], L: 852, t: [-210, 250] },
+  { b: [0, 507], d: [1, 0], L: 440, t: [-177, 205] },
+  { b: [1024, 812], d: [-1, 0], L: 774, t: [-200, 212] },
+]
+/** island_tree_02's simple leaves, standing tip-up on the atlas. */
+const SIMPLE: Card[] = [
+  { b: [93, 408], d: [0, -1], L: 390, t: [-80, 57] },
+  { b: [280, 400], d: [0, -1], L: 382, t: [-114, 66] },
+  { b: [608, 368], d: [0, -1], L: 322, t: [-82, 58] },
+  { b: [772, 422], d: [0, -1], L: 405, t: [-64, 64] },
+]
+
+/** Card `c` as geometry: base at the origin, tip up +y at `len`, its width across x, face +z; `segs` steps along it, the tip curling back `droop`·len along −z. */
+function cardGeo(c: Card, len: number, segs: number, droop: number): THREE.BufferGeometry {
+  const k = len / c.L
+  const P: number[] = []
+  const UV: number[] = []
+  const I: number[] = []
+  for (let i = 0; i <= segs; i++) {
+    const s = i / segs
+    for (const t of c.t) {
+      P.push(t * k, s * len, -droop * s * s * len)
+      UV.push((c.b[0] + c.d[0] * s * c.L - c.d[1] * t) / 1024, 1 - (c.b[1] + c.d[1] * s * c.L + c.d[0] * t) / 1024) // TextureLoader: flipY
+    }
+    if (i) I.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i)
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2))
+  g.setIndex(I)
+  g.computeVertexNormals()
+  return g
+}
+
+const leafMats = new Map<string, THREE.MeshStandardMaterial>()
+/**
+ * A leaf atlas's material (public/assets/models/<dir>/<file>_leaves_*): colour, alpha-tested mask (dappled shadows too:
+ * the shadow pass honours alphaMap + alphaTest), normal, roughness from the ARM map's green. Lit on both faces and glowing
+ * faintly with its own colour like the planter leaves. Leaves stay hidden (onReady) until the mask is in: no green squares.
+ */
+function atlasLeafMat(dir: string, file: string, onReady: () => void): THREE.MeshStandardMaterial {
+  const key = `${dir}/${file}`
+  let m = leafMats.get(key)
+  if (!m) {
+    const mat = (m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, emissive: '#3d4b2c', roughness: 1, metalness: 0 }))
+    const u = (map: string, ext = 'jpg') => `/assets/models/${dir}/${file}_leaves_${map}_1k.${ext}`
+    mat.userData.ready = browser()
+      ? Promise.all([tex(u('diff'), 1, true), tex(u('alpha', 'png'), 1, false), tex(u('nor_gl'), 1, false), tex(u('arm'), 1, false)]).then(([map, alphaMap, normalMap, roughnessMap]) => {
+          Object.assign(mat, { map, emissiveMap: map, alphaMap, normalMap, roughnessMap, needsUpdate: true })
+        })
+      : new Promise(() => {})
+    leafMats.set(key, m)
+  }
+  ;(m.userData.ready as Promise<void>).then(onReady, () => {})
+  return m
+}
+
+/** Instanced leaves: one InstancedMesh per card kind (+ its shadow pass), tinted per leaf, laid out in `box`, shown once the atlas is in. */
+function leafMeshes(geos: THREE.BufferGeometry[], dir: string, file: string, kinds: { m: THREE.Matrix4; v: number }[][], box: THREE.Box3): THREE.InstancedMesh[] {
+  const ims = kinds.map((ls, kind) => {
+    const im = new THREE.InstancedMesh(geos[kind], undefined, ls.length)
+    const c = new THREE.Color()
+    ls.forEach(({ m, v }, i) => {
+      im.setMatrixAt(i, m)
+      im.setColorAt(i, c.setRGB(v * (0.85 + 0.15 * rnd(i, kind)), v, v * (0.8 + 0.2 * rnd(kind, i))))
+    })
+    im.boundingBox = box.clone()
+    im.castShadow = im.receiveShadow = true
+    im.userData.solo = true
+    im.visible = false
+    return im
+  })
+  const mat = atlasLeafMat(dir, file, () => ims.forEach((im) => (im.visible = true)))
+  ims.forEach((im) => (im.material = mat))
+  return ims.filter((im) => im.count)
+}
+
+/** A leaf instance: base at `at`, tip along unit `d`, its face turned toward `face` then rolled about d, `len` long. */
+function leafMatrix(at: THREE.Vector3, d: THREE.Vector3, face: THREE.Vector3, roll: number, len: number): THREE.Matrix4 {
+  const z = face.clone().addScaledVector(d, -face.dot(d))
+  if (z.lengthSq() < 1e-6) z.set(1, 0, 0)
+  z.normalize()
+  const x = new THREE.Vector3().crossVectors(d, z)
+  z.multiplyScalar(Math.cos(roll)).addScaledVector(x, Math.sin(roll))
+  x.crossVectors(d, z)
+  return new THREE.Matrix4().makeBasis(x, d, z).scale(new THREE.Vector3(len, len, len)).setPosition(at)
+}
+
+/**
+ * A clipped shrub, d across and h tall: leaves of island_tree_02 (CC0) packed over a dome in two shells, each pointing
+ * out from the dome, its face to the outside; a dark core behind them so the gaps read as depth, not as the lawn.
+ */
+function shrub(d: number, h: number): THREE.Object3D[] {
+  const R = rng(Math.round(d * 100 + h * 10))
+  const rx = d / 2
+  const ry = h * 0.62
+  const cy = h - ry
+  const kinds: { m: THREE.Matrix4; v: number }[][] = SIMPLE.map(() => [])
+  const leafLen = 0.055
+  // lumpy, not a ball: three soft bumps on the dome's radius
+  const bumps = [0, 1, 2].map(() => ({ th: 2 * Math.PI * R(), ph: R() * 1.2, k: 0.06 + 0.06 * R() }))
+  const lump = (n: THREE.Vector3) => 1 + bumps.reduce((s, b) => s + b.k * Math.max(0, n.dot(new THREE.Vector3(Math.cos(b.ph) * Math.cos(b.th), Math.sin(b.ph), Math.cos(b.ph) * Math.sin(b.th)))) ** 3, 0) - 0.05
+  const n = Math.round((2 * Math.PI * rx * (rx + ry)) / 0.0006)
+  for (let i = 0; i < n; i++) {
+    const th = 2 * Math.PI * R()
+    const ph = Math.asin(-0.6 + 1.6 * R()) // down to near the ground, up to the top
+    const nrm = new THREE.Vector3(Math.cos(ph) * Math.cos(th), Math.sin(ph), Math.cos(ph) * Math.sin(th))
+    const shell = (i % 4 ? 1 : 0.9) * lump(nrm) * (0.97 + 0.06 * R())
+    const at = new THREE.Vector3(nrm.x * rx * shell, cy + nrm.y * ry * shell, nrm.z * rx * shell)
+    if (at.y < 0.02) continue
+    const dir = nrm.clone().add(new THREE.Vector3(R() - 0.5, 0.6 + R() * 0.5, R() - 0.5)).normalize()
+    kinds[i % SIMPLE.length].push({ m: leafMatrix(at, dir, nrm, (R() - 0.5) * 1.2, leafLen * (0.75 + 0.5 * R())), v: 0.5 + 0.5 * R() })
+  }
+  const core = mesh(new THREE.SphereGeometry(1, 20, 12), flat('#1c2614', 1), 0, cy, 0)
+  core.scale.set(rx * 0.8, Math.min(ry * 0.8, cy), rx * 0.8) // its foot on the ground
+  const geos = SIMPLE.map((c) => cardGeo(c, 1, 1, 0))
+  return [core, ...leafMeshes(geos, 'shrub_leaves', 'island_tree_02', kinds, new THREE.Box3(new THREE.Vector3(-rx, 0, -rx), new THREE.Vector3(rx, h, rx)))]
+}
+
+/** Metres of bark per texture repeat. */
+const BARK_M = 0.9
+let barkMat: THREE.MeshStandardMaterial | null = null
+const bark = () => {
+  if (!barkMat) {
+    const m = (barkMat = new THREE.MeshStandardMaterial({ color: '#d8d2c8', roughness: 1 }))
+    m.userData.ownUV = true
+    const u = (map: string) => `/assets/models/tree_shade/jacaranda_tree_branches_${map}_1k.jpg`
+    if (browser())
+      Promise.all([tex(u('diff'), BARK_M, true), tex(u('nor_gl'), BARK_M, false), tex(u('arm'), BARK_M, false)])
+        .then(([map, normalMap, roughnessMap]) => Object.assign(m, { map, normalMap, roughnessMap, needsUpdate: true }))
+        .catch(() => {})
+  }
+  return barkMat
+}
+
+/** A tapered limb from a to b, bowed toward a + (b − a)/2 + bow, radius r0 → r1; UVs in metres (bark wraps it once round). */
+function limb(a: THREE.Vector3, b: THREE.Vector3, bow: THREE.Vector3, r0: number, r1: number): THREE.Mesh {
+  const curve = new THREE.QuadraticBezierCurve3(a, a.clone().lerp(b, 0.5).add(bow), b)
+  const [T, S] = [8, r0 > 0.06 ? 10 : 6]
+  const geo = new THREE.TubeGeometry(curve, T, 1, S, false)
+  const pos = geo.attributes.position
+  const uv = geo.attributes.uv
+  const len = curve.getLength()
+  const c = new THREE.Vector3()
+  for (let i = 0; i <= T; i++) {
+    curve.getPointAt(i / T, c)
+    const r = r0 + ((r1 - r0) * i) / T
+    for (let j = 0; j <= S; j++) {
+      const k = i * (S + 1) + j
+      pos.setXYZ(k, c.x + (pos.getX(k) - c.x) * r, Math.max(0, c.y + (pos.getY(k) - c.y) * r), c.z + (pos.getZ(k) - c.z) * r) // a leaning trunk's foot ring stays on the ground
+      uv.setXY(k, (j / S) * Math.max(BARK_M, 2 * Math.PI * r0), (i / T) * len)
+    }
+  }
+  return mesh(geo, bark())
+}
+
+/**
+ * A tree (procedural.meta TREES): a trunk to its first fork, 3–4 limbs that fork twice more (seeded), the crown's leaf
+ * clusters at the branch ends — jacaranda_tree's bipinnate leaves (CC0) as alpha-tested cards drooping outward, their
+ * faces to the sky — scaled so the crown is `crown` across and the tree `h` tall. Reads as a Dhaka rain tree / gulmohar.
+ */
+function tree(id: TreeId): THREE.Object3D[] {
+  const t = TREES[id]
+  const R = rng(t.seed)
+  const up = new THREE.Vector3(0, 1, 0)
+  const dirOf = (yaw: number, pitch: number) => new THREE.Vector3(Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch), Math.cos(pitch) * Math.sin(yaw))
+  const limbs: { a: THREE.Vector3; b: THREE.Vector3; bow: THREE.Vector3; r0: number; r1: number }[] = []
+  const tips: { p: THREE.Vector3; k: number }[] = []
+  const fork = new THREE.Vector3((R() - 0.5) * 0.25, t.fork, (R() - 0.5) * 0.25)
+  limbs.push({ a: new THREE.Vector3(), b: fork, bow: new THREE.Vector3((R() - 0.5) * 0.12, 0, (R() - 0.5) * 0.12), r0: t.r * 1.45, r1: t.r * 0.85 })
+  const grow = (from: THREE.Vector3, yaw: number, pitch: number, len: number, r0: number, depth: number) => {
+    const to = from.clone().addScaledVector(dirOf(yaw, pitch), len)
+    limbs.push({ a: from, b: to, bow: up.clone().multiplyScalar(len * 0.1), r0, r1: r0 * 0.6 })
+    if (!depth) return void tips.push({ p: to, k: 1 })
+    if (depth === 1) tips.push({ p: to.clone().addScaledVector(up, 0.1 * len), k: 0.8 }) // inner clusters fill the crown
+    const n = depth === 2 ? 3 : 2
+    for (let i = 0; i < n; i++) grow(to, yaw + (i - (n - 1) / 2) * 0.75 + (R() - 0.5) * 0.4, pitch * 0.55 + 0.05 + (R() - 0.5) * 0.25, len * 0.7, r0 * 0.62, depth - 1)
+  }
+  // limbs spread wide and low off a short trunk (a rain tree / gulmohar umbrella), not up like a poplar
+  const n = 3 + (t.seed % 2)
+  const L1 = t.crown * 0.26
+  for (let i = 0; i < n; i++) grow(fork, (2 * Math.PI * i) / n + R() * 0.6, 0.42 + R() * 0.25, L1, t.r * 0.78, 2)
+  // fit the crown to its spec: clusters `cr` round; spread to crown / 2, top to h (the trunk stays put)
+  const cr = t.crown * 0.16
+  const reach = Math.max(...tips.map((q) => Math.hypot(q.p.x, q.p.z))) + cr
+  const top = Math.max(...tips.map((q) => q.p.y)) + cr * 0.7
+  const fit = (p: THREE.Vector3) => (p.y <= t.fork + 1e-6 ? p : p.set(p.x * (t.crown / 2 / reach), t.fork + ((p.y - t.fork) * (t.h - t.fork)) / (top - t.fork), p.z * (t.crown / 2 / reach)))
+  new Set([...limbs.flatMap((l) => [l.a, l.b]), ...tips.map((q) => q.p)]).forEach(fit) // shared points: each once
+  const crS = Math.min(t.crown / 2 / reach, 1.2)
+  // leaves: cards on each cluster's shell, outward and drooping, faces up
+  const cardLen = 0.46 * (0.7 + (0.3 * t.crown) / 8.6)
+  const kinds: { m: THREE.Matrix4; v: number }[][] = COMPOUND.map(() => [])
+  let i = 0
+  for (const q of tips) {
+    const r = cr * crS * q.k
+    const count = Math.round((60 * r * r) / (cardLen * cardLen)) + 6
+    for (let j = 0; j < count; j++) {
+      const th = 2 * Math.PI * R()
+      const ph = Math.asin(-0.55 + 1.5 * R())
+      const w = new THREE.Vector3(Math.cos(ph) * Math.cos(th), Math.sin(ph), Math.cos(ph) * Math.sin(th))
+      const at = q.p.clone().add(new THREE.Vector3(w.x * r, w.y * r * 0.6, w.z * r).multiplyScalar(0.4 + 0.6 * Math.sqrt(R())))
+      const d = w.clone().add(new THREE.Vector3((R() - 0.5) * 0.6, -0.35, (R() - 0.5) * 0.6)).normalize()
+      const face = up.clone().addScaledVector(w, 0.4)
+      kinds[i++ % COMPOUND.length].push({ m: leafMatrix(at, d, face, (R() - 0.5) * 0.9, cardLen * (0.75 + 0.5 * R())), v: 0.55 + 0.45 * R() })
+    }
+  }
+  const geos = COMPOUND.map((c) => cardGeo(c, 1, 2, 0.18))
+  const box = new THREE.Box3(new THREE.Vector3(-t.crown / 2, 0, -t.crown / 2), new THREE.Vector3(t.crown / 2, t.h, t.crown / 2))
+  return [...limbs.map((l) => limb(l.a, l.b, l.bow, l.r0, l.r1)), ...leafMeshes(geos, 'tree_shade', 'jacaranda_tree', kinds, box)]
+}
+
+// ───────────────────────────── outdoor + common rooms (session 19) ─────────────────────────────
+
+/** A round bar r thick from a to b; a slanted leg's foot is cut level with the ground it stands on. */
+function rod(a: [number, number, number], b: [number, number, number], r: number, m: THREE.Material): THREE.Mesh {
+  const A = new THREE.Vector3(...a)
+  const d = new THREE.Vector3(...b).sub(A)
+  const g = new THREE.CylinderGeometry(r, r, d.length(), 16)
+    .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()))
+    .translate(A.x + d.x / 2, A.y + d.y / 2, A.z + d.z / 2)
+  const floor = Math.min(a[1], b[1])
+  const p = g.attributes.position
+  if (!floor) for (let i = 0; i < p.count; i++) p.setY(i, Math.max(0, p.getY(i)))
+  return mesh(g, m)
+}
+
+/** Teak sun lounger 0.7 × 2.0: slatted bed on two rails and four legs, the back raised 50° at −z, an oat cushion over both. */
+function lounger(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (const x of [-0.31, 0.31]) {
+    out.push(box(0.045, 0.08, 1.4, m.teak, x, 0.28, 0.3)) // rails z −0.4..1.0
+    for (const z of [-0.36, 0.94]) out.push(box(0.05, 0.26, 0.05, m.teak, x, 0.13, z))
+  }
+  for (let z = -0.36; z <= 0.96; z += 0.1) out.push(box(0.58, 0.018, 0.075, m.teak, 0, 0.329, z))
+  const a = (50 * Math.PI) / 180
+  const back = (o: THREE.Mesh) => {
+    o.rotation.x = a // its +y tips back toward −z
+    return o
+  }
+  // the back: slats on two stiles hinged at z −0.4, y 0.33, 0.65 long
+  const at = (s: number, lift = 0): [number, number, number] => [0, 0.33 + Math.sin(a) * s + Math.cos(a) * lift, -0.4 - Math.cos(a) * s + Math.sin(a) * lift]
+  for (const x of [-0.27, 0.27]) out.push(back(box(0.04, 0.65, 0.03, m.teak, x, at(0.325)[1], at(0.325)[2])))
+  for (let s = 0.05; s < 0.65; s += 0.1) out.push(back(box(0.56, 0.075, 0.018, m.teak, 0, at(s, 0.024)[1], at(s, 0.024)[2])))
+  out.push(rbox(0.6, 0.05, 1.36, 0.02, m.cushionOat, 0, 0.363, 0.29))
+  out.push(back(rbox(0.6, 0.62, 0.05, 0.02, m.cushionOat, 0, at(0.31, 0.06)[1], at(0.31, 0.06)[2])))
+  return out
+}
+
+/** Backless teak bench 1.5 m: five slats on two black steel U-frames. */
+function benchTimber(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (let i = 0; i < 5; i++) out.push(box(1.5, 0.03, 0.068, m.teak, 0, 0.435, -0.16 + i * 0.08))
+  for (const x of [-0.6, 0.6]) {
+    for (const z of [-0.17, 0.17]) out.push(box(0.04, 0.42, 0.04, m.blackSteel, x, 0.21, z))
+    out.push(box(0.04, 0.04, 0.38, m.blackSteel, x, 0.4, 0))
+  }
+  return out
+}
+
+/** Stained timber pergola 3 × 3 × 2.6: four posts 15 cm in from the corners, two beams along x, rafters every 0.3 m along z. */
+function pergola(): THREE.Mesh[] {
+  const m = M()
+  const p = 1.5 - 0.15 - PERGOLA_POST / 2
+  const out: THREE.Mesh[] = []
+  for (const x of [-p, p]) for (const z of [-p, p]) out.push(box(PERGOLA_POST, 2.3, PERGOLA_POST, m.timberDark, x, 1.15, z))
+  for (const z of [-p, p]) out.push(box(3.0, 0.22, 0.08, m.timberDark, 0, 2.19, z))
+  for (let x = -1.35; x <= 1.36; x += 0.3) out.push(box(0.05, 0.16, 3.0, m.timberDark, x, 2.38, 0))
+  return out
+}
+
+/** Reception desk 2.4 m: oak front and ends on a dark recessed plinth, a stone ledge for visitors (+z) at 1.1 m, a work top at 0.74 m behind with a monitor. */
+function receptionDesk(): THREE.Mesh[] {
+  const m = M()
+  return [
+    box(2.4, 1.0, 0.04, m.oak, 0, 0.56, 0.36), // front 0.06–1.06
+    box(2.3, 0.06, 0.03, m.dark, 0, 0.03, 0.34), // plinth shadow gap
+    ...[-1, 1].map((s) => box(0.04, 1.04, 0.76, m.oak, s * 1.18, 0.54, 0)),
+    box(2.44, 0.04, 0.34, m.stone, 0, 1.08, 0.24), // ledge
+    box(2.32, 0.03, 0.55, m.oak, 0, 0.735, -0.1), // work top
+    box(0.52, 0.32, 0.02, m.blackGlass, 0.35, 1.0, -0.2), // monitor, facing the receptionist (−z), its top just over the ledge
+    box(0.05, 0.1, 0.05, m.blackSteel, 0.35, 0.8, -0.22),
+    box(0.22, 0.012, 0.16, m.blackSteel, 0.35, 0.756, -0.22),
+    box(0.42, 0.015, 0.14, m.dark, 0.3, 0.758, 0.02), // keyboard
+  ]
+}
+
+/** Treadmill: dark deck and belt on aluminium side rails, motor hood and two uprights at −z, console 1.3 m up with a screen facing the runner (+z). */
+function treadmill(): THREE.Mesh[] {
+  const m = M()
+  const out = [
+    rbox(0.78, 0.17, 1.7, 0.03, m.dark, 0, 0.1, 0.08),
+    box(0.5, 0.012, 1.45, m.rubber, 0, 0.19, 0.12), // belt
+    rbox(0.82, 0.26, 0.34, 0.06, m.blackSteel, 0, 0.13, -0.76), // motor hood
+    rbox(0.78, 0.22, 0.24, 0.05, m.blackSteel, 0, 1.3, -0.62), // console
+    tilt(box(0.56, 0.16, 0.01, m.blackGlass, 0, 1.32, -0.495), -0.5), // screen
+  ]
+  for (const s of [-1, 1]) {
+    out.push(box(0.1, 0.03, 1.5, m.steel, s * 0.31, 0.19, 0.12)) // side rails
+    out.push(rod([s * 0.38, 0.2, -0.72], [s * 0.38, 1.25, -0.64], 0.03, m.blackSteel)) // uprights
+    out.push(rod([s * 0.38, 1.05, -0.64], [s * 0.38, 1.05, -0.28], 0.018, m.steel)) // handrails
+  }
+  return out
+}
+
+/** Squat rack (black steel, 1.2 × 1.0) with a chrome barbell and rubber plates on its hooks, a flat bench through it to +z. */
+function gymRack(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (const x of [-0.6, 0.6]) {
+    for (const z of [-0.6, 0.4]) out.push(box(0.075, 2.2, 0.075, m.blackSteel, x, 1.1, z))
+    for (const y of [0.04, 2.16]) out.push(box(0.075, 0.075, 1.08, m.blackSteel, x, y, -0.1))
+    out.push(box(0.06, 0.06, 0.95, m.chrome, x, 0.55, -0.1)) // safety bars
+    out.push(box(0.1, 0.05, 0.1, m.blackSteel, x, 1.31, 0.46)) // hooks
+  }
+  for (const z of [-0.6, 0.4]) out.push(box(1.27, 0.075, 0.075, m.blackSteel, 0, 2.16, z))
+  // barbell on the hooks
+  out.push(rod([-1.1, 1.37, 0.46], [1.1, 1.37, 0.46], 0.014, m.chrome))
+  for (const s of [-1, 1]) for (const [x, r] of [[0.8, 0.225], [0.86, 0.17]] as const) out.push(rod([s * x, 1.37, 0.46], [s * (x + 0.05), 1.37, 0.46], r, m.rubber))
+  // flat bench
+  out.push(rbox(0.28, 0.07, 1.15, 0.025, m.vinyl, 0, 0.44, 0.12))
+  for (const z of [-0.35, 0.6]) out.push(box(0.32, 0.04, 0.05, m.blackSteel, 0, 0.02, z), box(0.05, 0.38, 0.05, m.blackSteel, 0, 0.21, z))
+  out.push(box(0.05, 0.05, 0.95, m.blackSteel, 0, 0.39, 0.12))
+  return out
+}
+
+/** Two-tier dumbbell rack 1.4 m (black steel A-ends), five pairs of round rubber dumbbells a tier, heavier to the right. */
+function dumbbellRack(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (const x of [-0.68, 0.68]) out.push(rod([x, 0, 0.22], [x, 0.8, -0.1], 0.025, m.blackSteel), rod([x, 0, -0.22], [x, 0.8, -0.1], 0.025, m.blackSteel))
+  for (const [y, z] of [[0.38, 0.12], [0.72, -0.08]] as const) {
+    out.push(box(1.36, 0.03, 0.2, m.blackSteel, 0, y, z))
+    for (let i = 0; i < 5; i++) {
+      const r = 0.05 + i * 0.01
+      for (const dz of [-0.05, 0.05]) {
+        const x = -0.55 + i * 0.27
+        out.push(rod([x - 0.1, y + 0.015 + r, z + dz], [x - 0.06, y + 0.015 + r, z + dz], r, m.rubber), rod([x + 0.06, y + 0.015 + r, z + dz], [x + 0.1, y + 0.015 + r, z + dz], r, m.rubber))
+        out.push(rod([x - 0.06, y + 0.015 + r, z + dz], [x + 0.06, y + 0.015 + r, z + dz], 0.014, m.chrome))
+      }
+    }
+  }
+  return out
+}
+
+/** Swing set: green powder-coated A-frames and top beam, two black rubber strap seats on chains (thin steel rods). */
+function swingFrame(): THREE.Mesh[] {
+  const m = M()
+  const top = 2.25
+  const out = [rod([-1.62, top, 0], [1.62, top, 0], 0.045, m.powder)]
+  for (const s of [-1, 1]) for (const z of [-0.88, 0.88]) out.push(rod([s * 1.6, top + 0.02, 0], [s * 1.66, 0, z], 0.035, m.powder))
+  for (const x of [-0.7, 0.7]) {
+    out.push(rbox(0.46, 0.03, 0.17, 0.012, m.rubber, x, 0.45, 0))
+    for (const dx of [-0.21, 0.21]) out.push(rod([x + dx, top - 0.04, 0], [x + dx, 0.46, 0], 0.006, m.steel))
+  }
+  return out
+}
+
+/** Slide tower: four green posts round a 1.2 m deck with rails, a ladder down the back (−z), a stainless chute to +z with side walls and a run-out. */
+function slide(): THREE.Mesh[] {
+  const m = M()
+  const deck = 1.2
+  const out: THREE.Mesh[] = [box(0.9, 0.04, 0.9, m.teak, 0, deck, -1.15)]
+  for (const x of [-0.45, 0.45]) {
+    for (const z of [-1.6, -0.7]) out.push(rod([x, 0, z], [x, 2.05, z], 0.04, m.powder))
+    for (const y of [deck + 0.45, deck + 0.85]) out.push(rod([x, y, -1.6], [x, y, -0.7], 0.022, m.powderRed)) // side rails
+  }
+  out.push(rod([-0.45, deck + 0.85, -1.6], [0.45, deck + 0.85, -1.6], 0.022, m.powderRed))
+  // ladder down the back, rungs every 0.25 m
+  for (const x of [-0.25, 0.25]) out.push(rod([x, 0, -1.8], [x, deck + 0.3, -1.6], 0.022, m.powder))
+  for (let y = 0.25; y < deck; y += 0.25) out.push(rod([-0.25, y, -1.8 + (y / (deck + 0.3)) * 0.2], [0.25, y, -1.8 + (y / (deck + 0.3)) * 0.2], 0.016, m.steel))
+  // chute: from the deck's front edge (z −0.7) down to 0.3 m at z 1.35, then a 0.4 m run-out
+  const [z0, y0, z1, y1] = [-0.7, deck, 1.35, 0.3]
+  const run = Math.hypot(z1 - z0, y0 - y1)
+  const pitch = Math.atan2(y0 - y1, z1 - z0)
+  const along = (o: THREE.Mesh) => ((o.rotation.x = pitch), o)
+  const mid = (dy: number): [number, number] => [(y0 + y1) / 2 + dy * Math.cos(pitch), (z0 + z1) / 2 + dy * Math.sin(pitch)]
+  out.push(along(box(0.5, 0.02, run, m.steel, 0, ...mid(0))))
+  for (const x of [-0.26, 0.26]) out.push(along(box(0.02, 0.16, run, m.steel, x, ...mid(0.08))))
+  out.push(box(0.5, 0.02, 0.4, m.steel, 0, y1, z1 + 0.2), ...[-0.26, 0.26].map((x) => box(0.02, 0.12, 0.4, m.steel, x, y1 + 0.06, z1 + 0.2)))
+  out.push(rod([0, 0, z1 + 0.3], [0, y1, z1 + 0.3], 0.03, m.powder))
+  return out
+}
+
+/** Seesaw 3.0 m: green steel pivot stand, a teak plank resting at 8° (one end on its rubber stop), steel handles, rubber seats. */
+function seesaw(): THREE.Mesh[] {
+  const m = M()
+  const a = (8 * Math.PI) / 180
+  const piv = 0.42
+  const out: THREE.Mesh[] = [rod([-0.2, 0, 0], [0, piv, 0], 0.035, m.powder), rod([0.2, 0, 0], [0, piv, 0], 0.035, m.powder), rod([-0.22, piv, 0], [0.22, piv, 0], 0.03, m.steel)]
+  const on = (z: number, h: number): [number, number] => [piv + 0.04 - z * Math.sin(a) + h * Math.cos(a), z * Math.cos(a) + h * Math.sin(a)]
+  const lie = (o: THREE.Mesh) => ((o.rotation.x = a), o) // +z end down
+  out.push(lie(box(0.22, 0.045, 3.0, m.teak, 0, ...on(0, 0))))
+  for (const s of [-1, 1]) {
+    out.push(lie(rbox(0.3, 0.05, 0.32, 0.02, m.rubber, 0, ...on(s * 1.25, 0.045))))
+    const [y, z] = on(s * 0.95, 0.03)
+    out.push(rod([-0.14, y, z], [-0.14, y + 0.25, z], 0.014, m.powderRed), rod([0.14, y, z], [0.14, y + 0.25, z], 0.014, m.powderRed), rod([-0.14, y + 0.25, z], [0.14, y + 0.25, z], 0.014, m.powderRed))
+  }
+  return out
+}
+
 /** id → builder at size s (its kit size unless resized); the kit.ts REBUILD ones rebuild at any size in their limits, the rest are scaled. */
 const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   // mattress = width − the headboard's 16 cm
@@ -1337,6 +1873,22 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   cot_s: (s) => cot(s.x, s.z),
   hook_rail: hookRail,
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), () => stair(w)])),
+  ...Object.fromEntries(Object.keys(POTTED).map((id) => [id, () => potted(id)])),
+  ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, planterBox])),
+  ...Object.fromEntries(Object.entries(SHRUBS).map(([id, s]) => [id, () => shrub(s.d, s.h)])),
+  ...Object.fromEntries(Object.keys(TREES).map((id) => [id, () => tree(id as TreeId)])),
+  lounger,
+  bench_timber: benchTimber,
+  pergola,
+  reception_desk: receptionDesk,
+  treadmill,
+  gym_rack: gymRack,
+  dumbbell_rack: dumbbellRack,
+  gym_mat: () => [rbox(0.6, 0.012, 1.8, 0.005, M().gymMat, 0, 0.006, 0)],
+  mirror_panel: () => [box(2.02, 1.82, 0.026, M().dark, 0, 0.91, 0.013), mirror(2.0, 1.8, 0, 0.91, 0.028)],
+  swing_frame: swingFrame,
+  slide,
+  seesaw,
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 

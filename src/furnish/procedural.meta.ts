@@ -99,6 +99,89 @@ export const wardrobeDoors = (W: number): number => Math.max(1, Math.ceil(W / 0.
 /** Chairs a W-long dining table seats: one per 0.6 m along each long side, one at each head from 1.4 m (0.9 m = 2, 1.6 m = 6, 2.6 m = 10). */
 export const tableSeats = (W: number): number => 2 * Math.max(1, Math.floor(W / 0.6 + 1e-6)) + (W >= 1.4 ? 2 : 0)
 
+// ───────────────────────────── greenery + common levels (session 19) ─────────────────────────────
+
+type V3 = [number, number, number]
+/**
+ * Poly Haven CC0 plant scans the greenery is built from (public/assets/models, MANIFEST.md): the file, the variant's
+ * nodes (laid out side by side in the file; their root is the node origin) and its extent there (m, glTF axes, root at
+ * 0). `alpha`: the leaf-card mask the 1k glTF's JPG base colour cannot carry (MASK materials; procedural.ts adds it).
+ */
+const SCAN_FILE = {
+  money: { url: '/assets/models/pachira_aquatica_01/pachira_aquatica_01_1k.gltf' },
+  calathea: { url: '/assets/models/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf', alpha: '/assets/models/calathea_orbifolia_01/textures/calathea_orbifolia_01_alpha_1k.png' },
+  anthurium: { url: '/assets/models/anthurium_botany_01/anthurium_botany_01_1k.gltf', alpha: '/assets/models/anthurium_botany_01/textures/anthurium_botany_01_alpha_1k.png' },
+  fern: { url: '/assets/models/fern_02/fern_02_1k.gltf', alpha: '/assets/models/fern_02/textures/fern_02_alpha_1k.png' },
+}
+export interface Scan {
+  url: string
+  alpha?: string
+  nodes: string[]
+  min: V3
+  max: V3
+}
+const scan = (f: keyof typeof SCAN_FILE, nodes: string[], min: V3, max: V3): Scan => ({ ...SCAN_FILE[f], nodes, min, max })
+export const SCANS = {
+  money_c: scan('money', ['pachira_aquatica_01_bark_c', 'pachira_aquatica_01_leaves_c'], [-0.36, 0, -0.56], [0.62, 1.15, 0.37]),
+  money_d: scan('money', ['pachira_aquatica_01_bark_d', 'pachira_aquatica_01_leaves_d'], [-0.49, 0, -0.59], [0.56, 1.89, 0.41]),
+  calathea_a: scan('calathea', ['calathea_orbifolia_01_a'], [-0.29, 0, -0.32], [0.31, 0.42, 0.21]),
+  calathea_b: scan('calathea', ['calathea_orbifolia_01_b'], [-0.18, 0, -0.2], [0.17, 0.3, 0.24]),
+  anthurium_b: scan('anthurium', ['anthurium_botany_01_b'], [-0.38, 0, -0.3], [0.38, 0.46, 0.27]),
+  anthurium_c: scan('anthurium', ['anthurium_botany_01_c'], [-0.22, 0, -0.34], [0.38, 0.35, 0.32]),
+  fern_b: scan('fern', ['fern_02_b'], [-0.53, 0, -0.42], [0.46, 0.4, 0.47]),
+  fern_c: scan('fern', ['fern_02_c'], [-0.43, 0, -0.42], [0.44, 0.32, 0.35]),
+} satisfies Record<string, Scan>
+export type ScanId = keyof typeof SCANS
+
+/** A pot (fibre-cement or terracotta, code-built) and the scan growing in it, its root on the soil 4 cm under the rim. */
+export interface Potted {
+  plant: ScanId
+  pot: 'tall' | 'bowl' | 'clay'
+  /** pot rim diameter and height, m */
+  d: number
+  h: number
+}
+export const POTTED: Record<string, Potted> = {
+  pot_money_tree: { plant: 'money_c', pot: 'tall', d: 0.44, h: 0.48 },
+  pot_money_tree_tall: { plant: 'money_d', pot: 'tall', d: 0.5, h: 0.55 },
+  pot_calathea: { plant: 'calathea_a', pot: 'bowl', d: 0.5, h: 0.32 },
+  pot_anthurium: { plant: 'anthurium_b', pot: 'clay', d: 0.38, h: 0.38 },
+  pot_fern: { plant: 'fern_b', pot: 'bowl', d: 0.46, h: 0.36 },
+}
+/** Plan size and height of a potted piece: the pot and the plant's extent over it (the plant's root at the pot's centre). */
+function pottedSize({ plant, d, h }: Potted): { x: number; y: number; z: number } {
+  const s = SCANS[plant]
+  const ext = (k: 0 | 2) => Math.max(d / 2, s.max[k]) - Math.min(-d / 2, s.min[k])
+  return { x: ext(0), y: h - 0.04 + s.max[1], z: ext(2) }
+}
+
+/** Planter box (code-built, rebuilds at its length): a fibre-cement trough PLANTER_BOX_H tall, PLANTER_BOX_D deep, scans along it. */
+export const PLANTER_BOX_H = 0.5
+export const PLANTER_BOX_D = 0.45
+export const PLANTER_BOXES = { planter_box_90: 0.9, planter_box_150: 1.5, planter_box_240: 2.4 }
+/** The plants down a planter box, in order (every ~0.45 m). */
+export const BOX_PLANTS: ScanId[] = ['anthurium_b', 'calathea_a', 'fern_c', 'anthurium_c', 'calathea_b', 'fern_b']
+
+/**
+ * Trees (code-built: bark and compound leaves of Poly Haven's jacaranda_tree, CC0): `crown` across, `h` tall, first fork
+ * at `fork`, trunk radius `r` at chest height; `seed` shapes the limbs. Category 'rug' like the planter bed: the engine
+ * gives them no contact shadow (the sun casts their real one) and pieces may stand under the crown; presets keep their
+ * trunks (TRUNK_CLEAR square) clear.
+ */
+export const TREES = {
+  tree_small: { label: 'Small tree, compound leaves (3.5 m)', crown: 3.2, h: 3.6, fork: 1.6, r: 0.07, seed: 3 },
+  tree_medium: { label: 'Shade tree (6 m)', crown: 5.6, h: 6, fork: 2.2, r: 0.13, seed: 7 },
+  tree_large: { label: 'Big shade tree (9 m)', crown: 8.6, h: 8.5, fork: 2.6, r: 0.2, seed: 11 },
+}
+export type TreeId = keyof typeof TREES
+export const TRUNK_CLEAR = 1.0
+
+/** Shrubs (code-built mounds of Poly Haven island_tree_02's leaves, CC0): diameter and height. */
+export const SHRUBS = { shrub_round: { d: 0.9, h: 0.8, label: 'Shrub, clipped (0.9 m)' }, shrub_large: { d: 1.5, h: 1.25, label: 'Shrub, large (1.5 m)' } }
+
+/** Pergola posts: square section, inset from the footprint's corners (presets keep them clear). */
+export const PERGOLA_POST = 0.12
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -149,6 +232,35 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   cot_s: P('cot_s', 'Short single cot, cotton mattress', 'bed', 1.7, 0.58, 0.65), // a help room under 1.9 m long
   hook_rail: { ...P('hook_rail', 'Hook rail with a towel', 'other', 0.6, 0.55, 0.09, 1.2), kind: 'decor' },
   ...Object.fromEntries(STAIR_W.map((w) => [stairId(w), { ...P(stairId(w), `Dog-leg stair, ${((w - 0.1) / 2).toFixed(2)} m flights`, 'other', w, STAIR_RISE, STAIR_D), kind: 'stair' as const }])),
+  // greenery: potted scans, planter boxes, shrubs, trees (the library's Greenery tab)
+  ...Object.fromEntries(
+    Object.entries({
+      pot_money_tree: 'Money tree, fibre-cement pot (1.6 m)',
+      pot_money_tree_tall: 'Money tree, tall, fibre-cement pot (2.4 m)',
+      pot_calathea: 'Calathea, low bowl planter',
+      pot_anthurium: 'Anthurium, terracotta pot',
+      pot_fern: 'Fern, low bowl planter',
+    }).map(([id, label]) => {
+      const s = pottedSize(POTTED[id])
+      return [id, P(id, label, 'plant', s.x, s.y, s.z)]
+    }),
+  ),
+  ...Object.fromEntries(Object.entries(PLANTER_BOXES).map(([id, L]) => [id, { ...P(id, `Planter box with plants (${L.toFixed(1)} m)`, 'other', L, 0.95, 0.5), kind: 'plant' as const }])),
+  ...Object.fromEntries(Object.entries(SHRUBS).map(([id, s]) => [id, P(id, s.label, 'plant', s.d, s.h, s.d)])),
+  ...Object.fromEntries(Object.entries(TREES).map(([id, t]) => [id, { ...P(id, t.label, 'rug', t.crown, t.h, t.crown), kind: 'plant' as const }])),
+  // outdoor (decks, roofs, lawns, play areas) and common rooms (lobby, gym, guard room)
+  lounger: { ...P('lounger', 'Sun lounger, teak', 'chair', 0.7, 0.88, 2.0), kind: 'lounger' }, // backrest at the back (−z): you face +z
+  bench_timber: { ...P('bench_timber', 'Timber bench, backless (1.5 m)', 'chair', 1.5, 0.45, 0.4), kind: 'bench' },
+  pergola: { ...P('pergola', 'Timber pergola 3 × 3 m', 'rug', 3.0, 2.6, 3.0), kind: 'pergola' }, // walk-under: no contact shadow, pieces stand under it
+  reception_desk: { ...P('reception_desk', 'Reception desk, oak + stone (2.4 m)', 'other', 2.4, 1.1, 0.8), kind: 'reception-desk' }, // visitors' side +z
+  treadmill: { ...P('treadmill', 'Treadmill', 'other', 0.85, 1.45, 1.9), kind: 'gym' }, // console at the back (−z): you step on at +z
+  gym_rack: { ...P('gym_rack', 'Squat rack, bench + barbell', 'other', 2.2, 2.2, 1.4), kind: 'gym' }, // open side +z
+  dumbbell_rack: { ...P('dumbbell_rack', 'Dumbbell rack + dumbbells', 'other', 1.4, 0.85, 0.55), kind: 'gym' },
+  gym_mat: { ...P('gym_mat', 'Exercise mat 1.8 × 0.6 m', 'rug', 0.6, 0.012, 1.8), kind: 'gym' },
+  mirror_panel: { ...P('mirror_panel', 'Wall mirror 2.0 × 1.8 m', 'other', 2.0, 1.8, 0.03), mount: 'wall', kind: 'mirror' }, // 0.6–2.4 m
+  swing_frame: { ...P('swing_frame', 'Swing set, 2 seats (steel + rubber)', 'chair', 3.4, 2.3, 1.9), kind: 'play' },
+  slide: { ...P('slide', 'Slide tower, stainless chute', 'chair', 1.0, 2.2, 3.6), kind: 'play' }, // ladder at −z, chute down to +z
+  seesaw: { ...P('seesaw', 'Seesaw, timber + steel', 'chair', 0.5, 0.89, 3.0), kind: 'play' },
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>
       (['l', 'r'] as const).map((k) => [
