@@ -849,7 +849,7 @@ function addWall(unit: Unit, aId: Id, bId: Id, thicknessM: number, tolM: number)
 
 export function openingDefaults(kind: OpeningKind, bath: boolean): Pick<Opening, 'widthM' | 'heightM' | 'sillM'> {
   if (kind === 'window') return { widthM: 4 * FT, heightM: 4 * FT, sillM: 3 * FT }
-  if (kind === 'passage') return { widthM: 4 * FT, heightM: 7 * FT, sillM: 0 }
+  if (kind === 'passage') return { widthM: 4 * FT, heightM: 2.7, sillM: 0 } // the hand-authored passages' head (lintel below a 3 m slab)
   if (kind === 'slider') return { widthM: 6 * FT, heightM: 7 * FT, sillM: 0 }
   return { widthM: (bath ? 2.5 : 3) * FT, heightM: 7 * FT, sillM: 0 }
 }

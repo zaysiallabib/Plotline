@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { MaterialRef, Opening, Wall } from '../core'
 import type { ObjectKind } from '../furnish/kit'
+import type { CasingPlan } from './details'
 import { materialFor } from './materials'
 
 /** Rewrites UVs so each face maps its own plane in metres (positions must already be in metres). Any geometry with normals. */
@@ -64,6 +65,7 @@ setGlassSky(1)
 const J = 0.03 // door lining (jamb) thickness
 const CW = 0.07 // casing width
 const CP = 0.015 // casing projection off the wall face
+export { CW as CASING_W, CP as CASING_P }
 const REV = 0.005 // casing set back from the lining face
 const GAP = 0.003 // leaf-to-lining clearance
 const THRESHOLD_H = 0.02
@@ -100,6 +102,8 @@ export interface OpeningOpts {
   back?: boolean
   /** adjoining rooms use different floor finish slots: 20 mm stone strip across the opening */
   threshold?: boolean
+  /** a passage's trim where it can stand (details.ts casingPlan); absent: legs and head on both faces, as on a wall's middle */
+  casing?: CasingPlan
 }
 
 /**
@@ -134,7 +138,15 @@ export function buildOpening(o: Opening, wall: Wall, opts: OpeningOpts = {}): TH
     if (opts.front ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, df, T2 + 0.02))
     if (opts.back ?? true) stone.push(slab(u0 - 0.05, u1 + 0.05, s - 0.01, s + 0.02, -df, -T2 - 0.02))
   } else if (o.kind === 'passage') {
-    g.add(merged(casings(u0, u1, s, s + H, T2, 0), TRIM_PAINT))
+    const c = opts.casing
+    const trim = c
+      ? [
+          ...c.legs.map(([a, b, f]) => slab(a, b, s, c.top, f * T2, f * (T2 + CP))),
+          ...c.heads.map(([a, b, f]) => slab(a, b, c.top, c.top + CW, f * T2, f * (T2 + CP))),
+          ...c.linings.map(([a, b, w0, w1]) => slab(a, b, s, c.top, w0, w1)),
+        ]
+      : casings(u0, u1, s, s + H, T2, 0)
+    if (trim.length) g.add(merged(trim, TRIM_PAINT))
   } else if (o.kind === 'slider') {
     buildSlider(g, o, T2, th)
   } else {
