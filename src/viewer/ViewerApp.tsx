@@ -448,7 +448,7 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   const showHeld = (h: Held | null) => {
     held.current = h
     scene?.placePieces(h?.move?.furniture ?? steps.current.pieces, true)
-    const p = h ? h.move?.piece : pieceOf(sel)
+    const p = h ? h.move?.piece : arranging ? pieceOf(sel) : null // a walk carry leaves nothing selected
     scene?.showSelection(p ? { id: p.id, quad: pieceQuad(p), refused: !!h?.move?.error, axes: h ? [] : resizeAxes(p.assetId) } : null) // in hand: no resize dots
     redraw()
   }
@@ -467,8 +467,8 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
   /** G: the piece under the crosshair / pointer into the hand; nothing there says so */
   const pickUpAtPointer = () => {
     const id = scene?.pieceUnderPointer()
-    if (!id) return showToast('Point the dot at a piece of furniture, then press G')
-    setSel(id)
+    if (!id) return showToast(`Point ${locked ? 'the dot' : 'the mouse'} at a piece of furniture, then press G`)
+    if (arranging) setSel(id)
     grip(pickUp(steps.current.pieces, id))
   }
   /** Esc (or the mouse lock lost mid-carry, or done): the hand empties; the layout is the committed one again */
@@ -484,8 +484,9 @@ function Viewer({ unit, base }: { unit: Unit; base: FurniturePlacement[] }) {
     if (!h?.move || !furniture) return
     held.current = null
     scene?.setHand(null)
-    setSel(h.move.piece.id)
-    settle(pushStep(steps.current, furniture), h.move.piece.id)
+    const id = arranging ? h.move.piece.id : null // Arrange keeps it selected; a walk carry leaves nothing selected
+    setSel(id)
+    settle(pushStep(steps.current, furniture), id)
   }
   const onArrange = (e: ArrangeEvent) => {
     if (e.kind === 'select') {
