@@ -91,6 +91,9 @@ export class Look {
   private readonly fitBox = new THREE.Box3()
   private topY = 3
   private readonly v = new THREE.Vector3()
+  /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
+  private shadowKey = NaN
+  private readonly onRestored = (): void => void (this.shadowKey = NaN)
 
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
@@ -102,6 +105,8 @@ export class Look {
     renderer.toneMapping = THREE.NeutralToneMapping
     renderer.toneMappingExposure = EXPOSURE
     renderer.shadowMap.enabled = !switchedOff('shadows')
+    renderer.shadowMap.autoUpdate = false // drawn when something it sees changes: render() / casterKey
+    renderer.domElement.addEventListener('webglcontextrestored', this.onRestored)
     renderer.shadowMap.type = THREE.PCFShadowMap
     sun.castShadow = true
     sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
@@ -303,12 +308,37 @@ export class Look {
     this.sky.position.copy(this.v)
     this.indoor.visible = under
     this.catcher.visible = !under
+    const key = this.casterKey()
+    if (key !== this.shadowKey) {
+      this.renderer.shadowMap.needsUpdate = true
+      this.shadowKey = key
+    }
     if (this.composer && !this.renderer.xr.isPresenting) {
       // AO from the depth RenderPass is about to write (normals reconstructed): no second geometry pass, and
       // alpha-tested leaves occlude as drawn. Re-pointed per frame so GTAO never samples the target it writes.
       this.ao!.setGBuffer(this.composer.readBuffer.depthTexture!)
       this.composer.render()
     } else this.renderer.render(this.scene, this.camera)
+  }
+
+  /**
+   * The sun's shadow map is drawn again only when what it sees changed (renderer.shadowMap.autoUpdate is off): it cost
+   * ~590 draw calls and 0.7–1.1 M triangles every frame though nothing moves (measured 2026-10-04). This sums the sun,
+   * the shadow frustum and every visible shadow caster's world transform (a piece moved, turned, added, deleted or
+   * rebuilt; a door leaf shut; the tower or the storey above shown; the hour) — a change redraws it a frame later at most.
+   */
+  private casterKey(): number {
+    const c = this.sun.shadow.camera
+    // the map size too: VR swaps it (xr.ts setShadow) and three allocates the new map only when it draws
+    let k = this.sun.position.x + 3 * this.sun.position.y + 7 * this.sun.position.z + c.left + 3 * c.right + 7 * c.top + 13 * c.bottom + 17 * c.near + 19 * c.far + 23 * this.sun.shadow.mapSize.x
+    let n = 0
+    this.scene.traverseVisible((o) => {
+      if (!o.castShadow || !(o as THREE.Mesh).isMesh) return
+      const e = o.matrixWorld.elements
+      n++
+      k += ((n % 89) + 1) * (e[0] + 2 * e[2] + 3 * e[8] + 5 * e[10] + 7 * e[12] + 11 * e[13] + 13 * e[14] + e[5]) + o.id * 1e-4
+    })
+    return k + n * 1e6
   }
 
   /** The context meshes' own materials and the shadow mask (their geometry goes with unitGroup's). */
@@ -321,6 +351,7 @@ export class Look {
   }
 
   dispose(): void {
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onRestored)
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     for (const m of [this.ground, this.catcher, this.sky]) {
