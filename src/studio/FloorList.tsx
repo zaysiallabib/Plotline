@@ -127,7 +127,11 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     const top = planOf(project).floors
     const ok = ks.filter((k) => k >= 1 && k <= top)
     if (ok.length < ks.length) onToast(`This project has floors 1 to ${top} (the ground floor, basements and rooftop: use their own rows)`)
-    if (drawing && ok.length && change((p) => ok.reduce((q, k) => setSlot(q, k, q.units[drawing] ?? null), p))) setAlso('')
+    if (!drawing || !ok.length) return
+    // never a silent swap: a floor that carries another drawing is named first (user test, session 21)
+    const taken = slotsOf(project).filter((r) => typeof r.slot === 'number' && ok.includes(r.slot) && r.unitIds.length && !r.unitIds.includes(drawing))
+    if (taken.length && !window.confirm(`${taken.map((r) => `${r.label} has "${named(r.unitIds[0])}"`).join(', ')}. Put "${nameOf(unit)}" there instead? (The other drawing is kept.)`)) return
+    if (change((p) => ok.reduce((q, k) => setSlot(q, k, q.units[drawing] ?? null), p))) setAlso('')
   }
   const deleteDrawing = () => {
     if (!drawing || !window.confirm(`Delete the drawing "${nameOf(unit)}"? It leaves every floor it is on. This cannot be undone.`)) return
@@ -147,6 +151,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }
   const inProject = !!drawing && !!project.units[drawing]
+  const onFloors = slotsOf(project).flatMap((r) => (typeof r.slot === 'number' && r.slot > 0 && !!drawing && r.unitIds.includes(drawing) ? [r.slot] : [])).reverse()
 
   return (
     <aside className="floors" onClick={blur}>
@@ -167,6 +172,44 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
       <button className="primary" title="All the floors stacked, in a new tab" onClick={onShow}>
         Show building
       </button>
+      {inProject ? (
+        <section className="open-drawing">
+          <label>
+            <span>Open now</span>
+            <input
+              value={unit.name}
+              placeholder="Name of this drawing"
+              onChange={(e) => onRename(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            />
+          </label>
+          <label>
+            <span>Also on floors{onFloors.length ? ` (now on ${onFloors.join(', ')})` : ''}</span>
+            <div className="pair">
+              <input
+                value={also}
+                placeholder="2, 4, 6-8"
+                onChange={(e) => setAlso(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.repeat) return // (a key held under the question must not ask twice)
+                  applyAlso()
+                  e.currentTarget.blur()
+                }}
+              />
+              <button onClick={applyAlso}>Apply</button>
+            </div>
+          </label>
+          <button className="link" onClick={deleteDrawing}>
+            Delete this drawing
+          </button>
+        </section>
+      ) : (
+        <p className="muted">
+          {unit.vertices.length
+            ? "The plan open now is not one of this project's drawings yet: it is kept as one when you open a floor (then Use drawing… puts it on floors)."
+            : 'Pick a floor: Draw makes a new drawing for it.'}
+        </p>
+      )}
       <ul className="slots">
         {slotsOf(project).map((r) => {
           const id = r.unitIds[0]
@@ -207,44 +250,6 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           )
         })}
       </ul>
-      {inProject ? (
-        <section className="open-drawing">
-          <label>
-            <span>Open now</span>
-            <input
-              value={unit.name}
-              placeholder="Name of this drawing"
-              onChange={(e) => onRename(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            />
-          </label>
-          <label>
-            <span>Also on floors</span>
-            <div className="pair">
-              <input
-                value={also}
-                placeholder="2, 4, 6-8"
-                onChange={(e) => setAlso(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  applyAlso()
-                  e.currentTarget.blur()
-                }}
-              />
-              <button onClick={applyAlso}>Apply</button>
-            </div>
-          </label>
-          <button className="link" onClick={deleteDrawing}>
-            Delete this drawing
-          </button>
-        </section>
-      ) : (
-        <p className="muted">
-          {unit.vertices.length
-            ? "The plan open now is not one of this project's drawings yet: it is kept as one when you open a floor (then Use drawing… puts it on floors)."
-            : 'Pick a floor: Draw makes a new drawing for it.'}
-        </p>
-      )}
     </aside>
   )
 }

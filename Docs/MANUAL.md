@@ -256,7 +256,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 
 **Under the list, for the drawing open now**
 - **Open now** — its name.
-- **Also on floors** — type `2, 4, 6-8` and click **Apply** (or press Enter): the drawing goes on those floors too.
+- **Also on floors** — type `2, 4, 6-8` and click **Apply** (or press Enter): the drawing goes on those floors too. The label shows the floors it is on now. If one of those floors already has another drawing, you are asked first; that other drawing is kept. Clearing a floor never asks (the drawing is kept too). This box sits above the floor list.
 - **Delete this drawing** — it leaves every floor and is gone (asks first).
 
 **Show building** (top of the list) opens the stacked building in a new tab. A floor that has no drawing yet is filled with the one below it.
@@ -368,6 +368,12 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats; it now says so when it finds almost nothing, and says loudly when it had to guess the scale.
 - **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
 - **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.
+- In **Show building** the tall neighbour blocks can hide your building after you turn the view; picking a floor does not bring it back into sight.
+- Renaming a project does not change the Project box of drawings made before the rename.
+- The "Draft restored — Start over" message shows at every opening; in a project **Start over** only empties the screen, the drawing is kept.
+- Undo does not go back past closing the browser or switching drawings. The ⏱ timer starts again for each drawing you open.
+- The top-bar Floor box shows the floor a drawing was first made for, not the floor you opened it from.
+- "Walk this level" from Show building first shows an Enter screen.
 - **A wrong scale found after tracing cannot be put right in one step**: S changes the scale, but the walls do not follow the picture.
 - Clicking a wall that is all glass picks the glass, not the wall — its Width / Height boxes are the glass's. A glass wall is called "Window" in the panel.
 - An area you add to a level ("Sand pit") may be missing from the 3D **Rooms** list; **Rooms → Lawn** can drop you in a corner facing a wall.
