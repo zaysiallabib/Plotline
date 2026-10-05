@@ -75,6 +75,8 @@ export interface StudioState {
   lastOpeningKind: OpeningKind
   /** the O tool's picked width for lastOpeningKind; absent = the kind's default (openingDefaults: a door on a bath wall 2'-6") */
   lastOpeningWidthM?: number
+  /** the O tool's "Glass wall" pick: the clicked wall becomes glass from end to end, floor to top (a window, sill 0) */
+  glassPick?: boolean
   /** the W tool's picked wall type; absent = 'wall' */
   wallType?: WallType
   /** the W tool's low-wall height typed before drawing (a 6' boundary wall, a 7' screen); absent = WALL_TYPES.low */
@@ -127,7 +129,7 @@ export type Action =
   /** tolM: edge-snap tolerance (10 screen px); absent = centred on t. No kind / widthM = the O tool's pick (lastOpeningKind / lastOpeningWidthM) */
   | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; widthM?: number; tolM?: number }
   /** the O tool's picker (Panel, keys 1–4): what the next click places; no widthM = the kind's default */
-  | { type: 'pick-opening'; kind: OpeningKind; widthM?: number }
+  | { type: 'pick-opening'; kind: OpeningKind; widthM?: number; glass?: boolean }
   | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
   /** `standsAlone: true` = "Keep — it stands alone" on a loose end (issues.ts): its free ends are meant */
   | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM' | 'standsAlone'>> }
@@ -934,10 +936,13 @@ export function openingAt(
   tolM: number,
   rooms: Room[],
   widthM?: number,
+  glass?: boolean,
 ): { opening: Opening; snapped: OpeningSnap; error: string | null } {
   const len = wallLen(u, wall)
-  const d = { ...openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id)), ...(widthM !== undefined && { widthM }) }
-  const { offsetM, snapped } = snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
+  const d = glass
+    ? { widthM: len, heightM: wall.heightM > 2 ? wall.heightM : 2.7, sillM: 0 } // glazing: sill 0, tall (CLAUDE.md "Levels are data")
+    : { ...openingDefaults(kind, kind === 'door' && bordersBath(rooms, wall.id)), ...(widthM !== undefined && { widthM }) }
+  const { offsetM, snapped } = glass ? { offsetM: 0, snapped: null as OpeningSnap } : snapOpeningOffset(wall, len, t * len, d.widthM, tolM)
   const opening: Opening = { id: newId(), kind, ...d, offsetM, hinge: 'a', swing: 'in' }
   if (wall.heightM <= KERB_M) return { opening, snapped, error: wall.heightM === 0 ? 'A zone line takes no doors or windows (it is not a wall)' : 'A kerb takes no doors or windows — leave a gap in it instead' }
   const placed = placeOpening(wall, len, opening)
@@ -1092,13 +1097,13 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!wall) return s
       const kind = a.kind ?? s.lastOpeningKind
       const widthM = a.widthM ?? (kind === s.lastOpeningKind ? s.lastOpeningWidthM : undefined)
-      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit), widthM)
+      const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit), widthM, a.kind === undefined && s.glassPick)
       if (error) return withToast(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
       return commit(s, fullHeightIfOpenings({ ...s.unit, walls }), { selection: [placed.id], lastOpeningKind: kind, lastOpeningWidthM: widthM })
     }
     case 'pick-opening':
-      return { ...s, lastOpeningKind: a.kind, lastOpeningWidthM: a.widthM === undefined ? undefined : Math.max(MIN_OPENING_M, a.widthM) }
+      return { ...s, lastOpeningKind: a.kind, lastOpeningWidthM: a.widthM === undefined ? undefined : Math.max(MIN_OPENING_M, a.widthM), glassPick: !!a.glass }
     case 'update-opening': {
       const f = findOpening(s.unit, a.id)
       if (!f) return s

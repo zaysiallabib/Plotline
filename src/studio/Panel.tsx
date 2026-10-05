@@ -25,7 +25,7 @@ const statsLine = (s: AutoTraceStats) =>
   `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'tracks' ? ' · wall tracks' : s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`
 
 /** the O tool's picker: kind + width in one click (no width = the kind's default) */
-const PICKS: [OpeningKind, string, number?][] = [
+const PICKS: [OpeningKind, string, number?, boolean?][] = [
   ['door', `Door 2'-6"`, 2.5 * FT],
   ['door', `Door 3'-0"`, 3 * FT],
   ['window', "Window 4'", 4 * FT],
@@ -33,6 +33,7 @@ const PICKS: [OpeningKind, string, number?][] = [
   ['slider', "Slider 6'", 6 * FT],
   ['slider', "Slider 8'", 8 * FT],
   ['passage', 'Passage'],
+  ['window', 'Glass wall', undefined, true],
 ]
 
 /** every kind in its picker group (a Record: a new RoomKind cannot be left out of the picker) */
@@ -367,8 +368,8 @@ function OpeningPick({ state, dispatch }: { state: StudioState; dispatch: (a: Ac
       <h3>Place an opening</h3>
       <div className="props">
         <div className="seg">
-          {PICKS.map(([k, label, w]) => (
-            <button key={label} className={k === kind && (w === undefined || Math.abs(w - widthM) < 1e-6) ? 'on' : ''} onClick={() => dispatch({ type: 'pick-opening', kind: k, widthM: w })}>
+          {PICKS.map(([k, label, w, glass]) => (
+            <button key={label} className={!!glass === !!state.glassPick && k === kind && (w === undefined || Math.abs(w - widthM) < 1e-6) ? 'on' : ''} onClick={() => dispatch({ type: 'pick-opening', kind: k, widthM: w, glass })}>
               {label}
             </button>
           ))}
@@ -377,7 +378,7 @@ function OpeningPick({ state, dispatch }: { state: StudioState; dispatch: (a: Ac
           <LenInput valueM={widthM} onCommit={(m) => dispatch({ type: 'pick-opening', kind, widthM: m })} />
         </Row>
         <p className="muted">
-          Click a wall to place it · keys 1 door, 2 window, 3 slider, 4 passage{auto && kind === 'door' ? ` · a door on a bath wall is 2'-6"` : ''}
+          {state.glassPick ? 'Click a wall: all of it becomes glass, floor to top. Shorter glass? Drag its end, or split the wall first (W, click on it)' : 'Click a wall to place it'} · keys 1 door, 2 window, 3 slider, 4 passage{auto && kind === 'door' ? ` · a door on a bath wall is 2'-6"` : ''}
         </p>
       </div>
     </section>

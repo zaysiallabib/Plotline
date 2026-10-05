@@ -677,7 +677,10 @@ export default function StudioApp() {
         fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
       }
       const n = result.review.length
-      toast(n ? `Traced — ${n} thing${n === 1 ? '' : 's'} to check on the right · Ctrl+Z undoes it` : 'Traced · Ctrl+Z undoes it')
+      // never a silent guess: no printed size was read, so every length rests on an assumed wall thickness
+      const guessed = result.stats.scaleFrom === 'thickness' ? ' · NO printed size found: the scale is a GUESS — press S and click the two ends of anything whose length you know' : ''
+      const thin = result.unit.roomLabels.length < 2 ? ' · Auto-trace is made for flats: on a ground floor, basement or rooftop it finds little — draw it with W and name the areas with R' : ''
+      toast((n ? `Traced — ${n} thing${n === 1 ? '' : 's'} to check on the right · Ctrl+Z undoes it` : 'Traced · Ctrl+Z undoes it') + guessed + thin)
     }
     const fail = (why: string) => {
       stop()
@@ -777,7 +780,7 @@ export default function StudioApp() {
         const nw = nearestWall(m, st.unit)
         const ghost =
           nw && nw.distanceM <= Math.max(SNAP_PX / s, nw.wall.thicknessM)
-            ? { wallId: nw.wall.id, t: nw.t, ...openingAt(st.unit, nw.wall, nw.t, st.lastOpeningKind, SNAP_PX / s, rooms, st.lastOpeningWidthM) }
+            ? { wallId: nw.wall.id, t: nw.t, ...openingAt(st.unit, nw.wall, nw.t, st.lastOpeningKind, SNAP_PX / s, rooms, st.lastOpeningWidthM, st.glassPick) }
             : undefined
         return { m, px, snap: null, hit: hitTest(sx, sy), ghost }
       }

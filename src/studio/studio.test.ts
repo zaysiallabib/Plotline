@@ -1533,3 +1533,15 @@ describe('line a plan picture up with an existing drawing (S on a drawing with w
     expect(fitSheet({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 100 }, { x: 5, y: 0 })!.turnDeg).toBeCloseTo(90, 6)
   })
 })
+
+describe('O tool: the Glass wall pick', () => {
+  it('the clicked wall becomes glass from end to end, floor to its top; another pick switches it off', () => {
+    let s = reducer(traceRect(), { type: 'pick-opening', kind: 'window', glass: true })
+    const w = s.unit.walls[0]
+    s = reducer(s, { type: 'add-opening', wallId: w.id, t: 0.3 })
+    const o = s.unit.walls.find((x) => x.id === w.id)!.openings[0]
+    expect(o).toMatchObject({ kind: 'window', offsetM: 0, sillM: 0, heightM: w.heightM })
+    expect(o.widthM).toBeCloseTo(4, 6)
+    expect(reducer(s, { type: 'pick-opening', kind: 'door' }).glassPick).toBe(false)
+  })
+})
