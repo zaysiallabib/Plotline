@@ -5,7 +5,7 @@ and are released under **CC0 1.0 Universal** (public domain) — https://polyhav
 https://ambientcg.com/license. Poly Haven licenses verified 2026-09-24; ambientCG assets and the
 Poly Haven HDRIs used for art verified 2026-09-25 (each asset page states CC0). Every file in this
 directory tree is listed here, except the floor-plan images (plan-2nd/3rd-floor.webp and
-plan-sheltech-l2.jpg, the demo drawings, not third-party assets).
+plan-sheltech-{l2,ground,b1,b2,l1,roof}.jpg, the demo drawings, not third-party assets).
 
 Models: 1k-texture glTF variant (.gltf + .bin + textures/). Textures: 1k JPG
 (albedo / normal (OpenGL) / roughness / ao). HDRIs: 1k Radiance .hdr.

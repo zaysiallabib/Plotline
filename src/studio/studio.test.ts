@@ -11,7 +11,7 @@ import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } fr
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
 import { snapMove, snapOpeningOffset, snapPoint } from './snap'
-import { frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
+import { fitSheet, frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { doorClearZones, furnish, quadsOverlap } from '../furnish/presets'
 import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, resizeAxes } from './furniture'
@@ -1512,4 +1512,24 @@ describe('auto-trace import and its review list', () => {
   })
 
   it('the Studio key field writes the key the AI reader reads', () => expect(AI_KEY).toBe(AI_KEY_STORAGE))
+})
+
+describe('line a plan picture up with an existing drawing (S on a drawing with walls)', () => {
+  it('two matched corners give the scale and where the picture sits', () => {
+    const f = { pxPerM: 26.638, originPx: { x: 492.293, y: 140.708 } }
+    const m1 = { x: -13.72, y: -2.06 }
+    const m2 = { x: 14.15, y: 22.66 }
+    const px = (m: { x: number; y: number }) => ({ x: f.originPx.x + m.x * f.pxPerM, y: f.originPx.y + m.y * f.pxPerM })
+    const fit = fitSheet(px(m1), m1, px(m2), m2)!
+    expect(fit.pxPerM).toBeCloseTo(f.pxPerM, 6)
+    expect(fit.originPx.x).toBeCloseTo(f.originPx.x, 6)
+    expect(fit.originPx.y).toBeCloseTo(f.originPx.y, 6)
+    expect(fit.turnDeg).toBeCloseTo(0, 6)
+    const s = reducer(initialState(), { type: 'set-scale', pxPerM: fit.pxPerM, originPx: fit.originPx })
+    expect(s.unit.planImage?.originPx).toEqual(fit.originPx)
+  })
+  it('refuses corners too close together and reports a turned match', () => {
+    expect(fitSheet({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 5, y: 0 })).toBeNull()
+    expect(fitSheet({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 100 }, { x: 5, y: 0 })!.turnDeg).toBeCloseTo(90, 6)
+  })
 })

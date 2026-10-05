@@ -99,7 +99,7 @@ export type Action =
   | { type: 'set-tool'; tool: Tool }
   | { type: 'set-view'; view: View }
   | { type: 'set-plan-image'; image: PlanImage | null }
-  | { type: 'set-scale'; pxPerM: number }
+  | { type: 'set-scale'; pxPerM: number; originPx?: Pt }
   | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg'>> }
   | { type: 'select'; ids: Id[]; add?: boolean }
   /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
@@ -995,10 +995,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return { ...s, planImage: a.image, unit: { ...s.unit, planImage } }
     }
     case 'set-scale':
-      // originPx stays put: re-scaling only changes the image mapping (spec §2.2 step 2)
+      // originPx stays put: re-scaling only changes the image mapping (spec §2.2 step 2); lining the picture up with a drawing gives both
       return commit(s, {
         ...s.unit,
-        planImage: { src: s.planImage?.name ?? s.unit.planImage?.src ?? '', pxPerM: a.pxPerM, originPx: s.unit.planImage?.originPx ?? { x: 0, y: 0 } },
+        planImage: { src: s.planImage?.name ?? s.unit.planImage?.src ?? '', pxPerM: a.pxPerM, originPx: a.originPx ?? s.unit.planImage?.originPx ?? { x: 0, y: 0 } },
       })
     case 'set-meta':
       return { ...s, unit: { ...s.unit, ...a.patch } }
@@ -1410,7 +1410,8 @@ export interface StudioIssue {
 export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
   const out: StudioIssue[] = []
   if (!unit.planImage) {
-    out.push({ level: unit.walls.length ? 'warning' : 'error', code: 'scale-not-set', message: 'Scale is not set (S)', ids: [] })
+    // a drawing with walls is in real lengths already: it only lacks its picture
+    out.push(unit.walls.length ? { level: 'warning', code: 'scale-not-set', message: 'No plan picture is lined up under this drawing (drop the picture on the page, then S)', ids: [] } : { level: 'error', code: 'scale-not-set', message: 'Scale is not set (S)', ids: [] })
   }
   for (const i of validate(unit)) out.push({ ...i, message: ISSUE_COPY[i.code] })
   if (unit.walls.length && !rooms.length) out.push({ level: 'warning', code: 'no-rooms', message: 'No closed rooms yet', ids: [] })

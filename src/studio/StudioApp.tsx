@@ -41,7 +41,7 @@ import { readProjects, saveProjects, syncUnit } from '../data/building/projects'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
-import { frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
+import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
 const DRAFT_KEY = 'plotline.studio.draft'
@@ -63,7 +63,7 @@ const HINTS: Record<Tool, string> = {
   pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, its corner dots to size it`,
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
   select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
-  scale: 'Scale · click both ends of a printed dimension',
+  scale: `Scale · click both ends of anything whose real length you know: a printed size, the plot's width, a parking bay (about 8' × 16'), a door (about 3'-3")`,
   wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
   room: 'Room · click inside a closed room',
@@ -214,6 +214,8 @@ export default function StudioApp() {
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
   const [scaleStart, setScaleStart] = useState<Pt | null>(null)
+  /** S on a drawing that already has walls = line the picture up with it: the first matched pair (picture px, drawing m) */
+  const [align, setAlign] = useState<{ p: Pt; m: Pt } | null>(null)
   const [panning, setPanning] = useState(false)
   const [field, setField] = useState<Field | null>(null)
   const [popover, setPopover] = useState<Popover | null>(null)
@@ -257,7 +259,9 @@ export default function StudioApp() {
   const { pxPerM } = frame
   const s = view.zoom * pxPerM
   const tolM = SNAP_PX / s
-  const scaleSet = !!unit.planImage
+  // a drawing with walls is already in real lengths (a built-in level has no picture): nothing to wait for
+  const scaleSet = !!unit.planImage || unit.walls.length > 0
+  const lineUp = unit.walls.length > 0
   const rooms = useMemo(() => deriveRooms(unit), [unit])
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
@@ -366,13 +370,18 @@ export default function StudioApp() {
       if (!w || !h) return
       let bx: { minX: number; minY: number; maxX: number; maxY: number } | null = null
       if (bounds) bx = bounds
-      else if (st.planImage) bx = { minX: 0, minY: 0, maxX: st.planImage.naturalW, maxY: st.planImage.naturalH }
-      else if (st.unit.vertices.length) {
-        const f = frameOf(st.view, st.unit.planImage)
-        const b = unitBounds(st.unit)
-        const lo = mToPx(f, { x: b.minX, y: b.minY })
-        const hi = mToPx(f, { x: b.maxX, y: b.maxY })
-        bx = { minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y }
+      else {
+        // the picture and the drawing together: a picture not yet lined up (S) may sit far from the drawing
+        if (st.planImage) bx = { minX: 0, minY: 0, maxX: st.planImage.naturalW, maxY: st.planImage.naturalH }
+        if (st.unit.vertices.length) {
+          const f = frameOf(st.view, st.unit.planImage)
+          const b = unitBounds(st.unit)
+          const lo = mToPx(f, { x: b.minX, y: b.minY })
+          const hi = mToPx(f, { x: b.maxX, y: b.maxY })
+          bx = bx
+            ? { minX: Math.min(bx.minX, lo.x), minY: Math.min(bx.minY, lo.y), maxX: Math.max(bx.maxX, hi.x), maxY: Math.max(bx.maxY, hi.y) }
+            : { minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y }
+        }
       }
       if (!bx) return
       const bw = Math.max(bx.maxX - bx.minX, 1)
@@ -750,11 +759,13 @@ export default function StudioApp() {
       const st = stateRef.current
       const m = toM(sx, sy)
       let px = toPx(sx, sy)
-      if (st.tool === 'wall' && st.unit.planImage) {
+      if (st.tool === 'wall' && (st.unit.planImage || st.unit.walls.length)) {
         const from = st.chain ? vertexById(st.unit.vertices, st.chain.ids[st.chain.ids.length - 1]) : undefined
         return { m, px, snap: snapPoint(m, st.unit, { tolM: SNAP_PX / s, from, free: shift }), hit: null }
       }
       if (st.tool === 'scale') {
+        // lining up: the second click of a pair is a point of the drawing
+        if (st.unit.walls.length) return { m, px, snap: scaleStart ? snapPoint(m, st.unit, { tolM: SNAP_PX / s }) : null, hit: null }
         if (scaleStart && !shift) {
           const dx = px.x - scaleStart.x
           const dy = px.y - scaleStart.y
@@ -762,7 +773,7 @@ export default function StudioApp() {
         }
         return { m, px, snap: null, hit: null }
       }
-      if (st.tool === 'opening' && st.unit.planImage) {
+      if (st.tool === 'opening' && (st.unit.planImage || st.unit.walls.length)) {
         const nw = nearestWall(m, st.unit)
         const ghost =
           nw && nw.distanceM <= Math.max(SNAP_PX / s, nw.wall.thicknessM)
@@ -902,6 +913,18 @@ export default function StudioApp() {
         if (!state.planImage) return toast('Load a plan image first')
         dispatch({ type: 'timer-start', now: now() })
         if (!scaleStart) return setScaleStart(h.px)
+        if (lineUp) {
+          const at = h.snap ?? m
+          setScaleStart(null)
+          if (!align) return setAlign({ p: scaleStart, m: { x: at.x, y: at.y } })
+          const fit = fitSheet(align.p, align.m, scaleStart, at)
+          setAlign(null)
+          if (!fit) return toast('Those two corners are too close together. Pick two far apart and try again.')
+          if (fit.turnDeg > 3) return toast(`Those corners do not match: the picture would have to turn ${Math.round(fit.turnDeg)}°. Try again with two corners you are sure of.`)
+          dispatch({ type: 'set-scale', pxPerM: fit.pxPerM, originPx: fit.originPx })
+          if (state.planImage) fitView({ minX: 0, minY: 0, maxX: state.planImage.naturalW, maxY: state.planImage.naturalH })
+          return toast('The picture now sits under the drawing. Not right? Press S and line it up again, or Undo.')
+        }
         const end = h.px
         const pxLen = Math.hypot(end.x - scaleStart.x, end.y - scaleStart.y)
         if (pxLen < 2) return
@@ -1304,6 +1327,7 @@ export default function StudioApp() {
         if (popover) return setPopover(null)
         if (st.chain) return dispatch({ type: 'chain-end' })
         setScaleStart(null)
+        setAlign(null)
         return dispatch({ type: 'select', ids: [] })
       }
       const key = e.key.toLowerCase()
@@ -1313,8 +1337,9 @@ export default function StudioApp() {
         const spring = key in HOLD_HINTS
         if (spring) e.preventDefault() // a held key never reaches the browser
         if (e.repeat) return
-        if (tl !== 'select' && tl !== 'scale' && !st.unit.planImage) return setNote({ text: 'Set the scale first (S)' })
+        if (tl !== 'select' && tl !== 'scale' && !st.unit.planImage && !st.unit.walls.length) return setNote({ text: 'Set the scale first (S)' })
         setScaleStart(null)
+        setAlign(null)
         if (spring) {
           // switch now (a tap = today's switch); the release decides whether to spring back (endHold). A second held key keeps the first one's way back.
           const h = holdRef.current
@@ -1419,6 +1444,10 @@ export default function StudioApp() {
       ? chain.ids.length >= 3
         ? 'Wall · Click the start corner to close'
         : 'Wall · Click the next corner, or type its printed length'
+      : tool === 'scale' && lineUp
+        ? !state.planImage
+          ? 'Line up · load the plan picture first (drop it on the page)'
+          : `Line up the picture with the drawing · ${align ? 2 : 1} of 2 · ${scaleStart ? 'now click the SAME corner in the drawing' : align ? 'click another corner on the picture, far from the first' : 'click a corner on the picture'}`
       : tool === 'scale' && scaleStart
         ? 'Scale · click the other end'
         : tool === 'furniture' && placing
@@ -1437,7 +1466,7 @@ export default function StudioApp() {
     const ang = hover.snap.angleDeg ?? 0
     const snapped = hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind
     centre = `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${shiftRef.current ? 'free' : `${Math.round(ang)}°`} · snapped: ${snapped}`
-  } else if (tool === 'scale' && scaleStart && hover) {
+  } else if (tool === 'scale' && scaleStart && hover && !lineUp) {
     centre = `${Math.round(Math.hypot(hover.px.x - scaleStart.x, hover.px.y - scaleStart.y))} px`
   } else if (tool === 'opening' && hover?.ghost) {
     const g = hover.ghost
@@ -1570,6 +1599,7 @@ export default function StudioApp() {
                   title={locked ? 'Set the scale first (S)' : `${label} (${k})`}
                   onClick={() => {
                     setScaleStart(null)
+                    setAlign(null)
                     dispatch({ type: 'set-tool', tool: t })
                   }}
                 >
@@ -1603,7 +1633,7 @@ export default function StudioApp() {
           )}
           {field && (
             <div className="field" style={{ left: Math.max(0, Math.min(field.x + 12, size.w - 180)), top: Math.max(0, Math.min(field.y + 12, size.h - 90)) }}>
-              <label>{field.purpose === 'scale' ? 'Printed length' : field.mode === 'angle' ? 'Angle (°)' : 'Length'}</label>
+              <label>{field.purpose === 'scale' ? 'Its real length' : field.mode === 'angle' ? 'Angle (°)' : 'Length'}</label>
               <input
                 ref={fieldRef}
                 className={field.error ? 'bad' : ''}

@@ -1123,5 +1123,13 @@
   ],
   "furniture": [],
   "finishSlots": [],
-  "areaSqft": 0
+  "areaSqft": 0,
+  "planImage": {
+    "src": "/assets/plan-sheltech-b1.jpg",
+    "pxPerM": 26.638,
+    "originPx": {
+      "x": 492.293,
+      "y": 140.708
+    }
+  }
 }
