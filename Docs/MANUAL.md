@@ -350,6 +350,17 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats and does not say so.
 - **A plan with no printed size cannot be scaled.** The ground-floor sheets print only levels.
 - **The built-in levels open in the Studio without their plan picture**, on a dark background.
+- **The built-in levels cannot be lined up with their plan picture.** Loading the picture puts it at another size and place, and there is no way to move it.
+- **On a built-in level the drawing tools stay locked** ("Set the scale first"), so nothing can be added.
+- **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only Building → "Use this plan as" does.
+- **Building → Ground floor** refuses until a building with a flat exists, then needs typed "move it right / down" numbers.
+- **Only one Studio drawing at a time.** Opening another plan (Edit plan, Edit openings) replaces yours after one question.
+- **"Glass wall" is not a button.** It is a window with sill 0 and a tall height. Low wall, kerb and zone line are only mentioned in the small status text.
+- After typing in a box on the right, the tool keys (W, O…) go into the box instead of switching tools.
+- Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
+- The fix "Join with a zone line" can draw a long diagonal line across a lawn.
+- Room names overlap each other on crowded plans.
+- Checks written for flats show on levels ("No entry door on an outer wall", the Area number).
 - **Glass wall between two floor heights** leaves an open band under the ceiling (seen in the Banani gym).
 - The hint "Click to look around" is wrong — one click walks you to that spot; a double-click lets the mouse turn your head.
 - Opening the site with no address shows Banani Basement 1 instead of a flat.
@@ -362,3 +373,39 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Keys **T**, **H** and **Shift+H** are not mentioned anywhere on screen.
 - A typed wall length cannot start with 0 (type `.5`, not `0.5`).
 - A staff browser still sees the staff buttons on a buyer link.
+
+---
+
+## 11. Can I change it? (state on 2026-10-05, from a test done by hand in the browser)
+
+The goal: **if you can see it, you can click it and change it.** This table is how far the tool is from that today. Every "No" is a job.
+
+| Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
+|---|---|---|---|
+| Wall | No | Yes — type, thickness, height, length, move, copy, delete | Its paint on one side only |
+| Boundary wall, parapet, low wall | No | Yes — same as a wall | Its finish |
+| Kerb, free-standing screen | No | Yes | — |
+| Glass wall | Yes — width, height, sill, slide along the wall, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
+| Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
+| Column | No | Yes — size, move, delete, add | — |
+| Ceiling, slab, ceiling height, ceiling lights | No | No | Everything (only one ceiling colour exists) |
+| Floor of ONE room | No | No | Finishes change all rooms of a group together |
+| Lawn, paving, driveway, deck surface | No | No | Everything — no finish choices exist for outdoor areas |
+| Shape of an area | No | Yes — move its corners and lines | — |
+| Kind of an area (lawn → paving) | No | Yes | — |
+| Floor level of an area | No | Yes | — |
+| Ramp | No | Yes — level at the far end, direction, length | Steepness as a number (1:8) |
+| Steps | No | No | They are not their own thing yet |
+| Pool | not tested | not tested | not tested |
+| Parking bay | No | Yes — size, number, add, delete | The painted lines |
+| Wall paint of one room / one wall / the outside / the boundary | No | No | One paint choice colours everything |
+| Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
+| Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
+| Neighbour buildings, road, sky | No | No | Everything |
+| Time of day | Yes — the slider | — | — |
+| North direction | No | No | No control found |
+
+Two limits that apply to all of it:
+
+- **On a built-in ground floor, basement or rooftop the Studio lets you change what is there but not add anything** — the drawing tools stay locked ("Set the scale first").
+- **What staff change in 3D stays in that one browser.** A buyer on another computer still sees the original.
