@@ -37,6 +37,18 @@ export interface Project {
   floors: { from: number; to: number; flats: string[] }[]
   /** stage 2: the ground, basements and rooftop he traced, drawn as shells (no furnishing); absent in older projects */
   levels?: ProjectLevel[]
+  /**
+   * project first (founder 2026-10-05): the shape said before any drawing — basements, floors above the ground, a rooftop
+   * or not (a ground floor always). Such a project keeps every drawing in `units` until he deletes it, on a floor or not
+   * (a type is drawn before it is put on floors). Absent in older projects: planOf derives it.
+   */
+  plan?: ProjectPlan
+}
+
+export interface ProjectPlan {
+  basements: number
+  floors: number
+  rooftop: boolean
 }
 
 /**
@@ -93,12 +105,12 @@ export function makeProject(id: Id, u: Unit, from: number, to: number, neighbour
   return placeFlat({ id, name: u.projectName.trim() || u.name.trim() || 'Building', units: {}, flats: {}, floors: [] }, u, from, to, neighbour)
 }
 
-/** `p` without unit `unitId` (and its mirrored copy); null when no flat is left. */
+/** `p` without unit `unitId` (and its mirrored copy); null when no flat is left (a project-first one stays, its drawings kept). */
 export function removeFlat(p: Project, unitId: Id): Project | null {
   const gone = new Set([stemOf(unitId, false), stemOf(unitId, true)])
   const flats = Object.fromEntries(Object.entries(p.flats).filter(([s]) => !gone.has(s)))
-  if (!Object.keys(flats).length) return null
-  const units = Object.fromEntries(Object.entries(p.units).filter(([id]) => id !== unitId))
+  if (!Object.keys(flats).length && !p.plan) return null
+  const units = p.plan ? p.units : Object.fromEntries(Object.entries(p.units).filter(([id]) => id !== unitId))
   const floors = p.floors.map((g) => ({ ...g, flats: g.flats.filter((s) => !gone.has(s)) })).filter((g) => g.flats.length)
   return { ...p, units, flats, floors }
 }
@@ -190,8 +202,9 @@ export const levelFloor = (l: Pick<ProjectLevel, 'kind' | 'n'>, top: number): nu
 /** levels numbered by `n` (one per number): basements and common floors */
 const numbered = (kind: LevelKind): boolean => kind === 'basement' || kind === 'common'
 
-/** `p` with only the units its flats and levels use. */
+/** `p` with only the units its flats and levels use (a project-first one keeps its drawings until he deletes one). */
 const prune = (p: Project): Project => {
+  if (p.plan) return p
   const used = new Set([...Object.values(p.flats).map((f) => f.unitId), ...(p.levels ?? []).map((l) => l.unitId)])
   return { ...p, units: Object.fromEntries(Object.entries(p.units).filter(([id]) => used.has(id))) }
 }
@@ -229,6 +242,100 @@ export function syncUnit(ps: Project[], u: Unit): Project[] | null {
   return changed ? out : null
 }
 
+// ---------- project first (founder 2026-10-05): the floors said first, a drawing ("type") put on any of them ----------
+
+/** A project-first project: its shape, no drawing yet. */
+export const newProject = (id: Id, name: string, plan: ProjectPlan): Project => ({ id, name, plan, units: {}, flats: {}, floors: [], levels: [] })
+
+/** The project's shape: as said, else what an older project holds (its deepest basement, top floor, a rooftop or not). */
+export function planOf(p: Project): ProjectPlan {
+  const ls = p.levels ?? []
+  return (
+    p.plan ?? {
+      basements: Math.max(0, ...ls.filter((l) => l.kind === 'basement').map((l) => l.n ?? 1)),
+      floors: Math.max(1, ...p.floors.map((g) => g.to)),
+      rooftop: ls.some((l) => l.kind === 'rooftop'),
+    }
+  )
+}
+
+/** A floor of the list: k ≥ 1 floor k, 0 the ground floor, −n basement n, 'R' the rooftop. */
+export type Slot = number | 'R'
+export const slotLabel = (s: Slot): string => (s === 'R' ? 'Rooftop' : s === 0 ? 'Ground floor' : s < 0 ? `Basement ${-s}` : `Floor ${s}`)
+
+/** The level standing on slot `s` (a floor of flats: a common floor there), if any. */
+const levelAt = (p: Project, s: Slot): ProjectLevel | undefined =>
+  (p.levels ?? []).find((l) =>
+    s === 'R' ? l.kind === 'rooftop' : s === 0 ? l.kind === 'ground' : s < 0 ? l.kind === 'basement' && (l.n ?? 1) === -s : l.kind === 'common' && (l.n ?? 1) === s,
+  )
+
+/** Every floor top to bottom (rooftop, floors N..1, ground, basements 1..n) with the drawings on it (an older project may have two flats a floor). */
+export function slotsOf(p: Project): { slot: Slot; label: string; unitIds: Id[] }[] {
+  const { basements, floors, rooftop } = planOf(p)
+  const order: Slot[] = [...(rooftop ? ['R' as const] : []), ...[...Array(floors)].map((_, i) => floors - i), 0, ...[...Array(basements)].map((_, i) => -1 - i)]
+  return order.map((slot) => {
+    const l = levelAt(p, slot)
+    const unitIds = l ? [l.unitId] : slot !== 'R' && slot > 0 ? [...new Set(onFloor(p, slot).map((s) => p.flats[s].unitId))] : []
+    return { slot, label: slotLabel(slot), unitIds }
+  })
+}
+
+/**
+ * `p` with drawing `u` on exactly slot `s` (null: the slot emptied); `u` is stored as it is now. A floor of flats holds the
+ * drawing as one flat at offset 0, no mirror: floor by floor, that floor changed, back to runs of floors alike (a range
+ * split where one floor in it changes); the ground / a basement / the rooftop are levels at offset 0 (the same frame).
+ * The drawings stay in `units` (he deletes one with removeDrawing).
+ */
+export function setSlot(p: Project, s: Slot, u: Unit | null): Project {
+  const units = u ? { ...p.units, [u.id]: u } : p.units
+  const levels = (p.levels ?? []).filter((l) => l !== levelAt(p, s))
+  if (s !== 'R' && s <= 0) {
+    if (u) levels.push({ unitId: u.id, kind: s === 0 ? 'ground' : 'basement', ...(s < 0 ? { n: -s } : {}), offset: { x: 0, y: 0 }, by: 'drawing' })
+    return { ...p, units, levels }
+  }
+  if (s === 'R') return { ...p, units, levels: u ? [...levels, { unitId: u.id, kind: 'rooftop', offset: { x: 0, y: 0 }, by: 'drawing' }] : levels }
+  const on = (k: number) => (k === s ? (u ? [u.id] : []) : [...new Set(p.floors.filter((g) => g.from <= k && k <= g.to).flatMap((g) => g.flats))])
+  const floors: Project['floors'] = []
+  for (let k = 1; k <= Math.max(s, ...p.floors.map((g) => g.to)); k++) {
+    const here = on(k)
+    const last = floors.at(-1)
+    if (!here.length) continue
+    if (last && last.to === k - 1 && last.flats.join() === here.join()) last.to = k
+    else floors.push({ from: k, to: k, flats: here })
+  }
+  const used = new Set(floors.flatMap((g) => g.flats))
+  const flats = Object.fromEntries(Object.entries(p.flats).filter(([stem]) => used.has(stem)))
+  if (u && !flats[u.id]) flats[u.id] = { unitId: u.id, offset: { x: 0, y: 0 } }
+  return { ...p, units, flats, floors, levels }
+}
+
+/** `p` without drawing `unitId`: off every floor, out of `units`. */
+export function removeDrawing(p: Project, unitId: Id): Project {
+  const q = removeFlat(p, unitId) ?? { ...p, flats: {}, floors: [] }
+  const units = Object.fromEntries(Object.entries(q.units).filter(([id]) => id !== unitId))
+  return { ...q, units, levels: (q.levels ?? []).filter((l) => l.unitId !== unitId) }
+}
+
+/** "2, 4, 6-8" → [2, 4, 6, 7, 8] (commas or spaces, ranges with - or –); null when a piece is not a floor number or a range. */
+export function parseFloors(text: string): number[] | null {
+  const out: number[] = []
+  for (const part of text.replace(/\s*[-–]\s*/g, '-').split(/[\s,;]+/).filter(Boolean)) {
+    const m = part.match(/^(\d{1,3})(?:-(\d{1,3}))?$/)
+    if (!m) return null
+    const [a, b] = [Number(m[1]), Number(m[2] ?? m[1])]
+    for (let k = Math.min(a, b); k <= Math.max(a, b); k++) out.push(k)
+  }
+  return [...new Set(out)].sort((a, b) => a - b)
+}
+
+/** A new drawing's name for slot `s`: Type A, Type B … (the first letter no drawing of `p` has) for a floor of flats, else the level's name. */
+export function drawingName(p: Project, s: Slot): string {
+  if (s === 'R' || s <= 0) return slotLabel(s)
+  const taken = new Set(Object.values(p.units).map((u) => u.name.trim()))
+  const letter = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find((c) => !taken.has(`Type ${c}`))
+  return letter ? `Type ${letter}` : `Type ${Object.keys(p.units).length + 1}`
+}
+
 /** The Building view's tower for `p`: the same shape as the built-in towers. */
 export function projectTower(p: Project): Tower {
   const FLATS = Object.fromEntries(
@@ -240,24 +347,31 @@ export function projectTower(p: Project): Tower {
         return [stem, { unit: b ? mirrorUnit(u, f.mirror === 'left' ? b.minX : b.maxX) : u, offset: f.offset }]
       }),
   )
-  const top = Math.max(0, ...p.floors.map((g) => g.to))
+  // a project-first building is as tall as he said, its floors without a drawing yet standing in
+  const top = Math.max(0, p.plan?.floors ?? 0, ...p.floors.map((g) => g.to))
   const lowest = [...Array(top)].map((_, i) => i + 1).find((k) => onFloor(p, k).length) ?? 1
   const base = onFloor(p, lowest)
-  // stage 2: his traced levels on their own floors (a common floor only under the top flats: the top floor carries the roof)
-  const levels = (p.levels ?? []).filter((l) => p.units[l.unitId] && (l.kind !== 'common' || levelFloor(l, top) < top))
-  const common = new Map(levels.filter((l) => l.kind === 'common').map((l) => [levelFloor(l, top), l.unitId]))
+  // stage 2: his traced levels on their own floors (a common floor only under the top flats: the top floor carries the roof);
+  // one drawing on several levels (B1 and B2 alike), or on floors of flats too, gets a stem of its own per extra place
+  const levels = (p.levels ?? [])
+    .filter((l) => p.units[l.unitId] && (l.kind !== 'common' || levelFloor(l, top) < top))
+    .map((l, i, ls) => ({ ...l, stem: FLATS[l.unitId] || ls.findIndex((m) => m.unitId === l.unitId) < i ? `${l.unitId}@${levelFloor(l, top)}` : l.unitId }))
+  const common = new Map(levels.filter((l) => l.kind === 'common').map((l) => [levelFloor(l, top), l.stem]))
   // floors 1..top; a common floor takes its floor's place; a floor without flats (below the first one listed, or a gap)
-  // stands in with the nearest listed floor below it, else above
+  // stands in with the nearest listed floor below it, else above; nothing to stand in (no flat yet): not drawn
   const FLOORS: Tower['FLOORS'] = []
   for (let k = 1; k <= top; k++) {
     const flats = onFloor(p, k)
     let near = k
     while (near > 0 && !onFloor(p, near).length) near--
     const c = common.get(k)
-    FLOORS.push(c ? { floor: k, flats: [], standIns: [c] } : flats.length ? { floor: k, flats } : { floor: k, flats: [], standIns: near > 0 ? onFloor(p, near) : base })
+    const standIns = near > 0 ? onFloor(p, near) : base
+    if (c) FLOORS.push({ floor: k, flats: [], standIns: [c] })
+    else if (flats.length) FLOORS.push({ floor: k, flats })
+    else if (standIns.length) FLOORS.push({ floor: k, flats: [], standIns })
   }
-  for (const l of levels) FLATS[l.unitId] = { unit: p.units[l.unitId], offset: l.offset }
-  const LEVELS = Object.fromEntries(levels.map((l) => [l.unitId, levelFloor(l, top)]))
+  for (const l of levels) FLATS[l.stem] = { unit: p.units[l.unitId], offset: l.offset }
+  const LEVELS = Object.fromEntries(levels.map((l) => [l.stem, levelFloor(l, top)]))
   const ground = levels.find((l) => l.kind === 'ground')
   // the ground: his traced ground floor; else the lowest flats' columns carry the tower and a flat with no column drawn
   // stands in with its shell (never a floating flat)
@@ -267,17 +381,19 @@ export function projectTower(p: Project): Tower {
         const { unit, offset: o } = FLATS[s]
         return (unit.pillars ?? []).map((q): Rect => [q.x - q.wM / 2 + o.x, q.y - q.hM / 2 + o.y, q.x + q.wM / 2 + o.x, q.y + q.hM / 2 + o.y])
       })
-  const shells = ground ? [ground.unitId] : base.filter((s) => !FLATS[s].unit.pillars?.length)
+  const shells = ground ? [ground.stem] : base.filter((s) => !FLATS[s].unit.pillars?.length)
   if (shells.length) FLOORS.unshift({ floor: 0, flats: [], standIns: shells })
-  for (const b of levels.filter((l) => l.kind === 'basement').sort((l, m) => (l.n ?? 1) - (m.n ?? 1))) FLOORS.unshift({ floor: LEVELS[b.unitId], flats: [], standIns: [b.unitId] })
+  for (const b of levels.filter((l) => l.kind === 'basement').sort((l, m) => (l.n ?? 1) - (m.n ?? 1))) FLOORS.unshift({ floor: LEVELS[b.stem], flats: [], standIns: [b.stem] })
   const roof = levels.find((l) => l.kind === 'rooftop')
-  if (roof) FLOORS.push({ floor: top + 1, flats: [], standIns: [roof.unitId] })
-  // the plot: the flats' (and his ground floor's) extent and 2 m round it
-  const bs = [...base, ...(ground ? [ground.unitId] : [])].map((s) => {
+  if (roof) FLOORS.push({ floor: top + 1, flats: [], standIns: [roof.stem] })
+  // the plot: the flats' (and his ground floor's) extent and 2 m round it; a half-made project: whatever it has, else 6 m round its origin
+  const near = [...base, ...(ground ? [ground.stem] : [])]
+  const bs = (near.length ? near : Object.keys(FLATS)).map((s) => {
     const b = flatBounds(FLATS[s].unit)
     const o = FLATS[s].offset
     return [b.minX + o.x, b.minY + o.y, b.maxX + o.x, b.maxY + o.y]
   })
+  if (!bs.length) bs.push([-4, -4, 4, 4])
   const [x0, y0, x1, y1] = [Math.min(...bs.map((b) => b[0])) - 2, Math.min(...bs.map((b) => b[1])) - 2, Math.max(...bs.map((b) => b[2])) + 2, Math.max(...bs.map((b) => b[3])) + 2]
   const plot: Pt[] = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
   return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS }
@@ -296,7 +412,8 @@ export function parseProjects(raw: string | null): Project[] {
         Object.values(p.units as Record<string, Unit>).every((u) => Array.isArray(u?.vertices) && Array.isArray(u?.walls) && Array.isArray(u?.roomLabels)) &&
         typeof p.flats === 'object' &&
         Array.isArray(p.floors) &&
-        (p.levels === undefined || Array.isArray(p.levels)),
+        (p.levels === undefined || Array.isArray(p.levels)) &&
+        (p.plan === undefined || (typeof p.plan === 'object' && Number.isFinite(p.plan?.floors))),
     )
   } catch {
     return []

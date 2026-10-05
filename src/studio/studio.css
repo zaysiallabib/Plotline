@@ -82,6 +82,53 @@
   pointer-events: none;
 }
 .empty button { pointer-events: auto; justify-self: center; }
+.empty { grid-auto-flow: column; align-items: center; gap: 32px; }
+.empty .drop { display: grid; gap: 12px; }
+.empty .new-project {
+  pointer-events: auto;
+  width: 260px;
+  padding: 12px;
+  text-align: left;
+  color: var(--ink);
+  border-radius: var(--radius);
+  background: rgba(23, 24, 26, 0.72);
+  border: 1px solid var(--line);
+}
+.empty .new-project button { justify-self: stretch; }
+
+/* project first: the floor list beside the plan (FloorList.tsx) */
+.main.with-floors { grid-template-columns: 1fr 270px 320px; }
+.floors {
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.floors .head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.floors .head strong { font-weight: 400; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floors .head span { white-space: nowrap; }
+.floors p { margin: 0; font-size: 12px; }
+.floors label, .new-project label { display: flex; flex-direction: column; gap: 3px; }
+.floors label > span, .new-project label > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.new-project { display: flex; flex-direction: column; gap: 8px; }
+.new-project p { margin: 0; font-size: 12px; }
+.new-project label.check { flex-direction: row; align-items: center; gap: 6px; }
+.floors .pair, .new-project .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.floors .open-drawing { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.floors .open-drawing .pair { grid-template-columns: 1fr auto; }
+.floors .open-drawing .link { align-self: flex-start; }
+.slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.slots li { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; align-items: center; padding: 6px 8px; border-radius: 8px; }
+.slots li.here { background: var(--surface-2); outline: 1px solid var(--accent); }
+.slots .lbl { font-weight: 400; }
+.slots .dwg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slots .acts { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; }
+.slots .acts select { flex: 1; padding: 3px 6px; }
+.studio .slots .acts button { padding: 3px 8px; }
 
 .field, .popover {
   position: absolute;
