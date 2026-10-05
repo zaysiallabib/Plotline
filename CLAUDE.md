@@ -99,15 +99,19 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
 - **Project-first workflow (founder, 2026-10-05) — the product's main path:**
   1. Create a project; say how many floors (basements, ground, flat floors, rooftop) and how many types.
   2. A list of all the floors stays on the right (as the Building view's picker does today).
-  3. Trace each type once, from the basement up to the rooftop. Floors repeat (e.g. 2 / 4 / 6 / 8 the same, others a
-     bit different): one type serves many floors — "floor types + which floors each repeats on" comes back to the front
-     (today it is buried in Studio → Building → A flat → "on floors N to M"). A floor that differs a little (a 2nd
-     floor with an extra lawn) is traced as its own extra.
+  3. Trace each type once, from the basement up to the rooftop. **A type = one WHOLE FLOOR drawing** (all its flats +
+     the lift lobby in one tracing); each flat in it can still be opened on its own. One type serves many floors, and
+     ANY floor may take ANY type — never assume a pattern ("2 / 4 / 6 / 8" was only his example). "Floor types + which
+     floors each one is on" comes back to the front (today it is buried in Studio → Building → A flat → "on floors N
+     to M", and a type is one flat). A floor that differs a little (a 2nd floor with an extra lawn) is traced as its
+     own extra.
   4. Stack the floors like Lego — interactive, game-like.
   5. Finishes are per flat / room / wall: changing a wall colour must NOT change every flat of the building.
   6. Pick a flat, show it to the client. Sun must be ACCURATE for the site and direction (needs location, date, true
      north — today it is one equinox path). Wind from real data comes later (Windy API if it fits the budget).
-  7. A flat he traces gets the same richness of components as the built-in ones.
+  7. Everything the built-in (Claude-authored) flats and levels have goes into the general library: "yours is much
+     richer and that is how the generalised version should be". A plan he traces gets all of it by default — no
+     component, finish choice or detail may exist only in a built-in file.
   AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
   Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
