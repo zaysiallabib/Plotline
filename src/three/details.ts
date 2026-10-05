@@ -564,7 +564,9 @@ export function wallGeometry(wall: Wall, graph: Pick<Unit, 'vertices' | 'walls'>
   const H = wall.heightM
   const T2 = wall.thicknessM / 2
   const at = wallPoint(wall, graph)
-  const levels = graph.walls.flatMap((w) => [w.heightM, ...w.openings.flatMap((o) => [o.sillM, o.sillM + o.heightM])])
+  // …and this wall's own, as built: a wall on a lower floor (liftedWall) has its sills and heads where no wall of the
+  // graph has them — without those cuts the piece over its opening fell in no cell (an open band), its riser overshot
+  const levels = [...graph.walls, wall].flatMap((w) => [w.heightM, ...w.openings.flatMap((o) => [o.sillM, o.sillM + o.heightM])])
   const cuts = (top: number) => [...new Set([0, top, ...levels.filter((v) => v > 0 && v < top)])].sort((a, b) => a - b)
   const us = [...new Set(pieces.flatMap((p) => [p.u0, p.u1]))].sort((a, b) => a - b)
   const vs = cuts(H)

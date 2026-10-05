@@ -356,7 +356,7 @@ export class PlotlineScene {
       // the bake reads a wall on 0; then it stands on its floors (details.ts liftWall)
       const w = kind === 'wall' ? unit.walls.find((x) => x.id === s.mesh.userData.id) : undefined
       if (w) {
-        const top = this.reachesSlab(w) ? this.top : undefined
+        const top = this.slabOver(w)
         liftWall(s.mesh.geometry, liftedWall(w, unit, this.lifts.get(w.id)!, top), unit, this.lifts.get(w.id)!, top)
       }
     }
@@ -906,7 +906,7 @@ export class PlotlineScene {
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
     const lift = this.lifts.get(wall.id)!
-    const built = liftedWall(wall, unit, lift, this.reachesSlab(wall) ? this.top : undefined) // on its foot, its openings on the higher floor
+    const built = liftedWall(wall, unit, lift, this.slabOver(wall)) // on its foot, its openings on the higher floor
     const geo = wallGeometry(built, unit, back === null && front !== null ? 1 : 0)
     if (geo) {
       const mesh = new THREE.Mesh(geo)
@@ -1043,6 +1043,18 @@ export class PlotlineScene {
     if (!r || !this.unit) return 3.048
     const own = roomCeiling(r, this.unit, this.rooms)
     return own >= STOREY_WALL_M && this.cover.some((c) => core.pointInPolygon(r.centroid, c)) ? this.top : own
+  }
+
+  /**
+   * How high a storey wall is built when something is over it: the slab above (reachesSlab), else the ceiling of an indoor
+   * room it borders when that is higher than its own top — a wall standing on a lower floor outside (glazing between a
+   * room and a sunken lawn) goes up to the room's ceiling, never an open band under it. undefined: its own height.
+   */
+  private slabOver(w: Wall): number | undefined {
+    if (w.heightM < STOREY_WALL_M || !this.unit) return undefined
+    if (this.reachesSlab(w)) return this.top
+    const ceil = Math.max(0, ...this.rooms.filter((r) => !core.isOutdoor(r.kind) && r.wallIds.includes(w.id)).map((r) => this.ceilingOf(r.id)))
+    return ceil > Math.max(...this.lifts.get(w.id)!.foot) + w.heightM + 1e-6 ? ceil : undefined
   }
 
   /** A storey wall (≥ STOREY_WALL_M) under the slab above (`cover`, by its middle) goes up to it, wherever it stands. */
