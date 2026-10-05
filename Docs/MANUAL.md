@@ -134,10 +134,10 @@ You draw over a plan picture. The order is written on the right under **Steps**:
 | ⏱ | How long you have been tracing |
 | Undo / Redo | Ctrl+Z / Ctrl+Y |
 | Auto-trace | Tries to draw a **flat** for you from the picture. Click inside the flat it should trace. It does not understand ground floors, basements or rooftops. |
-| Import | Opens a saved drawing file (Ctrl+O) |
+| Import | Opens a saved drawing file (Ctrl+O). In a project it goes into the drawing open now. |
 | Export | Saves the drawing as a file (Ctrl+S) |
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
-| Building | Put this drawing into a tower (section 6) |
+| Building | Shows / hides the list of your project's floors on the right; with no project open: start one (section 6) |
 | Share link | Makes a buyer link and copies it. Asks once for the staff key. Needs the database. |
 | Change list | Opens `/changes`. Needs the database. |
 
@@ -236,23 +236,37 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 
 ---
 
-## 6. Making a building (Studio → top bar → **Building**)
+## 6. Making a building — a project, floor by floor
 
-"Use this plan as": **A flat**, **Ground floor**, **Basement**, **Common floor**, **Rooftop**.
+You say what the building is first, then give each floor a drawing. A drawing is one whole floor (all its flats and the lift lobby); one drawing can be on as many floors as you like, any floors.
 
-**As a flat**
-- Choose a new building or an existing one, give it a name.
-- "This flat on floors N to M".
-- "Next to it on each floor": None / Mirrored left / Mirrored right.
-- **Show building** opens the tower. **Take this flat out** removes it.
+**Start a project**
+1. Open the Studio. With nothing open, the **New project** card is in the middle. (Or: top bar → **Building**.)
+2. Type its **Name**, how many **Basements** (0–5), how many **Floors above ground** (1–60), tick **Rooftop** or not. A ground floor is always there.
+3. Click **Create project**. The list of floors appears on the right of the plan and stays there: **Rooftop** at the top, then the floors from the highest down, **Ground floor**, **Basement 1**, **Basement 2**…
 
-**As a ground floor, basement, common floor or rooftop**
-- The building must already have a flat.
-- Basement number (1 = just under the ground floor); for a common floor, which floor it replaces.
-- The tool places it on the flats' columns. If that fails, type **Move it right / Move it down**.
-- **Show building** opens the tower at that level.
+**Give each floor a drawing** — work through the list:
+- **Draw** (on an empty floor): a new, empty drawing for that floor opens. Floors get the names Type A, Type B…; the others are called Ground floor, Basement 1, Rooftop. Drop that floor's plan picture on the page (or **Choose plan image…**), set the scale (S) and trace as usual.
+- **Same size as "Type A" — Use its scale and position**: when the picture you load is exactly the size of a picture you already set the scale on, this message offers it (15 seconds). Click it: no scale to set, and the two drawings sit right over each other in the building. Not right? **Ctrl+Z**.
+- **Open**: that floor's drawing comes into the Studio. The drawing you were on is saved first, with its picture. Nothing is asked, nothing is lost — also after closing the browser.
+- **Use drawing…**: pick one of your drawings for this floor.
+- **Clear**: the floor is empty again; the drawing itself is kept.
+- The floors of the drawing open now have a yellow outline.
 
-Buildings are saved in this browser only.
+**Under the list, for the drawing open now**
+- **Open now** — its name.
+- **Also on floors** — type `2, 4, 6-8` and click **Apply** (or press Enter): the drawing goes on those floors too.
+- **Delete this drawing** — it leaves every floor and is gone (asks first).
+
+**Show building** (top of the list) opens the stacked building in a new tab. A floor that has no drawing yet is filled with the one below it.
+
+**The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open it again with top bar → **Building** → **Or open a project**). Top bar **Building** hides or shows the list.
+
+Whatever was open in the Studio before you started the project is not thrown away: when you open a floor it becomes one of the project's drawings — **Use drawing…** puts it on floors.
+
+**The old way, one plan** — top bar → **Building** with no project open → **Put only this plan into a building…**: "Use this plan as" **A flat** (floors N to M, a mirrored neighbour), **Ground floor**, **Basement**, **Common floor** or **Rooftop**, placed on the flats' columns or by **Move it right / Move it down**.
+
+Projects, their drawings and their pictures are kept in this browser only.
 
 ---
 
@@ -333,7 +347,7 @@ Buildings are saved in this browser only.
 - The last Preview 3D
 - Furniture you moved
 - Notes on ordinary links
-- Buildings you made
+- Buildings and projects you made, every drawing of a project and its plan picture
 - Staff mode, the staff key
 
 **Safe:**
@@ -354,9 +368,10 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
 - **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.
 - The coloured areas of a drawing (lawn, driveway…) cover much of the picture under them.
-- **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only Building → "Use this plan as" does.
-- **Building → Ground floor** refuses until a building with a flat exists, then needs typed "move it right / down" numbers.
-- **Only one Studio drawing at a time.** Opening another plan (Edit plan, Edit openings) replaces yours after one question.
+- **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only its row in the project's floor list (or the old "Use this plan as") does.
+- The old one-plan way (**Put only this plan into a building…** → Ground floor) refuses until a building with a flat exists, then needs typed "move it right / down" numbers. The project floor list has neither problem.
+- **Outside a project, only one Studio drawing at a time.** Opening another plan from the 3D view (Edit plan, Edit openings) replaces yours after one question. Inside a project use the floor list: each floor keeps its own drawing and picture.
+- **A whole-floor drawing cannot yet be split into its flats**: a buyer link and the Building view treat the whole floor as one flat.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.

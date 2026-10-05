@@ -37,7 +37,10 @@ import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
-import { readProjects, saveProjects, syncUnit } from '../data/building/projects'
+import { FloorList, NewProject } from './FloorList'
+import { getPicture, putPicture } from './pictures'
+import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
+import { floorIn, roleIn, stemIn } from '../data/building'
 import { snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
@@ -46,6 +49,13 @@ import './studio.css'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 const PREVIEW_KEY = 'plotline.preview'
+/**
+ * The project open in the Studio (its id: `plotline.studio.project`) and which of its drawings the Studio holds, whatever
+ * the unit's id became (an auto-trace gives a new one). The drawing is kept in the draft itself (`drawing`): a draft
+ * replaced from elsewhere (Edit plan, the 3D view's Edit openings) is never written into a project drawing.
+ */
+const ACTIVE_KEY = 'plotline.studio.project'
+type Active = { id: Id; drawing?: Id }
 /** the staff key that lets this browser publish share links (from the migration's output); asked for once */
 const PUBLISH_KEY = 'plotline.staffKey'
 const SNAP_PX = 10
@@ -158,6 +168,17 @@ const EDIT = ((): Draft['unit'] | null => {
   history.replaceState(null, '', '/studio')
   return u
 })()
+
+function readActive(): Active | null {
+  try {
+    const id = localStorage.getItem(ACTIVE_KEY)
+    if (!id) return null
+    const d = EDIT ? null : (JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null') as { drawing?: unknown } | null)
+    return { id, ...(typeof d?.drawing === 'string' ? { drawing: d.drawing } : {}) }
+  } catch {
+    return null
+  }
+}
 
 function init(): StudioState {
   const s = initialState()
@@ -341,7 +362,7 @@ export default function StudioApp() {
   }, [state.toast])
   useEffect(() => {
     if (!note) return
-    const id = setTimeout(() => setNote(null), 5000)
+    const id = setTimeout(() => setNote(null), note.link ? 15000 : 5000) // an offer stays long enough to read and click
     return () => clearTimeout(id)
   }, [note])
 
@@ -421,19 +442,137 @@ export default function StudioApp() {
     return () => cancelAnimationFrame(id)
   }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview])
 
+  // ----- project first (FloorList): the open project, the drawing of it the Studio holds
+  const [projects, setProjects] = useState(readProjects)
+  const [active, setActiveState] = useState(readActive)
+  const projRef = useRef(active)
+  projRef.current = active
+  const setActive = (a: Active | null) => {
+    projRef.current = a
+    setActiveState(a)
+    try {
+      if (a) localStorage.setItem(ACTIVE_KEY, a.id)
+      else localStorage.removeItem(ACTIVE_KEY)
+    } catch {
+      /* storage blocked */
+    }
+  }
+  const project = (active && projects.find((p) => p.id === active.id)) || null
+  const [listOpen, setListOpen] = useState(() => !!active)
+  /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing; null: nothing changed */
+  const synced = (ps: Project[]): Project[] | null => {
+    const u = stateRef.current.unit
+    const d = projRef.current?.drawing
+    const a = syncUnit(ps, u)
+    return (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
+  }
+  const storeProjects = (ps: Project[]): boolean => {
+    if (!saveProjects(ps)) {
+      toast('This browser refused to save the project (storage full?)')
+      return false
+    }
+    setProjects(ps)
+    return true
+  }
+  /** the stored projects with the open drawing as it is now; work open in no project joins the open one (a switch never loses it) */
+  const fresh = (): Project[] => {
+    const ps0 = readProjects()
+    const ps = synced(ps0) ?? ps0
+    const st = stateRef.current
+    const a = projRef.current
+    if (!a || ps.some((p) => p.units[a.drawing ?? st.unit.id]) || (!st.unit.vertices.length && !st.planImage)) return ps
+    if (st.planImage?.dataUrl.startsWith('data:')) void putPicture(st.unit.id, st.planImage).catch(() => {})
+    return ps.map((p) => (p.id === a.id ? { ...p, units: { ...p.units, [st.unit.id]: st.unit } } : p))
+  }
+  /** another drawing into the Studio (null: an empty one): this one is saved first (`ps` holds it), its picture comes back from this browser */
+  const opening = useRef<Id | null>(null)
+  const openDrawing = (ps: Project[], id: Id | null) => {
+    if (!storeProjects(ps)) return
+    const a = projRef.current
+    const u = id ? ps.find((p) => p.id === a?.id)?.units[id] : undefined
+    if (a) setActive({ id: a.id, ...(u ? { drawing: u.id } : {}) })
+    opening.current = u?.id ?? null
+    setNote(null)
+    setRestored(null)
+    setMissingPlan(null)
+    setScaleStart(null)
+    setAlign(null)
+    dispatch({ type: 'set-plan-image', image: null })
+    if (!u) return dispatch({ type: 'reset' })
+    dispatch({ type: 'load-unit', unit: withLayout(u) })
+    void getPicture(u.id)
+      .catch(() => undefined)
+      .then((pic) => {
+        if (opening.current !== u.id) return // he opened another meanwhile
+        if (pic) {
+          fitOnLoad.current = true
+          dispatch({ type: 'set-plan-image', image: pic })
+        } else if (u.planImage?.src) loadPlanSrc(u.planImage.src)
+        else fitView()
+      })
+  }
+  const activate = (id: Id | null) => {
+    const s = synced(readProjects()) // the last edits of the drawing open, before it stops being "the open drawing"
+    if (s) saveProjects(s)
+    const ps = readProjects()
+    setProjects(ps)
+    const live = stateRef.current.unit.id
+    setActive(id ? { id, ...(ps.find((p) => p.id === id)?.units[live] ? { drawing: live } : {}) } : null)
+    if (id) setListOpen(true)
+  }
+  const createProject = (name: string, plan: ProjectPlan) => {
+    const p = newProject(newId(), name, plan)
+    if (!storeProjects([...fresh(), p])) return
+    setActive({ id: p.id })
+    setListOpen(true)
+    toast(`${name}: pick a floor on the right and click Draw`)
+  }
+  // a picture loaded onto a project drawing is kept for it in this browser (the draft holds only the open one's)
+  useEffect(() => {
+    const pi = state.planImage
+    const d = projRef.current?.drawing
+    if (d && pi?.dataUrl.startsWith('data:')) putPicture(d, pi).catch(() => toast('This browser would not keep the plan picture: load it again when you come back to this drawing'))
+  }, [state.planImage]) // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * A picture loaded onto a project drawing with no scale yet, the same pixel size as another drawing's that has one (sheets
+   * exported from one set share their framing): offer that drawing's scale and position — all floors in one frame. Never silently.
+   */
+  const offerScale = async (w: number, h: number) => {
+    const a = projRef.current
+    const p = a?.drawing && readProjects().find((x) => x.id === a.id)
+    if (!a?.drawing || !p) return
+    for (const u of Object.values(p.units)) {
+      const fit = u.planImage
+      if (u.id === a.drawing || !fit?.pxPerM) continue
+      const pic = await getPicture(u.id).catch(() => undefined)
+      if (pic?.naturalW !== w || pic.naturalH !== h) continue
+      if (projRef.current?.drawing !== a.drawing) return
+      const name = u.name.trim() || 'Untitled drawing'
+      return toast(`Same size as "${name}"`, {
+        label: 'Use its scale and position',
+        onClick: () => {
+          setNote(null)
+          if (projRef.current?.drawing !== a.drawing) return
+          dispatch({ type: 'set-scale', pxPerM: fit.pxPerM, originPx: fit.originPx })
+          toast(`Scale and position of "${name}" used — Ctrl+Z undoes it`)
+        },
+      })
+    }
+  }
+
   // ----- draft persistence
   const saveDraft = useCallback(() => {
     const st = stateRef.current
     const d: Draft = { unit: st.unit, planImage: st.planImage, view: st.view, timer: st.timer, review: st.review }
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(d))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, drawing: projRef.current?.drawing }))
     } catch {
       setNote({ text: 'Draft too large to autosave — export your JSON often.' })
     }
-    // a building made from this flat shows it as it is now (data/building/projects.ts)
-    const ps = syncUnit(readProjects(), st.unit)
+    // a building made from this flat (or the open project drawing) shows it as it is now (data/building/projects.ts)
+    const ps = synced(readProjects())
     if (ps) saveProjects(ps)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
@@ -497,7 +636,9 @@ export default function StudioApp() {
         im.onload = () => {
           fitOnLoad.current = true
           setMissingPlan(null)
+          const scaled = !!stateRef.current.unit.planImage
           dispatch({ type: 'set-plan-image', image: { dataUrl, naturalW: im.naturalWidth, naturalH: im.naturalHeight, name: file.name } })
+          if (!scaled) void offerScale(im.naturalWidth, im.naturalHeight)
         }
         im.src = dataUrl
       }
@@ -600,7 +741,21 @@ export default function StudioApp() {
   }
   const openBuilding = (url: string) => {
     setBuildingOpen(false)
+    setProjects(readProjects()) // the old Building panel may have changed them
     if (!window.open(url, '_blank')) toast('The building opens in a new tab: the browser blocked it.', { label: 'Open building', onClick: () => window.open(url, '_blank') })
+  }
+  /** the floor list's Show building: the whole stack, entered by the open drawing's flat (else any flat, else a level picked) */
+  const showProject = () => {
+    const ps = fresh()
+    const a = projRef.current
+    const p = ps.find((x) => x.id === a?.id)
+    if (!p || !storeProjects(ps)) return
+    const t = projectTower(p)
+    const mine = a?.drawing && p.units[a.drawing] ? stemIn(t, p.units[a.drawing]) : undefined
+    const stem = (mine && roleIn(t, mine) === 'flat' ? mine : undefined) ?? Object.keys(t.FLATS).find((s) => roleIn(t, s) === 'flat') ?? mine ?? Object.keys(t.LEVELS ?? {})[0]
+    if (!stem) return toast('Put a drawing on a floor first: Draw, or Use drawing…')
+    const k = t.LEVELS?.[stem]
+    openBuilding(`/u/${encodeURIComponent(stem)}?floor=${floorIn(t, stem)}&view=building${k !== undefined ? `&pick=${k}` : ''}`)
   }
 
   // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
@@ -1431,6 +1586,8 @@ export default function StudioApp() {
   }
 
   const startOver = () => {
+    const a = projRef.current
+    if (a?.drawing) setActive({ id: a.id }) // the project drawing keeps what it had; the empty Studio is not it
     localStorage.removeItem(DRAFT_KEY)
     dispatch({ type: 'reset' })
     setRestored(null)
@@ -1488,6 +1645,8 @@ export default function StudioApp() {
     centre = w ? `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${snapped}` : snapped
   } else if (hover?.hit) centre = hover.hit.kind === 'pillar' ? 'column' : hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : 'Scale not set'
+  /** the first floor of the project the open drawing is on (the drop prompt names it) */
+  const openSlot = project && active?.drawing ? slotsOf(project).find((r) => r.unitIds.includes(active.drawing!)) : undefined
 
   const meta = (k: 'name' | 'projectName' | 'floor' | 'areaSqft') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value
@@ -1544,7 +1703,14 @@ export default function StudioApp() {
         <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
         </button>
-        <button className={buildingOpen ? 'on' : ''} title="Make a whole building from this flat: floors, a mirrored neighbour, then the Building view" onClick={() => setBuildingOpen((v) => !v)}>
+        <button
+          className={listOpen ? 'on' : ''}
+          title="Your project's floors: make a project, draw each floor, then Show building"
+          onClick={() => {
+            setBuildingOpen(false)
+            setListOpen((v) => !v)
+          }}
+        >
           Building
         </button>
         {sharingConfigured && (
@@ -1561,7 +1727,7 @@ export default function StudioApp() {
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => onFiles(e.target.files)} />
       </header>
 
-      <div className="main">
+      <div className={listOpen ? 'main with-floors' : 'main'}>
         <div className="canvas-wrap" ref={wrapRef}>
           <canvas
             ref={canvasRef}
@@ -1575,7 +1741,19 @@ export default function StudioApp() {
             onDoubleClick={onDoubleClick}
             onContextMenu={(e) => e.preventDefault()}
           />
-          {buildingOpen && <ProjectPanel unit={unit} roomCount={rooms.length} onShow={showBuilding} onOpen={openBuilding} onClose={() => setBuildingOpen(false)} onToast={toast} />}
+          {buildingOpen && (
+            <ProjectPanel
+              unit={unit}
+              roomCount={rooms.length}
+              onShow={showBuilding}
+              onOpen={openBuilding}
+              onClose={() => {
+                setBuildingOpen(false)
+                setProjects(readProjects())
+              }}
+              onToast={toast}
+            />
+          )}
           {trace !== 'pick' && (
             <IssueLayer
               marks={marks}
@@ -1613,10 +1791,19 @@ export default function StudioApp() {
           </div>
           {!state.planImage && (
             <div className="empty">
-              <p>{missingPlan ? `Plan image not found — drop \`${missingPlan}\` here to trace over it` : 'Drop the floor plan here (PNG, JPG, WEBP)'}</p>
-              <button className="primary" onClick={() => fileRef.current?.click()}>
-                Choose plan image…
-              </button>
+              {!project && !unit.vertices.length && !missingPlan && <NewProject onCreate={createProject} />}
+              <div className="drop">
+                <p>
+                  {missingPlan
+                    ? `Plan image not found — drop \`${missingPlan}\` here to trace over it`
+                    : openSlot
+                      ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here (PNG, JPG, WEBP)`
+                      : 'Drop the floor plan here (PNG, JPG, WEBP)'}
+                </p>
+                <button className="primary" onClick={() => fileRef.current?.click()}>
+                  Choose plan image…
+                </button>
+              </div>
             </div>
           )}
           {trace && (
@@ -1730,6 +1917,24 @@ export default function StudioApp() {
             </div>
           )}
         </div>
+        {listOpen && (
+          <FloorList
+            projects={projects}
+            project={project}
+            drawing={active?.drawing}
+            unit={unit}
+            fresh={fresh}
+            onStore={storeProjects}
+            onCreate={createProject}
+            onActivate={activate}
+            onOpen={openDrawing}
+            onRename={(name) => dispatch({ type: 'set-meta', patch: { name } })}
+            onShow={showProject}
+            onOldWay={() => setBuildingOpen(true)}
+            onClose={() => setListOpen(false)}
+            onToast={toast}
+          />
+        )}
         <Panel
           state={state}
           dispatch={dispatch}
