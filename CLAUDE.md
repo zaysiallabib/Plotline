@@ -86,6 +86,30 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
   unit, project or room (`greenery.test.ts` enforces it).
 - **Browser tests run in Firefox** (Playwright's build on E:, HANDOFF), never
   Edge with swiftshader — it burned the founder's CPU (2026-10-04).
+- **Nothing only Claude can do (founder, 2026-10-05).** Session 19's hand-written level JSONs were rejected as a
+  deliverable: "then it is Claude not Plotline". Whatever is shown must be makeable and changeable by a person in the
+  product, from the plan picture. Acceptance of any Studio-made thing = an agent acting as the founder (sheet image,
+  mouse, keyboard, real Studio in Firefox; no Import / JSON / code reading), run before reporting. Talk to him in plain
+  words. List problems before fixing.
+- **Every element is changeable (founder, 2026-10-05):** "every single element can be manipulated and changed" — if a
+  person can see it, they can select it and change it, one piece without disturbing the others (one room's floor, one
+  wall's paint, a column, a ramp, a tree, the ceiling…). `Docs/MANUAL.md` §11 is the scoreboard: every "No" is a job
+  (approved as "B"). This overrides the older "no wall moves in 3D / nothing beyond …" limits in Working rules for
+  STAFF; buyers still only look, choose finishes and comment.
+- **Project-first workflow (founder, 2026-10-05) — the product's main path:**
+  1. Create a project; say how many floors (basements, ground, flat floors, rooftop) and how many types.
+  2. A list of all the floors stays on the right (as the Building view's picker does today).
+  3. Trace each type once, from the basement up to the rooftop. Floors repeat (e.g. 2 / 4 / 6 / 8 the same, others a
+     bit different): one type serves many floors — "floor types + which floors each repeats on" comes back to the front
+     (today it is buried in Studio → Building → A flat → "on floors N to M"). A floor that differs a little (a 2nd
+     floor with an extra lawn) is traced as its own extra.
+  4. Stack the floors like Lego — interactive, game-like.
+  5. Finishes are per flat / room / wall: changing a wall colour must NOT change every flat of the building.
+  6. Pick a flat, show it to the client. Sun must be ACCURATE for the site and direction (needs location, date, true
+     north — today it is one equinox path). Wind from real data comes later (Windy API if it fits the budget).
+  7. A flat he traces gets the same richness of components as the built-in ones.
+  AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
+  Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
 ## Stack
 
