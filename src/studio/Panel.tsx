@@ -76,7 +76,7 @@ function LevelInput({ valueM, onCommit, placeholder }: { valueM?: number; onComm
     setBad(false)
     if (m !== valueM) onCommit(m)
   }
-  return <input className={bad ? 'bad' : ''} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === 'Enter' && commit(), e.stopPropagation())} />
+  return <input className={bad ? 'bad' : ''} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === 'Enter' && e.currentTarget.blur(), e.stopPropagation())} />
 }
 
 const ARROWS = ['↑', '→', '↓', '←']
@@ -311,6 +311,9 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
         <section>
           <h3>{review.length ? `Check these (${review.length})` : 'Check these'}</h3>
           {stats && <p className="muted">{statsLine(stats)}</p>}
+          {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
+          {stats && stats.labelled < 2 && <p className="warn">Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.</p>}
+          {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
           {review.length ? (
             <ul className="issues">
               {review.map((m) =>
@@ -736,7 +739,7 @@ function Thickness({ value, onChange }: { value: number; onChange: (t: number) =
         onChange={(e) => setInches(e.target.value)}
         onBlur={commitInches}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commitInches()
+          if (e.key === 'Enter') e.currentTarget.blur() // applies (onBlur) and gives the keys back to the tools
           e.stopPropagation()
         }}
         placeholder={Number.isFinite(value) ? 'inches' : 'mixed'}

@@ -1048,9 +1048,13 @@ export class PlotlineScene {
   /** A storey wall (≥ STOREY_WALL_M) under the slab above (`cover`, by its middle) goes up to it, wherever it stands. */
   private reachesSlab(w: Wall): boolean {
     if (w.heightM < STOREY_WALL_M || !this.cover.length) return false
-    const [a, b] = [core.vertexById(this.unit!.vertices, w.a), core.vertexById(this.unit!.vertices, w.b)]
-    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    return this.cover.some((c) => core.pointInPolygon(mid, c))
+    // a step to either side of its middle: a wall ON the slab's edge (a glazed front under it) is under it too
+    const f = core.wallFrame(w, this.unit!.vertices)
+    const off = w.thicknessM / 2 + 0.05
+    return [1, -1].some((s) => {
+      const p = { x: f.origin.x + (f.dir.x * f.lengthM) / 2 + f.normal.x * off * s, y: f.origin.y + (f.dir.y * f.lengthM) / 2 + f.normal.y * off * s }
+      return this.cover.some((c) => core.pointInPolygon(p, c))
+    })
   }
 
   /** The floor level at a plan point (core.floorLevelAt: the smallest face round it; 0 outside every face). */

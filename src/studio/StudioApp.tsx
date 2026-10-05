@@ -283,7 +283,8 @@ export default function StudioApp() {
   const tolM = SNAP_PX / s
   // a drawing with walls is already in real lengths (a built-in level has no picture): nothing to wait for
   const scaleSet = !!unit.planImage || unit.walls.length > 0
-  const lineUp = unit.walls.length > 0
+  // S lines the picture up only while the drawing has no picture under it yet; a drawing traced on its picture: S sets the scale
+  const lineUp = unit.walls.length > 0 && !unit.planImage
   const rooms = useMemo(() => deriveRooms(unit), [unit])
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
@@ -833,10 +834,7 @@ export default function StudioApp() {
         fitView({ minX: lo.x, minY: lo.y, maxX: hi.x, maxY: hi.y })
       }
       const n = result.review.length
-      // never a silent guess: no printed size was read, so every length rests on an assumed wall thickness
-      const guessed = result.stats.scaleFrom === 'thickness' ? ' · NO printed size found: the scale is a GUESS — press S and click the two ends of anything whose length you know' : ''
-      const thin = result.unit.roomLabels.length < 2 ? ' · Auto-trace is made for flats: on a ground floor, basement or rooftop it finds little — draw it with W and name the areas with R' : ''
-      toast((n ? `Traced — ${n} thing${n === 1 ? '' : 's'} to check on the right · Ctrl+Z undoes it` : 'Traced · Ctrl+Z undoes it') + guessed + thin)
+      toast(n ? `Traced — ${n} thing${n === 1 ? '' : 's'} to check on the right · Ctrl+Z undoes it` : 'Traced · Ctrl+Z undoes it')
     }
     const fail = (why: string) => {
       stop()
@@ -924,7 +922,7 @@ export default function StudioApp() {
       }
       if (st.tool === 'scale') {
         // lining up: the second click of a pair is a point of the drawing
-        if (st.unit.walls.length) return { m, px, snap: scaleStart ? snapPoint(m, st.unit, { tolM: SNAP_PX / s }) : null, hit: null }
+        if (st.unit.walls.length && !st.unit.planImage) return { m, px, snap: scaleStart ? snapPoint(m, st.unit, { tolM: SNAP_PX / s }) : null, hit: null }
         if (scaleStart && !shift) {
           const dx = px.x - scaleStart.x
           const dy = px.y - scaleStart.y
@@ -1082,7 +1080,8 @@ export default function StudioApp() {
           if (fit.turnDeg > 3) return toast(`Those corners do not match: the picture would have to turn ${Math.round(fit.turnDeg)}°. Try again with two corners you are sure of.`)
           dispatch({ type: 'set-scale', pxPerM: fit.pxPerM, originPx: fit.originPx })
           if (state.planImage) fitView({ minX: 0, minY: 0, maxX: state.planImage.naturalW, maxY: state.planImage.naturalH })
-          return toast('The picture now sits under the drawing. Not right? Press S and line it up again, or Undo.')
+          dispatch({ type: 'set-tool', tool: 'select' }) // done: out of the tool, so the next click is not a new line-up
+          return toast('Done — the picture now sits under the drawing. Not right? Undo (Ctrl+Z), press S and line it up again.')
         }
         const end = h.px
         const pxLen = Math.hypot(end.x - scaleStart.x, end.y - scaleStart.y)
@@ -1645,7 +1644,7 @@ export default function StudioApp() {
     const snapped = shiftRef.current ? 'free' : `snapped: ${hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind}`
     centre = w ? `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${snapped}` : snapped
   } else if (hover?.hit) centre = hover.hit.kind === 'pillar' ? 'column' : hover.hit.kind
-  const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : 'Scale not set'
+  const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : unit.walls.length ? 'Real sizes · no picture lined up' : 'Scale not set'
   /** the first floor of the project the open drawing is on (the drop prompt names it) */
   const openSlot = project && active?.drawing ? slotsOf(project).find((r) => r.unitIds.includes(active.drawing!)) : undefined
 

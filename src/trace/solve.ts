@@ -2247,7 +2247,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   }
   if (scaleFew) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: 'Scale from a few printed room sizes only — check one printed length' })
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
-    review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it from one printed length' })
+    review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it (S) from anything whose length you know' })
 
   // ── validate: fix what can be fixed, the rest goes to the list
   fixAndReport(u, review)

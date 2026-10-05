@@ -8,6 +8,7 @@
   background: var(--bg);
 }
 .studio .muted { color: var(--muted); }
+.studio .warn { color: var(--accent); font-weight: 600; }
 .studio button {
   background: transparent;
   color: var(--ink);
