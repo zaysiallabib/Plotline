@@ -156,14 +156,15 @@ const EDIT = ((): Draft['unit'] | null => {
   const found = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
   if (!found) return null
   const u = withLayout(found) // as the viewer shows it: with the layout arranged in this browser
-  let d: { unit?: unknown } | null = null
+  let d: { unit?: unknown; drawing?: unknown } | null = null
   try {
     d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null')
   } catch {
     /* no usable draft */
   }
   const du = [d, d?.unit].find(isUnit) // a Draft or a bare Unit, as init() accepts
-  if (du?.vertices.length && JSON.stringify(du) !== JSON.stringify(normalizeUnit(u)))
+  // a project drawing is kept in its project (FloorList): nothing to lose, nothing to ask
+  if (du?.vertices.length && !d?.drawing && JSON.stringify(du) !== JSON.stringify(normalizeUnit(u)))
     if (!window.confirm(`Replace your Studio draft (${du.name || 'untitled unit'}) with ${u.name} as the viewer shows it? Export the draft first if you need it.`)) return null
   history.replaceState(null, '', '/studio')
   return u

@@ -370,7 +370,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - The coloured areas of a drawing (lawn, driveway…) cover much of the picture under them.
 - **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only its row in the project's floor list (or the old "Use this plan as") does.
 - The old one-plan way (**Put only this plan into a building…** → Ground floor) refuses until a building with a flat exists, then needs typed "move it right / down" numbers. The project floor list has neither problem.
-- **Outside a project, only one Studio drawing at a time.** Opening another plan from the 3D view (Edit plan, Edit openings) replaces yours after one question. Inside a project use the floor list: each floor keeps its own drawing and picture.
+- **Outside a project, only one Studio drawing at a time.** Opening another plan from the 3D view (Edit plan, Edit openings) replaces yours after one question. Inside a project nothing is asked: the project keeps your drawing and its picture — open it again from its floor in the list.
 - **A whole-floor drawing cannot yet be split into its flats**: a buyer link and the Building view treat the whole floor as one flat.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
