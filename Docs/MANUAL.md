@@ -157,7 +157,8 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 **S — Scale**
 - Click both ends of a size printed on the plan, then type that size (`14'-5"`, `14.4` or `4.4m`).
 - **No size printed** (ground floors, basements, rooftops)? Click both ends of anything whose real length you know and type it: the plot's width from the land papers, a parking bay (about 8' wide, 16' long), a single door (about 3'-3").
-- **Line a picture up with a drawing that is already there** (a built-in level, or your drawing after you swapped the picture): drop the picture on the page, press **S**, then 4 clicks — a corner on the picture, the same corner in the drawing; another corner far away on the picture, the same corner in the drawing. The picture jumps under the drawing at the right size. Wrong? **Undo**, or press S and do it again. The picture must be the same way up as the drawing.
+- **Line a picture up with a drawing that has no picture under it** (a built-in Banani / dmd level, a drawing file opened without its picture): drop the picture on the page, press **S**, then 4 clicks — a corner on the picture, the same corner in the drawing; another corner far away on the picture, the same corner in the drawing. The picture jumps under the drawing at the right size, a message says **Done**, and you are back in Select. Wrong? **Undo** (Ctrl+Z), press S and do it again. The picture must be the same way up as the drawing.
+- Once a drawing has its picture under it, **S** is the plain scale tool again (two ends of a known length, type it) — also after you have drawn walls. It changes the size the picture is read at; walls already drawn keep their typed sizes and no longer sit on the picture, so set the scale BEFORE tracing. A door or a drawn car as the known length was 4–6 % off in our test: the plot's width from the land papers is the one to trust.
 - The five Sheltech levels (ground, basements, level 1, rooftop) open with their plan picture already behind them.
 
 **W — Wall**
@@ -367,6 +368,9 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats; it now says so when it finds almost nothing, and says loudly when it had to guess the scale.
 - **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
 - **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.
+- **A wrong scale found after tracing cannot be put right in one step**: S changes the scale, but the walls do not follow the picture.
+- Clicking a wall that is all glass picks the glass, not the wall — its Width / Height boxes are the glass's. A glass wall is called "Window" in the panel.
+- An area you add to a level ("Sand pit") may be missing from the 3D **Rooms** list; **Rooms → Lawn** can drop you in a corner facing a wall.
 - The coloured areas of a drawing (lawn, driveway…) cover much of the picture under them.
 - **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only its row in the project's floor list (or the old "Use this plan as") does.
 - The old one-plan way (**Put only this plan into a building…** → Ground floor) refuses until a building with a flat exists, then needs typed "move it right / down" numbers. The project floor list has neither problem.
