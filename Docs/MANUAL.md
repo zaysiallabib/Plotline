@@ -145,7 +145,7 @@ You draw over a plan picture. The order is written on the right under **Steps**:
 
 ### The tools (letters on the left; press the letter to pick the tool)
 
-Every tool except **V** and **S** stays locked until the scale is set.
+Every tool except **V** and **S** stays locked until the scale is set. A drawing that already has walls (a built-in level, a drawing file you opened) is in real sizes already: its tools are open at once.
 
 **V — Select**
 - Click a corner, wall, opening, room name or column to pick it. **Shift+click** picks several.
@@ -156,7 +156,9 @@ Every tool except **V** and **S** stays locked until the scale is set.
 
 **S — Scale**
 - Click both ends of a size printed on the plan, then type that size (`14'-5"`, `14.4` or `4.4m`).
-- A plan with no printed size cannot be scaled this way yet (see "Rough edges").
+- **No size printed** (ground floors, basements, rooftops)? Click both ends of anything whose real length you know and type it: the plot's width from the land papers, a parking bay (about 8' wide, 16' long), a single door (about 3'-3").
+- **Line a picture up with a drawing that is already there** (a built-in level, or your drawing after you swapped the picture): drop the picture on the page, press **S**, then 4 clicks — a corner on the picture, the same corner in the drawing; another corner far away on the picture, the same corner in the drawing. The picture jumps under the drawing at the right size. Wrong? **Undo**, or press S and do it again. The picture must be the same way up as the drawing.
+- The five Sheltech levels (ground, basements, level 1, rooftop) open with their plan picture already behind them.
 
 **W — Wall**
 - Choose what to draw: **Wall**, **Low wall**, **Kerb**, **Zone line** (keys 1–4).
@@ -169,7 +171,8 @@ Every tool except **V** and **S** stays locked until the scale is set.
 - **T** switches thin wall (5") / thick wall (10").
 
 **O — Opening**
-- Choose: Door 2'-6", Door 3'-0", Window 4', Window 6', Slider 6', Slider 8', Passage (keys 1–4 for the kind).
+- Choose: Door 2'-6", Door 3'-0", Window 4', Window 6', Slider 6', Slider 8', Passage (keys 1–4 for the kind), or **Glass wall**.
+- **Glass wall**: click a wall and all of it becomes glass, floor to top. For glass on only part of a wall, drag the glass's end shorter, or first split the wall (W, click on it).
 - Point at a wall — a preview shows what you will get — click.
 - Kerbs and zone lines do not take doors or windows.
 - With a door picked: **H** flips the hinge side, **Shift+H** flips which way it swings.
@@ -347,21 +350,18 @@ Buildings are saved in this browser only.
 
 Things that are confusing or not finished. Each one is a job on the list.
 
-- **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats and does not say so.
-- **A plan with no printed size cannot be scaled.** The ground-floor sheets print only levels.
-- **The built-in levels open in the Studio without their plan picture**, on a dark background.
-- **The built-in levels cannot be lined up with their plan picture.** Loading the picture puts it at another size and place, and there is no way to move it.
-- **On a built-in level the drawing tools stay locked** ("Set the scale first"), so nothing can be added.
+- **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats; it now says so when it finds almost nothing, and says loudly when it had to guess the scale.
+- **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
+- **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.
+- The coloured areas of a drawing (lawn, driveway…) cover much of the picture under them.
 - **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only Building → "Use this plan as" does.
 - **Building → Ground floor** refuses until a building with a flat exists, then needs typed "move it right / down" numbers.
 - **Only one Studio drawing at a time.** Opening another plan (Edit plan, Edit openings) replaces yours after one question.
-- **"Glass wall" is not a button.** It is a window with sill 0 and a tall height. Low wall, kerb and zone line are only mentioned in the small status text.
-- After typing in a box on the right, the tool keys (W, O…) go into the box instead of switching tools.
+- After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.
 - Room names overlap each other on crowded plans.
 - Checks written for flats show on levels ("No entry door on an outer wall", the Area number).
-- **Glass wall between two floor heights** leaves an open band under the ceiling (seen in the Banani gym).
 - The hint "Click to look around" is wrong — one click walks you to that spot; a double-click lets the mouse turn your head.
 - Opening the site with no address shows Banani Basement 1 instead of a flat.
 - There are two different "share" buttons: **Share** in the 3D view (a link with your finishes only) and **Share link** in the Studio (the real buyer link that feeds the change list).
@@ -405,7 +405,6 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Time of day | Yes — the slider | — | — |
 | North direction | No | No | No control found |
 
-Two limits that apply to all of it:
+One limit that applies to all of it:
 
-- **On a built-in ground floor, basement or rooftop the Studio lets you change what is there but not add anything** — the drawing tools stay locked ("Set the scale first").
 - **What staff change in 3D stays in that one browser.** A buyer on another computer still sees the original.

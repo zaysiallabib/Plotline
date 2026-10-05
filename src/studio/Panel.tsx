@@ -156,7 +156,7 @@ export function LenInput({ valueM, onCommit, placeholder }: { valueM: number; on
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') commit()
+        if (e.key === 'Enter') e.currentTarget.blur() // commits (onBlur) and gives the keys back to the tools
         e.stopPropagation()
       }}
     />
@@ -709,7 +709,7 @@ function NumInput({ value, onCommit }: { value: number; onCommit: (n: number) =>
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') commit()
+        if (e.key === 'Enter') e.currentTarget.blur() // commits (onBlur) and gives the keys back to the tools
         e.stopPropagation()
       }}
     />
