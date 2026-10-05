@@ -700,22 +700,28 @@ const stepAt = (l: WallLift, u: number, L: number) => {
 /**
  * The wall as it is built on its foot (wallGeometry and its joinery): each opening's sill raised by the step to the higher
  * floor there, its head kept within the wall (a 2.7 m glass wall over a 0.6 m step in a 3 m wall: glass to the top).
+ * `top` (a storey wall under the slab above, as liftWall): the wall is built up to that slab from its foot, so wall — not
+ * an open band — fills between a raised opening's head and the slab (glazing between two floor levels; hand the result to
+ * liftWall).
  */
-export function liftedWall(wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift): Wall {
+export function liftedWall(wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift, top?: number): Wall {
   if (l === FLAT || !wall.openings.length) return wall
   const L = core.wallFrame(wall, unit.vertices).lengthM
+  const heightM = top === undefined ? wall.heightM : Math.max(wall.heightM, top - Math.min(...l.foot))
   return {
     ...wall,
+    heightM,
     openings: wall.openings.map((o) => {
       const sillM = o.sillM + stepAt(l, o.offsetM + o.widthM / 2, L)
-      return { ...o, sillM, heightM: Math.max(0.1, Math.min(o.heightM, wall.heightM - sillM)) }
+      return { ...o, sillM, heightM: Math.max(0.1, Math.min(o.heightM, heightM - sillM)) }
     }),
   }
 }
 
 /**
  * Puts a wall solid (wallGeometry of liftedWall, built on 0) on its foot: every vertex up by `foot` there. `top` (a storey
- * wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands.
+ * wall under the slab above, PlotlineScene): its top reaches that slab, level wherever it stands. `wall` = the wall as it
+ * was built (liftedWall with the same `top`): its height tells which vertices are the top.
  */
 export function liftWall(geo: THREE.BufferGeometry, wall: Wall, unit: Pick<Unit, 'vertices'>, l: WallLift, top?: number): void {
   if (l === FLAT && top === undefined) return

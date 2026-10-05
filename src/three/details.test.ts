@@ -514,6 +514,12 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(g.boundingBox!.max.y).toBeCloseTo(3, 6)
     liftWall(g, lob, u, l, 3.5) // under the slab above: its top reaches it
     expect(g.boundingBox!.max.y).toBeCloseTo(3.5, 6)
+    // glazing to the wall's top between the two floors, under a slab higher than the wall: wall fills up to the slab (no open band)
+    const glass = { ...lob, openings: [{ ...lob.openings[0], offsetM: 0, widthM: core.wallFrame(lob, u.vertices).lengthM, sillM: 0, heightM: 3 }] }
+    const under = liftedWall(glass, u, l, 3.5)
+    expect(under.heightM).toBeCloseTo(3.5, 6)
+    expect(under.openings[0].sillM + under.openings[0].heightM).toBeCloseTo(3.5, 6) // the glass reaches the slab (it stopped at 3: an open band)
+    expect(liftedWall(glass, u, l).heightM).toBe(3) // not under a slab: as before
     expect(roomCeiling(rooms.find((r) => r.id === 'Lobby')!, u, rooms)).toBeCloseTo(3, 6)
     const a = TEST_UNIT.walls[0]
     expect(wallLift(a, TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual({ base: [0, 0], foot: [0, 0] })

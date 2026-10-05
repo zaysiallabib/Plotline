@@ -355,7 +355,10 @@ export class PlotlineScene {
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
       // the bake reads a wall on 0; then it stands on its floors (details.ts liftWall)
       const w = kind === 'wall' ? unit.walls.find((x) => x.id === s.mesh.userData.id) : undefined
-      if (w) liftWall(s.mesh.geometry, w, unit, this.lifts.get(w.id)!, this.reachesSlab(w) ? this.top : undefined)
+      if (w) {
+        const top = this.reachesSlab(w) ? this.top : undefined
+        liftWall(s.mesh.geometry, liftedWall(w, unit, this.lifts.get(w.id)!, top), unit, this.lifts.get(w.id)!, top)
+      }
     }
     const storey = this.top
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
@@ -903,7 +906,7 @@ export class PlotlineScene {
     // Reveals ride with the exterior face (front if both are rooms), not the depth-offset edge material: GTAO read
     // the offset depth as a groove along a slim reveal beside a window frame (the dashed outline on the study glass).
     const lift = this.lifts.get(wall.id)!
-    const built = liftedWall(wall, unit, lift) // on its foot, its openings on the higher floor
+    const built = liftedWall(wall, unit, lift, this.reachesSlab(wall) ? this.top : undefined) // on its foot, its openings on the higher floor
     const geo = wallGeometry(built, unit, back === null && front !== null ? 1 : 0)
     if (geo) {
       const mesh = new THREE.Mesh(geo)
