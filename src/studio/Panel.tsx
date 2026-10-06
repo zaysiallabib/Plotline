@@ -502,6 +502,13 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
         <Row label="Sill">
           <LenInput valueM={o.sillM} onCommit={(m) => patch({ sillM: m })} />
         </Row>
+        {(o.kind === 'window' || o.kind === 'slider') && (
+          <Row label="Curtains">
+            <label className="check">
+              <input type="checkbox" checked={o.curtains !== false} onChange={(e) => patch({ curtains: e.target.checked ? undefined : false })} /> in bed / living / dining / study
+            </label>
+          </Row>
+        )}
         <Row label="From corner A">
           <LenInput valueM={o.offsetM} onCommit={(m) => patch({ offsetM: m })} />
         </Row>

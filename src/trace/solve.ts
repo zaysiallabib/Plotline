@@ -2232,7 +2232,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   if (Number.isFinite(budget) && named.length) {
     const sum = named.reduce((t, r) => t + r.areaSqm, 0), want = budget * KNOBS.areaShare
     if (Math.abs(sum / want - 1) > 0.12)
-      review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — a room ${sum < want ? 'is missing or still open' : 'too many (the next flat\'s, or the lobby)'}` })
+      review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The ${named.length} closed rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — ${sum < want ? `${Math.max(0, u.roomLabels.length - named.length)} named rooms are still open (marked), or one is missing` : 'a room too many (the next flat\'s, or the lobby)'}` })
   }
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)

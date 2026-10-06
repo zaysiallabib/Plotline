@@ -355,6 +355,11 @@ test('curtains only where the other side is open air: never on the study/dining 
     expect(sides('o_study_win'), `${u.id} outside wall`).toEqual(['Study room:-1'])
     expect(sides('o_bed2_win_e'), `${u.id} onto a veranda`).toEqual(['Bed-2:1'])
     expect(sides('o_bed3_win'), `${u.id} onto an air shaft`).toEqual(['Bed-3:-1'])
+    // founder 2026-10-06: a sliding window hangs one too; a window switched off (curtains: false) hangs none
+    const wall = u.walls.find((w) => w.openings.some((o) => o.id === 'o_bed3_win'))!
+    const o = wall.openings.find((o) => o.id === 'o_bed3_win')!
+    expect(curtainSides({ ...o, kind: 'slider', sillM: 0, heightM: 2.1 }, wall, u, rooms).length).toBe(1)
+    expect(curtainSides({ ...o, curtains: false }, wall, u, rooms)).toEqual([])
   }
 })
 

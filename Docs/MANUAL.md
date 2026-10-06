@@ -102,7 +102,7 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 ### Edit openings (doors, windows, sliding doors, open passages)
 
 - **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill.
-- Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
+- Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, a **Curtains** tick box on windows and sliders, **Delete**, **Undo**.
 - The change is written into the Studio drawing too, so plan and 3D always agree.
 - On a built-in flat it first asks to make that flat your Studio drawing (this replaces the drawing you had there).
 
@@ -178,6 +178,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - Point at a wall — a preview shows what you will get — click.
 - Kerbs and zone lines do not take doors or windows.
 - With a door picked: **H** flips the hinge side, **Shift+H** flips which way it swings.
+- **Curtains**: a window or sliding window in a bed, living, dining or study room gets curtains in 3D when the other side is outside (a veranda, a shaft, open air). Select the window: the **Curtains** tick box in the panel turns them off for that one window. A glass wall never has curtains.
 
 **R — Room**
 - Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size**, **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).

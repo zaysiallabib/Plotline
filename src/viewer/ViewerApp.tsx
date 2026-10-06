@@ -318,7 +318,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'curtains'>>) => void
   onDelete: () => void
   onUndo: () => void
 }) {
@@ -343,6 +343,11 @@ function OpeningPanel(p: {
             <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
             <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
           </div>
+          {(o.kind === 'window' || o.kind === 'slider') && (
+            <label className="small">
+              <input type="checkbox" checked={o.curtains !== false} onChange={(e) => p.onSize({ curtains: e.target.checked ? undefined : false })} /> Curtains (bed, living, dining, study)
+            </label>
+          )}
         </>
       ) : (
         <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill.</div>

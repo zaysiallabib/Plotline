@@ -34,6 +34,8 @@ export interface Opening {
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'
+  /** false = no curtain on this window / slider (the rule hangs one by room kind otherwise) */
+  curtains?: boolean
 }
 
 export interface Wall {

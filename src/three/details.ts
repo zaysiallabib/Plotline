@@ -414,7 +414,7 @@ function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room 
  * the unit, a balcony or a shaft) — never an interior glass partition between two rooms.
  */
 export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
-  if (o.kind !== 'window' || isGlazing(o)) return [] // a glass wall hangs no curtain
+  if (!(o.kind === 'window' || o.kind === 'slider') || isGlazing(o) || o.curtains === false) return [] // a glass wall hangs no curtain
   const [front, back] = openingRooms(o, wall, unit, rooms)
   const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || core.isOutdoor(r.kind)
   const out: [Room, 1 | -1][] = []
