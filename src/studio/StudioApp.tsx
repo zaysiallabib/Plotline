@@ -41,7 +41,7 @@ import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
-import { snapMove, snapPoint, type Snap } from './snap'
+import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
@@ -58,7 +58,7 @@ const ACTIVE_KEY = 'plotline.studio.project'
 type Active = { id: Id; drawing?: Id }
 /** the staff key that lets this browser publish share links (from the migration's output); asked for once */
 const PUBLISH_KEY = 'plotline.staffKey'
-const SNAP_PX = 10
+const SNAP_PX = 7 // was 10: founder 2026-10-06, "30 % less magnetic"
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const TOOLS: [Tool, string, string][] = [
   ['select', 'V', 'Select'],
@@ -1246,7 +1246,7 @@ export default function StudioApp() {
           const s0 = snapPoint(onLine(L), unit, { tolM, exclude: ids })
           L = along(s0)
           const guides = s0.guides.filter((g) => Math.abs(g.axis === 'x' ? dir.x : dir.y) > 1e-6) // only guides across the line stop the end
-          const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : s0.kind === 'vertex' || s0.kind === 'wall' ? s0.kind : 'free'
+          const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : HARD.has(s0.kind) ? s0.kind : 'free'
           snap = { ...s0, ...onLine(L), kind, guides }
         }
         if (L < 0.05) return // never through the anchor
@@ -1274,7 +1274,7 @@ export default function StudioApp() {
         if (!p) return
         if (d.fixed) {
           // a corner dot: the opposite corner stays, whole inches, 0.1 m at least
-          const c = free ? loose(m) : snapPoint(m, unit, { tolM })
+          const c = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [p.id] })
           const inch = (v: number) => Math.max(0.1, Math.round(Math.abs(v) / 0.0254) * 0.0254)
           const [wM, hM] = [inch(c.x - d.fixed.x), inch(c.y - d.fixed.y)]
           const sgn = (v: number) => (v < 0 ? -1 : 1)
@@ -1284,7 +1284,7 @@ export default function StudioApp() {
           // its centre follows the pointer and snaps as a corner does: onto a wall's centre line, a corner, in line
           const o = d.orig.get(p.id)!
           const to = { x: o.x + m.x - d.m.x, y: o.y + m.y - d.m.y }
-          const c = free ? loose(to) : snapPoint(to, unit, { tolM })
+          const c = free ? loose(to) : snapPoint(to, unit, { tolM, exclude: [p.id] })
           dispatch({ type: 'set-pillar', id: p.id, patch: { x: c.x, y: c.y }, live: true })
           show(c, [])
         }

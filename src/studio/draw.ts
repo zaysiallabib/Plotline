@@ -3,7 +3,7 @@ import { formatFeetInches, roomAt, roomPolygon, unitBounds, wallFrame } from '..
 import type { FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
-import type { OpeningSnap, Snap } from './snap'
+import { HARD, type OpeningSnap, type Snap } from './snap'
 import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
 
 const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
@@ -395,9 +395,9 @@ export function draw(a: DrawArgs): void {
   }
 
   // snap ring
-  if (snap && (state.tool === 'wall' || a.hover?.hit?.kind === 'vertex' || snap.kind === 'vertex' || snap.kind === 'wall')) {
+  if (snap && (state.tool === 'wall' || a.hover?.hit?.kind === 'vertex' || HARD.has(snap.kind))) {
     ctx.beginPath()
-    ctx.arc(snap.x, snap.y, px(snap.kind === 'vertex' || snap.kind === 'wall' ? 8 : 4), 0, Math.PI * 2)
+    ctx.arc(snap.x, snap.y, px(HARD.has(snap.kind) ? 8 : 4), 0, Math.PI * 2)
     ctx.strokeStyle = C.accent
     ctx.lineWidth = px(1.5)
     ctx.stroke()

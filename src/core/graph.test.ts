@@ -165,6 +165,9 @@ describe('validate', () => {
     const issues = validate(unit({ ...g, roomLabels: [label('r', 1, 2)] }))
     expect(issues).toContainEqual(expect.objectContaining({ level: 'error', code: 'dangling-vertex', ids: ['lone'] }))
     expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', code: 'dangling-vertex', ids: ['s'] }))
+    // a wall ending on a column's face / inside it is joined there, not loose (founder 2026-10-06)
+    const col = validate(unit({ ...g, roomLabels: [label('r', 1, 2)], pillars: [{ id: 'c', x: 2.15, y: 1, wM: 0.3, hM: 0.5 }] }))
+    expect(col).not.toContainEqual(expect.objectContaining({ code: 'dangling-vertex', ids: ['s'] }))
   })
   test('zero-length-wall (incl. missing vertex)', () => {
     const g = graph({ a: [0, 0], b: [0, 0] }, ['a-b', 'a-a'])

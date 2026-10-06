@@ -167,6 +167,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
   - *Kerb* — a 6-inch edge, as round a planter.
   - *Zone line* — an invisible line that only separates two areas (lawn from driveway).
 - Click corner after corner. Click the first corner again to close the room.
+- **What the cursor sticks to** (the status bar says which): a corner, a wall's centre line ("wall — will split"), a column (its centre, corners and sides: "column"), and the two sides of a thick wall ("wall face"). Corners and centre lines pull from 7 screen pixels, columns and wall faces from about 5. **Shift** = no sticking. A wall ending on a column is joined there: no "loose end" mark.
 - While drawing, **type a number** to set the exact length; **Tab** switches to the angle.
 - **Backspace** removes the last piece. **Esc** stops.
 - **T** switches thin wall (5") / thick wall (10").
@@ -184,6 +185,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 
 **C — Column**
 - Click = a standard column. Drag = a column of the size you drag. Drag its corner dots to resize.
+- Walls stick to a column's sides, corners and centre, so a wall can end on it (see W — Wall).
 
 **F — Furniture**
 - Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.

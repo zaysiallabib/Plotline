@@ -264,11 +264,16 @@ export function validate(unit: Unit): ValidationIssue[] {
     }
   }
 
-  // a wall that stands alone ends free on purpose (a screen, a fin): its loose ends are no issue
+  // a wall that stands alone ends free on purpose (a screen, a fin): its loose ends are no issue;
+  // nor is an end on / inside a column (founder 2026-10-06: a wall drawn to a column is joined there)
   const meant = new Set(unit.walls.filter((w) => w.standsAlone).flatMap((w) => [w.a, w.b]))
+  const inColumn = (id: Id) => {
+    const v = vs.get(id)
+    return !!v && (unit.pillars ?? []).some((c) => Math.abs(v.x - c.x) <= c.wM / 2 + 1e-6 && Math.abs(v.y - c.y) <= c.hM / 2 + 1e-6)
+  }
   for (const [id, d] of degree) {
     if (d === 0) err('dangling-vertex', `vertex ${id} is not used by any wall`, [id])
-    else if (d === 1 && !meant.has(id)) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
+    else if (d === 1 && !meant.has(id) && !inColumn(id)) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
   }
 
   // ponytail: O(n²) pair scan; a unit has tens of walls, not thousands

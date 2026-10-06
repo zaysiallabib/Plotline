@@ -784,6 +784,27 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
     expect(snapPoint({ x: 5.01, y: 1.5 }, two.unit, { tolM: 0.1 })).toMatchObject({ kind: 'aligned x', x: 5 })
   })
 
+  it('columns and wall faces snap, weaker than corners / centre lines (founder 2026-10-06); an end on a column is no loose end', () => {
+    const box = poly([[0, 0], [4, 0], [4, 3], [0, 3]])
+    const s = reducer(box, { type: 'add-pillar', x: 6, y: 1, wM: 0.4, hM: 0.6 }) // faces x = 5.8 / 6.2, y = 0.7 / 1.3
+    const tol = 0.1
+    expect(snapPoint({ x: 5.75, y: 1.1 }, s.unit, { tolM: tol })).toMatchObject({ kind: 'column', x: 5.8, y: 1.1 }) // its left face
+    expect(snapPoint({ x: 5.77, y: 0.68 }, s.unit, { tolM: tol })).toMatchObject({ kind: 'column', x: 5.8, y: 0.7 }) // a corner
+    expect(snapPoint({ x: 6.03, y: 1.02 }, s.unit, { tolM: tol })).toMatchObject({ kind: 'column', x: 6, y: 1 }) // its centre
+    expect(snapPoint({ x: 5.72, y: 1.1 }, s.unit, { tolM: tol }).kind).toBe('free') // 8 cm off: beyond the weaker reach (7 cm)
+    expect(snapPoint({ x: 5.75, y: 1.1 }, s.unit, { tolM: tol, exclude: [s.unit.pillars![0].id] }).kind).toBe('free') // the dragged column itself never pulls
+    // drawing from (4, 1.1) east: the ray meets the face at (5.8, 1.1) and keeps its angle
+    expect(snapPoint({ x: 5.76, y: 1.12 }, s.unit, { tolM: tol, from: { x: 4, y: 1.1 } })).toMatchObject({ kind: 'column', x: 5.8, y: 1.1, angleDeg: 0 })
+    // a wall's face line: the bottom wall (0,0)→(4,0), its face at y = ±thickness / 2
+    const t = s.unit.walls[0].thicknessM / 2
+    expect(snapPoint({ x: 2, y: t + 0.05 }, s.unit, { tolM: tol })).toMatchObject({ kind: 'wall face', x: 2, y: t })
+    expect(snapPoint({ x: 2, y: 0.03 }, s.unit, { tolM: tol }).kind).toBe('wall') // the centre line wins near it
+    // a wall ending on the column's face is joined there: no loose-end mark on that end
+    const joined = run(s, { type: 'chain-start', at: { x: 4, y: 1.1, tolM: TOL } }, { type: 'chain-add', at: { x: 5.8, y: 1.1, tolM: TOL } }, { type: 'chain-end' })
+    expect(issues(joined).filter((i) => i.endsWith('dangling-vertex'))).toEqual([])
+    expect(snapMove([{ ...at(joined, 5.8, 1.1)!, x: 5.75, y: 1.1 }], joined.unit, tol).snap.kind).toBe('column')
+  })
+
   it('a corner dragged onto a wall mid-span T-splits it (was: "Walls cross")', () => {
     let s = poly([[0, 0], [4, 0], [4, 3], [0, 3]], [[2, 1], [2, 2]]) // a loose stub inside
     const tip = at(s, 2, 2)!

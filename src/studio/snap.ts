@@ -2,14 +2,20 @@
 import { nearestWall, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, Unit, Wall } from '../core'
 
+/** faces and columns pull this much of the corner / centre-line reach (founder 2026-10-06: weaker still) */
+export const WEAK = 0.7
+
 export interface Snap extends Pt {
-  kind: 'vertex' | 'wall' | 'in line' | 'aligned x' | 'aligned y' | 'angle' | 'free'
+  kind: 'vertex' | 'wall' | 'wall face' | 'column' | 'in line' | 'aligned x' | 'aligned y' | 'angle' | 'free'
   vertexId?: Id
   wallId?: Id
   /** direction from `from`, degrees, 0 = plan-right, clockwise on screen */
   angleDeg?: number
   guides: { axis: 'x' | 'y'; at: number }[]
 }
+
+/** snaps that fix a point in both axes (a dragged wall / a stretched end takes them whole) */
+export const HARD = new Set<Snap['kind']>(['vertex', 'wall', 'wall face', 'column'])
 
 const deg = (from: Pt, to: Pt): number => ((Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI + 360) % 360
 
@@ -148,6 +154,59 @@ export function snapPoint(
       return { ...q, kind, wallId: nw.wall.id, angleDeg: o.from ? deg(o.from, q) : undefined, guides }
     }
   }
+
+  // weaker magnets (founder 2026-10-06): a column (centre, corners, faces) and a wall's two face lines
+  const weak = o.tolM * WEAK
+  const segHit = (A: Pt, B: Pt): Pt | null => {
+    const L = Math.hypot(B.x - A.x, B.y - A.y)
+    if (L < 1e-9) return null
+    const dir = { x: (B.x - A.x) / L, y: (B.y - A.y) / L }
+    let hit: Pt | null = null
+    if (ray && o.from) {
+      // keep the angle exact: the ray meets the face line
+      const den = ray.x * dir.y - ray.y * dir.x
+      if (Math.abs(den) > 1e-9) {
+        const wx = A.x - o.from.x
+        const wy = A.y - o.from.y
+        const s = (wx * dir.y - wy * dir.x) / den
+        const u = (wx * ray.y - wy * ray.x) / den
+        if (s > 0 && u >= 0 && u <= L) hit = { x: o.from.x + ray.x * s, y: o.from.y + ray.y * s }
+      }
+    }
+    if (!hit) {
+      const u = Math.max(0, Math.min(L, (q.x - A.x) * dir.x + (q.y - A.y) * dir.y))
+      hit = { x: A.x + dir.x * u, y: A.y + dir.y * u }
+    }
+    return Math.hypot(hit.x - q.x, hit.y - q.y) <= weak ? hit : null
+  }
+  let best: { d: number; s: Snap } | null = null
+  const take = (hit: Pt | null, kind: Snap['kind']) => {
+    if (!hit) return
+    const d = Math.hypot(hit.x - q.x, hit.y - q.y)
+    if (!best || d < best.d) best = { d, s: { x: hit.x, y: hit.y, kind, angleDeg: o.from ? deg(o.from, hit) : undefined, guides: [] } }
+  }
+  for (const c of unit.pillars ?? []) {
+    if (ex.has(c.id)) continue
+    const cs = [
+      { x: c.x - c.wM / 2, y: c.y - c.hM / 2 },
+      { x: c.x + c.wM / 2, y: c.y - c.hM / 2 },
+      { x: c.x + c.wM / 2, y: c.y + c.hM / 2 },
+      { x: c.x - c.wM / 2, y: c.y + c.hM / 2 },
+    ]
+    for (const pt of [{ x: c.x, y: c.y }, ...cs]) take(Math.hypot(pt.x - q.x, pt.y - q.y) <= weak ? pt : null, 'column')
+    for (let i = 0; i < 4; i++) take(segHit(cs[i], cs[(i + 1) % 4]), 'column')
+  }
+  for (const w of walls.walls) {
+    const f = wallFrame(w, unit.vertices)
+    const n = { x: (-f.dir.y * w.thicknessM) / 2, y: (f.dir.x * w.thicknessM) / 2 }
+    const end = { x: f.origin.x + f.dir.x * f.lengthM, y: f.origin.y + f.dir.y * f.lengthM }
+    for (const sg of [1, -1]) take(segHit({ x: f.origin.x + n.x * sg, y: f.origin.y + n.y * sg }, { x: end.x + n.x * sg, y: end.y + n.y * sg }), 'wall face')
+  }
+  if (best) {
+    const b = (best as { s: Snap }).s
+    const v1 = nearVertex(b)
+    return v1 ? asVertex(v1) : b
+  }
   const v1 = nearVertex(q)
   if (v1) return asVertex(v1)
   return { ...q, kind, angleDeg: o.from ? deg(o.from, q) : undefined, guides }
@@ -162,7 +221,7 @@ export function snapMove(pts: (Pt & { id: Id })[], unit: Unit, tolM: number): { 
   const exclude = pts.map((p) => p.id)
   const snaps = pts.map((p) => ({ p, s: snapPoint(p, unit, { tolM, exclude }) }))
   const hard = snaps
-    .filter(({ s }) => s.kind === 'vertex' || s.kind === 'wall')
+    .filter(({ s }) => HARD.has(s.kind))
     .sort((m, n) => Math.hypot(m.s.x - m.p.x, m.s.y - m.p.y) - Math.hypot(n.s.x - n.p.x, n.s.y - n.p.y))[0]
   if (hard) return { dx: hard.s.x - hard.p.x, dy: hard.s.y - hard.p.y, snap: hard.s }
   const best: Record<'x' | 'y', { d: number; g: Snap['guides'][number] } | undefined> = { x: undefined, y: undefined }
