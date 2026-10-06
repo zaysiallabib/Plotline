@@ -16,7 +16,7 @@ Live: https://plotline-flax.vercel.app — **SESSION 19 (the levels) IS LIVE —
 **Decision on "which rooms belong to which flat" (2026-10-06):** NO "Flat" box to type — he called it extra work and he is right. Derive flats from the drawing: rooms connected by DOORS form one flat; the lift lobby / stairs / shafts (common core) are shared, so a flat stops there; the printed "TYPE-A ±2736 SFT" label inside the cluster names it and gives its area for the check; the Studio tints each flat's outline and names it, the floor list shows "Floor 2 — Type A, Type B"; if the guess is wrong he clicks one room and moves it to the other flat. Nothing to do when the guess is right.
 
 **The order (his, approved):**
-1. Snapping: columns (corners + faces as snap points; a wall ending on a column is joined there — no open-end mark, no crack in 3D) and wall faces (findings 1 + 2). `snap.ts` + tests; a user-persona run.
+1. Snapping: columns (corners + faces as snap points; a wall ending on a column is joined there — no open-end mark, no crack in 3D) and wall faces (findings 1 + 2). `snap.ts` + tests; a user-persona run. **And (founder, 2026-10-06): make the magnets 30 % LESS magnetic** — the snap reach (`SNAP_PX` in StudioApp, 10 screen px today) goes down by 30 % for everything, the new face / column magnets weaker still than the centre line.
 2. Curtains (finding 4) + the clearer wording of the area message (finding 3a). Small.
 3. Measurements (finding 3b): on his exported draft find why walls land on the wrong line, fix the tracer, keep the file as a test. Waits for the file.
 4. Room finishes (finding 5): plan → build → user-persona run → MANUAL.
