@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
+import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
@@ -599,12 +599,21 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <input value={l.printedSize ?? ''} onChange={(ev) => dispatch({ type: 'update-label', id: l.id, patch: { printedSize: ev.target.value } })} />
       </Row>
       <LevelFields levelM={l.levelM} slope={l.slope} dirs={room ? rampDirs(room, unit) : [0, 90, 180, 270]} onChange={(patch) => dispatch({ type: 'update-label', id: l.id, patch })} />
-      <p className="muted">{room ? formatArea(room.areaSqm) : 'Label is not inside a closed room'}</p>
+      <p className="muted">{room ? formatArea(room.areaSqm) : typeLine(l, flats)}</p>
       <button className="link" onClick={() => dispatch({ type: 'delete', ids: [l.id] })}>
         Remove
       </button>
     </div>
   )
+}
+
+/** A label that names no room: a flat's "Type A ±2736 sft" (its rooms' area against the printed one), else a stray label. */
+function typeLine(l: { name: string; kind: RoomKind }, flats: Flat[]): string {
+  const name = flatTypeOf(l)
+  const f = name && flats.find((x) => x.name === name)
+  if (!name) return 'Label is not inside a closed room'
+  if (!f) return `Names a flat (${name}) — put it inside one of that flat's rooms`
+  return `Names the flat ${name}: its ${f.roomIds.length} rooms add up to ${Math.round(sqmToSqft(f.areaSqm))} sft${f.printedSqft ? `, printed ±${f.printedSqft} sft (walls and a share of the lobby are in that)` : ''}`
 }
 
 /** A selected piece (tool F). X/Y go through the same grid + wall snap as a drag; no free placement. */

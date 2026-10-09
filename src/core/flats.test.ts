@@ -71,13 +71,20 @@ describe('deriveFlats', () => {
     expect(flatsOf(floor(undefined, [{ flat: '' }]))[0]).toEqual(['Flat 1', ['r1', 'r2']])
   })
 
-  test('a "TYPE-B ±2,736 SFT" label inside a flat names it and gives its printed area; a second label leaves the room as it was', () => {
-    const u = floor(undefined, [{}, {}, {}, {}, {}, {}, {}])
-    u.roomLabels.push({ id: 'tb', name: 'TYPE-B ±2,736 SFT', kind: 'other', x: 17, y: 1 })
+  test('a "TYPE-B ±2,736 SFT" label inside a flat names it and gives its printed area; it names no room, first or last', () => {
+    const u = floor()
+    u.roomLabels.unshift({ id: 'tb', name: 'TYPE-B ±2,736 SFT', kind: 'other', x: 17, y: 1 })
     const rooms = core.deriveRooms(u)
     expect(rooms.find((r) => r.id === 'r4')?.name).toBe('B living')
+    expect(rooms.some((r) => r.id === 'tb')).toBe(false)
+    expect(core.validate(u)).toEqual([])
     const fs = core.deriveFlats(u, rooms)
     expect(fs.map((f) => [f.name, f.printedSqft])).toEqual([['Flat 1', undefined], ['Type B', 2736]])
+    // in an unnamed room it still names no face; outside every room it is the usual stray label
+    expect(core.flatTypeOf({ name: 'Type c', kind: 'other' })).toBe('Type C')
+    expect(core.flatTypeOf({ name: 'Type A bed', kind: 'bed' })).toBeNull()
+    u.roomLabels[0] = { ...u.roomLabels[0], x: 40 }
+    expect(core.validate(u).map((i) => i.code)).toEqual(['label-outside-any-room'])
   })
 
   test('pins and the type label come along through mirrorUnit, and keep their rooms', () => {

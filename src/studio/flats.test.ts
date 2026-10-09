@@ -56,6 +56,20 @@ describe('flats of real drawings', () => {
     expect(flats.map((f) => Math.round(sqmToSqft(f.areaSqm)))).toEqual([1860, 1857])
   })
 
+  test('named as the sheet prints them ("TYPE-B (L/L) ±2736 SFT" in the west dining, "TYPE-A ±2736 SFT" in the east): Type B, Type A', () => {
+    const u = sheltechLevel2()
+    const at = (id: string) => u.roomLabels.find((l) => l.id === id)!
+    u.roomLabels.push({ id: 'tb', name: 'TYPE-B (L/L) ±2736 SFT', kind: 'other', x: at('b-r_dining').x, y: at('b-r_dining').y - 0.6 })
+    u.roomLabels.push({ id: 'ta', name: 'TYPE-A ±2736 SFT', kind: 'other', x: at('r_dining').x, y: at('r_dining').y - 0.6 })
+    expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+    const rooms = deriveRooms(u)
+    expect(rooms.length).toBe(40)
+    expect(deriveFlats(u, rooms).map((f) => [f.name, f.roomIds.length, f.printedSqft])).toEqual([
+      ['Type B', 16, 2736],
+      ['Type A', 17, 2736],
+    ])
+  })
+
   test('the same drawing as each hand-traced flat alone: one flat, its lobby and stair / lifts in none', () => {
     for (const u of [sheltechA, sheltechB] as unknown as Unit[]) {
       const flats = deriveFlats(u, deriveRooms(u))

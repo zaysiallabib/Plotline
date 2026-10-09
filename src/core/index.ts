@@ -21,7 +21,7 @@ export type { Pt, Bounds, Graph, WallPiece } from './geometry'
 /**
  * Enclosed faces of the planar wall graph (centerlines), outer face excluded.
  * A face containing a RoomLabel point takes that label's id/name/kind;
- * unlabelled faces get a generated id and name "Space N".
+ * unlabelled faces get a generated id and name "Space N". A flat's "Type A" label (flatTypeOf) names no face.
  * Loops are ordered so that `signedArea(loop) > 0`.
  */
 export { deriveRooms } from './graph'
@@ -89,6 +89,8 @@ export { mirrorUnit } from './mirror'
  * none; RoomLabel.flat pins a room to a flat by name ('' = none). Names from a "TYPE-A ±2736 SFT" label, else "Flat N".
  */
 export { deriveFlats, isCore, type Flat } from './flats'
+/** "Type A" for a label of kind 'other' reading "TYPE-A ±2736 SFT" (it names its flat; deriveRooms gives it no face), else null. */
+export { flatTypeOf } from './graph'
 
 /** Lookup helpers */
 export const vertexById = (vs: Vertex[], id: Id): Vertex => {

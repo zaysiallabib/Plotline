@@ -8,10 +8,12 @@
  * door is missing, or it has none — a planter behind a planter edge, a closed store; a ground floor's toilets).
  *
  * The override: RoomLabel.flat pins its room to the flat of that name whatever its doors ('' = in no flat); a pinned
- * room joins nothing through its doors. Names: a label reading "TYPE-A ±2736 SFT" inside the flat names it "Type A" and
- * gives `printedSqft`; else "Flat N" by place, west → east, then north → south.
+ * room joins nothing through its doors. Names: a label of kind 'other' reading "TYPE-A ±2736 SFT" inside the flat names
+ * it "Type A" and gives `printedSqft` (such a label names no room: graph.flatTypeOf); else "Flat N" by place, west → east,
+ * then north → south.
  */
 import { roomAt } from './geometry'
+import { flatTypeOf } from './graph'
 import { isOutdoor } from './index'
 import type { Id, Room, RoomKind, Unit } from './types'
 
@@ -27,7 +29,6 @@ export interface Flat {
 
 const CORE_KINDS: ReadonlySet<RoomKind> = new Set<RoomKind>(['lobby', 'shaft', 'gym', 'community', 'guard'])
 const CORE_NAME = /\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?)\b/i
-const TYPE_NAME = /\btype[\s-]*([a-z0-9]{1,2})\b/i
 const SFT = /(\d[\d,]{2,6})\s*(?:sft|sq\.?\s*ft|s\.f\.t)/i
 
 /** In no flat by itself: the common core (a pin decides instead when there is one). */
@@ -49,14 +50,14 @@ export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'
   const groups = new Map<Id, Room[]>()
   for (const r of rooms) if (up.has(r.id)) groups.set(root(r.id), [...(groups.get(root(r.id)) ?? []), r])
 
-  // a "TYPE-A ±2736 SFT" label names the group whose room it stands in
+  // a "TYPE-A ±2736 SFT" label (graph.flatTypeOf) names the group whose room it stands in
   const typed = new Map<Id, { name: string; sqft?: number }>()
   for (const l of unit.roomLabels) {
-    const m = TYPE_NAME.exec(l.name)
-    const r = m && roomAt(l, rooms, unit)
-    if (!m || !r || !up.has(r.id) || typed.has(root(r.id))) continue
+    const name = flatTypeOf(l)
+    const r = name && roomAt(l, rooms, unit)
+    if (!name || !r || !up.has(r.id) || typed.has(root(r.id))) continue
     const s = SFT.exec(`${l.name} ${l.printedSize ?? ''}`)
-    typed.set(root(r.id), { name: `Type ${m[1].toUpperCase()}`, ...(s ? { sqft: Number(s[1].replace(/,/g, '')) } : {}) })
+    typed.set(root(r.id), { name, ...(s ? { sqft: Number(s[1].replace(/,/g, '')) } : {}) })
   }
 
   const centre = (rs: Room[]) => {

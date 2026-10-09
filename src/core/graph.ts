@@ -146,10 +146,20 @@ function hashLoop(loop: Id[]): string {
   return h.toString(36)
 }
 
-/** Label → the smallest face containing it; first label wins when two share a face. */
+/**
+ * "TYPE-A ±2736 SFT", "Type B": a label of kind 'other' that reads so names its FLAT (core.deriveFlats: "Type A"), as the
+ * sheet prints it inside one of the flat's rooms — never a face. null for any other label.
+ */
+export function flatTypeOf(l: Pick<RoomLabel, 'name' | 'kind'>): string | null {
+  const m = l.kind === 'other' ? /\btype[\s-]*([a-z0-9]{1,2})\b/i.exec(l.name) : null
+  return m ? `Type ${m[1].toUpperCase()}` : null
+}
+
+/** Label → the smallest face containing it; first label wins when two share a face; a flat's "Type A" label names none. */
 function assignLabels(faces: Face[], labels: RoomLabel[]): Map<Face, RoomLabel> {
   const taken = new Map<Face, RoomLabel>()
   for (const label of labels) {
+    if (flatTypeOf(label)) continue
     let best: Face | null = null
     for (const f of faces) {
       if (pointInPolygon(label, f.pts) && (!best || f.area < best.area)) best = f
@@ -312,6 +322,7 @@ export function validate(unit: Unit): ValidationIssue[] {
     const owner = rooms.find((r) => r.id === label.id)
     if (owner) continue
     const inside = rooms.find((r) => pointInPolygon(label, roomPolygon(r, unit)))
+    if (inside && flatTypeOf(label)) continue // a flat's "Type A" label, standing in one of its rooms
     err(
       'label-outside-any-room',
       inside

@@ -458,12 +458,15 @@ export function draw(a: DrawArgs): void {
       ctx.fillText(l.printedSize, p.x, p.y + 14)
     }
   }
-  // each flat's name once, above its top edge, in its colour
-  ctx.font = '500 14px Inter, system-ui, sans-serif'
+  // each flat's name once, above its top edge, in its colour on a dark edge (it sits over the sheet)
+  ctx.font = '600 15px Inter, system-ui, sans-serif'
+  ctx.lineWidth = 4
+  ctx.strokeStyle = C.bg
   ;(a.flats ?? []).forEach((f, i) => {
     const b = flatBox[i]
     if (!Number.isFinite(b.x0)) return
     const p = toScreen({ x: (b.x0 + b.x1) / 2, y: b.y0 })
+    ctx.strokeText(f.name, p.x, p.y - 10)
     ctx.fillStyle = `rgb(${flatRgb(i)})`
     ctx.fillText(f.name, p.x, p.y - 10)
   })
