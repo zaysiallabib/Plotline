@@ -31,7 +31,7 @@ import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDe
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { edt, lineInk, threshold } from './raster'
-import { calibrateScale, fitRooms, type RoomFit, type Side } from './rooms'
+import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
@@ -109,6 +109,8 @@ export const KNOBS = {
   windows: false,
   /** tracks: a wall end inside another wall's body has ended there (joinInBodies) */
   joinBodies: true,
+  /** tracks, Level 1: a free end runs on along its line to the wall ahead up to this far, where the same thing is drawn across (carryEnds) */
+  carryM: 1.2,
 }
 
 type Pt = { x: number; y: number }
@@ -751,6 +753,60 @@ function joinInBodies(segs: Seg[], px: number): Seg[] {
 }
 
 /**
+ * Level 1 (founder 2026-10-09: "most loose ends stop a few cm short of the wall ahead"): a free end is carried on along its
+ * own line onto the wall ahead — a wall across it (its centre line) or the next piece on its line (that piece's end), up
+ * to carryM — when the sheet shows the same drawn thing all the way across (`same`: a wall's dark band for a wall, the
+ * glazing profile for a window piece, the thin line for a low wall). Paper, a door, a different drawn thing: it stays
+ * where it is (founder: a gap with nothing drawn is never bridged). A door / passage piece's end never moves. Mutates
+ * `segs` (the carried pieces are added; node() splits the walls they meet).
+ */
+function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => boolean): void {
+  segs.splice(0, segs.length, ...node(segs, 0.002))
+  const at = new Map<string, Seg[]>()
+  for (const s of segs) for (const p of [s.a, s.b]) at.set(ekey(p), [...(at.get(ekey(p)) ?? []), s])
+  for (const s of segs.slice())
+    for (const e of ['a', 'b'] as const) {
+      if (d2(s.a, s.b) < 0.05 || (s.op && s.op.kind !== 'window')) continue
+      const x = { s, e }, d = outDir(x)
+      let p = s[e]
+      // a free end — nothing else there but a low wall meeting it (a planter's edge reaching a window line) — after the
+      // joining pieces of a few cm on its own line (corner connectors), walked over
+      const next = (q: Pt) => (at.get(ekey(q)) ?? []).find((t) => t !== s && d2(t.a, t.b) > 1e-9 && dot(unit(sub(d2(t.a, q) < 1e-9 ? t.b : t.a, q)), d) > 0.99)
+      const walked: Seg[] = [s]
+      for (let t = next(p), n = 0; t && d2(t.a, t.b) < 0.05 && n < 3; t = next(p), n++) (p = d2(t.a, p) < 1e-9 ? t.b : t.a), walked.push(t)
+      if ((at.get(ekey(p)) ?? []).some((t) => !walked.includes(t) && (t.heightM ?? WALL_HEIGHT_M) >= WALL_HEIGHT_M)) continue
+      // the target: X on this end's own line (the carried piece never tilts); `to` the point it joins there, when X sits a
+      // hair off it — inside a crossing wall's end cap, or a piece on this line a fraction of a wall aside — by a
+      // crosswise joint of that hair
+      let best: { u: number; X: Pt; to: Pt } | null = null
+      for (const t of segs) {
+        const Lt = d2(t.a, t.b)
+        if (t === s || Lt < 1e-6) continue
+        const tv = sub(t.b, t.a), cr = crs(d, tv), cap = t.th / 2 / Lt
+        if (Math.abs(cr) >= Math.sin((25 * Math.PI) / 180) * Lt) {
+          // a wall across the line ahead (not one through this end: the crossing piece it already meets)
+          const w = sub(t.a, p), u = crs(w, tv) / cr, v = crs(w, d) / cr
+          if (u > 0.005 && u <= KNOBS.carryM && v >= -cap && v <= 1 + cap && (!best || u < best.u)) {
+            const X = { x: p.x + d.x * u, y: p.y + d.y * u }
+            best = { u, X, to: v < 0 ? t.a : v > 1 ? t.b : X }
+          }
+        } else if (Math.abs(cr) <= 0.1 * Lt)
+          // the next piece on this very line (a piece a step aside — more than half a wall — is a jog, not this wall going on)
+          for (const q of [t.a, t.b]) {
+            const v = sub(q, p), u = dot(v, d)
+            if (u > 0.005 && u <= KNOBS.carryM && (!best || u < best.u) && Math.abs(crs(d, v)) <= Math.max(0.002, Math.min(s.th, t.th) / 2)) best = { u, X: { x: p.x + d.x * u, y: p.y + d.y * u }, to: q }
+          }
+      }
+      if (!best || !same(s, p, best.X)) continue
+      const piece = { th: s.th, conf: 0.5, ...(s.heightM ? { heightM: s.heightM } : {}) }
+      const c: Seg = { a: { ...p }, b: { ...best.X }, ...piece, ...(s.op ? { bridge: 'guess' as const, op: { kind: 'window' as const, conf: 0.5 } } : {}) }
+      const add = [c, ...(d2(best.X, best.to) > 1e-6 ? [{ a: { ...best.X }, b: { ...best.to }, ...piece }] : [])]
+      segs.push(...add)
+      for (const x of add) for (const q of [x.a, x.b]) at.set(ekey(q), [...(at.get(ekey(q)) ?? []), x])
+    }
+}
+
+/**
  * A jog — the short crosswise piece joining two walls that meet END TO END on offset centre lines (a flush thickness
  * step; tracks / closeCorners draw it at the thinner wall's width), other walls at its corners or not — takes the
  * THICKER wall's thickness: drawn thin it stuck out of the thick wall's end as a visible zigzag (founder 2026-10-03).
@@ -972,6 +1028,29 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   if (tracks) {
     segs = KNOBS.joinBodies ? joinInBodies(node(segs, 0.002), 1 / pxPerM) : node(segs, 0.002)
     thickJogs(segs)
+    if (KNOBS.carryM > 0) {
+      const dark = darkMaxOf(gray)
+      const gAt = (x: number, y: number) => gray.data[Math.min(H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))]
+      carryEnds(segs, (s, p, q) => {
+        const a = toPx(p), b = toPx(q), L = d2(a, b)
+        if (L < 1) return true // (a hair: the same spot)
+        const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, nx = -uy, ny = ux, th = Math.max(1, s.th * pxPerM)
+        if (s.op) {
+          const gz = glazing(a, ux, uy, L, Math.max(4, 0.25 * pxPerM, th), gAt)
+          return gz.lines >= 2 || gz.band >= 3
+        }
+        if ((s.heightM ?? WALL_HEIGHT_M) < WALL_HEIGHT_M) return [-2, -1, 0, 1, 2].some((o) => inkAlong(line, W, H, a, b, o) >= 0.9)
+        // a wall: its dark band all the way — dark on the line, paper beyond a face (no dark fill)
+        const n = Math.max(3, Math.round(L)), r = th / 2 + Math.max(2, 0.5 * th)
+        let core = 0, band = 0
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n, x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t
+          if ([-1, 0, 1].some((o) => gAt(x + nx * o, y + ny * o) <= dark)) core++
+          if (gAt(x + nx * r, y + ny * r) > dark || gAt(x - nx * r, y - ny * r) > dark) band++
+        }
+        return core >= 0.9 * n && band >= 0.8 * n
+      })
+    }
   } else {
     snapAxes(segs, th0)
     joinEnds(segs)

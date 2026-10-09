@@ -376,7 +376,26 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       walled.add(g)
       decided.wall = (decided.wall ?? 0) + 1
       added.push({ a, b, kind: 'gap-wall', th: g.thPx })
-    } else if (f('thin') >= 0.6) review.push({ a, b, kind: 'gap-thin', message: `A ${w} gap with one thin line across it — a door leaf, a railing or glass? Nothing traced` })
+    } else if (f('thin') >= 0.6) {
+      // Level 1 (founder 2026-10-09, strong evidence only): one thin line across the open side of a room printed VER /
+      // veranda / planter — its railing or kerb, a LOW wall; anywhere else it stays open for the human
+      const thin = here.filter((it) => it.kind === 'thin')
+      const outer = thin.length > 0 && thin.every((it) => it.rooms.length === 1 && it.out && fits[it.rooms[0]].label.roomKind === 'balcony')
+      if (outer) {
+        const heightM = thin.some((it) => fits[it.rooms[0]].label.green) ? PLANTER_M : RAILING_M
+        // on the thin line as drawn (often the wall's outer face carried across), joined to the track's ends by short
+        // pieces of the same low wall: the room behind it keeps its printed depth
+        const c = thin.map((it) => it.c).sort((p, q) => p - q)[thin.length >> 1]
+        const at = Math.abs(c - g.c) >= 1.5 ? c : g.c
+        const low = (p: Px, q: Px) => extraWalls.push({ a: p, b: q, thicknessPx: 0.0635 * k, conf: 0.5, heightM })
+        low(P(g.horiz, at, g.u0), P(g.horiz, at, g.u1))
+        if (at !== g.c) low(a, P(g.horiz, at, g.u0)), low(b, P(g.horiz, at, g.u1))
+        walled.add(g)
+        decided.low = (decided.low ?? 0) + 1
+        added.push({ a, b, kind: 'low', th: 0.0635 * k })
+        review.push({ a, b, kind: 'low', message: `Traced as a ${heightM} m low wall (railing / parapet) along the thin line across the veranda's open side, ${w} — or glazing / a door? Check` })
+      } else review.push({ a, b, kind: 'gap-thin', message: `A ${w} gap with one thin line across it — a door leaf, a railing or glass? Nothing traced` })
+    }
   }
   const unknownGaps = tt.gaps.filter((g) => g.kind === 'unknown').length
 
