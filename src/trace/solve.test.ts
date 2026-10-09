@@ -109,6 +109,9 @@ describe('a printed name beside an unnamed room names it (Level 3)', () => {
     // two names beside one room: the nearer names it, the other stays a name with no room (the Studio's row)
     expect([...namesBeside([A], [{ x: 3.5, y: 1 }, { x: 3.1, y: 1 }])]).toEqual([[0, 1]])
     expect(namesBeside([A], [{ x: 4.2, y: 1 }]).size).toBe(0)
+    // a name printed with its size never names a room under half that area (A is 9 m²)
+    expect(namesBeside([A], [{ x: 3.1, y: 1 }], 1, [20]).size).toBe(0)
+    expect(namesBeside([A], [{ x: 3.1, y: 1 }], 1, [16]).size).toBe(1)
   })
 })
 

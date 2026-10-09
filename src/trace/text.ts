@@ -163,6 +163,22 @@ export function normaliseName(raw: string): string {
     .trim()
 }
 
+/**
+ * A read name's stray letters at its ends dropped — "I TOILET" → TOILET, "BED LQ" → BED, "HELP RO RS" → HELP (scoreboard:
+ * "Help Ro Rs"): a token of 1–3 letters that is no plan word; M / S / H / K / C stay (M BED, S TOILET, K VER). Only when a
+ * plan word is left; anything else is returned as read.
+ */
+export function trimName(n: string): string {
+  const keep = (t: string) => !/^[A-Z]{1,3}$/.test(t) || LEXICON.includes(t) || /^[MSHKC]$/.test(t) || t === 'WC'
+  const toks = n.split(' ').filter(Boolean)
+  let a = 0
+  let b = toks.length
+  while (a < b && !keep(toks[a])) a++
+  while (b > a && !keep(toks[b - 1])) b--
+  const out = toks.slice(a, b)
+  return out.some((t) => LEXICON.includes(t.replace(/[^A-Z]/g, ''))) ? out.join(' ') : n
+}
+
 type Rule = [RegExp, RoomKind, boolean?]
 /** First match wins; specific compounds before the generic words they contain ("K. VERANDA" before "KITCHEN"). */
 const RULES: Rule[] = [
@@ -841,6 +857,14 @@ const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos'
   { from: 'clean', px: 48, kernel: 'lanczos' },
 ]
 
+/** the building core's names: they decide where a flat ends (solve.ts), so a second look never adds one */
+const CORE_WORDS = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
+/**
+ * A room name a second look may add: any room name over a size line (as before Level 3), elsewhere a flat's room only —
+ * on Sheltech L2 a second look read the west LIFT, and the core rules then cut Type B's foyer and Bed 2 off its draft.
+ */
+const flatRoom = (t: string, overSize: boolean) => !!classifyRoom(t) && (overSize || !CORE_WORDS.test(normaliseName(t)))
+
 /** The crop `c` (cut at `at`) with only the glyph blobs whose centre is inside `line` kept (grown by 1 px); the rest white. */
 export function ownGlyphs(c: Gray, at: Box, line: Box, glyphs: Box[]): Gray {
   const out = new Uint8Array(c.data.length).fill(255)
@@ -947,7 +971,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       const seen = names.map((j) => [read[j].text])
       for (const v of NAME_VIEWS) {
         const again = await readAll(names, (l) => lineImage(v.from === 'clean' ? clean : gray, l, v.px, v.kernel, undefined, v.from === 'own' ? glyphs : undefined))
-        names.forEach((j, k) => (seen[k].push(again[k].text), !classifyRoom(read[j].text) && classifyRoom(again[k].text) && (read[j] = again[k])))
+        names.forEach((j, k) => (seen[k].push(again[k].text), !classifyRoom(read[j].text) && flatRoom(again[k].text, over(j)) && (read[j] = again[k])))
       }
       // still no room name over a size: the views' words snapped hard to the room lexicon
       names.forEach((j, k) => {
@@ -1014,7 +1038,7 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
         if (found.has(i)) continue
         const img = pad(stretch(resample(cropGray(g, f.box), Math.max(1, Math.min(8, v.px / ch)), 'lanczos')), 12)
         const { data } = await worker.recognize(toPgm(img) as unknown as Blob)
-        const name = data.text.split('\n').map((l) => l.trim()).find((l) => classifyRoom(l))
+        const name = data.text.split('\n').map((l) => l.trim()).find((l) => flatRoom(l, false))
         if (name) found.set(i, name)
       }
     }

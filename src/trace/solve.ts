@@ -25,14 +25,14 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
+import { FT, deriveRooms, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { edt, lineInk, threshold } from './raster'
 import { calibrateScale, fitRooms, type RoomFit, type Side } from './rooms'
-import { normaliseName } from './text'
+import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
 import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TextItem, TextTrace, WallSeg, WallTrace } from './types'
@@ -416,12 +416,14 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
 /**
  * Level 3: printed names standing in no closed room (printed across the room's line, in a door nook) → the unnamed rooms
  * they name: the nearest name–room pair first, one name per room and one room per name, within `maxM` of the room's
- * outline (the Studio's "Name it" rule, done by the trace). Room index → name index.
+ * outline (the Studio's "Name it" rule, done by the trace). A name with a printed size never names a room under half that
+ * area (Sheltech L4: BED 3 printed in an open spot named a 9'-9" × 4'-2" sliver beside it). Room index → name index.
  */
-export function namesBeside(rooms: Pt[][], names: Pt[], maxM = 1): Map<number, number> {
+export function namesBeside(rooms: Pt[][], names: Pt[], maxM = 1, minSqm: number[] = []): Map<number, number> {
   const out = new Map<number, number>()
+  const area = rooms.map((poly) => Math.abs(signedArea(poly)))
   const pairs = rooms.flatMap((poly, r) =>
-    names.map((p, n) => ({ r, n, d: pointInPolygon(p, poly) ? 0 : Math.min(...poly.map((a, i) => segDist(p, a, poly[(i + 1) % poly.length]))) })),
+    names.flatMap((p, n) => (area[r] < 0.5 * (minSqm[n] ?? 0) ? [] : [{ r, n, d: pointInPolygon(p, poly) ? 0 : Math.min(...poly.map((a, i) => segDist(p, a, poly[(i + 1) % poly.length]))) }])),
   )
   const named = new Set<number>()
   for (const { r, n } of pairs.filter((x) => x.d <= maxM).sort((a, b) => a.d - b.d)) {
@@ -1727,7 +1729,7 @@ const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
 const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
 
 /** a room label's name as the sheet prints it ("BED-1" → "Bed-1") */
-const labelName = (it: TextItem): string => titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
+const labelName = (it: TextItem): string => titleCase(trimName(normaliseName(it.text.split('\n')[0])).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
 /** its read size — a misread one ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side */
 const sizeOf = (it: TextItem) => (it.dims && Math.min(it.dims.aM, it.dims.bM) >= 0.6 && Math.max(it.dims.aM, it.dims.bM) <= 12 ? it.dims : undefined)
 const sizeText = (d: { aM: number; bM: number }) => `${formatFeetInches(d.aM)} × ${formatFeetInches(d.bM)}`
@@ -2050,6 +2052,8 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   for (const [r, n] of namesBeside(
     bare.map((x) => polys.get(x.id)!),
     loose.map((it) => toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })),
+    1,
+    loose.map((it) => { const d = sizeOf(it); return d ? d.aM * d.bM : 0 }),
   ))
     labelsIn.set(bare[r].id, [loose[n]])
   const hintsIn = new Map<string, RoomHint[]>()

@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, type OcrWord } from './text'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -430,6 +430,19 @@ describe('room words over a size', () => {
   test('small print reads E as I in a plan abbreviation: VIR. is a veranda (Sheltech L2 / L4)', () => {
     expect(classifyRoom('VIR.')).toEqual({ kind: 'balcony', green: false })
     expect(classifyRoom('VIR')).toEqual({ kind: 'balcony', green: false })
+  })
+})
+
+describe('stray letters at a read name\'s ends', () => {
+  test('dropped when a plan word stays; room prefixes and numbers kept', () => {
+    expect(trimName('I TOILET')).toBe('TOILET')
+    expect(trimName('BED LQ')).toBe('BED')
+    expect(trimName('HELP RO RS')).toBe('HELP')
+    expect(trimName('M BED')).toBe('M BED')
+    expect(trimName('S TOILET 2')).toBe('S TOILET 2')
+    expect(trimName('VER.')).toBe('VER.')
+    expect(trimName('DINING & FAMILY LIVING')).toBe('DINING & FAMILY LIVING')
+    expect(trimName('XQ ZZ')).toBe('XQ ZZ') // no plan word: as read
   })
 })
 
