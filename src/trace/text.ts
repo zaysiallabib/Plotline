@@ -3,7 +3,7 @@
  * Local first: tesseract.js (Apache-2.0), lazily imported inside `readText` only, so nothing reaches a bundle
  * that does not call it. Everything above `readText` is pure (no DOM) and Vitest-covered in text.test.ts.
  */
-import { FT, parseLength } from '../core'
+import { FT, parseLength, pointInPolygon, polygonCentroid } from '../core'
 import type { RoomKind } from '../core'
 import { capBand, readSizes, topMarks } from './sizes'
 import type { Dims, Gray, TextItem, TextKind, TextTrace } from './types'
@@ -974,3 +974,61 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
   }
 }
 
+/**
+ * Two whole-face views (tesseract's own page layout on the raw crop, capitals only): one block at ~40 px letters, sparse
+ * text at ~32 px. Level 3 (2026-10-09): on Sheltech L2 / L4 they read TOILET 1 (grey, a door arc through it), PDR (its
+ * size touching the basin), TOILET 2 and VER where the line finder had lost the glyphs; on BTI and Banani nothing false.
+ */
+const FACE_VIEWS: { px: number; psm: 'SINGLE_BLOCK' | 'SPARSE_TEXT' }[] = [
+  { px: 40, psm: 'SINGLE_BLOCK' },
+  { px: 32, psm: 'SPARSE_TEXT' },
+]
+
+/**
+ * Level 3: the closed faces (sheet px polygons) no room name was read in, read whole — a name the line finder lost
+ * (glyphs glued to a fixture, a door arc, a counter line) still names its room. A face whose read names a room gives a
+ * room item at a point inside it (no size: a size is only ever taken from a size line); one the sheet's reading already
+ * has nearby (the same name within 1 m of the face) is not read twice. Faces of 0.8–40 m² only.
+ */
+export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], trace: TextTrace, pxPerM: number, opts: Pick<ReadTextOptions, 'langPath' | 'cachePath'> = {}): Promise<TextItem[]> {
+  const ch = trace.glyphPx ?? 8
+  const rooms = trace.items.filter((it) => it.kind === 'room')
+  const centre = (b: Box) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
+  const todo = faces.flatMap((poly) => {
+    if (rooms.some((it) => pointInPolygon(centre(it.box), poly))) return []
+    const area = Math.abs(poly.reduce((t, p, i) => t + p.x * poly[(i + 1) % poly.length].y - poly[(i + 1) % poly.length].x * p.y, 0)) / 2 / pxPerM ** 2
+    const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
+    const box = { x: Math.min(...xs) + 3, y: Math.min(...ys) + 3, w: Math.max(...xs) - Math.min(...xs) - 6, h: Math.max(...ys) - Math.min(...ys) - 6 }
+    const at = polygonCentroid(poly)
+    return area >= 0.8 && area <= 40 && box.w >= 2 * ch && box.h >= ch && pointInPolygon(at, poly) ? [{ poly, box, at }] : []
+  })
+  if (!todo.length) return []
+  const T = await import('tesseract.js')
+  const worker = await T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })
+  const out: TextItem[] = []
+  try {
+    const found = new Map<number, string>()
+    for (const v of FACE_VIEWS) {
+      await worker.setParameters({ tessedit_pageseg_mode: T.PSM[v.psm], user_defined_dpi: '300', tessedit_char_whitelist: NAME_CHARS })
+      for (const [i, f] of todo.entries()) {
+        if (found.has(i)) continue
+        const img = pad(stretch(resample(cropGray(g, f.box), Math.max(1, Math.min(8, v.px / ch)), 'lanczos')), 12)
+        const { data } = await worker.recognize(toPgm(img) as unknown as Blob)
+        const name = data.text.split('\n').map((l) => l.trim()).find((l) => classifyRoom(l))
+        if (name) found.set(i, name)
+      }
+    }
+    for (const [i, name] of found) {
+      const f = todo[i]
+      const n = normaliseName(name)
+      const grown = { x: f.box.x - pxPerM, y: f.box.y - pxPerM, w: f.box.w + 2 * pxPerM, h: f.box.h + 2 * pxPerM }
+      const inGrown = (b: Box) => { const c = centre(b); return c.x >= grown.x && c.x <= grown.x + grown.w && c.y >= grown.y && c.y <= grown.y + grown.h }
+      if (rooms.some((it) => inGrown(it.box) && normaliseName(it.text.split('\n')[0]) === n)) continue
+      const room = classifyRoom(name)!
+      out.push({ text: name, box: { x: f.at.x - ch, y: f.at.y - ch / 2, w: 2 * ch, h: ch }, kind: 'room', roomKind: room.kind, green: room.green || undefined, conf: 0.5, source: 'ocr' })
+    }
+  } finally {
+    await worker.terminate()
+  }
+  return out
+}

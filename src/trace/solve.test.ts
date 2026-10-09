@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -96,6 +96,21 @@ function withTracker<T>(t: (typeof KNOBS)['tracker'], fn: () => T): T {
     KNOBS.tracker = prev
   }
 }
+
+describe('a printed name beside an unnamed room names it (Level 3)', () => {
+  const sq = (x: number, y: number, w: number, h: number) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }]
+  test('nearest pair first, one name per room, one room per name, nothing beyond the reach', () => {
+    const A = sq(0, 0, 3, 3), B = sq(3.2, 0, 3, 3)
+    // a name printed across A's east line (0.05 m out), one 0.6 m off B's east side, one 2 m away from both
+    expect([...namesBeside([A, B], [{ x: 3.05, y: 1.5 }, { x: 6.8, y: 1 }, { x: 1.5, y: 5 }])]).toEqual([
+      [0, 0],
+      [1, 1],
+    ])
+    // two names beside one room: the nearer names it, the other stays a name with no room (the Studio's row)
+    expect([...namesBeside([A], [{ x: 3.5, y: 1 }, { x: 3.1, y: 1 }])]).toEqual([[0, 1]])
+    expect(namesBeside([A], [{ x: 4.2, y: 1 }]).size).toBe(0)
+  })
+})
 
 describe('marks: stairs, glazing profile, glass colour', () => {
   test('a flight of 8 evenly spaced 1.2 m treads is a stair; 3 treads, or uneven lines, are not', () => {

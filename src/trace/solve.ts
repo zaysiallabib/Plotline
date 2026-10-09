@@ -414,6 +414,25 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
 }
 
 /**
+ * Level 3: printed names standing in no closed room (printed across the room's line, in a door nook) → the unnamed rooms
+ * they name: the nearest name–room pair first, one name per room and one room per name, within `maxM` of the room's
+ * outline (the Studio's "Name it" rule, done by the trace). Room index → name index.
+ */
+export function namesBeside(rooms: Pt[][], names: Pt[], maxM = 1): Map<number, number> {
+  const out = new Map<number, number>()
+  const pairs = rooms.flatMap((poly, r) =>
+    names.map((p, n) => ({ r, n, d: pointInPolygon(p, poly) ? 0 : Math.min(...poly.map((a, i) => segDist(p, a, poly[(i + 1) % poly.length]))) })),
+  )
+  const named = new Set<number>()
+  for (const { r, n } of pairs.filter((x) => x.d <= maxM).sort((a, b) => a.d - b.d)) {
+    if (out.has(r) || named.has(n)) continue
+    out.set(r, n)
+    named.add(n)
+  }
+  return out
+}
+
+/**
  * Long straight thin lines on the sheet's axes (px): glazing, window bands, railings, light exterior outlines — the wall
  * stage drops them (too thin, too light). Kept when both ends touch a traced wall and the line is not a wall's own edge;
  * a single line (not a double) only when it is long and one end closes onto a wall's free end — a counter or wardrobe
@@ -2017,11 +2036,22 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     return f
   }
   const labelsIn = new Map<string, typeof text.items>()
+  const loose: typeof text.items = []
   for (const it of text.items) {
     if (it.kind !== 'room' || !it.roomKind) continue
-    const f = faceOf(toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
+    const c = { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }
+    const f = faceOf(toM(c))
     if (f) labelsIn.set(f.id, [...(labelsIn.get(f.id) ?? []), it])
+    else if (!CORE_NAME.test(normaliseName(it.text.split('\n')[0])) && !inOther({ x: c.x / pxPerM, y: c.y / pxPerM })) loose.push(it)
   }
+  // a name printed beside an unnamed room (on its line, in its door nook) names it — never a guess from a fixture or a
+  // "Space N" where the sheet prints the name (Level 3)
+  const bare = rooms.filter((r) => !labelsIn.has(r.id))
+  for (const [r, n] of namesBeside(
+    bare.map((x) => polys.get(x.id)!),
+    loose.map((it) => toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })),
+  ))
+    labelsIn.set(bare[r].id, [loose[n]])
   const hintsIn = new Map<string, RoomHint[]>()
   // a stair flight names its face when no label does (founder rule 6), flagged like every other guess
   const stairHints: RoomHint[] = (draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 }, kind: 'other', source: 'fixture', what: 'stair treads', conf: 0.9 }))
@@ -2052,7 +2082,9 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   const fromHint = (r: Room, h: RoomHint) => {
     const kind = h.kind as RoomKind
     kindOf.set(r, kind)
-    const n = (count.get(kind) ?? 0) + 1
+    let n = (count.get(kind) ?? 0) + 1
+    // never the number a printed room of that kind carries ("Toilet 1" guessed beside the sheet's TOILET 1)
+    while (roomLabels.some((l) => l.name.toLowerCase() === `${KIND_NAME[kind]} ${n}`.toLowerCase())) n++
     count.set(kind, n)
     const at = insidePoint(r, u, rooms)
     const id = newId()
@@ -2079,18 +2111,20 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     pending.push(r)
   }
   // founder rule: the printed label decides; without one, the fill colour of label-named rooms (Banani-style sheets),
-  // then a drawn fixture / green fill — both flagged for a check; else 'other' + unlabelled
+  // then a drawn fixture / green fill — both flagged for a check; else 'other' + unlabelled. Numbered west → east, then
+  // north → south, so the same sheet gives the same "Toilet 2" / "Space 3" every time (Level 0: they changed per run)
+  pending.sort((p, q) => p.centroid.x - q.centroid.x || p.centroid.y - q.centroid.y)
   if (pending.length && inputs.propagate) {
     const toPxP = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
     const got = inputs.propagate(rooms.map((r) => ({ poly: polys.get(r.id)!.map(toPxP), kind: kindOf.get(r) })))
-    for (let i = pending.length - 1; i >= 0; i--) {
-      const h = got[rooms.indexOf(pending[i])]
-      if (h?.kind) fromHint(pending[i], h), pending.splice(i, 1)
+    for (const r of [...pending]) {
+      const h = got[rooms.indexOf(r)]
+      if (h?.kind) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
     }
   }
-  for (let i = pending.length - 1; i >= 0; i--) {
-    const h = vote(hintsIn.get(pending[i].id) ?? [])
-    if (h) fromHint(pending[i], h), pending.splice(i, 1)
+  for (const r of [...pending]) {
+    const h = vote(hintsIn.get(r.id) ?? [])
+    if (h) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
   }
   for (const r of pending) {
     const n = (count.get('other') ?? 0) + 1
@@ -2237,7 +2271,13 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   // room count's check — never the next flat's nor the sheet title's (scoreboard: Banani Unit A was checked against Unit
   // B's 970 sft, BTI's small flats against the big one's 2703); none: the count says so
   const near = (it: TextItem) => (pickPx ? Math.hypot(it.box.x + it.box.w / 2 - pickPx.x, it.box.y + it.box.h / 2 - pickPx.y) : 0)
-  const flatSqm = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it)).sort((p, q) => near(p) - near(q))[0]?.areaSqm
+  const stamp = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it)).sort((p, q) => near(p) - near(q))[0]
+  const flatSqm = stamp?.areaSqm
+  // the flat's TYPE label ("TYPE-A" printed over its "±2736 SFT"): kept as a label of kind 'other' that names the flat
+  // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"); one standing in no closed room is dropped
+  // by fixAndReport below, as a person's would be flagged
+  const type = stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i.exec(it.text)).find(Boolean)
+  if (stamp && type) u.roomLabels.push({ id: newId(), name: `Type ${type[1].toUpperCase()} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 }) })
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)
   for (const it of text.items) {
@@ -2401,6 +2441,15 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
   }
   const traces = prepareTraces(gray, inputs, opts)
+  // Level 3: the closed faces no printed name was read in, read whole (text.ts readInFaces) — their names then name them
+  // at the pick like any other read name
+  try {
+    const { draft, origin0, pxPerM: k } = traces
+    const faces = draft.rooms.map((r) => roomPolygon(r, draft.unit).map((q) => ({ x: origin0.x + q.x * k, y: origin0.y + q.y * k })))
+    text.items.push(...(await (await import('./text')).readInFaces(gray, faces, text, k)))
+  } catch {
+    // (a face read failing never costs the draft)
+  }
   if (text.glyphPx !== undefined && text.glyphPx < 7)
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The print is small (${text.glyphPx.toFixed(0)} px letters) — a larger export or the PDF reads far better` })
   return { traces, review }

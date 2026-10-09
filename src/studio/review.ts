@@ -43,6 +43,26 @@ const entitySig = (u: Unit, id: Id): string | undefined => {
 }
 
 export function studioReducer(s: StudioState, a: StudioAction): StudioState {
+  const t = studioStep(s, a)
+  return a.type === 'auto-trace' || a.type === 'restore' ? t : typedSizeRows(s, t)
+}
+
+/**
+ * Level 3 (gap seen 2026-10-09): a printed size typed by hand — the label box's Printed size, R, a row's Name it — gets
+ * the size check a read one gets. Each label whose printed size is new or changed and has no size row yet gets one; the
+ * row shows only while the room differs from that size (openReview re-checks it: its `sig` never matches, so with no
+ * size to compare it stays hidden), and "Looks right" dismisses it like any other.
+ */
+function typedSizeRows(prev: StudioState, s: StudioState): StudioState {
+  if (!s.review || s.review.unitId !== s.unit.id || s.unit === prev.unit) return s
+  const before = new Map(prev.unit.roomLabels.map((l) => [l.id, l.printedSize]))
+  const add = s.unit.roomLabels.filter((l) => l.printedSize && before.get(l.id) !== l.printedSize && !s.review!.items.some((i) => i.kind === 'size-mismatch' && i.entityId === l.id))
+  if (!add.length) return s
+  const rows = add.map((l) => ({ id: newId(), at: { x: l.x, y: l.y }, kind: 'size-mismatch' as const, entityId: l.id, message: '', sig: 'typed' }))
+  return { ...s, review: { ...s.review, items: [...s.review.items, ...rows] } }
+}
+
+function studioStep(s: StudioState, a: StudioAction): StudioState {
   switch (a.type) {
     case 'auto-trace': {
       // a fresh id binds the review list to this trace; the plan image stays the one on screen; what the user typed stays

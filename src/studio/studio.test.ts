@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRooms, roomAt, roomInnerPolygon, validate, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, roomAt, roomInnerPolygon, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -1508,6 +1508,24 @@ describe('auto-trace import and its review list', () => {
     // within 2" is the printed size; the whole outline matching counts too (founder 2026-10-09: either measure)
     expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "11'-5\" × 13'-1\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
     expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "14'-6\" × 13'-2\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+  })
+
+  it('a printed size typed by hand gets its size row like a read one (Level 3): shown while the room differs, gone when it matches or is dismissed', () => {
+    const { after } = traced()
+    const rooms = deriveRooms(after.unit)
+    const l = after.unit.roomLabels.find((x) => x.name !== 'Bed 3' && rooms.some((r) => r.id === x.id))!
+    expect(openReview(after).some((i) => i.entityId === l.id)).toBe(false)
+    const typed = studioReducer(after, { type: 'update-label', id: l.id, patch: { printedSize: `30'-0" × 30'-0"` } })
+    const row = openReview(typed).find((i) => i.entityId === l.id)!
+    expect(row.kind).toBe('size-mismatch')
+    expect(row.message).toMatch(new RegExp(`^${l.name}: drawn .* printed 30'-0" × 30'-0"$`))
+    // typing on: one row, re-checked; the room's own size (either way round) closes it; a half-typed size shows nothing
+    const d = drawnSize(typed.unit, deriveRooms(typed.unit).find((r) => r.id === l.id)!)
+    const same = studioReducer(typed, { type: 'update-label', id: l.id, patch: { printedSize: `${formatFeetInches(d.h)} × ${formatFeetInches(d.w)}` } })
+    expect(same.review!.items.filter((i) => i.entityId === l.id)).toHaveLength(1)
+    expect(openReview(same).some((i) => i.entityId === l.id)).toBe(false)
+    expect(openReview(studioReducer(typed, { type: 'update-label', id: l.id, patch: { printedSize: `30'-0" ×` } })).some((i) => i.entityId === l.id)).toBe(false)
+    expect(openReview(studioReducer(typed, { type: 'dismiss-review', id: row.id })).some((i) => i.entityId === l.id)).toBe(false)
   })
 
   it('sheetAxis: the axis most wall length runs along, folded to ±45°', () => {
