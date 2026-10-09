@@ -6,7 +6,7 @@
  * of what it changes — and a fix is offered ONLY when applying it really closes the issue without a new one (`closes`).
  * Pure: no DOM. core.validate is untouched; this only reads its issues.
  */
-import { deriveRooms, formatFeetInches, polygonCentroid, roomPolygon, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, polygonCentroid, roomAt, roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { MIN_OPENING_M, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, type Action, type StudioIssue, type StudioState } from './model'
@@ -344,6 +344,44 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
 }
 
 /** `after` holds no issue `before` did not, but what a newly closed room brings (CLOSED_A_ROOM) */
+/** A leak of the room around an R click: a loose end, its own fix, how far short it stops, and whether it is within reach. */
+export interface Leak {
+  id: Id
+  at: Pt
+  fix: Fix
+  gap: number
+  /** within the reach every Studio path carries an end on by itself (model.ahead): the R tool heals it and names the room */
+  heal: boolean
+}
+
+/**
+ * Why `p` (the R tool's click) lies in no closed room, decided on the room around it only (founder 2026-10-09: "why on
+ * universe would I need to ever close that wall. it is there, just let it be"): the loose ends whose own fix (Close the
+ * gap / Join / Extend, as the Issues list offers it) closes a room around p — each alone; when none does alone, those all of
+ * them together need (each left out in turn reopens it). A loose end anywhere else is never a reason. [] = no wall end
+ * nearby closes it (a wall is missing).
+ */
+export function leaksAround(s: StudioState, p: Pt): Leak[] {
+  const u = s.unit
+  const closedAt = (t: StudioState) => !!roomAt(p, deriveRooms(t.unit), t.unit)
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  const cands = studioIssues(u, deriveRooms(u)).flatMap((i) => {
+    const v = i.code === 'dangling-vertex' ? V.get(i.ids[0]) : undefined
+    const fix = v && candidates(u, i).find((f) => /^(Close the gap|Join|Extend)/.test(f.label))
+    return v && fix ? [{ v, fix }] : []
+  })
+  const apply = (cs: typeof cands) => cs.reduce((t, c) => c.fix.actions.reduce(reducer, t), s)
+  let leaks = cands.filter((c) => closedAt(apply([c])))
+  if (!leaks.length && cands.length > 1 && closedAt(apply(cands))) leaks = cands.filter((c) => !closedAt(apply(cands.filter((x) => x !== c))))
+  return leaks.map(({ v, fix }) => {
+    const line = fix.ghost.find((g) => g.kind === 'line')
+    const gap = line && line.kind === 'line' ? dist(line.from, line.to) : 0
+    const w = u.walls.find((x) => x.a === v.id || x.b === v.id)
+    const near = w && ahead(u, v.id, w)
+    return { id: v.id, at: { x: v.x, y: v.y }, fix, gap, heal: fix.label === 'Join' || gap <= 0.1 || (!!near && !near.inside) }
+  })
+}
+
 const noNewIssues = (before: StudioIssue[], after: StudioIssue[]): boolean => {
   const had = new Set(before.map(issueKey))
   return after.every((i) => had.has(issueKey(i)) || CLOSED_A_ROOM.has(i.code))

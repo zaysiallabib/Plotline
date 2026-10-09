@@ -2,7 +2,7 @@
  * Studio state + pure reducer. No DOM, no React: Vitest-covered.
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
-import { FT, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
+import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { furnish } from '../furnish/presets'
@@ -679,10 +679,13 @@ const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
  * skirting, wrong daylight in 3D), within reachOf(w), looking along its own wall: the first wall whose near face is within
  * reach and whose centre line it crosses on its segment → `to` on that centre line (`inside` when the end is in that
  * wall's body already); another wall's end on its line ahead → that end; a FREE end of a crossing wall within its own
- * reach of where the two lines cross → there, that end coming too (`also`). The nearest wins: never through a wall.
+ * reach of where the two lines cross → there, that end coming too (`also`); a column's block → onto its face (`inside` when
+ * the end is on / in it already: core joins it there). The nearest wins: never through a wall. A wall is reached when its
+ * face is within `reach` OR within its own thickness (founder 2026-10-09: "a 3 cm, 5 cm, 8 cm short end meets the wall").
  * `reach`: how far to look instead (the Issues list's "Extend" fix looks further: the founder sees its ghost first).
+ * `gap` = how far short the end stops (of the face, the end, the column).
  */
-export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number; to: Pt; also?: { w: Wall; end: Id }; inside?: boolean } | null {
+export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number; to: Pt; gap: number; also?: { w: Wall; end: Id }; inside?: boolean } | null {
   const V = new Map(u.vertices.map((v) => [v.id, v]))
   const v = V.get(id)!
   const far = w.a === id ? w.b : w.a
@@ -697,7 +700,7 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
     if (r > EPS && (!best || r < best.r)) {
       const s = cross(rel, d) / den
       const face = r - x.thicknessM / 2 / Math.abs(den)
-      if (s >= -EPS && s <= f.lengthM + EPS && face <= reach) best = { r, to: { x: v.x + d.x * r, y: v.y + d.y * r }, inside: face <= 0 }
+      if (s >= -EPS && s <= f.lengthM + EPS && face <= Math.max(reach, x.thicknessM)) best = { r, to: { x: v.x + d.x * r, y: v.y + d.y * r }, gap: Math.max(0, face), inside: face <= 0 }
     }
     for (const end of [x.a, x.b]) {
       if (end === far) continue
@@ -708,8 +711,20 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
       const out = dirFrom(u, x, end === x.a ? x.b : x.a)
       if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
       const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
-      if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, ...(free ? { also: { w: x, end } } : {}) }
+      if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, gap: rq, ...(free ? { also: { w: x, end } } : {}) }
     }
+  }
+  // a column's block ahead (core joins an end touching it): the ray's way in
+  for (const c of u.pillars ?? []) {
+    const R = { x0: c.x - c.wM / 2, y0: c.y - c.hM / 2, x1: c.x + c.wM / 2, y1: c.y + c.hM / 2 }
+    if (v.x >= R.x0 - TOUCH_M && v.x <= R.x1 + TOUCH_M && v.y >= R.y0 - TOUCH_M && v.y <= R.y1 + TOUCH_M) return { r: 0, to: { x: v.x, y: v.y }, gap: 0, inside: true }
+    let t0 = 0, t1 = Infinity
+    for (const [p, q] of [[-d.x, v.x - R.x0], [d.x, R.x1 - v.x], [-d.y, v.y - R.y0], [d.y, R.y1 - v.y]]) {
+      if (Math.abs(p) < 1e-12) t0 = q < 0 ? Infinity : t0
+      else if (p < 0) t0 = Math.max(t0, q / p)
+      else t1 = Math.min(t1, q / p)
+    }
+    if (t0 > EPS && t0 <= t1 && t0 <= Math.max(reach, Math.min(c.wM, c.hM)) && (!best || t0 < best.r)) best = { r: t0, to: { x: v.x + d.x * t0, y: v.y + d.y * t0 }, gap: t0 }
   }
   return best
 }
@@ -975,8 +990,9 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   if (r.id === last) return s
   const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM, s.chain.heightM)
   if (typeof u === 'string') return withToast(s, u)
-  // overlap = joined: an end inside another wall's body ends there, a crossed wall is split; a straight run heals (settle)
-  const j = settle(u, [last, r.id])
+  // overlap = joined: an end inside another wall's body ends there, a crossed wall is split; a straight run heals; an end
+  // stopping short of a wall / column within reach is carried on to it (founder 2026-10-09: "it is a box") (settle)
+  const j = settle(u, [last, r.id], true)
   const all = [...s.chain.ids, r.id].map((id) => j.merged.get(id) ?? id)
   const closes = all[all.length - 1] === all[0]
   const ids = all.filter((id) => j.unit.vertices.some((v) => v.id === id)) // a healed corner is no chain corner any more

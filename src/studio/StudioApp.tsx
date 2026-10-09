@@ -16,7 +16,6 @@ import {
   lengthMoves,
   normalizeUnit,
   openingAt,
-  openSpotsNear,
   rampArrow,
   rampDirs,
   reducer,
@@ -34,7 +33,7 @@ import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
+import { fixesOf, leaksAround, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
@@ -985,12 +984,37 @@ export default function StudioApp() {
     (m: Pt, sx: number, sy: number, labelId?: Id) => {
       const st = stateRef.current
       const existing = labelId ? st.unit.roomLabels.find((l) => l.id === labelId) : undefined
-      const r = roomAt(existing ?? m, rooms, st.unit)
+      let r = roomAt(existing ?? m, rooms, st.unit)
+      let now = st.unit // the unit the popover's room is in (healed below)
       if (!r && !existing) {
-        // name the nearest open spot and ring it (founder: a hand-fixed room that looks closed but is not)
-        const spot = openSpotsNear(st.unit, rooms, m)[0]
-        if (spot) setMark(spot.at)
-        return toast(spot ? `Not a closed room: ${spot.why} (ringed). Join walls (panel) fixes overlaps and crossings.` : 'Click inside a closed room. Is a corner not joined?')
+        // decided on the room around the click only (founder 2026-10-09): the wall ends whose own fix closes it — a loose
+        // end elsewhere is never the reason. One within reach is joined (one undo step) and the room is named.
+        const leaks = leaksAround(st, m)
+        const one = leaks.length === 1 ? leaks[0] : null
+        if (one?.heal) {
+          const t = one.fix.actions.reduce(reducer, st)
+          r = roomAt(m, deriveRooms(t.unit), t.unit)
+          now = t.unit
+          if (r) dispatch({ type: 'apply-fix', actions: one.fix.actions, label: one.gap > 0.005 ? `Joined a wall end ${formatFeetInches(one.gap)} short of the wall` : 'Joined a wall end to the wall it touches' })
+        }
+        if (!r) {
+          const where = (q: Pt) => {
+            const [dx, dy] = [q.x - m.x, q.y - m.y]
+            const d = Math.hypot(dx, dy) || 1
+            const v = Math.abs(dy) > 0.38 * d ? (dy < 0 ? 'up' : 'down') : ''
+            const h = Math.abs(dx) > 0.38 * d ? (dx < 0 ? 'left' : 'right') : ''
+            return `${formatFeetInches(d)} ${[v, h].filter(Boolean).join('-')} of your click`
+          }
+          const short = (l: (typeof leaks)[number]) => (l.fix.label.startsWith('Close the gap') ? `stops ${formatFeetInches(l.gap)} short of the wall end facing it — drag it there (or put a door / window in the gap with O)` : `stops ${formatFeetInches(l.gap)} short of the wall ahead — drag its end onto that wall`)
+          if (leaks.length) setMark(leaks[0].at)
+          return toast(
+            !leaks.length
+              ? 'Not a closed room here: no wall end around this spot closes it — a wall is missing. Draw it with W.'
+              : leaks.length === 1
+                ? `Not closed yet: the wall end ${where(leaks[0].at)} (ringed) ${short(leaks[0])}.`
+                : `Not closed yet: ${leaks.length} wall ends around it stop short — the one ${where(leaks[0].at)} (ringed) ${short(leaks[0])}; then press R here again.`,
+          )
+        }
       }
       setPopover({
         x: existing?.x ?? m.x,
@@ -1005,7 +1029,7 @@ export default function StudioApp() {
         labelId,
         levelM: existing?.levelM,
         slope: existing?.slope,
-        dirs: r ? rampDirs(r, st.unit) : [0, 90, 180, 270],
+        dirs: r ? rampDirs(r, now) : [0, 90, 180, 270],
       })
     },
     [rooms, toast],
