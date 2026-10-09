@@ -113,6 +113,13 @@ export const KNOBS = {
   carryM: 1.2,
   /** … and under this far it meets the wall ahead whatever is drawn between (no opening is that narrow: tracks' smallest gap) */
   carryFreeM: 0.3,
+  /**
+   * Level 1 gate (founder 2026-10-09 §5): a railing / glass front drawn on evidence stays where the room it closes is its
+   * printed size within this (main rectangle or outline, each side) — and needs no row there; off by more, it goes
+   */
+  closeTolM: 0.15,
+  /** … and only a room off by more than this (a side) says the edge is not where the room ends: then it goes */
+  closeRejectM: 0.3,
 }
 
 type Pt = { x: number; y: number }
@@ -2155,6 +2162,53 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     const ps = (trace.tracks?.lines.pillars ?? []).filter(hits).map((b) => ({ id: newId(), x: (b.cx - originPx.x) / pxPerM, y: (b.cy - originPx.y) / pxPerM, wM: (b.x1 - b.x0) / pxPerM, hM: (b.y1 - b.y0) / pxPerM }))
     if (ps.length) u.pillars = ps
   }
+  // ── Level 1 gate (founder 2026-10-09, §5): an edge drawn on evidence alone — a veranda's railing, a glass front — is
+  // checked against the printed size of the room it closes (main rectangle or outline): within closeTolM it needs no row;
+  // off by more than closeRejectM the edge is not where the room ends — it goes, the room stays open with its row; in
+  // between, or no size read: kept, its row asks.
+  const verified = new Set<object>()
+  {
+    const gated = [...(thin?.review ?? []), ...(merged?.review ?? [])].filter((m) => m.rule)
+    const m2 = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
+    const sized = text.items.flatMap((it) => {
+      const dm = it.kind === 'room' ? sizeOf(it) : undefined
+      return dm ? [{ at: m2({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), dm }] : []
+    })
+    const R = gated.length ? deriveRooms(u) : []
+    const P = new Map(R.map((r) => [r, roomPolygon(r, u)]))
+    const faceAt = (p: Pt) => R.filter((r) => pointInPolygon(p, P.get(r)!)).sort((x, y) => x.areaSqm - y.areaSqm)[0]
+    const VG = new Map(u.vertices.map((v) => [v.id, v]))
+    const GG = new Map(draft.walls.map((w) => [w.id, w]))
+    const drop = new Set<string>()
+    for (const m of gated) {
+      const a = m2(m.a), b = m2(m.b), L = d2(a, b)
+      if (L < 0.05) continue
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, n = { x: -(b.y - a.y) / L, y: (b.x - a.x) / L }
+      const faces = [...new Set([1, -1].map((o) => faceAt({ x: mid.x + n.x * o * 0.3, y: mid.y + n.y * o * 0.3 })).filter((r): r is Room => !!r))]
+      const check = (tol: number) => faces.flatMap((r) => sized.filter((s) => pointInPolygon(s.at, P.get(r)!)).map((s) => !printedSizeCheck(roomInnerPolygon(r, u), draft.th0, s.dm.aM, s.dm.bM, tol).off))
+      const ok = check(KNOBS.closeTolM)
+      if (!ok.length) continue
+      if (ok.every(Boolean)) {
+        verified.add(m)
+        continue
+      }
+      // (off by a little more — a drawing a few inches from its print: kept, its row asks)
+      if (check(KNOBS.closeRejectM).every(Boolean)) continue
+      // (its pieces: the railing's low walls along it and their short crosswise joints, or the glass front's wall)
+      for (const w of u.walls) {
+        const p = VG.get(w.a)!, q = VG.get(w.b)!
+        const near = [p, q].every((x) => segDist(x, a, b) <= 0.2)
+        const ofIt = m.rule === 'railing' ? w.heightM < WALL_HEIGHT_M : [...(GG.get(w.id)?.guess?.values() ?? [])].some((o) => o.glass)
+        if (near && ofIt) drop.add(w.id)
+      }
+    }
+    if (drop.size) {
+      u.walls = u.walls.filter((w) => !drop.has(w.id))
+      draft.walls = draft.walls.filter((w) => !drop.has(w.id))
+      const used = new Set(u.walls.flatMap((w) => [w.a, w.b]))
+      u.vertices = u.vertices.filter((v) => used.has(v.id))
+    }
+  }
   const rooms = deriveRooms(u)
   const toM = (p: Px): Pt => ({ x: (p.x - originPx.x) / pxPerM, y: (p.y - originPx.y) / pxPerM })
   const G = new Map(draft.walls.map((w) => [w.id, w]))
@@ -2377,6 +2431,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   // added along thin lines — those of this flat (in its picked rooms, else in the draft's box)
   // lever 2: the low walls along thin lines and the AODs offered (faces.ts) — those on this flat's walls / in its rooms
   for (const m of thin?.review ?? []) {
+    if (verified.has(m)) continue // (checked against its room's printed size: the Level 1 gate above)
     const a = toM(m.a), b = toM(m.b), at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
     if (u.walls.some((w) => segDist(at, V.get(w.a)!, V.get(w.b)!) < 0.05) || named.some((r) => pointInPolygon(at, roomPolygon(r, u)))) review.push({ id: newId(), at, kind: 'low-confidence', message: m.message })
   }
@@ -2388,6 +2443,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     }
     const KIND: Record<string, ReviewItem['kind']> = { low: 'low-confidence', conflict: 'low-confidence', thin: 'unclosed', open: 'unclosed', unsure: 'unclosed', 'gap-thin': 'unclosed' }
     for (const m of merged.review) {
+      if (verified.has(m)) continue
       const at = toM({ x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 })
       if (inFlat(at)) review.push({ id: newId(), at, kind: KIND[m.kind], message: m.message })
     }

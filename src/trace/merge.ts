@@ -62,6 +62,8 @@ interface Piece {
   kind: 'wall' | 'low' | 'door' | 'window' | 'passage'
   /** a low piece's height, m */
   heightM?: number
+  /** a railing on a veranda's open side (one thin line on a room printed VER): MergeReview.rule */
+  rule?: 'railing'
   hingeAt?: Px
   swingTo?: Px
   pinned?: boolean
@@ -72,6 +74,9 @@ export interface MergeReview {
   b: Px
   kind: 'thin' | 'open' | 'unsure' | 'conflict' | 'low' | 'gap-thin'
   message: string
+  /** drawn on the founder's evidence rules (2026-10-09): one thin line on a veranda's open side = its railing — the solver
+   * keeps it only where the room it closes matches its printed size (and asks only where no size was read) */
+  rule?: 'railing' | 'glass'
 }
 
 export interface RoomsOnTracks {
@@ -398,7 +403,7 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
         walled.add(g)
         decided.low = (decided.low ?? 0) + 1
         added.push({ a, b, kind: 'low', th: 0.0635 * k })
-        review.push({ a, b, kind: 'low', message: `Traced as a ${heightM} m low wall (railing / parapet) along the thin line across the veranda's open side, ${w} — or glazing / a door? Check` })
+        review.push({ a, b, kind: 'low', message: `Traced as a ${heightM} m low wall (railing / parapet) along the thin line across the veranda's open side, ${w} — or glazing / a door? Check`, rule: 'railing' })
       } else review.push({ a, b, kind: 'gap-thin', message: `A ${w} gap with one thin line across it — a door leaf, a railing or glass? Nothing traced` })
     }
   }
@@ -452,10 +457,10 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       if (it.kind === 'wall' || it.kind === 'door' || it.kind === 'window') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: it.th, kind: it.kind, hingeAt: it.hingeAt, swingTo: it.swingTo })
       // a thin line between two labelled rooms: no railing indoors — an open-plan boundary (passage), flagged
       else if (it.kind === 'thin' && it.rooms.length === 2) pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.127 * k, kind: 'passage' })
-      else if (it.kind === 'thin') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M })
+      else if (it.kind === 'thin') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M, ...(it.out && fits[it.rooms[0]].label.roomKind === 'balcony' && !fits[it.rooms[0]].label.green ? { rule: 'railing' as const } : {}) })
       else if (it.kind === 'planter') pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.0635 * k, kind: 'low', heightM: PLANTER_M })
       // glazing: a window — on a veranda's open side (no room beyond) its parapet / railing
-      else if (it.kind === 'glazing' && it.out && fits[it.rooms[0]].label.roomKind === 'balcony') pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.03 * k, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M })
+      else if (it.kind === 'glazing' && it.out && fits[it.rooms[0]].label.roomKind === 'balcony') pieces.push({ horiz: it.horiz, c: it.c + it.out * 0.03 * k, u0, u1, th: 0.0635 * k, kind: 'low', heightM: RAILING_M, rule: 'railing' })
       else if (it.kind === 'glazing') pieces.push({ horiz: it.horiz, c: it.out ? it.c + it.out * 0.0635 * k : it.c, u0, u1, th: 0.127 * k, kind: 'window' })
       else if (it.kind === 'open' && it.rooms.length === 2) pieces.push({ horiz: it.horiz, c: it.c, u0, u1, th: 0.127 * k, kind: 'passage' })
       // open toward another labelled space (a name printed beyond it, no wall between): the same open-plan boundary
@@ -574,7 +579,7 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       walls.push({ a, b, thicknessPx: p.th, conf: 0.6, ...(p.heightM ? { heightM: p.heightM } : {}) })
       const L = `${((p.u1 - p.u0) / k).toFixed(1)} m`
       if (p.heightM === PLANTER_M) review.push({ a, b, kind: 'low', message: `Planter edge traced as a ${PLANTER_M} m low wall where the foliage starts, ${L} — check` })
-      else if (p.kind === 'low') review.push({ a, b, kind: 'low', message: `Traced as a ${RAILING_M} m low wall (railing / parapet) along what is drawn there, ${L} — or a thin full-height partition / glazing? Check` })
+      else if (p.kind === 'low') review.push({ a, b, kind: 'low', message: `Traced as a ${RAILING_M} m low wall (railing / parapet) along what is drawn there, ${L} — or a thin full-height partition / glazing? Check`, ...(p.rule ? { rule: p.rule } : {}) })
       continue
     }
     const [f0, f1] = faces.get(p)!

@@ -59,7 +59,9 @@ export interface ThinFaces {
   walls: (WallSeg & { glass?: boolean })[]
   /** the faces they close: a point inside, area, whether a label names it, plant green over half of it, offered as an AOD, its low walls (indices) */
   faces: { at: Px; areaSqm: number; labelled: boolean; planter: boolean; aod: boolean; walls: number[] }[]
-  review: { a: Px; b: Px; message: string }[]
+  /** `rule`: drawn on the founder's evidence rules (2026-10-09) — glass (two / three pane lines), a railing (one thin line
+   * closing a room printed VER / veranda) — the solver keeps it where the room it closes matches its printed size */
+  review: { a: Px; b: Px; message: string; rule?: 'railing' | 'glass' }[]
   /** for the eval / debugging: every candidate line (as snapped) and what became of it */
   lines: (FaceLine & { fate: string })[]
 }
@@ -487,6 +489,9 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   alive = alive.map((_, i) => keep.has(i))
   prune()
   for (const li of [...keep]) if (!alive[li]) keep.delete(li)
+  // (the lines closing a room printed VER / veranda: its railing by the founder's rule)
+  const sided = new Set<number>()
+  for (const p of parts) if (p.ok && labelPx.some((l) => lab1[l.i] === p.id && OPEN_SIDED.test(l.name))) p.lines.forEach((li) => sided.add(li))
   const walls: ThinFaces['walls'] = []
   const wallOf = new Map<number, number>()
   const review: ThinFaces['review'] = []
@@ -497,7 +502,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     if (L.glass) {
       // a glass front (Level 1): a full-height wall that is all glazing — sill 0, to its top (solve.ts makes the window)
       walls.push({ a: s.a, b: s.b, thicknessPx: Math.max(0.0635 * k, Math.min(L.th, 0.254 * k)), conf: 0.4, glass: true })
-      review.push({ a: s.a, b: s.b, message: `Glass front traced as glazing floor to top along its drawn panes, ${(Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) / k).toFixed(1)} m — or a railing / a window with a sill? Check` })
+      review.push({ a: s.a, b: s.b, message: `Glass front traced as glazing floor to top along its drawn panes, ${(Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) / k).toFixed(1)} m — or a railing / a window with a sill? Check`, rule: 'glass' })
       continue
     }
     // plant green along ≥ 40 % of it within 0.3 m on one side: the planter's edge
@@ -515,7 +520,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     const heightM = planter ? FACES.planterM : FACES.railingM
     walls.push({ a: s.a, b: s.b, thicknessPx: Math.max(0.0635 * k, Math.min(L.th, 0.254 * k)), conf: 0.4, heightM })
     const len = `${(Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) / k).toFixed(1)} m`
-    review.push({ a: s.a, b: s.b, message: planter ? `Planter edge traced as a ${heightM} m low wall along a thin line beside the green, ${len} — check` : `Thin-line boundary traced as a ${heightM} m low wall, ${len} — a railing / parapet / shaft wall, or a full-height partition? Check` })
+    review.push({ a: s.a, b: s.b, message: planter ? `Planter edge traced as a ${heightM} m low wall along a thin line beside the green, ${len} — check` : `Thin-line boundary traced as a ${heightM} m low wall, ${len} — a railing / parapet / shaft wall, or a full-height partition? Check`, ...(!planter && sided.has(li) ? { rule: 'railing' as const } : {}) })
   }
   const faces: ThinFaces['faces'] = []
   for (const p of parts) {
