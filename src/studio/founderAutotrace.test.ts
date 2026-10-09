@@ -1,15 +1,19 @@
 /**
  * The founder's auto-trace draft of Sheltech Level 2 Type A (exported 2026-10-06, HANDOFF session 22 task 3): the
- * measurement baseline. Pins what the tracer did on his sheet so a tracer change can be measured against it:
- * 19 closed rooms, twelve of the thirteen printed sizes off (2" tolerance), and the flat's spine wall (x ≈ 5.14 in the hand-traced
- * sheltech-a) drawn on two different lines, 4.96 for y 5.55..10.68 and 5.27 for y 10.68..12.90, both 5.5" thin —
- * the two faces of one thick wall, each taken as a wall of its own.
+ * measurement baseline. Pins what is in his draft: 19 closed rooms, twelve of the thirteen printed sizes off (2" tolerance).
+ * Checked against the sheet 2026-10-09 (src/trace/sheltechL2.test.ts pins the tracer's side):
+ * - EIGHT of the twelve are sizes the Studio typed itself: naming a room (R tool box, the "name this room" fix) fills
+ *   Printed size with the room's CENTRE-LINE box (model.ts printedSizeOf), and the check compares the INSIDE — always
+ *   off by about a wall's thickness. The sheet's own figures for those rooms are different.
+ * - the walls at x 4.96 (y 5.55..10.68) and x 5.27 (y 10.68..12.90) are two separate 5" walls on the sheet — the stair
+ *   core's east wall and Bed 4's west wall, 8 px apart — each on its own ink. Not one thick wall's faces (the session-22
+ *   reading); the hand-traced sheltech-a's single wall at 5.14 sits on the paper between them.
  */
 import { describe, expect, it } from 'vitest'
 import { deriveRooms } from '../core'
 import type { Unit } from '../core'
 import draft from '../data/fixtures/founder-autotrace-type-a-2026-10-06.json'
-import { initialState, reducer } from './model'
+import { initialState, printedSizeOf, reducer } from './model'
 import { sheetAxis, sizeCheck } from './review'
 
 describe("founder's auto-trace draft of Type A (2026-10-06)", () => {
@@ -23,7 +27,15 @@ describe("founder's auto-trace draft of Type A (2026-10-06)", () => {
     expect(checks.length).toBe(13)
     expect(checks.filter(([, c]) => c!.off).length).toBe(12)
   })
-  it('the spine wall was traced on its two faces (x 4.96 then 5.27), both thin', () => {
+  it("8 of the 12 off rows carry the Studio's own pre-fill (the room's centre-line box), not a size from the sheet", () => {
+    const axis = sheetAxis(u)
+    const prefilled = u.roomLabels.filter((l) => {
+      const r = rooms.find((x) => x.id === l.id)
+      return r && l.printedSize === printedSizeOf(r, u) && sizeCheck(u, l.id, rooms, axis)?.off
+    })
+    expect(prefilled.map((l) => l.name).sort()).toEqual(['Bed', 'Bedroom 2', 'Living', 'toilet', 'toilet', 'ver', 'ver', 'washroom'])
+  })
+  it('the walls at x 4.96 and x 5.27 (two separate walls on the sheet) are both thin', () => {
     const V = new Map(u.vertices.map((v) => [v.id, v]))
     const vertAt = (x: number) => u.walls.filter((w) => Math.abs(V.get(w.a)!.x - x) < 0.02 && Math.abs(V.get(w.b)!.x - x) < 0.02 && Math.abs(V.get(w.a)!.y - V.get(w.b)!.y) > 0.1)
     const west = vertAt(4.96).concat(vertAt(4.97)), east = vertAt(5.27)
