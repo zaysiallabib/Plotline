@@ -352,9 +352,10 @@ const withColour = (g: Gray, name: string): { inputs: Partial<SolveInputs>; rgb?
 const TRACKER = process.env.TRACE_TRACKER
 if (TRACKER === 'skeleton' || TRACKER === 'bands' || TRACKER === 'tracks') KNOBS.tracker = TRACKER
 // traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
-const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
+// (the Studio-traced levels — sheltech-b1, -ground… — have plan images but no fixture / OCR cache yet: skipped, never the whole eval)
 const sheet = (u: Unit) => u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')
-const haveFixtures = Object.values(units).every((u) => existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`))
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage && existsSync(`${FIXTURES}assets__${sheet(u)}.pgm`) && existsSync(`${TEXT}${sheet(u)}.json`)))
+const haveFixtures = Object.keys(units).length > 0
 const readTextJson = (name: string): TextTrace => JSON.parse(readFileSync(`${TEXT}${name}.json`, 'utf8'))
 /** the wave-19 reader's traces of the same sheets (E:/dev/tmp/wave19/reader/final/assets__<sheet>.json): the product reader now */
 const NEW_TEXT = process.env.TRACE_NEW_TEXT ?? 'E:/dev/tmp/wave19/reader/final/'

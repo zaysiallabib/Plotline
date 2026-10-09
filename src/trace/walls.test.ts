@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { describe, expect, test } from 'vitest'
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import type { Unit, Wall } from '../core/types'
 import { evalTrace, formatReports, scoreUnit, truthLines, type EvalReport } from './eval'
 import { FIXTURES, SHOTS, loadPgm, writeOverlay } from './evalio'
@@ -170,9 +170,10 @@ describe('traceWalls on synthetic plans', () => {
 
 // ---------- the real plans (fixtures from scripts/trace-fixtures.mjs; skipped when absent) ----------
 // traced flats only: a hand-authored level (banani-*.json) has no plan image, so no fixture to trace
-const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage))
+// (the Studio-traced levels — sheltech-b1, -ground… — have plan images but no fixture yet: skipped, never the whole eval)
 const fixture = (u: Unit) => `${FIXTURES}assets__${u.planImage!.src.split('/').pop()!.replace(/\.\w+$/, '')}.pgm`
-const haveFixtures = Object.values(units).every((u) => loadPgm(fixture(u)) !== null)
+const units = Object.fromEntries(Object.entries(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' })).filter(([, u]) => u.planImage && existsSync(fixture(u))))
+const haveFixtures = Object.keys(units).length > 0
 
 /** Floors = what the tracer reached when written, minus a margin, so the report never flakes but regressions show. */
 const FLOOR: Record<string, { precision: number; recall: number; openingRecall: number }> = {

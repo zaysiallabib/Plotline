@@ -2231,8 +2231,16 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   // the rooms' areas against the printed flat area (walls and a common share are in the printed figure: ≈ areaShare)
   if (Number.isFinite(budget) && named.length) {
     const sum = named.reduce((t, r) => t + r.areaSqm, 0), want = budget * KNOBS.areaShare
+    // the room names read on the flat (its walls' extent, the core left out) with no closed face under them: still open
+    // (every label sits in a closed face, so labels never count them — 2026-10-09, it always said 0)
+    const xs = u.vertices.map((v) => v.x), ys = u.vertices.map((v) => v.y)
+    const open = text.items.filter((it) => {
+      if (it.kind !== 'room' || !it.roomKind || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))) return false
+      const p = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
+      return p.x >= Math.min(...xs) && p.x <= Math.max(...xs) && p.y >= Math.min(...ys) && p.y <= Math.max(...ys) && !faceOf(p)
+    }).length
     if (Math.abs(sum / want - 1) > 0.12)
-      review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The ${named.length} closed rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — ${sum < want ? `${Math.max(0, u.roomLabels.length - named.length)} named rooms are still open (marked), or one is missing` : 'a room too many (the next flat\'s, or the lobby)'}` })
+      review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The ${named.length} closed rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — ${sum < want ? `${open} named rooms are still open (marked), or one is missing` : 'a room too many (the next flat\'s, or the lobby)'}` })
   }
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)
