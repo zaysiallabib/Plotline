@@ -64,7 +64,7 @@ describe("founder's Sheltech Type-A draft, loaded in the Studio", () => {
 
   it('rooms: both verandas closed (15 → 17), every label inside a closed room, validate has no errors', () => {
     expect(rooms.length).toBeGreaterThanOrEqual(deriveRooms(raw).length)
-    expect(deriveRooms(raw)).toHaveLength(15)
+    expect(deriveRooms(raw)).toHaveLength(16) // 15 until 2026-10-09: an end touching a wall's body closes Bed 3 already (core)
     expect(rooms).toHaveLength(17)
     for (const l of u.roomLabels) expect(roomAt(l, rooms, u), l.name).toBeTruthy()
     expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['Bed 1', 'Bed 3', 'Kitchen', 'Living', 'Planter', 'Room', 'Room', 'Toilet 1', 'Toilet 2'])

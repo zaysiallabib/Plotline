@@ -115,7 +115,7 @@ export interface Room {
   id: Id // == RoomLabel.id when labelled, else generated
   name: string
   kind: RoomKind
-  /** counter-clockwise loop of vertex ids along wall centerlines */
+  /** counter-clockwise loop of vertex ids along wall centerlines (and of joinPts) */
   loop: Id[]
   /** the walls bounding this face, in loop order */
   wallIds: Id[]
@@ -125,6 +125,11 @@ export interface Room {
   /** from its label (absent = 0) */
   levelM?: number
   slope?: Slope
+  /**
+   * Loop points that are no vertex of the unit (deriveRooms joins what touches: where the room goes round a column, or a
+   * loose wall end meets the wall it stands in): id → plan point. roomPolygon resolves them; absent = none.
+   */
+  joinPts?: Record<Id, { x: number; y: number }>
 }
 
 export type MaterialRef =
@@ -180,8 +185,9 @@ export interface FurniturePlacement {
 /**
  * A structural column drawn on the plan (founder 2026-10-03): its own block, axis-aligned, centre + size in plan metres.
  * Walls keep their own centre lines and thicknesses — the wall graph carries a wall through / into the column under its
- * block; the column changes no room (deriveRooms / validate ignore it). Its centre, and where a wall's centre line meets
- * its faces, are snap points.
+ * block. A column a loose wall end touches (on its face, edge or corner, or inside it) is solid for the rooms (founder
+ * 2026-10-09): every wall there is joined through it and the rooms beside it go round its outline (deriveRooms; such an
+ * end is no dangling vertex). A column nothing ends on changes no room. Its centre, corners and faces are snap points.
  */
 export interface Pillar {
   id: Id

@@ -173,7 +173,11 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
   - *Kerb* — a 6-inch edge, as round a planter.
   - *Zone line* — an invisible line that only separates two areas (lawn from driveway).
 - Click corner after corner. Click the first corner again to close the room.
-- **What the cursor sticks to** (the status bar says which): a corner, a wall's centre line ("wall — will split"), a column (its centre, corners and sides: "column"), and the two sides of a thick wall ("wall face"). Corners and centre lines pull from 7 screen pixels, columns and wall faces from about 5. **Shift** = no sticking. A wall ending on a column is joined there: no "loose end" mark.
+- **What the cursor sticks to** (the status bar says which): a corner, a wall's centre line ("wall — will split"), a column (its centre, corners and sides: "column"), and the two sides of a thick wall ("wall face"). Corners and centre lines pull from 7 screen pixels, columns and wall faces from about 5. **Shift** = no sticking. Snapping to a centre line is offered, never asked for: a wall may meet a column or another wall off-centre.
+- **Walls that touch are joined — no gluing pieces needed** (founder 2026-10-09: "pillar or not, a wall touches another wall, that is it, it is a box"):
+  - A wall that touches a **column** — on its side, its edge, its corner, or ending inside it — closes the room there. The room goes round the column (its area leaves the column out). No "loose end" mark.
+  - A wall that stops on **another wall's face** (from either side, square or at an angle) is joined to it: under the hood it runs on to that wall's middle line. You still see and click ONE wall.
+  - A wall end put down **a little short** of a wall or a column — up to 6 inches, or as much as that wall is thick — is carried on to it along its own line when you click it down, when you drop a dragged end, and by Join walls (also after Auto-trace and when a drawing is opened). Further than that it stays where you put it.
 - While drawing, **type a number** to set the exact length; **Tab** switches to the angle.
 - **Backspace** removes the last piece. **Esc** stops.
 - **T** switches thin wall (5") / thick wall (10").
@@ -189,10 +193,13 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 **R — Room**
 - Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size** (type what the sheet prints there, e.g. `12'-0" × 14'-2"`; leave it empty if the sheet prints none — the tool never fills it in for you, so the size check in "Check these" is always sheet against drawing, and a size you type gets its own size row there when the room does not match it; it accepts the room when either its main rectangle — the biggest rectangle that fits inside it, door recesses and nooks left out — or its whole outline matches what the sheet prints), **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
 - **Save**, or **Remove** to take the name off.
+- **Clicked where no closed room is?** R looks only at the room around your click. If one wall end there stops a little short (the same reach as in W — Wall), R joins it (one Ctrl+Z undoes it) and opens the name box. Otherwise it says which wall end keeps this room open, how far short and where, and rings it: "Not closed yet: the wall end 2'-3" up-left of your click (ringed) stops 0'-7" short of the wall ahead — drag its end onto that wall". If no wall end nearby would close it: "a wall is missing. Draw it with W." A loose wall end somewhere else (a stub beside the ODU) is never the reason and is never ringed.
 
 **C — Column**
-- Click = a standard column. Drag = a column of the size you drag. Drag its corner dots to resize.
-- Walls stick to a column's sides, corners and centre, so a wall can end on it (see W — Wall).
+- Click = a standard column. Drag = a column of the size you drag.
+- **Pick a column** by clicking anywhere on it — also where a wall runs through it (with V, or with C).
+- **Size it with the mouse**: a picked column shows eight dots. Drag a **side** (its middle dot or anywhere along it; the pointer becomes a double arrow) to move that one side — the other side stays. Drag a **corner** to move two sides. It sticks to walls and corners as a corner does, in whole inches. The Width / Depth boxes on the right are only for typing an exact size.
+- Walls stick to a column's sides, corners and centre. A wall that touches a column anywhere closes the room there (see W — Wall).
 
 **F — Furniture**
 - Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.
@@ -433,6 +440,8 @@ Things that are confusing or not finished. Each one is a job on the list.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.
+- **R on a room with several gaps** says only "a wall is missing — draw it with W"; it does not yet show where. The Issues row "Label is not inside a closed room" still rings the nearest open spot, which can be outside that room.
+- While a column is picked, a wall end lying on its side cannot be dragged (the column's side handle takes the press): click elsewhere first.
 - Room names overlap each other on crowded plans.
 - Checks written for flats show on levels ("No entry door on an outer wall", the Area number).
 - The hint "Click to look around" is wrong — one click walks you to that spot; a double-click lets the mouse turn your head.
@@ -461,7 +470,7 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Kerb, free-standing screen | No | Yes | — |
 | Glass wall | Yes — width, height, sill, slide along the wall, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
-| Column | No | Yes — size, move, delete, add | — |
+| Column | No | Yes — size from any side or corner by mouse (or typed), move, delete, add; a wall touching it closes the room | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
 | Floor of ONE room | Yes — Finishes open, click the floor (Walk or Dollhouse) | No | — |
 | Lawn, paving, driveway, deck surface | No | No | Everything — no finish choices exist for outdoor areas |

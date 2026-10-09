@@ -8,7 +8,7 @@
  * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
  * after the plan is edited and re-published.
  */
-import { isOutdoor, vertexById, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
+import { isOutdoor, roomPolygon, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
 
 export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
   /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
@@ -188,7 +188,8 @@ export function faceWallId(unit: Pick<Unit, 'vertices'>, room: Room, wallId: Id)
   const n = room.wallIds.length
   const i = room.wallIds.indexOf(wallId)
   if (i < 0) return wallId
-  const at = (k: number) => vertexById(unit.vertices, room.loop[((k % n) + n) % n]) // wallIds[k] runs loop[k] → loop[k + 1]
+  const poly = roomPolygon(room, unit) // (a room going round a column has points that are no vertex: Room.joinPts)
+  const at = (k: number) => poly[((k % n) + n) % n] // wallIds[k] runs loop[k] → loop[k + 1]
   const dir = (k: number) => {
     const [a, b] = [at(k), at(k + 1)]
     const l = Math.hypot(b.x - a.x, b.y - a.y) || 1

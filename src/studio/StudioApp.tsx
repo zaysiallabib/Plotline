@@ -16,7 +16,6 @@ import {
   lengthMoves,
   normalizeUnit,
   openingAt,
-  openSpotsNear,
   rampArrow,
   rampDirs,
   reducer,
@@ -34,7 +33,7 @@ import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixesOf, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
+import { fixesOf, leaksAround, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
@@ -126,7 +125,7 @@ interface Note {
   link?: { label: string; onClick: () => void }
 }
 /** `end`: an opening's end handle (resize); `fixed`: a column's corner dot (resize, the opposite corner stays); `aim`: a ramp arrow's head */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; fixed?: Pt; aim?: boolean } & CornerDrag
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; fixed?: { x?: number; y?: number }; aim?: boolean } & CornerDrag
 /**
  * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
  * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
@@ -344,6 +343,7 @@ export default function StudioApp() {
   }
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
+  const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
   const toScreen = useCallback((m: Pt): Pt => mToScreen(frame, m), [frame])
@@ -888,10 +888,14 @@ export default function StudioApp() {
         const p = pieceAt(piecesRef.current ?? [], m)
         return p && { kind: 'furniture', id: p.id }
       }
+      // a column's block (3 px slack) wins inside it over the walls, openings and labels running through / beside it (the
+      // smallest when two overlap); only a corner the pointer is right on (4 px) comes first: a wall end on its face
+      const col = (u.pillars ?? []).filter((p) => Math.abs(m.x - p.x) <= p.wM / 2 + 3 / s && Math.abs(m.y - p.y) <= p.hM / 2 + 3 / s).sort((p, q) => p.wM * p.hM - q.wM * q.hM)[0]
       for (const v of u.vertices) {
         const p = toScreen(v)
-        if (Math.hypot(p.x - sx, p.y - sy) <= 8) return { kind: 'vertex', id: v.id }
+        if (Math.hypot(p.x - sx, p.y - sy) <= (col ? 4 : 8)) return { kind: 'vertex', id: v.id }
       }
+      if (col) return { kind: 'pillar', id: col.id }
       for (const w of u.walls) {
         const f = wallFrame(w, u.vertices)
         const du = (m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y
@@ -903,8 +907,6 @@ export default function StudioApp() {
         const p = toScreen(l)
         if (Math.abs(p.x - sx) <= 40 && sy >= p.y - 14 && sy <= p.y + 18) return { kind: 'label', id: l.id }
       }
-      // a column's block (3 px slack) before the walls running through it
-      for (const p of u.pillars ?? []) if (Math.abs(m.x - p.x) <= p.wM / 2 + 3 / s && Math.abs(m.y - p.y) <= p.hM / 2 + 3 / s) return { kind: 'pillar', id: p.id }
       const nw = nearestWall(m, u)
       if (nw && nw.distanceM <= Math.max(nw.wall.thicknessM / 2, 5 / s)) return { kind: 'wall', id: nw.wall.id }
       return null
@@ -957,14 +959,28 @@ export default function StudioApp() {
     }
   }
 
-  /** a selected column's corner dot under the pointer (8 px): dragging it sizes the column, the opposite corner stays */
-  const pillarCornerAt = (sx: number, sy: number): { id: Id; fixed: Pt } | undefined => {
+  /**
+   * A selected column's handle under the pointer (founder 2026-10-09: "why can i change the pillars only on 2 sides?"): a
+   * SIDE (6 px either side of it, along it) moves that one side, a corner both; the opposite side(s) stay (`fixed`: their
+   * x / y). Inside a small block a handle reaches only a third of the way in, so its middle still moves it.
+   */
+  const pillarHandleAt = (sx: number, sy: number): { id: Id; fixed: { x?: number; y?: number }; cursor: string } | undefined => {
     for (const p of unit.pillars ?? []) {
       if (!state.selection.includes(p.id)) continue
-      for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-        const c = toScreen({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 })
-        if (Math.hypot(c.x - sx, c.y - sy) <= 8) return { id: p.id, fixed: { x: p.x - (kx * p.wM) / 2, y: p.y - (ky * p.hM) / 2 } }
+      const A = toScreen({ x: p.x - p.wM / 2, y: p.y - p.hM / 2 })
+      const B = toScreen({ x: p.x + p.wM / 2, y: p.y + p.hM / 2 })
+      const [x0, x1, y0, y1] = [Math.min(A.x, B.x), Math.max(A.x, B.x), Math.min(A.y, B.y), Math.max(A.y, B.y)]
+      const reach = (lo: number, hi: number, v: number) => {
+        const inner = Math.min(6, (hi - lo) / 3)
+        const dl = v - lo, dh = hi - v // inside > 0
+        return dl >= -6 && dl <= inner && dl <= dh ? -1 : dh >= -6 && dh <= inner ? 1 : 0
       }
+      const kx = sy >= y0 - 6 && sy <= y1 + 6 ? reach(x0, x1, sx) : 0
+      const ky = sx >= x0 - 6 && sx <= x1 + 6 ? reach(y0, y1, sy) : 0
+      if (!kx && !ky) continue
+      const sxp = B.x >= A.x ? 1 : -1, syp = B.y >= A.y ? 1 : -1 // the screen's x / y against the plan's
+      const fixed = { ...(kx ? { x: p.x - (kx * sxp * p.wM) / 2 } : {}), ...(ky ? { y: p.y - (ky * syp * p.hM) / 2 } : {}) }
+      return { id: p.id, fixed, cursor: kx && ky ? (kx === ky ? 'nwse-resize' : 'nesw-resize') : kx ? 'ew-resize' : 'ns-resize' }
     }
   }
   /** a selected ramp's arrow head under the pointer (10 px): dragging it aims the ramp */
@@ -986,12 +1002,37 @@ export default function StudioApp() {
     (m: Pt, sx: number, sy: number, labelId?: Id) => {
       const st = stateRef.current
       const existing = labelId ? st.unit.roomLabels.find((l) => l.id === labelId) : undefined
-      const r = roomAt(existing ?? m, rooms, st.unit)
+      let r = roomAt(existing ?? m, rooms, st.unit)
+      let now = st.unit // the unit the popover's room is in (healed below)
       if (!r && !existing) {
-        // name the nearest open spot and ring it (founder: a hand-fixed room that looks closed but is not)
-        const spot = openSpotsNear(st.unit, rooms, m)[0]
-        if (spot) setMark(spot.at)
-        return toast(spot ? `Not a closed room: ${spot.why} (ringed). Join walls (panel) fixes overlaps and crossings.` : 'Click inside a closed room. Is a corner not joined?')
+        // decided on the room around the click only (founder 2026-10-09): the wall ends whose own fix closes it — a loose
+        // end elsewhere is never the reason. One within reach is joined (one undo step) and the room is named.
+        const leaks = leaksAround(st, m)
+        const one = leaks.length === 1 ? leaks[0] : null
+        if (one?.heal) {
+          const t = one.fix.actions.reduce(reducer, st)
+          r = roomAt(m, deriveRooms(t.unit), t.unit)
+          now = t.unit
+          if (r) dispatch({ type: 'apply-fix', actions: one.fix.actions, label: one.gap > 0.005 ? `Joined a wall end ${formatFeetInches(one.gap)} short of the wall` : 'Joined a wall end to the wall it touches' })
+        }
+        if (!r) {
+          const where = (q: Pt) => {
+            const [dx, dy] = [q.x - m.x, q.y - m.y]
+            const d = Math.hypot(dx, dy) || 1
+            const v = Math.abs(dy) > 0.38 * d ? (dy < 0 ? 'up' : 'down') : ''
+            const h = Math.abs(dx) > 0.38 * d ? (dx < 0 ? 'left' : 'right') : ''
+            return `${formatFeetInches(d)} ${[v, h].filter(Boolean).join('-')} of your click`
+          }
+          const short = (l: (typeof leaks)[number]) => (l.fix.label.startsWith('Close the gap') ? `stops ${formatFeetInches(l.gap)} short of the wall end facing it — drag it there (or put a door / window in the gap with O)` : `stops ${formatFeetInches(l.gap)} short of the wall ahead — drag its end onto that wall`)
+          if (leaks.length) setMark(leaks[0].at)
+          return toast(
+            !leaks.length
+              ? 'Not a closed room here: no wall end around this spot closes it — a wall is missing. Draw it with W.'
+              : leaks.length === 1
+                ? `Not closed yet: the wall end ${where(leaks[0].at)} (ringed) ${short(leaks[0])}.`
+                : `Not closed yet: ${leaks.length} wall ends around it stop short — the one ${where(leaks[0].at)} (ringed) ${short(leaks[0])}; then press R here again.`,
+          )
+        }
       }
       setPopover({
         x: existing?.x ?? m.x,
@@ -1006,7 +1047,7 @@ export default function StudioApp() {
         labelId,
         levelM: existing?.levelM,
         slope: existing?.slope,
-        dirs: r ? rampDirs(r, st.unit) : [0, 90, 180, 270],
+        dirs: r ? rampDirs(r, now) : [0, 90, 180, 270],
       })
     },
     [rooms, toast],
@@ -1061,9 +1102,9 @@ export default function StudioApp() {
     // a selected opening's end handle (Select, or the O tool right after placing one): drag = resize
     const end = (tool === 'select' || tool === 'opening') && openingEndAt(sx, sy)
     if (end) return void (dragRef.current = { hit: { kind: 'opening', id: end.id }, sx, sy, m, moved: false, orig: new Map(), end: end.end })
-    // a selected column's corner dot: drag = its size; a selected ramp's arrow head: drag = which way it runs
-    const corner = (tool === 'select' || tool === 'pillar') && pillarCornerAt(sx, sy)
-    if (corner) return void (dragRef.current = { hit: { kind: 'pillar', id: corner.id }, sx, sy, m, moved: false, orig: new Map(), fixed: corner.fixed })
+    // a selected column's side or corner: drag = its size; a selected ramp's arrow head: drag = which way it runs
+    const handle = (tool === 'select' || tool === 'pillar') && pillarHandleAt(sx, sy)
+    if (handle) return void (dragRef.current = { hit: { kind: 'pillar', id: handle.id }, sx, sy, m, moved: false, orig: new Map(), fixed: handle.fixed })
     const head = tool === 'select' && rampHeadAt(sx, sy)
     if (head) return void (dragRef.current = { hit: { kind: 'label', id: head }, sx, sy, m, moved: false, orig: new Map(), aim: true })
     switch (tool) {
@@ -1274,12 +1315,17 @@ export default function StudioApp() {
         const p = unit.pillars?.find((x) => x.id === d.hit.id)
         if (!p) return
         if (d.fixed) {
-          // a corner dot: the opposite corner stays, whole inches, 0.1 m at least
+          // a side or a corner: the side(s) under the pointer follow it (snapped as a corner), the opposite one(s) stay,
+          // whole inches, 0.1 m at least
           const c = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [p.id] })
           const inch = (v: number) => Math.max(0.1, Math.round(Math.abs(v) / 0.0254) * 0.0254)
-          const [wM, hM] = [inch(c.x - d.fixed.x), inch(c.y - d.fixed.y)]
           const sgn = (v: number) => (v < 0 ? -1 : 1)
-          dispatch({ type: 'set-pillar', id: p.id, patch: { x: d.fixed.x + (sgn(c.x - d.fixed.x) * wM) / 2, y: d.fixed.y + (sgn(c.y - d.fixed.y) * hM) / 2, wM, hM }, live: true })
+          const { x: fx, y: fy } = d.fixed
+          const wM = fx === undefined ? p.wM : inch(c.x - fx)
+          const hM = fy === undefined ? p.hM : inch(c.y - fy)
+          const x = fx === undefined ? p.x : fx + (sgn(c.x - fx) * wM) / 2
+          const y = fy === undefined ? p.y : fy + (sgn(c.y - fy) * hM) / 2
+          dispatch({ type: 'set-pillar', id: p.id, patch: { x, y, wM, hM }, live: true })
           show(c, [])
         } else {
           // its centre follows the pointer and snaps as a corner does: onto a wall's centre line, a corner, in line
@@ -1301,6 +1347,8 @@ export default function StudioApp() {
       }
       return
     }
+    const hd = tool === 'select' || tool === 'pillar' ? pillarHandleAt(sx, sy) : undefined
+    setCursor(hd?.cursor ?? null) // a column's side / corner under the pointer: the resize cursor
     setHover(computeHover(sx, sy, e.shiftKey))
   }
 
@@ -1734,7 +1782,7 @@ export default function StudioApp() {
           <canvas
             ref={canvasRef}
             tabIndex={-1}
-            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : trace !== 'pick' && (tool === 'select' || tool === 'furniture') ? 'default' : 'crosshair' }}
+            style={{ width: size.w, height: size.h, cursor: panning ? 'grabbing' : (cursor ?? (trace !== 'pick' && (tool === 'select' || tool === 'furniture') ? 'default' : 'crosshair')) }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

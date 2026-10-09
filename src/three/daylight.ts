@@ -259,15 +259,9 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
     }
     apertures.set(r.id, list)
     // occlusion only matters where the room isn't convex
-    blockers.set(
-      r.id,
-      convex(core.roomInnerPolygon(r, unit))
-        ? null
-        : r.wallIds.map((id) => {
-            const w = wallsById.get(id)!
-            return { id, a: core.vertexById(unit.vertices, w.a), b: core.vertexById(unit.vertices, w.b) }
-          }),
-    )
+    // (its outline's edges: a room going round a column has edges that are no wall — core Room.joinPts)
+    const poly = core.roomPolygon(r, unit)
+    blockers.set(r.id, convex(core.roomInnerPolygon(r, unit)) ? null : r.wallIds.map((id, i) => ({ id, a: poly[i], b: poly[(i + 1) % poly.length] })))
   }
 
   // ── sample grids ──

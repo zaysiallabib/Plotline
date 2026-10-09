@@ -376,10 +376,10 @@ export function draw(a: DrawArgs): void {
       for (const u of [op.offsetM, op.offsetM + op.widthM]) dot({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u }, true, true)
     }
   }
-  // a selected column's four corners are its resize handles
+  // a selected column's four corners and four sides are its resize handles (drag a side: that side alone)
   for (const p of state.unit.pillars ?? []) {
     if (!sel.has(p.id)) continue
-    for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) dot({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 }, true, true)
+    for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]]) dot({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 }, true, true)
   }
 
   // ramps: an arrow across the zone from its floor level (tail) to its to level (head); selected, the head is a handle

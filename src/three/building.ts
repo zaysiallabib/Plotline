@@ -227,7 +227,7 @@ export class Building extends THREE.Group {
       if (!room) continue
       for (const y of [G, R]) {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
-        put(EXTERIOR_PLASTER, ...room.wallIds.map((id) => wallGeometry(u.walls.find((w) => w.id === id)!, u)).filter((g) => !!g).map(at))
+        put(EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }
       put(EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
     }
@@ -368,7 +368,8 @@ export class Building extends THREE.Group {
     if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, -UNDER_LEVEL_M, PLATE_M))
     if (k > top) {
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
-      const caps = rooms.filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id)))
+      const ids = new Set(u.walls.map((w) => w.id)) // (a room going round a column has edges that are no wall)
+      const caps = rooms.filter((r) => r.kind !== 'shaft' && r.wallIds.every((id) => full.has(id) || !ids.has(id)))
       const capWalls = new Set(caps.flatMap((r) => r.wallIds))
       put(EXTERIOR_PLASTER, ...plate(u, caps, WALL_M + PLATE_M, PLATE_M, u.walls.filter((w) => capWalls.has(w.id))))
     }

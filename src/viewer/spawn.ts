@@ -204,8 +204,9 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
  */
 function through(room: Room, unit: Unit, rooms: Room[]): Pt | null {
   let best: { w: number; r: Room } | null = null
-  for (const id of room.wallIds) {
-    const w = unit.walls.find((x) => x.id === id)!
+  for (const id of new Set(room.wallIds)) {
+    const w = unit.walls.find((x) => x.id === id)
+    if (!w) continue // a column's side (core Room.joinPts)
     const f = core.wallFrame(w, unit.vertices)
     for (const o of w.openings) {
       if (o.kind === 'window' || swings(o) || (best && o.widthM <= best.w)) continue
