@@ -46,14 +46,14 @@ describe('flats of real drawings', () => {
     // each flat is exactly its hand-traced flat's rooms (A's ids as they are, B's prefixed)
     const own = (f: (typeof flats)[number]) => [...new Set(f.roomIds.map((id) => (id.startsWith('b-') ? 'B' : 'A')))]
     expect(flats.map(own)).toEqual([['B'], ['A']])
-    expect(flats[0].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
-    expect(flats[1].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Passage', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
+    expect(flats[0].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Planter (south)', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
+    expect(flats[1].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Passage', 'Planter (south)', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
     expect(rooms.filter(isCore).map((r) => r.name).sort()).toEqual(['Lifts', 'Lobby', 'Stair'])
-    // loose: the four planters (behind 0.45 m planter edges or windows, no door) — in no flat until he moves them
+    // the south planters join through their 0.45 m edge (a low wall is stepped over, founder 2026-10-09); the east / west ones sit behind WINDOWS — loose until he moves them
     const inFlat = new Set(flats.flatMap((f) => f.roomIds))
-    expect(rooms.filter((r) => !inFlat.has(r.id) && !isCore(r)).map((r) => r.name).sort()).toEqual(['Planter (east)', 'Planter (south)', 'Planter (south)', 'Planter (west)'])
-    // centre-line room areas: ≈ 1860 sft a flat against the printed ±2736 (walls, the planters and a share of the core are in that)
-    expect(flats.map((f) => Math.round(sqmToSqft(f.areaSqm)))).toEqual([1860, 1857])
+    expect(rooms.filter((r) => !inFlat.has(r.id) && !isCore(r)).map((r) => r.name).sort()).toEqual(['Planter (east)', 'Planter (west)'])
+    // centre-line room areas: ≈ 2000 sft a flat against the printed ±2736 (walls and a share of the core are in that; the south planter counts, the window-side ones not)
+    expect(flats.map((f) => Math.round(sqmToSqft(f.areaSqm)))).toEqual([2007, 2052])
   })
 
   test('named as the sheet prints them ("TYPE-B (L/L) ±2736 SFT" in the west dining, "TYPE-A ±2736 SFT" in the east): Type B, Type A', () => {
@@ -65,8 +65,8 @@ describe('flats of real drawings', () => {
     const rooms = deriveRooms(u)
     expect(rooms.length).toBe(40)
     expect(deriveFlats(u, rooms).map((f) => [f.name, f.roomIds.length, f.printedSqft])).toEqual([
-      ['Type B', 16, 2736],
-      ['Type A', 17, 2736],
+      ['Type B', 17, 2736],
+      ['Type A', 18, 2736],
     ])
   })
 

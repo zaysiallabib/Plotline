@@ -1,7 +1,7 @@
 /**
  * The flats of a whole-floor drawing (founder 2026-10-06) — DERIVED, never stored (invariant 1's spirit: no flat polygons,
  * no room lists). Rooms joined through a door, passage or slider on a shared wall are one flat (a window joins nothing;
- * a zone line — height 0, no wall at all — joins like a passage). The common core belongs to no flat and stops the walk:
+ * a zone line — height 0 — and any wall lower than LOW_WALL_M (a planter edge, a kerb, a low parapet) join like a passage). The common core belongs to no flat and stops the walk:
  * lobbies, shafts, gym / community / guard rooms, outdoor zones, and 'other' rooms named as the levels and auto-trace name
  * the core ("Lobby", "Stair", "Lift", "Hoistway" — they have no kind of their own). A group of rooms is a flat when it
  * holds a bedroom and another room, a "Type A" label, or a pin; anything else stays loose, in no flat (a room alone: its
@@ -32,6 +32,9 @@ const CORE_NAME = /\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?)\b/i
 const SFT = /(\d[\d,]{2,6})\s*(?:sft|sq\.?\s*ft|s\.f\.t)/i
 
 /** In no flat by itself: the common core (a pin decides instead when there is one). */
+/** a wall lower than this (a planter edge, a kerb, a low parapet) is stepped over: it joins its two sides like a door (founder 2026-10-09) */
+export const LOW_WALL_M = 1.2
+
 export const isCore = (r: Pick<Room, 'kind' | 'name'>): boolean => CORE_KINDS.has(r.kind) || isOutdoor(r.kind) || (r.kind === 'other' && CORE_NAME.test(r.name))
 
 export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'>, rooms: Room[]): Flat[] {
@@ -44,7 +47,7 @@ export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'
   for (const r of rooms) for (const w of new Set(r.wallIds)) if (up.has(r.id)) byWall.set(w, [...(byWall.get(w) ?? []), r.id])
   for (const w of unit.walls) {
     const ids = byWall.get(w.id)
-    if (!ids || ids.length < 2 || (w.heightM > 0 && !w.openings.some((o) => o.kind !== 'window'))) continue
+    if (!ids || ids.length < 2 || (w.heightM >= LOW_WALL_M && !w.openings.some((o) => o.kind !== 'window'))) continue
     for (const id of ids.slice(1)) up.set(root(id), root(ids[0]))
   }
   const groups = new Map<Id, Room[]>()

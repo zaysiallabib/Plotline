@@ -269,8 +269,8 @@ You say what the building is first, then give each floor a drawing. A drawing is
 3. Click **Create project**. The list of floors appears on the right of the plan and stays there: **Rooftop** at the top, then the floors from the highest down, **Ground floor**, **Basement 1**, **Basement 2**…
 
 **Give each floor a drawing** — work through the list:
-- **Draw** (on an empty floor): a new, empty drawing for that floor opens. Floors get the names Type A, Type B…; the others are called Ground floor, Basement 1, Rooftop. Drop that floor's plan picture on the page (or **Choose plan image…**), set the scale (S) and trace as usual.
-- **Same size as "Type A" — Use its scale and position**: when the picture you load is exactly the size of a picture you already set the scale on, this message offers it (15 seconds). Click it: no scale to set, and the two drawings sit right over each other in the building. Not right? **Ctrl+Z**.
+- **Draw** (on an empty floor): a new, empty drawing for that floor opens. Floors get the names Floor plan A, Floor plan B… (the flats inside a drawing keep the sheet's names, Type A, Type B); the others are called Ground floor, Basement 1, Rooftop. Drop that floor's plan picture on the page (or **Choose plan image…**), set the scale (S) and trace as usual.
+- **Same size as "Floor plan A" — Use its scale and position**: when the picture you load is exactly the size of a picture you already set the scale on, this message offers it (15 seconds). Click it: no scale to set, and the two drawings sit right over each other in the building. Not right? **Ctrl+Z**.
 - **Open**: that floor's drawing comes into the Studio. The drawing you were on is saved first, with its picture. Nothing is asked, nothing is lost — also after closing the browser.
 - **Use drawing…**: pick one of your drawings for this floor.
 - **Clear**: the floor is empty again; the drawing itself is kept.
@@ -406,7 +406,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **Outside a project, only one Studio drawing at a time.** Opening another plan from the 3D view (Edit plan, Edit openings) replaces yours after one question. Inside a project nothing is asked: the project keeps your drawing and its picture — open it again from its floor in the list.
 - **A whole-floor drawing knows its flats only in the Studio** (the tints, the Flat pick, the floor list): you cannot yet walk ONE flat of it on its own in 3D, and a buyer link and the Building view still treat the whole floor as one flat. Finishes go per room / per wall (as before), not per flat.
 - **Flat names follow the place**: "Flat 1, Flat 2" count from west to east, so a drawing turned into its mirror image counts them the other way. A room moved by hand to "Flat 2" goes with the number. "Type A" names do not move.
-- **Planters and light wells with no door are in no flat** (they show untinted): pick their flat by hand. Auto-trace does not yet put the printed "TYPE-A ±2736 SFT" on the drawing (type it with R), and its "the closed rooms add up to … sft" check is still for one flat.
+- **A room with no door and no low edge to the flat is in no flat** (it shows untinted): pick its flat by hand. A planter edge, kerb or parapet lower than 4 feet counts as a way in. Auto-trace does not yet put the printed "TYPE-A ±2736 SFT" on the drawing (type it with R), and its "the closed rooms add up to … sft" check is still for one flat.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.

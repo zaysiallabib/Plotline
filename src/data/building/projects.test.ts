@@ -88,9 +88,9 @@ describe('project first: floors said first, any drawing on any floor', () => {
     expect(rows(removeDrawing(p, 'a'))[5]).toBe('Floor 2:')
   })
 
-  test('new drawings are named Type A, Type B … on floors, after the level elsewhere', () => {
-    expect(drawingName(empty, 3)).toBe('Type A')
-    expect(drawingName(setSlot(empty, 3, { ...box('x'), name: 'Type A' }), 5)).toBe('Type B')
+  test('new drawings are named Floor plan A, Floor plan B … on floors, after the level elsewhere', () => {
+    expect(drawingName(empty, 3)).toBe('Floor plan A')
+    expect(drawingName(setSlot(empty, 3, { ...box('x'), name: 'Floor plan A' }), 5)).toBe('Floor plan B')
     expect([drawingName(empty, 0), drawingName(empty, -2), drawingName(empty, 'R')]).toEqual(['Ground floor', 'Basement 2', 'Rooftop'])
   })
 

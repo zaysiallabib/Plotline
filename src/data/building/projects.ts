@@ -332,8 +332,9 @@ export function parseFloors(text: string): number[] | null {
 export function drawingName(p: Project, s: Slot): string {
   if (s === 'R' || s <= 0) return slotLabel(s)
   const taken = new Set(Object.values(p.units).map((u) => u.name.trim()))
-  const letter = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find((c) => !taken.has(`Type ${c}`))
-  return letter ? `Type ${letter}` : `Type ${Object.keys(p.units).length + 1}`
+  const letter = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find((c) => !taken.has(`Floor plan ${c}`))
+  // "Floor plan", never "Type": the flats INSIDE a drawing are the sheet's Type A / Type B (founder 2026-10-09)
+  return letter ? `Floor plan ${letter}` : `Floor plan ${Object.keys(p.units).length + 1}`
 }
 
 /** The Building view's tower for `p`: the same shape as the built-in towers. */
