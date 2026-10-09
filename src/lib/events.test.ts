@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { BuyerEvent, StaffData } from './events'
+import type { BuyerEvent, SelectionPayload, StaffData } from './events'
 
 beforeAll(() => {
   vi.stubEnv('VITE_SUPABASE_URL', 'https://x.supabase.co')
@@ -23,7 +23,7 @@ const mockFetch = (...replies: (number | 'offline')[]) => {
   return f
 }
 const bodies = (f: ReturnType<typeof mockFetch>) => (f.mock.calls as unknown as [string, RequestInit][]).map(([url, init]) => ({ url, ...JSON.parse(init.body as string) }))
-const SEL = { slotId: 's_floor_beds', slotLabel: 'Bedroom floors', optionId: 'fo_beds_marble', label: 'White marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', priceDeltaBdt: 185000 }
+const SEL: SelectionPayload = { slotId: 's_floor_beds', slotLabel: 'Bedroom floors', optionId: 'fo_beds_marble', label: 'White marble', brand: 'Mir Ceramic', sku: 'MIR-MARBLE-WHITE', priceDeltaBdt: 185000 }
 
 describe('change list: the buyer side', () => {
   it('a choice on a link is one add_event row: its own id, the link, the slot, this browser, the option as chosen', async () => {
@@ -115,6 +115,31 @@ describe('change list: the staff side', () => {
     expect(t1.current.map((p) => p.optionId)).toEqual(['fo_beds_walnut'])
     expect(t1.totalBdt).toBe(45000) // fo_beds_walnut in the catalog, the row said 1
     expect(t1.notes).toBe(1) // e2; e1 was removed (e5)
+  })
+
+  it('one room / one wall (session 23): the row names where, is its own ref; taking it back is a row too, out of the current choices', async () => {
+    const { byLink, describe: say, selectionPayload } = await import('./events')
+    const { FINISH_CATALOG } = await import('../furnish/finishes')
+    const slot = { ...FINISH_CATALOG.find((s) => s.id === 's_floor_beds')!, roomIds: ['r_bed1', 'r_bed2'] }
+    const where = { key: 'room:r_bed1:floor', scope: 'Bed-1 · floor' }
+    const marble = selectionPayload(slot, 'fo_beds_marble', where)!
+    expect(marble).toEqual({ ...SEL, ...where })
+    const back = selectionPayload(slot, null, where)!
+    expect(back).toMatchObject({ ...where, slotId: 's_floor_beds', removed: true, label: 'Same as the group', priceDeltaBdt: 0 })
+    expect(selectionPayload(slot, null)).toBeNull() // a group can't be "taken back": it has a default
+    expect(selectionPayload(slot, null, { key: 'wall:w1:r_bed1', scope: 'Bed-1 · north wall' })?.label).toBe('Same as the room')
+    const row = (id: string, payload: typeof SEL, s: number, superseded: boolean): BuyerEvent => ({ id, token: 't1', kind: 'selection', ref: payload.key ?? payload.slotId, buyer: 'b1aa', name: null, payload, created_at: at(s), superseded })
+    const group = { ...SEL, optionId: 'fo_beds_walnut', label: 'Dark walnut wood' }
+    const links = [{ token: 't1', unit_name: 'Type A · 2703 sft', created_at: at(0) }]
+    const chosen = byLink({ links, events: [row('e2', marble, 20, false), row('e1', group, 10, false)] })[0]
+    expect(chosen.current.map((p) => p.scope ?? p.slotLabel)).toEqual(['Bed-1 · floor', 'Bedroom floors'])
+    expect(chosen.totalBdt).toBe(185000 + 45000)
+    expect(say(row('e2', marble, 20, false))).toMatchObject({ what: 'Bed-1 · floor', detail: 'White marble', deltaBdt: 185000 })
+    // the server flags e2 superseded by e3 (same link, kind, ref = the room's key); the group row stands
+    const after = byLink({ links, events: [row('e3', back, 30, false), row('e2', marble, 20, true), row('e1', group, 10, false)] })[0]
+    expect(after.current.map((p) => p.optionId)).toEqual(['fo_beds_walnut'])
+    expect(after.totalBdt).toBe(45000)
+    expect(say(row('e3', back, 30, false))).toMatchObject({ what: 'Bed-1 · floor', detail: 'Same as the group', deltaBdt: null })
   })
 
   it('who: the latest name that browser typed, else "Buyer" + its id', async () => {

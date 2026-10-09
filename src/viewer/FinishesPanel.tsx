@@ -24,8 +24,15 @@ function swatchStyle(m: MaterialRef): React.CSSProperties {
 export const chosen = (slot: FinishSlot, cfg: Configuration): FinishOption | undefined =>
   slot.options.find((o) => o.id === (cfg[slot.id] ?? slot.defaultOptionId))
 
-export const optionsTotal = (slots: FinishSlot[], cfg: Configuration): number =>
-  slots.reduce((t, s) => t + (chosen(s, cfg)?.priceDeltaBdt ?? 0), 0)
+/**
+ * Every slot as chosen (or its default), plus each one-room / one-wall choice once at its option's own delta. Flat per
+ * choice, not by floor area: a room's marble does not take its share off the group's price (session 23, kept simple).
+ */
+export const optionsTotal = (slots: FinishSlot[], cfg: Configuration): number => {
+  const delta = new Map(slots.flatMap((s) => s.options.map((o) => [o.id, o.priceDeltaBdt]))) // option ids are unique (finishes.test)
+  const own = Object.entries(cfg).filter(([k]) => !slots.some((s) => s.id === k))
+  return slots.reduce((t, s) => t + (chosen(s, cfg)?.priceDeltaBdt ?? 0), 0) + own.reduce((t, [, o]) => t + (delta.get(o) ?? 0), 0)
+}
 
 export default function FinishesPanel({ slots, cfg, onSelect, onReset }: Props) {
   // warm the HTTP cache so the engine's TextureLoader hits it (≤ 200 ms swap after caching)

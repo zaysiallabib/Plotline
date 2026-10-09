@@ -21,6 +21,7 @@ import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
+import { faceWallId } from '../furnish/finishes'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
@@ -179,7 +180,8 @@ interface Surface {
   mesh: THREE.Mesh
   /** one entry per material slot; null = fixed edge plaster; `edge` = the finish in its depth-offset variant (wall ends and tops) */
   /** `ref`: a fixed material by rule (a kerb's concrete, a zone's riser), not the room's finish */
-  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef } | null)[]
+  /** `wallId`: a wall's side — the wall its face is chosen by (finishes.ts faceWallId), for a buyer's one-wall choice */
+  sides: ({ roomId: Id | null; target: FinishSlot['target']; edge?: true; ref?: MaterialRef; wallId?: Id } | null)[]
 }
 
 export class PlotlineScene {
@@ -380,7 +382,7 @@ export class PlotlineScene {
     void this.loadFurniture(unit)
   }
 
-  /** slotId → optionId. Swaps materials only. */
+  /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
   setConfiguration(cfg: Configuration): void {
     this.cfg = cfg
     this.applyMaterials()
@@ -918,12 +920,18 @@ export class PlotlineScene {
       // a kerb is concrete all over; a planter's low edge (≤ 0.6 m) a rendered box with a concrete coping on top
       const kerb = wall.heightM <= KERB_M ? { ref: CONCRETE } : {}
       const planter = wall.heightM <= 0.6 && [front, back].some((id) => this.rooms.find((r) => r.id === id)?.kind === 'planter')
+      // a buyer's one-wall choice: each side by the wall its face is chosen by in that room (a gap's stand-in: the wall it continues, as pick())
+      const planWall = wall.id.startsWith(GAP_PREFIX) ? wall.id.slice(GAP_PREFIX.length).split('|')[0] : wall.id
+      const face = (r: Id | null) => {
+        const room = this.rooms.find((x) => x.id === r)
+        return room ? { wallId: faceWallId(unit, room, planWall) } : {}
+      }
       this.surfaces.push({
         mesh,
         sides: [
-          { roomId: front, target: 'wall', ...kerb },
-          { roomId: back, target: 'wall', ...kerb },
-          { roomId: front ?? back, target: 'wall', edge: true, ...(planter ? { ref: CONCRETE } : kerb) },
+          { roomId: front, target: 'wall', ...face(front), ...kerb },
+          { roomId: back, target: 'wall', ...face(back), ...kerb },
+          { roomId: front ?? back, target: 'wall', edge: true, ...face(front ?? back), ...(planter ? { ref: CONCRETE } : kerb) },
         ],
       })
     }
@@ -1028,7 +1036,7 @@ export class PlotlineScene {
         if (!side) return plaster
         if (side.ref) return materialFor(side.ref, side.edge, true)
         const zone = side.roomId && zones.get(side.roomId) // an outdoor zone: no buyer finish, its look by kind (materials.ts)
-        return zone ? materialFor(zoneFinishRef(zone, side.target, deck), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge)
+        return zone ? materialFor(zoneFinishRef(zone, side.target, deck), side.edge, true) : resolveFinish(this.unit!.finishSlots, this.cfg, side.roomId, side.target, true, side.edge, side.wallId)
       })
       s.mesh.material = mats.length === 1 ? mats[0] : mats
     }

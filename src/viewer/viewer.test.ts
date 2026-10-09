@@ -7,7 +7,8 @@ import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { optionsTotal } from './FinishesPanel'
-import { decodeConfig, encodeConfig, formatDelta, formatTaka } from './share'
+import { decodeConfig, encodeConfig, finishKeys, formatDelta, formatTaka } from './share'
+import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
 import { kitAsset, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
@@ -50,6 +51,56 @@ describe('viewer', { timeout: 20_000 }, () => {
     )
     expect(decodeConfig(null, slots)).toEqual({})
     expect(decodeConfig('%%%garbage', slots)).toEqual({})
+  })
+
+  it('one-room and one-wall keys (session 23): named for a person; the share link keeps the valid ones, drops the rest', () => {
+    const keys = finishKeys(unit, rooms)
+    expect(keys.get(roomKey('r_bed1', 'floor'))).toMatchObject({ scope: 'Bed-1 · floor', slot: { id: 's_floor_beds' } })
+    expect(keys.get(roomKey('r_living', 'wall'))).toMatchObject({ scope: 'Living room · all walls', slot: { id: 's_wall_paint' } })
+    expect(keys.get(roomKey('r_bath2', 'wall'))?.slot.id).toBe('s_wall_bath')
+    // one key per wall a person sees: Bed-1's 9 wall pieces are 6 walls, each named by its side of the room
+    const bed1 = [...keys].filter(([k]) => k.startsWith('wall:') && k.endsWith(':r_bed1'))
+    expect(bed1).toHaveLength(6)
+    for (const [, v] of bed1) expect(v.scope).toMatch(/^Bed-1 · (north|south|east|west)(-(east|west))? wall$/)
+    const wall = bed1[0][0]
+    const cfg = { s_floor_beds: 'fo_beds_walnut', [roomKey('r_bed1', 'floor')]: 'fo_beds_marble', [wall]: 'fo_paint_sage' }
+    expect(decodeConfig(encodeConfig(cfg), unit.finishSlots, keys)).toEqual(cfg)
+    const junk = {
+      'room:nope:floor': 'fo_beds_oak', // no such room
+      'wall:nope:r_bed1': 'fo_paint_sage', // no such wall
+      [roomKey('r_bed2', 'floor')]: 'fo_living_oak', // not an option of Bed-2's floor slot
+      [roomKey('r_bath2', 'wall')]: 'fo_paint_sage', // paint is no bath-wall option
+    }
+    expect(decodeConfig(encodeConfig({ ...cfg, ...junk }), unit.finishSlots, keys)).toEqual(cfg)
+    expect(decodeConfig(encodeConfig(cfg), unit.finishSlots)).toEqual({ s_floor_beds: 'fo_beds_walnut' }) // no keys given: slots only
+  })
+
+  it('a wall is named by the compass side of its room, turned by the plan north', () => {
+    const box = (northDeg: number): Unit => {
+      const u: Unit = {
+        id: 'u', projectName: 'p', name: 'n', northDeg, areaSqft: 0, furniture: [], finishSlots: [],
+        vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 4, y: 0 }, { id: 'c', x: 4, y: 3 }, { id: 'd', x: 0, y: 3 }],
+        walls: ['ab', 'bc', 'cd', 'da'].map((p) => ({ id: p, a: p[0], b: p[1], thicknessM: 0.2, heightM: 3, openings: [] })),
+        roomLabels: [{ id: 'r', name: 'Bed', kind: 'bed', x: 2, y: 1.5 }],
+      }
+      return { ...u, finishSlots: finishSlotsFor(u, core.deriveRooms(u)) }
+    }
+    const names = (northDeg: number) => {
+      const u = box(northDeg)
+      const k = finishKeys(u, core.deriveRooms(u))
+      return ['ab', 'bc', 'cd', 'da'].map((w) => k.get(wallKey(w, 'r'))?.scope)
+    }
+    // ab is the plan's top edge: north when north is plan-up; north 90° clockwise (plan right) makes it the west wall
+    expect(names(0)).toEqual(['Bed · north wall', 'Bed · east wall', 'Bed · south wall', 'Bed · west wall'])
+    expect(names(90)).toEqual(['Bed · west wall', 'Bed · north wall', 'Bed · east wall', 'Bed · south wall'])
+    expect(names(45)[0]).toBe('Bed · north-west wall')
+  })
+
+  it('options total: every slot as chosen, plus each one-room / one-wall choice once, at its own price', () => {
+    const slots = unit.finishSlots
+    const base = optionsTotal(slots, {})
+    expect(optionsTotal(slots, { [roomKey('r_bed1', 'floor')]: 'fo_beds_marble' })).toBe(base + 185000)
+    expect(optionsTotal(slots, { [roomKey('r_bed1', 'floor')]: 'fo_beds_marble', [roomKey('r_bed2', 'floor')]: 'fo_beds_walnut' })).toBe(base + 185000 + 45000)
   })
 
   it('options total sums the selected deltas only; reset = defaults', () => {

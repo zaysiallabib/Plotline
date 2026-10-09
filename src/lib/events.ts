@@ -20,6 +20,11 @@ export interface SelectionPayload {
   brand: string
   sku: string
   priceDeltaBdt: number
+  /** a choice for ONE room or ONE wall face (session 23): its configuration key — also the row's ref — and its name ("Bed-1 · floor") */
+  key?: string
+  scope?: string
+  /** that room / wall went back to the group's choice ("Same as the group"): no option of its own, no price */
+  removed?: true
 }
 
 export interface CommentPayload {
@@ -37,7 +42,7 @@ export interface BuyerEvent {
   id: Id
   token: string
   kind: EventKind
-  /** what the row is about: the slot id (selection) or the note's id (comment) */
+  /** what the row is about: the slot id or one-room / one-wall key (selection), or the note's id (comment) */
   ref: string
   /** this browser (a random id it keeps) and the name the buyer typed, if any */
   buyer: string
@@ -83,9 +88,17 @@ export function buyer(store: Store | null = local()): { id: string; name: string
 }
 export const setBuyerName = (name: string, store: Store | null = local()): void => write(store, BUYER, { ...buyer(store), name: name.slice(0, 80) })
 
-export const selectionPayload = (slot: FinishSlot, optionId: Id): SelectionPayload | null => {
+/**
+ * A finish choice as a row. `where`: a one-room / one-wall choice (its key and name); there `optionId` null = back to the
+ * group's choice (a wall: the room's), logged so the change list never keeps a choice the buyer took back.
+ */
+export const selectionPayload = (slot: FinishSlot, optionId: Id | null, where?: { key: string; scope: string }): SelectionPayload | null => {
+  if (optionId === null) {
+    const label = where?.key.startsWith('wall:') ? 'Same as the room' : 'Same as the group'
+    return where ? { slotId: slot.id, slotLabel: slot.label, optionId: '', label, brand: '', sku: '', priceDeltaBdt: 0, ...where, removed: true } : null
+  }
   const o = slot.options.find((x) => x.id === optionId)
-  return o ? { slotId: slot.id, slotLabel: slot.label, optionId: o.id, label: o.label, brand: o.brand, sku: o.sku, priceDeltaBdt: o.priceDeltaBdt } : null
+  return o ? { slotId: slot.id, slotLabel: slot.label, optionId: o.id, label: o.label, brand: o.brand, sku: o.sku, priceDeltaBdt: o.priceDeltaBdt, ...where } : null
 }
 
 async function drain(store: Store | null): Promise<void> {
@@ -152,17 +165,17 @@ export function describe(e: BuyerEvent): { what: string; detail: string; brand: 
   if (e.kind === 'selection') {
     const p = e.payload as SelectionPayload
     const c = choiceOf(p)
-    return { what: p.slotLabel, detail: c.label, brand: c.brand, sku: c.sku, deltaBdt: c.deltaBdt }
+    return { what: p.scope ?? p.slotLabel, detail: c.label, brand: c.brand, sku: c.sku, deltaBdt: p.removed ? null : c.deltaBdt }
   }
   const p = e.payload as CommentPayload
   return { what: p.object || 'Note', detail: p.removed ? 'Removed this note' : (p.text ?? ''), brand: '', sku: '', deltaBdt: null }
 }
 
-/** Per link, newest first: its rows, the buyer's current choice per finish slot and their total. */
+/** Per link, newest first: its rows, the buyer's current choice per finish slot / room / wall (taken back ones out) and their total. */
 export function byLink(data: StaffData) {
   return data.links.map((l) => {
     const events = data.events.filter((e) => e.token === l.token)
-    const current = events.filter((e) => e.kind === 'selection' && !e.superseded).map((e) => e.payload as SelectionPayload)
+    const current = events.filter((e) => e.kind === 'selection' && !e.superseded && !(e.payload as SelectionPayload).removed).map((e) => e.payload as SelectionPayload)
     return { ...l, events, current, totalBdt: current.reduce((t, p) => t + deltaOf(p), 0), notes: events.filter((e) => e.kind === 'comment' && !e.superseded && !(e.payload as CommentPayload).removed).length }
   })
 }

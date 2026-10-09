@@ -10,7 +10,7 @@ import sheltechB from '../data/units/sheltech-b.json'
 import { initialState, normalizeUnit, reducer } from '../studio/model'
 import { floorSlotId } from '../three/details'
 import { resolveFinishRef } from '../three/materials'
-import { FINISH_CATALOG, finishSlotsFor, isLevel } from './finishes'
+import { FINISH_CATALOG, faceWallId, finishSlotsFor, isLevel } from './finishes'
 
 const HAND = { 'type-a': typeA, 'type-b': typeB, 'type-c': typeC, 'sheltech-a': sheltechA, 'sheltech-b': sheltechB } as unknown as Record<string, Unit>
 /** the founder's draft as Preview 3D hands it to the viewer: Studio load (Join walls), then the viewer's normalizeUnit */
@@ -95,6 +95,29 @@ describe('finishes on a level (by kind, no slots of its own)', () => {
     }
     // the founder's flat draft (unnamed 'other' spaces) is no level: they stay on the living floor
     expect(isLevel(core.deriveRooms(founder))).toBe(false)
+  })
+})
+
+describe('one wall to look at (faceWallId, session 23: a buyer paints ONE wall)', () => {
+  const faces = (u: Unit, r: Room) => new Set(r.wallIds.map((w) => faceWallId(u, r, w)))
+  it("names each straight run of wall pieces round a room by one of them: Type A's Bed-1 is 9 pieces, 6 walls", () => {
+    const u = HAND['type-a']
+    const rooms = core.deriveRooms(u)
+    const count = (id: string) => [rooms.find((r) => r.id === id)!.wallIds.length, faces(u, rooms.find((r) => r.id === id)!).size]
+    expect([count('r_bed1'), count('r_living'), count('r_dining'), count('r_bath2')]).toEqual([[9, 6], [6, 4], [13, 6], [4, 4]])
+  })
+  it('on every hand unit and the founder draft: a face id is a wall of that room, and its own face id (any piece clicked → the same key)', () => {
+    for (const u of [...Object.values(HAND), founder]) {
+      for (const r of core.deriveRooms(u)) {
+        for (const w of r.wallIds) {
+          const f = faceWallId(u, r, w)
+          expect(r.wallIds).toContain(f)
+          expect(faceWallId(u, r, f), `${u.name} ${r.name}`).toBe(f)
+        }
+      }
+    }
+    const r = core.deriveRooms(HAND['type-a'])[0]
+    expect(faceWallId(HAND['type-a'], r, 'not-on-its-outline')).toBe('not-on-its-outline')
   })
 })
 

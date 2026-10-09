@@ -8,6 +8,7 @@ import { describe, expect, test, vi } from 'vitest'
 import * as THREE from 'three'
 import typeA from '../data/units/type-a.json'
 import type { Opening, Unit, Wall } from '../core'
+import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
@@ -57,6 +58,21 @@ describe('resolveFinishRef on type-a.json', () => {
   test('configuration overrides the default; unknown option falls back to the default', () => {
     expect(resolveFinishRef(unit.finishSlots, { s_floor_wet: 'fo_wet_marble' }, 'r_bath2', 'floor')).toMatchObject({ textureId: 'marble_floor_white' })
     expect(resolveFinishRef(unit.finishSlots, { s_floor_wet: 'fo_beds_oak' }, 'r_bath2', 'floor')).toMatchObject({ textureId: 'tile_floor_ceramic' })
+  })
+
+  test('one wall face beats its room, the room beats the group (session 23); an option outside the covering slot is skipped', () => {
+    const s = unit.finishSlots
+    const beds = { s_floor_beds: 'fo_beds_walnut', [roomKey('r_bed1', 'floor')]: 'fo_beds_marble' }
+    expect(resolveFinishRef(s, beds, 'r_bed1', 'floor')).toMatchObject({ textureId: 'marble_floor_white' })
+    expect(resolveFinishRef(s, beds, 'r_bed2', 'floor')).toMatchObject({ textureId: 'wood_floor_walnut' }) // Bed-2 keeps the group's
+    const paint = { s_wall_paint: 'fo_paint_cream', [roomKey('r_living', 'wall')]: 'fo_paint_sage', [wallKey('w1', 'r_living')]: 'fo_paint_slate_blue' }
+    expect(resolveFinishRef(s, paint, 'r_living', 'wall', 'w1')).toMatchObject({ tint: '#6b7d8f' }) // this wall
+    expect(resolveFinishRef(s, paint, 'r_living', 'wall', 'w2')).toMatchObject({ tint: '#d0d8c9' }) // the living room's other walls
+    expect(resolveFinishRef(s, paint, 'r_living', 'wall')).toMatchObject({ tint: '#d0d8c9' }) // a column: the room's walls
+    expect(resolveFinishRef(s, paint, 'r_dining', 'wall', 'w1')).toMatchObject({ tint: '#e9e2d0' }) // w1's other face: the group
+    expect(resolveFinishRef(s, paint, 'r_living', 'floor')).toMatchObject({ textureId: 'marble_floor_white' }) // walls only
+    // a wet-room option on a bedroom floor is no option of its slot: the group's choice shows
+    expect(resolveFinishRef(s, { ...beds, [roomKey('r_bed1', 'floor')]: 'fo_wet_marble' }, 'r_bed1', 'floor')).toMatchObject({ textureId: 'wood_floor_walnut' })
   })
 
   test('a wall face no room claims is the interior paint (never the exterior tint: a jog poking in read grey), unslotted room floor is the flat default', () => {
