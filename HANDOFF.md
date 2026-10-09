@@ -1,7 +1,7 @@
 # HANDOFF.md — Plotline
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
-Branch: `feat/phase-0` (pushed to GitHub `zaysiallabib/Plotline`; main untouched).
+Branch: **`main`** since 2026-10-09 — the founder moved main onto the session branch himself (commit 28259c8 "9.10.26") and pushed it; `feat/phase-0` and `claude/brave-ritchie-ypmrbd` are history on GitHub `zaysiallabib/Plotline`. Agents still work on worktree branches off main; the manager merges and pushes main.
 Live: https://plotline-flax.vercel.app — **SESSION 19 (the levels) IS LIVE — founder deployed 2026-10-05 (bundle index-8u31c1T8.js), still WITHOUT Supabase: his Vercel names are `SUPABASE_URL` / `SUPABASE_KEY`; commit dc26eb1 makes the build read them — he must redeploy once more (SESSION 20 below).** (Older note: 2026-10-05 00:20 the bundle was still index-ZXDvwqwq.js.) Session 18 is LIVE (founder deployed 2026-10-04 evening; bundle index-ZXDvwqwq.js) but WITHOUT the Supabase env vars — Share link / Change list are missing on live until he adds them in Vercel and redeploys (SESSION 19 PLAN, "DEPLOY STATE").** `npx vercel --prod --yes` is denied to sessions by the classifier — the founder deploys.
 
 ## ▶ SESSION 23 (2026-10-09, Fable 5.1 manages, two Opus 5.5 agents code; founder has ~9 h of tokens before the weekly reset ~2026-10-10). IN PROGRESS.
