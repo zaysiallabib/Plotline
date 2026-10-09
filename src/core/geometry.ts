@@ -90,6 +90,50 @@ export function pointInPolygon(p: Pt, poly: Pt[]): boolean {
   return inside
 }
 
+/**
+ * A room's MAIN RECTANGLE, the way a plan prints its size: the largest rectangle along the axes at `axis` (rad) that
+ * fits inside `poly` — door recesses, nooks and an L's smaller leg left out. 0 × 0 below 3 points.
+ * ponytail: the sides sit on vertex coordinates only — exact where walls run along the axes; a corner touching a slanted
+ * edge between its ends is missed (a triangle gives 0 × 0). Add points along slanted edges as cuts if angled rooms need
+ * it. O(n²) cells × n edges: fine to a few hundred vertices.
+ */
+export function mainRectangle(poly: Pt[], axis = 0): { w: number; h: number } {
+  if (poly.length < 3) return { w: 0, h: 0 }
+  const c = Math.cos(axis), s = Math.sin(axis), E = 1e-7
+  const P = poly.map((p) => ({ x: p.x * c + p.y * s, y: p.y * c - p.x * s })) // rotated by −axis
+  const cuts = (v: number[]) => v.sort((a, b) => a - b).filter((x, i, a) => !i || x - a[i - 1] > E)
+  const X = cuts(P.map((p) => p.x)), Y = cuts(P.map((p) => p.y))
+  // a cell between neighbouring cuts holds no vertex: it is inside unless its centre is out or a slanted edge crosses it
+  const full = X.slice(1).map((x1, i) =>
+    Y.slice(1).map((y1, k) => {
+      const x0 = X[i], y0 = Y[k]
+      if (!pointInPolygon({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 }, P)) return false
+      return P.every((a, j) => {
+        const b = P[(j + 1) % P.length]
+        if (Math.abs(b.x - a.x) < E || Math.min(a.x, b.x) > x0 + E || Math.max(a.x, b.x) < x1 - E) return true
+        const ya = a.y + ((x0 - a.x) * (b.y - a.y)) / (b.x - a.x), yb = a.y + ((x1 - a.x) * (b.y - a.y)) / (b.x - a.x)
+        return Math.max(ya, yb) <= y0 + E || Math.min(ya, yb) >= y1 - E
+      })
+    }),
+  )
+  // every pair of x cuts: the tallest run of rows whose cells between them are all inside
+  let best = { w: 0, h: 0 }
+  for (let i = 0; i < X.length - 1; i++) {
+    const ok = Y.slice(1).map(() => true)
+    for (let j = i + 1; j < X.length; j++) {
+      let run = 0, h = 0
+      for (let k = 0; k < ok.length; k++) {
+        ok[k] &&= full[j - 1][k]
+        run = ok[k] ? run + Y[k + 1] - Y[k] : 0
+        h = Math.max(h, run)
+      }
+      const w = X[j] - X[i]
+      if (w * h > best.w * best.h) best = { w, h }
+    }
+  }
+  return best
+}
+
 export function unitBounds(graph: Pick<Unit, 'vertices'>): Bounds {
   if (!graph.vertices.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0 }
   const b: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }

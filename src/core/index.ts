@@ -53,6 +53,9 @@ export { triangulate } from './geometry'
 
 export { signedArea, pointInPolygon, unitBounds, polygonCentroid } from './geometry'
 
+/** A room's size the way the sheet prints it: the largest rectangle along the axes at `axis` that fits inside `poly`. */
+export { mainRectangle } from './geometry'
+
 /** Closest wall to a plan point: t ∈ [0,1] along a→b, perpendicular distance in m. */
 export { nearestWall } from './geometry'
 
