@@ -225,3 +225,79 @@ test.skipIf(!typeA)('src/data/units/type-a.json validates and every label lands'
   const ids = new Set(rooms.map((r) => r.id))
   for (const l of u.roomLabels) expect(ids.has(l.id), `label ${l.name} matched a face`).toBe(true)
 })
+
+describe('touching is joined (founder 2026-10-09: "a room is closed once a wall touches a pillar … it is a box")', () => {
+  const named = (u: Unit) => deriveRooms(u).filter((r) => u.roomLabels.some((l) => l.id === r.id))
+  const loose = (u: Unit) => validate(u).filter((i) => i.code === 'dangling-vertex').map((i) => i.ids[0])
+  const area = (u: Unit, id: string) => deriveRooms(u).find((r) => r.id === id)?.areaSqm
+
+  test('three walls and a column at the corner close a room; it goes round the column', () => {
+    // the right wall stops on the column's top face, the bottom wall on its left face (column 0.4 × 0.4 at the corner)
+    const g = graph({ a: [0, 0], b: [4, 0], c: [4, 2.8], d: [0, 3], e: [3.8, 3] }, ['a-b', 'b-c', 'd-a', 'd-e'], [label('bed', 1, 1)])
+    expect(named(unit(g))).toHaveLength(0) // no column: open
+    const u = unit({ ...g, pillars: [{ id: 'col', x: 4, y: 3, wM: 0.4, hM: 0.4 }] })
+    const [r] = named(u)
+    expect(r?.id).toBe('bed')
+    expect(r.areaSqm).toBeCloseTo(12 - 0.2 * 0.2, 6)
+    expect(roomPolygon(r, u)).toContainEqual({ x: 3.8, y: 2.8 }) // round the column's corner, not through it
+    expect(loose(u)).toEqual([])
+    expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+  })
+  test('both walls end ON the column corner (two ends, one spot)', () => {
+    const g = graph({ a: [0, 0], b: [4, 0], c: [3.8, 2.8], d: [0, 3], e: [3.8, 2.8] }, ['a-b', 'b-c', 'd-a', 'd-e'], [label('bed', 1, 1)])
+    const u = unit({ ...g, pillars: [{ id: 'col', x: 4, y: 3, wM: 0.4, hM: 0.4 }] })
+    expect(named(u).map((r) => r.id)).toEqual(['bed'])
+    expect(loose(u)).toEqual([])
+  })
+  test('walls ending mid-face of a column: two rooms share it, each going round its half', () => {
+    // a 4 × 3 box split at x = 2 by a partition broken by a 0.6 × 0.6 column at (2, 2): the top piece ends on its top
+    // face, the bottom piece leaves its bottom face
+    const g = graph(
+      { a: [0, 0], p: [2, 0], b: [4, 0], c: [4, 3], q: [2, 3], d: [0, 3], t: [2, 1.7], s: [2, 2.3] },
+      ['a-p', 'p-b', 'b-c', 'c-q', 'q-d', 'd-a', 'p-t', 's-q'],
+      [label('west', 1, 1), label('east', 3, 1)],
+    )
+    expect(named(unit(g)).map((r) => r.id)).toEqual(['west']) // one face: east shares it
+    const u = unit({ ...g, pillars: [{ id: 'col', x: 2, y: 2, wM: 0.6, hM: 0.6 }] })
+    expect(named(u).map((r) => r.id).sort()).toEqual(['east', 'west'])
+    expect(area(u, 'west')).toBeCloseTo(6 - 0.3 * 0.6, 6)
+    expect(area(u, 'east')).toBeCloseTo(6 - 0.3 * 0.6, 6)
+    expect(loose(u)).toEqual([])
+    expect(deriveRooms(u)).toHaveLength(2) // the column itself is no room
+  })
+  test('a wall through a column: an end on the column joins it', () => {
+    // the bottom wall runs on through the column (to x = 5); the right wall stops on the column's top face
+    const g = graph({ a: [0, 0], b: [4, 0], c: [4, 2.75], d: [0, 3], f: [5, 3] }, ['a-b', 'b-c', 'd-a', 'd-f'], [label('bed', 1, 1)])
+    const u = unit({ ...g, pillars: [{ id: 'col', x: 4, y: 3, wM: 0.5, hM: 0.5 }] })
+    const [r] = named(u)
+    expect(r?.id).toBe('bed')
+    expect(r.areaSqm).toBeCloseTo(12 - 0.25 * 0.25, 6)
+    expect(r.wallIds).toContain('d-f') // the through wall bounds it (its piece keeps its id)
+    expect(loose(u)).toEqual(['f']) // its far end is loose; the end on the column is not
+  })
+  test('a column nothing ends on changes no room', () => {
+    const u = unit({ ...rect, roomLabels: [label('r', 1, 1)] })
+    expect(deriveRooms({ ...u, pillars: [{ id: 'col', x: 2, y: 2, wM: 0.4, hM: 0.4 }] })).toEqual(deriveRooms(u))
+  })
+  test("a wall end on a thick wall's FACE closes the room (square, and at an angle); 3 cm short does not", () => {
+    const g = graph({ a: [0, 0], b: [4, 0], c: [4, 3], d: [0, 3], e: [3.85, 3] }, ['a-b', 'b-c', 'd-a', 'd-e'], [label('bed', 1, 1)])
+    g.walls[1].thicknessM = 0.3 // the right wall, 0.3 m: its west face at x = 3.85
+    const u = unit(g)
+    expect(named(u).map((r) => r.id)).toEqual(['bed'])
+    expect(loose(u)).toEqual([])
+    // at an angle, ending on the face mid-wall (from (0, 3) up to (3.85, 2)): meets the centre line along its own line
+    const h = graph({ a: [0, 0], b: [4, 0], c: [4, 3], d: [0, 3], e: [3.85, 2] }, ['a-b', 'b-c', 'd-a', 'd-e'], [label('bed', 1, 1)])
+    h.walls[1].thicknessM = 0.3
+    const v = unit(h)
+    const [r] = named(v)
+    expect(r?.id).toBe('bed')
+    const P = roomPolygon(r, v).find((p) => Math.abs(p.x - 4) < 1e-9 && p.y > 0 && p.y < 3)!
+    expect(P.y).toBeCloseTo(3 - 4 / 3.85, 6) // where its own line meets x = 4
+    expect(loose(v)).toEqual(['c']) // the thick wall's own end, 1 m past the junction, is a loose end still
+    // 3 cm short of the face: not touching (the Studio carries such an end on; core does not guess)
+    const k = graph({ a: [0, 0], b: [4, 0], c: [4, 3], d: [0, 3], e: [3.82, 3] }, ['a-b', 'b-c', 'd-a', 'd-e'], [label('bed', 1, 1)])
+    k.walls[1].thicknessM = 0.3
+    expect(named(unit(k))).toHaveLength(0)
+    expect(loose(unit(k)).sort()).toEqual(['c', 'e'])
+  })
+})

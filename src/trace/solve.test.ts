@@ -175,7 +175,7 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
         KNOBS.joinBodies = prev
       }
     }
-    expect(graph(false).rooms).toHaveLength(0)
+    expect(graph(false).rooms).toHaveLength(1) // core joins the corner ends touching a body (2026-10-09); the partition 0.1 m short stays open
     const d = graph(true)
     expect(d.rooms.map((r) => r.areaSqm.toFixed(1)).sort()).toEqual(['4.2', '7.8'])
     const V = new Map(d.unit.vertices.map((v) => [v.id, v]))

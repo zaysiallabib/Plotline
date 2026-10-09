@@ -23,7 +23,7 @@ export interface Bounds {
 }
 
 /** Graph-only view of a unit (what geometry needs). */
-export type Graph = Pick<Unit, 'vertices' | 'walls' | 'roomLabels'>
+export type Graph = Pick<Unit, 'vertices' | 'walls' | 'roomLabels' | 'pillars'>
 
 export interface WallPiece {
   u0: number
@@ -232,10 +232,10 @@ export function wallPieces(wall: Wall, lengthM: number): WallPiece[] {
   return pieces
 }
 
-export function roomPolygon(room: Room, graph: Graph): Pt[] {
+export function roomPolygon(room: Pick<Room, 'loop' | 'joinPts'>, graph: Pick<Unit, 'vertices'>): Pt[] {
   const vs = vertexMap(graph.vertices)
   return room.loop.map((id) => {
-    const v = vs.get(id)
+    const v = vs.get(id) ?? room.joinPts?.[id]
     if (!v) throw new Error(`vertex ${id} not found`)
     return { x: v.x, y: v.y }
   })
@@ -354,14 +354,13 @@ export function nearestWall(
  * `slope.toLevelM` at its far extent — a plane, so the 3D floor's vertices at this height are the exact ramp. Clamped to
  * the two levels outside the face.
  */
-export function roomLevelAt(room: Pick<Room, 'loop' | 'levelM' | 'slope'>, graph: Pick<Unit, 'vertices'>, x: number, y: number): number {
+export function roomLevelAt(room: Pick<Room, 'loop' | 'levelM' | 'slope' | 'joinPts'>, graph: Pick<Unit, 'vertices'>, x: number, y: number): number {
   const lo = room.levelM ?? 0
   const s = room.slope
   if (!s) return lo
   const r = (s.dirDeg * Math.PI) / 180
   const d = { x: Math.sin(r), y: -Math.cos(r) } // clockwise from plan-up (−y), like northDeg
-  const vs = vertexMap(graph.vertices)
-  const along = room.loop.map((id) => vs.get(id)!).map((p) => p.x * d.x + p.y * d.y)
+  const along = roomPolygon(room, graph).map((p) => p.x * d.x + p.y * d.y)
   const s0 = Math.min(...along)
   const span = Math.max(...along) - s0
   const t = span > EPS ? Math.max(0, Math.min(1, (x * d.x + y * d.y - s0) / span)) : 0

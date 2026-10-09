@@ -22,15 +22,17 @@ export type { Pt, Bounds, Graph, WallPiece } from './geometry'
  * Enclosed faces of the planar wall graph (centerlines), outer face excluded.
  * A face containing a RoomLabel point takes that label's id/name/kind;
  * unlabelled faces get a generated id and name "Space N". A flat's "Type A" label (flatTypeOf) names no face.
- * Loops are ordered so that `signedArea(loop) > 0`.
+ * Loops are ordered so that `signedArea(loop) > 0`. What touches is joined (founder 2026-10-09): a loose wall end on / in a
+ * column's block or in another wall's body (within TOUCH_M) closes the rooms there — a room goes round the column; such
+ * loop points are no vertex of the unit and ride on `Room.joinPts` (roomPolygon resolves them).
  */
 export { deriveRooms } from './graph'
 
 /**
- * Dangling vertices (never a `standsAlone` wall's free ends), zero-length/duplicate walls, openings out of
+ * Dangling vertices (never a `standsAlone` wall's free ends, nor an end touching a column / another wall's body), zero-length/duplicate walls, openings out of
  * bounds/overlapping, labels outside faces, crossing walls; warnings: unlabelled faces, an island inside a face.
  */
-export { validate, MIN_LABELLED_AREA_SQM } from './graph'
+export { validate, MIN_LABELLED_AREA_SQM, TOUCH_M } from './graph'
 
 /** Wall local frame: origin at vertex a, `dir` unit vector a→b, `normal` = dir rotated +90°. */
 export { wallFrame } from './geometry'

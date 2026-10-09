@@ -227,7 +227,7 @@ export class Building extends THREE.Group {
       if (!room) continue
       for (const y of [G, R]) {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
-        put(EXTERIOR_PLASTER, ...room.wallIds.map((id) => wallGeometry(u.walls.find((w) => w.id === id)!, u)).filter((g) => !!g).map(at))
+        put(EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }
       put(EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
     }

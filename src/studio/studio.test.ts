@@ -908,16 +908,16 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       // a partition whose ends stop 5 cm inside the top and bottom walls (never on their centre lines), not split
       const a = { id: 'pa', x: 2, y: 0.05 }, b = { id: 'pb', x: 2, y: 2.95 }
       const overlapping: Unit = { ...raw, vertices: [...raw.vertices, a, b], walls: [...raw.walls, { id: 'part', a: 'pa', b: 'pb', thicknessM: PARTITION_M, heightM: 3, openings: [] }] }
-      expect(deriveRooms(overlapping)).toHaveLength(1)
+      expect(deriveRooms(overlapping)).toHaveLength(2) // touching is joined for the rooms already (core, 2026-10-09)
       const loaded = reducer(initialState(), { type: 'load-unit', unit: overlapping })
       expect(deriveRooms(loaded.unit)).toHaveLength(2)
       expect(loaded.toast?.text).toMatch(/Joined 2/)
-      expect(deriveRooms(reducer(loaded, { type: 'undo' }).unit)).toHaveLength(1)
+      expect(reducer(loaded, { type: 'undo' }).unit.walls).toEqual(overlapping.walls)
       const r = mockTraceResult()
       const traced = studioReducer(initialState(), { type: 'auto-trace', result: { ...r, unit: overlapping } })
       expect(deriveRooms(traced.unit)).toHaveLength(2)
       const undone = studioReducer(traced, { type: 'undo' })
-      expect(deriveRooms(undone.unit)).toHaveLength(1) // the draft as traced, its review list still showing
+      expect(undone.unit.walls).toEqual(overlapping.walls) // the draft as traced, its review list still showing
       expect(undone.review?.unitId).toBe(undone.unit.id)
       expect(studioReducer(undone, { type: 'undo' }).unit.walls).toEqual([]) // then the unit before the trace
     })
@@ -939,7 +939,7 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       // top side: 10" wall (0,0)→(2,0), then a 5" wall flush with its inner face — centre line 0.0635 lower — (2,0.0635)→(4,0.0635)
       const off = (EXTERIOR_M - PARTITION_M) / 2
       const raw = build({ A: [0, 0], E: [2, 0], F: [2, off], B: [4, off], C: [4, 3], D: [0, 3] }, [['A', 'E', EXTERIOR_M], ['F', 'B', PARTITION_M], ['B', 'C', PARTITION_M], ['C', 'D', PARTITION_M], ['D', 'A', PARTITION_M]])
-      expect(deriveRooms(raw)).toHaveLength(0)
+      expect(deriveRooms(raw)).toHaveLength(1) // the 5" wall's end touches the 10" wall's body: joined for the rooms (core, 2026-10-09)
       const s = reducer(initialState(), { type: 'load-unit', unit: raw })
       expect(deriveRooms(s.unit)).toHaveLength(1)
       expect(axisOnly(s.unit)).toBe(true)

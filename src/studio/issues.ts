@@ -277,7 +277,7 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
       if (!outer) return []
       let best: { p: Pt; q: Pt; d: number } | null = null
       for (const a of isle)
-        for (const b of new Set(outer.loop)) {
+        for (const b of new Set(outer.loop.filter((id) => V.has(id)))) {
           const p = V.get(a)!, q = V.get(b)!, d = dist(p, q)
           if (d > 1e-6 && (!best || d < best.d) && !u.walls.some((x) => x.a !== a && x.b !== a && x.a !== b && x.b !== b && cuts(V.get(x.a)!, V.get(x.b)!, p, q))) best = { p, q, d }
         }

@@ -143,16 +143,23 @@ export function quadsOverlap(a: Pt[], b: Pt[]): boolean {
 function buildSides(room: Room, unit: Unit): Side[] {
   const poly = roomPolygon(room, unit)
   const walls = new Map(unit.walls.map((w) => [w.id, w]))
+  const vs = new Map(unit.vertices.map((v) => [v.id, v]))
   const raw: Side[] = poly.map((p, i) => {
     const q = poly[(i + 1) % poly.length]
     const len = dist(p, q) || 1
     const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }
     const w = walls.get(room.wallIds[i])
-    const forward = w?.a === room.loop[i]
+    // which way the edge runs along its wall, and where the wall starts on it: by the plan, not by vertex ids (a wall
+    // split where a loose end or a column joins it is several edges with one id, core Room.joinPts)
+    const wa = w && vs.get(w.a)
+    const wd = wa && w && vs.get(w.b) ? { x: vs.get(w.b)!.x - wa.x, y: vs.get(w.b)!.y - wa.y } : null
+    const forward = !!wd && wd.x * d.x + wd.y * d.y > 0
+    const at0 = wa ? (wa.x - p.x) * d.x + (wa.y - p.y) * d.y : 0 // the wall's a, along this edge
     const doors: Side['doors'] = []
     const wins: Side['wins'] = []
     for (const o of w?.openings ?? []) {
-      const u0 = forward ? o.offsetM : len - o.offsetM - o.widthM
+      const u0 = forward ? at0 + o.offsetM : at0 - o.offsetM - o.widthM
+      if (u0 + o.widthM <= 0 || u0 >= len) continue // on another piece of the wall
       if (o.kind === 'window') wins.push({ u0, u1: u0 + o.widthM, sill: o.sillM, top: o.sillM + o.heightM })
       else {
         // leaf side as openings.ts builds it: 'out' = +normal, which is this room's side when the wall runs with the loop

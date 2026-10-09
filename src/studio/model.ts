@@ -1521,13 +1521,16 @@ export function wallLabelSides(unit: Unit, rooms: Room[]): Map<Id, 1 | -1> {
   const walls = new Map(unit.walls.map((w) => [w.id, w]))
   const near = new Map<Id, [number, number]>() // wallId → [distance to room centroid on −normal side, on +normal side]
   for (const r of rooms) {
+    const poly = roomPolygon(r, unit)
     r.wallIds.forEach((id, i) => {
       const w = walls.get(id)
       if (!w) return
       const f = wallFrame(w, unit.vertices)
       const mid = { x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }
-      // positive loops: a wall traversed a→b has its room on the +normal side
-      const side = w.a === r.loop[i] ? 1 : 0
+      // positive loops: a wall traversed a→b has its room on the +normal side (by the plan: a wall split where a loose
+      // end or a column joins it is several loop edges with one id)
+      const [p, q] = [poly[i], poly[(i + 1) % poly.length]]
+      const side = (q.x - p.x) * f.dir.x + (q.y - p.y) * f.dir.y > 0 ? 1 : 0
       const d = near.get(id) ?? [Infinity, Infinity]
       d[side] = Math.min(d[side], Math.hypot(r.centroid.x - mid.x, r.centroid.y - mid.y))
       near.set(id, d)
