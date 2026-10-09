@@ -6,20 +6,21 @@
  *   y 344–430) and Bed 4's west wall (px x ≈ 632.9, y 465–607), Toilet 2's door between them. The session-22 reading
  *   ("one 10" wall traced on its two faces") was wrong; the hand-traced sheltech-a draws ONE wall at x 5.144 m (px ≈ 629.3),
  *   on the paper between the two.
- * - The kitchen's south block is one wall ≈ 0.34 m thick on its ink. The kitchen still reads 13'-0" against a printed
- *   12'-2": the size check boxes the whole face, which runs into the door recess east of the block (the printed size
- *   stops at the block's face).
+ * - The kitchen's south block is one wall ≈ 0.34 m thick on its ink. The face runs into the door recess east of the
+ *   block: its whole outline reads 8'-5" × 13'-0", its main rectangle 6'-5" × 12'-3", against a printed 8'-5" × 12'-2" —
+ *   neither measure matches.
  * - Every long full-height axis wall sits on its own drawn band (a wall on a face line would be off by half its width).
- * - The sheet's printed sizes (the hand-traced labels carry them) against the draft's rooms: 8 of the 12 closed ones
- *   differ by more than 2" — see the table the test prints and the causes listed at the count. A tracer change should
- *   move that number down, never up.
+ * - The sheet's printed sizes (the hand-traced labels carry them) against the draft's rooms, a room passing when its
+ *   main rectangle OR its whole outline matches (founder 2026-10-09): 6 of the 12 closed ones differ by more than 2"
+ *   (8 with the outline alone) — see the table the test prints and the causes listed at the count. A tracer change
+ *   should move that number down, never up.
  */
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
+import { deriveRooms, outlineBox, pointInPolygon, printedSizeCheck, roomInnerPolygon, roomPolygon } from '../core'
 import type { Unit } from '../core'
 import truthJson from '../data/units/sheltech-a.json'
-import { drawnSize, parsePrintedSize, sheetAxis } from '../studio/review'
+import { parsePrintedSize, sheetAxis } from '../studio/review'
 import { FIXTURES, loadPgm, loadPpm } from './evalio'
 import { findHints, greenMask } from './hints'
 import { solveTraces } from './solve'
@@ -117,7 +118,7 @@ describe.skipIf(!have)('Sheltech L2 Type A auto-traced at the founder\'s scale: 
     expect(open).toBeGreaterThanOrEqual(3) // BED 4 and the two VER labels south of the bedrooms: open in this draft (the table below)
   })
 
-  test("the sheet's printed sizes against the draft's rooms: 8 of the 12 closed ones off by more than 2\" (never more)", () => {
+  test("the sheet's printed sizes against the draft's rooms: 6 of the 12 closed ones off by more than 2\" (never more)", () => {
     const tp = truth.planImage!, ax = sheetAxis(u), rooms = deriveRooms(u)
     const rows: string[] = []
     let n = 0, off = 0
@@ -131,20 +132,21 @@ describe.skipIf(!have)('Sheltech L2 Type A auto-traced at the founder\'s scale: 
         rows.push(`--  ${l.name}: no closed room`)
         continue
       }
-      const e = drawnSize(u, r, ax)
-      const [a, b] = Math.abs(e.w - pr[0]) + Math.abs(e.h - pr[1]) <= Math.abs(e.w - pr[1]) + Math.abs(e.h - pr[0]) ? pr : [pr[1], pr[0]]
-      const bad = Math.abs(e.w - a) > SIZE_TOL_M || Math.abs(e.h - b) > SIZE_TOL_M
+      const poly = roomInnerPolygon(r, u), c = printedSizeCheck(poly, ax, pr[0], pr[1], SIZE_TOL_M), o = outlineBox(poly, ax)
+      const ft = (e: { w: number; h: number }) => `${(e.w / 0.3048).toFixed(2)}' × ${(e.h / 0.3048).toFixed(2)}'`
       n++
-      off += bad ? 1 : 0
-      rows.push(`${bad ? 'OFF' : 'ok '} ${l.name}: drawn ${(e.w / 0.3048).toFixed(2)}' × ${(e.h / 0.3048).toFixed(2)}', printed ${l.printedSize}`)
+      off += c.off ? 1 : 0
+      rows.push(`${(c.off ? 'OFF' : `ok (${c.by})`).padEnd(12)} ${l.name}: printed ${l.printedSize}, main rectangle ${ft(c.drawn)}, outline ${ft(o)}`)
     }
     console.log(`\nSheltech L2 Type A, printed sizes vs the draft (founder's scale):\n${rows.join('\n')}\n${off} of ${n} closed rooms off\n`)
-    // Why, on the sheet (2026-10-09): Kitchen, Toilet 1 — the face runs into a door recess the printed size leaves out;
-    // Bed 1 — the printed size leaves out the built-in wardrobe strip; Dining — the unnamed passage beyond the dashed line
-    // joins it (solve.ts mergeUnread, founder 2026-10-03); Bed 2 — open to the space east of Toilet 2; Bed 3 — its entry
-    // behind a dashed line and the window recess north of it are in the face; Living — open to the outside; Foyer — its
-    // east side is the stair wall's line, the printed size runs to the dashed line 2 px further.
+    // Why, on the sheet (2026-10-09): Toilet 1 and Bed 3 pass by the main rectangle (their entry recesses left out), PDR
+    // by its outline (an L; the sheet prints the whole L). Still off — Kitchen: outline 13'-0" deep (the door recess),
+    // main rectangle 6'-5" wide (the L's narrow leg), printed 8'-5" × 12'-2". Foyer: outline 5" narrow, main rectangle
+    // 4'-5" deep (an L). Living: outline open to the outside, main rectangle 7" short. Dining: outline 21'-3" (the unnamed
+    // passage beyond the dashed line joins it, solve.ts mergeUnread, founder 2026-10-03), main rectangle 1'-2" short.
+    // Bed 1: main rectangle 3" short, outline takes in the wardrobe strip. Bed 2: main rectangle 4" narrow, outline open
+    // to the space east of Toilet 2.
     expect(n).toBeGreaterThanOrEqual(12)
-    expect(off).toBeLessThanOrEqual(8)
+    expect(off).toBeLessThanOrEqual(6)
   })
 })

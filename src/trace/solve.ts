@@ -25,7 +25,7 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, formatFeetInches, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
+import { FT, deriveRooms, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
@@ -173,17 +173,6 @@ export function thicknessScale(walls: WallTrace['walls']): number {
   for (let b = Math.round(half * 0.85); b <= Math.round(half * 1.15); b++) halfPeak = Math.max(halfPeak, sm(b))
   const partitionPx = halfPeak > 0.25 * sm(best) && half / 4 >= 2 ? half / 4 : best / 4
   return partitionPx / PARTITION_M
-}
-
-/** Rotate by −θ and take the bounding box: a face's width × depth along the sheet's axes. */
-function extents(poly: Pt[], th0: number): { w: number; h: number } {
-  const c = Math.cos(-th0), s = Math.sin(-th0)
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
-  for (const p of poly) {
-    const x = p.x * c - p.y * s, y = p.x * s + p.y * c
-    ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
-  }
-  return { w: x1 - x0, h: y1 - y0 }
 }
 
 /** Printed a × b against a face w × h: the better pairing's relative error and its scale factor (printed ÷ drawn). */
@@ -1805,7 +1794,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       let f: (typeof polys)[number] | null = null
       for (const p of polys) if (pointInPolygon(c, p.poly) && (!f || p.r.areaSqm < f.r.areaSqm)) f = p
       if (!f) continue
-      const e = extents(f.inner, draft.th0)
+      const e = mainRectangle(f.inner, draft.th0)
       const m = matchDims(e.w, e.h, it.dims.aM, it.dims.bM)
       if (m.err <= KNOBS.dimsTol) fs.push(m.f)
     }
@@ -2171,13 +2160,12 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     })
   }
 
-  // ── printed sizes: the face's inner size along the sheet's axes vs the label's dims
+  // ── printed sizes: the face along the sheet's axes vs the label's dims (core printedSizeCheck, the Studio's own rule)
   for (const r of named) {
     const dm = dimsOf.get(r.id)
     if (!dm) continue
-    const e = extents(roomInnerPolygon(r, u), draft.th0)
-    const pair = Math.abs(e.w - dm.aM) + Math.abs(e.h - dm.bM) <= Math.abs(e.w - dm.bM) + Math.abs(e.h - dm.aM) ? [dm.aM, dm.bM] : [dm.bM, dm.aM]
-    if (Math.abs(e.w - pair[0]) > KNOBS.sizeTolM || Math.abs(e.h - pair[1]) > KNOBS.sizeTolM)
+    const { off, drawn: e, printed: pair } = printedSizeCheck(roomInnerPolygon(r, u), draft.th0, dm.aM, dm.bM, KNOBS.sizeTolM)
+    if (off)
       review.push({ id: newId(), at: r.centroid, kind: 'size-mismatch', message: `${r.name}: drawn ${formatFeetInches(e.w)} × ${formatFeetInches(e.h)}, printed ${formatFeetInches(pair[0])} × ${formatFeetInches(pair[1])}`, entityId: r.id })
   }
 

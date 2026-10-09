@@ -1,7 +1,10 @@
 /**
  * The founder's auto-trace draft of Sheltech Level 2 Type A (exported 2026-10-06, HANDOFF session 22 task 3): the
  * measurement baseline. Pins what is in his draft: 19 closed rooms, twelve of the thirteen printed sizes off (2" tolerance).
- * Checked against the sheet 2026-10-09 (src/trace/sheltechL2.test.ts pins the tracer's side):
+ * The check passes a room when its main rectangle OR its whole outline matches (founder 2026-10-09); the one that passes is
+ * the 5'-2" × 6'-2" toilet (the sheet's PDR), by its outline — L-shaped on the sheet, which prints the whole L (its main
+ * rectangle is the 3'-2" × 6'-2" leg). Checked against the sheet 2026-10-09 (src/trace/sheltechL2.test.ts pins the
+ * tracer's side):
  * - EIGHT of the twelve are sizes the Studio typed itself: naming a room (R tool box, the "name this room" fix) fills
  *   Printed size with the room's CENTRE-LINE box (model.ts printedSizeOf), and the check compares the INSIDE — always
  *   off by about a wall's thickness. The sheet's own figures for those rooms are different.

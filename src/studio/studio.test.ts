@@ -1492,21 +1492,22 @@ describe('auto-trace import and its review list', () => {
 
   it('a size-mismatch row re-checks itself: it stays (with the current figures) while the room differs from its printed size, and goes once it matches', () => {
     const { after } = traced()
-    const living = after.unit.roomLabels.find((l) => l.name === 'Living')!
-    // the hand trace's Living is 13'-6" × 16'-3" inside, the plan prints 13'-6" × 16'-0"
-    expect(sizeCheck(after.unit, living.id, deriveRooms(after.unit))).toEqual({ off: true, message: `Living: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"` })
-    expect(openReview(after).find((i) => i.id === 'r-size')!.message).toBe(`Living: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"`)
+    const bed3 = after.unit.roomLabels.find((l) => l.name === 'Bed 3')!
+    // the hand trace's Bed 3: main rectangle 11'-3½" × 13'-0", whole outline 14'-6" × 13'-2"; the plan prints 11'-6" × 13'-0"
+    expect(sizeCheck(after.unit, bed3.id, deriveRooms(after.unit))).toEqual({ off: true, message: `Bed 3: drawn 11'-4" × 13'-0", printed 11'-6" × 13'-0"` })
+    expect(openReview(after).find((i) => i.id === 'r-size')!.message).toBe(`Bed 3: drawn 11'-4" × 13'-0", printed 11'-6" × 13'-0"`)
     // renaming the label is not fixing the size: the row stays, reworded
-    const renamed = studioReducer(after, { type: 'update-label', id: living.id, patch: { name: 'Living room' } })
-    expect(openReview(renamed).find((i) => i.id === 'r-size')!.message).toBe(`Living room: drawn 13'-6" × 16'-3", printed 13'-6" × 16'-0"`)
+    const renamed = studioReducer(after, { type: 'update-label', id: bed3.id, patch: { name: 'Bedroom 3' } })
+    expect(openReview(renamed).find((i) => i.id === 'r-size')!.message).toBe(`Bedroom 3: drawn 11'-4" × 13'-0", printed 11'-6" × 13'-0"`)
     // a printed size that still differs keeps it; the drawn size (either way round) closes it; no printed size = nothing to check
-    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "14'-4\" × 16'-0\"" } })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
-    const fixed = studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "16'-3\" × 13'-6\"" } })
+    expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "12'-0\" × 13'-0\"" } })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
+    const fixed = studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "13'-0\" × 11'-4\"" } })
     expect(openReview(fixed).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
     expect(openReview(studioReducer(fixed, { type: 'undo' })).map((i) => i.id)).toEqual(['r-size', 'r-open', 'r-scale'])
-    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: '' } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
-    // within 2" is the printed size
-    expect(openReview(studioReducer(after, { type: 'update-label', id: living.id, patch: { printedSize: "13'-5\" × 16'-2\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+    expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: '' } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+    // within 2" is the printed size; the whole outline matching counts too (founder 2026-10-09: either measure)
+    expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "11'-5\" × 13'-1\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
+    expect(openReview(studioReducer(after, { type: 'update-label', id: bed3.id, patch: { printedSize: "14'-6\" × 13'-2\"" } })).map((i) => i.id)).toEqual(['r-open', 'r-scale'])
   })
 
   it('sheetAxis: the axis most wall length runs along, folded to ±45°', () => {

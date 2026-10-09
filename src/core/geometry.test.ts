@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import {
   deriveRooms,
+  mainRectangle,
   nearestWall,
+  outlineBox,
   pointInPolygon,
+  printedSizeCheck,
   roomAt,
   roomInnerPolygon,
   signedArea,
@@ -69,6 +72,43 @@ describe('signedArea / pointInPolygon / unitBounds', () => {
       maxY: 2,
     })
     expect(unitBounds({ vertices: [] })).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 })
+  })
+})
+
+describe('mainRectangle: the room size the sheet prints', () => {
+  const near = (r: { w: number; h: number }, w: number, h: number) => {
+    expect(r.w).toBeCloseTo(w, 9)
+    expect(r.h).toBeCloseTo(h, 9)
+  }
+  test('a rectangle is itself, either winding', () => {
+    near(mainRectangle(square), 4, 3)
+    near(mainRectangle([...square].reverse()), 4, 3)
+  })
+  test("an L: the bigger leg", () => {
+    near(mainRectangle([P(0, 0), P(6, 0), P(6, 3), P(2, 3), P(2, 5), P(0, 5)]), 6, 3)
+  })
+  const recess = [P(0, 0), P(4, 0), P(4, 3), P(2.5, 3), P(2.5, 3.3), P(1.5, 3.3), P(1.5, 3), P(0, 3)]
+  test('a door recess is left out', () => near(mainRectangle(recess), 4, 3))
+  test('along the sheet axis: the same room turned 30°', () => {
+    const t = Math.PI / 6
+    near(mainRectangle(recess.map((p) => P(p.x * Math.cos(t) - p.y * Math.sin(t), p.x * Math.sin(t) + p.y * Math.cos(t))), t), 4, 3)
+  })
+  test('a chamfered corner: the biggest rectangle that fits inside', () => {
+    near(mainRectangle(chamfered), 4, 4) // 4 × 4 beats 5 × 3; 5 × 4 would cross the chamfer
+    near(mainRectangle(concave), 2, 4) // the notch splits it: 2 × 4 on either side (6 × 1 is smaller)
+  })
+  test('degenerate: 0 × 0', () => {
+    near(mainRectangle([]), 0, 0)
+    near(mainRectangle([P(0, 0), P(1, 1)]), 0, 0)
+  })
+  test('outlineBox: the whole outline, recess included', () => near(outlineBox(recess), 4, 3.3))
+  test('printedSizeCheck: passes when the main rectangle OR the whole outline matches', () => {
+    const tol = 0.05
+    expect(printedSizeCheck(recess, 0, 3, 4, tol)).toMatchObject({ off: false, by: 'main', printed: [4, 3] })
+    expect(printedSizeCheck(recess, 0, 4, 3.3, tol)).toMatchObject({ off: false, by: 'outline' }) // a sheet that prints the whole L
+    const off = printedSizeCheck(recess, 0, 4, 3.6, tol)
+    expect(off).toMatchObject({ off: true, by: undefined, printed: [4, 3.6] })
+    near(off.drawn, 4, 3) // what the row shows: the main rectangle
   })
 })
 

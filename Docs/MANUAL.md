@@ -187,7 +187,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - **Curtains**: a window or sliding window in a bed, living, dining or study room gets curtains in 3D when the other side is outside (a veranda, a shaft, open air). Select the window: the **Curtains** tick box in the panel turns them off for that one window. A glass wall never has curtains.
 
 **R — Room**
-- Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size** (type what the sheet prints there, e.g. `12'-0" × 14'-2"`; leave it empty if the sheet prints none — the tool never fills it in for you, so the size check in "Check these" is always sheet against drawing), **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
+- Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size** (type what the sheet prints there, e.g. `12'-0" × 14'-2"`; leave it empty if the sheet prints none — the tool never fills it in for you, so the size check in "Check these" is always sheet against drawing; it accepts the room when either its main rectangle — the biggest rectangle that fits inside it, door recesses and nooks left out — or its whole outline matches what the sheet prints), **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
 - **Save**, or **Remove** to take the name off.
 
 **C — Column**
@@ -235,7 +235,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
   - *Opening* — kind, width, height, sill, distance from each corner; for doors, hinge side and swing.
   - *Column* — width, depth, delete.
   - *Room name* — name, kind, **Flat** (which flat of the drawing it is in — see "Flats in a whole-floor drawing"), printed size, floor level, ramp.
-- **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**.
+- **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**. A size row ("drawn … printed …") means neither of the room's two measures matches its printed size within 2": its main rectangle (the biggest rectangle that fits inside it — the "drawn" figure the row shows) and its whole outline (an L-shaped room whose sheet prints the whole L passes this way). The row goes once either one matches.
   - **Wall tracks** tick box — which tracing method Auto-trace uses (leave it on).
   - **AI helper (optional)** — a place for a Gemini key; only used to re-read room names the tool could not read.
 - **Issues** — problems in the drawing. Red = breaks the 3D. Amber = worth a look. Grey = cosmetic.
