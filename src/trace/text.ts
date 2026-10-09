@@ -102,7 +102,7 @@ function editDistanceAtMost1(a: string, b: string): boolean {
 
 /** Short plan abbreviations, and the letter pairs small print confuses: one such swap is read as the word ("POR" → PDR). */
 const SHORT = 'PDR BED VER AOD ODU WIC KIT'.split(' ')
-const LOOKALIKE = new Set(['OD', 'DO', 'OQ', 'QO', 'DQ', 'QD', 'EF', 'FE', 'IL', 'LI', 'ER', 'RE', 'BE', 'EB', 'BR', 'RB', 'UV', 'VU', 'CG', 'GC', 'PR', 'RP'])
+const LOOKALIKE = new Set(['OD', 'DO', 'OQ', 'QO', 'DQ', 'QD', 'EF', 'FE', 'IL', 'LI', 'ER', 'RE', 'BE', 'EB', 'BR', 'RB', 'UV', 'VU', 'CG', 'GC', 'PR', 'RP', 'EI', 'IE'])
 function snapShort(tok: string): string {
   const core = tok.replace(/\.+$/, '') // "POR." → PDR.
   if (core.length !== 3 || SHORT.includes(core)) return tok
@@ -828,22 +828,43 @@ const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubi
   { from: 'raw', px: 48, kernel: 'lanczos', cap: true },
 ]
 
-/** Second looks at a room name tesseract misread (the line over a size): capitals only, two other views. */
+/**
+ * Second looks at a line tesseract did not read as a room name nor a size: capitals only, three other views — 'own' = the
+ * raw crop with only the line's own glyph blobs kept (the size line under it, a bed's edge above, a wall beside it
+ * white). Level 3 (2026-10-09): on Sheltech L2 the plain crop read "" for LIVING, FOYER, PDR and VER, the own-glyph
+ * crop read them all.
+ */
 const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-&/ '
-const NAME_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubic' }[] = [
+const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos' | 'cubic' }[] = [
+  { from: 'own', px: 48, kernel: 'lanczos' },
   { from: 'raw', px: 40, kernel: 'cubic' },
   { from: 'clean', px: 48, kernel: 'lanczos' },
 ]
+
+/** The crop `c` (cut at `at`) with only the glyph blobs whose centre is inside `line` kept (grown by 1 px); the rest white. */
+export function ownGlyphs(c: Gray, at: Box, line: Box, glyphs: Box[]): Gray {
+  const out = new Uint8Array(c.data.length).fill(255)
+  const x0 = Math.round(at.x), y0 = Math.round(at.y)
+  for (const q of glyphs) {
+    const cx = q.x + q.w / 2, cy = q.y + q.h / 2
+    if (cx < line.x || cx > line.x + line.w || cy < line.y || cy > line.y + line.h) continue
+    for (let y = Math.max(0, q.y - 1 - y0); y < Math.min(c.height, q.y + q.h + 1 - y0); y++)
+      for (let x = Math.max(0, q.x - 1 - x0); x < Math.min(c.width, q.x + q.w + 1 - x0); x++) out[y * c.width + x] = c.data[y * c.width + x]
+  }
+  return { ...c, data: out }
+}
 
 /**
  * A text line as tesseract gets it: cropped (vertical ones turned upright), resampled to ~`px` glyphs, stretched, padded.
  * With `cap` (a size line's cap band) the crop and the scale follow the digits, not the line box — a box swollen by a wall
  * stub or the name above made the digits small and the crop noisy, and tesseract read nothing.
  */
-export function lineImage(g: Gray, l: TextLine, px: number, kernel: 'lanczos' | 'cubic', cap?: { y0: number; y1: number }): Blob {
+export function lineImage(g: Gray, l: TextLine, px: number, kernel: 'lanczos' | 'cubic', cap?: { y0: number; y1: number }, own?: Box[]): Blob {
   const ch = cap ? cap.y1 - cap.y0 : l.vertical ? l.box.w : l.box.h
   const p = cap ? 0.6 * ch : 0.4 * Math.min(l.box.w, l.box.h)
-  let c = cropGray(g, cap ? { x: l.box.x - p, y: cap.y0 - 0.5 * ch, w: l.box.w + 2 * p, h: 2 * ch } : { x: l.box.x - p, y: l.box.y - p, w: l.box.w + 2 * p, h: l.box.h + 2 * p })
+  const at = cap ? { x: l.box.x - p, y: cap.y0 - 0.5 * ch, w: l.box.w + 2 * p, h: 2 * ch } : { x: l.box.x - p, y: l.box.y - p, w: l.box.w + 2 * p, h: l.box.h + 2 * p }
+  let c = cropGray(g, at)
+  if (own) c = ownGlyphs(c, at, l.box, own)
   if (l.vertical) c = rotateCW(c)
   c = pad(stretch(resample(c, Math.max(1, Math.min(8, px / ch)), kernel)), 12)
   // raw image bytes are fine for tesseract.js (its loadImage wraps them in a Uint8Array); its types only list Blob & co.
@@ -910,27 +931,27 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       const full = /^\d{1,2}'-\d{1,2}"x\d{1,2}'-\d{1,2}"$/.test(r.text) && r.fit <= FULL_FORM_FIT
       return r.sure || full || topMarks(glyphs, lines[i].box) > 0 || (digits > 0 && digits >= t.replace(/[^A-Za-z]/g, '').length)
     }
-    // the line right above a size is a room name: when tesseract did not read it as one, two more views of it
-    const names = lines.flatMap((n, j) => {
-      if (n.vertical || isSize(j) || classifyRoom(read[j].text)) return []
-      const over = lines.some((s, i) => {
+    // a line read as no room name, no size, no area: three more views of it (a name the plain crop missed). The line right
+    // above a size is a room name, so its words may then be snapped hard to the room lexicon
+    const over = (j: number) =>
+      lines.some((s, i) => {
         if (!isSize(i)) return false
+        const n = lines[j]
         const gap = s.box.y - (n.box.y + n.box.h)
         return gap > -0.3 * s.box.h && gap < 1.1 * Math.max(s.box.h, n.box.h) && Math.abs(n.box.x + n.box.w / 2 - (s.box.x + s.box.w / 2)) < 0.6 * Math.max(n.box.w, s.box.w)
       })
-      return over ? [j] : []
-    })
+    const names = lines.flatMap((n, j) => (n.vertical || isSize(j) || classifyRoom(read[j].text) || parseArea(read[j].text) !== null ? [] : [j]))
     if (names.length) {
-      total += 2 * names.length
+      total += NAME_VIEWS.length * names.length
       await setAll({ tessedit_char_whitelist: NAME_CHARS })
       const seen = names.map((j) => [read[j].text])
       for (const v of NAME_VIEWS) {
-        const again = await readAll(names, (l) => lineImage(v.from === 'raw' ? gray : clean, l, v.px, v.kernel))
+        const again = await readAll(names, (l) => lineImage(v.from === 'clean' ? clean : gray, l, v.px, v.kernel, undefined, v.from === 'own' ? glyphs : undefined))
         names.forEach((j, k) => (seen[k].push(again[k].text), !classifyRoom(read[j].text) && classifyRoom(again[k].text) && (read[j] = again[k])))
       }
-      // still no room name: the views' words snapped hard to the room lexicon (only here, over a size)
+      // still no room name over a size: the views' words snapped hard to the room lexicon
       names.forEach((j, k) => {
-        if (classifyRoom(read[j].text)) return
+        if (classifyRoom(read[j].text) || !over(j)) return
         const snapped = seen[k].map(snapRoomWords).find((t) => classifyRoom(t))
         if (snapped) read[j] = { text: snapped, conf: 0.5 }
       })

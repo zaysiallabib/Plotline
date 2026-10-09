@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, type OcrWord } from './text'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -427,6 +427,22 @@ describe('room words over a size', () => {
     expect(snapRoomWords('NOTE')).toBe('NOTE') // nothing within 1 edit
     expect(classifyRoom(snapRoomWords('TOILLT 2'))).toEqual({ kind: 'bath', green: false })
   })
+  test('small print reads E as I in a plan abbreviation: VIR. is a veranda (Sheltech L2 / L4)', () => {
+    expect(classifyRoom('VIR.')).toEqual({ kind: 'balcony', green: false })
+    expect(classifyRoom('VIR')).toEqual({ kind: 'balcony', green: false })
+  })
+})
+
+describe('own-glyph view of a line', () => {
+  test('only the glyph blobs whose centre is on the line stay: the size line below and a wall beside it go white', () => {
+    const c = { width: 20, height: 10, data: new Uint8Array(200).fill(0) } // all ink: a name, its size, a wall
+    const at = { x: 100, y: 50, w: 20, h: 10 }
+    const line = { x: 102, y: 51, w: 10, h: 4 }
+    const out = ownGlyphs(c, at, line, [{ x: 104, y: 52, w: 2, h: 2 }, { x: 104, y: 57, w: 2, h: 2 } /* the size below */])
+    const ink = [...out.data.keys()].filter((i) => out.data[i] === 0).map((i) => [i % 20, Math.floor(i / 20)])
+    expect(ink).toHaveLength(16) // the 2×2 glyph grown by 1 px on each side
+    expect(ink.every(([x, y]) => x >= 3 && x <= 6 && y >= 1 && y <= 4)).toBe(true)
+  })
 })
 
 describe('text lines', () => {
@@ -468,6 +484,7 @@ const SHEETS: { sheet: string; units: Unit[] }[] = [
   { sheet: 'assets__plan-3rd-floor', units: [typeB as unknown as Unit, typeC as unknown as Unit] },
   { sheet: 'assets__plan-sheltech-l2', units: [sheltechA as unknown as Unit, sheltechB as unknown as Unit] },
   { sheet: 'Sheltech_Banani__Level_2-6', units: [] },
+  { sheet: 'Sheltech__Level_4', units: [] },
   { sheet: 'Sheltech_dmd__Level_3-14', units: [] },
 ]
 
@@ -512,7 +529,7 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
     const rows: Record<string, string | number>[] = []
     const misses: string[] = []
     const tot = { sized: 0, found: 0, parsed: 0, exact: 0, misread: 0, unsure: 0 }
-    for (const { sheet, units } of SHEETS) {
+    for (const { sheet, units } of SHEETS.filter((x) => !process.env.TRACE_SHEETS || process.env.TRACE_SHEETS.split(',').some((k) => x.sheet.includes(k)))) {
       const g = loadPgm(`${FIXTURES}${sheet}.pgm`)
       if (!g) continue
       const t0 = performance.now()
