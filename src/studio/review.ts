@@ -2,7 +2,7 @@
  * Auto-trace in the Studio's state: the result import (ONE undo step) and the "Check these" review list.
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
-import { deriveRooms, formatFeetInches, newId, parseLength, roomInnerPolygon } from '../core'
+import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, roomInnerPolygon } from '../core'
 import type { Id, Room, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
@@ -100,15 +100,9 @@ export function sheetAxis(u: Unit): number {
   return sx || sy ? Math.atan2(sy, sx) / 4 : 0
 }
 
-/** A room's inner size along the sheet's axes (the figure printed on the plan is the clear inside). */
+/** A room's size as the sheet prints it: the main rectangle of its clear inside, along the sheet's axes. */
 export function drawnSize(u: Unit, room: Room, axis = sheetAxis(u)): { w: number; h: number } {
-  const c = Math.cos(-axis), s = Math.sin(-axis)
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
-  for (const p of roomInnerPolygon(room, u)) {
-    const x = p.x * c - p.y * s, y = p.x * s + p.y * c
-    ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
-  }
-  return { w: x1 - x0, h: y1 - y0 }
+  return mainRectangle(roomInnerPolygon(room, u), axis)
 }
 
 /** "14'-0\" × 16'-0\"" → [4.27, 4.88] m; null when it is not two lengths */
