@@ -115,6 +115,10 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
   AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
   Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
+- **Non-wall edges (founder, 2026-10-09 night):** Auto-trace may DRAW a guessed glass wall / low wall / zone line to close a room
+  only on real evidence and only when the closed room passes the size check — "drawing guesses would be the right approach only
+  if you can make it strong enough"; otherwise the room stays open with its review row. Never hide warnings: build so fewer are
+  needed. Every gain must show on his own path (drop the sheet, click Auto-trace).
 - **Apartment detection is the priority (founder, 2026-10-09 evening):** "the current system doesn't handle detecting
   apartments that well — bolster that right now"; Auto-trace leaves one or two rooms missing on almost every sheet (measured:
   71 of 116 rooms on the hand-traced flats). Plan and levels: `Docs/AUTOTRACE_STRATEGY.md` §6, order in HANDOFF
