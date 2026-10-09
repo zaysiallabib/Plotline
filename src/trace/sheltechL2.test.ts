@@ -111,6 +111,12 @@ describe.skipIf(!have)('Sheltech L2 Type A auto-traced at the founder\'s scale: 
     expect(off.map(({ l, o }) => `${l.horiz ? 'H' : 'V'} ${l.c.toFixed(1)} (${l.u0.toFixed(0)}–${l.u1.toFixed(0)}): ${o!.toFixed(2)} px`)).toEqual([])
   })
 
+  test('the area line counts the names read on the flat that have no closed room (it always said 0)', () => {
+    const m = res!.review.find((r) => /closed rooms add up to/.test(r.message))!.message
+    const open = Number(/— (\d+) named rooms are still open/.exec(m)?.[1])
+    expect(open).toBeGreaterThanOrEqual(3) // BED 4 and the two VER labels south of the bedrooms: open in this draft (the table below)
+  })
+
   test("the sheet's printed sizes against the draft's rooms: 8 of the 12 closed ones off by more than 2\" (never more)", () => {
     const tp = truth.planImage!, ax = sheetAxis(u), rooms = deriveRooms(u)
     const rows: string[] = []
