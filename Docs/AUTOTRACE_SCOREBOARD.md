@@ -233,3 +233,55 @@ tried: it made the PDR a one-room flat "Type A", undone). Type B: the red "TYPE-
 
 **Node evals (same commit):** reader on the five hand-traced flats 81 → 86 of 116 names found, sizes right 46 → 48 of 87,
 misread 0 → 0 (`TRACE_OCR=1 npx vitest run src/trace/text.test.ts`); the solver table 71 → 72 of 116.
+
+## After Levels 1–2 (2026-10-09, rooms close on their real boundaries; lines that are no wall split nothing)
+
+**How it was made:** the Level 0 method again — Firefox (Playwright's build on E:, headless), the real Studio, a fresh
+Studio per flat, the sheet picture dropped, **S** on the same printed length, **Auto-trace**, one click inside the flat at
+the Level 0 spot. "Before" = main at `526e0e1` (Level 3 merged), "after" = the Levels 1–2 branch at `0b7fdc3`; same
+harness, same clicks (`E:/dev/tmp/s24/l12/l12.mjs` + `batch.mjs`, shots + page texts
+`E:/dev/plotline-shots/s24/l12/before-…` / `after1-…`, logs `E:/dev/tmp/s24/l12/before.log` / `after1.log`). Counts read
+off the panel text (the "Traced …" line, the count line, the "Check these (N)" and "Issues (N)" headers) and the plan
+screenshots with every row dismissed (`…-names.png`). "Closed + named" counts the flat's printed rooms (as above), "names
+read" = the M of the count line.
+
+| Sheet | Flat | Printed | Traced (walls / rooms / labelled) | Names read → closed + named in the count line | Closed + named (of printed) | Open / missing after | Check these | Issues | Shot |
+|---|---|---|---|---|---|---|---|---|---|
+| Sheltech L2 | Type A | 18 | 89 / 13 / 12 → 95 / 15 / 15 | 10 of 14 → **13 of 14** (missing: Ver) | 12 → **15** (+ Veranda 7'-1"×4'-6", Bed 4, Veranda 7'-5"×6'-8") | 6 → **3**: Toilet 3 (its name not read: no room of its own), Veranda 6'-9"×6'-3", Planter (south) | 34 → 33 | 3 → 2 | after1-sheltech-L2-TypeA-names.png |
+| Sheltech L2 | Type B | 17 | 80 / 11 / 10 → 83 / 12 / 12 | 9 of 12 → **11 of 13** (missing: Toilet 2, Ver) | 10 → **12** (+ Bed 4, Veranda 7'-9"×5'-2") | 7 → **5**: Toilet 4'-10"×4'-0", PDR, Veranda 7'-10"×6'-4", Toilet 2, Planter (south) | 25 → 26 | 2 → 2 | after1-sheltech-L2-TypeB-names.png |
+| Sheltech L4 | Type A | 18 | 100 / 12 / 10 → 102 / 14 / 12 | 8 of 13 → **9 of 13** (missing: Foyer, Dining, Family, Ver) | 9 → **10** (+ Kitchen) | 8 → **7**: Veranda (kitchen), Toilet 3, Foyer, Dining, Family Living, Veranda 7'-5"×6'-8", Planter (south) | 51 → **38** | 9 → **5** | after1-sheltech-L4-TypeA-names.png |
+| BTI 2nd (`img_3`) | Type A | 22 | 123 / 25 / 19 → 119 / 24 / 20 | 19 of 21 → **20 of 21** (missing: Veranda) | 19 → **20** (+ Living Room) | 3 → **2**: Veranda 3'-0"×5'-5", Bath-3 | 45 → 42 | 4 → 3 | after1-bti-img3-TypeA-names.png |
+| BTI 3rd (`img_2`) | north | 18 | 111 / 23 / 19 → 107 / 23 / 19 | 16 of 17 → 16 of 17 (missing: Bath 3 — the south flat's, see below) | unchanged | unchanged | 49 → 46 | 2 → **0** | after1-bti-img2-North-names.png |
+| BTI 3rd (`img_2`) | south | 21 | 118 / 20 / 15 → 116 / 20 / 16 | 14 of 19 → **15 of 19** (missing: Veranda 5, Veranda, Ver, Aod) | + Help Bed | the kitchen, Bath-2, Bed-2, the two west AODs and Veranda 3'-0"×5'-5" are outside the traced flat (flat pick, Level 4); Veranda 5'-0"×7'-0", Veranda 5'-5"×9'-11" | 53 → **46** | 11 → **7** | after1-bti-img2-South-names.png |
+| Banani L2-6 | Unit A | 19 | 42 / 1 / 1 → 41 / 1 / 1 | 1 of 9 → 1 of 9 | 1 → 1 | 18 → 18 | 40 → 37 | 30 → 29 | after1-banani-L2-6-UnitA-names.png |
+
+**Totals on these seven flats:** Check these 297 → 268, Issues 61 → 48 — each row gone because what it warned about is
+closed, joined or no longer in the flat (verandas closed on their railing, a window line carried to the wall ahead, the
+lifts read as LIFT PIT / STRETCHER LIFT kept out, the core's hanging walls dropped, a wall end on a column no longer
+listed), none hidden. New rows that came with the closures: a size row where a newly closed room is a few inches off
+its print (Sheltech L2 A: "Ver: drawn 6'-1" × 4'-3", printed 7'-1" × 4'-6"", "Ver: drawn 6'-11" × 6'-8", printed
+7'-5" × 6'-8""), "Bed 4: its printed size could not be read — type it", "Slider … wide? (drawn like a window, rooms
+say slider)" on the glass between a bedroom and its now closed veranda, and the railing / glass rows where the room's size
+was not read to check them (Sheltech L2 B: +1 row in all).
+
+**One traced flat tinted as two:** Sheltech L2 Type A — Bed 3 was its own "Flat 1" before; after, one flat (the nook in
+front of its door joins the dining). Sheltech L4 Type A is still tinted Flat 1 / Flat 2: its foyer, dining and family
+living are one open area with no door between the two halves.
+
+**Rooms no line closes yet, and why (for the next lane):** Sheltech L4's foyer / dining / family living (open plan: only
+the foyer's size is printed and read; its open side runs between two wall ends 0.3 m apart, no straight line meets both),
+the Sheltech south verandas whose size was not read and whose railing is a light double line at the threshold of the
+thin-line cut (L2 A Veranda 6'-9"×6'-3", L2 B Veranda 7'-10"×6'-4"), Sheltech L2 B's Toilet 2 by the lift (its west wall
+is not traced at all), L4's kitchen veranda (its label is read as part of a 743 px wide garbage line), the planters
+south of every Sheltech flat, BTI 3rd floor south's west part (the flat pick does not reach it — most likely the rival
+rule in `solve.ts pickByRooms`: the north flat's BED-2 print is 476 px from the click, the south flat's own 487 px, so the
+south one is taken for the next flat's — Level 4),
+Banani (walls drawn as thin lines).
+
+**Node eval (`npx vitest run src/trace/solve.test.ts --silent=false`, NEW READER table):** 71 → **75 of 116** rooms
+matched (Sheltech A 11 → 13, B 12 → 12, BTI Type A 14 → 15, Type B 16 → 16, Type C 18 → 19); "split" in the missed list
+12 → 11 (gone: Type A Bed-3, Type C Bed-1; Sheltech A's south planter is now listed split instead of shifted). The
+target of 95 is not reached: 10 of the 41 still missed are the core (lobby, stair, lifts, lift lobby — kept out of a flat
+by the founder's rule, so the eval sees them split or merged), 16 are AODs and planters (closed by no line the trace
+reads, or swallowed by the room beside them), 5 verandas, and 10 others (two toilets, two Bath-3s, a PDR, a passage,
+Sheltech A's Living, H. toilet shifted, Sheltech B's Dining, Type C's Bed-2).
