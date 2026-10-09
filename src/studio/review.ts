@@ -3,7 +3,7 @@
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
 import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
-import type { Id, Pt, Room, Unit } from '../core'
+import type { Id, Pt, Room, RoomLabel, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, PrintedRoom, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
 import { layoutFor } from './furniture'
@@ -76,7 +76,12 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
       })
       // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears;
       // then overlapping / crossing walls joined once (join-walls), its own undo step back to the draft as traced
-      const t = reducer({ ...reducer(s, { type: 'drag-begin' }), unit: raw, selection: [], chain: null, tool: 'select' }, { type: 'join-walls' })
+      const joined = reducer({ ...reducer(s, { type: 'drag-begin' }), unit: raw, selection: [], chain: null, tool: 'select' }, { type: 'join-walls' })
+      // Level 3: a printed name standing INSIDE an unnamed room once the walls are joined names it — the trace's own rule
+      // (a name in a room names it) on the rooms the join closed (Sheltech L4: BED 3 stood in an open spot of the traced
+      // draft and in a closed "Space 1" of the joined one); its printed size gets its live size check
+      const named = nameInside(joined.unit, a.result.stats.printed ?? [])
+      const t = { ...joined, unit: named.unit }
       // the room rows first (Level 5): one per printed name with no closed, named room — they stand for the trace's
       // "Unnamed space" row of the room they name
       const R = deriveRooms(t.unit)
@@ -92,7 +97,7 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
         entityId: r.id,
         message: `Unnamed space (${r.areaSqm.toFixed(1)} m²) — type its name (Name it), or join it to the room it is part of`,
       }))
-      const items = [...rows, ...bare, ...kept].map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined }))
+      const items: Review['items'] = [...[...rows, ...bare, ...kept].map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined })), ...named.sized]
       return { ...t, review: { unitId: t.unit.id, items, stats: a.result.stats } }
     }
     case 'dismiss-review':
@@ -117,6 +122,30 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
     default:
       return reducer(s, a) // load-unit / reset start from initialState: no review
   }
+}
+
+/**
+ * The unnamed rooms a printed name stands inside (roomStates `unnamed`, 0 m off) named after it: its "Space N" label
+ * renamed (kind, printed size), or a label added at the room's inside point. `sized`: a live size row per printed size
+ * (shown only while the room differs; see typedSizeRows).
+ */
+function nameInside(u: Unit, printed: PrintedRoom[]): { unit: Unit; sized: Review['items'] } {
+  const rooms = deriveRooms(u)
+  const st = roomStates(u, rooms, printed)
+  let labels = u.roomLabels
+  const sized: Review['items'] = []
+  st.forEach((x, i) => {
+    if (x.s !== 'unnamed' || x.d > 0) return
+    const p = printed[i]
+    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}) }
+    const l = labels.find((y) => y.id === x.room.id)
+    const at = l ?? insidePoint(x.room, u, rooms)
+    if (!at) return
+    const id = l?.id ?? newId()
+    labels = l ? labels.map((y) => (y.id === id ? { ...y, ...patch } : y)) : [...labels, { id, x: at.x, y: at.y, ...patch }]
+    if (p.printedSize) sized.push({ id: newId(), at: { x: at.x, y: at.y }, kind: 'size-mismatch', entityId: id, message: '', sig: 'typed' })
+  })
+  return { unit: labels === u.roomLabels ? u : { ...u, roomLabels: labels }, sized }
 }
 
 /** = trace/solve KNOBS.sizeTolM: a room is its printed size within this (2") */

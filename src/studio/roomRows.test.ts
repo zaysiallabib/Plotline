@@ -42,6 +42,19 @@ describe('room count and room rows', () => {
     expect(roomRows(u, deriveRooms(u), printed).map((r) => r.message)).toEqual(['Space 1 — printed name Toilet is 0.4 m away', 'Ver is open — no closed room around its name'])
   })
 
+  it('Level 3: a printed name standing inside an unnamed room after the import names it — no row; one only beside it keeps its row', () => {
+    const traced = (printed: PrintedRoom[]) =>
+      studioReducer(initialState(), { type: 'auto-trace', result: { unit: twoRooms(), review: [], stats: { ms: 1, pxPerM: 100, scaleFrom: 'given', walls: 7, rooms: 2, labelled: 1, printed } } as never })
+    const inside = traced([P('Bed 1', 1, 1.5, 'bed'), { ...P('Toilet', 3, 1.5, 'bath'), printedSize: `9'-0" × 9'-0"` }])
+    const toilet = deriveRooms(inside.unit).find((r) => r.name === 'Toilet')!
+    expect(toilet.kind).toBe('bath')
+    expect(inside.unit.roomLabels.find((l) => l.id === toilet.id)!.printedSize).toBe(`9'-0" × 9'-0"`)
+    // its printed size is checked live: the 2 × 3 m room (inside its walls) is not 9' × 9', so the size row shows (and only that row)
+    expect(openReview(inside).map((i) => i.message)).toEqual([`Toilet: drawn 6'-2" × 9'-5", printed 9'-0" × 9'-0"`])
+    const beside = traced([P('Bed 1', 1, 1.5, 'bed'), P('Toilet', 3, 3.4, 'bath')])
+    expect(openReview(beside).map((i) => i.message)).toEqual(['Space 1 — printed name Toilet is 0.4 m away'])
+  })
+
   it('"Name it" names the unnamed room as printed; the row and the count follow the unit, not the trace', () => {
     const u = twoRooms()
     const printed = [P('Bed 1', 1, 1.5, 'bed'), P('Toilet', 3, 3.4, 'bath')]
