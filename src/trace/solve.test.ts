@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -243,6 +243,30 @@ describe('open-plan passages (founder 2026-10-03: a dashed beam line under DININ
     // the strip open at the bottom: no face beyond — the passage still closes the dining
     const open = buildGraph({ walls: [walls[0], walls[1], walls[3], wall(p(4, 4), p(3, 4))], openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
     expect(mergeUnread(open, [dining], []).rooms).toHaveLength(1)
+    // Level 2: a low wall drawn along a thin line (a counter, a wardrobe front) splits them no more either
+    const low = buildGraph({ walls: [...walls, { ...wall(p(0, 3), p(4, 3)), heightM: 1.1 }], openings: [] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(low.rooms).toHaveLength(2)
+    expect(mergeUnread(low, [dining], []).rooms.map((r) => r.areaSqm.toFixed(0))).toEqual(['16'])
+    expect(mergeUnread(low, [dining], [strip]).rooms).toHaveLength(2)
+  })
+
+  test("Level 2: the core's wall left hanging off the flat (a run from a free end on a foreign face's outline, bordering none of the flat's faces) goes; a loose wall of the flat stays", () => {
+    const k = 50, blank: Gray = { width: 500, height: 350, data: new Uint8Array(500 * 350).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: 0.127 * k, conf: 1 })
+    // a 4 × 4 m room; a lift's top wall hanging off its right side (x 4 … 6 at y 0), the lift (4 … 6 × 0 … 2) cut away;
+    // a stub of the flat's own (x 1, y 4 … 5) below it
+    const d = buildGraph({ walls: [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 4)), wall(p(4, 4), p(0, 4)), wall(p(0, 4), p(0, 0)), wall(p(4, 0), p(6, 0)), wall(p(1, 4), p(1, 5))], openings: [] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    const lift = [{ x: 5, y: 1 }, { x: 7, y: 1 }, { x: 7, y: 3 }, { x: 5, y: 3 }].map((q) => ({ x: q.x, y: q.y })) // (the draft frame: px / k, origin 0)
+    const out = dropForeignStubs(d, [lift])
+    expect(out.unit.walls.length).toBe(d.unit.walls.length - 1)
+    expect(dropForeignStubs(d, []).unit.walls.length).toBe(d.unit.walls.length)
+  })
+
+  test("Level 2: a read of a drawing — a stroke or two, a fixture's or a note's word — is no name of its own; a word, a size or a name is", () => {
+    const t = (text: string, kind: TextItem['kind'] = 'other') => nameLike({ text, kind })
+    expect([t('—'), t('Va'), t('WASHING | MACHINE'), t('FREEZER'), t('DW'), t('BEAM BOTTOM SLAB')]).toEqual([false, false, false, false, false, false])
+    expect([t('STORE'), t('KITCHEN', 'room'), t("8'-0\"x11'-0\"", 'dims'), t('Ga', 'room')]).toEqual([true, true, true, true])
   })
 })
 

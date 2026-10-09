@@ -765,7 +765,7 @@ function joinInBodies(segs: Seg[], px: number): Seg[] {
  * with nothing drawn is never bridged). A door / passage piece's end never moves. Mutates
  * `segs` (the carried pieces are added; node() splits the walls they meet).
  */
-function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => boolean): void {
+function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => 'same' | 'window' | null): void {
   segs.splice(0, segs.length, ...node(segs, 0.002))
   const at = new Map<string, Seg[]>()
   for (const s of segs) for (const p of [s.a, s.b]) at.set(ekey(p), [...(at.get(ekey(p)) ?? []), s])
@@ -803,9 +803,11 @@ function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => boolean): void {
           }
       }
       // (shorter than the tracks' smallest gap it is no opening — a corner the trace left open: it meets whatever is drawn)
-      if (!best || (best.u >= KNOBS.carryFreeM && !same(s, p, best.X))) continue
+      const drawn = best && (best.u < KNOBS.carryFreeM ? 'same' : same(s, p, best.X))
+      if (!best || !drawn) continue
       const piece = { th: s.th, conf: 0.5, ...(s.heightM ? { heightM: s.heightM } : {}) }
-      const c: Seg = { a: { ...p }, b: { ...best.X }, ...piece, ...(s.op ? { bridge: 'guess' as const, op: { kind: 'window' as const, conf: 0.5 } } : {}) }
+      // (a wall going on with glazing drawn across the gap: a window in it — the tracks' own window rule)
+      const c: Seg = { a: { ...p }, b: { ...best.X }, ...piece, ...(s.op || drawn === 'window' ? { bridge: 'guess' as const, op: { kind: 'window' as const, conf: 0.5 } } : {}) }
       const add = [c, ...(d2(best.X, best.to) > 1e-6 ? [{ a: { ...best.X }, b: { ...best.to }, ...piece }] : [])]
       segs.push(...add)
       for (const x of add) for (const q of [x.a, x.b]) at.set(ekey(q), [...(at.get(ekey(q)) ?? []), x])
@@ -1039,14 +1041,16 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
       const gAt = (x: number, y: number) => gray.data[Math.min(H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))]
       carryEnds(segs, (s, p, q) => {
         const a = toPx(p), b = toPx(q), L = d2(a, b)
-        if (L < 1) return true // (a hair: the same spot)
+        if (L < 1) return 'same' // (a hair: the same spot)
         const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, nx = -uy, ny = ux, th = Math.max(1, s.th * pxPerM)
+        const gz = () => glazing(a, ux, uy, L, Math.max(4, 0.25 * pxPerM, th), gAt)
         if (s.op) {
-          const gz = glazing(a, ux, uy, L, Math.max(4, 0.25 * pxPerM, th), gAt)
-          return gz.lines >= 2 || gz.band >= 3
+          const g = gz()
+          return g.lines >= 2 || g.band >= 3 ? 'same' : null
         }
-        if ((s.heightM ?? WALL_HEIGHT_M) < WALL_HEIGHT_M) return [-2, -1, 0, 1, 2].some((o) => inkAlong(line, W, H, a, b, o) >= 0.9)
-        // a wall: its dark band all the way — dark on the line, paper beyond a face (no dark fill)
+        if ((s.heightM ?? WALL_HEIGHT_M) < WALL_HEIGHT_M) return [-2, -1, 0, 1, 2].some((o) => inkAlong(line, W, H, a, b, o) >= 0.9) ? 'same' : null
+        // a wall: its dark band all the way — dark on the line, paper beyond a face (no dark fill); else two / three
+        // pane lines across the gap — a window in it
         const n = Math.max(3, Math.round(L)), r = th / 2 + Math.max(2, 0.5 * th)
         let core = 0, band = 0
         for (let i = 0; i < n; i++) {
@@ -1054,7 +1058,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
           if ([-1, 0, 1].some((o) => gAt(x + nx * o, y + ny * o) <= dark)) core++
           if (gAt(x + nx * r, y + ny * r) > dark || gAt(x - nx * r, y - ny * r) > dark) band++
         }
-        return core >= 0.9 * n && band >= 0.8 * n
+        return core >= 0.9 * n && band >= 0.8 * n ? 'same' : gz().lines >= 2 ? 'window' : null
       })
     }
   } else {
@@ -1738,7 +1742,9 @@ export function mergeUnread(d: Draft, named: Pt[], hinted: Pt[]): Draft {
     const cut = d.walls.find((w) => {
       const s = side.get(w.id) ?? []
       const open = w.openings.filter((o) => o.kind === 'passage').reduce((t, o) => t + o.widthM, 0)
-      if (s.length !== 2 || open < 0.9 * d2(V.get(w.a)!, V.get(w.b)!)) return false
+      // (Level 2: a low wall drawn along a thin line — a counter, a wardrobe front, a beam line — splits them no more)
+      const thin = w.heightM < WALL_HEIGHT_M && !w.openings.length
+      if (s.length !== 2 || (!thin && open < 0.9 * d2(V.get(w.a)!, V.get(w.b)!))) return false
       const [p, q] = s.map((i) => has(i, named))
       return p !== q && !has(p ? s[1] : s[0], hinted)
     })
@@ -1806,12 +1812,49 @@ function dropForeign(d: Draft, foreign: Pt[], inFlood?: (p: Pt) => boolean): Dra
   return d
 }
 
+/**
+ * The core's / next flat's walls left hanging once their faces are not the flat's (BTI: a lift's door wall the flood ran
+ * along): a run from a free end, bordering none of the flat's faces and lying on the outline of a face that holds a
+ * foreign point on the whole sheet's draft, goes — up to a junction. Level 2: such a stub is no wall of the flat.
+ */
+export function dropForeignStubs(d: Draft, outlines: Pt[][]): Draft {
+  if (!outlines.length) return d
+  const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+  const onOutline = (w: GWall) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    return outlines.some((poly) => poly.some((p, i) => segDist(m, p, poly[(i + 1) % poly.length]) < 0.02))
+  }
+  const deg = (ws: GWall[]) => ws.reduce((m, w) => m.set(w.a, (m.get(w.a) ?? 0) + 1).set(w.b, (m.get(w.b) ?? 0) + 1), new Map<string, number>())
+  const faced = new Set(d.rooms.flatMap((r) => r.wallIds))
+  let walls = d.walls
+  for (const [v, n0] of deg(walls)) {
+    if (n0 !== 1) continue
+    for (let at = v; (deg(walls).get(at) ?? 0) === 1; ) {
+      const w = walls.find((x) => x.a === at || x.b === at)!
+      if (faced.has(w.id) || !onOutline(w)) break
+      walls = walls.filter((x) => x !== w)
+      at = w.a === at ? w.b : w.a
+    }
+  }
+  if (walls.length === d.walls.length) return d
+  const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+  const unit: Unit = { ...d.unit, vertices: d.unit.vertices.filter((v) => used.has(v.id)), walls: walls.map(stripWall) }
+  return { ...d, unit, walls, rooms: deriveRooms(unit) }
+}
+
 // ───────────────────────────────────────────────────────────────── labels, openings, checks
 
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
 /** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
-const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
+const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE|STRETCHER)\b/
+/** the core's names wherever the reader filed them (BTI: "LIFT PIT" over its size read as no room's name — the core all the same) */
+const coreText = (it: TextItem) => (it.kind === 'room' || it.kind === 'other') && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))
 const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
+
+/** fixtures' and notes' words printed on a plan: no room's name */
+const NOT_A_NAME = /\b(WASHING|MACHINE|FREEZER|FRIDGE|REFRIGERATOR|D\.?\s?W|DISH|OVEN|SINK|HOB|BASIN|SHOWER|TUB|WARDROBE|CUP ?BOARD|SHOE|RACK|BEAM|SLAB|LEVEL|FLOOR|DN|UP|TV)\b/
+/** a read that may be a room's label: a name, a size, an area — or a word of three letters or more that is no fixture's */
+export const nameLike = (it: Pick<TextItem, 'kind' | 'text'>) => it.kind !== 'other' || (/[A-Z]{3,}/i.test(it.text) && !NOT_A_NAME.test(it.text.toUpperCase()))
 
 /** a room label's name as the sheet prints it ("BED-1" → "Bed-1") */
 const labelName = (it: TextItem): string => titleCase(trimName(normaliseName(it.text.split('\n')[0])).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
@@ -1884,7 +1927,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // into the next flat
   const coreAt = (k: number) =>
     text.items
-      .filter((it) => it.kind === 'room' && (it.green || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))))
+      .filter((it) => (it.kind === 'room' && it.green) || coreText(it))
       .map((it) => ({ x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }))
   // names a flat has once (LIVING, KITCHEN, numbered BED 3 / TOILET 2): a second one belongs to the next flat
   const namesAt = (k: number) =>
@@ -2053,7 +2096,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     // a face of the core, nor one beside it
     const kept = new Set([...picked.touched, ...[...flat].flatMap((r) => r.wallIds)])
     const G0 = new Map(draft.walls.map((w) => [w.id, w]))
-    const core0 = text.items.filter((it) => it.kind === 'room' && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }))
+    const core0 = text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }))
     const coreWalls = new Set(draft.rooms.filter((r) => core0.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))).flatMap((r) => r.wallIds))
     for (const r of draft.rooms) {
       if (r.areaSqm > 30 || r.wallIds.some((w) => coreWalls.has(w))) continue
@@ -2071,7 +2114,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   // claims (its area stamp, a room fitted to it) — whatever path reached them
   const foreign: Pt[] = pick
     ? [
-        ...text.items.filter((it) => it.kind === 'room' && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
+        ...text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
         ...(byRooms ? byRooms.others.map((i) => ({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM })) : []),
         ...stampsAt(pxPerM).sort((p, q) => d2(p, pick) - d2(q, pick)).slice(1),
         // (a stair flight drawn with no STAIR label — Sheltech's DN / UP — is the core too)
@@ -2079,12 +2122,14 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
       ]
     : []
   flat = new Set([...flat].filter((r) => !foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))))
-  if (flat.size || picked.touched.size) draft = dropSlivers(dropForeign(restrict(draft, flat, picked.touched), foreign, picked.inFlood))
+  const foreignOutlines = draft.rooms.filter((r) => r.areaSqm <= KNOBS.maxRoomSqm && foreign.some((p) => pointInPolygon(p, roomPolygon(r, draft.unit)))).map((r) => roomPolygon(r, draft.unit))
+  if (flat.size || picked.touched.size) draft = dropSlivers(dropForeignStubs(dropForeign(restrict(draft, flat, picked.touched), foreign, picked.inFlood), foreignOutlines))
   if (tracker === 'tracks') {
     const at = (it: (typeof text.items)[number]) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
     const named = text.items.filter((it) => it.kind === 'room' && it.roomKind).map(at)
-    // (any text read there — a name read wrong, a size alone, a garbage read of a label — is a name of its own)
-    const hinted = [...text.items.map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 } })), ...(hints?.hints ?? []).filter((h) => h.kind), ...(thin?.faces ?? []).filter((f) => f.aod || f.planter), ...(draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 } }))].map((h) => ({ x: h.at.x / pxPerM, y: h.at.y / pxPerM }))
+    // (any text read there — a name read wrong, a size alone, a garbage read of a label — is a name of its own; a read of
+    // a drawing — a stroke or two, a fixture's or a note's word — is not: Level 2)
+    const hinted = [...text.items.filter(nameLike).map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 } })), ...(hints?.hints ?? []).filter((h) => h.kind), ...(thin?.faces ?? []).filter((f) => f.aod || f.planter), ...(draft.stairs ?? []).map((s) => ({ at: { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 } }))].map((h) => ({ x: h.at.x / pxPerM, y: h.at.y / pxPerM }))
     draft = mergeUnread(draft, named, hinted)
   }
   // shift so the draft starts near (0, 0)
