@@ -2278,15 +2278,10 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   const stamp = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it)).sort((p, q) => near(p) - near(q))[0]
   const flatSqm = stamp?.areaSqm
   // the flat's TYPE label ("TYPE-A" printed over its "±2736 SFT"): kept as a label of kind 'other' that names the flat
-  // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"). It must stand in one of the flat's rooms:
-  // printed in an open foyer (Sheltech L4), it goes into the closed room nearest the print
+  // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"); one standing in no closed room is dropped
+  // by fixAndReport below, as a person's would be flagged
   const type = stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i.exec(it.text)).find(Boolean)
-  if (stamp && type && named.length) {
-    const c = toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 })
-    const off = (r: Room) => { const poly = roomPolygon(r, u); return pointInPolygon(c, poly) ? 0 : Math.min(...poly.map((a, i) => segDist(c, a, poly[(i + 1) % poly.length]))) }
-    const host = named.reduce((b, r) => (off(r) < off(b) ? r : b))
-    u.roomLabels.push({ id: newId(), name: `Type ${type[1].toUpperCase()} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...(off(host) === 0 ? c : insidePoint(host, u, named)) })
-  }
+  if (stamp && type) u.roomLabels.push({ id: newId(), name: `Type ${type[1].toUpperCase()} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 }) })
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)
   for (const it of text.items) {
