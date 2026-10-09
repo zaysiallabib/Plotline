@@ -166,13 +166,14 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
         wall(p(2.6, 0), p(2.6, 3 - 0.1), par), // partition: stops 0.1 m short of the bottom centre line, off-centre along it
       ],
     }
+    // (off: no body joins and no ends carried on — Level 1's carryEnds would close these corners too)
     const graph = (on: boolean) => {
-      const prev = KNOBS.joinBodies
-      KNOBS.joinBodies = on
+      const prev = [KNOBS.joinBodies, KNOBS.carryM] as const
+      ;[KNOBS.joinBodies, KNOBS.carryM] = [on, on ? prev[1] : 0]
       try {
         return buildGraph(trace, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
       } finally {
-        KNOBS.joinBodies = prev
+        ;[KNOBS.joinBodies, KNOBS.carryM] = prev
       }
     }
     expect(graph(false).rooms).toHaveLength(0)
@@ -202,6 +203,27 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
       expect(len(jog)).toBeCloseTo(off)
       expect(jog.thicknessM).toBeCloseTo(0.254)
     }
+  })
+})
+
+describe('Level 1: loose ends carried on to the wall ahead (carryEnds)', () => {
+  test('a window piece stopping 0.9 m short of a wall runs on where the glazing is drawn across; over paper it stays; under 0.3 m it meets the wall', () => {
+    const k = 50
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: ext, conf: 1 })
+    const walls = [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 3)), wall(p(0, 3), p(0, 0))]
+    const sheet = (glass: boolean): Gray => {
+      const g: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+      if (glass) for (const dy of [-3, 0, 3]) for (let x = p(0, 3).x; x <= p(4, 3).x; x++) g.data[(p(0, 3).y + dy) * 400 + x] = 120
+      return g
+    }
+    const rooms = (to: number, glass: boolean) => buildGraph({ walls, openings: [{ a: p(0, 3), b: p(to, 3), kind: 'window', conf: 0.6, thicknessPx: ext }] }, k, { x: 0, y: 0 }, sheet(glass), undefined, [], 'tracks').rooms
+    const glazed = rooms(3.1, true)
+    expect(glazed).toHaveLength(1)
+    expect(glazed[0].areaSqm).toBeCloseTo(12, 0)
+    expect(rooms(3.1, false)).toHaveLength(0)
+    expect(rooms(3.8, false)).toHaveLength(1)
   })
 })
 

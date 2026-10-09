@@ -50,11 +50,13 @@ export interface FaceLine {
   fill: number
   /** a side of a plant-green box (no ink: where the green stops) */
   green?: boolean
+  /** two or three parallel pen lines a frame apart, read as one: a glass front (Level 1, founder 2026-10-09) */
+  glass?: boolean
 }
 
 export interface ThinFaces {
-  /** the low walls added (px), one per kept line */
-  walls: WallSeg[]
+  /** the low walls added (px), one per kept line; `glass`: a glass front — a full-height wall that is all glazing */
+  walls: (WallSeg & { glass?: boolean })[]
   /** the faces they close: a point inside, area, whether a label names it, plant green over half of it, offered as an AOD, its low walls (indices) */
   faces: { at: Px; areaSqm: number; labelled: boolean; planter: boolean; aod: boolean; walls: number[] }[]
   review: { a: Px; b: Px; message: string }[]
@@ -86,6 +88,9 @@ export const FACES = {
   railingM: 1.1,
   planterM: 0.45,
 }
+
+/** names of rooms whose open sides are a railing or kerb (one thin line), not a wall */
+const OPEN_SIDED = /\b(K\.? ?VER|VER|VERANDAH?|BALCONY|BALC|TERRACE|SUN ?SHADE|PLANTER)\b/
 
 type Seg = { a: Px; b: Px; th: number }
 type Edge = { horiz: boolean; c: number; u0: number; u1: number; th: number }
@@ -181,6 +186,44 @@ export function axisLines(C: Uint8Array, W: number, H: number, horiz: boolean, m
   return out
 }
 
+/**
+ * Level 1 (founder 2026-10-09: "two / three parallel thin lines = glass"): candidate lines side by side — two or three,
+ * each the next ≤ 0.15 m further across, all within maxTh, of about one length and overlapping ≥ 70 % — are one glass
+ * front's frame and panes: one line at the frame's middle (median ends), marked glass. Four or more side by side are a
+ * hatch or a stair's treads: left as they are.
+ */
+export function glazingFrames(lines: FaceLine[], k: number): FaceLine[] {
+  const out: FaceLine[] = []
+  const used = new Set<FaceLine>(), merged = new Set<FaceLine>()
+  const along = (A: FaceLine, B: FaceLine) => {
+    const ov = Math.min(A.u1, B.u1) - Math.max(A.u0, B.u0), la = A.u1 - A.u0, lb = B.u1 - B.u0
+    return ov >= 0.7 * Math.min(la, lb) && Math.min(la, lb) >= 0.6 * Math.max(la, lb)
+  }
+  for (const horiz of [true, false]) {
+    const fam = lines.filter((L) => L.horiz === horiz && !L.green).sort((p, q) => p.c - q.c)
+    for (const A of fam) {
+      if (used.has(A)) continue
+      const grp = [A]
+      for (const B of fam) {
+        if (B.c <= A.c || used.has(B) || B.c - A.c > FACES.maxTh * k) continue
+        if (B.c - grp[grp.length - 1].c <= 0.15 * k && along(A, B)) grp.push(B)
+      }
+      if (grp.length < 2) continue
+      grp.forEach((L) => used.add(L))
+      // (a hatch: its lines stay single lines; a dashed line is a beam or an outline above, never a pane)
+      if (grp.length > 3 || grp.some((L) => L.fill < FACES.dashFill)) continue
+      grp.forEach((L) => merged.add(L))
+      const med = (xs: number[]) => xs.slice().sort((p, q) => p - q)[xs.length >> 1]
+      const c0 = grp[0].c - grp[0].th / 2, c1 = grp[grp.length - 1].c + grp[grp.length - 1].th / 2
+      // a frame at least 0.15 m deep is glass; two strokes closer than that are one line drawn double (a railing's two edges)
+      // (the double stroke stays a pen line, as thin as its strokes: a band that thick would read as a pier)
+      const glass = c1 - c0 >= 0.15 * k
+      out.push({ horiz, c: (c0 + c1) / 2, u0: med(grp.map((L) => L.u0)), u1: med(grp.map((L) => L.u1)), th: glass ? c1 - c0 : Math.max(...grp.map((L) => L.th)), fill: Math.min(...grp.map((L) => L.fill)), ...(glass ? { glass } : {}) })
+    }
+  }
+  return [...lines.filter((L) => !merged.has(L)), ...out]
+}
+
 export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const { width: W, height: H } = gray
   const k = o.k
@@ -232,7 +275,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const onGap = (L: FaceLine) => L.fill >= FACES.dashFill && gaps.some((g) => g.horiz === L.horiz && Math.abs(g.c - L.c) <= g.th / 2 + halo && Math.min(g.u1, L.u1) - Math.max(g.u0, L.u0) > Math.min(0.2 * k, 0.5 * (g.u1 - g.u0)))
   const why = (L: FaceLine) => (inFit(L) ? 'inside a fitted room' : crossesFixture(L) ? 'across a fixture' : onGap(L) ? 'solid line on an undecided gap' : '')
   const dropped = raw.flatMap((L) => (why(L) ? [{ ...L, fate: why(L) }] : []))
-  const lines = raw.filter((L) => !why(L))
+  const lines = glazingFrames(raw.filter((L) => !why(L)), k)
 
   // ── ends onto the graph: a wall / decided opening across the end (its centre line), or a wall ending on this line
   const edges: Edge[] = []
@@ -375,9 +418,10 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       if (a < FACES.minArea) return 'sliver'
       if (p.n / Math.max(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1) < FACES.minWidth * k) return 'sliver'
       if (a > FACES.maxArea) return 'too big'
-      // (a planter box is all parapet and green edge: no furniture is green)
-      if (p.walls < FACES.wallShare * (p.walls + p.thin) && p.green < 0.5 * p.n) return 'thin rim'
       const names = new Set(labelPx.filter((l) => lab1[l.i] === p.id).map((l) => l.name))
+      // (a planter box is all parapet and green edge: no furniture is green; a room printed VER / veranda / planter is
+      // all railing or kerb on its open sides — Level 1, founder 2026-10-09)
+      if (p.walls < FACES.wallShare * (p.walls + p.thin) && p.green < 0.5 * p.n && ![...names].some((nm) => OPEN_SIDED.test(nm))) return 'thin rim'
       if (names.size > 1) return 'two labels'
       // a corner of a closed room with one name (a shower tray, a closet in the toilet): not a room of its own
       if (!names.size && !edge0.has(p.G) && (namesIn.get(p.G)?.size ?? 0) === 1) return 'inside a named room'
@@ -408,7 +452,8 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     // as the outer side of a face (the region beyond it keeps its old self)
     const sides = new Map<number, Part[]>()
     for (const p of parts) for (const li of p.lines) sides.set(li, [...(sides.get(li) ?? []), p])
-    const piers = [...sides].filter(([li, ps]) => alive[li] && cands[li].th > 0.1 * k && ps.length > 1 && ps.every((p) => p.ok !== undefined)).map(([li]) => li)
+    // (a glass front's frame is a band too, but a boundary between two rooms: a bedroom and its veranda)
+    const piers = [...sides].filter(([li, ps]) => alive[li] && !cands[li].glass && cands[li].th > 0.1 * k && ps.length > 1 && ps.every((p) => p.ok !== undefined)).map(([li]) => li)
     for (const li of piers) (alive[li] = false), (fate[li] ||= 'a band between two new faces (a pier)')
     if (!failing.length && !piers.length) break
     if (piers.length) {
@@ -418,9 +463,11 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
     // slivers first (a double pen line, a frame line beside a wall): the longest of a sliver's lines stays; the faces they
     // cut are judged again without them
     const slivers = failing.filter((p) => p.why === 'sliver')
+    // then thin-rimmed parts (a bed's or a table's outline: the label printed on it lands in the room once they go)
+    const rims = failing.filter((p) => p.why === 'thin rim')
     // (otherwise a failing part loses the lines no passing face needs — a strip beyond a planter's edge goes, the edge stays)
     const needed = new Set(parts.filter((p) => p.ok).flatMap((p) => [...p.lines]))
-    for (const p of slivers.length ? slivers : failing) {
+    for (const p of slivers.length ? slivers : rims.length ? rims : failing) {
       const ls = [...p.lines].sort((x, y) => Math.abs(cands[y].e[1]!.u - cands[y].e[0]!.u) - Math.abs(cands[x].e[1]!.u - cands[x].e[0]!.u))
       const spare = ls.filter((li) => !needed.has(li))
       // (a sliver's cause is a line along it — beside a wall, or the second pen of a double line: the longest of those
@@ -440,13 +487,19 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   alive = alive.map((_, i) => keep.has(i))
   prune()
   for (const li of [...keep]) if (!alive[li]) keep.delete(li)
-  const walls: WallSeg[] = []
+  const walls: ThinFaces['walls'] = []
   const wallOf = new Map<number, number>()
   const review: ThinFaces['review'] = []
   const isGreen = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && !!o.green?.[Math.round(y) * W + Math.round(x)]
   for (const li of keep) {
     wallOf.set(li, walls.length)
     const L = cands[li], s = segOf(L)
+    if (L.glass) {
+      // a glass front (Level 1): a full-height wall that is all glazing — sill 0, to its top (solve.ts makes the window)
+      walls.push({ a: s.a, b: s.b, thicknessPx: Math.max(0.0635 * k, Math.min(L.th, 0.254 * k)), conf: 0.4, glass: true })
+      review.push({ a: s.a, b: s.b, message: `Glass front traced as glazing floor to top along its drawn panes, ${(Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) / k).toFixed(1)} m — or a railing / a window with a sill? Check` })
+      continue
+    }
     // plant green along ≥ 40 % of it within 0.3 m on one side: the planter's edge
     let g = 0, n = 0
     for (let u = Math.min(L.e[0]!.u, L.e[1]!.u); u <= Math.max(L.e[0]!.u, L.e[1]!.u); u += 2, n++)

@@ -111,6 +111,8 @@ export const KNOBS = {
   joinBodies: true,
   /** tracks, Level 1: a free end runs on along its line to the wall ahead up to this far, where the same thing is drawn across (carryEnds) */
   carryM: 1.2,
+  /** … and under this far it meets the wall ahead whatever is drawn between (no opening is that narrow: tracks' smallest gap) */
+  carryFreeM: 0.3,
 }
 
 type Pt = { x: number; y: number }
@@ -120,6 +122,8 @@ interface Op {
   conf: number
   hinge?: Pt
   swingTo?: Pt
+  /** a glass front: floor to top (OpeningGuess.glass) */
+  glass?: boolean
 }
 interface Seg {
   a: Pt
@@ -756,8 +760,9 @@ function joinInBodies(segs: Seg[], px: number): Seg[] {
  * Level 1 (founder 2026-10-09: "most loose ends stop a few cm short of the wall ahead"): a free end is carried on along its
  * own line onto the wall ahead — a wall across it (its centre line) or the next piece on its line (that piece's end), up
  * to carryM — when the sheet shows the same drawn thing all the way across (`same`: a wall's dark band for a wall, the
- * glazing profile for a window piece, the thin line for a low wall). Paper, a door, a different drawn thing: it stays
- * where it is (founder: a gap with nothing drawn is never bridged). A door / passage piece's end never moves. Mutates
+ * glazing profile for a window piece, the thin line for a low wall), or the gap is under carryFreeM (narrower than any
+ * opening: a corner the trace left open). Paper, a door, a different drawn thing: it stays where it is (founder: a gap
+ * with nothing drawn is never bridged). A door / passage piece's end never moves. Mutates
  * `segs` (the carried pieces are added; node() splits the walls they meet).
  */
 function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => boolean): void {
@@ -797,7 +802,8 @@ function carryEnds(segs: Seg[], same: (s: Seg, p: Pt, q: Pt) => boolean): void {
             if (u > 0.005 && u <= KNOBS.carryM && (!best || u < best.u) && Math.abs(crs(d, v)) <= Math.max(0.002, Math.min(s.th, t.th) / 2)) best = { u, X: { x: p.x + d.x * u, y: p.y + d.y * u }, to: q }
           }
       }
-      if (!best || !same(s, p, best.X)) continue
+      // (shorter than the tracks' smallest gap it is no opening — a corner the trace left open: it meets whatever is drawn)
+      if (!best || (best.u >= KNOBS.carryFreeM && !same(s, p, best.X))) continue
       const piece = { th: s.th, conf: 0.5, ...(s.heightM ? { heightM: s.heightM } : {}) }
       const c: Seg = { a: { ...p }, b: { ...best.X }, ...piece, ...(s.op ? { bridge: 'guess' as const, op: { kind: 'window' as const, conf: 0.5 } } : {}) }
       const add = [c, ...(d2(best.X, best.to) > 1e-6 ? [{ a: { ...best.X }, b: { ...best.to }, ...piece }] : [])]
@@ -987,7 +993,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
     if (tracks) {
       // a drawn door / window (positive evidence only) is a child of its wall; a gap with nothing drawn is never bridged
       // (a passage: nothing drawn here AND on the fitted rooms' edges — merge.ts — an opening, flagged)
-      if (o.kind === 'door' || o.kind === 'window' || o.kind === 'passage') segs.push({ a: toM(o.a), b: toM(o.b), th: (o.thicknessPx ?? PARTITION_M * pxPerM) / pxPerM, conf: o.conf, bridge: 'guess', op: { kind: o.kind, conf: o.conf, hinge: o.hingeAt && toM(o.hingeAt), swingTo: o.swingTo && toM(o.swingTo) } })
+      if (o.kind === 'door' || o.kind === 'window' || o.kind === 'passage') segs.push({ a: toM(o.a), b: toM(o.b), th: (o.thicknessPx ?? PARTITION_M * pxPerM) / pxPerM, conf: o.conf, bridge: 'guess', op: { kind: o.kind, conf: o.conf, hinge: o.hingeAt && toM(o.hingeAt), swingTo: o.swingTo && toM(o.swingTo), ...(o.glass ? { glass: true } : {}) } })
       else gaps.push({ a: toM(o.a), b: toM(o.b) })
       continue
     }
@@ -1957,7 +1963,8 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   }
   // (on the sheet as drawn: the text pass erases thin ink inside label boxes, and an AOD's label box often covers its grille)
   const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green) : null
-  if (thin) trace = { ...trace, walls: [...trace.walls, ...thin.walls] }
+  // (a glass front faces.ts drew: a window floor to top, the child of a wall of its own — Level 1)
+  if (thin) trace = { ...trace, walls: [...trace.walls, ...thin.walls.filter((w) => !w.glass)], openings: [...trace.openings, ...thin.walls.filter((w) => w.glass).map((w) => ({ a: w.a, b: w.b, kind: 'window' as const, conf: 0.5, thicknessPx: w.thicknessPx, glass: true }))] }
 
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker)
@@ -2263,6 +2270,8 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
       const conf = gs?.conf ?? 0.2
       const def = openingDefaults(kind, wet)
       const op: Opening = { ...o, kind, heightM: def.heightM, sillM: def.sillM }
+      // a glass front (Level 1): glazing floor to top, as the O tool's Glass wall makes it
+      if (gs?.glass && kind === 'window') (op.sillM = 0), (op.heightM = w.heightM > 2 ? w.heightM : 2.7)
       if (kind === 'door') {
         const mid = o.offsetM + o.widthM / 2
         // the guess's points are in the pre-shift metres
