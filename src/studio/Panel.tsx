@@ -577,7 +577,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="Depth (up–down)">
           <LenInput valueM={p.hM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { hM: m } })} />
         </Row>
-        <p className="muted">Drag it to move it (it snaps to walls and corners), drag a corner dot to size it, arrows nudge 1".</p>
+        <p className="muted">Drag it to move it (it snaps to walls and corners). Drag a side to move that side alone, a corner to move two; arrows nudge 1". A wall that touches it — middle, edge or corner — closes the room there.</p>
         <button className="link" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
           Delete column (Del)
         </button>
