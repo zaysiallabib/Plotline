@@ -2310,7 +2310,9 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     ends.forEach((v) => jambs.add(v.id))
     review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'unclosed', message: `A ${formatFeetInches(d2(a, b))} gap in the wall with no door swing or window drawn in it — a door, a window, or open?`, entityId: ends[0].id })
   }
-  for (const [vid, n] of deg) if (n === 1 && !jambs.has(vid)) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
+  // (an end on / inside one of the flat's columns is joined there — core validate's rule, founder 2026-10-06)
+  const inColumn = (v: Vertex) => (u.pillars ?? []).some((c) => Math.abs(v.x - c.x) <= c.wM / 2 + 1e-6 && Math.abs(v.y - c.y) <= c.hM / 2 + 1e-6)
+  for (const [vid, n] of deg) if (n === 1 && !jambs.has(vid) && !inColumn(V.get(vid)!)) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
   for (const w of draft.walls)
     if (w.bridge === 'track' && d2(V.get(w.a)!, V.get(w.b)!) >= 3) {
       const a = V.get(w.a)!, b = V.get(w.b)!

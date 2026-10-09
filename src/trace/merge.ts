@@ -383,13 +383,18 @@ export function roomsOnTracks(tt: Pick<TrackTrace, 'tracks' | 'joins' | 'gaps'>,
       const outer = thin.length > 0 && thin.every((it) => it.rooms.length === 1 && it.out && fits[it.rooms[0]].label.roomKind === 'balcony')
       if (outer) {
         const heightM = thin.some((it) => fits[it.rooms[0]].label.green) ? PLANTER_M : RAILING_M
-        // on the thin line as drawn (often the wall's outer face carried across), joined to the track's ends by short
-        // pieces of the same low wall: the room behind it keeps its printed depth
+        // on the thin line as drawn (often the wall's outer face carried across): the room behind it keeps its printed
+        // depth. Each end meets a wall drawn on that line just beyond it (the next room's wall the line carries on), else
+        // the track's end by a short crosswise piece of the same low wall
         const c = thin.map((it) => it.c).sort((p, q) => p - q)[thin.length >> 1]
         const at = Math.abs(c - g.c) >= 1.5 ? c : g.c
         const low = (p: Px, q: Px) => extraWalls.push({ a: p, b: q, thicknessPx: 0.0635 * k, conf: 0.5, heightM })
-        low(P(g.horiz, at, g.u0), P(g.horiz, at, g.u1))
-        if (at !== g.c) low(a, P(g.horiz, at, g.u0)), low(b, P(g.horiz, at, g.u1))
+        const onLine = (lo: number, hi: number, end: 'u0' | 'u1') =>
+          tt.tracks.find((T) => T.horiz === g.horiz && Math.abs(T.c - at) <= 1.5)?.intervals.find((iv) => iv[end] >= lo && iv[end] <= hi)?.[end]
+        const e0 = at === g.c ? undefined : onLine(g.u0 - 0.3 * k, g.u0 + 2, 'u1'), e1 = at === g.c ? undefined : onLine(g.u1 - 2, g.u1 + 0.3 * k, 'u0')
+        low(P(g.horiz, at, e0 ?? g.u0), P(g.horiz, at, e1 ?? g.u1))
+        if (at !== g.c && e0 === undefined) low(a, P(g.horiz, at, g.u0))
+        if (at !== g.c && e1 === undefined) low(b, P(g.horiz, at, g.u1))
         walled.add(g)
         decided.low = (decided.low ?? 0) + 1
         added.push({ a, b, kind: 'low', th: 0.0635 * k })
