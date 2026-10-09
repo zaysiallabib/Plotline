@@ -1328,12 +1328,28 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(at(s, 'rug')).toEqual(at(fixture(), 'rug'))
   })
 
-  it('pieceAt prefers the floor piece over what rests on it, and ceiling fixtures over rugs', () => {
-    const ps = fixture().unit.furniture
-    expect(pieceAt(ps, { x: 3.05, y: 4.27 })?.id).toBe('sofa')
+  it('pieceAt picks what the plan draws on top: a piece over another (cushions, a wall cabinet) before it, ceiling fixtures and rugs (outlines) last', () => {
+    // founder 2026-10-09 "sometimes selects, sometimes doesn't": a wall cabinet / hood drawn over its counter selected the counter, always
+    const ps = [...fixture().unit.furniture, piece('upper', 'kitchen_upper', 'B', 6.5, 0.28)] // 0.35 deep, over the counter's back
+    expect(pieceAt(ps, { x: 3.05, y: 4.27 })?.id).toBe('cush') // drawn over the sofa (a drag of it moves the sofa: arrange.baseOf)
+    expect(pieceAt(ps, { x: 2.0, y: 4.39 })?.id).toBe('sofa')
+    expect(pieceAt(ps, { x: 6.5, y: 0.3 })?.id).toBe('upper')
+    expect(pieceAt(ps, { x: 6.5, y: 0.6 })?.id).toBe('base')
     expect(pieceAt(ps, { x: 2.5, y: 2.5 })?.id).toBe('lamp')
     expect(pieceAt(ps, { x: 2.0, y: 2.0 })?.id).toBe('rug')
     expect(pieceAt(ps, { x: 0.5, y: 0.5 })).toBeNull()
+  })
+
+  it('pieceAt: a sliver (a wall TV 6 cm deep, a print) is picked within the slack; a piece right under the point still wins', () => {
+    const ps = [...fixture().unit.furniture, piece('tv', 'tv_55_wall', 'A', 2.5, 0.135)] // y 0.105..0.165 on the plan
+    expect(pieceAt(ps, { x: 2.5, y: 0.2 })).toBeNull() // 3.5 cm past its front: a 1-px line at the founder's zoom, the click missed
+    expect(pieceAt(ps, { x: 2.5, y: 0.2 }, 0.05)?.id).toBe('tv')
+    expect(pieceAt(ps, { x: 3.05, y: 4.27 }, 0.05)?.id).toBe('cush')
+    expect(pieceAt(ps, { x: 2.5, y: 0.4 }, 0.05)).toBeNull()
+    // two slivers in reach: the nearer (a diptych's right print was picked as its left one)
+    const two = [...ps, piece('tv2', 'tv_55_wall', 'A', 4.0, 0.135)]
+    expect(pieceAt(two, { x: 3.3, y: 0.2 }, 0.3)?.id).toBe('tv2')
+    expect(pieceAt(two, { x: 3.2, y: 0.2 }, 0.3)?.id).toBe('tv')
   })
 
   it('type A: the first move writes the preset layout with only the moved piece (and its cushions) changed; resets', () => {

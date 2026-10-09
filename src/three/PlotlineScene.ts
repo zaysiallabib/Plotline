@@ -81,6 +81,8 @@ const STOREY_WALL_M = 2.4
 /** The tallest step the walker takes, up or down (canStep). */
 const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
+/** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
+const CLICK_PX = 6
 const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
 
 /**
@@ -1207,7 +1209,7 @@ export class PlotlineScene {
     const og = this.opGrab
     if (og) {
       const d = this.pointerDown
-      if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3) return
+      if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) return
       og.moved = true
       const p = this.alongWall(this.ndcOf(e), og.wallId) // along ITS wall, at any angle
       if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: og.end === 'top' || og.end === 'sill' ? p.v : p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
@@ -1219,7 +1221,7 @@ export class PlotlineScene {
     }
     const g = this.grab
     const d = this.pointerDown
-    if (!g || (!g.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 3)) return
+    if (!g || (!g.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX)) return
     g.moved = true
     if (g.handle) {
       this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
@@ -1269,12 +1271,12 @@ export class PlotlineScene {
       this.opGrab = this.look2 = null
       this.orbit.enabled = this.mode !== 'walk'
       if (g?.moved) this.openingCb?.({ kind: 'drop', id: g.id })
-      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) this.openingCb?.({ kind: 'select', id: null })
+      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) this.openingCb?.({ kind: 'select', id: null })
       return
     }
     if (this.hand && this.mode !== 'building') {
       this.look2 = null
-      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) {
+      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) {
         this.aimHand() // where the click is (the crosshair while locked), then drop there
         this.arrangeCb?.({ kind: 'drop', id: this.hand.id })
       }
@@ -1287,10 +1289,10 @@ export class PlotlineScene {
       // a dragged piece stays in hand until the drop fits (ask 10: a refused spot keeps it, red); the handler lets go
       if (g?.moved && !g.handle) this.hand = { id: g.id, y: g.y, off: g.off }
       if (g?.moved) this.arrangeCb?.({ kind: 'drop', id: g.id })
-      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 6) this.arrangeCb?.({ kind: 'select', id: null })
+      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) this.arrangeCb?.({ kind: 'select', id: null })
       return
     }
-    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return // a drag, not a click
+    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return // a drag, not a click
     const ndc = new THREE.Vector2(0, 0)
     if (!this.plc.isLocked) {
       const r = this.canvas.getBoundingClientRect()

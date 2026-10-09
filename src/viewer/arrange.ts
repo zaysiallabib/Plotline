@@ -75,11 +75,11 @@ export interface DragTarget {
   wall: WallFace | null
 }
 
-/** What a drag of piece `id` moves: a piece resting on another (a TV on its unit, cushions) → that one, as the Studio's pieceAt. */
+/** What a drag of piece `id` moves (3D and Studio tool F): a piece resting on another (a TV on its unit, cushions) → the floor piece under it. */
 export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement | null {
   const p = pieces.find((x) => x.id === id)
   if (!p || surfaceOf(p) !== 'floor' || layerOf(p) !== 1) return p ?? null
-  return pieceAt(pieces.filter((o) => o.roomId === p.roomId), p) ?? p
+  return pieceAt(pieces.filter((o) => o.roomId === p.roomId && layerOf(o) === 0), p) ?? p
 }
 
 /**
