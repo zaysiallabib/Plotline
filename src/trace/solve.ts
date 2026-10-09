@@ -2453,6 +2453,14 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
   // then a drawn fixture / green fill — both flagged for a check; else 'other' + unlabelled. Numbered west → east, then
   // north → south, so the same sheet gives the same "Toilet 2" / "Space 3" every time (Level 0: they changed per run)
   pending.sort((p, q) => p.centroid.x - q.centroid.x || p.centroid.y - q.centroid.y)
+  // (Level 4: a lift read as no room's name — BTI's "LIFT PIT", "STRETCHER LIFT" — names its face: the core, in no flat)
+  for (const r of [...pending]) {
+    const it = text.items.find((x) => x.kind === 'other' && coreText(x) && pointInPolygon(toM({ x: x.box.x + x.box.w / 2, y: x.box.y + x.box.h / 2 }), polys.get(r.id)!))
+    if (!it) continue
+    roomLabels.push({ id: newId(), name: labelName(it), kind: 'other', ...insidePoint(r, u, rooms) })
+    labelled++
+    pending.splice(pending.indexOf(r), 1)
+  }
   if (pending.length && inputs.propagate) {
     const toPxP = (p: Pt): Px => ({ x: originPx.x + p.x * pxPerM, y: originPx.y + p.y * pxPerM })
     const got = inputs.propagate(rooms.map((r) => ({ poly: polys.get(r.id)!.map(toPxP), kind: kindOf.get(r) })))
