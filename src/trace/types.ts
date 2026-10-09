@@ -175,6 +175,8 @@ export interface PrintedRoom {
   at: { x: number; y: number }
   kind: string // core RoomKind
   printedSize?: string
+  /** the flat it was read in (Level 4: "Type A", "Flat 2" — the name its rooms are pinned to) */
+  flat?: string
 }
 
 export interface AutoTraceStats {
@@ -198,6 +200,8 @@ export interface AutoTraceStats {
   printed?: PrintedRoom[]
   /** the floor the printed flat area should give, m² (areaShare of it): the room count's area figure — extension (Level 5) */
   wantSqm?: number
+  /** Level 4: the traced flats (one, or every flat of a whole floor) — the names their rooms are pinned to, each with the floor its printed area should give (m², areaShare of it) */
+  flats?: { name: string; wantSqm?: number }[]
 }
 
 export interface AutoTraceResult {

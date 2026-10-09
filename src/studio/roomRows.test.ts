@@ -3,7 +3,7 @@
  * draft as it stands — the count line, one row per printed name with no closed, named room, and its one-click fix.
  */
 import { describe, expect, it } from 'vitest'
-import { deriveRooms } from '../core'
+import { deriveFlats, deriveRooms } from '../core'
 import type { Unit, Vertex, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
@@ -40,6 +40,24 @@ describe('room count and room rows', () => {
     expect(st[1].s === 'unnamed' && st[1].d).toBeCloseTo(0.4, 1)
     expect(roomCount(u, deriveRooms(u), { printed, wantSqm: 20 } as never)).toMatch(/^1 of the 3 room names read on the sheet are closed and named — missing: Toilet, Ver\. The closed rooms add up to 129 sft; the printed flat area gives about 215\.$/)
     expect(roomRows(u, deriveRooms(u), printed).map((r) => r.message)).toEqual(['Space 1 — printed name Toilet is 0.4 m away', 'Ver is open — no closed room around its name'])
+  })
+
+  it('Level 4: per traced flat — one count line each (its names, its rooms against its printed area), the rows say which flat, "Name it" puts the room in its flat', () => {
+    // the box's two rooms as two flats: Bed 1 pinned to Type A, the unnamed one to Flat 1
+    const u = twoRooms()
+    u.roomLabels = [{ ...u.roomLabels[0], flat: 'Type A' }, { id: 'sp', name: 'Space 1', kind: 'other', x: 3, y: 1.5, flat: 'Flat 1' }]
+    const printed = [{ ...P('Bed 1', 1, 1.5, 'bed'), flat: 'Type A' }, { ...P('Toilet', 3, 3.4, 'bath'), flat: 'Flat 1' }, { ...P('Ver', 9, 1.5, 'balcony'), flat: 'Flat 1' }]
+    const rooms = deriveRooms(u)
+    const stats = { printed, flats: [{ name: 'Type A', wantSqm: 20 }, { name: 'Flat 1' }] } as never
+    expect(roomCount(u, rooms, stats, deriveFlats(u, rooms))?.split('\n')).toEqual([
+      'Type A: all 1 room names read on it are closed and named. Its closed rooms add up to 65 sft; the printed flat area gives about 215.',
+      'Flat 1: 0 of the 2 room names read on it are closed and named — missing: Toilet, Ver. Its closed rooms add up to 65 sft; no printed flat area was read on it.',
+    ])
+    expect(roomRows(u, rooms, printed).map((r) => r.message)).toEqual(['Flat 1: Space 1 — printed name Toilet is 0.4 m away', 'Flat 1: Ver is open — no closed room around its name'])
+    const row = roomRows(u, rooms, printed)[0]
+    const [f] = fixesFor(u, row, printed)
+    const t = apply({ ...initialState(), unit: u, review: { unitId: 'u', items: [row], stats } }, f)
+    expect(t.unit.roomLabels.find((l) => l.name === 'Toilet')?.flat).toBe('Flat 1')
   })
 
   it('Level 3: a printed name standing inside an unnamed room after the import names it — no row; one only beside it keeps its row', () => {

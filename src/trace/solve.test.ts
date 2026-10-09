@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { deriveRooms, validate } from '../core'
+import { deriveFlats, deriveRooms, validate } from '../core'
 import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
@@ -401,6 +401,78 @@ describe('solveTraces on a synthetic flat', () => {
     }
     expect(r.unit.walls.some((w) => w.openings.some((o) => o.kind === 'window' && o.widthM > 0.9 * len(w)))).toBe(true)
     expect(validate(r.unit).filter((i) => i.level === 'error')).toEqual([])
+  })
+})
+
+/**
+ * Level 4: a floor of two of the synthetic flats side by side (A at x 0–8 m, B at x 8–16 m: A's bed and B's living share
+ * the party wall), a lobby below them (y 5–7 m, LOBBY printed in it) and each flat's door from its living into the lobby.
+ */
+function twoFlats(): { g: Gray; text: TextTrace } {
+  const width = Math.round(16 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
+  const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+  const ext = 0.254 * K, par = 0.127 * K, h = 0.127
+  const items: TextItem[] = []
+  for (const dx of [0, 8]) {
+    const Q = (x: number, y: number) => P(dx + x, y)
+    stroke(g, Q(-h, 0), Q(8 + h, 0), ext)
+    stroke(g, Q(-h, 5), Q(1.5, 5), ext) // the living's door into the lobby: 1.5–2.4
+    stroke(g, Q(2.4, 5), Q(8 + h, 5), ext)
+    stroke(g, Q(0, 0), Q(0, 5), ext)
+    stroke(g, Q(8, 0), Q(8, 5), ext)
+    stroke(g, Q(4, 0), Q(4, 1.0), par)
+    stroke(g, Q(4, 1.9), Q(4, 3.2), par)
+    stroke(g, Q(4, 4.1), Q(4, 5), par)
+    stroke(g, Q(4, 2.5), Q(8, 2.5), par)
+    stroke(g, Q(6, 2.5), Q(6, 3.0), par)
+    stroke(g, Q(6, 3.8), Q(6, 5), par)
+    arc(g, Q(4, 1.0), 0.9, Math.PI / 2, Math.PI)
+    arc(g, Q(4, 3.2), 0.9, Math.PI / 2, Math.PI)
+    arc(g, Q(6, 3.0), 0.8, Math.PI / 2, 0)
+    arc(g, Q(1.5, 5), 0.9, 0, Math.PI / 2) // into the living
+    const item = (name: string, kind: string, cx: number, cy: number, aM: number, bM: number): TextItem => {
+      const c = Q(cx, cy)
+      return { text: `${name}\n${aM}x${bM}`, box: { x: c.x - 30, y: c.y - 10, w: 60, h: 20 }, kind: 'room', roomKind: kind, dims: { aM, bM }, conf: 0.9, source: 'ocr' }
+    }
+    items.push(item('LIVING', 'living', 2, 2.5, 4 - 0.127 - 0.0635, 5 - 0.254), item('BED-1', 'bed', 6, 1.25, 4 - 0.0635 - 0.127, 2.5 - 0.127 - 0.0635), item('TOILET', 'bath', 7, 3.75, 2 - 0.0635 - 0.127, 2.5 - 0.0635 - 0.127))
+  }
+  // the lobby's outer walls
+  stroke(g, P(-h, 7), P(16 + h, 7), ext)
+  stroke(g, P(0, 5), P(0, 7), ext)
+  stroke(g, P(16, 5), P(16, 7), ext)
+  const c = P(8, 6)
+  items.push({ text: 'LOBBY', box: { x: c.x - 25, y: c.y - 8, w: 50, h: 16 }, kind: 'room', roomKind: 'other', conf: 0.9, source: 'ocr' })
+  return { g, text: { items } }
+}
+
+describe('Level 4: the whole floor in one click; one flat = the same flat wherever it is clicked', () => {
+  const { g, text } = twoFlats()
+  const p = prepareTraces(g, { text }, {})
+  const flatsOf = (r: AutoTraceResult) => deriveFlats(r.unit, deriveRooms(r.unit)).map((f) => [f.name, deriveRooms(r.unit).filter((x) => f.roomIds.includes(x.id)).map((x) => x.name).sort()])
+
+  test('the whole floor: both flats, named west → east, every room pinned to its flat, the lobby in none; the printed names say whose', () => {
+    const r = pickTraces(p, undefined, true)
+    expect(flatsOf(r)).toEqual([
+      ['Flat 1', ['Bed 1', 'Living', 'Space 1', 'Toilet']],
+      ['Flat 2', ['Bed 1', 'Living', 'Space 2', 'Toilet']],
+    ])
+    expect(deriveRooms(r.unit).filter((x) => !r.unit.roomLabels.find((l) => l.id === x.id)?.flat).map((x) => x.name)).toEqual(['Lobby'])
+    expect(r.stats.flats?.map((f) => f.name).sort()).toEqual(['Flat 1', 'Flat 2'])
+    expect(r.stats.printed?.filter((x) => x.flat === 'Flat 2').map((x) => x.name).sort()).toEqual(['Bed 1', 'Living', 'Toilet'])
+  })
+
+  // (the click beside the party wall is nearer A's BED-1 than B's own: the pick from the click took B's bed for the next
+  // flat's — the BTI img_2 south flat's lost west part)
+  test('a click in the bed, the living (beside the party wall) or the toilet of flat B: the same draft, flat B alone, pinned as one flat', () => {
+    const walls = (r: AutoTraceResult) => {
+      const { originPx: o, pxPerM: k } = r.unit.planImage!
+      const V = new Map(r.unit.vertices.map((v) => [v.id, { x: Math.round(o.x + v.x * k), y: Math.round(o.y + v.y * k) }]))
+      return r.unit.walls.map((w) => JSON.stringify([V.get(w.a), V.get(w.b)])).sort().join()
+    }
+    const rs = [P(14, 1.25), P(8.6, 2.5), P(15, 3.75)].map((at) => pickTraces(p, at))
+    expect(new Set(rs.map(walls)).size).toBe(1)
+    expect(flatsOf(rs[0])).toEqual([['Flat 1', ['Bed 1', 'Living', 'Space 1', 'Toilet']]])
+    expect(Math.min(...rs[0].unit.vertices.map((v) => v.x)) + (rs[0].unit.planImage!.originPx.x - O.x) / K).toBeGreaterThan(7.5)
   })
 })
 

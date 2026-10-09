@@ -5,7 +5,7 @@
  * `preview` (the flat a click there picks); `pick` → `done` (the click's draft from the same prepared sheet). A bare
  * TraceJob (no `type`) is the old single shot: progress, then the result.
  */
-import { autoTrace, pick, prepare, preview } from '../trace'
+import { autoTrace, pick, pickFloor, prepare, preview } from '../trace'
 import { geminiReader } from '../trace/ai'
 import type { AutoTraceOpts, AutoTraceResult, Gray, Px } from '../trace/types'
 
@@ -23,7 +23,7 @@ export interface TraceJob {
   /** dev only (/studio?mock-trace): the fixed Sheltech A result instead of the solver */
   mock?: boolean
 }
-export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px }
+export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px } | { type: 'floor' }
 export type Preview = { polys: Px[][]; names: { at: Px; text: string }[] }
 export type TraceMsg =
   | { type: 'progress'; stage: string; fraction: number }
@@ -55,7 +55,8 @@ onmessage = async ({ data }: MessageEvent<TraceIn>) => {
     // (a spot no flat can be picked from previews nothing — the click there still reports why)
     if (data.type === 'hover') return void (ready && post({ type: 'preview', seq: data.seq, ...(await preview(ready, data.px).catch(() => ({ polys: [], names: [] }))) }))
     // a click before the sheet is ready waits for it (its progress keeps coming)
-    if (import.meta.env.DEV && job?.mock) return post({ type: 'done', result: await (await mockOf())(job.gray, { ...optsOf(job), pickPx: data.px }) })
+    if (import.meta.env.DEV && job?.mock) return post({ type: 'done', result: await (await mockOf())(job.gray, { ...optsOf(job), pickPx: data.type === 'pick' ? data.px : undefined }) })
+    if (data.type === 'floor') return post({ type: 'done', result: await pickFloor(await prepared!) })
     post({ type: 'done', result: await pick(await prepared!, data.px) })
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err) })

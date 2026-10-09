@@ -14,4 +14,6 @@ export async function autoTrace(gray: Gray, opts: AutoTraceOpts = {}): Promise<A
 }
 export const prepare = async (gray: Gray, opts: AutoTraceOpts = {}): Promise<PreparedSolve> => (await import('./solve')).prepare(gray, opts)
 export const pick = async (p: PreparedSolve, px: Px): Promise<AutoTraceResult> => (await import('./solve')).pick(p, px)
+/** Level 4: the whole floor — every flat and the core between them — on the prepared sheet */
+export const pickFloor = async (p: PreparedSolve): Promise<AutoTraceResult> => (await import('./solve')).pickFloor(p)
 export const preview = async (p: PreparedSolve, px: Px) => (await import('./solve')).previewFlat(p.traces, px)

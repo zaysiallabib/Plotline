@@ -349,7 +349,8 @@ const noNewIssues = (before: StudioIssue[], after: StudioIssue[]): boolean => {
   return after.every((i) => had.has(issueKey(i)) || CLOSED_A_ROOM.has(i.code))
 }
 
-const labelOf = (p: PrintedRoom): Omit<RoomLabel, 'id' | 'x' | 'y'> => ({ name: p.name, kind: p.kind as RoomKind, ...(p.printedSize ? { printedSize: p.printedSize } : {}) })
+// (Level 4: with the flat it was read in — the room joins that flat whatever its doors)
+const labelOf = (p: PrintedRoom): Omit<RoomLabel, 'id' | 'x' | 'y'> => ({ name: p.name, kind: p.kind as RoomKind, ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat } : {}) })
 
 /** "Close it": corners and loose ends this far from the printed name are tried (m) … */
 export const CLOSE_R_M = 5
