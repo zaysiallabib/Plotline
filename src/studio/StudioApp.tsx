@@ -1562,7 +1562,9 @@ export default function StudioApp() {
     setActiveKey(null)
   }
   const nameRoom = (at: Pt, name: string) => {
-    dispatch({ type: 'add-label', label: { name, kind: guessKind(name), x: at.x, y: at.y } })
+    // an unnamed space's "Space N" label sits there (a "Check these" row): it is renamed, not doubled
+    const l = unit.roomLabels.find((x) => x.x === at.x && x.y === at.y)
+    dispatch(l ? { type: 'update-label', id: l.id, patch: { name, kind: guessKind(name) } } : { type: 'add-label', label: { name, kind: guessKind(name), x: at.x, y: at.y } })
     setActiveKey(null)
   }
   const focusOn = (pts: Pt[], selectable: Id[], padM = 2) => {

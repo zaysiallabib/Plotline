@@ -249,14 +249,15 @@ export function roomStates(u: Unit, rooms: Room[], printed: PrintedRoom[]): Room
   return st.map((x, i): RoomState => (x.s === 'unnamed' && !named.has(i) ? { s: 'merged', into: x.room } : x))
 }
 
-/** the room count against the sheet, as it stands: "17 of 18 printed rooms closed and named — missing: …" + the area */
+/** the room count against the sheet, as it stands: "17 of the 18 room names read on the sheet are closed and named — missing: …" + the area */
 export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats): string | null {
   const printed = stats.printed ?? []
   if (!printed.length) return null
   const st = roomStates(u, rooms, printed)
   const missing = printed.filter((_, i) => st[i].s !== 'done').map((p) => p.name)
   const n = printed.length
-  const line = missing.length ? `${n - missing.length} of ${n} printed rooms closed and named — missing: ${missing.join(', ')}` : `All ${n} printed rooms closed and named`
+  // (the names Auto-trace READ: one it missed is not counted — its room shows as an unnamed space)
+  const line = missing.length ? `${n - missing.length} of the ${n} room names read on the sheet are closed and named — missing: ${missing.join(', ')}` : `All ${n} room names read on the sheet are closed and named`
   const sum = rooms.reduce((t, r) => t + r.areaSqm, 0)
   return stats.wantSqm ? `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; the printed flat area gives about ${Math.round(sqmToSqft(stats.wantSqm))}.` : `${line}.`
 }

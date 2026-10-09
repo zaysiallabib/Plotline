@@ -423,11 +423,14 @@ function closeAround(u: Unit, rooms: Room[], printed: PrintedRoom[], k: number, 
   const ends: { a: Pt; b: Pt; L?: number }[] = []
   for (const [j, q] of printed.entries()) {
     if (q === p || dist(q.at, p.at) > CLOSE_R_M || (st0[j].s === 'done' && (mine < 0 || roomIndexAt(q.at, rooms, polys) !== mine))) continue
-    const m = lerp(p.at, q.at, 0.5)
     const rel = { x: q.at.x - p.at.x, y: q.at.y - p.at.y }
     const d = Math.abs(rel.x * ax[0].x + rel.y * ax[0].y) >= Math.abs(rel.x * ax[1].x + rel.y * ax[1].y) ? ax[1] : ax[0] // across p → q
-    const a = rayHit(u, m, d), b = rayHit(u, m, { x: -d.x, y: -d.y })
-    if (a && b) ends.push({ a, b, L: 0 })
+    // halfway, else a little to either side (an end landing in a door is refused: a wall is never split inside one)
+    for (const t of [0.5, 0.3, 0.7]) {
+      const m = lerp(p.at, q.at, t)
+      const a = rayHit(u, m, d), b = rayHit(u, m, { x: -d.x, y: -d.y })
+      if (a && b) ends.push({ a, b, L: 0 })
+    }
   }
   const near = u.vertices.filter((v) => dist(v, p.at) <= CLOSE_R_M)
   near.forEach((a, i) => near.slice(i + 1).forEach((b) => along(a, b) && ends.push({ a, b })))
@@ -448,40 +451,57 @@ function closeAround(u: Unit, rooms: Room[], printed: PrintedRoom[], k: number, 
   const size = parsePrintedSize(p.printedSize)
   const wasDone = st0.map((x) => x.s === 'done')
   const name: Action = { type: 'add-label', label: { ...labelOf(p), x: p.at.x, y: p.at.y } }
-  const closed = (s: StudioState): boolean => {
+  /** the room closed around the name — its area — when every check passes, else null */
+  const closedSqm = (s: StudioState): number | null => {
     const R = deriveRooms(s.unit)
     const f = R[roomIndexAt(p.at, R, R.map((r) => roomPolygon(r, s.unit)))]
-    if (!f || !sameName(f.name, p.name) || f.areaSqm > CLOSE_MAX_SQM) return false
-    if (size && (f.areaSqm < 0.5 * size[0] * size[1] || f.areaSqm > 1.6 * size[0] * size[1] + 1)) return false
+    if (!f || !sameName(f.name, p.name) || f.areaSqm > CLOSE_MAX_SQM) return null
+    if (size && (f.areaSqm < 0.5 * size[0] * size[1] || f.areaSqm > 1.6 * size[0] * size[1] + 1)) return null
     const st = roomStates(s.unit, R, printed)
-    return wasDone.every((was, j) => !was || st[j].s === 'done') && noNewIssues(before, studioIssues(s.unit, R))
+    return wasDone.every((was, j) => !was || st[j].s === 'done') && noNewIssues(before, studioIssues(s.unit, R)) ? f.areaSqm : null
+  }
+  // the tightest room wins: nearest its printed size when one was read, else the smallest
+  const score = (sqm: number | null) => (sqm === null ? Infinity : size ? Math.abs(sqm - size[0] * size[1]) : sqm)
+  const best: { fix?: Fix; score: number } = { score: Infinity }
+  const keep = (sqm: number | null, fix: () => Fix) => {
+    if (score(sqm) < best.score - 0.05) Object.assign(best, { fix: fix(), score: score(sqm) })
   }
   const start = { ...initialState(), unit: u }
   const railing = p.kind === 'balcony' && mine < 0 // (a veranda's open side; the line it shares a room across is no railing)
   for (const { a, b, L } of lines.slice(0, CLOSE_TRIES)) {
     const actions: Action[] = [{ type: 'chain-start', at: { ...a, tolM: 1e-3 }, wall: railing ? 'low' : 'zone' }, { type: 'chain-add', at: { ...b, tolM: 1e-3 } }, { type: 'chain-end' }, name]
-    if (!closed(actions.reduce(reducer, start))) continue
     const what = railing ? 'a railing (a low wall)' : 'a zone line (nothing in 3D — select it to make it a wall, low wall or glass)'
-    return { label: railing ? 'Close it — railing' : 'Close it — zone line', title: `Draw ${what} ${ft(L)} across its open side and name the room ${p.name}`, actions, ghost: [{ kind: 'line', from: a, to: b }] }
+    keep(closedSqm(actions.reduce(reducer, start)), () => ({ label: railing ? 'Close it — railing' : 'Close it — zone line', title: `Draw ${what} ${ft(L)} across its open side and name the room ${p.name}`, actions, ghost: [{ kind: 'line', from: a, to: b }] }))
   }
-  // the loose ends around it, nearest first, each carried on to the wall ahead (kept when it adds no issue)
+  // the loose ends around it, nearest first, each carried on to the wall ahead (kept when it adds no issue) — then the
+  // ones the tightest room it closes does not need are left as they were
   let s = start
-  const acts: Action[] = []
-  const ghost: Ghost[] = []
+  const steps: { actions: Action[]; ghost: Ghost }[] = []
+  let carried: { steps: typeof steps; sqm: number } | null = null
   for (const v of near.filter((x) => degreeOf(u, x.id) === 1).sort((x, y) => dist(x, p.at) - dist(y, p.at))) {
     const w = s.unit.walls.find((x) => x.a === v.id || x.b === v.id)
     const h = w && ahead(s.unit, v.id, w, CLOSE_MAX_M)
     if (!h || h.inside) continue
-    const moves = [{ id: v.id, ...h.to }, ...(h.also ? [{ id: h.also.end, ...h.to }] : [])]
-    const t = dragTo(moves).reduce(reducer, s)
+    const actions = dragTo([{ id: v.id, ...h.to }, ...(h.also ? [{ id: h.also.end, ...h.to }] : [])])
+    const t = actions.reduce(reducer, s)
     if (t.unit === s.unit || !noNewIssues(before, studioIssues(t.unit, deriveRooms(t.unit)))) continue
     s = t
-    acts.push(...dragTo(moves))
-    ghost.push({ kind: 'line', from: v, to: h.to })
-    if (closed(reducer(s, name)))
-      return { label: `Close it — carry ${ghost.length} wall${ghost.length > 1 ? 's' : ''} on`, title: `Carry the loose wall end${ghost.length > 1 ? 's' : ''} around it on to the wall ahead (walls stay walls, low walls low) and name the room ${p.name}`, actions: [...acts, name], ghost }
+    steps.push({ actions, ghost: { kind: 'line', from: v, to: h.to } })
+    const sqm = closedSqm(reducer(s, name))
+    if (sqm !== null && (!carried || score(sqm) < score(carried.sqm) - 0.05)) carried = { steps: [...steps], sqm }
   }
-  return null
+  if (carried) {
+    const { sqm } = carried
+    let used = carried.steps
+    for (const x of carried.steps) {
+      const fewer = used.filter((y) => y !== x)
+      const got = closedSqm([...fewer.flatMap((y) => y.actions), name].reduce(reducer, start))
+      if (got !== null && Math.abs(got - sqm) < 0.05) used = fewer
+    }
+    const n = used.length
+    keep(sqm, () => ({ label: `Close it — carry ${n} wall${n > 1 ? 's' : ''} on`, title: `Carry the loose wall end${n > 1 ? 's' : ''} around it on to the wall ahead (walls stay walls, low walls low) and name the room ${p.name}`, actions: [...used.flatMap((y) => y.actions), name], ghost: used.map((y) => y.ghost) }))
+  }
+  return best.fix ?? null
 }
 
 /**
@@ -552,7 +572,11 @@ function roomFixes(u: Unit, item: ReviewItem, printed: PrintedRoom[], before: St
 export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: PrintedRoom[] = []): Map<string, MarkFixes> {
   const out = new Map<string, MarkFixes>()
   for (const m of marks) {
-    if (m.review && (m.review.room !== undefined || (m.review.kind === 'unlabelled' && m.review.entityId))) out.set(m.key, { fixes: roomFixes(u, m.review, printed, issues) })
+    if (m.review && (m.review.room !== undefined || (m.review.kind === 'unlabelled' && m.review.entityId))) {
+      // (an unnamed space's "Space N" label: a name typed on the plan renames it — StudioApp nameRoom)
+      const l = m.review.room === undefined ? u.roomLabels.find((x) => x.id === m.review!.entityId) : undefined
+      out.set(m.key, { fixes: roomFixes(u, m.review, printed, issues), ...(l ? { nameAt: { x: l.x, y: l.y } } : {}) })
+    }
     const i = m.issue
     if (!i) continue
     const fixes = candidates(u, i).filter((f) => closes(u, f.actions, i, issues))

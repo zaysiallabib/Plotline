@@ -38,7 +38,7 @@ describe('room count and room rows', () => {
     const st = roomStates(u, deriveRooms(u), printed)
     expect(st.map((x) => x.s)).toEqual(['done', 'unnamed', 'open'])
     expect(st[1].s === 'unnamed' && st[1].d).toBeCloseTo(0.4, 1)
-    expect(roomCount(u, deriveRooms(u), { printed, wantSqm: 20 } as never)).toMatch(/^1 of 3 printed rooms closed and named — missing: Toilet, Ver\. The closed rooms add up to 129 sft; the printed flat area gives about 215\.$/)
+    expect(roomCount(u, deriveRooms(u), { printed, wantSqm: 20 } as never)).toMatch(/^1 of the 3 room names read on the sheet are closed and named — missing: Toilet, Ver\. The closed rooms add up to 129 sft; the printed flat area gives about 215\.$/)
     expect(roomRows(u, deriveRooms(u), printed).map((r) => r.message)).toEqual(['Space 1 — printed name Toilet is 0.4 m away', 'Ver is open — no closed room around its name'])
   })
 
@@ -54,7 +54,7 @@ describe('room count and room rows', () => {
     const room = deriveRooms(t.unit).find((r) => r.name === 'Toilet')!
     expect(room.kind).toBe('bath')
     expect(openReview(t)).toEqual([])
-    expect(roomCount(t.unit, deriveRooms(t.unit), { printed } as never)).toBe('All 2 printed rooms closed and named.')
+    expect(roomCount(t.unit, deriveRooms(t.unit), { printed } as never)).toBe('All 2 room names read on the sheet are closed and named.')
   })
 
   it('"Close it" closes an open veranda with a railing across its open side and names it — one undo step', () => {

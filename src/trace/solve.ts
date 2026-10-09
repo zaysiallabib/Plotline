@@ -2098,7 +2098,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     const at = insidePoint(r, u, rooms)
     const id = newId()
     roomLabels.push({ id, name: `Space ${n}`, kind: 'other', ...at })
-    if (r.areaSqm >= 0.5) review.push({ id: newId(), at, kind: 'unlabelled', message: `Unnamed space (${r.areaSqm.toFixed(1)} m²) — name it or delete a wall`, entityId: id })
+    if (r.areaSqm >= 0.5) review.push({ id: newId(), at, kind: 'unlabelled', message: `Unnamed space (${r.areaSqm.toFixed(1)} m²) — type its name (Name it), or join it to the room it is part of`, entityId: id })
   }
   u.roomLabels = roomLabels
   const named = deriveRooms(u)
