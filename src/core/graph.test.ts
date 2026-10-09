@@ -29,7 +29,7 @@ const label = (id: string, x: number, y: number, kind: RoomLabel['kind'] = 'bed'
   x,
   y,
 })
-const unit = (g: Graph): Unit => ({
+const unit = (g: Graph & Pick<Unit, 'pillars'>): Unit => ({
   id: 'u',
   projectName: 'p',
   name: 'n',
