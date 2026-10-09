@@ -52,7 +52,7 @@ Extras you can add to the end of a 3D address:
 | Walk | O (switches) | Walk inside at eye height |
 | Dollhouse | O (switches) | See the whole plan from above with the roof off |
 | Building | B | The whole tower. Only when the flat belongs to a tower. |
-| Finishes | F | Opens the panel on the right: floor, wall, ceiling options |
+| Finishes | F | Opens the panel on the right: floor, wall, ceiling options. While it is open, clicking a floor, a wall or a ceiling chooses for that one room or wall |
 | Comment | C | Click anything to leave a note on it |
 | Share | — | Copies a link that opens with the finishes you chose |
 | Enter VR | — | Only shows when a VR headset is connected |
@@ -66,12 +66,18 @@ Extras you can add to the end of a 3D address:
 - **Double-click** (or the Enter button) — the mouse now turns your head. **Esc** gives the mouse back.
 - You cannot walk through walls. You can climb steps and ramps. You cannot walk into a pool.
 
-**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it.
+**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it (not while the Finishes panel is open: then the click picks that floor's finish).
 
 **Finishes panel**
 
-- Each block is one thing you can choose (for example "Bedroom floors"). Click an option. Each shows its brand and the price difference.
-- **Options total** and **Reset to included** at the bottom.
+- **One room or one wall:** with the panel open, click a floor, a wall or a ceiling — in Walk or in Dollhouse. The panel's top block names it ("Bed-1 · floor", "Living room · north-east wall": the side of the room the wall is on, by the compass) and shows the options for it. Click one: only that floor or that wall changes — Bed-2 keeps its own floor, the other walls keep their paint.
+  - For a wall: **This wall** or **The whole room** (every wall of that room, columns too). A wall is the whole straight wall you see, even where the plan has it in pieces.
+  - **Same as the group** (for one wall: **Same as the room**) takes it back; it shows what that is. **Done** closes the block.
+  - If the mouse is turning your head, press **Esc** first; a click then picks what is under the middle of the screen.
+- Each block below is one thing you choose for a group of rooms (for example "Bedroom floors"). Click an option. Each shows its brand and the price difference. A room or wall with its own choice keeps it when the group changes.
+- **Chosen for one room or wall** lists those choices; **undo** takes one back.
+- **Options total** and **Reset to included** at the bottom. The total = each group's choice + each one-room / one-wall choice once, at that option's own price (not shared out by floor area). Reset also clears the one-room choices.
+- **Share** puts the one-room and one-wall choices into the link too. On a buyer link each one goes to the change list under its room's name ("Bed-1 · floor: White marble"); taking it back is a row too ("Same as the group").
 - Your notes are listed at the top. Click a note to walk to it. **Remove** deletes it.
 
 **Notes (Comment):** press **C**, click the thing, type, **Save**. A numbered pin stays on it.
@@ -401,23 +407,24 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Keys **T**, **H** and **Shift+H** are not mentioned anywhere on screen.
 - A typed wall length cannot start with 0 (type `.5`, not `0.5`).
 - A staff browser still sees the staff buttons on a buyer link.
+- **One-room finishes:** the clicked floor or wall is not outlined in 3D — only the panel names it. A one-room choice is priced at the option's full group price. The Studio cannot set them. Two rooms of the same floor group with different floors get no threshold strip in their doorway.
 
 ---
 
-## 11. Can I change it? (state on 2026-10-05, from a test done by hand in the browser)
+## 11. Can I change it? (state on 2026-10-05, from a test done by hand in the browser; finish rows updated 2026-10-09)
 
 The goal: **if you can see it, you can click it and change it.** This table is how far the tool is from that today. Every "No" is a job.
 
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
-| Wall | No | Yes — type, thickness, height, length, move, copy, delete | Its paint on one side only |
+| Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness, height, length, move, copy, delete | Its paint on the outside |
 | Boundary wall, parapet, low wall | No | Yes — same as a wall | Its finish |
 | Kerb, free-standing screen | No | Yes | — |
 | Glass wall | Yes — width, height, sill, slide along the wall, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — size, move, delete, add | — |
-| Ceiling, slab, ceiling height, ceiling lights | No | No | Everything (only one ceiling colour exists) |
-| Floor of ONE room | No | No | Finishes change all rooms of a group together |
+| Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
+| Floor of ONE room | Yes — Finishes open, click the floor (Walk or Dollhouse) | No | — |
 | Lawn, paving, driveway, deck surface | No | No | Everything — no finish choices exist for outdoor areas |
 | Shape of an area | No | Yes — move its corners and lines | — |
 | Kind of an area (lawn → paving) | No | Yes | — |
@@ -426,7 +433,7 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Steps | No | No | They are not their own thing yet |
 | Pool | not tested | not tested | not tested |
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
-| Wall paint of one room / one wall / the outside / the boundary | No | No | One paint choice colours everything |
+| Wall paint of one room / one wall / the outside / the boundary | Yes for one room or one wall — Finishes open, click the wall | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
 | Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
 | Neighbour buildings, road, sky | No | No | Everything |
