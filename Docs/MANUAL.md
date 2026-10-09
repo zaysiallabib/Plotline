@@ -187,7 +187,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - **Curtains**: a window or sliding window in a bed, living, dining or study room gets curtains in 3D when the other side is outside (a veranda, a shaft, open air). Select the window: the **Curtains** tick box in the panel turns them off for that one window. A glass wall never has curtains.
 
 **R — Room**
-- Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size**, **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
+- Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size** (type what the sheet prints there, e.g. `12'-0" × 14'-2"`; leave it empty if the sheet prints none — the tool never fills it in for you, so the size check in "Check these" is always sheet against drawing), **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
 - **Save**, or **Remove** to take the name off.
 
 **C — Column**
@@ -208,7 +208,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
 - The **lift lobby, stairs, lifts, shafts**, gym / community / guard rooms and outdoor areas are shared: they belong to no flat, and a flat stops there. (It knows them by their kind, or by a name with Lobby, Stair, Lift or Hoistway in it.)
 - A group of rooms counts as a flat when it has a bedroom and at least one more room.
 - Each flat is **tinted in its own colour** and its name is written once above it. The shared rooms, and rooms in no flat, keep the plain light wash.
-- Names: **Flat 1, Flat 2…** from west to east (left to right on the plan). To use the sheet's names: **R**, click inside one of the flat's rooms (where the sheet prints "TYPE-A ±2736 SFT"), type **Type A ±2736 sft**, clear the Printed size box, **Save**. That name names the flat "Type A", not the room — the room keeps its own name. Click it (V) and the panel shows the check: "Names the flat Type A: its 17 rooms add up to 1857 sft, printed ±2736 sft".
+- Names: **Flat 1, Flat 2…** from west to east (left to right on the plan). To use the sheet's names: **R**, click inside one of the flat's rooms (where the sheet prints "TYPE-A ±2736 SFT"), type **Type A ±2736 sft**, **Save**. That name names the flat "Type A", not the room — the room keeps its own name. Click it (V) and the panel shows the check: "Names the flat Type A: its 17 rooms add up to 1857 sft, printed ±2736 sft".
 
 **A room in the wrong flat** — with **V** (Select), click the room's name on the plan. In the panel, **Flat** lists the flats: pick the right one and its colour follows at once. **Not in a flat** takes a room out (say, a lobby that was not called Lobby, so it joined two flats into one). **New flat** starts another flat with just that room. A room moved by hand says **Flat (moved by hand)**; **Back to: by its doors** undoes that. **Ctrl+Z** also undoes it.
 - A room moved by hand no longer joins anything through its doors — if that leaves a room next to it untinted, move that one too.

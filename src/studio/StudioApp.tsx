@@ -17,7 +17,6 @@ import {
   normalizeUnit,
   openingAt,
   openSpotsNear,
-  printedSizeOf,
   rampArrow,
   rampDirs,
   reducer,
@@ -1001,7 +1000,7 @@ export default function StudioApp() {
         name: existing?.name ?? '',
         kind: existing?.kind ?? 'other',
         kindTouched: !!existing,
-        printedSize: existing?.printedSize ?? (r ? printedSizeOf(r, st.unit) : ''),
+        printedSize: existing?.printedSize ?? '', // never pre-filled from the drawn walls: the size check would compare the drawing with itself (task 3, 2026-10-09)
         areaSqm: r?.areaSqm ?? 0,
         labelId,
         levelM: existing?.levelM,
@@ -1563,8 +1562,7 @@ export default function StudioApp() {
     setActiveKey(null)
   }
   const nameRoom = (at: Pt, name: string) => {
-    const r = roomAt(at, rooms, unit)
-    dispatch({ type: 'add-label', label: { name, kind: guessKind(name), x: at.x, y: at.y, printedSize: r ? printedSizeOf(r, unit) : undefined } })
+    dispatch({ type: 'add-label', label: { name, kind: guessKind(name), x: at.x, y: at.y } })
     setActiveKey(null)
   }
   const focusOn = (pts: Pt[], selectable: Id[], padM = 2) => {
