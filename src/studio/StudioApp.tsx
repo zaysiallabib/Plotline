@@ -302,12 +302,12 @@ export default function StudioApp() {
     let id = 0
     const step = () => {
       if (k >= marks.length) return setFixes(found)
-      for (const [key, f] of fixesOf(unit, [marks[k++]], issues)) found.set(key, f)
+      for (const [key, f] of fixesOf(unit, [marks[k++]], issues, state.review?.stats.printed)) found.set(key, f)
       id = window.setTimeout(step, 0)
     }
     id = window.setTimeout(step, 150)
     return () => clearTimeout(id)
-  }, [unit, marks, issues])
+  }, [unit, marks, issues]) // eslint-disable-line react-hooks/exhaustive-deps -- (marks follow the review, its printed names with it)
   /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [hotKey, setHotKey] = useState<string | null>(null)

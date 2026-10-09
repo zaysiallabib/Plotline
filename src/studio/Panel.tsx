@@ -4,7 +4,7 @@ import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Sl
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
-import { AI_KEY, TRACKER_KEY, type StudioAction as Action } from './review'
+import { AI_KEY, TRACKER_KEY, roomCount, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
@@ -200,7 +200,9 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
   /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
   const row = (m: Mark, extra?: React.ReactNode) => {
     const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
-    const f = fixes?.get(key)
+    const own = m.twinOf ? fixes?.get(m.key) : undefined // (a room row's own fixes, on an issue's spot)
+    const twin = fixes?.get(key)
+    const f = own ? { fixes: [...own.fixes, ...(twin?.fixes ?? [])], nameAt: twin?.nameAt } : twin
     const acts = !!(f?.fixes.length || f?.nameAt || extra)
     return (
       <li
@@ -244,6 +246,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     )
   }
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
+  const count = stats && roomCount(unit, rooms, stats)
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
     ['1 Load plan', !!state.planImage],
@@ -313,6 +316,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
         <section>
           <h3>{review.length ? `Check these (${review.length})` : 'Check these'}</h3>
           {stats && <p className="muted">{statsLine(stats)}</p>}
+          {count && <p className={count.startsWith('All ') ? 'muted' : 'warn'}>{count}</p>}
           {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
           {stats && stats.labelled < 2 && <p className="warn">Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
@@ -321,16 +325,32 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
               {review.map((m) =>
                 row(
                   m,
-                  <button
-                    className="link"
-                    title="Take it off the list"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      dispatch({ type: 'dismiss-review', id: m.review!.id })
-                    }}
-                  >
-                    Looks right
-                  </button>,
+                  <>
+                    {/* a room row no line closes: he draws it — the plan goes there with the Wall tool picked */}
+                    {m.review!.room !== undefined && fixes && !fixes.get(m.key)?.fixes.length && (
+                      <button
+                        className="link"
+                        title="Go to it and pick the Wall tool: draw the missing line (keys 1–4: wall, low wall, kerb, zone line)"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onOpen(m)
+                          dispatch({ type: 'set-tool', tool: 'wall' })
+                        }}
+                      >
+                        Show me
+                      </button>
+                    )}
+                    <button
+                      className="link"
+                      title="Take it off the list"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        dispatch({ type: 'dismiss-review', id: m.review!.id })
+                      }}
+                    >
+                      Looks right
+                    </button>
+                  </>,
                 ),
               )}
             </ul>

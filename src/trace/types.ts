@@ -160,6 +160,19 @@ export interface ReviewItem {
   message: string
   /** the entity it concerns in the draft, when there is one */
   entityId?: string
+  /**
+   * a room row (Level 5, studio/review.ts roomRows): the printed room name it is about, read at `at` — re-checked
+   * against the unit as it stands; it goes once that name is on a closed room
+   */
+  room?: string
+}
+
+/** A room name the text reader found on the flat (plan metres), with its kind and printed size when read. */
+export interface PrintedRoom {
+  name: string
+  at: { x: number; y: number }
+  kind: string // core RoomKind
+  printedSize?: string
 }
 
 export interface AutoTraceStats {
@@ -179,6 +192,10 @@ export interface AutoTraceStats {
    * wave to place a piece there. Extension (solver, wave 16).
    */
   fixtures?: { what: string; at: { x: number; y: number }; roomId?: string }[]
+  /** the room names read on the flat (the core left out): the Studio's live room count and room rows — extension (Level 5) */
+  printed?: PrintedRoom[]
+  /** the floor the printed flat area should give, m² (areaShare of it): the room count's area figure — extension (Level 5) */
+  wantSqm?: number
 }
 
 export interface AutoTraceResult {

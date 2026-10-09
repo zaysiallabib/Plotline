@@ -7,9 +7,10 @@
  * Pure: no DOM. core.validate is untouched; this only reads its issues.
  */
 import { deriveRooms, formatFeetInches, pointInPolygon, polygonCentroid, roomPolygon, triangulate, wallFrame } from '../core'
-import type { Id, Pt, Room, Unit, Wall } from '../core'
-import { MIN_OPENING_M, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, type Action, type StudioIssue } from './model'
-import type { Review } from './review'
+import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
+import type { PrintedRoom, ReviewItem } from '../trace/types'
+import { MIN_OPENING_M, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, type Action, type StudioIssue, type StudioState } from './model'
+import { isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Review } from './review'
 
 export type Severity = 'red' | 'amber' | 'grey'
 /** an unnamed space smaller than this is a duct / wall pocket: cosmetic, m² */
@@ -363,10 +364,195 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
   }
 }
 
-/** The fixes that work, per mark (by key): each candidate applied and re-checked (`closes`); an unnamed room's name spot. */
-export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[]): Map<string, MarkFixes> {
+/** `after` holds no issue `before` did not, but what a newly closed room brings (CLOSED_A_ROOM) */
+const noNewIssues = (before: StudioIssue[], after: StudioIssue[]): boolean => {
+  const had = new Set(before.map(issueKey))
+  return after.every((i) => had.has(issueKey(i)) || CLOSED_A_ROOM.has(i.code))
+}
+
+const labelOf = (p: PrintedRoom): Omit<RoomLabel, 'id' | 'x' | 'y'> => ({ name: p.name, kind: p.kind as RoomKind, ...(p.printedSize ? { printedSize: p.printedSize } : {}) })
+
+/** "Close it": corners and loose ends this far from the printed name are tried (m) … */
+export const CLOSE_R_M = 5
+/** … with a line up to this long along the sheet's axes (m), the shortest first, at most CLOSE_TRIES of them … */
+export const CLOSE_MAX_M = 6
+const CLOSE_TRIES = 40
+/** … and the room it closes no bigger than this (m²), nor far off its printed size */
+const CLOSE_MAX_SQM = 40
+const AXIS_TOL = (3 * Math.PI) / 180
+
+/** The nearest wall centre line `d` meets from `from` (m ahead), never one ending at `skip`; null = none. */
+function rayHit(u: Unit, from: Pt, d: Pt, skip?: Id): Pt | null {
+  let best: { r: number; at: Pt } | null = null
+  for (const w of u.walls) {
+    if (w.a === skip || w.b === skip) continue
+    const f = wallFrame(w, u.vertices)
+    const den = d.x * f.dir.y - d.y * f.dir.x
+    if (Math.abs(den) < 0.17) continue // (near parallel)
+    const rel = { x: f.origin.x - from.x, y: f.origin.y - from.y }
+    const r = (rel.x * f.dir.y - rel.y * f.dir.x) / den, s = (rel.x * d.y - rel.y * d.x) / den
+    if (r > 1e-6 && s >= 0 && s <= f.lengthM && (!best || r < best.r)) best = { r, at: { x: from.x + d.x * r, y: from.y + d.y * r } }
+  }
+  return best?.at ?? null
+}
+
+/**
+ * "Close it" (Level 5): what closes a room around a printed name that has none (open, or sharing another's room) — one
+ * straight line along the sheet's axes, the shortest first: corner to corner, a corner on to the wall it looks at, or
+ * across the room halfway between this name and another one near it (two names in one open area: closed one by one);
+ * else the loose wall ends around it carried on to the walls ahead, nearest first. The name goes in the room it closes.
+ * Kept only when the room is its printed size within reason (≤ CLOSE_MAX_SQM without one), no closed + named room loses
+ * its name, and no new issue — each candidate applied with the reducer's own rules. A line on a veranda's open side is a
+ * railing (a low wall, the W tool's low-wall height), any other a zone line (nothing in 3D: he makes it a wall / glass
+ * if it is one); carried-on walls stay what they are. null = none closes it: he draws it ("Show me").
+ */
+function closeAround(u: Unit, rooms: Room[], printed: PrintedRoom[], k: number, before: StudioIssue[]): Fix | null {
+  const p = printed[k]
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  const axis = sheetAxis(u)
+  const ax = [0, 1, 2, 3].map((q) => ({ x: Math.cos(axis + (q * Math.PI) / 2), y: Math.sin(axis + (q * Math.PI) / 2) }))
+  const along = (a: Pt, b: Pt) => {
+    const t = (((Math.atan2(b.y - a.y, b.x - a.x) - axis) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)
+    return Math.min(t, Math.PI / 2 - t) <= AXIS_TOL
+  }
+  // (the lines halfway between this name and another in the same room / open area first: few, and the one a shared
+  // room needs)
+  const polys = rooms.map((r) => roomPolygon(r, u))
+  const mine = roomIndexAt(p.at, rooms, polys)
+  const st0 = roomStates(u, rooms, printed)
+  const ends: { a: Pt; b: Pt; L?: number }[] = []
+  for (const [j, q] of printed.entries()) {
+    if (q === p || dist(q.at, p.at) > CLOSE_R_M || (st0[j].s === 'done' && (mine < 0 || roomIndexAt(q.at, rooms, polys) !== mine))) continue
+    const m = lerp(p.at, q.at, 0.5)
+    const rel = { x: q.at.x - p.at.x, y: q.at.y - p.at.y }
+    const d = Math.abs(rel.x * ax[0].x + rel.y * ax[0].y) >= Math.abs(rel.x * ax[1].x + rel.y * ax[1].y) ? ax[1] : ax[0] // across p → q
+    const a = rayHit(u, m, d), b = rayHit(u, m, { x: -d.x, y: -d.y })
+    if (a && b) ends.push({ a, b, L: 0 })
+  }
+  const near = u.vertices.filter((v) => dist(v, p.at) <= CLOSE_R_M)
+  near.forEach((a, i) => near.slice(i + 1).forEach((b) => along(a, b) && ends.push({ a, b })))
+  for (const v of near)
+    for (const d of ax) {
+      const b = rayHit(u, v, d, v.id)
+      if (b) ends.push({ a: v, b })
+    }
+  // never through a wall, nor across a closed, named room (but the one the name shares)
+  const lines = ends
+    .map(({ a, b, L }) => ({ a: { x: a.x, y: a.y }, b, L: dist(a, b), first: L === 0 }))
+    .filter(({ a, b, L }) => {
+      if (L < MIN_OPENING_M || L > CLOSE_MAX_M || u.walls.some((w) => cuts(V.get(w.a)!, V.get(w.b)!, a, b))) return false
+      const j = roomIndexAt(lerp(a, b, 0.5), rooms, polys)
+      return j < 0 || j === mine || isUnnamed(rooms[j])
+    })
+    .sort((x, y) => Number(y.first) - Number(x.first) || x.L - y.L)
+  const size = parsePrintedSize(p.printedSize)
+  const wasDone = st0.map((x) => x.s === 'done')
+  const name: Action = { type: 'add-label', label: { ...labelOf(p), x: p.at.x, y: p.at.y } }
+  const closed = (s: StudioState): boolean => {
+    const R = deriveRooms(s.unit)
+    const f = R[roomIndexAt(p.at, R, R.map((r) => roomPolygon(r, s.unit)))]
+    if (!f || !sameName(f.name, p.name) || f.areaSqm > CLOSE_MAX_SQM) return false
+    if (size && (f.areaSqm < 0.5 * size[0] * size[1] || f.areaSqm > 1.6 * size[0] * size[1] + 1)) return false
+    const st = roomStates(s.unit, R, printed)
+    return wasDone.every((was, j) => !was || st[j].s === 'done') && noNewIssues(before, studioIssues(s.unit, R))
+  }
+  const start = { ...initialState(), unit: u }
+  const railing = p.kind === 'balcony' && mine < 0 // (a veranda's open side; the line it shares a room across is no railing)
+  for (const { a, b, L } of lines.slice(0, CLOSE_TRIES)) {
+    const actions: Action[] = [{ type: 'chain-start', at: { ...a, tolM: 1e-3 }, wall: railing ? 'low' : 'zone' }, { type: 'chain-add', at: { ...b, tolM: 1e-3 } }, { type: 'chain-end' }, name]
+    if (!closed(actions.reduce(reducer, start))) continue
+    const what = railing ? 'a railing (a low wall)' : 'a zone line (nothing in 3D — select it to make it a wall, low wall or glass)'
+    return { label: railing ? 'Close it — railing' : 'Close it — zone line', title: `Draw ${what} ${ft(L)} across its open side and name the room ${p.name}`, actions, ghost: [{ kind: 'line', from: a, to: b }] }
+  }
+  // the loose ends around it, nearest first, each carried on to the wall ahead (kept when it adds no issue)
+  let s = start
+  const acts: Action[] = []
+  const ghost: Ghost[] = []
+  for (const v of near.filter((x) => degreeOf(u, x.id) === 1).sort((x, y) => dist(x, p.at) - dist(y, p.at))) {
+    const w = s.unit.walls.find((x) => x.a === v.id || x.b === v.id)
+    const h = w && ahead(s.unit, v.id, w, CLOSE_MAX_M)
+    if (!h || h.inside) continue
+    const moves = [{ id: v.id, ...h.to }, ...(h.also ? [{ id: h.also.end, ...h.to }] : [])]
+    const t = dragTo(moves).reduce(reducer, s)
+    if (t.unit === s.unit || !noNewIssues(before, studioIssues(t.unit, deriveRooms(t.unit)))) continue
+    s = t
+    acts.push(...dragTo(moves))
+    ghost.push({ kind: 'line', from: v, to: h.to })
+    if (closed(reducer(s, name)))
+      return { label: `Close it — carry ${ghost.length} wall${ghost.length > 1 ? 's' : ''} on`, title: `Carry the loose wall end${ghost.length > 1 ? 's' : ''} around it on to the wall ahead (walls stay walls, low walls low) and name the room ${p.name}`, actions: [...acts, name], ghost }
+  }
+  return null
+}
+
+/**
+ * "Join it to …" (Level 5): an unnamed room is part of the named room beside it (an unread corner, a wardrobe strip, a
+ * passage cut off by a line that is no wall — the 2026-10-03 "join the unread space" rule, by hand): the walls between
+ * them go (none with a door, slider or window, none thicker than 8"), and its "Space N" label. The longest shared side
+ * first, at most two neighbours; each one checked by applying it.
+ */
+function joinFixes(u: Unit, rooms: Room[], id: Id, before: StudioIssue[]): Fix[] {
+  const r = rooms.find((x) => x.id === id)
+  if (!r || !isUnnamed(r)) return []
+  const W = new Map(u.walls.map((w) => [w.id, w]))
+  const label = u.roomLabels.find((l) => l.id === id)
+  const at = label ?? insidePoint(r, u, rooms)
+  if (!at) return []
+  const out: Fix[] = []
+  const nexts = rooms
+    .filter((n) => n !== r && !isUnnamed(n))
+    .map((n) => {
+      const shared = [...new Set(r.wallIds.filter((w) => n.wallIds.includes(w)))].map((w) => W.get(w)!)
+      return { n, shared, L: shared.reduce((t, w) => t + wallFrame(w, u.vertices).lengthM, 0) }
+    })
+    .filter((c) => c.shared.length && c.shared.every((w) => w.thicknessM <= 0.21 && !w.openings.some((o) => o.kind !== 'passage')))
+    .sort((p, q) => q.L - p.L)
+  for (const c of nexts) {
+    const actions: Action[] = [{ type: 'delete', ids: [...c.shared.map((w) => w.id), ...(label ? [label.id] : [])] }]
+    const s = reducer({ ...initialState(), unit: u }, actions[0])
+    const R = deriveRooms(s.unit)
+    const k = roomIndexAt(at, R, R.map((x) => roomPolygon(x, s.unit)))
+    if (k < 0 || R[k].id !== c.n.id || !noNewIssues(before, studioIssues(s.unit, R))) continue
+    const ghost: Ghost[] = c.shared.map((w) => {
+      const f = wallFrame(w, u.vertices)
+      return { kind: 'cut', from: f.origin, to: { x: f.origin.x + f.dir.x * f.lengthM, y: f.origin.y + f.dir.y * f.lengthM } }
+    })
+    out.push({ label: `Join it to ${c.n.name}`, title: `${r.name} is part of ${c.n.name}: take out the ${ft(c.L)} of wall between them`, actions, ghost })
+    if (out.length === 2) break
+  }
+  return out
+}
+
+/**
+ * A room row's fixes (Level 5, review.ts roomStates): "Name it …" for an unnamed room under / beside its printed name,
+ * "Close it" for a name in no room or sharing another's; an unnamed space's row: "Join it to …". Empty = by hand.
+ */
+function roomFixes(u: Unit, item: ReviewItem, printed: PrintedRoom[], before: StudioIssue[]): Fix[] {
+  const rooms = deriveRooms(u)
+  if (item.room === undefined) return item.entityId ? joinFixes(u, rooms, item.entityId, before) : []
+  const k = printedIndex(printed, item)
+  const s = k >= 0 ? roomStates(u, rooms, printed)[k] : null
+  if (!s || s.s === 'done') return []
+  const p = printed[k]
+  if (s.s === 'unnamed') {
+    const l = u.roomLabels.find((x) => x.id === s.room.id)
+    const at = l ?? insidePoint(s.room, u, rooms)
+    if (!at) return []
+    const act: Action = l ? { type: 'update-label', id: l.id, patch: labelOf(p) } : { type: 'add-label', label: { ...labelOf(p), x: at.x, y: at.y } }
+    return [{ label: `Name it ${p.name}`, title: `${s.room.name} is ${p.name} on the sheet: name it so`, actions: [act], ghost: [{ kind: 'area', pts: roomPolygon(s.room, u) }] }]
+  }
+  const c = closeAround(u, rooms, printed, k, before)
+  return c ? [c] : []
+}
+
+/**
+ * The fixes that work, per mark (by key): each candidate applied and re-checked (`closes`); an unnamed room's name spot;
+ * a room row's / an unnamed space row's (roomFixes — set even when empty: the row then offers "Show me").
+ * `printed`: the last trace's room names (its review stats).
+ */
+export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: PrintedRoom[] = []): Map<string, MarkFixes> {
   const out = new Map<string, MarkFixes>()
   for (const m of marks) {
+    if (m.review && (m.review.room !== undefined || (m.review.kind === 'unlabelled' && m.review.entityId))) out.set(m.key, { fixes: roomFixes(u, m.review, printed, issues) })
     const i = m.issue
     if (!i) continue
     const fixes = candidates(u, i).filter((f) => closes(u, f.actions, i, issues))

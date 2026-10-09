@@ -35,7 +35,7 @@ import { calibrateScale, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, Px, ReviewItem, RoomHint, TextTrace, WallSeg, WallTrace } from './types'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TextItem, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -1707,6 +1707,12 @@ const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g,
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE)\b/
 const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
 
+/** a room label's name as the sheet prints it ("BED-1" → "Bed-1") */
+const labelName = (it: TextItem): string => titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
+/** its read size — a misread one ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side */
+const sizeOf = (it: TextItem) => (it.dims && Math.min(it.dims.aM, it.dims.bM) >= 0.6 && Math.max(it.dims.aM, it.dims.bM) <= 12 ? it.dims : undefined)
+const sizeText = (d: { aM: number; bM: number }) => `${formatFeetInches(d.aM)} × ${formatFeetInches(d.bM)}`
+
 /** A point strictly inside the room and in no smaller room (label anchor). */
 function insidePoint(r: Room, u: Unit, rooms: Room[], prefer?: Pt): Pt {
   const poly = roomPolygon(r, u)
@@ -2062,15 +2068,12 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     if (it) {
       const at = insidePoint(r, u, rooms, toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
       const id = newId()
-      const name = titleCase(normaliseName(it.text.split('\n')[0]).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
-      // a misread size ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side
-      const dims = it.dims && Math.min(it.dims.aM, it.dims.bM) >= 0.6 && Math.max(it.dims.aM, it.dims.bM) <= 12 ? it.dims : undefined
-      roomLabels.push({ id, name, kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: `${formatFeetInches(dims.aM)} × ${formatFeetInches(dims.bM)}` } : {}) })
+      const dims = sizeOf(it)
+      roomLabels.push({ id, name: labelName(it), kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: sizeText(dims) } : {}) })
       if (dims) dimsOf.set(id, dims)
       kindOf.set(r, it.roomKind as RoomKind)
       labelled++
-      const names = new Set(items.map((x) => normaliseName(x.text.split('\n')[0])))
-      if (names.size > 1) review.push({ id: newId(), at, kind: 'unclosed', message: `${[...names].map(titleCase).join(' and ')} fall in one space — a wall between them is probably missing`, entityId: id })
+      // (two names in one space: the Studio's room rows say which one has no room of its own — stats.printed)
       continue
     }
     pending.push(r)
@@ -2216,20 +2219,17 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
       if (inFlat(at)) review.push({ id: newId(), at, kind: KIND[m.kind], message: m.message })
     }
   }
-  // the rooms' areas against the printed flat area (walls and a common share are in the printed figure: ≈ areaShare)
-  if (Number.isFinite(budget) && named.length) {
-    const sum = named.reduce((t, r) => t + r.areaSqm, 0), want = budget * KNOBS.areaShare
-    // the room names read on the flat (its walls' extent, the core left out) with no closed face under them: still open
-    // (every label sits in a closed face, so labels never count them — 2026-10-09, it always said 0)
-    const xs = u.vertices.map((v) => v.x), ys = u.vertices.map((v) => v.y)
-    const open = text.items.filter((it) => {
-      if (it.kind !== 'room' || !it.roomKind || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))) return false
-      const p = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
-      return p.x >= Math.min(...xs) && p.x <= Math.max(...xs) && p.y >= Math.min(...ys) && p.y <= Math.max(...ys) && !faceOf(p)
-    }).length
-    if (Math.abs(sum / want - 1) > 0.12)
-      review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `The ${named.length} closed rooms add up to ${Math.round(sum / (FT * FT))} sft; the printed ${Math.round(budget / (FT * FT))} sft flat should give about ${Math.round(want / (FT * FT))} — ${sum < want ? `${open} named rooms are still open (marked), or one is missing` : 'a room too many (the next flat\'s, or the lobby)'}` })
-  }
+  // the room names read on the flat (its walls' extent, the core left out): the Studio counts them against the closed,
+  // named rooms as the person fixes the draft, and the rooms' area against `wantSqm` (studio/review.ts roomCount) — a
+  // row frozen at trace time went stale at his first fix (2026-10-09: "13 closed rooms add up to 1401 sft …")
+  const vx = u.vertices.map((v) => v.x), vy = u.vertices.map((v) => v.y)
+  const printed: PrintedRoom[] = text.items.flatMap((it) => {
+    if (it.kind !== 'room' || !it.roomKind || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))) return []
+    const at = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
+    const dims = sizeOf(it)
+    const onFlat = vx.length > 0 && at.x >= Math.min(...vx) && at.x <= Math.max(...vx) && at.y >= Math.min(...vy) && at.y <= Math.max(...vy)
+    return onFlat ? [{ name: labelName(it), at, kind: it.roomKind, ...(dims ? { printedSize: sizeText(dims) } : {}) }] : []
+  })
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)
   for (const it of text.items) {
@@ -2263,6 +2263,8 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
       rooms: named.length,
       labelled,
       ...(fixtures.length ? { fixtures } : {}),
+      ...(printed.length ? { printed } : {}),
+      ...(Number.isFinite(budget) ? { wantSqm: budget * KNOBS.areaShare } : {}),
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),
     },
   }
