@@ -6,11 +6,11 @@
  * of what it changes — and a fix is offered ONLY when applying it really closes the issue without a new one (`closes`).
  * Pure: no DOM. core.validate is untouched; this only reads its issues.
  */
-import { deriveRooms, formatFeetInches, pointInPolygon, polygonCentroid, roomPolygon, triangulate, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, polygonCentroid, roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { MIN_OPENING_M, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, type Action, type StudioIssue, type StudioState } from './model'
-import { isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Review } from './review'
+import { insidePoint, isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Review } from './review'
 
 export type Severity = 'red' | 'amber' | 'grey'
 /** an unnamed space smaller than this is a duct / wall pocket: cosmetic, m² */
@@ -70,27 +70,6 @@ const ft = formatFeetInches
 const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y)
 const degreeOf = (u: Unit, id: Id) => u.walls.filter((w) => w.a === id || w.b === id).length
-
-/**
- * A point strictly inside the room and in no smaller room (= trace/solve insidePoint; the Studio chunk never imports the
- * trace code); null when none of the centroid and the triangle centres is. A label there names exactly this room.
- */
-function insidePoint(r: Room, u: Unit, rooms: Room[]): Pt | null {
-  const poly = roomPolygon(r, u)
-  const smaller = rooms.filter((o) => o !== r && o.areaSqm < r.areaSqm).map((o) => roomPolygon(o, u))
-  const good = (p: Pt) => pointInPolygon(p, poly) && !smaller.some((s) => pointInPolygon(p, s))
-  const c = polygonCentroid(poly)
-  if (good(c)) return c
-  const tri = triangulate(poly)
-  let best: Pt | null = null, bestA = -1
-  for (let i = 0; i + 2 < tri.length; i += 3) {
-    const [p, q, s] = [poly[tri[i]], poly[tri[i + 1]], poly[tri[i + 2]]]
-    const A = Math.abs((q.x - p.x) * (s.y - p.y) - (q.y - p.y) * (s.x - p.x))
-    const m = { x: (p.x + q.x + s.x) / 3, y: (p.y + q.y + s.y) / 3 }
-    if (A > bestA && good(m)) (bestA = A), (best = m)
-  }
-  return best
-}
 
 /** Where two walls validate calls crossing meet: an end of one lying on the other (`end`), else the crossing point. */
 function crossing(u: Unit, P: Wall, Q: Wall): { at: Pt; end?: Id } {
@@ -546,8 +525,7 @@ function joinFixes(u: Unit, rooms: Room[], id: Id, before: StudioIssue[]): Fix[]
  * A room row's fixes (Level 5, review.ts roomStates): "Name it …" for an unnamed room under / beside its printed name,
  * "Close it" for a name in no room or sharing another's; an unnamed space's row: "Join it to …". Empty = by hand.
  */
-function roomFixes(u: Unit, item: ReviewItem, printed: PrintedRoom[], before: StudioIssue[]): Fix[] {
-  const rooms = deriveRooms(u)
+function roomFixes(u: Unit, rooms: Room[], item: ReviewItem, printed: PrintedRoom[], before: StudioIssue[]): Fix[] {
   if (item.room === undefined) return item.entityId ? joinFixes(u, rooms, item.entityId, before) : []
   const k = printedIndex(printed, item)
   const s = k >= 0 ? roomStates(u, rooms, printed)[k] : null
@@ -573,9 +551,12 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
   const out = new Map<string, MarkFixes>()
   for (const m of marks) {
     if (m.review && (m.review.room !== undefined || (m.review.kind === 'unlabelled' && m.review.entityId))) {
-      // (an unnamed space's "Space N" label: a name typed on the plan renames it — StudioApp nameRoom)
-      const l = m.review.room === undefined ? u.roomLabels.find((x) => x.id === m.review!.entityId) : undefined
-      out.set(m.key, { fixes: roomFixes(u, m.review, printed, issues), ...(l ? { nameAt: { x: l.x, y: l.y } } : {}) })
+      // an unnamed space: a name typed on the plan goes on its "Space N" label (StudioApp nameRoom renames it), or in it
+      const rooms = deriveRooms(u)
+      const r = m.review.room === undefined ? rooms.find((x) => x.id === m.review!.entityId) : undefined
+      const l = r && u.roomLabels.find((x) => x.id === r.id)
+      const nameAt = l ? { x: l.x, y: l.y } : r && insidePoint(r, u, rooms)
+      out.set(m.key, { fixes: roomFixes(u, rooms, m.review, printed, issues), ...(nameAt ? { nameAt } : {}) })
     }
     const i = m.issue
     if (!i) continue

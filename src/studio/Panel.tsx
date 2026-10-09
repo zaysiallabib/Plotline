@@ -202,7 +202,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
     const own = m.twinOf ? fixes?.get(m.key) : undefined // (a room row's own fixes, on an issue's spot)
     const twin = fixes?.get(key)
-    const f = own ? { fixes: [...own.fixes, ...(twin?.fixes ?? [])], nameAt: twin?.nameAt } : twin
+    const f = own ? { fixes: [...own.fixes, ...(twin?.fixes ?? [])], nameAt: own.nameAt ?? twin?.nameAt } : twin
     const acts = !!(f?.fixes.length || f?.nameAt || extra)
     return (
       <li

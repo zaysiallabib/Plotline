@@ -2222,14 +2222,22 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
   // the room names read on the flat (its walls' extent, the core left out): the Studio counts them against the closed,
   // named rooms as the person fixes the draft, and the rooms' area against `wantSqm` (studio/review.ts roomCount) — a
   // row frozen at trace time went stale at his first fix (2026-10-09: "13 closed rooms add up to 1401 sft …")
+  // (only the clicked flat's: inside its walls' extent and in no room fitted to the next flat — Level 0 scoreboard)
   const vx = u.vertices.map((v) => v.x), vy = u.vertices.map((v) => v.y)
+  const onFlat = (it: TextItem) => {
+    const c = { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, at = toM(c)
+    return vx.length > 0 && at.x >= Math.min(...vx) && at.x <= Math.max(...vx) && at.y >= Math.min(...vy) && at.y <= Math.max(...vy) && !inOther({ x: c.x / pxPerM, y: c.y / pxPerM })
+  }
   const printed: PrintedRoom[] = text.items.flatMap((it) => {
-    if (it.kind !== 'room' || !it.roomKind || CORE_NAME.test(normaliseName(it.text.split('\n')[0]))) return []
-    const at = toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
+    if (it.kind !== 'room' || !it.roomKind || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) || !onFlat(it)) return []
     const dims = sizeOf(it)
-    const onFlat = vx.length > 0 && at.x >= Math.min(...vx) && at.x <= Math.max(...vx) && at.y >= Math.min(...vy) && at.y <= Math.max(...vy)
-    return onFlat ? [{ name: labelName(it), at, kind: it.roomKind, ...(dims ? { printedSize: sizeText(dims) } : {}) }] : []
+    return [{ name: labelName(it), at: toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }), kind: it.roomKind, ...(dims ? { printedSize: sizeText(dims) } : {}) }]
   })
+  // the printed flat area ON this flat ("TYPE-A ±2736 SFT" inside its extent, the nearest the click): the Area box and the
+  // room count's check — never the next flat's nor the sheet title's (scoreboard: Banani Unit A was checked against Unit
+  // B's 970 sft, BTI's small flats against the big one's 2703); none: the count says so
+  const near = (it: TextItem) => (pickPx ? Math.hypot(it.box.x + it.box.w / 2 - pickPx.x, it.box.y + it.box.h / 2 - pickPx.y) : 0)
+  const flatSqm = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it)).sort((p, q) => near(p) - near(q))[0]?.areaSqm
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)
   for (const it of text.items) {
@@ -2247,8 +2255,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
 
   // ── validate: fix what can be fixed, the rest goes to the list
   fixAndReport(u, review)
-  const areaItem = text.items.find((it) => it.kind === 'area' && it.areaSqm)
-  u.areaSqft = Math.round(areaItem ? areaItem.areaSqm! / (FT * FT) : named.reduce((t, r) => t + r.areaSqm, 0) / (FT * FT))
+  u.areaSqft = Math.round((flatSqm ?? named.reduce((t, r) => t + r.areaSqm, 0)) / (FT * FT))
   if (hints?.northDeg !== undefined) u.northDeg = hints.northDeg
   opts.onProgress?.('done', 1)
   return {
@@ -2264,7 +2271,7 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
       labelled,
       ...(fixtures.length ? { fixtures } : {}),
       ...(printed.length ? { printed } : {}),
-      ...(Number.isFinite(budget) ? { wantSqm: budget * KNOBS.areaShare } : {}),
+      ...(flatSqm ? { wantSqm: flatSqm * KNOBS.areaShare } : {}),
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),
     },
   }

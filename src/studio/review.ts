@@ -2,7 +2,7 @@
  * Auto-trace in the Studio's state: the result import (ONE undo step) and the "Check these" review list.
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
-import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, pointInPolygon, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft } from '../core'
+import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
 import type { Id, Pt, Room, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, PrintedRoom, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
@@ -59,9 +59,20 @@ export function studioReducer(s: StudioState, a: StudioAction): StudioState {
       const t = reducer({ ...reducer(s, { type: 'drag-begin' }), unit: raw, selection: [], chain: null, tool: 'select' }, { type: 'join-walls' })
       // the room rows first (Level 5): one per printed name with no closed, named room — they stand for the trace's
       // "Unnamed space" row of the room they name
-      const rows = a.result.stats.printed ? roomRows(t.unit, deriveRooms(t.unit), a.result.stats.printed) : []
+      const R = deriveRooms(t.unit)
+      const rows = a.result.stats.printed ? roomRows(t.unit, R, a.result.stats.printed) : []
       const claimed = new Set(rows.map((r) => r.entityId))
-      const items = [...rows, ...a.result.review.filter((i) => !(i.kind === 'unlabelled' && claimed.has(i.entityId)))].map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined }))
+      const kept = a.result.review.filter((i) => !(i.kind === 'unlabelled' && claimed.has(i.entityId)))
+      // a closed room left with no label at all (the walls joined on import made it): its row too, on its Issues mark
+      const listed = new Set([...claimed, ...kept.map((i) => i.entityId)])
+      const bare: ReviewItem[] = R.filter((r) => isUnnamed(r) && r.areaSqm >= 0.5 && !listed.has(r.id) && !t.unit.roomLabels.some((l) => l.id === r.id)).map((r) => ({
+        id: newId(),
+        at: insidePoint(r, t.unit, R) ?? r.centroid,
+        kind: 'unlabelled',
+        entityId: r.id,
+        message: `Unnamed space (${r.areaSqm.toFixed(1)} m²) — type its name (Name it), or join it to the room it is part of`,
+      }))
+      const items = [...rows, ...bare, ...kept].map((i) => ({ ...i, sig: i.entityId ? entitySig(t.unit, i.entityId) : undefined }))
       return { ...t, review: { unitId: t.unit.id, items, stats: a.result.stats } }
     }
     case 'dismiss-review':
@@ -177,6 +188,27 @@ export function openReview(s: StudioState, rooms?: Room[]): Review['items'] {
   return out
 }
 
+/**
+ * A point strictly inside the room and in no smaller room (= trace/solve insidePoint; the Studio chunk never imports the
+ * trace code); null when none of the centroid and the triangle centres is. A label there names exactly this room.
+ */
+export function insidePoint(r: Room, u: Unit, rooms: Room[]): Pt | null {
+  const poly = roomPolygon(r, u)
+  const smaller = rooms.filter((o) => o !== r && o.areaSqm < r.areaSqm).map((o) => roomPolygon(o, u))
+  const good = (p: Pt) => pointInPolygon(p, poly) && !smaller.some((s) => pointInPolygon(p, s))
+  const c = polygonCentroid(poly)
+  if (good(c)) return c
+  const tri = triangulate(poly)
+  let best: Pt | null = null, bestA = -1
+  for (let i = 0; i + 2 < tri.length; i += 3) {
+    const [p, q, s] = [poly[tri[i]], poly[tri[i + 1]], poly[tri[i + 2]]]
+    const A = Math.abs((q.x - p.x) * (s.y - p.y) - (q.y - p.y) * (s.x - p.x))
+    const m = { x: (p.x + q.x + s.x) / 3, y: (p.y + q.y + s.y) / 3 }
+    if (A > bestA && good(m)) (bestA = A), (best = m)
+  }
+  return best
+}
+
 // ── Level 5 (founder 2026-10-09): the rooms printed on the sheet against the draft as it stands ─────────────────────
 
 /** an unnamed room: the trace's "Space N" label, or a closed face with no label (core deriveRooms names it so too) */
@@ -259,7 +291,8 @@ export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats): string
   // (the names Auto-trace READ: one it missed is not counted — its room shows as an unnamed space)
   const line = missing.length ? `${n - missing.length} of the ${n} room names read on the sheet are closed and named — missing: ${missing.join(', ')}` : `All ${n} room names read on the sheet are closed and named`
   const sum = rooms.reduce((t, r) => t + r.areaSqm, 0)
-  return stats.wantSqm ? `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; the printed flat area gives about ${Math.round(sqmToSqft(stats.wantSqm))}.` : `${line}.`
+  const area = stats.wantSqm ? `the printed flat area gives about ${Math.round(sqmToSqft(stats.wantSqm))}` : 'no printed flat area was read on this flat'
+  return `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
 }
 
 /** a room row's index in `printed` (its name read at its spot) */

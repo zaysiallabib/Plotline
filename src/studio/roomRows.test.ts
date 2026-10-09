@@ -54,7 +54,7 @@ describe('room count and room rows', () => {
     const room = deriveRooms(t.unit).find((r) => r.name === 'Toilet')!
     expect(room.kind).toBe('bath')
     expect(openReview(t)).toEqual([])
-    expect(roomCount(t.unit, deriveRooms(t.unit), { printed } as never)).toBe('All 2 room names read on the sheet are closed and named.')
+    expect(roomCount(t.unit, deriveRooms(t.unit), { printed } as never)).toBe('All 2 room names read on the sheet are closed and named. The closed rooms add up to 129 sft; no printed flat area was read on this flat.')
   })
 
   it('"Close it" closes an open veranda with a railing across its open side and names it — one undo step', () => {
@@ -102,5 +102,16 @@ describe('room count and room rows', () => {
     const t = apply({ ...initialState(), unit: u, review: { unitId: 'u', items: [row], stats: {} as never } }, f)
     expect(deriveRooms(t.unit).map((r) => [r.name, +r.areaSqm.toFixed(1)])).toEqual([['Bed 1', 12]])
     expect(openReview(t)).toEqual([])
+  })
+
+  it('after Auto-trace a closed room with no label at all gets a row too, with "Join it" and the name box', () => {
+    const s = studioReducer(initialState(), { type: 'auto-trace', result: { unit: twoRooms(3.5), review: [], stats: { ms: 0, pxPerM: 100, scaleFrom: 'given', walls: 7, rooms: 2, labelled: 1 } } })
+    const [row] = openReview(s)
+    expect(row.message).toBe('Unnamed space (1.5 m²) — type its name (Name it), or join it to the room it is part of')
+    const rooms = deriveRooms(s.unit), issues = studioIssues(s.unit, rooms)
+    const m = markIssues(s.unit, rooms, issues, [row]).find((x) => x.review)!
+    const f = fixesOf(s.unit, [m], issues, []).get(m.key)!
+    expect(f.fixes.map((x) => x.label)).toEqual(['Join it to Bed 1'])
+    expect(f.nameAt).toBeTruthy()
   })
 })
