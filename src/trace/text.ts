@@ -1057,3 +1057,43 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
   }
   return out
 }
+
+/** a flat's type as its stamp prints it: "TYPE-A", "TYPE B" */
+const TYPE_RE = /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i
+
+/**
+ * Level 4: a flat's printed area ("±2736 SFT") read with no TYPE beside it — Sheltech L2's red "TYPE-B (L/O)" the line
+ * finder loses in its red box — gets the block around it read whole (one block at 4×, then 6× and 3×); a "TYPE-B" found
+ * is added just above the area as text of kind 'other', where the solver looks for a flat's type. Nothing else is added.
+ */
+export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOptions, 'langPath' | 'cachePath'> = {}): Promise<TextItem[]> {
+  const centre = (b: Box) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
+  const todo = trace.items.filter((it) => {
+    if (it.kind !== 'area' || !it.areaSqm) return false
+    const c = centre(it.box)
+    return !trace.items.some((o) => TYPE_RE.test(o.text) && Math.hypot(centre(o.box).x - c.x, centre(o.box).y - c.y) < 3 * it.box.h)
+  })
+  if (!todo.length) return []
+  const T = await import('tesseract.js')
+  const worker = await T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })
+  const out: TextItem[] = []
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: T.PSM.SINGLE_BLOCK, user_defined_dpi: '300', debug_file: '/dev/null' })
+    for (const it of todo) {
+      const c = centre(it.box), h = it.box.h
+      const box = { x: Math.round(c.x - it.box.w), y: Math.round(c.y - 3.5 * h), w: Math.round(2 * it.box.w), h: Math.round(4.5 * h) }
+      // (a letter read at any size wins over a digit: the red B reads "8" at some sizes)
+      let got: string | null = null
+      for (const s of [4, 6, 3]) {
+        const { data } = await worker.recognize(toPgm(pad(stretch(resample(cropGray(g, box), s, 'lanczos')), 12)) as unknown as Blob)
+        const m = TYPE_RE.exec(data.text)?.[1].toUpperCase()
+        if (m && (!got || /^\d+$/.test(got))) got = m
+        if (got && !/^\d+$/.test(got)) break
+      }
+      if (got) out.push({ text: `TYPE-${got}`, box: { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h }, kind: 'other', conf: 0.5, source: 'ocr' })
+    }
+  } finally {
+    await worker.terminate()
+  }
+  return out
+}

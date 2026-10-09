@@ -8,7 +8,7 @@ import type { Unit, Vertex, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
 import { fixesOf, markIssues, type Fix } from './issues'
-import { openReview, roomCount, roomRows, roomStates, studioReducer } from './review'
+import { fewRooms, openReview, roomCount, roomRows, roomStates, studioReducer } from './review'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, heightM = 3.048): Wall => ({ id, a, b, thicknessM: 0.127, heightM, openings: [] })
@@ -58,6 +58,19 @@ describe('room count and room rows', () => {
     const [f] = fixesFor(u, row, printed)
     const t = apply({ ...initialState(), unit: u, review: { unitId: 'u', items: [row], stats } }, f)
     expect(t.unit.roomLabels.find((l) => l.name === 'Toilet')?.flat).toBe('Flat 1')
+  })
+
+  it('Level 4: a printed name inside the core\'s room (the lifts\' face left open around a toilet) is not closed — it shares the lift\'s room', () => {
+    const u = twoRooms(2, [{ id: 'lift', name: 'Lift', kind: 'other', x: 3, y: 1.5 }])
+    const st = roomStates(u, deriveRooms(u), [P('Toilet 2', 3, 2.5, 'bath')])
+    expect(st.map((x) => (x.s === 'merged' ? `merged into ${x.into.name}` : x.s))).toEqual(['merged into Lift'])
+  })
+
+  it('Level 4: few rooms closed on a sheet that prints a bedroom is a flat sheet — never called a ground floor (Banani Level 2-6)', () => {
+    const banani = { labelled: 1, rooms: 1, printed: [P('Bed 04', 1, 1, 'bed'), P('Kitchen', 2, 1, 'kitchen')] } as never
+    expect(fewRooms(banani)).toMatch(/^This is a flat sheet, but Auto-trace closed only 1 room on it \(it read 2 room names\)/)
+    expect(fewRooms({ labelled: 0, rooms: 0, printed: [P('Guard Room', 1, 1, 'guard')] } as never)).toMatch(/^Auto-trace is made for flats\. On a ground floor/)
+    expect(fewRooms({ labelled: 5, rooms: 5 } as never)).toBeNull()
   })
 
   it('Level 3: a printed name standing inside an unnamed room after the import names it — no row; one only beside it keeps its row', () => {

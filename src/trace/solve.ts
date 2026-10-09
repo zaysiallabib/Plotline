@@ -2837,6 +2837,8 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
     const { draft, origin0, pxPerM: k } = traces
     const faces = draft.rooms.map((r) => roomPolygon(r, draft.unit).map((q) => ({ x: origin0.x + q.x * k, y: origin0.y + q.y * k })))
     text.items.push(...(await (await import('./text')).readInFaces(gray, faces, text, k)))
+    // Level 4: a flat's printed area with no TYPE read beside it gets the block around it read (text.ts readTypes)
+    text.items.push(...(await (await import('./text')).readTypes(gray, text)))
   } catch {
     // (a face read failing never costs the draft)
   }

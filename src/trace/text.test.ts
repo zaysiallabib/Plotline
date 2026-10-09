@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -580,4 +580,17 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-2
     console.table(rows)
     console.log(`TOTAL sized labels ${tot.sized}: found ${tot.found}, size parsed ${tot.parsed}, right ${tot.exact}, MISREAD ${tot.misread}, unsure (flagged) ${tot.unsure}\n${misses.join('\n')}`)
   }, 3_600_000)
+})
+
+// Level 4: Sheltech L2's red "TYPE-B (L/O)" over Type B's "±2736 SFT" (lost by the line finder) read from the block
+// around the area stamp; Type A's, read already, is not read twice (node tesseract: TRACE_OCR=1)
+describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-sheltech-l2.pgm`))('readTypes on Sheltech L2', () => {
+  test('TYPE-B found above B\'s area; nothing added beside A\'s', async () => {
+    const g = loadPgm(`${FIXTURES}assets__plan-sheltech-l2.pgm`)!
+    const area = (x: number, y: number, w: number, h: number): TextItem => ({ text: '+2736 SFT', box: { x: x - w / 2, y: y - h / 2, w, h }, kind: 'area', areaSqm: 254.2, conf: 0.8, source: 'ocr' })
+    const typeA: TextItem = { text: 'TYPE-A', box: { x: 644, y: 304, w: 27, h: 8 }, kind: 'other', conf: 0.8, source: 'ocr' }
+    const got = await readTypes(g, { items: [area(658, 320, 42, 7), typeA, area(320, 362, 34, 8)] }, { cachePath: TESS })
+    expect(got.map((it) => [it.text, it.kind])).toEqual([['TYPE-B', 'other']])
+    expect(Math.hypot(got[0].box.x + got[0].box.w / 2 - 320, got[0].box.y + got[0].box.h / 2 - 362)).toBeLessThan(3 * 8)
+  }, 120_000)
 })

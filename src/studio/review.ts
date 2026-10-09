@@ -2,7 +2,7 @@
  * Auto-trace in the Studio's state: the result import (ONE undo step) and the "Check these" review list.
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
-import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
+import { deriveRooms, formatFeetInches, isCore, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
 import type { Flat, Id, Pt, Room, RoomLabel, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, PrintedRoom, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
@@ -305,6 +305,9 @@ export function roomStates(u: Unit, rooms: Room[], printed: PrintedRoom[]): Room
     const r = rooms[f]
     if (isUnnamed(r)) return { s: 'unnamed', room: r, d: 0 }
     if (sameName(r.name, p.name)) return { s: 'done' }
+    // (Level 4: a name inside the core's room — Sheltech L2 B's Toilet 2 in the face the lifts' walls left open — is in
+    // the lobby / lift / stair, never closed on its own)
+    if (isCore(r)) return { s: 'merged', into: r }
     // the room carries another printed name in it; none does (renamed by hand): the first printed name in it counts
     const mine = printed.findIndex((q, j) => face[j] === f && sameName(q.name, r.name))
     return (mine >= 0 ? mine : face.indexOf(f)) === i ? { s: 'done' } : { s: 'merged', into: r }
@@ -358,6 +361,20 @@ export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats, flats: 
   const sum = rooms.reduce((t, r) => t + r.areaSqm, 0)
   const area = stats.wantSqm ? `the printed flat area gives about ${Math.round(sqmToSqft(stats.wantSqm))}` : 'no printed flat area was read on this flat'
   return `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
+}
+
+/**
+ * The note when Auto-trace closed almost nothing (fewer than 2 labelled rooms). It used to say "made for flats … on a
+ * ground floor, basement or rooftop" whenever that happened — also on flat sheets (Banani Level 2-6: walls drawn as thin
+ * lines; Level 0 scoreboard). A sheet that prints a bedroom's name is a flat sheet: the note says so and why, never
+ * "ground floor". null: nothing to say.
+ */
+export function fewRooms(stats: AutoTraceStats): string | null {
+  if (stats.labelled >= 2) return null
+  const n = stats.printed?.length ?? 0
+  if (stats.printed?.some((p) => p.kind === 'bed'))
+    return `This is a flat sheet, but Auto-trace closed only ${stats.rooms} room${stats.rooms === 1 ? '' : 's'} on it (it read ${n} room name${n === 1 ? '' : 's'}). Its walls may be drawn as thin lines, which Auto-trace does not follow yet: draw them with W — the rows below say which rooms are open.`
+  return 'Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.'
 }
 
 /** a room row's index in `printed` (its name read at its spot) */
