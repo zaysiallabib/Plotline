@@ -967,7 +967,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const names = lines.flatMap((n, j) => (n.vertical || isSize(j) || classifyRoom(read[j].text) || parseArea(read[j].text) !== null ? [] : [j]))
     if (names.length) {
       total += NAME_VIEWS.length * names.length
-      await setAll({ tessedit_char_whitelist: NAME_CHARS })
+      // (tesseract's own notes on odd crops — "Image too small to scale", "Detected 3 diacritics" — go nowhere)
+      await setAll({ tessedit_char_whitelist: NAME_CHARS, debug_file: '/dev/null' })
       const seen = names.map((j) => [read[j].text])
       for (const v of NAME_VIEWS) {
         const again = await readAll(names, (l) => lineImage(v.from === 'clean' ? clean : gray, l, v.px, v.kernel, undefined, v.from === 'own' ? glyphs : undefined))
@@ -1033,7 +1034,7 @@ export async function readInFaces(g: Gray, faces: { x: number; y: number }[][], 
   try {
     const found = new Map<number, string>()
     for (const v of FACE_VIEWS) {
-      await worker.setParameters({ tessedit_pageseg_mode: T.PSM[v.psm], user_defined_dpi: '300', tessedit_char_whitelist: NAME_CHARS })
+      await worker.setParameters({ tessedit_pageseg_mode: T.PSM[v.psm], user_defined_dpi: '300', tessedit_char_whitelist: NAME_CHARS, debug_file: '/dev/null' })
       for (const [i, f] of todo.entries()) {
         if (found.has(i)) continue
         const img = pad(stretch(resample(cropGray(g, f.box), Math.max(1, Math.min(8, v.px / ch)), 'lanczos')), 12)
