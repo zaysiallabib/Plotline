@@ -84,6 +84,12 @@ export { formatFeetInches, FT, sqmToSqft } from './units'
 /** The unit reflected about x = axisX: a/b swapped per wall (normals keep their room), offsets re-measured, ids + `-m`. */
 export { mirrorUnit } from './mirror'
 
+/**
+ * The flats of a whole-floor drawing, derived: rooms joined by doors / passages / sliders, the common core (isCore) in
+ * none; RoomLabel.flat pins a room to a flat by name ('' = none). Names from a "TYPE-A ±2736 SFT" label, else "Flat N".
+ */
+export { deriveFlats, isCore, type Flat } from './flats'
+
 /** Lookup helpers */
 export const vertexById = (vs: Vertex[], id: Id): Vertex => {
   const v = vs.find((x) => x.id === id)

@@ -103,6 +103,11 @@ export interface RoomLabel {
   levelM?: number
   /** a ramp: the floor runs from `levelM` to `slope.toLevelM` (core.roomLevelAt) */
   slope?: Slope
+  /**
+   * A flat NAME pinned on this room (core.deriveFlats): it belongs to that flat whatever its doors, and joins nothing
+   * through them; '' = in no flat. Absent = the flat its doors give (the usual case). Flats themselves are never stored.
+   */
+  flat?: string
 }
 
 /** DERIVED by core.deriveRooms — never authored, never persisted. */
