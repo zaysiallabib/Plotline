@@ -1,10 +1,26 @@
 # HANDOFF.md — Plotline
 
 Read this first in every new session. Repo: `E:\dev\Plotline` (never the OneDrive copy on C:).
-Branch: **`main`** since 2026-10-09 — the founder moved main onto the session branch himself (commit 28259c8 "9.10.26") and pushed it; `feat/phase-0` and `claude/brave-ritchie-ypmrbd` are history on GitHub `zaysiallabib/Plotline`. Agents still work on worktree branches off main; the manager merges and pushes main.
+Branch: **`main`** — the ONLY branch in use since 2026-10-09 (GitHub `zaysiallabib/Plotline`); `feat/phase-0` and `claude/brave-ritchie-ypmrbd` are stale and hold nothing main lacks (see "Branches on GitHub" under SESSION 24). Agents work on worktree branches off main; the manager merges and pushes main.
 Live: https://plotline-flax.vercel.app — **SESSION 19 (the levels) IS LIVE — founder deployed 2026-10-05 (bundle index-8u31c1T8.js), still WITHOUT Supabase: his Vercel names are `SUPABASE_URL` / `SUPABASE_KEY`; commit dc26eb1 makes the build read them — he must redeploy once more (SESSION 20 below).** (Older note: 2026-10-05 00:20 the bundle was still index-ZXDvwqwq.js.) Session 18 is LIVE (founder deployed 2026-10-04 evening; bundle index-ZXDvwqwq.js) but WITHOUT the Supabase env vars — Share link / Change list are missing on live until he adds them in Vercel and redeploys (SESSION 19 PLAN, "DEPLOY STATE").** `npx vercel --prod --yes` is denied to sessions by the classifier — the founder deploys.
 
 ## ▶ START HERE — SESSION 24: APARTMENT DETECTION (founder, 2026-10-09 evening: "the current system doesn't handle detecting apartments that well — bolster that right now"; his finding: "almost all of them have one or two rooms missing" after Auto-trace, and our checks ran on files, not in the Studio with the picture). Branch `main`, 999 tests + typecheck green, pushed.
+
+**THE 10-DAY PLAN (founder, 2026-10-09 evening: "about 10 days to finish the product"; meetings with developers and other clients in between). AGREED IN PRINCIPLE, NOT STARTED — he is working on something else first; start ~2026-10-10 or later when he says so.** Honest frame: a product to put in front of developers and buyers in 10 days = yes, if scoped as below; "auto-trace finds every room by itself" = not promised (Level 1 is research-grade; published systems plateau on sheets like these).
+
+| Day | Work | Certainty |
+|---|---|---|
+| 1 | Supabase live on the deployed link (his Vercel env names `SUPABASE_URL` / `SUPABASE_KEY` exist; code reads them since dc26eb1; he redeploys): comments + the change list tested as a buyer on a real `/s/<token>` link | High |
+| 2 | Level 0: the scoreboard, every flat sheet, in Firefox (`Docs/AUTOTRACE_SCOREBOARD.md`) | High |
+| 3–4 | **Level 5 FIRST, not last:** after Auto-trace the review list names each open / missing room and closes or names it in one click; "17 of 18 printed rooms closed; missing: Veranda 1" | High |
+| 5–6 | Level 3: every printed name and size lands in its room (no "Space 4"), typed sizes make a size row, the TYPE label kept | High |
+| 7–8 | Levels 1 + 2 as far as they get, measured on the scoreboard (glass / railing / open edges shown as check-this rows — needs his §5 decision; non-wall splits joined) | Medium |
+| 9 | Level 4: the whole floor in one click, flats grouped and named | Medium |
+| 10 | Walk ONE flat of a floor alone in 3D; final Firefox pass on every sheet; HANDOFF + MANUAL; he deploys | High |
+
+Why Level 5 moves up: in a meeting he needs a plan traced in minutes, not a perfect tracer — Auto-trace + a two-minute fix-up is there by day 4; Levels 1–2 then improve it without blocking the demo. Tokens: session 23's five Opus runs ≈ 1.5 M tokens; ten days at that pace ≈ two weekly budgets — if the budget is smaller, the Medium rows go first. Still owed by him before day 7: the §5 decision (show guessed non-wall edges? recommended yes).
+
+**Branches on GitHub (settled 2026-10-09):** use **`main`** for everything — the working branch, what Vercel deploys, what agents branch from (worktree branches off main, merged back by the manager). `origin/feat/phase-0` (last commit 2026-09-28, 349 behind main) and `origin/claude/brave-ritchie-ypmrbd` (12 behind) hold NOTHING main lacks — stale, safe to delete. Two settings only he can change: GitHub → Settings → Branches → default branch = `main` (today it is `feat/phase-0`, which is why GitHub opens on the stale one), and Vercel → Project → Settings → Git → Production Branch = `main`.
 
 **The plan, in full, with the measured state and six levels: `Docs/AUTOTRACE_STRATEGY.md` §6.** Short form:
 - **Measured now (the product's own path, no AI): 71 of 116 rooms found on the five hand-traced flats** — Sheltech A 15/21, Sheltech B 14/20, BTI Type A 18/27, Type B 19/22, Type C 23/26. Perfect names would still give 71: the room BOUNDARIES are the cap (glass fronts, railings, planter edges, shaft walls, open plan are not thick walls). Rooms go missing three ways: MERGED into a neighbour (verandas, AODs, lobbies), SPLIT by a line that is no wall (counters, wardrobes, column rows, unclosed door bridges), or NO FACE (never closes).
