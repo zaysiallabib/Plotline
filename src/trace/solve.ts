@@ -1157,15 +1157,18 @@ const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w
 
 /**
  * Founder rule 5: thin lines of a glazing colour — blue / cyan tinted (Banani draws windows and veranda glass as thin
- * light-blue lines). A blue FILL (a wet room's floor tint) is no glass: blue regions deeper than 3 px are cut out.
+ * light-blue lines). A blue FILL (a wet room's floor tint) is no glass: blue regions deeper than 3 px — or, at a known
+ * scale `k` (px/m), 0.12 m — are cut out (Level 1: Sheltech's glazing is a 5 px band of three blue pen lines at 27 px/m,
+ * a glass front, not a tint).
  */
-export function glassMask(rgb: NonNullable<AutoTraceOpts['rgb']>): Uint8Array {
+export function glassMask(rgb: NonNullable<AutoTraceOpts['rgb']>, k = 0): Uint8Array {
   const { width: w, height: h, data } = rgb
   const m = new Uint8Array(w * h)
   for (let i = 0; i < w * h; i++) m[i] = data[i * 4 + 2] - Math.max(data[i * 4], data[i * 4 + 1]) >= 25 ? 1 : 0
   const deep = edt(m, w, h)
   const fill = new Uint8Array(w * h)
-  for (let i = 0; i < w * h; i++) fill[i] = deep[i] >= 3 ? 1 : 0
+  const depth = Math.max(3, 0.12 * k)
+  for (let i = 0; i < w * h; i++) fill[i] = deep[i] >= depth ? 1 : 0
   const fillAll = dilate(fill, w, h, 3)
   for (let i = 0; i < w * h; i++) if (fillAll[i]) m[i] = 0
   return m
@@ -1907,9 +1910,12 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const text = inputs.text ?? { items: [] }
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
-  const ink = { ...inkMasks(plan), glass: opts.rgb ? glassMask(opts.rgb) : undefined }
+  const masks0 = inkMasks(plan)
+  // (the sheet's scale, or the raster's own wall width as the 5" prior)
+  const k0 = opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(masks0.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M
+  const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
-  const plants = planterMask(plan, ink.wall, opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(ink.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M, inputs.green)
+  const plants = planterMask(plan, ink.wall, k0, inputs.green)
   const tracker = opts.tracker ?? KNOBS.tracker
   // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
   const masks = tracker === 'tracks' ? { plant: inputs.green, glass: ink.glass } : {}

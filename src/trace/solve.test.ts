@@ -147,6 +147,10 @@ describe('marks: stairs, glazing profile, glass colour', () => {
     const m = glassMask({ width: w, height: h, data })
     expect(m[5 * w + 30]).toBe(1)
     expect(m[35 * w + 30]).toBe(0)
+    // Level 1: a glass front drawn as a 5 px band of blue pen lines (Sheltech, 27 px/m) is glass at the sheet's scale
+    for (let y = 9; y < 14; y++) for (let x = 5; x < 55; x++) paint(x, y, [139, 183, 220])
+    expect(glassMask({ width: w, height: h, data }, 27)[11 * w + 30]).toBe(1)
+    expect(glassMask({ width: w, height: h, data })[11 * w + 30]).toBe(0)
   })
 })
 
