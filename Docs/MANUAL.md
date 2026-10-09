@@ -388,6 +388,7 @@ Projects, their drawings and their pictures are kept in this browser only.
 
 Things that are confusing or not finished. Each one is a job on the list.
 
+- **Auto-trace misses rooms.** On the test sheets it closes and names about 6 of every 10 rooms (71 of 116 on the five hand-traced flats, 2026-10-09); verandas, planters, shafts and lobbies are the usual ones left open or swallowed by the room beside them. Expect to close and name one or two rooms per flat by hand (W for the missing line, R to name). Making this solid is the next job (HANDOFF session 24).
 - **Ground floors, basements and rooftops cannot be auto-traced.** Auto-trace only understands flats; it now says so when it finds almost nothing, and says loudly when it had to guess the scale.
 - **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
 - **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.

@@ -115,6 +115,11 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
   AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
   Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
+- **Apartment detection is the priority (founder, 2026-10-09 evening):** "the current system doesn't handle detecting
+  apartments that well — bolster that right now"; Auto-trace leaves one or two rooms missing on almost every sheet (measured:
+  71 of 116 rooms on the hand-traced flats). Plan and levels: `Docs/AUTOTRACE_STRATEGY.md` §6, order in HANDOFF
+  "SESSION 24". Proof of any auto-trace work = the scoreboard from a Firefox run on EVERY flat sheet with the picture
+  (`Docs/AUTOTRACE_SCOREBOARD.md`), never a node eval or a JSON draft alone — he caught us testing on files.
 - **Decisions 2026-10-09 (founder, asked one by one in plain words after session 23):** (1) a room's drawn size = its
   MAIN RECTANGLE, as the sheet prints it (not the whole outline with door nooks); (2) an unread space next to a room
   stays JOINED to it (the 2026-10-03 rule stands; the dining may read longer than printed); (3) auto-trace's glass-front
