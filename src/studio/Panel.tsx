@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FT, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope } from '../core'
+import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope } from '../core'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
@@ -167,6 +167,8 @@ interface Props {
   state: StudioState
   dispatch: (a: Action) => void
   rooms: Room[]
+  /** the drawing's flats (core.deriveFlats): a selected room's Flat pick */
+  flats: Flat[]
   issues: StudioIssue[]
   /** the "Check these" rows, then the Issues, as marked on the plan (issues.ts markIssues) */
   marks: Mark[]
@@ -186,7 +188,7 @@ interface Props {
   onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, onHot, onOpen, onFix, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -286,7 +288,7 @@ export function Panel({ state, dispatch, rooms, issues, marks, fixes, active, on
         ) : pieces ? (
           <p className="muted">Nothing selected. Click a piece of furniture.</p>
         ) : (
-          <Selection state={state} dispatch={dispatch} rooms={rooms} />
+          <Selection state={state} dispatch={dispatch} rooms={rooms} flats={flats} />
         )}
       </section>
       {pieces && onPlace && (
@@ -388,7 +390,7 @@ function OpeningPick({ state, dispatch }: { state: StudioState; dispatch: (a: Ac
   )
 }
 
-function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a: Action) => void; rooms: Room[] }) {
+function Selection({ state, dispatch, rooms, flats }: { state: StudioState; dispatch: (a: Action) => void; rooms: Room[]; flats: Flat[] }) {
   const { unit, selection, chain } = state
   const ents = selection.map((id) => findEntity(unit, id)).filter((e) => e !== null)
 
@@ -564,6 +566,13 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
   }
   const l = e.l
   const room = rooms.find((r) => r.id === l.id)
+  // the Flat pick: the flats its doors give (core.deriveFlats); picking another pins the room there by name, "Not in a
+  // flat" pins '' (the lobby a door joined to both flats), "By its doors" takes the pin away
+  const inFlat = flats.find((f) => f.roomIds.includes(l.id))
+  let k = flats.length + 1
+  while (flats.some((f) => f.name === `Flat ${k}`)) k++
+  const pickFlat = (v: string) =>
+    dispatch({ type: 'update-label', id: l.id, patch: { flat: v === 'auto' ? undefined : v === 'none' ? '' : v === 'new' ? `Flat ${k}` : v.slice(2) } })
   return (
     <div className="props">
       <Row label="Room name">
@@ -572,6 +581,20 @@ function Selection({ state, dispatch, rooms }:{ state: StudioState; dispatch: (a
       <Row label="Kind">
         <KindSelect value={l.kind} onChange={(kind) => dispatch({ type: 'update-label', id: l.id, patch: { kind } })} />
       </Row>
+      {room && (
+        <Row label={l.flat === undefined ? 'Flat (by its doors)' : 'Flat (moved by hand)'}>
+          <select value={inFlat ? `f:${inFlat.name}` : 'none'} onChange={(ev) => pickFlat(ev.target.value)}>
+            {flats.map((f) => (
+              <option key={f.key} value={`f:${f.name}`}>
+                {f.name}
+              </option>
+            ))}
+            <option value="none">Not in a flat</option>
+            <option value="new">New flat (Flat {k})</option>
+            {l.flat !== undefined && <option value="auto">Back to: by its doors</option>}
+          </select>
+        </Row>
+      )}
       <Row label="Printed size">
         <input value={l.printedSize ?? ''} onChange={(ev) => dispatch({ type: 'update-label', id: l.id, patch: { printedSize: ev.target.value } })} />
       </Row>

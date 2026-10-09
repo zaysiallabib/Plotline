@@ -5,12 +5,20 @@
  * puts the open drawing on more floors; Show building stacks them. Saved in this browser (data/building/projects.ts).
  */
 import { useState } from 'react'
+import { deriveFlats, deriveRooms } from '../core'
 import type { Id, Unit } from '../core'
 import { drawingName, parseFloors, planOf, removeDrawing, setSlot, slotsOf, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { emptyUnit } from './model'
 import { deletePicture } from './pictures'
 
 const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
+/** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
+const flatCache = new WeakMap<Unit, string>()
+const flatsOf = (u: Unit | undefined): string => {
+  if (!u) return ''
+  if (!flatCache.has(u)) flatCache.set(u, deriveFlats(u, deriveRooms(u)).map((f) => f.name).join(', '))
+  return flatCache.get(u)!
+}
 /** a number box kept as typed (a cleared box is not a 0 yet), clamped when used */
 const num = (s: string, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(s) || 0)))
 
@@ -214,10 +222,17 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
         {slotsOf(project).map((r) => {
           const id = r.unitIds[0]
           const here = !!id && id === drawing
+          // a whole-floor drawing's flats under its name: "Floor 2 — Type A, Type B"
+          const flats = r.unitIds.length === 1 ? flatsOf(here ? unit : project.units[id]) : ''
           return (
             <li key={String(r.slot)} className={here ? 'here' : ''}>
               <span className="lbl">{r.label}</span>
               <span className={id ? 'dwg' : 'dwg muted'}>{id ? `${named(id)}${r.unitIds.length > 1 ? ` + ${r.unitIds.length - 1} more` : ''}` : 'empty'}</span>
+              {flats && (
+                <span className="flats" title="The flats in this drawing (rooms joined by doors)">
+                  — {flats}
+                </span>
+              )}
               <span className="acts">
                 {!id ? (
                   <button title={`A new drawing for ${r.label.toLowerCase()}`} onClick={() => draw(r.slot)}>

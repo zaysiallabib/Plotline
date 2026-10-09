@@ -201,6 +201,19 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 
 **Hold instead of switch:** hold **W**, **O** or **R**, use the tool, let go — you are back on the tool you had.
 
+### Flats in a whole-floor drawing
+
+When a drawing has its rooms named, the Studio finds its flats by itself — nothing to type:
+- Rooms joined by a **door, an open passage or a sliding door** are one flat (a zone line joins too). A window joins nothing.
+- The **lift lobby, stairs, lifts, shafts**, gym / community / guard rooms and outdoor areas are shared: they belong to no flat, and a flat stops there. (It knows them by their kind, or by a name with Lobby, Stair, Lift or Hoistway in it.)
+- A group of rooms counts as a flat when it has a bedroom and at least one more room.
+- Each flat is **tinted in its own colour** and its name is written once above it. The shared rooms, and rooms in no flat, keep the plain light wash.
+- Names: **Flat 1, Flat 2…** from west to east (left to right on the plan). A room name like **Type A ±2736 sft** placed inside a flat (R, click in one of its rooms, type it) names that flat "Type A" — it does not rename the room it stands in when that room already has a name.
+
+**A room in the wrong flat** — with **V** (Select), click the room's name on the plan. In the panel, **Flat** lists the flats: pick the right one and its colour follows at once. **Not in a flat** takes a room out (say, a lobby that was not called Lobby, so it joined two flats into one). **New flat** starts another flat with just that room. A room moved by hand says **Flat (moved by hand)**; **Back to: by its doors** undoes that. **Ctrl+Z** also undoes it.
+- A room moved by hand no longer joins anything through its doors — if that leaves a room next to it untinted, move that one too.
+- An untinted room inside a flat usually means its door is missing (add it with O — the 3D needs it too) or it has no door at all (a planter behind a low planter edge, a light well behind a window). Add the door, or pick the flat for it.
+
 ### Other keys and the mouse
 
 | Key / mouse | What it does |
@@ -221,7 +234,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
   - *Wall* — its type (Wall / Low wall / Kerb / Zone line), width, height, **Stands alone** (a screen or decoration wall that is not meant to close a room), length, copy, delete.
   - *Opening* — kind, width, height, sill, distance from each corner; for doors, hinge side and swing.
   - *Column* — width, depth, delete.
-  - *Room name* — name, kind, printed size, floor level, ramp.
+  - *Room name* — name, kind, **Flat** (which flat of the drawing it is in — see "Flats in a whole-floor drawing"), printed size, floor level, ramp.
 - **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**.
   - **Wall tracks** tick box — which tracing method Auto-trace uses (leave it on).
   - **AI helper (optional)** — a place for a Gemini key; only used to re-read room names the tool could not read.
@@ -262,6 +275,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 - **Use drawing…**: pick one of your drawings for this floor.
 - **Clear**: the floor is empty again; the drawing itself is kept.
 - The floors of the drawing open now have a yellow outline.
+- Under a floor's drawing name, its flats: **Floor 2 — Level 2** with **— Flat 1, Flat 2** under it (or "Type A, Type B" when the drawing names them). They come from the drawing itself (section 5, "Flats in a whole-floor drawing"); nothing to type here. A ground floor, basement or rooftop shows none.
 
 **Under the list, for the drawing open now**
 - **Open now** — its name.
@@ -390,7 +404,9 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **The Floor box in the top bar only takes numbers.** Typing G, B1 or R is thrown away without a word, and the number does not make the plan a ground floor or basement — only its row in the project's floor list (or the old "Use this plan as") does.
 - The old one-plan way (**Put only this plan into a building…** → Ground floor) refuses until a building with a flat exists, then needs typed "move it right / down" numbers. The project floor list has neither problem.
 - **Outside a project, only one Studio drawing at a time.** Opening another plan from the 3D view (Edit plan, Edit openings) replaces yours after one question. Inside a project nothing is asked: the project keeps your drawing and its picture — open it again from its floor in the list.
-- **A whole-floor drawing cannot yet be split into its flats**: a buyer link and the Building view treat the whole floor as one flat.
+- **A whole-floor drawing knows its flats only in the Studio** (the tints, the Flat pick, the floor list): you cannot yet walk ONE flat of it on its own in 3D, and a buyer link and the Building view still treat the whole floor as one flat. Finishes go per room / per wall (as before), not per flat.
+- **Flat names follow the place**: "Flat 1, Flat 2" count from west to east, so a drawing turned into its mirror image counts them the other way. A room moved by hand to "Flat 2" goes with the number. "Type A" names do not move.
+- **Planters and light wells with no door are in no flat** (they show untinted): pick their flat by hand. Auto-trace does not yet read the printed "TYPE-A ±2736 SFT" on a sheet, and its "the closed rooms add up to … sft" check is still for one flat.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.

@@ -1242,10 +1242,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return commit(s, { ...s.unit, roomLabels: [...s.unit.roomLabels, label] }, { selection: [label.id] })
     }
     case 'update-label': {
-      // a field cleared (no level, no ramp, no printed size) leaves the label, not an `undefined` in it
+      // a field cleared (no level, no ramp, no printed size, no flat pinned) leaves the label, not an `undefined` in it
       const set = (l: RoomLabel): RoomLabel => {
         const n = { ...l, ...a.patch }
-        for (const k of ['levelM', 'slope', 'printedSize'] as const) if (n[k] === undefined) delete n[k]
+        for (const k of ['levelM', 'slope', 'printedSize', 'flat'] as const) if (n[k] === undefined) delete n[k]
         return n
       }
       const roomLabels = s.unit.roomLabels.map((l) => (l.id === a.id ? set(l) : l))

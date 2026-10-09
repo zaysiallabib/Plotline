@@ -1,6 +1,6 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, roomAt, roomPolygon, unitBounds, wallFrame } from '../core'
-import type { FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
+import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
@@ -20,6 +20,9 @@ const ZONE_TINT: Partial<Record<RoomKind, string>> = {
   deck: 'rgba(176,122,70,0.34)',
   play: 'rgba(228,140,80,0.26)',
 }
+/** one colour per flat of a whole-floor drawing (core.deriveFlats), in its order; the core and loose rooms keep the wash */
+const FLAT_RGB = ['86,156,230', '232,132,86', '140,200,90', '196,120,214', '226,196,72', '80,196,186']
+const flatRgb = (i: number) => FLAT_RGB[i % FLAT_RGB.length]
 
 export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label' | 'furniture' | 'pillar'; id: Id }
 export interface Hover {
@@ -114,6 +117,8 @@ export interface DrawArgs {
   mark?: Pt | null
   /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint */
   preview?: { polys: Pt[][]; names: { at: Pt; text: string }[] } | null
+  /** the drawing's flats: each tinted in its colour, its name once above it */
+  flats?: Flat[]
 }
 
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
@@ -215,13 +220,18 @@ export function draw(a: DrawArgs): void {
   ctx.lineJoin = 'round'
 
   const hotRoom = state.tool === 'room' && a.hover ? roomAt(a.hover.m, a.rooms, state.unit) : null
+  const flatOf = new Map((a.flats ?? []).flatMap((f, i) => f.roomIds.map((id) => [id, i] as const)))
+  /** each flat's extent (m), for its name */
+  const flatBox = (a.flats ?? []).map(() => ({ x0: Infinity, x1: -Infinity, y0: Infinity }))
   for (const r of a.rooms) {
     const poly = roomPolygon(r, state.unit)
     ctx.beginPath()
     poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
     ctx.closePath()
-    ctx.fillStyle = ZONE_TINT[r.kind] ?? 'rgba(232,193,112,0.05)'
+    const fi = flatOf.get(r.id)
+    ctx.fillStyle = fi !== undefined ? `rgba(${flatRgb(fi)},0.2)` : (ZONE_TINT[r.kind] ?? 'rgba(232,193,112,0.05)')
     ctx.fill()
+    if (fi !== undefined) for (const p of poly) Object.assign(flatBox[fi], { x0: Math.min(flatBox[fi].x0, p.x), x1: Math.max(flatBox[fi].x1, p.x), y0: Math.min(flatBox[fi].y0, p.y) })
     if (r === hotRoom) {
       ctx.fillStyle = 'rgba(232,193,112,0.16)'
       ctx.fill()
@@ -448,6 +458,15 @@ export function draw(a: DrawArgs): void {
       ctx.fillText(l.printedSize, p.x, p.y + 14)
     }
   }
+  // each flat's name once, above its top edge, in its colour
+  ctx.font = '500 14px Inter, system-ui, sans-serif'
+  ;(a.flats ?? []).forEach((f, i) => {
+    const b = flatBox[i]
+    if (!Number.isFinite(b.x0)) return
+    const p = toScreen({ x: (b.x0 + b.x1) / 2, y: b.y0 })
+    ctx.fillStyle = `rgb(${flatRgb(i)})`
+    ctx.fillText(f.name, p.x, p.y - 10)
+  })
   ctx.font = '400 11px Inter, system-ui, sans-serif'
   for (const { l, from, to } of ramps) {
     ctx.fillStyle = sel.has(l.id) ? C.accent : C.ink

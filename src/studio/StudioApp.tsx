@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
+import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Slope } from '../core'
 import { draw, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
@@ -286,6 +286,7 @@ export default function StudioApp() {
   // S lines the picture up only while the drawing has no picture under it yet; a drawing traced on its picture: S sets the scale
   const lineUp = unit.walls.length > 0 && !unit.planImage
   const rooms = useMemo(() => deriveRooms(unit), [unit])
+  const flats = useMemo(() => deriveFlats(unit, rooms), [unit, rooms])
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
@@ -439,10 +440,10 @@ export default function StudioApp() {
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
       const furniture = pieces ? { pieces, drag: furnDrag } : undefined
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark, preview: flatPreview })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark, preview: flatPreview, flats })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview, flats])
 
   // ----- project first (FloorList): the open project, the drawing of it the Studio holds
   const [projects, setProjects] = useState(readProjects)
@@ -1939,6 +1940,7 @@ export default function StudioApp() {
           state={state}
           dispatch={dispatch}
           rooms={rooms}
+          flats={flats}
           issues={issues}
           marks={marks}
           fixes={fixes}
