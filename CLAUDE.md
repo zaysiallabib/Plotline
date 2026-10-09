@@ -115,6 +115,14 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
   AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
   Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
+- **Decisions 2026-10-09 (founder, asked one by one in plain words after session 23):** (1) a room's drawn size = its
+  MAIN RECTANGLE, as the sheet prints it (not the whole outline with door nooks); (2) an unread space next to a room
+  stays JOINED to it (the 2026-10-03 rule stands; the dining may read longer than printed); (3) auto-trace's glass-front
+  placement (window on the columns' line, rooms 5–9" short) is fixed LATER, not before new features; (4) a wall lower
+  than 1.2 m (planter edge, kerb, low parapet) joins its two sides into one flat like a door (`core/flats.ts
+  LOW_WALL_M`); (5) a whole-floor drawing is named "Floor plan A, B…" — "Type A / B" is only ever a flat's name from
+  the sheet.
+
 ## Stack
 
 - TypeScript + React 19 + Vite 8
