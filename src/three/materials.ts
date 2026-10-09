@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
+import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { TEXTURES } from '../furnish/textures'
 import { daylit as daylitPatch } from './daylight'
 
@@ -142,8 +143,9 @@ const DEFAULTS: Record<FinishSlot['target'], MaterialRef> = {
 }
 
 /**
- * Finish resolution: the slot whose roomIds names this room beats a slot
- * with roomIds 'all'; chosen option = cfg[slot.id] ?? slot.defaultOptionId.
+ * Finish resolution: the slot whose roomIds names this room beats a slot with roomIds 'all' (finishes.ts slotFor);
+ * chosen option = this wall face's key ?? this room's key ?? cfg[slot.id] ?? slot.defaultOptionId (finishes.ts roomKey /
+ * wallKey), skipping any that is not an option of that slot.
  * roomId null = a face no closed room claims: the interior paint, never the weathered exterior tint — a wall end or
  * jog poking a few mm into a room read as a grey strip (founder, 2026-10-03); the tower shells (building.ts) tint
  * their own outside. A true outer face is only ever seen through a window at a slant.
@@ -153,17 +155,15 @@ export function resolveFinishRef(
   cfg: Configuration,
   roomId: Id | null,
   target: FinishSlot['target'],
+  /** a wall surface: the wall its face is chosen by (finishes.ts faceWallId) — its own choice beats the room's */
+  wallId?: Id,
 ): MaterialRef {
   if (roomId === null) return DEFAULTS[target]
-  let slot: FinishSlot | undefined
-  for (const s of slots) {
-    if (s.target !== target) continue
-    if (s.roomIds === 'all') slot ??= s
-    else if (s.roomIds.includes(roomId)) slot = s
-  }
+  const slot = slotFor(slots, roomId, target)
   if (!slot) return DEFAULTS[target]
-  const chosen = cfg[slot.id] ?? slot.defaultOptionId
-  const opt = slot.options.find((o) => o.id === chosen) ?? slot.options.find((o) => o.id === slot.defaultOptionId)
+  // the first of: this wall face's choice, this room's, the group's, the default — that is an option of this slot
+  const picks = [wallId && cfg[wallKey(wallId, roomId)], cfg[roomKey(roomId, target)], cfg[slot.id], slot.defaultOptionId]
+  const opt = picks.map((id) => slot.options.find((o) => o.id === id)).find(Boolean)
   return opt?.material ?? DEFAULTS[target]
 }
 
@@ -174,6 +174,7 @@ export function resolveFinish(
   target: FinishSlot['target'],
   daylit = false,
   edge = false,
+  wallId?: Id,
 ): THREE.MeshStandardMaterial {
-  return materialFor(resolveFinishRef(slots, cfg, roomId, target), edge, daylit)
+  return materialFor(resolveFinishRef(slots, cfg, roomId, target, wallId), edge, daylit)
 }

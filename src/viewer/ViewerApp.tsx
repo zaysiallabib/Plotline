@@ -8,8 +8,9 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
 import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
+import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
@@ -19,14 +20,14 @@ import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
-import FinishesPanel from './FinishesPanel'
+import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import Minimap from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill from './SunPill'
 import { withDefaults } from './defaults'
-import { decodeConfig, shareUrl } from './share'
+import { decodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import './viewer.css'
 
@@ -376,7 +377,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [entered, setEntered] = useState(false)
   const [mode, setMode] = useState<SceneMode>('walk')
   const [hour, setHour] = useState(DEFAULT_HOUR)
-  const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots))
+  /** the one-room / one-wall finish keys this plan offers, with their slot and name (share.ts) */
+  const keys = useMemo(() => finishKeys(unit, rooms), [unit, rooms])
+  const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots, keys))
+  /** the floor / wall / ceiling clicked while the Finishes panel is open */
+  const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
   const [finishesOpen, setFinishesOpen] = useState(false)
   const [commenting, setCommenting] = useState(false)
@@ -405,11 +410,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const levelAt = (k: number) => (tower?.FLOORS.find((f) => f.floor === k)?.standIns ?? []).find((s) => tower?.LEVELS?.[s] !== undefined)
   const commentingRef = useRef(commenting)
   commentingRef.current = commenting
+  const finishesRef = useRef(finishesOpen)
+  finishesRef.current = finishesOpen
   const modeRef = useRef(mode)
   modeRef.current = mode
-  /** every slot resolved (selection or its default) — what the engine and the share link get */
+  /** every slot resolved (selection or its default), plus the one-room / one-wall choices — what the engine and the share link get */
   const fullCfg = useMemo<Configuration>(
-    () => Object.fromEntries(unit.finishSlots.map((s) => [s.id, cfg[s.id] ?? s.defaultOptionId])),
+    () => ({ ...Object.fromEntries(unit.finishSlots.map((s) => [s.id, s.defaultOptionId])), ...cfg }),
     [unit.finishSlots, cfg],
   )
 
@@ -421,9 +428,15 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
+      // the Finishes panel open: a floor / wall / ceiling picks that room's (that wall's) finish — in the dollhouse instead of dropping in
+      const r = finishesRef.current && hit.kind !== 'opening' && hit.kind !== 'furniture' ? rooms.find((x) => x.id === hit.roomId) : undefined
+      const room = r && roomKey(r.id, hit.kind as FinishSlot['target'])
+      const face = r && hit.kind === 'wall' ? wallKey(faceWallId(unit, r, hit.id), r.id) : undefined // a column: none, its room's walls
       if (commentingRef.current) {
         const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
         setDraft({ hit: { ...hit, roomId }, point: hit.point, label: tagOf(hit.label, rooms.find((r) => r.id === roomId)?.name) })
+      } else if (room && keys.has(room)) {
+        setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
       } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
         // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
         s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
@@ -824,11 +837,21 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     setCommenting(false)
     setFinishesOpen(true)
   }
-  /** a share link's finish choice goes to the change list (lib/events.ts); picking the chip already chosen logs nothing */
-  const choose = (slotId: Id, optionId: Id) => {
-    const s = unit.finishSlots.find((x) => x.id === slotId)
-    const p = s && fullCfg[slotId] !== optionId && selectionPayload(s, optionId)
-    if (TOKEN && p) void sendEvent(TOKEN, 'selection', slotId, p)
+  /**
+   * A finish choice: a slot id, or a one-room / one-wall key (null: back to the group's choice). On a share link it goes to
+   * the change list (lib/events.ts) under that key, named for a person; picking the chip already chosen logs nothing.
+   */
+  const choose = (key: string, optionId: Id | null) => {
+    const k = keys.get(key)
+    const slot = unit.finishSlots.find((x) => x.id === key) ?? k?.slot
+    const p = slot && (cfg[key] ?? (k ? null : slot.defaultOptionId)) !== optionId && selectionPayload(slot, optionId, k && { key, scope: k.scope })
+    if (TOKEN && p) void sendEvent(TOKEN, 'selection', key, p)
+    setCfg((c) => {
+      const next = { ...c }
+      if (optionId) next[key] = optionId
+      else delete next[key]
+      return next
+    })
   }
 
   const focusPin = (pin: Pin) => {
@@ -985,12 +1008,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               <FinishesPanel
                 slots={unit.finishSlots}
                 cfg={cfg}
-                onSelect={(slotId, optionId) => {
-                  choose(slotId, optionId)
-                  setCfg((c) => ({ ...c, [slotId]: optionId }))
-                }}
+                keys={keys}
+                surface={surface}
+                onSelect={choose}
+                onCloseSurface={() => setSurface(null)}
                 onReset={() => {
                   for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
+                  for (const k of Object.keys(cfg)) if (keys.has(k)) choose(k, null)
                   setCfg({})
                 }}
               />

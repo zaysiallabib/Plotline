@@ -208,8 +208,12 @@ export interface Unit {
   planImage?: { src: string; pxPerM: number; originPx: { x: number; y: number } }
 }
 
-/** Buyer's chosen option per slot — what "share this configuration" encodes. */
-export type Configuration = Record<Id /* slotId */, Id /* optionId */>
+/**
+ * Buyer's chosen option per slot — what "share this configuration" encodes. Beside slot ids, two key forms (session 23):
+ * `room:<roomId>:<target>` (one room's floor / walls / ceiling) and `wall:<wallId>:<roomId>` (one wall's face toward that
+ * room); their value is an option of the slot covering that room (src/furnish/finishes.ts roomKey / wallKey / slotFor).
+ */
+export type Configuration = Record<Id /* slotId, or a room / wall-face key */, Id /* optionId */>
 
 export interface ValidationIssue {
   level: 'error' | 'warning'

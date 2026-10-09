@@ -8,7 +8,7 @@
  * Slot and option ids are fixed strings (invariant 4): a buyer's choice (`?c=`, an events row) means the same thing
  * after the plan is edited and re-published.
  */
-import { isOutdoor, type FinishSlot, type Room, type RoomKind, type Unit } from '../core'
+import { isOutdoor, vertexById, type FinishSlot, type Id, type Room, type RoomKind, type Unit } from '../core'
 
 export type CatalogSlot = Omit<FinishSlot, 'roomIds'> & {
   /** the room kinds this slot covers on a unit without slots of its own; 'all' = every room */
@@ -157,4 +157,54 @@ export function finishSlotsFor(unit: Unit, rooms: Room[]): FinishSlot[] {
     const roomIds = kinds === 'all' ? rooms.filter((r) => !isOutdoor(r.kind)).map((r) => r.id) : rooms.filter((r) => kinds.includes(r.kind)).map((r) => r.id)
     return roomIds.length ? [{ ...slot, roomIds: kinds === 'all' ? 'all' : roomIds }] : []
   })
+}
+
+/**
+ * Configuration keys beside the slot ids (session 23, founder: "Bed 1's floor must not change Bed 2"): one room's floor /
+ * walls / ceiling, and one wall's face toward a room. The value is still an option of the slot covering that room
+ * (slotFor), so a per-room choice is developer-approved too. Priority (materials.ts resolveFinishRef): wall face → room →
+ * the slot (the group) → its default.
+ */
+export const roomKey = (roomId: Id, target: FinishSlot['target']): string => `room:${roomId}:${target}`
+export const wallKey = (wallId: Id, roomId: Id): string => `wall:${wallId}:${roomId}`
+
+/** The slot covering this room for this target: one naming the room beats one for 'all'. */
+export function slotFor(slots: FinishSlot[], roomId: Id, target: FinishSlot['target']): FinishSlot | undefined {
+  let slot: FinishSlot | undefined
+  for (const s of slots) {
+    if (s.target !== target) continue
+    if (s.roomIds === 'all') slot ??= s
+    else if (s.roomIds.includes(roomId)) slot = s
+  }
+  return slot
+}
+
+/**
+ * The wall a wall FACE is chosen by. Walls in line along the room's outline are one wall to look at — the graph splits a
+ * wall wherever another meets it from behind (Type A's Bed-1: 9 wall pieces round 6 corners) — so the run is named by the
+ * smallest id in it, whichever piece was clicked. A wall not on the room's outline (a free-standing one) is its own.
+ */
+export function faceWallId(unit: Pick<Unit, 'vertices'>, room: Room, wallId: Id): Id {
+  const n = room.wallIds.length
+  const i = room.wallIds.indexOf(wallId)
+  if (i < 0) return wallId
+  const at = (k: number) => vertexById(unit.vertices, room.loop[((k % n) + n) % n]) // wallIds[k] runs loop[k] → loop[k + 1]
+  const dir = (k: number) => {
+    const [a, b] = [at(k), at(k + 1)]
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    return { x: (b.x - a.x) / l, y: (b.y - a.y) / l }
+  }
+  const d = dir(i)
+  const inLine = (k: number) => {
+    const e = dir(k)
+    return Math.abs(d.x * e.y - d.y * e.x) < 0.02 && d.x * e.x + d.y * e.y > 0 // within ~1°, same way round
+  }
+  let best = wallId
+  for (const step of [1, -1]) {
+    for (let k = i + step; Math.abs(k - i) < n && inLine(k); k += step) {
+      const id = room.wallIds[((k % n) + n) % n]
+      if (id < best) best = id
+    }
+  }
+  return best
 }

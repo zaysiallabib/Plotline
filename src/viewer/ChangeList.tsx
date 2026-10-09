@@ -121,8 +121,8 @@ export default function ChangeList() {
                   {l.current.map((p) => {
                     const c = choiceOf(p)
                     return (
-                      <span key={p.slotId} className="chosen-item">
-                        {p.slotLabel}: <b>{c.label}</b> {formatDelta(c.deltaBdt)}
+                      <span key={p.key ?? p.slotId} className="chosen-item">
+                        {p.scope ?? p.slotLabel}: <b>{c.label}</b> {formatDelta(c.deltaBdt)}
                       </span>
                     )
                   })}
