@@ -194,3 +194,42 @@ verandas, south planter). Rooms that go missing on almost every Sheltech flat: t
    two livings, so it is a different plan, not a copy. It is also the worst Sheltech flat that differs from L2 (6 of
    18 named, 740 of about 2408 sft closed). (Level 3's Type A keeps L2's rooms; Level 5 / 6 Type A is L2's layout
    with the void.)
+
+## After Level 3 (2026-10-09, every printed name and size lands in its room)
+
+**How it was made:** the Level 0 method again — Firefox (Playwright's build on E:, headless), the real Studio, a fresh
+Studio per flat, the sheet picture dropped, **S** on the same printed length, **Auto-trace**, one click inside the flat
+at the Level 0 spot. "Before" = main at `317b08e` (Level 5 merged), "after" = the Level 3 branch; same harness, same
+clicks (`E:/dev/tmp/s24/l3/l3.mjs`, shots + page texts `E:/dev/plotline-shots/s24/l3/before-…` / `final-…`). Counts read
+off the panel text (the count line, the "Check these (N)" and "Issues (N)" headers) and the plan screenshots; columns as
+above. "Names read" = the N of the count line "… of the N room names read on the sheet …".
+
+| Sheet | Flat | Printed | Names read | Closed + named | Space N (printed name) | Open / missing | Check these | Issues | Shot |
+|---|---|---|---|---|---|---|---|---|---|
+| Sheltech L2 | Type A | 18 | 8 → **14** | 8 (Toilet as "Toilet 2", PDR as "Toilet 1") → **12** (Toilet 5'-8"×4'-1" as "Toilet 3") | 3: Living, Foyer, Toilet 1 → **0** | 7 → 6: Veranda (kitchen), Toilet 3, Bed 4, Veranda 7'-5"×6'-8", Veranda 6'-9"×6'-3", Planter (south) | 44 → **34** | 9 → **3** | final-sheltech-L2-TypeA.png, finalnames-…-qne/qse.png |
+| Sheltech L2 | Type B | 17 | 11 → 12 | 10 (Toilet 3 as "Toilet") → 10 (Toilet 3 and Toilet 1 as "Toilet") | 0 → 0 | 7 → 7: Toilet 4'-10"×4'-0", PDR, Veranda 7'-9"×5'-2", Bed 4, Veranda 7'-10"×6'-4", Toilet 2, Planter (south) | 26 → 25 | 2 → 2 | final-sheltech-L2-TypeB-qnw/qsw.png |
+| Sheltech L4 | Type A | 18 | 8 → **13** | 6 (Toilet 1 as "Toilet 2", Toilet 2 as "Toilet 1") → **9** | 3: Toilet 5'-8"×4'-1", PDR, Bed 3 → **1**: Toilet 5'-8"×4'-1" | 9 → 8: Veranda (kitchen), Kitchen, Toilet 3, Foyer, Dining, Family Living, Veranda 7'-5"×6'-8", Planter (south) | 50 → 51 | 9 → 9 | final-sheltech-L4-TypeA-qne.png |
+| BTI 2nd (`img_3`) | Type A | 22 | 21 → 21 | 19 → 19 | 0 → 0 | 3 → 3: Living Room, Veranda 3'-0"×5'-5", Bath-3 | 46 → 45 | 4 → 4 | final-bti-img3-TypeA-names.png |
+| Banani L2-6 | Unit A | 19 | 6 → **9** | 1 → 1 | 0 → 0 | 18 → 18 | 37 → 40 | 30 → 30 | final-banani-L2-6-UnitA.png |
+
+**Totals on these five flats:** names read 54 → 69 of 94 printed; closed + named 44 → 51; "Space N" on a printed name
+6 → 1; wrong names 5 → 3 (two numbers lost on Type B's toilets, one guessed number on L2 A's small toilet). The
+"Check these" rows went down where names landed (Sheltech L2 A −10: three of its four "Unnamed space" rows and the
+guessed-room rows of rooms now named by their print; its Issues 9 → 3 with 96 → 89 walls traced), and up where more
+names were read whose rooms are still open (Banani +3 "… is open" rows; L4 +1: new "Ver is open", "Living: printed
+size not read for sure" and an "Unnamed space" for the void between the livings, gone the PDR's "Unnamed space" and
+Bed 3's "Space 2 — the printed name Bed 3 is in it"). No row or mark was hidden or capped.
+
+**The printed sizes on Sheltech L2:** the Kitchen's size is still not read ("Kitchen: its printed size could not be
+read — type it") and Toilet 1's neither: on the sheet the Kitchen's size line touches the counter line beside it and a
+door arc runs through Toilet 1's, so their letters are glued to the drawing (a test that kept such cut-free runs
+under a name brought the Kitchen's line back but read it wrong, 3'-5"×11'-1", and cost BTI an AOD: not kept). **Typed
+by hand it now gets its row:** clicking that row opens the Kitchen's box, typing `8'-5" x 12'-2"` into Printed size
+showed at once "Kitchen: drawn 6'-5" × 12'-2", printed 8'-5" × 12'-2"" (before: no row at all).
+
+**The TYPE label:** Sheltech L2 Type A — "Type A ±2736 sft" is on the drawing (in the dining) and the flat's tint reads
+"Type A". Level 4 Type A: its stamp stands in the open foyer — not placed (putting it into the nearest closed room was
+tried: it made the PDR a one-room flat "Type A", undone). Type B: the red "TYPE-B (L/O)" is not read.
+
+**Node evals (same commit):** reader on the five hand-traced flats 81 → 86 of 116 names found, sizes right 46 → 48 of 87,
+misread 0 → 0 (`TRACE_OCR=1 npx vitest run src/trace/text.test.ts`); the solver table 71 → 72 of 116.
