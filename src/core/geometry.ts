@@ -134,6 +134,28 @@ export function mainRectangle(poly: Pt[], axis = 0): { w: number; h: number } {
   return best
 }
 
+/** The box around `poly` along the axes at `axis` (rad): the room's whole outline, nooks and all. */
+export function outlineBox(poly: Pt[], axis = 0): { w: number; h: number } {
+  const c = Math.cos(axis), s = Math.sin(axis)
+  const xs = poly.map((p) => p.x * c + p.y * s), ys = poly.map((p) => p.y * c - p.x * s)
+  return poly.length ? { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } : { w: 0, h: 0 }
+}
+
+/**
+ * A room against its printed size a × b (m), the one rule for the Studio and auto-trace (founder 2026-10-09): it passes
+ * when its main rectangle OR its whole outline's box is within `tolM` on both sides (each in its better pairing).
+ * `drawn` is the main rectangle, `printed` the printed size in its order; `by` = the measure that matched.
+ */
+export function printedSizeCheck(poly: Pt[], axis: number, a: number, b: number, tolM: number) {
+  const fit = (e: { w: number; h: number }) => {
+    const p: [number, number] = Math.abs(e.w - a) + Math.abs(e.h - b) <= Math.abs(e.w - b) + Math.abs(e.h - a) ? [a, b] : [b, a]
+    return { p, ok: Math.abs(e.w - p[0]) <= tolM && Math.abs(e.h - p[1]) <= tolM }
+  }
+  const drawn = mainRectangle(poly, axis), m = fit(drawn)
+  const by = m.ok ? ('main' as const) : fit(outlineBox(poly, axis)).ok ? ('outline' as const) : undefined
+  return { off: !by, drawn, printed: m.p, by }
+}
+
 export function unitBounds(graph: Pick<Unit, 'vertices'>): Bounds {
   if (!graph.vertices.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0 }
   const b: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }

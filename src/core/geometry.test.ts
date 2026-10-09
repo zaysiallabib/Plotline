@@ -3,7 +3,9 @@ import {
   deriveRooms,
   mainRectangle,
   nearestWall,
+  outlineBox,
   pointInPolygon,
+  printedSizeCheck,
   roomAt,
   roomInnerPolygon,
   signedArea,
@@ -98,6 +100,15 @@ describe('mainRectangle: the room size the sheet prints', () => {
   test('degenerate: 0 × 0', () => {
     near(mainRectangle([]), 0, 0)
     near(mainRectangle([P(0, 0), P(1, 1)]), 0, 0)
+  })
+  test('outlineBox: the whole outline, recess included', () => near(outlineBox(recess), 4, 3.3))
+  test('printedSizeCheck: passes when the main rectangle OR the whole outline matches', () => {
+    const tol = 0.05
+    expect(printedSizeCheck(recess, 0, 3, 4, tol)).toMatchObject({ off: false, by: 'main', printed: [4, 3] })
+    expect(printedSizeCheck(recess, 0, 4, 3.3, tol)).toMatchObject({ off: false, by: 'outline' }) // a sheet that prints the whole L
+    const off = printedSizeCheck(recess, 0, 4, 3.6, tol)
+    expect(off).toMatchObject({ off: true, by: undefined, printed: [4, 3.6] })
+    near(off.drawn, 4, 3) // what the row shows: the main rectangle
   })
 })
 

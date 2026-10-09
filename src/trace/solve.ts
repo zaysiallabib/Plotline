@@ -25,7 +25,7 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, formatFeetInches, mainRectangle, newId, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
+import { FT, deriveRooms, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
@@ -2160,13 +2160,12 @@ export function pickTraces(p: Prepared, pickPx?: Px): AutoTraceResult {
     })
   }
 
-  // ── printed sizes: the face's main rectangle along the sheet's axes vs the label's dims
+  // ── printed sizes: the face along the sheet's axes vs the label's dims (core printedSizeCheck, the Studio's own rule)
   for (const r of named) {
     const dm = dimsOf.get(r.id)
     if (!dm) continue
-    const e = mainRectangle(roomInnerPolygon(r, u), draft.th0)
-    const pair = Math.abs(e.w - dm.aM) + Math.abs(e.h - dm.bM) <= Math.abs(e.w - dm.bM) + Math.abs(e.h - dm.aM) ? [dm.aM, dm.bM] : [dm.bM, dm.aM]
-    if (Math.abs(e.w - pair[0]) > KNOBS.sizeTolM || Math.abs(e.h - pair[1]) > KNOBS.sizeTolM)
+    const { off, drawn: e, printed: pair } = printedSizeCheck(roomInnerPolygon(r, u), draft.th0, dm.aM, dm.bM, KNOBS.sizeTolM)
+    if (off)
       review.push({ id: newId(), at: r.centroid, kind: 'size-mismatch', message: `${r.name}: drawn ${formatFeetInches(e.w)} × ${formatFeetInches(e.h)}, printed ${formatFeetInches(pair[0])} × ${formatFeetInches(pair[1])}`, entityId: r.id })
   }
 

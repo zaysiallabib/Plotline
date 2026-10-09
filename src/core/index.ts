@@ -56,6 +56,12 @@ export { signedArea, pointInPolygon, unitBounds, polygonCentroid } from './geome
 /** A room's size the way the sheet prints it: the largest rectangle along the axes at `axis` that fits inside `poly`. */
 export { mainRectangle } from './geometry'
 
+/** The box around the room's whole outline along the axes at `axis` (the size check's other measure). */
+export { outlineBox } from './geometry'
+
+/** A room against its printed size: passes when its main rectangle OR its whole outline matches (founder 2026-10-09). */
+export { printedSizeCheck } from './geometry'
+
 /** Closest wall to a plan point: t ∈ [0,1] along a→b, perpendicular distance in m. */
 export { nearestWall } from './geometry'
 

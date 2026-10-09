@@ -2,7 +2,7 @@
  * Auto-trace in the Studio's state: the result import (ONE undo step) and the "Check these" review list.
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
-import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, roomInnerPolygon } from '../core'
+import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, printedSizeCheck, roomInnerPolygon } from '../core'
 import type { Id, Room, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
@@ -112,8 +112,8 @@ export function parsePrintedSize(s: string | undefined): [number, number] | null
 }
 
 /**
- * A size-mismatch row re-checked against the unit as it stands: the room's drawn inside vs the label's printed size,
- * the better of the two pairings. null = nothing to check any more (label gone, printed size removed, or the room has
+ * A size-mismatch row re-checked against the unit as it stands: the room vs the label's printed size by core
+ * printedSizeCheck (main rectangle or whole outline; the row shows the main rectangle). null = nothing to check any more (label gone, printed size removed, or the room has
  * no closed face — then the row is not about the size); otherwise whether it still differs, and the current wording.
  */
 export function sizeCheck(u: Unit, labelId: Id, rooms: Room[], axis?: number): { off: boolean; message: string } | null {
@@ -122,10 +122,7 @@ export function sizeCheck(u: Unit, labelId: Id, rooms: Room[], axis?: number): {
   if (!l || !printed) return null
   const r = rooms.find((x) => x.id === labelId)
   if (!r) return null
-  const e = drawnSize(u, r, axis)
-  const [a, b] = printed
-  const pair = Math.abs(e.w - a) + Math.abs(e.h - b) <= Math.abs(e.w - b) + Math.abs(e.h - a) ? [a, b] : [b, a]
-  const off = Math.abs(e.w - pair[0]) > SIZE_TOL_M || Math.abs(e.h - pair[1]) > SIZE_TOL_M
+  const { off, drawn: e, printed: pair } = printedSizeCheck(roomInnerPolygon(r, u), axis ?? sheetAxis(u), printed[0], printed[1], SIZE_TOL_M)
   return { off, message: `${l.name}: drawn ${formatFeetInches(e.w)} × ${formatFeetInches(e.h)}, printed ${formatFeetInches(pair[0])} × ${formatFeetInches(pair[1])}` }
 }
 

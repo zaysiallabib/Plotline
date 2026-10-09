@@ -10,8 +10,8 @@ import type { AutoTraceOpts, AutoTraceResult, Gray } from '../trace/types'
 
 export function mockTraceResult(): AutoTraceResult {
   const unit = { ...(sheltechA as unknown as Unit), name: '', furniture: [] }
-  // a room whose main rectangle differs from its printed size (the Living matches since the size check measures that)
-  const living = unit.roomLabels.find((l) => l.name === 'Dining')!
+  // the one room of the hand trace whose size check fails (main rectangle 2½" narrow, outline far off): a real size row
+  const living = unit.roomLabels.find((l) => l.name === 'Bed 3')!
   const wall = unit.walls.find((w) => w.openings.some((o) => o.kind === 'window'))!
   const win = wall.openings.find((o) => o.kind === 'window')!
   const f = wallFrame(wall, unit.vertices)
