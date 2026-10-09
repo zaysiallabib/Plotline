@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, findStairs, glassMask, mergeUnread, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -147,6 +147,10 @@ describe('marks: stairs, glazing profile, glass colour', () => {
     const m = glassMask({ width: w, height: h, data })
     expect(m[5 * w + 30]).toBe(1)
     expect(m[35 * w + 30]).toBe(0)
+    // Level 1: a glass front drawn as a 5 px band of blue pen lines (Sheltech, 27 px/m) is glass at the sheet's scale
+    for (let y = 9; y < 14; y++) for (let x = 5; x < 55; x++) paint(x, y, [139, 183, 220])
+    expect(glassMask({ width: w, height: h, data }, 27)[11 * w + 30]).toBe(1)
+    expect(glassMask({ width: w, height: h, data })[11 * w + 30]).toBe(0)
   })
 })
 
@@ -166,13 +170,14 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
         wall(p(2.6, 0), p(2.6, 3 - 0.1), par), // partition: stops 0.1 m short of the bottom centre line, off-centre along it
       ],
     }
+    // (off: no body joins and no ends carried on — Level 1's carryEnds would close these corners too)
     const graph = (on: boolean) => {
-      const prev = KNOBS.joinBodies
-      KNOBS.joinBodies = on
+      const prev = [KNOBS.joinBodies, KNOBS.carryM] as const
+      ;[KNOBS.joinBodies, KNOBS.carryM] = [on, on ? prev[1] : 0]
       try {
         return buildGraph(trace, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
       } finally {
-        KNOBS.joinBodies = prev
+        ;[KNOBS.joinBodies, KNOBS.carryM] = prev
       }
     }
     expect(graph(false).rooms).toHaveLength(1) // core joins the corner ends touching a body (2026-10-09); the partition 0.1 m short stays open
@@ -205,6 +210,27 @@ describe('the graph: overlap = joined (founder 2026-10-03)', () => {
   })
 })
 
+describe('Level 1: loose ends carried on to the wall ahead (carryEnds)', () => {
+  test('a window piece stopping 0.9 m short of a wall runs on where the glazing is drawn across; over paper it stays; under 0.3 m it meets the wall', () => {
+    const k = 50
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const ext = 0.254 * k
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: ext, conf: 1 })
+    const walls = [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 3)), wall(p(0, 3), p(0, 0))]
+    const sheet = (glass: boolean): Gray => {
+      const g: Gray = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(255) }
+      if (glass) for (const dy of [-3, 0, 3]) for (let x = p(0, 3).x; x <= p(4, 3).x; x++) g.data[(p(0, 3).y + dy) * 400 + x] = 120
+      return g
+    }
+    const rooms = (to: number, glass: boolean) => buildGraph({ walls, openings: [{ a: p(0, 3), b: p(to, 3), kind: 'window', conf: 0.6, thicknessPx: ext }] }, k, { x: 0, y: 0 }, sheet(glass), undefined, [], 'tracks').rooms
+    const glazed = rooms(3.1, true)
+    expect(glazed).toHaveLength(1)
+    expect(glazed[0].areaSqm).toBeCloseTo(12, 0)
+    expect(rooms(3.1, false)).toHaveLength(0)
+    expect(rooms(3.8, false)).toHaveLength(1)
+  })
+})
+
 describe('open-plan passages (founder 2026-10-03: a dashed beam line under DINING is no boundary)', () => {
   test('a passage between a named space and a closed space with no name of its own goes: one room; a hint / a read text there, or an open space beyond, keeps it', () => {
     const k = 50, blank: Gray = { width: 400, height: 350, data: new Uint8Array(400 * 350).fill(255) }
@@ -221,6 +247,30 @@ describe('open-plan passages (founder 2026-10-03: a dashed beam line under DININ
     // the strip open at the bottom: no face beyond — the passage still closes the dining
     const open = buildGraph({ walls: [walls[0], walls[1], walls[3], wall(p(4, 4), p(3, 4))], openings: [passage] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
     expect(mergeUnread(open, [dining], []).rooms).toHaveLength(1)
+    // Level 2: a low wall drawn along a thin line (a counter, a wardrobe front) splits them no more either
+    const low = buildGraph({ walls: [...walls, { ...wall(p(0, 3), p(4, 3)), heightM: 1.1 }], openings: [] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    expect(low.rooms).toHaveLength(2)
+    expect(mergeUnread(low, [dining], []).rooms.map((r) => r.areaSqm.toFixed(0))).toEqual(['16'])
+    expect(mergeUnread(low, [dining], [strip]).rooms).toHaveLength(2)
+  })
+
+  test("Level 2: the core's wall left hanging off the flat (a run from a free end on a foreign face's outline, bordering none of the flat's faces) goes; a loose wall of the flat stays", () => {
+    const k = 50, blank: Gray = { width: 500, height: 350, data: new Uint8Array(500 * 350).fill(255) }
+    const p = (x: number, y: number): Px => ({ x: 50 + x * k, y: 50 + y * k })
+    const wall = (a: Px, b: Px) => ({ a, b, thicknessPx: 0.127 * k, conf: 1 })
+    // a 4 × 4 m room; a lift's top wall hanging off its right side (x 4 … 6 at y 0), the lift (4 … 6 × 0 … 2) cut away;
+    // a stub of the flat's own (x 1, y 4 … 5) below it
+    const d = buildGraph({ walls: [wall(p(0, 0), p(4, 0)), wall(p(4, 0), p(4, 4)), wall(p(4, 4), p(0, 4)), wall(p(0, 4), p(0, 0)), wall(p(4, 0), p(6, 0)), wall(p(1, 4), p(1, 5))], openings: [] }, k, { x: 0, y: 0 }, blank, undefined, [], 'tracks')
+    const lift = [{ x: 5, y: 1 }, { x: 7, y: 1 }, { x: 7, y: 3 }, { x: 5, y: 3 }].map((q) => ({ x: q.x, y: q.y })) // (the draft frame: px / k, origin 0)
+    const out = dropForeignStubs(d, [lift])
+    expect(out.unit.walls.length).toBe(d.unit.walls.length - 1)
+    expect(dropForeignStubs(d, []).unit.walls.length).toBe(d.unit.walls.length)
+  })
+
+  test("Level 2: a read of a drawing — a stroke or two, a fixture's or a note's word — is no name of its own; a word, a size or a name is", () => {
+    const t = (text: string, kind: TextItem['kind'] = 'other') => nameLike({ text, kind })
+    expect([t('—'), t('Va'), t('WASHING | MACHINE'), t('FREEZER'), t('DW'), t('BEAM BOTTOM SLAB')]).toEqual([false, false, false, false, false, false])
+    expect([t('STORE'), t('KITCHEN', 'room'), t("8'-0\"x11'-0\"", 'dims'), t('Ga', 'room')]).toEqual([true, true, true, true])
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { closeCorners, roomsOnTracks } from './merge'
-import { fitRooms } from './rooms'
+import { fitRooms, type RoomFit, type Side, type Stretch } from './rooms'
 import { traceTracks } from './tracks'
 import type { Gray, OpeningGuess, TextItem, WallSeg } from './types'
 
@@ -73,5 +73,38 @@ describe('roomsOnTracks: open plan (k = 50 px/m)', () => {
     const r = run(false)
     expect(r.openings.filter((o) => o.kind === 'passage')).toEqual([])
     expect(r.review.some((x) => /nothing drawn on it/.test(x.message))).toBe(true)
+  })
+})
+
+describe('roomsOnTracks: a veranda\'s railing (Level 1, k = 50 px/m)', () => {
+  // the building's outer wall (y = 60, 10 px) has a gap 110 … 190 — the open side of the room fitted below it, whose top
+  // edge reads ONE thin line along the wall's outer face (y 55.5); its other sides are walls
+  const run = (name: string, roomKind: string) => {
+    const g: Gray = { width: 300, height: 200, data: new Uint8Array(300 * 200).fill(255) }
+    const tt = {
+      tracks: [
+        { horiz: true, c: 60, intervals: [{ u0: 0, u1: 110, thPx: 10 }, { u0: 190, u1: 300, thPx: 10 }] },
+        { horiz: false, c: 100, intervals: [{ u0: 60, u1: 130, thPx: 10 }] },
+        { horiz: false, c: 200, intervals: [{ u0: 60, u1: 130, thPx: 10 }] },
+        { horiz: true, c: 130, intervals: [{ u0: 100, u1: 200, thPx: 10 }] },
+      ],
+      joins: [],
+      gaps: [{ horiz: true, c: 60, u0: 110, u1: 190, node0: 100, node1: 200, thPx: 10, kind: 'unknown' as const, conf: 0.2 }],
+    }
+    const edge = (side: Side, c: number, out: 1 | -1, u0: number, u1: number, kind: Stretch['kind']) => ({ side, c, out, u0, u1, evidence: 1, stretches: [{ kind, u0, u1, ...(kind === 'wall' ? { thPx: 10 } : {}) }] })
+    const label: TextItem = { text: name, box: { x: 130, y: 85, w: 40, h: 20 }, kind: 'room', roomKind, conf: 0.9, source: 'ocr' }
+    const fit: RoomFit = { label, at: { x: 150, y: 95 }, dims: { aM: 1.8, bM: 1.3 }, swapped: false, rect: { x0: 105, y0: 56, x1: 195, y1: 125 }, conf: 1, edges: [edge('top', 56, -1, 105, 195, 'thin'), edge('bottom', 125, 1, 105, 195, 'wall'), edge('left', 105, -1, 56, 125, 'wall'), edge('right', 195, 1, 56, 125, 'wall')] }
+    return roomsOnTracks(tt, [], [fit], 50, { gray: g, labels: [fit.at] })
+  }
+
+  test('on a room printed VER the thin line across the gap is its railing: a 1.1 m low wall on the drawn line, joined to the wall ends, flagged; a bedroom\'s stays open', () => {
+    const ver = run('VER', 'balcony')
+    const low = ver.walls.filter((x) => x.heightM === 1.1)
+    expect(low.length, JSON.stringify([ver.review.map((x) => x.message), ver.gapReads])).toBeGreaterThan(0)
+    expect(low.find((x) => x.a.y === x.b.y)).toMatchObject({ a: { x: 110 }, b: { x: 190 } })
+    expect(ver.review.some((x) => /across the veranda's open side/.test(x.message))).toBe(true)
+    const bed = run('BED 2', 'bed')
+    expect(bed.walls.filter((x) => x.heightM === 1.1 && x.a.y === x.b.y && x.a.y < 60)).toEqual([])
+    expect(bed.review.some((x) => /one thin line across it/.test(x.message))).toBe(true)
   })
 })

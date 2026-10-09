@@ -121,4 +121,29 @@ describe('thinFaces', () => {
     expect(d.walls.length, JSON.stringify(d.lines)).toBe(1)
     expect(d.faces[0]).toMatchObject({ labelled: true, aod: false })
   })
+
+  test('Level 1: three pen lines a frame apart are one glass front — a full-height wall that is all glazing; two strokes 2 px apart are one railing', () => {
+    const walls = [...box, ...stubs]
+    const glass = sheet(walls)
+    for (const x of [356, 360, 364]) pen(glass, { x, y: 150 }, { x, y: 250 })
+    const r = thinFaces(glass, { k: K, walls, openings: [] })
+    expect(r.walls.length).toBe(1)
+    expect(r.walls[0]).toMatchObject({ a: { x: 360, y: 150 }, b: { x: 360, y: 250 }, glass: true })
+    expect(r.walls[0].heightM).toBeUndefined()
+    expect(r.review.some((x) => /Glass front/.test(x.message))).toBe(true)
+    const rail = sheet(walls)
+    for (const x of [359, 361]) pen(rail, { x, y: 150 }, { x, y: 250 })
+    expect(thinFaces(rail, { k: K, walls, openings: [] }).walls.map((w) => [w.glass, w.heightM])).toEqual([[undefined, 1.1]])
+  })
+
+  test('Level 1: a room printed VER closed by thin lines on three sides (its railing) is a face; unnamed it is too thin-rimmed', () => {
+    const g = sheet(box)
+    pen(g, { x: 300, y: 150 }, { x: 360, y: 150 })
+    pen(g, { x: 360, y: 150 }, { x: 360, y: 250 })
+    pen(g, { x: 300, y: 250 }, { x: 360, y: 250 })
+    const ver = thinFaces(g, { k: K, walls: box, openings: [], labels: [{ at: { x: 200, y: 200 }, name: 'BED 1' }, { at: { x: 330, y: 200 }, name: 'VER' }] })
+    expect(ver.walls.map((w) => w.heightM)).toEqual([1.1, 1.1, 1.1])
+    expect(ver.faces[0]).toMatchObject({ labelled: true, aod: false })
+    expect(thinFaces(g, { k: K, walls: box, openings: [], labels: [{ at: { x: 200, y: 200 }, name: 'BED 1' }] }).walls).toEqual([])
+  })
 })

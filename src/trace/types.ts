@@ -44,6 +44,8 @@ export interface OpeningGuess {
   conf: number
   /** the wall it is cut in, px — extension (tracks, wave 19): the opening is that wall's child, same thickness */
   thicknessPx?: number
+  /** a glass front drawn as two / three parallel pen lines (faces.ts, Level 1): the window runs floor to top (sill 0) */
+  glass?: boolean
 }
 
 export interface WallTrace {

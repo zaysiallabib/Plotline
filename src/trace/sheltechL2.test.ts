@@ -12,8 +12,8 @@
  * - Every long full-height axis wall sits on its own drawn band (a wall on a face line would be off by half its width).
  * - The sheet's printed sizes (the hand-traced labels carry them) against the draft's rooms, a room passing when its
  *   main rectangle OR its whole outline matches (founder 2026-10-09): 6 of the 12 closed ones differ by more than 2"
- *   (8 with the outline alone) — see the table the test prints and the causes listed at the count. A tracer change
- *   should move that number down, never up.
+ *   (8 with the outline alone); Level 1 closes two more (Bed 4, Veranda 4), both 4–6" off — 8 of 14. See the table the
+ *   test prints and the causes listed at the count. A tracer change should move that number down, never up.
  */
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
@@ -116,11 +116,14 @@ describe.skipIf(!have)('Sheltech L2 Type A auto-traced at the founder\'s scale: 
     const printed = res!.stats.printed ?? []
     const rooms = deriveRooms(u)
     const open = printed.filter((p) => !rooms.some((r) => pointInPolygon(p.at, roomPolygon(r, u)))).map((p) => p.name)
-    expect(open.length).toBeGreaterThanOrEqual(3) // BED 4 and the two VER labels south of the bedrooms: open in this draft (the table below)
+    // Level 1 (2026-10-09): Bed 4's window line carried on to Bed 1's wall closes Bed 4, and the veranda behind it joins;
+    // the kitchen's veranda closes on its railing. Open: the VER south of Bed 1 (its size not read: no fitted room, and
+    // its three thin sides close no face the thin-line pass keeps)
+    expect(open).toEqual(['Ver'])
     expect(res!.stats.wantSqm).toBeCloseTo(2736 * 0.3048 ** 2 * 0.88, 0)
   })
 
-  test("the sheet's printed sizes against the draft's rooms: 6 of the 12 closed ones off by more than 2\" (never more)", () => {
+  test("the sheet's printed sizes against the draft's rooms: 8 of the 14 closed ones off by more than 2\" (never more)", () => {
     const tp = truth.planImage!, ax = sheetAxis(u), rooms = deriveRooms(u)
     const rows: string[] = []
     let n = 0, off = 0
@@ -147,8 +150,10 @@ describe.skipIf(!have)('Sheltech L2 Type A auto-traced at the founder\'s scale: 
     // 4'-5" deep (an L). Living: outline open to the outside, main rectangle 7" short. Dining: outline 21'-3" (the unnamed
     // passage beyond the dashed line joins it, solve.ts mergeUnread, founder 2026-10-03), main rectangle 1'-2" short.
     // Bed 1: main rectangle 3" short, outline takes in the wardrobe strip. Bed 2: main rectangle 4" narrow, outline open
-    // to the space east of Toilet 2.
-    expect(n).toBeGreaterThanOrEqual(12)
-    expect(off).toBeLessThanOrEqual(6)
+    // to the space east of Toilet 2. Closed by Level 1, off by 4–6": Bed 4 (its window on the fitted face line, the glass
+    // drawn 2 px further out — the glass-front placement the founder parked), Veranda 4 (6'-11" wide on the sheet's planter
+    // edge, printed 7'-5").
+    expect(n).toBeGreaterThanOrEqual(14)
+    expect(off).toBeLessThanOrEqual(8)
   })
 })
