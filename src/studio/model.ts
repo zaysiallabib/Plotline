@@ -1438,7 +1438,7 @@ export function studioIssues(unit: Unit, rooms: Room[]): StudioIssue[] {
   if (unit.walls.length && !rooms.length) out.push({ level: 'warning', code: 'no-rooms', message: 'No closed rooms yet', ids: [] })
   if (rooms.length) {
     const count = new Map<Id, number>()
-    for (const r of rooms) for (const id of r.wallIds) count.set(id, (count.get(id) ?? 0) + 1)
+    for (const r of rooms) for (const id of new Set(r.wallIds)) count.set(id, (count.get(id) ?? 0) + 1)
     // a traced lobby is still outside; so is a zone (a lobby's door onto its lawn is a level's entry)
     const outer = unit.walls.filter((w) => (count.get(w.id) ?? 0) < 2 || rooms.some((r) => (r.kind === 'other' || isOutdoor(r.kind)) && r.wallIds.includes(w.id)))
     if (!outer.some((w) => w.openings.some((o) => o.kind === 'door'))) {
