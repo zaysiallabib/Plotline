@@ -452,6 +452,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Once a plan picture is loaded there is no button to swap it — only dropping a new one on the Studio.
 - A drawing file opened again always asks for its plan picture.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio.
+- **On the plan (F), a piece wholly under another cannot be clicked there** — the hob + oven under its chimney hood, a ceiling light, pendant or wall AC over a bed or table: a click picks the piece drawn on top. Pick it in the 3D view (Edit furniture).
 - The same thing has different names in different places: "Slider" / "Sliding door"; "Reset layout" / "Reset to preset".
 - Keys **T**, **H** and **Shift+H** are not mentioned anywhere on screen.
 - A typed wall length cannot start with 0 (type `.5`, not `0.5`).
