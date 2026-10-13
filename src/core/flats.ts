@@ -8,7 +8,8 @@
  * door is missing, or it has none — a planter behind a planter edge, a closed store; a ground floor's toilets).
  *
  * The override: RoomLabel.flat pins its room to the flat of that name whatever its doors ('' = in no flat); a pinned
- * room joins nothing through its doors. Names: a label of kind 'other' reading "TYPE-A ±2736 SFT" inside the flat names
+ * room joins nothing through its doors — but a group that is no flat by itself (a veranda a person closed beside a traced
+ * flat, every room of which Auto-trace pinned) joins the one pinned flat its doors lead into (Level 4). Names: a label of kind 'other' reading "TYPE-A ±2736 SFT" inside the flat names
  * it "Type A" and gives `printedSqft` (such a label names no room: graph.flatTypeOf); else "Flat N" by place, west → east,
  * then north → south.
  */
@@ -43,24 +44,37 @@ export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'
   const up = new Map<Id, Id>()
   for (const r of rooms) if (pin.get(r.id) === undefined && !isCore(r)) up.set(r.id, r.id)
   const root = (id: Id): Id => (up.get(id) === id ? id : root(up.get(id)!))
-  const byWall = new Map<Id, Id[]>()
-  for (const r of rooms) for (const w of new Set(r.wallIds)) if (up.has(r.id)) byWall.set(w, [...(byWall.get(w) ?? []), r.id])
+  const sides = new Map<Id, Room[]>()
+  for (const r of rooms) for (const w of new Set(r.wallIds)) sides.set(w, [...(sides.get(w) ?? []), r])
+  const joins = (w: Unit['walls'][number]) => w.heightM < LOW_WALL_M || w.openings.some((o) => o.kind !== 'window')
   for (const w of unit.walls) {
-    const ids = byWall.get(w.id)
-    if (!ids || ids.length < 2 || (w.heightM >= LOW_WALL_M && !w.openings.some((o) => o.kind !== 'window'))) continue
+    const ids = (sides.get(w.id) ?? []).filter((r) => up.has(r.id)).map((r) => r.id)
+    if (ids.length < 2 || !joins(w)) continue
     for (const id of ids.slice(1)) up.set(root(id), root(ids[0]))
   }
   const groups = new Map<Id, Room[]>()
   for (const r of rooms) if (up.has(r.id)) groups.set(root(r.id), [...(groups.get(root(r.id)) ?? []), r])
+  // the pinned flats a group's doors lead into (Level 4: a room a person closes beside a traced flat — all its rooms
+  // pinned — joins it by its door)
+  const pinnedBy = new Map<Id, Set<string>>()
+  for (const w of unit.walls) {
+    const rs = sides.get(w.id) ?? []
+    const names = rs.map((r) => pin.get(r.id)).filter((n): n is string => !!n)
+    if (!names.length || !joins(w)) continue
+    for (const r of rs) if (up.has(r.id)) pinnedBy.set(root(r.id), new Set([...(pinnedBy.get(root(r.id)) ?? []), ...names]))
+  }
 
   // a "TYPE-A ±2736 SFT" label (graph.flatTypeOf) names the group whose room it stands in
   const typed = new Map<Id, { name: string; sqft?: number }>()
+  const sqftOf = (l: { name: string; printedSize?: string }) => {
+    const s = SFT.exec(`${l.name} ${l.printedSize ?? ''}`)
+    return s ? { sqft: Number(s[1].replace(/,/g, '')) } : {}
+  }
   for (const l of unit.roomLabels) {
     const name = flatTypeOf(l)
     const r = name && roomAt(l, rooms, unit)
     if (!name || !r || !up.has(r.id) || typed.has(root(r.id))) continue
-    const s = SFT.exec(`${l.name} ${l.printedSize ?? ''}`)
-    typed.set(root(r.id), { name, ...(s ? { sqft: Number(s[1].replace(/,/g, '')) } : {}) })
+    typed.set(root(r.id), { name, ...sqftOf(l) })
   }
 
   const centre = (rs: Room[]) => {
@@ -68,20 +82,31 @@ export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'
     return { x: rs.reduce((t, r) => t + r.centroid.x * r.areaSqm, 0) / a, y: rs.reduce((t, r) => t + r.centroid.y * r.areaSqm, 0) / a }
   }
   let n = 0
+  const isFlat = (k: Id, rs: Room[]) => typed.has(k) || (rs.length > 1 && rs.some((r) => r.kind === 'bed'))
   // ponytail: "Flat N" follows the place, so a reflected floor (mirrorUnit) renumbers them — and a pin naming one moves
-  // with the number; a "Type A" label or a pinned new name is the stable kind
+  // with the number; a "Type A" label or a pinned new name is the stable kind. (So a flat drawn by hand beside a traced,
+  // pinned "Flat 1" is numbered "Flat 1" too and joins it: V → Flat → New flat on one of its rooms parts them.)
   const flats = [...groups]
-    .filter(([k, rs]) => typed.has(k) || (rs.length > 1 && rs.some((r) => r.kind === 'bed')))
+    .filter(([k, rs]) => isFlat(k, rs))
     .map(([k, rs]) => ({ k, rs, c: centre(rs) }))
     .sort((p, q) => p.c.x - q.c.x || p.c.y - q.c.y)
     .map(({ k, rs }): { name: string; rs: Room[]; sqft?: number } => ({ name: typed.get(k)?.name ?? `Flat ${++n}`, rs, sqft: typed.get(k)?.sqft }))
-  // pinned rooms join the flat of their name, else make it
+  // pinned rooms join the flat of their name, else make it (its printed area from a type label naming it) — the flats
+  // made so after the others, west → east, whatever order the rooms come in
+  const made: typeof flats = []
   for (const r of rooms) {
     const name = pin.get(r.id)
     if (!name) continue
-    const f = flats.find((x) => x.name === name)
+    const f = flats.find((x) => x.name === name) ?? made.find((x) => x.name === name)
     if (f) f.rs.push(r)
-    else flats.push({ name, rs: [r] })
+    else made.push({ name, rs: [r], sqft: sqftOf(unit.roomLabels.find((l) => flatTypeOf(l) === name) ?? { name: '' }).sqft })
+  }
+  flats.push(...made.map((f) => ({ f, c: centre(f.rs) })).sort((p, q) => p.c.x - q.c.x || p.c.y - q.c.y).map(({ f }) => f))
+  // a group that is no flat by itself, whose doors lead into one pinned flat only: that flat's
+  for (const [k, rs] of groups) {
+    const into = pinnedBy.get(k)
+    if (isFlat(k, rs) || into?.size !== 1) continue
+    flats.find((x) => x.name === [...into][0])?.rs.push(...rs)
   }
   return flats.map(({ name, rs, sqft }) => {
     const ids = new Set(rs.map((r) => r.id))

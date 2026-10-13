@@ -248,7 +248,8 @@ export default function StudioApp() {
   const [prep, setPrep] = useState<string | null>(null)
   const [flatPreview, setFlatPreview] = useState<Preview | null>(null)
   const hoverTrace = useRef((_px: Pt) => {})
-  const pickTrace = useRef((_px: Pt) => {})
+  /** the click inside a flat; null = the Whole floor button (Level 4) */
+  const pickTrace = useRef((_px: Pt | null) => {})
   /** a review row's spot, ringed on the canvas until the next click */
   const [mark, setMark] = useState<Pt | null>(null)
 
@@ -846,12 +847,12 @@ export default function StudioApp() {
       picked = true
       setFlatPreview(null)
       // ready: only the flat's own steps are left; else the sheet's progress carries on in the card
-      setTrace({ stage: ready ? 'flat' : 'Reading the plan', fraction: ready ? 0.8 : 0 })
+      setTrace({ stage: ready ? (px ? 'flat' : 'whole floor') : 'Reading the plan', fraction: ready ? 0.8 : 0 })
       cancelTrace.current = () => {
         stop()
         toast('Auto-trace cancelled')
       }
-      send({ type: 'pick', px })
+      send(px ? { type: 'pick', px } : { type: 'floor' })
     }
     worker.onmessage = (e: MessageEvent<TraceMsg>) => {
       const m = e.data
@@ -1646,7 +1647,7 @@ export default function StudioApp() {
   // ----- status text
   const hint =
     trace === 'pick'
-      ? 'Auto-trace · click inside the flat you want to trace · Esc cancels'
+      ? 'Auto-trace · click inside the flat you want to trace, or Whole floor · Esc cancels'
       : held
         ? `Holding ${held.key.toUpperCase()} · ${HOLD_HINTS[held.key]} · let go to return to ${TOOLS.find(([t]) => t === held.back)![2]} (a tap switches tools)`
       : (chain
@@ -1858,7 +1859,13 @@ export default function StudioApp() {
           {trace && (
             <div className="trace-card" role="status">
               {trace === 'pick' ? (
-                <span>{prep ? `Reading the plan (${prep})… then click inside the flat` : 'Point at a flat to see it · click inside the one you want to trace'}</span>
+                <>
+                  <span>{prep ? `Reading the plan (${prep})… then click inside the flat` : 'Point at a flat to see it · click inside the one you want to trace'}</span>
+                  {/* Level 4: every flat + the core in one go */}
+                  <button title="Trace every flat of this floor and the lobby, stair and lifts between them, in one go" onClick={() => pickTrace.current(null)}>
+                    Whole floor
+                  </button>
+                </>
               ) : (
                 <>
                   <span>

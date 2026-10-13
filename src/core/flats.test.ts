@@ -98,6 +98,40 @@ describe('deriveFlats', () => {
     expect(rooms(mu)).toEqual([['Type B', ['r0', 'r4', 'r5', 'r6']], ['Flat 1', ['r1', 'r2']]])
   })
 
+  test('Level 4, one flat traced: every room pinned to its name is ONE flat, even where a door came out as a plain wall', () => {
+    // every door missing (the door walk alone: seven loose rooms, no flat); flat A pinned as Auto-trace pins it: one flat
+    const pins = ['Flat 1', 'Flat 1', 'Flat 1'].map((flat) => ({ flat }))
+    expect(flatsOf(floor([null, null, null, null, null, null]))).toEqual([])
+    expect(flatsOf(floor([null, null, null, null, null, null], pins))).toEqual([['Flat 1', ['r0', 'r1', 'r2']]])
+  })
+
+  test('Level 4, the whole floor: each flat pinned to its name, the lobby to none; a pinned flat takes its printed area from its type label; the flats come west → east whatever the room order', () => {
+    const u = floor([null, null, 'door', 'door', null, null], [{ flat: 'Type A' }, { flat: 'Type A' }, { flat: 'Type A' }, {}, { flat: 'Flat 1' }, { flat: 'Flat 1' }, { flat: 'Flat 1' }])
+    u.roomLabels.push({ id: 'ta', name: 'Type A ±2736 sft', kind: 'other', x: 9, y: 1 })
+    const rooms = core.deriveRooms(u)
+    const fs = core.deriveFlats(u, rooms)
+    expect(fs.map((f) => [f.name, f.roomIds, f.printedSqft])).toEqual([
+      ['Type A', ['r0', 'r1', 'r2'], 2736],
+      ['Flat 1', ['r4', 'r5', 'r6'], undefined],
+    ])
+    expect(core.deriveFlats(u, [...rooms].reverse()).map((f) => f.name)).toEqual(['Type A', 'Flat 1'])
+  })
+
+  test('Level 4: a room added later beside a pinned flat (no pin of its own) joins it by its door; one whose doors lead into two pinned flats stays loose', () => {
+    // r0 (the bath) unpinned, its door into pinned r1: joins Type A; the lobby (r3) is core, not loose
+    const u = floor(undefined, [{ kind: 'balcony' }, { flat: 'Type A' }, { flat: 'Type A' }, {}, { flat: 'Type B' }, { flat: 'Type B' }, { flat: 'Type B' }])
+    expect(flatsOf(u)).toEqual([
+      ['Type A', ['r0', 'r1', 'r2']],
+      ['Type B', ['r4', 'r5', 'r6']],
+    ])
+    // a space between the two flats with a door into each: in neither
+    const v = floor(undefined, [{ flat: 'Type A' }, { flat: 'Type A' }, { flat: 'Type A' }, { name: 'Hall' }, { flat: 'Type B' }, { flat: 'Type B' }, { flat: 'Type B' }])
+    expect(flatsOf(v)).toEqual([
+      ['Type A', ['r0', 'r1', 'r2']],
+      ['Type B', ['r4', 'r5', 'r6']],
+    ])
+  })
+
   test('the same unit gives the same flats, whatever order its rooms come in', () => {
     const u = floor()
     const rooms = core.deriveRooms(u)

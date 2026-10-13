@@ -2,8 +2,8 @@
  * Auto-trace in the Studio's state: the result import (ONE undo step) and the "Check these" review list.
  * Wraps model.reducer instead of living in it: model.ts is shared with the buyer viewer's bundle, this file is not.
  */
-import { deriveRooms, formatFeetInches, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
-import type { Id, Pt, Room, RoomLabel, Unit } from '../core'
+import { deriveRooms, formatFeetInches, isCore, mainRectangle, newId, parseLength, pointInPolygon, polygonCentroid, printedSizeCheck, roomInnerPolygon, roomPolygon, sqmToSqft, triangulate } from '../core'
+import type { Flat, Id, Pt, Room, RoomLabel, Unit } from '../core'
 import type { AutoTraceResult, AutoTraceStats, PrintedRoom, ReviewItem } from '../trace/types'
 import { entityPoints, findEntity, normalizeUnit, reducer, type Action, type StudioState, type Tool } from './model'
 import { layoutFor } from './furniture'
@@ -137,7 +137,7 @@ function nameInside(u: Unit, printed: PrintedRoom[]): { unit: Unit; sized: Revie
   st.forEach((x, i) => {
     if (x.s !== 'unnamed' || x.d > 0) return
     const p = printed[i]
-    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}) }
+    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat } : {}) }
     const l = labels.find((y) => y.id === x.room.id)
     const at = l ?? insidePoint(x.room, u, rooms)
     if (!at) return
@@ -305,6 +305,9 @@ export function roomStates(u: Unit, rooms: Room[], printed: PrintedRoom[]): Room
     const r = rooms[f]
     if (isUnnamed(r)) return { s: 'unnamed', room: r, d: 0 }
     if (sameName(r.name, p.name)) return { s: 'done' }
+    // (Level 4: a name inside the core's room — Sheltech L2 B's Toilet 2 in the face the lifts' walls left open — is in
+    // the lobby / lift / stair, never closed on its own)
+    if (isCore(r)) return { s: 'merged', into: r }
     // the room carries another printed name in it; none does (renamed by hand): the first printed name in it counts
     const mine = printed.findIndex((q, j) => face[j] === f && sameName(q.name, r.name))
     return (mine >= 0 ? mine : face.indexOf(f)) === i ? { s: 'done' } : { s: 'merged', into: r }
@@ -330,11 +333,27 @@ export function roomStates(u: Unit, rooms: Room[], printed: PrintedRoom[]): Room
   return st.map((x, i): RoomState => (x.s === 'unnamed' && !named.has(i) ? { s: 'merged', into: x.room } : x))
 }
 
-/** the room count against the sheet, as it stands: "17 of the 18 room names read on the sheet are closed and named — missing: …" + the area */
-export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats): string | null {
+/**
+ * The room count against the sheet, as it stands: "17 of the 18 room names read on the sheet are closed and named —
+ * missing: …" + the area. Level 4: per traced flat, one line each — "Type A: 13 of the 14 room names read on it …; its
+ * closed rooms add up to … sft" (its rooms = core deriveFlats' flat of that name), against its own printed area.
+ */
+export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats, flats: Flat[] = []): string | null {
   const printed = stats.printed ?? []
   if (!printed.length) return null
   const st = roomStates(u, rooms, printed)
+  if (stats.flats?.length)
+    return stats.flats
+      .map((f) => {
+        const mine = printed.flatMap((p, i) => (p.flat === f.name ? [{ p, s: st[i] }] : []))
+        const missing = mine.filter((x) => x.s.s !== 'done').map((x) => x.p.name)
+        const n = mine.length
+        const line = !n ? 'no room name was read on it' : missing.length ? `${n - missing.length} of the ${n} room names read on it are closed and named — missing: ${missing.join(', ')}` : `all ${n} room names read on it are closed and named`
+        const sum = flats.find((x) => x.name === f.name)?.areaSqm ?? 0
+        const area = f.wantSqm ? `the printed flat area gives about ${Math.round(sqmToSqft(f.wantSqm))}` : 'no printed flat area was read on it'
+        return `${f.name}: ${line}. Its closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
+      })
+      .join('\n')
   const missing = printed.filter((_, i) => st[i].s !== 'done').map((p) => p.name)
   const n = printed.length
   // (the names Auto-trace READ: one it missed is not counted — its room shows as an unnamed space)
@@ -344,6 +363,20 @@ export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats): string
   return `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
 }
 
+/**
+ * The note when Auto-trace closed almost nothing (fewer than 2 labelled rooms). It used to say "made for flats … on a
+ * ground floor, basement or rooftop" whenever that happened — also on flat sheets (Banani Level 2-6: walls drawn as thin
+ * lines; Level 0 scoreboard). A sheet that prints a bedroom's name is a flat sheet: the note says so and why, never
+ * "ground floor". null: nothing to say.
+ */
+export function fewRooms(stats: AutoTraceStats): string | null {
+  if (stats.labelled >= 2) return null
+  const n = stats.printed?.length ?? 0
+  if (stats.printed?.some((p) => p.kind === 'bed'))
+    return `This is a flat sheet, but Auto-trace closed only ${stats.rooms} room${stats.rooms === 1 ? '' : 's'} on it (it read ${n} room name${n === 1 ? '' : 's'}). Its walls may be drawn as thin lines, which Auto-trace does not follow yet: draw them with W — the rows below say which rooms are open.`
+  return 'Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.'
+}
+
 /** a room row's index in `printed` (its name read at its spot) */
 export const printedIndex = (printed: PrintedRoom[], i: Pick<ReviewItem, 'room' | 'at'>): number =>
   printed.findIndex((p) => p.name === i.room && p.at.x === i.at.x && p.at.y === i.at.y)
@@ -351,10 +384,12 @@ export const printedIndex = (printed: PrintedRoom[], i: Pick<ReviewItem, 'room' 
 /** the row for a printed name not yet on a closed, named room: which room, where, and why */
 export function roomRow(p: PrintedRoom, s: RoomState, id = newId()): ReviewItem {
   const base = { id, at: p.at, room: p.name }
+  // (Level 4: which flat — "Type A: Ver is open …")
+  const of = p.flat ? `${p.flat}: ` : ''
   if (s.s === 'unnamed')
-    return { ...base, kind: 'unlabelled', entityId: s.room.id, message: s.d < 0.05 ? `${s.room.name} — the printed name ${p.name} is in it` : `${s.room.name} — printed name ${p.name} is ${s.d.toFixed(1)} m away` }
-  if (s.s === 'merged') return { ...base, kind: 'unclosed', message: `${p.name} shares ${s.into.name}'s room — no wall between them` }
-  return { ...base, kind: 'unclosed', message: `${p.name} is open — no closed room around its name` }
+    return { ...base, kind: 'unlabelled', entityId: s.room.id, message: s.d < 0.05 ? `${of}${s.room.name} — the printed name ${p.name} is in it` : `${of}${s.room.name} — printed name ${p.name} is ${s.d.toFixed(1)} m away` }
+  if (s.s === 'merged') return { ...base, kind: 'unclosed', message: `${of}${p.name} shares ${s.into.name}'s room — no wall between them` }
+  return { ...base, kind: 'unclosed', message: `${of}${p.name} is open — no closed room around its name` }
 }
 
 /** The room rows after a trace: one per printed name that is not on a closed, named room. */

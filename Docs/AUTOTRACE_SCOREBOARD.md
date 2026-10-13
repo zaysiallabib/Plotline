@@ -285,3 +285,56 @@ target of 95 is not reached: 10 of the 41 still missed are the core (lobby, stai
 by the founder's rule, so the eval sees them split or merged), 16 are AODs and planters (closed by no line the trace
 reads, or swallowed by the room beside them), 5 verandas, and 10 others (two toilets, two Bath-3s, a PDR, a passage,
 Sheltech A's Living, H. toilet shifted, Sheltech B's Dining, Type C's Bed-2).
+
+## After Level 4 (2026-10-09, the whole floor in one click; one flat = the same flat wherever it is clicked)
+
+**How it was made:** the Level 0 method — Firefox (Playwright's build on E:, headless, one browser), the real Studio, a
+fresh Studio per run, the sheet picture dropped, **S** on the same printed length as above, **Auto-trace**, then either a
+click inside a flat or the new **Whole floor** button. "Before" = main at `b4c1884` (its `src` is the Levels 1–2 "after"),
+"after" = the Level 4 branch merged with main (pillar lane included) at `5b3232e`; same harness, same clicks
+(`E:/dev/tmp/s24/l4/l4.mjs`, logs `before.log` / `merged.log`, shots + page texts `E:/dev/plotline-shots/s24/l4/before-…` /
+`merged-…`, `…-names.png` = every row dismissed, to read the tints and names). Every number below is from the panel text
+("Traced …", the count line(s), the "Check these (N)" / "Issues (N)" headers — "Issues" with no number = 0) or read off
+the `…-names.png` screenshots. Sheltech L2 is `Demo drawings/Sheltech/Level 2.jpg` = `public/assets/plan-sheltech-l2.jpg`
+(the same file).
+
+**Whole floor (one click; before: not possible — one flat per click):**
+
+| Sheet | Flats found (tint names) | Core | Traced | Count lines (as the panel prints them) | Check these | Issues |
+|---|---|---|---|---|---|---|
+| Sheltech L2 | **Type A** (15 rooms) + **Type B** (12 rooms) | Lobby, Lift, Stair untinted | 198 walls, 30 rooms, 30 labelled | Type A: 13 of the 14 room names read on it closed and named — missing: Ver; 1795 sft, printed area gives about 2408 · Type B: 11 of 13 — missing: Toilet 2, Ver; 1662 sft, about 2408 | 68 | 6 |
+| BTI 2nd (`img_3`) | **Flat 1** (west small flat), **Flat 2** (the 2703 sft flat), **Flat 3** (east small flat) | Lift, Stretcher Lift untinted (the stair and lift lobby are not closed faces) | 225 walls, 38 rooms, 34 labelled | Flat 2: 20 of 21 — missing: Veranda; 2029 sft · Flat 1: 5 of 6 — missing: Aod; 512 sft · Flat 3: all 6; 486 sft (no printed flat area on any: the figures are in the title) | 80 | 15 |
+| BTI 3rd (`img_2`) | **Flat 1** (south), **Flat 2** (north) | Lift Lobby, Stair, Stretcher Lift untinted | 231 walls, 45 rooms, 38 labelled | Flat 2: all 15; 1693 sft · Flat 1: 16 of 21 — missing: Bath 3, Veranda 5, Veranda, Bed 2, Ver; 1818 sft | 99 | 10 |
+
+The two whole-floor drafts the scope asked for (Sheltech L2, BTI `img_3`) come out as their flats + the core from one
+click; Sheltech's two flats are named by their own printed types (the red "TYPE-B (L/O)" is now read from the block around
+its "±2736 SFT"). The right-hand strip on BTI `img_2` ("4th, 6th & 8th floor") is not traced (it has no living / kitchen).
+
+**One flat clicked — before → after (each click a fresh Studio):**
+
+| Sheet · flat (printed rooms) | Click spots | Before: Traced · count line · Check these / Issues | After (all spots alike) |
+|---|---|---|---|
+| Sheltech L2 · Type A (18) | dining (690,380) · living (560,250) · Bed 1 (800,520) | 95/15/15 · 13 of 14 · 33/2 — 96/15/15 · 13 of 14 · 32/2 — 95/15/15 · 13 of 14 · 33/2 | 95 walls, 15 rooms, 15 labelled · "Type A: 13 of the 14 … missing: Ver" · 33 / 2; tint **Type A** |
+| Sheltech L2 · Type B (17) | dining (345,440) · Bed 3 (200,250) · Bed 2 (420,520) | 83/12/12 · 11 of 13, Bed 2 closed but **untinted** (no flat) · 26/2 — 78/11/11 · 10 of 12, Bed 2 **missing** · 24/2 — **5 walls, 1 room** · "All 1 …" · 3/1 **+ "Auto-trace is made for flats. On a ground floor …"** | 84 walls, 12 rooms, 12 labelled · "Type B: 11 of the 13 … missing: Toilet 2, Ver" · 26 / 2; Bed 2 in the flat; tint **Type B** |
+| BTI 2nd · the 2703 sft flat (22) | dining (606,1491) | 119/24/20 · 20 of 21 · 42/3 | 128/24/20 · "Flat 1: 20 of the 21 … missing: Veranda" · **47 / 9** (see below) |
+| BTI 2nd · small flat, west (6) | (644,758) | 102/12/11 · **10 of 16** — missing: Aod, Aod, **Living Room, Dining & Family Living**, Toilet, Veranda (the big flat's) · 42/16 | 60/7/7 · "Flat 1: 6 of the 7 … missing: Aod" · **24 / 11** |
+| BTI 2nd · small flat, east (6) | (1011,758) | 76/8/7 · **7 of 10** — missing: Aod, Aod, **Living Room** · 34/13 | 43/5/5 · "Flat 1: all 5 …" · **13 / 0** |
+| BTI 3rd · north (18) | living (653,602) · Bed-1 (900,500) · living west end (450,700) | 107/23/19 · 16 of 17 — missing: Bath 3 (the south's) · 46/0, the same at all three | 105/22/18 · "Flat 1: all 15 …" · **44 / 0**; no longer takes the south flat's PDR |
+| BTI 3rd · south (21) | dining (576,1280) · living room (736,1114) · Bed-1 (883,1408) | **116/20/16 · 15 of 19 · 46/7 — 98/17/13 · 12 of 16 · 40/5 — 96/15/12 · 11 of 17 · 44/7** (three different flats; the kitchen, Bath-2, study and Bed-2 outside the flat; the north's Bath-2 inside) | **121/20/17 at all three** · "Flat 1: 16 of the 21 … missing: Bath 3, Veranda 5, Veranda, Bed 2, Ver" · 52 / 10; kitchen, Bath-2, study room, help bed and its own PDR in; the north's Bath-2 out |
+| Banani L2-6 · Unit A (19) | (340,400) | 41/1/1 · 1 of 9 · 37/29 **+ "Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little"** | 52/3/2 · "Flat 1: 2 of the 9 …" · 40 / 29; the ground-floor message is gone (a sheet that prints a bedroom is a flat sheet) |
+
+**Stable:** every flat gives the same draft from every spot clicked (Sheltech A ×3, B ×3, BTI north ×3, south ×3). **One
+traced flat = one flat:** every after-shot shows the traced flat in one tint with one name; before, Sheltech L2 Type B's
+Bed 2 was closed but in no flat. **No borrowing:** the small BTI flats no longer take the big flat's rooms or names; north /
+south keep their own PDR / Bath-2; each flat's printed area and TYPE come only from its own part of the floor.
+
+**Check these + Issues on the eight Level 0 test flats (first spot each): 378 → 342.** Fell: BTI small west 58 → 35, small
+east 47 → 13, BTI north 46 → 44. Rose, and why (no row hidden): BTI south 53 → 62 — the flat now holds its west part (kitchen,
+Bath-2, study, help bed: 4 more rooms, their rows and wall ends); Banani A 66 → 69 — more of it traced (52 walls, 3 rooms;
+2 names closed, was 1); BTI 2nd big flat 45 → 56 — the flat is now always chosen from its dining's printed name, and from
+there the flood reaches the unnamed box between the lift lobby and the powder room (Check these: + 5 "A wall ends here",
++ a 2'-1" gap, − the dining's size row; Issues: + 6 loose wall ends); the old pick gave exactly this when clicked on that name (checked in node: 128 walls, 48 / 9), and 119 walls /
+42 / 3 only from a spot 1.5 m further west. Sheltech A and B unchanged (35, 28).
+
+**Node eval (`npx vitest run src/trace/solve.test.ts --silent=false`, NEW READER):** **75 of 116** — unchanged (Sheltech A
+13, B 12, BTI Type A 15, Type B 16, Type C 19).

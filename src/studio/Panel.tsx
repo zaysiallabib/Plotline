@@ -4,7 +4,7 @@ import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Sl
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
-import { AI_KEY, TRACKER_KEY, roomCount, type StudioAction as Action } from './review'
+import { AI_KEY, TRACKER_KEY, fewRooms, roomCount, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
@@ -246,7 +246,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     )
   }
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
-  const count = stats && roomCount(unit, rooms, stats)
+  const count = stats && roomCount(unit, rooms, stats, flats)
   const errors = issues.filter((i) => i.level === 'error').length
   const steps: [string, boolean][] = [
     ['1 Load plan', !!state.planImage],
@@ -316,9 +316,14 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
         <section>
           <h3>{review.length ? `Check these (${review.length})` : 'Check these'}</h3>
           {stats && <p className="muted">{statsLine(stats)}</p>}
-          {count && <p className={count.startsWith('All ') ? 'muted' : 'warn'}>{count}</p>}
+          {/* (Level 4: one line per traced flat) */}
+          {count?.split('\n').map((l) => (
+            <p key={l} className={/^All |: all \d+ room names/.test(l) ? 'muted' : 'warn'}>
+              {l}
+            </p>
+          ))}
           {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
-          {stats && stats.labelled < 2 && <p className="warn">Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.</p>}
+          {stats && fewRooms(stats) && <p className="warn">{fewRooms(stats)}</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
           {review.length ? (
             <ul className="issues">
