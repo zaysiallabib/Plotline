@@ -91,6 +91,19 @@ const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
  * (Type A at 15:30: Bed-1 walls 214–225 sRGB, living 186–193). Averaged over four quarter turns about the
  * vertical (half-float RGBA equirect, in place), every wall bearing gets the same fill; floor vs ceiling stays.
  */
+/**
+ * What ray hit `h` picks: the object it belongs to (the nearest ancestor with a `kind`), null when hidden or nothing.
+ * `piece` (Edit furniture, G): a pane that is not part of a piece — window / slider glass, water — is seen through, so a
+ * bed seen through the balcony's sliding door is picked, not the glass (founder 2026-10-09 "sometimes doesn't").
+ */
+export function pickedAt(h: THREE.Intersection, piece = false): THREE.Object3D | null {
+  for (let v: THREE.Object3D | null = h.object; v; v = v.parent) if (!v.visible) return null // a deleted piece (Arrange) is built but hidden
+  let o: THREE.Object3D | null = h.object
+  while (o && !o.userData.kind) o = o.parent
+  if (piece && o?.userData.kind !== 'furniture' && PANES.includes((h.object as THREE.Mesh).material as THREE.MeshStandardMaterial)) return null
+  return o
+}
+
 export function evenBearings(t: THREE.DataTexture): void {
   const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
   const q = Math.floor(w / 4)
@@ -548,7 +561,7 @@ export class PlotlineScene {
 
   /** The piece under the crosshair (mouse locked) or the pointer, as G picks it up; null: none, or something nearer hides it. */
   pieceUnderPointer(): Id | null {
-    const hit = this.pick(this.aimNdc())
+    const hit = this.pick(this.aimNdc(), true)
     const o = hit?.kind === 'furniture' ? this.pieceObject(hit.id.split('/')[0]) : undefined // a part → its piece
     return (o?.userData.id as Id | undefined) ?? null
   }
@@ -1182,7 +1195,7 @@ export class PlotlineScene {
         },
       }
     } else {
-      const hit = this.pick(ndc)
+      const hit = this.pick(ndc, true)
       const o = hit?.kind === 'furniture' ? this.pieceObject(hit.id.split('/')[0]) : undefined // a part → its piece
       if (!hit || !o) {
         if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
@@ -1312,17 +1325,14 @@ export class PlotlineScene {
 
   private onDblClick = (): void => this.lockPointer()
 
-  private pick(ndc: THREE.Vector2): PickHit | null {
+  /** `piece`: looking for a piece of furniture (Edit furniture, G) — through a window's or a door's glass, as the eye sees it. */
+  private pick(ndc: THREE.Vector2, piece = false): PickHit | null {
     this.raycaster.setFromCamera(ndc, this.camera)
     // three's raycaster ignores `visible`: skip the hidden ceilings (and what hangs from them) in the dollhouse
     const targets = [this.staticGroup, this.ceilingGroup, this.furnitureGroup].filter((g) => g.visible)
     const hits = this.raycaster.intersectObjects(targets, true)
     for (const h of hits) {
-      let o: THREE.Object3D | null = h.object
-      let hidden = false // a deleted piece (Arrange) is built but hidden
-      for (let v: THREE.Object3D | null = o; v; v = v.parent) hidden ||= !v.visible
-      if (hidden) continue
-      while (o && !o.userData.kind) o = o.parent
+      const o = pickedAt(h, piece)
       if (!o) continue
       let { kind, id, wallId, objectKind } = o.userData as { kind: PickKind; id: Id; wallId?: Id; objectKind: ObjectKind }
       const { roomId, front, back, label } = o.userData as { roomId?: Id; front?: Id | null; back?: Id | null; label: string }

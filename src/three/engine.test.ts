@@ -14,8 +14,8 @@ import { footprint } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
-import { buildOpening } from './openings'
-import { clampSun, evenBearings } from './PlotlineScene'
+import { buildOpening, CLEAR_GLASS } from './openings'
+import { clampSun, evenBearings, pickedAt } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -286,6 +286,38 @@ describe('clickable parts', () => {
       'w/glass': 'window-glass',
     })
     door.traverse((o) => o.userData.kind && expect(o.userData.wallId).toBe('w')) // parts anchor in the wall's frame
+  })
+})
+
+describe('pickedAt: Edit furniture and G see a piece through the glass', () => {
+  test('a bed behind the balcony slider: a comment gets the glass, Edit furniture / G the bed; the glass of a piece picks the piece', () => {
+    // founder 2026-10-09 "sometimes selects, sometimes doesn't": walk starts on his balcony, every piece seen through the slider picked the glass
+    const wall: Wall = { id: 'w', a: 'a', b: 'b', thicknessM: 0.127, heightM: 3.048, openings: [] }
+    const slider = buildOpening({ id: 's', kind: 'slider', widthM: 2.4, offsetM: 1, heightM: 2.1, sillM: 0 }, wall)
+    const piece = (id: string, mesh: THREE.Mesh, z: number) => {
+      const g = new THREE.Group().add(mesh)
+      g.userData = { kind: 'furniture', id }
+      g.position.set(1.6, 0.5, z)
+      return g
+    }
+    const bed = piece('bed', new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 2)), -2)
+    const scene = new THREE.Scene().add(slider, bed)
+    scene.updateMatrixWorld(true)
+    const first = (looking: boolean) =>
+      new THREE.Raycaster(new THREE.Vector3(1.6, 1, 5), new THREE.Vector3(0, 0, -1))
+        .intersectObjects(scene.children, true)
+        .map((h) => pickedAt(h, looking))
+        .find(Boolean)?.userData.id
+    expect(first(false)).toBe('s/glass')
+    expect(first(true)).toBe('bed')
+    // a glass-topped piece in front (a shower screen, a table's top): picked, as the piece it is
+    scene.add(piece('screen', new THREE.Mesh(new THREE.BoxGeometry(1, 2, 0.01), CLEAR_GLASS), 2))
+    scene.updateMatrixWorld(true)
+    expect(first(true)).toBe('screen')
+    // hidden (a deleted piece, the dollhouse's ceilings): never picked
+    scene.children.at(-1)!.visible = false
+    bed.visible = false
+    expect(first(true)).toBeUndefined()
   })
 })
 
