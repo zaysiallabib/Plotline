@@ -1,10 +1,10 @@
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Opening, type Pt, type Room, type RoomKind, type Unit } from '../core'
-import { heightRange, isCeilingLight, kitAsset, placementLabel } from './kit'
+import { heightRange, isCeilingLight, kitAsset, placementLabel, placementSize } from './kit'
 import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
 import { buildProcedural } from './procedural'
-import { ART_SETS, parsePlanter, PLANTER } from './procedural.meta'
+import { ART_SETS, CURTAINS, parsePlanter, PLANTER } from './procedural.meta'
 
 /** Axis-aligned w × h room, 0.127 m partitions, optional door on wall index (0 = top y=0, 1 = right, 2 = bottom, 3 = left). */
 function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offsetM: number }): Unit {
@@ -43,11 +43,8 @@ function rect(kind: RoomKind, w: number, h: number, door?: { wall: number; offse
   }
 }
 
-const quad = (p: FurniturePlacement) => {
-  const s = kitAsset(p.assetId)!.sizeM
-  const k = p.scale ?? 1
-  return footprint(p, p.rotationDeg, { x: s.x * k, z: s.z * k })
-}
+const quad = (p: FurniturePlacement) => footprint(p, p.rotationDeg, placementSize(p))
+const frontHalf = (q: Pt[]) => [{ x: (q[0].x + q[3].x) / 2, y: (q[0].y + q[3].y) / 2 }, { x: (q[1].x + q[2].x) / 2, y: (q[1].y + q[2].y) / 2 }, q[2], q[3]]
 const aabb = (q: Pt[]) => ({
   minX: Math.min(...q.map((p) => p.x)),
   maxX: Math.max(...q.map((p) => p.x)),
@@ -58,9 +55,9 @@ const aabb = (q: Pt[]) => ({
 const bedShape = (p: FurniturePlacement) => parsePlanter(p.assetId)?.poly.map((q) => ({ x: p.x + q.x, y: p.y + q.y })) ?? null
 // the planter bed is a 'rug' to the engine (floor-level), not a rug furniture stands on
 const isRug = (p: FurniturePlacement) => kitAsset(p.assetId)!.category === 'rug' && !bedShape(p)
-// ceiling fixtures hang over everything; the cushions sit ON the sofa
+// ceiling fixtures hang over everything; the cushions sit ON the sofa; curtains hang behind what stands at their window
 const solidItems = (ps: FurniturePlacement[]) =>
-  ps.filter((p) => kitAsset(p.assetId)!.mount !== 'ceiling' && !isRug(p) && !['throw_pillows_01', 'cushions_plain'].includes(p.assetId))
+  ps.filter((p) => kitAsset(p.assetId)!.mount !== 'ceiling' && !isRug(p) && !['throw_pillows_01', 'cushions_plain', CURTAINS].includes(p.assetId))
 // fitted wall units sit over the base modules by design (the sink's tap reaches up into the splashback zone)
 const STACKED = new Set(['kitchen_upper', 'kitchen_hood'])
 const stacked = (a: FurniturePlacement, b: FurniturePlacement) =>
@@ -81,7 +78,8 @@ function expectInsideAndDisjoint(ps: FurniturePlacement[], rooms: Room[], unit: 
     const shape = bedShape(p)
     // a planter bed fills its room: its outline is the inner polygon, to the cm its id is written in
     if (shape) inner.forEach((c, i) => expect(Math.hypot(c.x - shape[i].x, c.y - shape[i].y), `${p.id} vertex ${i}`).toBeLessThan(0.01))
-    else for (const c of quad(p)) expect(pointInPolygon(c, inner), `${p.id} corner outside`).toBe(true)
+    // curtains: their front half (the back hangs on the wall face, which roomInnerPolygon slants where wall thicknesses step)
+    else for (const c of p.assetId === CURTAINS ? frontHalf(quad(p)) : quad(p)) expect(pointInPolygon(c, inner), `${p.id} corner outside`).toBe(true)
   }
   const fl = solidItems(ps)
   for (let i = 0; i < fl.length; i++) {
@@ -100,6 +98,9 @@ function expectInsideAndDisjoint(ps: FurniturePlacement[], rooms: Room[], unit: 
     for (const z of doorClearZones(room, unit)) expect(quadsOverlap(quad(r), z), `${r.id} in a door clear zone`).toBe(false)
     for (const o of rugs) if (o !== r && o.roomId === r.roomId) expect(quadsOverlap(quad(r), quad(o)), `${r.id} on ${o.id}`).toBe(false)
   }
+  // curtains never run into each other (two windows side by side, two at a corner)
+  const cs = ps.filter((p) => p.assetId === CURTAINS)
+  for (const c of cs) for (const o of cs) if (o !== c && o.roomId === c.roomId) expect(quadsOverlap(quad(c), quad(o)), `${c.id} into ${o.id}`).toBe(false)
 }
 
 describe('furnish', () => {
@@ -258,7 +259,7 @@ describe('furnish', () => {
       ]
       for (const p of furnish(unit, deriveRooms(unit))) {
         const a = kitAsset(p.assetId)!
-        const exempt = a.category === 'plant' || a.category === 'rug' || a.mount === 'ceiling' || p.assetId === 'shower_screen' // glass
+        const exempt = a.category === 'plant' || a.category === 'rug' || a.mount === 'ceiling' || p.assetId === 'shower_screen' || p.assetId === CURTAINS // glass; curtains dress it
         if (exempt || heightRange(a)[1] <= 0.9 + 0.35) continue
         expect(quadsOverlap(quad(p), zone), `${kind}: ${p.id} covers the window`).toBe(false)
       }
@@ -362,9 +363,9 @@ describe('furnish', () => {
       const acs = mine.filter((p) => p.assetId === 'ac_split')
       if (r.kind === 'bed' || r.kind === 'living') expect(acs, r.name).toHaveLength(1)
       for (const ac of acs) expectACClearOfOpenings(ac, r, typeA)
-      // light + AC come after the room's own pieces and are new asset ids, so every earlier id is what it was
-      const added = mine.findIndex((p) => ['ceiling_light', 'ceiling_light_large', 'ac_split'].includes(p.assetId))
-      if (added >= 0) expect(mine.slice(added).every((p) => isCeilingLight(p.assetId) || p.assetId === 'ac_split'), r.name).toBe(true)
+      // light + AC (then the curtains) come after the room's own pieces and are new asset ids, so every earlier id is what it was
+      const added = mine.findIndex((p) => ['ceiling_light', 'ceiling_light_large', 'ac_split', CURTAINS].includes(p.assetId))
+      if (added >= 0) expect(mine.slice(added).every((p) => isCeilingLight(p.assetId) || p.assetId === 'ac_split' || p.assetId === CURTAINS), r.name).toBe(true)
     }
     for (const id of ['r_bed1:bed_queen:1', 'r_living:sofa_3seat:1', 'r_living:ceiling_fan:1', 'r_bath1:vanity:1', 'r_dining:modern_ceiling_lamp_01:1'])
       expect(ps.map((p) => p.id)).toContain(id)

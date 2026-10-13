@@ -1,23 +1,18 @@
 /**
  * Architectural finishing: the wall solids (crack-free faces, reveals, L-corner fill), skirting,
- * thresholds (via buildOpening), curtains. Plan (x, y) → world (X, Z), Y up.
+ * thresholds (via buildOpening). Plan (x, y) → world (X, Z), Y up.
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
-import type { FinishSlot, Graph, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
-import { materialFor } from './materials'
-import { CASING_P, CASING_W, buildOpening, isGlazing, meterUVs } from './openings'
+import type { FinishSlot, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
+import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
 const NO_SKIRTING: RoomKind[] = ['bath', 'balcony', 'shaft']
 /** No skirting in a wet or open room, nor in any outdoor zone (a lobby's outer face standing in a lawn gets none from the lawn side). */
 const skirted = (k: RoomKind) => !NO_SKIRTING.includes(k) && !core.isOutdoor(k)
-const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
-/** Rooms that are open to the sky: a window onto one is an outside window. */
-const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
-const CURTAIN_FABRIC = { kind: 'pbr', textureId: 'fabric_curtain', tint: '#efe6d8' } as const
 
 /**
  * One run of skirting (skirtingRuns): along the foot of a wall face, from world point `p` in direction `d` over
@@ -410,22 +405,8 @@ function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room 
 }
 
 /**
- * The faces of a window that get curtains: a bed/living/dining/study face whose other side is open air (outside
- * the unit, a balcony or a shaft) — never an interior glass partition between two rooms.
- */
-export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
-  if (!(o.kind === 'window' || o.kind === 'slider') || isGlazing(o) || o.curtains === false) return [] // a glass wall hangs no curtain
-  const [front, back] = openingRooms(o, wall, unit, rooms)
-  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || core.isOutdoor(r.kind)
-  const out: [Room, 1 | -1][] = []
-  if (front && CURTAIN_ROOMS.includes(front.kind) && open(back)) out.push([front, 1])
-  if (back && CURTAIN_ROOMS.includes(back.kind) && open(front)) out.push([back, -1])
-  return out
-}
-
-/**
- * Everything that dresses one opening, in the wall's local frame: the joinery (picked as the opening),
- * plus curtains (curtainSides).
+ * Everything that dresses one opening, in the wall's local frame: the joinery (picked as the opening). Curtains are
+ * furniture pieces hung on their window (furnish/presets.ts hangCurtains), built with the furniture.
  */
 export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): THREE.Object3D[] {
   const [front, back] = openingRooms(o, wall, unit, rooms)
@@ -439,95 +420,7 @@ export function dressOpening(o: Opening, wall: Wall, unit: Unit, rooms: Room[]):
       casing: o.kind === 'passage' ? casingPlan(o, wall, unit) : undefined,
     }),
   ]
-  for (const [room, side] of curtainSides(o, wall, unit, rooms)) out.push(buildCurtain(o, wall, side, room, unit))
   return out
-}
-
-/**
- * Floor-to-ceiling curtain pair drawn open to the sides of a window, on a slim rod, 0.1 m in front of the
- * `side` face and hung 0.1 m below the wall top. The rod reaches 0.24 m past each reveal (≈0.15 m of curtain
- * overhang + finial), less where a side wall or another window's rod is closer (see reach); ball finials and an end
- * bracket (wall rose, arm, cradle) at each end. Each panel is stacked back over 18 % of the window, so the
- * middle 64 % stays open (at 30 % the panels cut every sun patch to a strip). One mesh (rod coloured via vertex
- * colours), picked as furniture.
- */
-export function buildCurtain(o: Opening, wall: Wall, side: 1 | -1, room: Room, graph: Graph): THREE.Mesh {
-  const wc = side * (wall.thicknessM / 2 + 0.1)
-  const top = wall.heightM - 0.1
-  const bottom = 0.015
-  const ph = top - bottom
-  const f = core.wallFrame(wall, graph.vertices)
-  const inner = core.roomInnerPolygon(room, graph)
-  const at = (u: number) => ({ x: f.origin.x + f.dir.x * u + f.normal.x * wc, y: f.origin.y + f.dir.y * u + f.normal.y * wc })
-  // every other window of the room carries a rod 0.1 m off its wall face, reaching ≤ 0.24 m past its reveals (finial
-  // included, 0.4 m of reach counted): keep 6 cm off its line, so two corner rods end apart, not finial to finial
-  const rods = room.wallIds.flatMap((id) => {
-    const w = graph.walls.find((x) => x.id === id)
-    return w ? w.openings.filter((x) => x.kind === 'window' && x !== o).map((x) => ({ x, w, g: core.wallFrame(w, graph.vertices) })) : []
-  })
-  const nearRod = (p: Pt) =>
-    rods.some(({ x, w, g }) => {
-      const v = { x: p.x - g.origin.x, y: p.y - g.origin.y }
-      const along = v.x * g.dir.x + v.y * g.dir.y
-      return Math.abs(v.x * g.normal.x + v.y * g.normal.y) < w.thicknessM / 2 + 0.16 && along > x.offsetM - 0.4 && along < x.offsetM + x.widthM + 0.4
-    })
-  // the rod end stops 10 cm short of a side wall (its finial 8 cm) and clear of the next rod, back inside the reveal if it must
-  const reach = (from: number, dir: number) => {
-    let d = -Math.min(0.3, 0.3 * o.widthM)
-    while (d < 0.24 && core.pointInPolygon(at(from + dir * (d + 0.11)), inner) && !nearRod(at(from + dir * (d + 0.01)))) d += 0.01
-    return d
-  }
-  const left = o.offsetM - reach(o.offsetM, -1)
-  const right = o.offsetM + o.widthM + reach(o.offsetM + o.widthM, 1)
-  const geoms: THREE.BufferGeometry[] = []
-  const paint = (g: THREE.BufferGeometry, v: number) => {
-    g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(g.attributes.position.count * 3).fill(v), 3))
-    return g
-  }
-  for (const [u0, u1, phase] of [
-    [left + 0.07, Math.max(left + 0.15, o.offsetM + 0.18 * o.widthM), 0],
-    [Math.min(right - 0.15, o.offsetM + 0.82 * o.widthM), right - 0.07, 1.7],
-  ]) {
-    const pw = u1 - u0
-    const folds = Math.max(3, Math.round(pw / 0.11))
-    const g = new THREE.PlaneGeometry(pw, ph, folds * 10, 8)
-    const p = g.attributes.position
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i) + pw / 2
-      const hang = (ph / 2 - p.getY(i)) / ph // 0 at the rod, 1 at the hem: folds flare slightly toward the floor
-      const k = (2 * Math.PI * folds * x) / pw + 0.5 * Math.sin((2 * Math.PI * x) / (0.43 * pw) + phase) // uneven fold spacing
-      p.setZ(i, 0.028 * (1 + 0.35 * hang) * (Math.sin(k) + 0.2 * Math.sin(2.3 * k + phase)))
-    }
-    g.computeVertexNormals()
-    g.translate(u0 + pw / 2, bottom + ph / 2, wc)
-    geoms.push(paint(meterUVs(g), 1))
-  }
-  // rod with ball finials on collars, and an end bracket just inside each finial: wall rose, arm, cradle
-  const rodY = top + 0.035
-  const along = (g: THREE.BufferGeometry, u: number, w: number) => g.rotateZ(Math.PI / 2).translate(u, rodY, w)
-  const toWall = (g: THREE.BufferGeometry, u: number, w: number) => g.rotateX(Math.PI / 2).translate(u, rodY, w)
-  const rodParts = [along(new THREE.CylinderGeometry(0.011, 0.011, right - left, 12), (left + right) / 2, wc)]
-  for (const [u, s] of [
-    [left, 1],
-    [right, -1],
-  ]) {
-    rodParts.push(
-      new THREE.SphereGeometry(0.024, 14, 10).translate(u, rodY, wc),
-      along(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 12), u + s * 0.03, wc),
-      toWall(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 16), u + s * 0.07, side * (wall.thicknessM / 2 + 0.006)),
-      toWall(new THREE.CylinderGeometry(0.008, 0.008, 0.1, 8), u + s * 0.07, wc - side * 0.05),
-      along(new THREE.CylinderGeometry(0.017, 0.017, 0.03, 12), u + s * 0.07, wc),
-    )
-  }
-  for (const g of rodParts) geoms.push(paint(meterUVs(g), 0.07))
-  const mat = materialFor(CURTAIN_FABRIC)
-  mat.side = THREE.DoubleSide
-  mat.vertexColors = true
-  const mesh = new THREE.Mesh(mergeGeometries(geoms)!, mat)
-  geoms.forEach((g) => g.dispose())
-  mesh.castShadow = mesh.receiveShadow = true
-  mesh.userData = { kind: 'furniture', id: `${o.id}:curtain`, roomId: room.id, label: 'Curtains', objectKind: 'curtain' }
-  return mesh
 }
 
 type V3 = [number, number, number]

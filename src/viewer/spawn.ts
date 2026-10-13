@@ -182,7 +182,7 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
       inner.every((a, j) => segDist(q, a, inner[(j + 1) % inner.length]) >= VIEW_INSET) &&
       unit.furniture.every((pl) => {
         const k = pl.roomId === room.id && kitAsset(pl.assetId)
-        return !k || k.mount === 'ceiling' || k.category === 'rug' || footprintDist(q, pl) >= 0.3
+        return !k || k.mount === 'ceiling' || k.category === 'rug' || k.kind === 'curtain' || footprintDist(q, pl) >= 0.3
       })
     const turn = (deg: number): Pt => {
       const r = (deg * Math.PI) / 180
@@ -219,7 +219,7 @@ function through(room: Room, unit: Unit, rooms: Room[]): Pt | null {
   }
   if (!best) return null
   const r = best.r
-  const items = unit.furniture.filter((f) => f.roomId === r.id && kitAsset(f.assetId)?.mount !== 'ceiling')
+  const items = unit.furniture.filter((f) => f.roomId === r.id && framed(f))
   const hero = HERO[r.kind] && items.find((f) => HERO[r.kind]!.test(f.assetId))
   if (hero) return hero
   return items.length ? { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length } : r.centroid
@@ -241,7 +241,12 @@ const HERO: Partial<Record<Room['kind'], RegExp>> = { bed: /^bed_/, bath: /^(van
 const SIGHT_MAX_SQM = 8
 /** A wardrobe/shelf/tall (> 1.6 m) piece this close to the stand point fills the first view with a slab… */
 const SLAB_NEAR = 1.5
-const isSlab = (f: FurniturePlacement, k: KitAsset) => !GLASS.has(f.assetId) && k.mount !== 'ceiling' && (k.category === 'wardrobe' || k.category === 'shelf' || placementSize(f).y > 1.6)
+/** What a first view frames: not the overhead pieces (lights, ACs), nor the curtains drawn open at the windows' sides. */
+const framed = (f: FurniturePlacement) => {
+  const k = kitAsset(f.assetId)
+  return k?.mount !== 'ceiling' && k?.kind !== 'curtain'
+}
+const isSlab = (f: FurniturePlacement, k: KitAsset) => !GLASS.has(f.assetId) && k.mount !== 'ceiling' && k.kind !== 'curtain' && (k.category === 'wardrobe' || k.category === 'shelf' || placementSize(f).y > 1.6)
 /** …so that candidate loses this much of its distance-to-target score. */
 const SLAB_PENALTY = 1.5
 /** A ceiling piece reaching more than this below the ceiling (a pendant; not a fan, flush light or wall AC) hangs at head height. */
@@ -459,7 +464,7 @@ export function roomView(room: Room, unit: Unit): View {
   const inner = core.roomInnerPolygon(room, unit)
   const n = inner.length
   // ceiling lights and ACs are overhead: they neither frame the view nor block a stand point
-  const items = unit.furniture.filter((f) => f.roomId === room.id && kitAsset(f.assetId)?.mount !== 'ceiling')
+  const items = unit.furniture.filter((f) => f.roomId === room.id && framed(f))
   let target: Pt
   // a cot (help room) is the hero wherever it stands
   const hero = items.find((f) => f.assetId.startsWith('cot')) ?? (HERO[room.kind] && items.find((f) => HERO[room.kind]!.test(f.assetId)))

@@ -85,12 +85,18 @@ export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement
 /**
  * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 3" grid, wall snap,
  * refusals, riders along), turned to `rotationDeg` (default: as it stands). A wall piece goes onto the wall under the
- * pointer — back to it, front into the room, sliding in 3" steps along it — so it hops walls; the others slide on their plane.
+ * pointer — back to it, front into the room, sliding in 3" steps along it — so it hops walls; curtains slide along their
+ * own wall only (onto another window of it); the others slide on their plane.
  */
-export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget, rotationDeg?: number): Move | null {
+export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget, rotationDeg?: number, grab?: Pt): Move | null {
   const g = pieces.find((x) => x.id === id)
   const p = baseOf(pieces, id)
   if (!g || !p) return null
+  if (p.openingId) {
+    // curtains slide along their own wall with the point under the pointer (+ where they were grabbed: Held.grab)
+    const to = t.wall?.p ?? t.at
+    return to && movePiece(unit, rooms, pieces, p.id, { x: to.x + (grab?.x ?? 0), y: to.y + (grab?.y ?? 0) }, p.rotationDeg)
+  }
   if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, p.id, { x: t.at.x + p.x - g.x, y: t.at.y + p.y - g.y }, rotationDeg ?? p.rotationDeg)
   return t.wall && hangOn(unit, rooms, pieces, id, t.wall)
 }
@@ -113,6 +119,8 @@ export interface Held {
   at: DragTarget | null
   /** where it is now: the candidate layout; `error` = why it may not stay (null: it may); null = nowhere yet */
   move: Move | null
+  /** curtains: their middle less the wall point first pointed at, so they slide with the hand, not jump to it */
+  grab?: Pt
 }
 
 /** Piece `id` (a drag's first frame, or G) picked up as it stands. */
@@ -124,7 +132,10 @@ export const pickUp = (pieces: FurniturePlacement[], id: Id): Held => ({ id, rot
  */
 export function holdAt(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], h: Held, t: DragTarget | null = h.at, rot = h.rot): Held {
   const p = t && (t.at ?? t.wall?.p)
-  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall) : dragTo(unit, rooms, pieces, h.id, t, rot)
+  const c = !h.assetId && pieces.find((x) => x.id === h.id && x.openingId)
+  const w = t && (t.wall?.p ?? t.at)
+  if (c && w && !h.grab) h = { ...h, grab: { x: c.x - w.x, y: c.y - w.y } }
+  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall) : dragTo(unit, rooms, pieces, h.id, t, rot, h.grab)
   return move ? { ...h, at: t, rot, move } : { ...h, rot }
 }
 

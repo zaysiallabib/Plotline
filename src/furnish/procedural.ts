@@ -17,7 +17,7 @@ import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
 import {
-  ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, BOX_PLANTS, MAST_TREE, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
+  ART, ART_H, ART_PHOTO, ART_W, BED_STYLES, CURTAINS, BOX_PLANTS, MAST_TREE, parsePlanter, PERGOLA_POST, PLANTER, PLANTER_BOX_D, PLANTER_BOX_H, PLANTER_BOXES, PLANTER_KERB, POTTED, PROCEDURAL, PLANTER_TOP,
   SCANS, SHRUBS, STAIR_D, STAIR_RISE, STAIR_W, stairId, TREES, wardrobeDoors, type Scan, type ScanId, type TreeId,
 } from './procedural.meta'
 
@@ -101,6 +101,7 @@ function makeMats() {
     cushion: pbr('fabric_curtain', { tint: '#d9b98c' }), // ochre accent
     cushionOat: pbr('fabric_curtain', { tint: '#e4d9c6' }),
     cushionTaupe: pbr('fabric_curtain', { tint: '#bfae98' }),
+    drape: drape(pbr('fabric_curtain', { tint: '#efe6d8' })), // curtains: warm ivory linen, seen from both sides
     rugIvory: pbr('rug_wool', { tint: '#f3eee6' }),
     rugOat: pbr('rug_wool', { tint: '#e3d8c6' }),
     rugStone: pbr('rug_wool', { tint: '#d6cfc4' }),
@@ -139,6 +140,12 @@ function makeMats() {
     gymMat: flat('#46525a', 0.9), // exercise mat
     chrome: flat('#d9dadb', 0.18, 1),
   }
+}
+/** Curtain fabric: both faces drawn, UVs along the fabric's own width (curtains). */
+function drape(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  m.side = THREE.DoubleSide
+  m.userData.ownUV = true
+  return m
 }
 /** Wood whose figure runs along each panel's long side (boxUV grain). */
 function grained(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
@@ -874,6 +881,53 @@ function acSplit(): THREE.Mesh[] {
     tilt(rbox(0.74, 0.008, 0.07, 0.003, m.whitePaint, 0, 0.02, 0.075), 0.45), // louvre flap, tipped down to the front
     box(0.08, 0.022, 0.004, m.blackGlass, 0.3, 0.14, 0.111), // display
   ]
+}
+
+/**
+ * Curtains W × H × D, as presets.ts hangCurtain sizes them on their window (W = the window plus a rod end past each
+ * reveal): a 22 mm dark steel rod with ball finials on two wall brackets, and two ivory linen panels gathered on rings,
+ * drawn open — each stacked at its end of the rod, inside its bracket, so it covers the reveal and the edge of the glass
+ * (no bare wall between curtain and window). Gathered folds ≈ 0.1 m apart and 10–13 cm deep (deeper toward the hem): the
+ * fabric is about twice the width it hangs in, stacked back to about a sixth of the glass each side. Back on the wall at z = −D/2, front +z, hem at y = 0, finial tops at H.
+ */
+function curtains({ x: W, y: H, z: D }: Size3): THREE.Object3D[] {
+  const m = M()
+  const rodY = H - 0.022
+  const rodZ = -D / 2 + 0.095
+  const fold = D / 2 - rodZ // the deepest fold, at the hem, reaches the front
+  const along = (g: THREE.BufferGeometry) => g.rotateZ(Math.PI / 2)
+  const toWall = (g: THREE.BufferGeometry) => g.rotateX(Math.PI / 2)
+  const out: THREE.Object3D[] = [mesh(along(new THREE.CylinderGeometry(0.011, 0.011, W - 0.04, 16)), m.blackSteel, 0, rodY, rodZ)]
+  // a panel: 22–45 cm stacked, about an eighth of the rod plus 12 cm, never more than 42 % of it (a small window keeps a
+  // slit open): with the rod 15 cm past each reveal it covers about 36 % of the glass, as the daylight bake counts (daylight.ts TAU)
+  const pw = Math.min(0.45, Math.max(0.22, 0.12 * W + 0.12), 0.42 * W)
+  const ph = rodY - 0.02
+  for (const k of [-1, 1]) {
+    const bx = k * (W / 2 - 0.055)
+    out.push(
+      mesh(new THREE.SphereGeometry(0.022, 16, 12), m.blackSteel, k * (W / 2 - 0.022), rodY, rodZ), // finial
+      mesh(toWall(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 20)), m.blackSteel, bx, rodY, -D / 2 + 0.006), // wall rose
+      mesh(toWall(new THREE.CylinderGeometry(0.007, 0.007, rodZ + D / 2, 10)), m.blackSteel, bx, rodY - 0.012, (rodZ - D / 2) / 2), // arm
+      mesh(along(new THREE.CylinderGeometry(0.016, 0.016, 0.024, 14)), m.blackSteel, bx, rodY, rodZ), // cradle
+    )
+    const folds = Math.max(3, Math.round(pw / 0.1))
+    const g = new THREE.PlaneGeometry(pw, ph, folds * 8, 10)
+    const p = g.attributes.position
+    const uv = g.attributes.uv
+    const phase = k > 0 ? 1.7 : 0
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i) + pw / 2
+      const y = p.getY(i) + ph / 2
+      const t = (2 * Math.PI * folds * x) / pw + 0.4 * Math.sin((2 * Math.PI * x) / (0.47 * pw) + phase) // uneven, as hung fabric
+      p.setZ(i, (fold / 1.25) * (1 + 0.25 * (1 - y / ph)) * Math.sin(t))
+      uv.setXY(i, x * 2.2 + phase, y)
+    }
+    g.computeVertexNormals()
+    const cx = k * (W / 2 - 0.075 - pw / 2) // stacked against its bracket
+    out.push(mesh(g, m.drape, cx, ph / 2, rodZ))
+    for (let j = 0; j <= folds; j++) out.push(mesh(new THREE.TorusGeometry(0.02, 0.0035, 6, 16).rotateY(Math.PI / 2), m.blackSteel, cx - pw / 2 + (pw * j) / folds, rodY, rodZ))
+  }
+  return out
 }
 
 /** ART_W × ART_H oak frame, white mat, 5:7 print; back at z = −0.015, y = 0 is the frame's bottom (mountY). */
@@ -1895,6 +1949,7 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   ceiling_light: () => ceilingLight(0.38, 0.085),
   ceiling_light_large: () => ceilingLight(0.5, 0.09),
   ac_split: acSplit,
+  [CURTAINS]: curtains,
   wardrobe_tall: wardrobe,
   wardrobe_2door: wardrobe,
   closet_rail: closetRail,

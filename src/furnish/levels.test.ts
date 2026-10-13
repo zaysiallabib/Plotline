@@ -5,7 +5,7 @@ import { deriveRooms, isOutdoor, pointInPolygon, roomInnerPolygon, wallFrame, ty
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { kitAsset, objectKind } from './kit'
 import { doorClearZones, footprint, furnish, quadsOverlap } from './presets'
-import { parsePlanter, TRUNK_CLEAR } from './procedural.meta'
+import { CURTAINS, parsePlanter, TRUNK_CLEAR } from './procedural.meta'
 
 /** Every hand-authored level (session 19) plus the fixture: whatever has landed in src/data/units. */
 const levels = [
@@ -128,10 +128,10 @@ describe('the flats are unchanged but for a balcony planter set', () => {
     unit_type_b_1747: [82, 635063143],
     unit_type_c_2254: [107, 3523187327],
   }
-  test.each(flats.map((u) => [u.id, u] as const))('%s: byte-same presets; planter boxes only on a balcony', (id, u) => {
+  test.each(flats.map((u) => [u.id, u] as const))('%s: byte-same presets (curtains, a piece since 2026-10-14, aside); planter boxes only on a balcony', (id, u) => {
     const rooms = deriveRooms(u)
     const ps = furnish(u, rooms)
-    const rest = ps.filter((p) => !p.assetId.startsWith('planter_box_'))
+    const rest = ps.filter((p) => !p.assetId.startsWith('planter_box_') && p.assetId !== CURTAINS)
     expect([rest.length, hash(JSON.stringify(rest))]).toEqual(LOCK[id])
     for (const p of ps.filter((p) => p.assetId.startsWith('planter_box_'))) expect(rooms.find((r) => r.id === p.roomId)!.kind).toBe('balcony')
   })

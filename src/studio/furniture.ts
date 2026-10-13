@@ -11,8 +11,8 @@
 import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
-import { GAP, chairSpots, footprint, furnish, quadsOverlap, windowZones } from '../furnish/presets'
-import { PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
+import { GAP, chairSpots, curtainShift, footprint, furnish, hangCurtains, quadsOverlap, windowOnFace, windowZones } from '../furnish/presets'
+import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 /** 3" squares (founder 2026-09-28: 1 ft, then 6", were too coarse to place a piece where he wanted) */
 export const GRID_M = 0.3048 / 4
@@ -28,8 +28,9 @@ const ENTRY_DEPTH_M = 1.2
 
 /**
  * The layout a unit shows (Studio tool F, viewer, Arrange, Preview 3D): its stored pieces whose room still exists, plus
- * the presets of every room with none stored (drawn or labelled after the first move). Tombstones (`removed`) stay: a room
- * emptied by deleting keeps nothing. The stored array itself when nothing changes.
+ * the presets of every room with none stored (drawn or labelled after the first move), the curtains on their windows
+ * (moved / resized with them, gone with them, added on a window that has none: presets.ts hangCurtains). Tombstones
+ * (`removed`) stay: a room emptied by deleting keeps nothing. The stored array itself when nothing changes.
  */
 export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   if (!unit.furniture.length) return furnish(unit, rooms)
@@ -38,7 +39,7 @@ export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const has = new Set(stored.map((p) => p.roomId))
   // ponytail: runs every preset when some room has no pieces (a shaft, a lobby); cache per unit if the Studio ever lags
   const added = rooms.some((r) => !has.has(r.id)) ? furnish(unit, rooms).filter((p) => !has.has(p.roomId)) : []
-  return added.length ? [...stored, ...added] : stored
+  return hangCurtains(unit, rooms, added.length ? [...stored, ...added] : stored)
 }
 
 /** The stored pieces without room `roomId`'s when those are still exactly its presets (none moved, turned, resized or deleted): a relabelled room re-furnishes. */
@@ -82,8 +83,15 @@ const band = (p: FurniturePlacement): [number, number] => {
   return a ? heightRange({ ...a, sizeM: sizeOf(p) }) : [0, sizeOf(p).y] // a resized wall piece stays centred at 1.5 m
 }
 
-/** Rugs only stop rugs, ceiling fixtures stop nothing, the rest when their heights overlap (a frame above a sofa is fine), as presets. */
+/** Curtains: hung on a window (presets.ts hangCurtain), sliding along their wall only. */
+const isCurtain = (p: FurniturePlacement) => p.assetId === CURTAINS
+
+/**
+ * Rugs only stop rugs, curtains only curtains (a sofa may stand against a curtained window), ceiling fixtures stop
+ * nothing, the rest when their heights overlap (a frame above a sofa is fine), as presets.
+ */
 function blocks(p: FurniturePlacement, o: FurniturePlacement): boolean {
+  if (isCurtain(p) || isCurtain(o)) return isCurtain(p) && isCurtain(o)
   const [lp, lo] = [layerOf(p), layerOf(o)]
   if (lp === 3 || lo === 3) return lp === lo
   if (lp === 2 || lo === 2) return false
@@ -126,7 +134,7 @@ function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurnitureP
   if (layerOf(p) !== 0) return []
   const q = pieceQuad(p)
   const top = band(p)[1]
-  return [...pieces.filter((o) => o.id !== p.id && !o.removed && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
+  return [...pieces.filter((o) => o.id !== p.id && !o.removed && !isCurtain(o) && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
 }
 
 /** A chair's refusal, said of the set it belongs to. */
@@ -219,12 +227,16 @@ export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: n
   return { c, snapped: done.length > 0, normals: done }
 }
 
+/** The corners that must be in the room: curtains' front half (their back hangs on their wall face — presets.ts hangCurtain). */
+const inside = (p: FurniturePlacement, q: Pt[]): Pt[] =>
+  isCurtain(p) ? [{ x: (q[0].x + q[3].x) / 2, y: (q[0].y + q[3].y) / 2 }, { x: (q[1].x + q[2].x) / 2, y: (q[1].y + q[2].y) / 2 }, q[2], q[3]] : q
+
 /** Why p may not stand where it is (null = it may). `others` = every piece that is not moving with it. */
 export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement[], p: FurniturePlacement): string | null {
   const q = pieceQuad(p)
-  if (!room || !q.every((v) => pointInPolygon(v, roomInnerPolygon(room, unit)))) return 'Outside the room'
+  if (!room || !inside(p, q).every((v) => pointInPolygon(v, roomInnerPolygon(room, unit)))) return 'Outside the room'
   // doors, passages and the entrance path are NOT kept clear (founder 2026-10-13: "let us not worry about blocking passage")
-  if (surfaceOf(p) === 'wall') {
+  if (surfaceOf(p) === 'wall' && !isCurtain(p)) {
     const [y0, y1] = band(p)
     if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
   }
@@ -272,6 +284,7 @@ const halfAlong = (q: Pt[], n: Pt) => (Math.max(...q.map((v) => v.x * n.x + v.y 
 export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, to: Pt, rotationDeg: number, grid = true): Move | null {
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
+  if (p.openingId) return slideCurtain(unit, rooms, pieces, p, to)
   let rot = norm(rotationDeg)
   const size = sizeOf(p)
   const b = unitBounds(unit)
@@ -311,6 +324,21 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
   let error = whyNot(unit, room, others, piece)
   for (const c of chairsOf(pieces, p)) error ??= chairWhy(whyNot(unit, room, others, moved.get(c.id)!)) // a table's chairs stand round it, not on it
   return { furniture: pieces.map((x) => moved.get(x.id) ?? x), piece, ids: [...moved.keys()], snapped, error }
+}
+
+/**
+ * Curtains `p` slid along their wall toward `to` in 3" steps from their window (presets.ts curtainShift), then hung again
+ * with the whole layout (hangCurtains), so the result is what every later layout shows. They never turn, never leave
+ * their wall, and stay on their window: it moves them, resizes them, takes them away.
+ */
+function slideCurtain(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], p: FurniturePlacement, to: Pt): Move | null {
+  const sh = curtainShift(unit, rooms, p, to, GRID_M)
+  if (sh === null) return null
+  const furniture = hangCurtains(unit, rooms, pieces.map((x) => (x.id === p.id ? { ...x, shiftM: sh || undefined } : x)))
+  const piece = furniture.find((x) => x.id === p.id)
+  if (!piece) return null
+  const error = whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, furniture.filter((x) => x.id !== p.id), piece)
+  return { furniture, piece, ids: [p.id], snapped: 'wall', error }
 }
 
 /** A wall face: a point on it and its normal into the room (plan metres). */
@@ -364,6 +392,14 @@ export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement
   const all = [...pieces, p]
   if (surfaceOf(p) !== 'wall') return movePiece(unit, rooms, all, id, at, rotationDeg)
   const face = wall ?? nearestFace(unit, rooms, at)
+  if (isCurtain(p)) {
+    // new curtains hang on the window (or sliding door) pointed at, sized by it
+    const on = face && windowOnFace(unit, rooms, face)
+    const hung = on && hangCurtains(unit, rooms, [...pieces, { ...p, ...on }])
+    const piece = hung?.find((x) => x.id === id)
+    if (!hung || !piece) return { furniture: all, piece: p, ids: [id], snapped: null, error: 'Point at a window or a sliding door' }
+    return { furniture: hung, piece, ids: [id], snapped: 'wall', error: whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, hung.filter((x) => x.id !== id), piece) }
+  }
   return face ? hangOn(unit, rooms, all, id, face) : { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
 }
 
@@ -373,13 +409,13 @@ const TAB_OF: Record<string, (typeof TABS)[number]> = {
   sofa: 'Living', armchair: 'Living', 'coffee-table': 'Living', 'tv-unit': 'Living', shelf: 'Living', tv: 'Living', ottoman: 'Living', cushions: 'Living',
   'dining-table': 'Dining', 'dining-chair': 'Dining',
   bed: 'Bedroom', bedside: 'Bedroom', wardrobe: 'Bedroom', desk: 'Bedroom', chair: 'Bedroom',
-  kitchen: 'Kitchen', bath: 'Bath', lamp: 'Lights & AC', 'ceiling-fan': 'Lights & AC', ac: 'Lights & AC',
+  kitchen: 'Kitchen', bath: 'Bath', lamp: 'Lights & AC', 'ceiling-fan': 'Lights & AC', ac: 'Lights & AC', curtain: 'Bedroom',
   plant: 'Greenery',
   bench: 'Outdoor', lounger: 'Outdoor', 'table-set': 'Outdoor', pergola: 'Outdoor', play: 'Outdoor', car: 'Outdoor',
   'reception-desk': 'Lobby & gym', gym: 'Lobby & gym', mirror: 'Lobby & gym',
 }
 /** Also listed in another tab: Dhaka dining areas have a hand-wash basin (founder 2026-09-28). */
-const ALSO_IN: Record<string, (typeof TABS)[number]> = { basin: 'Dining', vanity: 'Dining' }
+const ALSO_IN: Record<string, (typeof TABS)[number]> = { basin: 'Dining', vanity: 'Dining', [CURTAINS]: 'Living' }
 const BED_LINEN: Record<string, string> = { '': 'terracotta throw', _b: 'sage throw', _c: 'no throw' }
 export interface LibraryItem {
   id: string

@@ -27,7 +27,10 @@ const TEXEL = 0.25
 export const RANGE = 2
 /** walls shorter than this read the floor's daylight at their foot (mapDaylight) */
 export const SHORT_WALL_M = 0.3
-/** what an opening lets through: glass × frame (and the curtains stacked over 36 % of a window); a door stands ajar */
+/**
+ * what an opening lets through: glass × frame (and curtains stacked over about 36 % of a window — procedural.ts curtains; the
+ * bake counts them on every window, a pair deleted or slid away included); a door stands ajar
+ */
 const TAU: Record<string, number> = { window: 0.6, slider: 0.7, door: 0.3, passage: 1, gap: 1 }
 /** radiance below the horizon (street, the blocks opposite) / the sky's: a ceiling sees the window's lower view */
 const GROUND = 0.3

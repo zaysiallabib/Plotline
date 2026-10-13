@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { ART, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
+import { ART, CURTAINS, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -148,6 +148,7 @@ const SIZED: Record<string, (s: Size3) => string> = {
   closet_rail_s: closet,
   kitchen_tall: (s) => `Tall larder unit, oak (${dec(s.x)} m)`,
   dining_table: (s) => `Dining table, oak, ${tableSeats(s.x)} seats`,
+  [CURTAINS]: (s) => `Curtains, linen (${dec(s.x)} m wide)`,
   rug_rect_large: rug,
   rug_rect_small: rug,
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, bed])),
@@ -201,7 +202,7 @@ const REBUILD: Record<string, ResizeLimits> = {
   ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, lim([0.6, 0.95, PLANTER_BOX_D + 0.05], [3.0, 0.95, PLANTER_BOX_D + 0.05])])),
 }
 /** Built at its sizeM (REBUILD), not built at its kit size and scaled. */
-export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD
+export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD || assetId === CURTAINS
 
 /**
  * Every other piece (every Poly Haven scan, the other builders) SCALES its mesh by sizeM / kit size: [lo, hi] × its kit
@@ -236,7 +237,7 @@ const SCALE: Record<string, Rule> = {
 export function resizeLimits(assetId: string): ResizeLimits | null {
   if (REBUILD[assetId]) return REBUILD[assetId]
   const a = kitAsset(assetId)
-  if (!a || a.kind === 'stair' || assetId.startsWith(PLANTER)) return null
+  if (!a || a.kind === 'stair' || a.kind === 'curtain' || assetId.startsWith(PLANTER)) return null // curtains: sized by their window
   const [axes, lo, hi, lock] = SCALE[assetId] ?? PROP
   const at = (k: number): Size3 => ({ ...a.sizeM, ...Object.fromEntries(axes.map((ax) => [ax, a.sizeM[ax] * k])) })
   return { min: at(lo), max: at(hi), ...(lock ? { lock: axes } : {}) }

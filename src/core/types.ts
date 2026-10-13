@@ -34,7 +34,10 @@ export interface Opening {
   /** door swing/hinge side hint (kind 'door' only; ignored on sliders); purely visual */
   hinge?: 'a' | 'b'
   swing?: 'in' | 'out'
-  /** false = no curtain on this window / slider (the rule hangs one by room kind otherwise) */
+  /**
+   * false = no automatic curtains on this window / slider (older drafts' tick box). Curtains are a piece since 2026-10-14:
+   * delete them in Edit furniture / tool F, add them back from the library.
+   */
   curtains?: boolean
 }
 
@@ -180,6 +183,13 @@ export interface FurniturePlacement {
    * re-furnished with presets. Never rendered, picked, shadowed or framed.
    */
   removed?: true
+  /**
+   * Curtains (founder 2026-10-13): the window or sliding door they hang on. Their place, width and height come from it on
+   * every layout (furnish/presets.ts hangCurtains): they follow it when it moves or is resized and go when it is deleted.
+   */
+  openingId?: Id
+  /** Curtains slid along their wall (staff): metres from where they hang on their window, + toward the wall's end b. */
+  shiftM?: number
 }
 
 /**

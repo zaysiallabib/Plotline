@@ -52,7 +52,7 @@ const scene = (unit: Unit): Scene => {
   }
   const boxes = unit.furniture.flatMap((f) => {
     const k = kitAsset(f.assetId)
-    if (!k || k.mount === 'ceiling' || k.category === 'rug') return []
+    if (!k || k.mount === 'ceiling' || k.category === 'rug' || k.kind === 'curtain') return [] // curtains hang open at the windows' sides: no view is planned round them
     const r = (f.rotationDeg * Math.PI) / 180
     const s = placementSize(f)
     const [h0, h1] = heightRange({ ...k, sizeM: s })

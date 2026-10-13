@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { MaterialRef, Opening, Wall } from '../core'
 import type { ObjectKind } from '../furnish/kit'
+import { GLAZING_MIN_H, isGlazing } from '../furnish/presets'
 import type { CasingPlan } from './details'
 import { materialFor } from './materials'
 
@@ -397,10 +398,9 @@ function buildWindow(g: THREE.Group, o: Opening, T2: number): void {
 
 /**
  * A window down to the floor and at least GLAZING_MIN_H tall is a glass wall (a lobby's glazing, a glass fence): fixed
- * clear panes between slim dark mullions, no sashes, no sill board, no curtain (details.ts curtainSides).
+ * clear panes between slim dark mullions, no sashes, no sill board, no curtains (furnish/presets.ts curtainSides).
  */
-export const GLAZING_MIN_H = 1.5
-export const isGlazing = (o: Pick<Opening, 'kind' | 'sillM' | 'heightM'>): boolean => o.kind === 'window' && o.sillM < 0.1 && o.heightM >= GLAZING_MIN_H
+export { GLAZING_MIN_H, isGlazing }
 /** Dark anodised aluminium: a glass wall's mullions read as lines against the sky, as on a real lobby. */
 const MULLION: MaterialRef = { kind: 'color', color: '#3b3e42', roughness: 0.4, metalness: 0.3 }
 
