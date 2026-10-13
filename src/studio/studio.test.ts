@@ -13,7 +13,7 @@ import { AI_KEY_STORAGE } from '../trace/ai'
 import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { fitSheet, frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
-import { doorClearZones, furnish, quadsOverlap } from '../furnish/presets'
+import { furnish } from '../furnish/presets'
 import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, resizeAxes } from './furniture'
 
 const TOL = 0.05
@@ -1302,12 +1302,12 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(at(s, 'cush')).toMatchObject({ x: expect.closeTo(2.62, 6), y: expect.closeTo(4.39 + 0.55 - (4.39 - 3.75), 6), rotationDeg: 270 })
   })
 
-  it('refuses a drop that overlaps a piece, a door zone, the entrance or leaves the room; nothing moves', () => {
+  it('refuses a drop that overlaps a piece or leaves the room; a door zone or the entrance is allowed (founder 2026-10-13); nothing moves', () => {
     const s0 = fixture()
+    expect(move(s0, 'side', 4.6, 3.4).toast?.text).toBeUndefined()
+    expect(move(s0, 'side', 0.8, 1.0).toast?.text).toBeUndefined()
     const cases: [number, number, string][] = [
       [2.5, 4.3, 'Overlaps the 3-seat fabric sofa'],
-      [4.6, 3.4, 'Blocks the door'],
-      [0.8, 1.0, 'Blocks the entrance'],
       [-3, 2, 'Outside the room'],
     ]
     for (const [x, y, why] of cases) {
@@ -1428,21 +1428,6 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(at(s, 'chair')).toMatchObject({ rotationDeg: 0, x: expect.closeTo(7.9 - 0.05 - 0.235, 6) })
     // R still turns freely against a wall
     expect(at(reducer(s, { type: 'rotate-piece', id: 'chair' }), 'chair').rotationDeg).toBe(90)
-  })
-
-  it('Sheltech A Veranda 1: a chair dragged toward the slider stops at its step-in strip and never into it', () => {
-    const u = sheltechA as unknown as Unit
-    const rooms = deriveRooms(u)
-    const v1 = rooms.find((r) => r.name === 'Veranda 1')!
-    const ps = furnish(u, rooms)
-    const chair = ps.find((p) => p.roomId === v1.id && /chair/.test(p.assetId))!
-    const m = movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - GRID_M }, chair.rotationDeg)!
-    expect(m.error).toBeNull()
-    expect(m.piece.y).toBeLessThanOrEqual(chair.y + 1e-9) // on the 3" grid the preset chair already sits at the strip edge
-    const zones = doorClearZones(v1, u)
-    expect(zones.some((z) => quadsOverlap(z, pieceQuad(m.piece)))).toBe(false)
-    // deeper than a foot into a zone: still refused
-    expect(movePiece(u, rooms, ps, chair.id, { x: chair.x, y: chair.y - 3 * 0.3048 }, chair.rotationDeg)!.error).toBe('Blocks the door')
   })
 
   it('resizeAxes: structure none; an axis with min = max stays fixed', () => {

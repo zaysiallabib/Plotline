@@ -11,7 +11,7 @@
 import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
-import { GAP, chairSpots, doorClearZones, footprint, furnish, quadsOverlap, windowZones } from '../furnish/presets'
+import { GAP, chairSpots, footprint, furnish, quadsOverlap, windowZones } from '../furnish/presets'
 import { PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 /** 3" squares (founder 2026-09-28: 1 ft, then 6", were too coarse to place a piece where he wanted) */
@@ -219,36 +219,11 @@ export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: n
   return { c, snapped: done.length > 0, normals: done }
 }
 
-/**
- * Like the wall snap, for door / slider clear zones and the entrance: a footprint at c that pokes less than one grid step
- * into one, measured along its depth, goes back out to its edge + 1 cm (the grid must not refuse a spot that fits).
- * Deeper, it stays and whyNot refuses it.
- */
-export function outOfZones(unit: Unit, room: Room, c: Pt, rotationDeg: number, size: { x: number; z: number }): Pt {
-  const entry = entryZone(unit)
-  for (const z of [...(entry ? [entry] : []), ...doorClearZones(room, unit)]) {
-    const q = footprint(c, rotationDeg, size)
-    if (!quadsOverlap(z, q)) continue
-    const len = Math.hypot(z[3].x - z[0].x, z[3].y - z[0].y) // spanQuad / entryZone: z[0] → z[3] is the depth
-    const m = { x: (z[3].x - z[0].x) / len, y: (z[3].y - z[0].y) / len }
-    const at = q.map((v) => v.x * m.x + v.y * m.y)
-    const up = z[3].x * m.x + z[3].y * m.y + 0.01 - Math.min(...at)
-    const down = z[0].x * m.x + z[0].y * m.y - 0.01 - Math.max(...at)
-    const s = Math.abs(up) < Math.abs(down) ? up : down
-    if (Math.abs(s) < GRID_M) c = { x: c.x + m.x * s, y: c.y + m.y * s }
-  }
-  return c
-}
-
 /** Why p may not stand where it is (null = it may). `others` = every piece that is not moving with it. */
 export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement[], p: FurniturePlacement): string | null {
   const q = pieceQuad(p)
   if (!room || !q.every((v) => pointInPolygon(v, roomInnerPolygon(room, unit)))) return 'Outside the room'
-  if (layerOf(p) !== 2) {
-    const entry = entryZone(unit)
-    if (entry && quadsOverlap(entry, q)) return 'Blocks the entrance'
-    if (doorClearZones(room, unit).some((z) => quadsOverlap(z, q))) return 'Blocks the door'
-  }
+  // doors, passages and the entrance path are NOT kept clear (founder 2026-10-13: "let us not worry about blocking passage")
   if (surfaceOf(p) === 'wall') {
     const [y0, y1] = band(p)
     if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
@@ -319,7 +294,6 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
     }
     c = r.c
     if (r.snapped) snapped = 'wall'
-    if (layerOf(p) === 0) c = outOfZones(unit, room, c, rot, size)
   }
   const roomId = room?.id ?? p.roomId
   const piece = { ...p, x: c.x, y: c.y, rotationDeg: rot, roomId }

@@ -159,7 +159,7 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     expect(fan.error).toBeNull()
     expect(fan.piece.roomId).toBe('A')
     expect(dragTo(unit, rooms, ps, 'side', { at: { x: 2.5, y: 4.3 }, wall: null })!.error).toBe('Overlaps the 3-seat fabric sofa')
-    expect(dragTo(unit, rooms, ps, 'side', { at: { x: 0.6, y: 1.0 }, wall: null })!.error).toBe('Blocks the entrance')
+    expect(dragTo(unit, rooms, ps, 'side', { at: { x: 0.6, y: 1.0 }, wall: null })!.error).toBeNull() // the entrance path is not kept clear (founder 2026-10-13)
   })
 })
 
@@ -201,8 +201,8 @@ describe('a piece in hand (founder 2026-10-04: refused = red and kept in hand, n
   it('a library piece is held the same way: refused stays in hand, then drops into the layout where it fits', () => {
     const h: Held = { id: 'new', assetId: 'dining_chair', rot: 0, at: null, move: null }
     expect(dropHeld(h)).toBeNull() // nowhere yet
-    const red = hold(h, 0.6, 1.0)
-    expect(red.move!.error).toBe('Blocks the entrance')
+    const red = hold(h, 2.5, 4.4)
+    expect(red.move!.error).toBe('Overlaps the 3-seat fabric sofa')
     expect(dropHeld(red)).toBeNull()
     const f = dropHeld(hold(red, 2.0, 2.5))!
     expect(f).toHaveLength(ps.length + 1)
@@ -348,8 +348,8 @@ describe('placePiece: the staff library adds a kit piece on a move’s rules', (
 
   it('refuses what a move refuses, with the reason; a wall piece may not cover a window', () => {
     expect(place('dining_chair', 2.5, 4.4).error).toBe('Overlaps the 3-seat fabric sofa')
-    expect(place('dining_chair', 0.6, 1.0).error).toBe('Blocks the entrance')
-    expect(place('dining_chair', 5.4, 3.4).error).toBe('Blocks the door')
+    expect(place('dining_chair', 0.6, 1.0).error).toBeNull() // entrance and door zones are free (founder 2026-10-13)
+    expect(place('dining_chair', 5.4, 3.4).error).toBeNull()
     expect(place('dining_chair', 9, 9).error).toBe('Outside the room')
     expect(place('hanging_picture_frame_01', 9, 9).error).toBe('Outside the room')
     expect(place('hanging_picture_frame_01', 7.6, 1.8, 0, undefined, withWindow).error).toBe('Covers the window')

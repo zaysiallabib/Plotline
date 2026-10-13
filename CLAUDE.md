@@ -115,6 +115,11 @@ same commit as any change to a button, key or page (founder, 2026-10-05).
   AI drafting ("C") is not a separate button: it will live inside Auto-trace, later. Brand libraries / marketplace later.
   Order approved: A (unlock the levels: sheets, scale, tools, traps) → B (every element) with this workflow as the frame.
 
+- **Furniture moves are free (founder, 2026-10-13):** "just let us change locations however we want for now as long as it doesn't
+  overlap with another furniture … let us not worry about blocking passage and all" — a moved / dropped piece is refused only
+  outside its room, overlapping another piece, or (a wall piece) covering a window; door, passage and entrance clear zones no
+  longer refuse it (`studio/furniture.ts whyNot`, one rule for the Studio's F tool and the 3D view). Overrides the "blocked
+  doors" part of 2026-09-27 for moves; the auto-furnish presets still lay out clear of doors.
 - **Non-wall edges (founder, 2026-10-09 night):** Auto-trace may DRAW a guessed glass wall / low wall / zone line to close a room
   only on real evidence and only when the closed room passes the size check — "drawing guesses would be the right approach only
   if you can make it strong enough"; otherwise the room stays open with its review row. Never hide warnings: build so fewer are

@@ -97,7 +97,7 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 
 ### Edit furniture
 
-- **Click a piece** to pick it — also one you see through a window or a glass door. A click whose mouse slides up to 6 pixels is still a click: the piece is picked, never moved. **Drag** it (further) to move it — a drag on cushions, or on a TV standing on its unit, moves the piece under them. It turns red and tells you why if it cannot go there (outside the room, blocks a door, covers a window, overlaps another piece).
+- **Click a piece** to pick it — also one you see through a window or a glass door. A click whose mouse slides up to 6 pixels is still a click: the piece is picked, never moved. **Drag** it (further) to move it — a drag on cushions, or on a TV standing on its unit, moves the piece under them. It turns red and tells you why if it cannot go there (outside the room, covers a window, overlaps another piece). Doors, passages and the entrance are NOT kept clear (founder, 2026-10-13): put a piece where you like — the same in the Studio's F tool.
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
 - Buttons in the small panel, bottom left: **Add**, **Turn 90°**, **Delete**, **Undo**, **Reset layout**.
 - Keys: **R** turns · **Del** deletes · **Ctrl+Z** undoes · **Esc** lets go.
