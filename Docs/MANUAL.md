@@ -99,7 +99,7 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 
 - **Click a piece** to pick it — also one you see through a window or a glass door. A click whose mouse slides up to 6 pixels is still a click: the piece is picked, never moved. **Drag** it (further) to move it — a drag on cushions, or on a TV standing on its unit, moves the piece under them. It turns red and tells you why if it cannot go there (outside the room, covers a window, overlaps another piece). Doors, passages and the entrance are NOT kept clear (founder, 2026-10-13): put a piece where you like — the same in the Studio's F tool.
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
-- **Curtains** are a piece of their own, hung on their window (since 2026-10-14). Click them: "Curtains" shows. **Drag** them (or **G**) and they slide along their own wall only — drag them over another window or sliding door of that wall and they hang there, sized to it. **Del** takes them away; **Undo** brings them back. **Add → Bedroom** (or Living) **→ Curtains**, then point at a window: a new pair hangs on it, sized to it. They are as wide as their window plus up to 15 cm past each side (less where a side wall or the next window is closer), floor to ceiling, drawn open: one gathered panel at each side, over the edge of the glass.
+- **Curtains** are a piece of their own, hung on their window (since 2026-10-14). Click them: "Curtains" shows. **Drag** them (or **G**) and they slide along their own wall only, in 3-inch steps, and stay their window's: move or resize the window later and they follow it. They cannot be pushed into another pair (red: "Overlaps the curtains"). **Del** takes them away; **Undo** brings them back. **Add → Bedroom** (or Living) **→ Curtains**, then point at a window: a new pair hangs on it, sized to it. They are as wide as their window plus up to 15 cm past each side (less where a side wall or the next window is closer), floor to ceiling, drawn open: one gathered panel at each side, over the edge of the glass.
 - Buttons in the small panel, bottom left: **Add**, **Turn 90°**, **Delete**, **Undo**, **Reset layout**.
 - Keys: **R** turns · **Del** deletes · **Ctrl+Z** undoes · **Esc** lets go.
 - **G** — picks up the piece under the mouse (also through glass) without opening Edit furniture; **G** again puts it down.
@@ -206,7 +206,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 **F — Furniture**
 - Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.
 - **A click selects the piece under the mouse** — the one drawn on top: a wall cabinet or a hood over its counter, cushions over the sofa. A thin print or a wall TV is picked when you click within a few pixels of its line. A click whose mouse slides up to 6 pixels is still a click: the piece is selected, never moved. Drag further and the piece is in your hand; a drag on cushions or a TV standing on its unit moves the piece under them.
-- **Curtains** show as a thin strip along their window: click one, drag it along its wall (or onto another window of it), **Del** removes it. **Pick from the library… → Curtains**, then click beside a window: a pair hangs on it.
+- **Curtains** show as a thin strip along their window: click one, drag it along its wall, **Del** removes it. **Pick from the library… → Curtains**, then click beside a window: a pair hangs on it.
 - **Pick from the library…** adds a new piece (same library as the 3D view).
 - **Reset to preset** puts one room back to the automatic layout; **Reset all** does every room.
 
@@ -496,7 +496,7 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Wall paint of one room / one wall / the outside / the boundary | Yes for one room or one wall — Finishes open, click the wall | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
 | Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
-| Curtains | Yes — slide along the wall, onto another window, delete, add from the library; they follow their window | Yes (tool F) — same | Their fabric and colour; drawing them closed |
+| Curtains | Yes — slide along their wall, delete, add from the library onto any window; they follow their window | Yes (tool F) — same | Their width by hand, fabric and colour, drawing them closed |
 | Neighbour buildings, road, sky | No | No | Everything |
 | Time of day | Yes — the slider | — | — |
 | North direction | No | No | No control found |

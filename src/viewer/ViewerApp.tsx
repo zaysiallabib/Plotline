@@ -250,7 +250,7 @@ function ArrangePanel(p: {
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {p.piece.openingId
-              ? 'Hangs on its window: drag it along the wall, onto another window, or Delete it'
+              ? 'Hangs on its window and follows it: drag it along the wall, or Delete it'
               : resizeAxes(p.piece.assetId).length
                 ? `${dims(s)} · drag a dot to resize`
                 : 'This piece can be moved and turned'}

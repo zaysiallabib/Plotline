@@ -666,7 +666,7 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           </Row>
         ))
       ) : (
-        <p className="muted">{p.openingId ? 'Hangs on its window and follows it: drag it along the wall or onto another window' : 'This piece can be moved and turned'}</p>
+        <p className="muted">{p.openingId ? 'Hangs on its window and follows it: drag it along the wall' : 'This piece can be moved and turned'}</p>
       )}
       <div className="seg">
         <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>
