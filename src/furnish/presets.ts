@@ -25,10 +25,10 @@
  *  - 'free' (ceiling fixtures, cushions on a sofa, a wall AC after its own checks): the inside test only.
  * Plants and the glass shower screen may stand in front of a window.
  */
-import type { FurniturePlacement, Room, RoomKind, Unit } from '../core'
-import { isOutdoor, pointInPolygon, polygonCentroid, roomInnerPolygon, roomPolygon, type Pt } from '../core'
+import type { FurniturePlacement, Id, Opening, Room, RoomKind, Unit, Wall } from '../core'
+import { isOutdoor, pointInPolygon, polygonCentroid, roomAt, roomInnerPolygon, roomPolygon, wallFrame, type Pt } from '../core'
 import { heightRange, isCeilingLight, kitAsset, objectKind } from './kit'
-import { ART_SETS, ART_W, BED_STYLES, PERGOLA_POST, planterId, STAIR_W, stairId, TRUNK_CLEAR } from './procedural.meta'
+import { ART_SETS, ART_W, BED_STYLES, CURTAIN_D, CURTAINS, PERGOLA_POST, planterId, STAIR_W, stairId, TRUNK_CLEAR } from './procedural.meta'
 
 export const GAP = 0.05
 /** `out` for wall-hung / fitted pieces: back 5 mm off the wall instead of GAP. */
@@ -1136,7 +1136,181 @@ const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
   paving,
 }
 
-/** Deterministic preset placements for every room (rooms in the given order). */
+// ───────────────────────────── curtains: a piece hung on its window ─────────────────────────────
+
+/** A window to the floor at least this tall is a glass wall (three/openings.ts draws it so): no sill board, no curtains. */
+export const GLAZING_MIN_H = 1.5
+export const isGlazing = (o: Pick<Opening, 'kind' | 'sillM' | 'heightM'>): boolean => o.kind === 'window' && o.sillM < 0.1 && o.heightM >= GLAZING_MIN_H
+const CURTAIN_ROOMS: RoomKind[] = ['bed', 'living', 'dining', 'study']
+/** Rooms that are open to the sky: a window onto one is an outside window. */
+const OPEN_AIR: RoomKind[] = ['balcony', 'shaft']
+/** A rod reaches this far past each reveal — less where a side wall, the next opening (half way) or another curtain is nearer. */
+export const CURTAIN_OVER = 0.15
+/** A curtain's back stands this far off its wall face (wall pieces' flush gap, studio/furniture.ts FLUSH_M). */
+const CURTAIN_OFF = 0.005
+const isPane = (o: Opening) => o.kind === 'window' || o.kind === 'slider'
+
+/** The rooms on either face of an opening: [front (+normal), back]; null = outside the unit. */
+function openingRooms(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room | null, Room | null] {
+  const f = wallFrame(wall, unit.vertices)
+  const c = { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) }
+  const off = wall.thicknessM / 2 + 0.05
+  const probe = (s: number) => roomAt({ x: c.x + f.normal.x * off * s, y: c.y + f.normal.y * off * s }, rooms, unit)
+  return [probe(1), probe(-1)]
+}
+
+/**
+ * The faces of a window or sliding door that get curtains by themselves: a bed / living / dining / study face whose other
+ * side is open air (outside the unit, a balcony, a shaft, an outdoor zone) — never an interior glass partition, never a
+ * glass wall, never one switched off in an older draft (`curtains: false`). 1 = the face on the wall's normal side.
+ */
+export function curtainSides(o: Opening, wall: Wall, unit: Unit, rooms: Room[]): [Room, 1 | -1][] {
+  if (!isPane(o) || isGlazing(o) || o.curtains === false) return []
+  const [front, back] = openingRooms(o, wall, unit, rooms)
+  const open = (r: Room | null) => !r || OPEN_AIR.includes(r.kind) || isOutdoor(r.kind)
+  const out: [Room, 1 | -1][] = []
+  if (front && CURTAIN_ROOMS.includes(front.kind) && open(back)) out.push([front, 1])
+  if (back && CURTAIN_ROOMS.includes(back.kind) && open(front)) out.push([back, -1])
+  return out
+}
+
+/** Where curtains on window `openingId` hang in room `roomId`: the wall face toward the room; null = that window is gone or no longer opens onto the room. */
+function seatOf(unit: Unit, rooms: Room[], openingId: Id | undefined, roomId: Id) {
+  const w = unit.walls.find((x) => x.openings.some((o) => o.id === openingId))
+  const o = w?.openings.find((x) => x.id === openingId)
+  const room = rooms.find((r) => r.id === roomId)
+  if (!w || !o || !room || !isPane(o) || room.loop.length < 3) return null
+  const [front, back] = openingRooms(o, w, unit, rooms)
+  const side = front?.id === room.id ? 1 : back?.id === room.id ? -1 : 0
+  if (!side) return null
+  const f = wallFrame(w, unit.vertices)
+  const n = { x: f.normal.x * side, y: f.normal.y * side }
+  const face = w.thicknessM / 2 + CURTAIN_OFF
+  /** u along the wall from its end a, v into the room from the curtain's back */
+  const at = (u: number, v: number): Pt => ({ x: f.origin.x + f.dir.x * u + n.x * (face + v), y: f.origin.y + f.dir.y * u + n.y * (face + v) })
+  const along = (p: Pt) => dot({ x: p.x - f.origin.x, y: p.y - f.origin.y }, f.dir)
+  const walls = [...new Set(room.wallIds)].flatMap((id) => unit.walls.filter((x) => x.id === id))
+  // the room's other openings on this face (its own wall, or a wall in line with it): [u0, u1] along this wall
+  const spans: { o: Opening; u0: number; u1: number }[] = []
+  for (const x of walls) {
+    const g = wallFrame(x, unit.vertices)
+    if (Math.abs(dot(g.dir, f.dir)) < 0.999 || Math.abs(dot({ x: g.origin.x - f.origin.x, y: g.origin.y - f.origin.y }, n) + x.thicknessM / 2 - w.thicknessM / 2) > 0.05) continue
+    for (const q of x.openings) {
+      if (q.id === o.id) continue
+      const [a, b] = [q.offsetM, q.offsetM + q.widthM].map((s) => along({ x: g.origin.x + g.dir.x * s, y: g.origin.y + g.dir.y * s }))
+      spans.push({ o: q, u0: Math.min(a, b), u1: Math.max(a, b) })
+    }
+  }
+  return { o, room, n, at, along, spans, inner: roomInnerPolygon(room, unit), heightM: Math.max(...walls.map((x) => x.heightM)) }
+}
+
+const mm = (v: number) => Math.round(v * 1000) / 1000
+
+/**
+ * Curtains `p` hung on their window (`openingId`) in their room: the window's width plus a rod end past each reveal
+ * (CURTAIN_OVER, stopped half way to the next opening on that face, 5 mm short of a side wall or of the curtains in
+ * `taken`, so a rod never turns a corner or runs into another), floor to ceiling, CURTAIN_D off the wall face, slid
+ * `shiftM` along it. Null = their window is gone (or opens onto their room no more): the piece goes.
+ */
+export function hangCurtain(unit: Unit, rooms: Room[], p: FurniturePlacement, taken: Pt[][] = []): FurniturePlacement | null {
+  const s = seatOf(unit, rooms, p.openingId, p.roomId)
+  if (!s) return null
+  // the front half: the back hangs on the wall face by construction (and roomInnerPolygon cuts a face that steps where a
+  // thinner wall meets a thicker one in line by a slanted edge)
+  const free = (u: number) => [CURTAIN_D / 2, CURTAIN_D].every((v) => pointInPolygon(s.at(u, v), s.inner) && !taken.some((q) => pointInPolygon(s.at(u, v), q)))
+  const end = (u0: number, dir: 1 | -1) => {
+    let lim = CURTAIN_OVER
+    for (const x of s.spans) {
+      const gap = dir > 0 ? x.u0 - u0 : u0 - x.u1
+      if (gap > -1e-6) lim = Math.min(lim, gap / 2 - 0.005)
+    }
+    const ok = (d: number) => free(u0 + dir * (d + 0.005))
+    let d = Math.min(0, lim)
+    while (!ok(d) && d > -0.6) d -= 0.01 // a window from a room's corner: its reveal is in the side wall, the rod stops short of it
+    while (d + 0.01 <= lim + 1e-9 && ok(d + 0.01)) d += 0.01
+    return u0 + dir * d
+  }
+  const sh = p.shiftM ?? 0
+  const [lo, hi] = [end(s.o.offsetM, -1) + sh, end(s.o.offsetM + s.o.widthM, 1) + sh]
+  const c = s.at((lo + hi) / 2, CURTAIN_D / 2)
+  return { ...p, x: c.x, y: c.y, rotationDeg: rotationFacing(s.n), sizeM: { x: mm(hi - lo), y: mm(s.heightM - 0.065), z: CURTAIN_D } }
+}
+
+/**
+ * The layout with its curtains on their windows: each one placed and sized by its window (hangCurtain; the earlier ones
+ * in the list stop the later ones' rods), one whose window is gone left out, and one added (id `<window>:curtain`) on
+ * every window face the rule dresses (curtainSides) that has none yet — deleted ones count, so a deleted curtain stays
+ * deleted. `pieces` itself when nothing changes.
+ */
+export function hangCurtains(unit: Unit, rooms: Room[], pieces: FurniturePlacement[]): FurniturePlacement[] {
+  const taken = new Map<Id, Pt[][]>()
+  const hang = (p: FurniturePlacement) => {
+    const q = hangCurtain(unit, rooms, p, taken.get(p.roomId))
+    // its footprint grown 1 cm at the ends and 2 cm front and back (to its wall face): the next rod stops clear of it
+    if (q) taken.set(q.roomId, [...(taken.get(q.roomId) ?? []), footprint(q, q.rotationDeg, { x: q.sizeM!.x + 0.02, z: q.sizeM!.z + 0.04 })])
+    return q
+  }
+  let changed = false
+  const out: FurniturePlacement[] = []
+  for (const p of pieces) {
+    if (!p.openingId || p.removed) {
+      out.push(p)
+      continue
+    }
+    const q = hang(p)
+    const same = !!q && q.x === p.x && q.y === p.y && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM)
+    if (q) out.push(same ? p : q)
+    changed ||= !same
+  }
+  const has = new Set(pieces.filter((p) => p.openingId).map((p) => `${p.openingId} ${p.roomId}`))
+  for (const w of unit.walls)
+    for (const o of w.openings)
+      for (const [room] of curtainSides(o, w, unit, rooms)) {
+        if (has.has(`${o.id} ${room.id}`)) continue
+        const q = hang({ id: `${o.id}:curtain`, assetId: CURTAINS, roomId: room.id, x: 0, y: 0, rotationDeg: 0, openingId: o.id })
+        if (q) out.push(q)
+        changed ||= !!q
+      }
+  return changed ? out : pieces
+}
+
+/**
+ * Where curtains `p` go when slid to `to` (their middle, plan): onto another window or sliding door of the same wall face
+ * that `to` is over (hung there), else along their own wall, the slide in `step` steps from their window. Null = their
+ * window is gone. They never leave their wall face.
+ */
+export function curtainAnchor(unit: Unit, rooms: Room[], p: FurniturePlacement, to: Pt, step = 0): Pick<FurniturePlacement, 'openingId' | 'shiftM'> | null {
+  const s = seatOf(unit, rooms, p.openingId, p.roomId)
+  if (!s) return null
+  const u = s.along(to)
+  const onto = s.spans.find((x) => isPane(x.o) && u > x.u0 && u < x.u1)
+  if (onto) return { openingId: onto.o.id, shiftM: undefined }
+  let sh = (p.shiftM ?? 0) + u - s.along(p)
+  if (step) sh = Math.round(sh / step) * step
+  return { openingId: p.openingId, shiftM: Math.abs(sh) < 1e-6 ? undefined : mm(sh) }
+}
+
+/** The window or sliding door nearest a wall face point (a click / the pointer; `n` into the room), within half a metre along that wall: what new curtains hang on. */
+export function windowOnFace(unit: Unit, rooms: Room[], face: { p: Pt; n: Pt }): { openingId: Id; roomId: Id } | null {
+  const room = roomAt(add(face.p, face.n, 0.1), rooms, unit)
+  let best: { openingId: Id; roomId: Id } | null = null
+  let bestD = 0.5
+  for (const id of new Set(room?.wallIds ?? [])) {
+    const w = unit.walls.find((x) => x.id === id)
+    if (!w || !room) continue
+    const f = wallFrame(w, unit.vertices)
+    const v = { x: face.p.x - f.origin.x, y: face.p.y - f.origin.y }
+    if (Math.abs(dot(f.normal, face.n)) < 0.99 || Math.abs(Math.abs(dot(v, f.normal)) - w.thicknessM / 2) > 0.05) continue // another wall's face
+    const u = dot(v, f.dir)
+    for (const o of w.openings) {
+      const d = Math.max(0, o.offsetM - u, u - o.offsetM - o.widthM)
+      if (isPane(o) && d < bestD) [best, bestD] = [{ openingId: o.id, roomId: room.id }, d]
+    }
+  }
+  return best
+}
+
+/** Deterministic preset placements for every room (rooms in the given order), then the curtains on their windows. */
 export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   const out: FurniturePlacement[] = []
   const beds = rooms.filter((r) => r.kind === 'bed').sort((a, b) => b.areaSqm - a.areaSqm)
@@ -1153,5 +1327,5 @@ export function furnish(unit: Unit, rooms: Room[]): FurniturePlacement[] {
     if (AC_KINDS.includes(room.kind) && !help) wallAC(ctx)
     out.push(...ctx.out)
   }
-  return out
+  return hangCurtains(unit, rooms, out)
 }

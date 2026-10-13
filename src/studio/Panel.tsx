@@ -529,13 +529,6 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="Sill">
           <LenInput valueM={o.sillM} onCommit={(m) => patch({ sillM: m })} />
         </Row>
-        {(o.kind === 'window' || o.kind === 'slider') && (
-          <Row label="Curtains">
-            <label className="check">
-              <input type="checkbox" checked={o.curtains !== false} onChange={(e) => patch({ curtains: e.target.checked ? undefined : false })} /> in bed / living / dining / study
-            </label>
-          </Row>
-        )}
         <Row label="From corner A">
           <LenInput valueM={o.offsetM} onCommit={(m) => patch({ offsetM: m })} />
         </Row>
@@ -673,7 +666,7 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           </Row>
         ))
       ) : (
-        <p className="muted">This piece can be moved and turned</p>
+        <p className="muted">{p.openingId ? 'Hangs on its window and follows it: drag it along the wall or onto another window' : 'This piece can be moved and turned'}</p>
       )}
       <div className="seg">
         <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>

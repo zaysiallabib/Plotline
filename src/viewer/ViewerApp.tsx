@@ -249,13 +249,15 @@ function ArrangePanel(p: {
         <>
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
-            {resizeAxes(p.piece.assetId).length
-              ? `${dims(s)} · drag a dot to resize`
-              : 'This piece can be moved and turned'}
+            {p.piece.openingId
+              ? 'Hangs on its window: drag it along the wall, onto another window, or Delete it'
+              : resizeAxes(p.piece.assetId).length
+                ? `${dims(s)} · drag a dot to resize`
+                : 'This piece can be moved and turned'}
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their window's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
@@ -319,7 +321,7 @@ function OpeningPanel(p: {
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
-  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM' | 'curtains'>>) => void
+  onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
   onDelete: () => void
   onUndo: () => void
 }) {
@@ -344,11 +346,6 @@ function OpeningPanel(p: {
             <FtIn label="Height" m={o.heightM} onSet={(heightM) => p.onSize({ heightM })} />
             <FtIn label="Sill" m={o.sillM} onSet={(sillM) => p.onSize({ sillM })} />
           </div>
-          {(o.kind === 'window' || o.kind === 'slider') && (
-            <label className="small">
-              <input type="checkbox" checked={o.curtains !== false} onChange={(e) => p.onSize({ curtains: e.target.checked ? undefined : false })} /> Curtains (bed, living, dining, study)
-            </label>
-          )}
         </>
       ) : (
         <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill.</div>
@@ -566,6 +563,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, axes: resizeAxes(p.assetId) })
   /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
+    h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
     steps.current = h
     saveLayout(unit.id, h.pieces, base)
     scene?.setLayout(h.pieces)
@@ -725,7 +723,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       return showToast(OPENINGS_WHY[why], 7000)
     }
     setPlanUnit(after)
+    // curtains follow their window (moved, resized) or go with it: the layout hung again on the new plan, no undo step of its own
+    steps.current = { ...steps.current, pieces: layoutFor({ ...after, furniture: steps.current.pieces }, core.deriveRooms(after)) }
     scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
+    scene?.setLayout(steps.current.pieces)
     showOp()
     redraw()
   }

@@ -126,11 +126,11 @@ describe('furniture', () => {
 
 describe('resize (sizeM)', () => {
   const XYZ = ['x', 'y', 'z'] as const
-  const resizable = Object.keys(PROCEDURAL).filter((id) => rebuildsAtSize(id))
+  const resizable = Object.keys(PROCEDURAL).filter((id) => rebuildsAtSize(id) && resizeLimits(id)) // curtains rebuild at the size their window gives, never resized by hand
 
   test('every kit asset but structure resizes, in a sane range around its kit size; scans scale 0.7–1.4×, flat pieces 0.5–2×', () => {
     const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)]
-    expect(all.filter((id) => !resizeLimits(id))).toEqual(Object.keys(PROCEDURAL).filter((id) => id.startsWith('stair_')))
+    expect(all.filter((id) => !resizeLimits(id))).toEqual(Object.keys(PROCEDURAL).filter((id) => id === 'curtains' || id.startsWith('stair_')))
     expect(resizable).toEqual(expect.arrayContaining(['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'fridge', 'desk_oak', 'dining_table', 'rug_rect_large', 'bed_queen', 'sofa_3seat', 'cot']))
     for (const id of all.filter((id) => resizeLimits(id))) {
       const { min, max, lock } = resizeLimits(id)!
@@ -176,6 +176,28 @@ describe('resize (sizeM)', () => {
         expect(Math.abs(b.min.z + b.max.z), id).toBeLessThan(0.01)
       }
     }
+  })
+
+  test('curtains build at the size their window gives them (W × H exact, back on the wall), two gathered linen panels seen from both sides', () => {
+    for (const want of [{ x: 0.56, y: 2.98, z: 0.16 }, { x: 2.25, y: 2.98, z: 0.16 }, { x: 4.1, y: 2.6, z: 0.16 }]) {
+      const g = buildProcedural('curtains', want)!
+      g.updateMatrixWorld(true)
+      const b = new THREE.Box3().setFromObject(g)
+      const s = b.getSize(new THREE.Vector3())
+      expect(Math.abs(s.x - want.x), `${want.x} wide`).toBeLessThan(0.01)
+      expect(Math.abs(s.y - want.y), `${want.x} high`).toBeLessThan(0.01)
+      expect(Math.abs(s.z - want.z), `${want.x} deep`).toBeLessThan(0.015)
+      expect(Math.abs(b.min.y)).toBeLessThan(1e-3)
+      expect(Math.abs(b.min.x + b.max.x)).toBeLessThan(0.01)
+      const fabric = (g.children as THREE.Mesh[]).find((o) => (o.material as THREE.MeshStandardMaterial).side === THREE.DoubleSide)!
+      expect(fabric).toBeDefined()
+      // the panels: one at each end, each covering 22–60 cm from just inside its finial — the middle open
+      const fb = new THREE.Box3().setFromObject(fabric)
+      expect(fb.min.x).toBeLessThan(-want.x / 2 + 0.1)
+      expect(fb.max.x).toBeGreaterThan(want.x / 2 - 0.1)
+    }
+    expect(rebuildsAtSize('curtains')).toBe(true)
+    expect(resizeLimits('curtains')).toBeNull() // their window sizes them
   })
 
   test('a wardrobe rebuilds with more doors, not wider ones: 2.4 m = 4 doors and 2 handle pairs', () => {

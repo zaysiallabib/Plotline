@@ -193,6 +193,15 @@ export const SHRUBS = { shrub_round: { d: 0.9, h: 0.8, label: 'Shrub, clipped (0
 /** Pergola posts: square section, inset from the footprint's corners (presets keep them clear). */
 export const PERGOLA_POST = 0.12
 
+/**
+ * Curtains (founder 2026-10-13: "they need to be separate items as well as being connected with windows"): a pair of
+ * gathered linen panels on a rod, one piece per window face, hung on its window (FurniturePlacement.openingId) and built
+ * at the size presets.ts hangCurtain gives it: the window's width plus up to 15 cm past each reveal, floor to ceiling,
+ * CURTAIN_D deep off the wall (brackets, rod, folds). Hem 1.5 cm off the floor.
+ */
+export const CURTAINS = 'curtains'
+export const CURTAIN_D = 0.16
+
 /** Top of modern_wooden_cabinet (the TV unit), where tv_55's stand sits. */
 export const TV_UNIT_TOP = 0.68
 /** Worktop height; upper cabinets and the hood start here (splashback) and their boxes at 1.45. */
@@ -234,6 +243,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   ceiling_light: { ...P('ceiling_light', 'Flush ceiling light, opal diffuser Ø38 cm', 'lamp', 0.38, 0.085, 0.38), mount: 'ceiling' },
   ceiling_light_large: { ...P('ceiling_light_large', 'Flush ceiling light, opal diffuser Ø50 cm', 'lamp', 0.5, 0.09, 0.5), mount: 'ceiling' },
   ac_split: { ...P('ac_split', 'Split AC, wall-mounted indoor unit', 'other', 0.9, 0.3, 0.22, 2.3), mount: 'ceiling', kind: 'ac' },
+  [CURTAINS]: { ...P(CURTAINS, 'Curtains, linen, on a rod', 'other', 1.5, 2.98, CURTAIN_D, 0.015), mount: 'wall', kind: 'curtain' },
   wardrobe_tall: P('wardrobe_tall', 'Tall wardrobe (oak, 3 doors)', 'wardrobe', 1.8, 2.2, 0.6),
   wardrobe_2door: P('wardrobe_2door', 'Wardrobe (oak, 2 doors)', 'wardrobe', 1.2, 2.2, 0.6),
   closet_rail: P('closet_rail', 'Open closet unit: rail, shelf, clothes (1.8 m)', 'wardrobe', 1.8, 2.1, 0.55),

@@ -208,7 +208,7 @@ describe('viewer', { timeout: 20_000 }, () => {
       const r = rooms.find((x) => x.name === name)!
       const v = roomView(r, furnished)
       const inner = core.roomInnerPolygon(r, furnished)
-      const items = furnished.furniture.filter((f) => f.roomId === r.id && kitAsset(f.assetId)?.mount !== 'ceiling') // lights/ACs are overhead
+      const items = furnished.furniture.filter((f) => f.roomId === r.id && kitAsset(f.assetId)?.mount !== 'ceiling' && kitAsset(f.assetId)?.kind !== 'curtain') // lights/ACs are overhead; curtains hang open at the window
       const hero = items.find((f) => /^(bed_|vanity$|kitchen_sink$|dining_table$)/.test(f.assetId))
       const target = hero ?? { x: items.reduce((t, f) => t + f.x, 0) / items.length, y: items.reduce((t, f) => t + f.y, 0) / items.length }
       expect(core.pointInPolygon(v.p, inner), name).toBe(true)
@@ -526,7 +526,7 @@ describe('viewer', { timeout: 20_000 }, () => {
         if (/Walk-in closet|Kitchen/.test(name)) continue
         for (const f of flat.u.furniture) {
           const k = kitAsset(f.assetId)!
-          if (k.mount === 'ceiling' || f.assetId === 'shower_screen' || !(k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)) continue
+          if (k.mount === 'ceiling' || f.assetId === 'shower_screen' || k.kind === 'curtain' || !(k.category === 'wardrobe' || k.category === 'shelf' || k.sizeM.y > 1.6)) continue
           if (footprintDist(v.p, f, k.sizeM) < TALL_IN_VIEW && inSight(flat.u, v.p, f))
             for (const q of [f, ...footprint(f, f.rotationDeg, k.sizeM)]) expect(deg(v.face, sub(q, v.p)), `${name}: ${f.id}`).toBeGreaterThan(40)
         }

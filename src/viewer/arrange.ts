@@ -85,12 +85,18 @@ export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement
 /**
  * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 3" grid, wall snap,
  * refusals, riders along), turned to `rotationDeg` (default: as it stands). A wall piece goes onto the wall under the
- * pointer — back to it, front into the room, sliding in 3" steps along it — so it hops walls; the others slide on their plane.
+ * pointer — back to it, front into the room, sliding in 3" steps along it — so it hops walls; curtains slide along their
+ * own wall only (onto another window of it); the others slide on their plane.
  */
 export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget, rotationDeg?: number): Move | null {
   const g = pieces.find((x) => x.id === id)
   const p = baseOf(pieces, id)
   if (!g || !p) return null
+  if (p.openingId) {
+    // curtains slide along their own wall to the point under the pointer (studio/furniture.ts movePiece)
+    const to = t.wall?.p ?? t.at
+    return to && movePiece(unit, rooms, pieces, p.id, to, p.rotationDeg)
+  }
   if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, p.id, { x: t.at.x + p.x - g.x, y: t.at.y + p.y - g.y }, rotationDeg ?? p.rotationDeg)
   return t.wall && hangOn(unit, rooms, pieces, id, t.wall)
 }
