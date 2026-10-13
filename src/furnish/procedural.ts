@@ -888,7 +888,7 @@ function acSplit(): THREE.Mesh[] {
  * reveal): a 22 mm dark steel rod with ball finials on two wall brackets, and two ivory linen panels gathered on rings,
  * drawn open — each stacked at its end of the rod, inside its bracket, so it covers the reveal and the edge of the glass
  * (no bare wall between curtain and window). Gathered folds ≈ 0.1 m apart and 10–13 cm deep (deeper toward the hem): the
- * fabric is about twice the width it hangs in. Back on the wall at z = −D/2, front +z, hem at y = 0, finial tops at H.
+ * fabric is about twice the width it hangs in, stacked back to about a sixth of the glass each side. Back on the wall at z = −D/2, front +z, hem at y = 0, finial tops at H.
  */
 function curtains({ x: W, y: H, z: D }: Size3): THREE.Object3D[] {
   const m = M()
@@ -898,8 +898,9 @@ function curtains({ x: W, y: H, z: D }: Size3): THREE.Object3D[] {
   const along = (g: THREE.BufferGeometry) => g.rotateZ(Math.PI / 2)
   const toWall = (g: THREE.BufferGeometry) => g.rotateX(Math.PI / 2)
   const out: THREE.Object3D[] = [mesh(along(new THREE.CylinderGeometry(0.011, 0.011, W - 0.04, 16)), m.blackSteel, 0, rodY, rodZ)]
-  // a panel: 22–60 cm, about a quarter of the rod, never more than 42 % of it (a small window keeps a slit open)
-  const pw = Math.min(0.6, Math.max(0.22, 0.26 * W + 0.05), 0.42 * W)
+  // a panel: 22–45 cm stacked, about an eighth of the rod plus 12 cm, never more than 42 % of it (a small window keeps a
+  // slit open): with the rod 15 cm past each reveal it covers about 36 % of the glass, as the daylight bake counts (daylight.ts TAU)
+  const pw = Math.min(0.45, Math.max(0.22, 0.12 * W + 0.12), 0.42 * W)
   const ph = rodY - 0.02
   for (const k of [-1, 1]) {
     const bx = k * (W / 2 - 0.055)
