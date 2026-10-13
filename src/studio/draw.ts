@@ -1,5 +1,5 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { formatFeetInches, roomAt, roomPolygon, unitBounds, wallFrame } from '../core'
+import { formatFeetInches, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
@@ -121,7 +121,7 @@ export interface DrawArgs {
   flats?: Flat[]
 }
 
-/** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2). */
+/** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2); the smaller over the bigger — what pieceAt picks is on top. */
 const LAYER_ORDER = [1, 2, 3, 0]
 
 /** Footprints at true size, front edge marked; the 3" grid faintly while dragging. Metres space. */
@@ -144,7 +144,8 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
   }
   const moving = new Set(drag?.ids)
   const hot = drag?.error ? C.red : C.accent
-  const shown = [...(drag?.furniture ?? pieces)].sort((p, q) => LAYER_ORDER[layerOf(p)] - LAYER_ORDER[layerOf(q)])
+  const area = (p: FurniturePlacement) => Math.abs(signedArea(pieceQuad(p)))
+  const shown = [...(drag?.furniture ?? pieces)].sort((p, q) => LAYER_ORDER[layerOf(p)] - LAYER_ORDER[layerOf(q)] || area(q) - area(p))
   for (const p of shown) {
     const q = pieceQuad(p)
     const on = moving.has(p.id) || (!drag && sel.has(p.id))

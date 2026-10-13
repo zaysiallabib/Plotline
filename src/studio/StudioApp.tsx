@@ -40,7 +40,7 @@ import { getPicture, putPicture } from './pictures'
 import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
-import { STAFF_KEY, readLayout, saveLayout } from '../viewer/arrange'
+import { STAFF_KEY, baseOf, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
@@ -57,6 +57,8 @@ type Active = { id: Id; drawing?: Id }
 /** the staff key that lets this browser publish share links (from the migration's output); asked for once */
 const PUBLISH_KEY = 'plotline.staffKey'
 const SNAP_PX = 7 // was 10: founder 2026-10-06, "30 % less magnetic"
+/** a press on a piece that drifts at most this far is a click (tool F): it selects, never moves; the 3D view uses the same (PlotlineScene) */
+const CLICK_PX = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const TOOLS: [Tool, string, string][] = [
   ['select', 'V', 'Select'],
@@ -322,23 +324,32 @@ export default function StudioApp() {
   // (grab offset `off`) as a candidate layout, red with the reason where the rules refuse it, and goes down only where it
   // fits (a click, or the drag's release); R turns it, Esc puts it back (founder 2026-10-04, as the 3D Arrange)
   const [placing, setPlacing] = useState<{ id: Id; assetId?: string; rot: number; off?: Pt } | null>(null)
+  // the handlers read the hand from the ref, set at once: a quick drag's release can come before the redraw that shows the
+  // piece in hand — it must put it down then, not leave it in the hand to swallow the next click (founder 2026-10-09)
   const placingRef = useRef(placing)
-  placingRef.current = placing
+  const hold = (h: typeof placing) => {
+    placingRef.current = h
+    setPlacing(h)
+  }
   const handAt = (sx: number, sy: number): Pt => {
     const m = toM(sx, sy)
-    return { x: m.x + (placing?.off?.x ?? 0), y: m.y + (placing?.off?.y ?? 0) }
+    const off = placingRef.current?.off
+    return { x: m.x + (off?.x ?? 0), y: m.y + (off?.y ?? 0) }
   }
-  const handMove = (to: Pt) =>
-    placing && pieces && (placing.assetId ? placePiece(unit, rooms, pieces, placing.assetId, to, placing.rot, placing.id) : movePiece(unit, rooms, pieces, placing.id, to, placing.rot))
-  const ghost = (sx: number, sy: number) => placing && pieces && setFurnDrag(handMove(handAt(sx, sy)))
+  const handMove = (to: Pt) => {
+    const h = placingRef.current
+    return h && pieces && (h.assetId ? placePiece(unit, rooms, pieces, h.assetId, to, h.rot, h.id) : movePiece(unit, rooms, pieces, h.id, to, h.rot))
+  }
+  const ghost = (sx: number, sy: number) => placingRef.current && pieces && setFurnDrag(handMove(handAt(sx, sy)))
   /** a click (or the drag's release) with a piece in hand: down where it fits, one undo step; refused, it stays in hand */
   const putDown = (sx: number, sy: number) => {
+    const h = placingRef.current
     const to = handAt(sx, sy)
-    const m = placing && handMove(to)
-    if (!placing || !m) return
+    const m = h && handMove(to)
+    if (!h || !m) return
     if (m.error) return toast(m.error)
-    dispatch(placing.assetId ? { type: 'place-piece', id: placing.id, assetId: placing.assetId, ...to, rotationDeg: placing.rot } : { type: 'move-piece', id: placing.id, ...to, rotationDeg: placing.rot })
-    setPlacing(null)
+    dispatch(h.assetId ? { type: 'place-piece', id: h.id, assetId: h.assetId, ...to, rotationDeg: h.rot } : { type: 'move-piece', id: h.id, ...to, rotationDeg: h.rot })
+    hold(null)
     setFurnDrag(null)
   }
 
@@ -350,7 +361,7 @@ export default function StudioApp() {
   const now = () => Date.now()
   // a new pick or R: the ghost where the pointer is; leaving tool F drops it
   useEffect(() => {
-    if (placing && tool !== 'furniture') return setPlacing(null)
+    if (placing && tool !== 'furniture') return hold(null)
     if (!placing) return setFurnDrag(null)
     const p = lastPointer.current
     if (p) ghost(p.sx, p.sy)
@@ -885,7 +896,7 @@ export default function StudioApp() {
       const u = stateRef.current.unit
       const m = toM(sx, sy)
       if (stateRef.current.tool === 'furniture') {
-        const p = pieceAt(piecesRef.current ?? [], m)
+        const p = pieceAt(piecesRef.current ?? [], m, 6 / s) // a sliver (a print, a TV) within 6 px, as a wall's
         return p && { kind: 'furniture', id: p.id }
       }
       // a column's block (3 px slack) wins inside it over the walls, openings and labels running through / beside it (the
@@ -1090,7 +1101,7 @@ export default function StudioApp() {
       if (!pi || p.x < 0 || p.y < 0 || p.x > pi.naturalW || p.y > pi.naturalH) return toast('Click on the plan, inside the flat')
       return pickTrace.current(p)
     }
-    if (placing && tool === 'furniture') return putDown(sx, sy) // refused: it stays in hand
+    if (placingRef.current && tool === 'furniture') return putDown(sx, sy) // refused: it stays in hand
     if (field) setField(null)
     if (popover) setPopover(null)
     dispatch({ type: 'timer-input', now: now() })
@@ -1211,7 +1222,7 @@ export default function StudioApp() {
       if (pi && p.x >= 0 && p.y >= 0 && p.x <= pi.naturalW && p.y <= pi.naturalH) hoverTrace.current(p)
       return
     }
-    if (placing && tool === 'furniture') return void ghost(sx, sy)
+    if (placingRef.current && tool === 'furniture') return void ghost(sx, sy)
     const pd = pillarDragRef.current
     if (pd) {
       // a new column dragged out: its box from the press to the pointer, snapped like a corner
@@ -1229,11 +1240,12 @@ export default function StudioApp() {
     const fd = dragRef.current
     if (fd?.hit.kind === 'furniture') {
       // a dragged piece goes into the hand (it follows the pointer on the grid); the reducer only sees the drop (one undo entry)
-      if (!fd.moved && Math.hypot(sx - fd.sx, sy - fd.sy) < 3) return
+      // (a hand's click drifts a few px: up to CLICK_PX it stays a click — the piece neither moves nor goes into the hand)
+      if (!fd.moved && Math.hypot(sx - fd.sx, sy - fd.sy) <= CLICK_PX) return
       fd.moved = true
-      const o = fd.orig.get(fd.hit.id)!
-      const p = pieces?.find((x) => x.id === fd.hit.id)
-      if (p) setPlacing({ id: p.id, rot: p.rotationDeg, off: { x: o.x - fd.m.x, y: o.y - fd.m.y } })
+      // what rests on a piece (a TV on its unit, cushions) is picked alone but drags that piece, as in the 3D view
+      const p = pieces && baseOf(pieces, fd.hit.id)
+      if (p) hold({ id: p.id, rot: p.rotationDeg, off: { x: p.x - fd.m.x, y: p.y - fd.m.y } })
       return
     }
     const d = dragRef.current
@@ -1506,8 +1518,8 @@ export default function StudioApp() {
       // furniture tool: arrows move the selected piece one grid square, R turns it, Delete / Backspace deletes it; T / H never touch a piece
       if (st.tool === 'furniture') {
         const pl = placingRef.current
-        if (pl && e.key === 'Escape') return setPlacing(null)
-        if (pl && (e.key === 'r' || e.key === 'R')) return setPlacing({ ...pl, rot: pl.rot + 90 })
+        if (pl && e.key === 'Escape') return hold(null)
+        if (pl && (e.key === 'r' || e.key === 'R')) return hold({ ...pl, rot: pl.rot + 90 })
         if (pl && (arrow || e.key === 'Delete' || e.key === 'Backspace')) return e.preventDefault() // the piece in hand is not on the plan yet
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
@@ -2005,7 +2017,7 @@ export default function StudioApp() {
           onFix={applyFix}
           pieces={pieces}
           placing={placing?.assetId ?? null}
-          onPlace={(assetId) => setPlacing(assetId ? { id: newId(), assetId, rot: 0 } : null)}
+          onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
         />
       </div>
 

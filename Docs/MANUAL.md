@@ -97,11 +97,11 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 
 ### Edit furniture
 
-- **Click a piece** to pick it. **Drag** it to move it. It turns red and tells you why if it cannot go there (outside the room, blocks a door, covers a window, overlaps another piece).
+- **Click a piece** to pick it — also one you see through a window or a glass door. A click whose mouse slides up to 6 pixels is still a click: the piece is picked, never moved. **Drag** it (further) to move it — a drag on cushions, or on a TV standing on its unit, moves the piece under them. It turns red and tells you why if it cannot go there (outside the room, blocks a door, covers a window, overlaps another piece).
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
 - Buttons in the small panel, bottom left: **Add**, **Turn 90°**, **Delete**, **Undo**, **Reset layout**.
 - Keys: **R** turns · **Del** deletes · **Ctrl+Z** undoes · **Esc** lets go.
-- **G** — picks up the piece under the mouse without opening Edit furniture; **G** again puts it down.
+- **G** — picks up the piece under the mouse (also through glass) without opening Edit furniture; **G** again puts it down.
 - **Add** opens the library: Living, Dining, Bedroom, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor. Pick one, point at the floor, a wall or the ceiling, click.
 - Saved in this browser only.
 
@@ -203,6 +203,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 
 **F — Furniture**
 - Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.
+- **A click selects the piece under the mouse** — the one drawn on top: a wall cabinet or a hood over its counter, cushions over the sofa. A thin print or a wall TV is picked when you click within a few pixels of its line. A click whose mouse slides up to 6 pixels is still a click: the piece is selected, never moved. Drag further and the piece is in your hand; a drag on cushions or a TV standing on its unit moves the piece under them.
 - **Pick from the library…** adds a new piece (same library as the 3D view).
 - **Reset to preset** puts one room back to the automatic layout; **Reset all** does every room.
 
@@ -458,6 +459,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Once a plan picture is loaded there is no button to swap it — only dropping a new one on the Studio.
 - A drawing file opened again always asks for its plan picture.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio.
+- **On the plan (F), a piece wholly under another cannot be clicked there** — the hob + oven under its chimney hood, a ceiling light, pendant or wall AC over a bed or table: a click picks the piece drawn on top. Pick it in the 3D view (Edit furniture).
 - The same thing has different names in different places: "Slider" / "Sliding door"; "Reset layout" / "Reset to preset".
 - Keys **T**, **H** and **Shift+H** are not mentioned anywhere on screen.
 - A typed wall length cannot start with 0 (type `.5`, not `0.5`).

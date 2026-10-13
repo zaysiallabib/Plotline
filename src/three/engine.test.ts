@@ -7,15 +7,17 @@
 import { describe, expect, test, vi } from 'vitest'
 import * as THREE from 'three'
 import typeA from '../data/units/type-a.json'
+import banani from '../data/fixtures/founder-banani-unit-a-2026-10-09.json'
+import { deriveRooms } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
-import { footprint } from '../furnish/presets'
+import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
-import { buildOpening } from './openings'
-import { clampSun, evenBearings } from './PlotlineScene'
+import { buildOpening, CLEAR_GLASS } from './openings'
+import { clampSun, evenBearings, pickedAt } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -286,6 +288,61 @@ describe('clickable parts', () => {
       'w/glass': 'window-glass',
     })
     door.traverse((o) => o.userData.kind && expect(o.userData.wallId).toBe('w')) // parts anchor in the wall's frame
+  })
+})
+
+describe('pickedAt: Edit furniture and G see a piece through the glass', () => {
+  test('a bed behind the balcony slider: a comment gets the glass, Edit furniture / G the bed; the glass of a piece picks the piece', () => {
+    // founder 2026-10-09 "sometimes selects, sometimes doesn't": walk starts on his balcony, every piece seen through the slider picked the glass
+    const wall: Wall = { id: 'w', a: 'a', b: 'b', thicknessM: 0.127, heightM: 3.048, openings: [] }
+    const slider = buildOpening({ id: 's', kind: 'slider', widthM: 2.4, offsetM: 1, heightM: 2.1, sillM: 0 }, wall)
+    const piece = (id: string, mesh: THREE.Mesh, z: number) => {
+      const g = new THREE.Group().add(mesh)
+      g.userData = { kind: 'furniture', id }
+      g.position.set(1.6, 0.5, z)
+      return g
+    }
+    const bed = piece('bed', new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 2)), -2)
+    const scene = new THREE.Scene().add(slider, bed)
+    scene.updateMatrixWorld(true)
+    const first = (looking: boolean) =>
+      new THREE.Raycaster(new THREE.Vector3(1.6, 1, 5), new THREE.Vector3(0, 0, -1))
+        .intersectObjects(scene.children, true)
+        .map((h) => pickedAt(h, looking))
+        .find(Boolean)?.userData.id
+    expect(first(false)).toBe('s/glass')
+    expect(first(true)).toBe('bed')
+    // a glass-topped piece in front (a shower screen, a table's top): picked, as the piece it is
+    scene.add(piece('screen', new THREE.Mesh(new THREE.BoxGeometry(1, 2, 0.01), CLEAR_GLASS), 2))
+    scene.updateMatrixWorld(true)
+    expect(first(true)).toBe('screen')
+    // hidden (a deleted piece, the dollhouse's ceilings): never picked
+    scene.children.at(-1)!.visible = false
+    bed.visible = false
+    expect(first(true)).toBeUndefined()
+  })
+})
+
+describe('planter beds: every leaf a number (a NaN leaf scrambles every 3D pick)', () => {
+  /** every leaf's matrix finite, and how many there are */
+  const leaves = (id: string) => {
+    let n = 0
+    buildProcedural(id)!.traverse((o) => {
+      const im = o as THREE.InstancedMesh
+      if (!im.isInstancedMesh) return
+      n += im.count
+      expect(im.instanceMatrix.array.every(Number.isFinite), id.slice(0, 60)).toBe(true)
+    })
+    return n
+  }
+  test('two corners under 1 cm apart (one corner in the id): no NaN leaves; the founder’s Banani greens', () => {
+    // his greens strip has a 1-cm jog: an outer side of length 0 hung NaN strands, three's sort of the hits went wrong and a
+    // click on the sofa / TV / cushions picked the wall behind them (founder 2026-10-09 "sometimes selects, sometimes doesn't")
+    expect(leaves('planter_bed@-120,-59,15,13;120,-59,15,13;120,59,15,13;120,59,15,13;-117,59,15,13')).toBeGreaterThan(100)
+    const his = banani as unknown as Unit
+    const beds = furnish(his, deriveRooms(his)).filter((p) => p.assetId.startsWith('planter_bed@'))
+    expect(beds.length).toBeGreaterThan(0)
+    for (const p of beds) expect(leaves(p.assetId)).toBeGreaterThan(0)
   })
 })
 

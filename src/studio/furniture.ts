@@ -92,11 +92,25 @@ function blocks(p: FurniturePlacement, o: FurniturePlacement): boolean {
   return o1 > p0 + 0.02 && o0 < p1 - 0.02
 }
 
-/** The piece under a plan point: floor pieces before lifted, ceiling and rugs; the smaller first. */
-export function pieceAt(pieces: FurniturePlacement[], m: Pt): FurniturePlacement | null {
+/** Pick order by layerOf: what the plan draws filled on top first (lifted: a TV, wall cabinets, art, cushions), then floor pieces, then the outlines (ceiling fixtures, rugs). */
+const PICK = [1, 0, 2, 3]
+/**
+ * The piece under a plan point, as the plan shows it (draw.ts): a piece over another first — the 3D view picks the same
+ * (a drag of one resting on a piece moves that piece: viewer/arrange.ts baseOf) — the smaller first. Nothing right under
+ * the point: the nearest piece within `tolM` of it (a print or a TV is a sliver on the plan).
+ */
+export function pieceAt(pieces: FurniturePlacement[], m: Pt, tolM = 0): FurniturePlacement | null {
   const area = (p: FurniturePlacement) => sizeOf(p).x * sizeOf(p).z
   const under = pieces.filter((p) => !p.removed && pointInPolygon(m, pieceQuad(p)))
-  return under.sort((a, b) => layerOf(a) - layerOf(b) || area(a) - area(b))[0] ?? null
+  if (under.length || !tolM) return under.sort((a, b) => PICK[layerOf(a)] - PICK[layerOf(b)] || area(a) - area(b))[0] ?? null
+  /** how far m is from p's footprint (its own frame: footprint's local x / y) */
+  const gap = (p: FurniturePlacement) => {
+    const t = (p.rotationDeg * Math.PI) / 180
+    const [dx, dy] = [m.x - p.x, m.y - p.y]
+    const s = sizeOf(p)
+    return Math.hypot(Math.max(Math.abs(dx * Math.cos(t) + dy * Math.sin(t)) - s.x / 2, 0), Math.max(Math.abs(-dx * Math.sin(t) + dy * Math.cos(t)) - s.z / 2, 0))
+  }
+  return pieces.filter((p) => !p.removed && gap(p) <= tolM).sort((a, b) => gap(a) - gap(b))[0] ?? null
 }
 
 /** A dining table's chairs: the dining chairs of its room standing within 0.65 m of its edges (presets set them touching). */
