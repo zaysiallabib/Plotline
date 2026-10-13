@@ -1232,22 +1232,25 @@ export function hangCurtain(unit: Unit, rooms: Room[], p: FurniturePlacement, ta
   }
   const sh = p.shiftM ?? 0
   const [lo, hi] = [end(s.o.offsetM, -1) + sh, end(s.o.offsetM + s.o.widthM, 1) + sh]
+  if (hi - lo < 0.1) return null // no room for a pair: a sliver of a window between two corners
   const c = s.at((lo + hi) / 2, CURTAIN_D / 2)
   return { ...p, x: c.x, y: c.y, rotationDeg: rotationFacing(s.n), sizeM: { x: mm(hi - lo), y: mm(s.heightM - 0.065), z: CURTAIN_D } }
 }
 
 /**
  * The layout with its curtains on their windows: each one placed and sized by its window (hangCurtain; the earlier ones
- * in the list stop the later ones' rods), one whose window is gone left out, and one added (id `<window>:curtain`) on
- * every window face the rule dresses (curtainSides) that has none yet — deleted ones count, so a deleted curtain stays
- * deleted. `pieces` itself when nothing changes.
+ * in the list, where their windows hang them, stop the later ones' rods — one slid along its wall squeezes no other: the
+ * slide is refused where it overlaps), one whose window is gone left out, and one added (id `<window>:curtain`) on every
+ * window face the rule dresses (curtainSides) that has none yet — deleted ones count, so a deleted curtain stays deleted.
+ * `pieces` itself when nothing changes.
  */
 export function hangCurtains(unit: Unit, rooms: Room[], pieces: FurniturePlacement[]): FurniturePlacement[] {
   const taken = new Map<Id, Pt[][]>()
   const hang = (p: FurniturePlacement) => {
     const q = hangCurtain(unit, rooms, p, taken.get(p.roomId))
-    // its footprint grown 1 cm at the ends and 2 cm front and back (to its wall face): the next rod stops clear of it
-    if (q) taken.set(q.roomId, [...(taken.get(q.roomId) ?? []), footprint(q, q.rotationDeg, { x: q.sizeM!.x + 0.02, z: q.sizeM!.z + 0.04 })])
+    const home = q && p.shiftM ? hangCurtain(unit, rooms, { ...p, shiftM: undefined }, taken.get(p.roomId)) : q
+    // where its window hangs it, grown 1 cm at the ends and 2 cm front and back (to its wall face): the next rod stops clear
+    if (home) taken.set(home.roomId, [...(taken.get(home.roomId) ?? []), footprint(home, home.rotationDeg, { x: home.sizeM!.x + 0.02, z: home.sizeM!.z + 0.04 })])
     return q
   }
   let changed = false
@@ -1275,19 +1278,16 @@ export function hangCurtains(unit: Unit, rooms: Room[], pieces: FurniturePlaceme
 }
 
 /**
- * Where curtains `p` go when slid to `to` (their middle, plan): onto another window or sliding door of the same wall face
- * that `to` is over (hung there), else along their own wall, the slide in `step` steps from their window. Null = their
- * window is gone. They never leave their wall face.
+ * How far curtains `p` hang slid along their wall once their middle is taken to `to` (plan; only the part along the wall
+ * counts — they never leave their wall face, nor their window): in `step` steps from where their window hangs them.
+ * Null = their window is gone.
  */
-export function curtainAnchor(unit: Unit, rooms: Room[], p: FurniturePlacement, to: Pt, step = 0): Pick<FurniturePlacement, 'openingId' | 'shiftM'> | null {
+export function curtainShift(unit: Unit, rooms: Room[], p: FurniturePlacement, to: Pt, step = 0): number | null {
   const s = seatOf(unit, rooms, p.openingId, p.roomId)
   if (!s) return null
-  const u = s.along(to)
-  const onto = s.spans.find((x) => isPane(x.o) && u > x.u0 && u < x.u1)
-  if (onto) return { openingId: onto.o.id, shiftM: undefined }
-  let sh = (p.shiftM ?? 0) + u - s.along(p)
+  let sh = (p.shiftM ?? 0) + s.along(to) - s.along(p)
   if (step) sh = Math.round(sh / step) * step
-  return { openingId: p.openingId, shiftM: Math.abs(sh) < 1e-6 ? undefined : mm(sh) }
+  return Math.abs(sh) < 1e-6 ? 0 : mm(sh)
 }
 
 /** The window or sliding door nearest a wall face point (a click / the pointer; `n` into the room), within half a metre along that wall: what new curtains hang on. */

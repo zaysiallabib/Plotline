@@ -12,7 +12,7 @@ import draft from '../data/fixtures/founder-banani-unit-a-2026-10-09.json'
 import { placementSize } from '../furnish/kit'
 import { CURTAIN_OVER, curtainSides, footprint, quadsOverlap } from '../furnish/presets'
 import { CURTAIN_D, CURTAINS } from '../furnish/procedural.meta'
-import { dragTo } from '../viewer/arrange'
+import { dragTo, holdAt, pickUp } from '../viewer/arrange'
 import { layoutFor, library, movePiece, pieceAt, pieceLabel, placePiece, whyNot } from './furniture'
 import { initialState, reducer } from './model'
 
@@ -99,28 +99,39 @@ describe('curtains on his Banani draft', () => {
     expect(library().filter((t) => t.items.some((i) => i.id === CURTAINS)).map((t) => t.tab)).toEqual(['Living', 'Bedroom'])
   })
 
-  it('a click picks them, a drag slides them along their wall only (onto another window: hung there), Delete is one undo step and they stay deleted', () => {
+  it('a click picks them, a drag slides them along their wall only (they stay their window\'s), Delete is one undo step and they stay deleted', () => {
     let s = { ...initialState(), unit: his }
     const rooms = deriveRooms(his)
     const all = layoutFor(his, rooms)
     const p = on(his, SLIDER)!
     expect(pieceAt(all, p)?.id).toBe(p.id)
-    // dragged 0.3 m along the wall and 2 m into the room: it stays on the wall, slid 4 × 3"
+    // dragged 0.3 m along the wall (away from the window beside it) and 2 m into the room: it stays on the wall, slid 4 × 3"
     const { w, mid, off } = span(his, p)
     const f = wallFrame(w, his.vertices)
-    const m = movePiece(his, rooms, all, p.id, { x: p.x + f.dir.x * 0.3 - f.normal.x * 2, y: p.y + f.dir.y * 0.3 - f.normal.y * 2 }, 0)!
+    expect(on(his, WINDOW)).toBeDefined()
+    const toward = Math.sign((on(his, WINDOW)!.x - p.x) * f.dir.x + (on(his, WINDOW)!.y - p.y) * f.dir.y)
+    const k = -toward * 0.3
+    const m = movePiece(his, rooms, all, p.id, { x: p.x + f.dir.x * k - f.normal.x * 2, y: p.y + f.dir.y * k - f.normal.y * 2 }, 0)!
     expect(m.error).toBeNull()
     expect(span(his, m.piece).off).toBeCloseTo(off, 6)
-    expect(span(his, m.piece).mid - mid).toBeCloseTo(4 * 0.0762, 3)
+    expect(span(his, m.piece).mid - mid).toBeCloseTo(-toward * 4 * 0.0762, 3)
     expect(m.piece.rotationDeg).toBe(p.rotationDeg)
     // the 3D drag: the wall face under the pointer, even another wall's — still slides along its own
     const g = dragTo(his, rooms, all, p.id, { at: null, wall: { p: { x: p.x - 3, y: p.y + 2 }, n: { x: 1, y: 0 } } })!
     expect(span(his, g.piece).off).toBeCloseTo(off, 6)
-    // onto the window beside it: hung on that window — where its own curtains are already: refused, said why
-    const win = on(his, WINDOW)!
-    const onto = movePiece(his, rooms, all, p.id, win, 0)!
-    expect(onto.piece.openingId).toBe(WINDOW)
+    // slid 0.4 m toward the window beside it: still the sliding door's (its width), and refused — that window has its own
+    const onto = movePiece(his, rooms, all, p.id, { x: p.x + f.dir.x * 0.4 * toward, y: p.y + f.dir.y * 0.4 * toward }, 0)!
+    expect(onto.piece.openingId).toBe(SLIDER)
+    expect(placementSize(onto.piece).x).toBeCloseTo(placementSize(p).x, 6)
     expect(onto.error).toBe('Overlaps the curtains')
+    // the 3D hand: grabbed by its right panel, the pointer 0.3 m further along the wall — the curtains go 0.3 m, not to the pointer
+    const right = { x: p.x - f.dir.x * toward * 0.8 + f.normal.x * 0.1, y: p.y - f.dir.y * toward * 0.8 + f.normal.y * 0.1 }
+    const held = holdAt(his, rooms, all, holdAt(his, rooms, all, pickUp(all, p.id), { at: null, wall: { p: right, n: f.normal } }), {
+      at: null,
+      wall: { p: { x: right.x + f.dir.x * k, y: right.y + f.dir.y * k }, n: f.normal },
+    })
+    expect(held.move!.error).toBeNull()
+    expect(span(his, held.move!.piece).mid - mid).toBeCloseTo(-toward * 4 * 0.0762, 3)
     // the move committed (Studio), then saved and re-laid: the same place
     s = reducer(s, { type: 'move-piece', id: p.id, x: m.piece.x, y: m.piece.y })
     expect(on(s.unit, SLIDER)!.x).toBeCloseTo(m.piece.x, 9)

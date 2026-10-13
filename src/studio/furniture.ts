@@ -11,7 +11,7 @@
 import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
-import { GAP, chairSpots, curtainAnchor, footprint, furnish, hangCurtains, quadsOverlap, windowOnFace, windowZones } from '../furnish/presets'
+import { GAP, chairSpots, curtainShift, footprint, furnish, hangCurtains, quadsOverlap, windowOnFace, windowZones } from '../furnish/presets'
 import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 /** 3" squares (founder 2026-09-28: 1 ft, then 6", were too coarse to place a piece where he wanted) */
@@ -327,14 +327,14 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
 }
 
 /**
- * Curtains `p` slid along their wall toward `to` in 3" steps from their window — onto another window or sliding door of
- * that wall when `to` is over it (presets.ts curtainAnchor) — then hung again with the whole layout (hangCurtains), so
- * the result is what every later layout shows. They never turn or leave their wall.
+ * Curtains `p` slid along their wall toward `to` in 3" steps from their window (presets.ts curtainShift), then hung again
+ * with the whole layout (hangCurtains), so the result is what every later layout shows. They never turn, never leave
+ * their wall, and stay on their window: it moves them, resizes them, takes them away.
  */
 function slideCurtain(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], p: FurniturePlacement, to: Pt): Move | null {
-  const a = curtainAnchor(unit, rooms, p, to, GRID_M)
-  if (!a) return null
-  const furniture = hangCurtains(unit, rooms, pieces.map((x) => (x.id === p.id ? { ...x, ...a } : x)))
+  const sh = curtainShift(unit, rooms, p, to, GRID_M)
+  if (sh === null) return null
+  const furniture = hangCurtains(unit, rooms, pieces.map((x) => (x.id === p.id ? { ...x, shiftM: sh || undefined } : x)))
   const piece = furniture.find((x) => x.id === p.id)
   if (!piece) return null
   const error = whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, furniture.filter((x) => x.id !== p.id), piece)
