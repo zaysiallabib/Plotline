@@ -1266,6 +1266,9 @@ function planterBed(id: string): THREE.Object3D[] {
   // trailing strands over the outer parapets
   outer.forEach((e, k) => {
     const L = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
+    // two corners under 1 cm apart are one corner in the id (cm): no side to trail over. Its leaves were NaN, and one NaN
+    // leaf scrambled the order of every 3D pick in the flat — a click on the sofa picked the wall behind it (founder 2026-10-09)
+    if (!L) return
     const d = { x: (e.b.x - e.a.x) / L, y: (e.b.y - e.a.y) / L }
     const o = new THREE.Vector3(d.y, 0, -d.x) // outward (rooms are positive loops: inward is (−d.y, d.x))
     const along = new THREE.Vector3(d.x, 0, d.y)
