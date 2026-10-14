@@ -98,6 +98,30 @@ export interface TextTrace {
    * little (Sheltech L2 ≈ 7, Sheltech dmd ≈ 4): ask for a larger export / the PDF before trusting an empty trace.
    */
   glyphPx?: number
+  /**
+   * Size tables printed beside / under the plan (text.ts findTables): rows like "SUITE 1   13'-9\" x 12'-4\"" stacked in a
+   * column, and floor-stack charts. Their text is no plan label (it is left out of `items`); the solver whites their box
+   * out of the wall raster. Extension (s25 tables).
+   */
+  tables?: SizeTable[]
+}
+
+/** One printed size table (image px): its box and its rows — none for a floor-stack chart (19 … 01, G, B1). */
+export interface SizeTable {
+  box: { x: number; y: number; w: number; h: number }
+  rows: TableRow[]
+}
+
+/** A table row: the room name as printed (a numbered legend's number apart: "01. LIVING" → num 1), its size when read. */
+export interface TableRow {
+  name: string
+  num?: number
+  roomKind?: string
+  dims?: Dims
+  sizeText: string
+  box: { x: number; y: number; w: number; h: number }
+  /** a plan label took this row's size (text.ts applyTables); unset: no room on the plan carries the name */
+  onPlan?: boolean
 }
 
 /**

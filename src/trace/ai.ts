@@ -5,7 +5,9 @@
  * at most two calls per sheet; the answer is parsed with the strict size grammar. Nothing here calls a model in tests.
  */
 import { renderFont } from './sizes'
-import { classifyRoom, cropGray, itemFromAi, reaskReason, resample, toCanvas } from './text'
+import { classifyRoom, cropGray, itemFromAi, reaskReason, resample, strictSize, toCanvas } from './text'
+
+export { strictSize }
 import type { AiAsk, AiReader, Dims, Gray, TextItem, TextTrace } from './types'
 
 /** The whole prompt. Small task, fixed JSON, no guessing. */
@@ -41,30 +43,6 @@ export function parseAiAnswer(answer: string, crop: { w: number; h: number; offs
   })
 }
 
-const FT = 0.3048
-/**
- * A size exactly in the printed grammar, else null: F'-I"xF'-I" (inches 0–11, optional ½, feet 1–39, x / X / ×), a side
- * may be bare feet (15X18'-3") when the other carries marks. Stricter than parseDims on purpose: the model's text is
- * trusted only when it is a well-formed size.
- */
-export function strictSize(raw: string): Dims | null {
-  const s = raw
-    .replace(/[‘’′`´]/g, "'")
-    .replace(/[“”″]|''/g, '"')
-    .replace(/[–—]/g, '-')
-    .replace(/\s+/g, '')
-  const side = String.raw`(\d{1,2})(?:'(?:-?(\d{1,2})(½|1\/2)?")?)?`
-  const m = new RegExp(`^${side}[xX×]${side}$`).exec(s)
-  if (!m || !/['"]/.test(s)) return null
-  const one = (f: string, i?: string, half?: string) => {
-    const ft = +f
-    const inch = i === undefined ? 0 : +i
-    return ft >= 1 && ft <= 39 && inch <= 11 ? (ft + (inch + (half ? 0.5 : 0)) / 12) * FT : null
-  }
-  const a = one(m[1], m[2], m[3])
-  const b = one(m[4], m[5], m[6])
-  return a !== null && b !== null && a >= 0.6 && b >= 0.6 ? { aM: a, bM: b } : null
-}
 
 /** Rows of a montage answer: tile number → name + size (size only when it passes strictSize). Junk → empty map. */
 export function parseMontageAnswer(answer: string, tiles: number): Map<number, { name: string; dims?: Dims; size: string }> {

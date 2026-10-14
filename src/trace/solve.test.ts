@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -558,4 +558,31 @@ describe.skipIf(!haveFixtures || !SHOTS)('solver smoke on other sheets (overlays
       expect(validate(res.unit).filter((i) => i.level === 'error'), s.file).toEqual([])
     }
   }, 300000)
+})
+
+// s25: the flat area printed in the title block, off the drawing
+describe('titleAreas', () => {
+  const area = (text: string, x: number, y: number): TextItem => ({ text, box: { x, y, w: 200, h: 27 }, kind: 'area', areaSqm: 100, conf: 0.9, source: 'ocr' })
+  const part = (x: number, y: number) => ({ rooms: new Set([{ areaSqm: 10, centroid: { x, y } }]) }) as unknown as Parameters<typeof titleAreas>[2][number]
+  test('one flat: the one figure; two figures in one title: none', () => {
+    const s = [part(10, 10)], st: (TextItem | undefined)[] = [undefined]
+    titleAreas([area('1365 sft', 1700, 360)], [], s, s, st, 50)
+    expect(st[0]?.text).toBe('1365 sft')
+    const st2: (TextItem | undefined)[] = [undefined]
+    titleAreas([area('2703 SFT & 674 SFT', 700, 2300)], [], s, s, st2, 50)
+    expect(st2[0]).toBeUndefined()
+  })
+  test('two flats, two titles: paired west to east, a click gets its own; three flats, one title: none', () => {
+    const a = part(18, 12), b = part(47, 12) // metres at 50 px/m: A at x 900 px, B at 2350 px
+    const figs = [area('1874 SFT (Approx.)', 1513, 289), area('2023 SFT( Approx.)', 73, 289)]
+    const st: (TextItem | undefined)[] = [undefined, undefined]
+    titleAreas(figs, [], [b, a], [a, b], st, 50)
+    expect(st.map((x) => x?.text)).toEqual(['1874 SFT (Approx.)', '2023 SFT( Approx.)'])
+    const click: (TextItem | undefined)[] = [undefined]
+    titleAreas(figs, [], [a], [a, b], click, 50)
+    expect(click[0]?.text).toBe('2023 SFT( Approx.)')
+    const small: (TextItem | undefined)[] = [undefined]
+    titleAreas([area('2703 SFT', 700, 2300)], [], [part(10, 10)], [part(10, 30), part(10, 10), part(20, 10)], small, 50)
+    expect(small[0]).toBeUndefined()
+  })
 })

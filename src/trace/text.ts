@@ -6,7 +6,7 @@
 import { FT, parseLength, pointInPolygon, polygonCentroid } from '../core'
 import type { RoomKind } from '../core'
 import { capBand, readSizes, topMarks } from './sizes'
-import type { Dims, Gray, TextItem, TextKind, TextTrace } from './types'
+import type { Dims, Gray, SizeTable, TableRow, TextItem, TextKind, TextTrace } from './types'
 
 type Box = TextItem['box']
 
@@ -77,13 +77,37 @@ export function parseDims(raw: string): Dims | null {
   return aM === null || bM === null ? null : { aM, bM }
 }
 
-/** "±2,736 SFT", "2736 sft", "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
+/** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
 export function parseArea(raw: string): number | null {
-  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|SQ\.?\s*FT|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
+  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|SQ\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
   if (!m) return null
   const v = Number(m[1].replace(/,/g, ''))
   const sqm = /M/i.test(m[2].replace(/FT/i, '')) && !/F/i.test(m[2]) ? v : v * FT * FT
   return sqm >= 10 && sqm <= 10000 ? sqm : null
+}
+
+/**
+ * A size exactly in the printed grammar, else null: F'-I"xF'-I" (inches 0–11, optional ½, feet 1–39, x / X / ×), a side
+ * may be bare feet (15X18'-3") when the other carries marks. Stricter than parseDims on purpose: the model's text is
+ * trusted only when it is a well-formed size.
+ */
+export function strictSize(raw: string): Dims | null {
+  const s = raw
+    .replace(/[‘’′`´]/g, "'")
+    .replace(/[“”″]|''/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, '')
+  const side = String.raw`(\d{1,2})(?:'(?:-?(\d{1,2})(½|1\/2)?")?)?`
+  const m = new RegExp(`^${side}[xX×]${side}$`).exec(s)
+  if (!m || !/['"]/.test(s)) return null
+  const one = (f: string, i?: string, half?: string) => {
+    const ft = +f
+    const inch = i === undefined ? 0 : +i
+    return ft >= 1 && ft <= 39 && inch <= 11 ? (ft + (inch + (half ? 0.5 : 0)) / 12) * FT : null
+  }
+  const a = one(m[1], m[2], m[3])
+  const b = one(m[4], m[5], m[6])
+  return a !== null && b !== null && a >= 0.6 && b >= 0.6 ? { aM: a, bM: b } : null
 }
 
 // ---------------------------------------------------------------- room names
@@ -369,6 +393,151 @@ export function groupWords(words: OcrWord[]): TextItem[] {
   }
   return items
 }
+
+// ---------------------------------------------------------------- size tables beside the plan (s25)
+
+/** a table row's name: a room name, a numbered legend's number apart ("01. LIVING" → 1, LIVING) */
+function rowName(raw: string): { name: string; num?: number; roomKind: string } | null {
+  const m = /^\s*(\d{1,2})\s*[.)]\s*(.*)$/.exec(raw)
+  const name = (m ? m[2] : raw).trim()
+  const c = /[A-Za-z]{2}/.test(name) ? classifyRoom(name) : null
+  return c ? { name, ...(m ? { num: +m[1] } : {}), roomKind: c.kind } : null
+}
+
+/** one read line that is a whole row ("Bed 3 10-8\"x10-0\"", "01. LIVING 10'-00\" x 09'-06\""): its name + size, or null */
+function splitRow(line: string): { name: string; num?: number; roomKind: string; sizeText: string; dims?: Dims } | null {
+  const toks = line.trim().split(/\s+/)
+  let loose: ReturnType<typeof splitRow> = null
+  for (let i = 1; i < toks.length; i++) {
+    const right = toks.slice(i).join(' ')
+    const n = /^\d/.test(right) && LOOKS_LIKE_DIMS.test(right) ? rowName(toks.slice(0, i).join(' ')) : null
+    if (!n) continue
+    // (a well-formed size only — a wrong size is worse than none; "13-6\"x14-6\"": the feet marks lost, both sides whole)
+    const dims = strictSize(right) ?? (/^\d{1,2}'?-\d{1,2}["”]?\s*[xX×]\s*\d{1,2}'?-\d{1,2}["”]?$/.test(right) ? parseDims(right) : null)
+    if (dims) return { ...n, sizeText: right, dims }
+    loose ??= { ...n, sizeText: right }
+  }
+  return loose
+}
+
+/** a floor-stack chart's row number: 19 … 01, G, B1 */
+const FLOOR_NO = /^(B ?\d{1,2}|\d{1,2}|G|GF|LG|UG)$/i
+
+/**
+ * Size tables printed beside / under the plan (s25: about half the brochure sheets print the sizes there, not in the
+ * rooms): ≥ 3 rows, each a room name with a size on its baseline to its right (or one line holding both), stacked in a
+ * column (names' left, right or centre within 2 letter heights, ≤ 6 heights apart), where no wall ink is (`gray`: dark
+ * ink outside the read text under 3 % of the box); and floor-stack charts (≥ 5 floor numbers stacked in a column), whose
+ * box reaches 4 heights right over the chart's cells. Their text is no plan label; their box is no plan.
+ */
+export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
+  const cy = (b: Box) => b.y + b.h / 2
+  type Row = TableRow & { nameBox: Box }
+  const rows: Row[] = []
+  items.forEach((it, i) => {
+    if (it.kind === 'area') return
+    for (const line of it.text.split('\n')) {
+      const one = splitRow(line)
+      if (one) {
+        rows.push({ ...one, box: it.box, nameBox: it.box })
+        return
+      }
+    }
+    const n = it.text.includes('\n') ? null : rowName(it.text)
+    if (!n) return
+    const h = it.box.h
+    const sameRow = (o: TextItem) => o !== it && Math.abs(cy(o.box) - cy(it.box)) < 0.6 * Math.max(h, o.box.h) && o.box.x >= it.box.x + it.box.w - 0.5 * h
+    const next = Math.min(...items.filter((o, j) => j !== i && sameRow(o) && !o.text.includes('\n') && rowName(o.text) && !LOOKS_LIKE_DIMS.test(o.text)).map((o) => o.box.x))
+    const size = items.filter((o) => sameRow(o) && o.kind !== 'area' && o.box.x < next && o.box.x - (it.box.x + it.box.w) < 20 * h && /\d/.test(o.text) && !(o.kind === 'room' && !LOOKS_LIKE_DIMS.test(o.text))).sort((p, q) => p.box.x - q.box.x)
+    if (!size.length) return
+    const sizeText = size.map((o) => o.text).join(' ')
+    // (the size reader's sure reading of one line, else the pieces only as a well-formed size: never an unsure line parsed)
+    const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? undefined
+    rows.push({ ...n, sizeText, ...(dims ? { dims } : {}), box: [it.box, ...size.map((o) => o.box)].reduce(union), nameBox: it.box })
+  })
+  // stacked in a column: each row joins the nearest aligned row above it
+  const column = <T extends { nameBox: Box }>(rs: T[], maxGap: number, aligned: (p: Box, q: Box, h: number) => boolean, min: number): T[][] => {
+    const s = [...rs].sort((p, q) => cy(p.nameBox) - cy(q.nameBox))
+    const parent = s.map((_, i) => i)
+    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+    s.forEach((r, i) => {
+      const h = r.nameBox.h
+      let best = -1
+      for (let j = i - 1; j >= 0; j--) {
+        const d = cy(r.nameBox) - cy(s[j].nameBox)
+        if (d > maxGap * h) break
+        if (d > 0.5 * h && aligned(s[j].nameBox, r.nameBox, h)) {
+          best = j
+          break
+        }
+      }
+      if (best >= 0) parent[find(i)] = find(best)
+    })
+    const groups = new Map<number, T[]>()
+    s.forEach((r, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), r]))
+    return [...groups.values()].filter((g) => g.length >= min)
+  }
+  const near = (p: number, q: number, h: number) => Math.abs(p - q) <= 2 * h
+  const tables: SizeTable[] = column(rows, 6, (p, q, h) => near(p.x, q.x, h) || near(p.x + p.w, q.x + q.w, h) || near(p.x + p.w / 2, q.x + q.w / 2, h), 3)
+    .map((g) => ({ box: g.map((r) => r.box).reduce(union), rows: g.map(({ nameBox: _, ...r }) => r) }))
+    .filter((t) => !gray || darkOutside(gray, t.box, items) < 0.03)
+  const floors = items.filter((it) => FLOOR_NO.test(it.text.trim())).map((it) => ({ nameBox: it.box }))
+  for (const g of column(floors, 4, (p, q, h) => near(p.x, q.x, h / 2) || near(p.x + p.w, q.x + q.w, h / 2), 5)) {
+    const b = g.map((r) => r.nameBox).reduce(union)
+    const h = Math.max(...g.map((r) => r.nameBox.h))
+    tables.push({ box: { ...b, w: b.w + 4 * h }, rows: [] })
+  }
+  return tables
+}
+
+/** the share of a box's pixels that are dark (wall ink) and in no read text's box */
+function darkOutside(g: Gray, b: Box, items: TextItem[]): number {
+  const inText = items.filter((it) => it.box.x < b.x + b.w && it.box.x + it.box.w > b.x && it.box.y < b.y + b.h && it.box.y + it.box.h > b.y).map((it) => it.box)
+  let dark = 0, n = 0
+  for (let y = Math.max(0, Math.floor(b.y)); y < Math.min(g.height, b.y + b.h); y++)
+    for (let x = Math.max(0, Math.floor(b.x)); x < Math.min(g.width, b.x + b.w); x++) {
+      n++
+      if (g.data[y * g.width + x] < 80 && !inText.some((t) => x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h)) dark++
+    }
+  return n ? dark / n : 0
+}
+
+/** the key two printings of one room name share: "LIVING & DINING" = "LIVING+DINING", "Ver2" = "VER 2" */
+const nameKey = (s: string) => normaliseName(s).replace(/\bAND\b|[^A-Z0-9]/g, '')
+
+/**
+ * A table row's size given to the plan label of its name (s25), as if printed under it: "SUITE 1" in the room ↔ the row
+ * SUITE 1; a numbered legend's row ↔ the bare number printed in the room ("1" → MASTER BED, its kind and size). Several
+ * labels of one name (two flats, two tables): the nearest pairs first, one row per label. A label that read its own size
+ * keeps it.
+ */
+export function applyTables(items: TextItem[], tables: SizeTable[]): void {
+  const pairs: { r: TableRow; it: TextItem; d: number }[] = []
+  for (const t of tables)
+    for (const r of t.rows) {
+      if (!r.dims && r.num === undefined) continue
+      for (const it of items) {
+        const ok = r.num !== undefined ? it.kind === 'other' && /^\d{1,2}\.?$/.test(it.text.trim()) && parseInt(it.text, 10) === r.num : it.kind === 'room' && !it.dims && nameKey(it.text.split('\n')[0]) === nameKey(r.name)
+        const x = it.box.x + it.box.w / 2, y = it.box.y + it.box.h / 2
+        if (ok) pairs.push({ r, it, d: Math.hypot(Math.max(t.box.x - x, 0, x - t.box.x - t.box.w), Math.max(t.box.y - y, 0, y - t.box.y - t.box.h)) })
+      }
+    }
+  const took = new Set<TextItem>()
+  for (const { r, it } of pairs.sort((p, q) => p.d - q.d)) {
+    if (r.onPlan || took.has(it)) continue
+    took.add(it)
+    r.onPlan = true
+    if (r.num !== undefined) Object.assign(it, { text: r.name, kind: 'room', roomKind: r.roomKind })
+    if (r.dims) {
+      it.dims = r.dims
+      delete it.sizeUnread, delete it.sizeBox, delete it.sizeGuess
+    }
+  }
+}
+
+/** the read text lying in a table (its centre in a table's box): no plan label */
+export const inTable = (tables: SizeTable[], it: TextItem): boolean =>
+  tables.some((t) => { const x = it.box.x + it.box.w / 2, y = it.box.y + it.box.h / 2; return x >= t.box.x && x <= t.box.x + t.box.w && y >= t.box.y && y <= t.box.y + t.box.h })
 
 // ---------------------------------------------------------------- what to re-ask the backup AI reader
 
@@ -1000,10 +1169,15 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         if (isSize(i)) return [{ text: read[i].text || s!.read!.text, conf: 0.3, box: l.box, size: 'unsure', guess: s!.read!.text }]
         return read[i].text ? [{ text: read[i].text, conf: read[i].conf, box: l.box }] : []
       })
-    const items = [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] // a vertical word stands alone
+    const all = [...groupWords(words(false)), ...words(true).flatMap((w) => groupWords([w]))] // a vertical word stands alone
+    // a size table beside the plan: its text is no plan label (s25)
+    const tables = findTables(all, gray)
+    const items = all.filter((it) => !inTable(tables, it))
     // a room that should carry a printed size and has none read: the Studio asks for it (unless the AI reads it first)
     for (const it of items) if (!it.dims && (reaskReason(it) === 'room-without-dims' || (it.kind === 'room' && reaskReason(it) === 'unparsed-dims'))) it.sizeUnread = true
-    return { items, glyphPx: charH }
+    // …unless the table beside the plan prints it
+    applyTables(items, tables)
+    return { items, glyphPx: charH, ...(tables.length ? { tables } : {}) }
   } finally {
     await scheduler.terminate()
   }

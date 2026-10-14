@@ -952,6 +952,15 @@ export function eraseText(gray: Gray, text: TextTrace): Gray {
   return { width: w, height: h, data: out }
 }
 
+/** the raster with these boxes (grown by `pad` px) turned to paper */
+export function paperOver(gray: Gray, boxes: { x: number; y: number; w: number; h: number }[], pad: number): Gray {
+  const { width: w, height: h } = gray
+  const out = new Uint8Array(gray.data)
+  for (const b of boxes)
+    for (let y = Math.max(0, Math.floor(b.y - pad)); y <= Math.min(h - 1, Math.ceil(b.y + b.h + pad)); y++) out.fill(255, y * w + Math.max(0, Math.floor(b.x - pad)), y * w + Math.min(w, Math.ceil(b.x + b.w + pad) + 1))
+  return { width: w, height: h, data: out }
+}
+
 // ───────────────────────────────────────────────────────────────── the draft
 
 interface Draft {
@@ -1917,6 +1926,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts = {}) {
   const t0 = performance.now()
   const text = inputs.text ?? { items: [] }
+  // a size table / floor-stack chart beside the plan (text.ts findTables) is no plan: paper before any tracing (s25)
+  if (text.tables?.length) gray = paperOver(gray, text.tables.map((t) => t.box), 4 * (text.glyphPx ?? 10))
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   let plan = KNOBS.eraseText ? eraseText(gray, text) : gray
   let masks0 = inkMasks(plan)
@@ -2634,11 +2645,13 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
   // click / its seed): the Area box and the room count's check — never the next flat's nor the sheet title's (scoreboard:
   // Banani Unit A was checked against Unit B's 970 sft, BTI's small flats against the big one's 2703); none: the count says so
   const near = (it: TextItem, at?: Px) => (at ? Math.hypot(it.box.x + it.box.w / 2 - at.x, it.box.y + it.box.h / 2 - at.y) : 0)
-  const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it))
-  const stamps = sels.map((s, i) => {
+  // (the whole floor: a stamp no flat's faces or floor hold — printed between two drawings — is the title block's, below)
+  const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it) && (sels.length === 1 || sels.some((s) => s.has(m0(it)))))
+  const stamps: (TextItem | undefined)[] = sels.map((s, i) => {
     const at = sels.length === 1 ? pickPx : s.at ? { x: origin0.x + s.at.x * pxPerM, y: origin0.y + s.at.y * pxPerM } : undefined
     return areas.filter((it) => whose(m0(it)) === i).sort((a, b) => near(a, at) - near(b, at))[0]
   })
+  titleAreas(text.items.filter((it) => it.kind === 'area' && it.areaSqm && !areas.includes(it)), text.items, sels, parts, stamps, pxPerM)
   // each flat's TYPE label ("TYPE-A" printed over its "±2736 SFT"): kept as a label of kind 'other' that names the flat
   // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"); one standing in no closed room is dropped
   // by fixAndReport below, as a person's would be flagged
@@ -2688,6 +2701,8 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
     const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
     review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
   }
+  // a size table's row no plan label took (s25): the person names its room
+  for (const t of text.tables ?? []) for (const r of t.rows) if (r.dims && !r.onPlan) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `Table says ${titleCase(normaliseName(r.name))} is ${sizeText(r.dims)} — no room on the plan carries that name: name its room (R) and type that size` })
   if (scaleFew) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: 'Scale from a few printed room sizes only — check one printed length' })
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it (S) from anything whose length you know' })
@@ -2717,6 +2732,37 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),
     },
   }
+}
+
+/**
+ * s25: a flat's printed area in the title block, off its drawing ("TYPE A" over "2023 SFT (Approx.)", "Unit A … 1365 sft",
+ * "TYPE A 2279 SFT"), for the flats `stamps` has none for. One figure only — "2703 SFT & 674 SFT" names two flats and is
+ * never taken. One flat on the floor: the one such figure on the sheet is its area. Several: only when the figures by a
+ * TYPE / UNIT / FLAT word (else all such figures: White Lake's "TYPE B" goes unread) are exactly as many as the floor's
+ * flats, paired in reading order along the line the flats lie on — a figure the count does not settle goes to no flat
+ * (BTI 2nd floor: the small flats never get the big one's 2703).
+ */
+export function titleAreas(off: TextItem[], items: TextItem[], sels: Part[], parts: Part[], stamps: (TextItem | undefined)[], k: number): void {
+  const one = off.filter((it) => (it.text.match(/\d[\d,]{2,}/g) ?? []).length === 1)
+  const c = (it: TextItem) => ({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
+  const floor = parts.length ? parts : sels
+  if (floor.length === 1 && sels.length === 1) {
+    if (!stamps[0] && one.length === 1) stamps[0] = one[0]
+    return
+  }
+  const typed = one.filter((a) => items.some((o) => /\b(TYPE|UNIT|FLAT|APARTMENT)\b/i.test(o.text) && Math.hypot(c(o).x - c(a).x, c(o).y - c(a).y) < 3 * Math.max(a.box.h, o.box.h)))
+  const stamped = typed.length === floor.length ? typed : one
+  if (stamped.length !== floor.length) return
+  const cen = (s: Part) => { const rs = [...s.rooms], A = rs.reduce((t, r) => t + r.areaSqm, 0) || 1; return { x: (rs.reduce((t, r) => t + r.centroid.x * r.areaSqm, 0) / A) * k, y: (rs.reduce((t, r) => t + r.centroid.y * r.areaSqm, 0) / A) * k } }
+  const cs = floor.map(cen)
+  const spread = (f: (p: Pt) => number) => Math.max(...cs.map(f)) - Math.min(...cs.map(f))
+  const along = spread((p) => p.x) >= spread((p) => p.y) ? (p: Pt) => p.x : (p: Pt) => p.y
+  const flats = floor.map((_, i) => i).sort((a, b) => along(cs[a]) - along(cs[b]))
+  const figs = [...stamped].sort((a, b) => along(c(a)) - along(c(b)))
+  sels.forEach((s, i) => {
+    const j = floor.indexOf(s)
+    if (!stamps[i] && j >= 0) stamps[i] = figs[flats.indexOf(j)]
+  })
 }
 
 /** the hint faces.ts's small unlabelled faces become (named "AOD", kind 'other', flagged) */

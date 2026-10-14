@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { applyTables, chunkWords, classifyRoom, cleanForOcr, findTables, findTextLines, inTable, groupWords, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 import { guessKind } from '../studio/model'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
@@ -640,4 +640,77 @@ describe.skipIf(!process.env.TRACE_OCR || !existsSync(`${FIXTURES}assets__plan-s
     expect(got.map((it) => [it.text, it.kind])).toEqual([['TYPE-B', 'other']])
     expect(Math.hypot(got[0].box.x + got[0].box.w / 2 - 320, got[0].box.y + got[0].box.h / 2 - 362)).toBeLessThan(3 * 8)
   }, 120_000)
+})
+
+// s25: sizes printed in a table beside the plan (Rangs Torukabbo: name and size apart on a row; CPDL Skymark: one line
+// each), a floor-stack chart, and plan labels that are no table
+describe('findTables', () => {
+  const T = (text: string, x: number, y: number, w: number, h = 13, extra: Partial<TextItem> = {}): TextItem => {
+    const room = classifyRoom(text)
+    const kind = parseDims(text) || /\d'/.test(text) ? 'dims' : room ? 'room' : 'other'
+    return { text, box: { x, y, w, h }, kind, ...(room && kind === 'room' ? { roomKind: room.kind } : {}), ...(kind === 'dims' && parseDims(text) ? { dims: parseDims(text)! } : {}), conf: 0.9, source: 'ocr', ...extra }
+  }
+  test('name + size apart on each row, size pieces joined; a garbled row stays in the box', () => {
+    const items = [
+      T('LIVING & DINING', 944, 1133, 148), T(`12'-6" x 34'-3"`, 1174, 1132, 125),
+      T('SUITE 1', 944, 1168, 61), T(`13'-9"`, 1174, 1167, 39), T(`x 12'-4"`, 1229, 1167, 57),
+      T('SUITE 2', 944, 1203, 65), T(`11'-9" x 11'-1"`, 1174, 1203, 100),
+      T('KITCHEN', 944, 1270, 76), T(`8'-1" x 10'-0"`, 1174, 1270, 100),
+      T('ifm")', 1000, 1240, 30), // a garbled read inside the table
+      T('SUITE 3', 436, 644, 49), T('BATH', 660, 569, 36), T('STUDY', 1125, 569, 45), // the plan's own labels
+    ]
+    const tables = findTables(items)
+    expect(tables).toHaveLength(1)
+    expect(tables[0].rows.map((r) => r.name)).toEqual(['LIVING & DINING', 'SUITE 1', 'SUITE 2', 'KITCHEN'])
+    const s1 = tables[0].rows[1]
+    expect(s1.roomKind).toBe('bed')
+    expect(s1.dims!.aM / FT).toBeCloseTo(13.75, 2)
+    expect(s1.dims!.bM / FT).toBeCloseTo(12 + 4 / 12, 2)
+    expect(items.filter((it) => inTable(tables, it)).map((it) => it.text)).toContain('ifm")')
+    expect(items.filter((it) => !inTable(tables, it)).map((it) => it.text)).toEqual(['SUITE 3', 'BATH', 'STUDY'])
+  })
+  test('one line per row, a numbered legend, a floor-stack chart; plan labels far apart are no table', () => {
+    const sky = [`Living 13-6"x14-6"`, `Bed 3 10-8"x10-0"`, `Ver2 6-0"x3-0"`, `Toilet 2 5-0"x8-0"`].map((t, i) => T(t, 1600 + (i % 2) * 15, 468 + 52 * i, 250, 34))
+    const legend = [`01. LIVING 10'-00" x 09'-06"`, `02. DINING 10'-00" x 15'-05"`, `03. MASTER BED 11'-06" x 10'-00"`].map((t, i) => T(t, 600, 1220 + 31 * i, 210))
+    const chart = ['19', '18', '17', '16', '15', '14'].map((t, i) => T(t, 88, 655 + 19.5 * i, 12, 8))
+    const plan = [T(`BED-1 12'-0"x14'-6"`, 300, 300, 120), T(`BED-2 11'-0"x12'-0"`, 300, 520, 120), T(`KITCHEN 8'-0"x9'-0"`, 300, 740, 120)]
+    const tables = findTables([...sky, ...legend, ...chart, ...plan])
+    expect(tables.map((t) => t.rows.length).sort()).toEqual([0, 3, 4])
+    const l = tables.find((t) => t.rows.length === 3)!
+    expect(l.rows.map((r) => [r.num, r.name])).toEqual([[1, 'LIVING'], [2, 'DINING'], [3, 'MASTER BED']])
+    expect(tables.find((t) => t.rows.length === 4)!.rows.map((r) => r.name)).toEqual(['Living', 'Bed 3', 'Ver2', 'Toilet 2'])
+    const c = tables.find((t) => !t.rows.length)!
+    expect(c.box.x + c.box.w).toBeGreaterThan(100 + 3 * 8) // over the chart's cells beside its numbers
+    expect(plan.some((it) => inTable(tables, it))).toBe(false)
+  })
+  test('rows over wall ink are no table', () => {
+    const items = ['SUITE 1', 'SUITE 2', 'SUITE 3'].flatMap((n, i) => [T(n, 100, 100 + 30 * i, 60), T(`12'-0" x 13'-0"`, 250, 100 + 30 * i, 100)])
+    const g: Gray = { width: 400, height: 220, data: new Uint8Array(400 * 220).fill(255) }
+    expect(findTables(items, g)).toHaveLength(1)
+    for (let y = 95; y < 190; y++) g.data.fill(0, y * 400 + 180, y * 400 + 200) // a wall through the rows
+    expect(findTables(items, g)).toHaveLength(0)
+  })
+  test('parseArea reads SQT', () => expect(parseArea('2023 SQT (Approx.)')! / (FT * FT)).toBeCloseTo(2023, 0))
+})
+
+describe('applyTables', () => {
+  const room = (text: string, x: number, y: number): TextItem => ({ text, box: { x, y, w: 50, h: 10 }, kind: 'room', roomKind: classifyRoom(text)!.kind, conf: 0.9, source: 'ocr', sizeUnread: true })
+  const table = (x: number, rows: [string, string][]) => ({ box: { x, y: 400, w: 300, h: 200 }, rows: rows.map(([name, s]) => ({ name, sizeText: s, dims: parseDims(s)!, box: { x, y: 400, w: 300, h: 15 } })) })
+  test('a row names its label; two flats, two tables: the nearest pairs; an unmatched row stays off the plan', () => {
+    const a = room('SUITE 1', 634, 995), b = room('SUITE 1', 2677, 990), l = room('LIVING+DINING', 866, 569)
+    const tA = table(76, [['SUITE 1', `13'-4"x14'-0"`], ['LIVING & DINING', `12'-6"x34'-3"`], ['SUITE 2', `13'-6"x13'-6"`]])
+    const tB = table(1512, [['SUITE 1', `13'-4"x15'-0"`]])
+    applyTables([a, b, l], [tA, tB])
+    expect(a.dims!.bM / FT).toBeCloseTo(14, 3)
+    expect(b.dims!.bM / FT).toBeCloseTo(15, 3)
+    expect(l.dims!.bM / FT).toBeCloseTo(34.25, 3)
+    expect(a.sizeUnread).toBeUndefined()
+    expect(tA.rows.map((r) => !!(r as { onPlan?: boolean }).onPlan)).toEqual([true, true, false])
+  })
+  test('a numbered legend names the room its number is printed in', () => {
+    const n: TextItem = { text: '03', box: { x: 760, y: 330, w: 16, h: 10 }, kind: 'other', conf: 0.9, source: 'ocr' }
+    applyTables([n], [{ box: { x: 600, y: 1200, w: 400, h: 150 }, rows: [{ name: 'MASTER BED', num: 3, roomKind: 'bed', sizeText: `11'-06" x 10'-00"`, dims: parseDims(`11'-06" x 10'-00"`)!, box: { x: 600, y: 1280, w: 210, h: 13 } }] }])
+    expect([n.kind, n.roomKind, n.text]).toEqual(['room', 'bed', 'MASTER BED'])
+    expect(n.dims!.aM / FT).toBeCloseTo(11.5, 3)
+  })
 })
