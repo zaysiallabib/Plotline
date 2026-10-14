@@ -105,12 +105,13 @@ const KIND_RGB: Record<string, RGB> = {
  * A solver draft on its sheet (cropped to the draft ± 2 m): plan faded; rooms filled by kind (bed blue, living/dining
  * orange, kitchen red, bath cyan, veranda green, study violet, closet tan, utility olive, shaft grey, other/unnamed pink);
  * 10" walls dark red, 5" red; openings door blue, window cyan, passage magenta,
- * slider violet; review points yellow (unclosed / unlabelled) or orange (the rest); hand-traced walls green.
+ * slider violet; review points yellow (unclosed / unlabelled) or orange (the rest); hand-traced walls green; `points` (sheet px,
+ * the 30-sheet scorer's printed rooms) as dots — green ok, red not — and the crop grown to hold them.
  */
-export function writeUnitOverlay(path: string, g: Gray, unit: Unit, review: { at: { x: number; y: number }; kind: string }[], truth?: { a: Px; b: Px }[]): void {
+export function writeUnitOverlay(path: string, g: Gray, unit: Unit, review: { at: { x: number; y: number }; kind: string }[], truth?: { a: Px; b: Px }[], points: { at: Px; ok: boolean }[] = []): void {
   const pi = unit.planImage!
   const toPx = (p: { x: number; y: number }) => ({ x: pi.originPx.x + p.x * pi.pxPerM, y: pi.originPx.y + p.y * pi.pxPerM })
-  const xs = unit.vertices.map((v) => toPx(v).x), ys = unit.vertices.map((v) => toPx(v).y)
+  const xs = [...unit.vertices.map((v) => toPx(v).x), ...points.map((p) => p.at.x)], ys = [...unit.vertices.map((v) => toPx(v).y), ...points.map((p) => p.at.y)]
   const pad = 2 * pi.pxPerM
   const c = xs.length
     ? { x: Math.max(0, Math.min(...xs) - pad), y: Math.max(0, Math.min(...ys) - pad), w: 0, h: 0 }
@@ -166,6 +167,10 @@ export function writeUnitOverlay(path: string, g: Gray, unit: Unit, review: { at
     const q = to(toPx(r.at))
     const col: RGB = r.kind === 'unclosed' || r.kind === 'unlabelled' ? [255, 230, 0] : [255, 140, 0]
     for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (Math.abs(dx) === 3 || Math.abs(dy) === 3) dot(q.x + dx, q.y + dy, col)
+  }
+  for (const p of points) {
+    const q = to(p.at)
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) if (dx * dx + dy * dy <= 25) dot(q.x + dx, q.y + dy, dx * dx + dy * dy >= 13 ? [0, 0, 0] : p.ok ? [0, 200, 0] : [230, 0, 0])
   }
   writePng(path, W, H, px)
 }

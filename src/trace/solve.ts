@@ -2882,7 +2882,7 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   let text: TextTrace = { items: [] }
   try {
     const { readText } = await import('./text')
-    text = await readText(gray)
+    text = opts.text ? { ...opts.text, items: [...opts.text.items] } : await readText(gray, opts.ocr)
     if (opts.ai) text = await (await import('./ai')).askAi(text, gray, opts.ai)
   } catch (e) {
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `Could not read the printed text (${(e as Error).message}) — rooms stay unnamed` })
@@ -2903,9 +2903,9 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   try {
     const { draft, origin0, pxPerM: k } = traces
     const faces = draft.rooms.map((r) => roomPolygon(r, draft.unit).map((q) => ({ x: origin0.x + q.x * k, y: origin0.y + q.y * k })))
-    text.items.push(...(await (await import('./text')).readInFaces(gray, faces, text, k)))
+    text.items.push(...(await (await import('./text')).readInFaces(gray, faces, text, k, opts.ocr)))
     // Level 4: a flat's printed area with no TYPE read beside it gets the block around it read (text.ts readTypes)
-    text.items.push(...(await (await import('./text')).readTypes(gray, text)))
+    text.items.push(...(await (await import('./text')).readTypes(gray, text, opts.ocr)))
   } catch {
     // (a face read failing never costs the draft)
   }

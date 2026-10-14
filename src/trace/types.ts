@@ -254,4 +254,8 @@ export interface AutoTraceOpts {
    * classed 5" / 10".
    */
   tracker?: 'skeleton' | 'bands' | 'tracks'
+  /** a text trace read before (`readText`'s result on this sheet): the read is skipped — the 30-sheet scorer's cache (eval/score30) — extension (s26) */
+  text?: TextTrace
+  /** where tesseract's eng.traineddata comes from for every read of the sheet (node: `cachePath`, so nothing is downloaded) — extension (s26) */
+  ocr?: { cachePath?: string; langPath?: string }
 }

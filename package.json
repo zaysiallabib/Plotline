@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "score30": "vitest run src/trace/eval/score30.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
     "react": "^19.3.0",
