@@ -2641,11 +2641,13 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
   // click / its seed): the Area box and the room count's check — never the next flat's nor the sheet title's (scoreboard:
   // Banani Unit A was checked against Unit B's 970 sft, BTI's small flats against the big one's 2703); none: the count says so
   const near = (it: TextItem, at?: Px) => (at ? Math.hypot(it.box.x + it.box.w / 2 - at.x, it.box.y + it.box.h / 2 - at.y) : 0)
-  const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it))
-  const stamps = sels.map((s, i) => {
+  // (the whole floor: a stamp no flat's faces or floor hold — printed between two drawings — is the title block's, below)
+  const areas = text.items.filter((it) => it.kind === 'area' && it.areaSqm && onFlat(it) && (sels.length === 1 || sels.some((s) => s.has(m0(it)))))
+  const stamps: (TextItem | undefined)[] = sels.map((s, i) => {
     const at = sels.length === 1 ? pickPx : s.at ? { x: origin0.x + s.at.x * pxPerM, y: origin0.y + s.at.y * pxPerM } : undefined
     return areas.filter((it) => whose(m0(it)) === i).sort((a, b) => near(a, at) - near(b, at))[0]
   })
+  titleAreas(text.items.filter((it) => it.kind === 'area' && it.areaSqm && !areas.includes(it)), text.items, sels, parts, stamps, pxPerM)
   // each flat's TYPE label ("TYPE-A" printed over its "±2736 SFT"): kept as a label of kind 'other' that names the flat
   // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"); one standing in no closed room is dropped
   // by fixAndReport below, as a person's would be flagged
@@ -2724,6 +2726,37 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),
     },
   }
+}
+
+/**
+ * s25: a flat's printed area in the title block, off its drawing ("TYPE A" over "2023 SFT (Approx.)", "Unit A … 1365 sft",
+ * "TYPE A 2279 SFT"), for the flats `stamps` has none for. One figure only — "2703 SFT & 674 SFT" names two flats and is
+ * never taken. One flat on the floor: the one such figure on the sheet is its area. Several: only when the figures by a
+ * TYPE / UNIT / FLAT word (else all such figures: White Lake's "TYPE B" goes unread) are exactly as many as the floor's
+ * flats, paired in reading order along the line the flats lie on — a figure the count does not settle goes to no flat
+ * (BTI 2nd floor: the small flats never get the big one's 2703).
+ */
+export function titleAreas(off: TextItem[], items: TextItem[], sels: Part[], parts: Part[], stamps: (TextItem | undefined)[], k: number): void {
+  const one = off.filter((it) => (it.text.match(/\d[\d,]{2,}/g) ?? []).length === 1)
+  const c = (it: TextItem) => ({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
+  const floor = parts.length ? parts : sels
+  if (floor.length === 1 && sels.length === 1) {
+    if (!stamps[0] && one.length === 1) stamps[0] = one[0]
+    return
+  }
+  const typed = one.filter((a) => items.some((o) => /\b(TYPE|UNIT|FLAT|APARTMENT)\b/i.test(o.text) && Math.hypot(c(o).x - c(a).x, c(o).y - c(a).y) < 3 * Math.max(a.box.h, o.box.h)))
+  const stamped = typed.length === floor.length ? typed : one
+  if (stamped.length !== floor.length) return
+  const cen = (s: Part) => { const rs = [...s.rooms], A = rs.reduce((t, r) => t + r.areaSqm, 0) || 1; return { x: (rs.reduce((t, r) => t + r.centroid.x * r.areaSqm, 0) / A) * k, y: (rs.reduce((t, r) => t + r.centroid.y * r.areaSqm, 0) / A) * k } }
+  const cs = floor.map(cen)
+  const spread = (f: (p: Pt) => number) => Math.max(...cs.map(f)) - Math.min(...cs.map(f))
+  const along = spread((p) => p.x) >= spread((p) => p.y) ? (p: Pt) => p.x : (p: Pt) => p.y
+  const flats = floor.map((_, i) => i).sort((a, b) => along(cs[a]) - along(cs[b]))
+  const figs = [...stamped].sort((a, b) => along(c(a)) - along(c(b)))
+  sels.forEach((s, i) => {
+    const j = floor.indexOf(s)
+    if (!stamps[i] && j >= 0) stamps[i] = figs[flats.indexOf(j)]
+  })
 }
 
 /** the hint faces.ts's small unlabelled faces become (named "AOD", kind 'other', flagged) */
