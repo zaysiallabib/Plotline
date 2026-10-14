@@ -46,7 +46,7 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   const entry = e && core.roomAt(e.p, rooms, unit)
   const of = (...kinds: Room['kind'][]) => kinds.flatMap((k) => listed.filter((r) => r.kind === k))
   const opensOnto = (a: Room, kinds: Room['kind'][]) => of(...kinds).filter((b) => doorWalls(a).some((id) => b.wallIds.includes(id)))
-  const out = new Set<Room>(listed.filter((r) => r.id === entry?.id || r.kind === 'foyer' || /foyer|entr/i.test(r.name)))
+  const out = new Set<Room>(listed.filter((r) => r.id === entry?.id || /foyer|entr/i.test(r.name)))
   const take = (rs: Room[]) => rs.forEach((r) => out.add(r))
   take(of('living', 'dining'))
   for (const k of of('kitchen', 'pantry')) take([k, ...opensOnto(k, ['balcony'])])
