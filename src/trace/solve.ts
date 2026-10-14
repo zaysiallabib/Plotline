@@ -30,7 +30,7 @@ import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wal
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { edt, lineInk, normalPolarity, threshold } from './raster'
+import { edt, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
@@ -1918,10 +1918,14 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const t0 = performance.now()
   const text = inputs.text ?? { items: [] }
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
-  const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
-  const masks0 = inkMasks(plan)
+  let plan = KNOBS.eraseText ? eraseText(gray, text) : gray
+  let masks0 = inkMasks(plan)
   // (the sheet's scale, or the raster's own wall width as the 5" prior)
   const k0 = opts.pxPerM ?? thicknessOf(wallHalfWidth(edt(masks0.wall, gray.width, gray.height), gray.width, gray.height)) / PARTITION_M
+  // walls drawn as a light band between two thin dark outlines (bti's grey walls): the bands painted solid, and everything
+  // after this reads that (the text was read on the sheet as drawn). Sheets with solid walls never get here (raster.ts)
+  const solid = inputs.walls ? null : outlinedWalls(gray, k0)
+  if (solid) (gray = solid), (plan = KNOBS.eraseText ? eraseText(gray, text) : gray), (masks0 = inkMasks(plan))
   const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, k0, inputs.green)

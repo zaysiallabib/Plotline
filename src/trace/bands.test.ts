@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { bandWalls } from './bands'
-import { normalPolarity } from './raster'
+import { normalPolarity, outlinedWalls } from './raster'
 import { traceWalls } from './walls'
 import type { Gray } from './types'
 
@@ -98,5 +98,42 @@ describe('normalPolarity: white lines on a dark page', () => {
     for (let y = 30; y < 170; y++) for (let x = 30; x < 150; x++) data[y * 300 + x] = 250
     const g = { width: 300, height: 200, data }
     expect(normalPolarity(g)).toBe(g)
+  })
+})
+
+describe('outlinedWalls: a grey band between two thin dark outlines is wall ink', () => {
+  // a room of 10 px walls (k = 70 px/m: 0.14 m) drawn bti's way: two 2 px dark outlines, a 6 px grey fill between, a grey
+  // floor inside, white paper outside; a black column at one corner
+  const outlined = (fill = 155): Gray => {
+    const w = 300, h = 220, d = new Uint8Array(w * h).fill(255)
+    const box = (x0: number, y0: number, x1: number, y1: number, v: number) => {
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) d[y * w + x] = v
+    }
+    box(20, 20, 280, 200, 30) // outer outline
+    box(22, 22, 278, 198, fill) // the band's fill
+    box(28, 28, 272, 192, 30) // inner outline
+    box(30, 30, 270, 190, 218) // the floor
+    box(20, 20, 40, 40, 10) // a column
+    return { width: w, height: h, data: d }
+  }
+  test('the band is painted solid: four walls the band thick, no breaks; the floor and the paper stay', () => {
+    const g = outlined()
+    const s = outlinedWalls(g, 70)!
+    expect(s).not.toBeNull()
+    expect(s.data[25 * 300 + 150]).toBe(0) // the fill
+    expect(s.data[195 * 300 + 275]).toBe(0) // the corner's fill (no clean crossing there)
+    expect(s.data[100 * 300 + 150]).toBe(218)
+    expect(s.data[5 * 300 + 150]).toBe(255)
+    const walls = traceWalls(s, { tracker: 'tracks', halfPx: 4.5 }).walls
+    expect(walls.length).toBe(4)
+    for (const x of walls) expect(x.thicknessPx).toBeGreaterThan(9)
+  })
+  test('solid walls, a fill as light as the floor (a window, a hollow wall) or a tile floor: left alone', () => {
+    expect(outlinedWalls(sheet(300, 200, [[20, 20, 260, 10], [20, 20, 10, 160], [270, 20, 10, 160], [20, 170, 260, 10]]), 70)).toBeNull()
+    expect(outlinedWalls(outlined(225), 70)).toBeNull()
+    // tiles: 6 px squares of the floor's own tone between 2 px dark joints — the same tone across every joint
+    const w = 300, h = 200, d = new Uint8Array(w * h).fill(200)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x % 8 < 2 || y % 8 < 2) d[y * w + x] = 40
+    expect(outlinedWalls({ width: w, height: h, data: d }, 70)).toBeNull()
   })
 })

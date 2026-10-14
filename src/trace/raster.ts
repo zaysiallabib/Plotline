@@ -161,3 +161,85 @@ export function normalPolarity(g: Gray): Gray {
   for (let i = 0; i < out.length; i++) out[i] = 255 - data[i]
   return { width: w, height: h, data: out }
 }
+
+/**
+ * Walls drawn as a light band between two thin dark outlines (bti's grey walls; their columns stay solid black): every
+ * row and column is read as floor | thin dark line | fill | thin dark line | floor, the whole crossing no wider than a
+ * thick wall (0.35 m at `k` px/m) and the fill darker than the floor on BOTH sides by 25 — a tile or plank floor is the
+ * same tone across its joints, a window's glass is paper. The commonest such fill tone is the sheet's wall fill; its
+ * crossings (outlines included) and the fill they hold where no crossing is clean (corners, T's: that tone within a wall
+ * width) are painted black on a copy, so the tracer reads solid ink. null when the walls are solid already (fewer
+ * outlined crossings than solid dark wall-wide ones) or nothing is outlined.
+ */
+export function outlinedWalls(g: Gray, k: number): Gray | null {
+  const { width: w, height: h, data } = g
+  const tD = 120, near = 20
+  const maxW = Math.round(0.35 * k) + 2, lineMax = Math.max(3, Math.round(0.05 * k)), minSolid = Math.max(lineMax + 1, Math.round(0.1 * k))
+  const hist = new Float64Array(256)
+  const mark = new Uint8Array(w * h)
+  let solid = 0, outlined = 0
+  const fill: number[] = []
+  // one pass over every row and column: T null = collect the fill tones, else mark the crossings of fill ≈ T
+  const scan = (T: number) => {
+    for (const horiz of [true, false]) {
+      const L = horiz ? w : h, n = horiz ? h : w, step = horiz ? 1 : w
+      for (let line = 0; line < n; line++) {
+        const base = horiz ? line * w : line
+        const at = (u: number) => (u < 0 || u >= L ? 255 : data[base + u * step])
+        let ps = -1, pe = -1 // the previous dark run
+        for (let u = 0; u < L; ) {
+          if (data[base + u * step] > tD) {
+            u++
+            continue
+          }
+          let e = u
+          while (e + 1 < L && data[base + (e + 1) * step] <= tD) e++
+          if (T < 0 && e - u + 1 >= minSolid && e - u + 1 <= maxW) solid++
+          if (ps >= 0 && pe - ps < lineMax && e - u < lineMax && e - ps < maxW) {
+            fill.length = 0
+            for (let t = pe + 1; t < u; t++) fill.push(data[base + t * step])
+            fill.sort((p, q) => p - q)
+            const F = fill[fill.length >> 1]
+            let dark = 255
+            for (let t = ps; t <= e; t++) if (t <= pe || t >= u) dark = Math.min(dark, data[base + t * step])
+            const A = Math.max(at(ps - 2), at(ps - 3)), B = Math.max(at(e + 2), at(e + 3))
+            if (F - dark >= 50 && F <= Math.min(A, B) - 25 && fill.filter((v) => Math.abs(v - F) <= 25).length >= 0.6 * fill.length) {
+              if (T < 0) hist[F]++
+              else if (Math.abs(F - T) <= near) {
+                outlined++
+                for (let t = ps; t <= e; t++) mark[base + t * step] = 1
+              }
+            }
+          }
+          ;(ps = u), (pe = e), (u = e + 1)
+        }
+      }
+    }
+  }
+  scan(-1)
+  let T = 0, best = 0
+  for (let t = 0; t < 256; t++) {
+    let c = 0
+    for (let d = -5; d <= 5; d++) c += hist[t + d] ?? 0
+    if (c > best) (best = c), (T = t)
+  }
+  if (!best) return null
+  scan(T)
+  if (outlined < Math.max(50, 0.25 * solid)) return null
+  // the fill the clean crossings could not see (corners, T's): that tone, reached through itself within a wall width
+  let q: number[] = []
+  for (let i = 0; i < mark.length; i++) if (mark[i]) q.push(i)
+  for (let d = 1; d <= maxW && q.length; d++) {
+    const nq: number[] = []
+    for (const i of q)
+      for (const j of [i - 1, i + 1, i - w, i + w]) {
+        if (j < 0 || j >= mark.length || mark[j] || Math.abs((j % w) - (i % w)) > 1) continue
+        if (data[j] <= tD || Math.abs(data[j] - T) > near) continue
+        ;(mark[j] = 1), nq.push(j)
+      }
+    q = nq
+  }
+  const out = new Uint8Array(data)
+  for (let i = 0; i < out.length; i++) if (mark[i]) out[i] = 0
+  return { width: w, height: h, data: out }
+}
