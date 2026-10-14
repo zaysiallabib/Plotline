@@ -271,6 +271,7 @@ describe('re-ask rule', () => {
     expect(reaskReason(item({}))).toBe('room-without-dims')
     expect(reaskReason(item({ text: 'AOD', roomKind: 'shaft' }))).toBeNull()
     expect(reaskReason(item({ text: 'LIFT LOBBY', roomKind: 'other' }))).toBeNull()
+    for (const text of ['AC OUTDOOR UNIT', 'A.C', 'AC LEDGE', 'O.D.U', 'GARBAGE CHUTE']) expect(reaskReason(item({ text, roomKind: 'shaft' })), text).toBeNull()
     expect(reaskReason(item({ text: 'SUNSHADE/PLANTER', roomKind: 'balcony', green: true }))).toBeNull()
   })
   test('unparsed dims → ask', () => {

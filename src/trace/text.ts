@@ -372,8 +372,8 @@ export function groupWords(words: OcrWord[]): TextItem[] {
 
 // ---------------------------------------------------------------- what to re-ask the backup AI reader
 
-/** Rooms that never carry a printed size on Dhaka plans: shafts, planter strips, lift/stair/lobby. */
-const NO_SIZE_EXPECTED = /\b(AOD|DUCT|SHAFT|VOID|LIFT|STAIRS?|LOBBY|PASSAGE|CORRIDOR)\b/
+/** Rooms that never carry a printed size on Dhaka plans: shafts and AC ledges, planter strips, lift/stair/lobby. */
+const NO_SIZE_EXPECTED = /^A[./]?C\b|\b(AOD|DUCT|SHAFT|VOID|CHUTE|O\.?D\.?U|LEDGE|LIFT|STAIRS?|LOBBY|PASSAGE|CORRIDOR)\b/
 
 export type ReaskReason = 'low-confidence' | 'room-without-dims' | 'unparsed-dims'
 
