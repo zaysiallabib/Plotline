@@ -225,7 +225,7 @@ export function outlinedWalls(g: Gray, k: number): Gray | null {
   }
   if (!best) return null
   scan(T)
-  if (outlined < Math.max(50, 0.25 * solid)) return null
+  if (outlined < Math.max(50, solid)) return null
   // the fill the clean crossings could not see (corners, T's): that tone, reached through itself within a wall width
   let q: number[] = []
   for (let i = 0; i < mark.length; i++) if (mark[i]) q.push(i)

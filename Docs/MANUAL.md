@@ -339,6 +339,7 @@ Projects, their drawings and their pictures are kept in this browser only.
 - Each such edge is kept only if the room it closes matches its printed size: within 6" it needs no question; off by more than 1 ft it is left out and the room shows as open.
 - A wall stopping short of the next wall is carried on to it when the same thing is drawn in between, or when the gap is under 1 ft.
 - A space with no name split off a named room by a thin or open line belongs to that room.
+- Walls drawn as a grey (or any light colour) band between two thin dark lines, as on bti's newer brochures (Amabilia), are read as walls, the same as solid black ones — when most of the sheet's walls are drawn that way. Where furniture is drawn the same way and the walls are very thin (bti Magnifico, Moondrift) it is not used yet: draw what is missing with W. A sheet drawn in white lines on a dark page (bti La Montana) is read too. Your picture in the Studio stays as it is.
 
 **Openings**
 - A window that starts at the floor and is at least 1.5 m tall becomes a **glass wall**.
