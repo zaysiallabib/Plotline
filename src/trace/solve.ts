@@ -30,7 +30,7 @@ import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wal
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { edt, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
@@ -1160,6 +1160,9 @@ function inkRun(mask: Uint8Array, w: number, h: number, p: Px, d: Pt, thPx: numb
   return t - 1
 }
 
+/** a ∪ b (either may be missing) */
+const union = (a?: Uint8Array | null, b?: Uint8Array | null): Uint8Array | undefined => (a && b ? a.map((v, i) => v | b[i]) : (a ?? b ?? undefined))
+
 const stripWall = (w: GWall): Wall => ({ id: w.id, a: w.a, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: w.openings })
 
 // ───────────────────────────────────────────────────────────────── plants, outside, picking the flat
@@ -1943,12 +1946,19 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // after this reads that (the text was read on the sheet as drawn). Sheets with solid walls never get here (raster.ts)
   const solid = inputs.walls ? null : outlinedWalls(gray, k0)
   if (solid) (gray = solid), (plan = KNOBS.eraseText ? eraseText(gray, text) : gray), (masks0 = inkMasks(plan))
+  // founder 2026-10-15, furniture is not building: a closed piece of ink touching no wall (a bed, a sofa, a table, a chair)
+  // is left out of the wall tracing and the thin-line faces (raster.ts furnitureMask) — never a wall, a column or a room
+  // …and hatch (thin lines close together: shower tiles, a wardrobe's hangers) is texture, never a wall (raster.ts hatchMask).
+  // The sheet's ink grey stays the one read with them (taking them out must not move what counts as ink elsewhere)
+  const inkT = inkThreshold(plan, {})
+  const furniture = inputs.walls ? undefined : union(furnitureMask(plan, k0, inkT), hatchMask(plan, k0, inkT))
   const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, k0, inputs.green)
   const tracker = opts.tracker ?? KNOBS.tracker
   // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
-  const masks = tracker === 'tracks' ? { plant: inputs.green, glass: ink.glass } : {}
+  // (…and the furniture with it, whitened the same way)
+  const masks = tracker === 'tracks' ? { plant: union(inputs.green, furniture), glass: ink.glass, ...(furniture ? { darkMax: inkT } : {}) } : {}
   let trace = inputs.walls ?? traceWalls(plan, { tracker, ...masks })
   opts.onProgress?.('scale', 0.5)
 
@@ -2048,7 +2058,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
     }
   }
   // (on the sheet as drawn: the text pass erases thin ink inside label boxes, and an AOD's label box often covers its grille)
-  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green) : null
+  const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture) : null
   // (a glass front faces.ts drew: a window floor to top, the child of a wall of its own — Level 1)
   if (thin) trace = { ...trace, walls: [...trace.walls, ...thin.walls.filter((w) => !w.glass)], openings: [...trace.openings, ...thin.walls.filter((w) => w.glass).map((w) => ({ a: w.a, b: w.b, kind: 'window' as const, conf: 0.5, thicknessPx: w.thicknessPx, glass: true }))] }
 
@@ -2780,9 +2790,9 @@ const AOD_HINT = 'AOD (thin-line face)'
  * edges, railings, light-grey shaft walls) — low walls, never full height. Lines inside a fitted room or across a drawn
  * fixture are furniture; printed labels say which side is which room.
  */
-function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array): ThinFaces {
+function closeThinFaces(sheet: Gray, trace: WallTrace, k: number, text: TextTrace, fits: RoomFit[], fixtures: { at: Px; r: number }[], green?: Uint8Array, furniture?: Uint8Array): ThinFaces {
   const labels = text.items.filter((it) => it.kind === 'room').map((it) => ({ at: { x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }, name: normaliseName(it.text.split('\n')[0]) }))
-  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green })
+  return thinFaces(sheet, { k, walls: trace.walls, openings: trace.openings, labels, fits: fits.map((f) => f.rect), fixtures, green, furniture })
 }
 
 /**

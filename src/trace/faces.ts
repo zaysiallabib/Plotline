@@ -37,6 +37,8 @@ export interface FaceOpts {
   fixtures?: { at: Px; r: number; kind?: string }[]
   /** plant-green pixels: never line ink; a boundary beside them is a planter edge */
   green?: Uint8Array
+  /** furniture standing free (raster.ts furnitureMask): never line ink */
+  furniture?: Uint8Array
 }
 
 /** a thin-line candidate: axis line at c from u0 to u1 (px), `th` px thick as drawn */
@@ -85,6 +87,8 @@ export const FACES = {
   bathMax: 15,
   /** a plant-green blob up to this big (m²) and box-shaped is a planter box; bigger is a lawn */
   planterMax: 20,
+  /** an unlabelled face no deeper than this (and twice as long) is a wardrobe / counter / vanity strip */
+  cupboardM: 0.75,
   /** a line deeper than this inside a fitted room is furniture */
   fitMargin: 0.15,
   railingM: 1.1,
@@ -242,7 +246,7 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
   const E = new Uint8Array(W * H)
   for (const s of [...o.walls, ...decided]) stamp(E, W, H, s.a, s.b, thOf(s) / 2 + halo)
   const C = new Uint8Array(W * H)
-  for (let i = 0; i < C.length; i++) C[i] = gray.data[i] <= FACES.thinCut && !E[i] && !o.green?.[i] ? 1 : 0
+  for (let i = 0; i < C.length; i++) C[i] = gray.data[i] <= FACES.thinCut && !E[i] && !o.green?.[i] && !o.furniture?.[i] ? 1 : 0
   const raw = [true, false].flatMap((h) => axisLines(C, W, H, h, FACES.minLen * k, gap, FACES.maxTh * k))
   // (b) a planter box: a plant-green blob of planter size and box shape (its foliage hides the edge lines) gives its four
   // sides as candidate edges — where the green stops; the faces they close are judged like any other
@@ -430,6 +434,10 @@ export function thinFaces(gray: Gray, o: FaceOpts): ThinFaces {
       // …or of a closed bathroom (a wc / basin drawn in it): a shower bay, a tub — never a boundary
       if (!names.size && baths.has(p.G)) return 'a bay of a bathroom (shower / tub)'
       if (!names.size && fixPx.some((i) => lab1[i] === p.id)) return 'fixture'
+      // a wardrobe, a counter, a vanity, a shoe cabinet (founder 2026-10-15, furniture is not building): an unlabelled strip
+      // no deeper than a cupboard and at least twice as long — never an AOD of its own
+      const across = Math.min(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1), along = Math.max(p.x1 - p.x0 + 1, p.y1 - p.y0 + 1)
+      if (!names.size && p.green < 0.5 * p.n && across <= FACES.cupboardM * k && along >= 2 * across) return 'a cupboard / counter strip'
       // no label: an AOD-sized space, or a planter (plant green over half of it); anything bigger is no evidence of a room
       if (!names.size && a > FACES.aodMax && p.green < 0.5 * p.n) return 'unlabelled, too big for an AOD'
       for (const { ra, h } of fitHist) {

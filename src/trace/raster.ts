@@ -243,3 +243,163 @@ export function outlinedWalls(g: Gray, k: number): Gray | null {
   for (let i = 0; i < out.length; i++) if (mark[i]) out[i] = 0
   return { width: w, height: h, data: out }
 }
+
+/** furniture painted out before walls and rooms (founder, 2026-10-15), metres */
+export const FURNITURE = {
+  /** a piece fits in this square (a bed, an L-sofa, a table with its chairs) */
+  maxSide: 2.6,
+  /** …and is wider than a wall across (a window's frame in a wall gap is not furniture) */
+  minSide: 0.35,
+  /** its ink and what it closes in fill at least this share of its box (a chair, a bed outline, a solid sofa; an open door arc does not) */
+  closed: 0.5,
+  /** …and holds no wall: a straight band at least this long (m) and wallMinM … wallMaxM thick (a wall stub with a basin hung on it) */
+  wallLen: 1,
+  wallMinM: 0.08,
+  wallMaxM: 0.35,
+}
+
+/**
+ * Founder rules 2 + 3 (2026-10-15): furniture is not building. Ink (grey ≤ t) in a piece of its own — touching no wall,
+ * no other line — that fits in FURNITURE.maxSide both ways, is wider across than a wall and is closed (solid, or an
+ * outline around paper: a bed, a sofa, a table, a chair, a WC, a stamp box) and holds no wall's band → its pixels, what it
+ * closes in and a pixel round: the wall tracer and the thin-line faces never see them — never a wall, a column or a room.
+ * The sheet itself is not changed (the fitted rooms read it as drawn). A wall touching it (a bed against its wall) keeps it.
+ * null when there is none.
+ */
+export function furnitureMask(g: Gray, k: number, t: number): Uint8Array | null {
+  const { width: w, height: h, data } = g
+  const lab = new Int32Array(w * h)
+  const stack: number[] = []
+  const maxS = FURNITURE.maxSide * k, minS = FURNITURE.minSide * k
+  // (ink runs along x and along y through every pixel: a wall's band is long one way, wall-thick the other)
+  const hl = new Uint16Array(w * h), vl = new Uint16Array(w * h)
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; ) {
+      let e = x
+      while (e < w && data[y * w + e] <= t) e++
+      for (let q = x; q < e; q++) hl[y * w + q] = Math.min(65535, e - x)
+      x = Math.max(e, x + 1)
+    }
+  for (let x = 0; x < w; x++)
+    for (let y = 0; y < h; ) {
+      let e = y
+      while (e < h && data[e * w + x] <= t) e++
+      for (let q = y; q < e; q++) vl[q * w + x] = Math.min(65535, e - y)
+      y = Math.max(e, y + 1)
+    }
+  const L = FURNITURE.wallLen * k, t0 = FURNITURE.wallMinM * k, t1 = FURNITURE.wallMaxM * k
+  const band = (p: number) => (hl[p] >= L && vl[p] >= t0 && vl[p] <= t1) || (vl[p] >= L && hl[p] >= t0 && hl[p] <= t1)
+  const out = new Uint8Array(w * h)
+  let painted = 0
+  for (let s = 0; s < w * h; s++) {
+    if (lab[s] || data[s] > t) continue
+    const id = s + 1
+    let x0 = w, y0 = h, x1 = -1, y1 = -1, n = 0, big = false
+    const px: number[] = []
+    lab[s] = id
+    stack.push(s)
+    while (stack.length) {
+      const p = stack.pop()!, x = p % w, y = (p - x) / w
+      n++
+      if (!big) px.push(p)
+      ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+      if (x1 - x0 > maxS || y1 - y0 > maxS) (big = true), (px.length = 0)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue
+          const q = yy * w + xx
+          if (!lab[q] && data[q] <= t) (lab[q] = id), stack.push(q)
+        }
+    }
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1
+    if (big || Math.min(bw, bh) < minS || x0 === 0 || y0 === 0 || x1 === w - 1 || y1 === h - 1) continue
+    // closed: the box's paper the outside cannot reach (flood from the box's rim, around the piece's own ink)
+    const reach = new Uint8Array(bw * bh)
+    const q: number[] = []
+    for (let x = 0; x < bw; x++) for (const y of [0, bh - 1]) q.push(y * bw + x)
+    for (let y = 0; y < bh; y++) for (const x of [0, bw - 1]) q.push(y * bw + x)
+    let outside = 0
+    while (q.length) {
+      const i = q.pop()!
+      if (reach[i] || lab[(y0 + Math.floor(i / bw)) * w + x0 + (i % bw)] === id) continue
+      reach[i] = 1
+      outside++
+      const x = i % bw, y = (i - x) / bw
+      if (x > 0) q.push(i - 1)
+      if (x < bw - 1) q.push(i + 1)
+      if (y > 0) q.push(i - bw)
+      if (y < bh - 1) q.push(i + bw)
+    }
+    if (bw * bh - outside < FURNITURE.closed * bw * bh) continue
+    let nb = 0
+    for (const p of px) if (band(p)) nb++
+    if (nb >= L * t0) continue
+    // (the piece and the paper it closes in: its anti-aliased rim too, one pixel round)
+    for (const p of px) {
+      const x = p % w, y = (p - x) / w
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && y + dy >= 0 && x + dx < w && y + dy < h) out[(y + dy) * w + x + dx] = 1
+    }
+    for (let i = 0; i < bw * bh; i++) if (!reach[i]) out[(y0 + Math.floor(i / bw)) * w + x0 + (i % bw)] = 1
+    painted += n
+  }
+  return painted ? out : null
+}
+
+/** hatch (founder rule 4, 2026-10-15), metres */
+export const HATCH = {
+  /** a hatch line is at most this thick */
+  lineM: 0.05,
+  /** …and this many of them cross a scan within windowM (a hollow wall's two outlines or a window's three panes do not) */
+  lines: 4,
+  windowM: 0.4,
+}
+
+/**
+ * Founder rule 4 (2026-10-15): hatch is texture, never a wall — thin lines close together (shower tiles, a wardrobe's
+ * hangers, a floor's planks): ink pixels of a line at most HATCH.lineM thick, running across a row (column) that crosses at
+ * least HATCH.lines such lines within HATCH.windowM. On a dark page it runs after normalPolarity (it reads `g` as given).
+ * null when there is none.
+ */
+export function hatchMask(g: Gray, k: number, t: number): Uint8Array | null {
+  const { width: w, height: h, data } = g
+  const thin = Math.max(3, HATCH.lineM * k), half = Math.max(3, Math.round((HATCH.windowM * k) / 2))
+  const out = new Uint8Array(w * h)
+  let n = 0
+  // (one orientation: lines u = rows (horiz) or columns, each a scan along v; `across` = the ink run through a pixel across the scan)
+  const pass = (horiz: boolean) => {
+    const U = horiz ? h : w, V = horiz ? w : h
+    const at = (u: number, v: number) => (horiz ? u * w + v : v * w + u)
+    const across = (u: number, v: number) => {
+      let a = u, b = u
+      while (a > 0 && data[at(a - 1, v)] <= t && u - a < 3 * thin) a--
+      while (b < U - 1 && data[at(b + 1, v)] <= t && b - u < 3 * thin) b++
+      return b - a + 1
+    }
+    const starts: number[] = [], ends: number[] = []
+    for (let u = 0; u < U; u++) {
+      starts.length = ends.length = 0
+      for (let v = 0; v < V; ) {
+        if (data[at(u, v)] > t) {
+          v++
+          continue
+        }
+        let e = v
+        while (e < V && data[at(u, e)] <= t) e++
+        // a thin run whose ink runs on across the scan (a line crossing it, not a dash along it)
+        if (e - v <= thin && across(u, (v + e - 1) >> 1) >= 2 * (e - v)) starts.push(v), ends.push(e)
+        v = e
+      }
+      for (let i = 0, lo = 0, hi = 0; i < starts.length; i++) {
+        const c = (starts[i] + ends[i]) / 2
+        while (starts[lo] < c - half) lo++
+        while (hi < starts.length && starts[hi] <= c + half) hi++
+        if (hi - lo < HATCH.lines) continue
+        for (let v = starts[i]; v < ends[i]; v++) if (!out[at(u, v)]) (out[at(u, v)] = 1), n++
+      }
+    }
+  }
+  pass(true)
+  pass(false)
+  return n ? out : null
+}

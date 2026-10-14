@@ -135,7 +135,8 @@ describe('wall tracks on synthetic rasters', () => {
     box(3, 3.7, 3.5, 4.3)
     hw(box, 4, 4.5, 9, 0.127)
     const tt = traceTracks(g, {})
-    expect(tt.pillars.length).toBe(2)
+    // (founder rule 3, 2026-10-15: the lone column has no wall line running out of it — no column, a blob in the floor)
+    expect(tt.pillars.length).toBe(1)
     const facade = tt.tracks.find((t) => t.horiz && Math.abs(t.c / K - 2) < 0.05)!
     // the column is a piece of the facade wall at the facade's own thickness
     const col = facade.intervals.find((iv) => iv.u0 <= 4.5 * K + 1 && iv.u1 >= 5 * K - 1)
@@ -247,5 +248,56 @@ describe('wall tracks on synthetic rasters', () => {
     // nothing tilted, nothing doubled
     for (const w of walls) expect(w.a.x === w.b.x || w.a.y === w.b.y).toBe(true)
     expect(walls.length).toBe(4)
+  })
+})
+
+describe('furniture is not building (founder, 2026-10-15)', () => {
+  /** a closed 6 × 4 m room (10" walls), a 0.5 × 0.6 m column on its top wall; standing free in it a chair (a 0.45 m solid
+   * square), a sofa (a 2 × 0.8 m dark blob, its arms set off by a light line: wall-thick bands) and a bed (a 1.6 × 2 m thin
+   * outline with two pillows) */
+  const room = () => {
+    const s = sheet(8, 6)
+    hw(s.box, 0, -0.127, 6.127, 0.254)
+    hw(s.box, 4, -0.127, 6.127, 0.254)
+    vw(s.box, 0, 0, 4, 0.254)
+    vw(s.box, 6, 0, 4, 0.254)
+    s.box(2.75, -0.3, 3.25, 0.3) // the column, straddling the top wall
+    s.box(4.4, 2.6, 4.85, 3.05) // the chair
+    s.box(3.2, 0.4, 5.2, 1.2, 40) // the sofa…
+    s.box(3.35, 0.6, 3.38, 1.2, 230), s.box(5.02, 0.6, 5.05, 1.2, 230) // …its arms
+    const line = (x0: number, y0: number, x1: number, y1: number) => s.box(x0, y0, Math.max(x1, x0 + 0.03), Math.max(y1, y0 + 0.03), 60)
+    line(1, 1.4, 2.6, 1.4), line(1, 3.4, 2.6, 3.4), line(1, 1.4, 1, 3.4), line(2.6, 1.4, 2.6, 3.43) // the bed
+    line(1.15, 1.55, 1.7, 1.55), line(1.15, 1.85, 1.7, 1.85), line(1.15, 1.55, 1.15, 1.85), line(1.7, 1.55, 1.7, 1.88) // a pillow
+    line(1.9, 1.55, 2.45, 1.55), line(1.9, 1.85, 2.45, 1.85), line(1.9, 1.55, 1.9, 1.85), line(2.45, 1.55, 2.45, 1.88)
+    return s
+  }
+
+  test('rule 3: a column ON the wall line is a pillar, a solid blob in the floor (a chair) is not', () => {
+    const tt = traceTracks(room().g, {})
+    expect(tt.pillars.length).toBe(1)
+    expect(Math.abs(tt.pillars[0].cx / K - 1 - 3)).toBeLessThan(0.03)
+    expect(Math.abs(tt.pillars[0].cy / K - 1)).toBeLessThan(0.03)
+  })
+
+  test('Auto-trace: the walls and the column stay; the chair, the sofa and the bed are no pillar, no wall, no room', () => {
+    const { g, P } = room()
+    const prev = KNOBS.tracker
+    KNOBS.tracker = 'tracks'
+    try {
+      const r = solveTraces(g, {}, { pickPx: P(3.5, 3.6), pxPerM: K })
+      const k = r.stats.pxPerM, o = r.unit.planImage!.originPx
+      const px = (p: { x: number; y: number }) => ({ x: (o.x + p.x * k) / K - 1, y: (o.y + p.y * k) / K - 1 })
+      expect(deriveRooms(r.unit).length).toBe(1)
+      expect((r.unit.pillars ?? []).map((c) => px(c)).map((c) => [Math.round(c.x * 10) / 10 + 0, Math.round(c.y * 10) / 10 + 0])).toEqual([[3, 0]])
+      // every wall is one of the room's four sides (on their centre lines, metres from the sheet's room origin)
+      const V = new Map(r.unit.vertices.map((v) => [v.id, px(v)]))
+      for (const w of r.unit.walls) {
+        const a = V.get(w.a)!, b = V.get(w.b)!
+        const side = [a, b].every((q) => Math.abs(q.y) < 0.05) || [a, b].every((q) => Math.abs(q.y - 4) < 0.05) || [a, b].every((q) => Math.abs(q.x) < 0.05) || [a, b].every((q) => Math.abs(q.x - 6) < 0.05)
+        expect(side, JSON.stringify([a, b])).toBe(true)
+      }
+    } finally {
+      KNOBS.tracker = prev
+    }
   })
 })

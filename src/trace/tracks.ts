@@ -332,8 +332,9 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   const minContrast = opts.minContrast ?? 60
   // founder's order (2026-10-03): names → plants → PILLARS → walls. A column in a wall's line is that wall (founder rule
   // 2026-09-28): its block never cuts the wall, however long it is along the line
-  const blocks = blockBoxes(ink, W, H, maxTh)
-  const pillars = pillarsOf(blocks, maxTh, k)
+  const inkRun = inkRuns(ink, W, H)
+  const blocks = blockBoxes(ink, W, H, maxTh, inkRun)
+  const pillars = pillarsOf(blocks, maxTh, k, (b) => wallLeaves(b, ink, W, H, inkRun, maxTh, PILLAR.leaveM * k))
   /** of the stretch u0 … u1 along a track at c, the part no pillar holds */
   const outsidePillars = (horiz: boolean, c: number, u0: number, u1: number) => {
     let out = u1 - u0
@@ -935,31 +936,67 @@ export const PILLAR = {
   maxSide: 1.6,
   /** its block pixels fill at least this share of its box (a filled column, not an L of crossing wall bodies) */
   fill: 0.7,
+  /**
+   * founder rule 3 (2026-10-15): a column stands ON a wall line — a straight line no thicker than a wall (a wall's band, a
+   * hollow wall's outline, a window's frame) leaves one of its faces for at least this long, m; a solid blob no line
+   * leaves is furniture (a chair, a sofa, a bedside table, a counter top)
+   */
+  leaveM: 0.4,
 }
 
 /**
  * The sheet's columns (founder 2026-10-03: names → plants → PILLARS → walls): a block (ink thick both ways) WIDER than
  * every wall class in both directions — a junction of two walls is as wide as they are, a column stands out of them —
- * at most PILLAR.maxSide m a side and solid. Black columns of Sheltech's facade, the bigger junction columns of BTI.
+ * at most PILLAR.maxSide m a side and solid, and ON a wall line (wallLeaves). Black columns of Sheltech's facade, the
+ * bigger junction columns of BTI.
  */
 export function findPillars(ink: Uint8Array, W: number, H: number, classes: number[], pxPerM: number): Pillar[] {
   if (!classes.length) return []
   const top = classes[classes.length - 1]
   const maxTh = top + Math.max(1.5, 0.15 * top)
-  return pillarsOf(blockBoxes(ink, W, H, maxTh), maxTh, pxPerM)
+  const runs = inkRuns(ink, W, H)
+  return pillarsOf(blockBoxes(ink, W, H, maxTh, runs), maxTh, pxPerM, (b) => wallLeaves(b, ink, W, H, runs, maxTh, PILLAR.leaveM * pxPerM))
 }
 
-function pillarsOf(blocks: (Box & { n?: number })[], maxTh: number, pxPerM: number): Pillar[] {
+function pillarsOf(blocks: (Box & { n?: number })[], maxTh: number, pxPerM: number, onWallLine: (b: Box) => boolean): Pillar[] {
   return blocks
     .filter((b) => {
       const w = b.x1 - b.x0, h = b.y1 - b.y0
-      return Math.min(w, h) >= maxTh && Math.max(w, h) <= PILLAR.maxSide * pxPerM && (b.n ?? w * h) >= PILLAR.fill * w * h
+      return Math.min(w, h) >= maxTh && Math.max(w, h) <= PILLAR.maxSide * pxPerM && (b.n ?? w * h) >= PILLAR.fill * w * h && onWallLine(b)
     })
     .map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }))
 }
 
-/** Bounding boxes of ink thick both ways (both runs through the pixel longer than the thickest wall class); n = its pixels. */
-function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): (Box & { n: number })[] {
+/**
+ * Founder rule 3: a straight line no thicker than `maxTh` runs out of one of the block's faces for `len` px — from the
+ * first pixel beside the face, within a pixel of one row (column), never more than 2 px missing in a row. A wall entering
+ * a column, a hollow wall's two outlines, a window's frame lines do; a chair, a sofa or a bedside table stands free (the
+ * bed beside a bedside table is no line: far thicker across than a wall).
+ */
+export function wallLeaves(b: Box, ink: Uint8Array, W: number, H: number, runs: { hl: Uint16Array; vl: Uint16Array }, maxTh: number, len: number): boolean {
+  const x0 = Math.round(b.x0 + 0.5), x1 = Math.round(b.x1 - 0.5), y0 = Math.round(b.y0 + 0.5), y1 = Math.round(b.y1 - 0.5)
+  // (an ink pixel of a line running along x (horiz) — its run across, along y, no thicker than a wall — or along y)
+  const line = (x: number, y: number, horiz: boolean) => x >= 0 && y >= 0 && x < W && y < H && ink[y * W + x] === 1 && (horiz ? runs.vl : runs.hl)[y * W + x] <= maxTh
+  const leaves = (horiz: boolean, start: number, dir: number, v0: number, v1: number) => {
+    for (let v = v0; v <= v1; v++) {
+      let miss = 0, d = 0
+      for (; d < len && miss <= 2; d++) {
+        const u = start + dir * d
+        const hit = horiz ? line(u, v - 1, true) || line(u, v, true) || line(u, v + 1, true) : line(v - 1, u, false) || line(v, u, false) || line(v + 1, u, false)
+        // (the pixel beside the face must be ink: the line starts AT the block)
+        miss = hit ? 0 : d ? miss + 1 : 3
+      }
+      if (d >= len && miss <= 2) return true
+    }
+    return false
+  }
+  // (rows / columns one in from the corners: a wall running along a face is no line leaving it)
+  const [iy0, iy1] = y1 - y0 > 2 ? [y0 + 1, y1 - 1] : [y0, y1], [ix0, ix1] = x1 - x0 > 2 ? [x0 + 1, x1 - 1] : [x0, x1]
+  return leaves(true, x1 + 1, 1, iy0, iy1) || leaves(true, x0 - 1, -1, iy0, iy1) || leaves(false, y1 + 1, 1, ix0, ix1) || leaves(false, y0 - 1, -1, ix0, ix1)
+}
+
+/** Per ink pixel, the length of the ink run through it along x (hl) and along y (vl). */
+function inkRuns(ink: Uint8Array, W: number, H: number): { hl: Uint16Array; vl: Uint16Array } {
   const hl = new Uint16Array(W * H), vl = new Uint16Array(W * H)
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; ) {
@@ -983,6 +1020,11 @@ function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number): (Box 
       for (let q = y; q < e; q++) vl[q * W + x] = Math.min(65535, e - y)
       y = e
     }
+  return { hl, vl }
+}
+
+/** Bounding boxes of ink thick both ways (both runs through the pixel longer than the thickest wall class); n = its pixels. */
+function blockBoxes(ink: Uint8Array, W: number, H: number, maxTh: number, { hl, vl }: { hl: Uint16Array; vl: Uint16Array }): (Box & { n: number })[] {
   const blk = new Uint8Array(W * H)
   for (let i = 0; i < blk.length; i++) blk[i] = ink[i] && hl[i] > maxTh && vl[i] > maxTh ? 1 : 0
   const out: (Box & { n: number })[] = []

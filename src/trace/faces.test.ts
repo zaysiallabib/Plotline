@@ -58,6 +58,17 @@ describe('thinFaces', () => {
     expect(r.review.length).toBe(2) // the low wall + the AOD offered
   })
 
+  test('furniture is not building (founder 2026-10-15): a wardrobe strip 0.6 m deep closed by its front line is no AOD and gets no low wall', () => {
+    // the same shaft made a wardrobe: 0.6 m deep (300 … 330 px), 2 m long, its front a thin line
+    const walls = [...box, W(300, 150, 330, 150), W(300, 250, 330, 250)]
+    const g = sheet(walls)
+    pen(g, { x: 330, y: 150 }, { x: 330, y: 250 })
+    const r = thinFaces(g, { k: K, walls, openings: [], labels: [{ at: { x: 200, y: 200 }, name: 'BED 1' }] })
+    expect(r.walls).toEqual([])
+    expect(r.faces).toEqual([])
+    expect(r.lines.some((l) => /cupboard/.test(l.fate))).toBe(true)
+  })
+
   test('beside plant green the line is a planter edge (0.45 m); a green face with no label is no AOD', () => {
     const walls = [...box, ...stubs]
     const g = sheet(walls)
