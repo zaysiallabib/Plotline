@@ -135,3 +135,29 @@ export function thin(m: Uint8Array, w: number, h: number): void {
     pts = pts.filter((i) => m[i])
   }
 }
+
+/**
+ * White line work on a dark page (bti La Montana: white walls, text and furniture on a dark grey sheet) → the luminance
+ * turned over, so everything after it sees dark ink on light paper. A dark page = median grey under 110 whose light
+ * pixels are a minority and thin — a white panel on a dark page (a plan printed on a card) is not line work: most of its
+ * light pixels lie deep inside it. Anything else comes back as it is.
+ */
+export function normalPolarity(g: Gray): Gray {
+  const { width: w, height: h, data } = g
+  const hist = new Float64Array(256)
+  for (let i = 0; i < data.length; i++) hist[data[i]]++
+  let med = 0
+  for (let n = hist[0]; n < data.length / 2; ) n += hist[++med]
+  if (med >= 110) return g
+  const light = new Uint8Array(data.length)
+  let nLight = 0
+  for (let i = 0; i < data.length; i++) if (data[i] > med + 60) (light[i] = 1), nLight++
+  if (!nLight || nLight > 0.4 * data.length) return g
+  const dt = edt(light, w, h), deep = 0.03 * Math.min(w, h)
+  let nDeep = 0
+  for (let i = 0; i < dt.length; i++) if (dt[i] > deep) nDeep++
+  if (nDeep > 0.2 * nLight) return g
+  const out = new Uint8Array(data.length)
+  for (let i = 0; i < out.length; i++) out[i] = 255 - data[i]
+  return { width: w, height: h, data: out }
+}

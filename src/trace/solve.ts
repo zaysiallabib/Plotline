@@ -30,7 +30,7 @@ import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wal
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { edt, lineInk, threshold } from './raster'
+import { edt, lineInk, normalPolarity, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
@@ -2818,6 +2818,8 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
 /** The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along. */
 export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   const review: ReviewItem[] = []
+  // white lines on a dark page: turned over before anything reads it (the Studio's picture stays as it is)
+  gray = normalPolarity(gray)
   // text first (founder): its strokes are erased before the walls are traced (solveTraces)
   opts.onProgress?.('text', 0)
   let text: TextTrace = { items: [] }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { bandWalls } from './bands'
+import { normalPolarity } from './raster'
 import { traceWalls } from './walls'
 import type { Gray } from './types'
 
@@ -70,5 +71,32 @@ describe('bandWalls: straight bands of exactly the drawn thickness', () => {
     expect(axis.length).toBeGreaterThanOrEqual(4)
     expect(angled.length).toBeGreaterThanOrEqual(1)
     for (const w of axis) expect(Math.abs(w.thicknessPx - 8)).toBeLessThan(1.5)
+  })
+})
+
+describe('normalPolarity: white lines on a dark page', () => {
+  const room = (): Gray =>
+    sheet(300, 200, [
+      [20, 20, 260, 10],
+      [20, 20, 10, 160],
+      [270, 20, 10, 160],
+      [20, 170, 260, 10],
+      [120, 90, 40, 3], // a thin furniture line
+    ])
+  test('the dark sheet is turned over and traces the same walls as the light one; a light sheet is left alone', () => {
+    const light = room()
+    const dark: Gray = { ...light, data: light.data.map((v) => Math.round(70 + ((255 - v) * 170) / 255)) } // grey page, white lines
+    const back = normalPolarity(dark)
+    expect(back).not.toBe(dark)
+    expect(normalPolarity(light)).toBe(light)
+    const walls = (g: Gray) => traceWalls(g, { tracker: 'tracks', halfPx: 5 }).walls.map((w) => [w.a, w.b, Math.round(w.thicknessPx)])
+    expect(walls(back)).toEqual(walls({ ...light, data: light.data.map((v) => 255 - Math.round(70 + ((255 - v) * 170) / 255)) }))
+    expect(walls(back).length).toBe(4)
+  })
+  test('a white panel on a dark page (a plan printed on a card) is no line work: left alone', () => {
+    const data = new Uint8Array(300 * 200).fill(40)
+    for (let y = 30; y < 170; y++) for (let x = 30; x < 150; x++) data[y * 300 + x] = 250
+    const g = { width: 300, height: 200, data }
+    expect(normalPolarity(g)).toBe(g)
   })
 })
