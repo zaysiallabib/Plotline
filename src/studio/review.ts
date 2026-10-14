@@ -349,18 +349,26 @@ export function roomCount(u: Unit, rooms: Room[], stats: AutoTraceStats, flats: 
         const missing = mine.filter((x) => x.s.s !== 'done').map((x) => x.p.name)
         const n = mine.length
         const line = !n ? 'no room name was read on it' : missing.length ? `${n - missing.length} of the ${n} room names read on it are closed and named — missing: ${missing.join(', ')}` : `all ${n} room names read on it are closed and named`
-        const sum = flats.find((x) => x.name === f.name)?.areaSqm ?? 0
-        const area = f.wantSqm ? `the printed flat area gives about ${Math.round(sqmToSqft(f.wantSqm))}` : 'no printed flat area was read on it'
-        return `${f.name}: ${line}. Its closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
+        return `${f.name}: ${line}. ${areaLine('Its', flats.find((x) => x.name === f.name)?.areaSqm ?? 0, f.wantSqm, 'no printed flat area was read on it')}`
       })
       .join('\n')
   const missing = printed.filter((_, i) => st[i].s !== 'done').map((p) => p.name)
   const n = printed.length
   // (the names Auto-trace READ: one it missed is not counted — its room shows as an unnamed space)
   const line = missing.length ? `${n - missing.length} of the ${n} room names read on the sheet are closed and named — missing: ${missing.join(', ')}` : `All ${n} room names read on the sheet are closed and named`
-  const sum = rooms.reduce((t, r) => t + r.areaSqm, 0)
-  const area = stats.wantSqm ? `the printed flat area gives about ${Math.round(sqmToSqft(stats.wantSqm))}` : 'no printed flat area was read on this flat'
-  return `${line}. The closed rooms add up to ${Math.round(sqmToSqft(sum))} sft; ${area}.`
+  return `${line}. ${areaLine('The', rooms.reduce((t, r) => t + r.areaSqm, 0), stats.wantSqm, 'no printed flat area was read on this flat')}`
+}
+
+/**
+ * The count line's area sentence. s25 (AUTOTRACE_100 §3 #6): only the names READ are counted, so "all 9 … closed and
+ * named" showed on a flat with 524 of about 1150 sft closed — under 70 % of the printed area the line says so.
+ */
+function areaLine(its: string, sumSqm: number, wantSqm: number | undefined, none: string): string {
+  const sum = Math.round(sqmToSqft(sumSqm))
+  if (!wantSqm) return `${its} closed rooms add up to ${sum} sft; ${none}.`
+  const want = Math.round(sqmToSqft(wantSqm))
+  if (sumSqm < 0.7 * wantSqm) return `But ${its.toLowerCase()} closed rooms add up to only ${sum} sft of about ${want} — the sheet prints more rooms than were found.`
+  return `${its} closed rooms add up to ${sum} sft; the printed flat area gives about ${want}.`
 }
 
 /**

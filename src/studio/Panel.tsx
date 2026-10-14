@@ -318,7 +318,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           {stats && <p className="muted">{statsLine(stats)}</p>}
           {/* (Level 4: one line per traced flat) */}
           {count?.split('\n').map((l) => (
-            <p key={l} className={/^All |: all \d+ room names/.test(l) ? 'muted' : 'warn'}>
+            <p key={l} className={/^All |: all \d+ room names/.test(l) && !l.includes('more rooms than were found') ? 'muted' : 'warn'}>
               {l}
             </p>
           ))}

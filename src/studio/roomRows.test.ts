@@ -38,7 +38,7 @@ describe('room count and room rows', () => {
     const st = roomStates(u, deriveRooms(u), printed)
     expect(st.map((x) => x.s)).toEqual(['done', 'unnamed', 'open'])
     expect(st[1].s === 'unnamed' && st[1].d).toBeCloseTo(0.4, 1)
-    expect(roomCount(u, deriveRooms(u), { printed, wantSqm: 20 } as never)).toMatch(/^1 of the 3 room names read on the sheet are closed and named — missing: Toilet, Ver\. The closed rooms add up to 129 sft; the printed flat area gives about 215\.$/)
+    expect(roomCount(u, deriveRooms(u), { printed, wantSqm: 20 } as never)).toMatch(/^1 of the 3 room names read on the sheet are closed and named — missing: Toilet, Ver\. But the closed rooms add up to only 129 sft of about 215 — the sheet prints more rooms than were found\.$/)
     expect(roomRows(u, deriveRooms(u), printed).map((r) => r.message)).toEqual(['Space 1 — printed name Toilet is 0.4 m away', 'Ver is open — no closed room around its name'])
   })
 
@@ -50,7 +50,7 @@ describe('room count and room rows', () => {
     const rooms = deriveRooms(u)
     const stats = { printed, flats: [{ name: 'Type A', wantSqm: 20 }, { name: 'Flat 1' }] } as never
     expect(roomCount(u, rooms, stats, deriveFlats(u, rooms))?.split('\n')).toEqual([
-      'Type A: all 1 room names read on it are closed and named. Its closed rooms add up to 65 sft; the printed flat area gives about 215.',
+      'Type A: all 1 room names read on it are closed and named. But its closed rooms add up to only 65 sft of about 215 — the sheet prints more rooms than were found.',
       'Flat 1: 0 of the 2 room names read on it are closed and named — missing: Toilet, Ver. Its closed rooms add up to 65 sft; no printed flat area was read on it.',
     ])
     expect(roomRows(u, rooms, printed).map((r) => r.message)).toEqual(['Flat 1: Space 1 — printed name Toilet is 0.4 m away', 'Flat 1: Ver is open — no closed room around its name'])
@@ -58,6 +58,17 @@ describe('room count and room rows', () => {
     const [f] = fixesFor(u, row, printed)
     const t = apply({ ...initialState(), unit: u, review: { unitId: 'u', items: [row], stats } }, f)
     expect(t.unit.roomLabels.find((l) => l.name === 'Toilet')?.flat).toBe('Flat 1')
+  })
+
+  it('s25 #6: "all N names closed" never hides a flat whose closed rooms fall under 70 % of its printed area', () => {
+    const u = twoRooms()
+    u.roomLabels[0].flat = 'Type A'
+    const rooms = deriveRooms(u)
+    const printed = [{ ...P('Bed 1', 1, 1.5, 'bed'), flat: 'Type A' }]
+    const line = (wantSqm: number) => roomCount(u, rooms, { printed, flats: [{ name: 'Type A', wantSqm }] } as never, deriveFlats(u, rooms))
+    // Bed 1's 6 m² (65 sft): 7 m² printed (75 sft, 86 %) keeps the wording; 9 m² (97 sft, 67 %) says rooms were not found
+    expect(line(7)).toBe('Type A: all 1 room names read on it are closed and named. Its closed rooms add up to 65 sft; the printed flat area gives about 75.')
+    expect(line(9)).toBe('Type A: all 1 room names read on it are closed and named. But its closed rooms add up to only 65 sft of about 97 — the sheet prints more rooms than were found.')
   })
 
   it('Level 4: a printed name inside the core\'s room (the lifts\' face left open around a toilet) is not closed — it shares the lift\'s room', () => {
