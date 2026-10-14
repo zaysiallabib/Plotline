@@ -28,6 +28,7 @@
 import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
+import { closeRooms, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
@@ -120,6 +121,8 @@ export const KNOBS = {
   closeTolM: 0.15,
   /** … and only a room off by more than this (a side) says the edge is not where the room ends: then it goes */
   closeRejectM: 0.3,
+  /** session 26 step 2: open printed rooms closed on evidence, gated by their printed size (close.ts) */
+  closeRooms: true,
 }
 
 type Pt = { x: number; y: number }
@@ -2064,6 +2067,23 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
 
   // ── graph at the final scale, the flat, then its own origin
   draft = buildGraph(trace, pxPerM, origin0, gray, ink, tracked, tracker)
+  // ── step 2 (session 26): a printed room whose name stands in no closed face closed on evidence — a doorway where a wall
+  // line breaks off at a door's width, a glass / low wall / zone line along an open side — kept only where the room then
+  // matches its printed size (close.ts); each piece gets its Check-these row at the pick
+  let closed: Closed[] = []
+  if (tracker === 'tracks' && KNOBS.closeRooms) {
+    const labels: CloseLabel[] = text.items
+      .filter((it) => (it.kind === 'room' && it.roomKind) || coreText(it))
+      .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
+    const makeG = (base: Wall, from?: GWall): GWall =>
+      from ? { ...from, ...base } : { ...base, conf: 0.5, guess: new Map(base.openings.map((o) => [o.id, { kind: o.kind, conf: 0.5, ...(o.kind === 'window' ? { glass: true } : {}) }])) }
+    const r = closeRooms(draft.unit.vertices, draft.walls, labels, { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }, makeG)
+    if (r.closed.length) {
+      const unit = { ...draft.unit, vertices: r.vertices, walls: r.walls.map(stripWall) }
+      draft = { ...draft, unit, walls: r.walls, rooms: deriveRooms(unit) }
+      closed = r.closed
+    }
+  }
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants, fits, merged, thin })
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
   // SUNSHADE / PLANTER label counts as planter too)
@@ -2092,7 +2112,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
   const corePts = coreAt(pxPerM)
   const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2)
-  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, draft, origin0, outside, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore }
+  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore }
 }
 export type Prepared = ReturnType<typeof prepareTraces>
 
@@ -2282,7 +2302,7 @@ function distToRooms(d: Draft, rooms: Iterable<Room>, p: Pt): number {
  */
 export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceResult {
   const t1 = performance.now()
-  const { inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, trace, hints, fits, merged, thin, origin0, outside, coreAt } = p
+  const { inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, trace, hints, fits, merged, thin, closed, origin0, outside, coreAt } = p
   // (the steps below edit the draft's walls in place)
   let draft = structuredClone(p.draft)
   const review: ReviewItem[] = []
@@ -2624,6 +2644,15 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
     const a = toM(m.a), b = toM(m.b), at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
     if (u.walls.some((w) => segDist(at, V.get(w.a)!, V.get(w.b)!) < 0.05) || named.some((r) => pointInPolygon(at, roomPolygon(r, u)))) review.push({ id: newId(), at, kind: 'low-confidence', message: m.message })
   }
+  // step 2 (close.ts): every piece drawn to close a printed room — what was drawn, why, and a question (founder: each guess
+  // gets its row); a corner the trace left open (under the tracks' smallest gap) is no guess
+  for (const c of closed)
+    for (const pc of c.pieces) {
+      if (pc.kind === 'wall' && d2(pc.a, pc.b) < KNOBS.carryFreeM) continue
+      const at = { x: (pc.a.x + pc.b.x) / 2 - shift.x, y: (pc.a.y + pc.b.y) / 2 - shift.y }
+      const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
+      if (w) review.push({ id: newId(), at, kind: pc.kind === 'door' ? 'opening-guess' : 'low-confidence', message: closeMessage(c, pc), entityId: (pc.kind === 'door' && w.openings[0]?.id) || w.id })
+    }
   if (merged) {
     const inFlat = (p: Pt) => {
       const q = { x: p.x + shift.x, y: p.y + shift.y } // pre-shift metres = sheet px / k
@@ -2749,6 +2778,17 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),
     },
   }
+}
+
+/** the row for a piece close.ts drew: what, where, why it was kept, the question */
+export function closeMessage(c: Closed, pc: Piece): string {
+  const L = formatFeetInches(d2(pc.a, pc.b))
+  const size = c.size === 'match' ? 'it then matches its printed size' : c.size === 'near' ? 'it then comes within 30 cm of its printed size' : 'no printed size was read to check it'
+  if (pc.kind === 'zone') return `Drew a zone line ${L} (nothing in 3D: open plan) to close ${c.room} — ${size}. Right? Select it to make it a wall, glass or a low wall`
+  if (pc.kind === 'glass') return `Drew a glass wall ${L} along the double line to close ${c.room} — ${size}. Right?`
+  if (pc.kind === 'low') return `Drew a low wall (railing) ${L} along the thin line to close ${c.room} — ${size}. Right?`
+  if (pc.kind === 'door') return `Drew a ${L} door in the gap to close ${c.room} (no door swing is drawn there) — ${size}. A door, or open?`
+  return `Carried the wall on ${L} to close ${c.room} — ${size}. Right?`
 }
 
 /**
