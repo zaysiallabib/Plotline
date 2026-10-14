@@ -347,7 +347,7 @@ Projects, their drawings and their pictures are kept in this browser only.
 
 **Rooms**
 - A room exists wherever walls close a shape. You never draw a room; you only name it.
-- The kind is guessed from the name ("Lawn", "Lobby", "12" for a parking bay…).
+- The kind is guessed from the name ("Lawn", "Lobby", "12" for a parking bay, "Dry Kitchen" → pantry…) — the same words Auto-trace reads (table in §8).
 
 **Furniture**
 - A room with no furniture of its own is furnished automatically by its kind.
@@ -374,9 +374,36 @@ Projects, their drawings and their pictures are kept in this browser only.
 | balcony | Plant, lounge chair if big enough, planter box |
 | study | Desk, chair, shelves, armchair, light, AC |
 | closet | Rails and shelves |
+| foyer | The flat's entrance hall: a low cabinet on its blankest wall (else a shoe bench), light. A passage narrower than 1.5 m stays clear |
+| pantry | Pantry, dry kitchen, food store: counters and wall cabinets (no sink, no hob), a fridge, open shelves, light |
+| maid | Servant's / staff room: a cot and a hook rail, light (no AC) |
+| prayer | Kept empty, light only |
 | utility | Nothing |
 | shaft | Nothing; open to the sky |
-| other | Nothing (a room named "stair" gets a stair) |
+| other | Nothing (a room named "stair" gets a stair). The lift lobby, stair and lifts are "other": the building's core, in no flat |
+
+**The words Auto-trace reads, and the kind each gives** (any case; dots, hyphens and spaces may vary — "M.BED", "M. BED", "BED-03"). Typing the same word as a room's name in the Studio picks the same kind; you can always change it in the kind list. The room keeps the name as the sheet prints it ("Suite 1", "K.Ver", "Dry Kitchen").
+
+| Printed on the sheet | Kind |
+|---|---|
+| BED, SUITE, M.BED, G.BED, C.BED, MASTER / GUEST / CHILD BED, BED/LIVING | bed |
+| TOILET, TOI, TLT, TOIL, BATH, WC, PDR, POWDER, S.TOI, M.TOILET, MAID TOI, STAFF TOILET, SERVANT BATH | bath |
+| VER, VERANDAH, BALCONY, TERRACE, K.VER, KIT. VER., SERVICE VER, FRONT VER | balcony |
+| LIVING, DRAWING, FAMILY, LOUNGE, F.LIVING, FAMILY SPACE, ENTRY LOUNGE — with DINING, the word printed first decides | living |
+| DINING, DINING & F. LOUNGE, DINING/F.LIVING | dining |
+| KITCHEN, WET KITCHEN | kitchen |
+| PANTRY, DRY KITCHEN, FOOD STORE | pantry |
+| S.BED, STAFF BED, SERVANT BED, HELP BED, MAID'S ROOM, MAID RM, DRIVER'S ROOM | maid |
+| FOYER, ENTRY, ENTRANCE, PASSAGE, CORRIDOR | foyer |
+| PRAYER, PRAYER ROOM, PUJA | prayer |
+| STUDY, HOME OFFICE, LIBRARY, PAINTING CORNER | study |
+| W.I.C, WALK-IN CLOSET, DRESS, DRESSING | closet |
+| STORE, LUGGAGE STORE, LAUNDRY, UTILITY, SERVICE (AREA), CLOTH DRYING AREA, IRON PAD, SHOE RACK, DISH WASH AREA | utility |
+| GREEN, UPSTAND GREEN, PLANTER, PLANTATION, GARDEN, SUNSHADE, LANDSCAPE | balcony with planting |
+| AC LEDGE, A.C, A/C OUTDOOR, ODU, AOD, DUCT (E. / P. / F.), SHAFT, VOID, OPEN TO SKY, GARBAGE CHUTE | shaft |
+| LOBBY, SERVICE LOBBY, STAIR, FIRE STAIR, LIFT, STRETCHER / BED / MRL LIFT, LIFT MACHINE ROOM, LIFT & STAIR LOBBY, FIRE CORRIDOR | other (the core) |
+
+Never a room — fixture and drawing tags: DW, D.WASH, FRIDGE, FREEZER, REF, W/M, WASHING MACHINE, TV, FHC, FHB, F.RISER, E.RISER, SDB, FIRE HOSE REEL, DINNER WAGON, SHOWER AREA, UP, DN, BEAM, SLAB, ROOF OF …, SLOPE, LEVEL, TYPE-A, UNIT A, LIFT PIT. Typed in the Studio on a ground floor or rooftop, "Lobby" gives a common lobby and "Garden" a lawn.
 
 **Common rooms**
 
