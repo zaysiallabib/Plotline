@@ -246,8 +246,8 @@ export function outlinedWalls(g: Gray, k: number): Gray | null {
 
 /** furniture painted out before walls and rooms (founder, 2026-10-15), metres */
 export const FURNITURE = {
-  /** a piece fits in this square (a bed, an L-sofa, a table with its chairs) */
-  maxSide: 2.6,
+  /** a piece fits in this square (a bed with its side tables, an L-sofa, a table with its chairs) */
+  maxSide: 3,
   /** …and is wider than a wall across (a window's frame in a wall gap is not furniture) */
   minSide: 0.35,
   /** its ink and what it closes in fill at least this share of its box (a chair, a bed outline, a solid sofa; an open door arc does not) */
