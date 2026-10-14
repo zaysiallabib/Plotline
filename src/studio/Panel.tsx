@@ -220,9 +220,9 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           {m.message}
           {acts && (
             <span className="acts">
-              {f?.fixes.map((x) => (
+              {f?.fixes.map((x, i) => (
                 <button
-                  key={x.label}
+                  key={i}
                   className="link"
                   title={x.title}
                   onClick={(e) => {
