@@ -1875,6 +1875,12 @@ export function dropForeignStubs(d: Draft, outlines: Pt[][]): Draft {
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase())
 /** the building core's names — read loosely (the reader's L088Y / L0BBY is the lobby) */
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE|STRETCHER|FIRE CORRIDOR)\b/
+/**
+ * s25 (AUTOTRACE_100 §3 #13): the sheet says it is a ground floor / basement / rooftop — a printed PARKING / DRIVEWAY /
+ * RAMP and no bedroom among the room names, or a lobby and no room name at all. Never guessed from how little was traced.
+ */
+export const saysLevel = (texts: string[], printed: PrintedRoom[]): boolean =>
+  (texts.some((t) => /\b(PARKING|DRIVE ?WAY|RAMP)\b/.test(t)) && !printed.some((p) => p.kind === 'bed')) || (!printed.length && texts.some((t) => /\bL[O0][B8]{2}Y\b/.test(t)))
 /** the core's names wherever the reader filed them (BTI: "LIFT PIT" over its size read as no room's name — the core all the same) */
 const coreText = (it: TextItem) => (it.kind === 'room' || it.kind === 'other') && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))
 const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', foyer: 'Foyer', pantry: 'Pantry', maid: 'Maid Room', prayer: 'Prayer Room', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
@@ -2727,6 +2733,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       labelled,
       ...(fixtures.length ? { fixtures } : {}),
       ...(printed.length ? { printed } : {}),
+      ...(saysLevel(text.items.map((it) => normaliseName(it.text)), printed) ? { level: true } : {}),
       ...(flatSqm && sels.length === 1 ? { wantSqm: flatSqm * KNOBS.areaShare } : {}),
       flats: sels.map((_, i) => ({ name: flatNames[i], ...(stamps[i] ? { wantSqm: stamps[i]!.areaSqm! * KNOBS.areaShare } : {}) })),
       ...(tracker === 'tracks' ? { fitted: fits.length, gapsDecided: Object.values(merged?.stats.decided ?? {}).reduce((t, x) => t + x, 0) } : {}),

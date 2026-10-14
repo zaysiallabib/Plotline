@@ -226,6 +226,8 @@ export interface AutoTraceStats {
   wantSqm?: number
   /** Level 4: the traced flats (one, or every flat of a whole floor) — the names their rooms are pinned to, each with the floor its printed area should give (m², areaShare of it) */
   flats?: { name: string; wantSqm?: number }[]
+  /** s25: the sheet itself says it is a level — PARKING / DRIVEWAY / RAMP printed and no bedroom, or a LOBBY and no flat room (review.ts fewRooms) */
+  level?: boolean
 }
 
 export interface AutoTraceResult {

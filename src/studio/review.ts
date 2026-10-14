@@ -374,15 +374,14 @@ function areaLine(its: string, sumSqm: number, wantSqm: number | undefined, none
 /**
  * The note when Auto-trace closed almost nothing (fewer than 2 labelled rooms). It used to say "made for flats … on a
  * ground floor, basement or rooftop" whenever that happened — also on flat sheets (Banani Level 2-6: walls drawn as thin
- * lines; Level 0 scoreboard). A sheet that prints a bedroom's name is a flat sheet: the note says so and why, never
- * "ground floor". null: nothing to say.
+ * lines; Level 0 scoreboard). s25 (AUTOTRACE_100 §3 #13: 8 flat sheets with grey / hollow / thin walls still got it):
+ * the sheet's kind is never guessed from the count — the note says what happened; the level hint only when the sheet
+ * says so (solve.ts saysLevel). null: nothing to say.
  */
 export function fewRooms(stats: AutoTraceStats): string | null {
   if (stats.labelled >= 2) return null
-  const n = stats.printed?.length ?? 0
-  if (stats.printed?.some((p) => p.kind === 'bed'))
-    return `This is a flat sheet, but Auto-trace closed only ${stats.rooms} room${stats.rooms === 1 ? '' : 's'} on it (it read ${n} room name${n === 1 ? '' : 's'}). Its walls may be drawn as thin lines, which Auto-trace does not follow yet: draw them with W — the rows below say which rooms are open.`
-  return 'Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.'
+  if (stats.level) return 'Auto-trace is made for flats. On a ground floor, basement or rooftop it finds little: draw it with W and name the areas with R.'
+  return `Auto-trace found only ${stats.walls} wall${stats.walls === 1 ? '' : 's'} and ${stats.rooms} room${stats.rooms === 1 ? '' : 's'}. Walls drawn grey, hollow or as thin lines are not yet read well; draw the missing walls with W, or trace one flat with a click.`
 }
 
 /** a room row's index in `printed` (its name read at its spot) */

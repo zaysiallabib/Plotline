@@ -9,6 +9,7 @@ import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
 import { fixesOf, markIssues, type Fix } from './issues'
 import { fewRooms, openReview, roomCount, roomRows, roomStates, studioReducer } from './review'
+import { saysLevel } from '../trace/solve'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, heightM = 3.048): Wall => ({ id, a, b, thicknessM: 0.127, heightM, openings: [] })
@@ -77,11 +78,18 @@ describe('room count and room rows', () => {
     expect(st.map((x) => (x.s === 'merged' ? `merged into ${x.into.name}` : x.s))).toEqual(['merged into Lift'])
   })
 
-  it('Level 4: few rooms closed on a sheet that prints a bedroom is a flat sheet — never called a ground floor (Banani Level 2-6)', () => {
-    const banani = { labelled: 1, rooms: 1, printed: [P('Bed 04', 1, 1, 'bed'), P('Kitchen', 2, 1, 'kitchen')] } as never
-    expect(fewRooms(banani)).toMatch(/^This is a flat sheet, but Auto-trace closed only 1 room on it \(it read 2 room names\)/)
-    expect(fewRooms({ labelled: 0, rooms: 0, printed: [P('Guard Room', 1, 1, 'guard')] } as never)).toMatch(/^Auto-trace is made for flats\. On a ground floor/)
+  it('s25 #13: few rooms closed says what happened — "ground floor" only when the sheet says so (PARKING / RAMP, a lobby alone)', () => {
+    const banani = { walls: 8, labelled: 1, rooms: 1, printed: [P('Bed 04', 1, 1, 'bed'), P('Kitchen', 2, 1, 'kitchen')] } as never
+    expect(fewRooms(banani)).toBe('Auto-trace found only 8 walls and 1 room. Walls drawn grey, hollow or as thin lines are not yet read well; draw the missing walls with W, or trace one flat with a click.')
+    // no names read at all (Amabilia's grey walls): still never "ground floor" from the count
+    expect(fewRooms({ walls: 13, labelled: 0, rooms: 0 } as never)).toMatch(/^Auto-trace found only 13 walls and 0 rooms\./)
+    expect(fewRooms({ walls: 3, labelled: 0, rooms: 0, level: true } as never)).toMatch(/^Auto-trace is made for flats\. On a ground floor/)
     expect(fewRooms({ labelled: 5, rooms: 5 } as never)).toBeNull()
+    // what makes `level`: the sheet's own words
+    expect(saysLevel(['CAR PARKING', 'RAMP UP'], [P('Guard Toilet', 1, 1, 'bath')])).toBe(true)
+    expect(saysLevel(['LIFT LOBBY'], [])).toBe(true)
+    expect(saysLevel(['CAR PARKING'], [P('Bed 1', 1, 1, 'bed')])).toBe(false) // a flat sheet's note on parking
+    expect(saysLevel(['LIFT LOBBY', 'KITCHEN'], [P('Kitchen', 1, 1, 'kitchen')])).toBe(false) // a flat sheet's lift lobby
   })
 
   it('Level 3: a printed name standing inside an unnamed room after the import names it — no row; one only beside it keeps its row', () => {
