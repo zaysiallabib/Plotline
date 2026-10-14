@@ -89,7 +89,7 @@ export function parseArea(raw: string): number | null {
 // ---------------------------------------------------------------- room names
 
 /** Words a room name is made of; a token one edit away from one of these (length ≥ 5) is read as it ("KlTCHEN", "T0ILET"). */
-const WORDS = 'KITCHEN TOILET VERANDA VERANDAH BALCONY LIVING DINING DRAWING FAMILY STUDY LOBBY STAIR FOYER PASSAGE STORE SERVANT CLOSET PLANTER SUNSHADE POWDER PRAYER UTILITY LAUNDRY MASTER GUEST CHILD SHAFT LANDSCAPE GREEN WALK LIFT BATH'.split(' ')
+const WORDS = 'KITCHEN TOILET VERANDA VERANDAH BALCONY LIVING DINING DRAWING FAMILY STUDY LOBBY STAIR FOYER PASSAGE STORE SERVANT CLOSET PLANTER SUNSHADE POWDER PRAYER UTILITY LAUNDRY MASTER GUEST CHILD SHAFT LANDSCAPE GREEN WALK LIFT BATH SUITE PANTRY LOUNGE ENTRY TERRACE DRESSING CORRIDOR OFFICE GARDEN SERVICE'.split(' ')
 const DIGIT_AS_LETTER: Record<string, string> = { '0': 'O', '1': 'I', '5': 'S', '8': 'B', '6': 'G', '2': 'Z' }
 
 function editDistanceAtMost1(a: string, b: string): boolean {
@@ -111,7 +111,7 @@ function snapShort(tok: string): string {
 }
 
 /** Words of room names, for the loose snap below (incl. plan spellings like DINNING). */
-const LEXICON = [...WORDS, ...SHORT, 'BEDROOM', 'ROOM', 'HELP', 'OPEN', 'DRY', 'FORMAL', 'DINNING', 'TOILET', 'VERANDA']
+const LEXICON = [...WORDS, ...SHORT, 'BEDROOM', 'ROOM', 'HELP', 'OPEN', 'DRY', 'FORMAL', 'DINNING', 'TOILET', 'VERANDA', 'MAID', 'STAFF', 'TOI', 'TLT', 'TOIL', 'TO', 'AC', 'PUJA', 'DUCT', 'VOID', 'DRESS']
 function levenshtein(a: string, b: string): number {
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
@@ -148,6 +148,7 @@ export function snapRoomWords(raw: string): string {
 export function normaliseName(raw: string): string {
   return raw
     .toUpperCase()
+    .replace(/([A-Z])['’]S\b/g, '$1S') // MAID'S ROOM → MAIDS ROOM
     .replace(/[^A-Z0-9.&/]+/g, ' ')
     .split(' ')
     .flatMap((tok) => {
@@ -180,35 +181,44 @@ export function trimName(n: string): string {
 }
 
 type Rule = [RegExp, RoomKind, boolean?]
-/** First match wins; specific compounds before the generic words they contain ("K. VERANDA" before "KITCHEN"). */
+/**
+ * First match wins; specific compounds before the generic words they contain ("K. VERANDA" before "KITCHEN", "SERVICE
+ * VER" before "SERVICE", "S.TOILET" before "S.BED", "FIRE CORRIDOR" before "CORRIDOR"). SPECIAL beats the living /
+ * dining words wherever they stand; a RULES word only when it stands before them ("ENTRY LOUNGE" → living).
+ */
+const SPECIAL: Rule[] = [
+  [/\b(SUN ?SHADE|PLANTER|PLANT|PLANTATION|GREEN|LANDSCAPE|GARDEN|LAWN)\b/, 'balcony', true],
+  [/\b(K\.? ?VER(ANDAH?)?|KIT\.? ?VER|KITCHEN VER|SERVICE VER)/, 'balcony'],
+  [/\b((SERVANT|HELP|MAID|DRIVER|STAFF)S? ?(TOILET|TOI|TO|TLT|BATH|WC)|[HS]\. ?(TOILET|BATH))\b/, 'bath'],
+  [/\b((SERVANT|HELP|MAID)S?|DRIVERS? (ROOM|RM|BED)|STAFF BED|S\. ?BED)\b/, 'maid'],
+  [/\b(LOBBY|STAIRS?|LIFTS?|HOISTWAY|FIRE CORRIDOR)\b/, 'other'], // the building's core, in no flat (core/flats.ts isCore)
+  [/^A[./]?C\b|\b(O\.?D\.?U|LEDGE)\b/, 'shaft'], // AC / outdoor-unit ledge: open to the sky, never furnished
+]
 const RULES: Rule[] = [
-  [/\b(SUN ?SHADE|PLANTER|PLANT|GREEN|LANDSCAPE|GARDEN|LAWN)\b/, 'balcony', true],
-  [/\b(K\.? ?VER(ANDAH?)?|KITCHEN VER|SERVICE VER)/, 'balcony'],
-  [/\b((SERVANT|HELP|MAID|DRIVER)S? ?(TOILET|BATH|WC)|[HS]\. ?(TOILET|BATH))\b/, 'bath'],
-  [/\b((SERVANT|HELP|MAID|DRIVER)S?|S\. ?BED)\b/, 'utility'], // help bed / help room / S.BED: the Phase-0 units trace them as utility
-  [/\b(LOBBY|FOYER|PASSAGE|CORRIDOR|STAIRS?|LIFT|HOISTWAY|ENTRY|ENTRANCE|PRAYER|WORSHIP)\b/, 'other'], // no core kind for these; 'shaft' would render open to the sky
-  [/\bODU\b/, 'shaft'], // outdoor AC-unit ledge: open to the sky, never furnished — closest core kind
   [/\b(W\.? ?I\.? ?C\.?|WALK ?-?IN|CLOSET|DRESS|DRESSING)\b/, 'closet'],
-  [/\b(TOILET|BATH|BATHROOM|WC|W\.C|PDR|POWDER|WASH ?ROOM)\b/, 'bath'],
+  [/\b(TOILET|TOIL|TOI|TLT|BATH|BATHROOM|WC|W\.C|PDR|POWDER|WASH ?ROOM)\b/, 'bath'],
   [/\b(VERANDAH?|VER|BALCONY|BALC|TERRACE|DECK)\b/, 'balcony'],
-  [/\b(BED|BEDROOM|MASTER|GUEST|CHILD)\b/, 'bed'],
+  [/\b(BED|BEDROOM|MASTER|GUEST|CHILD|SUITE)\b/, 'bed'],
+  [/\b(PANTRY|DRY ?KIT(CHEN)?|FOOD STORE)\b/, 'pantry'],
   [/\b(KITCHEN|KIT)\b/, 'kitchen'],
-  [/\b(STUDY|LIBRARY|OFFICE)\b/, 'study'],
-  [/\b(AOD|DUCT|SHAFT|VOID)\b/, 'shaft'],
-  [/\b(STORE|UTILITY|LAUNDRY)\b/, 'utility'],
+  [/\b(STUDY|LIBRARY|OFFICE|PAINTING)\b/, 'study'],
+  [/\b(PRAYER|WORSHIP|PUJA)\b/, 'prayer'],
+  [/\b(FOYER|ENTRY(?! LOUNGE)|ENTRANCE|PASSAGE|CORRIDOR)\b/, 'foyer'],
+  [/\b(AOD|DUCT|SHAFT|VOID|CHUTE|OPEN TO SKY)\b/, 'shaft'],
+  [/\b(STORE|UTILITY|LAUNDRY|SERVICE|CLOTH|DRYING|IRON|SHOE|DISH ?WASH)\b/, 'utility'],
 ]
 const LIVING_DINING = /\b(DRAWING|LIVING|FAMILY|LOUNGE|DINING)\b/g
-/** Appliance / fixture tags printed inside rooms: text, not room names. */
-const NOT_A_ROOM = /\b(MACHINE|FRIDGE|FREEZER|D\.?W|F\.?H\.?B|UP|DN|BEAM|SLAB|PIT)\b/
+/** Appliance / fixture tags printed inside rooms: text, not room names (a LIFT MACHINE ROOM is the core all the same). */
+const NOT_A_ROOM = /\b(MACHINE(?! ROOM)|FRIDGE|FREEZER|D\.?W|F\.?H\.?B|UP|DN|BEAM|SLAB|PIT)\b/
 
-/** A label → core RoomKind (+ green for planter strips), or null when the text names no room. */
+/** A label → RoomKind (+ green for planter strips), or null when the text names no room. */
 export function classifyRoom(raw: string): { kind: RoomKind; green: boolean } | null {
   const n = normaliseName(raw)
-  if (NOT_A_ROOM.test(n) && !/\b(BED|TOILET|BATH|KITCHEN|LIVING|DINING)\b/.test(n)) return null
-  const special = RULES.slice(0, 6).find(([re]) => re.test(n))
+  if (NOT_A_ROOM.test(n) && !/\b(BED|TOILET|BATH|KITCHEN|LIVING|DINING|GREEN)\b/.test(n)) return null
+  const special = SPECIAL.find(([re]) => re.test(n))
   if (special) return { kind: special[1], green: !!special[2] }
   const first = [...n.matchAll(LIVING_DINING)][0] // "LIVING, DINING & FAMILY" → living, "DINING & FAMILY LIVING" → dining
-  const rule = RULES.slice(6).find(([re]) => re.test(n))
+  const rule = RULES.find(([re]) => re.test(n))
   if (first && (!rule || n.search(rule[0]) > first.index!)) return { kind: first[1] === 'DINING' ? 'dining' : 'living', green: false }
   return rule ? { kind: rule[1], green: false } : null
 }

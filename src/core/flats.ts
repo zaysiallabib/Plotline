@@ -29,7 +29,7 @@ export interface Flat {
 }
 
 const CORE_KINDS: ReadonlySet<RoomKind> = new Set<RoomKind>(['lobby', 'shaft', 'gym', 'community', 'guard'])
-const CORE_NAME = /\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?)\b/i
+const CORE_NAME = /\b(lobby|stairs?|staircase|lifts?|hoistway|elevators?|fire corridor)\b/i
 const SFT = /(\d[\d,]{2,6})\s*(?:sft|sq\.?\s*ft|s\.f\.t)/i
 
 /** In no flat by itself: the common core (a pin decides instead when there is one). */

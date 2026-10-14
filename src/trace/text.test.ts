@@ -13,7 +13,8 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { chunkWords, classifyRoom, cleanForOcr, findTextLines, groupWords, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { guessKind } from '../studio/model'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
@@ -100,7 +101,7 @@ describe('classifyRoom', () => {
     ['DINING & FAMILY LIVING', 'dining'],
     ['DINING CUM LIVING', 'dining'],
     ['KITCHEN', 'kitchen'],
-    ['DRY KITCHEN', 'kitchen'],
+    ['DRY KITCHEN', 'pantry'],
     ['KlTCHEN', 'kitchen'],
     ['K. VERANDA', 'balcony'],
     ['K.VERANDA', 'balcony'],
@@ -129,15 +130,15 @@ describe('classifyRoom', () => {
     ['STAIR', 'other'],
     ['FIRE STAIR', 'other'],
     ['12 person Hoistway', 'other'],
-    ['FOYER', 'other'],
-    ['PASSAGE', 'other'],
-    ['PRAYER', 'other'],
+    ['FOYER', 'foyer'],
+    ['PASSAGE', 'foyer'],
+    ['PRAYER', 'prayer'],
     ['STORE', 'utility'],
-    ['SERVANT BED', 'utility'],
-    ['S.BED', 'utility'],
-    ['HELP BED', 'utility'],
-    ['HELP ROOM', 'utility'],
-    ['MAID BED', 'utility'],
+    ['SERVANT BED', 'maid'],
+    ['S.BED', 'maid'],
+    ['HELP BED', 'maid'],
+    ['HELP ROOM', 'maid'],
+    ['MAID BED', 'maid'],
     ['STUDY', 'study'],
     ['STUDY ROOM', 'study'],
     ['W.I.C', 'closet'],
@@ -160,7 +161,52 @@ describe('classifyRoom', () => {
   })
 })
 
-const word = (text: string, x: number, y: number, h = 10, conf = 0.9): OcrWord => ({ text, box: { x, y, w: text.length * h * 0.6, h }, conf })
+describe('room words printed on real sheets (2026-10-14): the reader and the Studio\'s typed-name guess agree', () => {
+  /** typed on a LEVEL these name its common rooms / zones (studio levels.test): the reader keeps the flat sheet's sense */
+  const TYPED: Record<string, string> = { LOBBY: 'lobby', 'SERVICE LOBBY': 'lobby', GARDEN: 'lawn' }
+  const check = (words: string[], kind: string, green = false) => {
+    for (const w of words) {
+      expect(classifyRoom(w), w).toEqual({ kind, green })
+      expect(guessKind(w), `typed ${w}`).toBe(TYPED[w] ?? kind)
+    }
+  }
+  test('bedrooms', () => check(['SUITE', 'SUITE 1', 'SUITE 2', 'SUITE 3', 'M.BED', 'M. BED', 'G.BED', 'C.BED', 'CHILD BED', 'GUEST BED', 'MASTER BED', 'BED 01', 'BED-03', 'BED/LIVING'], 'bed'))
+  test('baths', () => check(['S.TOI', 'S.TOILET', 'S.TLT', 'TLT', 'M.TOILET', 'M.BATH', 'C.TOILET', 'G.TOILET', 'K.TOILET', 'MAID TOI', 'MAID TO', 'STAFF TOILET', 'TOIL-1', 'BATH 04', 'SERVANT BATH'], 'bath'))
+  test('verandas', () => check(['K.VER', 'K. VER', 'KIT. VER.', 'KITCHEN VERANDAH', 'FRONT VER', 'VER-01', 'VER.', 'VERANDAH', 'SERVICE VER', 'TERRACE', 'OPEN TERRACE'], 'balcony'))
+  test('living / dining: the first of the two words decides', () => {
+    check(['F.LIVING', 'F. LIVING', 'F.LOUNGE', 'FAMILY LIVING', 'FAMILY SPACE', 'FAMILY LOUNGE', 'FORMAL LIVING', 'LIVING CUM DINING', 'FAMILY LIVING CUM DINING', 'LIVING+DINING', 'LOUNGE', 'ENTRY LOUNGE'], 'living')
+    check(['DINING & F. LOUNGE', 'DINING/F.LIVING'], 'dining')
+  })
+  test('servant / maid rooms', () => check(['S.BED', 'STAFF BED', "MAID'S ROOM", 'MAID RM', 'SERVANT BED', 'HELP BED', "DRIVER'S ROOM"], 'maid'))
+  test('kitchen side', () => {
+    check(['PANTRY', 'DRY KITCHEN', 'FOOD STORE'], 'pantry')
+    check(['WET KITCHEN'], 'kitchen')
+    check(['DISH WASH AREA'], 'utility')
+  })
+  test('closets', () => check(['DRESS', 'DRESSING', 'W.I.C', 'WALK-IN CLOSET', 'WALK IN CLOSET'], 'closet'))
+  test('entrance: a flat\'s foyer; a lobby is the core', () => {
+    check(['FOYER', 'ENTRY', 'PASSAGE', 'CORRIDOR'], 'foyer')
+    check(['LOBBY', 'SERVICE LOBBY'], 'other')
+  })
+  test('storage / service', () => check(['STORE', 'LUGGAGE STORE', 'SHOE RACK & SITTING', 'SHOE CABINET', 'LAUNDRY', 'CLOTH DRYING AREA', 'CLOTH DRYING ZONE', 'UTILITY', 'SERVICE', 'SERVICE AREA', 'IRON PAD'], 'utility'))
+  test('study', () => check(['HOME OFFICE', 'STUDY', 'PAINTING CORNER'], 'study'))
+  test('prayer', () => check(['PRAYER', 'PRAYER ROOM', 'PUJA'], 'prayer'))
+  test('green', () => check(['GREEN', 'UPSTAND GREEN', 'BEAM BOTTOM GREEN', 'PLANTATION', 'GREEN S', 'GARDEN'], 'balcony', true))
+  test('shafts / ledges', () => check(['AC LEDGE', 'A.C', 'A/C OUTDOOR', 'AC OUT DOOR', 'AC OUTDOOR UNIT', 'AC.O.U', 'ODU', 'O.D.U', 'VOID', 'OPEN TO SKY', 'E.DUCT', 'P.DUCT', 'F.DUCT', 'E-SHAFT', 'ELECT DUCT', 'GARBAGE CHUTE', 'DUCT'], 'shaft'))
+  test('the core: never a flat\'s room', () => check(['FIRE STAIR', 'F.STAIR', 'MAIN STAIR', 'FIRE CORRIDOR', 'STRETCHER LIFT', 'BED LIFT', 'MRL LIFT', 'LIFT MACHINE ROOM', 'LIFT & STAIR LOBBY', 'STAIR/LIFT LOBBY'], 'other'))
+  test('not rooms: fixtures, appliances, drawing notes', () => {
+    const tags = ['DW', 'D.W', 'D.WASH', 'FREEZE', 'FREEZER', 'FRIDGE', 'REF', 'REFREG', 'FR.', 'W/M', 'WM', 'WASHING MACHINE', 'TV', 'FHC', 'FHB', 'F.H.B', 'F.RISER', 'E.RISER', 'SDB', 'FIRE HOSE REEL', 'DINNER WAGON', 'SHOWER AREA WITH CURTAIN', 'UP', 'DN', 'LW', 'BS', 'BEAM', 'SLAB', 'ROOF OF PARKING', 'ROOF OF 7TH FLOOR', 'SLOPE 1:7', `LEVEL +2'-0"`, 'TYPE-A', 'UNIT A', 'LIFT PIT']
+    for (const t of tags) expect(classifyRoom(t), t).toBeNull()
+  })
+  test('the name keeps the sheet\'s own words', () => {
+    expect(trimName(normaliseName("MAID'S ROOM"))).toBe('MAIDS ROOM')
+    expect(trimName(normaliseName('MAID TOI'))).toBe('MAID TOI')
+    expect(trimName(normaliseName('AC LEDGE'))).toBe('AC LEDGE')
+    expect(trimName(normaliseName('SUITE 1'))).toBe('SUITE 1')
+  })
+})
+
+const word =(text: string, x: number, y: number, h = 10, conf = 0.9): OcrWord => ({ text, box: { x, y, w: text.length * h * 0.6, h }, conf })
 
 describe('grouping', () => {
   test('a name above its dims line is one room item', () => {
@@ -412,7 +458,7 @@ describe('AI montage (no key in tests: the reader is mocked)', () => {
     const lone: TextItem = { text: `11'-0"x7'-8"`, box: { x: 60, y: 40, w: 90, h: 9 }, kind: 'dims', dims: { aM: ft(11), bM: ft(7, 8) }, conf: 0.95, source: 'ocr' }
     const ask2 = async () => JSON.stringify([{ n: 1, name: 'FOYER', size: `11'-0"x7'-6"` }])
     const out2 = await askAi({ items: [lone] }, sheet(), Object.assign(async () => [], { ask: ask2 }), { encode: async () => new Blob([]) })
-    expect(out2.items[0]).toMatchObject({ kind: 'room', roomKind: 'other', text: `FOYER\n11'-0"x7'-8"`, dims: { bM: ft(7, 8) } })
+    expect(out2.items[0]).toMatchObject({ kind: 'room', roomKind: 'foyer', text: `FOYER\n11'-0"x7'-8"`, dims: { bM: ft(7, 8) } })
     // a reader with no montage support changes nothing
     expect(await askAi({ items }, sheet(), async () => [])).toEqual({ items })
   })

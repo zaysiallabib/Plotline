@@ -1051,7 +1051,7 @@ function stairwell(ctx: Ctx): void {
 }
 
 /** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat: the viewer leaves them out of the Rooms list; they stay in 3D. */
-export const isCommonCore = (room: Pick<Room, 'name'>): boolean => /\b(stair|lift|elevator|lobby)/i.test(room.name)
+export const isCommonCore = (room: Pick<Room, 'name'>): boolean => /\b(stair|lift|elevator|lobby|fire corridor)/i.test(room.name)
 const isStair = (room: Room) => /\bstair/i.test(room.name)
 /** A servant's room: kind 'maid', a bedroom under 4 m², or a bed/utility/other room named help, servant or maid. */
 export const isHelpRoom = (room: Room): boolean =>

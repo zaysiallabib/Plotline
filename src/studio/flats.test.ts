@@ -49,6 +49,8 @@ describe('flats of real drawings', () => {
     expect(flats[0].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Planter (south)', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
     expect(flats[1].roomIds.map(name).sort()).toEqual(['Bed 1', 'Bed 2', 'Bed 3', 'Bed 4', 'Dining', 'Foyer', 'Kitchen', 'Living', 'PDR', 'Passage', 'Planter (south)', 'Toilet', 'Toilet 1', 'Toilet 2', 'Toilet 3', 'Veranda (kitchen)', 'Veranda 1', 'Veranda 4'])
     expect(rooms.filter(isCore).map((r) => r.name).sort()).toEqual(['Lifts', 'Lobby', 'Stair'])
+    // other sheets' core words (2026-10-14): the core too, a flat's corridor not
+    expect(['Fire Stair', 'F.Stair', 'Stretcher Lift', 'Bed Lift', 'Lift & Stair Lobby', 'Fire Corridor', 'Corridor'].map((name) => isCore({ kind: 'other', name }))).toEqual([true, true, true, true, true, true, false])
     // the south planters join through their 0.45 m edge (a low wall is stepped over, founder 2026-10-09); the east / west ones sit behind WINDOWS — loose until he moves them
     const inFlat = new Set(flats.flatMap((f) => f.roomIds))
     expect(rooms.filter((r) => !inFlat.has(r.id) && !isCore(r)).map((r) => r.name).sort()).toEqual(['Planter (east)', 'Planter (west)'])

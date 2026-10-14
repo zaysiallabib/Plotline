@@ -5,6 +5,7 @@
 import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
+import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
 import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
 import type { Review } from './review'
@@ -1463,6 +1464,8 @@ export function guessKind(name: string): RoomKind {
   if (has('community')) return 'community'
   if (has('guard', 'security')) return 'guard'
   if (has('reception') || (has('lobby') && !has('lift'))) return 'lobby' // a lift lobby stays 'other' (a flat's way in)
+  const read = classifyRoom(name) // a flat's room: the kind Auto-trace's reader gives the same printed word
+  if (read) return read.kind
   if (has('bed')) return 'bed'
   if (has('bath', 'toilet', 'pdr', 'wc')) return 'bath'
   if (has('veranda', 'balcony')) return 'balcony'

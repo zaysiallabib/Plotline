@@ -537,7 +537,11 @@ describe('studio reducer', () => {
     expect(guessKind('Stair')).toBe('other')
     expect(guessKind('E-Shaft')).toBe('shaft')
     expect(guessKind('Verandah')).toBe('balcony')
-    expect(guessKind('Foyer')).toBe('other')
+    expect(guessKind('Foyer')).toBe('foyer')
+    // the words real sheets print (2026-10-14): typed, they get the kind Auto-trace reads (text.test.ts checks every one)
+    expect(['Suite 1', 'Pantry', 'Dry Kitchen', 'Staff Bed', "Maid's Room", 'S.Toi', 'Prayer Room', 'Puja', 'Entry Lounge', 'Fire Corridor', 'AC Ledge', 'Terrace'].map(guessKind)).toEqual(
+      ['bed', 'pantry', 'pantry', 'maid', 'maid', 'bath', 'prayer', 'prayer', 'living', 'other', 'shaft', 'balcony'],
+    )
   })
 })
 

@@ -455,8 +455,8 @@ describe('furnish', () => {
   })
 
   test('common-core rooms are flagged for the viewer; a stair room gets the widest dog-leg that fits, clear of its door', () => {
-    for (const n of ['Stair', 'Staircase', 'Lift lobby', 'Lift core', 'LIFT', 'Lift machine room']) expect(isCommonCore({ name: n }), n).toBe(true)
-    for (const n of ['Bed-1', 'Living, dining & family', 'Help room', 'H. toilet', 'Kitchen', 'Walk-in closet']) expect(isCommonCore({ name: n }), n).toBe(false)
+    for (const n of ['Stair', 'Staircase', 'Lift lobby', 'Lift core', 'LIFT', 'Lift machine room', 'Fire Stair', 'F.Stair', 'Stretcher Lift', 'Lift & Stair Lobby', 'Fire Corridor']) expect(isCommonCore({ name: n }), n).toBe(true)
+    for (const n of ['Bed-1', 'Living, dining & family', 'Help room', 'H. toilet', 'Kitchen', 'Walk-in closet', 'Corridor', 'Foyer']) expect(isCommonCore({ name: n }), n).toBe(false)
     const unit = rect('other', 4.4, 3.7, { wall: 2, offsetM: 0.3 }) // bottom wall runs right to left: the door is at its right end
     unit.roomLabels[0].name = 'Stair'
     const rooms = deriveRooms(unit)
