@@ -120,6 +120,8 @@ export interface TableRow {
   dims?: Dims
   sizeText: string
   box: { x: number; y: number; w: number; h: number }
+  /** a plan label took this row's size (text.ts applyTables); unset: no room on the plan carries the name */
+  onPlan?: boolean
 }
 
 /**

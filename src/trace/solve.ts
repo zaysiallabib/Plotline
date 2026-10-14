@@ -2697,6 +2697,8 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
     const msg = fitted ? `${r.name}: printed size not read for sure — it looks like ${it.sizeGuess} (the walls fit that); type the size to confirm` : `${r.name}: its printed size could not be read${it.sizeGuess ? ` (perhaps ${it.sizeGuess})` : ''} — type it`
     review.push({ id: newId(), at, kind: 'other', message: msg, entityId: r.id })
   }
+  // a size table's row no plan label took (s25): the person names its room
+  for (const t of text.tables ?? []) for (const r of t.rows) if (r.dims && !r.onPlan) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'other', message: `Table says ${titleCase(normaliseName(r.name))} is ${sizeText(r.dims)} — no room on the plan carries that name: name its room (R) and type that size` })
   if (scaleFew) review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: 'Scale from a few printed room sizes only — check one printed length' })
   if (scaleFrom !== 'dims' && scaleFrom !== 'given')
     review.push({ id: newId(), at: { x: 0, y: 0 }, kind: 'scale', message: scaleFrom === 'area' ? 'Scale from the printed flat area — check one printed length' : 'Scale guessed from the wall thickness (5" partitions) — set it (S) from anything whose length you know' })

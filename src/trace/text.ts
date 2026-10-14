@@ -86,6 +86,30 @@ export function parseArea(raw: string): number | null {
   return sqm >= 10 && sqm <= 10000 ? sqm : null
 }
 
+/**
+ * A size exactly in the printed grammar, else null: F'-I"xF'-I" (inches 0–11, optional ½, feet 1–39, x / X / ×), a side
+ * may be bare feet (15X18'-3") when the other carries marks. Stricter than parseDims on purpose: the model's text is
+ * trusted only when it is a well-formed size.
+ */
+export function strictSize(raw: string): Dims | null {
+  const s = raw
+    .replace(/[‘’′`´]/g, "'")
+    .replace(/[“”″]|''/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, '')
+  const side = String.raw`(\d{1,2})(?:'(?:-?(\d{1,2})(½|1\/2)?")?)?`
+  const m = new RegExp(`^${side}[xX×]${side}$`).exec(s)
+  if (!m || !/['"]/.test(s)) return null
+  const one = (f: string, i?: string, half?: string) => {
+    const ft = +f
+    const inch = i === undefined ? 0 : +i
+    return ft >= 1 && ft <= 39 && inch <= 11 ? (ft + (inch + (half ? 0.5 : 0)) / 12) * FT : null
+  }
+  const a = one(m[1], m[2], m[3])
+  const b = one(m[4], m[5], m[6])
+  return a !== null && b !== null && a >= 0.6 && b >= 0.6 ? { aM: a, bM: b } : null
+}
+
 // ---------------------------------------------------------------- room names
 
 /** Words a room name is made of; a token one edit away from one of these (length ≥ 5) is read as it ("KlTCHEN", "T0ILET"). */
@@ -388,7 +412,8 @@ function splitRow(line: string): { name: string; num?: number; roomKind: string;
     const right = toks.slice(i).join(' ')
     const n = /^\d/.test(right) && LOOKS_LIKE_DIMS.test(right) ? rowName(toks.slice(0, i).join(' ')) : null
     if (!n) continue
-    const dims = parseDims(right)
+    // (a well-formed size only — a wrong size is worse than none; "13-6\"x14-6\"": the feet marks lost, both sides whole)
+    const dims = strictSize(right) ?? (/^\d{1,2}'?-\d{1,2}["”]?\s*[xX×]\s*\d{1,2}'?-\d{1,2}["”]?$/.test(right) ? parseDims(right) : null)
     if (dims) return { ...n, sizeText: right, dims }
     loose ??= { ...n, sizeText: right }
   }
@@ -426,7 +451,8 @@ export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
     const size = items.filter((o) => sameRow(o) && o.kind !== 'area' && o.box.x < next && o.box.x - (it.box.x + it.box.w) < 20 * h && /\d/.test(o.text) && !(o.kind === 'room' && !LOOKS_LIKE_DIMS.test(o.text))).sort((p, q) => p.box.x - q.box.x)
     if (!size.length) return
     const sizeText = size.map((o) => o.text).join(' ')
-    const dims = size.length === 1 ? (size[0].dims ?? parseDims(sizeText) ?? undefined) : (parseDims(sizeText) ?? undefined)
+    // (the size reader's sure reading of one line, else the pieces only as a well-formed size: never an unsure line parsed)
+    const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? undefined
     rows.push({ ...n, sizeText, ...(dims ? { dims } : {}), box: [it.box, ...size.map((o) => o.box)].reduce(union), nameBox: it.box })
   })
   // stacked in a column: each row joins the nearest aligned row above it
@@ -474,6 +500,39 @@ function darkOutside(g: Gray, b: Box, items: TextItem[]): number {
       if (g.data[y * g.width + x] < 80 && !inText.some((t) => x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h)) dark++
     }
   return n ? dark / n : 0
+}
+
+/** the key two printings of one room name share: "LIVING & DINING" = "LIVING+DINING", "Ver2" = "VER 2" */
+const nameKey = (s: string) => normaliseName(s).replace(/\bAND\b|[^A-Z0-9]/g, '')
+
+/**
+ * A table row's size given to the plan label of its name (s25), as if printed under it: "SUITE 1" in the room ↔ the row
+ * SUITE 1; a numbered legend's row ↔ the bare number printed in the room ("1" → MASTER BED, its kind and size). Several
+ * labels of one name (two flats, two tables): the nearest pairs first, one row per label. A label that read its own size
+ * keeps it.
+ */
+export function applyTables(items: TextItem[], tables: SizeTable[]): void {
+  const pairs: { r: TableRow; it: TextItem; d: number }[] = []
+  for (const t of tables)
+    for (const r of t.rows) {
+      if (!r.dims && r.num === undefined) continue
+      for (const it of items) {
+        const ok = r.num !== undefined ? it.kind === 'other' && /^\d{1,2}\.?$/.test(it.text.trim()) && parseInt(it.text, 10) === r.num : it.kind === 'room' && !it.dims && nameKey(it.text.split('\n')[0]) === nameKey(r.name)
+        const x = it.box.x + it.box.w / 2, y = it.box.y + it.box.h / 2
+        if (ok) pairs.push({ r, it, d: Math.hypot(Math.max(t.box.x - x, 0, x - t.box.x - t.box.w), Math.max(t.box.y - y, 0, y - t.box.y - t.box.h)) })
+      }
+    }
+  const took = new Set<TextItem>()
+  for (const { r, it } of pairs.sort((p, q) => p.d - q.d)) {
+    if (r.onPlan || took.has(it)) continue
+    took.add(it)
+    r.onPlan = true
+    if (r.num !== undefined) Object.assign(it, { text: r.name, kind: 'room', roomKind: r.roomKind })
+    if (r.dims) {
+      it.dims = r.dims
+      delete it.sizeUnread, delete it.sizeBox, delete it.sizeGuess
+    }
+  }
 }
 
 /** the read text lying in a table (its centre in a table's box): no plan label */
@@ -1116,6 +1175,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const items = all.filter((it) => !inTable(tables, it))
     // a room that should carry a printed size and has none read: the Studio asks for it (unless the AI reads it first)
     for (const it of items) if (!it.dims && (reaskReason(it) === 'room-without-dims' || (it.kind === 'room' && reaskReason(it) === 'unparsed-dims'))) it.sizeUnread = true
+    // …unless the table beside the plan prints it
+    applyTables(items, tables)
     return { items, glyphPx: charH, ...(tables.length ? { tables } : {}) }
   } finally {
     await scheduler.terminate()
