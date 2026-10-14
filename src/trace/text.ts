@@ -214,15 +214,16 @@ const SPECIAL: Rule[] = [
   [/\b(SUN ?SHADE|PLANTER|PLANT|PLANTATION|GREEN|LANDSCAPE|GARDEN|LAWN)\b/, 'balcony', true],
   [/\b(K\.? ?VER(ANDAH?)?|KIT\.? ?VER|KITCHEN VER|SERVICE VER)/, 'balcony'],
   [/\b((SERVANT|HELP|MAID|DRIVER|STAFF)S? ?(TOILET|TOI|TO|TLT|BATH|WC)|[HS]\. ?(TOILET|BATH))\b/, 'bath'],
-  [/\b((SERVANT|HELP|MAID)S?|DRIVERS? (ROOM|RM|BED)|STAFF BED|S\. ?BED)\b/, 'maid'],
+  [/\b((SERVANT|HELP|MAID)S?|DRIVERS? (ROOM|RM|BED)|STAFF BED|S\. ?BED|SBED)\b/, 'maid'],
   [/\b(LOBBY|STAIRS?|LIFTS?|HOISTWAY|FIRE CORRIDOR)\b/, 'other'], // the building's core, in no flat (core/flats.ts isCore)
   [/^A[./]?C\b|\b(O\.?D\.?U|LEDGE)\b/, 'shaft'], // AC / outdoor-unit ledge: open to the sky, never furnished
 ]
 const RULES: Rule[] = [
-  [/\b(W\.? ?I\.? ?C\.?|WALK ?-?IN|CLOSET|DRESS|DRESSING)\b/, 'closet'],
-  [/\b(TOILET|TOIL|TOI|TLT|BATH|BATHROOM|WC|W\.C|PDR|POWDER|WASH ?ROOM)\b/, 'bath'],
+  [/\b(W\.? ?I\.? ?C\.?|WALK ?-?IN|CLOSET|DRESS|DRESSER|DRESSING)\b/, 'closet'],
+  [/\b(TOILET|TOIL|TOI|S?TLT|BATH|BATHROOM|WC|W\.C|PDR|POWDER|WASH ?ROOM)\b/, 'bath'],
   [/\b(VERANDAH?|VER|BALCONY|BALC|TERRACE|DECK)\b/, 'balcony'],
-  [/\b(BED|BEDROOM|MASTER|GUEST|CHILD|SUITE)\b/, 'bed'],
+  // (dotless / room-for-bed: MBED, GBED, CBED, "M. ROOM" = master / guest / child; SBED = servant is the maid rule above)
+  [/\b(BED|BEDROOM|MASTER|GUEST|CHILD|SUITE|[MGC]BED|[MGC]\. ?ROOM)\b/, 'bed'],
   [/\b(PANTRY|DRY ?KIT(CHEN)?|FOOD STORE)\b/, 'pantry'],
   [/\b(KITCHEN|KIT)\b/, 'kitchen'],
   [/\b(STUDY|LIBRARY|OFFICE|PAINTING)\b/, 'study'],

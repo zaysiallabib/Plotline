@@ -170,20 +170,20 @@ describe('room words printed on real sheets (2026-10-14): the reader and the Stu
       expect(guessKind(w), `typed ${w}`).toBe(TYPED[w] ?? kind)
     }
   }
-  test('bedrooms', () => check(['SUITE', 'SUITE 1', 'SUITE 2', 'SUITE 3', 'M.BED', 'M. BED', 'G.BED', 'C.BED', 'CHILD BED', 'GUEST BED', 'MASTER BED', 'BED 01', 'BED-03', 'BED/LIVING'], 'bed'))
-  test('baths', () => check(['S.TOI', 'S.TOILET', 'S.TLT', 'TLT', 'M.TOILET', 'M.BATH', 'C.TOILET', 'G.TOILET', 'K.TOILET', 'MAID TOI', 'MAID TO', 'STAFF TOILET', 'TOIL-1', 'BATH 04', 'SERVANT BATH'], 'bath'))
-  test('verandas', () => check(['K.VER', 'K. VER', 'KIT. VER.', 'KITCHEN VERANDAH', 'FRONT VER', 'VER-01', 'VER.', 'VERANDAH', 'SERVICE VER', 'TERRACE', 'OPEN TERRACE'], 'balcony'))
+  test('bedrooms', () => check(['SUITE', 'SUITE 1', 'SUITE 2', 'SUITE 3', 'M.BED', 'M. BED', 'G.BED', 'C.BED', 'CHILD BED', 'GUEST BED', 'MASTER BED', 'BED 01', 'BED-03', 'BED/LIVING', 'MBED', 'GBED', 'CBED', 'M. ROOM', 'G. ROOM', 'C. ROOM', 'C.ROOM'], 'bed'))
+  test('baths', () => check(['S.TOI', 'S.TOILET', 'S.TLT', 'TLT', 'M.TOILET', 'M.BATH', 'C.TOILET', 'G.TOILET', 'K.TOILET', 'MAID TOI', 'MAID TO', 'STAFF TOILET', 'TOIL-1', 'BATH 04', 'SERVANT BATH', 'TOIL', 'M.TOIL', 'STLT', 'SER. TOI', 'SER. TOILET'], 'bath'))
+  test('verandas', () => check(['K.VER', 'K. VER', 'KIT. VER.', 'KITCHEN VERANDAH', 'FRONT VER', 'VER-01', 'VER.', 'VERANDAH', 'SERVICE VER', 'TERRACE', 'OPEN TERRACE', 'KVER'], 'balcony'))
   test('living / dining: the first of the two words decides', () => {
     check(['F.LIVING', 'F. LIVING', 'F.LOUNGE', 'FAMILY LIVING', 'FAMILY SPACE', 'FAMILY LOUNGE', 'FORMAL LIVING', 'LIVING CUM DINING', 'FAMILY LIVING CUM DINING', 'LIVING+DINING', 'LOUNGE', 'ENTRY LOUNGE'], 'living')
-    check(['DINING & F. LOUNGE', 'DINING/F.LIVING'], 'dining')
+    check(['DINING & F. LOUNGE', 'DINING/F.LIVING', 'DINNING'], 'dining')
   })
-  test('servant / maid rooms', () => check(['S.BED', 'STAFF BED', "MAID'S ROOM", 'MAID RM', 'SERVANT BED', 'HELP BED', "DRIVER'S ROOM"], 'maid'))
+  test('servant / maid rooms', () => check(['S.BED', 'STAFF BED', "MAID'S ROOM", 'MAID RM', 'SERVANT BED', 'HELP BED', "DRIVER'S ROOM", 'SBED'], 'maid'))
   test('kitchen side', () => {
     check(['PANTRY', 'DRY KITCHEN', 'FOOD STORE'], 'pantry')
     check(['WET KITCHEN'], 'kitchen')
     check(['DISH WASH AREA'], 'utility')
   })
-  test('closets', () => check(['DRESS', 'DRESSING', 'W.I.C', 'WALK-IN CLOSET', 'WALK IN CLOSET'], 'closet'))
+  test('closets', () => check(['DRESS', 'DRESSING', 'W.I.C', 'WALK-IN CLOSET', 'WALK IN CLOSET', 'DRESSER'], 'closet'))
   test('entrance: a flat\'s foyer; a lobby is the core', () => {
     check(['FOYER', 'ENTRY', 'PASSAGE', 'CORRIDOR'], 'foyer')
     check(['LOBBY', 'SERVICE LOBBY'], 'other')
@@ -197,6 +197,12 @@ describe('room words printed on real sheets (2026-10-14): the reader and the Stu
   test('not rooms: fixtures, appliances, drawing notes', () => {
     const tags = ['DW', 'D.W', 'D.WASH', 'FREEZE', 'FREEZER', 'FRIDGE', 'REF', 'REFREG', 'FR.', 'W/M', 'WM', 'WASHING MACHINE', 'TV', 'FHC', 'FHB', 'F.H.B', 'F.RISER', 'E.RISER', 'SDB', 'FIRE HOSE REEL', 'DINNER WAGON', 'SHOWER AREA WITH CURTAIN', 'UP', 'DN', 'LW', 'BS', 'BEAM', 'SLAB', 'ROOF OF PARKING', 'ROOF OF 7TH FLOOR', 'SLOPE 1:7', `LEVEL +2'-0"`, 'TYPE-A', 'UNIT A', 'LIFT PIT']
     for (const t of tags) expect(classifyRoom(t), t).toBeNull()
+    // s25 #19: a kitchen wash basin, a tea corner, a counter note — no room, typed or read; a dotless word only on its own
+    for (const t of ['K.WASH', 'K.WAS', 'LOW WASH', 'STANDOUT', 'TEA CORNER', 'D.W']) {
+      expect(classifyRoom(t), t).toBeNull()
+      expect(guessKind(t), `typed ${t}`).toBe('other')
+    }
+    expect(classifyRoom('EMBEDDED')).toBeNull() // MBED / SBED never inside a word
   })
   test('the name keeps the sheet\'s own words', () => {
     expect(trimName(normaliseName("MAID'S ROOM"))).toBe('MAIDS ROOM')
