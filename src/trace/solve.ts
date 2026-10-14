@@ -952,6 +952,15 @@ export function eraseText(gray: Gray, text: TextTrace): Gray {
   return { width: w, height: h, data: out }
 }
 
+/** the raster with these boxes (grown by `pad` px) turned to paper */
+export function paperOver(gray: Gray, boxes: { x: number; y: number; w: number; h: number }[], pad: number): Gray {
+  const { width: w, height: h } = gray
+  const out = new Uint8Array(gray.data)
+  for (const b of boxes)
+    for (let y = Math.max(0, Math.floor(b.y - pad)); y <= Math.min(h - 1, Math.ceil(b.y + b.h + pad)); y++) out.fill(255, y * w + Math.max(0, Math.floor(b.x - pad)), y * w + Math.min(w, Math.ceil(b.x + b.w + pad) + 1))
+  return { width: w, height: h, data: out }
+}
+
 // ───────────────────────────────────────────────────────────────── the draft
 
 interface Draft {
@@ -1917,6 +1926,8 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts = {}) {
   const t0 = performance.now()
   const text = inputs.text ?? { items: [] }
+  // a size table / floor-stack chart beside the plan (text.ts findTables) is no plan: paper before any tracing (s25)
+  if (text.tables?.length) gray = paperOver(gray, text.tables.map((t) => t.box), 4 * (text.glyphPx ?? 10))
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   const plan = KNOBS.eraseText ? eraseText(gray, text) : gray
   const masks0 = inkMasks(plan)
