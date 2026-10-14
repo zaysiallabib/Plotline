@@ -46,17 +46,17 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   const entry = e && core.roomAt(e.p, rooms, unit)
   const of = (...kinds: Room['kind'][]) => kinds.flatMap((k) => listed.filter((r) => r.kind === k))
   const opensOnto = (a: Room, kinds: Room['kind'][]) => of(...kinds).filter((b) => doorWalls(a).some((id) => b.wallIds.includes(id)))
-  const out = new Set<Room>(listed.filter((r) => r.id === entry?.id || /foyer|entr/i.test(r.name)))
+  const out = new Set<Room>(listed.filter((r) => r.id === entry?.id || r.kind === 'foyer' || /foyer|entr/i.test(r.name)))
   const take = (rs: Room[]) => rs.forEach((r) => out.add(r))
   take(of('living', 'dining'))
-  for (const k of of('kitchen')) take([k, ...opensOnto(k, ['balcony'])])
+  for (const k of of('kitchen', 'pantry')) take([k, ...opensOnto(k, ['balcony'])])
   for (const b of of('bed')) {
     const suite = [b] // + the bath/closet it opens onto, and a bath reached through that closet (dressing room → toilet)
     for (const r of suite) for (const x of opensOnto(r, r === b || r.kind === 'closet' ? ['bath', 'closet'] : [])) if (!suite.includes(x) && !out.has(x)) suite.push(x)
     take(suite)
   }
   take(of('bath').sort((a, b) => b.areaSqm - a.areaSqm)) // the powder room before the servant's WC
-  take(of('study', 'utility'))
+  take(of('study', 'prayer', 'maid', 'utility'))
   take(of('balcony'))
   take(listed)
   return [...out]
@@ -171,7 +171,7 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     const p = add(at, n, w.thicknessM / 2 + 1.2)
     const room = (side > 0 ? front : back)!
     // a foyer looks on into the flat through its widest opening (Sheltech: the living room, off to the side)
-    const into = room.kind === 'other' ? through(room, unit, rooms) : null
+    const into = room.kind === 'other' || room.kind === 'foyer' ? through(room, unit, rooms) : null
     const c = into ?? room.centroid
     const d = Math.hypot(c.x - p.x, c.y - p.y)
     const toC = { x: (c.x - p.x) / d, y: (c.y - p.y) / d }
@@ -484,7 +484,7 @@ export function roomView(room: Room, unit: Unit): View {
     target = best.mid
   }
   // an empty foyer or passage looks on into the flat through its widest opening, not at its own walls or front door
-  const into = room.kind === 'other' && !items.length && !isCommonCore(room) ? through(room, unit, core.deriveRooms(unit)) : null
+  const into = (room.kind === 'other' || room.kind === 'foyer') && !items.length && !isCommonCore(room) ? through(room, unit, core.deriveRooms(unit)) : null
   if (into) target = into
 
   const doors = room.wallIds.flatMap((id) => {

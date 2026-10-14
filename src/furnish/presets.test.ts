@@ -334,6 +334,23 @@ describe('furnish', () => {
     expectACClearOfOpenings(ac, deriveRooms(unit)[0], unit)
   })
 
+  test('foyer, pantry, maid, prayer: furnished by kind (no hob or sink in a pantry), each lit once, no AC', () => {
+    const ids = (kind: RoomKind, w = 3, h = 2.5) => {
+      const unit = rect(kind, w, h, { wall: 1, offsetM: 0.3 })
+      const ps = furnish(unit, deriveRooms(unit))
+      expect(ps.filter((p) => isCeilingLight(p.assetId)), kind).toHaveLength(1)
+      return ps.map((p) => p.assetId).filter((id) => !isCeilingLight(id))
+    }
+    expect(ids('foyer')).toEqual(['modern_wooden_cabinet'])
+    expect(ids('foyer', 1.2, 4)).toEqual([]) // a passage keeps clear
+    const pantry = ids('pantry')
+    expect(pantry).toContain('kitchen_counter')
+    expect(pantry).toContain('wooden_display_shelves_01')
+    expect(pantry.filter((id) => ['kitchen_hob', 'kitchen_sink', 'kitchen_hood'].includes(id))).toEqual([])
+    expect(ids('maid')).toEqual(expect.arrayContaining(['cot', 'hook_rail']))
+    expect(ids('prayer')).toEqual([])
+  })
+
   test('concave (L-shaped) bedroom: the ceiling light lands in the room, clear of the inner corner', () => {
     // 5 × 5 with the top-right 2.5 × 2.5 cut out; the centroid sits 0.6 m off the reflex corner, the best spot 1.4 m
     const unit = rect('bed', 5, 5)

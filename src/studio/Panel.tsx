@@ -38,7 +38,7 @@ const PICKS: [OpeningKind, string, number?, boolean?][] = [
 
 /** every kind in its picker group (a Record: a new RoomKind cannot be left out of the picker) */
 const KIND_GROUP: Record<RoomKind, 'Rooms' | 'Common rooms' | 'Outdoor zones'> = {
-  bed: 'Rooms', living: 'Rooms', dining: 'Rooms', kitchen: 'Rooms', bath: 'Rooms', balcony: 'Rooms', study: 'Rooms', closet: 'Rooms', utility: 'Rooms', shaft: 'Rooms', other: 'Rooms',
+  bed: 'Rooms', living: 'Rooms', dining: 'Rooms', kitchen: 'Rooms', bath: 'Rooms', balcony: 'Rooms', study: 'Rooms', closet: 'Rooms', utility: 'Rooms', shaft: 'Rooms', other: 'Rooms', foyer: 'Rooms', pantry: 'Rooms', maid: 'Rooms', prayer: 'Rooms',
   lobby: 'Common rooms', gym: 'Common rooms', community: 'Common rooms', guard: 'Common rooms',
   lawn: 'Outdoor zones', paving: 'Outdoor zones', driveway: 'Outdoor zones', parking: 'Outdoor zones', deck: 'Outdoor zones', pool: 'Outdoor zones', planter: 'Outdoor zones', play: 'Outdoor zones',
 }

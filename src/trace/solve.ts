@@ -1868,7 +1868,7 @@ const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s(/&-])([a-z])/g,
 const CORE_NAME = /\b(L[O0][B8]{2}Y|LIFTS?|STAIRS?|HOISTWAY|CORE|STRETCHER)\b/
 /** the core's names wherever the reader filed them (BTI: "LIFT PIT" over its size read as no room's name — the core all the same) */
 const coreText = (it: TextItem) => (it.kind === 'room' || it.kind === 'other') && CORE_NAME.test(normaliseName(it.text.split('\n')[0]))
-const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
+const KIND_NAME: Record<RoomKind, string> = { bed: 'Bed', living: 'Living', dining: 'Dining', kitchen: 'Kitchen', bath: 'Toilet', balcony: 'Veranda', study: 'Study', closet: 'Closet', utility: 'Utility', shaft: 'Shaft', other: 'Space', foyer: 'Foyer', pantry: 'Pantry', maid: 'Maid Room', prayer: 'Prayer Room', lobby: 'Lobby', gym: 'Gym', community: 'Community Hall', guard: 'Guard Room', lawn: 'Lawn', paving: 'Paving', driveway: 'Driveway', parking: 'Parking', deck: 'Deck', pool: 'Pool', planter: 'Planter', play: 'Play Area' }
 
 /** fixtures' and notes' words printed on a plan: no room's name */
 const NOT_A_NAME = /\b(WASHING|MACHINE|FREEZER|FRIDGE|REFRIGERATOR|D\.?\s?W|DISH|OVEN|SINK|HOB|BASIN|SHOWER|TUB|WARDROBE|CUP ?BOARD|SHOE|RACK|BEAM|SLAB|LEVEL|FLOOR|DN|UP|TV)\b/
@@ -2523,7 +2523,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       if (gs?.kind === 'window' || (outside && gs?.kind !== 'door' && gs?.kind !== 'passage' && (kind !== 'door' || wet))) kind = 'window'
       if (veranda && (runOf.get(o.id) ?? o.widthM) >= 1.2 && !outside) kind = 'slider'
       // (not a tracks + rooms passage: nothing at all is drawn there — no door is invented)
-      if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other') && gs?.kind !== 'passage') kind = 'door'
+      if (!outside && kind === 'passage' && o.widthM <= 1.1 && !kinds.includes('other') && !kinds.includes('foyer') && gs?.kind !== 'passage') kind = 'door'
       const conf = gs?.conf ?? 0.2
       const def = openingDefaults(kind, wet)
       const op: Opening = { ...o, kind, heightM: def.heightM, sillM: def.sillM }

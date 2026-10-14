@@ -51,7 +51,7 @@ describe('zones on the wall graph', () => {
   })
 
   test('isOutdoor: exactly the eight zone kinds', () => {
-    const all: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'lobby', 'gym', 'community', 'guard', 'lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play']
+    const all: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'bath', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'foyer', 'pantry', 'maid', 'prayer', 'lobby', 'gym', 'community', 'guard', 'lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play']
     expect(all.filter(core.isOutdoor)).toEqual(['lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play'])
   })
 })

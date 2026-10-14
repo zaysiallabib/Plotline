@@ -25,7 +25,7 @@ const COMMON: RoomKind[] = ['lobby', 'gym', 'community', 'guard']
 export const isLevel = (rooms: Room[]): boolean => rooms.some((r) => (isOutdoor(r.kind) && r.kind !== 'planter') || COMMON.includes(r.kind))
 
 /** Every kind but the wet rooms' tiled walls: a shaft or an unnamed "Space N" ('other') is painted like a room. */
-const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'lobby', 'gym', 'community', 'guard']
+const NOT_BATH: RoomKind[] = ['bed', 'living', 'dining', 'kitchen', 'balcony', 'study', 'closet', 'utility', 'shaft', 'other', 'foyer', 'pantry', 'maid', 'prayer', 'lobby', 'gym', 'community', 'guard']
 
 export const FINISH_CATALOG: CatalogSlot[] = [
   {
@@ -46,7 +46,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     label: 'Living & dining floors',
     target: 'floor',
     // lobby, foyer, passage and every unnamed closed space walk on the living floor; on a level only a lounge does
-    kinds: ['living', 'dining', 'other', 'community'],
+    kinds: ['living', 'dining', 'other', 'foyer', 'prayer', 'community'],
     levelKinds: ['living', 'dining', 'community'],
     defaultOptionId: 'fo_living_marble',
     options: [
@@ -60,7 +60,7 @@ export const FINISH_CATALOG: CatalogSlot[] = [
     id: 's_floor_wet',
     label: 'Kitchen & bath floors',
     target: 'floor',
-    kinds: ['kitchen', 'bath', 'utility', 'guard'],
+    kinds: ['kitchen', 'bath', 'utility', 'pantry', 'maid', 'guard'],
     defaultOptionId: 'fo_wet_tile',
     options: [
       { id: 'fo_wet_tile', brand: 'Akij Ceramics', sku: 'AKIJ-CER-300', label: 'Ceramic tile', priceDeltaBdt: 0, material: { kind: 'pbr', textureId: 'tile_floor_ceramic' } },

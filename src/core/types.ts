@@ -71,6 +71,11 @@ export type RoomKind =
   | 'utility'
   | 'shaft'
   | 'other'
+  // a flat's own rooms that furnish their own way (sheets print FOYER, PANTRY / DRY KITCHEN, S.BED / MAID'S ROOM, PRAYER)
+  | 'foyer'
+  | 'pantry'
+  | 'maid'
+  | 'prayer'
   // common rooms (ground floors, rooftops)
   | 'lobby'
   | 'gym'

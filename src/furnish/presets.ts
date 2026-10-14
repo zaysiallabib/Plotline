@@ -641,8 +641,8 @@ function study(ctx: Ctx): void {
   rug: for (const dx of offs) for (const dy of offs) if (tryPlace(ctx, 'rug_round', { x: c.x + dx, y: c.y + dy }, 0, 'flat')) break rug
 }
 
-/** Kitchen: fridge in a corner, then one fitted run of 0.6 m modules (sink, hob, counters) with wall cabinets over. */
-function kitchen(ctx: Ctx): void {
+/** Kitchen: fridge in a corner, then one fitted run of 0.6 m modules (sink, hob, counters) with wall cabinets over; `dry` (a pantry): no sink, no hob. */
+function kitchen(ctx: Ctx, dry = false): void {
   inCorner(ctx, 'fridge')
   const w = size('kitchen_counter').x
   let best: { side: Side; us: number[] } | null = null
@@ -665,8 +665,8 @@ function kitchen(ctx: Ctx): void {
   const { side, us } = best
   const n = us.length
   const win = side.wins[0]
-  const sink = win ? us.reduce((b, u, i) => (Math.abs(u - (win.u0 + win.u1) / 2) < Math.abs(us[b] - (win.u0 + win.u1) / 2) ? i : b), 0) : n >= 4 ? 1 : 0
-  const hob = n < 2 ? 0 : sink < n / 2 ? Math.min(n - 1, Math.max(sink + 2, n - 2)) : Math.max(0, Math.min(sink - 2, 1))
+  const sink = dry ? -1 : win ? us.reduce((b, u, i) => (Math.abs(u - (win.u0 + win.u1) / 2) < Math.abs(us[b] - (win.u0 + win.u1) / 2) ? i : b), 0) : n >= 4 ? 1 : 0
+  const hob = dry ? -1 : n < 2 ? 0 : sink < n / 2 ? Math.min(n - 1, Math.max(sink + 2, n - 2)) : Math.max(0, Math.min(sink - 2, 1))
   const rot = rotationFacing(side.n)
   // a long run ends in a tall larder at the end nearest the fridge; the first plain counter gets kettle, board, fruit
   const fridge = ctx.out.find((p) => p.assetId === 'fridge')
@@ -679,6 +679,18 @@ function kitchen(ctx: Ctx): void {
     if (!(id === 'kitchen_counter' && !ctx.counts.has('kitchen_counter_styled') && at('kitchen_counter_styled'))) at(id)
     at(i === hob ? 'kitchen_hood' : 'kitchen_upper', 'stack')
   })
+}
+
+/** Pantry / dry kitchen / food store: the kitchen's fitted run without its sink and hob, open shelves on another wall. */
+function pantry(ctx: Ctx): void {
+  kitchen(ctx, true)
+  onSides(ctx, rankNoOpenings(ctx), 'wooden_display_shelves_01')
+}
+
+/** Foyer (a flat's entrance hall): a low cabinet on its blankest wall, else a shoe bench; a passage under 1.5 m across keeps clear. */
+function foyer(ctx: Ctx): void {
+  if (bounds(ctx).short < 1.5) return
+  onSides(ctx, rankNoOpenings(ctx), 'modern_wooden_cabinet') ?? onSides(ctx, rankNoOpenings(ctx), 'bench_timber')
 }
 
 function bath(ctx: Ctx): void {
@@ -1041,14 +1053,14 @@ function stairwell(ctx: Ctx): void {
 /** Common-core rooms (stair, lift, lift lobby) are not part of the buyer's flat: the viewer leaves them out of the Rooms list; they stay in 3D. */
 export const isCommonCore = (room: Pick<Room, 'name'>): boolean => /\b(stair|lift|elevator|lobby)/i.test(room.name)
 const isStair = (room: Room) => /\bstair/i.test(room.name)
-/** A servant's room: a bedroom under 4 m², or a bed/utility/other room named help, servant or maid. */
+/** A servant's room: kind 'maid', a bedroom under 4 m², or a bed/utility/other room named help, servant or maid. */
 export const isHelpRoom = (room: Room): boolean =>
-  (room.kind === 'bed' && room.areaSqm < 4) || (['bed', 'utility', 'other'].includes(room.kind) && /\b(help|servant|maid)/i.test(room.name))
+  room.kind === 'maid' || (room.kind === 'bed' && room.areaSqm < 4) || (['bed', 'utility', 'other'].includes(room.kind) && /\b(help|servant|maid)/i.test(room.name))
 
 // ───────────────────────────── ceiling light, AC (every room kind) ─────────────────────────────
 
 /** Rooms that get a ceiling light: the preset's fan or pendant, else a flush fixture (ceilingLight). render.ts lights them. */
-export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath', 'lobby', 'gym', 'community', 'guard']
+export const LIT_KINDS: RoomKind[] = ['living', 'dining', 'bed', 'kitchen', 'study', 'bath', 'foyer', 'pantry', 'maid', 'prayer', 'lobby', 'gym', 'community', 'guard']
 /** Rooms that get a wall-mounted split AC. */
 export const AC_KINDS: RoomKind[] = ['bed', 'living', 'dining', 'study', 'gym', 'community', 'guard']
 /** An AC keeps this clear of the doors/windows on its wall (casings; curtains reach 0.24 m past the reveal) and of the room's corners. */
@@ -1125,6 +1137,10 @@ const BY_KIND: Partial<Record<Room['kind'], (ctx: Ctx) => void>> = {
   bath,
   balcony,
   closet,
+  foyer,
+  pantry,
+  maid: helpRoom,
+  prayer: () => {}, // kept empty (a mat is the family's own): the ceiling light only
   lobby,
   gym,
   community,
