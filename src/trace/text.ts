@@ -1430,7 +1430,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
           ),
         ),
       )
-    await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, user_defined_dpi: '300' })
+    // (tesseract's own notes on odd crops — "Image too small to scale" — go nowhere: they reached the browser's console)
+    await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, user_defined_dpi: '300', debug_file: '/dev/null' })
     const read = await readAll(
       passes.map((p) => p.lines.map((_, i) => i)),
       (p, l) => lineImage(p.img, l, 48, 'lanczos'),
