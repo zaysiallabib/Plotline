@@ -45,9 +45,12 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(r.closed[0].pieces.map((p) => [p.kind, p.heightM])).toEqual([['low', 1.1]])
     expect(r.room({ x: 3, y: 2.5 })).toBeTruthy()
   })
-  test('one thin line across a bedroom\'s side is no railing: a zone line, pinned by its printed size', () => {
-    const r = close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([1]))
+  test('one thin line across a living room\'s open side is no railing: a zone line (open plan), pinned by its printed size', () => {
+    const r = close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Living', kind: 'living', dims: SIZE }], sheet([1]))
     expect(r.closed[0].pieces.map((p) => [p.kind, p.heightM])).toEqual([['zone', 0]])
+  })
+  test('a bedroom is never closed by a zone line (nothing drawn there): it stays open', () => {
+    expect(close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([1])).closed).toEqual([])
   })
   test('nothing drawn and no printed size read: no zone line — the room stays open', () => {
     const r = close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed' }], sheet([]))
@@ -88,15 +91,15 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(r.room({ x: 2, y: 2.2 })?.areaSqm).toBeCloseTo(5, 0)
   })
   test('a room closed around one name before stays that room', () => {
-    // two toilets side by side sharing the east wall; the west one is closed, the east one's top is open: the pieces
-    // that close the east one never cut the west one
+    // a toilet and a kitchen side by side sharing a wall; the toilet is closed, the kitchen's top is open: the pieces
+    // that close the kitchen never cut the toilet
     const g = {
       vertices: [v('a', 1, 1), v('b', 1, 3.5), v('c', 3, 3.5), v('d', 3, 1), v('e', 5, 3.5), v('f', 5, 1)],
       walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), w('M', 'c', 'd'), w('T', 'd', 'a'), w('B2', 'c', 'e'), w('R2', 'e', 'f')],
     }
-    const r = close(g, [{ at: { x: 2, y: 2.2 }, name: 'Toilet 1', kind: 'bath' }, { at: { x: 4, y: 2.2 }, name: 'Toilet 2', kind: 'bath', dims: { aM: 1.87, bM: 2.44 } }], sheet([]))
+    const r = close(g, [{ at: { x: 2, y: 2.2 }, name: 'Toilet 1', kind: 'bath' }, { at: { x: 4, y: 2.2 }, name: 'Kitchen', kind: 'kitchen', dims: { aM: 1.87, bM: 2.44 } }], sheet([]))
     expect(r.room({ x: 2, y: 2.2 })?.areaSqm).toBeCloseTo(5, 1)
-    expect(r.closed.map((c) => c.room)).toEqual(['Toilet 2'])
+    expect(r.closed.map((c) => c.room)).toEqual(['Kitchen'])
     expect(r.room({ x: 4, y: 2.2 })?.areaSqm).toBeCloseTo(5, 0)
   })
   test('one Check-these row per closed room: what was drawn, why it was kept, the question', () => {
