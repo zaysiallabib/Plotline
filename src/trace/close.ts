@@ -110,6 +110,9 @@ export const CLOSE = {
   leftoverSqm: 4,
   /** the narrowest a room of the kind is (m): a printed size narrower is a misread */
   narrowM: { bed: 2.1, living: 2.4, dining: 2.1, kitchen: 1.4, study: 1.8 } as Record<string, number>,
+  /** the kinds no low wall ever divides, and the height under which a wall is low (m: core/flats.ts LOW_WALL_M) */
+  noLowWall: ['bed', 'bath', 'kitchen', 'maid', 'study', 'closet', 'utility', 'pantry', 'prayer'],
+  lowM: 1.2,
   railingM: 1.1,
   planterM: 0.45,
   lowThM: 0.0635,
@@ -289,11 +292,12 @@ const inFace = (f: Face, p: Pt) => p.x >= f.x0 && p.x <= f.x1 && p.y >= f.y0 && 
 const faceAtOf = (x: { faces: Face[] }, p: Pt, maxSqm: number) => x.faces.filter((f) => f.r.areaSqm <= maxSqm && inFace(f, p)).sort((a, b) => a.r.areaSqm - b.r.areaSqm)[0]
 
 /**
- * A small space with no name of its own (under CLOSE.leftoverSqm), cut off a named room by a wall with no door in it, is
- * part of that room when the room alone is off its printed size and with it matches (founder 2026-10-03: an unread space
- * next to a room stays joined to it; 2026-10-09: a room's size is its main rectangle as printed) — a shower area behind
- * its curtain line, a strip split off by a stray line. The walls between them go; nothing else changes. Returns the
- * walls left and the rooms joined.
+ * A space with no name of its own, cut off a named room by a wall with no door in it, is part of that room when the room
+ * alone is off its printed size and with it matches (founder 2026-10-03: an unread space next to a room stays joined to
+ * it; 2026-10-09: a room's size is its main rectangle as printed) — a shower area behind its curtain line, a strip split
+ * off by a stray line, or the room itself when the line cut the name off in a strip of its own (a tile line read as a
+ * low wall in front of a wardrobe). The walls between them go; nothing else changes. Returns the walls left and the
+ * rooms joined.
  */
 export function joinLeftovers<W extends Wall>(vertices: Vertex[], walls: W[], labels: CloseLabel[], o: CloseOpts): { vertices: Vertex[]; walls: W[]; joined: { room: string; at: Pt; areaSqm: number }[] } {
   const names = namesOf(labels)
@@ -305,26 +309,29 @@ export function joinLeftovers<W extends Wall>(vertices: Vertex[], walls: W[], la
     return [...m.values()].filter((n) => n === 1).length
   }
   for (const L of names) {
-    if (L.only || !L.dims) continue
-    const box = Math.max(L.dims.aM, L.dims.bM) + CLOSE.boxM + 2
+    // (no printed size read: only a LOW wall goes — a tile line or a rug's edge read as one across a room no low wall ever
+    // divides: a bedroom, a bath, a kitchen)
+    const low = !L.dims && CLOSE.noLowWall.includes(L.kind ?? '')
+    if (L.only || (!L.dims && !low)) continue
+    const box = (L.dims ? Math.max(L.dims.aM, L.dims.bM) : Math.sqrt(CLOSE.capSqm[L.kind!])) + CLOSE.boxM + 2
     const loc = local(vs, ws, L.at, box)
     const base = roomsOf(loc.vertices, loc.walls)
     const F = faceAtOf(base, L.at, o.maxSqm)
     const here = names.filter((m) => m !== L && Math.abs(m.at.x - L.at.x) <= box && Math.abs(m.at.y - L.at.y) <= box)
     if (!F || here.some((m) => inFace(F, m.at))) continue
     const check = (f: Face, g: typeof base.g, tol: number) => !printedSizeCheck(roomInnerPolygon(f.r, g), o.th0, L.dims!.aM, L.dims!.bM, tol).off
-    if (check(F, base.g, o.tolM)) continue
+    if (L.dims && check(F, base.g, o.tolM)) continue
     const mine = new Set(F.r.wallIds)
     const loose0 = deg(loc.walls)
     for (const N of base.faces) {
-      if (N === F || N.r.areaSqm >= CLOSE.leftoverSqm || N.r.areaSqm > o.maxSqm || here.some((m) => inFace(N, m.at)) || inFace(N, L.at)) continue
+      if (N === F || N.r.areaSqm > o.maxSqm || here.some((m) => inFace(N, m.at)) || inFace(N, L.at)) continue
       const between = new Set(N.r.wallIds.filter((id) => mine.has(id)))
-      if (!between.size || loc.walls.some((w) => between.has(w.id) && w.openings.some((op) => op.kind !== 'window'))) continue
+      if (!between.size || loc.walls.some((w) => between.has(w.id) && (w.openings.some((op) => op.kind !== 'window') || (low && !(w.heightM > 0 && w.heightM < CLOSE.lowM))))) continue
       const ww = loc.walls.filter((w) => !between.has(w.id))
       const used = new Set(ww.flatMap((w) => [w.a, w.b]))
       const x = roomsOf(loc.vertices.filter((v) => used.has(v.id)), ww)
       const J = faceAtOf(x, L.at, o.maxSqm)
-      if (!J || Math.abs(J.r.areaSqm - F.r.areaSqm - N.r.areaSqm) > 0.02 * J.r.areaSqm + 0.05 || here.some((m) => inFace(J, m.at)) || !check(J, x.g, o.tolM) || deg(ww) > loose0) continue
+      if (!J || Math.abs(J.r.areaSqm - F.r.areaSqm - N.r.areaSqm) > 0.02 * J.r.areaSqm + 0.05 || here.some((m) => inFace(J, m.at)) || (low ? J.r.areaSqm > CLOSE.capSqm[L.kind!] : !check(J, x.g, o.tolM)) || deg(ww) > loose0) continue
       ws = ws.filter((w) => !between.has(w.id))
       const keep = new Set(ws.flatMap((w) => [w.a, w.b]))
       vs = vs.filter((v) => keep.has(v.id))

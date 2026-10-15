@@ -180,6 +180,26 @@ describe('close.ts joinLeftovers: a small nameless space cut off a room that onl
     expect(r.joined.map((j) => j.room)).toEqual(['Bath 3'])
     expect(r.walls.map((x) => x.id)).not.toContain('S')
   })
+  test('a stray line that cuts the name off in a strip of its own: the room behind it (no name, bigger) is the rest of it', () => {
+    // a 4 × 4 m bed (inner 3.87 × 3.87) cut at y = 3.6 by a line (a tile line read as a low wall): its name in the 1.4 m strip
+    const g = {
+      vertices: [v('a', 1, 1), v('b', 1, 5), v('c', 5, 5), v('d', 5, 1), v('e', 1, 3.6), v('f', 5, 3.6)],
+      walls: [w('L1', 'a', 'e'), w('L2', 'e', 'b'), w('B', 'b', 'c'), w('R2', 'c', 'f'), w('R1', 'f', 'd'), w('T', 'd', 'a'), { ...w('S', 'e', 'f'), heightM: 1.1 }],
+    }
+    const r = joinLeftovers(g.vertices, g.walls, [{ at: { x: 3, y: 4.3 }, name: 'Bed', kind: 'bed', dims: { aM: 3.87, bM: 3.87 } }], opts(sheet([])))
+    expect(r.joined.map((j) => j.room)).toEqual(['Bed'])
+    expect(r.walls.map((x) => x.id)).not.toContain('S')
+  })
+  test('no size read: a LOW wall across a bedroom (a tile line, a rug edge) goes — a full wall stays', () => {
+    const g = (heightM: number) => ({
+      vertices: [v('a', 1, 1), v('b', 1, 5), v('c', 5, 5), v('d', 5, 1), v('e', 1, 3.6), v('f', 5, 3.6)],
+      walls: [w('L1', 'a', 'e'), w('L2', 'e', 'b'), w('B', 'b', 'c'), w('R2', 'c', 'f'), w('R1', 'f', 'd'), w('T', 'd', 'a'), { ...w('S', 'e', 'f'), heightM }],
+    })
+    const join = (heightM: number, kind = 'bed') => joinLeftovers(g(heightM).vertices, g(heightM).walls, [{ at: { x: 3, y: 4.3 }, name: 'Bed', kind }], opts(sheet([]))).joined
+    expect(join(1.1).map((j) => j.room)).toEqual(['Bed'])
+    expect(join(3.048)).toEqual([])
+    expect(join(1.1, 'balcony')).toEqual([])
+  })
   test('left alone when the bath matches its print without it, or a door stands between them', () => {
     expect(joinLeftovers(bath().vertices, bath().walls, [{ at, name: 'Bath 3', kind: 'bath', dims: { aM: 1.87, bM: 1.9 } }], opts(sheet([]))).joined).toEqual([])
     const g = bath([{ id: 'o', kind: 'door', offsetM: 0.5, widthM: 0.8, heightM: 2.1, sillM: 0 }])
