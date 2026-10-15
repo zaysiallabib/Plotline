@@ -9,7 +9,7 @@
 import { deriveRooms, formatFeetInches, polygonCentroid, roomAt, roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
-import { MIN_OPENING_M, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, type Action, type StudioIssue, type StudioState } from './model'
+import { MIN_OPENING_M, WALL_TYPES, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, wallTypeOf, type Action, type StudioIssue, type StudioState, type WallType } from './model'
 import { insidePoint, isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Review } from './review'
 
 export type Severity = 'red' | 'amber' | 'grey'
@@ -582,6 +582,33 @@ function roomFixes(u: Unit, rooms: Room[], item: ReviewItem, printed: PrintedRoo
 }
 
 /**
+ * The answers to a "Check these" row about one guessed piece — the trace's own questions ("railing, glass or …?", "Door
+ * 2'-8" wide?", step 2's "Drew a zone line to close Dining — right?"): the piece made what else it may be, or taken out.
+ * Each changes the piece, so its row goes (the row stands only while its entity is as traced). Nothing for other rows.
+ */
+function guessFixes(u: Unit, id: Id): Fix[] {
+  const op = findOpening(u, id)
+  const w = op?.wall ?? u.walls.find((x) => x.id === id)
+  if (!w) return []
+  const f = wallFrame(w, u.vertices)
+  const ghost: Ghost[] = [{ kind: 'line', from: f.origin, to: { x: f.origin.x + f.dir.x * f.lengthM, y: f.origin.y + f.dir.y * f.lengthM } }]
+  const out: Fix[] = []
+  if (op) {
+    const o = op.opening
+    if (o.kind === 'door') out.push({ label: 'Make it open (no door)', title: `An opening with no door leaf, ${ft(o.widthM)} wide`, actions: [{ type: 'update-opening', id: o.id, patch: { kind: 'passage' } }], ghost })
+    if (o.kind === 'passage') out.push({ label: 'Make it a door', title: `A door, ${ft(o.widthM)} wide`, actions: [{ type: 'update-opening', id: o.id, patch: { kind: 'door' } }], ghost })
+    const whole = o.widthM >= f.lengthM - 0.02
+    out.push({ label: 'Take it out', title: whole ? 'Nothing is there: take the piece out (the room opens again)' : 'No opening there: the wall runs on', actions: [{ type: 'delete', ids: [whole ? w.id : o.id] }], ghost })
+    return out
+  }
+  const type = wallTypeOf(w.heightM)
+  for (const t of ['wall', 'low', 'zone'] as WallType[])
+    if (t !== type && !(t === 'zone' && w.openings.length)) out.push({ label: `Make it a ${WALL_TYPES[t].label.toLowerCase()}`, title: `This ${ft(f.lengthM)} piece is a ${WALL_TYPES[t].label.toLowerCase()}`, actions: [{ type: 'set-wall-type', ids: [w.id], wall: t }], ghost })
+  out.push({ label: 'Take it out', title: 'Nothing is there: take the piece out (the room opens again)', actions: [{ type: 'delete', ids: [w.id] }], ghost })
+  return out
+}
+
+/**
  * The fixes that work, per mark (by key): each candidate applied and re-checked (`closes`); an unnamed room's name spot;
  * a room row's / an unnamed space row's (roomFixes — set even when empty: the row then offers "Show me").
  * `printed`: the last trace's room names (its review stats).
@@ -596,6 +623,10 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
       const l = r && u.roomLabels.find((x) => x.id === r.id)
       const nameAt = l ? { x: l.x, y: l.y } : r && insidePoint(r, u, rooms)
       out.set(m.key, { fixes: roomFixes(u, rooms, m.review, printed, issues), ...(nameAt ? { nameAt } : {}) })
+    }
+    if (m.review && m.review.room === undefined && m.review.entityId && (m.review.kind === 'low-confidence' || m.review.kind === 'opening-guess')) {
+      const fixes = guessFixes(u, m.review.entityId)
+      if (fixes.length) out.set(m.key, { fixes })
     }
     const i = m.issue
     if (!i) continue

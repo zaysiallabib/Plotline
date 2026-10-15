@@ -310,3 +310,28 @@ describe("the founder's draft: every issue findable on the plan, each fix closes
     }
   })
 })
+
+describe('a guessed piece\'s row (session 26 step 2): one click answers it', () => {
+  // the box split by a zone line Auto-trace drew to close the room on the right, its row on that line
+  const u: Unit = { ...splitBottom(box()), vertices: [...splitBottom(box()).vertices, v('p0', 2, 0)] }
+  u.walls = [...u.walls.filter((x) => x.id !== 'top'), w('t1', 'v1', 'p0', [door('d', 1, 0.6)]), w('t2', 'p0', 'v2'), { ...w('z', 'p0', 'p1'), thicknessM: 0.05, heightM: 0 }]
+  const row = { id: 'r', at: { x: 2, y: 1.5 }, kind: 'low-confidence' as const, entityId: 'z', message: 'Drew a zone line 9\'-10" (open plan: nothing in 3D) to close Dining — it then matches its printed size. Right?' }
+  it('a zone line: make it a wall or a low wall, or take it out; the row goes with the answer', () => {
+    const rooms = deriveRooms(u), issues = studioIssues(u, rooms), marks = markIssues(u, rooms, issues, [row])
+    const m = marks.find((x) => x.review?.id === 'r')!
+    const fixes = fixesOf(u, marks, issues).get(m.key)!.fixes
+    expect(fixes.map((f) => f.label)).toEqual(['Make it a wall', 'Make it a low wall', 'Take it out'])
+    const s = { ...stateOf(u), review: { unitId: u.id, items: [{ ...row, sig: undefined }] } }
+    const t = studioReducer(s, { type: 'apply-fix', actions: fixes[0].actions, label: fixes[0].label })
+    expect(t.unit.walls.find((x) => x.id === 'z')!.heightM).toBeGreaterThan(3)
+    const out = studioReducer(t, { type: 'apply-fix', actions: fixes[2].actions, label: fixes[2].label })
+    expect(out.unit.walls.some((x) => x.id === 'z')).toBe(false)
+  })
+  it('a guessed door: make it open, or take it out (a doorway piece goes whole)', () => {
+    const d = { ...row, kind: 'opening-guess' as const, entityId: 'd' }
+    const rooms = deriveRooms(u), issues = studioIssues(u, rooms), marks = markIssues(u, rooms, issues, [d])
+    const fixes = fixesOf(u, marks, issues).get(marks.find((x) => x.review?.id === 'r')!.key)!.fixes
+    expect(fixes.map((f) => f.label)).toEqual(['Make it open (no door)', 'Take it out'])
+    expect(fixes[1].actions).toEqual([{ type: 'delete', ids: ['d'] }]) // (a door in a longer wall: the wall runs on)
+  })
+})
