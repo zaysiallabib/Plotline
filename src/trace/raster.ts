@@ -215,40 +215,73 @@ function paperPage(g: Gray, light: Uint8Array): Gray | null {
   return { width: w, height: h, data: out }
 }
 
+/** per pixel of `m`: the length of its run of 1s along x (`horiz`) or y (0 off the mask) */
+function runLengths(m: Uint8Array, w: number, h: number, horiz: boolean): Uint16Array {
+  const r = new Uint16Array(w * h)
+  const L = horiz ? w : h, n = horiz ? h : w, step = horiz ? 1 : w
+  for (let line = 0; line < n; line++) {
+    const base = horiz ? line * w : line
+    for (let u = 0; u < L; ) {
+      let e = u
+      while (e < L && m[base + e * step]) e++
+      for (let q = u; q < e; q++) r[base + q * step] = Math.min(65535, e - u)
+      u = Math.max(e, u + 1)
+    }
+  }
+  return r
+}
+
 /**
- * Walls drawn as a light band between two thin dark outlines (bti's grey walls; their columns stay solid black): every
- * row and column is read as floor | thin dark line | fill | thin dark line | floor, the whole crossing no wider than a
- * thick wall (0.35 m at `k` px/m) and the fill darker than the floor on BOTH sides by 25 — a tile or plank floor is the
- * same tone across its joints, a window's glass is paper. The commonest such fill tone is the sheet's wall fill; its
- * crossings (outlines included) and the fill they hold where no crossing is clean (corners, T's: that tone within a wall
- * width) are painted black on a copy, so the tracer reads solid ink. null when the walls are solid already (fewer
- * outlined crossings than solid dark wall-wide ones) or nothing is outlined.
+ * Walls that are not solid ink: a BAND of wall thickness between two thin outlines, whatever its fill — bti's grey
+ * (darker than the floor on both sides by 25; their columns stay solid black) or paper (Assure's and CAD's hollow walls).
+ * Every row and column is read as floor | thin line | fill | thin line | floor (a line: 40 darker than the lightest pixel
+ * beside it, so a 1 px grey outline counts): the whole crossing no wider than a thick wall (0.35 m at `k` px/m), the fill
+ * at least 0.07 m (a window's panes are closer), even and 50 lighter than the lines, no hatch. The commonest fill tone of
+ * the commoner kind is the sheet's wall fill; with a paper fill only the sheet's commonest crossing widths count (a sofa's,
+ * a rug's, a letter's are spread thin). Its crossings, the paper they close in at corners and T's (thinner than a wall,
+ * under 2 m, touching them; a grey fill: that tone within a wall width) — kept where they join a band ≥ 1 m long, also
+ * through a column — are painted black on a copy, so the tracer reads solid ink, with `halfPx` = half the commonest
+ * crossing (the wall stage's own width guess reads the thin lines on such a sheet). null when the sheet's long wall bands
+ * are not mostly drawn this way (the long outlined ones under twice the long solid ones) or nothing is outlined.
  */
-export function outlinedWalls(g: Gray, k: number): Gray | null {
+export function outlinedWalls(g: Gray, k: number): (Gray & { halfPx: number }) | null {
   const { width: w, height: h, data } = g
   const tD = 120, near = 20
   const maxW = Math.round(0.35 * k) + 2, lineMax = Math.max(3, Math.round(0.05 * k)), minSolid = Math.max(lineMax + 1, Math.round(0.1 * k))
-  const hist = new Float64Array(256)
+  const minGap = Math.max(2, Math.round(0.07 * k))
+  const hatch = hatchMask(g, k, tD)
+  // (a line: 40 darker than the lightest pixel beside it — a grey 1 px outline too; solid: dark ink a wall wide)
+  const li = lineInk(g, 40, 1)
+  const dk = threshold(g, tD), hl = runLengths(dk, w, h, true), vl = runLengths(dk, w, h, false)
+  const solid = dk.map((v, i) => (v && ((hl[i] >= minSolid && hl[i] <= maxW) || (vl[i] >= minSolid && vl[i] <= maxW)) ? 1 : 0))
+  const hist = [new Float64Array(256), new Float64Array(256)] // fill darker than the floor | paper-like
   const mark = new Uint8Array(w * h)
-  let solid = 0, outlined = 0
-  const fill: number[] = []
-  // one pass over every row and column: T null = collect the fill tones, else mark the crossings of fill ≈ T
-  const scan = (T: number) => {
+  const fill: number[] = [], runs: number[] = [], found: number[] = [] // (crossings of the wall fill: base, step, from, to)
+  // one pass over every row and column: T < 0 = collect the fill tones, else mark the
+  // crossings of kind `cls` and fill ≈ T
+  const scan = (cls: number, T: number) => {
     for (const horiz of [true, false]) {
       const L = horiz ? w : h, n = horiz ? h : w, step = horiz ? 1 : w
       for (let line = 0; line < n; line++) {
         const base = horiz ? line * w : line
         const at = (u: number) => (u < 0 || u >= L ? 255 : data[base + u * step])
-        let ps = -1, pe = -1 // the previous dark run
-        for (let u = 0; u < L; ) {
-          if (data[base + u * step] > tD) {
-            u++
-            continue
-          }
+        // the line's runs of line ink, then each pair of neighbours as a crossing
+        runs.length = 0
+        for (let u = 0; u < L; u++) {
+          if (!li[base + u * step]) continue
           let e = u
-          while (e + 1 < L && data[base + (e + 1) * step] <= tD) e++
-          if (T < 0 && e - u + 1 >= minSolid && e - u + 1 <= maxW) solid++
-          if (ps >= 0 && pe - ps < lineMax && e - u < lineMax && e - ps < maxW) {
+          while (e + 1 < L && li[base + (e + 1) * step]) e++
+          runs.push(u, e)
+          u = e
+        }
+        const gapAt = (j: number) => (j >= 2 && j < runs.length ? runs[j] - runs[j - 1] - 1 : NaN)
+        for (let j = 2; j < runs.length; j += 2) {
+          const ps = runs[j - 2], pe = runs[j - 1], u = runs[j], e = runs[j + 1], gap = u - pe - 1
+          // a grid (tiles, planks, a window's panes): three crossings in a row the same — texture, never a wall (a wall
+          // beside one parallel line is two)
+          const eq = (i: number) => Math.abs(gapAt(i) - gapAt(i + 2)) <= 1 && runs[i + 1] - runs[i] < lineMax
+          const grid = (eq(j - 2) && eq(j - 4)) || (eq(j - 2) && eq(j)) || (eq(j) && eq(j + 2))
+          if (!grid && pe - ps < lineMax && e - u < lineMax && e - ps < maxW && gap >= minGap && !hatch?.[base + ps * step] && !hatch?.[base + e * step]) {
             fill.length = 0
             for (let t = pe + 1; t < u; t++) fill.push(data[base + t * step])
             fill.sort((p, q) => p - q)
@@ -256,45 +289,94 @@ export function outlinedWalls(g: Gray, k: number): Gray | null {
             let dark = 255
             for (let t = ps; t <= e; t++) if (t <= pe || t >= u) dark = Math.min(dark, data[base + t * step])
             const A = Math.max(at(ps - 2), at(ps - 3)), B = Math.max(at(e + 2), at(e + 3))
-            if (F - dark >= 50 && F <= Math.min(A, B) - 25 && fill.filter((v) => Math.abs(v - F) <= 25).length >= 0.6 * fill.length) {
-              if (T < 0) hist[F]++
-              else if (Math.abs(F - T) <= near) {
-                outlined++
-                for (let t = ps; t <= e; t++) mark[base + t * step] = 1
-              }
+            if (F - dark >= 50 && fill.filter((v) => Math.abs(v - F) <= 25).length >= 0.6 * fill.length) {
+              const c = F <= Math.min(A, B) - 25 ? 0 : 1
+              if (T < 0) hist[c][F]++
+              else if (c === cls && Math.abs(F - T) <= near) found.push(base, step, ps, e)
             }
           }
-          ;(ps = u), (pe = e), (u = e + 1)
         }
       }
     }
   }
-  scan(-1)
-  let T = 0, best = 0
-  for (let t = 0; t < 256; t++) {
-    let c = 0
-    for (let d = -5; d <= 5; d++) c += hist[t + d] ?? 0
-    if (c > best) (best = c), (T = t)
-  }
+  scan(-1, -1)
+  let cls = 0, T = 0, best = 0
+  for (const c of [0, 1])
+    for (let t = 0; t < 256; t++) {
+      let n = 0
+      for (let d = -5; d <= 5; d++) n += hist[c][t + d] ?? 0
+      if (n > best) (best = n), (cls = c), (T = t)
+    }
   if (!best) return null
-  scan(T)
-  if (outlined < Math.max(50, solid)) return null
-  // the fill the clean crossings could not see (corners, T's): that tone, reached through itself within a wall width
-  let q: number[] = []
-  for (let i = 0; i < mark.length; i++) if (mark[i]) q.push(i)
-  for (let d = 1; d <= maxW && q.length; d++) {
-    const nq: number[] = []
-    for (const i of q)
-      for (const j of [i - 1, i + 1, i - w, i + w]) {
-        if (j < 0 || j >= mark.length || mark[j] || Math.abs((j % w) - (i % w)) > 1) continue
-        if (data[j] <= tD || Math.abs(data[j] - T) > near) continue
-        ;(mark[j] = 1), nq.push(j)
-      }
-    q = nq
+  scan(cls, T)
+  // paper between two lines: only the sheet's wall thicknesses — crossing widths the commonest (≥ 15 % of the top, ± 1 px);
+  // a sofa's, a rug's, a letter's widths are spread thin (a grey fill is the wall's own already)
+  const wh = new Float64Array(maxW + 3)
+  for (let i = 0; i < found.length; i += 4) wh[found[i + 3] - found[i + 2] + 1]++
+  const sm = (x: number) => (wh[x - 1] ?? 0) + wh[x] + (wh[x + 1] ?? 0)
+  let top = 0
+  for (let x = 1; x <= maxW; x++) top = Math.max(top, sm(x))
+  const good = new Uint8Array(maxW + 3)
+  for (let x = 1; x <= maxW; x++) if (sm(x) >= 0.15 * top && sm(x) >= sm(x - 1) && sm(x) >= sm(x + 1)) good[x - 1] = good[x] = good[x + 1] = 1
+  const widths: number[] = []
+  for (let i = 0; i < found.length; i += 4) {
+    const [base, step, a, b] = [found[i], found[i + 1], found[i + 2], found[i + 3]]
+    if (cls === 1 && !good[b - a + 1]) continue
+    widths.push(b - a + 1)
+    for (let t = a; t <= b; t++) mark[base + t * step] = 1
   }
+  // (pixels on a straight run ≥ 1 m one way, at most a wall thick the other)
+  const long = (m: Uint8Array) => {
+    const hl = runLengths(m, w, h, true), vl = runLengths(m, w, h, false)
+    const seeds: number[] = []
+    for (let i = 0; i < m.length; i++) if (m[i] && ((vl[i] >= k && hl[i] <= maxW) || (hl[i] >= k && vl[i] <= maxW))) seeds.push(i)
+    return seeds
+  }
+  const seeds = long(mark)
+  if (seeds.length < Math.max(0.3 * k * k, 2 * long(solid).length)) return null
+  // a grey fill the clean crossings could not see (corners, T's): that tone, reached through itself within a wall width
+  if (cls === 0) {
+    let q: number[] = []
+    for (let i = 0; i < mark.length; i++) if (mark[i]) q.push(i)
+    for (let d = 1; d <= maxW && q.length; d++) {
+      const nq: number[] = []
+      for (const i of q)
+        for (const j of [i - 1, i + 1, i - w, i + w]) {
+          if (j < 0 || j >= mark.length || mark[j] || Math.abs((j % w) - (i % w)) > 1) continue
+          if (data[j] <= tD || Math.abs(data[j] - T) > near) continue
+          ;(mark[j] = 1), nq.push(j)
+        }
+      q = nq
+    }
+  }
+  // the paper the bands close in at corners and T's (and where a crossing was not clean): thinner than a wall, under 2 m
+  // long, touching them, walled round
+  const seen = new Uint8Array(w * h)
+  for (let s = 0; s < w * h; s++) {
+    if (seen[s] || mark[s] || data[s] <= tD) continue
+    const st = [s], px: number[] = []
+    seen[s] = 1
+    let x0 = w, y0 = h, x1 = -1, y1 = -1, touch = 0, big = false
+    while (st.length) {
+      const p = st.pop()!, x = p % w, y = (p - x) / w
+      if (!big) px.push(p)
+      ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+      if (Math.min(x1 - x0, y1 - y0) >= maxW || Math.max(x1 - x0, y1 - y0) >= 2 * k || x === 0 || y === 0 || x === w - 1 || y === h - 1) big = true
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) {
+        if (q < 0 || q >= w * h) continue
+        if (mark[q]) touch++
+        else if (!seen[q] && data[q] > tD) (seen[q] = 1), st.push(q)
+      }
+    }
+    if (!big && touch >= 2) for (const p of px) mark[p] = 1
+  }
+  // (the bands joined to a long one, also through a column or a solid wall. ponytail: a sofa's or a bed's hollow frame ≥ 1 m
+  // long standing free is read as wall too — drop free-standing closed rings under FURNITURE.maxSide if one shows up)
+  const keep = reach(mark.map((v, i) => v | solid[i]), w, long(mark))
   const out = new Uint8Array(data)
-  for (let i = 0; i < out.length; i++) if (mark[i]) out[i] = 0
-  return { width: w, height: h, data: out }
+  for (let i = 0; i < out.length; i++) if (keep[i] && mark[i]) out[i] = 0
+  widths.sort((p, q) => p - q)
+  return { width: w, height: h, data: out, halfPx: widths[widths.length >> 1] / 2 }
 }
 
 /** furniture painted out before walls and rooms (founder, 2026-10-15), metres */

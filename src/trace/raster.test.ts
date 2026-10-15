@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { furnitureMask, hatchMask, normalPolarity } from './raster'
+import { furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -66,5 +66,52 @@ describe('normalPolarity: a plan printed as a light panel on a dark page', () =>
     expect(p.data[at(0.5, 0.5)]).toBe(255) // the page
     expect(p.data[at(1.1, 3)]).toBe(0) // an outer wall
     expect(p.data[at(2, 3)]).toBe(235) // the floor
+  })
+})
+
+describe('outlinedWalls (step 4): walls that are not solid ink', () => {
+  // a 10 × 8 m flat at K px/m: hollow 0.15 m walls (two 1 px lines, `fill` between) around four rooms, `floor` inside, `page` outside
+  const hollow = (line: number, fill: number, floor: number, page: number) => {
+    const { g, at } = sheet()
+    g.data.fill(page)
+    const box = (x0: number, y0: number, x1: number, y1: number, v: number) => {
+      for (let y = Math.round(y0 * K); y < Math.round(y1 * K); y++) for (let x = Math.round(x0 * K); x < Math.round(x1 * K); x++) g.data[y * g.width + x] = v
+    }
+    box(1, 1, 9, 7, floor)
+    // walls as centre lines: outer box, a cross inside
+    const wall = (x0: number, y0: number, x1: number, y1: number) => {
+      const t = 0.15 / 2
+      box(x0 - t, y0 - t, x1 + t, y1 + t, line)
+      box(x0 - t + 0.02, y0 - t + 0.02, x1 + t - 0.02, y1 + t - 0.02, fill)
+    }
+    for (const [a, b, c, d] of [[1, 1, 9, 1], [1, 7, 9, 7], [1, 1, 1, 7], [9, 1, 9, 7], [5, 1, 5, 7], [1, 4, 9, 4]]) wall(a, b, c, d)
+    // the corners and crossings: the fill runs through (no line across a T)
+    return { g, at, box }
+  }
+  test('paper between two thin grey lines on white: painted solid', () => {
+    const { g, at } = hollow(150, 250, 235, 255)
+    const s = outlinedWalls(g, K)!
+    expect(s).not.toBeNull()
+    expect(s.data[at(3, 1)]).toBe(0) // a wall's middle
+    expect(s.data[at(1, 3)]).toBe(0)
+    expect(s.data[at(3, 2.5)]).toBe(235) // a floor
+    expect(s.halfPx).toBeGreaterThan(3)
+  })
+  test('paper between two thin dark lines on a grey page (the CAD look): painted solid', () => {
+    const { g, at } = hollow(60, 250, 250, 140)
+    const s = outlinedWalls(g, K)!
+    expect(s.data[at(7, 4)]).toBe(0)
+    expect(s.data[at(0.5, 0.5)]).toBe(140)
+  })
+  test('a grey furniture block drawn the same way, short and closed, is not painted; solid black walls are left alone', () => {
+    const { g, at, box } = hollow(60, 250, 235, 255)
+    // a 0.9 × 0.9 m armchair in the top-left room: same lines, same fill, a 0.15 m frame
+    box(2, 2, 2.9, 2.9, 60), box(2.02, 2.02, 2.88, 2.88, 250), box(2.15, 2.15, 2.75, 2.75, 60), box(2.17, 2.17, 2.73, 2.73, 235)
+    const s = outlinedWalls(g, K)!
+    expect(s.data[at(3, 1)]).toBe(0)
+    expect(s.data[at(2.5, 2.08)]).toBe(250) // the chair's frame stays (ponytail: a frame ≥ 1 m long, a sofa's, is read as wall)
+    const solid = sheet()
+    solid.fill(1, 1, 9, 1.15), solid.fill(1, 6.85, 9, 7), solid.fill(1, 1, 1.15, 7), solid.fill(8.85, 1, 9, 7)
+    expect(outlinedWalls(solid.g, K)).toBeNull()
   })
 })

@@ -1962,7 +1962,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // tracks: the plant green comes out before tracing (founder rule 2), the glass colour is window evidence
   // (…and the furniture with it, whitened the same way)
   const masks = tracker === 'tracks' ? { plant: union(inputs.green, furniture), glass: ink.glass, ...(furniture ? { darkMax: inkT } : {}) } : {}
-  let trace = inputs.walls ?? traceWalls(plan, { tracker, ...masks })
+  let trace = inputs.walls ?? traceWalls(plan, { tracker, ...masks, ...(solid ? { halfPx: solid.halfPx } : {}) })
   opts.onProgress?.('scale', 0.5)
 
   // ── scale

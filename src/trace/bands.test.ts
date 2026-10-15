@@ -128,9 +128,8 @@ describe('outlinedWalls: a grey band between two thin dark outlines is wall ink'
     expect(walls.length).toBe(4)
     for (const x of walls) expect(x.thicknessPx).toBeGreaterThan(9)
   })
-  test('solid walls, a fill as light as the floor (a window, a hollow wall) or a tile floor: left alone', () => {
+  test('solid walls or a tile floor: left alone (a hollow wall is read since step 4: raster.test)', () => {
     expect(outlinedWalls(sheet(300, 200, [[20, 20, 260, 10], [20, 20, 10, 160], [270, 20, 10, 160], [20, 170, 260, 10]]), 70)).toBeNull()
-    expect(outlinedWalls(outlined(225), 70)).toBeNull()
     // tiles: 6 px squares of the floor's own tone between 2 px dark joints — the same tone across every joint
     const w = 300, h = 200, d = new Uint8Array(w * h).fill(200)
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x % 8 < 2 || y % 8 < 2) d[y * w + x] = 40
