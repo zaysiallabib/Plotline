@@ -2701,7 +2701,8 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
     const ps = c.pieces.filter((pc) => pc.kind !== 'wall' || d2(pc.a, pc.b) >= KNOBS.carryFreeM)
     const pc = [...ps].sort((p, q) => d2(q.a, q.b) - d2(p.a, p.b))[0]
     if (!pc) continue
-    const at = { x: (pc.a.x + pc.b.x) / 2 - shift.x, y: (pc.a.y + pc.b.y) / 2 - shift.y }
+    // (on its straight part: a piece carried onto a wall end beside its line ends in a short jog)
+    const e = pc.via ?? pc.b, at = { x: (pc.a.x + e.x) / 2 - shift.x, y: (pc.a.y + e.y) / 2 - shift.y }
     const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
     if (w) review.push({ id: newId(), at, kind: ps.every((p) => p.kind === 'door') ? 'opening-guess' : 'low-confidence', message: closeMessage({ ...c, pieces: ps }), entityId: (pc.kind === 'door' && w.openings[0]?.id) || w.id })
   }
@@ -2835,7 +2836,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
 /** the row for a piece close.ts drew: what, where, why it was kept, the question */
 export function closeMessage(c: Pick<Closed, 'room' | 'size' | 'pieces'>): string {
   const what = (pc: Piece) => {
-    const L = formatFeetInches(d2(pc.a, pc.b))
+    const L = formatFeetInches(d2(pc.a, pc.via ?? pc.b))
     return pc.kind === 'zone' ? `a zone line ${L} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the double line` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `a wall carried on ${L}`
   }
   const list = c.pieces.map(what)
