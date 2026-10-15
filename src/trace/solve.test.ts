@@ -6,12 +6,13 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
-import type { AutoTraceResult, Gray, HintTrace, Px, TextItem, TextTrace } from './types'
+import type { AutoTraceResult, Gray, HintTrace, Px, TableRow, TextItem, TextTrace } from './types'
+import { parseDims } from './text'
 
 // ---------- synthetic: a 3-room flat with printed sizes → the exact Unit ----------
 const K = 50 // px per m
@@ -597,5 +598,18 @@ describe('namePieces: one name read in pieces along one line', () => {
   test('a name on its own, or one two rows below, stays as read', () => {
     const a = it('BED-2', 100, 100, 50, 14, 'bed'), b = it('TOILET', 100, 140, 60, 14, 'bath')
     expect(namePieces(a, [a, b])).toBe(a)
+  })
+})
+
+// s26 CPDL La Reina: "BED" read for BED 03 (a line through the 3); the legend prints Bed 1 … Bed 4
+describe('tableRow: a number lost, or a kind guessed, takes the one table row of its size', () => {
+  const r = (name: string, size: string, how: 'read' | 'guess' | 'taken' = 'read'): TableRow => ({ name, roomKind: name.startsWith('Bed') ? 'bed' : 'bath', sizeText: '', ...(how === 'guess' ? { sizeGuess: size } : { dims: parseDims(size)! }), box: { x: 0, y: 0, w: 1, h: 1 }, ...(how === 'taken' ? { onPlan: true } : {}) })
+  const rows = [r('Bed1', `18'-0"x12'-5"`), r('Bed 2', `14'-0"x11'-10"`, 'taken'), r('Bed 3', `12'-0"x11'-8"`, 'guess'), r('Toilet 2', `10'-0"x5'-0"`), r('Toilet 3', `5'-5"x11'-5"`)]
+  const bed = (x: TableRow) => x.roomKind === 'bed'
+  test('the row of its name and size no label took; never one taken; none when two fit', () => {
+    expect(tableRow(rows, 12.8, bed)?.name).toBe('Bed 3')
+    expect(tableRow(rows.filter((x) => x.name !== 'Bed 3'), 15.4, bed)).toBeNull() // Bed 2's size, but a label took Bed 2
+    expect(tableRow(rows, 5.2, (x) => x.roomKind === 'bath')).toBeNull() // Toilet 2 (4.6 m²) and Toilet 3 (5.7 m²) both fit
+    expect(tableRow(rows, 30, bed)).toBeNull()
   })
 })

@@ -33,10 +33,10 @@ import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { colourPage, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
-import { classifyRoom, normaliseName, parseDims, trimName } from './text'
+import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TextItem, TextTrace, WallSeg, WallTrace } from './types'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -1916,6 +1916,18 @@ export function namePieces(it: TextItem, items: TextItem[]): TextItem {
 }
 /** a room label's name as the sheet prints it ("BED-1" → "Bed-1") */
 const labelName = (it: TextItem): string => titleCase(trimName(normaliseName(it.text.split('\n')[0])).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
+/**
+ * s26: the size-table row a room takes its name from when its own label lost its number ("BED" for BED 03, a line drawn
+ * through the 3) or its kind was only guessed: the one row no plan label took, `of` it, whose printed size (read, or read
+ * unsure) is the room's within 20 % — else null: never a number made up
+ */
+export function tableRow(rows: TableRow[], sqm: number, of: (r: TableRow) => boolean): TableRow | null {
+  const size = (r: TableRow) => { const d = r.dims ?? (r.sizeGuess ? parseDims(r.sizeGuess) : null); return d ? d.aM * d.bM : 0 }
+  const m = rows.filter((r) => !r.onPlan && of(r) && Math.abs(size(r) - sqm) <= 0.2 * sqm)
+  return m.length === 1 ? m[0] : null
+}
+/** a name's key with its number taken out: "Bed 3" and "J BED" share "BED" */
+const unnumbered = (s: string) => nameKey(s).replace(/\d+/g, '')
 /** its read size — a misread one ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side */
 const sizeOf = (it: TextItem) => (it.dims && Math.min(it.dims.aM, it.dims.bM) >= 0.6 && Math.max(it.dims.aM, it.dims.bM) <= 12 ? it.dims : undefined)
 const sizeText = (d: { aM: number; bM: number }) => `${formatFeetInches(d.aM)} × ${formatFeetInches(d.bM)}`
@@ -2493,19 +2505,25 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
   let labelled = 0
   const dimsOf = new Map<string, { aM: number; bM: number }>()
   const kindOf = new Map<Room, RoomKind>()
+  // (s26: the size table's rows a room here took its name from — a row names one room)
+  const rowsUsed = new Set<TableRow>()
+  const tableRows = (text.tables ?? []).flatMap((t) => t.rows)
   const fromHint = (r: Room, h: RoomHint) => {
     const kind = h.kind as RoomKind
     kindOf.set(r, kind)
-    let n = (count.get(kind) ?? 0) + 1
-    // never the number a printed room of that kind carries ("Toilet 1" guessed beside the sheet's TOILET 1)
-    while (roomLabels.some((l) => l.name.toLowerCase() === `${KIND_NAME[kind]} ${n}`.toLowerCase())) n++
+    // (a guessed kind takes the name of the table's row of that kind no label took, whose size is the room's)
+    const row = h.green || h.what === 'stair treads' || h.what === AOD_HINT ? null : tableRow(tableRows, r.areaSqm, (x) => !rowsUsed.has(x) && x.roomKind === kind)
+    let n = (count.get(kind) ?? 0) + (row ? 0 : 1)
+    // never the number a printed room of that kind carries ("Toilet 1" guessed beside the sheet's TOILET 1 / TOILET 01)
+    while (!row && roomLabels.some((l) => nameKey(l.name) === nameKey(`${KIND_NAME[kind]} ${n}`))) n++
     count.set(kind, n)
+    if (row) rowsUsed.add(row)
     const at = insidePoint(r, u, rooms)
     const id = newId()
-    roomLabels.push({ id, name: h.green ? 'Planter' : h.what === 'stair treads' ? 'Stair' : h.what === AOD_HINT ? 'AOD' : `${KIND_NAME[kind]} ${n}`, kind, ...at })
+    roomLabels.push({ id, name: h.green ? 'Planter' : h.what === 'stair treads' ? 'Stair' : h.what === AOD_HINT ? 'AOD' : row ? labelName({ ...row, text: row.name } as unknown as TextItem) : `${KIND_NAME[kind]} ${n}`, kind, ...at })
     labelled++
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : h.what === AOD_HINT ? 'its size and thin-line sides (an AOD / shaft, no door?)' : (h.what ?? 'a drawn fixture')
-    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what} — check`, entityId: id })
+    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''} — check`, entityId: id })
   }
   const pending: Room[] = []
   for (const r of rooms) {
@@ -2519,7 +2537,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
       const at = insidePoint(r, u, rooms, toM({ x: it0.box.x + it0.box.w / 2, y: it0.box.y + it0.box.h / 2 }))
       const id = newId()
       const dims = sizeOf(it0)
-      roomLabels.push({ id, name: labelName(it), kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: sizeText(dims) } : {}) })
+      // (its number lost — "BED" for BED 03 — the table's row of its name no label took, whose size is the room's, names it)
+      const own = it.text.split('\n')[0]
+      const row = /\d/.test(own) ? null : tableRow(tableRows, r.areaSqm, (x) => !rowsUsed.has(x) && /\d/.test(x.name) && unnumbered(x.name) === unnumbered(own))
+      if (row) rowsUsed.add(row), review.push({ id: newId(), at, kind: 'low-confidence', message: `Its number was not read: named ${labelName({ ...it, text: row.name })} from the size table (the row of its name and size) — check`, entityId: id })
+      roomLabels.push({ id, name: labelName(row ? { ...it, text: row.name } : it), kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: sizeText(dims) } : {}) })
       if (dims) dimsOf.set(id, dims)
       kindOf.set(r, it.roomKind as RoomKind)
       labelled++

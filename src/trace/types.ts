@@ -119,6 +119,8 @@ export interface TableRow {
   roomKind?: string
   dims?: Dims
   sizeText: string
+  /** its size line read unsure (never parsed): the reader's best guess, handed to the plan label as its `sizeGuess` */
+  sizeGuess?: string
   box: { x: number; y: number; w: number; h: number }
   /** a plan label took this row's size (text.ts applyTables); unset: no room on the plan carries the name */
   onPlan?: boolean

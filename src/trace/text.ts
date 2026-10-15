@@ -374,6 +374,9 @@ export function groupWords(words: OcrWord[]): TextItem[] {
       if (kinds[i] === 'room' && kinds[j] === 'room' && !oneName(chunks[j].text, chunks[i].text)) continue
       // a garbled line over a name never changes its kind ("Bed) A a ASSAY," over LIVING made it a bedroom, Assure Phera)
       if (kinds[i] === 'room' && kinds[j] === 'other' && roomName(`${chunks[j].text} ${chunks[i].text}`)?.kind !== roomName(chunks[i].text)?.kind) continue
+      // …nor one twice its width: a line read across the floor, not the name's first line ("Fr = | 1]" over MASTER BATH
+      // took its label out of the room, s26 Ena Azmary)
+      if (kinds[i] === 'room' && kinds[j] === 'other' && chunks[j].box.w > 2 * c.w) continue
       const p = chunks[j].box
       const h = Math.max(p.h, c.h)
       const gap = c.y - (p.y + p.h)
@@ -455,15 +458,16 @@ function splitRow(line: string): { name: string; num?: number; roomKind: string;
     const n = /^\d/.test(right) && LOOKS_LIKE_DIMS.test(right) ? rowName(toks.slice(0, i).join(' ')) : null
     if (!n) continue
     // (a well-formed size only — a wrong size is worse than none; "13-6\"x14-6\"": the feet marks lost, both sides whole)
-    const dims = strictSize(right) ?? (/^\d{1,2}'?-\d{1,2}["”]?\s*[xX×]\s*\d{1,2}'?-\d{1,2}["”]?$/.test(right) ? parseDims(right) : null)
+    const dims = strictSize(right) ?? marksLost(right)
     if (dims) return { ...n, sizeText: right, dims }
     loose ??= { ...n, sizeText: right }
   }
   return loose
 }
 
-/** a size whose feet marks were all lost, each side whole: "82\" x 120\"" = 8'-2" x 12'-0" (parseDims' marks-lost rule) */
-const marksLost = (t: string): Dims | null => (/^\d{2,4}["”]\s*[xX×]\s*\d{2,4}["”]$/.test(t.trim()) ? parseDims(t) : null)
+/** a size whose feet marks were lost, each side whole: "82\" x 120\"" = 8'-2" x 12'-0" (parseDims' marks-lost rule),
+ * "11-06\" x 10-00\"" = 11'-6" x 10'-0" */
+const marksLost = (t: string): Dims | null => (/^\d{2,4}["”]\s*[xX×]\s*\d{2,4}["”]$|^\d{1,2}'?-\d{1,2}["”]?\s*[xX×]\s*\d{1,2}'?-\d{1,2}["”]?$/.test(t.trim()) ? parseDims(t) : null)
 
 /** one table row read as two: a name whose words change kind (two names) and two sizes — the two rows, else null */
 function twoRows(name: string, sizeText: string): { name: string; num?: number; roomKind: string; sizeText: string; dims?: Dims }[] | null {
@@ -479,6 +483,55 @@ function twoRows(name: string, sizeText: string): { name: string; num?: number; 
     })
   }
   return null
+}
+
+/**
+ * A legend's names column read as one item over `k` rows ("F. Living Living Dining Kitchen Bed1" beside five sizes, s26 CPDL
+ * La Reina's 8 px legend): its words split into `k` row names in reading order, every one numbered or none — else null.
+ */
+export function splitStack(text: string, k: number): string[] | null {
+  const toks = text.trim().split(/\s+/)
+  if (k < 2 || toks.length < k || toks.length > 24) return null
+  const lead = (s: string) => /^\W{0,2}\d/.test(s)
+  const numbered = lead(toks[0])
+  const go = (from: number, left: number): string[] | null => {
+    for (let to = from + 1; to <= toks.length - left + 1; to++) {
+      const s = toks.slice(from, to).join(' ')
+      if (!rowName(s) || lead(s) !== numbered || (left === 1 && to < toks.length)) continue
+      const rest = left === 1 ? [] : go(to, left - 1)
+      if (rest) return [s, ...rest]
+    }
+    return null
+  }
+  return go(0, k)
+}
+
+/** a row's size from the pieces read on its line: the size reader's sure reading, else a well-formed size, else its guess */
+function rowSize(size: TextItem[]): { sizeText: string; dims?: Dims; sizeGuess?: string } {
+  const sizeText = size.map((o) => o.text).join(' ')
+  // (the size reader's sure reading of one line, else the pieces only as a well-formed size: never an unsure line parsed)
+  const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? marksLost(sizeText) ?? undefined
+  const guess = !dims && size.length === 1 ? size[0].sizeGuess : undefined
+  return { sizeText, ...(dims ? { dims } : {}), ...(guess ? { sizeGuess: guess } : {}) }
+}
+
+/**
+ * A numbered legend's row whose number was misread ("DIS IIVING" for "01. LIVING", "[00 KITCHEN" for "09. KITCHEN", s26 Ena
+ * Jahan Lodge) takes the number its place in the column gives (the rows above / below it numbered one apart), its stray
+ * first word dropped. Rows top to bottom.
+ */
+export function numberRows<R extends TableRow>(rows: R[]): R[] {
+  if (rows.filter((r) => r.num !== undefined).length < 2) return rows
+  rows.forEach((r, i) => {
+    if (r.num !== undefined) return
+    const prev = rows[i - 1]?.num, next = rows[i + 1]?.num
+    const n = prev !== undefined ? (next === undefined || next === prev + 2 ? prev + 1 : undefined) : next !== undefined && next > 1 ? next - 1 : undefined
+    if (n === undefined) return
+    const toks = r.name.trim().split(/\s+/), rest = toks.slice(1).join(' ')
+    const stray = toks.length > 1 && toks[0].replace(/\W/g, '').length <= 3 && !LEXICON.includes(normaliseName(toks[0])) && classifyRoom(rest)?.kind === r.roomKind
+    Object.assign(r, { num: n }, stray ? { name: rest } : {})
+  })
+  return rows
 }
 
 /** a floor-stack chart's row number: 19 … 01, G, B1 */
@@ -506,15 +559,34 @@ export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
     }
     const n = it.text.includes('\n') ? null : rowName(it.text)
     if (!n) return
+    // (a names column read as one item: the sizes on its right, one per baseline, split it into rows)
+    const sizes = items
+      .filter((o) => o !== it && !o.text.includes('\n') && /\d/.test(o.text) && (o.kind === 'dims' || LOOKS_LIKE_DIMS.test(o.text)) && o.box.x >= it.box.x + it.box.w - 0.5 * o.box.h && o.box.x - (it.box.x + it.box.w) < 20 * o.box.h && Math.abs(cy(o.box) - cy(it.box)) < it.box.h / 2 + 0.25 * o.box.h)
+      .sort((p, q) => cy(p.box) - cy(q.box))
+    const lines: TextItem[][] = []
+    for (const o of sizes) {
+      const last = lines[lines.length - 1]
+      if (last && Math.abs(cy(o.box) - cy(last[0].box)) < 0.5 * o.box.h) last.push(o)
+      else lines.push([o])
+    }
+    const parts = lines.length >= 2 && it.box.h >= 1.6 * Math.max(...sizes.map((o) => o.box.h)) ? splitStack(it.text, lines.length) : null
+    if (parts) {
+      parts.forEach((p, j) => {
+        const line = lines[j].sort((a, b) => a.box.x - b.box.x)
+        const lb = line.map((o) => o.box).reduce(union)
+        const nameBox = { x: it.box.x, y: lb.y, w: it.box.w, h: lb.h }
+        rows.push({ ...rowName(p)!, ...rowSize(line), box: union(nameBox, lb), nameBox })
+      })
+      return
+    }
     const h = it.box.h
-    const sameRow = (o: TextItem) => o !== it && Math.abs(cy(o.box) - cy(it.box)) < 0.6 * Math.max(h, o.box.h) && o.box.x >= it.box.x + it.box.w - 0.5 * h
+    const sameRow = (o: TextItem) => o !== it && Math.abs(cy(o.box) - cy(it.box)) < 0.7 * Math.max(h, o.box.h) && o.box.x >= it.box.x + it.box.w - 0.5 * h
     const next = Math.min(...items.filter((o, j) => j !== i && sameRow(o) && !o.text.includes('\n') && rowName(o.text) && !LOOKS_LIKE_DIMS.test(o.text)).map((o) => o.box.x))
     const size = items.filter((o) => sameRow(o) && o.kind !== 'area' && o.box.x < next && o.box.x - (it.box.x + it.box.w) < 20 * h && /\d/.test(o.text) && !(o.kind === 'room' && !LOOKS_LIKE_DIMS.test(o.text))).sort((p, q) => p.box.x - q.box.x)
     // (a numbered legend's row names its room by the number alone: its size, when unread, is not needed for the column)
     if (!size.length) return void (n.num !== undefined && rows.push({ ...n, sizeText: '', box: it.box, nameBox: it.box }))
-    const sizeText = size.map((o) => o.text).join(' ')
-    // (the size reader's sure reading of one line, else the pieces only as a well-formed size: never an unsure line parsed)
-    const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? marksLost(sizeText) ?? undefined
+    const rs = rowSize(size)
+    const { sizeText } = rs
     const box = [it.box, ...size.map((o) => o.box)].reduce(union)
     // (two rows read as one line — "SUITE 3 LIVING & DINING" with "110\" x 1311\" 267\" x 140\"": the name changes kind
     // where the second row starts, two sizes follow: two rows, each its half of the box)
@@ -523,7 +595,7 @@ export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
       two.forEach((r, j) => rows.push({ ...r, box: { ...box, y: box.y + (j * box.h) / 2, h: box.h / 2 }, nameBox: { ...it.box, y: it.box.y + (j * it.box.h) / 2, h: it.box.h / 2 } }))
       return
     }
-    rows.push({ ...n, sizeText, ...(dims ? { dims } : {}), box, nameBox: it.box })
+    rows.push({ ...n, ...rs, box, nameBox: it.box })
   })
   // stacked in a column: each row joins the nearest aligned row above it
   const column = <T extends { nameBox: Box }>(rs: T[], maxGap: number, aligned: (p: Box, q: Box, h: number) => boolean, min: number): T[][] => {
@@ -549,7 +621,7 @@ export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
   }
   const near = (p: number, q: number, h: number) => Math.abs(p - q) <= 2 * h
   const tables: SizeTable[] = column(rows, 6, (p, q, h) => near(p.x, q.x, h) || near(p.x + p.w, q.x + q.w, h) || near(p.x + p.w / 2, q.x + q.w / 2, h), 3)
-    .map((g) => ({ box: g.map((r) => r.box).reduce(union), rows: g.map(({ nameBox: _, ...r }) => r) }))
+    .map((g) => ({ box: g.map((r) => r.box).reduce(union), rows: numberRows(g.map(({ nameBox: _, ...r }) => r)) }))
     .filter((t) => !gray || darkOutside(gray, t.box, items) < 0.03)
   const floors = items.filter((it) => FLOOR_NO.test(it.text.trim())).map((it) => ({ nameBox: it.box }))
   for (const g of column(floors, 4, (p, q, h) => near(p.x, q.x, h / 2) || near(p.x + p.w, q.x + q.w, h / 2), 5)) {
@@ -567,13 +639,16 @@ function darkOutside(g: Gray, b: Box, items: TextItem[]): number {
   for (let y = Math.max(0, Math.floor(b.y)); y < Math.min(g.height, b.y + b.h); y++)
     for (let x = Math.max(0, Math.floor(b.x)); x < Math.min(g.width, b.x + b.w); x++) {
       n++
-      if (g.data[y * g.width + x] < 80 && !inText.some((t) => x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h)) dark++
+      // (a wall's ink: its four neighbours dark too — a legend's 1–2 px rules between its rows are no wall, s26 La Reina)
+      const at = (xx: number, yy: number) => xx < 0 || yy < 0 || xx >= g.width || yy >= g.height || g.data[yy * g.width + xx] < 80
+      if (at(x, y) && at(x - 1, y) && at(x + 1, y) && at(x, y - 1) && at(x, y + 1) && !inText.some((t) => x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h)) dark++
     }
   return n ? dark / n : 0
 }
 
-/** the key two printings of one room name share: "LIVING & DINING" = "LIVING+DINING", "Ver2" = "VER 2" */
-const nameKey = (s: string) => normaliseName(s).replace(/\bAND\b|[^A-Z0-9]/g, '')
+/** the key two printings of one room name share: "LIVING & DINING" = "LIVING+DINING", "Ver2" = "VER 2", "BED 01" = "Bed 1",
+ * "J BALCONY" = "BALCONY" (a stray letter beside it) */
+export const nameKey = (s: string) => trimName(normaliseName(s)).replace(/\b0+(?=\d)/g, '').replace(/\bAND\b|[^A-Z0-9]/g, '')
 
 /**
  * A table row's size given to the plan label of its name (s25), as if printed under it: "SUITE 1" in the room ↔ the row
@@ -585,9 +660,9 @@ export function applyTables(items: TextItem[], tables: SizeTable[]): void {
   const pairs: { r: TableRow; it: TextItem; d: number }[] = []
   for (const t of tables)
     for (const r of t.rows) {
-      if (!r.dims && r.num === undefined) continue
+      if (!r.dims && !r.sizeGuess && r.num === undefined) continue
       for (const it of items) {
-        const ok = r.num !== undefined ? it.kind === 'other' && /^\d{1,2}\.?$/.test(it.text.trim()) && parseInt(it.text, 10) === r.num : it.kind === 'room' && !it.dims && nameKey(it.text.split('\n')[0]) === nameKey(r.name)
+        const ok = r.num !== undefined ? it.kind === 'other' && /^\d{1,2}\.?$/.test(it.text.trim()) && parseInt(it.text, 10) === r.num && it.box.h <= 2 * r.box.h : it.kind === 'room' && !it.dims && nameKey(it.text.split('\n')[0]) === nameKey(r.name)
         const x = it.box.x + it.box.w / 2, y = it.box.y + it.box.h / 2
         if (ok) pairs.push({ r, it, d: Math.hypot(Math.max(t.box.x - x, 0, x - t.box.x - t.box.w), Math.max(t.box.y - y, 0, y - t.box.y - t.box.h)) })
       }
@@ -602,7 +677,7 @@ export function applyTables(items: TextItem[], tables: SizeTable[]): void {
     if (r.dims) {
       it.dims = r.dims
       delete it.sizeUnread, delete it.sizeBox, delete it.sizeGuess
-    }
+    } else if (r.sizeGuess && !it.dims) Object.assign(it, { sizeUnread: true, sizeGuess: r.sizeGuess }) // (read unsure: a guess, as under the name)
   }
   // (a row no plan label carries the name of — TERRACE in the table, VER on the plan — is only a guess at the size of each
   // plan label of its kind with no size, when no other row of its table is of that kind and neither carries a number: the
@@ -1130,6 +1205,22 @@ export function findTextLines(glyphs: Box[], charH: number, strict = false): Tex
   return out
 }
 
+/**
+ * Marks that may be a room's two-figure number ("01" … "12" for a numbered legend): one glyph blob two figures wide (the
+ * figures touching) or two blobs side by side on one baseline, as tall as the page's print up to 2.5 ×.
+ */
+export function numberMarks(glyphs: Box[], charH: number): Box[] {
+  const gs = glyphs.filter((g) => g.h >= 0.75 * charH && g.h <= 2.5 * charH).sort((a, b) => a.x - b.x)
+  const out = gs.filter((g) => g.w >= 1.1 * g.h && g.w <= 2 * g.h)
+  gs.forEach((g, i) => {
+    for (let j = i + 1; j < gs.length && gs[j].x <= g.x + g.w + 0.4 * g.h; j++) {
+      const q = gs[j]
+      if (q.x >= g.x + g.w - 1 && Math.abs(q.y - g.y) <= 0.2 * g.h && Math.abs(q.h - g.h) <= 0.2 * g.h && q.x + q.w - g.x <= 2 * g.h) out.push(union(g, q))
+    }
+  })
+  return out
+}
+
 // ---------------------------------------------------------------- the OCR stage (browser; tesseract.js loaded on first call)
 
 export interface ReadTextOptions {
@@ -1330,6 +1421,12 @@ const verbatim = (t: string) => t.toUpperCase().split(/[^A-Z]+/).some((w) => NAM
 /** a read line as a room name: its kind (classifyRoom) when the name passes the gate, else null */
 export const roomName = (t: string) => (nameOk(t) ? classifyRoom(t) : null)
 
+/** `b` is the name `a` read with its number ("BED" → "BED-4", "BATH-0" → "BATH-01"): the same letters, a number where `a` has none or part of one */
+export function plusNumber(a: string, b: string): boolean {
+  const na = normaliseName(a), nb = normaliseName(b)
+  return !!roomName(b) && /[1-9]/.test(nb) && na.replace(/[^A-Z]/g, '') === nb.replace(/[^A-Z]/g, '') && nb.replace(/\D/g, '').startsWith(na.replace(/\D/g, ''))
+}
+
 /**
  * Two room names read as one line ("VER 3 TOILET 4": two labels printed on one baseline across a wall) → the two names
  * and where the line splits (a fraction of its width, by letters), else null.
@@ -1487,9 +1584,13 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     // (the better of the two: a room name or an area, then a size, then digits)
     const rank = (t: string) => (roomName(t) || parseArea(t) !== null ? 3 : parseDims(t) || LOOKS_LIKE_DIMS.test(t) ? 2 : /\d.*\d/.test(t) ? 1 : 0)
     // (only where the first read shows two letters or digits in a row: a line read as nothing or "|" is furniture)
-    const again = passes.map((p, k) => (p.strict ? p.lines.flatMap((_, i) => (rank(read[k][i].text) === 3 || !/[A-Za-z0-9]{2}/.test(read[k][i].text) ? [] : [i])) : []))
+    // (s26: and a bedroom / bath / veranda name read with no number — "BED" for BED-4, "BATH-0" for BATH-01: a line drawn
+    // through the figure — its mask read kept for the number, below)
+    const numberless = (t: string) => !/[1-9]/.test(t) && /^(bed|bath|balcony)$/.test(roomName(t)?.kind ?? '')
+    const masked = passes.map(() => new Map<number, string>())
+    const again = passes.map((p, k) => (p.strict ? p.lines.flatMap((_, i) => ((rank(read[k][i].text) === 3 && !numberless(read[k][i].text)) || !/[A-Za-z0-9]{2}/.test(read[k][i].text) ? [] : [i])) : []))
     total += again.flat().length
-    ;(await readAll(again, (p, l) => lineImage(p.clean, l, 48, 'lanczos'))).forEach((rs, k) => rs.forEach((r, j) => rank(r.text) > rank(read[k][again[k][j]].text) && (read[k][again[k][j]] = r)))
+    ;(await readAll(again, (p, l) => lineImage(p.clean, l, 48, 'lanczos'))).forEach((rs, k) => rs.forEach((r, j) => (masked[k].set(again[k][j], r.text), rank(r.text) > rank(read[k][again[k][j]].text) && (read[k][again[k][j]] = r))))
     // size candidates: horizontal, ≥ 2.5 line heights wide, not read as a room name or an area
     // (a later pass's line only when its plain read shows two digits: most of them are furniture and hatch, read for nothing)
     const cand = passes.map((p, k) => p.lines.flatMap((l, i) => (!p.names && !l.vertical && l.box.w > 2.5 * l.box.h && !classifyRoom(read[k][i].text) && parseArea(read[k][i].text) === null && (!p.strict || /\d.*\d/.test(read[k][i].text)) ? [i] : [])))
@@ -1527,7 +1628,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         return gap > -0.3 * s.box.h && gap < 1.1 * Math.max(s.box.h, n.box.h) && Math.abs(n.box.x + n.box.w / 2 - (s.box.x + s.box.w / 2)) < 0.6 * Math.max(n.box.w, s.box.w)
       })
     // (a later pass's line only when its plain read shows a word of three letters)
-    const names = passes.map((p, k) => p.lines.flatMap((n, j) => (n.vertical || isSize(k, j) || roomName(read[k][j].text) || parseArea(read[k][j].text) !== null || (k > 0 && !/[A-Za-z]{3}/.test(read[k][j].text)) ? [] : [j])))
+    const names = passes.map((p, k) => p.lines.flatMap((n, j) => (n.vertical || isSize(k, j) || (roomName(read[k][j].text) && !numberless(read[k][j].text)) || parseArea(read[k][j].text) !== null || (k > 0 && !/[A-Za-z]{3}/.test(read[k][j].text)) ? [] : [j])))
     if (names.some((n) => n.length)) {
       total += NAME_VIEWS.length * names.flat().length
       // (tesseract's own notes on odd crops — "Image too small to scale", "Detected 3 diacritics" — go nowhere)
@@ -1540,6 +1641,15 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         const again = await readAll(idx, (p, l) => lineImage(v.from === 'clean' ? p.clean : p.img, l, v.px, v.kernel, undefined, v.from === 'own' ? p.glyphs : undefined, v.wide))
         idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), !roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j)) && (read[k][j] = again[k][m]))))
       }
+      // a name read with no number: a view reading the same name with a number gives it — when no view reads another
+      names.forEach((n, k) =>
+        n.forEach((j, m) => {
+          const t = read[k][j].text
+          if (!numberless(t)) return
+          const got = [...seen[k][m], masked[k].get(j) ?? ''].filter((v) => plusNumber(t, v))
+          if (new Set(got.map((v) => +normaliseName(v).replace(/\D/g, ''))).size === 1) read[k][j] = { text: got[0], conf: read[k][j].conf }
+        }),
+      )
       // still no room name over a size: the views' words snapped hard to the room lexicon
       names.forEach((n, k) =>
         n.forEach((j, m) => {
@@ -1651,6 +1761,16 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     for (const it of items) if (!it.dims && (reaskReason(it) === 'room-without-dims' || (it.kind === 'room' && reaskReason(it) === 'unparsed-dims'))) it.sizeUnread = true
     // …unless the table beside the plan prints it
     applyTables(items, tables)
+    // a numbered legend's rows no plan number was read for: the page's two-figure marks read once more, figures only — "06"
+    // printed in a white disc is one blob, no text line (s26 Ena Jahan Lodge); kept only as two figures read sure
+    if (tables.some((t) => t.rows.some((r) => r.num !== undefined && !r.onPlan))) {
+      const nums = numberMarks(passes[0].glyphs, passes[0].charH).filter((b) => !inTable(tables, { box: b } as TextItem) && !items.some((it) => it.kind !== 'other' && overlapOfSmaller(it.box, b) > 0)).slice(0, 600) // ponytail: first 600 marks; a sheet of more needs the plan's box first
+      await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: '0123456789', debug_file: '/dev/null' })
+      const reads = await Promise.all(nums.map((b) => scheduler.addJob('recognize', lineImage(gray, { box: b, vertical: false }, 48, 'lanczos'))))
+      const found = nums.flatMap((b, i): TextItem[] => (/^\d\d$/.test(reads[i].data.text.trim()) && reads[i].data.confidence >= 90 ? [{ text: reads[i].data.text.trim(), box: b, kind: 'other', conf: reads[i].data.confidence / 100, source: 'ocr' }] : []))
+      applyTables(found, tables)
+      items.push(...found.filter((it) => it.kind === 'room'))
+    }
     return { items, glyphPx: charH, ...(tables.length ? { tables } : {}) }
   } finally {
     await scheduler.terminate()

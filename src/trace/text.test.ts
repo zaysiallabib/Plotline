@@ -13,7 +13,7 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { applyTables, chunkWords, classifyRoom, cleanForOcr, findTables, findTextLines, inTable, groupWords, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { applyTables, chunkWords, classifyRoom, cleanForOcr, findTables, findTextLines, inTable, groupWords, numberMarks, numberRows, plusNumber, splitStack, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 import { guessKind } from '../studio/model'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
@@ -505,6 +505,23 @@ describe('stray letters at a read name\'s ends', () => {
   })
 })
 
+// s26: a line drawn through a room's number — "BED" for BED-4 (Magnifico), "BATH-0" for BATH-01 (Silvi), "VER 0¢" for VER 03
+describe('a name read without its number', () => {
+  test('another view of it gives the number only when it reads the same name with one', () => {
+    expect(plusNumber('BED', 'BED-4')).toBe(true)
+    expect(plusNumber('BATH-0', 'BATH-01')).toBe(true)
+    expect(plusNumber('VER 0¢', 'VER 03')).toBe(true)
+    expect(plusNumber('Bath', 'BATHS')).toBe(false) // a 3 read as S is no number
+    expect(plusNumber('BATH-0', 'BATH-3')).toBe(false) // not the 0 that was read
+    expect(plusNumber('BED', 'BED VER 2')).toBe(false) // the next label's number
+    expect(plusNumber('BED', 'BED')).toBe(false)
+  })
+  test('a garbled line twice a name\'s width over it is no part of the name (Azmary "Fr = | 1]" over MASTER BATH)', () => {
+    const items = groupWords([{ text: 'Fr = | 1]', box: { x: 428, y: 1059, w: 268, h: 40 }, conf: 0.3 }, word('MASTER BATH', 371, 1107)])
+    expect(items.find((it) => it.kind === 'room')!.text).toBe('MASTER BATH')
+  })
+})
+
 describe('own-glyph view of a line', () => {
   test('only the glyph blobs whose centre is on the line stay: the size line below and a wall beside it go white', () => {
     const c = { width: 20, height: 10, data: new Uint8Array(200).fill(0) } // all ink: a name, its size, a wall
@@ -719,6 +736,44 @@ describe('findTables', () => {
     ])
   })
   test('parseArea reads SQT', () => expect(parseArea('2023 SQT (Approx.)')! / (FT * FT)).toBeCloseTo(2023, 0))
+  // s26 CPDL La Reina: an 8 px legend whose names column reads as stacked items, sizes read sure / unsure, ruled rows
+  test('an 8 px legend: the names column read as one item is split by the sizes beside it; ruled rows are no wall', () => {
+    const S = (text: string, y: number, extra: Partial<TextItem> = {}): TextItem => ({ ...T(text, 700, y, 45, 8), ...extra })
+    const items = [
+      T('F. Living Living Dining Kitchen Bed1', 656, 239, 31, 67),
+      S(`12'-0"x12'-5"`, 244), S('12-0176"', 259, { kind: 'dims', sizeUnread: true, sizeGuess: `12'-0"x17'-8"` }), S('23-7 14-11"', 273, { kind: 'dims', sizeUnread: true }),
+      S('10-0" 8-6"', 288, { kind: 'dims', sizeUnread: true }), S(`18'-0"x12'-5"`, 302),
+      T('Bed 2', 666, 312, 21, 8), S('4-0 1-10', 317, { kind: 'dims', sizeUnread: true, sizeGuess: `14'-0"x11'-10"` }),
+      T('Tollet 4 Dress', 659, 324, 28, 21), S(`7'-8"x4'-2"`, 327), S(`5'-0"x5'-0"`, 342),
+      T('BED D4', 329, 163, 20, 5), // the plan's own label
+    ]
+    const g: Gray = { width: 800, height: 520, data: new Uint8Array(800 * 520).fill(255) }
+    for (const y of [256, 271, 285, 300, 314, 329]) g.data.fill(0, y * 800 + 640, y * 800 + 760) // a rule under each row
+    const tables = findTables(items, g)
+    expect(tables).toHaveLength(1)
+    expect(tables[0].rows.map((r) => r.name)).toEqual(['F. Living', 'Living', 'Dining', 'Kitchen', 'Bed1', 'Bed 2', 'Tollet 4', 'Dress'])
+    expect(tables[0].rows.map((r) => (r.dims ? 'read' : r.sizeGuess ?? '-'))).toEqual(['read', `12'-0"x17'-8"`, '-', '-', 'read', `14'-0"x11'-10"`, 'read', 'read'])
+    expect(items.filter((it) => !inTable(tables, it)).map((it) => it.text)).toEqual(['BED D4'])
+    for (let y = 240; y < 330; y++) g.data.fill(0, y * 800 + 690, y * 800 + 696) // a wall through it after all
+    expect(findTables(items, g)).toHaveLength(0)
+  })
+  test('a names column splits into one name per row, every one numbered or none', () => {
+    expect(splitStack('K. Balcony Kitchen Toilet 1', 3)).toEqual(['K. Balcony', 'Kitchen', 'Toilet 1'])
+    expect(splitStack('Tollet 4 Dress', 2)).toEqual(['Tollet 4', 'Dress'])
+    expect(splitStack('01. LIVING 02. DINING', 2)).toEqual(['01. LIVING', '02. DINING'])
+    expect(splitStack('Kitchen', 2)).toBeNull()
+  })
+  // s26 Ena Jahan Lodge: "01." read as "DIS", "09." as "[00"
+  test('a numbered legend row whose number was misread takes its place in the column', () => {
+    const r = (name: string, num?: number) => ({ name, ...(num ? { num } : {}), roomKind: classifyRoom(name)!.kind, sizeText: '', box: { x: 0, y: 0, w: 1, h: 1 } })
+    expect(numberRows([r('DIS IIVING'), r('DINING', 2), r('MASTER BED', 3)]).map((x) => [x.num, x.name])).toEqual([[1, 'IIVING'], [2, 'DINING'], [3, 'MASTER BED']])
+    expect(numberRows([r('CHILD BED', 6), r('CHILD VER', 7), r('BATH', 8), r('[00 KITCHEN')]).map((x) => [x.num, x.name])).toEqual([[6, 'CHILD BED'], [7, 'CHILD VER'], [8, 'BATH'], [9, 'KITCHEN']])
+    expect(numberRows([r('LIVING'), r('KITCHEN')]).map((x) => x.num)).toEqual([undefined, undefined]) // no numbered legend
+  })
+  test('two-figure marks: one blob two figures wide, or two side by side', () => {
+    const marks = numberMarks([{ x: 245, y: 212, w: 14, h: 10 }, { x: 307, y: 425, w: 7, h: 10 }, { x: 315, y: 425, w: 4, h: 10 }, { x: 500, y: 500, w: 6, h: 10 }, { x: 600, y: 100, w: 60, h: 10 }], 8)
+    expect(marks).toEqual([{ x: 245, y: 212, w: 14, h: 10 }, { x: 307, y: 425, w: 12, h: 10 }])
+  })
 })
 
 describe('applyTables', () => {
@@ -741,6 +796,14 @@ describe('applyTables', () => {
     applyTables([v, w, b], [t])
     expect([v.dims, v.sizeGuess, w.sizeGuess, parseDims(v.sizeGuess!)!.aM / FT]).toEqual([undefined, `20'-10"x6'-0"`, `20'-10"x6'-0"`, 20 + 10 / 12])
     expect([b.dims, b.sizeGuess]).toEqual([undefined, undefined])
+  })
+  test('a row read unsure hands its guess on; "BED 01" on the plan is the row "Bed 1"; a stray letter beside a name is no matter', () => {
+    const b = room('BED D4', 329, 163), t1 = room('" TOILET O1', 487, 29), j = room('J BALCONY', 273, 64)
+    const R = (name: string, extra: object) => ({ name, roomKind: classifyRoom(name)!.kind, sizeText: '', box: { x: 650, y: 300, w: 90, h: 9 }, ...extra })
+    applyTables([b, t1, j], [{ box: { x: 647, y: 244, w: 101, h: 257 }, rows: [R('Bed 4', { sizeGuess: `12'-4"x10'-1"` }), R('Toilet 1', { dims: parseDims(`5'-6"x7'-6"`)! }), R('Balcony', { sizeGuess: `3'-4"x10'-7"` })] }])
+    expect([b.dims, b.sizeUnread, b.sizeGuess]).toEqual([undefined, true, `12'-4"x10'-1"`])
+    expect(t1.dims!.aM / FT).toBeCloseTo(5.5, 3)
+    expect(j.sizeGuess).toBe(`3'-4"x10'-7"`)
   })
   test('a numbered legend names the room its number is printed in', () => {
     const n: TextItem = { text: '03', box: { x: 760, y: 330, w: 16, h: 10 }, kind: 'other', conf: 0.9, source: 'ocr' }
