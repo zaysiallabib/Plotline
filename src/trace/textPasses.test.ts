@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { Gray } from './types'
-import { boxBack, cleanForOcr, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, type OcrWord } from './text'
+import { boxBack, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -113,6 +113,15 @@ describe('the passes (pure)', () => {
       expect(boxBack({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }, turn, 300, 200)).toEqual({ x: 40, y: 120, w: 30, h: 10 })
     }
   })
+  test('s27 AI-prep: a rejected strip on a turned page comes out upright, at full size (uprightStrip)', () => {
+    const g = paper(300, 200)
+    fill(g, 40, 120, 30, 10, 0)
+    fill(g, 40, 120, 5, 4, 128) // (a corner of another grey: the way up shows)
+    const box = { x: 100, y: 20, w: 40, h: 90 } // a strip on the turned page
+    for (const [turned, turn, angle] of [[rotateCCW(g), 'ccw', 90], [rotateCW(g), 'cw', -90]] as const)
+      expect(uprightStrip(turned, { box, angle, reason: 'garbage' })).toEqual(cropGray(g, boxBack(box, turn, 300, 200)))
+    expect(uprightStrip(g, { box: { x: 40, y: 120, w: 30, h: 10 }, angle: 0, reason: 'size-unread' })).toEqual(cropGray(g, { x: 40, y: 120, w: 30, h: 10 }))
+  })
   test('text heights: room names at 9 px and a title figure at 45 px on one sheet are both found', () => {
     const g = paper(900, 300)
     for (let i = 0; i < 4; i++) print(g, ['BED 1', 'KITCHEN', 'TOILET 2', 'LIVING'][i], 30 + 200 * i, 40, 9)
@@ -186,6 +195,10 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     expect(store.box.x).toBeGreaterThan(385)
     expect(store.box.y).toBeGreaterThan(280)
     expect(store.box.y + store.box.h).toBeLessThan(375)
+    // s27 AI-prep: none prints a size — each one's size strip is kept, with the turn that reads it upright
+    const kitchen = t.items.find((it) => it.kind === 'room' && it.roomKind === 'kitchen')!
+    const strip = (b: typeof kitchen.box) => t.rejected?.find((r) => r.reason === 'size-unread' && r.box.x <= b.x && r.box.y <= b.y && r.box.x + r.box.w >= b.x + b.w && r.box.y + r.box.h >= b.y + b.h)
+    expect([kitchen, ver, store].map((it) => strip(it.box)?.angle)).toEqual([0, -90, 90])
   }, 120_000)
   test('a big page with 6 px print: read at its own size', async () => {
     const g = paper(5000, 900)
