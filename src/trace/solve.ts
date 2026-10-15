@@ -28,7 +28,7 @@
 import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
-import { closeRooms, type CloseLabel, type Closed, type Piece } from './close'
+import { closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
@@ -2077,8 +2077,11 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
     const makeG = (base: Wall, from?: GWall): GWall =>
       from ? { ...from, ...base } : { ...base, conf: 0.5, guess: new Map(base.openings.map((o) => [o.id, { kind: o.kind, conf: 0.5, ...(o.kind === 'window' ? { glass: true } : {}) }])) }
-    const r = closeRooms(draft.unit.vertices, draft.walls, labels, { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }, makeG)
-    if (r.closed.length) {
+    const co = { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
+    // (…and a small space with no name cut off a named room that only matches its print with it: joined to it — close.ts)
+    const j = joinLeftovers(draft.unit.vertices, draft.walls, labels, co)
+    const r = closeRooms(j.vertices, j.walls, labels, co, makeG)
+    if (r.closed.length || j.joined.length) {
       const unit = { ...draft.unit, vertices: r.vertices, walls: r.walls.map(stripWall) }
       draft = { ...draft, unit, walls: r.walls, rooms: deriveRooms(unit) }
       closed = r.closed

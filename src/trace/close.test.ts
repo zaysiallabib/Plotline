@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Vertex, Wall } from '../core'
-import { closeRooms, type CloseLabel, type CloseOpts } from './close'
+import { closeRooms, joinLeftovers, type CloseLabel, type CloseOpts } from './close'
 import { closeMessage } from './solve'
 import type { Gray } from './types'
 
@@ -107,5 +107,24 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(closeMessage({ room: 'Dining', size: 'match', pieces: [p('glass', 1.83)] })).toBe(`Drew a glass wall 6'-0" along the double line to close Dining — it then matches its printed size. Right?`)
     expect(closeMessage({ room: 'Toilet 2', size: 'none', pieces: [p('door', 0.76)] })).toMatch(/^Drew a 2'-6" door in the gap .* to close Toilet 2 — no printed size was read to check it\. A door, or open\?$/)
     expect(closeMessage({ room: 'Living', size: 'near', pieces: [p('door', 0.9), p('zone', 3)] })).toMatch(/door in the gap .* and a zone line .* within 30 cm .*Select a line to make it a wall/)
+  })
+})
+
+describe('close.ts joinLeftovers: a small nameless space cut off a room that only matches its print with it is part of it', () => {
+  // a 2 × 3 m bath (inner 1.87 × 2.87) split at y = 2 by a line (a shower curtain traced as a wall): the name in the 2 m part
+  const bath = (openings: Wall['openings'] = []) => ({
+    vertices: [v('a', 1, 1), v('b', 1, 4), v('c', 3, 4), v('d', 3, 1), v('e', 1, 2), v('f', 3, 2)],
+    walls: [w('L1', 'a', 'e'), w('L2', 'e', 'b'), w('B', 'b', 'c'), w('R2', 'c', 'f'), w('R1', 'f', 'd'), w('T', 'd', 'a'), { ...w('S', 'e', 'f'), openings }],
+  })
+  const at = { x: 2, y: 3 }
+  test('joined when the print is the whole bath', () => {
+    const r = joinLeftovers(bath().vertices, bath().walls, [{ at, name: 'Bath 3', kind: 'bath', dims: { aM: 1.87, bM: 2.87 } }], opts(sheet([])))
+    expect(r.joined.map((j) => j.room)).toEqual(['Bath 3'])
+    expect(r.walls.map((x) => x.id)).not.toContain('S')
+  })
+  test('left alone when the bath matches its print without it, or a door stands between them', () => {
+    expect(joinLeftovers(bath().vertices, bath().walls, [{ at, name: 'Bath 3', kind: 'bath', dims: { aM: 1.87, bM: 1.9 } }], opts(sheet([]))).joined).toEqual([])
+    const g = bath([{ id: 'o', kind: 'door', offsetM: 0.5, widthM: 0.8, heightM: 2.1, sillM: 0 }])
+    expect(joinLeftovers(g.vertices, g.walls, [{ at, name: 'Bath 3', kind: 'bath', dims: { aM: 1.87, bM: 2.87 } }], opts(sheet([]))).joined).toEqual([])
   })
 })

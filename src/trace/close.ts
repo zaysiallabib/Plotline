@@ -238,6 +238,89 @@ function crosses(vs: Map<string, Vertex>, walls: Wall[], a: Pt, b: Pt): boolean 
   })
 }
 
+/** one name per room: a name read twice (or its size beside it) within 1 m is one; a printed size no room of its kind
+ * can have — a dining 3 ft wide — is a misread: as good as none */
+function namesOf(labels: CloseLabel[]): CloseLabel[] {
+  const names: CloseLabel[] = []
+  const plausible = (l: CloseLabel) => !l.dims || Math.min(l.dims.aM, l.dims.bM) >= (CLOSE.narrowM[l.kind ?? ''] ?? 0)
+  for (const l0 of labels) {
+    const l = plausible(l0) ? l0 : { ...l0, dims: undefined }
+    if (!names.some((m) => d2(m.at, l.at) < 1 && !!m.only === !!l.only)) names.push(l)
+  }
+  return names
+}
+
+/** the walls near a point (their box within R of it) and their corners: a face closed there is closed in the whole draft too */
+function local<X extends Wall>(vv: Vertex[], ww: X[], at: Pt, R: number): { vertices: Vertex[]; walls: X[] } {
+  const V = new Map(vv.map((v) => [v.id, v]))
+  const near = ww.filter((w) => {
+    const a = V.get(w.a)!, b = V.get(w.b)!
+    return Math.max(a.x, b.x) >= at.x - R && Math.min(a.x, b.x) <= at.x + R && Math.max(a.y, b.y) >= at.y - R && Math.min(a.y, b.y) <= at.y + R
+  })
+  const used = new Set(near.flatMap((w) => [w.a, w.b]))
+  return { vertices: vv.filter((v) => used.has(v.id)), walls: near }
+}
+type Face = { r: Room; poly: Pt[]; x0: number; y0: number; x1: number; y1: number }
+/** the rooms of a (local) graph, each with its outline and box worked out once */
+function roomsOf(vv: Vertex[], ww: Wall[]): { faces: Face[]; g: { vertices: Vertex[]; walls: Wall[]; roomLabels: [] } } {
+  const g = { vertices: vv, walls: ww, roomLabels: [] as [] }
+  const faces: Face[] = deriveRooms(g).map((r) => {
+    const poly = roomPolygon(r, g), xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
+    return { r, poly, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }
+  })
+  return { faces, g }
+}
+const inFace = (f: Face, p: Pt) => p.x >= f.x0 && p.x <= f.x1 && p.y >= f.y0 && p.y <= f.y1 && pointInPolygon(p, f.poly)
+/** the smallest closed room (≤ maxSqm) around p */
+const faceAtOf = (x: { faces: Face[] }, p: Pt, maxSqm: number) => x.faces.filter((f) => f.r.areaSqm <= maxSqm && inFace(f, p)).sort((a, b) => a.r.areaSqm - b.r.areaSqm)[0]
+
+/**
+ * A small space with no name of its own (under CLOSE.leftoverSqm), cut off a named room by a wall with no door in it, is
+ * part of that room when the room alone is off its printed size and with it matches (founder 2026-10-03: an unread space
+ * next to a room stays joined to it; 2026-10-09: a room's size is its main rectangle as printed) — a shower area behind
+ * its curtain line, a strip split off by a stray line. The walls between them go; nothing else changes. Returns the
+ * walls left and the rooms joined.
+ */
+export function joinLeftovers<W extends Wall>(vertices: Vertex[], walls: W[], labels: CloseLabel[], o: CloseOpts): { vertices: Vertex[]; walls: W[]; joined: { room: string; at: Pt; areaSqm: number }[] } {
+  const names = namesOf(labels)
+  let vs = vertices, ws = walls
+  const joined: { room: string; at: Pt; areaSqm: number }[] = []
+  const deg = (ww: Wall[]) => {
+    const m = new Map<string, number>()
+    for (const w of ww) for (const id of [w.a, w.b]) m.set(id, (m.get(id) ?? 0) + 1)
+    return [...m.values()].filter((n) => n === 1).length
+  }
+  for (const L of names) {
+    if (L.only || !L.dims) continue
+    const box = Math.max(L.dims.aM, L.dims.bM) + CLOSE.boxM + 2
+    const loc = local(vs, ws, L.at, box)
+    const base = roomsOf(loc.vertices, loc.walls)
+    const F = faceAtOf(base, L.at, o.maxSqm)
+    const here = names.filter((m) => m !== L && Math.abs(m.at.x - L.at.x) <= box && Math.abs(m.at.y - L.at.y) <= box)
+    if (!F || here.some((m) => inFace(F, m.at))) continue
+    const check = (f: Face, g: typeof base.g, tol: number) => !printedSizeCheck(roomInnerPolygon(f.r, g), o.th0, L.dims!.aM, L.dims!.bM, tol).off
+    if (check(F, base.g, o.tolM)) continue
+    const mine = new Set(F.r.wallIds)
+    const loose0 = deg(loc.walls)
+    for (const N of base.faces) {
+      if (N === F || N.r.areaSqm >= CLOSE.leftoverSqm || N.r.areaSqm > o.maxSqm || here.some((m) => inFace(N, m.at)) || inFace(N, L.at)) continue
+      const between = new Set(N.r.wallIds.filter((id) => mine.has(id)))
+      if (!between.size || loc.walls.some((w) => between.has(w.id) && w.openings.some((op) => op.kind !== 'window'))) continue
+      const ww = loc.walls.filter((w) => !between.has(w.id))
+      const used = new Set(ww.flatMap((w) => [w.a, w.b]))
+      const x = roomsOf(loc.vertices.filter((v) => used.has(v.id)), ww)
+      const J = faceAtOf(x, L.at, o.maxSqm)
+      if (!J || Math.abs(J.r.areaSqm - F.r.areaSqm - N.r.areaSqm) > 0.02 * J.r.areaSqm + 0.05 || here.some((m) => inFace(J, m.at)) || !check(J, x.g, o.tolM) || deg(ww) > loose0) continue
+      ws = ws.filter((w) => !between.has(w.id))
+      const keep = new Set(ws.flatMap((w) => [w.a, w.b]))
+      vs = vs.filter((v) => keep.has(v.id))
+      joined.push({ room: L.name, at: L.at, areaSqm: N.r.areaSqm })
+      break
+    }
+  }
+  return { vertices: vs, walls: ws, joined }
+}
+
 export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], labels: CloseLabel[], o: CloseOpts, make: (base: Wall, from?: W) => W): { vertices: Vertex[]; walls: W[]; closed: Closed[] } {
   const { gray, k } = o
   const W0 = gray.width, H0 = gray.height
@@ -264,40 +347,11 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     }
     return hit / (n - 1)
   }
-  // one name per room: a name read twice (or its size beside it) within 1 m is one
-  const names: CloseLabel[] = []
-  // (a printed size no room of its kind can have — a dining 3 ft wide — is a misread: as good as none)
-  const plausible = (l: CloseLabel) => !l.dims || Math.min(l.dims.aM, l.dims.bM) >= (CLOSE.narrowM[l.kind ?? ''] ?? 0)
-  for (const l0 of labels) {
-    const l = plausible(l0) ? l0 : { ...l0, dims: undefined }
-    if (!names.some((m) => d2(m.at, l.at) < 1 && !!m.only === !!l.only)) names.push(l)
-  }
+  const names = namesOf(labels)
   let vs = vertices, ws = walls
   const closed: Closed[] = []
 
-  /** the walls near a point (their box within R of it) and their corners: a face closed there is closed in the whole draft too */
-  const local = <X extends Wall>(vv: Vertex[], ww: X[], at: Pt, R: number) => {
-    const V = new Map(vv.map((v) => [v.id, v]))
-    const near = ww.filter((w) => {
-      const a = V.get(w.a)!, b = V.get(w.b)!
-      return Math.max(a.x, b.x) >= at.x - R && Math.min(a.x, b.x) <= at.x + R && Math.max(a.y, b.y) >= at.y - R && Math.min(a.y, b.y) <= at.y + R
-    })
-    const used = new Set(near.flatMap((w) => [w.a, w.b]))
-    return { vertices: vv.filter((v) => used.has(v.id)), walls: near }
-  }
-  type Face = { r: Room; poly: Pt[]; x0: number; y0: number; x1: number; y1: number }
-  /** the rooms of a (local) graph, each with its outline and box worked out once */
-  const roomsOf = (vv: Vertex[], ww: Wall[]) => {
-    const g = { vertices: vv, walls: ww, roomLabels: [] }
-    const rooms = deriveRooms(g)
-    const faces: Face[] = rooms.map((r) => {
-      const poly = roomPolygon(r, g), xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
-      return { r, poly, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }
-    })
-    return { faces, g }
-  }
-  const inFace = (f: Face, p: Pt) => p.x >= f.x0 && p.x <= f.x1 && p.y >= f.y0 && p.y <= f.y1 && pointInPolygon(p, f.poly)
-  const faceAt = (x: { faces: Face[] }, p: Pt) => x.faces.filter((f) => f.r.areaSqm <= o.maxSqm && inFace(f, p)).sort((a, b) => a.r.areaSqm - b.r.areaSqm)[0]
+  const faceAt = (x: { faces: Face[] }, p: Pt) => faceAtOf(x, p, o.maxSqm)
 
   // (the building's walls only — joined into a run of at least mainM: ink on its own, a table's edges, a bed's headboard
   // line, is furniture, never where a wall goes on nor what one meets. Worked out once per draft, again only after pieces
