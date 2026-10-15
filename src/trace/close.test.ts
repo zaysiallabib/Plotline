@@ -102,6 +102,27 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(r.closed.map((c) => c.room)).toEqual(['Kitchen'])
     expect(r.room({ x: 4, y: 2.2 })?.areaSqm).toBeCloseTo(5, 0)
   })
+  test('a size the reader only guessed pins the room where the room closed matches it — else no zone line', () => {
+    const living = (guess: { aM: number; bM: number }) => close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Living', kind: 'living', guess }], sheet([1]))
+    const r = living(SIZE)
+    expect(r.closed.map((c) => [c.size, c.pieces.map((p) => p.kind)])).toEqual([['guess', ['zone']]])
+    expect(closeMessage(r.closed[0])).toMatch(/as far as the size could be read \(check it\)/)
+    expect(living({ aM: 2.5, bM: 2.5 }).closed).toEqual([])
+  })
+  test('a veranda drawn in thin lines against one wall: low walls (its railing) where its printed size puts its three sides', () => {
+    // a room above (1 … 5 × 0.2 … 1); below its wall a railing box 2 … 4.5 × 1 … 2.3, one 1 px line on each side
+    const g = {
+      vertices: [v('a', 1, 0.2), v('b', 1, 1), v('c', 5, 1), v('d', 5, 0.2)],
+      walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), w('R', 'c', 'd'), w('T', 'd', 'a')],
+    }
+    const gray = sheet([2.3], 2, 4.5)
+    for (const x of [2, 4.5]) for (let y = Math.round(1 * K); y <= Math.round(2.3 * K); y++) gray.data[y * gray.width + Math.round(x * K)] = 0
+    const r = close(g, [{ at: { x: 3.25, y: 1.65 }, name: 'Ver', kind: 'balcony', dims: { aM: 2.5, bM: 1.24 } }], gray)
+    expect(r.closed.map((c) => [c.room, c.size, c.pieces.map((p) => [p.kind, p.heightM])])).toEqual([['Ver', 'match', [['low', 1.1], ['low', 1.1], ['low', 1.1]]]])
+    expect(r.room({ x: 3.25, y: 1.65 })?.areaSqm).toBeCloseTo(2.5 * 1.3, 0)
+    // (nothing drawn there: no box)
+    expect(close(g, [{ at: { x: 3.25, y: 1.65 }, name: 'Ver', kind: 'balcony', dims: { aM: 2.5, bM: 1.24 } }], sheet([])).closed).toEqual([])
+  })
   test('one Check-these row per closed room: what was drawn, why it was kept, the question', () => {
     const p = (kind: 'door' | 'glass' | 'zone', L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, kind, thM: 0.1, heightM: 3 })
     expect(closeMessage({ room: 'Dining', size: 'match', pieces: [p('glass', 1.83)] })).toBe(`Drew a glass wall 6'-0" along the double line to close Dining — it then matches its printed size. Right?`)

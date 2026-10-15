@@ -33,7 +33,7 @@ import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { colourPage, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
-import { normaliseName, trimName } from './text'
+import { classifyRoom, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
 import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TextItem, TextTrace, WallSeg, WallTrace } from './types'
@@ -1896,6 +1896,24 @@ const NOT_A_NAME = /\b(WASHING|MACHINE|FREEZER|FRIDGE|REFRIGERATOR|D\.?\s?W|DISH
 /** a read that may be a room's label: a name, a size, an area — or a word of three letters or more that is no fixture's */
 export const nameLike = (it: Pick<TextItem, 'kind' | 'text'>) => it.kind !== 'other' || (/[A-Z]{3,}/i.test(it.text) && !NOT_A_NAME.test(it.text.toUpperCase()))
 
+/**
+ * One name read in pieces along one line — "DINING", "AMILY" + its size, "f LOUNGE" for DINING & FAMILY LOUNGE; "BED" beside
+ * "-04/HOME OFFICE": the pieces beside `it` among `items` (first lines on one baseline, at most two letter heights apart)
+ * in reading order are the name, its kind as classifyRoom reads the whole. One piece: `it` as it is.
+ */
+export function namePieces(it: TextItem, items: TextItem[]): TextItem {
+  const lineH = (x: TextItem) => x.box.h / x.text.split('\n').length, midY = (x: TextItem) => x.box.y + lineH(x) / 2
+  const piece = (x: TextItem, y: TextItem) => Math.abs(midY(x) - midY(y)) < 0.6 * Math.max(lineH(x), lineH(y)) && Math.max(x.box.x, y.box.x) - Math.min(x.box.x + x.box.w, y.box.x + y.box.w) < 2 * Math.max(lineH(x), lineH(y))
+  const chain = [it]
+  for (let more = true; more; ) {
+    const next = items.find((x) => !chain.includes(x) && chain.some((y) => piece(x, y)))
+    more = !!next
+    if (next) chain.push(next)
+  }
+  if (chain.length < 2) return it
+  const whole = chain.sort((x, y) => x.box.x - y.box.x).map((x) => x.text.split('\n')[0]).join(' ')
+  return { ...it, text: whole, roomKind: classifyRoom(whole)?.kind ?? it.roomKind }
+}
 /** a room label's name as the sheet prints it ("BED-1" → "Bed-1") */
 const labelName = (it: TextItem): string => titleCase(trimName(normaliseName(it.text.split('\n')[0])).replace(/\s+([.-])\s*/g, '$1').replace(/\.+$/, '')) || KIND_NAME[it.roomKind as RoomKind]
 /** its read size — a misread one ("511X517" → 5'-11" × 51'-7") is no size: rooms are 0.6–12 m a side */
@@ -2077,7 +2095,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   if (tracker === 'tracks' && KNOBS.closeRooms) {
     const labels: CloseLabel[] = text.items
       .filter((it) => (it.kind === 'room' && it.roomKind) || coreText(it))
-      .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
+      .map((it) => ({ at: { x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM }, name: labelName(it), kind: it.roomKind, dims: sizeOf(it), guess: it.sizeUnread && it.sizeGuess ? sizeOf({ ...it, dims: parseDims(it.sizeGuess) ?? undefined }) : undefined, green: !!it.green, only: !it.roomKind || coreText(it) || CORE_NAME.test(normaliseName(it.text.split('\n')[0])) }))
     const makeG = (base: Wall, from?: GWall): GWall =>
       from ? { ...from, ...base } : { ...base, conf: 0.5, guess: new Map(base.openings.map((o) => [o.id, { kind: o.kind, conf: 0.5, ...(o.kind === 'window' ? { glass: true } : {}) }])) }
     const co = { gray: plan, k: pxPerM, th0: draft.th0, maxSqm: KNOBS.maxRoomSqm, tolM: KNOBS.closeTolM, rejectM: KNOBS.closeRejectM, wallHeightM: WALL_HEIGHT_M }
@@ -2491,12 +2509,16 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
   }
   const pending: Room[] = []
   for (const r of rooms) {
-    const items = (labelsIn.get(r.id) ?? []).sort((p, q) => Number(!!q.dims) - Number(!!p.dims) || q.conf - p.conf)
-    const it = items[0]
-    if (it) {
-      const at = insidePoint(r, u, rooms, toM({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 }))
+    // (two printed names in one space: the larger printed room names it — one room right instead of none; the room rows
+    // say which name has no room of its own)
+    const sqm = (it: TextItem) => { const d = sizeOf(it); return d ? d.aM * d.bM : 0 }
+    const items = (labelsIn.get(r.id) ?? []).sort((p, q) => sqm(q) - sqm(p) || q.conf - p.conf)
+    const it0 = items[0]
+    if (it0) {
+      const it = namePieces(it0, items)
+      const at = insidePoint(r, u, rooms, toM({ x: it0.box.x + it0.box.w / 2, y: it0.box.y + it0.box.h / 2 }))
       const id = newId()
-      const dims = sizeOf(it)
+      const dims = sizeOf(it0)
       roomLabels.push({ id, name: labelName(it), kind: it.roomKind as RoomKind, ...at, ...(dims ? { printedSize: sizeText(dims) } : {}) })
       if (dims) dimsOf.set(id, dims)
       kindOf.set(r, it.roomKind as RoomKind)
@@ -2796,7 +2818,7 @@ export function closeMessage(c: Pick<Closed, 'room' | 'size' | 'pieces'>): strin
   }
   const list = c.pieces.map(what)
   const drew = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0]
-  const size = c.size === 'match' ? 'it then matches its printed size' : c.size === 'near' ? 'it then comes within 30 cm of its printed size' : 'no printed size was read to check it'
+  const size = c.size === 'match' ? 'it then matches its printed size' : c.size === 'near' ? 'it then comes within 30 cm of its printed size' : c.size === 'guess' ? 'it then matches its printed size as far as the size could be read (check it)' : 'no printed size was read to check it'
   const ask = c.pieces.some((p) => p.kind === 'zone') ? 'Right? Select a line to make it a wall, glass or a low wall' : c.pieces.every((p) => p.kind === 'door') ? 'A door, or open?' : 'Right?'
   return `Drew ${drew} to close ${c.room} — ${size}. ${ask}`
 }

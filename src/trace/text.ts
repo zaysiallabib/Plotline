@@ -226,8 +226,12 @@ const SPECIAL: Rule[] = [
   [/\b(SUN ?SHADE|PLANTER|PLANT|PLANTATION|GREEN|LANDSCAPE|GARDEN|LAWN)\b/, 'balcony', true],
   [/\b(K\.? ?VER(ANDAH?)?|KIT\.? ?VER|KITCHEN VER|SERVICE VER)/, 'balcony'],
   [/\b((SERVANT|HELP|MAID|DRIVER|STAFF)S? ?(TOILET|TOI|TO|TLT|BATH|WC)|[HS]\. ?(TOILET|BATH))\b/, 'bath'],
-  [/\b((SERVANT|HELP|MAID)S?|DRIVERS? (ROOM|RM|BED)|STAFF BED|S\. ?BED|SBED)\b/, 'maid'],
-  [/\b(LOBBY|STAIRS?|LIFTS?|HOISTWAY|FIRE CORRIDOR)\b/, 'other'], // the building's core, in no flat (core/flats.ts isCore)
+  [/\b((SERVANT|HELP|MAID)S?|DRIVERS? (ROOM|RM|BED)|STAFF BED|S\. ?BED|SBED)\b|^S\/A$/, 'maid'], // (S/A: servant's area)
+  [/\b(LOBBY|STAIRS?|STAIRCASE|LIFTS?|HOISTWAY|FIRE CORRIDOR)\b/, 'other'], // the building's core, in no flat (core/flats.ts isCore)
+  // (a rooftop's / ground floor's common rooms and zones: core RoomKinds)
+  [/\bGYM\b/, 'gym'],
+  [/\b(SWIMMING POOL|POOL)\b/, 'pool'],
+  [/\bGRAVEL\b/, 'paving'],
   [/^A[./]?C\b|\b(O\.?D\.?U|LEDGE)\b/, 'shaft'], // AC / outdoor-unit ledge: open to the sky, never furnished
 ]
 const RULES: Rule[] = [
@@ -458,6 +462,25 @@ function splitRow(line: string): { name: string; num?: number; roomKind: string;
   return loose
 }
 
+/** a size whose feet marks were all lost, each side whole: "82\" x 120\"" = 8'-2" x 12'-0" (parseDims' marks-lost rule) */
+const marksLost = (t: string): Dims | null => (/^\d{2,4}["”]\s*[xX×]\s*\d{2,4}["”]$/.test(t.trim()) ? parseDims(t) : null)
+
+/** one table row read as two: a name whose words change kind (two names) and two sizes — the two rows, else null */
+function twoRows(name: string, sizeText: string): { name: string; num?: number; roomKind: string; sizeText: string; dims?: Dims }[] | null {
+  const sizes = sizeText.trim().split(/\s+(?=\d{2,4}["”]\s*[xX×])/)
+  if (sizes.length !== 2) return null
+  const toks = name.split(/\s+/)
+  for (let i = 1; i < toks.length; i++) {
+    const a = rowName(toks.slice(0, i).join(' ')), b = rowName(toks.slice(i).join(' '))
+    if (!a || !b || a.roomKind === b.roomKind || b.num !== undefined) continue
+    return [a, b].map((r, j) => {
+      const d = strictSize(sizes[j]) ?? marksLost(sizes[j])
+      return { ...r, sizeText: sizes[j], ...(d ? { dims: d } : {}) }
+    })
+  }
+  return null
+}
+
 /** a floor-stack chart's row number: 19 … 01, G, B1 */
 const FLOOR_NO = /^(B ?\d{1,2}|\d{1,2}|G|GF|LG|UG)$/i
 
@@ -491,8 +514,16 @@ export function findTables(items: TextItem[], gray?: Gray): SizeTable[] {
     if (!size.length) return void (n.num !== undefined && rows.push({ ...n, sizeText: '', box: it.box, nameBox: it.box }))
     const sizeText = size.map((o) => o.text).join(' ')
     // (the size reader's sure reading of one line, else the pieces only as a well-formed size: never an unsure line parsed)
-    const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? undefined
-    rows.push({ ...n, sizeText, ...(dims ? { dims } : {}), box: [it.box, ...size.map((o) => o.box)].reduce(union), nameBox: it.box })
+    const dims = (size.length === 1 && !size[0].sizeUnread ? size[0].dims : undefined) ?? strictSize(sizeText) ?? marksLost(sizeText) ?? undefined
+    const box = [it.box, ...size.map((o) => o.box)].reduce(union)
+    // (two rows read as one line — "SUITE 3 LIVING & DINING" with "110\" x 1311\" 267\" x 140\"": the name changes kind
+    // where the second row starts, two sizes follow: two rows, each its half of the box)
+    const two = twoRows(n.name, sizeText)
+    if (two) {
+      two.forEach((r, j) => rows.push({ ...r, box: { ...box, y: box.y + (j * box.h) / 2, h: box.h / 2 }, nameBox: { ...it.box, y: it.box.y + (j * it.box.h) / 2, h: it.box.h / 2 } }))
+      return
+    }
+    rows.push({ ...n, sizeText, ...(dims ? { dims } : {}), box, nameBox: it.box })
   })
   // stacked in a column: each row joins the nearest aligned row above it
   const column = <T extends { nameBox: Box }>(rs: T[], maxGap: number, aligned: (p: Box, q: Box, h: number) => boolean, min: number): T[][] => {
@@ -561,6 +592,7 @@ export function applyTables(items: TextItem[], tables: SizeTable[]): void {
         if (ok) pairs.push({ r, it, d: Math.hypot(Math.max(t.box.x - x, 0, x - t.box.x - t.box.w), Math.max(t.box.y - y, 0, y - t.box.y - t.box.h)) })
       }
     }
+  const named = new Set(pairs.map((x) => x.r))
   const took = new Set<TextItem>()
   for (const { r, it } of pairs.sort((p, q) => p.d - q.d)) {
     if (r.onPlan || took.has(it)) continue
@@ -572,6 +604,20 @@ export function applyTables(items: TextItem[], tables: SizeTable[]): void {
       delete it.sizeUnread, delete it.sizeBox, delete it.sizeGuess
     }
   }
+  // (a row no plan label carries the name of — TERRACE in the table, VER on the plan — is only a guess at the size of each
+  // plan label of its kind with no size, when no other row of its table is of that kind and neither carries a number: the
+  // tracer keeps it where the drawn room matches it, as it does a size line read unsure)
+  const ftIn = (m: number) => {
+    const i = Math.round(m / FT * 12)
+    return `${Math.floor(i / 12)}'-${i % 12}"`
+  }
+  for (const t of tables)
+    for (const r of t.rows) {
+      if (!r.dims || !r.roomKind || r.num !== undefined || /\d/.test(r.name) || named.has(r) || t.rows.filter((x) => x.roomKind === r.roomKind).length > 1) continue
+      for (const it of items)
+        if (it.kind === 'room' && !it.dims && !it.sizeGuess && it.roomKind === r.roomKind && !/\d/.test(it.text.split('\n')[0]) && !inTable(tables, it))
+          Object.assign(it, { sizeUnread: true, sizeGuess: `${ftIn(r.dims.aM)}x${ftIn(r.dims.bM)}` })
+    }
 }
 
 /** the read text lying in a table (its centre in a table's box): no plan label */

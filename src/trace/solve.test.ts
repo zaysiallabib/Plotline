@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -584,5 +584,18 @@ describe('titleAreas', () => {
     const small: (TextItem | undefined)[] = [undefined]
     titleAreas([area('2703 SFT', 700, 2300)], [], [part(10, 10)], [part(10, 30), part(10, 10), part(20, 10)], small, 50)
     expect(small[0]).toBeUndefined()
+  })
+})
+
+describe('namePieces: one name read in pieces along one line', () => {
+  const it = (text: string, x: number, y: number, w: number, h: number, roomKind: string): TextItem => ({ text, box: { x, y, w, h }, kind: 'room', roomKind, conf: 0.6, source: 'ocr' })
+  test('DINING + AMILY (with the size) + f LOUNGE: the dining & family lounge, a dining room', () => {
+    const sized = it(`AMILY |\n21'-3"x11'-8"`, 1162, 876, 100, 41, 'living')
+    const got = namePieces(sized, [sized, it('f LOUNGE', 1250, 870, 62, 24, 'living'), it('DINING', 1131, 876, 15, 16, 'dining')])
+    expect([got.text, got.roomKind]).toEqual(['DINING AMILY | f LOUNGE', 'dining'])
+  })
+  test('a name on its own, or one two rows below, stays as read', () => {
+    const a = it('BED-2', 100, 100, 50, 14, 'bed'), b = it('TOILET', 100, 140, 60, 14, 'bath')
+    expect(namePieces(a, [a, b])).toBe(a)
   })
 })

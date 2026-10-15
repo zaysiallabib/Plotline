@@ -150,6 +150,12 @@ describe('classifyRoom', () => {
     ['ODU', 'shaft'],
     ['UTILITY', 'utility'],
     ['LAUNDRY', 'utility'],
+    // (s26 step 5A: words the sheets print that core has a kind for)
+    ['GYM', 'gym'],
+    ['SWIMMING POOL', 'pool'],
+    ['GRAVEL', 'paving'],
+    ['S/A', 'maid'],
+    ['STAIRCASE WITH FIRE DOOR', 'other'],
   ])('%s → %s', (s, kind) => {
     expect(classifyRoom(s)).toEqual({ kind, green: false })
   })
@@ -696,6 +702,22 @@ describe('findTables', () => {
     for (let y = 95; y < 190; y++) g.data.fill(0, y * 400 + 180, y * 400 + 200) // a wall through the rows
     expect(findTables(items, g)).toHaveLength(0)
   })
+  test('one row read as two (two names, two sizes, every feet mark lost): two rows', () => {
+    const items = [
+      T('SUITE 1', 128, 310, 80), T(String.raw`12'-5" x 12'-1"`, 300, 310, 100),
+      T('SUITE 2', 128, 346, 80), T(String.raw`12'-6" x 11'-6"`, 300, 346, 100),
+      T('SUITE 3 LIVING & DINING', 128, 378, 140, 48), T('110" x 1311" 267" x 140"', 300, 378, 130, 48),
+      T('KITCHEN', 128, 442, 80), T('82" x 120"', 300, 442, 100),
+    ]
+    const rows = findTables(items)[0].rows
+    expect(rows.map((r) => [r.name, r.dims && +(r.dims.aM / FT).toFixed(2), r.dims && +(r.dims.bM / FT).toFixed(2)])).toEqual([
+      ['SUITE 1', 12.42, 12.08],
+      ['SUITE 2', 12.5, 11.5],
+      ['SUITE 3', 11, 13.92],
+      ['LIVING & DINING', 26.58, 14],
+      ['KITCHEN', 8.17, 12],
+    ])
+  })
   test('parseArea reads SQT', () => expect(parseArea('2023 SQT (Approx.)')! / (FT * FT)).toBeCloseTo(2023, 0))
 })
 
@@ -712,6 +734,13 @@ describe('applyTables', () => {
     expect(l.dims!.bM / FT).toBeCloseTo(34.25, 3)
     expect(a.sizeUnread).toBeUndefined()
     expect(tA.rows.map((r) => !!(r as { onPlan?: boolean }).onPlan)).toEqual([true, true, false])
+  })
+  test('a row no plan label carries the name of is a size guess for the plan labels of its kind with none (TERRACE → VER)', () => {
+    const v = room('VER', 1017, 1124), w = room('VER', 1309, 357), b = room('BED 2', 900, 700)
+    const t = { box: { x: 127, y: 310, w: 309, h: 183 }, rows: [{ name: 'SUITE 1', roomKind: 'bed', sizeText: '', dims: parseDims(`12'-5" x 12'-1"`)!, box: { x: 128, y: 310, w: 300, h: 15 } }, { name: 'TERRACE', roomKind: 'balcony', sizeText: '', dims: parseDims(`20'-10" x 6'-0"`)!, box: { x: 128, y: 477, w: 300, h: 15 } }] }
+    applyTables([v, w, b], [t])
+    expect([v.dims, v.sizeGuess, w.sizeGuess, parseDims(v.sizeGuess!)!.aM / FT]).toEqual([undefined, `20'-10"x6'-0"`, `20'-10"x6'-0"`, 20 + 10 / 12])
+    expect([b.dims, b.sizeGuess]).toEqual([undefined, undefined])
   })
   test('a numbered legend names the room its number is printed in', () => {
     const n: TextItem = { text: '03', box: { x: 760, y: 330, w: 16, h: 10 }, kind: 'other', conf: 0.9, source: 'ocr' }
