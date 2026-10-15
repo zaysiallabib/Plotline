@@ -477,6 +477,67 @@ describe('Level 4: the whole floor in one click; one flat = the same flat wherev
   })
 })
 
+describe('s27: a flat holds its own label, never another flat\'s; the floor has as many flats as labels', () => {
+  /** two 10 × 5 m flats side by side, nothing inside (no closed room: the one face is over the room limit), the party wall at x 10 open at y 2–3, each flat's area printed in its middle */
+  function openPair(): { g: Gray; text: TextTrace } {
+    const width = Math.round(20 * K + 2 * O.x), height = Math.round(5 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    stroke(g, P(-h, 0), P(20 + h, 0), ext)
+    stroke(g, P(-h, 5), P(20 + h, 5), ext)
+    stroke(g, P(0, 0), P(0, 5), ext)
+    stroke(g, P(20, 0), P(20, 5), ext)
+    stroke(g, P(10, 0), P(10, 2), ext)
+    stroke(g, P(10, 3), P(10, 5), ext)
+    // (58 m² printed: the flood's cap, 51 m², runs ~5 m² through the gap — not as far as the next flat's stamp)
+    const stamp = (x: number): TextItem => ({ text: '624 SFT', box: { x: P(x, 2.5).x - 40, y: P(x, 2.5).y - 8, w: 80, h: 16 }, kind: 'area', areaSqm: 58, conf: 0.9, source: 'ocr' })
+    return { g, text: { items: [stamp(5), stamp(15)] } }
+  }
+
+  test('a click in one flat of an open floor: the hover glows its whole floor (no closed room there) and stops at the party wall — the next flat\'s stamp claims its side of the gap', () => {
+    const { g, text } = openPair()
+    const p = prepareTraces(g, { text }, { pxPerM: K })
+    for (const [at, lo, hi] of [[P(1, 1), 0, 10.3], [P(19, 4), 9.7, 20]] as const) {
+      const pv = previewFlat(p, at)
+      expect(pv.polys).toEqual([])
+      const sqm = pv.region.reduce((t, r) => t + r.w * r.h, 0) / (K * K)
+      expect(sqm).toBeGreaterThan(40)
+      expect(sqm).toBeLessThan(49.5)
+      expect(Math.min(...pv.region.map((r) => r.x))).toBeGreaterThanOrEqual(P(lo, 0).x - 1)
+      expect(Math.max(...pv.region.map((r) => r.x + r.w))).toBeLessThanOrEqual(P(hi, 0).x + 1)
+    }
+  })
+
+  test('three studios (no bedroom name) along a corridor, each printing its flat name: the whole floor is three flats', () => {
+    const width = Math.round(15 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    const items: TextItem[] = []
+    stroke(g, P(-h, 0), P(15 + h, 0), ext)
+    stroke(g, P(-h, 7), P(15 + h, 7), ext)
+    stroke(g, P(0, 0), P(0, 7), ext)
+    stroke(g, P(15, 0), P(15, 7), ext)
+    stroke(g, P(5, 0), P(5, 5), ext)
+    stroke(g, P(10, 0), P(10, 5), ext)
+    for (const [i, dx] of [0, 5, 10].entries()) {
+      const Q = (x: number, y: number) => P(dx + x, y)
+      stroke(g, Q(i ? 0 : -h, 5), Q(1.5, 5), ext) // the studio's door into the corridor: 1.5–2.4
+      stroke(g, Q(2.4, 5), Q(5 + (i === 2 ? h : 0), 5), ext)
+      arc(g, Q(1.5, 5), 0.9, 0, Math.PI / 2)
+      const c = Q(2.5, 2)
+      items.push({ text: `LIVING\n4.75x4.75`, box: { x: c.x - 30, y: c.y - 10, w: 60, h: 20 }, kind: 'room', roomKind: 'living', dims: { aM: 4.75, bM: 4.75 }, conf: 0.9, source: 'ocr' })
+      const l = Q(2.5, 3.5)
+      items.push({ text: `UNIT-${'ABC'[i]}`, box: { x: l.x - 30, y: l.y - 8, w: 60, h: 16 }, kind: 'other', conf: 0.9, source: 'ocr' })
+    }
+    const c = P(7.5, 6)
+    items.push({ text: 'LOBBY', box: { x: c.x - 25, y: c.y - 8, w: 50, h: 16 }, kind: 'room', roomKind: 'other', conf: 0.9, source: 'ocr' })
+    const r = pickTraces(prepareTraces(g, { text: { items } }, { pxPerM: K }), undefined, true)
+    expect(r.stats.flats?.length).toBe(3)
+    const rooms = deriveRooms(r.unit)
+    expect(deriveFlats(r.unit, rooms).map((f) => rooms.filter((x) => f.roomIds.includes(x.id)).map((x) => x.name))).toEqual([['Living'], ['Living'], ['Living']])
+  })
+})
+
 // ---------- the real plans: end to end vs the hand-traced units (fixtures + cached OCR; skipped when absent) ----------
 const TEXT = process.env.TRACE_TEXT ?? 'E:/dev/tmp/wave16/solver/text/'
 /**

@@ -875,7 +875,7 @@ export default function StudioApp() {
       }
       if (m.type === 'preview') {
         busy = false
-        if (!picked) setFlatPreview(m.polys.length ? m : null)
+        if (!picked) setFlatPreview(m.polys.length || m.region.length ? m : null)
         return next()
       }
       if (m.type === 'done') done(m.result)
