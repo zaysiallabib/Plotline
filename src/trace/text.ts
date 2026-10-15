@@ -6,7 +6,7 @@
 import { FT, parseLength, pointInPolygon, polygonCentroid } from '../core'
 import type { RoomKind } from '../core'
 import { capBand, readSizes, topMarks } from './sizes'
-import type { Dims, Gray, SizeTable, TableRow, TextItem, TextKind, TextTrace } from './types'
+import type { Dims, Gray, RejectedStrip, SizeTable, TableRow, TextItem, TextKind, TextTrace } from './types'
 
 type Box = TextItem['box']
 
@@ -1356,6 +1356,12 @@ export function boxBack(b: Box, turn: 'cw' | 'ccw', W: number, H: number): Box {
   return turn === 'cw' ? { x: b.y, y: H - b.x - b.w, w: b.h, h: b.w } : { x: W - b.y - b.h, y: b.x, w: b.h, h: b.w }
 }
 
+/** s27 AI-prep: a rejected strip cut from the sheet at full size and turned upright — the crop a vision model is shown (toCanvas for a canvas). */
+export function uprightStrip(g: Gray, s: RejectedStrip): Gray {
+  const c = cropGray(g, s.box)
+  return s.angle === 90 ? rotateCW(c) : s.angle === -90 ? rotateCCW(c) : c
+}
+
 /**
  * White print on dark ground (a legend in a dark box; a light plan on a dark page, which the polarity check turned over
  * whole) as dark print on white: the page inverted where its ground is dark (the mean over ~80 px under 100), white
@@ -1659,6 +1665,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         }),
       )
     }
+    const garbage: RejectedStrip[] = []
     /** a pass's words; two room names read as one line are split at the glyph gap nearest the letters' split */
     const wordsOf = (k: number): (OcrWord & { vertical: boolean; worth: number; pass: number })[] =>
       passes[k].lines.flatMap((l, i) => {
@@ -1674,6 +1681,11 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         // 15'-6" × 6'-6" for 5'-6" × 6'-6" and the room fitted to it took its neighbours (Sheltech Water Lily)
         if (passes[k].strict && (parseDims(t) || LOOKS_LIKE_DIMS.test(t))) return [one({ text: t, conf: 0.3, box: l.box, size: 'unsure', ...(s?.read ? { guess: s.read.text } : {}) })]
         const two = !l.vertical && classifyRoom(t) && !nameOk(t) ? splitNames(t) : null
+        // s27 AI-prep: a room word the gate refused — the line on the page, and the turn that reads it upright
+        if (!two && classifyRoom(t) && !nameOk(t)) {
+          const f = passes[k].frame
+          garbage.push({ box: f ? boxBack(l.box, f === 1 ? 'cw' : 'ccw', gray.width, gray.height) : l.box, angle: f === 2 ? -90 : f || l.vertical ? 90 : 0, reason: 'garbage', text: t })
+        }
         if (!two) return [one({ text: t, conf: read[k][i].conf, box: l.box })]
         const xs = passes[k].glyphs.filter((g) => g.x + g.w / 2 >= l.box.x && g.x + g.w / 2 <= l.box.x + l.box.w && g.y + g.h / 2 >= l.box.y && g.y + g.h / 2 <= l.box.y + l.box.h).sort((p, q) => p.x - q.x)
         const want = l.box.x + two.at * l.box.w
@@ -1702,7 +1714,9 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       return kept.sort((a, b) => a.pass - b.pass)
     }
     const page = frameWords(0)
-    const all = [...groupWords(page.filter((w) => !w.vertical)), ...page.filter((w) => w.vertical).flatMap((w) => groupWords([w]))] // a vertical word stands alone
+    /** s27: the labels read off a turned page or a vertical line — the turn (clockwise) that reads them upright */
+    const turnOf = new Map<TextItem, 90 | -90>()
+    const all = [...groupWords(page.filter((w) => !w.vertical)), ...page.filter((w) => w.vertical).flatMap((w) => groupWords([w]).map((it) => (turnOf.set(it, 90), it)))] // a vertical word stands alone
     // a title's "SIZE" and its figure read at their own heights (the figure twice as tall: not one line to the grouping):
     // side by side on one baseline they are the flat's area (Eastern Housing Sapphire "SIZE 2152 SFT")
     for (const s of all.filter((it) => it.kind === 'other' && /^\W*(SIZE|AREA)\W*$/i.test(it.text))) {
@@ -1723,6 +1737,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         if (rivals.some((o) => itemWorth(o) >= w)) continue
         for (const o of rivals) all.splice(all.indexOf(o), 1)
         all.push(it)
+        turnOf.set(it, turn === 'cw' ? 90 : -90)
       }
     }
     // a size table beside the plan: its text is no plan label (s25)
@@ -1732,23 +1747,27 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     // a size read with no name over it: the sheet prints the name there, no pass read it — the strip just above the size
     // read once more, name alphabet, two scales; a room name in the sheet's own words names the size (s26)
     const bare = items.filter((it) => it.kind === 'dims' && (it.dims || it.sizeUnread) && !it.text.includes('\n'))
+    const nameless: RejectedStrip[] = []
     if (bare.length) {
       await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: NAME_CHARS, debug_file: '/dev/null' })
       const strips = bare.map((it) => {
         const h = it.box.h, w = Math.max(1.3 * it.box.w, 5 * h)
         return { x: it.box.x + it.box.w / 2 - w / 2, y: it.box.y - 1.6 * h, w, h: 1.6 * h }
       })
+      const heard: string[] = []
       for (const px of [44, 34]) {
         const todo = bare.flatMap((it, i) => (it.kind === 'dims' ? [i] : []))
         const reads = await Promise.all(todo.map((i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(cropGray(gray, strips[i]), Math.max(1, Math.min(8, px / bare[i].box.h)), 'lanczos')), 12)) as unknown as Blob)))
         todo.forEach((i, k) => {
-          const name = reads[k].data.text.replace(/\s+/g, ' ').trim()
+          const name = (heard[i] = reads[k].data.text.replace(/\s+/g, ' ').trim())
           const room = verbatim(name) && flatRoom(name, true) ? roomName(name)! : null
           if (!room) return
           const it = bare[i]
           Object.assign(it, { text: `${name}\n${it.text}`, box: union(strips[i], it.box), kind: 'room', roomKind: room.kind, green: room.green || undefined, conf: 0.5 })
         })
       }
+      // s27 AI-prep: the strips no name came from
+      bare.forEach((it, i) => it.kind === 'dims' && nameless.push({ box: strips[i], angle: 0, reason: 'name-unread', ...(heard[i] ? { text: heard[i] } : {}) }))
     }
     // one label read twice (two passes, their boxes a little apart): the read with a size stays — a name printed twice is
     // the next flat's to the floor tracer (solve.ts), so a twin would split a flat
@@ -1771,7 +1790,16 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       applyTables(found, tables)
       items.push(...found.filter((it) => it.kind === 'room'))
     }
-    return { items, glyphPx: charH, ...(tables.length ? { tables } : {}) }
+    // s27 AI-prep: the print thrown away, once per spot — a refused line no label on the plan covers, the strips over lone
+    // sizes no name came from, the labels' sizes not read
+    const labels = items.filter((it) => it.kind !== 'other')
+    const strips: RejectedStrip[] = [
+      ...garbage.filter((r) => !inTable(tables, r as unknown as TextItem) && !labels.some((it) => overlapOfSmaller(it.box, r.box) >= 0.3)),
+      ...nameless.filter((r) => !labels.some((it) => overlapOfSmaller(it.box, r.box) >= 0.5)),
+      ...items.filter((it) => it.sizeUnread).map((it): RejectedStrip => ({ box: it.sizeBox ?? reaskCrop(it), angle: turnOf.get(it) ?? 0, reason: 'size-unread', ...(it.sizeGuess ? { text: it.sizeGuess } : {}) })),
+    ]
+    const rejected = strips.filter((r, i) => !strips.slice(0, i).some((o) => o.reason === r.reason && overlapOfSmaller(o.box, r.box) >= 0.5))
+    return { items, glyphPx: charH, ...(tables.length ? { tables } : {}), ...(rejected.length ? { rejected } : {}) }
   } finally {
     await scheduler.terminate()
   }

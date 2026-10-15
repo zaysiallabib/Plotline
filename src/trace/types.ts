@@ -104,6 +104,22 @@ export interface TextTrace {
    * out of the wall raster. Extension (s25 tables).
    */
   tables?: SizeTable[]
+  /** print the reader saw and could not use (s27 AI-prep): what a vision model is asked to read later — extension */
+  rejected?: RejectedStrip[]
+}
+
+/**
+ * A strip of print the reader threw away (s27 AI-prep), image px: `garbage` = a room word read but the name gate
+ * (text.ts nameOk) refused the line; `size-unread` = a room label's size line not read for sure, or none found under it;
+ * `name-unread` = the strip over a size with no name, read for a name and none came. `angle`: turn the crop this many
+ * degrees clockwise and it reads upright (text.ts uprightStrip). Boxes only — no pixels are kept.
+ */
+export interface RejectedStrip {
+  box: { x: number; y: number; w: number; h: number }
+  angle: 0 | 90 | -90
+  reason: 'garbage' | 'size-unread' | 'name-unread'
+  /** what the reader made of it, when anything */
+  text?: string
 }
 
 /** One printed size table (image px): its box and its rows — none for a floor-stack chart (19 … 01, G, B1). */
@@ -237,6 +253,8 @@ export interface AutoTraceResult {
   unit: import('../core').Unit
   review: ReviewItem[]
   stats: AutoTraceStats
+  /** the sheet's rejected print (TextTrace.rejected), for the Studio to keep beside the draft — extension (s27) */
+  rejectedText?: RejectedStrip[]
 }
 
 export interface AutoTraceOpts {
