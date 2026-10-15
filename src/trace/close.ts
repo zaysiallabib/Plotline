@@ -452,9 +452,9 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       const F = faceAt(x, L.at)
       if (!F || F.r.areaSqm < 0.8) return null
       const f = F.r, poly = F.poly
-      // (a size the reader only guessed pins the room where the room closed matches it: two readings agree)
+      // (a size the reader only guessed pins the room where the room closed comes within rejectM of it: two readings agree)
       const inner = L.dims || L.guess ? roomInnerPolygon(f, x.g) : []
-      const pin = L.dims ?? (L.guess && !printedSizeCheck(inner, o.th0, L.guess.aM, L.guess.bM, o.tolM).off ? L.guess : undefined)
+      const pin = L.dims ?? (L.guess && !printedSizeCheck(inner, o.th0, L.guess.aM, L.guess.bM, o.rejectM).off ? L.guess : undefined)
       if (F.r.areaSqm > (pin ? o.maxSqm : cap)) return null
       if (here.some((m) => m !== L && inFace(F, m.at))) return null
       // (a zone line — nothing drawn there — only where the name stands near the middle of the room it closes: a name in
