@@ -81,6 +81,8 @@ export const CLOSE = {
   /** candidates around a name: this far, and at most this many side lines */
   radiusM: 7,
   tries: 60,
+  /** …and the walls looked at around a name reach this much further (m): a room closed there is closed in the whole draft */
+  boxM: 1,
   /** a room closed with no printed size read: its kind's largest plausible size (m²) */
   capSqm: { bath: 9, balcony: 15, kitchen: 16, utility: 8, closet: 8, pantry: 8, maid: 10, prayer: 12, foyer: 15, study: 20, bed: 30, dining: 40, living: 50 } as Record<string, number>,
   capOtherSqm: 20,
@@ -273,94 +275,40 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
   let vs = vertices, ws = walls
   const closed: Closed[] = []
 
-  const roomsOf = (vv: Vertex[], ww: Wall[], at: Pt, R: number) => {
-    // (the walls near the name only: a face closed there is closed in the whole draft too)
+  /** the walls near a point (their box within R of it) and their corners: a face closed there is closed in the whole draft too */
+  const local = <X extends Wall>(vv: Vertex[], ww: X[], at: Pt, R: number) => {
     const V = new Map(vv.map((v) => [v.id, v]))
     const near = ww.filter((w) => {
       const a = V.get(w.a)!, b = V.get(w.b)!
       return Math.max(a.x, b.x) >= at.x - R && Math.min(a.x, b.x) <= at.x + R && Math.max(a.y, b.y) >= at.y - R && Math.min(a.y, b.y) <= at.y + R
     })
     const used = new Set(near.flatMap((w) => [w.a, w.b]))
-    const g = { vertices: vv.filter((v) => used.has(v.id)), walls: near, roomLabels: [] }
-    return { rooms: deriveRooms(g), g }
+    return { vertices: vv.filter((v) => used.has(v.id)), walls: near }
   }
-  const faceAt = (rooms: Room[], g: { vertices: Vertex[]; walls: Wall[] }, p: Pt) =>
-    rooms.filter((r) => r.areaSqm <= o.maxSqm && pointInPolygon(p, roomPolygon(r, g))).sort((x, y) => x.areaSqm - y.areaSqm)[0]
+  type Face = { r: Room; poly: Pt[]; x0: number; y0: number; x1: number; y1: number }
+  /** the rooms of a (local) graph, each with its outline and box worked out once */
+  const roomsOf = (vv: Vertex[], ww: Wall[]) => {
+    const g = { vertices: vv, walls: ww, roomLabels: [] }
+    const rooms = deriveRooms(g)
+    const faces: Face[] = rooms.map((r) => {
+      const poly = roomPolygon(r, g), xs = poly.map((p) => p.x), ys = poly.map((p) => p.y)
+      return { r, poly, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }
+    })
+    return { faces, g }
+  }
+  const inFace = (f: Face, p: Pt) => p.x >= f.x0 && p.x <= f.x1 && p.y >= f.y0 && p.y <= f.y1 && pointInPolygon(p, f.poly)
+  const faceAt = (x: { faces: Face[] }, p: Pt) => x.faces.filter((f) => f.r.areaSqm <= o.maxSqm && inFace(f, p)).sort((a, b) => a.r.areaSqm - b.r.areaSqm)[0]
 
-  const tryLabel = (L: CloseLabel): boolean => {
-    const R = Math.max(CLOSE.radiusM, L.dims ? Math.max(L.dims.aM, L.dims.bM) + 2 : 0)
-    const base = roomsOf(vs, ws, L.at, 2 * R)
-    // closed already — around this name alone; a room it shares with another name (open plan: DINING in LIVING's room) is
-    // closed apart from it the same way
-    const f0 = faceAt(base.rooms, base.g, L.at)
-    const shared = f0 ? names.filter((m) => m !== L && pointInPolygon(m.at, roomPolygon(f0, base.g))) : []
-    if (f0 && !shared.length) return false
-    const others = names.filter((m) => m !== L && d2(m.at, L.at) < 2 * R)
-    // the rooms closed around one name now: they stay the same room
-    // (…and no new small closed space without a name: a leftover the pieces shut off — a bigger one is a room whose name
-    // was not read, and its name may be read once it is closed)
-    const nameless = (x: ReturnType<typeof roomsOf>) => x.rooms.filter((r) => r.areaSqm >= 1 && r.areaSqm < CLOSE.leftoverSqm && !names.some((m) => pointInPolygon(m.at, roomPolygon(r, x.g)))).length
-    const nameless0 = nameless(base)
-    const before = new Map<CloseLabel, number>()
-    for (const m of others) {
-      const f = faceAt(base.rooms, base.g, m.at)
-      if (f && !names.some((n) => n !== m && pointInPolygon(n.at, roomPolygon(f, base.g)))) before.set(m, f.areaSqm)
-    }
-    const cap = L.dims ? o.maxSqm : (CLOSE.capSqm[L.kind ?? ''] ?? CLOSE.capOtherSqm)
-    /** the pieces applied (null: one cannot be), the rooms near the name */
-    const apply = (ps: Piece[]) => {
-      let vv: Vertex[] = vs, ww: W[] = ws
-      for (const p of ps) {
-        const r = insertPiece(vv, ww, p, make)
-        if (!r) return null
-        ;(vv = r.vertices), (ww = r.walls)
-      }
-      return roomsOf(vv, ww, L.at, 2 * R)
-    }
-    /** a room closed around one name before is another room now */
-    const harmed = (x: ReturnType<typeof roomsOf>) =>
-      nameless(x) > nameless0 ||
-      [...before].some(([m, a]) => {
-        const h = faceAt(x.rooms, x.g, m.at)
-        return !h || Math.abs(h.areaSqm - a) > 0.01 * a + 0.05
-      })
-    /** the pieces applied: the name's room, or null when a check fails */
-    const evalSet = (ps: Piece[]): { area: number; err: number; size: Closed['size'] } | null => {
-      // (a zone line is an open-plan edge: living, dining, foyer, an open kitchen — a bedroom, a toilet, a veranda is
-      // closed by what is drawn, never by nothing)
-      if (ps.some((p) => p.kind === 'zone') && !CLOSE.openPlan.includes(L.kind ?? '')) return null
-      const x = apply(ps)
-      if (!x || harmed(x)) return null
-      const f = faceAt(x.rooms, x.g, L.at)
-      if (!f || f.areaSqm > cap || f.areaSqm < 0.8) return null
-      const poly = roomPolygon(f, x.g)
-      if (names.some((m) => m !== L && pointInPolygon(m.at, poly))) return null
-      // (a zone line — nothing drawn there — only where the name stands near the middle of the room it closes: a name in
-      // a corner of the closed space is another room's, or a misread)
-      const ux = Math.cos(o.th0), uy = Math.sin(o.th0), us = poly.map((p) => p.x * ux + p.y * uy), vs2 = poly.map((p) => -p.x * uy + p.y * ux)
-      const lu = L.at.x * ux + L.at.y * uy, lv = -L.at.x * uy + L.at.y * ux
-      // (no piece runs on far past the room it closes: it would be another room's side)
-      const ext = (d: Pt) => { const t = poly.map((q) => q.x * d.x + q.y * d.y); return Math.max(...t) - Math.min(...t) }
-      const onRim = (q: Pt) => poly.some((c, i) => along(q, c, poly[(i + 1) % poly.length]).d < 0.15)
-      if (ps.some((p) => { const l = d2(p.a, p.b); return onRim({ x: (p.a.x + p.b.x) / 2, y: (p.a.y + p.b.y) / 2 }) && l > ext({ x: (p.b.x - p.a.x) / l, y: (p.b.y - p.a.y) / l }) + 0.3 })) return null
-      const mid = (lo: number, hi: number, t: number) => Math.abs(t - (lo + hi) / 2) <= (CLOSE.midShare * (hi - lo)) / 2
-      if (ps.some((p) => p.kind === 'zone') && (!mid(Math.min(...us), Math.max(...us), lu) || !mid(Math.min(...vs2), Math.max(...vs2), lv))) return null
-      if (!L.dims) return ps.some((p) => p.kind === 'zone') ? null : { area: f.areaSqm, err: f.areaSqm, size: 'none' }
-      const inner = roomInnerPolygon(f, x.g)
-      const c = printedSizeCheck(inner, o.th0, L.dims.aM, L.dims.bM, o.rejectM)
-      if (c.off) return null
-      const err = Math.abs(c.drawn.w - c.printed[0]) + Math.abs(c.drawn.h - c.printed[1])
-      return { area: f.areaSqm, err, size: printedSizeCheck(inner, o.th0, L.dims.aM, L.dims.bM, o.tolM).off ? 'near' : 'match' }
-    }
-
-    // ── candidates around the name
+  // (the building's walls only — joined into a run of at least mainM: ink on its own, a table's edges, a bed's headboard
+  // line, is furniture, never where a wall goes on nor what one meets. Worked out once per draft, again only after pieces
+  // went in)
+  let runsOf: W[] | null = null
+  let mainCache: (id: string) => boolean = () => true
+  const mainOf = () => {
+    if (runsOf === ws) return mainCache
     const V = new Map(vs.map((v) => [v.id, v]))
     const deg = new Map<string, number>()
     for (const w of ws) for (const id of [w.a, w.b]) deg.set(id, (deg.get(id) ?? 0) + 1)
-    const wallOf = new Map<string, W>()
-    for (const w of ws) for (const id of [w.a, w.b]) if (deg.get(id) === 1) wallOf.set(id, w)
-    // (the building's walls only — joined into a run of at least mainM: ink on its own, a table's edges, a bed's headboard
-    // line, is furniture, never where a wall goes on nor what one meets)
     const up = new Map<string, string>()
     const root = (x: string): string => {
       while (up.has(x) && up.get(x) !== x) x = up.get(x)!
@@ -382,8 +330,92 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       }
     const runM = new Map<string, number>()
     for (const w of ws) runM.set(root(w.a), (runM.get(root(w.a)) ?? 0) + d2(V.get(w.a)!, V.get(w.b)!))
-    const main = (id: string) => (runM.get(root(id)) ?? 0) >= CLOSE.mainM
-    const mw = ws.filter((w) => main(w.a))
+    runsOf = ws
+    mainCache = (id: string) => (runM.get(root(id)) ?? 0) >= CLOSE.mainM
+    return mainCache
+  }
+
+  /** how far around a name its pieces are looked for (m) */
+  const reachOf = (L: CloseLabel) => Math.max(CLOSE.radiusM, L.dims ? Math.max(L.dims.aM, L.dims.bM) + 2 : 0)
+
+  const tryLabel = (L: CloseLabel): boolean => {
+    const R = reachOf(L)
+    // (everything below on the walls near the name: the whole draft only takes the pieces kept)
+    const loc = local(vs, ws, L.at, R + CLOSE.boxM)
+    const lv = loc.vertices, lw = loc.walls
+    const here = names.filter((m) => Math.abs(m.at.x - L.at.x) <= R + CLOSE.boxM && Math.abs(m.at.y - L.at.y) <= R + CLOSE.boxM)
+    const base = roomsOf(lv, lw)
+    // closed already — around this name alone; a room it shares with another name (open plan: DINING in LIVING's room) is
+    // closed apart from it the same way
+    const f0 = faceAt(base, L.at)
+    const shared = f0 ? here.filter((m) => m !== L && inFace(f0, m.at)) : []
+    if (f0 && !shared.length) return false
+    const others = here.filter((m) => m !== L)
+    // the rooms closed around one name now: they stay the same room
+    // (…and no new small closed space without a name: a leftover the pieces shut off — a bigger one is a room whose name
+    // was not read, and its name may be read once it is closed)
+    const nameless = (x: ReturnType<typeof roomsOf>) => x.faces.filter((f) => f.r.areaSqm >= 1 && f.r.areaSqm < CLOSE.leftoverSqm && !here.some((m) => inFace(f, m.at))).length
+    const nameless0 = nameless(base)
+    const before = new Map<CloseLabel, number>()
+    for (const m of others) {
+      const f = faceAt(base, m.at)
+      if (f && !here.some((n) => n !== m && inFace(f, n.at))) before.set(m, f.r.areaSqm)
+    }
+    const cap = L.dims ? o.maxSqm : (CLOSE.capSqm[L.kind ?? ''] ?? CLOSE.capOtherSqm)
+    /** the pieces applied (null: one cannot be), the rooms near the name */
+    const apply = (ps: Piece[]) => {
+      let vv: Vertex[] = lv, ww: W[] = lw
+      for (const p of ps) {
+        const r = insertPiece(vv, ww, p, make)
+        if (!r) return null
+        ;(vv = r.vertices), (ww = r.walls)
+      }
+      return roomsOf(vv, ww)
+    }
+    /** a room closed around one name before is another room now */
+    const harmed = (x: ReturnType<typeof roomsOf>) =>
+      nameless(x) > nameless0 ||
+      [...before].some(([m, a]) => {
+        const h = faceAt(x, m.at)
+        return !h || Math.abs(h.r.areaSqm - a) > 0.01 * a + 0.05
+      })
+    /** the pieces applied: the name's room, or null when a check fails */
+    const evalSet = (ps: Piece[]): { area: number; err: number; size: Closed['size'] } | null => {
+      // (a zone line is an open-plan edge: living, dining, foyer, an open kitchen — a bedroom, a toilet, a veranda is
+      // closed by what is drawn, never by nothing)
+      if (ps.some((p) => p.kind === 'zone') && !CLOSE.openPlan.includes(L.kind ?? '')) return null
+      const x = apply(ps)
+      if (!x || harmed(x)) return null
+      const F = faceAt(x, L.at)
+      if (!F || F.r.areaSqm > cap || F.r.areaSqm < 0.8) return null
+      const f = F.r, poly = F.poly
+      if (here.some((m) => m !== L && inFace(F, m.at))) return null
+      // (a zone line — nothing drawn there — only where the name stands near the middle of the room it closes: a name in
+      // a corner of the closed space is another room's, or a misread)
+      const ux = Math.cos(o.th0), uy = Math.sin(o.th0), us = poly.map((p) => p.x * ux + p.y * uy), vs2 = poly.map((p) => -p.x * uy + p.y * ux)
+      const lu = L.at.x * ux + L.at.y * uy, lv = -L.at.x * uy + L.at.y * ux
+      // (no piece runs on far past the room it closes: it would be another room's side)
+      const ext = (d: Pt) => { const t = poly.map((q) => q.x * d.x + q.y * d.y); return Math.max(...t) - Math.min(...t) }
+      const onRim = (q: Pt) => poly.some((c, i) => along(q, c, poly[(i + 1) % poly.length]).d < 0.15)
+      if (ps.some((p) => { const l = d2(p.a, p.b); return onRim({ x: (p.a.x + p.b.x) / 2, y: (p.a.y + p.b.y) / 2 }) && l > ext({ x: (p.b.x - p.a.x) / l, y: (p.b.y - p.a.y) / l }) + 0.3 })) return null
+      const mid = (lo: number, hi: number, t: number) => Math.abs(t - (lo + hi) / 2) <= (CLOSE.midShare * (hi - lo)) / 2
+      if (ps.some((p) => p.kind === 'zone') && (!mid(Math.min(...us), Math.max(...us), lu) || !mid(Math.min(...vs2), Math.max(...vs2), lv))) return null
+      if (!L.dims) return ps.some((p) => p.kind === 'zone') ? null : { area: f.areaSqm, err: f.areaSqm, size: 'none' }
+      const inner = roomInnerPolygon(f, x.g)
+      const c = printedSizeCheck(inner, o.th0, L.dims.aM, L.dims.bM, o.rejectM)
+      if (c.off) return null
+      const err = Math.abs(c.drawn.w - c.printed[0]) + Math.abs(c.drawn.h - c.printed[1])
+      return { area: f.areaSqm, err, size: printedSizeCheck(inner, o.th0, L.dims.aM, L.dims.bM, o.tolM).off ? 'near' : 'match' }
+    }
+
+    // ── candidates around the name
+    const V = new Map(lv.map((v) => [v.id, v]))
+    const deg = new Map<string, number>()
+    for (const w of lw) for (const id of [w.a, w.b]) deg.set(id, (deg.get(id) ?? 0) + 1)
+    const wallOf = new Map<string, W>()
+    for (const w of lw) for (const id of [w.a, w.b]) if (deg.get(id) === 1) wallOf.set(id, w)
+    const main = mainOf()
+    const mw = lw.filter((w) => main(w.a))
     const sure: Piece[] = [], side: Piece[] = [], carried: Piece[] = []
     const piece = (a: Pt, b: Pt, kind: PieceKind, thM: number, via?: Pt): Piece => ({
       a,
@@ -398,7 +430,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       const s = drawn(a, b)
       return s === 'glass' ? 'glass' : s === 'line' && L.kind === 'balcony' ? 'low' : 'zone'
     }
-    for (const v of vs) {
+    for (const v of lv) {
       if (deg.get(v.id) !== 1 || d2(v, L.at) > R || !main(v.id)) continue
       const w = wallOf.get(v.id)!, other = V.get(w.a === v.id ? w.b : w.a)!
       const len = d2(v, other)
@@ -420,7 +452,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     }
     // across the floor between this name and another near it (in its room, or open beside it): halfway, and where its
     // printed size puts its side — each from wall to wall along a sheet axis
-    for (const m of names.filter((x) => x !== L && !x.only && d2(x.at, L.at) <= CLOSE.sideM && (shared.includes(x) || !f0))) {
+    for (const m of here.filter((x) => x !== L && !x.only && d2(x.at, L.at) <= CLOSE.sideM && (shared.includes(x) || !f0))) {
       const rel = sub(m.at, L.at), dist = Math.hypot(rel.x, rel.y)
       const ax = axes.slice(0, 2).sort((p, q) => Math.abs(q.x * rel.x + q.y * rel.y) - Math.abs(p.x * rel.x + p.y * rel.y))[0]
       const toward = ax.x * rel.x + ax.y * rel.y > 0 ? ax : { x: -ax.x, y: -ax.y }, across = { x: -toward.y, y: toward.x }
@@ -432,16 +464,16 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       }
     }
     // corners' rays to the wall ahead, lines between two corners on one axis
-    const near = vs.filter((v) => d2(v, L.at) <= R && deg.has(v.id) && main(v.id))
+    const near = lv.filter((v) => d2(v, L.at) <= R && deg.has(v.id) && main(v.id))
     const own = (v: Vertex, d: Pt) =>
-      ws.some((w) => {
+      lw.some((w) => {
         if (w.a !== v.id && w.b !== v.id) return false
         const q = V.get(w.a === v.id ? w.b : w.a)!, l = d2(v, q)
         return l > 1e-6 && ((q.x - v.x) * d.x + (q.y - v.y) * d.y) / l > 0.98
       })
     // (a corner: a wall end, or walls meeting at an angle — not a point a straight wall runs through, a window's jamb)
     const corner = (v: Vertex) => {
-      const ds = ws.filter((w) => w.a === v.id || w.b === v.id).map((w) => sub(V.get(w.a === v.id ? w.b : w.a)!, v))
+      const ds = lw.filter((w) => w.a === v.id || w.b === v.id).map((w) => sub(V.get(w.a === v.id ? w.b : w.a)!, v))
       return ds.length === 1 || ds.some((p, i) => ds.some((q, j) => j > i && Math.abs(crs(p, q)) > 0.05 * Math.hypot(p.x, p.y) * Math.hypot(q.x, q.y)))
     }
     for (const v of near.filter(corner))
@@ -452,7 +484,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         // (a wall line going on past the corner at a door's width: a doorway, as from a loose end)
         // (…from either end: the wall it meets may go on in the ray's direction)
         const along1 = (p: Pt, dir: Pt) =>
-          ws.find((w) => {
+          lw.find((w) => {
             const e = [V.get(w.a)!, V.get(w.b)!].find((x) => d2(x, p) < 1e-3)
             if (!e) return false
             const q = V.get(e.id === w.a ? w.b : w.a)!, l = d2(e, q)
@@ -467,7 +499,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       near.slice(i + 1).forEach((b) => {
         const l = d2(a, b)
         if (l < CLOSE.minSideM || l > CLOSE.sideM || !onAxis({ x: (b.x - a.x) / l, y: (b.y - a.y) / l })) return
-        if (ws.some((w) => (w.a === a.id && w.b === b.id) || (w.a === b.id && w.b === a.id))) return
+        if (lw.some((w) => (w.a === a.id && w.b === b.id) || (w.a === b.id && w.b === a.id))) return
         side.push(piece(a, b, 'zone', 0))
       }),
     )
@@ -488,7 +520,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     }
     // (the loose ends' carries first — a wall line going on is the likeliest side — then the shortest; one of each line)
     const sides = [...carried, ...side.sort((p, q) => Math.round(100 * (d2(p.a, p.b) - d2(q.a, q.b))) || Number(p.kind === 'zone') - Number(q.kind === 'zone'))]
-      .filter((p, i, all) => along(L.at, p.a, p.b).d <= reach && !all.slice(0, i).some((q) => (d2(p.a, q.a) < 0.05 && d2(p.b, q.b) < 0.05) || (d2(p.a, q.b) < 0.05 && d2(p.b, q.a) < 0.05)) && !crosses(V, ws, p.a, p.b) && !beside(p))
+      .filter((p, i, all) => along(L.at, p.a, p.b).d <= reach && !all.slice(0, i).some((q) => (d2(p.a, q.a) < 0.05 && d2(p.b, q.b) < 0.05) || (d2(p.a, q.b) < 0.05 && d2(p.b, q.a) < 0.05)) && !crosses(V, lw, p.a, p.b) && !beside(p))
       .slice(0, CLOSE.tries)
       .map((p) => (p.kind === 'zone' ? { ...p, ...piece(p.a, p.b, sideKind(p.a, p.via ?? p.b), p.thM, p.via) } : p))
     // the sure pieces, nearest the name first, one per loose end (the carry before a jog), each kept only when it changes
@@ -521,18 +553,32 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     const r = evalSet(ps)
     // (no printed size to check them: a few guesses at most — more is a drawing the tracer has not read)
     if (!r || (!L.dims && ps.filter((p) => d2(p.a, p.b) >= CLOSE.wallM).length > CLOSE.maxGuesses)) return false
+    // (into the whole draft — a piece that runs past the walls looked at and meets one there is no piece)
+    let gv = vs, gw = ws
     for (const p of ps) {
-      const x = insertPiece(vs, ws, p, make)!
-      ;(vs = x.vertices), (ws = x.walls)
+      const x = insertPiece(gv, gw, p, make)
+      if (!x) return false
+      ;(gv = x.vertices), (gw = x.walls)
     }
+    ;(vs = gv), (ws = gw)
     closed.push({ room: L.name, at: L.at, pieces: ps, size: r.size })
     return true
   }
   // small rooms first (a veranda before the bedroom it opens off); twice — a room can close once its neighbour has
   const order = names.filter((l) => !l.only).sort((p, q) => (p.dims ? p.dims.aM * p.dims.bM : (CLOSE.capSqm[p.kind ?? ''] ?? CLOSE.capOtherSqm) / 2) - (q.dims ? q.dims.aM * q.dims.bM : (CLOSE.capSqm[q.kind ?? ''] ?? CLOSE.capOtherSqm) / 2))
+  // (the second time only where pieces went in near it since: elsewhere its walls are as they were, so is the answer)
+  const tried = new Map<CloseLabel, number>()
+  const near = (L: CloseLabel, c: Closed) => {
+    const R = reachOf(L) + CLOSE.boxM
+    return c.pieces.some((p) => Math.max(p.a.x, p.b.x) >= L.at.x - R && Math.min(p.a.x, p.b.x) <= L.at.x + R && Math.max(p.a.y, p.b.y) >= L.at.y - R && Math.min(p.a.y, p.b.y) <= L.at.y + R)
+  }
   for (let round = 0; round < 2; round++) {
     let any = false
-    for (const L of order) if (tryLabel(L)) any = true
+    for (const L of order) {
+      if (tried.has(L) && !closed.slice(tried.get(L)).some((c) => near(L, c))) continue
+      tried.set(L, closed.length)
+      if (tryLabel(L)) any = true
+    }
     if (!any) break
   }
   return { vertices: vs, walls: ws, closed }
