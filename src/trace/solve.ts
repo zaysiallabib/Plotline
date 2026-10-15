@@ -2644,15 +2644,17 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
     const a = toM(m.a), b = toM(m.b), at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
     if (u.walls.some((w) => segDist(at, V.get(w.a)!, V.get(w.b)!) < 0.05) || named.some((r) => pointInPolygon(at, roomPolygon(r, u)))) review.push({ id: newId(), at, kind: 'low-confidence', message: m.message })
   }
-  // step 2 (close.ts): every piece drawn to close a printed room — what was drawn, why, and a question (founder: each guess
-  // gets its row); a corner the trace left open (under the tracks' smallest gap) is no guess
-  for (const c of closed)
-    for (const pc of c.pieces) {
-      if (pc.kind === 'wall' && d2(pc.a, pc.b) < KNOBS.carryFreeM) continue
-      const at = { x: (pc.a.x + pc.b.x) / 2 - shift.x, y: (pc.a.y + pc.b.y) / 2 - shift.y }
-      const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
-      if (w) review.push({ id: newId(), at, kind: pc.kind === 'door' ? 'opening-guess' : 'low-confidence', message: closeMessage(c, pc), entityId: (pc.kind === 'door' && w.openings[0]?.id) || w.id })
-    }
+  // step 2 (close.ts): each room closed by guessed pieces gets one row — what was drawn, why it was kept, a question
+  // (founder: every guess gets its row); at its longest piece, which the row selects. A corner the trace left open (under
+  // the tracks' smallest gap) is no guess
+  for (const c of closed) {
+    const ps = c.pieces.filter((pc) => pc.kind !== 'wall' || d2(pc.a, pc.b) >= KNOBS.carryFreeM)
+    const pc = [...ps].sort((p, q) => d2(q.a, q.b) - d2(p.a, p.b))[0]
+    if (!pc) continue
+    const at = { x: (pc.a.x + pc.b.x) / 2 - shift.x, y: (pc.a.y + pc.b.y) / 2 - shift.y }
+    const w = u.walls.find((x) => segDist(at, V.get(x.a)!, V.get(x.b)!) < 0.05)
+    if (w) review.push({ id: newId(), at, kind: ps.every((p) => p.kind === 'door') ? 'opening-guess' : 'low-confidence', message: closeMessage({ ...c, pieces: ps }), entityId: (pc.kind === 'door' && w.openings[0]?.id) || w.id })
+  }
   if (merged) {
     const inFlat = (p: Pt) => {
       const q = { x: p.x + shift.x, y: p.y + shift.y } // pre-shift metres = sheet px / k
@@ -2781,14 +2783,16 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false): AutoTraceRe
 }
 
 /** the row for a piece close.ts drew: what, where, why it was kept, the question */
-export function closeMessage(c: Closed, pc: Piece): string {
-  const L = formatFeetInches(d2(pc.a, pc.b))
+export function closeMessage(c: Pick<Closed, 'room' | 'size' | 'pieces'>): string {
+  const what = (pc: Piece) => {
+    const L = formatFeetInches(d2(pc.a, pc.b))
+    return pc.kind === 'zone' ? `a zone line ${L} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the double line` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `${L} of wall to carry a wall on`
+  }
+  const list = c.pieces.map(what)
+  const drew = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0]
   const size = c.size === 'match' ? 'it then matches its printed size' : c.size === 'near' ? 'it then comes within 30 cm of its printed size' : 'no printed size was read to check it'
-  if (pc.kind === 'zone') return `Drew a zone line ${L} (nothing in 3D: open plan) to close ${c.room} — ${size}. Right? Select it to make it a wall, glass or a low wall`
-  if (pc.kind === 'glass') return `Drew a glass wall ${L} along the double line to close ${c.room} — ${size}. Right?`
-  if (pc.kind === 'low') return `Drew a low wall (railing) ${L} along the thin line to close ${c.room} — ${size}. Right?`
-  if (pc.kind === 'door') return `Drew a ${L} door in the gap to close ${c.room} (no door swing is drawn there) — ${size}. A door, or open?`
-  return `Carried the wall on ${L} to close ${c.room} — ${size}. Right?`
+  const ask = c.pieces.some((p) => p.kind === 'zone') ? 'Right? Select a line to make it a wall, glass or a low wall' : c.pieces.every((p) => p.kind === 'door') ? 'A door, or open?' : 'Right?'
+  return `Drew ${drew} to close ${c.room} — ${size}. ${ask}`
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Vertex, Wall } from '../core'
 import { closeRooms, type CloseLabel, type CloseOpts } from './close'
+import { closeMessage } from './solve'
 import type { Gray } from './types'
 
 // A 4 × 3 m room (inner faces 1.06 … 4.94 × 1.0 … 3.94 m) drawn with three walls on a 50 px/m sheet; its top side open.
@@ -97,5 +98,11 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(r.room({ x: 2, y: 2.2 })?.areaSqm).toBeCloseTo(5, 1)
     expect(r.closed.map((c) => c.room)).toEqual(['Toilet 2'])
     expect(r.room({ x: 4, y: 2.2 })?.areaSqm).toBeCloseTo(5, 0)
+  })
+  test('one Check-these row per closed room: what was drawn, why it was kept, the question', () => {
+    const p = (kind: 'door' | 'glass' | 'zone', L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, kind, thM: 0.1, heightM: 3 })
+    expect(closeMessage({ room: 'Dining', size: 'match', pieces: [p('glass', 1.83)] })).toBe(`Drew a glass wall 6'-0" along the double line to close Dining — it then matches its printed size. Right?`)
+    expect(closeMessage({ room: 'Toilet 2', size: 'none', pieces: [p('door', 0.76)] })).toMatch(/^Drew a 2'-6" door in the gap .* to close Toilet 2 — no printed size was read to check it\. A door, or open\?$/)
+    expect(closeMessage({ room: 'Living', size: 'near', pieces: [p('door', 0.9), p('zone', 3)] })).toMatch(/door in the gap .* and a zone line .* within 30 cm .*Select a line to make it a wall/)
   })
 })
