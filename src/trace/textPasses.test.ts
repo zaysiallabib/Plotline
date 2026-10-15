@@ -200,6 +200,18 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     const strip = (b: typeof kitchen.box) => t.rejected?.find((r) => r.reason === 'size-unread' && r.box.x <= b.x && r.box.y <= b.y && r.box.x + r.box.w >= b.x + b.w && r.box.y + r.box.h >= b.y + b.h)
     expect([kitchen, ver, store].map((it) => strip(it.box)?.angle)).toEqual([0, -90, 90])
   }, 120_000)
+  test('s27 AI-prep: a room word the name gate refuses is kept as a garbage strip, where it is printed', async () => {
+    const g = paper(500, 160)
+    print(g, 'BED 1 VER 2 4', 40, 60, 11)
+    const t = await readText(g, { cachePath: TESS })
+    expect(names(t)).toEqual([])
+    const r = t.rejected?.find((x) => x.reason === 'garbage')
+    expect(r?.angle).toBe(0)
+    expect(r?.text).toMatch(/BED/)
+    expect(r!.box.x).toBeLessThan(60)
+    expect(r!.box.y).toBeGreaterThan(40)
+    expect(r!.box.y + r!.box.h).toBeLessThan(90)
+  }, 120_000)
   test('a big page with 6 px print: read at its own size', async () => {
     const g = paper(5000, 900)
     for (let x = 0; x < 5000; x += 400) fill(g, x, 0, 6, 900, 30) // walls
