@@ -1658,6 +1658,10 @@ describe('Studio tools (session 27: column corners, face drag, arc)', () => {
     for (const w of s.unit.walls) expect(wallFrame(w, s.unit.vertices).lengthM).toBeGreaterThanOrEqual(0.3)
     for (const w of s.unit.walls) expect(2 * Math.asin(wallFrame(w, s.unit.vertices).lengthM / 4)).toBeLessThanOrEqual((10 * Math.PI) / 180 + 1e-9)
     expect(run(s, { type: 'undo' }).unit.walls).toHaveLength(0)
+    // from a point of a wall to another (a bay): both ends split it, the bay closes a room, only the arc's pieces are picked
+    const bay = run(traceRect(), { type: 'add-arc', a: { x: 4, y: 0.75, tolM: TOL }, b: { x: 4, y: 2.25, tolM: TOL }, via: { x: 5, y: 1.5 } })
+    expect(bay.selection).toHaveLength(bay.unit.walls.length - 6) // the rectangle's 4 walls, the right one now in 3 pieces
+    expect(deriveRooms(bay.unit)).toHaveLength(2)
     // a tight arc: fewer, longer pieces (none under 0.3 m); a bulge under 1 cm: one straight wall
     expect(arcPoints({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0.5 })).toHaveLength(6)
     expect(arcPoints({ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 0.005 })).toHaveLength(2)

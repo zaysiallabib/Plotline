@@ -1229,16 +1229,15 @@ export function reducer(s: StudioState, a: Action): StudioState {
       ids.push(r1.id)
       const wall = s.wallType ?? 'wall'
       const t = chainType(PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined)
+      const before = new Set(u.walls.map((w) => w.id)) // (a wall its ends split is not one of its pieces)
       for (let i = 0; i + 1 < ids.length; i++) {
         const next = addWall(u, ids[i], ids[i + 1], t.thicknessM, a.a.tolM, t.heightM)
         if (typeof next === 'string') return withToast(s, next)
         u = next
       }
+      const made = new Set(u.walls.filter((w) => !before.has(w.id)).map((w) => w.id))
       const j = settle(u, [ids[0], ids[ids.length - 1]], true)
-      const before = new Set(s.unit.walls.map((w) => w.id))
-      const on = new Set(ids.map((id) => j.merged.get(id) ?? id))
-      const selection = j.unit.walls.filter((w) => !before.has(w.id) && on.has(w.a) && on.has(w.b)).map((w) => w.id)
-      return noted(commit(s, j.unit, { selection, chain: null }), j.notes)
+      return noted(commit(s, j.unit, { selection: j.unit.walls.filter((w) => made.has(w.id)).map((w) => w.id), chain: null }), j.notes)
     }
     case 'aim-ramp':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id && l.slope ? { ...l, slope: { ...l.slope, dirDeg: a.dirDeg } } : l)) } }
