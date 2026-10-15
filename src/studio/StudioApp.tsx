@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, roomAt, unitBounds, vertexById, wallFrame } from '../core'
+import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Slope } from '../core'
-import { draw, type Hit, type Hover } from './draw'
+import { draw, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
   PILLAR_M,
   WALL_TYPES,
+  arcPoints,
   dirDegOf,
   entityPoints,
   findEntity,
@@ -64,13 +65,15 @@ const TOOLS: [Tool, string, string][] = [
   ['select', 'V', 'Select'],
   ['scale', 'S', 'Scale'],
   ['wall', 'W', 'Wall'],
+  ['arc', 'A', 'Arc'],
   ['opening', 'O', 'Opening'],
   ['room', 'R', 'Room'],
   ['pillar', 'C', 'Column'],
   ['furniture', 'F', 'Furniture'],
 ]
 const HINTS: Record<Tool, string> = {
-  pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, its corner dots to size it`,
+  pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, a side dot to move that side, a corner dot to move that corner alone (a tapered column)`,
+  arc: 'Arc · click where the curved wall starts',
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
   select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: `Scale · click both ends of anything whose real length you know: a printed size, the plot's width, a parking bay (about 8' × 16'), a door (about 3'-3")`,
@@ -126,8 +129,8 @@ interface Note {
   text: string
   link?: { label: string; onClick: () => void }
 }
-/** `end`: an opening's end handle (resize); `fixed`: a column's corner dot (resize, the opposite corner stays); `aim`: a ramp arrow's head */
-type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; fixed?: { x?: number; y?: number }; aim?: boolean } & CornerDrag
+/** `end`: an opening's end handle (resize); `corner`: a column's corner dot k (that corner alone) or side k; `face`: a wall's face dot (its thickness, that side); `aim`: a ramp arrow's head */
+type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; corner?: { k: number; side: boolean }; face?: 1 | -1; aim?: boolean } & CornerDrag
 /**
  * Select drags of corners/walls: `lengthOf` = resizing that selected wall by its end — the end leaves a shared corner on the
  * first move and slides along the wall alone, unless `rigid` (Alt: the walls at the corner stay straight, model.lengthMoves);
@@ -236,6 +239,9 @@ export default function StudioApp() {
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [hover, setHover] = useState<Hover | null>(null)
   const [scaleStart, setScaleStart] = useState<Pt | null>(null)
+  /** A tool: its start, then its end; arcDownRef = the press that lays it on release (the bulge is the pointer) */
+  const [arc, setArc] = useState<{ a: Target; b?: Target } | null>(null)
+  const arcDownRef = useRef(false)
   /** S on a drawing that already has walls = line the picture up with it: the first matched pair (picture px, drawing m) */
   const [align, setAlign] = useState<{ p: Pt; m: Pt } | null>(null)
   const [panning, setPanning] = useState(false)
@@ -278,6 +284,7 @@ export default function StudioApp() {
   const fitOnLoad = useRef(false)
 
   const { unit, view, tool, chain } = state
+  useEffect(() => setArc(null), [tool]) // another tool drops a half-placed arc
   const frame = useMemo(() => frameOf(view, unit.planImage), [view, unit.planImage])
   const { pxPerM } = frame
   const s = view.zoom * pxPerM
@@ -930,8 +937,8 @@ export default function StudioApp() {
       const st = stateRef.current
       const m = toM(sx, sy)
       let px = toPx(sx, sy)
-      if (st.tool === 'wall' && (st.unit.planImage || st.unit.walls.length)) {
-        const from = st.chain ? vertexById(st.unit.vertices, st.chain.ids[st.chain.ids.length - 1]) : undefined
+      if ((st.tool === 'wall' || st.tool === 'arc') && (st.unit.planImage || st.unit.walls.length)) {
+        const from = st.chain && st.tool === 'wall' ? vertexById(st.unit.vertices, st.chain.ids[st.chain.ids.length - 1]) : undefined
         return { m, px, snap: snapPoint(m, st.unit, { tolM: SNAP_PX / s, from, free: shift }), hit: null }
       }
       if (st.tool === 'scale') {
@@ -971,28 +978,38 @@ export default function StudioApp() {
   }
 
   /**
-   * A selected column's handle under the pointer (founder 2026-10-09: "why can i change the pillars only on 2 sides?"): a
-   * SIDE (6 px either side of it, along it) moves that one side, a corner both; the opposite side(s) stay (`fixed`: their
-   * x / y). Inside a small block a handle reaches only a third of the way in, so its middle still moves it.
+   * A selected column's handle under the pointer (founder 2026-10-09: "why can i change the pillars only on 2 sides?";
+   * 2026-10-16: "a column becomes four corner points"): a CORNER dot (8 px) moves that corner alone (a tapered column), a
+   * SIDE (6 px either side of it, along it) moves that one side. Inside a small block a side reaches only a third of the
+   * way in, so its middle still moves it.
    */
-  const pillarHandleAt = (sx: number, sy: number): { id: Id; fixed: { x?: number; y?: number }; cursor: string } | undefined => {
+  const pillarHandleAt = (sx: number, sy: number): { id: Id; k: number; side: boolean; cursor: string } | undefined => {
     for (const p of unit.pillars ?? []) {
       if (!state.selection.includes(p.id)) continue
-      const A = toScreen({ x: p.x - p.wM / 2, y: p.y - p.hM / 2 })
-      const B = toScreen({ x: p.x + p.wM / 2, y: p.y + p.hM / 2 })
-      const [x0, x1, y0, y1] = [Math.min(A.x, B.x), Math.max(A.x, B.x), Math.min(A.y, B.y), Math.max(A.y, B.y)]
-      const reach = (lo: number, hi: number, v: number) => {
-        const inner = Math.min(6, (hi - lo) / 3)
-        const dl = v - lo, dh = hi - v // inside > 0
-        return dl >= -6 && dl <= inner && dl <= dh ? -1 : dh >= -6 && dh <= inner ? 1 : 0
+      const cs = pillarCorners(p).map(toScreen)
+      const k = cs.findIndex((c) => Math.hypot(c.x - sx, c.y - sy) <= 8)
+      if (k >= 0) return { id: p.id, k, side: false, cursor: 'move' }
+      const mid = { x: cs.reduce((s, c) => s + c.x, 0) / 4, y: cs.reduce((s, c) => s + c.y, 0) / 4 }
+      const inner = Math.min(6, (Math.min(Math.max(...cs.map((c) => c.x)) - Math.min(...cs.map((c) => c.x)), Math.max(...cs.map((c) => c.y)) - Math.min(...cs.map((c) => c.y))) / 3))
+      for (let i = 0; i < 4; i++) {
+        const [a, b] = [cs[i], cs[(i + 1) % 4]]
+        const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+        const t = ((sx - a.x) * (b.x - a.x) + (sy - a.y) * (b.y - a.y)) / L / L
+        const across = (q: Pt) => ((q.x - a.x) * (b.y - a.y) - (q.y - a.y) * (b.x - a.x)) / L
+        const d = across({ x: sx, y: sy }) * Math.sign(across(mid)) // inside > 0
+        if (t >= 0 && t <= 1 && d >= -6 && d <= inner) return { id: p.id, k: i, side: true, cursor: Math.abs(b.x - a.x) < Math.abs(b.y - a.y) ? 'ew-resize' : 'ns-resize' }
       }
-      const kx = sy >= y0 - 6 && sy <= y1 + 6 ? reach(x0, x1, sx) : 0
-      const ky = sx >= x0 - 6 && sx <= x1 + 6 ? reach(y0, y1, sy) : 0
-      if (!kx && !ky) continue
-      const sxp = B.x >= A.x ? 1 : -1, syp = B.y >= A.y ? 1 : -1 // the screen's x / y against the plan's
-      const fixed = { ...(kx ? { x: p.x - (kx * sxp * p.wM) / 2 } : {}), ...(ky ? { y: p.y - (ky * syp * p.hM) / 2 } : {}) }
-      return { id: p.id, fixed, cursor: kx && ky ? (kx === ky ? 'nwse-resize' : 'nesw-resize') : kx ? 'ew-resize' : 'ns-resize' }
     }
+  }
+  /** the one selected wall's face dot under the pointer (8 px): dragging it thickens / thins the wall on that side */
+  const wallFaceAt = (sx: number, sy: number): { id: Id; side: 1 | -1; cursor: string } | undefined => {
+    const w = state.selection.length === 1 ? unit.walls.find((x) => x.id === state.selection[0]) : undefined
+    const dots = w && wallFaceDots(w, unit.vertices)
+    if (!w || !dots) return
+    const [d0, d1] = dots.map((p) => { const q = toScreen(p); return Math.hypot(q.x - sx, q.y - sy) })
+    if (Math.min(d0, d1) > 8) return
+    const f = wallFrame(w, unit.vertices)
+    return { id: w.id, side: d0 <= d1 ? 1 : -1, cursor: Math.abs(f.normal.x) > Math.abs(f.normal.y) ? 'ew-resize' : 'ns-resize' }
   }
   /** a selected ramp's arrow head under the pointer (10 px): dragging it aims the ramp */
   const rampHeadAt = (sx: number, sy: number): Id | undefined => {
@@ -1115,7 +1132,10 @@ export default function StudioApp() {
     if (end) return void (dragRef.current = { hit: { kind: 'opening', id: end.id }, sx, sy, m, moved: false, orig: new Map(), end: end.end })
     // a selected column's side or corner: drag = its size; a selected ramp's arrow head: drag = which way it runs
     const handle = (tool === 'select' || tool === 'pillar') && pillarHandleAt(sx, sy)
-    if (handle) return void (dragRef.current = { hit: { kind: 'pillar', id: handle.id }, sx, sy, m, moved: false, orig: new Map(), fixed: handle.fixed })
+    if (handle) return void (dragRef.current = { hit: { kind: 'pillar', id: handle.id }, sx, sy, m, moved: false, orig: new Map(), corner: { k: handle.k, side: handle.side } })
+    // the one selected wall's face dot: drag = its thickness on that side
+    const face = tool === 'select' && wallFaceAt(sx, sy)
+    if (face) return void (dragRef.current = { hit: { kind: 'wall', id: face.id }, sx, sy, m, moved: false, orig: new Map(), face: face.side })
     const head = tool === 'select' && rampHeadAt(sx, sy)
     if (head) return void (dragRef.current = { hit: { kind: 'label', id: head }, sx, sy, m, moved: false, orig: new Map(), aim: true })
     switch (tool) {
@@ -1151,6 +1171,16 @@ export default function StudioApp() {
         const at = { x: snap.x, y: snap.y, tolM }
         wallDragRef.current = { sx, sy, at, hold, moved: false }
         if (!hold) dispatch(chain ? { type: 'chain-add', at } : { type: 'chain-start', at })
+        return
+      }
+      case 'arc': {
+        // click its start, click its end, then the bulge follows the pointer: the release of the next press lays it
+        if (!scaleSet) return toast('Set the scale first (S)')
+        const p = h.snap ?? m
+        const at = { x: p.x, y: p.y, tolM }
+        if (!arc) return setArc({ a: at })
+        if (!arc.b) return void (Math.hypot(at.x - arc.a.x, at.y - arc.a.y) > tolM && setArc({ ...arc, b: at }))
+        arcDownRef.current = true
         return
       }
       case 'opening': {
@@ -1223,6 +1253,12 @@ export default function StudioApp() {
       return
     }
     if (placingRef.current && tool === 'furniture') return void ghost(sx, sy)
+    if (tool === 'arc' && arc) {
+      // the A tool's preview: a straight line to the pointer until the end is clicked, then the arc bulging through it
+      const h = computeHover(sx, sy, e.shiftKey)
+      const to = arc.b ? toM(sx, sy) : (h.snap ?? h.m)
+      return setHover({ ...h, ...(arc.b && { snap: null }), arc: arc.b ? arcPoints(arc.a, arc.b, to) : [arc.a, to] })
+    }
     const pd = pillarDragRef.current
     if (pd) {
       // a new column dragged out: its box from the press to the pointer, snapped like a corner
@@ -1283,7 +1319,14 @@ export default function StudioApp() {
         d.ids = ids
         setHover({ m, px: toPx(sx, sy), snap, hit: d.hit, moving: ids })
       }
-      if (d.hit.kind === 'vertex' && d.lengthOf) {
+      if (d.face) {
+        // a face dot: the pointer's distance from the other face is the wall's thickness (whole inches; model 'wall-face')
+        const w = unit.walls.find((x) => x.id === d.hit.id)
+        if (!w) return
+        const f = wallFrame(w, unit.vertices)
+        const v = (m.x - f.origin.x) * f.normal.x + (m.y - f.origin.y) * f.normal.y
+        dispatch({ type: 'wall-face', id: w.id, side: d.face, thicknessM: d.face * v + w.thicknessM / 2 })
+      } else if (d.hit.kind === 'vertex' && d.lengthOf) {
         // the end slides along its wall; the walls at it stay straight (model.lengthMoves)
         const w = unit.walls.find((x) => x.id === d.lengthOf)
         if (!w) return
@@ -1326,18 +1369,11 @@ export default function StudioApp() {
       } else if (d.hit.kind === 'pillar') {
         const p = unit.pillars?.find((x) => x.id === d.hit.id)
         if (!p) return
-        if (d.fixed) {
-          // a side or a corner: the side(s) under the pointer follow it (snapped as a corner), the opposite one(s) stay,
-          // whole inches, 0.1 m at least
+        if (d.corner) {
+          // a side: it follows the pointer (snapped as a corner), the other sides stay, whole inches; a corner: that corner
+          // alone, its sides a little sticky to parallel (model 'pillar-corner')
           const c = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [p.id] })
-          const inch = (v: number) => Math.max(0.1, Math.round(Math.abs(v) / 0.0254) * 0.0254)
-          const sgn = (v: number) => (v < 0 ? -1 : 1)
-          const { x: fx, y: fy } = d.fixed
-          const wM = fx === undefined ? p.wM : inch(c.x - fx)
-          const hM = fy === undefined ? p.hM : inch(c.y - fy)
-          const x = fx === undefined ? p.x : fx + (sgn(c.x - fx) * wM) / 2
-          const y = fy === undefined ? p.y : fy + (sgn(c.y - fy) * hM) / 2
-          dispatch({ type: 'set-pillar', id: p.id, patch: { x, y, wM, hM }, live: true })
+          dispatch({ type: 'pillar-corner', id: p.id, k: d.corner.k, side: d.corner.side, x: c.x, y: c.y, sticky: !free && !HARD.has(c.kind) })
           show(c, [])
         } else {
           // its centre follows the pointer and snaps as a corner does: onto a wall's centre line, a corner, in line
@@ -1359,8 +1395,8 @@ export default function StudioApp() {
       }
       return
     }
-    const hd = tool === 'select' || tool === 'pillar' ? pillarHandleAt(sx, sy) : undefined
-    setCursor(hd?.cursor ?? null) // a column's side / corner under the pointer: the resize cursor
+    const hd = tool === 'select' || tool === 'pillar' ? pillarHandleAt(sx, sy) ?? (tool === 'select' ? wallFaceAt(sx, sy) : undefined) : undefined
+    setCursor(hd?.cursor ?? null) // a column's side / corner, a wall's face dot under the pointer: its cursor
     setHover(computeHover(sx, sy, e.shiftKey))
   }
 
@@ -1380,6 +1416,15 @@ export default function StudioApp() {
       }
       return setHover(computeHover(sx, sy, e.shiftKey))
     }
+    const arcDown = arcDownRef.current
+    arcDownRef.current = false
+    if (tool === 'arc' && arc?.b && arcDown) {
+      // the A tool's third press released: the arc through the release point, as short straight walls (model 'add-arc')
+      const { sx, sy } = local(e)
+      setArc(null)
+      dispatch({ type: 'add-arc', a: arc.a, b: arc.b, via: toM(sx, sy) })
+      return setHover(computeHover(sx, sy, e.shiftKey))
+    }
     const wd = wallDragRef.current
     wallDragRef.current = null
     if (wd?.moved) {
@@ -1396,6 +1441,9 @@ export default function StudioApp() {
     if (!d.moved) {
       if (e.shiftKey) dispatch({ type: 'select', ids: [d.hit.id], add: true })
       else dispatch({ type: 'select', ids: [d.hit.id] })
+    } else if (d.face) {
+      const { sx, sy } = local(e)
+      setHover(computeHover(sx, sy, e.shiftKey))
     } else if (d.hit.kind === 'vertex' || d.hit.kind === 'wall') {
       // a corner dropped on another corner becomes that corner; on a wall, it T-splits the wall
       dispatch({ type: 'drag-end', ids: d.ids ?? [] })
@@ -1411,7 +1459,7 @@ export default function StudioApp() {
   }
 
   const onDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (tool === 'wall') return
+    if (tool === 'wall' || tool === 'arc') return
     const { sx, sy } = local(e)
     const hit = hitTest(sx, sy)
     if (hit?.kind !== 'wall') return
@@ -1547,6 +1595,7 @@ export default function StudioApp() {
         if (st.chain) return dispatch({ type: 'chain-end' })
         setScaleStart(null)
         setAlign(null)
+        setArc(null)
         return dispatch({ type: 'select', ids: [] })
       }
       const key = e.key.toLowerCase()
@@ -1678,7 +1727,11 @@ export default function StudioApp() {
             : 'Furniture · the piece is in your hand: click where it fits (red = it does not, the reason is in red here), R turns it, Esc puts it back'
           : tool === 'wall'
             ? `Wall · drawing a ${WALL_TYPES[state.wallType ?? 'wall'].label.toLowerCase()} (1 wall, 2 low wall, 3 kerb, 4 zone line) · click the first corner, or drag from corner to corner`
-            : HINTS[tool]) +
+            : tool === 'arc' && arc
+              ? arc.b
+                ? 'Arc · move (or drag) to bend it, click to lay it · Esc cancels'
+                : 'Arc · click where it ends · Esc cancels'
+              : HINTS[tool]) +
     (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
   let centre = ''
@@ -1688,6 +1741,8 @@ export default function StudioApp() {
     const ang = hover.snap.angleDeg ?? 0
     const snapped = hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind
     centre = `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${shiftRef.current ? 'free' : `${Math.round(ang)}°`} · snapped: ${snapped}`
+  } else if (hover?.arc && arc?.b) {
+    centre = `${hover.arc.length - 1} straight wall${hover.arc.length === 2 ? '' : 's'}`
   } else if (tool === 'scale' && scaleStart && hover && !lineUp) {
     centre = `${Math.round(Math.hypot(hover.px.x - scaleStart.x, hover.px.y - scaleStart.y))} px`
   } else if (tool === 'opening' && hover?.ghost) {

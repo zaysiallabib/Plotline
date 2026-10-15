@@ -8,7 +8,7 @@
  * `leftNormal(dir) = (-dir.y, dir.x)` of each edge — the same vector
  * wallFrame() returns as `normal` when the wall's a→b runs along the loop.
  */
-import type { Id, Room, Unit, Vertex, Wall } from './types'
+import type { Id, Pillar, Room, Unit, Vertex, Wall } from './types'
 
 export interface Pt {
   x: number
@@ -37,6 +37,15 @@ export const EPS = 1e-9
 export const AREA_EPS = 1e-6
 
 export const vertexMap = (vs: Vertex[]): Map<Id, Vertex> => new Map(vs.map((v) => [v.id, v]))
+
+/** A column's four corners in order around: its `corners`, else its rectangle from the top-left, clockwise on screen. */
+export const pillarCorners = (p: Pillar): Pt[] =>
+  p.corners ?? [
+    { x: p.x - p.wM / 2, y: p.y - p.hM / 2 },
+    { x: p.x + p.wM / 2, y: p.y - p.hM / 2 },
+    { x: p.x + p.wM / 2, y: p.y + p.hM / 2 },
+    { x: p.x - p.wM / 2, y: p.y + p.hM / 2 },
+  ]
 
 /** Cross product of (b−a) × (c−a): >0 when c is left of a→b (y-up sense). */
 export const cross = (a: Pt, b: Pt, c: Pt): number =>

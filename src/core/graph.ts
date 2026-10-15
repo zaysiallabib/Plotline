@@ -84,6 +84,7 @@ export const TOUCH_M = 0.0127
 const SIN10 = 0.1736
 
 type Box = { x0: number; y0: number; x1: number; y1: number }
+// ponytail: a tapered column (Pillar.corners) joins rooms by its bounding box; its own four sides if a room ever needs it
 const boxOf = (c: Pillar): Box => ({ x0: c.x - c.wM / 2, y0: c.y - c.hM / 2, x1: c.x + c.wM / 2, y1: c.y + c.hM / 2 })
 const inBox = (R: Box, p: Pt, tol: number) => p.x >= R.x0 - tol && p.x <= R.x1 + tol && p.y >= R.y0 - tol && p.y <= R.y1 + tol
 

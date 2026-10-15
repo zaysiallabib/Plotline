@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1588,5 +1588,78 @@ describe('O tool: the Glass wall pick', () => {
     expect(o).toMatchObject({ kind: 'window', offsetM: 0, sillM: 0, heightM: w.heightM })
     expect(o.widthM).toBeCloseTo(4, 6)
     expect(reducer(s, { type: 'pick-opening', kind: 'door' }).glassPick).toBe(false)
+  })
+})
+
+describe('Studio tools (session 27: column corners, face drag, arc)', () => {
+  const scaled = () => reducer(initialState(), { type: 'set-scale', pxPerM: 100 })
+  const near = (p: { x: number; y: number }, x: number, y: number) => expect(Math.hypot(p.x - x, p.y - y)).toBeLessThan(1e-6)
+
+  it('a column corner dot moves that corner alone (a tapered column), sticks back within 3°, undoes in one step; sides and typed sizes still work', () => {
+    let s = run(scaled(), { type: 'add-pillar', x: 6, y: 1, wM: 0.4, hM: 0.6 }) // corners (5.8,0.7) (6.2,0.7) (6.2,1.3) (5.8,1.3)
+    const id = s.unit.pillars![0].id
+    s = run(s, { type: 'drag-begin' }, { type: 'pillar-corner', id, k: 2, x: 6.4, y: 1.5, sticky: true })
+    const p = s.unit.pillars![0]
+    expect(p.corners).toHaveLength(4)
+    near(p.corners![0], 5.8, 0.7)
+    near(p.corners![1], 6.2, 0.7)
+    near(p.corners![2], 6.4, 1.5)
+    near(p.corners![3], 5.8, 1.3)
+    expect(p).toMatchObject({ x: 6.1, wM: expect.closeTo(0.6, 6), hM: expect.closeTo(0.8, 6) }) // its box
+    expect(run(s, { type: 'undo' }).unit.pillars![0]).toEqual({ id, x: 6, y: 1, wM: 0.4, hM: 0.6 })
+    // 2° off square sticks back to the rectangle (corners dropped); 6° off does not
+    const off = (deg: number) => run(s, { type: 'pillar-corner', id, k: 2, x: 6.2 + 0.6 * Math.tan((deg * Math.PI) / 180), y: 1.3, sticky: true }).unit.pillars![0]
+    expect(off(2).corners).toBeUndefined()
+    expect(off(2)).toMatchObject({ x: expect.closeTo(6, 9), y: expect.closeTo(1, 9), wM: expect.closeTo(0.4, 9), hM: expect.closeTo(0.6, 9) })
+    expect(off(6).corners).toBeDefined()
+    // a side of the tapered column: both its corners move across it, whole inches; a bow tie is refused
+    const side = run(s, { type: 'pillar-corner', id, k: 0, side: true, x: 6, y: 0.5 }).unit.pillars![0]
+    near(side.corners![0], 5.8, 0.7 - 8 * 0.0254)
+    near(side.corners![1], 6.2, 0.7 - 8 * 0.0254)
+    expect(run(s, { type: 'pillar-corner', id, k: 2, x: 5.5, y: 0.5 }).dragBlocked).toBe(true)
+    // typed width on the tapered column stretches it about its middle
+    const wide = run(s, { type: 'set-pillar', id, patch: { wM: 1.2 } }).unit.pillars![0]
+    near(wide.corners![0], 6.1 - 0.6, 0.7)
+    near(wide.corners![2], 6.1 + 0.6, 1.5)
+  })
+
+  it('dragging a wall face thickens it on that side: the other face stays, the straight run and the walls at its ends follow', () => {
+    let s = traceRect() // 5" walls; the top one (0,0) → (4,0), its normal +y (inside)
+    s = run(s, { type: 'chain-start', at: { x: 2, y: 0.02, tolM: TOL } }, { type: 'chain-typed', lengthM: 1, dirDeg: 90, tolM: TOL }, { type: 'chain-end' }) // a T stem splits the top wall at x = 2
+    const top = s.unit.walls.find((w) => {
+      const f = wallFrame(w, s.unit.vertices)
+      return Math.abs(f.origin.y) < 1e-9 && Math.abs(f.dir.y) < 1e-9 && f.origin.x + f.dir.x * f.lengthM < 2.5
+    })!
+    const inner = PARTITION_M / 2 // the inside face y = +0.0635
+    const before = s.unit
+    s = run(s, { type: 'drag-begin' }, { type: 'wall-face', id: top.id, side: -1, thicknessM: 0.25 }) // 10" (whole inches), outward
+    const f = wallFrame(s.unit.walls.find((w) => w.id === top.id)!, s.unit.vertices)
+    const T = s.unit.walls.find((w) => w.id === top.id)!.thicknessM
+    expect(T).toBeCloseTo(10 * 0.0254, 9)
+    expect(f.origin.y + T / 2).toBeCloseTo(inner, 9) // the inside face stayed
+    const ys = s.unit.vertices.filter((v) => Math.abs(v.y) < 0.5).map((v) => v.y)
+    expect(ys).toHaveLength(3) // both pieces of the top wall and the T stem's end moved together
+    for (const y of ys) expect(y).toBeCloseTo(inner - T / 2, 9)
+    expect(s.unit.walls.filter((w) => Math.abs(w.thicknessM - T) < 1e-9)).toHaveLength(2) // the run, not the stem or the sides
+    expect(deriveRooms(s.unit)[0].areaSqm).toBeCloseTo(4 * (3 - (inner - T / 2)), 6) // still one closed room, a little bigger
+    expect(run(s, { type: 'undo' }).unit).toBe(before)
+  })
+
+  it('the arc tool lays a chain of short straight walls: ≤ 10° a step, joined end to end, selected, one undo', () => {
+    const s0 = scaled()
+    const s = run(s0, { type: 'add-arc', a: { x: 0, y: 0, tolM: TOL }, b: { x: 4, y: 0, tolM: TOL }, via: { x: 2, y: -2 } }) // a half circle, r 2
+    expect(s.unit.walls).toHaveLength(18)
+    expect(s.selection).toHaveLength(18)
+    expect(s.unit.vertices).toHaveLength(19)
+    for (const v of s.unit.vertices) expect(Math.hypot(v.x - 2, v.y)).toBeCloseTo(2, 9)
+    expect(s.unit.vertices.every((v) => v.y <= 1e-9)).toBe(true) // the way round through the bulge
+    const ends = s.unit.vertices.filter((v) => s.unit.walls.filter((w) => w.a === v.id || w.b === v.id).length === 1)
+    expect(ends).toHaveLength(2) // one chain: every inner corner joins two pieces
+    for (const w of s.unit.walls) expect(wallFrame(w, s.unit.vertices).lengthM).toBeGreaterThanOrEqual(0.3)
+    for (const w of s.unit.walls) expect(2 * Math.asin(wallFrame(w, s.unit.vertices).lengthM / 4)).toBeLessThanOrEqual((10 * Math.PI) / 180 + 1e-9)
+    expect(run(s, { type: 'undo' }).unit.walls).toHaveLength(0)
+    // a tight arc: fewer, longer pieces (none under 0.3 m); a bulge under 1 cm: one straight wall
+    expect(arcPoints({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0.5 })).toHaveLength(6)
+    expect(arcPoints({ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 0.005 })).toHaveLength(2)
   })
 })

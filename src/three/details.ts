@@ -366,18 +366,35 @@ export interface PillarPart {
 }
 
 /**
- * A column (Unit.pillars): a box from the floor to `heightM`, 1 mm proud of its plan size so a face flush with a wall's
+ * A column (Unit.pillars): its four corners (core.pillarCorners: the rectangle, or a tapered column's own four points)
+ * extruded from the floor to `heightM`, 1 mm proud of its plan outline so a face flush with a wall's
  * never z-fights it, and 1 cm over the wall tops (its top is edge plaster, pushed back in depth like theirs: at 1 mm the
  * walls' face edges below showed through it as hairlines in the dollhouse). Its four upright faces are each
  * finished as the room they look into (probed 5 cm out from the face's middle) and skirted there like buildSkirting
  * (none in bath / balcony / shaft); where the column stands in a wall, the faces and strips inside it are simply hidden.
  */
 export function pillarParts(p: Pillar, heightM: number, unit: Unit, rooms: Room[]): PillarPart[] {
-  const [hx, hy, top] = [p.wM / 2 + 0.001, p.hM / 2 + 0.001, heightM + 0.01]
-  const out: PillarPart[] = [{ geo: meterUVs(new THREE.PlaneGeometry(2 * hx, 2 * hy).rotateX(-Math.PI / 2).translate(p.x, top, p.y)), room: null, part: 'top' }]
-  for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-    const [half, off] = nx ? [hy, hx] : [hx, hy]
-    const c = { x: p.x + nx * off, y: p.y + ny * off }
+  const top = heightM + 0.01
+  const cs = core.pillarCorners(p)
+  const sgn = Math.sign(core.signedArea(cs)) || 1
+  // each side's outward normal, then each corner pushed out 1 mm from both its sides
+  const outN = cs.map((a, i) => {
+    const b = cs[(i + 1) % 4]
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1
+    return { x: (sgn * (b.y - a.y)) / L, y: (-sgn * (b.x - a.x)) / L }
+  })
+  const big = cs.map((c, i) => {
+    const [m, n] = [outN[(i + 3) % 4], outN[i]]
+    const k = 0.001 / (1 + m.x * n.x + m.y * n.y)
+    return { x: c.x + (m.x + n.x) * k, y: c.y + (m.y + n.y) * k }
+  })
+  const lid = new THREE.ShapeGeometry(new THREE.Shape(big.map((c) => new THREE.Vector2(c.x, -c.y)))).rotateX(-Math.PI / 2).translate(0, top, 0)
+  const out: PillarPart[] = [{ geo: meterUVs(lid), room: null, part: 'top' }]
+  for (const [i, a] of big.entries()) {
+    const b = big[(i + 1) % 4]
+    const [nx, ny] = [outN[i].x, outN[i].y]
+    const half = Math.hypot(b.x - a.x, b.y - a.y) / 2
+    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
     const room = core.roomAt({ x: c.x + nx * 0.05, y: c.y + ny * 0.05 }, rooms, unit)
     const yaw = Math.atan2(nx, ny) // a plane facing +Z turned to face (nx, 0, ny)
     out.push({ geo: meterUVs(new THREE.PlaneGeometry(2 * half, top).rotateY(yaw).translate(c.x, top / 2, c.y)), room, part: 'face' })
