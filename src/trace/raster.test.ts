@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { furnitureMask, hatchMask } from './raster'
+import { furnitureMask, hatchMask, normalPolarity } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -53,5 +53,18 @@ describe('hatchMask (founder 2026-10-15: hatch is texture, never a wall)', () =>
     expect(m[203 * g.width + 250]).toBe(0)
     expect(m[300 * g.width + 201]).toBe(0)
     expect(m[at(1, 1)]).toBe(0)
+  })
+})
+
+describe('normalPolarity: a plan printed as a light panel on a dark page', () => {
+  test('the page is made paper; the plan and its black outer walls keep their tones', () => {
+    const { g, fill, at } = sheet()
+    g.data.fill(100) // a grey card
+    for (let y = Math.round(1 * K); y < Math.round(5 * K); y++) for (let x = Math.round(1 * K); x < Math.round(5 * K); x++) g.data[y * g.width + x] = 235 // the plan's floor
+    fill(1, 1, 5, 1.25), fill(1, 4.75, 5, 5), fill(1, 1, 1.25, 5), fill(4.75, 1, 5, 5), fill(3, 1, 3.12, 4) // its walls
+    const p = normalPolarity(g)
+    expect(p.data[at(0.5, 0.5)]).toBe(255) // the page
+    expect(p.data[at(1.1, 3)]).toBe(0) // an outer wall
+    expect(p.data[at(2, 3)]).toBe(235) // the floor
   })
 })

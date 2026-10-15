@@ -96,8 +96,8 @@ describe('normalPolarity: white lines on a dark page', () => {
   test('a white panel on a dark page (a plan printed on a card) is no line work: left alone', () => {
     const data = new Uint8Array(300 * 200).fill(40)
     for (let y = 30; y < 170; y++) for (let x = 30; x < 150; x++) data[y * 300 + x] = 250
-    const g = { width: 300, height: 200, data }
-    expect(normalPolarity(g)).toBe(g)
+    const p = normalPolarity({ width: 300, height: 200, data })
+    expect(p.data[100 * 300 + 100]).toBe(250) // not turned over (its page is made paper: raster.test)
   })
 })
 

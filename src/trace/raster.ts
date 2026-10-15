@@ -140,7 +140,8 @@ export function thin(m: Uint8Array, w: number, h: number): void {
  * White line work on a dark page (bti La Montana: white walls, text and furniture on a dark grey sheet) → the luminance
  * turned over, so everything after it sees dark ink on light paper. A dark page = median grey under 110 whose light
  * pixels are a minority and thin — a white panel on a dark page (a plan printed on a card) is not line work: most of its
- * light pixels lie deep inside it. Anything else comes back as it is.
+ * light pixels lie deep inside it. A plan printed on a dark page as a light panel (Palm Spring's grey card, Azmary's navy,
+ * Jahan Lodge's stripes) keeps its tones and gets the page made paper instead (paperPage). Anything else comes back as it is.
  */
 export function normalPolarity(g: Gray): Gray {
   const { width: w, height: h, data } = g
@@ -152,13 +153,65 @@ export function normalPolarity(g: Gray): Gray {
   const light = new Uint8Array(data.length)
   let nLight = 0
   for (let i = 0; i < data.length; i++) if (data[i] > med + 60) (light[i] = 1), nLight++
-  if (!nLight || nLight > 0.4 * data.length) return g
+  if (!nLight) return g
+  const paper = paperPage(g, light)
+  if (paper) return paper
+  if (nLight > 0.4 * data.length) return g
   const dt = edt(light, w, h), deep = 0.03 * Math.min(w, h)
   let nDeep = 0
   for (let i = 0; i < dt.length; i++) if (dt[i] > deep) nDeep++
   if (nDeep > 0.2 * nLight) return g
   const out = new Uint8Array(data.length)
   for (let i = 0; i < out.length; i++) out[i] = 255 - data[i]
+  return { width: w, height: h, data: out }
+}
+
+/** 4-connected: the pixels of `m` reached from `seeds` */
+function reach(m: Uint8Array, w: number, seeds: number[]): Uint8Array {
+  const r = new Uint8Array(m.length), st = seeds.filter((i) => m[i])
+  for (const i of st) r[i] = 1
+  while (st.length) {
+    const p = st.pop()!, x = p % w
+    for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < m.length && m[q] && !r[q]) (r[q] = 1), st.push(q)
+  }
+  return r
+}
+
+/**
+ * A plan printed as a light panel on a dark page: its biggest light piece fills ≥ 0.3 of its box (line work's ≈ 0.1) →
+ * the page made paper — outside that piece and all it holds (what the border reaches around it), the commonest tone ± 25,
+ * reached from the border through that tone, painted white. null when the light is no panel.
+ */
+function paperPage(g: Gray, light: Uint8Array): Gray | null {
+  const { width: w, height: h, data } = g
+  const seen = new Uint8Array(data.length)
+  let best = 0, share = 0, seed = 0
+  for (let s = 0; s < data.length; s++) {
+    if (!light[s] || seen[s]) continue
+    const st = [s]
+    seen[s] = 1
+    let n = 0, x0 = w, y0 = h, x1 = 0, y1 = 0
+    while (st.length) {
+      const p = st.pop()!, x = p % w, y = (p - x) / w
+      n++
+      ;(x0 = Math.min(x0, x)), (x1 = Math.max(x1, x)), (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y))
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < light.length && light[q] && !seen[q]) (seen[q] = 1), st.push(q)
+    }
+    if (n > best) (best = n), (seed = s), (share = n / ((x1 - x0 + 1) * (y1 - y0 + 1)))
+  }
+  if (share < 0.3) return null
+  const open = reach(light, w, [seed]).map((v) => 1 - v)
+  const rim: number[] = []
+  for (let x = 0; x < w; x++) rim.push(x, (h - 1) * w + x)
+  for (let y = 0; y < h; y++) rim.push(y * w, y * w + w - 1)
+  const outside = reach(open, w, rim)
+  const hist = new Float64Array(256)
+  for (let i = 0; i < data.length; i++) if (outside[i]) hist[data[i]]++
+  const P = hist.indexOf(Math.max(...hist))
+  // (reached through that tone only: a wall on the panel's edge keeps the plan's own greys from the page's)
+  const page = reach(outside.map((v, i) => (v && Math.abs(data[i] - P) <= 25 ? 1 : 0)), w, rim)
+  const out = new Uint8Array(data)
+  for (let i = 0; i < data.length; i++) if (page[i]) out[i] = 255
   return { width: w, height: h, data: out }
 }
 
