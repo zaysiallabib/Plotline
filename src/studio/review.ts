@@ -19,9 +19,39 @@ export const TRACKER_KEY = 'plotline.tracker'
  */
 export interface Review {
   unitId: Id
-  items: (ReviewItem & { sig?: string })[]
+  /** s27 AI-prep: an open row also carries `box` (the sheet around it, image px) and `answers` (its buttons), set by the
+   *  `answers` action once StudioApp has worked its fixes out on the plan as it stands — gone again on the next edit */
+  items: (ReviewItem & { sig?: string; box?: Box; answers?: Answer[] })[]
   stats: AutoTraceStats
 }
+
+/** a sheet rectangle, image px */
+export interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/**
+ * s27 AI-prep: one of a row's buttons as data — what a vision model later picks by `id` (applyAnswer). `actions` = the
+ * fix's own reducer actions (plain data, one undo step); none for Looks right / Show me.
+ */
+export interface Answer {
+  id: string
+  label: string
+  title?: string
+  actions: Action[]
+}
+/** the two answers every row has besides its fixes: the row leaves the list; the Wall tool to draw it by hand */
+export const LOOKS_RIGHT = 'looks-right'
+export const SHOW_ME = 'show-me'
+/** a fix's answer id: its button label, lower case and dashed ("Close it — zone line" → close-it-zone-line) */
+export const answerId = (label: string): string =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 
 export type StudioAction =
   | Action
@@ -35,6 +65,52 @@ export type StudioAction =
   | { type: 'spring-back'; tool: Tool; selection: Id[] }
   /** an Issues fix (issues.ts): its reducer actions in one go — one undo step (every fix holds exactly one commit / drag-begin) */
   | { type: 'apply-fix'; actions: Action[]; label: string }
+  /** s27 AI-prep: the open rows' boxes + answers, worked out on `unit` (ignored once the unit is another); other rows lose theirs */
+  | { type: 'answers'; unit: Unit; rows: Record<string, { box?: Box; answers: Answer[] }> }
+  /** s27 AI-prep: a row answered by id — its button, or a model later (applyAnswer) */
+  | { type: 'answer'; rowId: string; answerId: string }
+
+/**
+ * s27 AI-prep: THE way a "Check these" row is answered — the row buttons dispatch it, a vision model later calls it with a
+ * row id and answer id from the saved draft. A fix = one undo step (Ctrl+Z, as apply-fix); Looks right = the row goes;
+ * Show me = the Wall tool. An answer the row no longer has changes nothing (a toast says so).
+ */
+export const applyAnswer = (s: StudioState, rowId: string, id: string): StudioState => studioReducer(s, { type: 'answer', rowId, answerId: id })
+
+/** localStorage: every answer clicked, append-only (logAnswer) — the test set for a model; the Export answers button downloads it */
+export const ANSWERS_KEY = 'plotline.answers'
+/** localStorage: per sheet ("name w×h"), the print strips the reader threw away (trace RejectedStrip[]) — boxes only */
+export const STRIPS_KEY = 'plotline.studio.strips'
+
+export interface AnswerLog {
+  /** the sheet picture: file name and size (px) */
+  sheet: { name: string; w: number; h: number } | null
+  rowId: string
+  kind: ReviewItem['kind']
+  /** the row as it read on screen */
+  row: string
+  answerId: string
+  answer: string
+  /** ISO time of the click */
+  time: string
+}
+
+/**
+ * s27 AI-prep: one click on a row's answer, added to the end of the log in `store` (localStorage) — never an entry
+ * changed or removed. `s` = the state the click was made on. A log that is not a list stays as it is (throws). null: no
+ * such open row / answer.
+ */
+export function logAnswer(store: Pick<Storage, 'getItem' | 'setItem'>, s: StudioState, rowId: string, id: string, time = new Date()): AnswerLog | null {
+  const row = openReview(s).find((i) => i.id === rowId)
+  const a = id === LOOKS_RIGHT ? { label: 'Looks right' } : id === SHOW_ME ? { label: 'Show me' } : s.review?.items.find((i) => i.id === rowId)?.answers?.find((x) => x.id === id)
+  if (!row || !a) return null
+  const p = s.planImage
+  const e: AnswerLog = { sheet: p ? { name: p.name, w: p.naturalW, h: p.naturalH } : null, rowId, kind: row.kind, row: row.message, answerId: id, answer: a.label, time: time.toISOString() }
+  const list: unknown = JSON.parse(store.getItem(ANSWERS_KEY) ?? '[]')
+  if (!Array.isArray(list)) throw new Error(`${ANSWERS_KEY} is not a list`)
+  store.setItem(ANSWERS_KEY, JSON.stringify([...list, e]))
+  return e
+}
 
 /** An entity as it stands (its fields + where it is); undefined when the unit has no such entity (e.g. an unlabelled room). */
 const entitySig = (u: Unit, id: Id): string | undefined => {
@@ -44,8 +120,12 @@ const entitySig = (u: Unit, id: Id): string | undefined => {
 
 export function studioReducer(s: StudioState, a: StudioAction): StudioState {
   const t = studioStep(s, a)
-  return a.type === 'auto-trace' || a.type === 'restore' ? t : typedSizeRows(s, t)
+  return a.type === 'auto-trace' || a.type === 'restore' ? t : unanswered(s, typedSizeRows(s, t))
 }
+
+/** s27: an edit makes the rows' answers stale (worked out on the plan before it): they go until StudioApp works them out again */
+const unanswered = (prev: StudioState, s: StudioState): StudioState =>
+  s.unit === prev.unit || !s.review?.items.some((i) => i.answers) ? s : { ...s, review: { ...s.review, items: s.review.items.map((i) => ({ ...i, box: undefined, answers: undefined })) } }
 
 /**
  * Level 3 (gap seen 2026-10-09): a printed size typed by hand — the label box's Printed size, R, a row's Name it — gets
@@ -118,6 +198,17 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
       if (t.unit === s.unit) return reducer(s, { type: 'toast', text: 'Nothing to fix there any more' })
       // one undo step whatever the fix holds ("Close it" = a line + its room's name)
       return reducer({ ...t, history: { past: [...s.history.past, s.unit], future: [] } }, { type: 'toast', text: `${a.label} — Ctrl+Z undoes it` })
+    }
+    case 'answers': {
+      if (!s.review || a.unit !== s.unit) return s
+      const items = s.review.items.map((i) => ({ ...i, box: a.rows[i.id]?.box, answers: a.rows[i.id]?.answers }))
+      return JSON.stringify(items) === JSON.stringify(s.review.items) ? s : { ...s, review: { ...s.review, items } }
+    }
+    case 'answer': {
+      if (a.answerId === LOOKS_RIGHT) return studioStep(s, { type: 'dismiss-review', id: a.rowId })
+      if (a.answerId === SHOW_ME) return reducer(s, { type: 'set-tool', tool: 'wall' })
+      const x = s.review?.items.find((i) => i.id === a.rowId)?.answers?.find((y) => y.id === a.answerId)
+      return x ? studioStep(s, { type: 'apply-fix', actions: x.actions, label: x.label }) : reducer(s, { type: 'toast', text: 'Nothing to fix there any more' })
     }
     default:
       return reducer(s, a) // load-unit / reset start from initialState: no review

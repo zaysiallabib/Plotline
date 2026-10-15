@@ -28,12 +28,12 @@ import {
   type Target,
   type Tool,
 } from './model'
-import { AI_KEY, TRACKER_KEY, openReview, studioReducer } from './review'
+import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixesOf, leaksAround, markIssues, type Fix, type Mark, type MarkFixes } from './issues'
+import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
@@ -297,19 +297,26 @@ export default function StudioApp() {
   const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
+  // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
+  const markKeys = marks.map((m) => m.key).join('\n')
   useEffect(() => {
     setFixes(null)
     const found = new Map<string, MarkFixes>()
     let k = 0
     let id = 0
     const step = () => {
-      if (k >= marks.length) return setFixes(found)
+      if (k >= marks.length) {
+        setFixes(found)
+        // s27 AI-prep: the open rows' answers (= these buttons) and sheet boxes go into the draft, saved with it
+        const p = stateRef.current.planImage
+        return dispatch({ type: 'answers', unit, rows: rowAnswers(unit, marks, found, p ? { w: p.naturalW, h: p.naturalH } : undefined) })
+      }
       for (const [key, f] of fixesOf(unit, [marks[k++]], issues, state.review?.stats.printed)) found.set(key, f)
       id = window.setTimeout(step, 0)
     }
     id = window.setTimeout(step, 150)
     return () => clearTimeout(id)
-  }, [unit, marks, issues]) // eslint-disable-line react-hooks/exhaustive-deps -- (marks follow the review, its printed names with it)
+  }, [unit, markKeys, issues]) // eslint-disable-line react-hooks/exhaustive-deps -- (marks follow the review, its printed names with it)
   /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [hotKey, setHotKey] = useState<string | null>(null)
@@ -690,7 +697,7 @@ export default function StudioApp() {
         parsed = null
       }
       if (!isUnit(parsed)) return toast('That file is not a Plotline unit')
-      const u = normalizeUnit(parsed)
+      const u = normalizeUnit({ ...parsed, review: undefined } as typeof parsed) // (an Export's Check-these rows stay out of the unit)
       dispatch({ type: 'load-unit', unit: u })
       const src = u.planImage?.src
       if (src && src !== stateRef.current.planImage?.name) loadPlanSrc(src)
@@ -722,11 +729,24 @@ export default function StudioApp() {
     if (n && !window.confirm(`This unit has ${n} error${n === 1 ? '' : 's'}. Export anyway?\n${traced}`)) return
     console.log(`[plotline] ${traced} (${st.timer.elapsedMs} ms)`)
     const name = st.unit.name.trim() || 'Untitled unit'
-    const out = { ...st.unit, name, planImage: st.unit.planImage && { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src } }
+    // (s27 AI-prep: with this trace's Check-these rows — their sheet boxes and answers; Import leaves them out)
+    const out = { ...st.unit, name, planImage: st.unit.planImage && { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src }, review: st.review?.unitId === st.unit.id ? st.review : undefined }
     download(`${slug(name)}.plotline.json`, JSON.stringify(out, null, 2))
     dispatch({ type: 'exported' })
     toast(traced)
   }, [issues, toast])
+  // s27 AI-prep: every Check-these answer clicked in this browser (append-only), as a file — the test set for a model
+  const exportAnswers = () => {
+    const raw = localStorage.getItem(ANSWERS_KEY) ?? '[]'
+    download('plotline-answers.json', raw) // (as stored: nothing lost even if it no longer parses)
+    let n = 0
+    try {
+      n = JSON.parse(raw).length
+    } catch {
+      /* the file still has it */
+    }
+    toast(`${n} answer${n === 1 ? '' : 's'} exported`)
+  }
 
   // never locked by errors (founder 2026-10-03, 310fe76 unlocked the button but left this early return: a click did nothing)
   const preview = useCallback(() => {
@@ -837,6 +857,14 @@ export default function StudioApp() {
     const done = (result: AutoTraceResult) => {
       stop()
       dispatch({ type: 'auto-trace', result })
+      // s27 AI-prep: the print the reader threw away, kept beside the draft — one entry per sheet, boxes only
+      const p = stateRef.current.planImage
+      if (p && result.rejectedText)
+        try {
+          localStorage.setItem(STRIPS_KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(STRIPS_KEY) ?? '{}'), [`${p.name} ${p.naturalW}x${p.naturalH}`]: result.rejectedText }))
+        } catch {
+          /* storage full or blocked: the trace stands without them */
+        }
       const u = result.unit
       if (u.vertices.length) {
         const f = frameOf(view, u.planImage)
@@ -1618,7 +1646,20 @@ export default function StudioApp() {
     focusOn([...(m.at ? [m.at] : []), ...sel.flatMap((id) => entityPoints(unit, id))], sel, 3)
     setActiveKey(m.key)
   }
+  /** s27 AI-prep: a "Check these" row answered (its buttons, here and on the plan) — logged, then applied by id (applyAnswer) */
+  const answer = (rowId: string, id: string) => {
+    try {
+      logAnswer(localStorage, stateRef.current, rowId, id)
+    } catch {
+      /* storage full or blocked: the answer still counts on the plan */
+    }
+    dispatch({ type: 'answer', rowId, answerId: id })
+    if (id !== LOOKS_RIGHT && id !== SHOW_ME) setActiveKey(null) // (Show me keeps its mark open with the hint, as before)
+  }
   const applyFix = (f: Fix) => {
+    // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
+    const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
+    if (row) return answer(row.review!.id, answerId(f.label))
     dispatch({ type: 'apply-fix', actions: f.actions, label: f.label })
     setActiveKey(null)
   }
@@ -1761,6 +1802,9 @@ export default function StudioApp() {
         )}
         <button onClick={() => jsonRef.current?.click()}>Import</button>
         <button onClick={exportJson}>Export</button>
+        <button title="Download every Check-these answer clicked in this browser (row, answer, sheet, time) — the test set for an AI helper later" onClick={exportAnswers}>
+          Export answers
+        </button>
         {/* never locked on a draft (founder, 2026-10-03): the 3D shows the plan as it is, open rooms have no floor yet */}
         <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
           Preview 3D
@@ -2015,6 +2059,7 @@ export default function StudioApp() {
           onHot={setHotKey}
           onOpen={openMark}
           onFix={applyFix}
+          onAnswer={answer}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}

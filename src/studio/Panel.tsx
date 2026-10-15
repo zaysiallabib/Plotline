@@ -4,7 +4,7 @@ import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Sl
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
-import { AI_KEY, TRACKER_KEY, fewRooms, roomCount, type StudioAction as Action } from './review'
+import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
@@ -181,6 +181,8 @@ interface Props {
   /** a row clicked: the plan goes to its mark and opens it */
   onOpen: (m: Mark) => void
   onFix: (f: Fix) => void
+  /** a "Check these" row's button: its answer by id (review.ts applyAnswer; logged) */
+  onAnswer: (rowId: string, answerId: string) => void
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
@@ -188,7 +190,7 @@ interface Props {
   onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -227,7 +229,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                   title={x.title}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onFix(x)
+                    if (m.review) onAnswer(m.review.id, answerId(x.label))
+                    else onFix(x)
                   }}
                 >
                   {x.label}
@@ -339,7 +342,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                         onClick={(e) => {
                           e.stopPropagation()
                           onOpen(m)
-                          dispatch({ type: 'set-tool', tool: 'wall' })
+                          onAnswer(m.review!.id, SHOW_ME)
                         }}
                       >
                         Show me
@@ -350,7 +353,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                       title="Take it off the list"
                       onClick={(e) => {
                         e.stopPropagation()
-                        dispatch({ type: 'dismiss-review', id: m.review!.id })
+                        onAnswer(m.review!.id, LOOKS_RIGHT)
                       }}
                     >
                       Looks right

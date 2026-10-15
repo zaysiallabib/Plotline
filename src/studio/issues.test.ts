@@ -11,9 +11,9 @@ import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
-import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
-import { openReview, studioReducer } from './review'
-import { KEEP, fixesOf, issueKey, markIssues, type Mark } from './issues'
+import { emptyUnit, initialState, reducer, studioIssues, type Draft, type StudioState } from './model'
+import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, logAnswer, openReview, studioReducer } from './review'
+import { KEEP, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -333,5 +333,69 @@ describe('a guessed piece\'s row (session 26 step 2): one click answers it', () 
     const fixes = fixesOf(u, marks, issues).get(marks.find((x) => x.review?.id === 'r')!.key)!.fixes
     expect(fixes.map((f) => f.label)).toEqual(['Make it open (no door)', 'Take it out'])
     expect(fixes[1].actions).toEqual([{ type: 'delete', ids: ['d'] }]) // (a door in a longer wall: the wall runs on)
+  })
+})
+
+describe('AI-prep (session 27): a row carries its sheet box and answers in the draft; one function answers it; clicks are logged', () => {
+  // the guessed zone line's row above, on a 100 px/m picture of 1000 × 800 px
+  const u: Unit = { ...splitBottom(box()), vertices: [...splitBottom(box()).vertices, v('p0', 2, 0)] }
+  u.walls = [...u.walls.filter((x) => x.id !== 'top'), w('t1', 'v1', 'p0', [door('d', 1, 0.6)]), w('t2', 'p0', 'v2'), { ...w('z', 'p0', 'p1'), thicknessM: 0.05, heightM: 0 }]
+  const row = { id: 'r', at: { x: 2, y: 1.5 }, kind: 'low-confidence' as const, entityId: 'z', message: 'Drew a zone line to close Dining. Right?' }
+  const stats = { ms: 0, pxPerM: 100, scaleFrom: 'given' as const, walls: 6, rooms: 2, labelled: 0 }
+  const s0: StudioState = { ...stateOf(u), planImage: { dataUrl: '', naturalW: 1000, naturalH: 800, name: 'plan.png' }, review: { unitId: u.id, items: [row], stats } }
+  /** what StudioApp does once the fixes are worked out */
+  const answered = (s: StudioState) => {
+    const rooms = deriveRooms(s.unit), issues = studioIssues(s.unit, rooms), marks = markIssues(s.unit, rooms, issues, openReview(s, rooms))
+    return studioReducer(s, { type: 'answers', unit: s.unit, rows: rowAnswers(s.unit, marks, fixesOf(s.unit, marks, issues), { w: 1000, h: 800 }) })
+  }
+  const s1 = answered(s0)
+  const item = s1.review!.items[0]
+
+  it('the row gets the answers its buttons offer (2–4, stable ids) and the sheet around it in image px', () => {
+    expect(item.answers!.map((a) => [a.id, a.label])).toEqual([
+      ['make-it-a-wall', 'Make it a wall'],
+      ['make-it-a-low-wall', 'Make it a low wall'],
+      ['take-it-out', 'Take it out'],
+      [LOOKS_RIGHT, 'Looks right'],
+    ])
+    // its spot (200, 150 px) ± 2.5 m, the zone line (2,0)–(2,3) + 1 m, clipped to the picture
+    expect(item.box).toEqual({ x: 0, y: 0, w: 450, h: 400 })
+    // answers worked out again on the same plan change nothing (no second save)
+    expect(answered(s1)).toBe(s1)
+    // worked out on a plan since edited: ignored
+    expect(studioReducer(s0, { type: 'answers', unit: { ...u }, rows: { r: { answers: [] } } })).toBe(s0)
+  })
+
+  it('round-trips through the draft save / load, and an answer from the loaded draft = the old button', () => {
+    const d: Draft = { unit: s1.unit, planImage: s1.planImage, view: s1.view, timer: s1.timer, review: s1.review }
+    const loaded = studioReducer(initialState(), { type: 'restore', draft: JSON.parse(JSON.stringify(d)) })
+    expect(loaded.review!.items[0].box).toEqual(item.box)
+    expect(loaded.review!.items[0].answers).toEqual(item.answers)
+    const fix = fixesOf(u, markIssues(u, deriveRooms(u), studioIssues(u, deriveRooms(u)), [row]), studioIssues(u, deriveRooms(u))).get('review:r')!.fixes[0]
+    const old = studioReducer(s0, { type: 'apply-fix', actions: fix.actions, label: fix.label })
+    const now = applyAnswer(loaded, 'r', 'make-it-a-wall')
+    expect(now.unit).toEqual(old.unit)
+    expect(now.toast?.text).toBe(old.toast?.text)
+    // one undo step, Ctrl+Z gives the draft back; the edit made the stored answers stale: they go
+    expect(studioReducer(now, { type: 'undo' }).unit).toEqual(loaded.unit)
+    expect(now.review!.items[0].answers).toBeUndefined()
+    // Looks right is an answer too: the row leaves the list; an answer the row no longer has changes nothing
+    expect(openReview(applyAnswer(loaded, 'r', LOOKS_RIGHT))).toEqual([])
+    expect(applyAnswer(now, 'r', 'make-it-a-wall').unit).toBe(now.unit)
+  })
+
+  it('every click is appended to the log, never changed', () => {
+    const mem = new Map<string, string>()
+    const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, x: string) => void mem.set(k, x) }
+    logAnswer(store, s1, 'r', 'take-it-out', new Date(0))
+    const first = JSON.parse(mem.get(ANSWERS_KEY)!)[0]
+    expect(first).toEqual({ sheet: { name: 'plan.png', w: 1000, h: 800 }, rowId: 'r', kind: 'low-confidence', row: row.message, answerId: 'take-it-out', answer: 'Take it out', time: '1970-01-01T00:00:00.000Z' })
+    logAnswer(store, s1, 'r', LOOKS_RIGHT, new Date(1000))
+    const log = JSON.parse(mem.get(ANSWERS_KEY)!)
+    expect(log).toHaveLength(2)
+    expect(log[0]).toEqual(first)
+    expect(log[1]).toMatchObject({ answerId: LOOKS_RIGHT, answer: 'Looks right' })
+    expect(logAnswer(store, s1, 'r', 'no-such-answer')).toBeNull()
+    expect(JSON.parse(mem.get(ANSWERS_KEY)!)).toHaveLength(2)
   })
 })

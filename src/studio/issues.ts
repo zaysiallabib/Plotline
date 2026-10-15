@@ -9,8 +9,8 @@
 import { deriveRooms, formatFeetInches, polygonCentroid, roomAt, roomPolygon, wallFrame } from '../core'
 import type { Id, Pt, Room, RoomKind, RoomLabel, Unit, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
-import { MIN_OPENING_M, WALL_TYPES, ahead, findOpening, initialState, openSpotsNear, reducer, studioIssues, wallTypeOf, type Action, type StudioIssue, type StudioState, type WallType } from './model'
-import { insidePoint, isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Review } from './review'
+import { MIN_OPENING_M, WALL_TYPES, ahead, entityPoints, findOpening, initialState, openSpotsNear, reducer, studioIssues, wallTypeOf, type Action, type StudioIssue, type StudioState, type WallType } from './model'
+import { LOOKS_RIGHT, SHOW_ME, answerId, insidePoint, isUnnamed, parsePrintedSize, printedIndex, roomIndexAt, roomStates, sameName, sheetAxis, type Answer, type Box, type Review } from './review'
 
 export type Severity = 'red' | 'amber' | 'grey'
 /** an unnamed space smaller than this is a duct / wall pocket: cosmetic, m² */
@@ -632,6 +632,45 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
     if (!i) continue
     const fixes = candidates(u, i).filter((f) => closes(u, f.actions, i, issues))
     if (fixes.length || m.nameAt) out.set(m.key, { fixes, ...(m.nameAt ? { nameAt: m.nameAt } : {}) })
+  }
+  return out
+}
+
+/** a row's box: this far (m) around its spot, what it is about and what its answers change … */
+const BOX_PAD_M = 1
+/** … and at least this far (m) each way from its spot (an open room's name: the walls around it) */
+const BOX_HALF_M = 2.5
+
+/**
+ * s27 AI-prep: every open "Check these" row as a model gets it — its buttons as answers (its own fixes, then its issue's
+ * when it sits on one, Show me when nothing closes a room row, Looks right: Panel.tsx shows exactly these) and the sheet
+ * around it, image px (its spot, its entity and the answers' ghosts, BOX_PAD_M around, BOX_HALF_M at least each way;
+ * clipped to the picture when its size is given; none before the scale is set). `fixes` = fixesOf's, complete.
+ */
+export function rowAnswers(u: Unit, marks: Mark[], fixes: Map<string, MarkFixes>, size?: { w: number; h: number }): Record<string, { box?: Box; answers: Answer[] }> {
+  const out: Record<string, { box?: Box; answers: Answer[] }> = {}
+  for (const m of marks) {
+    const r = m.review
+    if (!r) continue
+    const list = [...(m.twinOf ? (fixes.get(m.key)?.fixes ?? []) : []), ...(fixes.get(m.twinOf ?? m.key)?.fixes ?? [])]
+    const answers: Answer[] = list.map((f) => ({ id: answerId(f.label), label: f.label, title: f.title, actions: f.actions }))
+    if (r.room !== undefined && !fixes.get(m.key)?.fixes.length) answers.push({ id: SHOW_ME, label: 'Show me', title: 'Nothing closes it in one click: draw the missing line with the Wall tool', actions: [] })
+    answers.push({ id: LOOKS_RIGHT, label: 'Looks right', title: 'Take it off the list', actions: [] })
+    const pts: Pt[] = [
+      ...[-1, 1].flatMap((sx) => [-1, 1].map((sy) => ({ x: r.at.x + sx * (BOX_HALF_M - BOX_PAD_M), y: r.at.y + sy * (BOX_HALF_M - BOX_PAD_M) }))),
+      ...(r.entityId ? entityPoints(u, r.entityId) : []),
+      ...list.flatMap((f) => f.ghost.flatMap((g) => (g.kind === 'area' ? g.pts : g.kind === 'ring' ? [g.at] : [g.from, g.to]))),
+    ]
+    const pi = u.planImage
+    let box: Box | undefined
+    if (pi) {
+      const xs = pts.map((p) => pi.originPx.x + p.x * pi.pxPerM), ys = pts.map((p) => pi.originPx.y + p.y * pi.pxPerM)
+      const pad = BOX_PAD_M * pi.pxPerM
+      let x0 = Math.floor(Math.min(...xs) - pad), y0 = Math.floor(Math.min(...ys) - pad), x1 = Math.ceil(Math.max(...xs) + pad), y1 = Math.ceil(Math.max(...ys) + pad)
+      if (size) (x0 = Math.max(0, x0)), (y0 = Math.max(0, y0)), (x1 = Math.min(size.w, x1)), (y1 = Math.min(size.h, y1))
+      box = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+    }
+    out[r.id] = { ...(box ? { box } : {}), answers }
   }
   return out
 }
