@@ -78,6 +78,10 @@ export const CLOSE = {
   /** a doorway up to this wide is a door, wider a passage */
   doorLeafM: 1.1,
   jogM: 0.45,
+  /** a wall end this far beside a line (m) is carried on to it: the trace stopped it short of the wall it meets */
+  nearM: 0.4,
+  /** a jog onto a wall's end this short (m) that would end inside another wall's window: the piece runs straight onto the end */
+  hairM: 0.06,
   sideM: 6,
   minSideM: 0.4,
   /** candidates around a name: this far, and at most this many side lines */
@@ -96,6 +100,8 @@ export const CLOSE = {
   faceM: 0.1,
   /** two open sides at once: tried among this many lines, only for a room whose size pins it */
   pairs: 16,
+  /** …and the lines that close an open-plan room round its print with another open-plan name still in it: this many */
+  held: 4,
   /** pieces of half a metre or more a room with no printed size read may need */
   maxGuesses: 3,
   /** the name stands within this share of the closed room's half-width from its middle */
@@ -158,7 +164,8 @@ export function insertPiece<W extends Wall>(vertices: Vertex[], walls: W[], p: P
     // (straight on to the point beside the wall's end, then a jog of plain wall onto it)
     const x: Vertex = { id: newId(), x: p.via.x, y: p.via.y }
     const main = insertPiece([...vs, x], ws, { ...p, b: p.via, via: undefined }, make)
-    if (!main) return null
+    // (the point beside the end inside another wall's window: a hair off, the piece runs straight onto the end)
+    if (!main) return d2(p.via, p.b) <= CLOSE.hairM ? insertPiece(vertices, walls, { ...p, via: undefined }, make) : null
     const jog = make({ id: newId(), a: x.id, b, thicknessM: p.thM, heightM: p.heightM, openings: [] })
     return { vertices: main.vertices, walls: [...main.walls, jog], id: main.id }
   }
@@ -195,8 +202,8 @@ interface Hit {
 }
 
 /** the first wall centre line `d` meets from `from` within `max` m (never a wall at `skip`, never inside an opening unless `through`) */
-function rayHit(vs: Map<string, Vertex>, walls: Wall[], from: Pt, d: Pt, max: number, skip: string, through = false): Hit | null {
-  let best: Hit | null = null
+function rayHit(vs: Map<string, Vertex>, walls: Wall[], from: Pt, d: Pt, max: number, skip: string, through = false, near = false): Hit | null {
+  let best: Hit | null = null, bestKey = Infinity
   for (const w of walls) {
     if (w.a === skip || w.b === skip) continue
     const A = vs.get(w.a)!, B = vs.get(w.b)!, L = d2(A, B)
@@ -214,21 +221,22 @@ function rayHit(vs: Map<string, Vertex>, walls: Wall[], from: Pt, d: Pt, max: nu
       s = ta < tb ? 0 : L
       const at = ta < tb ? A : B
       const via = { x: from.x + d.x * t, y: from.y + d.y * t }
-      if (t <= max && (!best || t < best.t)) best = { t, at: { x: at.x, y: at.y }, ...(d2(via, at) > 0.01 ? { via } : {}) }
+      if (t <= max && t < bestKey) (best = { t, at: { x: at.x, y: at.y }, ...(d2(via, at) > 0.01 ? { via } : {}) }), (bestKey = t)
       continue
     }
     const r = sub(A, from)
     t = crs(r, e) / den
     s = crs(r, d) / den
-    // (past a wall's end, but within its body: it ends there — the ray goes on straight, a jog onto the end)
-    const reach = Math.max(0.1, w.thicknessM / 2)
+    // (past a wall's end, but within its body: it ends there — the ray goes on straight, a jog onto the end; …a wall
+    // stopping up to nearM short of the ray is carried on to it — taken only where nothing is hit within a metre further)
+    const body = Math.max(0.1, w.thicknessM / 2), reach = near ? Math.max(body, CLOSE.nearM) : body
     if (t <= 1e-3 || t > max || s < -reach || s > L + reach) continue
-    const past = s < 0 || s > L
+    const past = s < 0 || s > L, key = s < -body || s > L + body ? t + 1 : t
     s = Math.max(0, Math.min(L, s))
     if (!through && w.openings.some((o) => s > o.offsetM + 0.02 && s < o.offsetM + o.widthM - 0.02)) continue
     const at = s < 1e-3 ? { x: A.x, y: A.y } : s > L - 1e-3 ? { x: B.x, y: B.y } : { x: A.x + e.x * s, y: A.y + e.y * s }
     const via = { x: from.x + d.x * t, y: from.y + d.y * t }
-    if (!best || t < best.t) best = { t, at, ...(past && d2(via, at) > 0.01 ? { via } : {}) }
+    if (key < bestKey) (best = { t, at, ...(past && d2(via, at) > 0.01 ? { via } : {}) }), (bestKey = key)
   }
   return best
 }
@@ -443,7 +451,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         return !h || Math.abs(h.r.areaSqm - a) > 0.01 * a + 0.05
       })
     /** the pieces applied: the name's room, or null when a check fails */
-    const evalSet = (ps: Piece[], several = false): { area: number; err: number; size: Closed['size'] } | null => {
+    const evalSet = (ps: Piece[], several = false, holding = false, shared?: Piece): { area: number; err: number; size: Closed['size'] } | null => {
       // (a zone line is an open-plan edge: living, dining, foyer, an open kitchen — a bedroom, a toilet, a veranda is
       // closed by what is drawn, never by nothing)
       if (ps.some((p) => p.kind === 'zone') && !CLOSE.openPlan.includes(L.kind ?? '')) return null
@@ -456,19 +464,22 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       const inner = L.dims || L.guess ? roomInnerPolygon(f, x.g) : []
       const pin = L.dims ?? (L.guess && !printedSizeCheck(inner, o.th0, L.guess.aM, L.guess.bM, o.rejectM).off ? L.guess : undefined)
       if (F.r.areaSqm > (pin ? o.maxSqm : cap)) return null
-      if (here.some((m) => m !== L && inFace(F, m.at))) return null
+      // (`holding`: the room closed holds other open-plan names only — DINING with FAMILY LIVING beside it — and its main
+      // rectangle matches the print: a candidate for a second line between them)
+      const others = here.filter((m) => m !== L && inFace(F, m.at))
+      if (holding ? !others.length || !others.every((m) => !m.only && CLOSE.openPlan.includes(m.kind ?? '')) : others.length) return null
       // (a zone line — nothing drawn there — only where the name stands near the middle of the room it closes: a name in
       // a corner of the closed space is another room's, or a misread)
       const ux = Math.cos(o.th0), uy = Math.sin(o.th0), us = poly.map((p) => p.x * ux + p.y * uy), vs2 = poly.map((p) => -p.x * uy + p.y * ux)
       const lu = L.at.x * ux + L.at.y * uy, lv = -L.at.x * uy + L.at.y * ux
-      // (no piece runs on far past the room it closes: it would be another room's side)
+      // (no piece runs on far past the room it closes: it would be another room's side — `shared` is both rooms' side)
       const ext = (d: Pt) => { const t = poly.map((q) => q.x * d.x + q.y * d.y); return Math.max(...t) - Math.min(...t) }
       const onRim = (q: Pt) => poly.some((c, i) => along(q, c, poly[(i + 1) % poly.length]).d < 0.15)
-      if (ps.some((p) => { const l = d2(p.a, p.b); return onRim({ x: (p.a.x + p.b.x) / 2, y: (p.a.y + p.b.y) / 2 }) && l > ext({ x: (p.b.x - p.a.x) / l, y: (p.b.y - p.a.y) / l }) + 0.3 })) return null
+      if (ps.some((p) => { const l = d2(p.a, p.b); return p !== shared && onRim({ x: (p.a.x + p.b.x) / 2, y: (p.a.y + p.b.y) / 2 }) && l > ext({ x: (p.b.x - p.a.x) / l, y: (p.b.y - p.a.y) / l }) + 0.3 })) return null
       const mid = (lo: number, hi: number, t: number) => Math.abs(t - (lo + hi) / 2) <= (CLOSE.midShare * (hi - lo)) / 2
       // (…and wherever two or more sides are guessed at once)
-      if ((several || ps.some((p) => p.kind === 'zone')) && (!mid(Math.min(...us), Math.max(...us), lu) || !mid(Math.min(...vs2), Math.max(...vs2), lv))) return null
-      if (!pin) return ps.some((p) => p.kind === 'zone') ? null : { area: f.areaSqm, err: f.areaSqm, size: 'none' }
+      if (!holding && (several || ps.some((p) => p.kind === 'zone')) && (!mid(Math.min(...us), Math.max(...us), lu) || !mid(Math.min(...vs2), Math.max(...vs2), lv))) return null
+      if (!pin) return holding || ps.some((p) => p.kind === 'zone') ? null : { area: f.areaSqm, err: f.areaSqm, size: 'none' }
       const c = printedSizeCheck(inner, o.th0, pin.aM, pin.bM, o.rejectM)
       if (c.off) return null
       const err = Math.abs(c.drawn.w - c.printed[0]) + Math.abs(c.drawn.h - c.printed[1])
@@ -549,7 +560,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     for (const w of lw) for (const id of [w.a, w.b]) if (deg.get(id) === 1) wallOf.set(id, w)
     const main = mainOf()
     const mw = lw.filter((w) => main(w.a))
-    const sure: Piece[] = [], side: Piece[] = [], carried: Piece[] = []
+    const sure: Piece[] = [], side: Piece[] = [], carried: Piece[] = [], late: Piece[] = []
     const piece = (a: Pt, b: Pt, kind: PieceKind, thM: number, via?: Pt): Piece => ({
       a,
       b,
@@ -569,7 +580,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       const len = d2(v, other)
       if (len < 1e-6) continue
       const d = { x: (v.x - other.x) / len, y: (v.y - other.y) / len }
-      const h = rayHit(V, mw, v, d, CLOSE.sideM, v.id)
+      const h = rayHit(V, mw, v, d, CLOSE.sideM, v.id, false, true)
       const to = h && (h.via ?? h.at)
       // (a wall's dark band carried on, a corner under a door's width: wall; glass across a door's width: glass; paper: a doorway)
       if (h && (h.t < CLOSE.wallM || (h.t <= CLOSE.doorM && solid(v, to!) >= 0.8))) sure.push(piece(v, h.at, 'wall', w.thicknessM, h.via))
@@ -593,7 +604,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       const offs = [dist / 2, ...(sz ? [sz.aM / 2, sz.bM / 2] : [])].filter((x) => x > 0.3 && x < dist - 0.3)
       for (const t of offs) {
         const c = { x: L.at.x + toward.x * t, y: L.at.y + toward.y * t }
-        const p = rayHit(V, mw, c, across, CLOSE.sideM, ''), q = rayHit(V, mw, c, { x: -across.x, y: -across.y }, CLOSE.sideM, '')
+        const p = rayHit(V, mw, c, across, CLOSE.sideM, '', false, true), q = rayHit(V, mw, c, { x: -across.x, y: -across.y }, CLOSE.sideM, '', false, true)
         if (p && q) side.push(piece(p.at, q.at, 'zone', 0))
       }
     }
@@ -613,21 +624,25 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     for (const v of near.filter(corner))
       for (const d of axes) {
         if (own(v, d)) continue
-        const h = rayHit(V, mw, v, d, CLOSE.sideM, v.id)
-        if (!h || h.t < CLOSE.minSideM) continue
-        // (a wall line going on past the corner at a door's width: a doorway, as from a loose end)
-        // (…from either end: the wall it meets may go on in the ray's direction)
-        const along1 = (p: Pt, dir: Pt) =>
-          lw.find((w) => {
-            const e = [V.get(w.a)!, V.get(w.b)!].find((x) => d2(x, p) < 1e-3)
-            if (!e) return false
-            const q = V.get(e.id === w.a ? w.b : w.a)!, l = d2(e, q)
-            return l > 1e-6 && ((q.x - e.x) * dir.x + (q.y - e.y) * dir.y) / l > 0.98
-          })
-        const back = along1(v, { x: -d.x, y: -d.y }) ?? along1(h.at, d)
-        const to = h.via ?? h.at
-        if (back && h.t >= CLOSE.minDoorM && h.t <= CLOSE.doorM) side.push(piece(v, h.at, solid(v, to) >= 0.8 ? 'wall' : drawn(v, to) === 'glass' ? 'glass' : 'door', back.thicknessM, h.via))
-        else side.push(piece(v, h.at, 'zone', 0))
+        const h0 = rayHit(V, mw, v, d, CLOSE.sideM, v.id)
+        // (…and carried on to a wall end stopping short of the ray: tried last, only where nothing else closes the room)
+        for (const h of [h0, rayHit(V, mw, v, d, CLOSE.sideM, v.id, false, true)]) {
+          if (!h || h.t < CLOSE.minSideM || (h !== h0 && h0 && d2(h.at, h0.at) < 1e-6)) continue
+          const side1 = h === h0 ? side : late
+          // (a wall line going on past the corner at a door's width: a doorway, as from a loose end)
+          // (…from either end: the wall it meets may go on in the ray's direction)
+          const along1 = (p: Pt, dir: Pt) =>
+            lw.find((w) => {
+              const e = [V.get(w.a)!, V.get(w.b)!].find((x) => d2(x, p) < 1e-3)
+              if (!e) return false
+              const q = V.get(e.id === w.a ? w.b : w.a)!, l = d2(e, q)
+              return l > 1e-6 && ((q.x - e.x) * dir.x + (q.y - e.y) * dir.y) / l > 0.98
+            })
+          const back = along1(v, { x: -d.x, y: -d.y }) ?? along1(h.at, d)
+          const to = h.via ?? h.at
+          if (back && h.t >= CLOSE.minDoorM && h.t <= CLOSE.doorM) side1.push(piece(v, h.at, solid(v, to) >= 0.8 ? 'wall' : drawn(v, to) === 'glass' ? 'glass' : 'door', back.thicknessM, h.via))
+          else side1.push(piece(v, h.at, 'zone', 0))
+        }
       }
     near.forEach((a, i) =>
       near.slice(i + 1).forEach((b) => {
@@ -645,7 +660,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     const fresh = new Set<Piece>()
     const across = (c: Pt, d: Pt) => {
       const n = { x: -d.y, y: d.x }
-      const p = rayHit(V, mw, c, n, CLOSE.sideM, ''), q = p && rayHit(V, mw, c, { x: -n.x, y: -n.y }, CLOSE.sideM, '')
+      const p = rayHit(V, mw, c, n, CLOSE.sideM, '', false, true), q = p && rayHit(V, mw, c, { x: -n.x, y: -n.y }, CLOSE.sideM, '', false, true)
       return p && q ? piece(p.at, q.at, 'zone', 0) : null
     }
     for (const d of axes) {
@@ -673,7 +688,8 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       return cov > 0.5 * L0
     }
     // (the loose ends' carries first — a wall line going on is the likeliest side — then the shortest; one of each line)
-    const sides = [...carried, ...side.sort((p, q) => Math.round(100 * (d2(p.a, p.b) - d2(q.a, q.b))) || Number(p.kind === 'zone') - Number(q.kind === 'zone'))]
+    const byLength = (p: Piece, q: Piece) => Math.round(100 * (d2(p.a, p.b) - d2(q.a, q.b))) || Number(p.kind === 'zone') - Number(q.kind === 'zone')
+    const sidesOf = (list: Piece[]) => list
       .filter((p, i, all) => along(L.at, p.a, p.b).d <= reach && !all.slice(0, i).some((q) => (d2(p.a, q.a) < 0.05 && d2(p.b, q.b) < 0.05) || (d2(p.a, q.b) < 0.05 && d2(p.b, q.a) < 0.05)) && !crosses(V, lw, p.a, p.b) && !beside(p))
       .slice(0, CLOSE.tries)
       .map((p) => {
@@ -681,6 +697,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         if (fresh.has(p)) fresh.add(q)
         return q
       })
+    const sides = sidesOf([...carried, ...side.sort(byLength)])
     // the sure pieces, nearest the name first, one per loose end (the carry before a jog), each kept only when it changes
     // no room closed around one name
     const S0: Piece[] = []
@@ -691,7 +708,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     }
 
     // ── the sure pieces alone, else with one side line: the tightest room wins
-    let best: { ps: Piece[]; r: NonNullable<ReturnType<typeof evalSet>> } | null = null
+    let best: { ps: Piece[]; r: NonNullable<ReturnType<typeof evalSet>>; shared?: Piece } | null = null
     const r0 = evalSet(S0)
     if (r0) best = { ps: S0, r: r0 }
     else
@@ -711,6 +728,23 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
           if (r && r.size !== 'none' && (!best || r.err < best.r.err - 0.02)) best = { ps: [...S0, few[i], few[j]], r }
         }
     }
+    // (an open-plan room whose print the space closed matches — its main rectangle — but which holds another open-plan
+    // name: a second line between them, from the lines around; L's room then matches alone)
+    if (!best && sz && CLOSE.openPlan.includes(L.kind ?? '')) {
+      const held = sides.filter((s) => evalSet([...S0, s], false, true)).slice(0, CLOSE.held)
+      for (const h of held)
+        for (const s0 of sides) {
+          if (s0 === h) continue
+          // (a line across the first one: the half each side of it)
+          const d = sub(s0.b, s0.a), e = sub(h.b, h.a), den = crs(d, e), q = sub(h.a, s0.a)
+          const t = Math.abs(den) > 1e-9 ? crs(q, e) / den : -1, u = Math.abs(den) > 1e-9 ? crs(q, d) / den : -1
+          const X = { x: s0.a.x + d.x * t, y: s0.a.y + d.y * t }
+          for (const s of t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99 ? [piece(s0.a, X, s0.kind, s0.thM), piece(X, s0.b, s0.kind, s0.thM)] : [s0]) {
+            const r = evalSet([...S0, h, s], true, false, h)
+            if (r && r.size !== 'none' && (!best || r.err < best.r.err - 0.02)) best = { ps: [...S0, h, s], r, shared: h }
+          }
+        }
+    }
     // (a room drawn in thin lines against one wall — a veranda's railing on three sides: its printed size out from that
     // wall, each side on the line drawn there or the wall standing there; only where a size pins the room)
     if (!best && sz)
@@ -718,16 +752,21 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         const r = evalSet([...S0, ...g], true) ?? evalSet(g, true)
         if (r && r.size !== 'none' && (!best || r.err < best.r.err - 0.02)) best = { ps: evalSet([...S0, ...g], true) ? [...S0, ...g] : g, r }
       }
+    if (!best)
+      for (const s of sidesOf(late.sort(byLength))) {
+        const r = evalSet([...S0, s])
+        if (r && (!best || r.err < best.r.err - 0.02)) best = { ps: [...S0, s], r }
+      }
     if (!best) return false
     // a sure piece the room does not need is left out
     let ps = best.ps
     for (const p of best.ps) {
       if (!S0.includes(p)) continue
       const fewer = ps.filter((q) => q !== p)
-      const r = evalSet(fewer)
+      const r = evalSet(fewer, false, false, best.shared)
       if (r && Math.abs(r.area - best.r.area) <= 0.02 * best.r.area) ps = fewer
     }
-    const r = evalSet(ps)
+    const r = evalSet(ps, false, false, best.shared)
     // (no printed size to check them: a few guesses at most — more is a drawing the tracer has not read)
     if (!r || (r.size === 'none' && ps.filter((p) => d2(p.a, p.b) >= CLOSE.wallM).length > CLOSE.maxGuesses)) return false
     // (into the whole draft — a piece that runs past the walls looked at and meets one there is no piece)

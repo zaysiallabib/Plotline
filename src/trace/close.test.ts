@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Vertex, Wall } from '../core'
-import { closeRooms, joinLeftovers, type CloseLabel, type CloseOpts } from './close'
+import { closeRooms, insertPiece, joinLeftovers, type CloseLabel, type CloseOpts } from './close'
 import { closeMessage } from './solve'
 import type { Gray } from './types'
 
@@ -122,6 +122,43 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     expect(r.room({ x: 3.25, y: 1.65 })?.areaSqm).toBeCloseTo(2.5 * 1.3, 0)
     // (nothing drawn there: no box)
     expect(close(g, [{ at: { x: 3.25, y: 1.65 }, name: 'Ver', kind: 'balcony', dims: { aM: 2.5, bM: 1.24 } }], sheet([])).closed).toEqual([])
+  })
+  test('a wall stopping 0.3 m short of the corner it meets (a column there, not traced): carried on to it, the room closes at its print', () => {
+    // the top wall stops 0.3 m before the east wall's line, the east wall 0.3 m below the top wall's: neither meets the other
+    const g = {
+      vertices: [v('a', 1, 1), v('b', 1, 4), v('c', 5, 4), v('d', 5, 1.3), v('e', 4.7, 1)],
+      walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), w('R', 'c', 'd'), w('T', 'a', 'e')],
+    }
+    const r = close(g, [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([]))
+    expect(r.closed.map((c) => [c.room, c.size, c.pieces.map((p) => p.kind)])).toEqual([['Bed 2', 'match', ['wall']]])
+    expect(r.room({ x: 3, y: 2.5 })?.areaSqm).toBeCloseTo(12, 0)
+  })
+  test('a piece whose jog onto a wall\'s end would end inside another wall\'s window, a hair off: it runs straight onto the end', () => {
+    // a corner at (5, 1): a wall going east, and one going south with a window from its top; the piece comes in at y = 1.05
+    const vs = [v('p', 0, 1.05), v('q', 2, 1.05), v('k', 5, 1), v('s', 5, 4), v('t', 8, 1)]
+    const ws = [w('P', 'p', 'q'), { ...w('S', 'k', 's'), openings: [{ id: 'o', kind: 'window' as const, offsetM: 0.02, widthM: 1.5, heightM: 2.7, sillM: 0 }] }, w('E', 'k', 't')]
+    const r = insertPiece(vs, ws, { a: { x: 2, y: 1.05 }, b: { x: 5, y: 1 }, via: { x: 5, y: 1.05 }, kind: 'door', thM: 0.127, heightM: 3.048 }, make)
+    expect(r).not.toBeNull()
+    const nw = r!.walls.find((x) => x.id === r!.id)!
+    expect([nw.a, nw.b]).toEqual(['q', 'k'])
+    expect(r!.walls.find((x) => x.id === 'S')!.openings).toHaveLength(1)
+  })
+  test('DINING whose print the space closed matches, with FAMILY LIVING still in it: a second line between them, DINING at its print', () => {
+    // an L of open floor: DINING 1 … 4 × 1 … 6, FAMILY LIVING beside its lower end (4 … 6 × 4 … 6) under a toilet block;
+    // the bottom is open down to a wall at y = 8
+    const g = {
+      vertices: [v('a', 1, 1), v('b', 4, 1), v('c', 4, 4), v('d', 6, 4), v('e', 6, 6), v('f', 1, 6), v('g', 0, 8), v('h', 7, 8)],
+      walls: [w('T', 'a', 'b'), w('M', 'b', 'c'), w('K', 'c', 'd'), w('R', 'd', 'e'), w('L', 'a', 'f'), w('F', 'g', 'h')],
+    }
+    const labels: CloseLabel[] = [
+      { at: { x: 2.5, y: 3.5 }, name: 'Dining', kind: 'dining', dims: { aM: 2.87, bM: 4.87 } },
+      { at: { x: 5, y: 5 }, name: 'Family Living', kind: 'living' },
+    ]
+    const r = close(g, labels, sheet([]))
+    expect(r.closed.map((c) => [c.room, c.size, c.pieces.map((p) => p.kind)])).toEqual([['Dining', 'match', ['zone', 'zone']]])
+    const dining = r.room({ x: 2.5, y: 3.5 })!, family = r.room({ x: 5, y: 5 })!
+    expect(dining.areaSqm).toBeCloseTo(15, 0)
+    expect(family.id).not.toBe(dining.id)
   })
   test('one Check-these row per closed room: what was drawn, why it was kept, the question', () => {
     const p = (kind: 'door' | 'glass' | 'zone', L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, kind, thM: 0.1, heightM: 3 })
