@@ -55,6 +55,9 @@ export { triangulate } from './geometry'
 
 export { signedArea, pointInPolygon, unitBounds, polygonCentroid } from './geometry'
 
+/** A column's four corners in order around: its `corners` (a tapered column), else its rectangle. */
+export { pillarCorners } from './geometry'
+
 /** A room's size the way the sheet prints it: the largest rectangle along the axes at `axis` that fits inside `poly`. */
 export { mainRectangle } from './geometry'
 

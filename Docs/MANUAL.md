@@ -160,6 +160,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - Click a corner, wall, opening, room name or column to pick it. **Shift+click** picks several.
 - Drag to move. **Shift** = no snapping.
 - Drag the end of a picked wall to make it longer or shorter. **Alt** = the walls joined to it follow.
+- **Make a wall thicker or thinner with the mouse** (2026-10-16): a picked wall (one wall picked) shows a dot in the middle of each long face. Drag a face's dot out to thicken the wall on that side, in to thin it — the other face stays where it is, in whole inches (1" at least). The whole straight wall it is part of changes with it (the pieces a T-joint split it into), and the walls at its ends get longer or shorter to stay joined, as when you drag a corner. The Width box on the right still takes a typed size. Ctrl+Z undoes the whole drag.
 - Double-click a wall to type its length.
 - The numbered marks on the plan (problems) can only be clicked with this tool.
 
@@ -185,6 +186,13 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - **Backspace** removes the last piece. **Esc** stops.
 - **T** switches thin wall (5") / thick wall (10").
 
+**A — Arc** (2026-10-16)
+- For a curved wall: **click where it starts, click where it ends**, then move the mouse — the curve bends through the pointer (like a curve handle in Photoshop). **Click** (or press, drag and let go) to lay it. **Esc** cancels.
+- It lays a chain of short straight walls along the curve — at most 10° of turn each, none shorter than about 1 foot — joined end to end, so you never place the small pieces yourself. The status bar says how many before you click.
+- Its two ends stick and join like a W corner (onto a wall, a corner or a column), so an arc from one point of a wall to another closes a curved bay you can name with R.
+- The pieces are the W tool's type (wall, low wall, kerb, zone line — keys 1–4 in W) and 5" thick. After laying they are all picked: **T** makes them all 10", or type a width on the right; Del removes them all.
+- Rooms, doors, the 3D and Auto-trace see the arc as its straight pieces (a door goes on one piece).
+
 **O — Opening**
 - Choose: Door 2'-6", Door 3'-0", Window 4', Window 6', Slider 6', Slider 8', Passage (keys 1–4 for the kind), or **Glass wall**.
 - **Glass wall**: click a wall and all of it becomes glass, floor to top. For glass on only part of a wall, drag the glass's end shorter, or first split the wall (W, click on it).
@@ -201,7 +209,9 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 **C — Column**
 - Click = a standard column. Drag = a column of the size you drag.
 - **Pick a column** by clicking anywhere on it — also where a wall runs through it (with V, or with C).
-- **Size it with the mouse**: a picked column shows eight dots. Drag a **side** (its middle dot or anywhere along it; the pointer becomes a double arrow) to move that one side — the other side stays. Drag a **corner** to move two sides. It sticks to walls and corners as a corner does, in whole inches. The Width / Depth boxes on the right are only for typing an exact size.
+- **Size it with the mouse**: a picked column shows eight dots — its four corners and the middle of its four sides. Drag a **side** (its middle dot or anywhere along it; the pointer becomes a double arrow) to move that one side — the other sides stay, in whole inches. Drag a **corner** dot to move **that corner alone** (2026-10-16): the column becomes a tapered or wedge-shaped one, as some sheets draw it, with straight sides. While you drag a corner its two sides stick a little when they come within 3° of square or of parallel to the side across — a small move snaps it back to a plain rectangle; drag further and it lets go. Both stick to walls and corners as a corner does. **Shift** = no sticking.
+- The Width / Depth boxes on the right are for typing an exact size. On a tapered column they show its outer size, and typing one stretches the whole column about its middle.
+- The 3D builds the column from its four corners. (Rooms around a tapered column, and the Building view, still use the rectangle around it.)
 - Walls stick to a column's sides, corners and centre. A wall that touches a column anywhere closes the room there (see W — Wall).
 
 **F — Furniture**
@@ -251,7 +261,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
   - *Corner* — position.
   - *Wall* — its type (Wall / Low wall / Kerb / Zone line), width, height, **Stands alone** (a screen or decoration wall that is not meant to close a room), length, copy, delete.
   - *Opening* — kind, width, height, sill, distance from each corner; for doors, hinge side and swing.
-  - *Column* — width, depth, delete.
+  - *Column* — width, depth (a tapered column: its outer size, typing stretches it), delete.
   - *Room name* — name, kind, **Flat** (which flat of the drawing it is in — see "Flats in a whole-floor drawing"), printed size, floor level, ramp.
 - **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**.
   - **The room count** (the orange line at the top): "5 of the 8 room names read on the sheet are closed and named — missing: Bed 4, Bed 2, Ver", then what the closed rooms add up to against the printed flat area. It counts the room names Auto-trace could READ inside the traced flat (not the next flat's); a name it missed is not in the count — its room shows as an "Unnamed space" row instead. Auto-trace reads every word it could not make out a second time on a closer view, and reads every closed room it found no name in as a whole, so far more names come through (Sheltech L2 Type A: 14 names read, was 8). A name printed on a room's edge or in its door nook names that room, and so does a name standing inside a room that only closed when the walls were joined — no row for those. Guessed names ("Toilet 3" from a drawn WC) and "Space N" are numbered west to east, the same every time you trace the same sheet, and a guessed name never takes the number a printed room already carries. The flat's "TYPE-A ±2736 SFT", when it is printed inside a closed room of the flat, is put on the drawing as a label that names the flat (the tint then reads "Type A"); printed in an open foyer it is not — add it with R. The flat area is taken from a "TYPE-A ±2736 SFT" printed inside the flat, else from the sheet's title block (2026-10-14): one flat on the sheet — the one area figure printed beside or under it ("TYPE A 2279 SFT", "Unit A 1365 sft", "2023 SQT (Approx.)"); two or more flats — only when the sheet prints exactly one figure per flat, given west to east (or top to bottom); a title naming two figures ("2703 SFT & 674 SFT", BTI 2nd floor) goes to no flat. When none is read it says "no printed flat area was read on this flat" rather than use another flat's — and the top-bar area box then shows the closed rooms' total: type the right figure there. The line changes with every fix and says "All … are closed and named" when none is left. Because only the names it READ are counted, "all 9 … closed and named" could show on a flat with half its floor missing; now, when the closed rooms add up to less than 70 % of the printed flat area, the line says so in orange (2026-10-14): "… But its closed rooms add up to only 524 sft of about 1150 — the sheet prints more rooms than were found."
@@ -553,12 +563,12 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
-| Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness, height, length, move, copy, delete | Its paint on the outside |
+| Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness (typed, or drag a face's dot: that side only), height, length, move, copy, delete; curved walls with A (as short straight pieces) | Its paint on the outside |
 | Boundary wall, parapet, low wall | No | Yes — same as a wall | Its finish |
 | Kerb, free-standing screen | No | Yes | — |
 | Glass wall | Yes — width, height, sill, slide along the wall, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
-| Column | No | Yes — size from any side or corner by mouse (or typed), move, delete, add; a wall touching it closes the room | — |
+| Column | No | Yes — its four corners one by one (a tapered column), each side by mouse (or typed), move, delete, add; a wall touching it closes the room | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
 | Floor of ONE room | Yes — Finishes open, click the floor (Walk or Dollhouse) | No | — |
 | Lawn, paving, driveway, deck surface | No | No | Everything — no finish choices exist for outdoor areas |

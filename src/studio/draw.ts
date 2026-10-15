@@ -1,6 +1,6 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
-import { formatFeetInches, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind } from '../core'
+import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
+import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind, Vertex, Wall } from '../core'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
@@ -36,8 +36,18 @@ export interface Hover {
   moving?: Id[]
   /** C tool drag: the new column's box (plan m) */
   box?: { a: Pt; b: Pt }
+  /** A tool: the walls a click would lay (their corners, plan m) */
+  arc?: Pt[]
 }
 type WallFrame = ReturnType<typeof wallFrame>
+
+/** A wall's (or low wall's) two face dots, on the middle of each long face: [its normal's side, the other]; none on a kerb / zone line */
+export function wallFaceDots(w: Wall, vs: Vertex[]): [Pt, Pt] | null {
+  if (wallTypeOf(w.heightM) === 'zone' || wallTypeOf(w.heightM) === 'kerb') return null
+  const f = wallFrame(w, vs)
+  const at = (k: number) => ({ x: f.origin.x + (f.dir.x * f.lengthM) / 2 + (f.normal.x * k * w.thicknessM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 + (f.normal.y * k * w.thicknessM) / 2 })
+  return [at(1), at(-1)]
+}
 
 /** Wall slab path: centreline origin → origin + dir·L, h to each side. */
 function slab(ctx: CanvasRenderingContext2D, { origin: o, dir: d, normal: n, lengthM: L }: WallFrame, h: number): void {
@@ -263,13 +273,24 @@ export function draw(a: DrawArgs): void {
   // columns: a filled block in the wall ink, under the walls (walls keep their own lines through / into them)
   for (const p of state.unit.pillars ?? []) {
     ctx.fillStyle = sel.has(p.id) ? C.accent : C.ink
-    ctx.fillRect(p.x - p.wM / 2, p.y - p.hM / 2, p.wM, p.hM)
+    ctx.beginPath()
+    pillarCorners(p).forEach((c, i) => (i ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y)))
+    ctx.fill()
   }
   // C tool drag: the new column's box
   const box = a.hover?.box
   if (box) {
     ctx.fillStyle = 'rgba(232,193,112,0.45)'
     ctx.fillRect(Math.min(box.a.x, box.b.x), Math.min(box.a.y, box.b.y), Math.abs(box.b.x - box.a.x), Math.abs(box.b.y - box.a.y))
+  }
+  // A tool: the chain of straight walls the click lays, 5" wide
+  const arc = a.hover?.arc
+  if (arc && arc.length > 1) {
+    ctx.beginPath()
+    arc.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
+    ctx.strokeStyle = 'rgba(232,193,112,0.6)'
+    ctx.lineWidth = 0.127
+    ctx.stroke()
   }
 
   // walls, by type (model.wallTypeOf): a zone line dashed on its centre line (nothing in 3D), a kerb a thin solid line, a
@@ -377,10 +398,17 @@ export function draw(a: DrawArgs): void {
       for (const u of [op.offsetM, op.offsetM + op.widthM]) dot({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u }, true, true)
     }
   }
-  // a selected column's four corners and four sides are its resize handles (drag a side: that side alone)
+  // a single selected wall's two faces: drag the dot on one to make the wall thicker / thinner on that side
+  const one = state.selection.length === 1 ? state.unit.walls.find((w) => w.id === state.selection[0]) : undefined
+  for (const p of (one && wallFaceDots(one, vs)) || []) dot(p, true, true)
+  // a selected column's four corners and four side middles are its handles (a corner alone, or that side alone)
   for (const p of state.unit.pillars ?? []) {
     if (!sel.has(p.id)) continue
-    for (const [kx, ky] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, -1], [1, 0], [0, 1], [-1, 0]]) dot({ x: p.x + (kx * p.wM) / 2, y: p.y + (ky * p.hM) / 2 }, true, true)
+    const cs = pillarCorners(p)
+    for (const [i, c] of cs.entries()) {
+      dot(c, true, true)
+      dot({ x: (c.x + cs[(i + 1) % 4].x) / 2, y: (c.y + cs[(i + 1) % 4].y) / 2 }, true, true)
+    }
   }
 
   // ramps: an arrow across the zone from its floor level (tail) to its to level (head); selected, the head is a handle
@@ -406,7 +434,7 @@ export function draw(a: DrawArgs): void {
   }
 
   // snap ring
-  if (snap && (state.tool === 'wall' || a.hover?.hit?.kind === 'vertex' || HARD.has(snap.kind))) {
+  if (snap && (state.tool === 'wall' || state.tool === 'arc' || a.hover?.hit?.kind === 'vertex' || HARD.has(snap.kind))) {
     ctx.beginPath()
     ctx.arc(snap.x, snap.y, px(HARD.has(snap.kind) ? 8 : 4), 0, Math.PI * 2)
     ctx.strokeStyle = C.accent

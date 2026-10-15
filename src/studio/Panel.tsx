@@ -489,7 +489,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="Length (moves B)">
           <LenInput valueM={len} onCommit={(m) => dispatch({ type: 'set-wall-length', id: w.id, lengthM: m })} />
         </Row>
-        <p className="muted">Typed length: walls at B stay straight. Drag an end handle to extend this wall alone until it meets a wall (Alt: neighbours follow).</p>
+        <p className="muted">Typed length: walls at B stay straight. Drag an end handle to extend this wall alone until it meets a wall (Alt: neighbours follow). Drag the dot on the middle of a face to make the wall thicker or thinner on that side — the other face stays.</p>
         <button className="link" onClick={() => dispatch({ type: 'duplicate' })}>
           Copy wall (Ctrl+D)
         </button>
@@ -571,6 +571,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
       <div className="props">
         <p className="muted">
           Column · {formatFeetInches(p.wM)} × {formatFeetInches(p.hM)}
+          {p.corners && ' · tapered: Width and Depth are its outer size, typing one stretches the whole column'}
         </p>
         <Row label="Width (across)">
           <LenInput valueM={p.wM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { wM: m } })} />
@@ -578,7 +579,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <Row label="Depth (up–down)">
           <LenInput valueM={p.hM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { hM: m } })} />
         </Row>
-        <p className="muted">Drag it to move it (it snaps to walls and corners). Drag a side to move that side alone, a corner to move two; arrows nudge 1". A wall that touches it — middle, edge or corner — closes the room there.</p>
+        <p className="muted">Drag it to move it (it snaps to walls and corners). Drag a side to move that side alone; drag a corner dot to move that corner alone (a tapered column — its sides stick a little when they are nearly straight). Arrows nudge 1". A wall that touches it — middle, edge or corner — closes the room there.</p>
         <button className="link" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
           Delete column (Del)
         </button>

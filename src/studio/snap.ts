@@ -1,5 +1,5 @@
 /** Pure snapping in plan meters. `tolM` = 10 screen px converted by the caller. */
-import { nearestWall, wallFrame } from '../core'
+import { nearestWall, pillarCorners, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, Unit, Wall } from '../core'
 
 /** faces and columns pull this much of the corner / centre-line reach (founder 2026-10-06: weaker still) */
@@ -187,12 +187,7 @@ export function snapPoint(
   }
   for (const c of unit.pillars ?? []) {
     if (ex.has(c.id)) continue
-    const cs = [
-      { x: c.x - c.wM / 2, y: c.y - c.hM / 2 },
-      { x: c.x + c.wM / 2, y: c.y - c.hM / 2 },
-      { x: c.x + c.wM / 2, y: c.y + c.hM / 2 },
-      { x: c.x - c.wM / 2, y: c.y + c.hM / 2 },
-    ]
+    const cs = pillarCorners(c)
     for (const pt of [{ x: c.x, y: c.y }, ...cs]) take(Math.hypot(pt.x - q.x, pt.y - q.y) <= weak ? pt : null, 'column')
     for (let i = 0; i < 4; i++) take(segHit(cs[i], cs[(i + 1) % 4]), 'column')
   }

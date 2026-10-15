@@ -2,7 +2,7 @@
  * Studio state + pure reducer. No DOM, no React: Vitest-covered.
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
-import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
+import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { snapOpeningOffset, type OpeningSnap } from './snap'
 import { classifyRoom } from '../trace/text'
@@ -17,7 +17,7 @@ const EPS = 1e-6
 const HISTORY_CAP = 200
 const IDLE_MS = 3 * 60_000
 
-export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room' | 'furniture' | 'pillar'
+export type Tool = 'select' | 'scale' | 'wall' | 'opening' | 'room' | 'furniture' | 'pillar' | 'arc'
 
 /** The W tool's wall types (session 19: picked before placing, remembered until changed); a type IS a height. */
 export type WallType = 'wall' | 'low' | 'kerb' | 'zone'
@@ -36,6 +36,55 @@ export const wallTypeOf = (heightM: number): WallType => (heightM === 0 ? 'zone'
 /** the C tool's click: a 12" × 20" column */
 export const PILLAR_M = { wM: FT, hM: (20 / 12) * FT }
 const MIN_PILLAR_M = 0.1
+const INCH = FT / 12
+/** a dragged column corner's side within this of parallel to its opposite side (or the plan's axes) snaps there (founder 2026-10-16: "a bit sticky, not too much") */
+const STICK_RAD = (3 * Math.PI) / 180
+
+/** column `p` with the outline `cs` (four points in order): its box as x / y / wM / hM; a plain rectangle again drops `corners` */
+function withCorners(p: Pillar, cs: Pt[]): Pillar {
+  const xs = cs.map((c) => c.x), ys = cs.map((c) => c.y)
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  const { corners: _, ...q } = { ...p, x: (x0 + x1) / 2, y: (y0 + y1) / 2, wM: x1 - x0, hM: y1 - y0 }
+  return pillarCorners(q).every((r) => cs.some((c) => Math.hypot(c.x - r.x, c.y - r.y) < 1e-6)) ? q : { ...q, corners: cs }
+}
+
+/** four points in order around a convex outline (no bow tie, no dent) of at least half a 0.1 m square */
+function okQuad(cs: Pt[]): boolean {
+  const turn = cs.map((p, i) => {
+    const [q, r] = [cs[(i + 1) % 4], cs[(i + 2) % 4]]
+    return (q.x - p.x) * (r.y - q.y) - (q.y - p.y) * (r.x - q.x)
+  })
+  const area = Math.abs(cs.reduce((s, p, i) => s + p.x * cs[(i + 1) % 4].y - cs[(i + 1) % 4].x * p.y, 0)) / 2
+  return (turn.every((t) => t > 1e-9) || turn.every((t) => t < -1e-9)) && area >= MIN_PILLAR_M ** 2 / 2
+}
+
+/**
+ * Corner `k` of outline `cs` dragged to `at`: each of its two sides within STICK_RAD of parallel to the side across from
+ * it, or of the plan's axes, goes exactly there (both: the corner where the two lines cross). Beyond that it is free.
+ */
+export function stickCorner(cs: Pt[], k: number, at: Pt): Pt {
+  const lineFrom = (from: Pt, opp: [Pt, Pt]): Pt | null => {
+    const a = Math.atan2(at.y - from.y, at.x - from.x)
+    for (const t of [Math.atan2(opp[1].y - opp[0].y, opp[1].x - opp[0].x), 0, Math.PI / 2]) {
+      const d = ((((a - t) % Math.PI) + 1.5 * Math.PI) % Math.PI) - Math.PI / 2 // the angle between the two lines, -90..90 degrees
+      if (Math.abs(d) <= STICK_RAD) return { x: Math.cos(t), y: Math.sin(t) }
+    }
+    return null
+  }
+  const [prev, next] = [cs[(k + 3) % 4], cs[(k + 1) % 4]]
+  const d1 = lineFrom(prev, [cs[(k + 1) % 4], cs[(k + 2) % 4]]) // the side prev -> k; across from it: k+1 -> k+2
+  const d2 = lineFrom(next, [cs[(k + 2) % 4], cs[(k + 3) % 4]]) // the side next -> k; across from it: k+2 -> k+3
+  const on = (o: Pt, d: Pt): Pt => {
+    const s = (at.x - o.x) * d.x + (at.y - o.y) * d.y
+    return { x: o.x + d.x * s, y: o.y + d.y * s }
+  }
+  const det = d1 && d2 ? d1.x * d2.y - d1.y * d2.x : 0
+  if (d1 && d2 && Math.abs(det) > 1e-9) {
+    const s = ((next.x - prev.x) * d2.y - (next.y - prev.y) * d2.x) / det
+    return { x: prev.x + d1.x * s, y: prev.y + d1.y * s }
+  }
+  return d1 ? on(prev, d1) : d2 ? on(next, d2) : { x: at.x, y: at.y }
+}
 export interface View {
   panX: number
   panY: number
@@ -120,6 +169,25 @@ export type Action =
   | { type: 'add-pillar'; x: number; y: number; wM: number; hM: number }
   /** a column moved / resized; `live` = mid-drag (drag-begin holds the undo entry) */
   | { type: 'set-pillar'; id: Id; patch: Partial<Omit<Pillar, 'id'>>; live?: boolean }
+  /**
+   * mid-drag (drag-begin holds the undo entry): a column's corner dot `k` to (x, y) — that corner alone, the column a
+   * tapered one (Pillar.corners); `sticky` = its sides snap parallel within 3° (stickCorner). `side`: side k (corner k to
+   * k+1) moves across, staying parallel, until it runs through (x, y), in whole inches. Refused (dragBlocked) when the
+   * outline would cross itself or dent in.
+   */
+  | { type: 'pillar-corner'; id: Id; k: number; x: number; y: number; side?: boolean; sticky?: boolean }
+  /**
+   * mid-drag (drag-begin holds the undo entry): wall `id`'s face on `side` (+1: its normal's side) dragged so the wall is
+   * `thicknessM` thick (whole inches, 1" at least); the other face stays. The straight run it is part of (one line, the
+   * same thickness) changes with it: their corners shift across by half the change, so the walls at them follow as at a
+   * dragged corner.
+   */
+  | { type: 'wall-face'; id: Id; side: 1 | -1; thicknessM: number }
+  /**
+   * The A tool: walls from `a` to `b` along the circle through `via` (arcPoints: ≤ 10° a step), joined end to end, of the
+   * W tool's type, 5" thick; its two ends join as a W corner does. One undo; the new walls are the selection.
+   */
+  | { type: 'add-arc'; a: Target; b: Target; via: Pt }
   /** mid-drag (drag-begin holds the undo entry): a ramp label's arrow aimed (slope.dirDeg) */
   | { type: 'aim-ramp'; id: Id; dirDeg: number }
   | { type: 'chain-add'; at: Target }
@@ -965,6 +1033,47 @@ export function openingAt(
   return typeof placed === 'string' ? { opening, snapped, error: placed } : { opening: placed, snapped, error: null }
 }
 
+/** `w` and the walls carrying it straight on (corners on its line, the same thickness), joined end to end */
+function straightRun(u: Unit, w: Wall): Wall[] {
+  const f = wallFrame(w, u.vertices)
+  const onLine = (id: Id) => {
+    const v = vertexById(u.vertices, id)
+    return Math.abs((v.x - f.origin.x) * f.normal.x + (v.y - f.origin.y) * f.normal.y) <= MERGE_M
+  }
+  const run = [w]
+  for (let i = 0; i < run.length; i++) {
+    for (const id of [run[i].a, run[i].b]) {
+      for (const x of u.walls) {
+        if ((x.a === id || x.b === id) && !run.includes(x) && Math.abs(x.thicknessM - w.thicknessM) < EPS && onLine(x.a) && onLine(x.b)) run.push(x)
+      }
+    }
+  }
+  return run
+}
+
+/** the A tool's step: at most this much of a turn per straight piece, and pieces at least ARC_MIN_M long where the arc allows */
+const ARC_STEP = (10 * Math.PI) / 180
+const ARC_MIN_M = 0.3
+/**
+ * The corners of an arc from `a` to `b` through `via` (the circle through the three; `via` within 1 cm of the line a–b:
+ * the straight wall a–b): ≤ 10° of the circle apart, but no piece shorter than 0.3 m (a tight arc gets fewer, longer ones).
+ */
+export function arcPoints(a: Pt, b: Pt, via: Pt): Pt[] {
+  const chord = Math.hypot(b.x - a.x, b.y - a.y)
+  const bulge = Math.abs((b.x - a.x) * (via.y - a.y) - (b.y - a.y) * (via.x - a.x)) / (chord || 1)
+  if (chord < EPS || bulge < 0.01) return [a, b]
+  const [a2, b2, v2] = [a.x ** 2 + a.y ** 2, b.x ** 2 + b.y ** 2, via.x ** 2 + via.y ** 2]
+  const D = 2 * (a.x * (b.y - via.y) + b.x * (via.y - a.y) + via.x * (a.y - b.y))
+  const c = { x: (a2 * (b.y - via.y) + b2 * (via.y - a.y) + v2 * (a.y - b.y)) / D, y: (a2 * (via.x - b.x) + b2 * (a.x - via.x) + v2 * (b.x - a.x)) / D }
+  const r = Math.hypot(a.x - c.x, a.y - c.y)
+  const t0 = Math.atan2(a.y - c.y, a.x - c.x)
+  const TAU = 2 * Math.PI
+  const from = (p: Pt) => (((Math.atan2(p.y - c.y, p.x - c.x) - t0) % TAU) + TAU) % TAU
+  const sweep = from(via) <= from(b) ? from(b) : from(b) - TAU // the way round that passes `via`
+  const n = Math.max(1, Math.min(Math.ceil(Math.abs(sweep) / ARC_STEP - 1e-9), Math.floor((r * Math.abs(sweep)) / ARC_MIN_M)))
+  return Array.from({ length: n + 1 }, (_, i) => (i === 0 ? a : i === n ? b : { x: c.x + r * Math.cos(t0 + (sweep * i) / n), y: c.y + r * Math.sin(t0 + (sweep * i) / n) }))
+}
+
 // ---------- reducer ----------
 
 function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): StudioState {
@@ -1067,8 +1176,68 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const q = { ...p, ...a.patch, id: p.id }
       q.wM = Math.max(MIN_PILLAR_M, q.wM)
       q.hM = Math.max(MIN_PILLAR_M, q.hM)
+      // a tapered column moves with its box, and a typed width / depth scales it about its middle
+      if (p.corners && !a.patch.corners) q.corners = p.corners.map((c) => ({ x: q.x + ((c.x - p.x) * q.wM) / p.wM, y: q.y + ((c.y - p.y) * q.hM) / p.hM }))
       const unit = { ...s.unit, pillars: s.unit.pillars!.map((x) => (x.id === p.id ? q : x)) }
       return a.live ? { ...s, unit } : commit(s, unit)
+    }
+    case 'pillar-corner': {
+      const p = s.unit.pillars?.find((x) => x.id === a.id)
+      if (!p) return s
+      const cs = pillarCorners(p).map((c) => ({ ...c }))
+      const at = { x: a.x, y: a.y }
+      if (a.side) {
+        const [p0, p1] = [cs[a.k], cs[(a.k + 1) % 4]]
+        const L = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1
+        const n = { x: -(p1.y - p0.y) / L, y: (p1.x - p0.x) / L }
+        const d = Math.round(((at.x - p0.x) * n.x + (at.y - p0.y) * n.y) / INCH) * INCH
+        for (const i of [a.k, (a.k + 1) % 4]) cs[i] = { x: cs[i].x + n.x * d, y: cs[i].y + n.y * d }
+      } else cs[a.k] = a.sticky ? stickCorner(cs, a.k, at) : at
+      if (!okQuad(cs)) return { ...s, dragBlocked: true }
+      const q = withCorners(p, cs)
+      return { ...s, unit: { ...s.unit, pillars: s.unit.pillars!.map((x) => (x.id === p.id ? q : x)) }, dragBlocked: false }
+    }
+    case 'wall-face': {
+      const w = s.unit.walls.find((x) => x.id === a.id)
+      if (!w) return s
+      const dT = Math.max(INCH, Math.round(a.thicknessM / INCH) * INCH) - w.thicknessM
+      if (Math.abs(dT) < EPS) return s
+      const f = wallFrame(w, s.unit.vertices)
+      const run = straightRun(s.unit, w)
+      const ends = new Set(run.flatMap((x) => [x.a, x.b]))
+      const k = (a.side * dT) / 2
+      const vertices = s.unit.vertices.filter((v) => ends.has(v.id)).map((v) => ({ id: v.id, x: v.x + f.normal.x * k, y: v.y + f.normal.y * k }))
+      const u = reducer(s, { type: 'drag', vertices }).unit
+      const ids = new Set(run.map((x) => x.id))
+      return { ...s, unit: { ...u, walls: u.walls.map((x) => (ids.has(x.id) ? { ...x, thicknessM: x.thicknessM + dT } : x)) } }
+    }
+    case 'add-arc': {
+      // ponytail: an arc is short straight walls; rooms, doors, snapping, 3D and the tracer stay straight-wall only — true arcs later if ever
+      const pts = arcPoints(a.a, a.b, a.via)
+      const r0 = resolveTarget(s.unit, a.a)
+      if (typeof r0 === 'string') return withToast(s, r0)
+      let u = r0.unit
+      const ids = [r0.id]
+      for (const p of pts.slice(1, -1)) {
+        const v = { id: newId(), x: p.x, y: p.y }
+        u = { ...u, vertices: [...u.vertices, v] }
+        ids.push(v.id)
+      }
+      const r1 = resolveTarget(u, a.b)
+      if (typeof r1 === 'string') return withToast(s, r1)
+      u = r1.unit
+      ids.push(r1.id)
+      const wall = s.wallType ?? 'wall'
+      const t = chainType(PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined)
+      const before = new Set(u.walls.map((w) => w.id)) // (a wall its ends split is not one of its pieces)
+      for (let i = 0; i + 1 < ids.length; i++) {
+        const next = addWall(u, ids[i], ids[i + 1], t.thicknessM, a.a.tolM, t.heightM)
+        if (typeof next === 'string') return withToast(s, next)
+        u = next
+      }
+      const made = new Set(u.walls.filter((w) => !before.has(w.id)).map((w) => w.id))
+      const j = settle(u, [ids[0], ids[ids.length - 1]], true)
+      return noted(commit(s, j.unit, { selection: j.unit.walls.filter((w) => made.has(w.id)).map((w) => w.id), chain: null }), j.notes)
     }
     case 'aim-ramp':
       return { ...s, unit: { ...s.unit, roomLabels: s.unit.roomLabels.map((l) => (l.id === a.id && l.slope ? { ...l, slope: { ...l.slope, dirDeg: a.dirDeg } } : l)) } }
@@ -1220,7 +1389,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const vertices = s.unit.vertices.filter((v) => moved.has(v.id)).map((v) => ({ id: v.id, x: v.x + a.dx, y: v.y + a.dy }))
       let u = reducer(s, { type: 'drag', vertices }).unit // walls follow, their openings clamp
       u = { ...u, roomLabels: u.roomLabels.map((l) => (sel.has(l.id) ? { ...l, x: l.x + a.dx, y: l.y + a.dy } : l)) }
-      if (u.pillars?.some((p) => sel.has(p.id))) u = { ...u, pillars: u.pillars.map((p) => (sel.has(p.id) ? { ...p, x: p.x + a.dx, y: p.y + a.dy } : p)) }
+      const shift = (p: Pillar): Pillar => ({ ...p, x: p.x + a.dx, y: p.y + a.dy, ...(p.corners && { corners: p.corners.map((c) => ({ x: c.x + a.dx, y: c.y + a.dy })) }) })
+      if (u.pillars?.some((p) => sel.has(p.id))) u = { ...u, pillars: u.pillars.map((p) => (sel.has(p.id) ? shift(p) : p)) }
       for (const id of s.selection) {
         const f = findOpening(u, id)
         if (!f) continue
@@ -1599,7 +1769,10 @@ export const isUnit = (x: unknown): x is Unit => {
   }
   if (u.pillars !== undefined) {
     if (!Array.isArray(u.pillars)) return false
-    for (const p of u.pillars as Partial<Pillar>[]) if (!p || !str(p.id) || !num(p.x) || !num(p.y) || !num(p.wM) || !num(p.hM)) return false
+    for (const p of u.pillars as Partial<Pillar>[]) {
+      if (!p || !str(p.id) || !num(p.x) || !num(p.y) || !num(p.wM) || !num(p.hM)) return false
+      if (p.corners !== undefined && !(Array.isArray(p.corners) && p.corners.length === 4 && p.corners.every((c) => c && num(c.x) && num(c.y)))) return false
+    }
   }
   return true
 }

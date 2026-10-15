@@ -210,6 +210,12 @@ export interface Pillar {
   y: number
   wM: number
   hM: number
+  /**
+   * Its outline when it is no plain rectangle (founder 2026-10-16: a tapered / wedge column, one corner dragged on its own):
+   * four plan points in order around, straight edges; x / y / wM / hM are then its bounding box. Absent = the rectangle
+   * (core.pillarCorners gives the four points either way).
+   */
+  corners?: { x: number; y: number }[]
 }
 
 export interface Unit {
