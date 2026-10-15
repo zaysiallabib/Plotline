@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { Gray } from './types'
-import { boxBack, cleanForOcr, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, type OcrWord } from './text'
+import { boxBack, cleanForOcr, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -71,6 +71,11 @@ describe('the gate: a garbled read never names a room (AUTOTRACE_100 §3 #5)', (
     expect(normaliseName('BED D4')).toBe('BED 04')
     expect(normaliseName('TOILET O3')).toBe('TOILET 03')
     expect(normaliseName('BATH-0I')).toBe('BATH 01')
+  })
+  test('a title\'s "SIZE 2152" read without its unit is the flat area in square feet; a room size is not', () => {
+    expect(parseArea('SIZE £2152; KEY PI')! / 0.3048 ** 2).toBeCloseTo(2152, 0)
+    expect(parseArea(`SIZE 12'-0" x 14'-0"`)).toBeNull()
+    expect(parseArea('BED 2152')).toBeNull()
   })
   test('two labels read as one line split at the gap; stacked labels of three rooms stay three', () => {
     expect(splitNames('VER 3 TOILET 4')).toMatchObject({ a: 'VER 3', b: 'TOILET 4' })

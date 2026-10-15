@@ -80,6 +80,10 @@ export function parseDims(raw: string): Dims | null {
 /** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
 export function parseArea(raw: string): number | null {
   const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|SQ\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
+  // a title's "SIZE 2152" whose unit was not read with it (s26: Eastern Housing Sapphire prints the figure twice the
+  // height of "SIZE" and "SFT"): square feet
+  const t = m ? null : /\b(SIZE|AREA)\b\W{0,3}(\d{3,4})(?![\d'"]|\s*[xX×])/i.exec(raw)
+  if (t) return +t[2] * FT * FT >= 10 ? +t[2] * FT * FT : null
   if (!m) return null
   const v = Number(m[1].replace(/,/g, ''))
   const sqm = /M/i.test(m[2].replace(/FT/i, '')) && !/F/i.test(m[2]) ? v : v * FT * FT
@@ -834,18 +838,18 @@ export function cleanForOcr(g: Gray, delta = 40, grow = 1, opt: CleanOpts = {}):
 export const STRICT_DELTA = 64
 
 /**
- * The heights the page prints text at (s26: names ~8–25 px, sizes ~6–9 px, title figures 30–50 px on one sheet; the
- * median glyph height alone dropped the names and titles). Ink blobs at `delta` contrast, long rules cut (twice: 24 px for
- * small print on floor-tile lines, 80 px for the big type), that stand in a word — a blob of about the same height on
- * the same baseline at most one height beside it — vote for their height; the peaks with at least `min` votes, the
- * most voted first, none within 20 % of a bigger peak.
+ * The heights the page prints text at (s26: names ~8–25 px, sizes ~6–9 px, title figures 30–150 px on one sheet; the
+ * median glyph height alone dropped the names and titles). Ink blobs at `delta` contrast, long rules cut (three times: 24 px
+ * for small print on floor-tile lines, 80 px for the big type, 300 px for a title's figures), that stand in a word — a blob of about the same height on
+ * the same baseline at most one height beside it — vote for their height; the peaks with at least `min` votes (3 over
+ * 60 px: a title's "2152" is four figures), the most voted first, none within 20 % of a bigger peak.
  */
 export function textHeights(g: Gray, delta = STRICT_DELTA, min = 6, bg = localMax(g, 5), votesOut: number[] = []): number[] {
   const { width: W, height: H, data } = g
   const mask = new Uint8Array(W * H)
   for (let p = 0; p < W * H; p++) mask[p] = +(data[p] < bg[p] - delta)
-  const votes = new Float64Array(64)
-  for (const [L, lo, hi] of [[24, 5, 18], [80, 19, 60]]) {
+  const votes = new Float64Array(200)
+  for (const [L, lo, hi] of [[24, 5, 18], [80, 19, 60], [300, 61, 170]]) {
     const cut = rules(mask, W, H, L)
     const m = Uint8Array.from(mask, (v, p) => v & (1 - cut[p]))
     const { boxes, n } = inkBlobs(m, W, H)
@@ -884,9 +888,9 @@ export function textHeights(g: Gray, delta = STRICT_DELTA, min = 6, bg = localMa
     for (let k = h - r; k <= h + r; k++) t += votes[k] ?? 0
     return t
   }
-  const peaks = Array.from({ length: 56 }, (_, i) => i + 5)
+  const peaks = Array.from({ length: 166 }, (_, i) => i + 5)
     .map((h) => ({ h, v: near(h) }))
-    .filter((p, i, a) => p.v >= min && (i === 0 || p.v >= a[i - 1].v) && (i === a.length - 1 || p.v > a[i + 1].v))
+    .filter((p, i, a) => p.v >= (p.h > 60 ? Math.min(3, min) : min) && (i === 0 || p.v >= a[i - 1].v) && (i === a.length - 1 || p.v > a[i + 1].v))
     .sort((p, q) => q.v - p.v)
   const out: number[] = []
   for (const p of peaks) if (out.every((h) => Math.max(h, p.h) / Math.min(h, p.h) >= 1.2)) out.push(p.h), votesOut.push(p.v)
@@ -1368,7 +1372,9 @@ function worth(w: OcrWord): number {
   const r = roomName(w.text)
   if (r) return /\d/.test(w.text) ? 3.5 : 3
   if (w.size === 'unsure' || parseDims(w.text)) return 2
-  return LOOKS_LIKE_DIMS.test(w.text) ? 1 : 0
+  // (a title's figure and its unit read apart, each at its own height — "SIZE" "2152" "SFT", Eastern Housing Sapphire —
+  // join on their baseline into the flat's area)
+  return LOOKS_LIKE_DIMS.test(w.text) || /^\W*(\d{3,5}|S\.?\s*F\.?\s*T\.?|SQ\.?\s*FT|SQM|SIZE|AREA)\W*$/i.test(w.text) ? 1 : 0
 }
 
 /**
@@ -1540,6 +1546,14 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     }
     const page = frameWords(0)
     const all = [...groupWords(page.filter((w) => !w.vertical)), ...page.filter((w) => w.vertical).flatMap((w) => groupWords([w]))] // a vertical word stands alone
+    // a title's "SIZE" and its figure read at their own heights (the figure twice as tall: not one line to the grouping):
+    // side by side on one baseline they are the flat's area (Eastern Housing Sapphire "SIZE 2152 SFT")
+    for (const s of all.filter((it) => it.kind === 'other' && /^\W*(SIZE|AREA)\W*$/i.test(it.text))) {
+      const cy = (b: Box) => b.y + b.h / 2
+      const fig = all.find((o) => o.kind === 'other' && /^\W*\d{3,4}(?![\d'"])/.test(o.text) && o.box.x > s.box.x && o.box.x - (s.box.x + s.box.w) < 1.5 * s.box.h && Math.abs(cy(o.box) - cy(s.box)) < 0.6 * Math.max(s.box.h, o.box.h))
+      const area = fig && parseArea(`${s.text} ${fig.text}`)
+      if (fig && area) all.splice(all.indexOf(fig), 1), Object.assign(s, { text: `${s.text} ${fig.text}`, box: union(s.box, fig.box), kind: 'area', areaSqm: area })
+    }
     // a turned page's labels, grouped in its own frame and turned back; one stays where it reads better than the page there
     const itemWorth = (it: TextItem) => (it.kind === 'room' ? (it.dims ? 3.5 : 3) : it.kind === 'area' ? 3 : it.kind === 'dims' && it.dims ? 2 : 0)
     for (const [frame, turn] of [[1, 'cw'], [2, 'ccw']] as const) {
