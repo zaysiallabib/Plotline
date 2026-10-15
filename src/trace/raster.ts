@@ -215,6 +215,64 @@ function paperPage(g: Gray, light: Uint8Array): Gray | null {
   return { width: w, height: h, data: out }
 }
 
+/** the coloured page round a plan (colourPage) */
+export const PAGE = {
+  /** neighbours of one region differ by at most this per channel (the page's own texture, a vignette) … */
+  step: 12,
+  /** …and stay within this of where the region was entered */
+  drift: 40,
+  /** a page region covers at least this share of the sheet */
+  minShare: 0.1,
+  /** grey at least this is paper already */
+  paper: 200,
+}
+
+/**
+ * A plan on a coloured page (Mir: a dark green sheet with a grey-green card on it, the plan's grey walls the card's own
+ * grey) → the page made paper: from the border inwards, every region of one colour (neighbours within PAGE.step per
+ * channel, PAGE.drift of where it was entered) that is no paper and covers PAGE.minShare of the sheet, then the regions
+ * touching those, layer by layer; a small region (a title letter, the plan's walls) or a paper one (the plan's floor) is
+ * never page and the page does not grow through it. Read on the colour, as the grey of a green card is a wall's grey. null
+ * when the border is paper (normalPolarity already made a dark page round a light panel paper) or the grey is the colour
+ * turned over (La Montana's white line work: its colours say nothing about the grey any more).
+ */
+export function colourPage(g: Gray, rgb: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }): Gray | null {
+  const { width: w, height: h } = g, n = w * h, d = rgb.data
+  const rim: number[] = []
+  for (let x = 0; x < w; x++) rim.push(x, (h - 1) * w + x)
+  for (let y = 1; y < h - 1; y++) rim.push(y * w, y * w + w - 1)
+  if (rim.filter((i) => g.data[i] < PAGE.paper).length < 0.5 * rim.length) return null
+  const kept = rim.filter((i) => g.data[i] < 250), luma = (i: number) => 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2]
+  if (kept.reduce((t, i) => t + Math.abs(g.data[i] - luma(i)), 0) > 40 * kept.length) return null
+  const page = new Uint8Array(n), seen = new Uint8Array(n), comp: number[] = [], st: number[] = []
+  const near = (p: number, q: number, t: number) => Math.abs(d[4 * p] - d[4 * q]) <= t && Math.abs(d[4 * p + 1] - d[4 * q + 1]) <= t && Math.abs(d[4 * p + 2] - d[4 * q + 2]) <= t
+  let seeds = rim, painted = 0
+  while (seeds.length) {
+    const next: number[] = []
+    for (const s of seeds) {
+      if (seen[s]) continue
+      comp.length = 0
+      ;(seen[s] = 1), st.push(s)
+      while (st.length) {
+        const p = st.pop()!, x = p % w
+        comp.push(p)
+        for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < n && !seen[q] && near(p, q, PAGE.step) && near(s, q, PAGE.drift)) (seen[q] = 1), st.push(q)
+      }
+      if (comp.length < PAGE.minShare * n || g.data[s] >= PAGE.paper) continue
+      for (const p of comp) {
+        ;(page[p] = 1), painted++
+        const x = p % w
+        for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, p - w, p + w]) if (q >= 0 && q < n && !seen[q]) next.push(q)
+      }
+    }
+    seeds = next
+  }
+  if (!painted) return null
+  const out = new Uint8Array(g.data)
+  for (let i = 0; i < n; i++) if (page[i]) out[i] = 255
+  return { width: w, height: h, data: out }
+}
+
 /** per pixel of `m`: the length of its run of 1s along x (`horiz`) or y (0 off the mask) */
 function runLengths(m: Uint8Array, w: number, h: number, horiz: boolean): Uint16Array {
   const r = new Uint16Array(w * h)

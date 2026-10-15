@@ -31,7 +31,7 @@ import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDe
 import { closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { colourPage, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { normaliseName, trimName } from './text'
 import { trackThin } from './track'
@@ -1940,6 +1940,9 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const text = inputs.text ?? { items: [] }
   // a size table / floor-stack chart beside the plan (text.ts findTables) is no plan: paper before any tracing (s25)
   if (text.tables?.length) gray = paperOver(gray, text.tables.map((t) => t.box), 4 * (text.glyphPx ?? 10))
+  // a plan on a coloured page whose grey is the walls' own grey (Mir's green card): the page made paper by its colour
+  const paged = opts.rgb && !inputs.walls ? colourPage(gray, opts.rgb) : null
+  if (paged) gray = paged
   // text first (founder): letters and size marks touching walls come out of the raster before the walls are traced
   let plan = KNOBS.eraseText ? eraseText(gray, text) : gray
   let masks0 = inkMasks(plan)

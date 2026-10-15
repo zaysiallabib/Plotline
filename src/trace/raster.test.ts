@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
+import { colourPage, furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -113,5 +113,41 @@ describe('outlinedWalls (step 4): walls that are not solid ink', () => {
     const solid = sheet()
     solid.fill(1, 1, 9, 1.15), solid.fill(1, 6.85, 9, 7), solid.fill(1, 1, 1.15, 7), solid.fill(8.85, 1, 9, 7)
     expect(outlinedWalls(solid.g, K)).toBeNull()
+  })
+})
+
+describe('colourPage (step 5B): a plan on a coloured page whose grey is the walls grey', () => {
+  // a 10 × 8 m sheet: a dark green border, a grey-green card from 0.5 m in, the plan (white floor, 0.2 m neutral grey walls
+  // whose grey is the card's) from 1 m in, and a white title letter on the border
+  const mir = (turned = false) => {
+    const w = 10 * K, h = 8 * K, rgb = { width: w, height: h, data: new Uint8Array(w * h * 4) }
+    const paint = (x0: number, y0: number, x1: number, y1: number, c: number[]) => {
+      for (let y = Math.round(y0 * K); y < Math.round(y1 * K); y++) for (let x = Math.round(x0 * K); x < Math.round(x1 * K); x++) rgb.data.set([...c, 255], 4 * (y * w + x))
+    }
+    paint(0, 0, 10, 8, [0, 62, 21]), paint(0.5, 0.5, 9.5, 7.5, [99, 143, 110]), paint(1, 1, 9, 7, [235, 235, 235])
+    paint(3, 0.1, 3.3, 0.4, [255, 255, 255]) // the letter
+    for (const [x0, y0, x1, y1] of [[1, 1, 9, 1.2], [1, 6.8, 9, 7], [1, 1, 1.2, 7], [8.8, 1, 9, 7], [5, 1, 5.2, 7]]) paint(x0, y0, x1, y1, [149, 144, 140])
+    const g: Gray = { width: w, height: h, data: new Uint8Array(w * h) }
+    for (let i = 0; i < w * h; i++) {
+      const l = Math.round(0.299 * rgb.data[4 * i] + 0.587 * rgb.data[4 * i + 1] + 0.114 * rgb.data[4 * i + 2])
+      g.data[i] = turned ? 255 - l : l
+    }
+    return { g, rgb, at: (x: number, y: number) => Math.round(y * K) * w + Math.round(x * K) }
+  }
+  test('the border and the card are made paper; the walls, the floor and the letter keep their greys', () => {
+    const { g, rgb, at } = mir()
+    const p = colourPage(g, rgb)!
+    expect(p.data[at(0.2, 0.2)]).toBe(255) // the border
+    expect(p.data[at(0.7, 3)]).toBe(255) // the card
+    expect(p.data[at(1.1, 3)]).toBe(g.data[at(1.1, 3)]) // an outer wall, the card's grey
+    expect(p.data[at(5.1, 3)]).toBe(g.data[at(5.1, 3)]) // an inner wall
+    expect(p.data[at(3, 3)]).toBe(235) // the floor
+    expect(p.data[at(3.15, 0.25)]).toBe(255) // the letter (white already)
+  })
+  test('null on a paper border, and on a grey turned over from its colours', () => {
+    const { g, rgb } = mir()
+    const white = { ...g, data: new Uint8Array(g.data).fill(255) }
+    expect(colourPage(white, rgb)).toBeNull()
+    expect(colourPage(mir(true).g, rgb)).toBeNull()
   })
 })
