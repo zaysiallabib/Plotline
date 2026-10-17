@@ -219,7 +219,8 @@ export interface WindOpening {
   at: Pt
   /** unit normal from the room to the outside */
   out: Pt
-  /** sill and head heights (m) */
+  /** its width, sill and head heights (m) */
+  widthM: number
   sillM: number
   headM: number
 }
@@ -263,7 +264,7 @@ export function roomWind(unit: Unit, rooms: Room[], fromDeg: number): RoomWind[]
         if (!s || !outside(s > 0 ? a : b)) continue
         const n = { x: f.normal.x * s, y: f.normal.y * s }
         const c = n.x * from.x + n.y * from.y
-        const wo = { wallId: w.id, openingId: o.id, at, out: n, sillM: o.sillM, headM: o.sillM + o.heightM }
+        const wo = { wallId: w.id, openingId: o.id, at, out: n, widthM: o.widthM, sillM: o.sillM, headM: o.sillM + o.heightM }
         if (c >= INLET_COS - 1e-9) rw.inlets.push(wo)
         else if (c <= 1e-9) rw.outlets.push(wo)
       }
