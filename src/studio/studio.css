@@ -296,3 +296,28 @@
 .ai-key summary { cursor: pointer; color: var(--muted); }
 .ai-key input { width: 100%; margin-top: 6px; }
 .ai-key a { color: var(--accent); }
+
+/* Top bar → Site (SitePanel.tsx): the map, its blocks and roads, and the north arrow on the plan */
+.popover.site { width: 512px; max-height: calc(100% - 24px); overflow: auto; }
+.site-find { display: flex; gap: 8px; }
+.site-find input { flex: 1; }
+.site-map { position: relative; overflow: hidden; border-radius: 8px; cursor: crosshair; flex: none; background: #ddd; }
+.site-map img { position: absolute; user-select: none; }
+.site-map svg { position: absolute; inset: 0; }
+.site-block { fill: rgba(70, 70, 70, 0.45); stroke: #333; stroke-width: 1; cursor: pointer; }
+.site-block.guess { stroke-dasharray: 3 2; }
+.site-road { fill: none; stroke: rgba(40, 40, 40, 0.35); stroke-linecap: round; stroke-linejoin: round; cursor: pointer; }
+.site-block.on, .site-road.on { stroke: #e5534b; stroke-width: 2.5; }
+.site-road.on { stroke: rgba(229, 83, 75, 0.6); }
+.site-flat { stroke: var(--accent); stroke-width: 2; pointer-events: none; }
+.site-plot { fill: var(--accent); stroke: #000; pointer-events: none; }
+.site-sel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.popover.site .row { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.popover.site .row input { width: 80px; }
+.north-arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; overflow: visible; }
+.north-arrow .turn, .north-arrow .dot { pointer-events: auto; cursor: grab; }
+.north-arrow .grip { stroke: transparent; stroke-width: 18; }
+.north-arrow .shaft { stroke: var(--accent); stroke-width: 3; }
+.north-arrow .head { fill: var(--accent); }
+.north-arrow text { fill: var(--accent); font-size: 14px; font-weight: 600; }
+.north-arrow .dot { fill: var(--accent); stroke: #000; }

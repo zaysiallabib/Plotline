@@ -29,7 +29,8 @@ import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, type Quality } from './render'
+import { Look, SITE_REACH_M, type Quality } from './render'
+import { WindFlow } from './wind'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -83,7 +84,6 @@ const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
 /** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
 const CLICK_PX = 6
-const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
 
 /**
  * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
@@ -229,6 +229,11 @@ export class PlotlineScene {
   private buildToken = 0
   private mode: SceneMode = 'walk'
   private hour = 13
+  /** the day the sun is drawn for (YYYY-MM-DD): today until the view picks another */
+  private date = new Date().toLocaleDateString('en-CA')
+  /** the wind arrows (null: off) and the month they show */
+  private wind: WindFlow | null = null
+  private windMonth: core.WindMonth | null = null
   private walker: Pt = { x: 0, y: 0 }
   /** the floor under the walker, eased toward levelAt(walker): a step is climbed like a stair, not a jump */
   private floorY = 0
@@ -383,6 +388,7 @@ export class PlotlineScene {
     this.applyMaterials()
     this.look.setUnit(present(unit), this.rooms, this.cover) // fixtures, lights, slab, shadow fit box
     this.setTimeOfDay(this.hour)
+    if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
     this.ready = true
     if (keepView) {
@@ -403,21 +409,20 @@ export class PlotlineScene {
     this.applyMaterials()
   }
 
-  /** 6..18. Simple equinox solar model at Dhaka latitude, rotated by unit.northDeg. */
-  setTimeOfDay(hour: number): void {
+  /**
+   * hour 6..18 on the site's clock, on `date` (YYYY-MM-DD; default: the last one given, at first today): the sun where it
+   * stands at the unit's site (core.sunAt; Dhaka without one), by its true north (unit.northDeg).
+   */
+  setTimeOfDay(hour: number, date = this.date): void {
     this.hour = hour
-    const H = THREE.MathUtils.degToRad((hour - 12) * 15) // hour angle, + after noon
-    // declination 0 (equinox): local ENU sun vector
-    const e = -Math.sin(H)
-    const n = -Math.sin(DHAKA_LAT) * Math.cos(H)
-    const u = Math.cos(DHAKA_LAT) * Math.cos(H)
-    // plan-up (−y) is world −Z; north = plan-up rotated clockwise by northDeg (plan y down)
-    const th = THREE.MathUtils.degToRad(this.unit?.northDeg ?? 0)
-    const N = new THREE.Vector3(Math.sin(th), 0, -Math.cos(th))
-    const E = new THREE.Vector3(Math.cos(th), 0, Math.sin(th))
-    const dir = N.multiplyScalar(n).addScaledVector(E, e).addScaledVector(UP, u).normalize()
-    const alt = THREE.MathUtils.clamp(u, 0, 1)
-    this.sun.position.copy(this.center).addScaledVector(dir, 2 * this.radius + 30)
+    this.date = date
+    const { altDeg, azDeg } = core.sunAt(this.unit?.site, date, hour)
+    const h = core.bearingInPlan(this.unit?.northDeg ?? 0, azDeg) // plan-up (−y) is world −Z
+    const a = THREE.MathUtils.degToRad(Math.max(altDeg, 1)) // under the horizon: dark (below), never lit from beneath
+    const dir = new THREE.Vector3(h.x * Math.cos(a), Math.sin(a), h.y * Math.cos(a))
+    const alt = altDeg > 0 ? Math.sin(a) : 0
+    // far enough out that the shadow box can reach back to a site's blocks (render.ts SITE_REACH_M)
+    this.sun.position.copy(this.center).addScaledVector(dir, 2 * this.radius + 30 + SITE_REACH_M)
     this.sun.target.position.copy(this.center)
     // 10: direct sun ≈ 3× the ENV/HEMI fill on a floor. At 5.5 (before wave 6 lifted the fill) a patch added only
     // ≈ 1.8× and Neutral mapped it to a slightly lighter floor, not sun
@@ -425,6 +430,14 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setHour(hour)
     if (this.mode === 'building') this.building?.setSun(this.sun)
+  }
+
+  /** The month's wind as arrows through the flat (wind.ts), or none. */
+  setWind(month: core.WindMonth | null): void {
+    this.wind?.dispose()
+    this.windMonth = month
+    this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month) : null
+    if (this.wind) this.scene.add(this.wind)
   }
 
   setMode(mode: SceneMode): void {
@@ -867,6 +880,7 @@ export class PlotlineScene {
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.showOpening(null)
+    this.wind?.dispose()
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()
@@ -1456,6 +1470,7 @@ export class PlotlineScene {
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
+    this.wind?.update(dt)
     if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
     this.look.render()
   }

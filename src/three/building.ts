@@ -21,6 +21,7 @@ import { layoutFor } from '../studio/furniture'
 import { buildStreet } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
+import { SITE_REACH_M } from './render'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
 import { GLASS, WATER, meterUVs } from './openings'
 
@@ -268,8 +269,9 @@ export class Building extends THREE.Group {
     for (const { floor: k, standIns = [] } of FLOORS.filter((f) => f.floor < 0))
       for (const s of standIns) if (!(k === floor && s === stem)) this.addLevel(s, k, this.streetY - this.levelOf(k) - 0.01)
 
-    // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads
-    if (GROUND.roads.length) {
+    // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads;
+    // a unit with a site (Studio → Site): the map's own roads and blocks instead
+    if (GROUND.roads.length && !unit.site) {
       const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
       roads.receiveShadow = true
       this.add(roads)
@@ -471,7 +473,7 @@ export class Building extends THREE.Group {
     cam.right = c.x + s.radius
     cam.bottom = c.y - s.radius
     cam.top = c.y + s.radius
-    cam.near = -c.z - s.radius
+    cam.near = -c.z - s.radius - (this.street.userData.site ? SITE_REACH_M : 0) // a site's blocks toward the sun shade the tower
     cam.far = -c.z + s.radius + 150 // a low sun throws the tower's shadow far down the street
     cam.updateProjectionMatrix()
   }

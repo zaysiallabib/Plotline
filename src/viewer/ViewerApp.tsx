@@ -25,7 +25,7 @@ import Hud, { type HandInfo } from './Hud'
 import Minimap from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
-import SunPill from './SunPill'
+import SunPill, { WindRose } from './SunPill'
 import { withDefaults } from './defaults'
 import { decodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
@@ -38,6 +38,12 @@ if (!UNITS.length) UNITS.push({ stem: TEST_UNIT.id, unit: TEST_UNIT }) // dev on
 const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh link."
 const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
 const DEFAULT_HOUR = 15.5
+
+/** the ten full years before the site was fetched (SitePanel asks for those) */
+const windYears = (at?: string): string => (at ? `${Number(at.slice(0, 4)) - 10}–${Number(at.slice(0, 4)) - 1}` : 'ten years')
+/** a room's line in the chip while Wind is on */
+const windNote = (w?: core.RoomWind): string =>
+  !w || !w.inlets.length ? 'No window faces the wind' : w.cross ? 'Cross ventilation: the wind comes in and goes out' : 'The wind comes in, with no way out on the far side'
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
 /** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
@@ -374,6 +380,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [entered, setEntered] = useState(false)
   const [mode, setMode] = useState<SceneMode>('walk')
   const [hour, setHour] = useState(DEFAULT_HOUR)
+  /** the sun's day (the scene starts on today too) and the wind: its month's rose and arrows, on or off */
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
+  const [windOn, setWindOn] = useState(false)
+  const months = unit.site?.wind ?? core.DHAKA_WIND
+  const month = Number(date.slice(5, 7)) - 1
+  const windRooms = useMemo(() => (windOn ? core.roomWind(unit, rooms, months[month].fromDeg) : []), [windOn, unit, rooms, months, month])
   /** the one-room / one-wall finish keys this plan offers, with their slot and name (share.ts) */
   const keys = useMemo(() => finishKeys(unit, rooms), [unit, rooms])
   const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots, keys))
@@ -466,6 +478,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       s.dispose()
     }
   }, [given]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Wind on: the month's arrows through the flat (three/wind.ts)
+  useEffect(() => scene?.setWind(windOn ? months[month] : null), [scene, windOn, months, month])
 
   useEffect(() => {
     scene?.setConfiguration(fullCfg)
@@ -948,6 +963,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             mode={mode}
             floor={unit.floor}
             floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
+            roomNote={windOn && room ? windNote(windRooms.find((w) => w.roomId === room.id)) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
             onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}
@@ -1062,12 +1078,33 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           )}
           <SunPill
             hour={hour}
+            date={date}
             northDeg={unit.northDeg}
             onChange={(h) => {
               setHour(h)
               scene.setTimeOfDay(h)
             }}
+            onDate={(d) => {
+              setDate(d)
+              scene.setTimeOfDay(hour, d)
+            }}
+            wind={windOn}
+            onWind={() => setWindOn((v) => !v)}
           />
+          {windOn && (
+            <WindRose
+              months={months}
+              month={month}
+              northDeg={unit.northDeg}
+              source={unit.site?.wind ? `Wind at this site: Open-Meteo, ${windYears(unit.site.fetchedAt)}` : 'Wind: the Dhaka table (Open-Meteo 2015–2024) — no site set in the Studio'}
+              crossRooms={windRooms.filter((w) => w.cross).map((w) => rooms.find((r) => r.id === w.roomId)?.name ?? '')}
+              onMonth={(m) => {
+                const d = `${date.slice(0, 5)}${String(m + 1).padStart(2, '0')}-${String(Math.min(28, Number(date.slice(8, 10)))).padStart(2, '0')}`
+                setDate(d)
+                scene.setTimeOfDay(hour, d)
+              }}
+            />
+          )}
           <PinLayer scene={scene} pins={pins} draft={draft} onSave={savePin} onCancel={() => setDraft(null)} />
           <Minimap scene={scene} unit={unit} rooms={rooms} walking={mode === 'walk'} />
         </>

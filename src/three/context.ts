@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import * as core from '../core'
 import type { Pt, Unit } from '../core'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
@@ -293,8 +294,10 @@ export function blockParts(k: Block, at: Pt, r: () => number): Part[] {
  * The street context in world space: blocks (one merged mesh per facade variant, a tint per block in vertex colours,
  * the facade in metre UVs, roofs and parts on the plain plaster texel) and the road, standing on `groundY`.
  * Neither casts nor receives shadow: they must never shade the unit, and the sun's shadow map only covers the unit.
+ * A unit with a site (Studio → Site) gets its real neighbours and roads instead (buildSite).
  */
 export function buildStreet(unit: Unit, bounds: Bounds, groundY: number): THREE.Group {
+  if (unit.site) return buildSite(unit, groundY)
   const seed = [...unit.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
   const { blocks, road } = neighbourBlocks(bounds, seed)
   const at = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }
@@ -335,5 +338,47 @@ export function buildStreet(unit: Unit, bounds: Bounds, groundY: number): THREE.
   const strip = new THREE.Mesh(new THREE.PlaneGeometry(road.x1 - road.x0, road.y1 - road.y0).rotateX(-Math.PI / 2), asphalt)
   strip.position.set((road.x0 + road.x1) / 2, groundY + 0.05, (road.y0 + road.y1) / 2)
   group.add(strip)
+  return group
+}
+
+/** what the map's neighbours are drawn in: plain, no facade (they are measured blocks, not a picture of them) */
+const BLOCK = '#b4b0a9'
+const ROAD = '#45433f'
+
+/**
+ * The site's neighbours (Studio → Site, OpenStreetMap) as plain grey blocks at their heights, and its roads as dark strips
+ * their width wide, in the unit's plan by its north (core.sitePlan), standing on groundY. Unlike the made-up street they
+ * CAST the sun's shadow: a tall block next door darkens the flat as it would (Look / Building reach the shadow box to them).
+ */
+export function buildSite(unit: Unit, groundY: number): THREE.Group {
+  const { buildings, roads } = core.sitePlan(unit)
+  const group = new THREE.Group()
+  group.userData.site = true
+  const blocks = buildings
+    .filter((b) => b.heightM > 0 && Math.abs(core.signedArea(b.plan)) > 1)
+    .map((b) => new THREE.ExtrudeGeometry(new THREE.Shape(b.plan.map((p) => new THREE.Vector2(p.x, p.y))), { depth: b.heightM, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, groundY + b.heightM, 0))
+  if (blocks.length) {
+    const mesh = new THREE.Mesh(mergeGeometries(blocks)!, hazed(new THREE.MeshStandardMaterial({ color: BLOCK, roughness: 0.92 })))
+    mesh.castShadow = mesh.receiveShadow = true
+    blocks.forEach((g) => g.dispose())
+    group.add(mesh)
+  }
+  // a strip per stretch of centre line, half its width longer at each end so the bends close
+  const strips = roads.flatMap((r) =>
+    r.plan.slice(1).map((q, i) => {
+      const p = r.plan[i]
+      const len = Math.hypot(q.x - p.x, q.y - p.y)
+      return new THREE.PlaneGeometry(len + r.widthM, r.widthM)
+        .rotateX(-Math.PI / 2)
+        .rotateY(-Math.atan2(q.y - p.y, q.x - p.x))
+        .translate((p.x + q.x) / 2, groundY + 0.04, (p.y + q.y) / 2)
+    }),
+  )
+  if (strips.length) {
+    const mesh = new THREE.Mesh(mergeGeometries(strips)!, hazed(new THREE.MeshStandardMaterial({ color: ROAD, roughness: 0.95 })))
+    mesh.receiveShadow = true
+    strips.forEach((g) => g.dispose())
+    group.add(mesh)
+  }
   return group
 }

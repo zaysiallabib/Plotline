@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, OpeningKind, Pt, RoomKind, Slope } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind, Site, Slope } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
@@ -36,6 +36,7 @@ import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { ProjectPanel } from './ProjectPanel'
+import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
@@ -767,6 +768,13 @@ export default function StudioApp() {
   }, [toast])
   // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
   const [buildingOpen, setBuildingOpen] = useState(false)
+  // Site (s27): where the building stands — one site for the whole building, so every drawing of the open project gets it
+  const [siteOpen, setSiteOpen] = useState(false)
+  const setSite = (site: Site | undefined) => {
+    dispatch({ type: 'set-meta', patch: { site } })
+    const a = projRef.current
+    if (a) saveProjects(readProjects().map((p) => (p.id === a.id ? { ...p, units: Object.fromEntries(Object.entries(p.units).map(([id, u]) => [id, { ...u, site }])) } : p)))
+  }
   const showBuilding = (from: number, to: number) => {
     let u = stateRef.current.unit
     if (u.floor === undefined || u.floor < from || u.floor > to) {
@@ -1874,6 +1882,16 @@ export default function StudioApp() {
         >
           Building
         </button>
+        <button
+          className={siteOpen ? 'on' : ''}
+          title="Where the building stands: find it on the map, click the plot (neighbour blocks, roads, wind), set true north"
+          onClick={() => {
+            setBuildingOpen(false)
+            setSiteOpen((v) => !v)
+          }}
+        >
+          Site
+        </button>
         {sharingConfigured && (
           <button disabled={sharing} title="Publish this draft and copy a buyer link (/s/…) — every click makes a new link" onClick={() => void share()}>
             {sharing ? 'Sharing…' : 'Share link'}
@@ -1915,6 +1933,8 @@ export default function StudioApp() {
               onToast={toast}
             />
           )}
+          {siteOpen && <NorthArrow northDeg={unit.northDeg} width={size.w} height={size.h} onChange={(northDeg) => dispatch({ type: 'set-meta', patch: { northDeg } })} />}
+          {siteOpen && <SitePanel unit={unit} onSite={setSite} onNorth={(northDeg) => dispatch({ type: 'set-meta', patch: { northDeg } })} onClose={() => setSiteOpen(false)} />}
           {trace !== 'pick' && (
             <IssueLayer
               marks={marks}
