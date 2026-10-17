@@ -37,7 +37,7 @@ Extras you can add to the end of a 3D address:
 | `?view=dollhouse` | Open straight into the dollhouse (seen from above) |
 | `?view=building` | Open straight into the Building view |
 | `?floor=5` | Show the flat on floor 5 |
-| `?quality=low` | Lighter shadows for a slow computer |
+| `?quality=lite` / `?quality=low` / `?quality=high` | Opens the 3D at that quality, whatever this computer would pick (see **Choosing quality** in §2). Choosing another one in the Quality menu drops it from the address. |
 
 ---
 
@@ -88,6 +88,20 @@ Extras you can add to the end of a 3D address:
 - **Wind** (the button at the end of the sun strip) — opens the **wind rose** above it and shows the wind as thin blue lines drifting through the flat. The rose has one slim line per month pointing to where the wind comes FROM (turned like the compass: up = up the plan; N E S W round it), longer = stronger (the rings are 1 m/s apart); the month of the day you picked is the deeper blue one, named under it ("June · SSE · 3.5 m/s"). Click a month's line to pick that month (the day moves to it). The text says: from where, how strong (m/s), the rooms with cross ventilation, and where the numbers come from (this site's ten years from Open-Meteo, or the built-in Dhaka table). In the 3D: 6 to 10 thin lines per opening come in through every outside window or door that faces within 60° of the wind (they fade in at the window), cross the room and fade out past an outside opening on the far side (facing away from the wind), with soft dashes drifting along them slowly; a room with no such opening — the lines fade out inside it. A room that has both is **cross ventilation**: it says so in the room's box top left ("Cross ventilation: the wind comes in and goes out") while Wind is on. A door into the next room does not count. **Fainter lines:** a neighbour block within 30 m upwind of that window, taller than your floor (floor × 3.2 m above the street), takes the wind. It is a guide, not a wind simulation. Wind again hides it.
 - **Around the flat** — with a site set in the Studio (§5, Site): the real buildings and roads round it from the map, plain grey blocks at their height and dark roads, in Walk, Dollhouse and Building; they throw the sun's shadow onto the flat. No site: a made-up street (only from inside).
 - **Small map** (bottom right, Walk only) — where you are. **M** hides or shows it.
+- **Quality** (bottom left) — see below.
+
+**Choosing quality** (everyone: buyer links, the Studio's Preview 3D, the built-in flats)
+
+- Bottom left: **Quality** with **Lite**, **Low** and **High**. The one this computer should use is marked **(recommended for this device)**. (Staff: it steps aside while the Edit furniture or Edit openings panel is open — they use that corner.)
+- The first time the 3D opens in a browser, the box is open and says why it recommends that one, in one line: *integrated graphics* (the graphics built into the processor: Intel HD / UHD / Iris, phone chips), *no graphics chip in use (software drawing)*, *4 GB memory*, *4 processor threads*, *no WebGL 2 in this browser*, or *slow frames*. **OK** closes it; after that it is just the small menu. Hover it to see the graphics chip's name.
+- Pick another one and the page opens again with it (you press **Enter** again; the finishes you chose stay). Your pick is kept in this browser and the 3D never changes it by itself — with one exception: if the graphics stop working (see below).
+- If you never picked: when walking turns out slower than 30 frames a second, the 3D steps down once (High → Low, or Low → Lite), opens again and says *Switched to …: frames were slow on this device*. It is remembered as this computer's recommendation.
+- **High** = the full look: soft shading in corners, smooth edges, the sharpest pictures, up to twice the screen's pixels. **Low** = no corner shading, a smaller sun-shadow picture. **Lite** = for weak laptops and phones: the screen's own pixels (never 2×), no edge smoothing, no corner shading, a smaller sun-shadow picture, pictures (wood, marble, fabric) at half size, no potted-plant models (the pots of code-built planters stay, without plants), and nothing is drawn while nothing changes — the computer rests when you stand still. Same walls, floors, furniture, finishes and sun direction. If Lite is still slow, its sun shadows go off too (*Shadows off: frames were still slow*).
+
+**When the 3D cannot run**
+
+- No 3D in this browser at all (no WebGL 2, or the 3D could not start): *This browser or machine cannot draw 3D. Try another browser, or open on a PC.* Under it, the flat's plan with its room names. The Studio still works (it draws in 2D).
+- The graphics stop in the middle (the browser loses them, or they run out of memory): the 3D opens again in **Lite** once and says *Switched to Lite: the 3D stopped on this device* (or *… the graphics ran out of memory …*) — even if you had picked High; for that browser tab it stays Lite until you pick again. If it was already Lite and the graphics do not come back within 5 seconds: the same message and plan as above, never a frozen black picture.
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. Thumbstick left/right turns you.
 

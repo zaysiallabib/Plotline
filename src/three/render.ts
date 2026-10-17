@@ -27,7 +27,22 @@ import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, setGlassSky } from './openings'
 
-export type Quality = 'high' | 'low'
+/**
+ * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map. low: no AO, 1024 shadow. lite (weak machines,
+ * PlotlineScene): also 1× pixels, no MSAA, anisotropy 1, textures at half size, no scanned plants, no idle frames.
+ */
+export type Quality = 'high' | 'low' | 'lite'
+
+/** Lite draws a frame only when it can differ from the last one: the camera moved, input or a load within the wake window, VR. */
+export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number }): boolean =>
+  s.tier !== 'lite' || s.xr || s.moved || s.now < s.wakeUntil
+
+/** Frame times (ms) taken while moving are slow: the median of at least 45 is worse than 30 fps (35 ms: rAF steps by 16.7 ms). */
+export function slowFrames(ms: number[]): boolean {
+  if (ms.length < 45) return false
+  const s = [...ms].sort((a, b) => a - b)
+  return s[s.length >> 1] > 35
+}
 
 const STOREY_M = 3.2
 /** the site's neighbours are fetched 250 m round the plot: a block that far toward a low sun can still shade the flat */

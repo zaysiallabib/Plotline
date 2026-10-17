@@ -25,6 +25,7 @@ vi.mock('three/addons/loaders/GLTFLoader.js', async () => {
   const T = await import('three')
   const { KIT: kit, kitAsset: asset } = await import('../furnish/kit')
   class GLTFLoader {
+    register() {} // furniture.ts: Lite's half-size pictures
     async loadAsync(url: string) {
       const { sizeM: s, frontAxis } = asset(Object.values(kit).find((a) => a.url === url)!.id)!
       const side = frontAxis.endsWith('x')

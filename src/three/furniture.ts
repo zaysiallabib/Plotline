@@ -7,9 +7,16 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { FurniturePlacement } from '../core'
 import { kitAsset, objectKind, placementLabel, rebuildsAtSize } from '../furnish/kit'
-import { buildProcedural } from '../furnish/procedural'
+import { buildProcedural, lite } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
+// Lite: the models' pictures decoded at half their 1k size (createImageBitmap's resize; where a browser ignores it, three
+// halves them on upload — PlotlineScene's maxTextureSize). Most of a model's memory is its four 1k maps.
+loader.register((parser) => {
+  const t = parser.textureLoader as THREE.ImageBitmapLoader
+  if (lite.on && t.isImageBitmapLoader) t.setOptions({ ...t.options, resizeWidth: 512, resizeHeight: 512, resizeQuality: 'medium' })
+  return { name: 'plotline_lite' }
+})
 const gltfCache = new Map<string, Promise<THREE.Group>>()
 const warned = new Set<string>()
 
@@ -52,6 +59,8 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
   const asset = kitAsset(p.assetId)
   pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: placementLabel(p), objectKind: asset ? objectKind(asset) : 'decor' }
 
+  // Lite: a scanned plant model (2–6 MB) is left out; the piece stays in the layout (Arrange, the load count), nothing drawn
+  if (lite.on && asset?.category === 'plant' && !asset.url.startsWith('procedural:')) return pivot
   let model: THREE.Object3D | null = null
   if (asset) {
     try {

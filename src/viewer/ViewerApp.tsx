@@ -22,12 +22,13 @@ import type { XRControls } from '../three/xr'
 import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
-import Minimap from './Minimap'
+import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill, { WindRose } from './SunPill'
 import { withDefaults } from './defaults'
-import { decodeConfig, finishKeys, shareUrl } from './share'
+import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
+import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import './viewer.css'
 
@@ -36,7 +37,7 @@ const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/
 if (!UNITS.length) UNITS.push({ stem: TEST_UNIT.id, unit: TEST_UNIT }) // dev only: no unit JSON on disk yet
 
 const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh link."
-const NO_WEBGL = "This browser can't show 3D. Try Chrome or Edge on a PC."
+const NO_3D = 'This browser or machine cannot draw 3D. Try another browser, or open on a PC.'
 const DEFAULT_HOUR = 15.5
 
 /** the ten full years before the site was fetched (SitePanel asks for those) */
@@ -73,6 +74,19 @@ const store = (k: string): void => {
   } catch {
     /* storage blocked */
   }
+}
+/** Quality (quality.ts): the device check once per page, the tier and who set it; a note left by an automatic switch, shown once */
+const DEVICE = probeDevice()
+const REC = recommend(DEVICE, read(local, KEYS.slow))
+const TIER = chosen({ fallback: read(tab, KEYS.fallback), link: params.get('quality'), picked: read(local, KEYS.picked), rec: REC.tier })
+const SWITCHED = read(tab, KEYS.note)
+write(tab, KEYS.note, null)
+/** A new tier takes a fresh page (antialias is fixed when the 3D starts); the finishes chosen ride along in the address. */
+const restart = (cfg: Configuration): void => {
+  const q = new URLSearchParams(location.search)
+  q.delete('quality')
+  if (Object.keys(cfg).length) q.set('c', encodeConfig(cfg))
+  location.replace(`${location.pathname}${q.size ? `?${q}` : ''}`)
 }
 if (params.has('staff')) {
   params.delete('staff')
@@ -194,11 +208,85 @@ export default function ViewerApp() {
   }, [fetched])
   if (TOKEN && fetched === undefined) return <div className="boot">Loading…</div>
   if (!unit) return <div className="boot">{NOT_FOUND}</div>
-  if (!document.createElement('canvas').getContext('webgl2')) return <div className="boot">{NO_WEBGL}</div>
+  if (!DEVICE.webgl2)
+    return (
+      <div className="viewer">
+        <NoThreeD unit={unit} />
+      </div>
+    )
   return <Viewer unit={unit} base={base} />
 }
 
 const dims = (s: { x: number; y: number; z: number }) => `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high`
+
+/** No 3D here (no WebGL 2, the 3D could not start, or the graphics gave up): a plain message and the flat's plan. */
+function NoThreeD({ unit }: { unit: Unit }) {
+  const rooms = useMemo(() => core.deriveRooms(unit), [unit])
+  const map = useMemo(() => mapOf(unit, rooms), [unit, rooms])
+  const { x, y, w, h } = map.box
+  return (
+    <div className="no3d">
+      <p>{NO_3D}</p>
+      <div className="muted">
+        {unit.projectName} · {unit.name}
+      </div>
+      <div className="minimap">
+        <svg viewBox={`${x} ${y} ${w} ${h}`} aria-label="floor plan">
+          {map.rooms.map((r) => (
+            <polygon key={r.id} className={r.zone ? `room zone z-${r.zone}` : 'room'} points={r.points} />
+          ))}
+          {map.walls.map((s, i) => (
+            <path key={i} className={s.low ? `wall ${s.low}` : 'wall'} d={s.d} strokeWidth={s.w} />
+          ))}
+          {rooms.map((r) => (
+            <text key={r.id} x={r.centroid.x} y={r.centroid.y} fontSize={0.32} textAnchor="middle">
+              {r.name}
+            </text>
+          ))}
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Quality (quality.ts, everyone): Lite / Low / High, the device's recommendation marked. Open — the reason and OK — the
+ * first time 3D opens in this browser and after an automatic switch; then just the menu. A pick is kept for good.
+ */
+function QualityChip({ note, onPick }: { note: string | null; onPick: (q: Quality) => void }) {
+  const [open, setOpen] = useState(() => !!note || read(local, KEYS.seen) !== '1')
+  useEffect(() => void (note && setOpen(true)), [note])
+  const close = () => {
+    write(local, KEYS.seen, '1')
+    setOpen(false)
+  }
+  const why = TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
+  return (
+    <div className={`glass quality${open ? ' open' : ''}`} title={DEVICE.gpu && `Graphics: ${DEVICE.gpu}`}>
+      <label>
+        <span className="label">Quality</span>
+        <select value={TIER.tier} onChange={(e) => (close(), onPick(e.target.value as Quality))}>
+          {QUALITIES.map((q) => (
+            <option key={q} value={q}>
+              {NAME[q]}
+              {q === REC.tier ? ' (recommended for this device)' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {open && (
+        <>
+          <div className="small muted">
+            {note ?? why} Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants.
+          </div>
+          <button className="link" onClick={close}>
+            OK
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
 
 /** The staff library (studio/furniture.ts library): every kit piece by tab; pick one, then point where it goes. */
 function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
@@ -376,6 +464,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const listed = useMemo(() => listedRooms(unit, rooms), [unit, rooms])
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [scene, setScene] = useState<PlotlineScene | null>(null)
+  /** the 3D could not start, or the graphics gave up for good: the message and the plan */
+  const [no3d, setNo3d] = useState(false)
+  /** an automatic quality step (QualityChip): after a reload, or Lite's shadows going off */
+  const [qNote, setQNote] = useState(SWITCHED)
   const [loaded, setLoaded] = useState(0)
   const [entered, setEntered] = useState(false)
   const [mode, setMode] = useState<SceneMode>('walk')
@@ -389,6 +481,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** the one-room / one-wall finish keys this plan offers, with their slot and name (share.ts) */
   const keys = useMemo(() => finishKeys(unit, rooms), [unit, rooms])
   const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots, keys))
+  const cfgRef = useRef(cfg)
+  cfgRef.current = cfg
   /** the floor / wall / ceiling clicked while the Finishes panel is open */
   const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
@@ -431,7 +525,33 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
 
   // engine (made once per unit loaded; an opening edit rebuilds it in place — its rooms, so the closures below, stay the same)
   useEffect(() => {
-    const s = new PlotlineScene(canvasRef.current!, { quality: new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high' })
+    let s: PlotlineScene
+    try {
+      s = new PlotlineScene(canvasRef.current!, { quality: TIER.tier })
+    } catch (e) {
+      console.warn('[plotline] the 3D could not start', e)
+      setNo3d(true)
+      return
+    }
+    // frames too slow: down one tier once — only while the device chose (a pick is never overridden); Lite: shadows off
+    s.onSlow(() => {
+      if (TIER.tier === 'lite') {
+        s.shadowsOff()
+        setQNote('Shadows off: frames were still slow on this device.')
+      } else if (TIER.by === 'device') {
+        write(local, KEYS.slow, lower(TIER.tier))
+        write(tab, KEYS.note, `Switched to ${NAME[lower(TIER.tier)]}: frames were slow on this device.`)
+        restart(cfgRef.current)
+      }
+    })
+    // the graphics failed (context lost, out of memory): Lite once, whoever chose; already Lite and not back: the message
+    s.onFail((why) => {
+      if (why === 'gone') return setNo3d(true)
+      if (TIER.tier === 'lite') return
+      write(tab, KEYS.fallback, 'lite')
+      write(tab, KEYS.note, `Switched to Lite: ${why === 'memory' ? 'the graphics ran out of memory' : 'the 3D stopped'} on this device.`)
+      restart(cfgRef.current)
+    })
     s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
     s.setUnit(given)
     s.setTimeOfDay(DEFAULT_HOUR)
@@ -1109,6 +1229,17 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           <Minimap scene={scene} unit={unit} rooms={rooms} walking={mode === 'walk'} />
         </>
       )}
+      {!inVR && !arranging && !editingOpenings && !no3d && (
+        <QualityChip
+          note={qNote}
+          onPick={(q) => {
+            write(local, KEYS.picked, q)
+            write(tab, KEYS.fallback, null) // the person's pick, from now on
+            restart(cfg)
+          }}
+        />
+      )}
+      {no3d && <NoThreeD unit={unit} />}
     </div>
   )
 }

@@ -200,3 +200,17 @@
 .wind-text { font-size: 12px; line-height: 1.5; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .wind-pick { font-size: 15px; letter-spacing: 0.02em; color: var(--ink); margin-bottom: 2px; }
 .wind-note { color: #a3b5c6; font-size: 12px; }
+
+/* Quality (everyone, quality.ts): bottom left; the staff editors' panels take that corner while they are open */
+.quality { position: absolute; left: 16px; bottom: 20px; max-width: min(380px, calc(100vw - 32px)); padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.quality.open { padding: 10px 12px; }
+.quality label { display: flex; align-items: center; gap: 8px; }
+.quality select { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; font-size: 12px; }
+.quality option { background: var(--surface); }
+.quality .small { flex: 1 1 100%; line-height: 1.5; }
+/* no 3D on this machine: the message and the flat's plan (the minimap's drawing, large) */
+.no3d { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; background: var(--bg); text-align: center; }
+.no3d p { margin: 0; font-size: 15px; }
+.no3d .minimap { position: static; pointer-events: auto; }
+.no3d svg { width: min(90vw, 760px); height: auto; max-height: 70vh; }
+.no3d text { fill: var(--ink); }

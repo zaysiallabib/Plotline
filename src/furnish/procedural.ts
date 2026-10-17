@@ -1362,7 +1362,7 @@ function planterBed(id: string): THREE.Object3D[] {
     im.visible = false // until the scan's blades are in
     return im
   })
-  if (typeof globalThis.document?.createElement === 'function')
+  if (browser() && !lite.on)
     loadLeaves()
       .then((geos) =>
         ims.forEach((im, k) => {
@@ -1378,6 +1378,12 @@ function planterBed(id: string): THREE.Object3D[] {
 // ───────────────────────────── greenery (session 19) ─────────────────────────────
 
 const browser = () => typeof globalThis.document?.createElement === 'function'
+/**
+ * Lite (three/render.ts Quality, set by PlotlineScene): the scanned plants (1.2–6.3 MB files each) are not loaded — a pot
+ * keeps its soil, a planter bed its earth, a kit plant model is left out (three/furniture.ts) — and the models' pictures
+ * are decoded at half size.
+ */
+export const lite = { on: false }
 
 /** An empty mesh with a bounding box: furniture.ts sizes and grounds a piece by its bbox, before its scans have loaded. */
 function layoutBox(min: [number, number, number], max: [number, number, number]): THREE.Mesh {
@@ -1417,7 +1423,7 @@ function plant(id: ScanId, at: [number, number, number], rotY = 0, k = 1): THREE
   g.rotation.y = rotY
   g.scale.setScalar(k)
   g.userData.solo = true
-  if (browser())
+  if (browser() && !lite.on)
     scanFile(s)
       .then((scene) => {
         for (const name of s.nodes) {
