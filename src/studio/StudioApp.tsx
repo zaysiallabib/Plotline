@@ -35,7 +35,7 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
-import { askRow, rowPicture, type AiNote } from './localAI'
+import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
@@ -1718,8 +1718,15 @@ export default function StudioApp() {
   const aiQueue = useRef(Promise.resolve())
   const live = useRef({ img, review })
   live.current = { img, review }
-  const askAI = (rowIds: string[]) => {
+  /** `all`: Ask AI for all — a row of a kind the AI is not trusted on (localAI UNTRUSTED) is skipped, and says so */
+  const askAI = (rowIds: string[], all = false) => {
     for (const id of rowIds) {
+      const r = live.current.review.find((i) => i.id === id)
+      const skip = all && r ? UNTRUSTED[r.kind] : undefined
+      if (skip) {
+        aiNote(id, { row: r!.message, skip })
+        continue
+      }
       aiNote(id, { row: '', busy: true })
       aiQueue.current = aiQueue.current.then(() => askOne(id))
     }
@@ -1738,7 +1745,7 @@ export default function StudioApp() {
       const im = live.current.img
       if (!im) throw new Error('the sheet picture is not loaded')
       const s = stateRef.current
-      const { note, fix } = await askRow(s, rowId, rowPicture(im, s.unit, item.box, item.at), msg() ?? item.message, () => stateRef.current)
+      const { note, fix } = await askRow(s, rowId, rowPicture(im, s.unit, { ...item, box: item.box }), msg() ?? item.message, () => stateRef.current)
       if (fix) dispatch({ type: 'answer', rowId, answerId: fix }) // = applyAnswer: one undo step
       aiNote(rowId, note)
     } catch (e) {
@@ -2165,7 +2172,7 @@ export default function StudioApp() {
           onOpen={openMark}
           onFix={applyFix}
           onAnswer={answer}
-          ai={{ notes: aiNotes, ask: askAI, undo: undoAI, canUndo: (b) => state.history.past[state.history.past.length - 1] === b }}
+          ai={{ notes: aiNotes, ask: askAI, undo: undoAI, canUndo: (b) => state.history.past[state.history.past.length - 1] === b, apply: (rowId, id) => (answer(rowId, id), aiNote(rowId, null)) }}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}

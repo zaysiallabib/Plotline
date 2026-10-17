@@ -8,7 +8,7 @@ import type { Opening, Unit, Vertex, Wall } from '../core'
 import { emptyUnit, initialState, studioIssues, type StudioState } from './model'
 import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, openReview, studioReducer } from './review'
 import { fixesOf, markIssues, rowAnswers } from './issues'
-import { askLocalAI, askRow, isLocalUrl, testLocalAI } from './localAI'
+import { askLocalAI, askRow, isLocalUrl, pictureFrame, testLocalAI } from './localAI'
 
 // the AI-prep test's plan (issues.test.ts): a 4 × 3 m box split by a guessed zone line, its row on that line
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
@@ -112,5 +112,30 @@ describe('Local AI (session 27): the model on this PC answers a Check-these row'
     expect(await testLocalAI({ ...LOCAL, url: 'http://gpu-box.example:11434', remote: true }, f)).toBe('found qwen2.5vl:7b') // ticked on purpose
     expect(['http://127.0.0.1:11434', 'http://192.168.0.7:11434', 'http://[::1]:11434'].every(isLocalUrl)).toBe(true)
     expect(['https://ollama.com', 'http://8.8.8.8', 'nonsense'].some(isLocalUrl)).toBe(false)
+  })
+})
+
+describe('Local AI safety (coordinator 2026-10-18): an answer that takes an opening out is never applied by the AI', () => {
+  // the same plan, a row asking about its door
+  const d = { id: 'dr', at: { x: 1.3, y: 0 }, kind: 'opening-guess' as const, entityId: 'd', message: 'Door 2\'-0" wide? (faint evidence)' }
+  const t0: StudioState = { ...s0, review: { unitId: u.id, items: [d], stats } }
+  const mk = markIssues(u, rooms, issues, openReview(t0, rooms))
+  const t1 = studioReducer(t0, { type: 'answers', unit: u, rows: rowAnswers(u, mk, fixesOf(u, mk, issues), { w: 1000, h: 800 }) })
+
+  it('"Take it out" on a door: suggested with its reason (he applies it), not applied; logged as the AI\'s', async () => {
+    expect(t1.review!.items[0].answers!.map((a) => a.id)).toContain('take-it-out')
+    const { mem, store } = memory()
+    const r = await askRow(t1, 'dr', '', d.message, () => t1, store, LOCAL, ollama('{"why":"a solid wall, no gap","answer":"take-it-out"}').f)
+    expect(r.fix).toBeUndefined()
+    expect(r.note).toMatchObject({ label: 'Take it out', suggest: 'take-it-out', why: 'a solid wall, no gap' })
+    expect(r.note.before).toBeUndefined()
+    expect(JSON.parse(mem.get(ANSWERS_KEY)!)).toEqual([expect.objectContaining({ answerId: 'take-it-out', by: 'ai' })])
+  })
+
+  it('the wide picture: the whole wall the row sits on and 1 m more, up to 2x and at most 1024 px', () => {
+    const box = { x: 100, y: 0, w: 60, h: 40 }
+    expect(pictureFrame(u, box, 'd', { w: 1000, h: 800 })).toMatchObject({ x0: 0, y0: 0, x1: 260, y1: 140, k: 1 })
+    // wall t1 (0,0)-(2,0) at 100 px/m: 0..200 px, 1 m (100 px) more each side, clipped to the picture; 300 px → drawn 2×
+    expect(pictureFrame(u, box, 'd', { w: 1000, h: 800 }, true)).toMatchObject({ x0: 0, y0: 0, x1: 300, y1: 140, k: 2 })
   })
 })

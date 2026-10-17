@@ -185,7 +185,7 @@ interface Props {
   /** a "Check these" row's button: its answer by id (review.ts applyAnswer; logged) */
   onAnswer: (rowId: string, answerId: string) => void
   /** s27 Local AI: what the model on this PC said per row; ask it (rows in order, one at a time); undo its fix */
-  ai?: { notes: Record<string, AiNote>; ask: (rowIds: string[]) => void; undo: (rowId: string) => void; canUndo: (before: Unit) => boolean }
+  ai?: { notes: Record<string, AiNote>; ask: (rowIds: string[], all?: boolean) => void; undo: (rowId: string) => void; canUndo: (before: Unit) => boolean; apply: (rowId: string, answerId: string) => void }
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
@@ -326,7 +326,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           <h3>
             {review.length ? `Check these (${review.length})` : 'Check these'}
             {ai && review.length > 0 && (
-              <button className="link" title="Ask the AI on this PC about every row it has not answered, one after another (Local AI below)" disabled={!unasked.length} onClick={() => ai.ask(unasked)}>
+              <button className="link" title="Ask the AI on this PC about every row it has not answered, one after another (Local AI below)" disabled={!unasked.length} onClick={() => ai.ask(unasked, true)}>
                 Ask AI for all
               </button>
             )}
@@ -834,8 +834,13 @@ function AskAI({ id, ai }: { id: string; ai: NonNullable<Props['ai']> }) {
       )}
       {n && !n.busy && (
         <span className={`ai-note${n.error ? ' warn' : ''}`}>
-          {n.error ? `AI: ${n.error}` : n.label ? `AI: ${n.label} — ${n.why}` : `AI was not sure${n.why ? ` — ${n.why}` : ''}`}
+          {n.skip ? `AI: skipped — ${n.skip}` : n.error ? `AI: ${n.error}` : n.label ? `AI${n.suggest ? ' suggests' : ''}: ${n.label} — ${n.why}` : `AI was not sure${n.why ? ` — ${n.why}` : ''}`}
           {n.s !== undefined && ` (${n.s.toFixed(0)} s)`}
+          {n.suggest && (
+            <button className="link" title="It takes a door / window / passage out: the AI never does that by itself. Look at the reason, then apply it if you agree" onClick={stop(() => ai.apply(id, n.suggest!))}>
+              Apply
+            </button>
+          )}
           {n.before && ai.canUndo(n.before) && (
             <button className="link" title="Take the AI's fix back (one undo step)" onClick={stop(() => ai.undo(id))}>
               Undo

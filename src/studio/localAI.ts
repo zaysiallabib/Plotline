@@ -4,6 +4,7 @@
  * question → the chosen id (or null: not sure) and a short why. Later features (the sheet's north arrow) call it too.
  */
 import type { Unit } from '../core'
+import type { ReviewItem } from '../trace/types'
 import type { StudioState } from './model'
 import { LOOKS_RIGHT, SHOW_ME, logAnswer, type Answer, type Box } from './review'
 
@@ -144,6 +145,8 @@ export async function askRow(s: StudioState, rowId: string, image: string, row: 
   } catch {
     /* storage full or blocked: the answer still counts on the plan */
   }
+  // never applied when it takes a door / window / passage out: he looks at the reason and applies it himself
+  if (a.actions.length && removesOpening(s.unit, a)) return { note: { ...note, label: a.label, suggest: a.id } }
   const fix = a.actions.length ? a.id : undefined
   return { note: { ...note, label: a.label, ...(fix && { before: s.unit }) }, fix }
 }
@@ -160,16 +163,33 @@ export const rowChoices = (answers: Answer[]): Choice[] =>
   }))
 
 /**
- * The picture for a row: its box (job 3: sheet image px) and 1 m more round it, cut from the sheet at full size, with a
- * red ring on the row's spot (`at`, metres). Browser only (a canvas).
+ * Where a row's picture is cut from the sheet (image px) and how much it is scaled (`k`). `wide` (coordinator
+ * 2026-10-18, to be measured): the box widened to the whole wall the row's piece sits on, 1 m more round it, drawn at
+ * up to 2× (at most 1024 px) so a door swing shows; else the box and 1 m more at full size (at most 1280 px).
  */
-export function rowPicture(img: CanvasImageSource & { naturalWidth: number; naturalHeight: number }, u: Unit, box: Box, at: { x: number; y: number }): string {
+export function pictureFrame(u: Unit, box: Box, entityId: string | undefined, size: { w: number; h: number }, wide = false) {
   const pi = u.planImage
   const m = pi ? pi.pxPerM : 0
-  const x0 = Math.max(0, Math.floor(box.x - m)), y0 = Math.max(0, Math.floor(box.y - m))
-  const x1 = Math.min(img.naturalWidth, Math.ceil(box.x + box.w + m)), y1 = Math.min(img.naturalHeight, Math.ceil(box.y + box.h + m))
-  // ponytail: a crop over 1280 px is scaled down to it (the model's picture budget); tiles if a big row ever needs detail
-  const k = Math.min(1, 1280 / Math.max(x1 - x0, y1 - y0, 1))
+  let [x0, y0, x1, y1] = [box.x, box.y, box.x + box.w, box.y + box.h]
+  const w = wide && pi && entityId ? u.walls.find((x) => x.id === entityId || x.openings.some((o) => o.id === entityId)) : undefined
+  for (const v of w ? u.vertices.filter((x) => x.id === w.a || x.id === w.b) : []) {
+    const px = pi!.originPx.x + v.x * m, py = pi!.originPx.y + v.y * m
+    ;[x0, y0, x1, y1] = [Math.min(x0, px), Math.min(y0, py), Math.max(x1, px), Math.max(y1, py)]
+  }
+  x0 = Math.max(0, Math.floor(x0 - m))
+  y0 = Math.max(0, Math.floor(y0 - m))
+  x1 = Math.min(size.w, Math.ceil(x1 + m))
+  y1 = Math.min(size.h, Math.ceil(y1 + m))
+  const big = Math.max(x1 - x0, y1 - y0, 1)
+  // ponytail: one picture per row, scaled to the model's budget; tiles if a big row ever needs more detail
+  const k = wide ? Math.min(2, 1024 / big) : Math.min(1, 1280 / big)
+  return { x0, y0, x1, y1, k, ringPx: Math.max(12, 0.6 * m * k) }
+}
+
+/** The picture for a row (PNG data URL): its frame cut from the sheet, a red ring on the row's spot. Browser only (a canvas). */
+export function rowPicture(img: CanvasImageSource & { naturalWidth: number; naturalHeight: number }, u: Unit, row: { box: Box; at: { x: number; y: number }; entityId?: string }, wide = false): string {
+  const pi = u.planImage
+  const { x0, y0, x1, y1, k, ringPx } = pictureFrame(u, row.box, row.entityId, { w: img.naturalWidth, h: img.naturalHeight }, wide)
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round((x1 - x0) * k))
   c.height = Math.max(1, Math.round((y1 - y0) * k))
@@ -181,11 +201,24 @@ export function rowPicture(img: CanvasImageSource & { naturalWidth: number; natu
     g.strokeStyle = '#ff0000'
     g.lineWidth = 3
     g.beginPath()
-    g.arc((pi.originPx.x + at.x * m - x0) * k, (pi.originPx.y + at.y * m - y0) * k, Math.max(12, 0.6 * m * k), 0, 2 * Math.PI)
+    g.arc((pi.originPx.x + row.at.x * pi.pxPerM - x0) * k, (pi.originPx.y + row.at.y * pi.pxPerM - y0) * k, ringPx, 0, 2 * Math.PI)
     g.stroke()
   }
   return c.toDataURL('image/png')
 }
+
+/**
+ * Row kinds the AI was measured wrong on too often (under about 70 % right): Ask AI for all skips them and says so on the
+ * row; Ask AI on the row itself still asks. Measured with qwen2.5vl:7b on 13 bti Amabilia rows judged by eye (HANDOFF).
+ */
+export const UNTRUSTED: Partial<Record<ReviewItem['kind'], string>> = {
+  'opening-guess': 'AI is not trusted on door / window / passage rows yet (2 of 8 right in the test)',
+  unclosed: 'AI is not trusted on open-room / wall-end rows yet (2 of 4 right in the test)',
+}
+
+/** an answer that takes a door, window or passage out (deletes an opening, or a wall piece carrying one) */
+export const removesOpening = (u: Unit, a: Answer): boolean =>
+  a.actions.some((x) => x.type === 'delete' && (x.ids ?? []).some((id) => u.walls.some((w) => (w.id === id ? w.openings.length > 0 : w.openings.some((o) => o.id === id)))))
 
 /** what the Studio shows on a row the AI was asked about */
 export interface AiNote {
@@ -200,4 +233,8 @@ export interface AiNote {
   s?: number
   /** a fix was applied: the plan before it — Undo while that is still the last undo step */
   before?: Unit
+  /** a fix that takes an opening out: never applied by the AI, offered to him (Apply) with its reason */
+  suggest?: string
+  /** Ask AI for all left it out: why (an untrusted row kind) */
+  skip?: string
 }
