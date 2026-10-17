@@ -1384,6 +1384,19 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
   return out
 }
 
+/** s27: a wall of the draft within 15 m of q on three of its four sides (one may look out through a door) — a label ON the plan; a title or a legend printed beside it is not */
+function walledIn(d: Draft, q: Pt): boolean {
+  const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) =>
+    d.unit.walls.some((w) => {
+      const a = V.get(w.a)!, b = V.get(w.b)!, e = { x: b.x - a.x, y: b.y - a.y }, den = dx * e.y - dy * e.x
+      if (Math.abs(den) < 1e-9) return false
+      const t = ((a.x - q.x) * e.y - (a.y - q.y) * e.x) / den, u = ((a.x - q.x) * dy - (a.y - q.y) * dx) / den
+      return t > 0 && t <= 15 && u >= 0 && u <= 1
+    }),
+  ).length >= 3
+}
+
 /**
  * Founder rule 3, "start in the middle": flood the open floor from the click on a 0.1 m grid. Walls are barriers except
  * their door / passage / slider spans (a window looks out); `blocked` cells (the outside, planters) are never entered.
@@ -1490,14 +1503,17 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
   // flat's label claims its floor even where the click's flood ran into it through an unclosed gap; with both stamps the
   // split lies halfway between them, wherever in the flat the click is
   const byName = new Map<string, { c: number; d: number }[]>()
-  const stamps: number[] = []
+  const stamps: { c: number; p: Pt }[] = []
   for (const l of names) {
     const c = cellOf(l.p)
-    if (c >= 0 && l.name === '#STAMP') stamps.push(c)
+    if (c >= 0 && l.name === '#STAMP') stamps.push({ c, p: l.p })
     else if (c >= 0 && seen[c]) byName.set(l.name, [...(byName.get(l.name) ?? []), { c, d: dist[c] }])
   }
-  const mine = stamps.filter((c) => seen[c]).sort((p, q) => dist[p] - dist[q])[0]
-  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).concat(stamps.filter((c) => c !== mine)).filter((c) => c !== start)
+  const mine = stamps.filter((s) => seen[s.c]).sort((p, q) => dist[p.c] - dist[q.c])[0]?.c
+  // (a label the flood did not reach is a rival once the click's own was reached, and only on the plan — the single
+  // flat's own title on the paper beside it would flood in)
+  const far = mine === undefined ? [] : stamps.filter((s) => s.c !== mine && (seen[s.c] || walledIn(d, s.p))).map((s) => s.c)
+  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).concat(far).filter((c) => c !== start)
   const own = new Int8Array(nx * ny).fill(-1)
   const q2 = [start, ...(mine !== undefined && mine !== start ? [mine] : []), ...rivals]
   own[start] = 0
@@ -2057,8 +2073,8 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       .filter((it) => it.kind === 'room')
       .map((it) => ({ p: { x: (it.box.x + it.box.w / 2) / k, y: (it.box.y + it.box.h / 2) / k }, name: normaliseName(it.text.split('\n')[0]) }))
       .filter((l) => /\d|\b(LIVING|DINING|KITCHEN|FOYER)\b/.test(l.name) && !/\b(AOD|LIFTS?|STAIRS?|LOBBY|VER|VERANDAH?)\b/.test(l.name))
-      // a flat has one area stamp ("TYPE-A ±2736 SFT"): every other one is the next flat's (floodFlat)
-      .concat(stampsAt(k).map((p) => ({ p, name: '#STAMP' })))
+      // a flat has one label ("TYPE-A ±2736 SFT", "UNIT-B"): every other one is the next flat's (floodFlat)
+      .concat(labelsAt(k).map((p) => ({ p, name: '#STAMP' })))
   // (s27: a flat's name printed alone — "UNIT-B", "TYPE A", no area within three letter heights — is its stamp too; one
   // over its area is that one stamp; one printed under a third as tall as the room names is a key plan's "TYPE: A")
   const mid = (it: TextItem): Pt => ({ x: it.box.x + it.box.w / 2, y: it.box.y + it.box.h / 2 })
@@ -2066,7 +2082,9 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   const nameH = text.items.filter((it) => it.kind === 'room').map((it) => it.box.h).sort((a, b) => a - b)
   const smallH = 0.3 * (nameH[nameH.length >> 1] ?? 0)
   const flatLabels = [...areaItems, ...text.items.filter((it) => it.kind === 'other' && it.box.h >= smallH && FLAT_LABEL.test(it.text.split('\n')[0].toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()) && !areaItems.some((a) => d2(mid(a), mid(it)) < 3 * Math.max(a.box.h, it.box.h)))]
-  const stampsAt = (k: number) => flatLabels.map((it) => ({ x: mid(it).x / k, y: mid(it).y / k }))
+  const labelsAt = (k: number) => flatLabels.map((it) => ({ x: mid(it).x / k, y: mid(it).y / k }))
+  // (the area stamps alone: the fitted rooms' rivals and the faces no flat may hold, selectFlat)
+  const stampsAt = (k: number) => areaItems.map((it) => ({ x: mid(it).x / k, y: mid(it).y / k }))
   const pickM = (k: number, o: Px) => (opts.pickPx ? { x: (opts.pickPx.x - o.x) / k, y: (opts.pickPx.y - o.y) / k } : null)
   if (!opts.pxPerM && scaleFrom !== 'dims') {
     draft = buildGraph(trace, pxPerM, origin0, gray, ink, [], tracker)
@@ -2188,7 +2206,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
   const corePts = coreAt(pxPerM)
   const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2)
-  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore }
+  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, labelsAt, inOutside, isPlanter, inStair, inCore }
 }
 export type Prepared = ReturnType<typeof prepareTraces>
 
@@ -2331,8 +2349,8 @@ export function floorParts(p: Prepared): Part[] {
   // one label on the whole sheet (a title's "UNIT A: 3910 SFT"), the floor has no more flats than that: what a seed finds
   // beyond joins the flat it shares most walls with (a flat split by a door not found)
   const xs = p.draft.unit.vertices.map((v) => v.x), ys = p.draft.unit.vertices.map((v) => v.y)
-  const onFloor = (q: Pt) => xs.length > 0 && q.x >= Math.min(...xs) && q.x <= Math.max(...xs) && q.y >= Math.min(...ys) && q.y <= Math.max(...ys) && !p.inOutside(q) && !p.isPlanter(q) && !p.inStair(q) && !p.inCore(q)
-  const labels = p.stampsAt(k)
+  const onFloor = (q: Pt) => xs.length > 0 && q.x >= Math.min(...xs) && q.x <= Math.max(...xs) && q.y >= Math.min(...ys) && q.y <= Math.max(...ys) && !p.inOutside(q) && !p.isPlanter(q) && !p.inStair(q) && !p.inCore(q) && walledIn(p.draft, q)
+  const labels = p.labelsAt(k)
   for (const at of labels) {
     if (!onFloor(at) || parts.some((q) => q.has(at))) continue
     const part = withRegion(p.draft, selectFlat(p, at, taken()))
