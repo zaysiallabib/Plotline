@@ -766,6 +766,7 @@ export class PlotlineScene {
     if (selected) this.selBox.removeFromParent()
     parent.add(obj)
     old.removeFromParent()
+    this.wake()
     // procedural geometry is per build (glTF clones share theirs, and never resize)
     if (kitAsset(p.assetId)?.url.startsWith('procedural:')) old.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
     if (selected) this.fitSelection(obj, this.selBox.userData.axesList)
