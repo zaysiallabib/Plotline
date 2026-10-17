@@ -42,8 +42,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
 /** a bearing as one of the 16 compass points ("SSW") */
 export const point16 = (deg: number): string => POINTS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16]
-const C = 70
-const R = 52
+const C = 90
+const R = 70
 
 /**
  * The wind by month as a rose (turned like the compass: plan-up at the top): thin rings 1 m/s apart, 16 ticks, N E S W;
@@ -67,11 +67,11 @@ export function WindRose({ months, month, northDeg, source, crossRooms, onMonth 
           <circle key={k} className="ring" cx={C} cy={C} r={(R * (k + 1)) / top} />
         ))}
         {POINTS.map((_, k) => {
-          const [a, b] = [at(k * 22.5, R), at(k * 22.5, R + (k % 4 ? 3 : 6))]
+          const [a, b] = [at(k * 22.5, R), at(k * 22.5, R + (k % 4 ? 4 : 8))]
           return <line key={k} className={`tick${k % 4 ? '' : ' major'}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
         })}
         {['N', 'E', 'S', 'W'].map((t, k) => {
-          const p = at(k * 90, R + 13)
+          const p = at(k * 90, R + 15)
           return (
             <text key={t} className="cardinal" x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central">
               {t}
@@ -89,8 +89,8 @@ export function WindRose({ months, month, northDeg, source, crossRooms, onMonth 
           )
         })}
         <line x1={C} y1={C} x2={pick.x} y2={pick.y} className="spoke on" />
-        <circle cx={pick.x} cy={pick.y} r={2.2} className="spoke-end" />
-        <circle cx={C} cy={C} r={1.6} className="spoke-end" />
+        <circle cx={pick.x} cy={pick.y} r={3} className="spoke-end" />
+        <circle cx={C} cy={C} r={2} className="spoke-end" />
       </svg>
       <div className="wind-text">
         <div className="wind-pick">
