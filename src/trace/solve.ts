@@ -1384,8 +1384,8 @@ export function outsideMask(lines: Uint8Array, wallInk: Uint8Array, w: number, h
   return out
 }
 
-/** s27: a wall of the draft within 15 m of q on three of its four sides (one may look out through a door) — a label ON the plan; a title or a legend printed beside it is not */
-function walledIn(d: Draft, q: Pt): boolean {
+/** s27: a wall of the draft within 15 m of q on `sides` of its four sides (one may look out through a door) — a label ON the plan; a title or a legend printed beside it is not */
+function walledIn(d: Draft, q: Pt, sides = 3): boolean {
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
   return [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) =>
     d.unit.walls.some((w) => {
@@ -1394,7 +1394,7 @@ function walledIn(d: Draft, q: Pt): boolean {
       const t = ((a.x - q.x) * e.y - (a.y - q.y) * e.x) / den, u = ((a.x - q.x) * dy - (a.y - q.y) * dx) / den
       return t > 0 && t <= 15 && u >= 0 && u <= 1
     }),
-  ).length >= 3
+  ).length >= sides
 }
 
 /**
@@ -2343,13 +2343,14 @@ export function floorParts(p: Prepared): Part[] {
     parts.length
       ? { fits: new Set(p.fits.flatMap((f, i) => (parts.some((q) => q.fits.includes(i) || q.has({ x: (f.at.x - p.origin0.x) / k, y: (f.at.y - p.origin0.y) / k })) ? [i] : []))), rooms: new Set(parts.flatMap((q) => [...q.rooms])), has: (q) => parts.some((x) => x.has(q)) }
       : null
-  // s27 (founder: "two names = two flats"): the flat labels printed ON the plan first — one flat around each, the other
+  // s27 (founder: "two names = two flats"): the flat labels printed ON the plan (walls all round: a title under the plan,
+  // walled on three sides by the building above it, is not — Eastern Housing Sapphire) first — one flat around each, the other
   // labels its rivals (floodFlat); a label whose flat holds no room printed with its size, no room fitted to the ink and
   // under three closed rooms (a title block's panel) makes none. Then the room-name seeds below; with labelled flats, or
   // one label on the whole sheet (a title's "UNIT A: 3910 SFT"), the floor has no more flats than that: what a seed finds
   // beyond joins the flat it shares most walls with (a flat split by a door not found)
   const xs = p.draft.unit.vertices.map((v) => v.x), ys = p.draft.unit.vertices.map((v) => v.y)
-  const onFloor = (q: Pt) => xs.length > 0 && q.x >= Math.min(...xs) && q.x <= Math.max(...xs) && q.y >= Math.min(...ys) && q.y <= Math.max(...ys) && !p.inOutside(q) && !p.isPlanter(q) && !p.inStair(q) && !p.inCore(q) && walledIn(p.draft, q)
+  const onFloor = (q: Pt) => xs.length > 0 && q.x >= Math.min(...xs) && q.x <= Math.max(...xs) && q.y >= Math.min(...ys) && q.y <= Math.max(...ys) && !p.inOutside(q) && !p.isPlanter(q) && !p.inStair(q) && !p.inCore(q) && walledIn(p.draft, q, 4)
   const labels = p.labelsAt(k)
   for (const at of labels) {
     if (!onFloor(at) || parts.some((q) => q.has(at))) continue
