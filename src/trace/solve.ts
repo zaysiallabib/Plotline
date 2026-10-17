@@ -2357,7 +2357,9 @@ export function floorParts(p: Prepared): Part[] {
     const part = withRegion(p.draft, selectFlat(p, at, taken()))
     if (part.fits.length || part.rooms.size >= 3 || names.some((x) => x.dims && part.has(c(x)))) parts.push(part)
   }
-  const most = parts.length || (labels.length === 1 ? 1 : Infinity)
+  const labelled = parts.length
+  const most = labelled || (labels.length === 1 ? 1 : Infinity)
+  const kitchen = (q: Part) => names.some((x) => x.roomKind === 'kitchen' && q.has(c(x)))
   const wallsOf = (q: Part) => new Set([...q.touched, ...[...q.rooms].flatMap((r) => r.wallIds)])
   const join = (a: Part, b: Part): Part =>
     withRegion(p.draft, {
@@ -2385,7 +2387,10 @@ export function floorParts(p: Prepared): Part[] {
     const shared = parts.map((q) => [...wallsOf(q)].filter((w) => ws.has(w)).length)
     const near = parts.map((q) => (q.at ? d2(q.at, at) : Infinity))
     const i = Math.max(...shared) > 0 ? shared.indexOf(Math.max(...shared)) : near.indexOf(Math.min(...near))
-    parts[i] = join(parts[i], part)
+    // (one label on the whole sheet and no flat from it: a part with its own kitchen beside one with a kitchen is a flat
+    // of its own — Eastern Housing Sapphire's three flats, one title figure read)
+    if (!labelled && kitchen(part) && kitchen(parts[i])) parts.push(part)
+    else parts[i] = join(parts[i], part)
   }
   // a printed room no flat reached (its door not found; Sheltech L2 B's Bed 2 behind a passage the lifts' face swallowed):
   // its closed face joins the flat it shares most walls with — the floor's flats lose no room the sheet names
