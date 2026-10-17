@@ -107,6 +107,7 @@ export async function askLocalAI({ image, question, choices }: { image: string; 
     stream: false,
     // Ollama's structured output: the reply can only be this shape (the id is still checked below)
     format: { type: 'object', properties: { why: { type: 'string' }, answer: { type: 'string', enum: [...ids, 'not-sure'] } }, required: ['why', 'answer'] },
+    think: false, // (a thinking model's long thought: minutes on this card; the short why comes first instead)
     options: { temperature: 0 },
     messages: [{ role: 'user', content, images: [image.replace(/^data:[^,]*,/, '')] }],
   }
@@ -213,7 +214,9 @@ export function rowPicture(img: CanvasImageSource & { naturalWidth: number; natu
  */
 export const UNTRUSTED: Partial<Record<ReviewItem['kind'], string>> = {
   'opening-guess': 'AI is not trusted on door / window / passage rows yet (2 of 8 right in the test)',
-  unclosed: 'AI is not trusted on open-room / wall-end rows yet (2 of 4 right in the test)',
+  unclosed: 'AI is not trusted on open-room / wall-end rows yet (4 of 6 right in the test)',
+  unlabelled: 'AI is not trusted on unnamed-space rows yet (2 of 5 right in the test)',
+  'low-confidence': 'AI is not trusted on guessed-line rows yet (0 of 3 right in the test)',
 }
 
 /** an answer that takes a door, window or passage out (deletes an opening, or a wall piece carrying one) */

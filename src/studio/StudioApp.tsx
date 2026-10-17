@@ -1748,6 +1748,8 @@ export default function StudioApp() {
       const { note, fix } = await askRow(s, rowId, rowPicture(im, s.unit, { ...item, box: item.box }), msg() ?? item.message, () => stateRef.current)
       if (fix) dispatch({ type: 'answer', rowId, answerId: fix }) // = applyAnswer: one undo step
       aiNote(rowId, note)
+      // the next row in line must see the plan WITH this fix (else it is asked on the old plan and dropped as "changed")
+      for (let t = 0; fix && stateRef.current.unit === s.unit && t < 40; t++) await new Promise((r) => setTimeout(r, 50))
     } catch (e) {
       aiNote(rowId, { row: msg() ?? '', error: (e as Error).message })
     }
