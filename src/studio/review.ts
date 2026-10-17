@@ -93,19 +93,23 @@ export interface AnswerLog {
   answer: string
   /** ISO time of the click */
   time: string
+  /** s27 Local AI: set when the local AI answered (with its model and why); absent = the founder's own click, the test set */
+  by?: 'ai'
+  model?: string
+  why?: string
 }
 
 /**
  * s27 AI-prep: one click on a row's answer, added to the end of the log in `store` (localStorage) — never an entry
  * changed or removed. `s` = the state the click was made on. A log that is not a list stays as it is (throws). null: no
- * such open row / answer.
+ * such open row / answer. `ai`: the local AI answered it (tagged `by: 'ai'`, never mixed with his clicks).
  */
-export function logAnswer(store: Pick<Storage, 'getItem' | 'setItem'>, s: StudioState, rowId: string, id: string, time = new Date()): AnswerLog | null {
+export function logAnswer(store: Pick<Storage, 'getItem' | 'setItem'>, s: StudioState, rowId: string, id: string, time = new Date(), ai?: { model: string; why: string }): AnswerLog | null {
   const row = openReview(s).find((i) => i.id === rowId)
   const a = id === LOOKS_RIGHT ? { label: 'Looks right' } : id === SHOW_ME ? { label: 'Show me' } : s.review?.items.find((i) => i.id === rowId)?.answers?.find((x) => x.id === id)
   if (!row || !a) return null
   const p = s.planImage
-  const e: AnswerLog = { sheet: p ? { name: p.name, w: p.naturalW, h: p.naturalH } : null, rowId, kind: row.kind, row: row.message, answerId: id, answer: a.label, time: time.toISOString() }
+  const e: AnswerLog = { sheet: p ? { name: p.name, w: p.naturalW, h: p.naturalH } : null, rowId, kind: row.kind, row: row.message, answerId: id, answer: a.label, time: time.toISOString(), ...(ai && { by: 'ai' as const, ...ai }) }
   const list: unknown = JSON.parse(store.getItem(ANSWERS_KEY) ?? '[]')
   if (!Array.isArray(list)) throw new Error(`${ANSWERS_KEY} is not a list`)
   store.setItem(ANSWERS_KEY, JSON.stringify([...list, e]))

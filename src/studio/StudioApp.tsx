@@ -35,6 +35,7 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
@@ -1713,6 +1714,64 @@ export default function StudioApp() {
     dispatch({ type: 'answer', rowId, answerId: id })
     if (id !== LOOKS_RIGHT && id !== SHOW_ME) setActiveKey(null) // (Show me keeps its mark open with the hint, as before)
   }
+  // ----- s27 Local AI: rows asked of the model on this PC (localAI.ts), one request at a time (the card holds one model)
+  const [aiNotes, setAiNotes] = useState<Record<string, AiNote>>({})
+  const aiNote = (id: string, n: AiNote | null) =>
+    setAiNotes((m) => {
+      const x = { ...m }
+      if (n) x[id] = n
+      else delete x[id]
+      return x
+    })
+  const aiQueue = useRef(Promise.resolve())
+  const live = useRef({ img, review })
+  live.current = { img, review }
+  /** `all`: Ask AI for all — a row of a kind the AI is not trusted on (localAI UNTRUSTED) is skipped, and says so */
+  const askAI = (rowIds: string[], all = false) => {
+    for (const id of rowIds) {
+      const r = live.current.review.find((i) => i.id === id)
+      const skip = all && r ? UNTRUSTED[r.kind] : undefined
+      if (skip) {
+        aiNote(id, { row: r!.message, skip })
+        continue
+      }
+      aiNote(id, { row: '', busy: true })
+      aiQueue.current = aiQueue.current.then(() => askOne(id))
+    }
+  }
+  const askOne = async (rowId: string) => {
+    const msg = () => live.current.review.find((i) => i.id === rowId)?.message
+    try {
+      // its answers come back a moment after any edit (the fixes loop above): wait for them; a row that went is left
+      let item = stateRef.current.review?.items.find((i) => i.id === rowId)
+      for (let t = 0; !(item?.answers && item.box); t++) {
+        if (!msg()) return aiNote(rowId, null)
+        if (t > 240) throw new Error('its answers are not worked out yet — ask again in a moment')
+        await new Promise((r) => setTimeout(r, 250))
+        item = stateRef.current.review?.items.find((i) => i.id === rowId)
+      }
+      const im = live.current.img
+      if (!im) throw new Error('the sheet picture is not loaded')
+      const s = stateRef.current
+      const { note, fix } = await askRow(s, rowId, rowPicture(im, s.unit, { ...item, box: item.box }), msg() ?? item.message, () => stateRef.current)
+      if (fix) dispatch({ type: 'answer', rowId, answerId: fix }) // = applyAnswer: one undo step
+      aiNote(rowId, note)
+      // the next row in line must see the plan WITH this fix (else it is asked on the old plan and dropped as "changed")
+      for (let t = 0; fix && stateRef.current.unit === s.unit && t < 40; t++) await new Promise((r) => setTimeout(r, 50))
+    } catch (e) {
+      aiNote(rowId, { row: msg() ?? '', error: (e as Error).message })
+    }
+  }
+  // an AI fix taken back (its Undo or Ctrl+Z): the plan is the one before it again — its note goes
+  useEffect(() => {
+    for (const [id, n] of Object.entries(aiNotes)) if (n.before === state.unit) aiNote(id, null)
+  }, [state.unit]) // eslint-disable-line react-hooks/exhaustive-deps
+  /** an AI fix undone: only while it is still the last undo step (else Ctrl+Z steps back through the later edits) */
+  const undoAI = (rowId: string) => {
+    const b = aiNotes[rowId]?.before
+    if (b && stateRef.current.history.past[stateRef.current.history.past.length - 1] === b) dispatch({ type: 'undo' })
+    aiNote(rowId, null)
+  }
   const applyFix = (f: Fix) => {
     // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
     const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
@@ -2135,6 +2194,7 @@ export default function StudioApp() {
           onOpen={openMark}
           onFix={applyFix}
           onAnswer={answer}
+          ai={{ notes: aiNotes, ask: askAI, undo: undoAI, canUndo: (b) => state.history.past[state.history.past.length - 1] === b, apply: (rowId, id) => (answer(rowId, id), aiNote(rowId, null)) }}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
