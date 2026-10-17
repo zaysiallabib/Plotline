@@ -128,6 +128,7 @@ export {
   bearingInPlan,
   sitePlan,
   siteFromOverpass,
+  waysFromOsmMap,
   windFromDaily,
   emptySite,
   setBlockHeight,

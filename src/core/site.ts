@@ -160,6 +160,16 @@ export function siteFromOverpass(json: { elements?: OsmWay[] }, lat: number, lon
 }
 
 /**
+ * OpenStreetMap's own `map.json` answer (the editing API's bounding-box read: nodes, then ways by node id) as Overpass
+ * `out geom` ways, so siteFromOverpass reads both.
+ */
+export function waysFromOsmMap(json: { elements?: { type: string; id: number; lat?: number; lon?: number; nodes?: number[]; tags?: Record<string, string> }[] }): { elements: OsmWay[] } {
+  const els = json.elements ?? []
+  const at = new Map(els.filter((e) => e.type === 'node').map((n) => [n.id, { lat: n.lat!, lon: n.lon! }]))
+  return { elements: els.filter((e) => e.type === 'way').map((w) => ({ type: 'way', id: w.id, tags: w.tags, geometry: (w.nodes ?? []).flatMap((id) => at.get(id) ?? []) })) }
+}
+
+/**
  * Open-Meteo's archive answer (`daily=wind_speed_10m_mean,wind_direction_10m_dominant`) as the prevailing wind by month:
  * each day a vector (its speed, from its dominant direction), summed per month; direction = the sum's, speed = the mean,
  * steady = |sum| / Σ speed. null when a month has no day.

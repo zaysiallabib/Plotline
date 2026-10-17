@@ -14,8 +14,9 @@ const TILE = 256
 /** the 768 px tile grid is shown this much smaller */
 const SHOW = 0.625
 const RAD = Math.PI / 180
-/** tried in turn: the main server, then two public mirrors (the main one turns some clients away when busy) */
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter']
+/** the free map query server; when it does not answer within 20 s, OpenStreetMap's own read of the box round the plot (one request) */
+const OVERPASS = 'https://overpass-api.de/api/interpreter'
+const OSM_MAP = 'https://api.openstreetmap.org/api/0.6/map.json'
 export const RADIUS_M = 250
 
 /** web-mercator pixels at zoom Z */
@@ -39,22 +40,30 @@ export function parseLatLon(s: string): { lat: number; lon: number } | null {
   return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null
 }
 
-/** The buildings and roads (Overpass) and the wind (Open-Meteo) at the plot, once; what failed is said in `problems`. */
+/** The buildings and roads (Overpass, else OpenStreetMap's own box read) and the wind (Open-Meteo) at the plot, once; what failed is said in `problems`. */
 export async function fetchSite(lat: number, lon: number): Promise<{ site: Site; problems: string[] }> {
-  const q = `[out:json][timeout:25];(way["building"](around:${RADIUS_M},${lat},${lon});way["highway"](around:${RADIUS_M},${lat},${lon}););out geom;`
+  ;[lat, lon] = [Math.round(lat * 1e6) / 1e6, Math.round(lon * 1e6) / 1e6] // a decimetre
+  const q = `[out:json][timeout:60];(way["building"](around:${RADIUS_M},${lat},${lon});way["highway"](around:${RADIUS_M},${lat},${lon}););out geom;`
   const year = new Date().getFullYear()
   const meteo = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${year - 10}-01-01&end_date=${year - 1}-12-31&daily=wind_speed_10m_mean,wind_direction_10m_dominant&wind_speed_unit=ms&timezone=auto`
+  const dLat = RADIUS_M / 111320
+  const dLon = dLat / Math.cos(lat * RAD)
+  const box = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].map((v) => v.toFixed(6)).join(',')
   const [osm, wind] = await Promise.all([
     (async () => {
-      for (const url of OVERPASS) {
-        try {
-          const r = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }) })
-          if (r.ok) return await r.json()
-        } catch {
-          /* the next server */
-        }
+      try {
+        const r = await fetch(OVERPASS, { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(20000) })
+        const j = r.ok ? await r.json() : null
+        if (j && !/error/i.test(j.remark ?? '')) return j // a busy server answers 200 with "runtime error: … timed out" and nothing
+      } catch {
+        /* busy or unreachable: the other source */
       }
-      return null
+      try {
+        const r = await fetch(`${OSM_MAP}?bbox=${box}`, { signal: AbortSignal.timeout(30000) })
+        return r.ok ? core.waysFromOsmMap(await r.json()) : null
+      } catch {
+        return null
+      }
     })(),
     fetch(meteo)
       .then((r) => (r.ok ? r.json() : null))
@@ -65,7 +74,7 @@ export async function fetchSite(lat: number, lon: number): Promise<{ site: Site;
   const months = wind && core.windFromDaily(wind)
   if (!months) problems.push('the wind server did not answer: the Dhaka wind table is used')
   const site: Site = {
-    ...core.emptySite(Math.round(lat * 1e6) / 1e6, Math.round(lon * 1e6) / 1e6),
+    ...core.emptySite(lat, lon),
     ...(osm ? core.siteFromOverpass(osm, lat, lon) : {}),
     ...(months ? { wind: months } : {}),
     ...(typeof wind?.utc_offset_seconds === 'number' ? { utcOffsetH: wind.utc_offset_seconds / 3600 } : {}),
@@ -168,6 +177,7 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
           style={{ width: 3 * TILE * SHOW, height: 3 * TILE * SHOW }}
           onClick={(e) => {
             if (busy) return
+            if (site && !window.confirm('Move the plot here? Its blocks, roads and wind are fetched again (typed heights and deletions are lost).')) return
             const r = e.currentTarget.getBoundingClientRect()
             const ll = toLatLon({ x: tx * TILE + (e.clientX - r.left) / SHOW, y: ty * TILE + (e.clientY - r.top) / SHOW })
             void pick(ll.lat, ll.lon)

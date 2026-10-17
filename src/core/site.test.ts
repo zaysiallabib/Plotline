@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import saved from '../data/fixtures/overpass-banani.json'
 import { deriveRooms } from './graph'
-import { roomWind, sheltered, siteFromOverpass, siteToPlan, sunAt, windFromDaily } from './site'
+import { roomWind, sheltered, siteFromOverpass, siteToPlan, sunAt, waysFromOsmMap, windFromDaily } from './site'
 import type { Site, Unit } from './types'
 
 /** a real Overpass answer round Banani, trimmed to 13 ways (heights, floors, none, roads, a footway) */
@@ -113,6 +113,20 @@ describe('siteFromOverpass (a saved Banani answer)', () => {
     expect(p0).toEqual({ x: 0, y: 0 })
     expect(p1.y).toBeCloseTo(-111.3, 0)
     expect(p1.x).toBeCloseTo(111.3 * Math.cos((lat * Math.PI) / 180), 0)
+  })
+})
+
+describe('waysFromOsmMap (the fallback: OpenStreetMap own box read)', () => {
+  test('ways get their nodes as points, so the same reader takes them; a node outside the box is skipped', () => {
+    const ways = waysFromOsmMap({
+      elements: [
+        { type: 'node', id: 1, lat: 23.79, lon: 90.4 },
+        { type: 'node', id: 2, lat: 23.791, lon: 90.4 },
+        { type: 'way', id: 7, nodes: [1, 2, 3], tags: { highway: 'residential' } },
+      ],
+    })
+    expect(ways.elements).toEqual([{ type: 'way', id: 7, tags: { highway: 'residential' }, geometry: [{ lat: 23.79, lon: 90.4 }, { lat: 23.791, lon: 90.4 }] }])
+    expect(siteFromOverpass(ways, 23.79, 90.4).roads[0].pts[1].y).toBeCloseTo(-111.3, 0)
   })
 })
 
