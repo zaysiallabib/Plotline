@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { colourPage, furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
+import { colourPage, dashMask, furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -149,5 +149,22 @@ describe('colourPage (step 5B): a plan on a coloured page whose grey is the wall
     const white = { ...g, data: new Uint8Array(g.data).fill(255) }
     expect(colourPage(white, rgb)).toBeNull()
     expect(colourPage(mir(true).g, rgb)).toBeNull()
+  })
+})
+
+describe('dashMask (s27: a dashed plot line is never a wall)', () => {
+  test('a dash-dot line is marked; a wall with doors and windows in it, and a solid wall, are not', () => {
+    const { g, fill, at } = sheet()
+    // a dash-dot plot line at y 0.5: 1 m dashes, 0.2 m dots, 0.2 m gaps, 0.1 m thick
+    for (let x = 0.2; x + 1 < 9.8; x += 1.6) fill(x, 0.45, x + 1, 0.55), fill(x + 1.2, 0.45, Math.min(9.8, x + 1.4), 0.55)
+    // a 0.2 m wall at y 3 with a 0.9 m door, a 1.5 m window gap and a 0.8 m door: pieces 1.2, 2.3, 1.5, 1.6 m
+    fill(0.5, 2.9, 1.7, 3.1), fill(2.6, 2.9, 4.9, 3.1), fill(6.4, 2.9, 7.9, 3.1), fill(8.7, 2.9, 9.8, 3.1)
+    fill(0.5, 6, 9.5, 6.2) // a solid wall
+    const m = dashMask(g, K, 128)!
+    expect(m[at(0.9, 0.5)]).toBe(1)
+    expect(m[at(4.7, 0.5)]).toBe(1)
+    expect(m[at(1, 3)]).toBe(0)
+    expect(m[at(3.5, 3)]).toBe(0)
+    expect(m[at(5, 6.1)]).toBe(0)
   })
 })

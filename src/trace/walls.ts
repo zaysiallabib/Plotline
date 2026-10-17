@@ -429,7 +429,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }
   }
   if (opts.tracker === 'tracks') {
-    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast })
+    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast, frameBands: opts.upscale === undefined })
     const t = trackWalls(tt)
     const angled = angledWalls(gray, t.walls, opts)
     return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, pillars: tt.pillars, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }

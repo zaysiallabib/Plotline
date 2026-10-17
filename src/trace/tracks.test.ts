@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms } from '../core'
 import { KNOBS, solveTraces } from './solve'
-import { traceTracks, trackWalls } from './tracks'
+import { classifyGap, traceTracks, trackWalls } from './tracks'
 import { traceWalls } from './walls'
 import type { Gray } from './types'
 
@@ -299,5 +299,30 @@ describe('furniture is not building (founder, 2026-10-15)', () => {
     } finally {
       KNOBS.tracker = prev
     }
+  })
+})
+
+describe('s27: a window drawn as a frame band', () => {
+  test('a light frame band with one pane line across a wall gap is a window (photo-render brochures, 100 px/m); a lone pen line is not', () => {
+    const W = 200, H = 60
+    const sheetOf = (draw: (g: Gray) => void) => {
+      const g: Gray = { width: W, height: H, data: new Uint8Array(W * H).fill(255) }
+      draw(g)
+      return g
+    }
+    const kindOn = (g: Gray) =>
+      classifyGap({ x: 50, y: 30 }, { x: 150, y: 30 }, 10, 100, () => false, (x, y) => g.data[Math.round(y) * W + Math.round(x)], undefined, W, H, true, true).kind
+    // the gap x 50–150 on a 10 px wall's line y = 30: a grey frame band y 25–29 and the dark pane line y 30–31
+    const framed = sheetOf((g) => {
+      for (let x = 50; x < 150; x++) {
+        for (let y = 25; y < 30; y++) g.data[y * W + x] = 190
+        for (let y = 30; y < 32; y++) g.data[y * W + x] = 60
+      }
+    })
+    expect(kindOn(framed)).toBe('window')
+    const pen = sheetOf((g) => {
+      for (let x = 50; x < 150; x++) g.data[30 * W + x] = 60
+    })
+    expect(kindOn(pen)).toBe('unknown')
   })
 })

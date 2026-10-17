@@ -354,6 +354,9 @@ describe('solveTraces on a synthetic flat', () => {
     expect(basin.stats.fixtures?.map((f) => f.what)).toEqual(['hand-wash basin', 'hand-wash basin'])
     const byColour = solveTraces(g, { text, propagate: (rooms) => rooms.map((r) => (r.kind ? null : { at: r.poly[0], kind: 'utility', source: 'colour', conf: 0.6 })) }, { pickPx: P(2, 2.5) })
     expect(store(byColour).kind).toBe('utility')
+    // (s27) a guessed kind only where the room can be one: the 2 × 2.5 m store sharing a living room's floor colour is no living room
+    const small = solveTraces(g, { text, propagate: (rooms) => rooms.map((r) => (r.kind ? null : { at: r.poly[0], kind: 'living', source: 'colour', conf: 0.6 })) }, { pickPx: P(2, 2.5) })
+    expect(store(small).kind).toBe('other')
   })
 
   test('a blank sheet: an empty draft that still opens (no crash, validates, says why)', () => {
