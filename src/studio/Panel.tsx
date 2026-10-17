@@ -198,6 +198,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
   const { unit } = state
   const review = marks.filter((m) => m.review)
   const aiDone = ai ? Object.entries(ai.notes).filter(([id, n]) => n.before && !review.some((m) => m.review!.id === id)) : []
+  // Ask AI for all: the rows the AI has not answered yet (or failed on)
+  const unasked = ai ? review.map((m) => m.review!.id).filter((id) => !ai.notes[id] || ai.notes[id].error) : []
   const listed = marks.filter((m) => m.issue)
   // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
   useEffect(() => {
@@ -324,7 +326,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           <h3>
             {review.length ? `Check these (${review.length})` : 'Check these'}
             {ai && review.length > 0 && (
-              <button className="link" title="Ask the AI on this PC about every row, one after another (Local AI below)" disabled={review.every((m) => ai.notes[m.review!.id]?.busy)} onClick={() => ai.ask(review.filter((m) => !ai.notes[m.review!.id]?.busy).map((m) => m.review!.id))}>
+              <button className="link" title="Ask the AI on this PC about every row it has not answered, one after another (Local AI below)" disabled={!unasked.length} onClick={() => ai.ask(unasked)}>
                 Ask AI for all
               </button>
             )}

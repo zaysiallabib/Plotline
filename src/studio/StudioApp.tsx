@@ -1745,6 +1745,10 @@ export default function StudioApp() {
       aiNote(rowId, { row: msg() ?? '', error: (e as Error).message })
     }
   }
+  // an AI fix taken back (its Undo or Ctrl+Z): the plan is the one before it again — its note goes
+  useEffect(() => {
+    for (const [id, n] of Object.entries(aiNotes)) if (n.before === state.unit) aiNote(id, null)
+  }, [state.unit]) // eslint-disable-line react-hooks/exhaustive-deps
   /** an AI fix undone: only while it is still the last undo step (else Ctrl+Z steps back through the later edits) */
   const undoAI = (rowId: string) => {
     const b = aiNotes[rowId]?.before
