@@ -2,55 +2,32 @@
  * Wind in the 3D view (founder 2026-10-18: "don't make them sloppy and tacky … be classy"): a breeze of thin streamlines —
  * 6 to 10 per outside opening facing within 60° of the month's wind, spread across it, each a gently curved line that
  * fades in at the window, crosses the room and fades out past the opening on its far side (core.roomWind), or fades out
- * in the room when it has none. Long soft dashes drift along them, slowly. One quiet blue, low opacity, no arrowheads.
+ * in the room when it has none. Long soft dashes drift along them, slowly. 2 px, one slate blue, no arrowheads.
  * Lines at a window behind a taller block upwind (core.sheltered) are fainter. A guide, not a flow model.
  */
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Room, Unit, WindMonth } from '../core'
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js'
 
 /** metres outside an opening where a line starts (and fades in) / ends past the far one (and fades out) */
 const OUT_M = 1.6
 /** one dash and its gap along a line, m */
 const PERIOD_M = 2.2
 /** a calm, desaturated blue, as the wind rose's */
-const COLOR = '#4a6f94'
-const OPACITY = 0.9
+const COLOR = '#46709a'
+const OPACITY = 0.95
+/** screen pixels (CSS) */
+const WIDTH_PX = 2
 /** a line at a sheltered window: this much of the others' opacity */
 const SHELTERED = 0.35
 
-const VERT = /* glsl */ `
-attribute float aS;
-attribute float aLen;
-attribute float aK;
-attribute float aSeed;
-varying float vS;
-varying float vLen;
-varying float vK;
-varying float vSeed;
-void main() {
-  vS = aS; vLen = aLen; vK = aK; vSeed = aSeed;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`
-const FRAG = /* glsl */ `
-uniform vec3 color;
-uniform float opacity;
-uniform float time;
-uniform float speed;
-varying float vS;
-varying float vLen;
-varying float vK;
-varying float vSeed;
-void main() {
-  float edge = smoothstep(0.0, ${OUT_M.toFixed(2)}, vS) * smoothstep(0.0, ${OUT_M.toFixed(2)}, vLen - vS);
-  float ph = fract((vS - time * speed) / ${PERIOD_M.toFixed(2)} + vSeed);
-  float dash = smoothstep(0.0, 0.18, ph) * (1.0 - smoothstep(0.42, 0.62, ph));
-  gl_FragColor = vec4(color, opacity * vK * edge * dash);
-}`
-
 export class WindFlow extends THREE.Group {
-  private readonly mat: THREE.ShaderMaterial
-  private readonly lines: THREE.LineSegments
+  private readonly mat: LineMaterial
+  private readonly lines: LineSegments2
+  private readonly speed: number
 
   constructor(unit: Unit, rooms: Room[], month: WindMonth) {
     super()
@@ -58,7 +35,9 @@ export class WindFlow extends THREE.Group {
     const byId = new Map(rooms.map((r) => [r.id, r]))
     const travel = core.bearingInPlan(unit.northDeg, month.fromDeg + 180)
     const pos: number[] = []
-    const att: Record<'s' | 'len' | 'k' | 'seed', number[]> = { s: [], len: [], k: [], seed: [] }
+    /** per segment end: its distance along its line; its colour carries (fade × shelter, the line's dash phase, 0) */
+    const dist: number[] = []
+    const cols: number[] = []
     let lane = 0
     for (const rw of core.roomWind(unit, rooms, month.fromDeg)) {
       const r = byId.get(rw.roomId)!
@@ -101,30 +80,37 @@ export class WindFlow extends THREE.Group {
           for (let j = 1; j < P.length; j++) {
             for (const q of [j - 1, j]) {
               pos.push(P[q].x, P[q].y, P[q].z)
-              att.s.push(s[q])
-              att.len.push(len)
-              att.k.push(k)
-              att.seed.push(seed)
+              dist.push(s[q])
+              cols.push(k * THREE.MathUtils.smoothstep(s[q], 0, OUT_M) * THREE.MathUtils.smoothstep(len - s[q], 0, OUT_M), seed, 0)
             }
           }
         }
       }
     }
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    geo.setAttribute('aS', new THREE.Float32BufferAttribute(att.s, 1))
-    geo.setAttribute('aLen', new THREE.Float32BufferAttribute(att.len, 1))
-    geo.setAttribute('aK', new THREE.Float32BufferAttribute(att.k, 1))
-    geo.setAttribute('aSeed', new THREE.Float32BufferAttribute(att.seed, 1))
-    this.mat = new THREE.ShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: FRAG,
-      // a slow, steady drift: 0.25–0.45 m/s on screen for 1.5–4 m/s outside
-      uniforms: { color: { value: new THREE.Color(COLOR) }, opacity: { value: OPACITY }, time: { value: 0 }, speed: { value: 0.15 + 0.075 * month.speedMs } },
-      transparent: true,
-      depthWrite: false,
-    })
-    this.lines = new THREE.LineSegments(geo, this.mat)
+    const geo = new LineSegmentsGeometry().setPositions(pos).setColors(cols)
+    const d = new THREE.InstancedInterleavedBuffer(new Float32Array(dist), 2, 1)
+    geo.setAttribute('instanceDistanceStart', new THREE.InterleavedBufferAttribute(d, 1, 0))
+    geo.setAttribute('instanceDistanceEnd', new THREE.InterleavedBufferAttribute(d, 1, 1))
+    // three's screen-width lines; their hard dash swapped for a soft one that drifts, faded by the colour's red (above)
+    this.mat = new LineMaterial({ color: COLOR, linewidth: WIDTH_PX, dashed: true, vertexColors: true, transparent: true, opacity: OPACITY, depthWrite: false })
+    this.mat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader
+        .replace('if ( mod( vLineDistance + dashOffset, dashSize + gapSize ) > dashSize ) discard; // todo - FIX', '')
+        .replace(
+          'gl_FragColor = vec4( diffuseColor.rgb, alpha );',
+          `float ph = fract( ( vLineDistance + dashOffset ) / ${PERIOD_M.toFixed(2)} + vColor.g );
+          alpha *= vColor.r * smoothstep( 0.0, 0.18, ph ) * ( 1.0 - smoothstep( 0.42, 0.62, ph ) );
+          gl_FragColor = vec4( diffuse, alpha );`,
+        )
+    }
+    // a slow, steady drift: 0.25–0.45 m/s on screen for 1.5–4 m/s outside
+    this.speed = 0.15 + 0.075 * month.speedMs
+    this.lines = new LineSegments2(geo, this.mat)
+    const size = new THREE.Vector2()
+    this.lines.onBeforeRender = (renderer) => {
+      this.mat.resolution.copy(renderer.getDrawingBufferSize(size))
+      this.mat.linewidth = WIDTH_PX * renderer.getPixelRatio()
+    }
     this.lines.raycast = () => {} // a click goes through to the room
     this.lines.frustumCulled = false
     this.lines.renderOrder = 2
@@ -133,7 +119,7 @@ export class WindFlow extends THREE.Group {
 
   /** The dashes drift on by dt seconds. */
   update(dt: number): void {
-    this.mat.uniforms.time.value += dt
+    this.mat.dashOffset -= this.speed * dt
   }
 
   dispose(): void {
