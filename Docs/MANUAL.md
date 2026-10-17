@@ -84,7 +84,9 @@ Extras you can add to the end of a 3D address:
 
 **Always on screen**
 
-- **Sun slider** (bottom middle) — time of day, 06:00 to 18:00.
+- **Sun strip** (bottom middle) — the **day** (click the date and pick one; it starts on today) and the **time**, 06:00 to 18:00 (the slider). The sun stands where it really stands at the building's site on that day at that hour, by the plan's true north — a June noon in Dhaka is almost overhead, a December noon low in the south. No site set in the Studio: Dhaka. The time is the site's own clock (Bangladesh time for Dhaka).
+- **Wind** (the button at the end of the sun strip) — opens the **wind rose** above it and shows the wind as light-blue arrows through the flat. The rose has one line per month pointing to where the wind comes FROM (turned like the compass: up = up the plan), longer = stronger, fainter = it changes a lot that month; the month of the day you picked is the gold one. Click a month's line to pick that month (the day moves to it). The text says: from where, how strong (m/s), the rooms with cross ventilation, and where the numbers come from (this site's ten years from Open-Meteo, or the built-in Dhaka table). In the 3D: the arrows come in through every outside window or door that faces within 60° of the wind, cross the room and leave through an outside opening on the far side (facing away from the wind); a room with no such opening — the arrows stop in it. A room that has both is **cross ventilation**: it says so in the room's box top left ("Cross ventilation: the wind comes in and goes out") while Wind is on. A door into the next room does not count. **Faint arrows:** a neighbour block within 30 m upwind of that window, taller than your floor (floor × 3.2 m above the street), takes the wind. It is a guide, not a wind simulation. Wind again hides it.
+- **Around the flat** — with a site set in the Studio (§5, Site): the real buildings and roads round it from the map, plain grey blocks at their height and dark roads, in Walk, Dollhouse and Building; they throw the sun's shadow onto the flat. No site: a made-up street (only from inside).
 - **Small map** (bottom right, Walk only) — where you are. **M** hides or shows it.
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. Thumbstick left/right turns you.
@@ -127,6 +129,7 @@ Opens this flat or level in the Studio, in a new tab.
 - **Walk this level** (bottom middle) — shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
 - **Click a flat** to open it.
 - Drag to turn, scroll to zoom.
+- With a site set in the Studio (§5, Site) the map's blocks and roads stand round the tower instead of the made-up street, and throw their shadows on it.
 
 ---
 
@@ -147,10 +150,24 @@ You draw over a plan picture. The order is written on the right under **Steps**:
 | Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against |
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
 | Building | Shows / hides the list of your project's floors on the right; with no project open: start one (section 6) |
+| Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below |
 | Share link | Makes a buyer link and copies it. Asks once for the staff key. Needs the database. |
 | Change list | Opens `/changes`. Needs the database. |
 
 **Loading the plan picture:** drop the picture on the Studio, or click **Choose plan image…** (PNG, JPG or WEBP, up to 10 MB).
+
+### Site — where the building stands (top bar → Site)
+
+The panel opens top right, and a gold **north arrow** appears in the middle of the plan.
+
+1. **Find the place:** type an address ("Banani, Dhaka", "Road 11, Banani") and press **Find** (or Enter) — or paste the plot's position as "23.7903, 90.4077" (in Google Maps: right-click the plot, click the numbers to copy them). A map picture shows round it.
+2. **Click your plot** on the map. The buildings and roads within 250 m and the wind of the last ten years come in (a few seconds; up to half a minute when the map server is busy). On the map: grey shapes = buildings (dashed outline = height guessed), dark lines = roads, gold = your drawing, the gold dot = the plot. The middle of your drawing stands on the dot. Clicking the map again moves the plot (it asks first: what you typed or deleted is lost).
+3. **Set true north:** drag the gold arrow on the plan (anywhere along it) until it points the same way as the north arrow printed on the sheet; drag its round dot to move it over that arrow first. Or type the degrees in **True north** (0 = up the page, 90 = to the right). The drawing on the map turns with it — check that it sits on the plot the right way round.
+4. **Fix the neighbours:** click a building on the map: its height and where the height comes from show — type the right height (metres) in **Height**, or **Delete block**. Click a road: **Delete road**.
+
+**Where the heights come from:** the map's own height when it has one; else its number of floors × 3 m; else **a guess: 3 floors = 9 m** (most buildings in Dhaka have neither on the map — in Banani 396 of 407). A height that does not fit its floor count (60 m on 5 floors) is taken as a typo and the floors are used. **Fetch again** asks the map once more (your deletions and typed heights are lost). **Remove site** takes it all away: the 3D shows the made-up street again.
+
+It is saved with the drawing (and on every drawing of the project open, one site for the building): Preview 3D, the Building view and buyer links show it without asking the map again, also offline. The map and the buildings are © OpenStreetMap contributors; the wind is Open-Meteo's. All free, no account.
 
 ### The tools (letters on the left; press the letter to pick the tool)
 
@@ -504,6 +521,8 @@ Never a room — fixture and drawing tags: DW, D.WASH, FRIDGE, FREEZER, REF, W/M
 - Staff mode, the staff key
 - Your Check these answers (the record Export answers saves) and, per sheet, where the print Auto-trace could not read stands
 
+The **Site** (place, north, blocks, roads, wind) is part of the drawing: kept wherever the drawing is (draft, project, Export file, buyer link).
+
 **Safe:**
 
 - The built-in flats and levels
@@ -525,6 +544,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **The Banani and dmd built-in levels still open without their plan picture.** Drop the picture on the page and line it up with S (4 clicks). The Sheltech ones have theirs.
 - **Lining a picture up needs zooming in and out** between the clicks when the picture and the drawing are far apart in size.
 - In **Show building** the tall neighbour blocks can hide your building after you turn the view; picking a floor does not bring it back into sight.
+- **Site:** most neighbour heights are guesses (3 floors) — the map rarely has them in Dhaka; type the ones you know. The map may also miss new buildings or still show torn-down ones: delete those; a building cannot be added by hand yet. The plot is where the middle of the open drawing stands (in a project, of the flat you look at), not the plot's outline. Tall blocks right beside the flat can stand in the Dollhouse view's way. The wind arrows only show one room at a time: wind through a door into the next room is not drawn. The 3D has no hover tooltip on a block: its height and "guessed" show in the Studio's Site map.
 - Renaming a project does not change the Project box of drawings made before the rename.
 - The "Draft restored — Start over" message shows at every opening; in a project **Start over** only empties the screen, the drawing is kept.
 - Undo does not go back past closing the browser or switching drawings. The ⏱ timer starts again for each drawing you open.
@@ -589,9 +609,10 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
 | Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
 | Curtains | Yes — slide along their wall, delete, add from the library onto any window; they follow their window | Yes (tool F) — same | Their width by hand, fabric and colour, drawing them closed |
-| Neighbour buildings, road, sky | No | No | Everything |
-| Time of day | Yes — the slider | — | — |
-| North direction | No | No | No control found |
+| Neighbour buildings, road | No (they show; staff change them in the Studio) | Yes — Site: a building's height typed, a building or road deleted, the whole site fetched again or removed | Adding a building or road by hand |
+| Sky | No | No | Everything |
+| Day and time of day | Yes — the date and the slider | — | — |
+| North direction | No | Yes — Site: drag the arrow on the plan, or type the degrees | — |
 
 One limit that applies to all of it:
 
