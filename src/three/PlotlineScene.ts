@@ -23,13 +23,14 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
 import { kitAsset, type ObjectKind } from '../furnish/kit'
+import { lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, type Quality } from './render'
+import { Look, needsFrame, slowFrames, type Quality } from './render'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -84,6 +85,12 @@ const UP = new THREE.Vector3(0, 1, 0)
 /** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
 const CLICK_PX = 6
 const DHAKA_LAT = THREE.MathUtils.degToRad(23.8)
+/** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
+const WAKE = ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup'] as const
+const WAKE_MS = 1000
+/** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
+export type GpuFailure = 'lost' | 'memory' | 'gone'
+const LOST_MS = 5000
 
 /**
  * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
@@ -222,6 +229,18 @@ export class PlotlineScene {
   private readonly raycaster = new THREE.Raycaster()
 
   private disposed = false
+  private readonly tier: Quality
+  /** Lite draws until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
+  private wakeUntil = 0
+  private lastPose = NaN
+  private drewLast = false
+  /** frame times (ms) taken while moving, from 2 s after the first (render.ts slowFrames); null once judged */
+  private frameMs: number[] | null = []
+  private sampleFrom = 0
+  private slowCb: (() => void) | null = null
+  private failCb: ((why: GpuFailure) => void) | null = null
+  private lostTimer = 0
+  private nextErrorCheck = 0
   private unit: Unit | null = null
   private rooms: Room[] = []
   private cfg: Configuration = {}
@@ -283,8 +302,17 @@ export class PlotlineScene {
     private readonly canvas: HTMLCanvasElement,
     opts: { quality?: Quality } = {},
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    this.tier = opts.quality ?? 'high'
+    const isLite = (lite.on = this.tier === 'lite')
+    // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
+    this.renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio, 2))
+    if (isLite) {
+      // ponytail: three's own upload path halves every 1k picture (WebGLTextures resizeImage, 2k ones to a quarter); real
+      // half-size files on disk if the decoded originals in memory ever matter
+      this.renderer.capabilities.maxTextureSize = 512
+      this.renderer.capabilities.getMaxAnisotropy = () => 1
+    }
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
@@ -298,6 +326,10 @@ export class PlotlineScene {
     this.scene.add(this.sun, this.sun.target)
     void this.loadEnvironment()
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
+    canvas.addEventListener('webglcontextlost', this.onContextLost)
+    for (const e of WAKE) window.addEventListener(e, this.wake, { passive: true })
+    THREE.DefaultLoadingManager.onProgress = this.wake // a texture, model or sky arrived (every loader here uses the default manager)
+    this.wake()
 
     // no domElement: the orbit listeners are attached only while in orbit mode (setMode), so a click that
     // reaches the canvas in walk mode never hits OrbitControls' setPointerCapture
@@ -333,6 +365,7 @@ export class PlotlineScene {
    * out for ~150 ms on top of the 190–300 ms rebuild, measured 2026-10-04 on type-a and the founder's draft).
    */
   setUnit(unit: Unit, keepView = false): void {
+    this.wake()
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
     this.ready = false
@@ -399,12 +432,14 @@ export class PlotlineScene {
 
   /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
   setConfiguration(cfg: Configuration): void {
+    this.wake()
     this.cfg = cfg
     this.applyMaterials()
   }
 
   /** 6..18. Simple equinox solar model at Dhaka latitude, rotated by unit.northDeg. */
   setTimeOfDay(hour: number): void {
+    this.wake()
     this.hour = hour
     const H = THREE.MathUtils.degToRad((hour - 12) * 15) // hour angle, + after noon
     // declination 0 (equinox): local ENU sun vector
@@ -428,6 +463,7 @@ export class PlotlineScene {
   }
 
   setMode(mode: SceneMode): void {
+    this.wake()
     if (this.mode === 'walk' && mode !== 'walk') {
       this.yaw = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ').y
     }
@@ -503,8 +539,28 @@ export class PlotlineScene {
     this.flatCb = cb
   }
 
+  /** Frames were slow while moving (render.ts slowFrames), judged once per scene. */
+  onSlow(cb: () => void): void {
+    this.slowCb = cb
+  }
+
+  /** The GPU gave up (GpuFailure). */
+  onFail(cb: (why: GpuFailure) => void): void {
+    this.failCb = cb
+  }
+
+  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches). */
+  shadowsOff(): void {
+    this.sun.castShadow = false
+    this.wake()
+  }
+
+  /** Lite: draw for the next WAKE_MS (something changed that the camera does not show). */
+  wake = (): void => void (this.wakeUntil = performance.now() + WAKE_MS)
+
   /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */
   showFloor(k: number): void {
+    this.wake()
     const b = this.building
     if (!b || this.mode !== 'building') return
     const dy = b.levelOf(k) + 1.5 - this.orbit.target.y
@@ -845,6 +901,7 @@ export class PlotlineScene {
 
   resize(): void {
     if (this.renderer.xr.isPresenting) return
+    this.wake()
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
@@ -864,6 +921,10 @@ export class PlotlineScene {
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost)
+    for (const e of WAKE) window.removeEventListener(e, this.wake)
+    if (THREE.DefaultLoadingManager.onProgress === this.wake) THREE.DefaultLoadingManager.onProgress = () => {}
+    clearTimeout(this.lostTimer)
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()
     this.showOpening(null)
@@ -1117,6 +1178,7 @@ export class PlotlineScene {
   }
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
+    this.wake()
     obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
     obj.userData.floorM = this.floorOf(p)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
@@ -1143,10 +1205,21 @@ export class PlotlineScene {
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()
+    this.wake()
   }
 
   /** The PMREM environment lives only on the GPU: after a context loss it comes back empty and every room goes dark. */
-  private onContextRestored = (): void => void this.loadEnvironment()
+  private onContextRestored = (): void => {
+    clearTimeout(this.lostTimer)
+    this.wake()
+    void this.loadEnvironment()
+  }
+  /** three keeps the canvas and waits for the browser to restore it; not back in LOST_MS: gone (the viewer says so) */
+  private onContextLost = (): void => {
+    this.failCb?.('lost')
+    clearTimeout(this.lostTimer)
+    this.lostTimer = window.setTimeout(() => this.failCb?.('gone'), LOST_MS)
+  }
 
   // ───────────────────────────── controls ─────────────────────────────
 
@@ -1411,7 +1484,8 @@ export class PlotlineScene {
   private tick = (): void => {
     this.xr?.update()
     this.timer.update()
-    const dt = Math.min(this.timer.getDelta(), 0.1)
+    const raw = this.timer.getDelta()
+    const dt = Math.min(raw, 0.1)
     if (this.mode !== 'walk') {
       this.orbit.update()
       if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
@@ -1457,6 +1531,42 @@ export class PlotlineScene {
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
     if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
+    const now = performance.now()
+    const pose = this.poseKey()
+    const moved = pose !== this.lastPose
+    this.lastPose = pose
+    const xr = this.renderer.xr.isPresenting
+    if (!needsFrame({ tier: this.tier, xr, moved, now, wakeUntil: this.wakeUntil })) return void (this.drewLast = false)
+    if (moved && this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
     this.look.render()
+    this.drewLast = true
+    if (now > this.nextErrorCheck) {
+      // a texture or buffer the GPU had no room for: three never asks, the picture just goes missing
+      this.nextErrorCheck = now + 1000
+      const gl = this.renderer.getContext()
+      if (gl.getError() === gl.OUT_OF_MEMORY) this.failCb?.('memory')
+    }
+  }
+
+  /** The camera's world pose and lens, rounded (0.1 mm, 1e-4): an eased step or orbit damping settles instead of drawing on. */
+  private poseKey(): number {
+    this.camera.updateWorldMatrix(true, false)
+    const e = this.camera.matrixWorld.elements
+    const p = this.camera.projectionMatrix.elements
+    let k = Math.round(p[0] * 1e4) + 3 * Math.round(p[5] * 1e4)
+    for (let i = 0; i < 16; i++) k += (i + 5) * Math.round(e[i] * 1e4)
+    return k
+  }
+
+  /** one frame time while moving; 2 s after the first, 45 of them judge the machine once (render.ts slowFrames) */
+  private sample(ms: number, now: number): void {
+    if (!this.frameMs) return
+    this.sampleFrom ||= now + 2000
+    if (now < this.sampleFrom) return
+    this.frameMs.push(ms)
+    if (this.frameMs.length < 45) return
+    const slow = slowFrames(this.frameMs)
+    this.frameMs = null
+    if (slow) this.slowCb?.()
   }
 }
