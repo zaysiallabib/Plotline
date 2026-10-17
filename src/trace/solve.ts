@@ -2953,7 +2953,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
 export function closeMessage(c: Pick<Closed, 'room' | 'size' | 'pieces'>): string {
   const what = (pc: Piece) => {
     const L = formatFeetInches(d2(pc.a, pc.via ?? pc.b))
-    return pc.kind === 'zone' ? `a zone line ${L} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the double line` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `a wall carried on ${L}`
+    return pc.kind === 'zone' ? `a zone line ${L} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the window line drawn there` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `a wall carried on ${L}`
   }
   const list = c.pieces.map(what)
   const drew = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0]

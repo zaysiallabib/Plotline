@@ -169,7 +169,7 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
   })
   test('one Check-these row per closed room: what was drawn, why it was kept, the question', () => {
     const p = (kind: 'door' | 'glass' | 'zone', L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, kind, thM: 0.1, heightM: 3 })
-    expect(closeMessage({ room: 'Dining', size: 'match', pieces: [p('glass', 1.83)] })).toBe(`Drew a glass wall 6'-0" along the double line to close Dining — it then matches its printed size. Right?`)
+    expect(closeMessage({ room: 'Dining', size: 'match', pieces: [p('glass', 1.83)] })).toBe(`Drew a glass wall 6'-0" along the window line drawn there to close Dining — it then matches its printed size. Right?`)
     expect(closeMessage({ room: 'Toilet 2', size: 'none', pieces: [p('door', 0.76)] })).toMatch(/^Drew a 2'-6" door in the gap .* to close Toilet 2 — no printed size was read to check it\. A door, or open\?$/)
     expect(closeMessage({ room: 'Living', size: 'near', pieces: [p('door', 0.9), p('zone', 3)] })).toMatch(/door in the gap .* and a zone line .* within 30 cm .*Select a line to make it a wall/)
   })
