@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope } from '../core'
+import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope, Unit } from '../core'
+import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { library, resizeAxes } from './furniture'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
@@ -183,6 +184,8 @@ interface Props {
   onFix: (f: Fix) => void
   /** a "Check these" row's button: its answer by id (review.ts applyAnswer; logged) */
   onAnswer: (rowId: string, answerId: string) => void
+  /** s27 Local AI: what the model on this PC said per row; ask it (rows in order, one at a time); undo its fix */
+  ai?: { notes: Record<string, AiNote>; ask: (rowIds: string[]) => void; undo: (rowId: string) => void; canUndo: (before: Unit) => boolean }
   /** the furniture layer while tool F is on */
   pieces?: FurniturePlacement[] | null
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
@@ -190,10 +193,11 @@ interface Props {
   onPlace?: (assetId: string) => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
+  const aiDone = ai ? Object.entries(ai.notes).filter(([id, n]) => n.before && !review.some((m) => m.review!.id === id)) : []
   const listed = marks.filter((m) => m.issue)
   // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
   useEffect(() => {
@@ -317,7 +321,14 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
       )}
       {state.planImage && (
         <section>
-          <h3>{review.length ? `Check these (${review.length})` : 'Check these'}</h3>
+          <h3>
+            {review.length ? `Check these (${review.length})` : 'Check these'}
+            {ai && review.length > 0 && (
+              <button className="link" title="Ask the AI on this PC about every row, one after another (Local AI below)" disabled={review.every((m) => ai.notes[m.review!.id]?.busy)} onClick={() => ai.ask(review.filter((m) => !ai.notes[m.review!.id]?.busy).map((m) => m.review!.id))}>
+                Ask AI for all
+              </button>
+            )}
+          </h3>
           {stats && <p className="muted">{statsLine(stats)}</p>}
           {/* (Level 4: one line per traced flat) */}
           {count?.split('\n').map((l) => (
@@ -328,7 +339,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
           {stats && fewRooms(stats) && <p className="warn">{fewRooms(stats)}</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
-          {review.length ? (
+          {review.length || aiDone.length ? (
             <ul className="issues">
               {review.map((m) =>
                 row(
@@ -358,15 +369,29 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                     >
                       Looks right
                     </button>
+                    {ai && <AskAI id={m.review!.id} ai={ai} />}
                   </>,
                 ),
               )}
+              {/* a row the AI's fix closed has left the list: what it did stays here, with its Undo */}
+              {aiDone.map(([id, n]) => (
+                <li key={id} className="grey">
+                  <span className="num grey">AI</span>
+                  <span className="grow">
+                    {n.row}
+                    <span className="acts">
+                      <AskAI id={id} ai={ai!} />
+                    </span>
+                  </span>
+                </li>
+              ))}
             </ul>
           ) : (
             <p className="muted">{stats ? 'Nothing left to check.' : 'Auto-trace (top bar) lists here what it is unsure of.'}</p>
           )}
           <TrackerField />
           <AiKeyField />
+          {ai && <LocalAIField />}
         </section>
       )}
       <section>
@@ -739,6 +764,84 @@ function AiKeyField() {
         ). Stays in this browser.
       </p>
     </details>
+  )
+}
+
+/** s27 Local AI settings: the Ollama server on this PC and its model (this browser's localStorage), and a Test */
+function LocalAIField() {
+  const [ai, setAi] = useState(() => localAISettings())
+  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null)
+  const save = (p: Partial<LocalAI>) => {
+    const v = { ...ai, ...p }
+    setAi(v)
+    setTest(null)
+    try {
+      localStorage.setItem(LOCAL_AI_KEY, JSON.stringify(v))
+    } catch {
+      /* storage blocked: the settings live until reload */
+    }
+  }
+  const run = async () => {
+    setTest({ ok: true, text: 'Testing…' })
+    try {
+      setTest({ ok: true, text: await testLocalAI(ai) })
+    } catch (e) {
+      setTest({ ok: false, text: (e as Error).message })
+    }
+  }
+  return (
+    <details className="ai-key local-ai">
+      <summary>Local AI (this PC, free)</summary>
+      <Row label="Server">
+        {/* a new address must be ticked again if it is not local (on purpose only) */}
+        <input value={ai.url} onChange={(e) => save({ url: e.target.value, remote: false })} onKeyDown={(e) => e.stopPropagation()} />
+      </Row>
+      <Row label="Model">
+        <input value={ai.model} onChange={(e) => save({ model: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
+      </Row>
+      {!isLocalUrl(ai.url) && (
+        <>
+          <p className="warn">This is not a local server.</p>
+          <label className="check">
+            <input type="checkbox" checked={!!ai.remote} onChange={(e) => save({ remote: e.target.checked })} /> Use it anyway (I typed it on purpose)
+          </label>
+        </>
+      )}
+      <button onClick={run}>Test</button>
+      {test && <p className={test.ok ? 'muted' : 'warn'}>{test.text}</p>}
+      <p className="muted">
+        Ollama on this PC answers the Check-these rows (Ask AI). It costs nothing: an open-source program and an open-licence model on this PC's graphics card. Start it: double-click <code>{START_CMD}</code> (or in PowerShell: <code>{START_LINE}</code>)
+      </p>
+    </details>
+  )
+}
+
+/** s27 Local AI on a row: the Ask AI button (a spinner while it waits its turn or thinks), then what the AI said */
+function AskAI({ id, ai }: { id: string; ai: NonNullable<Props['ai']> }) {
+  const n = ai.notes[id]
+  const stop = (f: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    f()
+  }
+  return (
+    <>
+      {!n?.before && (
+        <button className="link" disabled={n?.busy} title="Ask the AI on this PC which answer is right (Local AI below)" onClick={stop(() => ai.ask([id]))}>
+          {n?.busy && <span className="spin" />}Ask AI
+        </button>
+      )}
+      {n && !n.busy && (
+        <span className={`ai-note${n.error ? ' warn' : ''}`}>
+          {n.error ? `AI: ${n.error}` : n.label ? `AI: ${n.label} — ${n.why}` : `AI was not sure${n.why ? ` — ${n.why}` : ''}`}
+          {n.s !== undefined && ` (${n.s.toFixed(0)} s)`}
+          {n.before && ai.canUndo(n.before) && (
+            <button className="link" title="Take the AI's fix back (one undo step)" onClick={stop(() => ai.undo(id))}>
+              Undo
+            </button>
+          )}
+        </span>
+      )}
+    </>
   )
 }
 

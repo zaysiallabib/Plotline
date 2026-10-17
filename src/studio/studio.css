@@ -296,3 +296,9 @@
 .ai-key summary { cursor: pointer; color: var(--muted); }
 .ai-key input { width: 100%; margin-top: 6px; }
 .ai-key a { color: var(--accent); }
+/* s27 Local AI: the row's note on its own line; the spinner while a row waits its turn or the model thinks */
+.issues .acts .ai-note { flex-basis: 100%; color: var(--muted); }
+.issues .acts .ai-note.warn { color: #e5534b; }
+.local-ai code { user-select: all; word-break: break-all; }
+.spin { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }

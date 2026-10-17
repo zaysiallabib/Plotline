@@ -35,6 +35,7 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
 import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
@@ -1705,6 +1706,51 @@ export default function StudioApp() {
     dispatch({ type: 'answer', rowId, answerId: id })
     if (id !== LOOKS_RIGHT && id !== SHOW_ME) setActiveKey(null) // (Show me keeps its mark open with the hint, as before)
   }
+  // ----- s27 Local AI: rows asked of the model on this PC (localAI.ts), one request at a time (the card holds one model)
+  const [aiNotes, setAiNotes] = useState<Record<string, AiNote>>({})
+  const aiNote = (id: string, n: AiNote | null) =>
+    setAiNotes((m) => {
+      const x = { ...m }
+      if (n) x[id] = n
+      else delete x[id]
+      return x
+    })
+  const aiQueue = useRef(Promise.resolve())
+  const live = useRef({ img, review })
+  live.current = { img, review }
+  const askAI = (rowIds: string[]) => {
+    for (const id of rowIds) {
+      aiNote(id, { row: '', busy: true })
+      aiQueue.current = aiQueue.current.then(() => askOne(id))
+    }
+  }
+  const askOne = async (rowId: string) => {
+    const msg = () => live.current.review.find((i) => i.id === rowId)?.message
+    try {
+      // its answers come back a moment after any edit (the fixes loop above): wait for them; a row that went is left
+      let item = stateRef.current.review?.items.find((i) => i.id === rowId)
+      for (let t = 0; !(item?.answers && item.box); t++) {
+        if (!msg()) return aiNote(rowId, null)
+        if (t > 240) throw new Error('its answers are not worked out yet — ask again in a moment')
+        await new Promise((r) => setTimeout(r, 250))
+        item = stateRef.current.review?.items.find((i) => i.id === rowId)
+      }
+      const im = live.current.img
+      if (!im) throw new Error('the sheet picture is not loaded')
+      const s = stateRef.current
+      const { note, fix } = await askRow(s, rowId, rowPicture(im, s.unit, item.box, item.at), msg() ?? item.message, () => stateRef.current)
+      if (fix) dispatch({ type: 'answer', rowId, answerId: fix }) // = applyAnswer: one undo step
+      aiNote(rowId, note)
+    } catch (e) {
+      aiNote(rowId, { row: msg() ?? '', error: (e as Error).message })
+    }
+  }
+  /** an AI fix undone: only while it is still the last undo step (else Ctrl+Z steps back through the later edits) */
+  const undoAI = (rowId: string) => {
+    const b = aiNotes[rowId]?.before
+    if (b && stateRef.current.history.past[stateRef.current.history.past.length - 1] === b) dispatch({ type: 'undo' })
+    aiNote(rowId, null)
+  }
   const applyFix = (f: Fix) => {
     // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
     const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
@@ -2115,6 +2161,7 @@ export default function StudioApp() {
           onOpen={openMark}
           onFix={applyFix}
           onAnswer={answer}
+          ai={{ notes: aiNotes, ask: askAI, undo: undoAI, canUndo: (b) => state.history.past[state.history.past.length - 1] === b }}
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
