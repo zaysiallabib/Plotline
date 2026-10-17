@@ -5,7 +5,7 @@
  * `pick` per flat click, the result imported as the Studio imports it (studioReducer 'auto-trace': walls joined, names standing
  * in unnamed rooms name them), then scored against the printed rooms (score30.ts). The text reading is cached per sheet
  * (keyed by the text-stage sources + the page it reads); everything after it runs every time.
- * Env: SCORE30_SHEETS=key,key (a subset) · SCORE30_FRESH=1 (read the text again) · SCORE30_FIXTURES / SCORE30_OUT / SCORE30_TEXT /
+ * Env: SCORE30_SHEETS=key,key (a subset) · SCORE30_JSON=<sheets.json> (other sheets, the same shape) · SCORE30_FRESH=1 (read the text again) · SCORE30_FIXTURES / SCORE30_OUT / SCORE30_TEXT /
  * SCORE30_TESS (folders; defaults below) · the Firefox agreement check: SCORE30_PXPERM=<n> (one sheet: the scale the browser's
  * clicks gave) and SCORE30_BROWSER=<dir> (the harness's exported units, <key>-floor.unit.json / <key>-<flat>.unit.json, scored
  * the same way beside the node row). Plain `npm test` skips the run (only the rule checks at the bottom run).
@@ -55,7 +55,7 @@ const imported = (result: Awaited<ReturnType<typeof pickFloor>>) => studioReduce
 
 describe.skipIf(!RUN)('score30: the 30 sheets', () => {
   test('closed and named right', async () => {
-    const sheets = SHEETS as unknown as Record<string, Sheet>
+    const sheets = (env.SCORE30_JSON ? JSON.parse(readFileSync(env.SCORE30_JSON, 'utf8')) : SHEETS) as unknown as Record<string, Sheet>
     const keys = Object.keys(sheets).filter((k) => !env.SCORE30_SHEETS || env.SCORE30_SHEETS.split(',').includes(k))
     mkdirSync(OUT, { recursive: true })
     const rows: Row[] = []

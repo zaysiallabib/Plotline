@@ -28,10 +28,10 @@
 import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
-import { closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
+import { CLOSE, closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { colourPage, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { colourPage, dashMask, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
@@ -2036,7 +2036,8 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // …and hatch (thin lines close together: shower tiles, a wardrobe's hangers) is texture, never a wall (raster.ts hatchMask).
   // The sheet's ink grey stays the one read with them (taking them out must not move what counts as ink elsewhere)
   const inkT = inkThreshold(plan, {})
-  const furniture = inputs.walls ? undefined : union(furnitureMask(plan, k0, inkT), hatchMask(plan, k0, inkT))
+  // …and a dashed or dash-dot line (a plot line round the building) is never a wall either (raster.ts dashMask, s27)
+  const furniture = inputs.walls ? undefined : union(union(furnitureMask(plan, k0, inkT), hatchMask(plan, k0, inkT)), dashMask(plan, k0, inkT))
   const ink = { ...masks0, glass: opts.rgb ? glassMask(opts.rgb, k0) : undefined }
   // founder rule 2: plant sections before any wall tracing (sized by the raster's own wall width, the 5" prior)
   const plants = planterMask(plan, ink.wall, k0, inputs.green)
@@ -2638,6 +2639,9 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''} — check`, entityId: id })
   }
   const pending: Room[] = []
+  // (s27: a guessed kind only where the room is big enough to be one — a 3 m² toilet sharing the bedrooms' floor colour
+  // is no "Bed 3"; the narrowest room of the kind, squared)
+  const roomy = (r: Room, kind: string) => r.areaSqm >= (CLOSE.narrowM[kind] ?? 0) ** 2
   for (const r of rooms) {
     // (two printed names in one space: the larger printed room names it — one room right instead of none; the room rows
     // say which name has no room of its own)
@@ -2679,12 +2683,12 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const got = inputs.propagate(rooms.map((r) => ({ poly: polys.get(r.id)!.map(toPxP), kind: kindOf.get(r) })))
     for (const r of [...pending]) {
       const h = got[rooms.indexOf(r)]
-      if (h?.kind) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
+      if (h?.kind && roomy(r, h.kind)) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
     }
   }
   for (const r of [...pending]) {
     const h = vote(hintsIn.get(r.id) ?? [])
-    if (h) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
+    if (h && roomy(r, h.kind!)) fromHint(r, h), pending.splice(pending.indexOf(r), 1)
   }
   for (const r of pending) {
     const n = (count.get('other') ?? 0) + 1

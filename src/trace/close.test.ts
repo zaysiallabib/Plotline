@@ -49,6 +49,13 @@ describe('close.ts: open printed rooms closed on evidence, kept only at their pr
     const r = close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Living', kind: 'living', dims: SIZE }], sheet([1]))
     expect(r.closed[0].pieces.map((p) => [p.kind, p.heightM])).toEqual([['zone', 0]])
   })
+  test("s27: one thin line on a wall's own line, from its loose end to the wall ahead: a window in that wall (glass), the bedroom closes", () => {
+    // the top wall stops at x 2.5; a single pen line carries its line on to the east wall (a window drawn as one line)
+    const g = { vertices: [...threeWalls().vertices, v('e', 2.5, 1)], walls: [...threeWalls().walls, w('T', 'a', 'e')] }
+    const r = close(g, [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([1], 2.5, 5))
+    expect(r.closed.map((c) => c.pieces.map((p) => p.kind))).toEqual([['glass']])
+    expect(r.room({ x: 3, y: 2.5 })).toBeTruthy()
+  })
   test('a bedroom is never closed by a zone line (nothing drawn there): it stays open', () => {
     expect(close(threeWalls(), [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], sheet([1])).closed).toEqual([])
   })

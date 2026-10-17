@@ -311,7 +311,9 @@ export function outlinedWalls(g: Gray, k: number): (Gray & { halfPx: number }) |
   // (a line: 40 darker than the lightest pixel beside it — a grey 1 px outline too; solid: dark ink a wall wide)
   const li = lineInk(g, 40, 1)
   const dk = threshold(g, tD), hl = runLengths(dk, w, h, true), vl = runLengths(dk, w, h, false)
-  const solid = dk.map((v, i) => (v && ((hl[i] >= minSolid && hl[i] <= maxW) || (vl[i] >= minSolid && vl[i] <= maxW)) ? 1 : 0))
+  // (a dashed plot line is no solid wall: s27 cause 3 — it held the gate shut on Anandita)
+  const dash = dashMask(g, k, tD)
+  const solid = dk.map((v, i) => (v && !dash?.[i] && ((hl[i] >= minSolid && hl[i] <= maxW) || (vl[i] >= minSolid && vl[i] <= maxW)) ? 1 : 0))
   const hist = [new Float64Array(256), new Float64Array(256)] // fill darker than the floor | paper-like
   const mark = new Uint8Array(w * h)
   const fill: number[] = [], runs: number[] = [], found: number[] = [] // (crossings of the wall fill: base, step, from, to)
@@ -537,6 +539,63 @@ export function furnitureMask(g: Gray, k: number, t: number): Uint8Array | null 
     painted += n
   }
   return painted ? out : null
+}
+
+/** a dashed line (s27), metres: dashes this long, gaps up to gapM, at least n in a row of about one length, no thicker than thickM */
+export const DASH = { minM: 0.15, maxM: 1.5, gapM: 0.5, n: 5, thickM: 0.35 }
+
+/**
+ * Cause 3 of the session 27 run: a dashed or dash-dot line (a plot / site line round the building) is never a wall. Ink
+ * pixels (grey ≤ t) of a run along a row (column) DASH.minM–maxM long and at most DASH.thickM thick across, in a row of such
+ * runs each within gapM of the next, at least DASH.n of them dashes (over half the longest, none over 1.6 × the shortest
+ * dash; the dots of a dash-dot line between them are any length under that). A wall with its doors and windows has pieces
+ * of every length and wider gaps. null when none.
+ */
+export function dashMask(g: Gray, k: number, t: number): Uint8Array | null {
+  const { width: w, height: h, data } = g
+  const lo = DASH.minM * k, hi = DASH.maxM * k, gap = DASH.gapM * k, thick = DASH.thickM * k
+  const out = new Uint8Array(w * h)
+  let n = 0
+  for (const horiz of [true, false]) {
+    const U = horiz ? h : w, V = horiz ? w : h
+    const at = (u: number, v: number) => (horiz ? u * w + v : v * w + u)
+    const across = (u: number, v: number) => {
+      let a = u, b = u
+      while (a > 0 && data[at(a - 1, v)] <= t && u - a <= thick) a--
+      while (b < U - 1 && data[at(b + 1, v)] <= t && b - u <= thick) b++
+      return b - a + 1
+    }
+    const runs: number[] = []
+    const flush = (u: number) => {
+      if (runs.length >= 2 * DASH.n) {
+        // (the dashes: the runs over half the longest — the dots of a dash-dot line between them are any length under that)
+        let mx = 0, mn = Infinity, dashes = 0
+        for (let i = 0; i < runs.length; i += 2) mx = Math.max(mx, runs[i + 1] - runs[i])
+        for (let i = 0; i < runs.length; i += 2) if (runs[i + 1] - runs[i] >= mx / 2) (mn = Math.min(mn, runs[i + 1] - runs[i])), dashes++
+        if (dashes >= DASH.n && mx <= 1.6 * mn) for (let i = 0; i < runs.length; i += 2) for (let v = runs[i]; v < runs[i + 1]; v++) (out[at(u, v)] = 1), n++
+      }
+      runs.length = 0
+    }
+    for (let u = 0; u < U; u++) {
+      for (let v = 0; v < V; ) {
+        if (data[at(u, v)] > t) {
+          v++
+          continue
+        }
+        let e = v
+        while (e < V && data[at(u, e)] <= t) e++
+        const L = e - v
+        if (L > hi || (L >= lo && across(u, (v + e - 1) >> 1) > thick)) flush(u)
+        else if (L >= lo) {
+          if (runs.length && v - runs[runs.length - 1] > gap) flush(u)
+          runs.push(v, e)
+        }
+        v = e
+      }
+      flush(u)
+    }
+  }
+  return n ? out : null
 }
 
 /** hatch (founder rule 4, 2026-10-15), metres */

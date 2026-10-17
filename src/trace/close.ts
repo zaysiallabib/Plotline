@@ -577,9 +577,11 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       heightM: kind === 'zone' ? 0 : kind === 'low' ? (L.green ? CLOSE.planterM : CLOSE.railingM) : o.wallHeightM,
     })
     /** an open side a–b: glass / low wall / zone line by what is drawn along it */
-    const sideKind = (a: Pt, b: Pt): PieceKind => {
+    // (s27, founder 2026-10-09 "non-wall edges": ONE thin line on a wall's own line, from its loose end to the wall ahead, is a
+    // window drawn as a single line in that wall — glass, as two lines are; across a veranda's open side it is its railing)
+    const sideKind = (a: Pt, b: Pt, onLine = false): PieceKind => {
       const s = drawn(a, b)
-      return s === 'glass' ? 'glass' : s === 'line' && L.kind === 'balcony' ? 'low' : 'zone'
+      return s === 'glass' ? 'glass' : s === 'line' && L.kind === 'balcony' ? 'low' : s === 'line' && onLine ? 'glass' : 'zone'
     }
     for (const v of lv) {
       if (deg.get(v.id) !== 1 || d2(v, L.at) > R || !main(v.id)) continue
@@ -700,7 +702,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       .filter((p, i, all) => along(L.at, p.a, p.b).d <= reach && !all.slice(0, i).some((q) => (d2(p.a, q.a) < 0.05 && d2(p.b, q.b) < 0.05) || (d2(p.a, q.b) < 0.05 && d2(p.b, q.a) < 0.05)) && !crosses(V, lw, p.a, p.b) && !beside(p))
       .slice(0, CLOSE.tries)
       .map((p) => {
-        const q = p.kind === 'zone' ? { ...p, ...piece(p.a, p.b, sideKind(p.a, p.via ?? p.b), p.thM, p.via) } : p
+        const q = p.kind === 'zone' ? { ...p, ...piece(p.a, p.b, sideKind(p.a, p.via ?? p.b, carried.includes(p)), p.thM, p.via) } : p
         if (fresh.has(p)) fresh.add(q)
         return q
       })

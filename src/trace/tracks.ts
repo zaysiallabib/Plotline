@@ -124,6 +124,8 @@ export interface TrackOpts {
   /** plant pixels (the colour image's green, hints.ts greenMask) — whitened before anything is traced */
   plant?: Uint8Array
   /** glass pixels (blue / cyan glazing lines, solve.ts glassMask) — window evidence */
+  /** a window's frame band counts as glazing (s27): only on a picture traced at its own size — blown up, a wall's fill blurs into one */
+  frameBands?: boolean
   glass?: Uint8Array
   /** grey ≤ this is ink (default walls.ts inkThreshold) */
   darkMax?: number
@@ -666,7 +668,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
         if (seen.has(key)) continue
         seen.add(key)
         // (a double door's jamb is a wall, not a stub: two arcs by chance — a WC and a basin — face each other across a floor)
-        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H, iv.f1 - iv.f0 >= Math.max(0.3 * k, 2 * iv.th))
+        const cls = classifyGap(P(u0), P(u1), nb ? Math.max(iv.th, nb.th) : iv.th, k, arcAt, grayAt, opts.glass, W, H, iv.f1 - iv.f0 >= Math.max(0.3 * k, 2 * iv.th), opts.frameBands)
         gaps.push({ horiz: T.horiz, c: T.c, u0, u1, node0: dir > 0 ? face : node, node1: dir > 0 ? node : face, thPx: iv.th, ...(jog ? { jog } : {}), ...cls })
       }
   }
@@ -810,6 +812,8 @@ export function classifyGap(
   H: number,
   /** a double door may be read here */
   double = true,
+  /** a window's frame band (one pane line in a light band) is glazing too (TrackOpts.frameBands) */
+  bands = false,
 ): Pick<Gap, 'kind' | 'conf' | 'hingeAt' | 'swingTo'> {
   const gap = Math.hypot(b.x - a.x, b.y - a.y)
   const ux = (b.x - a.x) / gap, uy = (b.y - a.y) / gap
@@ -832,7 +836,11 @@ export function classifyGap(
     }
     if (n && hit / n >= 0.6) return { kind: 'window', conf: 0.7 }
   }
-  if (glazing(a, ux, uy, gap, th, grayAt).lines >= 2) return { kind: 'window', conf: 0.6 }
+  // (s27: a glass band — a light frame band and its pane line drawn as one, the photo-render brochures' windows — counts
+  // as the walls.ts and close.ts glazing rules count it — only where the picture is traced at its own size (the bands flag): on a
+  // small one blown up first (Magnifico, Water Lily, Kanakchapa, La Reina) a thin wall's own fill blurs into such a band)
+  const gz = glazing(a, ux, uy, gap, th, grayAt)
+  if (gz.lines >= 2 || (bands && gz.band >= Math.max(3, 0.05 * pxPerM))) return { kind: 'window', conf: 0.6 }
   return { kind: 'unknown', conf: 0 }
 }
 
