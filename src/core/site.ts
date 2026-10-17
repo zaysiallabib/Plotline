@@ -91,13 +91,25 @@ export function bearingInPlan(northDeg: number, deg: number): Pt {
   return { x: Math.sin(r), y: -Math.cos(r) }
 }
 
-/** The site's neighbours and roads in the unit's plan frame. */
+/**
+ * The site's neighbours and roads in the unit's plan frame. A neighbour reaching onto the drawing's box (1 m round it) is
+ * what stood on the plot before: left out (the map keeps it; Fetch again brings it back if the plot moves).
+ */
 export function sitePlan(unit: Unit): { buildings: (SiteBuilding & { plan: Pt[] })[]; roads: (SiteRoad & { plan: Pt[] })[] } {
   const site = unit.site
   if (!site) return { buildings: [], roads: [] }
   const a = siteAnchor(unit)
+  const b0 = unit.vertices.length ? unitBounds(unit) : { minX: a.x, minY: a.y, maxX: a.x, maxY: a.y }
+  const box = [
+    { x: b0.minX - 1, y: b0.minY - 1 },
+    { x: b0.maxX + 1, y: b0.minY - 1 },
+    { x: b0.maxX + 1, y: b0.maxY + 1 },
+    { x: b0.minX - 1, y: b0.maxY + 1 },
+  ]
+  const onPlot = (poly: Pt[]) =>
+    poly.some((p) => pointInPolygon(p, box)) || box.some((p) => pointInPolygon(p, poly)) || poly.some((p, i) => box.some((q, j) => meets(p, poly[(i + 1) % poly.length], q, box[(j + 1) % 4])))
   return {
-    buildings: site.buildings.map((b) => ({ ...b, plan: b.pts.map((p) => siteToPlan(unit, p, a)) })),
+    buildings: site.buildings.map((b) => ({ ...b, plan: b.pts.map((p) => siteToPlan(unit, p, a)) })).filter((b) => !onPlot(b.plan)),
     roads: site.roads.map((r) => ({ ...r, plan: r.pts.map((p) => siteToPlan(unit, p, a)) })),
   }
 }

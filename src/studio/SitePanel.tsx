@@ -149,6 +149,8 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
   const toSite = (p: Pt): Pt => ({ x: (p.x - anchor.x) * cs + (p.y - anchor.y) * sn, y: -(p.x - anchor.x) * sn + (p.y - anchor.y) * cs })
   const vs = new Map(unit.vertices.map((v) => [v.id, v]))
   const block = site?.buildings.find((b) => b.id === sel)
+  /** the neighbours the 3D draws (one on the drawing's own spot is left out) */
+  const kept = new Set(core.sitePlan(unit).buildings.map((b) => b.id))
   const road = site?.roads.find((r) => r.id === sel)
 
   return (
@@ -193,8 +195,8 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
                   </polyline>
                 ))}
                 {site.buildings.map((b) => (
-                  <polygon key={b.id} className={`site-block${b.from === 'guess' ? ' guess' : ''}${sel === b.id ? ' on' : ''}`} points={pts(b.pts)} onClick={(e) => (e.stopPropagation(), setSel(b.id))}>
-                    <title>{`${b.heightM} m high — ${FROM[b.from]}`}</title>
+                  <polygon key={b.id} className={`site-block${b.from === 'guess' ? ' guess' : ''}${kept.has(b.id) ? '' : ' gone'}${sel === b.id ? ' on' : ''}`} points={pts(b.pts)} onClick={(e) => (e.stopPropagation(), setSel(b.id))}>
+                    <title>{kept.has(b.id) ? `${b.heightM} m high — ${FROM[b.from]}` : 'Stands where your drawing is: left out of the 3D'}</title>
                   </polygon>
                 ))}
                 {unit.walls.map((w) => {

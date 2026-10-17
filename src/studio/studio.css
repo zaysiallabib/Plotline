@@ -321,3 +321,4 @@
 .north-arrow .head { fill: var(--accent); }
 .north-arrow text { fill: var(--accent); font-size: 14px; font-weight: 600; }
 .north-arrow .dot { fill: var(--accent); stroke: #000; }
+.site-block.gone { fill: none; stroke: #333; stroke-opacity: 0.4; stroke-dasharray: 1 2; }

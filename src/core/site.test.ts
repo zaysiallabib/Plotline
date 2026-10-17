@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import saved from '../data/fixtures/overpass-banani.json'
 import { deriveRooms } from './graph'
-import { roomWind, sheltered, siteFromOverpass, siteToPlan, sunAt, waysFromOsmMap, windFromDaily } from './site'
+import { roomWind, sheltered, siteFromOverpass, sitePlan, siteToPlan, sunAt, waysFromOsmMap, windFromDaily } from './site'
 import type { Site, Unit } from './types'
 
 /** a real Overpass answer round Banani, trimmed to 13 ways (heights, floors, none, roads, a footway) */
@@ -174,6 +174,14 @@ describe('roomWind', () => {
   test('true north turned to plan-right: the wind from the east comes in at the bottom window', () => {
     const [r] = roomWind({ ...u, northDeg: 90 }, rooms, 90) // north = plan-right, so east = plan-down
     expect(r.inlets.map((o) => o.openingId)).toEqual(['ws'])
+  })
+})
+
+describe('sitePlan', () => {
+  test('a neighbour reaching onto the drawing (the old house, a block the map puts on the plot) is left out; one 20 m off stays', () => {
+    const sq = (x: number, y: number, s = 4) => [{ x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s }]
+    const site: Site = { lat: 23.79, lon: 90.4, roads: [], buildings: [{ id: 'on', heightM: 9, from: 'guess', pts: sq(1, 1) }, { id: 'edge', heightM: 9, from: 'guess', pts: sq(2.5, -1) }, { id: 'off', heightM: 9, from: 'guess', pts: sq(20, 0) }] }
+    expect(sitePlan({ ...box(), site }).buildings.map((b) => b.id)).toEqual(['off'])
   })
 })
 

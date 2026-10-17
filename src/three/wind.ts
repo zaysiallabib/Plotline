@@ -14,8 +14,8 @@ const OUT_M = 1.6
 /** one dash and its gap along a line, m */
 const PERIOD_M = 2.2
 /** a calm, desaturated blue, as the wind rose's */
-const COLOR = '#9db8d2'
-const OPACITY = 0.6
+const COLOR = '#4a6f94'
+const OPACITY = 0.9
 /** a line at a sheltered window: this much of the others' opacity */
 const SHELTERED = 0.35
 

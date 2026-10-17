@@ -3,7 +3,7 @@
  * period label, and Wind: the month's wind rose (WindRose) and its arrows through the flat. The sun is drawn where it
  * stands at the site on that day and hour (PlotlineScene.setTimeOfDay); the wind is the date's month.
  */
-import { compassName, type WindMonth } from '../core'
+import type { WindMonth } from '../core'
 
 interface Props {
   hour: number
@@ -96,7 +96,7 @@ export function WindRose({ months, month, northDeg, source, crossRooms, onMonth 
         <div className="wind-pick">
           {MONTHS[month]} · {point16(w.fromDeg)} · {w.speedMs} m/s
         </div>
-        <div className="muted small">{w.steady < 0.5 ? 'This month the wind turns a lot: no steady direction.' : `Mostly from the ${compassName(w.fromDeg)}.`}</div>
+        <div className="muted small">{w.steady < 0.5 ? 'It turns a lot this month: no steady direction.' : 'Steady most days of the month.'}</div>
         <div className="muted small">{crossRooms.length ? `Cross ventilation: ${crossRooms.join(', ')}` : 'No room has the wind in and out.'}</div>
         <div className="muted small">{source}. A guide, not a wind simulation.</div>
       </div>
