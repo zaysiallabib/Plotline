@@ -112,3 +112,32 @@ export const vertexById = (vs: Vertex[], id: Id): Vertex => {
   if (!v) throw new Error(`vertex ${id} not found`)
   return v
 }
+
+/**
+ * The site (Studio → Site, founder 2026-10-18): the sun's position for a place and time (NOAA), the map's neighbours and
+ * roads (Overpass) and the wind by month (Open-Meteo) in metres from the plot, turned into the plan by Unit.northDeg; which
+ * outside openings take the wind and which let it out (cross ventilation), and which stand behind a block upwind.
+ */
+export {
+  DHAKA,
+  DHAKA_WIND,
+  sunPosition,
+  sunAt,
+  siteAnchor,
+  siteToPlan,
+  bearingInPlan,
+  sitePlan,
+  siteFromOverpass,
+  waysFromOsmMap,
+  windFromDaily,
+  emptySite,
+  setBlockHeight,
+  removeFromSite,
+  roomWind,
+  sheltered,
+  compassName,
+  SHELTER_M,
+  HEIGHT_GUESS_M,
+  type RoomWind,
+  type WindOpening,
+} from './site'

@@ -45,6 +45,8 @@ interface Props {
   floor?: number
   /** under the room chip: "Floor 3", or a level's name ("Ground floor", "Basement 1", "Rooftop") */
   floorLabel?: string
+  /** the room's wind while Wind is on ("Cross ventilation" …), else null */
+  roomNote?: string | null
   /** Building view floor picker, top down; null: the flat is not part of a tower (no Building button) */
   floors: { k: number; label: string }[] | null
   picked: number
@@ -88,6 +90,7 @@ export default function Hud(p: Props) {
           <div className="glass chip-room">
             <div className="room-name">{p.room.name}</div>
             {p.floorLabel && <div className="muted">{p.floorLabel}</div>}
+            {p.roomNote && <div className="wind-note">{p.roomNote}</div>}
             {p.room.printedSize && <div className="muted">{p.room.printedSize}</div>}
             <div className="muted">
               {p.room.areaSqm.toFixed(1)} m² · {sqft(p.room.areaSqm)} sqft

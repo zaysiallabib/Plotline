@@ -30,6 +30,8 @@ import { meterUVs, setGlassSky } from './openings'
 export type Quality = 'high' | 'low'
 
 const STOREY_M = 3.2
+/** the site's neighbours are fetched 250 m round the plot: a block that far toward a low sun can still shade the flat */
+export const SITE_REACH_M = 300
 const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
@@ -97,6 +99,8 @@ export class Look {
   private lights: { light: THREE.SpotLight; base: number; id: string }[] = []
   private readonly fitBox = new THREE.Box3()
   private topY = 3
+  /** how far toward the sun the shadow box reaches past the flat: a site's blocks shade it (SITE_REACH_M), else 1 m */
+  private reach = 1
   private readonly v = new THREE.Vector3()
   /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
   private shadowKey = NaN
@@ -162,6 +166,7 @@ export class Look {
   /** The Building view's street (building.ts streetY: under a traced ground floor's lowest floor) for the ground plane; null: the unit's own again. */
   setStreetY(y: number | null): void {
     this.ground.position.y = y ?? this.groundY
+    if (this.street?.userData.site) this.street.visible = y === null // the Building view draws the site round the tower itself
   }
   private groundY = 0
 
@@ -276,7 +281,10 @@ export class Look {
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)
     this.street = buildStreet(unit, b, this.ground.position.y)
-    this.indoor.add(this.street)
+    // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view, and the
+    // shadow box reaches back toward the sun to take their shadows (fitShadow)
+    ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
+    this.reach = this.street.userData.site ? SITE_REACH_M : 1
 
     // a light at each room's ceiling fixture (flush light, fan or pendant: presets.ts places one in every lit room),
     // biggest non-bath rooms first, then baths, up to the cap
@@ -401,7 +409,7 @@ export class Look {
     cam.right = hi.x
     cam.bottom = lo.y
     cam.top = hi.y
-    cam.near = Math.max(0.1, -hi.z - 1)
+    cam.near = Math.max(0.1, -hi.z - this.reach)
     cam.far = -lo.z + 1
     cam.updateProjectionMatrix()
   }

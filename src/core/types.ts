@@ -238,6 +238,52 @@ export interface Unit {
   priceBdt?: number
   /** the source drawing (public/ path) — used by the Studio as a tracing layer */
   planImage?: { src: string; pxPerM: number; originPx: { x: number; y: number } }
+  /** where the building stands (Studio → Site), with the map's neighbours and the wind, cached: a buyer link never refetches */
+  site?: Site
+}
+
+/**
+ * The plot on the map (founder 2026-10-18) and what was fetched for it once. Site frame: metres from the plot point,
+ * x → east, y → SOUTH (plan-like, y down); core.siteToPlan turns it into the unit's plan by Unit.northDeg (true north
+ * stays on the unit: the one north everything reads). The plot point lands on the unit's centre.
+ */
+export interface Site {
+  lat: number
+  lon: number
+  /** the site's clock: hours from UTC (Open-Meteo's answer for the spot; absent = round(lon / 15)) */
+  utcOffsetH?: number
+  /** ISO time the map and the wind were fetched */
+  fetchedAt?: string
+  /** neighbour footprints (OpenStreetMap), none containing the plot point */
+  buildings: SiteBuilding[]
+  /** road centre lines (OpenStreetMap) */
+  roads: SiteRoad[]
+  /** prevailing wind by month, January first (Open-Meteo, the last ten full years); absent = core.DHAKA_WIND */
+  wind?: WindMonth[]
+}
+
+export interface SiteBuilding {
+  id: Id
+  /** footprint, site frame (m) */
+  pts: { x: number; y: number }[]
+  heightM: number
+  /** where its height comes from: the map's height tag, its floors × 3 m, a guess (3 floors = 9 m), or typed by staff */
+  from: 'height' | 'levels' | 'guess' | 'typed'
+}
+
+export interface SiteRoad {
+  id: Id
+  /** centre line, site frame (m) */
+  pts: { x: number; y: number }[]
+  widthM: number
+  name?: string
+}
+
+/** One month's wind: where it comes FROM (degrees clockwise from true north), mean speed at 10 m (m/s), how steady (0 = from all sides, 1 = always that way). */
+export interface WindMonth {
+  fromDeg: number
+  speedMs: number
+  steady: number
 }
 
 /**

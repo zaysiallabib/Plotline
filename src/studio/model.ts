@@ -152,7 +152,7 @@ export type Action =
   | { type: 'set-view'; view: View }
   | { type: 'set-plan-image'; image: PlanImage | null }
   | { type: 'set-scale'; pxPerM: number; originPx?: Pt }
-  | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg'>> }
+  | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg' | 'site'>> }
   | { type: 'select'; ids: Id[]; add?: boolean }
   /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
   | { type: 'chain-start'; at: Target; wall?: WallType }
@@ -1788,6 +1788,8 @@ export const normalizeUnit = (u: Unit): Unit => {
     id: str(u.id) ? u.id : newId(),
     projectName: u.projectName ?? '',
     northDeg: num(u.northDeg) ? u.northDeg : 0,
+    // a hand-edited site the 3D could not draw is dropped (Studio → Site fetches it again)
+    site: u.site && num(u.site.lat) && num(u.site.lon) && Array.isArray(u.site.buildings) && Array.isArray(u.site.roads) ? u.site : undefined,
     areaSqft: num(u.areaSqft) ? u.areaSqft : 0,
     roomLabels: u.roomLabels ?? [],
     furniture: u.furniture ?? [],
