@@ -24,7 +24,7 @@ export interface TraceJob {
   mock?: boolean
 }
 export type TraceIn = TraceJob | { type: 'prepare'; job: Omit<TraceJob, 'pickPx'> } | { type: 'hover'; px: Px; seq: number } | { type: 'pick'; px: Px } | { type: 'floor' }
-export type Preview = { polys: Px[][]; names: { at: Px; text: string }[] }
+export type Preview = { polys: Px[][]; names: { at: Px; text: string }[]; region: { x: number; y: number; w: number; h: number }[] }
 export type TraceMsg =
   | { type: 'progress'; stage: string; fraction: number }
   | { type: 'ready' }
@@ -53,7 +53,7 @@ onmessage = async ({ data }: MessageEvent<TraceIn>) => {
       return post({ type: 'ready' })
     }
     // (a spot no flat can be picked from previews nothing — the click there still reports why)
-    if (data.type === 'hover') return void (ready && post({ type: 'preview', seq: data.seq, ...(await preview(ready, data.px).catch(() => ({ polys: [], names: [] }))) }))
+    if (data.type === 'hover') return void (ready && post({ type: 'preview', seq: data.seq, ...(await preview(ready, data.px).catch(() => ({ polys: [], names: [], region: [] }))) }))
     // a click before the sheet is ready waits for it (its progress keeps coming)
     if (import.meta.env.DEV && job?.mock) return post({ type: 'done', result: await (await mockOf())(job.gray, { ...optsOf(job), pickPx: data.type === 'pick' ? data.px : undefined }) })
     if (data.type === 'floor') return post({ type: 'done', result: await pickFloor(await prepared!) })

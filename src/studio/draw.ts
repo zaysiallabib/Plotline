@@ -125,8 +125,9 @@ export interface DrawArgs {
   furniture?: { pieces: FurniturePlacement[]; drag: Move | null }
   /** a review row's spot (plan m), ringed */
   mark?: Pt | null
-  /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint */
-  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[] } | null
+  /** Auto-trace pick mode: the flat a click at the pointer picks (plan px), tinted, its room names faint; `region`: the floor
+   *  its flood reached (plan px rectangles), tinted with the rooms as one area, open or closed */
+  preview?: { polys: Pt[][]; names: { at: Pt; text: string }[]; region?: { x: number; y: number; w: number; h: number }[] } | null
   /** the drawing's flats: each tinted in its colour, its name once above it */
   flats?: Flat[]
 }
@@ -520,20 +521,28 @@ export function draw(a: DrawArgs): void {
   }
 
   if (a.preview) {
-    ctx.beginPath()
+    // one path, one fill: the rooms and the flood's rectangles tint as one area (all wound the same way, so nonzero
+    // never cuts a hole where they overlap); only the rooms are outlined
+    const rooms = new Path2D()
     for (const poly of a.preview.polys) {
-      poly.forEach((p, i) => {
+      const ps = signedArea(poly) < 0 ? [...poly].reverse() : poly
+      ps.forEach((p, i) => {
         const q = pxToScreen(frame, p)
-        if (i) ctx.lineTo(q.x, q.y)
-        else ctx.moveTo(q.x, q.y)
+        if (i) rooms.lineTo(q.x, q.y)
+        else rooms.moveTo(q.x, q.y)
       })
-      ctx.closePath()
+      rooms.closePath()
+    }
+    const area = new Path2D(rooms)
+    for (const r of a.preview.region ?? []) {
+      const p = pxToScreen(frame, { x: r.x, y: r.y }), q = pxToScreen(frame, { x: r.x + r.w, y: r.y + r.h })
+      area.rect(p.x, p.y, q.x - p.x, q.y - p.y)
     }
     ctx.fillStyle = 'rgba(232,193,112,0.18)'
-    ctx.fill()
+    ctx.fill(area)
     ctx.strokeStyle = C.accent
     ctx.lineWidth = 1.5
-    ctx.stroke()
+    ctx.stroke(rooms)
     ctx.font = '300 12px Inter, system-ui, sans-serif'
     ctx.fillStyle = 'rgba(242,242,240,0.6)'
     for (const n of a.preview.names) {
