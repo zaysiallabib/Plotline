@@ -69,7 +69,7 @@ describe('Local AI (session 27): the model on this PC answers a Check-these row'
     const { mem, store } = memory()
     const { f, calls } = ollama('{"answer":"make-it-a-wall","why":"a full wall is drawn"}')
     const { note, fix } = await askRow(s1, 'r', 'data:image/png;base64,AAAA', row.message, () => s1, store, LOCAL, f)
-    expect(calls[0].init!.body as string).toContain('make-it-a-wall: Make it a wall')
+    expect(calls[0].init!.body as string).toMatch(/- make-it-a-wall: .*- make-it-a-low-wall: .*- take-it-out: .*- looks-right: /)
     expect(fix).toBe('make-it-a-wall')
     expect(note).toMatchObject({ row: row.message, label: 'Make it a wall', why: 'a full wall is drawn', before: u })
     const t = applyAnswer(s1, 'r', fix!)

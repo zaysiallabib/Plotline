@@ -100,12 +100,12 @@ export interface AIAnswer {
 export async function askLocalAI({ image, question, choices }: { image: string; question: string; choices: Choice[] }, ai: LocalAI = localAISettings(), f: Fetch = fetch): Promise<AIAnswer> {
   const t0 = Date.now()
   const ids = choices.map((c) => c.id)
-  const content = `${question}\n\nChoices:\n${choices.map((c) => `- ${c.id}: ${c.label}`).join('\n')}\n\nReply with JSON only: {"answer": "<one id from the list, or not-sure>", "why": "<10 words at most>"}`
+  const content = `${question}\n\nChoices:\n${choices.map((c) => `- ${c.id}: ${c.label}`).join('\n')}\n\nReply with JSON only: {"why": "<what is drawn at the ring, 10 words at most>", "answer": "<one id from the list>"}. Answer "not-sure" only if the picture is unreadable at that spot.`
   const body = {
     model: ai.model.trim(),
     stream: false,
     // Ollama's structured output: the reply can only be this shape (the id is still checked below)
-    format: { type: 'object', properties: { answer: { type: 'string', enum: [...ids, 'not-sure'] }, why: { type: 'string' } }, required: ['answer', 'why'] },
+    format: { type: 'object', properties: { why: { type: 'string' }, answer: { type: 'string', enum: [...ids, 'not-sure'] } }, required: ['why', 'answer'] },
     options: { temperature: 0 },
     messages: [{ role: 'user', content, images: [image.replace(/^data:[^,]*,/, '')] }],
   }
@@ -148,15 +148,15 @@ export async function askRow(s: StudioState, rowId: string, image: string, row: 
   return { note: { ...note, label: a.label, ...(fix && { before: s.unit }) }, fix }
 }
 
-/** a row's question: what the tracer says there, about the ringed spot */
+/** a row's question: what the tracer says there, about the ringed spot; the drawing is the truth */
 export const rowQuestion = (row: string) =>
-  `This picture is cut from an apartment floor plan (a sales brochure sheet). The red ring marks the spot in question. A program that traced the drawing into walls and rooms says: "${row}". Looking at the drawing, which answer is right?`
+  `This picture is a piece of an apartment floor plan drawing (a sales brochure). The red ring marks one spot. A program traced the drawing into walls, doors, windows and rooms and is unsure about that spot. It says: "${row}". The drawing is always right; the program may be wrong. How plans draw things: a wall is a thick dark or grey band; a door is a gap in a wall with a thin quarter-circle arc (its swing) beside it; a window is two or three thin parallel lines across a gap in a wall; an open passage is a gap with nothing drawn in it; a railing or planter edge is a thin line; dashed lines are not walls. First say what is drawn at the red ring, then pick what the program should do so that it matches the drawing.`
 
 /** a row's answers as choices: a fix by its button and what it does; Looks right / Show me said plainly */
 export const rowChoices = (answers: Answer[]): Choice[] =>
   answers.map((a) => ({
     id: a.id,
-    label: a.id === LOOKS_RIGHT ? 'The program is right here; nothing to change' : a.id === SHOW_ME ? 'The program is wrong but no other choice fixes it; a person must draw it' : `${a.label}: ${a.title ?? ''}`,
+    label: a.id === LOOKS_RIGHT ? 'Change nothing: the program already matches the drawing here' : a.id === SHOW_ME ? 'Change nothing now, a person draws it: the drawing shows something the program missed (for example a room closed on all sides) and no other choice fixes it' : `Change it: ${a.title ?? a.label}`,
   }))
 
 /**
