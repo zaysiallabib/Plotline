@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import saved from '../data/fixtures/overpass-banani.json'
 import { deriveRooms } from './graph'
-import { roomWind, sheltered, siteFromOverpass, sitePlan, siteToPlan, sunAt, waysFromOsmMap, windFromDaily } from './site'
+import { DHAKA_WIND, monthLine, roomWind, seasonNote, seasonOf, sheltered, siteFromOverpass, sitePlan, siteToPlan, sunAt, waysFromOsmMap, windFromDaily, windSentence } from './site'
 import type { Site, Unit } from './types'
 
 /** a real Overpass answer round Banani, trimmed to 13 ways (heights, floors, none, roads, a footway) */
@@ -18,6 +18,28 @@ describe('sunAt', () => {
     expect(dec.altDeg).toBeCloseTo(42.8, 0)
     expect(dec.azDeg).toBeGreaterThan(175) // due south, a minute or so after the clock's noon
     expect(dec.azDeg).toBeLessThan(185)
+  })
+
+  test('21 June 15:00 on the Dhaka clock (UTC+6, not UTC): high in the west, about 49° up at 279° — never near the horizon', () => {
+    const s = sunAt(DHAKA, '2026-06-21', 15)
+    expect(s.altDeg).toBeGreaterThan(45)
+    expect(s.altDeg).toBeLessThan(53)
+    expect(s.azDeg).toBeGreaterThan(270)
+    expect(s.azDeg).toBeLessThan(285)
+    // read as UTC by mistake it would be 21:00 in Dhaka: dark
+    expect(sunAt({ ...DHAKA, utcOffsetH: 0 }, '2026-06-21', 15).altDeg).toBeLessThan(0)
+  })
+
+  test('at the equinox it agrees with the old one-path sun (Dhaka latitude, hour angle from 12:00) within 3°', () => {
+    const lat = (23.8 * Math.PI) / 180
+    for (const hour of [8, 10, 12, 14, 15.5, 17]) {
+      const H = ((hour - 12) * 15 * Math.PI) / 180
+      const [e, n, u] = [-Math.sin(H), -Math.sin(lat) * Math.cos(H), Math.cos(lat) * Math.cos(H)]
+      const old = { alt: (Math.asin(u) * 180) / Math.PI, az: ((Math.atan2(e, n) * 180) / Math.PI + 360) % 360 }
+      const s = sunAt(DHAKA, '2026-03-20', hour)
+      expect(Math.abs(s.altDeg - old.alt), `alt at ${hour}`).toBeLessThan(3)
+      if (hour !== 12) expect(Math.abs(s.azDeg - old.az), `az at ${hour}`).toBeLessThan(3) // at noon the azimuth swings through south
+    }
   })
 
   test('morning in the east, afternoon in the west; under the horizon at night', () => {
@@ -202,5 +224,53 @@ describe('sheltered', () => {
   test('farther than 30 m, or downwind: no shelter', () => {
     expect(sheltered({ ...box(), site: site(40, 30) }, at, 180)).toBe(false)
     expect(sheltered({ ...box(), site: site(20, 30) }, at, 0)).toBe(false)
+  })
+})
+
+describe('the wind in words', () => {
+  test('the room sentence: in at the side facing the wind, out at the far side; none out: it stays', () => {
+    const u = box()
+    const rooms = deriveRooms(u)
+    expect(windSentence(roomWind(u, rooms, 180)[0], 0)).toBe('Wind comes in at the south window and goes out through the north window')
+    expect(windSentence(roomWind(u, rooms, 90)[0], 0)).toBe('No window or door here faces the wind')
+    const oneWindow = { ...u, walls: u.walls.map((w) => (w.id === 'top' ? { ...w, openings: [] } : w)) }
+    expect(windSentence(roomWind(oneWindow, deriveRooms(oneWindow), 180)[0], 0)).toBe('Wind comes in at the south window — no way out: it stays in the room')
+    // north turned to plan-right: the bottom window is on the east side
+    expect(windSentence(roomWind({ ...u, northDeg: 90 }, rooms, 90)[0], 90)).toBe('Wind comes in at the east window and goes out through the west window')
+  })
+
+  test('a door onto a balcony is "the balcony door"', () => {
+    const u = box()
+    const withBalcony: Unit = {
+      ...u,
+      vertices: [...u.vertices, { id: 'e', x: 4, y: 6 }, { id: 'f', x: 0, y: 6 }],
+      walls: [
+        ...u.walls.map((w) => (w.id === 'bottom' ? { ...w, openings: [{ id: 'sl', kind: 'slider' as const, offsetM: 1, widthM: 2, heightM: 2.1, sillM: 0 }] } : w)),
+        { id: 'r2', a: 'c', b: 'e', thicknessM: 0.1, heightM: 1.1, openings: [] },
+        { id: 'b2', a: 'e', b: 'f', thicknessM: 0.1, heightM: 1.1, openings: [] },
+        { id: 'l2', a: 'f', b: 'd', thicknessM: 0.1, heightM: 1.1, openings: [] },
+      ],
+      roomLabels: [...u.roomLabels, { id: 'bal', name: 'Balcony', kind: 'balcony', x: 2, y: 5 }],
+    }
+    const rw = roomWind(withBalcony, deriveRooms(withBalcony), 180).find((r) => r.roomId === 'bed')
+    expect(windSentence(rw, 0)).toBe('Wind comes in at the south balcony door and goes out through the north window')
+  })
+
+  test('seasons by month and site: the monsoon four in Dhaka, the temperate four elsewhere, turned south of the equator', () => {
+    expect([0, 3, 5, 9, 11].map((m) => seasonOf(m))).toEqual(['winter', 'pre-monsoon', 'monsoon', 'post-monsoon', 'winter'])
+    expect(seasonOf(6, { lat: 51.5, lon: 0 })).toBe('summer')
+    expect(seasonOf(6, { lat: -33.9, lon: 151.2 })).toBe('winter')
+  })
+
+  test('the month line and the season note from the Dhaka table', () => {
+    expect(monthLine(5, DHAKA_WIND)).toBe('June · monsoon · steady south-south-east breeze, 3.5 m/s')
+    expect(monthLine(0, DHAKA_WIND)).toBe('January · winter · steady light north-west wind, 2 m/s')
+    expect(monthLine(9, DHAKA_WIND)).toBe('October · post-monsoon autumn · changeable light east wind, 1.9 m/s')
+    expect(seasonNote(5, DHAKA_WIND)).toBe('hot and humid, about 28 °C and 85 % humidity')
+    expect(seasonNote(0, DHAKA_WIND)).toBe('cool, about 20 °C and 73 % humidity')
+    expect(seasonNote(3, DHAKA_WIND)).toBe('hot, about 27 °C and 73 % humidity')
+    const bare = DHAKA_WIND.map(({ fromDeg, speedMs, steady }) => ({ fromDeg, speedMs, steady }))
+    expect(seasonNote(5, bare, { lat: 23.79, lon: 90.4 })).toBe('hot and humid, about 28 °C and 85 % humidity') // near Dhaka: its table
+    expect(seasonNote(5, bare, { lat: 22.3, lon: 114.2 })).toBeNull() // Hong Kong, no temperatures fetched
   })
 })

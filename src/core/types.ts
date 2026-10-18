@@ -284,6 +284,9 @@ export interface WindMonth {
   fromDeg: number
   speedMs: number
   steady: number
+  /** the month's mean air temperature (°C) and relative humidity (%) at 2 m, when fetched with it */
+  tempC?: number
+  rh?: number
 }
 
 /**

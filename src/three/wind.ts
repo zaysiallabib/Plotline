@@ -15,9 +15,20 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 /** metres outside an opening where a line starts (and fades in) / ends past the far one (and fades out) */
 const OUT_M = 1.6
 /** one dash and its gap along a line, m */
-const PERIOD_M = 2.2
-/** a calm, desaturated blue, as the wind rose's */
-const COLOR = '#46709a'
+const PERIOD_M = 1.4
+/**
+ * The lines' tint by season, quiet: the monsoon a cool blue, winter a pale grey-blue, the hot months a muted terracotta, the
+ * months between a slate.
+ */
+export const SEASON_TINT: Record<core.Season, string> = {
+  monsoon: '#46709a',
+  winter: '#7d8fa3',
+  'pre-monsoon': '#b06f45',
+  summer: '#b06f45',
+  'post-monsoon': '#5c7286',
+  spring: '#5c7286',
+  autumn: '#5c7286',
+}
 const OPACITY = 0.95
 /** screen pixels (CSS) */
 const WIDTH_PX = 2
@@ -29,11 +40,10 @@ export class WindFlow extends THREE.Group {
   private readonly lines: LineSegments2
   private readonly speed: number
 
-  constructor(unit: Unit, rooms: Room[], month: WindMonth) {
+  constructor(unit: Unit, rooms: Room[], month: WindMonth, tint = SEASON_TINT.monsoon) {
     super()
     const blocks = core.sitePlan(unit).buildings
     const byId = new Map(rooms.map((r) => [r.id, r]))
-    const travel = core.bearingInPlan(unit.northDeg, month.fromDeg + 180)
     const pos: number[] = []
     /** per segment end: its distance along its line; its colour carries (fade × shelter, the line's dash phase, 0) */
     const dist: number[] = []
@@ -41,8 +51,7 @@ export class WindFlow extends THREE.Group {
     let lane = 0
     for (const rw of core.roomWind(unit, rooms, month.fromDeg)) {
       const r = byId.get(rw.roomId)!
-      // where it leaves: the outlet farthest downwind
-      const exit = rw.outlets.reduce<core.WindOpening | null>((best, e) => (!best || dot(e.at, travel) > dot(best.at, travel) ? e : best), null)
+      const exit = rw.exit // where it leaves: the outlet farthest downwind (core.roomWind)
       for (const o of rw.inlets) {
         const k = core.sheltered(unit, o.at, month.fromDeg, blocks) ? SHELTERED : 1
         const side = { x: -o.out.y, y: o.out.x }
@@ -65,7 +74,8 @@ export class WindFlow extends THREE.Group {
           if (exit) {
             const b = on(exit, xs)
             // a gentle bow half-way, the same way for every line of the opening: a breeze, not a ruler
-            const mid = { x: (a.x + b.x) / 2 + side.x * 0.25, y: (a.y + b.y) / 2 + side.y * 0.25, h: (a.h + b.h) / 2 }
+            // half-way they fan out (the lane × 1.2 m) and bow a little, the same way: dense at the two openings, a breeze between
+            const mid = { x: (a.x + b.x) / 2 + side.x * (0.25 + f * 1.2), y: (a.y + b.y) / 2 + side.y * (0.25 + f * 1.2), h: (a.h + b.h) / 2 }
             pts.push(V(mid), V(b), V(b, exit.out, OUT_M))
           } else {
             // no way out: it runs in toward the room's middle and dies there
@@ -92,7 +102,7 @@ export class WindFlow extends THREE.Group {
     geo.setAttribute('instanceDistanceStart', new THREE.InterleavedBufferAttribute(d, 1, 0))
     geo.setAttribute('instanceDistanceEnd', new THREE.InterleavedBufferAttribute(d, 1, 1))
     // three's screen-width lines; their hard dash swapped for a soft one that drifts, faded by the colour's red (above)
-    this.mat = new LineMaterial({ color: COLOR, linewidth: WIDTH_PX, dashed: true, vertexColors: true, transparent: true, opacity: OPACITY, depthWrite: false })
+    this.mat = new LineMaterial({ color: tint, linewidth: WIDTH_PX, dashed: true, vertexColors: true, transparent: true, opacity: OPACITY, depthWrite: false })
     this.mat.onBeforeCompile = (sh) => {
       sh.fragmentShader = sh.fragmentShader
         .replace('if ( mod( vLineDistance + dashOffset, dashSize + gapSize ) > dashSize ) discard; // todo - FIX', '')

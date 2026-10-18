@@ -47,6 +47,8 @@ export function slowFrames(ms: number[]): boolean {
 const STOREY_M = 3.2
 /** the site's neighbours are fetched 250 m round the plot: a block that far toward a low sun can still shade the flat */
 export const SITE_REACH_M = 300
+/** the sun's shadow bias in metres (−0.0005 of a flat's own ≈ 40 m depth range, as tuned before the site) */
+const SHADOW_BIAS_M = 0.02
 const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
@@ -426,6 +428,9 @@ export class Look {
     cam.top = hi.y
     cam.near = Math.max(0.1, -hi.z - this.reach)
     cam.far = -lo.z + 1
+    // the bias is in the shadow map's depth units: keep it ≈ 2 cm in the room whatever the depth range (a site's reach made
+    // the range 10× deeper, and −0.0005 of it 17 cm: walls and sills shadowed late)
+    this.sun.shadow.bias = -SHADOW_BIAS_M / (cam.far - cam.near)
     cam.updateProjectionMatrix()
   }
 
