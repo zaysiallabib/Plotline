@@ -124,6 +124,8 @@ export const CLOSE = {
    * half the length of the short probe that looks for a line across the floor (m) */
   boxReachM: 4,
   boxProbeM: 0.25,
+  /** …and how many lines drawn each way are tried (the first may be a table's edge) */
+  boxLines: 3,
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -575,7 +577,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     const drawnBoxes = (): Piece[][] => {
       const out: Piece[][] = []
       const lineAt = (a: Pt, b: Pt) => drawn(a, b) !== 'none'
-      const reach = CLOSE.boxReachM, h = CLOSE.boxProbeM
+      const reach = CLOSE.boxReachM, h = CLOSE.boxProbeM, few = CLOSE.boxLines
       for (const d of axes) {
         const nd = { x: -d.x, y: -d.y }, n = { x: -d.y, y: d.x }
         const at = (u: number, v: number): Pt => ({ x: L.at.x + d.x * u + n.x * v, y: L.at.y + d.y * u + n.y * v })
@@ -583,36 +585,39 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         const back = rayHit(V, mw, L.at, nd, reach, '', true)
         if (!back || back.via) continue
         const ahead = rayHit(V, mw, L.at, d, reach, '')
-        const fu = runs(0.3, ahead ? ahead.t - 0.15 : reach, (u) => lineAt(at(u, -h), at(u, h)))[0]
-        if (fu === undefined) continue
-        const um = (fu - back.t) / 2, hh = Math.min(h, (fu + back.t) / 2 - 0.1)
-        if (hh < 0.1) continue
-        const sideOf = (sg: number): { v: number; wall: boolean } | null => {
-          const w = rayHit(V, mw, at(um, 0), { x: n.x * sg, y: n.y * sg }, reach, '')
-          const v = runs(0.3, w ? w.t - 0.15 : reach, (v) => lineAt(at(um - hh, sg * v), at(um + hh, sg * v)))[0]
-          return v !== undefined ? { v: sg * v, wall: false } : w && !w.via ? { v: sg * w.t, wall: true } : null
-        }
-        const s1 = sideOf(-1), s2 = sideOf(1)
-        if (!s1 || !s2) continue
-        // (the far line from side to side; on a wall side it ends on that wall)
-        const end = (s: { v: number; wall: boolean }, sg: number): Pt | null => {
-          if (!s.wall) return at(fu, s.v)
-          const w = rayHit(V, mw, at(fu, (s1.v + s2.v) / 2), { x: n.x * sg, y: n.y * sg }, reach, '')
-          return w && !w.via ? w.at : null
-        }
-        const c1 = end(s1, -1), c2 = end(s2, 1)
-        if (!c1 || !c2 || !lineAt(c1, c2)) continue
-        const ps = [piece(c1, c2, 'low', 0)]
-        for (const s of [s1, s2]) {
-          if (s.wall) continue
-          const c = at(fu, s.v), w = rayHit(V, mw, c, nd, fu + back.t + 0.5, '', true)
-          if (!w || w.via || !lineAt(w.at, c)) {
-            ps.length = 0
-            break
+        // (the first few lines drawn each way: a table's edge or a chair may come before the railing)
+        for (const fu of runs(0.3, ahead ? ahead.t - 0.15 : reach, (u) => lineAt(at(u, -h), at(u, h))).slice(0, few)) {
+          const um = (fu - back.t) / 2, hh = Math.min(h, (fu + back.t) / 2 - 0.1)
+          if (hh < 0.1) continue
+          const sidesOf = (sg: number): { v: number; wall: boolean }[] => {
+            const w = rayHit(V, mw, at(um, 0), { x: n.x * sg, y: n.y * sg }, reach, '')
+            const vs = runs(0.3, w ? w.t - 0.15 : reach, (v) => lineAt(at(um - hh, sg * v), at(um + hh, sg * v))).slice(0, few)
+            return [...vs.map((v) => ({ v: sg * v, wall: false })), ...(w && !w.via ? [{ v: sg * w.t, wall: true }] : [])]
           }
-          ps.push({ ...piece(w.at, c, 'low', 0), cutsWindow: true })
+          for (const s1 of sidesOf(-1))
+            for (const s2 of sidesOf(1)) {
+              // (the far line from side to side; on a wall side it ends on that wall)
+              const end = (s: { v: number; wall: boolean }, sg: number): Pt | null => {
+                if (!s.wall) return at(fu, s.v)
+                const w = rayHit(V, mw, at(fu, (s1.v + s2.v) / 2), { x: n.x * sg, y: n.y * sg }, reach, '')
+                return w && !w.via ? w.at : null
+              }
+              const c1 = end(s1, -1), c2 = end(s2, 1)
+              if (!c1 || !c2 || !lineAt(c1, c2)) continue
+              const ps = [piece(c1, c2, 'low', 0)]
+              for (const s of [s1, s2]) {
+                if (s.wall) continue
+                // (the wall behind stopping just short of the line: a short jog onto its end)
+                const c = at(fu, s.v), w = rayHit(V, mw, c, nd, fu + back.t + 0.5, '', true)
+                if (!w || !lineAt(w.via ?? w.at, c)) {
+                  ps.length = 0
+                  break
+                }
+                ps.push({ ...piece(c, w.at, 'low', 0, w.via), cutsWindow: true })
+              }
+              if (ps.length) out.push(ps)
+            }
         }
-        if (ps.length) out.push(ps)
       }
       return out
     }

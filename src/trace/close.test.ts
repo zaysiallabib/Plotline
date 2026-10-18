@@ -232,4 +232,16 @@ describe('s27 clean 90: a veranda drawn in thin lines against the building, foun
     expect(r.room({ x: 3, y: 2.5 })?.areaSqm).toBeCloseTo(12, 1)
     expect(r.walls.flatMap((x) => x.openings.filter((o) => o.kind === 'window').map((o) => o.widthM)).sort()).toEqual([0.5, 0.5, 2].map((x) => expect.closeTo(x, 1)))
   })
+  test('a table edge drawn in front of the railing is passed over; a side line reaching the wall just past its end jogs onto it', () => {
+    // the same bedroom, its south wall plain; the veranda's west line at x 0.95 meets that wall's line 5 cm past its corner;
+    // a 0.6 m table edge across the floor at y 4.5 comes before the railing at y 5.2
+    const g = { vertices: [v('a', 1, 1), v('b', 1, 4), v('c', 5, 4), v('d', 5, 1)], walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), w('R', 'c', 'd'), w('T', 'd', 'a')] }
+    const W = 12 * K, H = 6 * K, data = new Uint8Array(W * H).fill(255)
+    for (let y = 4 * K; y <= 5.2 * K; y++) data[y * W + Math.round(0.95 * K)] = data[y * W + 3 * K] = 0
+    for (let x = Math.round(0.95 * K); x <= 3 * K; x++) data[Math.round(5.2 * K) * W + x] = 0
+    for (let x = Math.round(1.7 * K); x <= Math.round(2.3 * K); x++) data[Math.round(4.5 * K) * W + x] = 0
+    const r = close(g, [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed' }, { at: { x: 2, y: 4.3 }, name: 'Ver', kind: 'balcony' }], { width: W, height: H, data })
+    expect(r.closed.map((c) => c.room)).toEqual(['Ver'])
+    expect(r.room({ x: 2, y: 4.3 })?.areaSqm).toBeCloseTo(2.46, 1)
+  })
 })
