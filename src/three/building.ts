@@ -475,6 +475,7 @@ export class Building extends THREE.Group {
     cam.top = c.y + s.radius
     cam.near = -c.z - s.radius - (this.street.userData.site ? SITE_REACH_M : 0) // a site's blocks toward the sun shade the tower
     cam.far = -c.z + s.radius + 150 // a low sun throws the tower's shadow far down the street
+    sun.shadow.bias = -0.0005 // as tuned for the tower (Look sets its own for the flat)
     cam.updateProjectionMatrix()
   }
 
