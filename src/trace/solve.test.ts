@@ -511,6 +511,29 @@ describe('s27: a flat holds its own label, never another flat\'s; the floor has 
     }
   })
 
+  test('bug hunt 2026-10-18: a printed area bigger than the whole sheet is a misread — never the Area box; a UNIT label names the flat', () => {
+    const width = Math.round(6 * K + 2 * O.x), height = Math.round(4 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    stroke(g, P(-h, 0), P(6 + h, 0), ext)
+    stroke(g, P(-h, 4), P(6 + h, 4), ext)
+    stroke(g, P(0, 0), P(0, 4), ext)
+    stroke(g, P(6, 0), P(6, 4), ext)
+    const c = P(3, 2)
+    const SQFT = 0.3048 ** 2
+    const run = (sqm: number) => {
+      const items: TextItem[] = [
+        { text: 'LIVING\n6x4', box: { x: c.x - 30, y: c.y - 30, w: 60, h: 20 }, kind: 'room', roomKind: 'living', dims: { aM: 6, bM: 4 }, conf: 0.9, source: 'ocr' },
+        { text: `Unit A:${Math.round(sqm / SQFT)} Sft`, box: { x: c.x - 40, y: c.y + 10, w: 80, h: 16 }, kind: 'area', areaSqm: sqm, conf: 0.9, source: 'ocr' },
+      ]
+      return pickTraces(prepareTraces(g, { text: { items } }, { pxPerM: K }), c).unit
+    }
+    const ok = run(25)
+    expect(ok.areaSqft).toBe(Math.round(25 / SQFT))
+    expect(deriveFlats(ok, deriveRooms(ok)).map((f) => f.name)).toEqual(['Unit A'])
+    expect(run(1.5 * (width * height) / (K * K)).areaSqft).toBeLessThan(400) // the closed room's own area, not the misread
+  })
+
   test('three studios (no bedroom name) along a corridor, each printing its flat name: the whole floor is three flats', () => {
     const width = Math.round(15 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
     const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }

@@ -16,7 +16,7 @@ import {
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
-import { hhmm, period } from './SunPill'
+import { hhmm, nearestSpoke, period } from './SunPill'
 import { EYE, boxInFrame, floorShare, frameShares, pieceInFrame, project, swings } from './frame'
 
 const unit = typeA as unknown as Unit
@@ -111,6 +111,14 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect(optionsTotal(slots, { [pricey.id]: opt.id })).toBe(optionsTotal(slots, {}) - (pricey.options.find((o) => o.id === pricey.defaultOptionId)?.priceDeltaBdt ?? 0) + opt.priceDeltaBdt)
   })
 
+  it('wind rose: a click picks the spoke under the pointer, not the month drawn last (bug hunt 2026-10-18)', () => {
+    // Banani, north 304°: January (NW, 2 m/s) and December (NNW, 1.9 m/s) nearly on one line; 85 % along January's
+    const tips = [{ x: 55.05, y: 91.83 }, ...Array(10).fill({ x: 132, y: 118 }), { x: 56.88, y: 87.1 }]
+    expect(nearestSpoke({ x: 60.3, y: 91.6 }, tips)).toBe(0)
+    expect(nearestSpoke({ x: 57.5, y: 87.4 }, tips)).toBe(11)
+    expect(nearestSpoke({ x: 170, y: 20 }, tips)).toBe(-1)
+  })
+
   it('sun pill labels', () => {
     expect(hhmm(15.5)).toBe('15:30')
     expect(hhmm(6)).toBe('06:00')
@@ -193,7 +201,10 @@ describe('viewer', { timeout: 20_000 }, () => {
     const r = core.deriveRooms(u)
     const e = entrySpawn(u, r)!
     const living = r.filter((x) => x.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0]
-    expect(e.p).toEqual(living.centroid)
+    // (bug hunt 2026-10-18: the room's own view, as the Rooms list gives it — not its middle facing plan-up at a wall)
+    const v = roomView(living, u)
+    expect(e).toEqual({ p: v.p, face: v.face })
+    expect(core.pointInPolygon(e.p, core.roomPolygon(living, u))).toBe(true)
   })
 
   it('roomView: clear of doors and slabs, inset from every wall, facing the hero piece or the furniture', () => {

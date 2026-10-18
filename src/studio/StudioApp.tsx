@@ -1843,12 +1843,15 @@ export default function StudioApp() {
     (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
     ' · Space-drag to pan · wheel zooms'
   let centre = ''
-  if (chain && hover?.snap) {
-    const last = vertexById(unit.vertices, chain.ids[chain.ids.length - 1])
-    const len = Math.hypot(hover.snap.x - last.x, hover.snap.y - last.y)
-    const ang = hover.snap.angleDeg ?? 0
-    const snapped = hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind
-    centre = `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${shiftRef.current ? 'free' : `${Math.round(ang)}°`} · snapped: ${snapped}`
+  // W's next corner or A's end: the length from the last point and what the click sticks to (A: no angle)
+  const from = chain ? vertexById(unit.vertices, chain.ids[chain.ids.length - 1]) : tool === 'arc' && arc && !arc.b ? arc.a : null
+  const sticks = hover?.snap && (hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind)
+  if (from && hover?.snap) {
+    const len = Math.hypot(hover.snap.x - from.x, hover.snap.y - from.y)
+    const ang = chain ? `${shiftRef.current ? 'free' : `${Math.round(hover.snap.angleDeg ?? 0)}°`} · ` : ''
+    centre = `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${ang}snapped: ${sticks}`
+  } else if ((tool === 'wall' || tool === 'arc') && !arc?.b && hover?.snap && HARD.has(hover.snap.kind)) {
+    centre = `snapped: ${sticks}` // W's first corner, A's start
   } else if (hover?.arc && arc?.b) {
     centre = `${hover.arc.length - 1} straight wall${hover.arc.length === 2 ? '' : 's'}`
   } else if (tool === 'scale' && scaleStart && hover && !lineUp) {
@@ -1900,7 +1903,7 @@ export default function StudioApp() {
         <input className="meta wide" placeholder="Unit name" value={unit.name} onChange={meta('name')} />
         <input className="meta" placeholder="Project" value={unit.projectName} onChange={meta('projectName')} />
         <input className="meta narrow" placeholder="Floor" type="number" value={unit.floor ?? ''} onChange={meta('floor')} />
-        <input className="meta narrow" placeholder="Area (sqft)" type="number" value={unit.areaSqft || ''} onChange={meta('areaSqft')} />
+        <input className="meta narrow" placeholder="Area sft" title="The flat's area as the sheet prints it (sqft)" type="number" value={unit.areaSqft || ''} onChange={meta('areaSqft')} />
         <span className="timer" title="Minutes to trace">
           ⏱ {formatTimer(state.timer.elapsedMs)}
         </span>

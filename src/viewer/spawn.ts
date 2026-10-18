@@ -195,7 +195,11 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     return { p, face }
   }
   const living = rooms.filter((r) => r.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0] ?? rooms[0]
-  return living ? { p: living.centroid, face: { x: 0, y: -1 } } : null
+  if (!living) return null
+  // no usable door (a Studio draft before its doors): the room's own view, as a jump from the Rooms list gives — not
+  // its middle facing plan-up, a wall filling the screen (bug hunt 2026-10-18)
+  const { p, face } = roomView(living, unit)
+  return { p, face }
 }
 
 /**

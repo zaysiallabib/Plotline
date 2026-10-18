@@ -528,6 +528,10 @@ function closeAround(u: Unit, rooms: Room[], printed: PrintedRoom[], k: number, 
  * them go (none with a door, slider or window, none thicker than 8"), and its "Space N" label. The longest shared side
  * first, at most two neighbours; each one checked by applying it.
  */
+/** where room `n` lies from room `r` on the plan, in screen words ("below left") */
+const sideOf = (r: Room, n: Room): string =>
+  ['right', 'below right', 'below', 'below left', 'left', 'above left', 'above', 'above right'][(Math.round(Math.atan2(n.centroid.y - r.centroid.y, n.centroid.x - r.centroid.x) / (Math.PI / 4)) + 8) % 8]
+
 function joinFixes(u: Unit, rooms: Room[], id: Id, before: StudioIssue[]): Fix[] {
   const r = rooms.find((x) => x.id === id)
   if (!r || !isUnnamed(r)) return []
@@ -554,7 +558,11 @@ function joinFixes(u: Unit, rooms: Room[], id: Id, before: StudioIssue[]): Fix[]
       const f = wallFrame(w, u.vertices)
       return { kind: 'cut', from: f.origin, to: { x: f.origin.x + f.dir.x * f.lengthM, y: f.origin.y + f.dir.y * f.lengthM } }
     })
-    out.push({ label: `Join it to ${c.n.name}`, title: `${r.name} is part of ${c.n.name}: take out the ${ft(c.L)} of wall between them`, actions, ghost })
+    // two neighbours of one name (two toilets): each button says which side of the space it is on (and how much wall
+    // goes, when both lie on one side)
+    const twins = nexts.filter((o) => o !== c && o.n.name === c.n.name)
+    const side = !twins.length ? '' : twins.some((o) => sideOf(r, o.n) === sideOf(r, c.n)) ? ` (${sideOf(r, c.n)}, ${ft(c.L)} of wall)` : ` (${sideOf(r, c.n)})`
+    out.push({ label: `Join it to ${c.n.name}${side}`, title: `${r.name} is part of ${c.n.name}: take out the ${ft(c.L)} of wall between them`, actions, ghost })
     if (out.length === 2) break
   }
   return out
@@ -653,7 +661,11 @@ export function rowAnswers(u: Unit, marks: Mark[], fixes: Map<string, MarkFixes>
     const r = m.review
     if (!r) continue
     const list = [...(m.twinOf ? (fixes.get(m.key)?.fixes ?? []) : []), ...(fixes.get(m.twinOf ?? m.key)?.fixes ?? [])]
-    const answers: Answer[] = list.map((f) => ({ id: answerId(f.label), label: f.label, title: f.title, actions: f.actions }))
+    // ids are unique in a row (an answer by id must reach each button): a repeated label's id gets -2, -3 …
+    const answers: Answer[] = list.map((f, i) => {
+      const n = list.slice(0, i).filter((g) => answerId(g.label) === answerId(f.label)).length
+      return { id: answerId(f.label) + (n ? `-${n + 1}` : ''), label: f.label, title: f.title, actions: f.actions }
+    })
     if (r.room !== undefined && !fixes.get(m.key)?.fixes.length) answers.push({ id: SHOW_ME, label: 'Show me', title: 'Nothing closes it in one click: draw the missing line with the Wall tool', actions: [] })
     answers.push({ id: LOOKS_RIGHT, label: 'Looks right', title: 'Take it off the list', actions: [] })
     const pts: Pt[] = [

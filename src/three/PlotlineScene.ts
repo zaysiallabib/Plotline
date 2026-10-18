@@ -32,6 +32,7 @@ import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisot
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, needsFrame, slowFrames, type Quality } from './render'
 import { WindFlow } from './wind'
+import { siteCut } from './context'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -83,6 +84,7 @@ const STOREY_WALL_M = 2.4
 /** The tallest step the walker takes, up or down (canStep). */
 const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
+const SIZE = new THREE.Vector3()
 /** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
 const CLICK_PX = 6
 /** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
@@ -482,6 +484,7 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
     this.orbit.enabled = mode !== 'walk'
@@ -1504,6 +1507,9 @@ export class PlotlineScene {
     if (this.mode !== 'walk') {
       this.orbit.update()
       if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+      // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
+      const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
+      siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)
     } else if (this.ready) {
       const k = this.keys
       if (!this.plc.isLocked) {

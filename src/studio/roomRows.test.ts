@@ -7,7 +7,7 @@ import { deriveFlats, deriveRooms } from '../core'
 import type { Unit, Vertex, Wall } from '../core'
 import type { PrintedRoom, ReviewItem } from '../trace/types'
 import { emptyUnit, initialState, reducer, studioIssues, type StudioState } from './model'
-import { fixesOf, markIssues, type Fix } from './issues'
+import { fixesOf, markIssues, rowAnswers, type Fix } from './issues'
 import { fewRooms, openReview, roomCount, roomRows, roomStates, studioReducer } from './review'
 import { saysLevel } from '../trace/solve'
 
@@ -165,6 +165,20 @@ describe('room count and room rows', () => {
     const t = apply({ ...initialState(), unit: u, review: { unitId: 'u', items: [row], stats: {} as never } }, f)
     expect(deriveRooms(t.unit).map((r) => [r.name, +r.areaSqm.toFixed(1)])).toEqual([['Bed 1', 12]])
     expect(openReview(t)).toEqual([])
+  })
+
+  it('two neighbours of one name (bug hunt 2026-10-18, Assure Phera): each Join button says its side; a row never repeats an answer id', () => {
+    const u = unit(
+      [v('a', 0, 0), v('b', 5, 0), v('c', 5, 2), v('d', 0, 2), v('p', 2, 0), v('q', 2, 2), v('m', 3, 0), v('n', 3, 2)],
+      [w('t1', 'a', 'p'), w('t2', 'p', 'm'), w('t3', 'm', 'b'), w('r', 'b', 'c'), w('b1', 'c', 'n'), w('b2', 'n', 'q'), w('b3', 'q', 'd'), w('l', 'd', 'a'), w('x1', 'p', 'q'), w('x2', 'm', 'n')],
+      [{ id: 'toiA', name: 'Toilet', kind: 'bath', x: 1, y: 1 }, { id: 'sp', name: 'Space 1', kind: 'other', x: 2.5, y: 1 }, { id: 'toiB', name: 'Toilet', kind: 'bath', x: 4, y: 1 }],
+    )
+    const row: ReviewItem = { id: 'r', at: { x: 2.5, y: 1 }, kind: 'unlabelled', message: 'Unnamed space', entityId: 'sp' }
+    expect(fixesFor(u, row, []).map((f) => f.label).sort()).toEqual(['Join it to Toilet (left)', 'Join it to Toilet (right)'])
+    const rooms = deriveRooms(u)
+    const m = markIssues(u, rooms, studioIssues(u, rooms), [row]).find((x) => x.review)!
+    const twice = { fixes: [0, 1].map(() => ({ label: 'Join it', title: '', actions: [], ghost: [] })) }
+    expect(rowAnswers(u, [m], new Map([[m.key, twice]])).r.answers.map((a) => a.id)).toEqual(['join-it', 'join-it-2', 'looks-right'])
   })
 
   it('after Auto-trace a closed room with no label at all gets a row too, with "Join it" and the name box', () => {

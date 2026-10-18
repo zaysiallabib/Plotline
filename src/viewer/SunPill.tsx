@@ -46,6 +46,23 @@ const C = 90
 const R = 70
 
 /**
+ * The spoke (centre → tip, the rose's own units) running nearest the point, within `reach`; -1 = none. Months blowing
+ * from nearly the same way lie on top of each other (Dhaka: Nov–Jan NW, May–Sep SSE): the click goes to the line under
+ * the pointer, not to the month drawn last (bug hunt 2026-10-18: January's line picked December).
+ */
+export function nearestSpoke(p: { x: number; y: number }, tips: { x: number; y: number }[], reach = 6): number {
+  let best = -1
+  let bd = reach
+  tips.forEach((t, i) => {
+    const dx = t.x - C, dy = t.y - C
+    const k = Math.max(0, Math.min(1, ((p.x - C) * dx + (p.y - C) * dy) / (dx * dx + dy * dy || 1)))
+    const d = Math.hypot(p.x - C - k * dx, p.y - C - k * dy)
+    if (d < bd) (bd = d), (best = i)
+  })
+  return best
+}
+
+/**
  * The wind by month as a rose (turned like the compass: plan-up at the top): thin rings 1 m/s apart, 16 ticks, N E S W;
  * one slim spoke per month toward where the wind comes FROM, as long as it is strong, all one quiet blue; the date's month
  * deeper, with its line "June · SSE · 3.5 m/s". A click on a spoke (or near it) picks that month.
@@ -61,7 +78,18 @@ export function WindRose({ months, month, northDeg, source, crossRooms, onMonth 
   const pick = tip(w)
   return (
     <div className="glass wind-rose" onKeyDown={(e) => e.stopPropagation()}>
-      <svg className="rose" width={2 * C} height={2 * C} viewBox={`0 0 ${2 * C} ${2 * C}`} aria-label="wind rose">
+      <svg
+        className="rose"
+        width={2 * C}
+        height={2 * C}
+        viewBox={`0 0 ${2 * C} ${2 * C}`}
+        aria-label="wind rose"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          const i = nearestSpoke({ x: ((e.clientX - r.left) / r.width) * 2 * C, y: ((e.clientY - r.top) / r.height) * 2 * C }, months.map(tip))
+          if (i >= 0) onMonth(i)
+        }}
+      >
         <title>{`Rings: 1 m/s apart. Each line: a month, from where the wind comes.`}</title>
         {Array.from({ length: top }, (_, k) => (
           <circle key={k} className="ring" cx={C} cy={C} r={(R * (k + 1)) / top} />
@@ -81,7 +109,7 @@ export function WindRose({ months, month, northDeg, source, crossRooms, onMonth 
         {months.map((m, i) => {
           const p = tip(m)
           return (
-            <g key={i} onClick={() => onMonth(i)} className="hit">
+            <g key={i} className="hit">
               <title>{`${MONTHS[i]} · ${point16(m.fromDeg)} · ${m.speedMs} m/s`}</title>
               <line x1={C} y1={C} x2={p.x} y2={p.y} className="grab" />
               {i !== month && <line x1={C} y1={C} x2={p.x} y2={p.y} className="spoke" />}
