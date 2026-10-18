@@ -245,3 +245,21 @@ describe('s27 clean 90: a veranda drawn in thin lines against the building, foun
     expect(r.room({ x: 2, y: 4.3 })?.areaSqm).toBeCloseTo(2.46, 1)
   })
 })
+
+describe('s27 clean 90: a wall stopping at a column', () => {
+  test('is carried on through the column (a box drawn filled) to the wall ahead, the window traced over the column split there', () => {
+    // the 4 × 3 m room's north wall stops at x 4.4, where a grey column (4.4 … 4.95 × 0.75 … 1.25) stands; the east wall runs
+    // on to y 0 and a window was traced along it over the column (y 0.6 … 1.6)
+    const win = { id: 'win', kind: 'window' as const, offsetM: 2.4, widthM: 1, heightM: 1.5, sillM: 0.9 }
+    const g = {
+      vertices: [v('a', 1, 1), v('b', 1, 4), v('c', 5, 4), v('d', 5, 0), v('e', 4.4, 1)],
+      walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), { ...w('R', 'c', 'd'), openings: [win] }, w('T', 'a', 'e')],
+    }
+    const W = 12 * K, H = 6 * K, data = new Uint8Array(W * H).fill(255)
+    for (let y = Math.round(0.75 * K); y <= Math.round(1.25 * K); y++) for (let x = Math.round(4.4 * K); x <= Math.round(4.95 * K); x++) data[y * W + x] = 150
+    const r = close(g, [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed', dims: SIZE }], { width: W, height: H, data })
+    expect(r.closed.map((c) => [c.room, c.pieces.map((p) => p.kind)])).toEqual([['Bed 2', ['wall']]])
+    expect(r.room({ x: 3, y: 2.5 })?.areaSqm).toBeCloseTo(12, 0)
+    expect(r.walls.flatMap((x) => x.openings.map((o) => o.widthM)).sort()).toEqual([0.4, 0.6].map((x) => expect.closeTo(x, 2)))
+  })
+})
