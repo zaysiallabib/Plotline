@@ -655,3 +655,31 @@ export function hatchMask(g: Gray, k: number, t: number): Uint8Array | null {
   pass(false)
   return n ? out : null
 }
+
+/** min (`max` false) or max of each pixel's window of 2r + 1 along x (`horiz`) or y — van Herk / Gil-Werman, O(1) a pixel */
+function slide(src: Uint8Array, w: number, h: number, r: number, horiz: boolean, max: boolean): Uint8Array {
+  const out = new Uint8Array(src.length)
+  const L = horiz ? w : h, n = horiz ? h : w, s = 2 * r + 1, P = L + 2 * r, nil = max ? 0 : 255
+  const pre = new Uint8Array(P), suf = new Uint8Array(P)
+  const op = max ? (a: number, b: number) => (a > b ? a : b) : (a: number, b: number) => (a < b ? a : b)
+  for (let line = 0; line < n; line++) {
+    const at = (u: number) => (horiz ? line * w + u : u * w + line)
+    const val = (j: number) => (j >= r && j < L + r ? src[at(j - r)] : nil)
+    for (let j = 0; j < P; j++) pre[j] = j % s ? op(pre[j - 1], val(j)) : val(j)
+    for (let j = P - 1; j >= 0; j--) suf[j] = j % s !== s - 1 && j < P - 1 ? op(suf[j + 1], val(j)) : val(j)
+    for (let u = 0; u < L; u++) out[at(u)] = op(suf[u], pre[u + 2 * r])
+  }
+  return out
+}
+
+/**
+ * s27 fix 2 — walls drawn LIGHTER than the floor (colour brochures: white walls between beige, tiled or marble floors, on
+ * a white or dark page) → a grey where they are dark ink: per pixel, how much lighter it is than what is left when every
+ * light band narrower than a thick wall (0.45 m at `k` px/m) is opened away (a white top-hat), × 4, turned over. Dark
+ * print, floors and the page come out paper; the tracer then reads the light bands as it reads dark ones (solve.ts prepare).
+ */
+export function lightWalls(g: Gray, k: number): Gray {
+  const { width: w, height: h, data } = g, r = Math.max(1, Math.ceil(0.225 * k))
+  const open = slide(slide(slide(slide(data, w, h, r, true, false), w, h, r, false, false), w, h, r, true, true), w, h, r, false, true)
+  return { width: w, height: h, data: data.map((v, i) => 255 - Math.min(255, 4 * (v - open[i]))) }
+}

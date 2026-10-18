@@ -1,12 +1,12 @@
 /// <reference types="node" />
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { deriveFlats, deriveRooms, validate } from '../core'
+import { deriveFlats, deriveRooms, pointInPolygon, roomPolygon, validate } from '../core'
 import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, prepare, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
@@ -698,5 +698,28 @@ describe('tableRow: a number lost, or a kind guessed, takes the one table row of
     expect(tableRow(rows.filter((x) => x.name !== 'Bed 3'), 15.4, bed)).toBeNull() // Bed 2's size, but a label took Bed 2
     expect(tableRow(rows, 5.2, (x) => x.roomKind === 'bath')).toBeNull() // Toilet 2 (4.6 m²) and Toilet 3 (5.7 m²) both fit
     expect(tableRow(rows, 30, bed)).toBeNull()
+  })
+})
+
+describe('s27 fix 2: a colour sheet whose walls are lighter than the floor', () => {
+  test('traced again on its light bands: the four rooms close round their names (none close on the sheet as drawn)', async () => {
+    // a 2 × 2 grid of 4 × 3 m rooms, white walls 0.2 m thick on a beige floor (grey 200), a pale page round it (230)
+    const width = Math.round(8 * K + 2 * O.x), height = Math.round(6 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(230) }
+    const paint = (a: Px, b: Px, v: number) => {
+      for (let y = Math.round(a.y); y < Math.round(b.y); y++) for (let x = Math.round(a.x); x < Math.round(b.x); x++) g.data[y * width + x] = v
+    }
+    paint(P(0, 0), P(8, 6), 200)
+    for (const y of [0, 3, 6]) paint(P(-0.1, y - 0.1), P(8.1, y + 0.1), 255)
+    for (const x of [0, 4, 8]) paint(P(x - 0.1, -0.1), P(x + 0.1, 6.1), 255)
+    const rgb = { width, height, data: new Uint8Array(width * height * 4).map((_, i) => (i % 4 === 3 ? 255 : g.data[i >> 2])) }
+    const names = ['BED 1', 'BED 2', 'LIVING', 'KITCHEN'].map((t, i): TextItem => {
+      const c = P(2 + 4 * (i % 2), 1.5 + 3 * (i >> 1))
+      return { text: t, box: { x: c.x - 25, y: c.y - 6, w: 50, h: 12 }, kind: 'room', roomKind: i < 2 ? 'bed' : i === 2 ? 'living' : 'kitchen', conf: 0.9, source: 'ocr' }
+    })
+    const p = await prepare(g, { pxPerM: K, rgb, text: { items: names } })
+    const { draft } = p.traces
+    const holding = names.filter((it) => draft.rooms.some((r) => r.areaSqm < 20 && pointInPolygon({ x: (it.box.x + it.box.w / 2) / K, y: (it.box.y + it.box.h / 2) / K }, roomPolygon(r, draft.unit))))
+    expect(holding.length).toBe(4)
   })
 })

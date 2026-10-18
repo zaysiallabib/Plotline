@@ -25,13 +25,13 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
+import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon as polygonOf, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { CLOSE, closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { colourPage, dashMask, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
@@ -166,6 +166,20 @@ export interface SolveInputs {
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
+/**
+ * core's roomPolygon made once per room and vertex list (neither is changed in place here; the shift makes a new list):
+ * insidePoint and the flat picking ask for every room's outline once per other room, and core's builds a map of all the
+ * vertices each time — on Sheltech Windflower (600 faces, 1400 vertices) that was 80 s of the 10-minute cap (s27 fix 2)
+ */
+const polyCache = new WeakMap<object, WeakMap<object, Pt[]>>()
+function roomPolygon(r: Pick<Room, 'loop' | 'joinPts'>, u: Pick<Unit, 'vertices'>): Pt[] {
+  let m = polyCache.get(u.vertices)
+  if (!m) polyCache.set(u.vertices, (m = new WeakMap()))
+  let p = m.get(r)
+  if (!p) m.set(r, (p = polygonOf(r, u)))
+  return p
+}
+
 const sub = (p: Pt, q: Pt): Pt => ({ x: p.x - q.x, y: p.y - q.y })
 const crs = (u: Pt, v: Pt) => u.x * v.y - u.y * v.x
 const dot = (u: Pt, v: Pt) => u.x * v.x + u.y * v.y
@@ -3097,6 +3111,13 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   return pick(await prepare(gray, opts), opts.pickPx)
 }
 
+/** how many closed faces of a room's size hold a read room name (which of two traces of one sheet closed more of it) */
+function namedFaces(t: Prepared, names: TextItem[]): number {
+  const faces = t.draft.rooms.filter((r) => r.areaSqm >= 1 && r.areaSqm <= KNOBS.maxRoomSqm).map((r) => roomPolygon(r, t.draft.unit))
+  const at = (it: TextItem) => ({ x: (it.box.x + it.box.w / 2) / t.pxPerM, y: (it.box.y + it.box.h / 2) / t.pxPerM })
+  return new Set(names.map((it) => faces.findIndex((f) => pointInPolygon(at(it), f))).filter((i) => i >= 0)).size
+}
+
 /** The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along. */
 export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   const review: ReviewItem[] = []
@@ -3122,7 +3143,19 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
   }
-  const traces = prepareTraces(gray, inputs, opts)
+  let traces = prepareTraces(gray, inputs, opts)
+  // s27 fix 2 (cause 1 of the 114-project run): a colour brochure whose walls are drawn LIGHTER than the floor (white walls
+  // between beige, tiled or marble floors) closes almost none of its printed names — traced again on its light bands
+  // (raster.ts lightWalls); the trace that closes clearly more of them stays
+  const names = text.items.filter((it) => it.kind === 'room')
+  const n0 = opts.rgb && names.length >= 4 ? namedFaces(traces, names) : Infinity
+  if (n0 < 0.5 * names.length) {
+    const h0 = hints
+    const light = prepareTraces(lightWalls(gray, traces.pxPerM), inputs, opts)
+    const n1 = namedFaces(light, names)
+    if (n1 >= n0 + 3 && n1 >= 1.5 * n0) traces = light
+    else hints = h0
+  }
   // Level 3: the closed faces no printed name was read in, read whole (text.ts readInFaces) — their names then name them
   // at the pick like any other read name
   try {

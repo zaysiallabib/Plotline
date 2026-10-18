@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { colourPage, dashMask, furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
+import { colourPage, dashMask, furnitureMask, hatchMask, lightWalls, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -166,5 +166,23 @@ describe('dashMask (s27: a dashed plot line is never a wall)', () => {
     expect(m[at(1, 3)]).toBe(0)
     expect(m[at(3.5, 3)]).toBe(0)
     expect(m[at(5, 6.1)]).toBe(0)
+  })
+})
+
+describe('lightWalls (s27 fix 2: walls drawn lighter than the floor)', () => {
+  test('a white wall between beige floors comes out dark ink; the floor, a wide white bed and dark print come out paper', () => {
+    const { g, at } = sheet()
+    const paint = (x0: number, y0: number, x1: number, y1: number, v: number) => {
+      for (let y = Math.round(y0 * K); y < Math.round(y1 * K); y++) for (let x = Math.round(x0 * K); x < Math.round(x1 * K); x++) g.data[y * g.width + x] = v
+    }
+    paint(0, 0, 10, 8, 200) // the floor
+    paint(5, 0, 5.2, 8, 255) // a 0.2 m white wall
+    paint(1, 1, 3, 3, 255) // a 2 × 2 m white bed
+    paint(7, 4, 7.6, 4.15, 30) // a dark name
+    const L = lightWalls(g, K)
+    expect(L.data[at(5.1, 4)]).toBeLessThan(60)
+    expect(L.data[at(2.5, 6)]).toBe(255)
+    expect(L.data[at(2, 2)]).toBeGreaterThan(230)
+    expect(L.data[at(7.3, 4.07)]).toBe(255)
   })
 })
