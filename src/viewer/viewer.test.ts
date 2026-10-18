@@ -201,7 +201,10 @@ describe('viewer', { timeout: 20_000 }, () => {
     const r = core.deriveRooms(u)
     const e = entrySpawn(u, r)!
     const living = r.filter((x) => x.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0]
-    expect(e.p).toEqual(living.centroid)
+    // (bug hunt 2026-10-18: the room's own view, as the Rooms list gives it — not its middle facing plan-up at a wall)
+    const v = roomView(living, u)
+    expect(e).toEqual({ p: v.p, face: v.face })
+    expect(core.pointInPolygon(e.p, core.roomPolygon(living, u))).toBe(true)
   })
 
   it('roomView: clear of doors and slabs, inset from every wall, facing the hero piece or the furniture', () => {

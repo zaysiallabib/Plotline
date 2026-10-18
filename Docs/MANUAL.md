@@ -43,7 +43,7 @@ Extras you can add to the end of a 3D address:
 
 ## 2. The 3D view — everyone
 
-**Start screen:** project, flat name, floor and size. **Enter** (button or Enter key) goes in. Below it: links to the other flats and levels.
+**Start screen:** project, flat name, floor and size. **Enter** (button or Enter key) goes in: you stand just inside the flat's front door, looking in — a drawing with no door yet puts you in its living room (or its first room) as Rooms → that room would, never facing a bare wall (2026-10-18). Below it: links to the other flats and levels.
 
 **Buttons, top right**
 
