@@ -4,7 +4,7 @@
  */
 import { cross, pointInPolygon, unitBounds, wallFrame, roomAt, type Pt } from './geometry'
 import { isOutdoor } from './index'
-import type { Id, Room, RoomKind, Site, SiteBuilding, SiteRoad, Unit, WindMonth } from './types'
+import type { Id, OpeningKind, Room, RoomKind, Site, SiteBuilding, SiteRoad, Unit, WindMonth } from './types'
 
 const RAD = Math.PI / 180
 /** metres per degree of latitude (WGS84 sphere of the web map) */
@@ -16,22 +16,23 @@ export const DHAKA = { lat: 23.79, lon: 90.4 }
 /**
  * Dhaka's prevailing wind by month, January first: Open-Meteo's archive (ERA5) at 23.79 N 90.40 E, daily mean speed and
  * dominant direction 2015–2024, averaged per month as vectors (fetched 2026-10-18). From the north-west in winter, the
- * south / south-east in the monsoon; March and October have no steady direction (steady 0.31 / 0.18).
+ * south / south-east in the monsoon; March and October have no steady direction (steady 0.31 / 0.18). With the same
+ * archive's monthly mean temperature (°C) and relative humidity (%) at 2 m, 2015–2024.
  */
 export const DHAKA_WIND: WindMonth[] = [
-  [324, 2.0, 0.82],
-  [301, 2.1, 0.4],
-  [230, 2.2, 0.31],
-  [178, 2.9, 0.76],
-  [166, 2.9, 0.8],
-  [165, 3.5, 0.91],
-  [154, 3.7, 0.9],
-  [152, 3.3, 0.89],
-  [152, 2.5, 0.75],
-  [95, 1.9, 0.18],
-  [346, 1.8, 0.69],
-  [332, 1.9, 0.8],
-].map(([fromDeg, speedMs, steady]) => ({ fromDeg, speedMs, steady }))
+  [324, 2.0, 0.82, 18, 75],
+  [301, 2.1, 0.4, 21, 68],
+  [230, 2.2, 0.31, 25, 66],
+  [178, 2.9, 0.76, 28, 74],
+  [166, 2.9, 0.8, 29, 79],
+  [165, 3.5, 0.91, 29, 84],
+  [154, 3.7, 0.9, 28, 85],
+  [152, 3.3, 0.89, 28, 85],
+  [152, 2.5, 0.75, 28, 85],
+  [95, 1.9, 0.18, 27, 82],
+  [346, 1.8, 0.69, 23, 74],
+  [332, 1.9, 0.8, 20, 75],
+].map(([fromDeg, speedMs, steady, tempC, rh]) => ({ fromDeg, speedMs, steady, tempC, rh }))
 
 // ───────────────────────────── sun ─────────────────────────────
 
@@ -186,14 +187,18 @@ export function waysFromOsmMap(json: { elements?: { type: string; id: number; la
  * each day a vector (its speed, from its dominant direction), summed per month; direction = the sum's, speed = the mean,
  * steady = |sum| / Σ speed. null when a month has no day.
  */
-export function windFromDaily(json: { daily?: { time: string[]; wind_speed_10m_mean: (number | null)[]; wind_direction_10m_dominant: (number | null)[] } }): WindMonth[] | null {
+export function windFromDaily(json: {
+  daily?: { time: string[]; wind_speed_10m_mean: (number | null)[]; wind_direction_10m_dominant: (number | null)[]; temperature_2m_mean?: (number | null)[]; relative_humidity_2m_mean?: (number | null)[] }
+}): WindMonth[] | null {
   const d = json.daily
   if (!d) return null
-  const acc = Array.from({ length: 12 }, () => ({ u: 0, v: 0, s: 0, n: 0 }))
+  const acc = Array.from({ length: 12 }, () => ({ u: 0, v: 0, s: 0, n: 0, t: 0, h: 0, k: 0 }))
   d.time.forEach((t, i) => {
     const [s, dir] = [d.wind_speed_10m_mean[i], d.wind_direction_10m_dominant[i]]
-    if (s == null || dir == null) return
     const a = acc[Number(t.slice(5, 7)) - 1]
+    const [temp, rh] = [d.temperature_2m_mean?.[i], d.relative_humidity_2m_mean?.[i]]
+    if (temp != null && rh != null) [a.t, a.h, a.k] = [a.t + temp, a.h + rh, a.k + 1]
+    if (s == null || dir == null) return
     a.u += s * Math.sin(dir * RAD)
     a.v += s * Math.cos(dir * RAD)
     a.s += s
@@ -204,6 +209,7 @@ export function windFromDaily(json: { daily?: { time: string[]; wind_speed_10m_m
     fromDeg: Math.round((Math.atan2(a.u, a.v) / RAD + 360) % 360),
     speedMs: Math.round((10 * a.s) / a.n) / 10,
     steady: Math.round((100 * Math.hypot(a.u, a.v)) / a.s) / 100,
+    ...(a.k ? { tempC: Math.round(a.t / a.k), rh: Math.round(a.h / a.k) } : {}),
   }))
 }
 
@@ -235,6 +241,9 @@ export interface WindOpening {
   widthM: number
   sillM: number
   headM: number
+  kind: OpeningKind
+  /** it opens onto a balcony (else straight outside or onto a zone) */
+  balcony: boolean
 }
 
 export interface RoomWind {
@@ -245,6 +254,8 @@ export interface RoomWind {
   outlets: WindOpening[]
   /** both: the wind crosses the room */
   cross: boolean
+  /** where it leaves: the outlet farthest downwind (none: it stays in the room) */
+  exit?: WindOpening
 }
 
 /** a room the wind is shown through: not a zone, a balcony (open already) or a shaft */
@@ -273,15 +284,18 @@ export function roomWind(unit: Unit, rooms: Room[], fromDeg: number): RoomWind[]
         const side = (s: number) => roomAt({ x: at.x + f.normal.x * off * s, y: at.y + f.normal.y * off * s }, rooms, unit)
         const [a, b] = [side(1), side(-1)]
         const s = a?.id === r.id ? -1 : b?.id === r.id ? 1 : 0 // toward the other side
-        if (!s || !outside(s > 0 ? a : b)) continue
+        const other = s > 0 ? a : b
+        if (!s || !outside(other)) continue
         const n = { x: f.normal.x * s, y: f.normal.y * s }
         const c = n.x * from.x + n.y * from.y
-        const wo = { wallId: w.id, openingId: o.id, at, out: n, widthM: o.widthM, sillM: o.sillM, headM: o.sillM + o.heightM }
+        const wo = { wallId: w.id, openingId: o.id, at, out: n, widthM: o.widthM, sillM: o.sillM, headM: o.sillM + o.heightM, kind: o.kind, balcony: other?.kind === 'balcony' }
         if (c >= INLET_COS - 1e-9) rw.inlets.push(wo)
         else if (c <= 1e-9) rw.outlets.push(wo)
       }
     }
     rw.cross = rw.inlets.length > 0 && rw.outlets.length > 0
+    // downwind = against `from`: the outlet whose middle lies farthest that way
+    rw.exit = rw.outlets.reduce<WindOpening | undefined>((best, e) => (!best || e.at.x * from.x + e.at.y * from.y < best.at.x * from.x + best.at.y * from.y ? e : best), undefined)
     if (rw.inlets.length || rw.outlets.length) out.push(rw)
   }
   return out
@@ -310,3 +324,78 @@ export function sheltered(unit: Unit, at: Pt, fromDeg: number, blocks = sitePlan
 
 /** "N", "NE" … for a bearing. */
 export const compassName = (deg: number): string => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round((((deg % 360) + 360) % 360) / 45) % 8]
+
+// ───────────────────────────── the wind in words ─────────────────────────────
+
+const POINTS16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+const WORDS16 = ['north', 'north-north-east', 'north-east', 'east-north-east', 'east', 'east-south-east', 'south-east', 'south-south-east', 'south', 'south-south-west', 'south-west', 'west-south-west', 'west', 'west-north-west', 'north-west', 'north-north-west']
+const i16 = (deg: number) => Math.round((((deg % 360) + 360) % 360) / 22.5) % 16
+/** a bearing as one of the 16 compass points: "SSE" */
+export const point16 = (deg: number): string => POINTS16[i16(deg)]
+/** …in words: "south-south-east" */
+export const words16 = (deg: number): string => WORDS16[i16(deg)]
+/** A plan direction as a compass bearing (degrees clockwise from true north): the inverse of bearingInPlan. */
+export const bearingOf = (d: Pt, northDeg: number): number => ((((Math.atan2(d.x, -d.y) * 180) / Math.PI - northDeg) % 360) + 360) % 360
+
+/**
+ * South Asia's four seasons (the Bangladesh Meteorological Department's) for a site in the monsoon belt (5–35° N,
+ * 60–100° E), else the temperate four by hemisphere. `month` 0 = January. No site: Dhaka.
+ */
+export type Season = 'winter' | 'pre-monsoon' | 'monsoon' | 'post-monsoon' | 'spring' | 'summer' | 'autumn'
+export function seasonOf(month: number, site?: Pick<Site, 'lat' | 'lon'>): Season {
+  const { lat, lon } = site ?? DHAKA
+  if (lat > 5 && lat < 35 && lon > 60 && lon < 100) return month === 11 || month < 2 ? 'winter' : month < 5 ? 'pre-monsoon' : month < 9 ? 'monsoon' : 'post-monsoon'
+  const m = lat < 0 ? (month + 6) % 12 : month
+  return m === 11 || m < 2 ? 'winter' : m < 5 ? 'spring' : m < 8 ? 'summer' : 'autumn'
+}
+export const SEASON_NAME: Record<Season, string> = {
+  winter: 'winter',
+  'pre-monsoon': 'pre-monsoon summer',
+  monsoon: 'monsoon',
+  'post-monsoon': 'post-monsoon autumn',
+  spring: 'spring',
+  summer: 'summer',
+  autumn: 'autumn',
+}
+const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** "steady south-south-east breeze, 3.5 m/s" / "light north-west wind, 2 m/s" / "changeable light east wind, 1.9 m/s" (Beaufort's words) */
+export function windWords(w: WindMonth): string {
+  const how = w.steady >= 0.7 ? 'steady ' : w.steady < 0.4 ? 'changeable ' : ''
+  const strength = w.speedMs < 1.6 ? 'very light ' : w.speedMs < 3.4 ? 'light ' : w.speedMs < 5.5 ? '' : 'fresh '
+  return `${how}${strength}${words16(w.fromDeg)} ${w.speedMs >= 3.4 ? 'breeze' : 'wind'}, ${w.speedMs} m/s`
+}
+
+/** "June · monsoon · steady south-south-east breeze, 3.5 m/s" */
+export const monthLine = (month: number, months: WindMonth[], site?: Pick<Site, 'lat' | 'lon'>): string =>
+  `${MONTH_NAME[month]} · ${SEASON_NAME[seasonOf(month, site)]} · ${windWords(months[month])}`
+
+/**
+ * The season's air from the months in it: "hot and humid, about 28 °C and 85 % humidity" (hot ≥ 27 °C, warm ≥ 22, else
+ * cool; humid ≥ 80 %, dry < 65 %); null when the table has no temperatures (a site fetched before they were, far from Dhaka).
+ */
+export function seasonNote(month: number, months: WindMonth[], site?: Pick<Site, 'lat' | 'lon'>): string | null {
+  const s = seasonOf(month, site)
+  // a site fetched before temperatures were asked for: near Dhaka (within ~100 km) the city's table stands in
+  const near = !site || Math.hypot(site.lat - DHAKA.lat, (site.lon - DHAKA.lon) * Math.cos(DHAKA.lat * RAD)) < 0.9
+  const table = months.some((m) => m.tempC !== undefined) || !near ? months : DHAKA_WIND
+  const ms = table.filter((m, i) => seasonOf(i, site) === s && m.tempC !== undefined && m.rh !== undefined)
+  if (!ms.length) return null
+  const t = Math.round(ms.reduce((a, m) => a + m.tempC!, 0) / ms.length)
+  const h = Math.round(ms.reduce((a, m) => a + m.rh!, 0) / ms.length)
+  const feel = [t >= 27 ? 'hot' : t >= 22 ? 'warm' : 'cool', ...(h >= 80 ? ['humid'] : h < 65 ? ['dry'] : [])].join(' and ')
+  return `${feel}, about ${t} °C and ${h} % humidity`
+}
+
+const KIND_WORD: Record<OpeningKind, string> = { window: 'window', door: 'door', slider: 'sliding door', passage: 'opening' }
+/** "the east window", "the south-west balcony door": the side of the room it is on, by the compass */
+export const openingName = (o: WindOpening, northDeg: number): string =>
+  `the ${compassName(bearingOf(o.out, northDeg))} ${o.balcony && o.kind !== 'window' ? 'balcony door' : KIND_WORD[o.kind]}`
+
+/** The room's wind in plain words: "Wind comes in at the east window and goes out through the west balcony door". */
+export function windSentence(rw: RoomWind | undefined, northDeg: number): string {
+  if (!rw?.inlets.length) return 'No window or door here faces the wind'
+  const ins = [...new Set(rw.inlets.map((o) => openingName(o, northDeg)))]
+  const list = ins.length < 2 ? ins[0] : `${ins.slice(0, -1).join(', ')} and ${ins.at(-1)}`
+  return rw.exit ? `Wind comes in at ${list} and goes out through ${openingName(rw.exit, northDeg)}` : `Wind comes in at ${list} — no way out: it stays in the room`
+}

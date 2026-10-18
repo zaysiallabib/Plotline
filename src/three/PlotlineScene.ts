@@ -31,7 +31,7 @@ import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, needsFrame, slowFrames, type Quality } from './render'
-import { WindFlow } from './wind'
+import { SEASON_TINT, WindFlow } from './wind'
 import { siteCut } from './context'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
@@ -255,6 +255,7 @@ export class PlotlineScene {
   /** the wind arrows (null: off) and the month they show */
   private wind: WindFlow | null = null
   private windMonth: core.WindMonth | null = null
+  private windSeason: core.Season = 'monsoon'
   private walker: Pt = { x: 0, y: 0 }
   /** the floor under the walker, eased toward levelAt(walker): a step is climbed like a stair, not a jump */
   private floorY = 0
@@ -469,11 +470,12 @@ export class PlotlineScene {
     if (this.mode === 'building') this.building?.setSun(this.sun)
   }
 
-  /** The month's wind as arrows through the flat (wind.ts), or none. */
-  setWind(month: core.WindMonth | null): void {
+  /** The month's wind as streamlines through the flat (wind.ts), tinted by its season, or none. */
+  setWind(month: core.WindMonth | null, season: core.Season = this.windSeason): void {
     this.wind?.dispose()
     this.windMonth = month
-    this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month) : null
+    this.windSeason = season
+    this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month, SEASON_TINT[season]) : null
     if (this.wind) this.scene.add(this.wind)
   }
 

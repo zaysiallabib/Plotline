@@ -25,7 +25,7 @@ import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
-import SunPill, { WindRose } from './SunPill'
+import SunPill, { WindChips, WindRose } from './SunPill'
 import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
 import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
@@ -42,9 +42,15 @@ const DEFAULT_HOUR = 15.5
 
 /** the ten full years before the site was fetched (SitePanel asks for those) */
 const windYears = (at?: string): string => (at ? `${Number(at.slice(0, 4)) - 10}–${Number(at.slice(0, 4)) - 1}` : 'ten years')
-/** a room's line in the chip while Wind is on */
-const windNote = (w?: core.RoomWind): string =>
-  !w || !w.inlets.length ? 'No window faces the wind' : w.cross ? 'Cross ventilation: the wind comes in and goes out' : 'The wind comes in, with no way out on the far side'
+/** the wind rose shown (Wind on, Rose): remembered in this browser */
+const ROSE_KEY = 'plotline.windRose'
+const roseSaved = (): boolean => {
+  try {
+    return localStorage.getItem(ROSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
 /** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
@@ -475,9 +481,16 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** the sun's day (the scene starts on today too) and the wind: its month's rose and arrows, on or off */
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
+  const [roseOn, setRoseOn] = useState(roseSaved)
   const months = unit.site?.wind ?? core.DHAKA_WIND
   const month = Number(date.slice(5, 7)) - 1
   const windRooms = useMemo(() => (windOn ? core.roomWind(unit, rooms, months[month].fromDeg) : []), [windOn, unit, rooms, months, month])
+  /** a month picked (the strip or the rose): the same day of it, the sun moves with it */
+  const pickMonth = (m: number) => {
+    const d = `${date.slice(0, 5)}${String(m + 1).padStart(2, '0')}-${String(Math.min(28, Number(date.slice(8, 10)))).padStart(2, '0')}`
+    setDate(d)
+    scene?.setTimeOfDay(hour, d)
+  }
   /** the one-room / one-wall finish keys this plan offers, with their slot and name (share.ts) */
   const keys = useMemo(() => finishKeys(unit, rooms), [unit, rooms])
   const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots, keys))
@@ -600,7 +613,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }, [given]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wind on: the month's arrows through the flat (three/wind.ts)
-  useEffect(() => scene?.setWind(windOn ? months[month] : null), [scene, windOn, months, month])
+  useEffect(() => scene?.setWind(windOn ? months[month] : null, core.seasonOf(month, unit.site)), [scene, windOn, months, month, unit.site])
 
   useEffect(() => {
     scene?.setConfiguration(fullCfg)
@@ -1083,7 +1096,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             mode={mode}
             floor={unit.floor}
             floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
-            roomNote={windOn && room ? windNote(windRooms.find((w) => w.roomId === room.id)) : null}
+            roomNote={windOn && room ? core.windSentence(windRooms.find((w) => w.roomId === room.id), unit.northDeg) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
             onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}
@@ -1210,20 +1223,33 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             }}
             wind={windOn}
             onWind={() => setWindOn((v) => !v)}
+            month={month}
+            onMonth={pickMonth}
+            windLine={core.monthLine(month, months, unit.site)}
+            windNote={core.seasonNote(month, months, unit.site)}
+            rose={roseOn}
+            onRose={() =>
+              setRoseOn((v) => {
+                try {
+                  localStorage.setItem(ROSE_KEY, v ? '0' : '1')
+                } catch {
+                  /* this browser keeps nothing: the rose stays as clicked for now */
+                }
+                return !v
+              })
+            }
           />
-          {windOn && (
+          {windOn && roseOn && (
             <WindRose
               months={months}
               month={month}
               northDeg={unit.northDeg}
               source={unit.site?.wind ? `Wind at this site: Open-Meteo, ${windYears(unit.site.fetchedAt)}` : 'Wind: the Dhaka table (Open-Meteo 2015–2024) — no site set in the Studio'}
-              crossRooms={windRooms.filter((w) => w.cross).map((w) => rooms.find((r) => r.id === w.roomId)?.name ?? '')}
-              onMonth={(m) => {
-                const d = `${date.slice(0, 5)}${String(m + 1).padStart(2, '0')}-${String(Math.min(28, Number(date.slice(8, 10)))).padStart(2, '0')}`
-                setDate(d)
-                scene.setTimeOfDay(hour, d)
-              }}
+              onMonth={pickMonth}
             />
+          )}
+          {windOn && mode === 'walk' && room && (
+            <WindChips scene={scene} unit={unit} room={room} rw={windRooms.find((w) => w.roomId === room.id)} fromDeg={months[month].fromDeg} />
           )}
           <PinLayer scene={scene} pins={pins} draft={draft} onSave={savePin} onCancel={() => setDraft(null)} />
           <Minimap scene={scene} unit={unit} rooms={rooms} walking={mode === 'walk'} />

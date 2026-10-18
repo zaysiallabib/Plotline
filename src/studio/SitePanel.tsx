@@ -45,7 +45,7 @@ export async function fetchSite(lat: number, lon: number): Promise<{ site: Site;
   ;[lat, lon] = [Math.round(lat * 1e6) / 1e6, Math.round(lon * 1e6) / 1e6] // a decimetre
   const q = `[out:json][timeout:60];(way["building"](around:${RADIUS_M},${lat},${lon});way["highway"](around:${RADIUS_M},${lat},${lon}););out geom;`
   const year = new Date().getFullYear()
-  const meteo = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${year - 10}-01-01&end_date=${year - 1}-12-31&daily=wind_speed_10m_mean,wind_direction_10m_dominant&wind_speed_unit=ms&timezone=auto`
+  const meteo = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${year - 10}-01-01&end_date=${year - 1}-12-31&daily=wind_speed_10m_mean,wind_direction_10m_dominant,temperature_2m_mean,relative_humidity_2m_mean&wind_speed_unit=ms&timezone=auto`
   const dLat = RADIUS_M / 111320
   const dLon = dLat / Math.cos(lat * RAD)
   const box = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].map((v) => v.toFixed(6)).join(',')
