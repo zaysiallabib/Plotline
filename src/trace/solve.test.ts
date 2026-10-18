@@ -1,13 +1,14 @@
 /// <reference types="node" />
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { deriveFlats, deriveRooms, validate } from '../core'
+import { deriveFlats, deriveRooms, pointInPolygon, roomPolygon, validate } from '../core'
 import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
+import { turnOf, turnRaster } from './raster'
 import { oracleText } from './roomsEval'
 import { diagnoseMisses, formatSolveReports, scoreSolve, truthPick, withWallScore, type SolveReport } from './solveEval'
 import { traceWalls } from './walls'
@@ -700,6 +701,60 @@ describe('tableRow: a number lost, or a kind guessed, takes the one table row of
     expect(tableRow(rows, 30, bed)).toBeNull()
   })
 })
+
+describe('s27 fix 2: a colour sheet whose walls are lighter than the floor', () => {
+  test('traced again on its light bands: the four rooms close round their names (none close on the sheet as drawn); its small unnamed boxes join each other', async () => {
+    // a 2 × 2 grid of 4 × 3 m rooms, white walls 0.2 m thick on a beige floor (grey 200), a pale page round it (230); under
+    // it a 1 m strip cut into four 2 m² boxes with no name (a run of cupboards, a shaft: no rooms)
+    const width = Math.round(8 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(230) }
+    const paint = (a: Px, b: Px, v: number) => {
+      for (let y = Math.round(a.y); y < Math.round(b.y); y++) for (let x = Math.round(a.x); x < Math.round(b.x); x++) g.data[y * width + x] = v
+    }
+    paint(P(0, 0), P(8, 7), 200)
+    for (const y of [0, 3, 6, 7]) paint(P(-0.1, y - 0.1), P(8.1, y + 0.1), 255)
+    for (const x of [0, 4, 8]) paint(P(x - 0.1, -0.1), P(x + 0.1, 7.1), 255)
+    for (const x of [2, 6]) paint(P(x - 0.1, 6), P(x + 0.1, 7.1), 255)
+    const rgb = { width, height, data: new Uint8Array(width * height * 4).map((_, i) => (i % 4 === 3 ? 255 : g.data[i >> 2])) }
+    const names = ['BED 1', 'BED 2', 'LIVING', 'KITCHEN'].map((t, i): TextItem => {
+      const c = P(2 + 4 * (i % 2), 1.5 + 3 * (i >> 1))
+      return { text: t, box: { x: c.x - 25, y: c.y - 6, w: 50, h: 12 }, kind: 'room', roomKind: i < 2 ? 'bed' : i === 2 ? 'living' : 'kitchen', conf: 0.9, source: 'ocr' }
+    })
+    const p = await prepare(g, { pxPerM: K, rgb, text: { items: names } })
+    const { draft } = p.traces
+    const holding = names.filter((it) => draft.rooms.some((r) => r.areaSqm < 20 && pointInPolygon({ x: (it.box.x + it.box.w / 2) / K, y: (it.box.y + it.box.h / 2) / K }, roomPolygon(r, draft.unit))))
+    expect(holding.length).toBe(4)
+    expect(draft.rooms.filter((r) => r.areaSqm < 3).length).toBe(0)
+  })
+})
+
+describe('s27 fix 2: a plan drawn turned on the sheet (Sheltech Windflower Tower 2, 9.35°)', () => {
+  test('is read turned square: a click gives its room, back on the sheet on the drawn corners', async () => {
+    const width = Math.round(4 * K + 2 * O.x), height = Math.round(3 * K + 2 * O.y)
+    const g0: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    // (hollow CAD walls: two 2 px lines 0.2 m apart)
+    const hollow = (a: Px, b: Px) => {
+      const h = a.y === b.y
+      for (const d of [-0.1 * K, 0.1 * K]) stroke(g0, h ? { x: a.x, y: a.y + d } : { x: a.x + d, y: a.y }, h ? { x: b.x, y: b.y + d } : { x: b.x + d, y: b.y }, 2)
+    }
+    hollow(P(-0.1, 0), P(4.1, 0)), hollow(P(-0.1, 3), P(4.1, 3)), hollow(P(0, -0.1), P(0, 3.1)), hollow(P(4, -0.1), P(4, 3.1))
+    // the plan turned 12° on a sheet whose frame stays square
+    const t = turnOf(width, height, -12)
+    const g = turnRaster(g0, t)
+    for (let x = 0; x < g.width; x++) g.data[2 * g.width + x] = g.data[(g.height - 3) * g.width + x] = 0
+    for (let y = 0; y < g.height; y++) g.data[y * g.width + 2] = g.data[y * g.width + g.width - 3] = 0
+    const p = await prepare(g, { pxPerM: K, text: { items: [] } })
+    expect(Math.abs(p.turn?.deg ?? 0)).toBeCloseTo(12, 0)
+    const r = pick(p, t.fwd(P(2, 1.5)))
+    const rooms = deriveRooms(r.unit)
+    expect(rooms.length).toBe(1)
+    expect(rooms[0].areaSqm).toBeGreaterThan(10.5)
+    expect(rooms[0].areaSqm).toBeLessThan(12.5)
+    const { pxPerM: k, originPx: o } = r.unit.planImage!
+    for (const c of [P(0, 0), P(4, 0), P(4, 3), P(0, 3)]) {
+      const q = t.fwd(c)
+      expect(Math.min(...r.unit.vertices.map((v) => Math.hypot(o.x + v.x * k - q.x, o.y + v.y * k - q.y)))).toBeLessThan(3)
+    }
 
 describe('s27 clean 90: the whole floor keeps every printed room it can reach through another', () => {
   test('a bedroom behind a door not found, and its veranda beyond it: both join the flat (the veranda through the bedroom)', () => {
