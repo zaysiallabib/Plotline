@@ -7,7 +7,8 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { Gray } from './types'
-import { boxBack, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
+import { loadPgm } from './evalio'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -100,6 +101,23 @@ describe('the gate: a garbled read never names a room (AUTOTRACE_100 §3 #5)', (
 })
 
 describe('the passes (pure)', () => {
+  test('s27: a view reading a cut area stamp whole replaces the cut read; a word never becomes an area', () => {
+    expect(wholeArea('1364 SOF', '1364 SOFT')).toBe(true)
+    expect(wholeArea('1364 SQFT', '1364 SQFT')).toBe(false) // read whole already
+    expect(wholeArea('TOILET', '1364 SFT')).toBe(false) // no figure in the first read
+  })
+  test('s27: a size printed sideways has its name strip beside it on the page, on the side its turn puts over it', () => {
+    // Residence Park's MASTER BED reads top-to-bottom (upright turned counter-clockwise) with its size on its left; Sarwar's
+    // BED reads bottom-to-top (clockwise) with its size on its right; an upright size has its name over it
+    const size = { x: 300, y: 200, w: 30, h: 150 }
+    const ccw = nameStrip(size, 'ccw', 1000, 800), cw = nameStrip(size, 'cw', 1000, 800), up = nameStrip({ x: 300, y: 200, w: 150, h: 30 }, null, 1000, 800)
+    expect(ccw.x).toBe(330)
+    expect(cw.x + cw.w).toBe(300)
+    expect([ccw.w, cw.w]).toEqual([48, 48])
+    for (const s of [ccw, cw]) expect(s.y + s.h / 2).toBeCloseTo(275)
+    expect(up.y + up.h).toBe(200)
+    expect(boxTo(boxBack({ x: 3, y: 5, w: 7, h: 11 }, 'ccw', 600, 400), 'ccw', 600, 400)).toEqual({ x: 3, y: 5, w: 7, h: 11 })
+  })
   test('a box on a turned page turns back to where it was printed', () => {
     const g = paper(300, 200)
     fill(g, 40, 120, 30, 10, 0) // a mark at x 40–70, y 120–130
@@ -232,4 +250,16 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     expect(all.some((n) => /LIVING/.test(n))).toBe(true)
     expect(all.some((n) => /DINING/.test(n))).toBe(true)
   }, 120_000)
+})
+
+// s27: Residence Park p25 (machine-local fixture, decoded as the Studio does): its KITCHEN printed top-to-bottom touches
+// the stove, so the line found starts at the I and the views read "[CHEN" / "BTCHEN" — the turned view one letter wider
+// each side reads KITCHEN
+const RP25 = 'E:/dev/tmp/s27/fix3/fixtures/akter-residencepark-p25-aishatypea1460.pgm'
+describe.skipIf(!existsSync(`${TESS}eng.traineddata`) || !existsSync(RP25))('a sideways name cut at a fixture (node tesseract, Residence Park p25)', () => {
+  test('KITCHEN is read where it is printed', async () => {
+    const t = await readText(loadPgm(RP25)!, { cachePath: TESS })
+    const k = t.items.find((it) => it.kind === 'room' && it.roomKind === 'kitchen')
+    expect(Math.hypot(k!.box.x + k!.box.w / 2 - 616, k!.box.y + k!.box.h / 2 - 1095)).toBeLessThan(60)
+  }, 180_000)
 })

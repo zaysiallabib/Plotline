@@ -736,6 +736,8 @@ describe('findTables', () => {
     ])
   })
   test('parseArea reads SQT', () => expect(parseArea('2023 SQT (Approx.)')! / (FT * FT)).toBeCloseTo(2023, 0))
+  // s27: Mir Sarwar's small sideways "1376 SQFT" reads "1376 SOFT" (its Q an O): still the flat's area
+  test('parseArea reads SQFT with its Q read as an O', () => expect(parseArea('1376 SOFT')! / (FT * FT)).toBeCloseTo(1376, 0))
   // s26 CPDL La Reina: an 8 px legend whose names column reads as stacked items, sizes read sure / unsure, ruled rows
   test('an 8 px legend: the names column read as one item is split by the sizes beside it; ruled rows are no wall', () => {
     const S = (text: string, y: number, extra: Partial<TextItem> = {}): TextItem => ({ ...T(text, 700, y, 45, 8), ...extra })

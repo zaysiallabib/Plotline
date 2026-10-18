@@ -77,9 +77,9 @@ export function parseDims(raw: string): Dims | null {
   return aM === null || bM === null ? null : { aM, bM }
 }
 
-/** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
+/** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "1376 SOFT" (s27: SQFT with its Q read as an O — Mir Sarwar's small sideways stamps), "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
 export function parseArea(raw: string): number | null {
-  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|SQ\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
+  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|S[QO0]\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
   // a title's "SIZE 2152" whose unit was not read with it (s26: Eastern Housing Sapphire prints the figure twice the
   // height of "SIZE" and "SFT"): square feet
   const t = m ? null : /\b(SIZE|AREA)\b\W{0,3}(\d{3,4})(?![\d'"]|\s*[xX×])/i.exec(raw)
@@ -1293,13 +1293,15 @@ const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubi
  * crop read them all.
  */
 const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-&/ '
-const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos' | 'cubic'; wide?: number }[] = [
+const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos' | 'cubic'; wide?: number; turned?: boolean }[] = [
   { from: 'own', px: 48, kernel: 'lanczos' },
   { from: 'raw', px: 40, kernel: 'cubic' },
   { from: 'clean', px: 48, kernel: 'lanczos' },
   // s26: the raw crop a letter and a half wider each side ("STAFF BATH" lost its S to a basin's arc and TH to the WC: the
   // line found was "AFF BA")
   { from: 'raw', px: 44, kernel: 'lanczos', wide: 1.5 },
+  // s27: a turned page's line one letter wider each side (Residence Park's sideways KITCHEN, cut at the stove: "[CHEN")
+  { from: 'raw', px: 44, kernel: 'lanczos', wide: 1, turned: true },
 ]
 
 /** the building core's names: they decide where a flat ends (solve.ts), so a second look never adds one */
@@ -1354,6 +1356,21 @@ export function rotateCCW(g: Gray): Gray {
 /** A box in a turned page (`rotateCW` / `rotateCCW` of a W × H page) → the same box on the page. */
 export function boxBack(b: Box, turn: 'cw' | 'ccw', W: number, H: number): Box {
   return turn === 'cw' ? { x: b.y, y: H - b.x - b.w, w: b.h, h: b.w } : { x: W - b.y - b.h, y: b.x, w: b.h, h: b.w }
+}
+
+/** A box on the page → the same box in the turned page (`rotateCW` / `rotateCCW` of a W × H page): boxBack undone. */
+export function boxTo(b: Box, turn: 'cw' | 'ccw', W: number, H: number): Box {
+  return turn === 'cw' ? { x: H - b.y - b.h, y: b.x, w: b.h, h: b.w } : { x: b.y, y: W - b.x - b.w, w: b.h, h: b.w }
+}
+
+/**
+ * Where a size line's room name is printed: the strip just over it as the size reads (1.6 line heights tall, the size's
+ * width × 1.3, at least 5 heights). s27: a size printed sideways (`turn` reads it upright) has it beside it on the page.
+ */
+export function nameStrip(b: Box, turn: 'cw' | 'ccw' | null, W: number, H: number): Box {
+  const u = turn ? boxTo(b, turn, W, H) : b
+  const h = u.h, w = Math.max(1.3 * u.w, 5 * h), s = { x: u.x + u.w / 2 - w / 2, y: u.y - 1.6 * h, w, h: 1.6 * h }
+  return turn ? boxBack(s, turn, W, H) : s
 }
 
 /** s27 AI-prep: a rejected strip cut from the sheet at full size and turned upright — the crop a vision model is shown (toCanvas for a canvas). */
@@ -1423,6 +1440,10 @@ export function nameOk(raw: string): boolean {
 
 /** a read holds a plan word as printed (or a long one a letter off: KITCHEM) — not only one a letter swap makes (RED → BED) */
 const verbatim = (t: string) => t.toUpperCase().split(/[^A-Z]+/).some((w) => NAME_WORDS.has(w) || (w.length >= 5 && WORDS.some((v) => editDistanceAtMost1(w, v))))
+
+/** s27: `view` is a flat's area stamp read whole where the first read `first` cut it ("1364 SOF" → "1364 SOFT", Mir Sarwar's
+ * sideways UNIT-B) — only over a first read that showed the figure already, so a view never makes an area of a word */
+export const wholeArea = (first: string, view: string) => parseArea(first) === null && /\d{3}/.test(first) && parseArea(view) !== null
 
 /** a read line as a room name: its kind (classifyRoom) when the name passes the gate, else null */
 export const roomName = (t: string) => (nameOk(t) ? classifyRoom(t) : null)
@@ -1643,9 +1664,10 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       for (const v of NAME_VIEWS) {
         // (a height pass's line on the page was read raw and from its mask already: only its own glyphs and the wider crop
         // again; a turned page's line gets every view — sideways TOILET labels came through on those)
-        const idx = names.map((n, k) => (passes[k].strict && passes[k].frame === 0 && !v.wide && v.from !== 'own' ? [] : n))
+        const idx = names.map((n, k) => ((passes[k].strict && passes[k].frame === 0 && !v.wide && v.from !== 'own') || (v.turned && !passes[k].frame) ? [] : n))
         const again = await readAll(idx, (p, l) => lineImage(v.from === 'clean' ? p.clean : p.img, l, v.px, v.kernel, undefined, v.from === 'own' ? p.glyphs : undefined, v.wide))
-        idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), !roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j)) && (read[k][j] = again[k][m]))))
+        // (s27: or a flat's area stamp a view reads whole where the first read cut it: wholeArea)
+        idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), ((!roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j))) || wholeArea(read[k][j].text, again[k][m].text)) && (read[k][j] = again[k][m]))))
       }
       // a name read with no number: a view reading the same name with a number gives it — when no view reads another
       names.forEach((n, k) =>
@@ -1750,14 +1772,16 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const nameless: RejectedStrip[] = []
     if (bare.length) {
       await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: NAME_CHARS, debug_file: '/dev/null' })
-      const strips = bare.map((it) => {
-        const h = it.box.h, w = Math.max(1.3 * it.box.w, 5 * h)
-        return { x: it.box.x + it.box.w / 2 - w / 2, y: it.box.y - 1.6 * h, w, h: 1.6 * h }
-      })
+      // (s27: a size printed sideways has its name beside it on the page — over it once the page is turned so the size reads
+      // upright: the strip is cut there and turned upright before it is read, Residence Park's MASTER BED, Sarwar's BED)
+      const turns = bare.map((it) => (turnOf.get(it) === 90 ? 'cw' : turnOf.get(it) === -90 ? 'ccw' : null))
+      const strips = bare.map((it, i) => nameStrip(it.box, turns[i], gray.width, gray.height))
+      const upright = (i: number) => { const c = cropGray(gray, strips[i]); return turns[i] === 'cw' ? rotateCW(c) : turns[i] === 'ccw' ? rotateCCW(c) : c }
+      const letterH = (i: number) => (turns[i] ? bare[i].box.w : bare[i].box.h)
       const heard: string[] = []
       for (const px of [44, 34]) {
         const todo = bare.flatMap((it, i) => (it.kind === 'dims' ? [i] : []))
-        const reads = await Promise.all(todo.map((i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(cropGray(gray, strips[i]), Math.max(1, Math.min(8, px / bare[i].box.h)), 'lanczos')), 12)) as unknown as Blob)))
+        const reads = await Promise.all(todo.map((i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(upright(i), Math.max(1, Math.min(8, px / letterH(i))), 'lanczos')), 12)) as unknown as Blob)))
         todo.forEach((i, k) => {
           const name = (heard[i] = reads[k].data.text.replace(/\s+/g, ' ').trim())
           const room = verbatim(name) && flatRoom(name, true) ? roomName(name)! : null
@@ -1767,7 +1791,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         })
       }
       // s27 AI-prep: the strips no name came from
-      bare.forEach((it, i) => it.kind === 'dims' && nameless.push({ box: strips[i], angle: 0, reason: 'name-unread', ...(heard[i] ? { text: heard[i] } : {}) }))
+      bare.forEach((it, i) => it.kind === 'dims' && nameless.push({ box: strips[i], angle: turns[i] === 'cw' ? 90 : turns[i] === 'ccw' ? -90 : 0, reason: 'name-unread', ...(heard[i] ? { text: heard[i] } : {}) }))
     }
     // one label read twice (two passes, their boxes a little apart): the read with a size stays — a name printed twice is
     // the next flat's to the floor tracer (solve.ts), so a twin would split a flat
