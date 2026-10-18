@@ -700,3 +700,23 @@ describe('tableRow: a number lost, or a kind guessed, takes the one table row of
     expect(tableRow(rows, 30, bed)).toBeNull()
   })
 })
+
+describe('s27 clean 90: the whole floor keeps every printed room it can reach through another', () => {
+  test('a bedroom behind a door not found, and its veranda beyond it: both join the flat (the veranda through the bedroom)', () => {
+    // one flat 9.5 × 5 m: LIVING (UNIT-A printed in it) 0–4, BED-2 4–8, VER 8–9.5; neither wall between them has a door
+    const width = Math.round(9.5 * K + 2 * O.x), height = Math.round(5 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    stroke(g, P(-h, 0), P(9.5 + h, 0), ext)
+    stroke(g, P(-h, 5), P(9.5 + h, 5), ext)
+    for (const x of [0, 4, 8, 9.5]) stroke(g, P(x, 0), P(x, 5), ext)
+    const item = (text: string, kind: string, x: number, y: number, dims?: { aM: number; bM: number }): TextItem => {
+      const c = P(x, y)
+      return { text, box: { x: c.x - 30, y: c.y - 10, w: 60, h: 20 }, kind: kind === 'flat' ? 'other' : 'room', ...(kind === 'flat' ? {} : { roomKind: kind }), ...(dims ? { dims } : {}), conf: 0.9, source: 'ocr' }
+    }
+    // (the veranda's name first: it is looked at before the bedroom joins)
+    const items = [item('VER', 'balcony', 8.75, 2.5), item('BED-2', 'bed', 6, 2.5, { aM: 3.75, bM: 4.75 }), item('LIVING', 'living', 2, 2, { aM: 3.75, bM: 4.75 }), item('UNIT-A', 'flat', 2, 3.5)]
+    const r = pickTraces(prepareTraces(g, { text: { items } }, { pxPerM: K }), undefined, true)
+    expect(deriveRooms(r.unit).map((x) => x.name).sort()).toEqual(['Bed 2', 'Living', 'Ver'])
+  })
+})
