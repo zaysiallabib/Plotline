@@ -77,9 +77,9 @@ export function parseDims(raw: string): Dims | null {
   return aM === null || bM === null ? null : { aM, bM }
 }
 
-/** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
+/** "±2,736 SFT", "2736 sft", "2023 SQT (Approx.)", "1376 SOFT" (s27: SQFT with its Q read as an O — Mir Sarwar's small sideways stamps), "2703 SFT & 674 SFT" (first one), "254 sqm" → m². Else null. */
 export function parseArea(raw: string): number | null {
-  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|SQ\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
+  const m = /(\d[\d,]{2,6}(?:\.\d+)?)\s*(S\.?\s*F\.?\s*T|S[QO0]\.?\s*FT|SQ\.?\s*T|FT2|FT²|SQ\.?\s*M|SQM|M2|M²)\b/i.exec(raw.replace(/²/g, '2'))
   // a title's "SIZE 2152" whose unit was not read with it (s26: Eastern Housing Sapphire prints the figure twice the
   // height of "SIZE" and "SFT"): square feet
   const t = m ? null : /\b(SIZE|AREA)\b\W{0,3}(\d{3,4})(?![\d'"]|\s*[xX×])/i.exec(raw)
@@ -1356,6 +1356,21 @@ export function boxBack(b: Box, turn: 'cw' | 'ccw', W: number, H: number): Box {
   return turn === 'cw' ? { x: b.y, y: H - b.x - b.w, w: b.h, h: b.w } : { x: W - b.y - b.h, y: b.x, w: b.h, h: b.w }
 }
 
+/** A box on the page → the same box in the turned page (`rotateCW` / `rotateCCW` of a W × H page): boxBack undone. */
+export function boxTo(b: Box, turn: 'cw' | 'ccw', W: number, H: number): Box {
+  return turn === 'cw' ? { x: H - b.y - b.h, y: b.x, w: b.h, h: b.w } : { x: b.y, y: W - b.x - b.w, w: b.h, h: b.w }
+}
+
+/**
+ * Where a size line's room name is printed: the strip just over it as the size reads (1.6 line heights tall, the size's
+ * width × 1.3, at least 5 heights). s27: a size printed sideways (`turn` reads it upright) has it beside it on the page.
+ */
+export function nameStrip(b: Box, turn: 'cw' | 'ccw' | null, W: number, H: number): Box {
+  const u = turn ? boxTo(b, turn, W, H) : b
+  const h = u.h, w = Math.max(1.3 * u.w, 5 * h), s = { x: u.x + u.w / 2 - w / 2, y: u.y - 1.6 * h, w, h: 1.6 * h }
+  return turn ? boxBack(s, turn, W, H) : s
+}
+
 /** s27 AI-prep: a rejected strip cut from the sheet at full size and turned upright — the crop a vision model is shown (toCanvas for a canvas). */
 export function uprightStrip(g: Gray, s: RejectedStrip): Gray {
   const c = cropGray(g, s.box)
@@ -1750,14 +1765,16 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
     const nameless: RejectedStrip[] = []
     if (bare.length) {
       await setAll({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: NAME_CHARS, debug_file: '/dev/null' })
-      const strips = bare.map((it) => {
-        const h = it.box.h, w = Math.max(1.3 * it.box.w, 5 * h)
-        return { x: it.box.x + it.box.w / 2 - w / 2, y: it.box.y - 1.6 * h, w, h: 1.6 * h }
-      })
+      // (s27: a size printed sideways has its name beside it on the page — over it once the page is turned so the size reads
+      // upright: the strip is cut there and turned upright before it is read, Residence Park's MASTER BED, Sarwar's BED)
+      const turns = bare.map((it) => (turnOf.get(it) === 90 ? 'cw' : turnOf.get(it) === -90 ? 'ccw' : null))
+      const strips = bare.map((it, i) => nameStrip(it.box, turns[i], gray.width, gray.height))
+      const upright = (i: number) => { const c = cropGray(gray, strips[i]); return turns[i] === 'cw' ? rotateCW(c) : turns[i] === 'ccw' ? rotateCCW(c) : c }
+      const letterH = (i: number) => (turns[i] ? bare[i].box.w : bare[i].box.h)
       const heard: string[] = []
       for (const px of [44, 34]) {
         const todo = bare.flatMap((it, i) => (it.kind === 'dims' ? [i] : []))
-        const reads = await Promise.all(todo.map((i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(cropGray(gray, strips[i]), Math.max(1, Math.min(8, px / bare[i].box.h)), 'lanczos')), 12)) as unknown as Blob)))
+        const reads = await Promise.all(todo.map((i) => scheduler.addJob('recognize', toPgm(pad(stretch(resample(upright(i), Math.max(1, Math.min(8, px / letterH(i))), 'lanczos')), 12)) as unknown as Blob)))
         todo.forEach((i, k) => {
           const name = (heard[i] = reads[k].data.text.replace(/\s+/g, ' ').trim())
           const room = verbatim(name) && flatRoom(name, true) ? roomName(name)! : null
@@ -1767,7 +1784,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         })
       }
       // s27 AI-prep: the strips no name came from
-      bare.forEach((it, i) => it.kind === 'dims' && nameless.push({ box: strips[i], angle: 0, reason: 'name-unread', ...(heard[i] ? { text: heard[i] } : {}) }))
+      bare.forEach((it, i) => it.kind === 'dims' && nameless.push({ box: strips[i], angle: turns[i] === 'cw' ? 90 : turns[i] === 'ccw' ? -90 : 0, reason: 'name-unread', ...(heard[i] ? { text: heard[i] } : {}) }))
     }
     // one label read twice (two passes, their boxes a little apart): the read with a size stays — a name printed twice is
     // the next flat's to the floor tracer (solve.ts), so a twin would split a flat
@@ -1879,11 +1896,16 @@ const TYPE_RE = /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i
  */
 export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOptions, 'langPath' | 'cachePath'> = {}): Promise<TextItem[]> {
   const centre = (b: Box) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
-  const todo = trace.items.filter((it) => {
-    if (it.kind !== 'area' || !it.areaSqm) return false
-    const c = centre(it.box)
-    return !trace.items.some((o) => TYPE_RE.test(o.text) && Math.hypot(centre(o.box).x - c.x, centre(o.box).y - c.y) < 3 * it.box.h)
-  })
+  // (s27: or a piece of one read alone — "1440." or "SFT!" in print twice the page's own, Sheltech Windflower's red
+  // "TYPE-D 1440 SFT." whose line broke at a wall: three of its six stamps were never read, so Whole floor found three flats)
+  const big = 1.8 * (trace.glyphPx ?? 8)
+  const piece = (it: TextItem) => (it.kind === 'other' || it.kind === 'dims') && it.box.h >= big && /\b\d{4}\b|\bS\.?\s?F\.?\s?T\b/i.test(it.text)
+  const near = (a: TextItem, b: TextItem) => Math.hypot(centre(a.box).x - centre(b.box).x, centre(a.box).y - centre(b.box).y) < 3 * Math.max(a.box.h, b.box.h)
+  const todo: TextItem[] = []
+  for (const it of trace.items) {
+    if (!((it.kind === 'area' && it.areaSqm) || piece(it))) continue
+    if (!trace.items.some((o) => TYPE_RE.test(o.text) && near(o, it)) && !todo.some((o) => near(o, it))) todo.push(it)
+  }
   if (!todo.length) return []
   const T = await import('tesseract.js')
   const worker = await T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })
@@ -1901,7 +1923,8 @@ export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOp
         if (m && (!got || /^\d+$/.test(got))) got = m
         if (got && !/^\d+$/.test(got)) break
       }
-      if (got) out.push({ text: `TYPE-${got}`, box: { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h }, kind: 'other', conf: 0.5, source: 'ocr' })
+      // (a piece's TYPE stands where the piece was read: the stamp itself)
+      if (got) out.push({ text: `TYPE-${got}`, box: it.kind === 'area' ? { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h } : { ...it.box }, kind: 'other', conf: 0.5, source: 'ocr' })
     }
   } finally {
     await worker.terminate()

@@ -6,8 +6,8 @@
  */
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import type { Gray } from './types'
-import { boxBack, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, readText, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
+import type { Gray, TextItem } from './types'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, readTypes, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -100,6 +100,18 @@ describe('the gate: a garbled read never names a room (AUTOTRACE_100 §3 #5)', (
 })
 
 describe('the passes (pure)', () => {
+  test('s27: a size printed sideways has its name strip beside it on the page, on the side its turn puts over it', () => {
+    // Residence Park's MASTER BED reads top-to-bottom (upright turned counter-clockwise) with its size on its left; Sarwar's
+    // BED reads bottom-to-top (clockwise) with its size on its right; an upright size has its name over it
+    const size = { x: 300, y: 200, w: 30, h: 150 }
+    const ccw = nameStrip(size, 'ccw', 1000, 800), cw = nameStrip(size, 'cw', 1000, 800), up = nameStrip({ x: 300, y: 200, w: 150, h: 30 }, null, 1000, 800)
+    expect(ccw.x).toBe(330)
+    expect(cw.x + cw.w).toBe(300)
+    expect([ccw.w, cw.w]).toEqual([48, 48])
+    for (const s of [ccw, cw]) expect(s.y + s.h / 2).toBeCloseTo(275)
+    expect(up.y + up.h).toBe(200)
+    expect(boxTo(boxBack({ x: 3, y: 5, w: 7, h: 11 }, 'ccw', 600, 400), 'ccw', 600, 400)).toEqual({ x: 3, y: 5, w: 7, h: 11 })
+  })
   test('a box on a turned page turns back to where it was printed', () => {
     const g = paper(300, 200)
     fill(g, 40, 120, 30, 10, 0) // a mark at x 40–70, y 120–130
@@ -221,6 +233,19 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     const t = await readText(g, { cachePath: TESS })
     expect(names(t)).toEqual(expect.arrayContaining(['MASTER BED', 'KITCHEN']))
   }, 180_000)
+  test('s27: a stamp read in pieces ("1440." alone) gets the block over it read for its TYPE, placed on the piece', async () => {
+    const g = paper(500, 300)
+    // (the block font's P reads as F to tesseract: a rounder P for this one word)
+    const P = F.P
+    F.P = '11110 10001 10001 10001 11110 10000 10000'
+    print(g, 'TYPE-D', 150, 90, 20, 30)
+    F.P = P
+    print(g, '1440 SFT.', 130, 124, 20, 30)
+    const piece: TextItem = { text: '1440.', box: { x: 130, y: 124, w: 89, h: 21 }, kind: 'dims', conf: 0.3, source: 'ocr' }
+    const got = await readTypes(g, { items: [piece], glyphPx: 7 }, { cachePath: TESS })
+    expect(got.map((it) => it.text)).toEqual(['TYPE-D'])
+    expect(got[0].box).toEqual(piece.box)
+  }, 120_000)
   test('white print in a dark legend box is read', async () => {
     const g = paper(700, 300)
     print(g, 'KITCHEN', 40, 40, 11)
