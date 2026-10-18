@@ -18,7 +18,7 @@ import type { Unit } from '../../core'
 import { initialState } from '../../studio/model'
 import { studioReducer } from '../../studio/review'
 import { loadPgm, loadPpm, writeUnitOverlay } from '../evalio'
-import { normalPolarity } from '../raster'
+import { normalPolarity, sheetTurn, turnOf, turnRaster } from '../raster'
 import { pick, pickFloor, prepare } from '../solve'
 import { classifyRoom, readText } from '../text'
 import type { Gray, TextTrace } from '../types'
@@ -36,9 +36,11 @@ const TESS = env.SCORE30_TESS ?? 'E:/dev/tmp/wave19/reader/tess/'
 const TEXT_SOURCES = ['../text.ts', '../sizes.ts'].map((f) => readFileSync(new URL(f, import.meta.url)))
 const TESS_VERSION = RUN ? JSON.parse(readFileSync('node_modules/tesseract.js/package.json', 'utf8')).version : ''
 
-/** = solve.ts prepare's read (normalPolarity, then readText), cached on disk */
+/** = solve.ts prepare's read (normalPolarity, a turned plan turned square, then readText), cached on disk */
 async function textOf(key: string, gray: Gray): Promise<{ text: TextTrace; cached: boolean }> {
-  const page = normalPolarity(gray)
+  let page = normalPolarity(gray)
+  const deg = sheetTurn(page)
+  if (deg) page = turnRaster(page, turnOf(page.width, page.height, deg))
   const h = createHash('sha1')
   for (const s of TEXT_SOURCES) h.update(s)
   h.update(TESS_VERSION).update(page.data)

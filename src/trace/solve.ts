@@ -25,13 +25,13 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon as polygonOf, signedArea, triangulate, validate } from '../core'
+import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pillarCorners, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon as polygonOf, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { CLOSE, closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineInk, normalPolarity, outlinedWalls, sheetTurn, threshold, turnOf, turnRaster, type Turn } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
@@ -3118,11 +3118,52 @@ function namedFaces(t: Prepared, names: TextItem[]): number {
   return new Set(names.map((it) => faces.findIndex((f) => pointInPolygon(at(it), f))).filter((i) => i >= 0)).size
 }
 
-/** The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along. */
+/**
+ * The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along.
+ * s27 fix 2: a plan drawn turned off the sheet's axes (raster.ts sheetTurn) is read turned square — its text, walls and
+ * rooms — and every pick and hover is turned back onto the sheet (`turn`).
+ */
 export async function prepare(gray: Gray, opts: AutoTraceOpts) {
-  const review: ReviewItem[] = []
   // white lines on a dark page: turned over before anything reads it (the Studio's picture stays as it is)
   gray = normalPolarity(gray)
+  const deg = sheetTurn(gray)
+  if (!deg) return { ...(await prepareSquare(gray, opts)), turn: undefined as Turn | undefined }
+  const turn = turnOf(gray.width, gray.height, deg)
+  const p = await prepareSquare(turnRaster(gray, turn), { ...opts, rgb: opts.rgb && turnRaster(opts.rgb, turn), pickPx: opts.pickPx && turn.fwd(opts.pickPx) })
+  // (the print it threw away, where it stands on the sheet)
+  if (p.traces.text.rejected) p.traces.text.rejected = p.traces.text.rejected.map((r) => ({ ...r, box: boxBack(r.box, turn) }))
+  return { ...p, turn }
+}
+
+/** a turned-sheet px rectangle → the sheet px rectangle round it */
+function boxBack(b: Rect, t: Turn): Rect {
+  const q = [t.back(b), t.back({ x: b.x + b.w, y: b.y }), t.back({ x: b.x, y: b.y + b.h }), t.back({ x: b.x + b.w, y: b.y + b.h })]
+  const x = Math.min(...q.map((p) => p.x)), y = Math.min(...q.map((p) => p.y))
+  return { x, y, w: Math.max(...q.map((p) => p.x)) - x, h: Math.max(...q.map((p) => p.y)) - y }
+}
+
+/** a pick on a turned sheet's square reading turned back onto the sheet: the draft's points, columns, rows and read names */
+function unturn(r: AutoTraceResult, t: Turn | undefined): AutoTraceResult {
+  if (!t) return r
+  const { pxPerM: k, originPx } = r.unit.planImage!, a = (t.deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a)
+  const turned = (p: Pt) => ({ x: p.x * c - p.y * s, y: p.x * s + p.y * c })
+  const vs = r.unit.vertices.map(turned)
+  const o = vs.length ? { x: Math.min(...vs.map((p) => p.x)), y: Math.min(...vs.map((p) => p.y)) } : { x: 0, y: 0 }
+  const m = (p: Pt) => { const q = turned(p); return { x: q.x - o.x, y: q.y - o.y } }
+  const at = <T extends { x: number; y: number }>(p: T): T => ({ ...p, ...m(p) })
+  const back = t.back(originPx)
+  const pillars = r.unit.pillars?.map((p) => {
+    const cs = pillarCorners(p).map(m), xs = cs.map((q) => q.x), ys = cs.map((q) => q.y)
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+    return { ...p, x: (x0 + x1) / 2, y: (y0 + y1) / 2, wM: x1 - x0, hM: y1 - y0, corners: cs }
+  })
+  const unit = { ...r.unit, vertices: r.unit.vertices.map(at), roomLabels: r.unit.roomLabels.map(at), ...(pillars ? { pillars } : {}), planImage: { ...r.unit.planImage!, originPx: { x: back.x + o.x * k, y: back.y + o.y * k } } }
+  const stats = { ...r.stats, ...(r.stats.printed ? { printed: r.stats.printed.map((q) => ({ ...q, at: m(q.at) })) } : {}), ...(r.stats.fixtures ? { fixtures: r.stats.fixtures.map((q) => ({ ...q, at: m(q.at) })) } : {}) }
+  return { ...r, unit, stats, review: r.review.map((q) => ({ ...q, at: m(q.at) })) }
+}
+
+async function prepareSquare(gray: Gray, opts: AutoTraceOpts) {
+  const review: ReviewItem[] = []
   // text first (founder): its strokes are erased before the walls are traced (solveTraces)
   opts.onProgress?.('text', 0)
   let text: TextTrace = { items: [] }
@@ -3147,7 +3188,7 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
   // s27 fix 2 (cause 1 of the 114-project run): a colour brochure whose walls are drawn LIGHTER than the floor (white walls
   // between beige, tiled or marble floors) closes almost none of its printed names — traced again on its light bands
   // (raster.ts lightWalls); the trace that closes clearly more of them stays
-  const names = text.items.filter((it) => it.kind === 'room')
+  const names = text.items.filter((it) => it.kind === 'room' && !coreText(it))
   const n0 = opts.rgb && names.length >= 4 ? namedFaces(traces, names) : Infinity
   if (n0 < 0.5 * names.length) {
     const h0 = hints
@@ -3175,15 +3216,24 @@ export type PreparedSolve = Awaited<ReturnType<typeof prepare>>
 
 /** The click's draft on a prepared sheet (prepared again when its scale came from the printed area at another pick). */
 export function pick(p: PreparedSolve, pickPx?: Px): AutoTraceResult {
+  if (p.turn && pickPx) pickPx = p.turn.fwd(pickPx)
   const t = p.traces, at = t.opts.pickPx
   const r = pickTraces(t.scaleNeedsPick && (at?.x !== pickPx?.x || at?.y !== pickPx?.y) ? prepareTraces(t.gray, t.inputs, { ...t.opts, pickPx }) : t, pickPx)
-  return { ...r, review: [...p.review, ...r.review] }
+  return unturn({ ...r, review: [...p.review, ...r.review] }, p.turn)
 }
 
 /** Level 4: the whole floor on a prepared sheet — every flat floorParts finds and the core between them, one draft. */
 export function pickFloor(p: PreparedSolve): AutoTraceResult {
   const r = pickTraces(p.traces, undefined, true)
-  return { ...r, review: [...p.review, ...r.review] }
+  return unturn({ ...r, review: [...p.review, ...r.review] }, p.turn)
+}
+
+/** the hover (previewFlat) on a prepared sheet, a turned one's turned back onto the sheet */
+export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> {
+  const t = p.turn
+  if (!t) return previewFlat(p.traces, px)
+  const v = previewFlat(p.traces, t.fwd(px))
+  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => boxBack(r, t)) }
 }
 
 /**

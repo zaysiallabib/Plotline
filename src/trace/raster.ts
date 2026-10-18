@@ -683,3 +683,112 @@ export function lightWalls(g: Gray, k: number): Gray {
   const open = slide(slide(slide(slide(data, w, h, r, true, false), w, h, r, false, false), w, h, r, true, true), w, h, r, false, true)
   return { width: w, height: h, data: data.map((v, i) => 255 - Math.min(255, 4 * (v - open[i]))) }
 }
+
+/**
+ * s27 fix 2 — the plan's walls' angle off the sheet's axes, degrees in (−45, 45], 0 when the plan is square (Sheltech
+ * Windflower Tower 2 is drawn 9.35° turned, its title block and frame square: the tracer's tracks are the sheet's axes,
+ * so its walls came out as thousands of steps and nothing closed in 10 minutes). Every ink pixel on a clean line (the
+ * grey's structure tensor over 15 × 15 px, coherence ≥ 0.8) votes its line's angle modulo 90° in half-degree bins; the
+ * plan's angle is the ±1.5° window holding the most votes — turned only when it holds over half of them, the square
+ * window (the title block, the frame, the text) under 0.4, and it is 2° or more off — then made exact by the sharpest
+ * projection of its own voters (±3°, 0.05° steps: a thin line drawn in steps reads a degree or two short in the window).
+ */
+export function sheetTurn(g: Gray): number {
+  // (a big sheet is read at half size: the same angle, a quarter of the memory)
+  if (g.width * g.height > 6e6) {
+    const w2 = g.width >> 1, h2 = g.height >> 1, d = new Uint8Array(w2 * h2)
+    for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) { const i = 2 * y * g.width + 2 * x; d[y * w2 + x] = (g.data[i] + g.data[i + 1] + g.data[i + g.width] + g.data[i + g.width + 1]) >> 2 }
+    return sheetTurn({ width: w2, height: h2, data: d })
+  }
+  const { width: w, height: h, data } = g, n = w * h, R = 7
+  const J = [new Float32Array(n), new Float32Array(n), new Float32Array(n)]
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x
+      const gx = data[i - w + 1] + 2 * data[i + 1] + data[i + w + 1] - data[i - w - 1] - 2 * data[i - 1] - data[i + w - 1]
+      const gy = data[i + w - 1] + 2 * data[i + w] + data[i + w + 1] - data[i - w - 1] - 2 * data[i - w] - data[i - w + 1]
+      ;(J[0][i] = gx * gx), (J[1][i] = gy * gy), (J[2][i] = gx * gy)
+    }
+  const row = new Float64Array(Math.max(w, h))
+  for (const a of J) {
+    // (a box sum over 15 × 15: along x, then along y)
+    for (const horiz of [true, false]) {
+      const L = horiz ? w : h, M = horiz ? h : w, at = (u: number, v: number) => (horiz ? v * w + u : u * w + v)
+      for (let v = 0; v < M; v++) {
+        let s = 0
+        for (let u = 0; u < L; u++) row[u] = a[at(u, v)]
+        for (let u = 0; u < L + R; u++) {
+          if (u < L) s += row[u]
+          if (u - 2 * R - 1 >= 0) s -= row[u - 2 * R - 1]
+          if (u - R >= 0) a[at(u - R, v)] = s
+        }
+      }
+    }
+  }
+  const bins = new Float64Array(180), vote = new Int16Array(n).fill(-1)
+  for (let i = 0; i < n; i++) {
+    if (data[i] > 128) continue
+    const xx = J[0][i], yy = J[1][i], xy = J[2][i], tr = xx + yy
+    if (tr <= 0 || Math.hypot(xx - yy, 2 * xy) < 0.8 * tr) continue
+    const a = (((0.5 * Math.atan2(2 * xy, xx - yy) * 180) / Math.PI) % 90 + 135) % 90 - 45
+    bins[(vote[i] = Math.min(179, Math.floor((a + 45) * 2)))]++
+  }
+  const total = bins.reduce((t, v) => t + v, 0)
+  const win = (b: number) => [-3, -2, -1, 0, 1, 2, 3].reduce((t, d) => t + bins[(b + d + 180) % 180], 0)
+  let best = 0
+  for (let b = 1; b < 180; b++) if (win(b) > win(best)) best = b
+  const deg0 = best / 2 - 45 + 0.25
+  if (!total || win(best) < 0.5 * total || win(90) > 0.4 * total || Math.abs(deg0) < 2) return 0
+  // (exact: the angle at which the voters' projections across and along it are sharpest)
+  const xs: number[] = [], ys: number[] = []
+  for (let i = 0; i < n; i++) if (vote[i] >= 0 && Math.abs(((vote[i] - best + 270) % 180) - 90) <= 6) xs.push(i % w), ys.push((i / w) | 0)
+  const D = Math.ceil(Math.hypot(w, h)) + 2, hy = new Float64Array(2 * D), hx = new Float64Array(2 * D)
+  let deg = deg0, q0 = -1
+  for (let a = deg0 - 3; a <= deg0 + 3 + 1e-9; a += 0.05) {
+    const t = (a * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t)
+    hy.fill(0), hx.fill(0)
+    for (let k = 0; k < xs.length; k++) hy[Math.round(-xs[k] * s + ys[k] * c) + D]++, hx[Math.round(xs[k] * c + ys[k] * s) + D]++
+    let q = 0
+    for (let k = 0; k < 2 * D; k++) q += hy[k] * hy[k] + hx[k] * hx[k]
+    if (q > q0) (q0 = q), (deg = a)
+  }
+  return deg
+}
+
+/** a sheet turned by `deg` about its middle into a canvas that holds it all (the corners paper): where a point goes, and back */
+export interface Turn {
+  deg: number
+  w: number
+  h: number
+  /** sheet px → turned px */
+  fwd: (p: { x: number; y: number }) => { x: number; y: number }
+  /** turned px → sheet px */
+  back: (p: { x: number; y: number }) => { x: number; y: number }
+}
+export function turnOf(width: number, height: number, deg: number): Turn {
+  const t = (-deg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t)
+  const w = Math.ceil(width * Math.abs(c) + height * Math.abs(s)), h = Math.ceil(width * Math.abs(s) + height * Math.abs(c))
+  const [cx, cy, cx2, cy2] = [width / 2, height / 2, w / 2, h / 2]
+  return {
+    deg,
+    w,
+    h,
+    fwd: (p) => ({ x: cx2 + (p.x - cx) * c - (p.y - cy) * s, y: cy2 + (p.x - cx) * s + (p.y - cy) * c }),
+    back: (p) => ({ x: cx + (p.x - cx2) * c + (p.y - cy2) * s, y: cy - (p.x - cx2) * s + (p.y - cy2) * c }),
+  }
+}
+/** a grey (1 channel) or colour (4) raster turned by `t`, bilinear, paper (255) outside the sheet */
+export function turnRaster<T extends { width: number; height: number; data: Uint8Array | Uint8ClampedArray }>(r: T, t: Turn): T {
+  const { width: W, height: H, data } = r, ch = data.length / (W * H)
+  const out = new Uint8Array(t.w * t.h * ch).fill(255)
+  for (let y = 0; y < t.h; y++)
+    for (let x = 0; x < t.w; x++) {
+      const p = t.back({ x, y }), x0 = Math.floor(p.x), y0 = Math.floor(p.y), fx = p.x - x0, fy = p.y - y0
+      if (x0 < 0 || y0 < 0 || x0 >= W - 1 || y0 >= H - 1) continue
+      for (let k = 0; k < ch; k++) {
+        const a = data[(y0 * W + x0) * ch + k], b = data[(y0 * W + x0 + 1) * ch + k], c = data[((y0 + 1) * W + x0) * ch + k], d = data[((y0 + 1) * W + x0 + 1) * ch + k]
+        out[(y * t.w + x) * ch + k] = Math.round(a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy)
+      }
+    }
+  return { ...r, width: t.w, height: t.h, data: out }
+}
