@@ -163,6 +163,8 @@ export interface SolveInputs {
   debug?: { trace?: WallTrace; plan?: Gray; full?: Unit; fullWalls?: GWall[]; plants?: Uint8Array; outside?: Uint8Array; inFlood?: (p: Pt) => boolean; touched?: Set<string>; fits?: RoomFit[]; merged?: RoomsOnTracks | null; flatFits?: number[]; thin?: ThinFaces | null }
   /** plant-green pixels of the sheet (hints.ts greenMask of the colour image): planter strips (founder rule 2) */
   green?: Uint8Array
+  /** s27 fix 2: the second, light-band tracing of a colour sheet (prepare) — its small unnamed spaces join their neighbours (joinSmall) */
+  light?: boolean
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -1823,6 +1825,38 @@ function dropSlivers(d: Draft): Draft {
 }
 
 /**
+ * s27 fix 2 — the light tracing's price (prepare): its light bands close many small spaces that are no rooms (14 brochure
+ * sheets: false rooms 26 → 71). A closed space with no read room name in it, under 3 m² or under 0.8 m across (twice its
+ * area over its outline), is no room there: its wall to the biggest space beside it goes, so it joins that one; one with
+ * no space beside it stays.
+ */
+function joinSmall(d: Draft, names: Pt[]): Draft {
+  for (let it = 0; it < 200; it++) {
+    const rooms = deriveRooms(d.unit)
+    const by = new Map<string, Room[]>()
+    for (const r of rooms) for (const w of new Set(r.wallIds)) by.set(w, [...(by.get(w) ?? []), r])
+    let cut: GWall | undefined
+    for (const r of rooms) {
+      const p = roomPolygon(r, d.unit), perim = p.reduce((t, q, i) => t + d2(q, p[(i + 1) % p.length]), 0)
+      if ((r.areaSqm >= 3 && (2 * r.areaSqm) / perim >= 0.8) || names.some((q) => pointInPolygon(q, p))) continue
+      // (never into a room a name was read in: that room stays as it closed)
+      const named = (o: Room) => names.some((q) => pointInPolygon(q, roomPolygon(o, d.unit)))
+      const beside = (w: GWall) => Math.max(0, ...(by.get(w.id) ?? []).filter((o) => o !== r && !named(o)).map((o) => o.areaSqm))
+      const shared = d.walls.filter((w) => r.wallIds.includes(w.id) && beside(w) > 0)
+      if (!shared.length) continue
+      cut = shared.reduce((b, w) => (beside(w) > beside(b) ? w : b))
+      break
+    }
+    if (!cut) return it ? { ...d, rooms: deriveRooms(d.unit) } : d
+    const walls = d.walls.filter((w) => w !== cut)
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    d = { ...d, unit: { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }, walls: m.walls }
+  }
+  return { ...d, rooms: deriveRooms(d.unit) }
+}
+
+/**
  * Founder 2026-10-03 (Sheltech A "Space 6" under DINING: a dashed beam line): a passage — the open-plan boundary merge.ts
  * draws where a room's side is open — between a space whose name was read (`named`) and one with no name of its own (no
  * label, no hint: `hinted`) never splits them: the unnamed face joins its named neighbour. A space that is no closed face
@@ -2193,6 +2227,8 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       closed = r.closed
     }
   }
+  // (after the closing: the rooms it closed stay closed)
+  if (inputs.light) draft = joinSmall(draft, text.items.filter((it) => it.kind === 'room').map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })))
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants, fits, merged, thin })
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
   // SUNSHADE / PLANTER label counts as planter too)
@@ -3192,7 +3228,7 @@ async function prepareSquare(gray: Gray, opts: AutoTraceOpts) {
   const n0 = opts.rgb && names.length >= 4 ? namedFaces(traces, names) : Infinity
   if (n0 < 0.5 * names.length) {
     const h0 = hints
-    const light = prepareTraces(lightWalls(gray, traces.pxPerM), inputs, opts)
+    const light = prepareTraces(lightWalls(gray, traces.pxPerM), { ...inputs, light: true }, opts)
     const n1 = namedFaces(light, names)
     if (n1 >= n0 + 3 && n1 >= 1.5 * n0) traces = light
     else hints = h0

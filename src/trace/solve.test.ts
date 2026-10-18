@@ -703,16 +703,18 @@ describe('tableRow: a number lost, or a kind guessed, takes the one table row of
 })
 
 describe('s27 fix 2: a colour sheet whose walls are lighter than the floor', () => {
-  test('traced again on its light bands: the four rooms close round their names (none close on the sheet as drawn)', async () => {
-    // a 2 × 2 grid of 4 × 3 m rooms, white walls 0.2 m thick on a beige floor (grey 200), a pale page round it (230)
-    const width = Math.round(8 * K + 2 * O.x), height = Math.round(6 * K + 2 * O.y)
+  test('traced again on its light bands: the four rooms close round their names (none close on the sheet as drawn); its small unnamed boxes join each other', async () => {
+    // a 2 × 2 grid of 4 × 3 m rooms, white walls 0.2 m thick on a beige floor (grey 200), a pale page round it (230); under
+    // it a 1 m strip cut into four 2 m² boxes with no name (a run of cupboards, a shaft: no rooms)
+    const width = Math.round(8 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
     const g: Gray = { width, height, data: new Uint8Array(width * height).fill(230) }
     const paint = (a: Px, b: Px, v: number) => {
       for (let y = Math.round(a.y); y < Math.round(b.y); y++) for (let x = Math.round(a.x); x < Math.round(b.x); x++) g.data[y * width + x] = v
     }
-    paint(P(0, 0), P(8, 6), 200)
-    for (const y of [0, 3, 6]) paint(P(-0.1, y - 0.1), P(8.1, y + 0.1), 255)
-    for (const x of [0, 4, 8]) paint(P(x - 0.1, -0.1), P(x + 0.1, 6.1), 255)
+    paint(P(0, 0), P(8, 7), 200)
+    for (const y of [0, 3, 6, 7]) paint(P(-0.1, y - 0.1), P(8.1, y + 0.1), 255)
+    for (const x of [0, 4, 8]) paint(P(x - 0.1, -0.1), P(x + 0.1, 7.1), 255)
+    for (const x of [2, 6]) paint(P(x - 0.1, 6), P(x + 0.1, 7.1), 255)
     const rgb = { width, height, data: new Uint8Array(width * height * 4).map((_, i) => (i % 4 === 3 ? 255 : g.data[i >> 2])) }
     const names = ['BED 1', 'BED 2', 'LIVING', 'KITCHEN'].map((t, i): TextItem => {
       const c = P(2 + 4 * (i % 2), 1.5 + 3 * (i >> 1))
@@ -722,6 +724,7 @@ describe('s27 fix 2: a colour sheet whose walls are lighter than the floor', () 
     const { draft } = p.traces
     const holding = names.filter((it) => draft.rooms.some((r) => r.areaSqm < 20 && pointInPolygon({ x: (it.box.x + it.box.w / 2) / K, y: (it.box.y + it.box.h / 2) / K }, roomPolygon(r, draft.unit))))
     expect(holding.length).toBe(4)
+    expect(draft.rooms.filter((r) => r.areaSqm < 3).length).toBe(0)
   })
 })
 
