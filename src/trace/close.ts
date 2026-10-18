@@ -45,6 +45,8 @@ export interface Piece {
   kind: PieceKind
   thM: number
   heightM: number
+  /** its end may meet a wall inside a window: the window is split there (a veranda's railing meeting the window behind it) */
+  cutsWindow?: boolean
 }
 export interface Closed {
   room: string
@@ -118,6 +120,10 @@ export const CLOSE = {
   lowThM: 0.0635,
   zoneThM: 0.05,
   glassThM: 0.127,
+  /** a veranda's box found from what is drawn (no printed size needed): how far from its name a side is looked for, and
+   * half the length of the short probe that looks for a line across the floor (m) */
+  boxReachM: 4,
+  boxProbeM: 0.25,
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
@@ -147,11 +153,12 @@ export function insertPiece<W extends Wall>(vertices: Vertex[], walls: W[], p: P
     for (const w of ws) {
       const a = V.get(w.a)!, b = V.get(w.b)!, r = along(q, a, b)
       if (r.d > 1e-3 || r.s <= 1e-3 || r.s >= r.L - 1e-3) continue
-      if (w.openings.some((o) => r.s > o.offsetM + EPS && r.s < o.offsetM + o.widthM - EPS)) return null
+      const cut = w.openings.find((o) => r.s > o.offsetM + EPS && r.s < o.offsetM + o.widthM - EPS)
+      if (cut && !(p.cutsWindow && cut.kind === 'window')) return null
       const x: Vertex = { id: newId(), x: q.x, y: q.y }
       vs = [...vs, x]
-      const first = { ...w, b: x.id, openings: w.openings.filter((o) => o.offsetM + o.widthM <= r.s + EPS) }
-      const second = make({ id: newId(), a: x.id, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: w.openings.filter((o) => o.offsetM >= r.s - EPS).map((o) => ({ ...o, offsetM: o.offsetM - r.s })) }, w)
+      const first = { ...w, b: x.id, openings: [...w.openings.filter((o) => o.offsetM + o.widthM <= r.s + EPS), ...(cut ? [{ ...cut, widthM: r.s - cut.offsetM }] : [])] }
+      const second = make({ id: newId(), a: x.id, b: w.b, thicknessM: w.thicknessM, heightM: w.heightM, openings: [...(cut ? [{ ...cut, id: newId(), offsetM: 0, widthM: cut.offsetM + cut.widthM - r.s }] : []), ...w.openings.filter((o) => o.offsetM >= r.s - EPS).map((o) => ({ ...o, offsetM: o.offsetM - r.s }))] }, w)
       ws = ws.flatMap((y) => (y === w ? [first as W, second] : [y]))
       return x.id
     }
@@ -559,6 +566,56 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       }
       return out
     }
+    /**
+     * s27 (clean 90): a veranda drawn in thin lines against the building, found from its name outward — the wall behind
+     * the name, the first line drawn across the floor ahead of it, then halfway between them the first line (or wall) each
+     * side; every side a line drawn along its whole length (founder 2026-10-09: real evidence only), a railing (low wall).
+     * Its printed size, where one was read, still has to match (evalSet); none read, the kind's size and few guesses.
+     */
+    const drawnBoxes = (): Piece[][] => {
+      const out: Piece[][] = []
+      const lineAt = (a: Pt, b: Pt) => drawn(a, b) !== 'none'
+      const reach = CLOSE.boxReachM, h = CLOSE.boxProbeM
+      for (const d of axes) {
+        const nd = { x: -d.x, y: -d.y }, n = { x: -d.y, y: d.x }
+        const at = (u: number, v: number): Pt => ({ x: L.at.x + d.x * u + n.x * v, y: L.at.y + d.y * u + n.y * v })
+        // (the wall behind: a veranda opens off a room through it — its window or door is no gap)
+        const back = rayHit(V, mw, L.at, nd, reach, '', true)
+        if (!back || back.via) continue
+        const ahead = rayHit(V, mw, L.at, d, reach, '')
+        const fu = runs(0.3, ahead ? ahead.t - 0.15 : reach, (u) => lineAt(at(u, -h), at(u, h)))[0]
+        if (fu === undefined) continue
+        const um = (fu - back.t) / 2, hh = Math.min(h, (fu + back.t) / 2 - 0.1)
+        if (hh < 0.1) continue
+        const sideOf = (sg: number): { v: number; wall: boolean } | null => {
+          const w = rayHit(V, mw, at(um, 0), { x: n.x * sg, y: n.y * sg }, reach, '')
+          const v = runs(0.3, w ? w.t - 0.15 : reach, (v) => lineAt(at(um - hh, sg * v), at(um + hh, sg * v)))[0]
+          return v !== undefined ? { v: sg * v, wall: false } : w && !w.via ? { v: sg * w.t, wall: true } : null
+        }
+        const s1 = sideOf(-1), s2 = sideOf(1)
+        if (!s1 || !s2) continue
+        // (the far line from side to side; on a wall side it ends on that wall)
+        const end = (s: { v: number; wall: boolean }, sg: number): Pt | null => {
+          if (!s.wall) return at(fu, s.v)
+          const w = rayHit(V, mw, at(fu, (s1.v + s2.v) / 2), { x: n.x * sg, y: n.y * sg }, reach, '')
+          return w && !w.via ? w.at : null
+        }
+        const c1 = end(s1, -1), c2 = end(s2, 1)
+        if (!c1 || !c2 || !lineAt(c1, c2)) continue
+        const ps = [piece(c1, c2, 'low', 0)]
+        for (const s of [s1, s2]) {
+          if (s.wall) continue
+          const c = at(fu, s.v), w = rayHit(V, mw, c, nd, fu + back.t + 0.5, '', true)
+          if (!w || w.via || !lineAt(w.at, c)) {
+            ps.length = 0
+            break
+          }
+          ps.push({ ...piece(w.at, c, 'low', 0), cutsWindow: true })
+        }
+        if (ps.length) out.push(ps)
+      }
+      return out
+    }
     // ── candidates around the name
     const V = new Map(lv.map((v) => [v.id, v]))
     const deg = new Map<string, number>()
@@ -760,6 +817,13 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       for (const g of boxes(sz)) {
         const r = evalSet([...S0, ...g], true) ?? evalSet(g, true)
         if (r && r.size !== 'none' && (!best || r.err < best.r.err - 0.02)) best = { ps: evalSet([...S0, ...g], true) ? [...S0, ...g] : g, r }
+      }
+    // (s27: a veranda's box from what is drawn — its size unread, or the box not where the printed size looked for it)
+    if (!best && L.kind === 'balcony')
+      for (const g of drawnBoxes()) {
+        // (every side drawn and the name inside by construction: no middle check — that one guards guessed sides)
+        const r = evalSet([...S0, ...g]) ?? evalSet(g)
+        if (r && (!best || r.err < best.r.err - 0.02)) best = { ps: evalSet([...S0, ...g]) ? [...S0, ...g] : g, r }
       }
     if (!best)
       for (const s of sidesOf(late.sort(byLength))) {

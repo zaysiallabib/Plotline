@@ -213,3 +213,23 @@ describe('close.ts joinLeftovers: a small nameless space cut off a room that onl
     expect(joinLeftovers(g.vertices, g.walls, [{ at, name: 'Bath 3', kind: 'bath', dims: { aM: 1.87, bM: 2.87 } }], opts(sheet([]))).joined).toEqual([])
   })
 })
+
+describe('s27 clean 90: a veranda drawn in thin lines against the building, found from its name', () => {
+  test('no size read: its three railing lines close it, each a low wall; the window behind it is split where they meet it', () => {
+    // a closed 4 × 3 m bedroom; its south wall holds a window from x 1.5 to 4.5; below it a veranda drawn as three pen
+    // lines (x 2 and x 4 from the wall down to y 5.2, and y 5.2 between them); VER printed in it, no size read
+    const win = { id: 'win', kind: 'window' as const, offsetM: 0.5, widthM: 3, heightM: 1.5, sillM: 0.9 }
+    const g = {
+      vertices: [v('a', 1, 1), v('b', 1, 4), v('c', 5, 4), v('d', 5, 1)],
+      walls: [w('L', 'a', 'b'), { ...w('B', 'b', 'c'), openings: [win] }, w('R', 'c', 'd'), w('T', 'd', 'a')],
+    }
+    const W = 12 * K, H = 6 * K, data = new Uint8Array(W * H).fill(255)
+    for (let y = 4 * K; y <= 5.2 * K; y++) data[y * W + 2 * K] = data[y * W + 4 * K] = 0
+    for (let x = 2 * K; x <= 4 * K; x++) data[Math.round(5.2 * K) * W + x] = 0
+    const r = close(g, [{ at: { x: 3, y: 2.5 }, name: 'Bed 2', kind: 'bed' }, { at: { x: 3, y: 4.6 }, name: 'Ver', kind: 'balcony' }], { width: W, height: H, data })
+    expect(r.closed.map((c) => [c.room, c.size, c.pieces.map((p) => p.kind)])).toEqual([['Ver', 'none', ['low', 'low', 'low']]])
+    expect(r.room({ x: 3, y: 4.6 })?.areaSqm).toBeCloseTo(2.4, 1)
+    expect(r.room({ x: 3, y: 2.5 })?.areaSqm).toBeCloseTo(12, 1)
+    expect(r.walls.flatMap((x) => x.openings.filter((o) => o.kind === 'window').map((o) => o.widthM)).sort()).toEqual([0.5, 0.5, 2].map((x) => expect.closeTo(x, 1)))
+  })
+})
