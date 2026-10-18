@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { Gray, TextItem } from './types'
-import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, readTypes, roomName, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, readTypes, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -100,6 +100,11 @@ describe('the gate: a garbled read never names a room (AUTOTRACE_100 §3 #5)', (
 })
 
 describe('the passes (pure)', () => {
+  test('s27: a view reading a cut area stamp whole replaces the cut read; a word never becomes an area', () => {
+    expect(wholeArea('1364 SOF', '1364 SOFT')).toBe(true)
+    expect(wholeArea('1364 SQFT', '1364 SQFT')).toBe(false) // read whole already
+    expect(wholeArea('TOILET', '1364 SFT')).toBe(false) // no figure in the first read
+  })
   test('s27: a size printed sideways has its name strip beside it on the page, on the side its turn puts over it', () => {
     // Residence Park's MASTER BED reads top-to-bottom (upright turned counter-clockwise) with its size on its left; Sarwar's
     // BED reads bottom-to-top (clockwise) with its size on its right; an upright size has its name over it

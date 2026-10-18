@@ -1439,6 +1439,10 @@ export function nameOk(raw: string): boolean {
 /** a read holds a plan word as printed (or a long one a letter off: KITCHEM) — not only one a letter swap makes (RED → BED) */
 const verbatim = (t: string) => t.toUpperCase().split(/[^A-Z]+/).some((w) => NAME_WORDS.has(w) || (w.length >= 5 && WORDS.some((v) => editDistanceAtMost1(w, v))))
 
+/** s27: `view` is a flat's area stamp read whole where the first read `first` cut it ("1364 SOF" → "1364 SOFT", Mir Sarwar's
+ * sideways UNIT-B) — only over a first read that showed the figure already, so a view never makes an area of a word */
+export const wholeArea = (first: string, view: string) => parseArea(first) === null && /\d{3}/.test(first) && parseArea(view) !== null
+
 /** a read line as a room name: its kind (classifyRoom) when the name passes the gate, else null */
 export const roomName = (t: string) => (nameOk(t) ? classifyRoom(t) : null)
 
@@ -1660,7 +1664,8 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
         // again; a turned page's line gets every view — sideways TOILET labels came through on those)
         const idx = names.map((n, k) => (passes[k].strict && passes[k].frame === 0 && !v.wide && v.from !== 'own' ? [] : n))
         const again = await readAll(idx, (p, l) => lineImage(v.from === 'clean' ? p.clean : p.img, l, v.px, v.kernel, undefined, v.from === 'own' ? p.glyphs : undefined, v.wide))
-        idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), !roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j)) && (read[k][j] = again[k][m]))))
+        // (s27: or a flat's area stamp a view reads whole where the first read cut it: wholeArea)
+        idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), ((!roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j))) || wholeArea(read[k][j].text, again[k][m].text)) && (read[k][j] = again[k][m]))))
       }
       // a name read with no number: a view reading the same name with a number gives it — when no view reads another
       names.forEach((n, k) =>
