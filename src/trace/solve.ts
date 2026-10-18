@@ -2444,15 +2444,19 @@ export function floorParts(p: Prepared): Part[] {
     else parts[i] = join(parts[i], part)
   }
   // a printed room no flat reached (its door not found; Sheltech L2 B's Bed 2 behind a passage the lifts' face swallowed):
-  // its closed face joins the flat it shares most walls with — the floor's flats lose no room the sheet names
+  // its closed face joins the flat it shares most walls with — the floor's flats lose no room the sheet names (s27: again
+  // until none joins — a veranda off a bedroom that joined this way joins with it: Jahan Lodge's MASTER VER.)
   const core = p.coreAt(k)
-  for (const it of names) {
-    const at = c(it)
-    if (parts.some((q) => q.has(at))) continue
-    const f = faceAt(p.draft, at, 30)
-    if (!f || core.some((q) => pointInPolygon(q, roomPolygon(f, p.draft.unit))) || p.inOutside(insidePoint(f, p.draft.unit, p.draft.rooms))) continue
-    const i = besideOf(parts, f)
-    if (i >= 0) parts[i] = withRegion(p.draft, { ...parts[i], rooms: new Set([...parts[i].rooms, f]) })
+  for (let more = true; more; ) {
+    more = false
+    for (const it of names) {
+      const at = c(it)
+      if (parts.some((q) => q.has(at))) continue
+      const f = faceAt(p.draft, at, 30)
+      if (!f || core.some((q) => pointInPolygon(q, roomPolygon(f, p.draft.unit))) || p.inOutside(insidePoint(f, p.draft.unit, p.draft.rooms))) continue
+      const i = besideOf(parts, f)
+      if (i >= 0) (parts[i] = withRegion(p.draft, { ...parts[i], rooms: new Set([...parts[i].rooms, f]) })), (more = true)
+    }
   }
   FLOORS.set(p.draft, parts)
   return parts
