@@ -1903,16 +1903,11 @@ const TYPE_RE = /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i
  */
 export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOptions, 'langPath' | 'cachePath'> = {}): Promise<TextItem[]> {
   const centre = (b: Box) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
-  // (s27: or a piece of one read alone — "1440." or "SFT!" in print twice the page's own, Sheltech Windflower's red
-  // "TYPE-D 1440 SFT." whose line broke at a wall: three of its six stamps were never read, so Whole floor found three flats)
-  const big = 1.8 * (trace.glyphPx ?? 8)
-  const piece = (it: TextItem) => (it.kind === 'other' || it.kind === 'dims') && it.box.h >= big && /\b\d{4}\b|\bS\.?\s?F\.?\s?T\b/i.test(it.text)
-  const near = (a: TextItem, b: TextItem) => Math.hypot(centre(a.box).x - centre(b.box).x, centre(a.box).y - centre(b.box).y) < 3 * Math.max(a.box.h, b.box.h)
-  const todo: TextItem[] = []
-  for (const it of trace.items) {
-    if (!((it.kind === 'area' && it.areaSqm) || piece(it))) continue
-    if (!trace.items.some((o) => TYPE_RE.test(o.text) && near(o, it)) && !todo.some((o) => near(o, it))) todo.push(it)
-  }
+  const todo = trace.items.filter((it) => {
+    if (it.kind !== 'area' || !it.areaSqm) return false
+    const c = centre(it.box)
+    return !trace.items.some((o) => TYPE_RE.test(o.text) && Math.hypot(centre(o.box).x - c.x, centre(o.box).y - c.y) < 3 * it.box.h)
+  })
   if (!todo.length) return []
   const T = await import('tesseract.js')
   const worker = await T.createWorker('eng', T.OEM.LSTM_ONLY, { ...(opts.langPath ? { langPath: opts.langPath } : {}), ...(opts.cachePath ? { cachePath: opts.cachePath } : {}) })
@@ -1930,8 +1925,7 @@ export async function readTypes(g: Gray, trace: TextTrace, opts: Pick<ReadTextOp
         if (m && (!got || /^\d+$/.test(got))) got = m
         if (got && !/^\d+$/.test(got)) break
       }
-      // (a piece's TYPE stands where the piece was read: the stamp itself)
-      if (got) out.push({ text: `TYPE-${got}`, box: it.kind === 'area' ? { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h } : { ...it.box }, kind: 'other', conf: 0.5, source: 'ocr' })
+      if (got) out.push({ text: `TYPE-${got}`, box: { x: c.x - it.box.w / 2, y: c.y - 2 * h, w: it.box.w, h }, kind: 'other', conf: 0.5, source: 'ocr' })
     }
   } finally {
     await worker.terminate()

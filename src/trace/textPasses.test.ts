@@ -6,9 +6,9 @@
  */
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import type { Gray, TextItem } from './types'
+import type { Gray } from './types'
 import { loadPgm } from './evalio'
-import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, readTypes, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -239,19 +239,6 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     const t = await readText(g, { cachePath: TESS })
     expect(names(t)).toEqual(expect.arrayContaining(['MASTER BED', 'KITCHEN']))
   }, 180_000)
-  test('s27: a stamp read in pieces ("1440." alone) gets the block over it read for its TYPE, placed on the piece', async () => {
-    const g = paper(500, 300)
-    // (the block font's P reads as F to tesseract: a rounder P for this one word)
-    const P = F.P
-    F.P = '11110 10001 10001 10001 11110 10000 10000'
-    print(g, 'TYPE-D', 150, 90, 20, 30)
-    F.P = P
-    print(g, '1440 SFT.', 130, 124, 20, 30)
-    const piece: TextItem = { text: '1440.', box: { x: 130, y: 124, w: 89, h: 21 }, kind: 'dims', conf: 0.3, source: 'ocr' }
-    const got = await readTypes(g, { items: [piece], glyphPx: 7 }, { cachePath: TESS })
-    expect(got.map((it) => it.text)).toEqual(['TYPE-D'])
-    expect(got[0].box).toEqual(piece.box)
-  }, 120_000)
   test('white print in a dark legend box is read', async () => {
     const g = paper(700, 300)
     print(g, 'KITCHEN', 40, 40, 11)
