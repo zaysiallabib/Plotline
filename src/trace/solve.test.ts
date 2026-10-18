@@ -755,6 +755,8 @@ describe('s27 fix 2: a plan drawn turned on the sheet (Sheltech Windflower Tower
       const q = t.fwd(c)
       expect(Math.min(...r.unit.vertices.map((v) => Math.hypot(o.x + v.x * k - q.x, o.y + v.y * k - q.y)))).toBeLessThan(3)
     }
+  })
+})
 
 describe('s27 clean 90: the whole floor keeps every printed room it can reach through another', () => {
   test('a bedroom behind a door not found, and its veranda beyond it: both join the flat (the veranda through the bedroom)', () => {
