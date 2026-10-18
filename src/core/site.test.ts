@@ -20,6 +20,28 @@ describe('sunAt', () => {
     expect(dec.azDeg).toBeLessThan(185)
   })
 
+  test('21 June 15:00 on the Dhaka clock (UTC+6, not UTC): high in the west, about 49° up at 279° — never near the horizon', () => {
+    const s = sunAt(DHAKA, '2026-06-21', 15)
+    expect(s.altDeg).toBeGreaterThan(45)
+    expect(s.altDeg).toBeLessThan(53)
+    expect(s.azDeg).toBeGreaterThan(270)
+    expect(s.azDeg).toBeLessThan(285)
+    // read as UTC by mistake it would be 21:00 in Dhaka: dark
+    expect(sunAt({ ...DHAKA, utcOffsetH: 0 }, '2026-06-21', 15).altDeg).toBeLessThan(0)
+  })
+
+  test('at the equinox it agrees with the old one-path sun (Dhaka latitude, hour angle from 12:00) within 3°', () => {
+    const lat = (23.8 * Math.PI) / 180
+    for (const hour of [8, 10, 12, 14, 15.5, 17]) {
+      const H = ((hour - 12) * 15 * Math.PI) / 180
+      const [e, n, u] = [-Math.sin(H), -Math.sin(lat) * Math.cos(H), Math.cos(lat) * Math.cos(H)]
+      const old = { alt: (Math.asin(u) * 180) / Math.PI, az: ((Math.atan2(e, n) * 180) / Math.PI + 360) % 360 }
+      const s = sunAt(DHAKA, '2026-03-20', hour)
+      expect(Math.abs(s.altDeg - old.alt), `alt at ${hour}`).toBeLessThan(3)
+      if (hour !== 12) expect(Math.abs(s.azDeg - old.az), `az at ${hour}`).toBeLessThan(3) // at noon the azimuth swings through south
+    }
+  })
+
   test('morning in the east, afternoon in the west; under the horizon at night', () => {
     expect(sunAt(DHAKA, '2026-06-21', 9).azDeg).toBeGreaterThan(60)
     expect(sunAt(DHAKA, '2026-06-21', 9).azDeg).toBeLessThan(110)
