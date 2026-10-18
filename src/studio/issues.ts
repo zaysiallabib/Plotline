@@ -402,9 +402,11 @@ const AXIS_TOL = (3 * Math.PI) / 180
 /** The nearest wall centre line `d` meets from `from` (m ahead), never one ending at `skip`; null = none. */
 function rayHit(u: Unit, from: Pt, d: Pt, skip?: Id): Pt | null {
   let best: { r: number; at: Pt } | null = null
+  // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2)
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
   for (const w of u.walls) {
     if (w.a === skip || w.b === skip) continue
-    const f = wallFrame(w, u.vertices)
+    const f = wallFrame(w, [V.get(w.a)!, V.get(w.b)!])
     const den = d.x * f.dir.y - d.y * f.dir.x
     if (Math.abs(den) < 0.17) continue // (near parallel)
     const rel = { x: f.origin.x - from.x, y: f.origin.y - from.y }

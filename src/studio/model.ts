@@ -526,8 +526,8 @@ export function openSpotsNear(unit: Unit, rooms: Room[], p: Pt): { at: Pt; why: 
 }
 
 /** Unit direction of wall `w` leaving its end `from`. */
-function dirFrom(u: Unit, w: Wall, from: Id): Pt {
-  const f = wallFrame(w, u.vertices)
+function dirFrom(u: Unit, w: Wall, from: Id, V?: Map<Id, Vertex>): Pt {
+  const f = wallFrame(w, V ? [V.get(w.a)!, V.get(w.b)!] : u.vertices)
   return w.a === from ? f.dir : { x: -f.dir.x, y: -f.dir.y }
 }
 /** Two directions within ~0.6° of the same line. */
@@ -758,11 +758,13 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
   const V = new Map(u.vertices.map((v) => [v.id, v]))
   const v = V.get(id)!
   const far = w.a === id ? w.b : w.a
-  const d = dirFrom(u, w, far) // ahead: away from its own wall
+  const d = dirFrom(u, w, far, V) // ahead: away from its own wall
   let best: ReturnType<typeof ahead> = null
+  // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2, Sheltech
+  // Windflower's Whole floor: 1 400 walls, the import spent 100 s here)
   for (const x of u.walls) {
     if (x === w) continue
-    const f = wallFrame(x, u.vertices)
+    const f = wallFrame(x, [V.get(x.a)!, V.get(x.b)!])
     const den = cross(d, f.dir)
     const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
     const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
@@ -777,7 +779,7 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
       const free = degree(u, end) === 1 && r > EPS
       // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
       const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
-      const out = dirFrom(u, x, end === x.a ? x.b : x.a)
+      const out = dirFrom(u, x, end === x.a ? x.b : x.a, V)
       if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
       const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
       if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, gap: rq, ...(free ? { also: { w: x, end } } : {}) }
