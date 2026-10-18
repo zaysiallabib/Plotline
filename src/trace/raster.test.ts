@@ -160,7 +160,13 @@ describe('dashMask (s27: a dashed plot line is never a wall)', () => {
     // a 0.2 m wall at y 3 with a 0.9 m door, a 1.5 m window gap and a 0.8 m door: pieces 1.2, 2.3, 1.5, 1.6 m
     fill(0.5, 2.9, 1.7, 3.1), fill(2.6, 2.9, 4.9, 3.1), fill(6.4, 2.9, 7.9, 3.1), fill(8.7, 2.9, 9.8, 3.1)
     fill(0.5, 6, 9.5, 6.2) // a solid wall
+    // (fix 2, UPL Mridha) a wall's outline broken into 0.4 m pieces by what crosses it (stair treads), its other outline
+    // solid 0.15 m beside it: a double line, no plot line
+    fill(0.5, 4.5, 9.5, 4.52)
+    for (let x = 0.5; x + 0.4 < 9.5; x += 0.5) fill(x, 4.65, x + 0.4, 4.67)
     const m = dashMask(g, K, 128)!
+    expect(m[at(0.7, 4.66)]).toBe(0)
+    expect(m[at(5.2, 4.66)]).toBe(0)
     expect(m[at(0.9, 0.5)]).toBe(1)
     expect(m[at(4.7, 0.5)]).toBe(1)
     expect(m[at(1, 3)]).toBe(0)

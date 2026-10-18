@@ -566,8 +566,28 @@ export function dashMask(g: Gray, k: number, t: number): Uint8Array | null {
       return b - a + 1
     }
     const runs: number[] = []
+    // (a run with another line of ink beside it, parallel and within a wall's thickness, over most of its length: a wall's
+    // or a sofa's double outline broken by what crosses it — UPL Mridha's stair wall, its sofas — no plot line)
+    const beside = (u: number, v0: number, v1: number) => {
+      const mid = (v0 + v1) >> 1
+      for (const sg of [-1, 1]) {
+        // (past the run's own body, then a wall's thickness of paper or ink)
+        let q = u + sg
+        while (q >= 0 && q < U && data[at(q, mid)] <= t) q += sg
+        for (let o = 1; o <= thick; o++, q += sg) {
+          if (q < 0 || q >= U) break
+          let n = 0
+          for (let v = v0; v < v1; v++) if (data[at(q, v)] <= t) n++
+          if (n >= 0.6 * (v1 - v0)) return true
+        }
+      }
+      return false
+    }
     const flush = (u: number) => {
-      if (runs.length >= 2 * DASH.n) {
+      // (…and no more than half of them with a line beside it)
+      let par = 0
+      if (runs.length >= 2 * DASH.n) for (let i = 0; i < runs.length; i += 2) if (beside(u, runs[i], runs[i + 1])) par++
+      if (runs.length >= 2 * DASH.n && 2 * par <= runs.length / 2) {
         // (the dashes: the runs over half the longest — the dots of a dash-dot line between them are any length under that)
         let mx = 0, mn = Infinity, dashes = 0
         for (let i = 0; i < runs.length; i += 2) mx = Math.max(mx, runs[i + 1] - runs[i])
