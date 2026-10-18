@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { colourPage, dashMask, furnitureMask, hatchMask, normalPolarity, outlinedWalls } from './raster'
+import { colourPage, dashMask, furnitureMask, hatchMask, lightWalls, normalPolarity, outlinedWalls } from './raster'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -160,11 +160,35 @@ describe('dashMask (s27: a dashed plot line is never a wall)', () => {
     // a 0.2 m wall at y 3 with a 0.9 m door, a 1.5 m window gap and a 0.8 m door: pieces 1.2, 2.3, 1.5, 1.6 m
     fill(0.5, 2.9, 1.7, 3.1), fill(2.6, 2.9, 4.9, 3.1), fill(6.4, 2.9, 7.9, 3.1), fill(8.7, 2.9, 9.8, 3.1)
     fill(0.5, 6, 9.5, 6.2) // a solid wall
+    // (fix 2, UPL Mridha) a wall's outline broken into 0.4 m pieces by what crosses it (stair treads), its other outline
+    // solid 0.15 m beside it: a double line, no plot line
+    fill(0.5, 4.5, 9.5, 4.52)
+    for (let x = 0.5; x + 0.4 < 9.5; x += 0.5) fill(x, 4.65, x + 0.4, 4.67)
     const m = dashMask(g, K, 128)!
+    expect(m[at(0.7, 4.66)]).toBe(0)
+    expect(m[at(5.2, 4.66)]).toBe(0)
     expect(m[at(0.9, 0.5)]).toBe(1)
     expect(m[at(4.7, 0.5)]).toBe(1)
     expect(m[at(1, 3)]).toBe(0)
     expect(m[at(3.5, 3)]).toBe(0)
     expect(m[at(5, 6.1)]).toBe(0)
+  })
+})
+
+describe('lightWalls (s27 fix 2: walls drawn lighter than the floor)', () => {
+  test('a white wall between beige floors comes out dark ink; the floor, a wide white bed and dark print come out paper', () => {
+    const { g, at } = sheet()
+    const paint = (x0: number, y0: number, x1: number, y1: number, v: number) => {
+      for (let y = Math.round(y0 * K); y < Math.round(y1 * K); y++) for (let x = Math.round(x0 * K); x < Math.round(x1 * K); x++) g.data[y * g.width + x] = v
+    }
+    paint(0, 0, 10, 8, 200) // the floor
+    paint(5, 0, 5.2, 8, 255) // a 0.2 m white wall
+    paint(1, 1, 3, 3, 255) // a 2 × 2 m white bed
+    paint(7, 4, 7.6, 4.15, 30) // a dark name
+    const L = lightWalls(g, K)
+    expect(L.data[at(5.1, 4)]).toBeLessThan(60)
+    expect(L.data[at(2.5, 6)]).toBe(255)
+    expect(L.data[at(2, 2)]).toBeGreaterThan(230)
+    expect(L.data[at(7.3, 4.07)]).toBe(255)
   })
 })

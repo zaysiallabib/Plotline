@@ -25,13 +25,13 @@
  *   ± the thin-line faces against it (thinFacesOfFlat) → labels → checks (+ room-edge stretches left open, the rooms'
  *   area sum vs the printed sft, sizes to type).
  */
-import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon, signedArea, triangulate, validate } from '../core'
+import { FT, deriveRooms, flatTypeOf, formatFeetInches, mainRectangle, newId, pillarCorners, pointInPolygon, printedSizeCheck, polygonCentroid, roomInnerPolygon, roomPolygon as polygonOf, signedArea, triangulate, validate } from '../core'
 import type { Opening, OpeningKind, Room, RoomKind, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, fullHeightIfOpenings, openingDefaults } from '../studio/model'
 import { CLOSE, closeRooms, joinLeftovers, type CloseLabel, type Closed, type Piece } from './close'
 import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
-import { colourPage, dashMask, edt, furnitureMask, hatchMask, lineInk, normalPolarity, outlinedWalls, threshold } from './raster'
+import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineInk, normalPolarity, outlinedWalls, sheetTurn, threshold, turnOf, turnRaster, type Turn } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
 import { trackThin } from './track'
@@ -163,9 +163,25 @@ export interface SolveInputs {
   debug?: { trace?: WallTrace; plan?: Gray; full?: Unit; fullWalls?: GWall[]; plants?: Uint8Array; outside?: Uint8Array; inFlood?: (p: Pt) => boolean; touched?: Set<string>; fits?: RoomFit[]; merged?: RoomsOnTracks | null; flatFits?: number[]; thin?: ThinFaces | null }
   /** plant-green pixels of the sheet (hints.ts greenMask of the colour image): planter strips (founder rule 2) */
   green?: Uint8Array
+  /** s27 fix 2: the second, light-band tracing of a colour sheet (prepare) — its small unnamed spaces join their neighbours (joinSmall) */
+  light?: boolean
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
+/**
+ * core's roomPolygon made once per room and vertex list (neither is changed in place here; the shift makes a new list):
+ * insidePoint and the flat picking ask for every room's outline once per other room, and core's builds a map of all the
+ * vertices each time — on Sheltech Windflower (600 faces, 1400 vertices) that was 80 s of the 10-minute cap (s27 fix 2)
+ */
+const polyCache = new WeakMap<object, WeakMap<object, Pt[]>>()
+function roomPolygon(r: Pick<Room, 'loop' | 'joinPts'>, u: Pick<Unit, 'vertices'>): Pt[] {
+  let m = polyCache.get(u.vertices)
+  if (!m) polyCache.set(u.vertices, (m = new WeakMap()))
+  let p = m.get(r)
+  if (!p) m.set(r, (p = polygonOf(r, u)))
+  return p
+}
+
 const sub = (p: Pt, q: Pt): Pt => ({ x: p.x - q.x, y: p.y - q.y })
 const crs = (u: Pt, v: Pt) => u.x * v.y - u.y * v.x
 const dot = (u: Pt, v: Pt) => u.x * v.x + u.y * v.y
@@ -1809,6 +1825,38 @@ function dropSlivers(d: Draft): Draft {
 }
 
 /**
+ * s27 fix 2 — the light tracing's price (prepare): its light bands close many small spaces that are no rooms (14 brochure
+ * sheets: false rooms 26 → 71). A closed space with no read room name in it, under 3 m² or under 0.8 m across (twice its
+ * area over its outline), is no room there: its wall to the biggest space beside it goes, so it joins that one; one with
+ * no space beside it stays.
+ */
+function joinSmall(d: Draft, names: Pt[]): Draft {
+  for (let it = 0; it < 200; it++) {
+    const rooms = deriveRooms(d.unit)
+    const by = new Map<string, Room[]>()
+    for (const r of rooms) for (const w of new Set(r.wallIds)) by.set(w, [...(by.get(w) ?? []), r])
+    let cut: GWall | undefined
+    for (const r of rooms) {
+      const p = roomPolygon(r, d.unit), perim = p.reduce((t, q, i) => t + d2(q, p[(i + 1) % p.length]), 0)
+      if ((r.areaSqm >= 3 && (2 * r.areaSqm) / perim >= 0.8) || names.some((q) => pointInPolygon(q, p))) continue
+      // (never into a room a name was read in: that room stays as it closed)
+      const named = (o: Room) => names.some((q) => pointInPolygon(q, roomPolygon(o, d.unit)))
+      const beside = (w: GWall) => Math.max(0, ...(by.get(w.id) ?? []).filter((o) => o !== r && !named(o)).map((o) => o.areaSqm))
+      const shared = d.walls.filter((w) => r.wallIds.includes(w.id) && beside(w) > 0)
+      if (!shared.length) continue
+      cut = shared.reduce((b, w) => (beside(w) > beside(b) ? w : b))
+      break
+    }
+    if (!cut) return it ? { ...d, rooms: deriveRooms(d.unit) } : d
+    const walls = d.walls.filter((w) => w !== cut)
+    const used = new Set(walls.flatMap((w) => [w.a, w.b]))
+    const m = mergeCollinear(d.unit.vertices.filter((v) => used.has(v.id)), walls)
+    d = { ...d, unit: { ...d.unit, vertices: m.vertices, walls: m.walls.map(stripWall) }, walls: m.walls }
+  }
+  return { ...d, rooms: deriveRooms(d.unit) }
+}
+
+/**
  * Founder 2026-10-03 (Sheltech A "Space 6" under DINING: a dashed beam line): a passage — the open-plan boundary merge.ts
  * draws where a room's side is open — between a space whose name was read (`named`) and one with no name of its own (no
  * label, no hint: `hinted`) never splits them: the unnamed face joins its named neighbour. A space that is no closed face
@@ -2179,6 +2227,8 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       closed = r.closed
     }
   }
+  // (after the closing: the rooms it closed stay closed)
+  if (inputs.light) draft = joinSmall(draft, text.items.filter((it) => it.kind === 'room').map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })))
   if (inputs.debug) Object.assign(inputs.debug, { trace, plan, full: draft.unit, fullWalls: draft.walls, plants, fits, merged, thin })
   // founder rules 2 + 3: grow from the click over the floor; the outside and the planters bound it (a face with a printed
   // SUNSHADE / PLANTER label counts as planter too)
@@ -3097,11 +3147,59 @@ export async function solve(gray: Gray, opts: AutoTraceOpts): Promise<AutoTraceR
   return pick(await prepare(gray, opts), opts.pickPx)
 }
 
-/** The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along. */
+/** how many closed faces of a room's size hold a read room name (which of two traces of one sheet closed more of it) */
+function namedFaces(t: Prepared, names: TextItem[]): number {
+  const faces = t.draft.rooms.filter((r) => r.areaSqm >= 1 && r.areaSqm <= KNOBS.maxRoomSqm).map((r) => roomPolygon(r, t.draft.unit))
+  const at = (it: TextItem) => ({ x: (it.box.x + it.box.w / 2) / t.pxPerM, y: (it.box.y + it.box.h / 2) / t.pxPerM })
+  return new Set(names.map((it) => faces.findIndex((f) => pointInPolygon(at(it), f))).filter((i) => i >= 0)).size
+}
+
+/**
+ * The sheet read once — text, hints, `prepareTraces` — for any number of picks; the review items about the sheet itself ride along.
+ * s27 fix 2: a plan drawn turned off the sheet's axes (raster.ts sheetTurn) is read turned square — its text, walls and
+ * rooms — and every pick and hover is turned back onto the sheet (`turn`).
+ */
 export async function prepare(gray: Gray, opts: AutoTraceOpts) {
-  const review: ReviewItem[] = []
   // white lines on a dark page: turned over before anything reads it (the Studio's picture stays as it is)
   gray = normalPolarity(gray)
+  const deg = sheetTurn(gray)
+  if (!deg) return { ...(await prepareSquare(gray, opts)), turn: undefined as Turn | undefined }
+  const turn = turnOf(gray.width, gray.height, deg)
+  const p = await prepareSquare(turnRaster(gray, turn), { ...opts, rgb: opts.rgb && turnRaster(opts.rgb, turn), pickPx: opts.pickPx && turn.fwd(opts.pickPx) })
+  // (the print it threw away, where it stands on the sheet)
+  if (p.traces.text.rejected) p.traces.text.rejected = p.traces.text.rejected.map((r) => ({ ...r, box: boxBack(r.box, turn) }))
+  return { ...p, turn }
+}
+
+/** a turned-sheet px rectangle → the sheet px rectangle round it */
+function boxBack(b: Rect, t: Turn): Rect {
+  const q = [t.back(b), t.back({ x: b.x + b.w, y: b.y }), t.back({ x: b.x, y: b.y + b.h }), t.back({ x: b.x + b.w, y: b.y + b.h })]
+  const x = Math.min(...q.map((p) => p.x)), y = Math.min(...q.map((p) => p.y))
+  return { x, y, w: Math.max(...q.map((p) => p.x)) - x, h: Math.max(...q.map((p) => p.y)) - y }
+}
+
+/** a pick on a turned sheet's square reading turned back onto the sheet: the draft's points, columns, rows and read names */
+function unturn(r: AutoTraceResult, t: Turn | undefined): AutoTraceResult {
+  if (!t) return r
+  const { pxPerM: k, originPx } = r.unit.planImage!, a = (t.deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a)
+  const turned = (p: Pt) => ({ x: p.x * c - p.y * s, y: p.x * s + p.y * c })
+  const vs = r.unit.vertices.map(turned)
+  const o = vs.length ? { x: Math.min(...vs.map((p) => p.x)), y: Math.min(...vs.map((p) => p.y)) } : { x: 0, y: 0 }
+  const m = (p: Pt) => { const q = turned(p); return { x: q.x - o.x, y: q.y - o.y } }
+  const at = <T extends { x: number; y: number }>(p: T): T => ({ ...p, ...m(p) })
+  const back = t.back(originPx)
+  const pillars = r.unit.pillars?.map((p) => {
+    const cs = pillarCorners(p).map(m), xs = cs.map((q) => q.x), ys = cs.map((q) => q.y)
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+    return { ...p, x: (x0 + x1) / 2, y: (y0 + y1) / 2, wM: x1 - x0, hM: y1 - y0, corners: cs }
+  })
+  const unit = { ...r.unit, vertices: r.unit.vertices.map(at), roomLabels: r.unit.roomLabels.map(at), ...(pillars ? { pillars } : {}), planImage: { ...r.unit.planImage!, originPx: { x: back.x + o.x * k, y: back.y + o.y * k } } }
+  const stats = { ...r.stats, ...(r.stats.printed ? { printed: r.stats.printed.map((q) => ({ ...q, at: m(q.at) })) } : {}), ...(r.stats.fixtures ? { fixtures: r.stats.fixtures.map((q) => ({ ...q, at: m(q.at) })) } : {}) }
+  return { ...r, unit, stats, review: r.review.map((q) => ({ ...q, at: m(q.at) })) }
+}
+
+async function prepareSquare(gray: Gray, opts: AutoTraceOpts) {
+  const review: ReviewItem[] = []
   // text first (founder): its strokes are erased before the walls are traced (solveTraces)
   opts.onProgress?.('text', 0)
   let text: TextTrace = { items: [] }
@@ -3122,7 +3220,19 @@ export async function prepare(gray: Gray, opts: AutoTraceOpts) {
     findHints: m.findHints && ((pxPerM, w) => (hints = m.findHints!(gray, opts.rgb, { pxPerM, walls: w }))),
     propagate: m.propagateByColour && opts.rgb ? (rooms) => (hints ? m.propagateByColour!(opts.rgb!, hints, rooms) : rooms.map(() => null)) : undefined,
   }
-  const traces = prepareTraces(gray, inputs, opts)
+  let traces = prepareTraces(gray, inputs, opts)
+  // s27 fix 2 (cause 1 of the 114-project run): a colour brochure whose walls are drawn LIGHTER than the floor (white walls
+  // between beige, tiled or marble floors) closes almost none of its printed names — traced again on its light bands
+  // (raster.ts lightWalls); the trace that closes clearly more of them stays
+  const names = text.items.filter((it) => it.kind === 'room' && !coreText(it))
+  const n0 = opts.rgb && names.length >= 4 ? namedFaces(traces, names) : Infinity
+  if (n0 < 0.5 * names.length) {
+    const h0 = hints
+    const light = prepareTraces(lightWalls(gray, traces.pxPerM), { ...inputs, light: true }, opts)
+    const n1 = namedFaces(light, names)
+    if (n1 >= n0 + 3 && n1 >= 1.5 * n0) traces = light
+    else hints = h0
+  }
   // Level 3: the closed faces no printed name was read in, read whole (text.ts readInFaces) — their names then name them
   // at the pick like any other read name
   try {
@@ -3142,15 +3252,24 @@ export type PreparedSolve = Awaited<ReturnType<typeof prepare>>
 
 /** The click's draft on a prepared sheet (prepared again when its scale came from the printed area at another pick). */
 export function pick(p: PreparedSolve, pickPx?: Px): AutoTraceResult {
+  if (p.turn && pickPx) pickPx = p.turn.fwd(pickPx)
   const t = p.traces, at = t.opts.pickPx
   const r = pickTraces(t.scaleNeedsPick && (at?.x !== pickPx?.x || at?.y !== pickPx?.y) ? prepareTraces(t.gray, t.inputs, { ...t.opts, pickPx }) : t, pickPx)
-  return { ...r, review: [...p.review, ...r.review] }
+  return unturn({ ...r, review: [...p.review, ...r.review] }, p.turn)
 }
 
 /** Level 4: the whole floor on a prepared sheet — every flat floorParts finds and the core between them, one draft. */
 export function pickFloor(p: PreparedSolve): AutoTraceResult {
   const r = pickTraces(p.traces, undefined, true)
-  return { ...r, review: [...p.review, ...r.review] }
+  return unturn({ ...r, review: [...p.review, ...r.review] }, p.turn)
+}
+
+/** the hover (previewFlat) on a prepared sheet, a turned one's turned back onto the sheet */
+export function preview(p: PreparedSolve, px: Px): ReturnType<typeof previewFlat> {
+  const t = p.turn
+  if (!t) return previewFlat(p.traces, px)
+  const v = previewFlat(p.traces, t.fwd(px))
+  return { polys: v.polys.map((q) => q.map(t.back)), names: v.names.map((n) => ({ ...n, at: t.back(n.at) })), region: v.region.map((r) => boxBack(r, t)) }
 }
 
 /**
