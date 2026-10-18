@@ -1293,13 +1293,15 @@ const SIZE_VIEWS: { from: 'raw' | 'clean'; px: number; kernel: 'lanczos' | 'cubi
  * crop read them all.
  */
 const NAME_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-&/ '
-const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos' | 'cubic'; wide?: number }[] = [
+const NAME_VIEWS: { from: 'raw' | 'clean' | 'own'; px: number; kernel: 'lanczos' | 'cubic'; wide?: number; turned?: boolean }[] = [
   { from: 'own', px: 48, kernel: 'lanczos' },
   { from: 'raw', px: 40, kernel: 'cubic' },
   { from: 'clean', px: 48, kernel: 'lanczos' },
   // s26: the raw crop a letter and a half wider each side ("STAFF BATH" lost its S to a basin's arc and TH to the WC: the
   // line found was "AFF BA")
   { from: 'raw', px: 44, kernel: 'lanczos', wide: 1.5 },
+  // s27: a turned page's line one letter wider each side (Residence Park's sideways KITCHEN, cut at the stove: "[CHEN")
+  { from: 'raw', px: 44, kernel: 'lanczos', wide: 1, turned: true },
 ]
 
 /** the building core's names: they decide where a flat ends (solve.ts), so a second look never adds one */
@@ -1662,7 +1664,7 @@ export async function readText(src: Gray | ImageBitmapSource, opts: ReadTextOpti
       for (const v of NAME_VIEWS) {
         // (a height pass's line on the page was read raw and from its mask already: only its own glyphs and the wider crop
         // again; a turned page's line gets every view — sideways TOILET labels came through on those)
-        const idx = names.map((n, k) => (passes[k].strict && passes[k].frame === 0 && !v.wide && v.from !== 'own' ? [] : n))
+        const idx = names.map((n, k) => ((passes[k].strict && passes[k].frame === 0 && !v.wide && v.from !== 'own') || (v.turned && !passes[k].frame) ? [] : n))
         const again = await readAll(idx, (p, l) => lineImage(v.from === 'clean' ? p.clean : p.img, l, v.px, v.kernel, undefined, v.from === 'own' ? p.glyphs : undefined, v.wide))
         // (s27: or a flat's area stamp a view reads whole where the first read cut it: wholeArea)
         idx.forEach((n, k) => n.forEach((j, m) => (seen[k][m].push(again[k][m].text), ((!roomName(read[k][j].text) && flatRoom(again[k][m].text, over(k, j))) || wholeArea(read[k][j].text, again[k][m].text)) && (read[k][j] = again[k][m]))))

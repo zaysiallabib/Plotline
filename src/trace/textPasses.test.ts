@@ -7,6 +7,7 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { Gray, TextItem } from './types'
+import { loadPgm } from './evalio'
 import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, readTypes, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
@@ -262,4 +263,16 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     expect(all.some((n) => /LIVING/.test(n))).toBe(true)
     expect(all.some((n) => /DINING/.test(n))).toBe(true)
   }, 120_000)
+})
+
+// s27: Residence Park p25 (machine-local fixture, decoded as the Studio does): its KITCHEN printed top-to-bottom touches
+// the stove, so the line found starts at the I and the views read "[CHEN" / "BTCHEN" — the turned view one letter wider
+// each side reads KITCHEN
+const RP25 = 'E:/dev/tmp/s27/fix3/fixtures/akter-residencepark-p25-aishatypea1460.pgm'
+describe.skipIf(!existsSync(`${TESS}eng.traineddata`) || !existsSync(RP25))('a sideways name cut at a fixture (node tesseract, Residence Park p25)', () => {
+  test('KITCHEN is read where it is printed', async () => {
+    const t = await readText(loadPgm(RP25)!, { cachePath: TESS })
+    const k = t.items.find((it) => it.kind === 'room' && it.roomKind === 'kitchen')
+    expect(Math.hypot(k!.box.x + k!.box.w / 2 - 616, k!.box.y + k!.box.h / 2 - 1095)).toBeLessThan(60)
+  }, 180_000)
 })
