@@ -17,14 +17,14 @@ const OUT_M = 1.6
 /** one dash and its gap along a line, m */
 const PERIOD_M = 1.4
 /**
- * The lines' tint by season, quiet: the monsoon a cool blue, winter a pale grey-blue, the hot months a warm stone, the
+ * The lines' tint by season, quiet: the monsoon a cool blue, winter a pale grey-blue, the hot months a muted terracotta, the
  * months between a slate.
  */
 export const SEASON_TINT: Record<core.Season, string> = {
   monsoon: '#46709a',
   winter: '#7d8fa3',
-  'pre-monsoon': '#9a7658',
-  summer: '#9a7658',
+  'pre-monsoon': '#b06f45',
+  summer: '#b06f45',
   'post-monsoon': '#5c7286',
   spring: '#5c7286',
   autumn: '#5c7286',

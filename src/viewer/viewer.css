@@ -205,6 +205,7 @@
 .rose-toggle { font-size: 12px; }
 .rose-toggle.on { color: #8fb0d0; }
 .viewer:has(.wind-line) .hint-bottom { bottom: 128px; }
+.viewer:has(.quality.open) .wind-rose { bottom: 150px; } /* above the Quality menu while it shows its note */
 /* where the wind comes in and goes out (walk view): quiet chips over the openings */
 .wind-chip { position: absolute; left: 0; top: 0; padding: 3px 9px; font-size: 11px; letter-spacing: 0.02em; color: var(--ink); border-color: rgba(143, 176, 208, 0.45); white-space: nowrap; pointer-events: none; }
 .wind-chip.out { color: var(--muted); }
