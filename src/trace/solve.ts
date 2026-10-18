@@ -2866,19 +2866,23 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     return areas.filter((it) => whose(m0(it)) === i).sort((a, b) => near(a, at) - near(b, at))[0]
   })
   titleAreas(text.items.filter((it) => it.kind === 'area' && it.areaSqm && !areas.includes(it)), text.items, sels, parts, stamps, pxPerM)
-  // each flat's TYPE label ("TYPE-A" printed over its "±2736 SFT"): kept as a label of kind 'other' that names the flat
-  // (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A"); one standing in no closed room is dropped
-  // by fixAndReport below, as a person's would be flagged
-  const types = stamps.map((stamp) => stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => /\bTYPE[\s-]*([A-Z0-9]{1,2})\b/i.exec(it.text)).find(Boolean)?.[1].toUpperCase())
+  // a printed area bigger than the whole sheet at its scale is a misread, never a flat's: none beats a wrong one (bug
+  // hunt 2026-10-18, Assure Phera "Floor Area- 1691 Sft." read as 71697 sft, then 16917 — the Area box showed it)
+  const sheetSqm = (p.gray.width * p.gray.height) / (pxPerM * pxPerM)
+  stamps.forEach((s, i) => s && s.areaSqm! > sheetSqm && (stamps[i] = undefined))
+  // each flat's TYPE / UNIT label ("TYPE-A" printed over its "±2736 SFT", "Unit A:1375 Sft"): kept as a label of kind
+  // 'other' that names the flat (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A" / "Unit A"); one
+  // standing in no closed room is dropped by fixAndReport below, as a person's would be flagged
+  const types = stamps.map((stamp) => stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => flatTypeOf({ name: it.text, kind: 'other' })).find(Boolean))
   stamps.forEach((stamp, i) => {
-    if (stamp && types[i]) u.roomLabels.push({ id: newId(), name: `Type ${types[i]} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 }) })
+    if (stamp && types[i]) u.roomLabels.push({ id: newId(), name: `${types[i]} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 }) })
   })
-  // the flats' names (Level 4): "Type A" from its TYPE label, else "Flat 1, 2 …" west → east (core deriveFlats' order)
+  // the flats' names (Level 4): "Type A" / "Unit A" from its label, else "Flat 1, 2 …" west → east (core deriveFlats' order)
   const cx = sels.map((s) => [...s.rooms].reduce((t, r) => t + r.centroid.x * r.areaSqm, 0) / ([...s.rooms].reduce((t, r) => t + r.areaSqm, 0) || 1))
   const flatNames: string[] = []
   let nth = 0
   for (const i of sels.map((_, i) => i).sort((a, b) => cx[a] - cx[b])) {
-    let name = types[i] ? `Type ${types[i]}` : `Flat ${++nth}`
+    let name = types[i] || `Flat ${++nth}`
     while (flatNames.includes(name)) name = `Flat ${++nth}`
     flatNames[i] = name
   }

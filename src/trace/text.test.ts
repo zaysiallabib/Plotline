@@ -78,7 +78,7 @@ describe('parseArea', () => {
     [`1450 sq ft`, sft(1450)],
     [`254 sqm`, 254],
   ])('%s', (s, v) => expect(parseArea(s)).toBeCloseTo(v, 3))
-  test.each([`BED-1`, `12 SFT`, `14'-5"X14'-4"`, `SFT`])('%s → null', (s) => expect(parseArea(s)).toBeNull())
+  test.each([`BED-1`, `12 SFT`, `14'-5"X14'-4"`, `SFT`, `Floor Area-71697 Sft.`])('%s → null', (s) => expect(parseArea(s)).toBeNull())
 })
 
 describe('classifyRoom', () => {

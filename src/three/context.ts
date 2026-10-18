@@ -173,18 +173,38 @@ const FADE_M = [120, 280]
 export const haze = { value: HORIZON.clone() }
 export const setHaze = (skyTint: THREE.Color) => haze.value.copy(HORIZON).multiply(skyTint)
 
-/** Distance haze on one material (the street context, the ground), before tone mapping. */
-export function hazed<M extends THREE.Material>(m: M): M {
+/**
+ * A site block any part of which is nearer the camera than this (m) is not drawn, whole: in Dollhouse and the Building
+ * view a neighbour between the camera and the flat / tower goes, its shadow stays (PlotlineScene sets it every frame;
+ * 0 in Walk). Bug hunt 2026-10-18: a block's roof covered the bottom half of the Building view, the picked floor with it.
+ */
+export const siteCut = { value: 0 }
+
+/**
+ * Distance haze on one material (the street context, the ground), before tone mapping. `cut`: siteCut applies, by the
+ * geometry's `bmin` / `bmax` attributes (each block's box on all its vertices; the mesh only moved, never turned) —
+ * never a block sliced in two.
+ */
+export function hazed<M extends THREE.Material>(m: M, cut = false): M {
   m.onBeforeCompile = (s) => {
     s.uniforms.hazeColor = haze
+    if (cut) {
+      s.uniforms.siteCut = siteCut
+      s.vertexShader = `attribute vec3 bmin;\nattribute vec3 bmax;\nvarying vec3 vMin;\nvarying vec3 vMax;\n${s.vertexShader}`.replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvMin = (modelMatrix * vec4(bmin, 1.0)).xyz;\nvMax = (modelMatrix * vec4(bmax, 1.0)).xyz;',
+      )
+    }
     // before tone mapping: linear in both paths (composer target, and XR where the shader tone maps)
-    s.fragmentShader = `uniform vec3 hazeColor;\n${s.fragmentShader}`.replace(
+    s.fragmentShader = `uniform vec3 hazeColor;\n${cut ? 'uniform float siteCut;\nvarying vec3 vMin;\nvarying vec3 vMax;\n' : ''}${s.fragmentShader}`.replace(
       '#include <tonemapping_fragment>',
       `float hazeD = length(vViewPosition);
+      ${cut ? 'if (length(max(max(vMin - cameraPosition, cameraPosition - vMax), 0.0)) < siteCut) discard;' : ''}
       gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, max(1.0 - exp(-${HAZE_BETA} * hazeD), smoothstep(${FADE_M[0]}.0, ${FADE_M[1]}.0, hazeD)));
       #include <tonemapping_fragment>`,
     )
   }
+  if (cut) m.customProgramCacheKey = () => 'hazed-cut' // the same onBeforeCompile source: three would share the program
   return m
 }
 
@@ -356,9 +376,18 @@ export function buildSite(unit: Unit, groundY: number): THREE.Group {
   group.userData.site = true
   const blocks = buildings
     .filter((b) => b.heightM > 0 && Math.abs(core.signedArea(b.plan)) > 1)
-    .map((b) => new THREE.ExtrudeGeometry(new THREE.Shape(b.plan.map((p) => new THREE.Vector2(p.x, p.y))), { depth: b.heightM, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, groundY + b.heightM, 0))
+    .map((b) => {
+      const g = new THREE.ExtrudeGeometry(new THREE.Shape(b.plan.map((p) => new THREE.Vector2(p.x, p.y))), { depth: b.heightM, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, groundY + b.heightM, 0)
+      // its box on every vertex: hazed's cut takes a block away whole
+      g.computeBoundingBox()
+      const { min, max } = g.boundingBox!
+      const n = g.getAttribute('position').count
+      g.setAttribute('bmin', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [min.x, min.y, min.z]).flat(), 3))
+      g.setAttribute('bmax', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [max.x, max.y, max.z]).flat(), 3))
+      return g
+    })
   if (blocks.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(blocks)!, hazed(new THREE.MeshStandardMaterial({ color: BLOCK, roughness: 0.92 })))
+    const mesh = new THREE.Mesh(mergeGeometries(blocks)!, hazed(new THREE.MeshStandardMaterial({ color: BLOCK, roughness: 0.92 }), true))
     mesh.castShadow = mesh.receiveShadow = true
     blocks.forEach((g) => g.dispose())
     group.add(mesh)

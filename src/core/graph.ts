@@ -325,12 +325,13 @@ function hashLoop(loop: Id[]): string {
 }
 
 /**
- * "TYPE-A ±2736 SFT", "Type B": a label of kind 'other' that reads so names its FLAT (core.deriveFlats: "Type A"), as the
- * sheet prints it inside one of the flat's rooms — never a face. null for any other label.
+ * "TYPE-A ±2736 SFT", "Type B", "Unit A: 1375 Sft": a label of kind 'other' that reads so names its FLAT
+ * (core.deriveFlats: "Type A", "Unit A" — the sheet's own word), as the sheet prints it inside one of the flat's rooms —
+ * never a face. null for any other label.
  */
 export function flatTypeOf(l: Pick<RoomLabel, 'name' | 'kind'>): string | null {
-  const m = l.kind === 'other' ? /\btype[\s-]*([a-z0-9]{1,2})\b/i.exec(l.name) : null
-  return m ? `Type ${m[1].toUpperCase()}` : null
+  const m = l.kind === 'other' ? /\b(type|unit)[\s:-]*([a-z0-9]{1,2})\b/i.exec(l.name) : null
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase()}` : null
 }
 
 /** Label → the smallest face containing it; first label wins when two share a face; a flat's "Type A" label names none. */

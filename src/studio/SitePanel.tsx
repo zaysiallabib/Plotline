@@ -254,7 +254,7 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
       {site && (
         <>
           <p className="muted">
-            Plot {site.lat.toFixed(5)}, {site.lon.toFixed(5)} · {site.buildings.length} blocks · {site.roads.length} roads · wind: {site.wind ? 'Open-Meteo, this spot' : 'the Dhaka table'} · fetched {site.fetchedAt?.slice(0, 10) ?? '—'}
+            Plot {site.lat.toFixed(5)}, {site.lon.toFixed(5)} · {site.buildings.length} blocks · {site.roads.length} roads · wind: {site.wind ? 'Open-Meteo, this spot' : 'the Dhaka table'} · fetched {site.fetchedAt ? new Date(site.fetchedAt).toLocaleDateString('en-CA') : '—'}
           </p>
           <div className="actions">
             <button disabled={busy} onClick={() => void pick(site.lat, site.lon)} title="Fetch the buildings, roads and wind again (your deletions and typed heights are lost)">

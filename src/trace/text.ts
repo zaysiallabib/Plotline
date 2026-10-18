@@ -87,7 +87,9 @@ export function parseArea(raw: string): number | null {
   if (!m) return null
   const v = Number(m[1].replace(/,/g, ''))
   const sqm = /M/i.test(m[2].replace(/FT/i, '')) && !/F/i.test(m[2]) ? v : v * FT * FT
-  return sqm >= 10 && sqm <= 10000 ? sqm : null
+  // no flat or floor on these sheets is over 2000 m² (21 500 sft; the biggest printed is 5100 sft): a bigger figure is a
+  // misread (Assure Phera "Floor Area- 1691 Sft." read as 71697 — the Area box and the count line said 63 093)
+  return sqm >= 10 && sqm <= 2000 ? sqm : null
 }
 
 /**

@@ -83,6 +83,11 @@ describe('deriveFlats', () => {
     // in an unnamed room it still names no face; outside every room it is the usual stray label
     expect(core.flatTypeOf({ name: 'Type c', kind: 'other' })).toBe('Type C')
     expect(core.flatTypeOf({ name: 'Type A bed', kind: 'bed' })).toBeNull()
+    // the sheet's own word: Foysal Smart Garden prints 'Unit A:1375 Sft' (bug hunt 2026-10-18: it came out 'Flat 1'); a room word is not one
+    expect(core.flatTypeOf({ name: 'Unit A:1375 Sft', kind: 'other' })).toBe('Unit A')
+    expect(core.flatTypeOf({ name: 'UNIT-B', kind: 'other' })).toBe('Unit B')
+    expect(core.flatTypeOf({ name: 'AC unit', kind: 'other' })).toBeNull()
+    expect(core.flatTypeOf({ name: 'Community', kind: 'other' })).toBeNull()
     u.roomLabels[0] = { ...u.roomLabels[0], x: 40 }
     expect(core.validate(u).map((i) => i.code)).toEqual(['label-outside-any-room'])
   })

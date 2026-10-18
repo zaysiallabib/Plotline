@@ -326,8 +326,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           <h3>
             {review.length ? `Check these (${review.length})` : 'Check these'}
             {ai && review.length > 0 && (
-              <button className="link" title="Ask the AI on this PC about every row it has not answered, one after another (Local AI below)" disabled={!unasked.length} onClick={() => ai.ask(unasked, true)}>
-                Ask AI for all
+              <button className="link" title={unasked.length ? 'Ask the AI on this PC about every row it has not answered, one after another (Local AI below)' : 'Every row has its AI answer or was skipped (see under each row). Ask AI on a row asks it again'} disabled={!unasked.length} onClick={() => ai.ask(unasked, true)}>
+                {unasked.length ? 'Ask AI for all' : 'AI asked on every row'}
               </button>
             )}
           </h3>
