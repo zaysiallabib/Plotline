@@ -692,14 +692,15 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           </button>
         </div>
       </Row>
-      {resizeAxes(p.assetId).length ? (
-        resizeAxes(p.assetId).map((k) => (
-          <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
-            <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
-          </Row>
-        ))
+      {resizeAxes(p.assetId).map((k) => (
+        <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
+          <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
+        </Row>
+      ))}
+      {p.openingId ? (
+        <p className="muted">Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower</p>
       ) : (
-        <p className="muted">{p.openingId ? 'Hangs on its window and follows it: drag it along the wall' : 'This piece can be moved and turned'}</p>
+        !resizeAxes(p.assetId).length && <p className="muted">This piece can be moved and turned</p>
       )}
       <div className="seg">
         <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>

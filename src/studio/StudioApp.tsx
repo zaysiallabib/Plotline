@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, resizePiece, sideDots, type Move } from './furniture'
+import { placementSize } from '../furnish/kit'
 import {
   PILLAR_M,
   WALL_TYPES,
@@ -279,6 +280,8 @@ export default function StudioApp() {
   const dragRef = useRef<Drag | null>(null)
   /** Wall tool press: a move of 3 px or more makes it press-drag-release (one wall to the release point); `hold` = held W */
   const wallDragRef = useRef<{ sx: number; sy: number; at: Target; hold: boolean; moved: boolean } | null>(null)
+  /** F tool: a selected curtain's side dot pressed (sign: its +x / −x side); dragged, that side alone moves (furniture.resizePiece) */
+  const sideRef = useRef<{ id: Id; sign: 1 | -1; sx: number; sy: number; moved: boolean } | null>(null)
   /** C tool press: a release where it was = a 12" × 20" column there; dragged = a column from the press to the release */
   const pillarDragRef = useRef<{ sx: number; sy: number; at: Pt; moved: boolean } | null>(null)
   const holdRef = useRef<Hold | null>(null)
@@ -423,6 +426,17 @@ export default function StudioApp() {
     setFurnDrag(null)
   }
 
+  /** a curtain's side dragged to the pointer: its new width, that side moving (as the 3D view's side dots) */
+  const sideSize = (sd: { id: Id; sign: 1 | -1 }, sx: number, sy: number) => {
+    const p = piecesRef.current?.find((x) => x.id === sd.id)
+    if (!p) return null
+    const m = toM(sx, sy)
+    const t = (p.rotationDeg * Math.PI) / 180
+    const size = placementSize(p)
+    const u = (m.x - p.x) * Math.cos(t) + (m.y - p.y) * Math.sin(t) // along its +x
+    return { sizeM: { ...size, x: sd.sign * u + size.x / 2 }, grow: { x: sd.sign, z: 0 } }
+  }
+
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
@@ -432,10 +446,11 @@ export default function StudioApp() {
   // a new pick or R: the ghost where the pointer is; leaving tool F drops it
   useEffect(() => {
     if (placing && tool !== 'furniture') return hold(null)
+    if (placing && !placing.assetId && pieces && !pieces.some((x) => x.id === placing.id)) return hold(null) // deleted while in hand (the panel's Delete)
     if (!placing) return setFurnDrag(null)
     const p = lastPointer.current
     if (p) ghost(p.sx, p.sy)
-  }, [placing, tool]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [placing, tool, pieces]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- reducer toasts → note
   useEffect(() => {
@@ -1333,6 +1348,9 @@ export default function StudioApp() {
         return
       }
       case 'furniture': {
+        const cur = piecesRef.current?.find((x) => x.openingId && state.selection.includes(x.id))
+        const side = cur ? sideDots(cur).findIndex((c) => Math.hypot(toScreen(c).x - sx, toScreen(c).y - sy) <= 8) : -1
+        if (cur && side >= 0) return void (sideRef.current = { id: cur.id, sign: side ? -1 : 1, sx, sy, moved: false })
         const hit = hitTest(sx, sy)
         const p = hit && piecesRef.current?.find((x) => x.id === hit.id)
         dispatch({ type: 'select', ids: p ? [p.id] : [] })
@@ -1355,6 +1373,13 @@ export default function StudioApp() {
       return
     }
     if (placingRef.current && tool === 'furniture') return void ghost(sx, sy)
+    const sd = sideRef.current
+    if (sd) {
+      if (!sd.moved && Math.hypot(sx - sd.sx, sy - sd.sy) <= CLICK_PX) return
+      sd.moved = true
+      const r = sideSize(sd, sx, sy)
+      return void setFurnDrag(r && pieces && resizePiece(unit, rooms, pieces, sd.id, r.sizeM, r.grow))
+    }
     if (tool === 'arc' && arc) {
       // the A tool's preview: a straight line to the pointer until the end is clicked, then the arc bulging through it
       const h = computeHover(sx, sy, e.shiftKey)
@@ -1505,6 +1530,14 @@ export default function StudioApp() {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (panRef.current) setPanning(false)
     panRef.current = null
+    const sd = sideRef.current
+    sideRef.current = null
+    if (sd) {
+      const { sx, sy } = local(e)
+      const r = sd.moved && sideSize(sd, sx, sy)
+      setFurnDrag(null)
+      return void (r && dispatch({ type: 'resize-piece', id: sd.id, ...r })) // refused: the reducer says why
+    }
     const pd = pillarDragRef.current
     pillarDragRef.current = null
     if (pd) {
@@ -1670,7 +1703,13 @@ export default function StudioApp() {
         const pl = placingRef.current
         if (pl && e.key === 'Escape') return hold(null)
         if (pl && (e.key === 'r' || e.key === 'R')) return hold({ ...pl, rot: pl.rot + 90 })
-        if (pl && (arrow || e.key === 'Delete' || e.key === 'Backspace')) return e.preventDefault() // the piece in hand is not on the plan yet
+        if (pl && (e.key === 'Delete' || e.key === 'Backspace')) {
+          // the piece in hand goes (one undo step, as a Delete of a picked one); a library piece in hand is only let go
+          e.preventDefault()
+          hold(null)
+          return void (!pl.assetId && dispatch({ type: 'delete-piece', id: pl.id }))
+        }
+        if (pl && arrow) return e.preventDefault() // the piece in hand is not on the plan yet
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
           e.preventDefault()

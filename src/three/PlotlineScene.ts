@@ -52,12 +52,13 @@ export interface PickHit {
 export type SceneMode = 'walk' | 'orbit' | 'building'
 /**
  * Arrange (staff, src/viewer/arrange.ts): what the pointer does to a piece, in plan metres. `drag`: `at` = the piece's
- * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer).
+ * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer),
+ * `hole` = the face of the opening the pointer looks through (a doorway), when nearer than what it meets beyond.
  * `resize`: a handle dragged — the new size along `axis`, the `sign` face moving.
  */
 export type ArrangeEvent =
   | { kind: 'select'; id: Id | null }
-  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null }
+  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null; hole?: { p: Pt; n: Pt } | null }
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 /**
@@ -1364,9 +1365,21 @@ export class PlotlineScene {
       dist = h.distance
       break
     }
+    // the doorway / passage the pointer looks through, nearer than what it meets beyond: new curtains hang on it
+    let hole: { p: Pt; n: Pt } | null = null
+    let near = dist
+    for (const w of this.unit?.walls ?? []) {
+      const a = w.openings.length && !w.id.startsWith(GAP_PREFIX) ? this.alongWall(ndc, w.id) : null
+      const f = this.wallFrames.get(w.id)
+      if (!a || !f || a.d >= near || !w.openings.some((o) => a.u >= o.offsetM && a.u <= o.offsetM + o.widthM && a.v >= o.sillM && a.v <= o.sillM + o.heightM)) continue
+      const s = f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1
+      const k = (s * w.thicknessM) / 2
+      hole = { p: { x: f.origin.x + f.dir.x * a.u + f.normal.x * k, y: f.origin.y + f.dir.y * a.u + f.normal.y * k }, n: { x: s * f.normal.x, y: s * f.normal.y } }
+      near = a.d
+    }
     let at = P && { x: P.x + off.x, y: P.z + off.y }
     if (stopAtWalls && wall && (!P || dist < ray.origin.distanceTo(P))) at = { x: wall.p.x + wall.n.x * 0.3, y: wall.p.y + wall.n.y * 0.3 }
-    this.arrangeCb?.({ kind: 'drag', id, at, wall })
+    this.arrangeCb?.({ kind: 'drag', id, at, wall, hole })
   }
 
   private onPointerUp = (e: PointerEvent): void => {

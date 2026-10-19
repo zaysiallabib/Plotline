@@ -9,11 +9,11 @@
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, wallFrame, type FurniturePlacement, type Unit } from '../core'
 import draft from '../data/fixtures/founder-banani-unit-a-2026-10-09.json'
-import { placementSize } from '../furnish/kit'
+import { kitAsset, placementSize } from '../furnish/kit'
 import { CURTAIN_OVER, curtainSides, footprint, quadsOverlap } from '../furnish/presets'
 import { CURTAIN_D, CURTAINS } from '../furnish/procedural.meta'
-import { dragTo, holdAt, pickUp } from '../viewer/arrange'
-import { layoutFor, library, movePiece, pieceAt, pieceLabel, placePiece, whyNot } from './furniture'
+import { baseOf, deleteHeld, dragTo, holdAt, pickUp, pushStep, undoStep } from '../viewer/arrange'
+import { layoutFor, library, movePiece, pieceAt, pieceLabel, placePiece, resizeAxes, resizePiece, sideDots, whyNot } from './furniture'
 import { initialState, reducer } from './model'
 
 const his = draft as unknown as Unit
@@ -95,7 +95,7 @@ describe('curtains on his Banani draft', () => {
     expect(m.piece.openingId).toBe(SLIDER)
     expect(placementSize(m.piece).x).toBeGreaterThan(o.widthM - 0.08)
     // nowhere near a window: refused, said why
-    expect(placePiece(u, rooms, layoutFor(u, rooms), CURTAINS, rooms.find((r) => r.name === 'Bed 2')!.centroid, 0, 'n2')!.error).toBe('Point at a window or a sliding door')
+    expect(placePiece(u, rooms, layoutFor(u, rooms), CURTAINS, rooms.find((r) => r.name === 'Bed 2')!.centroid, 0, 'n2')!.error).toBe('Point at an opening')
     expect(library().filter((t) => t.items.some((i) => i.id === CURTAINS)).map((t) => t.tab)).toEqual(['Living', 'Bedroom'])
   })
 
@@ -179,5 +179,122 @@ describe('curtains in a corner', () => {
       const { o, lo, hi } = span(u, p)
       expect(hi - lo, p.id).toBeGreaterThan(o.widthM - CURTAIN_D - 0.1) // the corner's side wall (and the other rod) cut it, nothing else
     }
+  })
+})
+
+describe('curtains on any opening, wider or narrower by a side (founder 2026-10-19)', () => {
+  // "i cannot put the curtain on the opening but i need to. also the curtain sizes should be changable by dragging on the sides"
+  // a 6 × 3.2 m flat: a living room and a bedroom either side of a wall with a door and a passage in it
+  const u: Unit = {
+    id: 'u', projectName: 'T', name: 'T', northDeg: 0, areaSqft: 0, furniture: [], finishSlots: [],
+    vertices: [{ id: 'v1', x: 0, y: 0 }, { id: 'v5', x: 3, y: 0 }, { id: 'v2', x: 6, y: 0 }, { id: 'v3', x: 6, y: 3.2 }, { id: 'v6', x: 3, y: 3.2 }, { id: 'v4', x: 0, y: 3.2 }],
+    walls: [['v1', 'v5'], ['v5', 'v2'], ['v2', 'v3'], ['v3', 'v6'], ['v6', 'v4'], ['v4', 'v1'], ['v5', 'v6']].map(([a, b], i) => ({
+      id: `w${i}`, a, b, thicknessM: 0.127, heightM: 3,
+      openings: i === 6 ? [{ id: 'door', kind: 'door' as const, offsetM: 0.4, widthM: 0.9, heightM: 2.1, sillM: 0 }, { id: 'pass', kind: 'passage' as const, offsetM: 1.8, widthM: 1.0, heightM: 2.1, sillM: 0 }] : [],
+    })),
+    roomLabels: [{ id: 'l', name: 'Living', kind: 'living', x: 1.5, y: 1.6 }, { id: 'b', name: 'Bed', kind: 'bed', x: 4.5, y: 1.6 }],
+  }
+  const rooms = deriveRooms(u)
+  const living = rooms.find((r) => r.name === 'Living')!
+  const bed = rooms.find((r) => r.name === 'Bed')!
+  /** a point on the middle wall at y, d metres into the living room (−) or the bedroom (+) */
+  const mid = (y: number, d: number) => ({ x: 3 + d, y })
+  const hang = (at = mid(0.85, -0.3), hole?: { p: { x: number; y: number }; n: { x: number; y: number } }) => placePiece(u, rooms, layoutFor(u, rooms), CURTAINS, at, 0, 'c', null, hole)!
+
+  it('nothing hangs on a door or passage by itself; staff hang a pair on either, centred, a little wider, floor to ceiling', () => {
+    expect(curtains(u)).toEqual([])
+    // the Studio's click just inside the living room in front of the door (its nearest wall face)
+    const m = hang()
+    expect(m.error).toBeNull()
+    expect(m.piece.openingId).toBe('door')
+    expect(m.piece.roomId).toBe(living.id)
+    const s = span({ ...u, furniture: m.furniture }, m.piece)
+    expect(s.lo).toBeCloseTo(0.4 - CURTAIN_OVER, 3) // the window rule's margin past each edge
+    expect(s.hi).toBeCloseTo(1.3 + CURTAIN_OVER, 3)
+    expect(s.off).toBeCloseTo(0.127 / 2 + 0.005 + CURTAIN_D / 2, 6) // on the living room's face of the wall
+    expect(placementSize(m.piece).y).toBeCloseTo(3 - 0.065, 6) // above the door's head, to the floor
+    // the 3D pointer looking through the passage from the bedroom (the wall it meets is the living room's far wall)
+    const g = hang(mid(1.6, 0.6), { p: mid(2.3, 0.127 / 2), n: { x: 1, y: 0 } })
+    expect(g.error).toBeNull()
+    expect(g.piece.openingId).toBe('pass')
+    expect(g.piece.roomId).toBe(bed.id)
+    const t = span({ ...u, furniture: g.furniture }, g.piece)
+    expect(t.lo).toBeCloseTo(1.8 - CURTAIN_OVER, 3)
+    expect(t.hi).toBeCloseTo(2.8 + CURTAIN_OVER, 3)
+    // nowhere near an opening: said so
+    expect(hang(mid(2.95, -0.3)).error).toBe('Point at an opening')
+    // saved and laid out again: still there, as hung
+    expect(on({ ...u, furniture: m.furniture }, 'door')).toMatchObject({ x: m.piece.x, y: m.piece.y, sizeM: m.piece.sizeM })
+  })
+
+  it("a side dragged moves that side only, on 5 cm steps from the opening's edge; the typed width moves both; limits hold", () => {
+    const m = hang()
+    const v: Unit = { ...u, furniture: m.furniture }
+    const p = on(v, 'door')!
+    const before = span(v, p)
+    const plus = sideDots(p)[0] // its +x side: which end of the wall that is depends on how it faces
+    const right = plus.y > p.y ? 'hi' : 'lo'
+    const keep = right === 'hi' ? 'lo' : 'hi'
+    const w = placementSize(p).x
+    // dragged 0.47 m wider: lands 0.6 m past the edge (0.15 + 0.47 → 0.6 on the 5 cm step)
+    const a = resizePiece(v, rooms, v.furniture, p.id, { ...placementSize(p), x: w + 0.47 }, { x: 1, z: 0 })!
+    expect(a.error).toBeNull()
+    const sa = span({ ...v, furniture: a.furniture }, a.piece)
+    expect(sa[keep]).toBeCloseTo(before[keep], 3)
+    expect(Math.abs(sa[right] - before[right])).toBeCloseTo(0.45, 3)
+    expect(Math.abs(sa[right] - (right === 'hi' ? 1.3 : 0.4))).toBeCloseTo(0.6, 3)
+    // kept: the next layout hangs it the same, and the Studio reducer commits the same drag as one step
+    const after = layoutFor({ ...v, furniture: a.furniture }, rooms).find((x) => x.id === p.id)!
+    expect(placementSize(after).x).toBeCloseTo(placementSize(a.piece).x, 6)
+    let st = reducer({ ...initialState(), unit: v }, { type: 'resize-piece', id: p.id, sizeM: { ...placementSize(p), x: w + 0.47 }, grow: { x: 1, z: 0 } })
+    expect(placementSize(on(st.unit, 'door')!).x).toBeCloseTo(placementSize(a.piece).x, 6)
+    // the other side, narrower: its end goes in to the door's edge, the first side stays
+    const b = resizePiece(st.unit, rooms, layoutFor(st.unit, rooms), p.id, { ...placementSize(a.piece), x: placementSize(a.piece).x - 0.15 }, { x: -1, z: 0 })!
+    const sb = span({ ...st.unit, furniture: b.furniture }, b.piece)
+    expect(sb[right]).toBeCloseTo(sa[right], 3)
+    expect(sb[keep]).toBeCloseTo(right === 'hi' ? 0.4 : 1.3, 3)
+    // limits: never narrower than 0.4 m; never round the room's corner (the rod stops short of the side wall), still allowed
+    expect(placementSize(resizePiece(v, rooms, v.furniture, p.id, { ...placementSize(p), x: 0.1 }, { x: 1, z: 0 })!.piece).x).toBeCloseTo(0.4, 3)
+    const far = resizePiece(v, rooms, v.furniture, p.id, { ...placementSize(p), x: 9 }, { x: 1, z: 0 })!
+    expect(far.error).toBeNull()
+    expect(placementSize(far.piece).x).toBeLessThan(3.2)
+    const sf = span({ ...v, furniture: far.furniture }, far.piece)
+    expect(Math.min(sf.lo, sf.hi)).toBeGreaterThanOrEqual(0.127 / 2 - 1e-6)
+    expect(Math.max(sf.lo, sf.hi)).toBeLessThanOrEqual(3.2 - 0.127 / 2 + 1e-6)
+    // the typed width (the Studio's W field): both halves
+    st = reducer({ ...initialState(), unit: v }, { type: 'resize-piece', id: p.id, sizeM: { ...placementSize(p), x: w + 0.2 } })
+    const sc = span(st.unit, on(st.unit, 'door')!)
+    expect(sc.lo).toBeCloseTo(before.lo - 0.1, 3)
+    expect(sc.hi).toBeCloseTo(before.hi + 0.1, 3)
+    expect(resizeAxes(CURTAINS)).toEqual(['x'])
+  })
+})
+
+describe('Delete with a piece in hand (founder 2026-10-19: "after pressing g we cannot delete them. make deleting available including curtains")', () => {
+  it('G on a sofa or a curtain, then Delete: gone (what rests on it too), one undo step brings it back; the Studio reducer the same', () => {
+    const rooms = deriveRooms(his)
+    const all = layoutFor(his, rooms)
+    const sofa = all.find((p) => kitAsset(p.assetId)?.category === 'sofa' && !p.removed)!
+    const curtain = on(his, SLIDER)!
+    for (const p of [sofa, curtain]) {
+      // G: in hand (and carried a little); Delete
+      const h = holdAt(his, rooms, all, pickUp(all, p.id), { at: { x: p.x + 0.3, y: p.y }, wall: null })
+      const next = deleteHeld(all, h)!
+      expect(next.find((x) => x.id === p.id)?.removed, p.assetId).toBe(true)
+      expect(layoutFor({ ...his, furniture: next }, rooms).find((x) => x.id === p.id)?.removed, p.assetId).toBe(true) // stays deleted, never hung again
+      const undone = undoStep(pushStep({ pieces: all, past: [] }, next))
+      expect(undone.pieces.find((x) => x.id === p.id)).toEqual(p)
+      // the Studio's F tool: Delete with it in hand dispatches the same delete-piece
+      let s = reducer({ ...initialState(), unit: his }, { type: 'delete-piece', id: p.id })
+      expect(layoutFor(s.unit, rooms).find((x) => x.id === p.id)?.removed).toBe(true)
+      s = reducer(s, { type: 'undo' })
+      expect(layoutFor(s.unit, rooms).find((x) => x.id === p.id)?.removed).toBeUndefined()
+    }
+    // a piece resting on another (cushions on the sofa, a TV on its unit), picked up with G, moves with that piece: Delete takes both
+    const rider = all.find((p) => !p.removed && baseOf(all, p.id)!.id !== p.id)!
+    const gone = deleteHeld(all, pickUp(all, rider.id))!.filter((x) => x.removed).map((x) => x.id)
+    expect(gone).toEqual(expect.arrayContaining([rider.id, baseOf(all, rider.id)!.id]))
+    // a library piece in hand is only let go: nothing to delete
+    expect(deleteHeld(all, { id: 'new', assetId: CURTAINS, rot: 0, at: null, move: null })).toBeNull()
   })
 })
