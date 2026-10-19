@@ -1,7 +1,8 @@
 /**
  * The staff library (Studio tool F, the 3D view's Add): a search box over the pieces grouped by room, then by kind,
- * with counts, the groups folding; the pieces picked last on top. Typing goes to the box, Enter picks the first match,
- * Esc clears it (again: lets go of the box, so the app's keys work). Listing and search: library.ts.
+ * with counts, the groups folding; the pieces picked last on top. Enter picks the first match, Esc clears the box (again:
+ * lets go of it, so the app's keys work). `focus`: typing goes to the box as it opens (the 3D Add panel; not the Studio,
+ * whose letter keys pick tools). Listing and search: library.ts.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { firstMatch, listing, pushRecent, RECENT_KEY, type Entry } from './library'
@@ -16,16 +17,17 @@ const readRecent = (): string[] => {
   }
 }
 
-export function LibraryPanel({ onPick, picked }: { onPick: (assetId: string) => void; picked?: string | null }) {
+export function LibraryPanel({ onPick, picked, focus }: { onPick: (assetId: string) => void; picked?: string | null; focus?: boolean }) {
   const [q, setQ] = useState('')
   const [recent, setRecent] = useState(readRecent)
   const box = useRef<HTMLInputElement>(null)
   const groups = useMemo(() => listing(q, recent), [q, recent])
-  // after the key that opened it (F in the Studio) has landed: else that letter would be typed into the box
+  // after the click or key that opened it has landed: else a letter would be typed into the box
   useEffect(() => {
+    if (!focus) return
     const t = setTimeout(() => box.current?.focus({ preventScroll: true }))
     return () => clearTimeout(t)
-  }, [])
+  }, [focus])
   const pick = (e: Entry) => {
     const next = pushRecent(recent, e.id)
     setRecent(next)

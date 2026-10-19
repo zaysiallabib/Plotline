@@ -299,7 +299,7 @@ function QualityChip({ note, onPick }: { note: string | null; onPick: (q: Qualit
 function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
   return (
     <aside className="glass library">
-      <LibraryPanel onPick={onPick} />
+      <LibraryPanel onPick={onPick} focus />
     </aside>
   )
 }
