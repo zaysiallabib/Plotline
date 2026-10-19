@@ -309,7 +309,7 @@ export default function StudioApp() {
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
   /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
-  const fixCache = useRef(new Map<string, { sig: unknown[]; got: MarkFixes }>())
+  const fixCache = useRef(new Map<string, { unit: Unit; sig: unknown[]; got: MarkFixes }>())
   /** marks still to work out (Export waits for them: every row's answers go into the file) */
   const fixesLeft = useRef(0)
   // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
@@ -333,7 +333,7 @@ export default function StudioApp() {
     let shown = 0
     const take = (key: string, got: MarkFixes) => {
       found.set(key, got)
-      cache.set(key, { sig: sigs.get(key)!, got })
+      cache.set(key, { unit, sig: sigs.get(key)!, got })
       fixesLeft.current = --left
     }
     const publish = () => {
@@ -349,9 +349,9 @@ export default function StudioApp() {
     const start = () => {
       // a mark the edit did not reach keeps its fixes (fixSig); the others are worked out in the worker, one by one
       const todo = marks.filter((m) => {
-        const sig = fixSig(unit, m, rooms)
-        sigs.set(m.key, sig)
         const c = cache.get(m.key)
+        const sig = c?.unit === unit ? c.sig : fixSig(unit, m, rooms) // (a row dismissed: the plan is the same)
+        sigs.set(m.key, sig)
         if (!c || c.sig.length !== sig.length || c.sig.some((x, i) => x !== sig[i])) return true
         take(m.key, c.got)
         return false
