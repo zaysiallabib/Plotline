@@ -17,9 +17,10 @@ import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '.
 import { fetchSharedUnit } from '../lib/supabase'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { deleteHeld, draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -49,6 +50,16 @@ const roseSaved = (): boolean => {
     return localStorage.getItem(ROSE_KEY) === '1'
   } catch {
     return false
+  }
+}
+/** the flat's lights: automatic (on after sunset) or the person's pick (render.ts lightsOn), remembered in this browser */
+const LIGHTS_KEY = 'plotline.lights'
+const lightsSaved = (): LightsMode => {
+  try {
+    const v = localStorage.getItem(LIGHTS_KEY)
+    return v === 'on' || v === 'off' ? v : 'auto'
+  } catch {
+    return 'auto'
   }
 }
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
@@ -350,14 +361,14 @@ function ArrangePanel(p: {
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {p.piece.openingId
-              ? 'Hangs on its window and follows it: drag it along the wall, or Delete it'
+              ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
               : resizeAxes(p.piece.assetId).length
                 ? `${dims(s)} · drag a dot to resize`
                 : 'This piece can be moved and turned'}
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their window's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
@@ -366,7 +377,7 @@ function ArrangePanel(p: {
         <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
-        <button className="btn" disabled={!p.piece || !!p.held} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+        <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
@@ -498,6 +509,20 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
   const [roseOn, setRoseOn] = useState(roseSaved)
+  const [lightsMode, setLightsMode] = useState(lightsSaved)
+  const alt = core.sunAt(unit.site, date, hour).altDeg
+  const lit = lightsOn(lightsMode, alt)
+  /** a click flips the lights; flipped back to what automatic would show, it is automatic again */
+  const flipLights = () => {
+    const mode: LightsMode = lit === lightsOn('auto', alt) ? (lit ? 'off' : 'on') : 'auto'
+    setLightsMode(mode)
+    scene?.setLightsMode(mode)
+    try {
+      localStorage.setItem(LIGHTS_KEY, mode)
+    } catch {
+      /* this browser keeps nothing: the lights stay as clicked for now */
+    }
+  }
   const months = unit.site?.wind ?? core.DHAKA_WIND
   const month = Number(date.slice(5, 7)) - 1
   const windRooms = useMemo(() => (windOn ? core.roomWind(unit, rooms, months[month].fromDeg) : []), [windOn, unit, rooms, months, month])
@@ -583,6 +608,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     })
     s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
     s.setUnit(given)
+    s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
@@ -741,10 +767,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
   }
+  /** Delete: the piece in hand (G, a drag: deleteHeld), else the one picked; one undo step */
   const remove = () => {
-    if (!sel) return
-    settle(pushStep(steps.current, deletePiece(steps.current.pieces, sel)), null)
+    const h = held.current
+    const next = h ? deleteHeld(steps.current.pieces, h) : sel && deletePiece(steps.current.pieces, sel)
+    letGo()
     setSel(null)
+    if (next) settle(pushStep(steps.current, next), null)
   }
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
@@ -953,7 +982,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     scene?.setOpeningEdit(true)
   }
 
-  // keys: Enter (load screen), O, F, C, Esc
+  // keys: Enter (load screen), O, F, C, P (the wind, as the Wind button), Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -983,7 +1012,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
         else pickUpAtPointer()
       } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
       else if (arranging && k === 'r') turn()
-      else if (arranging && !h && (k === 'delete' || k === 'backspace')) remove()
+      else if ((arranging || h) && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
         setAdding(false)
         setSel(null)
@@ -992,6 +1021,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
+      else if (k === 'p' && !e.repeat) setWindOn((v) => !v) // founder 2026-10-19: "make windpaths visible by pressing the button p"
       else if (k === 'escape') {
         setCommenting(false)
         setDraft(null)
@@ -1159,6 +1189,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             arranging={arranging}
             hand={handInfo}
             staff={STAFF}
+            osm={!!unit.site && unit.site.buildings.length + unit.site.roads.length > 0}
             onArrange={STAFF ? toggleArrange : null}
             editingOpenings={editingOpenings}
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
@@ -1260,6 +1291,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               setDate(d)
               scene.setTimeOfDay(hour, d)
             }}
+            lights={lit}
+            lightsAuto={lightsMode === 'auto'}
+            onLights={flipLights}
             wind={windOn}
             onWind={() => setWindOn((v) => !v)}
             month={month}

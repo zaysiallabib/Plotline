@@ -153,7 +153,8 @@ export type Action =
   | { type: 'set-plan-image'; image: PlanImage | null }
   | { type: 'set-scale'; pxPerM: number; originPx?: Pt }
   | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg' | 'site'>> }
-  | { type: 'select'; ids: Id[]; add?: boolean }
+  /** `toggle` (Shift+click): each of `ids` already picked leaves the selection, the others join it */
+  | { type: 'select'; ids: Id[]; add?: boolean; toggle?: boolean }
   /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
   | { type: 'chain-start'; at: Target; wall?: WallType }
   /** the W tool's type picker (keys 1–4): what the next walls are, the chain being drawn too; `lowWallM` = the low wall's typed height */
@@ -199,9 +200,10 @@ export type Action =
   | { type: 'add-opening'; wallId: Id; t: number; kind?: OpeningKind; widthM?: number; tolM?: number }
   /** the O tool's picker (Panel, keys 1–4): what the next click places; no widthM = the kind's default */
   | { type: 'pick-opening'; kind: OpeningKind; widthM?: number; glass?: boolean }
-  | { type: 'update-opening'; id: Id; patch: Partial<Omit<Opening, 'id'>> }
+  /** several ids: the same patch on each, one undo; one that does not fit stays as it was (a toast says so) */
+  | { type: 'update-opening'; id: Id | Id[]; patch: Partial<Omit<Opening, 'id'>> }
   /** `standsAlone: true` = "Keep — it stands alone" on a loose end (issues.ts): its free ends are meant */
-  | { type: 'update-wall'; id: Id; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM' | 'standsAlone'>> }
+  | { type: 'update-wall'; id: Id | Id[]; patch: Partial<Pick<Wall, 'thicknessM' | 'heightM' | 'standsAlone'>> }
   | { type: 'set-wall-length'; id: Id; lengthM: number }
   /** mid-drag (no history of its own): wall `wallId`'s end at `vertexId` moves to a new corner `newId` at the same spot */
   | { type: 'detach'; wallId: Id; vertexId: Id; newId: Id }
@@ -228,8 +230,8 @@ export type Action =
   | { type: 'move-piece'; id: Id; x: number; y: number; rotationDeg?: number }
   /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
   | { type: 'rotate-piece'; id: Id }
-  /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
-  | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number } }
+  /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall; `grow` = the side that moves (furniture.resizePiece) */
+  | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number }; grow?: { x: number; z: number } }
   /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); undo / reset bring it back */
   | { type: 'delete-piece'; id: Id }
   /** a new piece `id` of kit asset `assetId` from the library, dropped at (x, y) turned `rotationDeg` (furniture.placePiece); refused → toast */
@@ -358,8 +360,10 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     return splitWall(t.unit, t.wall, s / wallFrame(t.wall, t.unit.vertices).lengthM) as { unit: Unit; vertexId: Id } // (nothing straddles s now)
   }
   // the moved corners first (they join onto what stands still), then the corners inside a moved wall's body
+  let V = new Map<Id, Vertex>()
+  let mapped: Unit | null = null
   for (const id of new Set([...(ids ?? []), ...u.vertices.map((v) => v.id)])) {
-    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    if (mapped !== u) (V = new Map(u.vertices.map((v) => [v.id, v]))), (mapped = u) // (again only once the unit changed — s27 rows)
     const v = V.get(id)
     if (!v) continue
     const mine = !scope || scope.has(id)
@@ -675,7 +679,9 @@ function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; co
   const corners: Id[] = []
   for (let again = true; again; ) {
     again = false
-    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, u.vertices)]))
+    // (each frame from its own two corners: core's wallFrame maps every vertex on each call — s27 rows)
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, [V.get(w.a), V.get(w.b)].filter((x): x is Vertex => !!x))]))
     pairs: for (const [i, K] of u.walls.entries()) {
       for (const [j, S] of u.walls.entries()) {
         if (i === j || (ids && !at(K) && !at(S)) || Math.abs(K.heightM - S.heightM) > 0.01) continue
@@ -791,7 +797,9 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
   const d = dirFrom(u, w, far, V) // ahead: away from its own wall
   let best: ReturnType<typeof ahead> = null
   // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2, Sheltech
-  // Windflower's Whole floor: 1 400 walls, the import spent 100 s here)
+  // Windflower's Whole floor: 1 400 walls, the import spent 100 s here; the corners' degrees counted once — s27 rows)
+  const deg = new Map<Id, number>()
+  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
   for (const x of u.walls) {
     if (x === w) continue
     const f = wallFrame(x, [V.get(x.a)!, V.get(x.b)!])
@@ -806,7 +814,7 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
     for (const end of [x.a, x.b]) {
       if (end === far) continue
       const q = V.get(end)!
-      const free = degree(u, end) === 1 && r > EPS
+      const free = deg.get(end) === 1 && r > EPS
       // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
       const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
       const out = dirFrom(u, x, end === x.a ? x.b : x.a, V)
@@ -932,6 +940,55 @@ export function findEntity(u: Unit, id: Id): Entity | null {
   const p = u.pillars?.find((x) => x.id === id)
   if (p) return { kind: 'pillar', p }
   return null
+}
+
+/** a mixed selection's field: the value every item has, NaN ("mixed") when they differ */
+export const shared = (xs: number[]): number => (xs.every((x) => x === xs[0]) ? xs[0] : NaN)
+
+const PICK_NAMES =['wall', 'window', 'door', 'sliding door', 'passage', 'column', 'corner', 'room label']
+/** The status line of a selection: "3 walls, 2 windows selected" ('' for none) */
+export function selectionText(u: Unit, ids: Id[]): string {
+  const n = new Map<string, number>()
+  for (const id of ids) {
+    const e = findEntity(u, id)
+    if (!e) continue
+    const k = e.kind === 'opening' ? (e.o.kind === 'slider' ? 'sliding door' : e.o.kind) : { vertex: 'corner', wall: 'wall', label: 'room label', pillar: 'column' }[e.kind]
+    n.set(k, (n.get(k) ?? 0) + 1)
+  }
+  const parts = PICK_NAMES.filter((k) => n.has(k)).map((k) => `${n.get(k)} ${k}${n.get(k) === 1 ? '' : 's'}`)
+  return parts.length ? `${parts.join(', ')} selected` : ''
+}
+
+/** does the segment p–q touch the box lo–hi (Liang–Barsky) */
+function crossesBox(p: Pt, q: Pt, lo: Pt, hi: Pt): boolean {
+  let t0 = 0
+  let t1 = 1
+  for (const [d, o, l, h] of [[q.x - p.x, p.x, lo.x, hi.x], [q.y - p.y, p.y, lo.y, hi.y]]) {
+    if (Math.abs(d) < 1e-12) {
+      if (o < l || o > h) return false
+      continue
+    }
+    t0 = Math.max(t0, Math.min((l - o) / d, (h - o) / d))
+    t1 = Math.min(t1, Math.max((l - o) / d, (h - o) / d))
+    if (t0 > t1) return false
+  }
+  return true
+}
+
+/** The V tool's marquee from a to b (plan m): every wall, opening (its span on the centre line) and column it touches */
+export function idsInBox(u: Unit, a: Pt, b: Pt): Id[] {
+  const lo = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) }
+  const hi = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) }
+  const ids: Id[] = []
+  for (const w of u.walls) {
+    const f = wallFrame(w, u.vertices)
+    const at = (m: number) => ({ x: f.origin.x + f.dir.x * m, y: f.origin.y + f.dir.y * m })
+    if (crossesBox(at(0), at(f.lengthM), lo, hi)) ids.push(w.id)
+    for (const o of w.openings) if (crossesBox(at(o.offsetM), at(o.offsetM + o.widthM), lo, hi)) ids.push(o.id)
+  }
+  // a column by its bounding box (x / y / wM / hM)
+  for (const p of u.pillars ?? []) if (Math.abs(p.x - (lo.x + hi.x) / 2) <= p.wM / 2 + (hi.x - lo.x) / 2 && Math.abs(p.y - (lo.y + hi.y) / 2) <= p.hM / 2 + (hi.y - lo.y) / 2) ids.push(p.id)
+  return ids
 }
 
 /** Selected ids still in `u`: graph entities, or pieces of its furniture layer (preset ids are deterministic). */
@@ -1165,8 +1222,11 @@ export function reducer(s: StudioState, a: Action): StudioState {
       })
     case 'set-meta':
       return { ...s, unit: { ...s.unit, ...a.patch } }
-    case 'select':
-      return { ...s, selection: a.add ? [...new Set([...s.selection, ...a.ids])] : a.ids }
+    case 'select': {
+      if (!a.toggle) return { ...s, selection: a.add ? [...new Set([...s.selection, ...a.ids])] : a.ids }
+      const off = new Set(a.ids.filter((id) => s.selection.includes(id)))
+      return { ...s, selection: [...s.selection.filter((id) => !off.has(id)), ...a.ids.filter((id) => !off.has(id))] }
+    }
 
     case 'chain-start': {
       const r = resolveTarget(s.unit, a.at)
@@ -1323,15 +1383,22 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'pick-opening':
       return { ...s, lastOpeningKind: a.kind, lastOpeningWidthM: a.widthM === undefined ? undefined : Math.max(MIN_OPENING_M, a.widthM), glassPick: !!a.glass }
     case 'update-opening': {
-      const f = findOpening(s.unit, a.id)
-      if (!f) return s
-      let next: Opening = { ...f.opening, ...a.patch }
-      if (a.patch.kind && a.patch.kind !== f.opening.kind) {
-        next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(deriveRooms(s.unit), f.wall.id)) }
+      let u = s.unit
+      const refused: string[] = []
+      for (const id of [a.id].flat()) {
+        const f = findOpening(u, id)
+        if (!f) continue
+        let next: Opening = { ...f.opening, ...a.patch }
+        if (a.patch.kind && a.patch.kind !== f.opening.kind) {
+          next = { ...next, ...openingDefaults(a.patch.kind, a.patch.kind === 'door' && bordersBath(deriveRooms(s.unit), f.wall.id)) }
+        }
+        const placed = placeOpening(f.wall, wallLen(u, f.wall), next)
+        if (typeof placed === 'string') refused.push(placed)
+        else u = replaceOpening(u, f.wall.id, placed)
       }
-      const placed = placeOpening(f.wall, wallLen(s.unit, f.wall), next)
-      if (typeof placed === 'string') return withToast(s, placed)
-      return commit(s, replaceOpening(s.unit, f.wall.id, placed)) // editing one never changes the O tool's pick
+      if (u === s.unit) return refused.length ? withToast(s, refused[0]) : s
+      const t = commit(s, u) // editing one never changes the O tool's pick
+      return refused.length ? withToast(t, `${refused.length} not changed: ${refused[0]}`) : t
     }
     case 'drag-opening': {
       const f = findOpening(s.unit, a.id)
@@ -1367,10 +1434,11 @@ export function reducer(s: StudioState, a: Action): StudioState {
       return { ...s, unit: replaceOpening(s.unit, f.wall.id, placed), dragBlocked: false }
     }
     case 'update-wall': {
-      const w0 = s.unit.walls.find((w) => w.id === a.id)
-      if (!w0) return s
-      if (a.patch.heightM === 0 && w0.openings.length) return withToast(s, 'Remove its doors / windows first: a zone line (height 0) carries none')
-      return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (w.id === a.id ? { ...w, ...a.patch } : w)) })
+      const ids = new Set([a.id].flat())
+      const ws = s.unit.walls.filter((w) => ids.has(w.id))
+      if (!ws.length) return s
+      if (a.patch.heightM === 0 && ws.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line (height 0) carries none')
+      return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...a.patch } : w)) })
     }
     case 'set-wall-length': {
       // a is the anchor, b slides; the walls at b stay straight (lengthMoves), openings clamp; a door left on a stub moves / goes
@@ -1425,7 +1493,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (u.pillars?.some((p) => sel.has(p.id))) u = { ...u, pillars: u.pillars.map((p) => (sel.has(p.id) ? shift(p) : p)) }
       for (const id of s.selection) {
         const f = findOpening(u, id)
-        if (!f) continue
+        if (!f || (moved.has(f.wall.a) && moved.has(f.wall.b))) continue // its wall moves with it: it stays put on it
         const placed = placeOpening(f.wall, wallLen(u, f.wall), { ...f.opening, offsetM: f.opening.offsetM + a.dx + a.dy })
         if (typeof placed === 'string') return withToast(s, placed)
         u = replaceOpening(u, f.wall.id, placed)
@@ -1446,7 +1514,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!ids.size) return s
       const walls = s.unit.walls
         .filter((w) => !ids.has(w.id) && !ids.has(w.a) && !ids.has(w.b))
-        .map((w) => ({ ...w, openings: w.openings.filter((o) => !ids.has(o.id)) }))
+        .map((w) => (w.openings.some((o) => ids.has(o.id)) ? { ...w, openings: w.openings.filter((o) => !ids.has(o.id)) } : w)) // (the others as they were: s27 rows, issues.ts fixSig)
       // corners joined to nothing go; a corner left between two collinear walls joins them into one
       const used = new Set(walls.flatMap((w) => [w.a, w.b]))
       const vertices = s.unit.vertices.filter((v) => !ids.has(v.id) && used.has(v.id))
@@ -1514,7 +1582,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!p) return s
       const r =
         a.type === 'resize-piece'
-          ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM)
+          ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM, a.grow)
           : a.type === 'rotate-piece'
             ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
             : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)

@@ -1,7 +1,7 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind, Vertex, Wall } from '../core'
-import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
+import { GRID_M, layerOf, pieceLabel, pieceQuad, sideDots, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
 import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
@@ -36,6 +36,8 @@ export interface Hover {
   moving?: Id[]
   /** C tool drag: the new column's box (plan m) */
   box?: { a: Pt; b: Pt }
+  /** V drag on empty plan: the box select (plan m) */
+  marquee?: { a: Pt; b: Pt }
   /** A tool: the walls a click would lay (their corners, plan m) */
   arc?: Pt[]
 }
@@ -412,6 +414,9 @@ export function draw(a: DrawArgs): void {
     }
   }
 
+  // a selected curtain's two sides (tool F): drag one to make it wider or narrower on that side
+  for (const p of a.furniture ? (a.furniture.drag?.furniture ?? a.furniture.pieces) : []) if (p.openingId && sel.has(p.id)) for (const c of sideDots(p)) dot(c, true, true)
+
   // ramps: an arrow across the zone from its floor level (tail) to its to level (head); selected, the head is a handle
   const ramps = state.unit.roomLabels.flatMap((l) => {
     const r = l.slope && a.rooms.find((x) => x.id === l.id)
@@ -441,6 +446,15 @@ export function draw(a: DrawArgs): void {
     ctx.strokeStyle = C.accent
     ctx.lineWidth = px(1.5)
     ctx.stroke()
+  }
+  // V box select: a thin dashed rectangle
+  const mq = a.hover?.marquee
+  if (mq) {
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = px(1)
+    ctx.setLineDash([px(5), px(4)])
+    ctx.strokeRect(Math.min(mq.a.x, mq.b.x), Math.min(mq.a.y, mq.b.y), Math.abs(mq.b.x - mq.a.x), Math.abs(mq.b.y - mq.a.y))
+    ctx.setLineDash([])
   }
 
   // screen space: wall lengths, labels, scale line

@@ -18,7 +18,7 @@ const BY_HAND: Partial<Record<string, string>> = {
 
 interface Props {
   marks: Mark[]
-  /** per mark key; null while the plan is still changing (a drag): no fix is offered from a stale plan */
+  /** per mark key, an entry once worked out; null while the plan is still changing (a drag): no fix is offered from a stale plan */
   fixes: Map<string, MarkFixes> | null
   toScreen: (m: Pt) => Pt
   width: number
@@ -134,9 +134,10 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
               ))}
             </div>
           )}
-          {!f && open.issue && fixes && <p className="muted">{BY_HAND[open.issue.code] ?? 'No one-click fix for this one.'}</p>}
+          {!f && <p className="muted">Working out its fixes…</p>}
+          {f && !f.fixes.length && !f.nameAt && open.issue && <p className="muted">{BY_HAND[open.issue.code] ?? 'No one-click fix for this one.'}</p>}
           {open.review &&
-            (open.review.room !== undefined && fixes && !f?.fixes.length ? (
+            (open.review.room !== undefined && f && !f.fixes.length ? (
               <p className="muted">Nothing closes it in one click: draw its open sides with W (keys 1–4: wall, low wall, kerb, zone line). Once it is closed the row offers its name.</p>
             ) : (
               <p className="muted">From Auto-trace: check it, then “Looks right” in the list.</p>
