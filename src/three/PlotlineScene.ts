@@ -82,6 +82,14 @@ const REFUSED = '#ff4d4d'
 
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
+/**
+ * Vertical field of view (°) walking: 50 = 79° across a 16:9 screen, 73° across 16:10 — a 22 mm lens, the common
+ * walkthrough choice. Was 65 (97° across 16:9, a 16 mm lens): the centre of the view shrank to 0.73 of this, so rooms
+ * and furniture read small and far, and the edges stretched 2.3× (1.7× now) (founder 2026-10-19: "make the flats look a bit
+ * bigger"). The dollhouse and the Building view keep VIEW_FOV. viewer/frame.ts and spawn.ts still frame first views for 65.
+ */
+const WALK_FOV = 50
+const VIEW_FOV = 65
 const WALK_RADIUS = 0.3
 /** A wall this tall is a storey wall (not a parapet, a screen, a planter edge): under the slab above it reaches it. */
 const STOREY_WALL_M = 2.4
@@ -329,7 +337,7 @@ export class PlotlineScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
-    this.camera = new THREE.PerspectiveCamera(65, 1, 0.05, 300)
+    this.camera = new THREE.PerspectiveCamera(WALK_FOV, 1, 0.05, 300) // the scene opens walking
     this.camera.position.y = EYE
     this.rig.add(this.camera)
     this.scene.add(this.rig, this.staticGroup, this.ceilingGroup, this.furnitureGroup)
@@ -491,6 +499,8 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.camera.fov = mode === 'walk' ? WALK_FOV : VIEW_FOV
+    this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
