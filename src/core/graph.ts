@@ -330,8 +330,9 @@ function hashLoop(loop: Id[]): string {
  * never a face. null for any other label.
  */
 export function flatTypeOf(l: Pick<RoomLabel, 'name' | 'kind'>): string | null {
-  const m = l.kind === 'other' ? /\b(type|unit)[\s:-]*([a-z0-9]{1,2})\b/i.exec(l.name) : null
-  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase()}` : null
+  // ("UNIT A & B 3925 SFT": two units sold joined are ONE flat, named so — s27 flats 2)
+  const m = l.kind === 'other' ? /\b(type|unit)[\s:-]*([a-z0-9]{1,2}(?:\s*(?:&|\+|and\b)\s*[a-z0-9]{1,2})*)\b/i.exec(l.name) : null
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase().split(/\s*(?:&|\+|AND)\s*/).join(' & ')}` : null
 }
 
 /** Label → the smallest face containing it; first label wins when two share a face; a flat's "Type A" label names none. */
