@@ -13,6 +13,31 @@ import type { PlotlineScene } from '../three/PlotlineScene'
 
 /** the map's longer side on screen, px */
 export const MAP_PX = 200
+
+/** The compass (22 px box, centre 11, 11): the point `r` px out toward true north on the plan as drawn (unit.northDeg; plan-up = 0). */
+export const compassPoint = (northDeg: number, r: number): { x: number; y: number } => {
+  const a = (northDeg * Math.PI) / 180
+  return { x: 11 + Math.sin(a) * r, y: 11 - Math.cos(a) * r }
+}
+
+/** A tiny real compass: a thin ring, a slim needle — its north half the accent, the other muted — and a small N, all turned to true north. */
+function Compass({ northDeg }: { northDeg: number }) {
+  const half = (deg: number) => {
+    const [tip, l, r] = [compassPoint(deg, 6), compassPoint(deg - 90, 1.2), compassPoint(deg + 90, 1.2)]
+    return `${tip.x},${tip.y} ${l.x},${l.y} ${r.x},${r.y}`
+  }
+  const n = compassPoint(northDeg, 9.6)
+  return (
+    <svg className="compass mini" width="22" height="22" viewBox="0 0 22 22" aria-label={`north: ${Math.round(northDeg)}°`}>
+      <circle className="ring" cx="11" cy="11" r="7.4" />
+      <polygon className="south" points={half(northDeg + 180)} />
+      <polygon className="north" points={half(northDeg)} />
+      <text x={n.x} y={n.y} textAnchor="middle" dominantBaseline="central">
+        N
+      </text>
+    </svg>
+  )
+}
 /** how far the view cone reaches on the plan, m */
 const CONE_M = 2.6
 /** margin around the rooms, m */
@@ -131,10 +156,7 @@ export default function Minimap({ scene, unit, rooms, walking }: Props) {
     <div className="glass minimap" title="Where you are · M hides the map">
       <div className="minimap-head">
         <div ref={name} className="minimap-name" />
-        <svg className="compass" width="18" height="18" viewBox="0 0 18 18" style={{ transform: `rotate(${unit.northDeg}deg)` }} aria-label="north">
-          <circle cx="9" cy="9" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M9 3.5 L11 9 L9 8 L7 9 Z" fill="currentColor" />
-        </svg>
+        <Compass northDeg={unit.northDeg} />
       </div>
       <svg width={Math.round(w * k)} height={Math.round(h * k)} viewBox={`${x} ${y} ${w} ${h}`} aria-label="minimap">
         {map.rooms.map((r) => (

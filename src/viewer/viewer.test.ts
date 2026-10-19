@@ -7,6 +7,7 @@ import typeC from '../data/units/type-c.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { optionsTotal } from './FinishesPanel'
+import { compassPoint } from './Minimap'
 import { decodeConfig, encodeConfig, finishKeys, formatDelta, formatTaka } from './share'
 import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
 import { kitAsset, placementSize } from '../furnish/kit'
@@ -755,5 +756,17 @@ describe('viewer', { timeout: 20_000 }, () => {
     const c = { x: f.origin.x + f.dir.x * (door.offsetM + door.widthM / 2), y: f.origin.y + f.dir.y * (door.offsetM + door.widthM / 2) }
     expect(Math.hypot(v.p.x - c.x, v.p.y - c.y)).toBeCloseTo(w.thicknessM / 2 + 0.9)
     expect(core.pointInPolygon(v.p, core.roomInnerPolygon(bath, u))).toBe(true)
+  })
+})
+
+describe('minimap compass', () => {
+  it('points to true north on the plan as drawn: north 0 → needle straight up; north 304° → turned 304° (up and to the left)', () => {
+    const up = compassPoint(0, 6)
+    expect(up.x).toBeCloseTo(11)
+    expect(up.y).toBeCloseTo(5)
+    const t = compassPoint(304, 6)
+    expect((Math.atan2(t.x - 11, 11 - t.y) * 180) / Math.PI + 360).toBeCloseTo(304)
+    expect(t.x).toBeLessThan(11)
+    expect(t.y).toBeLessThan(11)
   })
 })
