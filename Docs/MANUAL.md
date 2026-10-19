@@ -119,8 +119,23 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 - Buttons in the small panel, bottom left: **Add**, **Turn 90°**, **Delete**, **Undo**, **Reset layout**.
 - Keys: **R** turns · **Del** deletes · **Ctrl+Z** undoes · **Esc** lets go.
 - **G** — picks up the piece under the mouse (also through glass) without opening Edit furniture; **G** again puts it down.
-- **Add** opens the library: Living, Dining, Bedroom, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor. Pick one, point at the floor, a wall or the ceiling, click.
+- **Add** opens the library (see **The library** just below): type what you want, or open a group, and click a piece (or press **Enter** for the first one listed); then point at the floor, a wall or the ceiling and click.
 - Saved in this browser only.
+
+### The library (Add in the 3D view, F in the Studio — the same list in both, since 2026-10-19)
+
+- **A search box on top**. In the 3D view it is ready to type into as soon as Add opens; in the Studio click it first (there the letter keys still pick the tools). Type any word and the list shrinks as you type: a name (*sofa*, *lamp*, *bookshelf*), a kind or an everyday word (*almirah*, *chula*, *jaynamaz*, *geyser*, *nightstand*), or a room (*balcony*, *kitchen*, *office*, *dining*). Plurals work (*lamps*). Pieces whose name has your word come first. **Enter** takes the first piece listed. **Esc** empties the box; **Esc** again leaves the box, so R / Esc / Del work on the plan again.
+- **Without a search**: first **Recent** — the last six pieces you picked in this browser — then the groups, each with how many pieces it holds: **Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor**. Click a group's name to open or close it. Inside a group the pieces stand by kind, each kind with its count (Sofas 5, Armchairs 3, …). A piece can be in two groups: the hand-wash basins are under Dining and Bath (a Dhaka dining space has one), desks and office chairs under Bedroom and Office, the chandelier under Lights & AC, Dining and Living.
+- **Each row**: the name, its footprint in feet (width × depth), and a small mark: **built** = drawn by Plotline itself — no download, and when you resize it, it is built again at the new size (more shelves, drawers, doors or seats, never stretched); **scan** = a photo-real scanned model (Poly Haven, free licence): it loads when you place it, and resizing stretches it a little.
+- **Added 2026-10-19** (154 pieces now, was 110):
+  - *Living*: bookshelf with books (also Office), console table, shoe rack, two TV units (1.5 m and 2.1 m), floor lamp, classic sofa (scan), carved drawing-room sofa (scan), classic armchair (scan), upholstered bench, prayer mat (jaynamaz, also Bedroom).
+  - *Dining*: dining tables for 4 and 8 (the 6-seat one was there), a small wooden table for 4 (scan), a white painted chair (scan), a hand-wash basin with a mirror, the water filter on its stand, a pendant light and the chandelier (scan).
+  - *Bedroom*: chest of drawers, walnut nightstand, classic nightstand (scan), drawer cabinet with shelves (scan), wardrobes 4 ft and 6 ft, kids' bed, bunk bed, baby crib, wall mirror, table lamp (it stands on a bedside table's top), study desk and office chair (also Office).
+  - *Kitchen*: double-door fridge, washing machine (also Bath), gas stove for the worktop (a two-burner chula), microwave on a steel stand, kitchen rack with pots and jars, exhaust fan (also Bath).
+  - *Bath*: geyser (water heater) high on the wall.
+  - *Outdoor*: balcony set (two teak chairs and a side table), clothes-drying rack with laundry.
+  - *Decor*: rugs 2.0 × 1.4 m, a 2.4 × 0.7 m runner, a round 1.2 m rug.
+- **Resizing** (drag a dot, or the size boxes in the Studio): every piece but the stairs and curtains. Built again at the new size: the upholstered beds, wardrobes (also the 4 ft and 6 ft), closets, larder, fridges, desks, dining tables (all three — the chairs follow the seats), sofas, cots, rectangular rugs and the runner, planter boxes, the bookshelf, the chest of drawers and both TV units. The rest stretch within limits (longer only for benches, consoles, racks and the study desk; the same shape for lamps, mirrors, plants and the round rugs).
 
 ### Edit openings (doors, windows, sliding doors, open passages)
 
@@ -248,8 +263,8 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 **F — Furniture**
 - Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.
 - **A click selects the piece under the mouse** — the one drawn on top: a wall cabinet or a hood over its counter, cushions over the sofa. A thin print or a wall TV is picked when you click within a few pixels of its line. A click whose mouse slides up to 6 pixels is still a click: the piece is selected, never moved. Drag further and the piece is in your hand; a drag on cushions or a TV standing on its unit moves the piece under them.
-- **Curtains** show as a thin strip along their window: click one, drag it along its wall, **Del** removes it. **Pick from the library… → Curtains**, then click beside a window: a pair hangs on it.
-- **Pick from the library…** adds a new piece (same library as the 3D view).
+- **Curtains** show as a thin strip along their window: click one, drag it along its wall, **Del** removes it. In **Add a piece** type *curtains* (or open Living / Bedroom) and click **Curtains**, then click beside a window: a pair hangs on it.
+- **Add a piece** (right-hand panel, while F is on) is the library — the same list as the 3D view's Add (see **The library** in §3): search or open a group, click a piece (or **Enter**), then click the plan where it goes. **R** turns it, **Esc** cancels.
 - **Reset to preset** puts one room back to the automatic layout; **Reset all** does every room.
 
 **Hold instead of switch:** hold **W**, **O** or **R**, use the tool, let go — you are back on the tool you had.
