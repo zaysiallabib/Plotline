@@ -4,7 +4,7 @@
  * the Studio's tool F, the undo stack, and where a drag in the 3D view puts a piece.
  */
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
+import { deletePiece, hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { isUnit, normalizeUnit } from '../studio/model'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -143,6 +143,9 @@ export function holdAt(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
 
 /** R: a quarter turn on, where it is (a backed piece by a wall still turns its back to it, as any move). */
 export const turnHeld = (unit: Unit, rooms: Room[], pieces: FurniturePlacement[], h: Held): Held => holdAt(unit, rooms, pieces, h, h.at, h.rot + 90)
+
+/** Delete with a piece in hand (G, a drag): what moves with it goes, and what rests on that (deletePiece: one undo step); a library piece in hand is only let go (null). */
+export const deleteHeld = (pieces: FurniturePlacement[], h: Held): FurniturePlacement[] | null => (h.assetId ? null : deletePiece(pieces, baseOf(pieces, h.id)?.id ?? h.id))
 
 /** What a click / G / release commits: the layout with the piece where it is — only where it fits (null: it stays in hand). */
 export const dropHeld = (h: Held): FurniturePlacement[] | null => (h.move && !h.move.error ? h.move.furniture : null)

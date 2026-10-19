@@ -19,7 +19,7 @@ import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action,
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { deleteHeld, draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -366,7 +366,7 @@ function ArrangePanel(p: {
         <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
-        <button className="btn" disabled={!p.piece || !!p.held} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+        <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
@@ -725,10 +725,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
   }
+  /** Delete: the piece in hand (G, a drag: deleteHeld), else the one picked; one undo step */
   const remove = () => {
-    if (!sel) return
-    settle(pushStep(steps.current, deletePiece(steps.current.pieces, sel)), null)
+    const h = held.current
+    const next = h ? deleteHeld(steps.current.pieces, h) : sel && deletePiece(steps.current.pieces, sel)
+    letGo()
     setSel(null)
+    if (next) settle(pushStep(steps.current, next), null)
   }
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
@@ -950,7 +953,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
         else pickUpAtPointer()
       } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
       else if (arranging && k === 'r') turn()
-      else if (arranging && !h && (k === 'delete' || k === 'backspace')) remove()
+      else if ((arranging || h) && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
         setAdding(false)
         setSel(null)

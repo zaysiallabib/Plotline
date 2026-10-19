@@ -392,10 +392,11 @@ export default function StudioApp() {
   // a new pick or R: the ghost where the pointer is; leaving tool F drops it
   useEffect(() => {
     if (placing && tool !== 'furniture') return hold(null)
+    if (placing && !placing.assetId && pieces && !pieces.some((x) => x.id === placing.id)) return hold(null) // deleted while in hand (the panel's Delete)
     if (!placing) return setFurnDrag(null)
     const p = lastPointer.current
     if (p) ghost(p.sx, p.sy)
-  }, [placing, tool]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [placing, tool, pieces]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- reducer toasts → note
   useEffect(() => {
@@ -1637,7 +1638,13 @@ export default function StudioApp() {
         const pl = placingRef.current
         if (pl && e.key === 'Escape') return hold(null)
         if (pl && (e.key === 'r' || e.key === 'R')) return hold({ ...pl, rot: pl.rot + 90 })
-        if (pl && (arrow || e.key === 'Delete' || e.key === 'Backspace')) return e.preventDefault() // the piece in hand is not on the plan yet
+        if (pl && (e.key === 'Delete' || e.key === 'Backspace')) {
+          // the piece in hand goes (one undo step, as a Delete of a picked one); a library piece in hand is only let go
+          e.preventDefault()
+          hold(null)
+          return void (!pl.assetId && dispatch({ type: 'delete-piece', id: pl.id }))
+        }
+        if (pl && arrow) return e.preventDefault() // the piece in hand is not on the plan yet
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
           e.preventDefault()

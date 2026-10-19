@@ -9,10 +9,10 @@
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, wallFrame, type FurniturePlacement, type Unit } from '../core'
 import draft from '../data/fixtures/founder-banani-unit-a-2026-10-09.json'
-import { placementSize } from '../furnish/kit'
+import { kitAsset, placementSize } from '../furnish/kit'
 import { CURTAIN_OVER, curtainSides, footprint, quadsOverlap } from '../furnish/presets'
 import { CURTAIN_D, CURTAINS } from '../furnish/procedural.meta'
-import { dragTo, holdAt, pickUp } from '../viewer/arrange'
+import { baseOf, deleteHeld, dragTo, holdAt, pickUp, pushStep, undoStep } from '../viewer/arrange'
 import { layoutFor, library, movePiece, pieceAt, pieceLabel, placePiece, resizeAxes, resizePiece, sideDots, whyNot } from './furniture'
 import { initialState, reducer } from './model'
 
@@ -267,5 +267,34 @@ describe('curtains on any opening, wider or narrower by a side (founder 2026-10-
     expect(sc.lo).toBeCloseTo(before.lo - 0.1, 3)
     expect(sc.hi).toBeCloseTo(before.hi + 0.1, 3)
     expect(resizeAxes(CURTAINS)).toEqual(['x'])
+  })
+})
+
+describe('Delete with a piece in hand (founder 2026-10-19: "after pressing g we cannot delete them. make deleting available including curtains")', () => {
+  it('G on a sofa or a curtain, then Delete: gone (what rests on it too), one undo step brings it back; the Studio reducer the same', () => {
+    const rooms = deriveRooms(his)
+    const all = layoutFor(his, rooms)
+    const sofa = all.find((p) => kitAsset(p.assetId)?.category === 'sofa' && !p.removed)!
+    const curtain = on(his, SLIDER)!
+    for (const p of [sofa, curtain]) {
+      // G: in hand (and carried a little); Delete
+      const h = holdAt(his, rooms, all, pickUp(all, p.id), { at: { x: p.x + 0.3, y: p.y }, wall: null })
+      const next = deleteHeld(all, h)!
+      expect(next.find((x) => x.id === p.id)?.removed, p.assetId).toBe(true)
+      expect(layoutFor({ ...his, furniture: next }, rooms).find((x) => x.id === p.id)?.removed, p.assetId).toBe(true) // stays deleted, never hung again
+      const undone = undoStep(pushStep({ pieces: all, past: [] }, next))
+      expect(undone.pieces.find((x) => x.id === p.id)).toEqual(p)
+      // the Studio's F tool: Delete with it in hand dispatches the same delete-piece
+      let s = reducer({ ...initialState(), unit: his }, { type: 'delete-piece', id: p.id })
+      expect(layoutFor(s.unit, rooms).find((x) => x.id === p.id)?.removed).toBe(true)
+      s = reducer(s, { type: 'undo' })
+      expect(layoutFor(s.unit, rooms).find((x) => x.id === p.id)?.removed).toBeUndefined()
+    }
+    // a piece resting on another (cushions on the sofa, a TV on its unit), picked up with G, moves with that piece: Delete takes both
+    const rider = all.find((p) => !p.removed && baseOf(all, p.id)!.id !== p.id)!
+    const gone = deleteHeld(all, pickUp(all, rider.id))!.filter((x) => x.removed).map((x) => x.id)
+    expect(gone).toEqual(expect.arrayContaining([rider.id, baseOf(all, rider.id)!.id]))
+    // a library piece in hand is only let go: nothing to delete
+    expect(deleteHeld(all, { id: 'new', assetId: CURTAINS, rot: 0, at: null, move: null })).toBeNull()
   })
 })
