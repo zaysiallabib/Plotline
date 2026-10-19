@@ -283,6 +283,43 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   swing_frame: { ...P('swing_frame', 'Swing set, 2 seats (steel + rubber)', 'chair', 3.4, 2.3, 1.9), kind: 'play' },
   slide: { ...P('slide', 'Slide tower, stainless chute', 'chair', 1.0, 2.2, 3.6), kind: 'play' }, // ladder at −z, chute down to +z
   seesaw: { ...P('seesaw', 'Seesaw, timber + steel', 'chair', 0.5, 0.89, 3.0), kind: 'play' },
+  // the library's more pieces (session 27), at sane Dhaka sizes; kit.ts says which rebuild at a new size and the others' limits
+  bookshelf: P('bookshelf', 'Bookshelf, oak, with books (0.9 m)', 'shelf', 0.9, 1.8, 0.32),
+  dresser: { ...P('dresser', 'Chest of drawers, oak (1.0 m)', 'shelf', 1.0, 0.85, 0.48), kind: 'dresser' },
+  nightstand_walnut: P('nightstand_walnut', 'Nightstand, walnut, two drawers', 'bedside', 0.45, 0.55, 0.41),
+  console_table: { ...P('console_table', 'Console table, oak + black steel (1.2 m)', 'other', 1.2, 0.8, 0.35), kind: 'console' },
+  shoe_rack: { ...P('shoe_rack', 'Shoe rack, oak, with shoes (0.8 m)', 'other', 0.8, 0.55, 0.32), kind: 'shoe-rack' },
+  study_desk: P('study_desk', 'Study desk, oak top, drawer pedestal (1.2 m)', 'desk', 1.2, 0.75, 0.6),
+  study_chair: P('study_chair', 'Office chair, swivel, charcoal', 'chair', 0.58, 1.04, 0.61),
+  floor_lamp: { ...P('floor_lamp', 'Floor lamp, brass, linen shade', 'lamp', 0.44, 1.6, 0.44), kind: 'lamp' },
+  table_lamp: { ...P('table_lamp', 'Table lamp, stoneware + linen shade', 'lamp', 0.34, 0.5, 0.34, 0.52), kind: 'lamp' }, // on a bedside table's top
+  pendant_light: { ...P('pendant_light', 'Pendant light, black dome Ø42 cm', 'lamp', 0.42, 0.9, 0.42), mount: 'ceiling' }, // a ceiling light: it lights its room
+  wall_mirror: { ...P('wall_mirror', 'Wall mirror, oak frame', 'other', 0.64, 0.94, 0.021), mount: 'wall', kind: 'mirror' },
+  rug_rect_medium: P('rug_rect_medium', 'Wool rug 2.0 × 1.4 m', 'rug', 2.0, 0.012, 1.4),
+  rug_runner: P('rug_runner', 'Wool runner 2.4 × 0.7 m', 'rug', 2.4, 0.012, 0.7),
+  rug_round_small: P('rug_round_small', 'Round wool rug Ø1.2 m', 'rug', 1.2, 0.012, 1.2),
+  bench_upholstered: { ...P('bench_upholstered', 'Bench, upholstered, oak legs (1.2 m)', 'chair', 1.2, 0.46, 0.4), kind: 'bench' },
+  prayer_mat: { ...P('prayer_mat', 'Prayer mat (jaynamaz)', 'rug', 0.68, 0.009, 1.12), kind: 'prayer-mat' }, // the arch at −z
+  water_filter: { ...P('water_filter', 'Water filter on a stand', 'kitchen', 0.34, 1.27, 0.37), kind: 'appliance' },
+  fridge_double: { ...P('fridge_double', 'Fridge, double door (brushed steel)', 'kitchen', 0.85, 1.8, 0.72), kind: 'fridge' },
+  washing_machine: { ...P('washing_machine', 'Washing machine, front loading', 'kitchen', 0.6, 0.85, 0.6), kind: 'appliance' },
+  gas_stove: { ...P('gas_stove', 'Gas stove, two burners (on the worktop)', 'kitchen', 0.72, 0.113, 0.42, WORKTOP), kind: 'hob' },
+  microwave_stand: { ...P('microwave_stand', 'Microwave on a steel stand', 'kitchen', 0.6, 1.29, 0.43), kind: 'appliance' },
+  geyser: { ...P('geyser', 'Geyser (water heater), wall-hung', 'bath', 0.4, 0.98, 0.47, 1.6), kind: 'appliance' },
+  exhaust_fan: { ...P('exhaust_fan', 'Exhaust fan, in the wall', 'kitchen', 0.32, 0.32, 0.06, 2.0), kind: 'appliance' },
+  kitchen_rack: P('kitchen_rack', 'Kitchen rack, chrome, with pots and jars', 'kitchen', 0.9, 1.53, 0.4),
+  drying_rack: { ...P('drying_rack', 'Clothes-drying rack, with laundry', 'other', 1.38, 0.98, 0.58), kind: 'drying-rack' },
+  balcony_set: { ...P('balcony_set', 'Balcony set: two teak chairs + side table', 'chair', 1.48, 0.83, 0.6), kind: 'table-set' },
+  kids_bed: P('kids_bed', 'Kids’ bed, white, guard rail', 'bed', 0.96, 0.75, 1.86),
+  bunk_bed: P('bunk_bed', 'Bunk bed, oak, ladder', 'bed', 1.0, 1.65, 2.04),
+  crib: { ...P('crib', 'Baby crib, white', 'bed', 1.26, 0.95, 0.66), kind: 'crib' }, // long side is its front, like the cot
+  wardrobe_4ft: P('wardrobe_4ft', 'Wardrobe 4 ft (oak, 3 doors)', 'wardrobe', 1.22, 2.1, 0.6),
+  wardrobe_6ft: P('wardrobe_6ft', 'Wardrobe 6 ft (oak, 4 doors)', 'wardrobe', 1.83, 2.1, 0.6),
+  tv_unit_150: P('tv_unit_150', 'TV unit, oak (1.5 m)', 'tv-unit', 1.5, TV_UNIT_TOP, 0.42), // tv_55 stands on it
+  tv_unit_210: P('tv_unit_210', 'TV unit, oak (2.1 m)', 'tv-unit', 2.1, TV_UNIT_TOP, 0.42),
+  dining_table_4: P('dining_table_4', 'Dining table, oak, 4 seats', 'dining-table', 1.2, 0.75, 0.8),
+  dining_table_8: P('dining_table_8', 'Dining table, oak, 8 seats', 'dining-table', 2.0, 0.75, 1.0),
+  wash_basin: { ...P('wash_basin', 'Hand-wash basin + mirror (dining)', 'bath', 0.5, 1.09, 0.43, 0.67), kind: 'basin' }, // rim 0.83, mirror to 1.76
   ...Object.fromEntries(
     ART_SETS.flatMap((s) =>
       (['l', 'r'] as const).map((k) => [

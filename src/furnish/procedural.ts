@@ -139,12 +139,33 @@ function makeMats() {
     vinyl: flat('#141416', 0.45), // gym bench pad
     gymMat: flat('#46525a', 0.9), // exercise mat
     chrome: flat('#d9dadb', 0.18, 1),
+    // the library's more pieces (session 27)
+    walnut: grained(pbr('wood_veneer_light', { tint: '#8d6a4f' })), // walnut-stained veneer
+    shade: shadeCloth(pbr('fabric_curtain', { tint: '#f0e6d4' })), // lamp shades: warm linen, seen inside and out
+    shadeIn: flat('#f4efe6', 0.6, 0, { side: THREE.BackSide }), // a metal pendant's white inside
+    brass: flat('#b8955a', 0.32, 0.85),
+    charcoal: pbr('fabric_upholstery', { tint: '#4a4a4c' }), // office chair
+    books: ['#7a2e2a', '#2f4a5c', '#c9b38a', '#3d5a40', '#d8d2c4', '#5b4a3f'].map((c) => flat(c, 0.75)), // book spines, muted
+    prayer: pbr('rug_wool', { tint: '#7a2a2c', scale: 0.5 }), // jaynamaz: deep maroon pile
+    prayerGold: pbr('rug_wool', { tint: '#c7a052', scale: 0.5 }),
+    rugSage: pbr('rug_wool', { tint: '#c4c6b2' }),
+    bluePlastic: flat('#5d87a8', 0.4), // water filter lid and seam
+    tan: flat('#8a5a3c', 0.55), // leather shoes
+    clothBlue: pbr('fabric_curtain', { tint: '#b9c9d8' }),
+    lentil: flat('#c98b3a', 0.8),
+    rice: flat('#efe9dc', 0.85),
+    onion: flat('#8b3a3a', 0.5),
   }
 }
 /** Curtain fabric: both faces drawn, UVs along the fabric's own width (curtains). */
 function drape(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   m.side = THREE.DoubleSide
   m.userData.ownUV = true
+  return m
+}
+/** Lamp-shade cloth: both faces drawn (an open drum). */
+function shadeCloth(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  m.side = THREE.DoubleSide
   return m
 }
 /** Wood whose figure runs along each panel's long side (boxUV grain). */
@@ -1924,6 +1945,400 @@ function seesaw(): THREE.Mesh[] {
   return out
 }
 
+// ───────────────────────────── the library's more pieces (session 27) ─────────────────────────────
+
+/**
+ * Oak bookcase W × H × D (bounds exact): sides, top, a recessed plinth and a back; a shelf every ~0.36 m, books standing
+ * on each from one side (spines in six muted colours), a stoneware vase in the space left on every other shelf.
+ */
+function bookshelf({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const t = 0.022
+  const inner = W - 2 * t
+  const out = [
+    box(t, H, D, m.oak, -W / 2 + t / 2, H / 2, 0),
+    box(t, H, D, m.oak, W / 2 - t / 2, H / 2, 0),
+    box(inner, t, D, m.oak, 0, H - t / 2, 0),
+    box(inner, 0.08, D - 0.03, m.dark, 0, 0.04, -0.015), // plinth, 3 cm back
+    box(inner, H - t - 0.08, 0.008, m.oak, 0, (H - t + 0.08) / 2, -D / 2 + 0.004), // back panel
+  ]
+  const n = Math.max(2, Math.round((H - 0.1) / 0.36))
+  const pitch = (H - t - 0.08) / n
+  for (let k = 0; k < n; k++) {
+    const y0 = 0.08 + k * pitch + t // on the board
+    out.push(box(inner, t, D - 0.008, m.oak, 0, y0 - t / 2, 0.004))
+    const room = pitch - t - 0.03
+    const fill = (inner - 0.03) * (0.45 + 0.4 * rnd(k + 1, 11))
+    const fromLeft = k % 2 === 0
+    let x = fromLeft ? -inner / 2 + 0.015 : inner / 2 - 0.015 - fill
+    const end = x + fill
+    for (let i = 0; ; i++) {
+      const w = 0.022 + 0.026 * rnd(i + 1, k + 7)
+      if (x + w > end) break
+      const h = Math.min(room, 0.18 + 0.12 * rnd(i + 3, k + 1))
+      const d = Math.min(D - 0.05, 0.15 + 0.07 * rnd(k + 2, i + 5))
+      out.push(box(w - 0.002, h, d, m.books[Math.floor(rnd(i * 3 + 1, k * 5 + 2) * m.books.length)], x + w / 2, y0 + h / 2, -D / 2 + 0.012 + d / 2))
+      x += w
+    }
+    const left = inner - fill - 0.03
+    if (k % 2 && left > 0.2) {
+      const vx = fromLeft ? inner / 2 - 0.015 - left / 2 : -inner / 2 + 0.015 + left / 2
+      const vh = Math.min(room, 0.2)
+      out.push(cyl(0.05, vh, m.glaze, vx, y0 + vh / 2, -0.02, 0.035))
+    }
+  }
+  return out
+}
+
+/** Oak chest of drawers W × H × D (bounds exact): a carcass on a recessed plinth, drawers ~0.2 m deep in one column (two from 1.1 m wide), finger-pull grooves. */
+function dresser({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const cols = W >= 1.1 ? 2 : 1
+  const rows = Math.max(3, Math.round((H - 0.1) / 0.2))
+  const zf = D / 2 - 0.02 // carcass front; drawer fronts to D/2
+  const out = [box(W, H - 0.08, D - 0.02, m.oak, 0, (H + 0.08) / 2, -0.01), box(W - 0.04, 0.08, D - 0.06, m.dark, 0, 0.04, -0.02)]
+  const dw = W / cols
+  const dh = (H - 0.1) / rows
+  for (let c = 0; c < cols; c++)
+    for (let r = 0; r < rows; r++) {
+      const x = -W / 2 + dw * (c + 0.5)
+      const y = 0.085 + dh * (r + 0.5)
+      out.push(box(dw - 0.006, dh - 0.006, 0.02, m.oak, x, y, zf + 0.01), box(Math.min(0.2, dw - 0.12), 0.012, 0.004, m.dark, x, y + dh / 2 - 0.03, D / 2))
+    }
+  return out
+}
+
+/** Walnut nightstand: two drawers with brass knobs over four tapered legs. */
+function nightstand(): THREE.Mesh[] {
+  const m = M()
+  const out = [box(0.45, 0.33, 0.38, m.walnut, 0, 0.365, -0.01), box(0.45, 0.02, 0.4, m.walnut, 0, 0.54, 0)] // body 0.2–0.53, top to 0.55
+  for (const y of [0.2825, 0.4475]) out.push(box(0.44, 0.159, 0.02, m.walnut, 0, y, 0.19), box(0.022, 0.022, 0.014, m.brass, 0, y, 0.207))
+  for (const x of [-0.19, 0.19]) for (const z of [-0.16, 0.16]) out.push(cyl(0.012, 0.2, m.walnut, x, 0.1, z, 0.018))
+  return out
+}
+
+/** Console table 1.2 m: an oak top and a lower shelf on a slim black steel frame. */
+function consoleTable(): THREE.Mesh[] {
+  const m = M()
+  const out = [rbox(1.2, 0.03, 0.35, 0.008, m.oak, 0, 0.785, 0), box(1.12, 0.02, 0.29, m.oak, 0, 0.2, 0)]
+  for (const x of [-0.575, 0.575]) {
+    for (const z of [-0.15, 0.15]) out.push(box(0.025, 0.77, 0.025, m.blackSteel, x, 0.385, z))
+    for (const y of [0.18, 0.755]) out.push(box(0.025, 0.025, 0.3, m.blackSteel, x, y, 0))
+  }
+  for (const z of [-0.15, 0.15]) out.push(box(1.15, 0.025, 0.025, m.blackSteel, 0, 0.755, z))
+  return out
+}
+
+/** Open oak shoe rack 0.8 m: two slatted tiers and a top, four pairs of shoes. */
+function shoeRack(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = [box(0.76, 0.02, 0.32, m.oak, 0, 0.54, 0)]
+  for (const x of [-0.39, 0.39]) out.push(box(0.02, 0.55, 0.32, m.oak, x, 0.275, 0))
+  for (const y of [0.06, 0.29]) for (let i = 0; i < 4; i++) out.push(box(0.76, 0.015, 0.06, m.oak, 0, y, -0.12 + i * 0.08))
+  const pair = (x: number, y: number, mat: THREE.Material) =>
+    [-0.052, 0.052].map((dx) => rbox(0.09, 0.07, 0.25, 0.03, mat, x + dx, y + 0.0425, 0.01))
+  out.push(...pair(-0.23, 0.06, m.dark), ...pair(0.05, 0.06, m.tan), ...pair(-0.19, 0.29, m.whitePaint), ...pair(0.18, 0.29, m.dark))
+  return out
+}
+
+/** Study desk 1.2 m: an oak top on a white three-drawer pedestal (right) and a black steel leg frame (left). */
+function studyDesk(): THREE.Mesh[] {
+  const m = M()
+  const out = [rbox(1.2, 0.03, 0.6, 0.006, m.oak, 0, 0.735, 0), box(0.4, 0.7, 0.56, m.whitePaint, 0.38, 0.37, -0.01)] // pedestal 0.02–0.72
+  out.push(box(0.38, 0.02, 0.5, m.dark, 0.38, 0.01, -0.01))
+  for (let i = 0; i < 3; i++) {
+    const y = 0.025 + 0.2317 * (i + 0.5)
+    out.push(box(0.396, 0.226, 0.02, m.whitePaint, 0.38, y, 0.28), box(0.14, 0.01, 0.004, m.dark, 0.38, y + 0.08, 0.291))
+  }
+  for (const z of [-0.26, 0.26]) out.push(box(0.03, 0.72, 0.03, m.blackSteel, -0.56, 0.36, z))
+  for (const y of [0.015, 0.705]) out.push(box(0.03, 0.03, 0.55, m.blackSteel, -0.56, y, 0))
+  out.push(box(0.92, 0.03, 0.02, m.blackSteel, -0.1, 0.6, -0.27)) // back rail
+  return out
+}
+
+/** Office chair: five-star base on castors, gas column, a charcoal seat, a reclined back and two arms; you sit facing +z. */
+function studyChair(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (let i = 0; i < 5; i++) {
+    const a = Math.PI / 2 + (i * 2 * Math.PI) / 5
+    const [x, z] = [Math.cos(a) * 0.27, Math.sin(a) * 0.27]
+    out.push(rod([0, 0.08, 0], [x, 0.06, z], 0.016, m.blackSteel), mesh(new THREE.SphereGeometry(0.025, 12, 8), m.dark, x, 0.025, z))
+  }
+  out.push(cyl(0.025, 0.34, m.blackSteel, 0, 0.25, 0), box(0.24, 0.03, 0.24, m.blackSteel, 0, 0.415, 0))
+  out.push(rbox(0.5, 0.08, 0.48, 0.03, m.charcoal, 0, 0.47, 0.02)) // seat 0.43–0.51
+  out.push(rod([0, 0.42, -0.1], [0, 0.62, -0.25], 0.02, m.blackSteel)) // back spine
+  out.push(tilt(rbox(0.46, 0.5, 0.05, 0.03, m.charcoal, 0, 0.79, -0.26), -0.12)) // back 0.54–1.04
+  for (const x of [-0.26, 0.26]) out.push(box(0.025, 0.2, 0.025, m.blackSteel, x, 0.56, 0), rbox(0.06, 0.03, 0.26, 0.012, m.dark, x, 0.67, 0.0))
+  return out
+}
+
+/** Floor lamp 1.6 m: weighted black base, a brass pole, a tapered linen drum over a glowing diffuser. */
+function floorLamp(): THREE.Mesh[] {
+  const m = M()
+  return [
+    cyl(0.15, 0.025, m.blackSteel, 0, 0.0125, 0),
+    cyl(0.011, 1.33, m.brass, 0, 0.69, 0), // pole 0.025–1.355
+    cyl(0.22, 0.32, m.shade, 0, 1.44, 0, 0.19, true), // shade 1.28–1.6
+    cyl(0.1, 0.006, m.opal, 0, 1.34, 0),
+  ]
+}
+
+/** Table lamp 0.5 m: a sage stoneware gourd, a brass neck, a linen drum; y = 0 on the table (mountY). */
+function tableLamp(): THREE.Mesh[] {
+  const m = M()
+  const body = mesh(new THREE.SphereGeometry(0.085, 24, 16), m.glaze, 0, 0.115, 0)
+  body.scale.y = 1.2
+  return [cyl(0.05, 0.014, m.glaze, 0, 0.007, 0), body, cyl(0.012, 0.1, m.brass, 0, 0.26, 0), cyl(0.17, 0.2, m.shade, 0, 0.4, 0, 0.13, true), cyl(0.06, 0.006, m.opal, 0, 0.32, 0)]
+}
+
+/** Pendant light: a brass canopy, a cord and a shallow black dome (white inside) over a glowing disc; top at y = 0.9 (ceiling mount). */
+function pendant(): THREE.Mesh[] {
+  const m = M()
+  const dome = (r: number, mat: THREE.Material) => {
+    const o = mesh(new THREE.SphereGeometry(r, 40, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat, 0, 0, 0)
+    o.scale.y = 0.55
+    return o
+  }
+  return [dome(0.21, m.blackSteel), dome(0.205, m.shadeIn), cyl(0.09, 0.01, m.opal, 0, 0.03, 0), cyl(0.03, 0.03, m.brass, 0, 0.125, 0), cyl(0.004, 0.75, m.dark, 0, 0.515, 0), cyl(0.06, 0.02, m.brass, 0, 0.89, 0)]
+}
+
+/** Jaynamaz 0.68 × 1.12: deep maroon pile, a gold border, a pointed arch (mihrab) at the head end (−z). */
+function prayerMat(): THREE.Mesh[] {
+  const m = M()
+  const [W, D, b, t, y] = [0.68, 1.12, 0.04, 0.03, 0.0045]
+  const out = [rbox(W, 0.008, D, 0.003, m.prayer, 0, 0.004, 0)]
+  for (const s of [-1, 1]) out.push(box(W - 2 * b, 0.009, t, m.prayerGold, 0, y, s * (D / 2 - b - t / 2)), box(t, 0.009, D - 2 * b - 2 * t, m.prayerGold, s * (W / 2 - b - t / 2), y, 0))
+  const za = -D / 2 + b + t + 0.05 // the arch's point
+  for (const s of [-1, 1]) {
+    const leg = box(t, 0.009, Math.hypot(0.19, 0.2), m.prayerGold, s * 0.095, y, za + 0.1)
+    leg.rotation.y = s * Math.atan2(0.19, 0.2)
+    out.push(leg, box(t, 0.009, 0.42, m.prayerGold, s * 0.19, y, za + 0.2 + 0.21))
+  }
+  out.push(box(0.4, 0.009, t, m.prayerGold, 0, y, za + 0.62))
+  return out
+}
+
+/** Water filter on a stand (Dhaka kitchens and dining spaces): a white two-tier canister, blue seam and lid, a chrome tap, on a black steel stand with an oak top. */
+function waterFilter(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = [cyl(0.17, 0.02, m.oak, 0, 0.61, 0)]
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) out.push(rod([x * 0.15, 0, z * 0.15], [x * 0.11, 0.6, z * 0.11], 0.012, m.blackSteel))
+  out.push(cyl(0.15, 0.32, m.whitePaint, 0, 0.78, 0), cyl(0.153, 0.016, m.bluePlastic, 0, 0.948, 0), cyl(0.15, 0.26, m.whitePaint, 0, 1.086, 0))
+  out.push(cyl(0.155, 0.03, m.bluePlastic, 0, 1.231, 0), cyl(0.03, 0.025, m.bluePlastic, 0, 1.2585, 0)) // lid, knob to 1.271
+  out.push(box(0.03, 0.03, 0.05, m.chrome, 0, 0.7, 0.17), box(0.016, 0.04, 0.016, m.chrome, 0, 0.67, 0.188)) // tap
+  return out
+}
+
+/** Front-loading washing machine 0.6: white body on four feet, chrome-ringed glass door, control strip with a dial. */
+function washer(): THREE.Mesh[] {
+  const m = M()
+  const zf = 0.26
+  const door = (r: number, mat: THREE.Material, z: number, h: number) => tilt(cyl(r, h, mat, -0.02, 0.4, z), Math.PI / 2)
+  const out = [
+    rbox(0.6, 0.84, 0.56, 0.02, m.whitePaint, 0, 0.43, -0.02), // 0.01–0.85, back at −0.30
+    mesh(new THREE.TorusGeometry(0.165, 0.022, 12, 40), m.chrome, -0.02, 0.4, zf + 0.022),
+    door(0.15, m.blackGlass, zf + 0.012, 0.02),
+    box(0.58, 0.09, 0.008, m.mat, 0, 0.785, zf + 0.004), // control strip
+    box(0.15, 0.05, 0.006, m.whitePaint, -0.18, 0.785, zf + 0.011), // detergent drawer
+    tilt(cyl(0.028, 0.02, m.chrome, 0.17, 0.785, zf + 0.018), Math.PI / 2),
+    box(0.1, 0.022, 0.004, m.blackGlass, 0.02, 0.785, zf + 0.009),
+  ]
+  for (const x of [-0.25, 0.25]) for (const z of [-0.25, 0.2]) out.push(cyl(0.02, 0.012, m.dark, x, 0.006, z))
+  return out
+}
+
+/** Two-burner gas stove (a Dhaka chula) on the worktop: steel body, black glass top, burners under cast pan supports, knobs at the front; y = 0 on the worktop. */
+function gasStove(): THREE.Mesh[] {
+  const m = M()
+  const out = [rbox(0.72, 0.07, 0.4, 0.01, m.applianceSteel, 0, 0.035, 0), box(0.7, 0.006, 0.38, m.blackGlass, 0, 0.073, 0)]
+  for (const x of [-0.18, 0.18]) {
+    out.push(cyl(0.07, 0.008, m.ring, x, 0.08, -0.02), cyl(0.045, 0.014, m.dark, x, 0.091, -0.02), cyl(0.025, 0.006, m.brass, x, 0.101, -0.02))
+    for (let k = 0; k < 4; k++) {
+      const a = Math.PI / 4 + (k * Math.PI) / 2
+      out.push(rod([x + Math.cos(a) * 0.055, 0.106, -0.02 + Math.sin(a) * 0.055], [x + Math.cos(a) * 0.125, 0.106, -0.02 + Math.sin(a) * 0.125], 0.007, m.blackSteel))
+    }
+    out.push(tilt(cyl(0.018, 0.022, m.dark, x, 0.035, 0.208), Math.PI / 2))
+  }
+  return out
+}
+
+/** Microwave stand: a black steel rack with oak shelves, the microwave on top, steel pots and a basket below. */
+function microwaveStand(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (const x of [-0.285, 0.285]) for (const z of [-0.2, 0.2]) out.push(box(0.025, 1.0, 0.025, m.blackSteel, x, 0.5, z))
+  for (const y of [0.1, 0.52, 0.985]) out.push(box(0.6, 0.03, 0.43, m.oak, 0, y, 0))
+  out.push(rbox(0.5, 0.29, 0.38, 0.01, m.whitePaint, 0, 1.145, -0.01), box(0.33, 0.22, 0.008, m.blackGlass, -0.06, 1.145, 0.184), box(0.09, 0.22, 0.008, m.dark, 0.18, 1.145, 0.184))
+  out.push(cyl(0.11, 0.15, m.applianceSteel, -0.13, 0.61, 0), cyl(0.112, 0.012, m.applianceSteel, -0.13, 0.691, 0), cyl(0.085, 0.12, m.applianceSteel, 0.15, 0.595, 0.02))
+  out.push(cyl(0.15, 0.16, m.teak, 0, 0.195, 0, 0.17))
+  return out
+}
+
+/** Geyser (bathroom water heater): a white upright tank with domed ends on a black wall bracket, two pipes down, a red pilot light; y = 0 at the pipes' ends (mountY). */
+function geyser(): THREE.Mesh[] {
+  const m = M()
+  const cap = (top: boolean, y: number) => {
+    const o = mesh(new THREE.SphereGeometry(0.2, 32, 10, 0, Math.PI * 2, top ? 0 : Math.PI / 2, Math.PI / 2), m.whitePaint, 0, y, 0.03)
+    o.scale.y = 0.4
+    return o
+  }
+  return [
+    cyl(0.2, 0.62, m.whitePaint, 0, 0.59, 0.03), // tank 0.28–0.90, back at −0.17
+    cap(true, 0.9),
+    cap(false, 0.28),
+    box(0.3, 0.05, 0.06, m.blackSteel, 0, 0.62, -0.2), // bracket on the wall (−0.23)
+    ...[-0.07, 0.07].map((x) => cyl(0.012, 0.22, m.chrome, x, 0.11, 0.03)),
+    mesh(new THREE.SphereGeometry(0.012, 10, 8), flat('#d33c2c', 0.4, 0, { emissive: '#a01810' }), 0, 0.45, 0.23),
+  ]
+}
+
+/** Exhaust fan in the wall: a white square frame round a dark well, four blades and a chrome grille. */
+function exhaustFan(): THREE.Mesh[] {
+  const m = M()
+  const out = [
+    box(0.32, 0.04, 0.06, m.whitePaint, 0, 0.02, 0),
+    box(0.32, 0.04, 0.06, m.whitePaint, 0, 0.3, 0),
+    box(0.04, 0.24, 0.06, m.whitePaint, -0.14, 0.16, 0),
+    box(0.04, 0.24, 0.06, m.whitePaint, 0.14, 0.16, 0),
+    box(0.24, 0.24, 0.006, m.dark, 0, 0.16, -0.027),
+    tilt(cyl(0.025, 0.03, m.whitePaint, 0, 0.16, -0.01), Math.PI / 2),
+  ]
+  for (let k = 0; k < 4; k++) {
+    const b = box(0.2, 0.05, 0.004, m.mat, 0, 0.16, -0.012)
+    b.rotation.z = (k * Math.PI) / 4
+    out.push(b)
+  }
+  for (const r of [0.05, 0.08, 0.11]) out.push(mesh(new THREE.TorusGeometry(r, 0.003, 6, 32), m.chrome, 0, 0.16, 0.02))
+  return out
+}
+
+/** Kitchen rack: four chrome wire tiers holding steel pots, jars of rice and lentils, plates and a basket of onions. */
+function kitchenRack(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  for (const x of [-0.44, 0.44]) for (const z of [-0.185, 0.185]) out.push(cyl(0.012, 1.5, m.chrome, x, 0.75, z))
+  for (const y of [0.15, 0.55, 0.95, 1.35]) {
+    for (const z of [-0.185, 0.185]) out.push(box(0.88, 0.012, 0.012, m.chrome, 0, y, z))
+    for (let i = 0; i < 12; i++) out.push(box(0.006, 0.006, 0.37, m.chrome, -0.4 + i * 0.0727, y, 0))
+  }
+  out.push(cyl(0.13, 0.14, m.applianceSteel, -0.2, 0.226, 0), cyl(0.132, 0.012, m.applianceSteel, -0.2, 0.302, 0), cyl(0.11, 0.18, m.applianceSteel, 0.2, 0.246, 0))
+  for (let i = 0; i < 4; i++) {
+    const x = -0.3 + i * 0.2
+    out.push(cyl(0.055, 0.18, m.glass, x, 0.646, 0), cyl(0.05, 0.12, i % 2 ? m.lentil : m.rice, x, 0.616, 0), cyl(0.057, 0.02, m.dark, x, 0.746, 0))
+  }
+  for (let i = 0; i < 5; i++) out.push(cyl(0.12, 0.012, m.ceramic, -0.2, 0.962 + i * 0.013, 0))
+  out.push(cyl(0.07, 0.06, m.glaze, 0.2, 0.986, 0, 0.1, true))
+  out.push(cyl(0.15, 0.12, m.teak, 0, 1.416, 0, 0.17))
+  for (const [x, z] of [[-0.06, -0.03], [0.05, 0.04], [0.02, -0.06], [-0.03, 0.06]]) out.push(mesh(new THREE.SphereGeometry(0.04, 12, 8), m.onion, x, 1.49, z))
+  return out
+}
+
+/** Folding clothes-drying rack (balconies): two chrome A-ends, rails down each wing, a towel and clothes hung over them. */
+function dryingRack(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = []
+  const at = (s: number, y: number): number => s * (0.28 - (0.25 * y) / 0.96) // a wing's z at height y
+  for (const x of [-0.68, 0.68]) for (const s of [-1, 1]) out.push(rod([x, 0, s * 0.28], [x, 0.96, s * 0.03], 0.01, m.chrome))
+  out.push(rod([-0.68, 0.965, 0], [0.68, 0.965, 0], 0.01, m.chrome))
+  for (const s of [-1, 1]) for (const y of [0.35, 0.55, 0.75]) out.push(rod([-0.68, y, at(s, y)], [0.68, y, at(s, y)], 0.006, m.chrome))
+  // laundry over the rails: [x, width, rail height, wing, drop, material]
+  const hung: [number, number, number, number, number, THREE.Material][] = [
+    [-0.35, 0.5, 0.75, 1, 0.42, m.clothBlue],
+    [0.25, 0.42, 0.75, 1, 0.3, m.cushionOat],
+    [-0.2, 0.36, 0.55, -1, 0.26, m.throwSage],
+    [0.35, 0.3, 0.75, -1, 0.34, m.cushion],
+  ]
+  for (const [x, w, y, s, drop, mat] of hung) out.push(rbox(w, drop, 0.01, 0.004, mat, x, y - drop / 2, at(s, y) + s * 0.008))
+  return out
+}
+
+/** Balcony set: two teak armchairs with oat cushions either side of a round teak side table, all facing +z. */
+function balconySet(): THREE.Mesh[] {
+  const m = M()
+  const out: THREE.Mesh[] = [cyl(0.25, 0.025, m.teak, 0, 0.5, 0), cyl(0.025, 0.48, m.blackSteel, 0, 0.25, 0), cyl(0.18, 0.02, m.blackSteel, 0, 0.01, 0)]
+  for (const cx of [-0.47, 0.47]) {
+    for (const x of [-0.24, 0.24]) {
+      for (const z of [-0.22, 0.22]) out.push(box(0.04, 0.42, 0.04, m.teak, cx + x, 0.21, z))
+      out.push(box(0.04, 0.2, 0.04, m.teak, cx + x, 0.52, 0.2), rbox(0.06, 0.03, 0.5, 0.01, m.teak, cx + x, 0.635, -0.01)) // arm posts, arms
+    }
+    for (let i = 0; i < 5; i++) out.push(box(0.44, 0.02, 0.07, m.teak, cx, 0.41, -0.2 + i * 0.1))
+    out.push(rbox(0.46, 0.06, 0.46, 0.02, m.cushionOat, cx, 0.45, 0.01))
+    for (let i = 0; i < 4; i++) out.push(tilt(box(0.44, 0.06, 0.02, m.teak, cx, 0.5 + i * 0.09, -0.24 - i * 0.017), -0.2))
+    out.push(tilt(box(0.04, 0.42, 0.04, m.teak, cx - 0.22, 0.62, -0.26), -0.2), tilt(box(0.04, 0.42, 0.04, m.teak, cx + 0.22, 0.62, -0.26), -0.2))
+  }
+  return out
+}
+
+/** Kids' bed: a low white frame with a guard rail along its head half (+x), sage duvet, linen pillow; head at −z. */
+function kidsBed(): THREE.Mesh[] {
+  const m = M()
+  const [W, L] = [0.96, 1.86]
+  const out = [rbox(W, 0.75, 0.05, 0.015, m.whitePaint, 0, 0.375, -L / 2 + 0.025), rbox(W, 0.5, 0.05, 0.015, m.whitePaint, 0, 0.25, L / 2 - 0.025)]
+  for (const x of [-(W / 2 - 0.015), W / 2 - 0.015]) out.push(box(0.03, 0.14, L - 0.1, m.whitePaint, x, 0.24, 0))
+  out.push(box(0.03, 0.16, 0.9, m.whitePaint, W / 2 - 0.015, 0.5, -L / 2 + 0.55), box(0.03, 0.2, 0.03, m.whitePaint, W / 2 - 0.015, 0.4, -L / 2 + 1.0))
+  out.push(rbox(0.9, 0.12, 1.75, 0.04, m.mattress, 0, 0.3, 0), rbox(0.92, 0.07, 1.25, 0.03, m.throwSage, 0, 0.37, 0.24), tilt(rbox(0.6, 0.1, 0.36, 0.04, m.linen, 0, 0.42, -L / 2 + 0.28), -0.3))
+  return out
+}
+
+/** Bunk bed: four oak posts, two decks with mattresses, guard rails round the top one, a ladder up the foot end (+z). */
+function bunkBed(): THREE.Mesh[] {
+  const m = M()
+  const [W, L, H] = [1.0, 2.04, 1.65]
+  const out: THREE.Mesh[] = []
+  for (const x of [-(W / 2 - 0.03), W / 2 - 0.03]) for (const z of [-(L / 2 - 0.03), L / 2 - 0.03]) out.push(box(0.06, H, 0.06, m.oak, x, H / 2, z))
+  for (const y of [0.26, 1.16]) {
+    for (const x of [-(W / 2 - 0.03), W / 2 - 0.03]) out.push(box(0.04, 0.12, L - 0.12, m.oak, x, y, 0))
+    for (const z of [-(L / 2 - 0.03), L / 2 - 0.03]) out.push(box(W - 0.12, 0.12, 0.04, m.oak, 0, y, z))
+  }
+  out.push(rbox(0.9, 0.14, 1.92, 0.04, m.mattress, 0, 0.37, 0), rbox(0.92, 0.06, 1.3, 0.03, m.throwSage, 0, 0.46, 0.28), tilt(rbox(0.6, 0.1, 0.36, 0.04, m.linen, 0, 0.5, -0.74), -0.3))
+  out.push(rbox(0.9, 0.14, 1.92, 0.04, m.mattress, 0, 1.27, 0), rbox(0.92, 0.06, 1.3, 0.03, m.cushionOat, 0, 1.36, 0.28), tilt(rbox(0.6, 0.1, 0.36, 0.04, m.linen, 0, 1.4, -0.74), -0.3))
+  for (const x of [-(W / 2 - 0.03), W / 2 - 0.03]) out.push(box(0.04, 0.05, L - 0.12, m.oak, x, 1.55, 0))
+  out.push(box(W - 0.12, 0.05, 0.04, m.oak, 0, 1.55, -(L / 2 - 0.03)))
+  for (const y of [0.62, 0.9]) out.push(box(W - 0.12, 0.04, 0.04, m.oak, 0, y, L / 2 - 0.03)) // ladder rungs between the foot posts
+  return out
+}
+
+/** Baby crib: white posts and slatted sides round a small mattress; long side along x (it stands along a wall). */
+function crib(): THREE.Mesh[] {
+  const m = M()
+  const [L, D, H] = [1.26, 0.66, 0.95]
+  const out: THREE.Mesh[] = []
+  for (const x of [-(L / 2 - 0.02), L / 2 - 0.02]) for (const z of [-(D / 2 - 0.02), D / 2 - 0.02]) out.push(box(0.04, H, 0.04, m.whitePaint, x, H / 2, z))
+  for (const y of [0.22, 0.91]) {
+    for (const z of [-(D / 2 - 0.02), D / 2 - 0.02]) out.push(box(L - 0.04, 0.04, 0.03, m.whitePaint, 0, y, z))
+    for (const x of [-(L / 2 - 0.02), L / 2 - 0.02]) out.push(box(0.03, 0.04, D - 0.04, m.whitePaint, x, y, 0))
+  }
+  for (let x = -L / 2 + 0.09; x < L / 2 - 0.06; x += 0.07) for (const z of [-(D / 2 - 0.02), D / 2 - 0.02]) out.push(box(0.022, 0.65, 0.022, m.whitePaint, x, 0.565, z))
+  for (let z = -D / 2 + 0.09; z < D / 2 - 0.06; z += 0.07) for (const x of [-(L / 2 - 0.02), L / 2 - 0.02]) out.push(box(0.022, 0.65, 0.022, m.whitePaint, x, 0.565, z))
+  out.push(rbox(L - 0.08, 0.1, D - 0.08, 0.03, m.mattress, 0, 0.29, 0), rbox(0.6, 0.04, D - 0.12, 0.02, m.cushionOat, 0.2, 0.36, 0))
+  return out
+}
+
+/** Oak TV unit W × H × D (bounds exact): a carcass on a recessed plinth, a door every ~0.5 m with a finger-pull groove. */
+function tvUnit({ x: W, y: H, z: D }: Size3): THREE.Mesh[] {
+  const m = M()
+  const n = Math.max(2, Math.round(W / 0.5))
+  const fw = W / n
+  const out = [box(W, H - 0.1, D - 0.02, m.oak, 0, (H + 0.1) / 2, -0.01), box(W - 0.06, 0.1, D - 0.08, m.dark, 0, 0.05, -0.02)]
+  for (let i = 0; i < n; i++) {
+    const x = -W / 2 + fw * (i + 0.5)
+    out.push(box(fw - 0.004, H - 0.12, 0.02, m.oak, x, (H + 0.1) / 2, D / 2 - 0.01), box(Math.min(0.16, fw - 0.12), 0.01, 0.004, m.dark, x, H - 0.06, D / 2))
+  }
+  return out
+}
+
+/** Hand-wash basin with a mirror over it (a Dhaka dining space): a flared wall-hung ceramic bowl, a pillar tap, an oak-framed mirror; y = 0 is the bowl's underside (mountY). */
+function washBasin(): THREE.Object3D[] {
+  const m = M()
+  const bowl = cyl(0.21, 0.16, m.ceramic, 0, 0.08, 0.02, 0.25)
+  bowl.scale.z = 0.8
+  return [
+    ...part('basin', 'Hand-wash basin', 'basin', bowl, cyl(0.014, 0.12, m.steel, 0, 0.22, -0.13), box(0.024, 0.02, 0.1, m.steel, 0, 0.27, -0.09)),
+    ...part('mirror', 'Mirror over the basin', 'mirror', box(0.45, 0.58, 0.012, m.oak, 0, 0.8, -0.2), mirror(0.42, 0.55, 0, 0.8, -0.188)),
+  ]
+}
+
 /** id → builder at size s (its kit size unless resized); the kit.ts REBUILD ones rebuild at any size in their limits, the rest are scaled. */
 const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   // mattress = width − the headboard's 16 cm
@@ -1981,6 +2396,48 @@ const BUILDERS: Record<string, (s: Size3) => THREE.Object3D[]> = {
   swing_frame: swingFrame,
   slide,
   seesaw,
+  // the library's more pieces (session 27)
+  bookshelf,
+  dresser,
+  nightstand_walnut: nightstand,
+  console_table: consoleTable,
+  shoe_rack: shoeRack,
+  study_desk: studyDesk,
+  study_chair: studyChair,
+  floor_lamp: floorLamp,
+  table_lamp: tableLamp,
+  pendant_light: pendant,
+  wall_mirror: () => [box(0.64, 0.94, 0.02, M().oak, 0, 0.47, 0), mirror(0.58, 0.88, 0, 0.47, 0.0105)],
+  rug_rect_medium: (s) => rug(s.x, s.z, M().rugSage),
+  rug_runner: (s) => rug(s.x, s.z, M().rugStone),
+  rug_round_small: () => [cyl(0.6, 0.012, M().rugOat, 0, 0.006, 0)],
+  bench_upholstered: () => {
+    const m = M()
+    const out = [rbox(1.2, 0.1, 0.4, 0.03, m.upholstery, 0, 0.41, 0), box(1.14, 0.03, 0.36, m.oak, 0, 0.345, 0)]
+    for (const x of [-0.54, 0.54]) for (const z of [-0.15, 0.15]) out.push(cyl(0.016, 0.33, m.oak, x, 0.165, z, 0.02))
+    return out
+  },
+  prayer_mat: prayerMat,
+  water_filter: waterFilter,
+  fridge_double: fridge,
+  washing_machine: washer,
+  gas_stove: gasStove,
+  microwave_stand: microwaveStand,
+  geyser,
+  exhaust_fan: exhaustFan,
+  kitchen_rack: kitchenRack,
+  drying_rack: dryingRack,
+  balcony_set: balconySet,
+  kids_bed: kidsBed,
+  bunk_bed: bunkBed,
+  crib,
+  wardrobe_4ft: wardrobe,
+  wardrobe_6ft: wardrobe,
+  tv_unit_150: tvUnit,
+  tv_unit_210: tvUnit,
+  dining_table_4: diningTable,
+  dining_table_8: diningTable,
+  wash_basin: washBasin,
   ...Object.fromEntries(ART.map((id) => [id, () => artFrame(ART_PHOTO.includes(id.slice(0, -2)) ? print(`/assets/art/${id}.jpg`) : painted(id))])),
 }
 

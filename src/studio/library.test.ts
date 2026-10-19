@@ -30,7 +30,7 @@ describe('the library listing: search, groups, Recent', () => {
     const e = entry('modern_ceiling_lamp_01')!
     expect(score(e, ['lamp'])).toBeGreaterThan(score(entry('ceiling_light')!, ['lamp']))
     expect(firstMatch('bed')!.label).toMatch(/\bbed\b/i)
-    expect(firstMatch('fan')!.id).toBe('ceiling_fan')
+    expect(firstMatch('ceiling fan')!.id).toBe('ceiling_fan')
     expect(firstMatch('sofa')!.id).toBe(listing('sofa')[0].kinds[0].items[0].id)
     expect(firstMatch('')).toBeNull()
     expect(firstMatch('zzzz')).toBeNull()

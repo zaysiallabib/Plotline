@@ -414,9 +414,16 @@ const TAB_OF: Record<string, Tab> = {
   plant: 'Greenery',
   bench: 'Outdoor', lounger: 'Outdoor', 'table-set': 'Outdoor', pergola: 'Outdoor', play: 'Outdoor', car: 'Outdoor',
   'reception-desk': 'Lobby & gym', gym: 'Lobby & gym', mirror: 'Lobby & gym',
+  appliance: 'Kitchen', dresser: 'Bedroom', console: 'Living', 'shoe-rack': 'Living', 'prayer-mat': 'Bedroom', crib: 'Bedroom', 'drying-rack': 'Outdoor',
 }
+/** Pieces whose own tab is not their kind's. */
+const TAB_ID: Record<string, Tab> = { bench_upholstered: 'Bedroom', geyser: 'Bath', wall_mirror: 'Bedroom', wash_basin: 'Dining' }
 /** Also listed in another tab: Dhaka dining areas have a hand-wash basin (founder 2026-09-28). */
-const ALSO_IN: Record<string, Tab> = { basin: 'Dining', vanity: 'Dining', [CURTAINS]: 'Living' }
+const ALSO_IN: Record<string, Tab[]> = {
+  basin: ['Dining'], vanity: ['Dining'], [CURTAINS]: ['Living'], wash_basin: ['Bath'], water_filter: ['Dining'], console_table: ['Dining'],
+  floor_lamp: ['Living'], table_lamp: ['Bedroom'], pendant_light: ['Dining'], chandelier_01: ['Dining', 'Living'],
+  bench_upholstered: ['Living'], prayer_mat: ['Living'], wall_mirror: ['Living'], washing_machine: ['Bath'], exhaust_fan: ['Bath'],
+}
 /** Kinds also listed in Office (a study's desk, chair and shelves are a bedroom's too). */
 const OFFICE = new Set(['desk', 'chair', 'shelf'])
 const BED_LINEN: Record<string, string> = { '': 'terracotta throw', _b: 'sage throw', _c: 'no throw' }
@@ -432,8 +439,8 @@ export interface LibraryItem {
 export function library(): { tab: string; items: LibraryItem[] }[] {
   const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)].map((id) => kitAsset(id)!).filter((a) => objectKind(a) !== 'stair')
   const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
-  const tabOf = (a: KitAsset) => TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
-  const inTab = (a: KitAsset, tab: Tab) => tabOf(a) === tab || ALSO_IN[a.id] === tab || (tab === 'Office' && OFFICE.has(objectKind(a)))
+  const tabOf = (a: KitAsset) => TAB_ID[a.id] ?? TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
+  const inTab = (a: KitAsset, tab: Tab) => tabOf(a) === tab || ALSO_IN[a.id]?.includes(tab) || (tab === 'Office' && OFFICE.has(objectKind(a)))
   return TABS.map((tab) => ({ tab, items: all.filter((a) => inTab(a, tab)).map((a) => ({ id: a.id, label: label(a), size: a.sizeM, kind: objectKind(a), scan: !a.url.startsWith('procedural:') })) }))
 }
 

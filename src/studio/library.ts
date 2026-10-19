@@ -13,7 +13,8 @@ const KIND_LABEL: Record<string, string> = {
   'ceiling-light': 'Lights', 'ceiling-fan': 'Fans', ac: 'Air conditioning', 'kitchen-cabinet': 'Cabinets', sink: 'Sinks', hob: 'Cooking',
   hood: 'Hoods', fridge: 'Fridges', toilet: 'Toilets', vanity: 'Vanities', basin: 'Basins', shower: 'Showers', mirror: 'Mirrors',
   bench: 'Benches', lounger: 'Loungers', 'table-set': 'Table sets', pergola: 'Pergolas', play: 'Play', gym: 'Gym', 'reception-desk': 'Reception',
-  car: 'Cars', clock: 'Clocks', lamp: 'Lamps', appliance: 'Appliances', 'prayer-mat': 'Prayer',
+  car: 'Cars', clock: 'Clocks', lamp: 'Lamps', appliance: 'Appliances', 'prayer-mat': 'Prayer mats', dresser: 'Chests of drawers',
+  console: 'Console tables', 'shoe-rack': 'Shoe racks', crib: 'Cribs', 'drying-rack': 'Drying racks',
 }
 
 /** Words a kind is also found by (Dhaka words too: almirah, chula, jaynamaz). */
@@ -27,6 +28,8 @@ const KIND_WORDS: Record<string, string> = {
   fridge: 'refrigerator', toilet: 'wc commode', vanity: 'basin sink mirror', basin: 'sink washbasin wash hand', shower: 'bath',
   bench: 'seating', lounger: 'sunbed', 'table-set': 'table chairs', play: 'kids children', gym: 'fitness exercise', car: 'parking',
   cushions: 'pillows', ottoman: 'pouf stool', clock: 'time', lamp: 'light', 'prayer-mat': 'namaz jaynamaz prayer mat',
+  appliance: 'appliance', dresser: 'drawers chest dresser storage', console: 'table', 'shoe-rack': 'shoes', crib: 'baby cot',
+  'drying-rack': 'laundry clothes',
 }
 
 /** Room words per group, matched only whole: "bed" finds the beds, not every bedroom piece. */
@@ -40,6 +43,11 @@ const ROOM_WORDS: Record<string, string> = {
 const TAGS: Record<string, string> = {
   modern_wooden_cabinet: 'tv unit sideboard', modern_ceiling_lamp_01: 'pendant', ceiling_light: 'ceiling', ceiling_light_large: 'ceiling',
   covered_car: 'parking', side_table_01: 'nightstand', throw_pillows_01: 'cushions', hook_rail: 'towel', ac_split: 'split',
+  shoe_rack: 'entrance foyer', water_filter: 'drinking water purifier', washing_machine: 'laundry washer', geyser: 'water heater hot',
+  exhaust_fan: 'ventilation', gas_stove: 'chula burner', microwave_stand: 'oven', kids_bed: 'children child', bunk_bed: 'children child',
+  prayer_mat: 'salah', study_desk: 'computer', study_chair: 'computer swivel', wash_basin: 'hand wash', bookshelf: 'books library',
+  console_table: 'entrance foyer hall', wall_mirror: 'dressing', pendant_light: 'hanging', floor_lamp: 'standing',
+  table_lamp: 'bedside reading', balcony_set: 'chairs', tv_unit_150: 'cabinet', tv_unit_210: 'cabinet', chandelier_01: 'jhar',
 }
 
 export interface Entry extends LibraryItem {
