@@ -413,18 +413,22 @@ export interface Leak {
  * universe would I need to ever close that wall. it is there, just let it be"): the loose ends whose own fix (Close the
  * gap / Join / Extend, as the Issues list offers it) closes a room around p — each alone; when none does alone, those all of
  * them together need (each left out in turn reopens it). A loose end anywhere else is never a reason. [] = no wall end
- * nearby closes it (a wall is missing).
+ * nearby closes it (a wall is missing). s27 rows: the loose ends within LOCAL_M of p, each tried on the plan around p (a
+ * six-flat floor took two minutes a click, every loose end of the floor tried on the whole floor).
+ * ponytail: the leak of an open room reaching further than LOCAL_M from the click is not found ([]); a bigger reach if one needs it.
  */
 export function leaksAround(s: StudioState, p: Pt): Leak[] {
   const u = s.unit
+  const piece = around(u, p, LOCAL_M + GAP_M) // (the loose ends' own fixes reach GAP_M)
+  const t0 = piece === u ? s : { ...s, unit: piece }
   const closedAt = (t: StudioState) => !!roomAt(p, deriveRooms(t.unit), t.unit)
   const V = new Map(u.vertices.map((v) => [v.id, v]))
   const cands = studioIssues(u, deriveRooms(u)).flatMap((i) => {
     const v = i.code === 'dangling-vertex' ? V.get(i.ids[0]) : undefined
-    const fix = v && candidates(u, i).find((f) => /^(Close the gap|Join|Extend)/.test(f.label))
+    const fix = v && Math.max(Math.abs(v.x - p.x), Math.abs(v.y - p.y)) <= LOCAL_M && candidates(u, i).find((f) => /^(Close the gap|Join|Extend)/.test(f.label))
     return v && fix ? [{ v, fix }] : []
   })
-  const apply = (cs: typeof cands) => cs.reduce((t, c) => c.fix.actions.reduce(reducer, t), s)
+  const apply = (cs: typeof cands) => cs.reduce((t, c) => c.fix.actions.reduce(reducer, t), t0)
   let leaks = cands.filter((c) => closedAt(apply([c])))
   if (!leaks.length && cands.length > 1 && closedAt(apply(cands))) leaks = cands.filter((c) => !closedAt(apply(cands.filter((x) => x !== c))))
   return leaks.map(({ v, fix }) => {
