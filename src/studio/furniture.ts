@@ -8,7 +8,7 @@
  * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
  * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
-import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
+import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
 import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
@@ -40,6 +40,23 @@ export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   // ponytail: runs every preset when some room has no pieces (a shaft, a lobby); cache per unit if the Studio ever lags
   const added = rooms.some((r) => !has.has(r.id)) ? furnish(unit, rooms).filter((p) => !has.has(p.roomId)) : []
   return hangCurtains(unit, rooms, added.length ? [...stored, ...added] : stored)
+}
+
+/**
+ * After a plan edit (`before` → `after`; `pieces` laid out on `before`): every room still holding exactly its presets —
+ * none moved, turned, resized, added or deleted — is furnished again for its new walls (a planter bed fills the moved
+ * strip, a chair clears a moved railing); an arranged room keeps its pieces. Then layoutFor (curtains, new rooms).
+ */
+export function refurnish(before: Unit, after: Unit, pieces: FurniturePlacement[]): FurniturePlacement[] {
+  const byRoom = (ps: FurniturePlacement[]) => {
+    const m = new Map<Id, string[]>()
+    for (const p of ps) m.set(p.roomId, [...(m.get(p.roomId) ?? []), JSON.stringify(p)])
+    return m
+  }
+  const preset = byRoom(furnish(before, deriveRooms(before)))
+  const mine = byRoom(pieces)
+  const asLaid = (id: Id) => JSON.stringify(mine.get(id)) === JSON.stringify(preset.get(id))
+  return layoutFor({ ...after, furniture: pieces.filter((p) => !asLaid(p.roomId)) }, deriveRooms(after))
 }
 
 /** The stored pieces without room `roomId`'s when those are still exactly its presets (none moved, turned, resized or deleted): a relabelled room re-furnishes. */

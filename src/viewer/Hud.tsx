@@ -148,7 +148,7 @@ export default function Hud(p: Props) {
           </button>
         )}
         {p.onOpenings && (
-          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider or passage" onClick={p.onOpenings}>
+          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
             Edit openings
           </button>
         )}
@@ -169,7 +169,7 @@ export default function Hud(p: Props) {
         <HandTag hand={p.hand} locked={p.locked} />
       ) : p.editingOpenings && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
-          {`Click a door or window · drag it along its wall · drag a dot to resize · Del removes · Ctrl+Z undoes${p.mode === 'walk' ? ' · drag the room to look' : ''}`}
+          {`Click a door, window, passage or low wall · drag it · drag a dot to resize · Del removes · Ctrl+Z undoes${p.mode === 'walk' ? ' · drag the room to look' : ''}`}
         </div>
       ) : p.arranging && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">

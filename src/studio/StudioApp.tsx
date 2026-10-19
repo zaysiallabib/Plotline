@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, resizePiece, sideDots, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, resizePiece, sideDots, type Move } from './furniture'
 import { placementSize } from '../furnish/kit'
 import {
   PILLAR_M,
@@ -16,7 +16,7 @@ import {
   idsInBox,
   initialState,
   isUnit,
-  lengthMoves,
+  endAlong,
   normalizeUnit,
   openingAt,
   rampArrow,
@@ -47,7 +47,7 @@ import { getPicture, putPicture } from './pictures'
 import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
-import { STAFF_KEY, baseOf, readLayout, saveLayout } from '../viewer/arrange'
+import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
@@ -680,8 +680,8 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, state.review, saveDraft])
-  // a door / window changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the plan takes
-  // it at once, so this tab's next autosave never writes the old openings back
+  // a door / window / low wall changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the
+  // plan takes it at once, so this tab's next autosave never writes the old plan back
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== DRAFT_KEY || !e.newValue) return
@@ -689,9 +689,10 @@ export default function StudioApp() {
         const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']
         const u = isUnit(d) ? d : (d as Partial<Draft>).unit
         const now = stateRef.current.unit
-        if (!isUnit(u) || u.id !== now.id || JSON.stringify(u.walls) === JSON.stringify(now.walls)) return
-        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: withLayout(u) } as Draft }) // a bare unit restores too (init does the same)
-        setNote({ text: 'Doors and windows changed in the 3D view — the plan shows them now' })
+        if (!isUnit(u) || u.id !== now.id || planOf(u) === planOf(now)) return
+        const laid = withLayout(u) // a room still on its presets is furnished for its new walls, as the 3D view did (furniture.refurnish)
+        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: { ...laid, furniture: refurnish(now, laid, laid.furniture) } } as Draft }) // a bare unit restores too (init does the same)
+        setNote({ text: 'Changed in the 3D view (doors, windows, passages, low walls) — the plan shows it now' })
       } catch {
         /* not a draft */
       }
@@ -1461,28 +1462,11 @@ export default function StudioApp() {
         const v = (m.x - f.origin.x) * f.normal.x + (m.y - f.origin.y) * f.normal.y
         dispatch({ type: 'wall-face', id: w.id, side: d.face, thicknessM: d.face * v + w.thicknessM / 2 })
       } else if (d.hit.kind === 'vertex' && d.lengthOf) {
-        // the end slides along its wall; the walls at it stay straight (model.lengthMoves)
-        const w = unit.walls.find((x) => x.id === d.lengthOf)
-        if (!w) return
-        const A = vertexById(unit.vertices, w.a === d.hit.id ? w.b : w.a)
-        const E = vertexById(unit.vertices, d.hit.id)
-        const L0 = Math.hypot(E.x - A.x, E.y - A.y)
-        const dir = { x: (E.x - A.x) / L0, y: (E.y - A.y) / L0 }
-        const along = (p: Pt) => (p.x - A.x) * dir.x + (p.y - A.y) * dir.y
-        const onLine = (L: number): Pt => ({ x: A.x + dir.x * L, y: A.y + dir.y * L })
-        const ids = lengthMoves(unit, w.id, d.hit.id, L0).map((v) => v.id)
-        let L = along(m)
-        let snap = loose(onLine(L))
-        if (!free) {
-          const s0 = snapPoint(onLine(L), unit, { tolM, exclude: ids })
-          L = along(s0)
-          const guides = s0.guides.filter((g) => Math.abs(g.axis === 'x' ? dir.x : dir.y) > 1e-6) // only guides across the line stop the end
-          const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : HARD.has(s0.kind) ? s0.kind : 'free'
-          snap = { ...s0, ...onLine(L), kind, guides }
-        }
-        if (L < 0.05) return // never through the anchor
-        dispatch({ type: 'drag', vertices: lengthMoves(unit, w.id, d.hit.id, L) })
-        show(snap, ids)
+        // the end slides along its wall, snapped; the walls at it stay straight (model.endAlong — the 3D's end dot too)
+        const r = endAlong(unit, d.lengthOf, d.hit.id, m, { tolM, free })
+        if (!r) return
+        dispatch({ type: 'drag', vertices: r.moves })
+        show(r.snap, r.ids)
       } else if (d.hit.kind === 'vertex') {
         const snap = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [d.hit.id] })
         dispatch({ type: 'drag', vertices: [{ id: d.hit.id, x: snap.x, y: snap.y }] })

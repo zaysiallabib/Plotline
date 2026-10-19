@@ -4,7 +4,7 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, surfaceOf, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import { findOpening } from '../studio/model'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
@@ -287,6 +287,39 @@ describe('Edit openings in 3D (founder 2026-10-04): the Studio’s rules along a
     // another unit in the Studio: not written
     s.setItem(DRAFT_KEY, JSON.stringify({ unit: { ...angled, id: 'someone-else' } }))
     expect(saveOpenings(after, angled, s)).toBe('other')
+  })
+
+  it('a low wall (founder 2026-10-19): its end dot off the shared corner along its line, its body across; one undo; saved with its corners', () => {
+    // a 1.1 m railing from the west wall at (0, 2) — a T: the west wall in two — to a free end at (1.5, 2)
+    const v = [...AV, { id: 't', x: 0, y: 2 }, { id: 'f', x: 1.5, y: 2 }]
+    const railed: Unit = { ...angled, vertices: v, walls: [...angled.walls.filter((w) => w.id !== 'w'), { ...aw('w1', 5, 0), b: 't' }, { ...aw('w2', 0, 0), a: 't' }, { ...aw('rail', 0, 0), a: 't', b: 'f', heightM: 1.1 }] }
+    const s: StudioState = { ...initialState(), unit: railed }
+    const at = (t: StudioState, id: string) => t.unit.vertices.find((x) => x.id === id)!
+    // the T end dragged toward (0.6, 2.3): it leaves the west wall (a new corner) and lands on its line at x = 0.6
+    let t = reducer(s, { type: 'drag-begin' })
+    t = wallDrag(t, railed, { kind: 'wall-end', id: 'rail', end: 'a', at: { x: 0.6, y: 2.3 }, rigid: false }, 0.05).s
+    const r = wallDrag(t, railed, { kind: 'wall-end', id: 'rail', end: 'a', at: { x: 0.7, y: 2.3 }, rigid: false }, 0.05) // the next frame: no second detach
+    const end = r.s.unit.walls.find((w) => w.id === 'rail')!.a
+    expect(end).not.toBe('t')
+    expect(at(r.s, end)).toMatchObject({ x: expect.closeTo(0.7, 9), y: expect.closeTo(2, 9) })
+    expect(at(r.s, 't')).toMatchObject({ x: 0, y: 2 }) // the west wall untouched
+    expect(r.s.unit.vertices).toHaveLength(v.length + 1)
+    expect(reducer(r.s, { type: 'undo' }).unit).toEqual(railed)
+    // Alt (rigid): the corner stays shared — the west wall's run comes along
+    const rigid = wallDrag(reducer(s, { type: 'drag-begin' }), railed, { kind: 'wall-end', id: 'rail', end: 'a', at: { x: 0.3, y: 2 }, rigid: true }, 0.05)
+    expect(rigid.s.unit.walls.find((w) => w.id === 'rail')!.a).toBe('t')
+    expect(at(rigid.s, 't').x).toBeCloseTo(0.3, 9)
+    // its body 0.5 m across (its normal), from where the drag began: both ends, the T sliding up the west wall
+    const moved = wallDrag(reducer(s, { type: 'drag-begin' }), railed, { kind: 'wall-move', id: 'rail', dM: -0.5 }, 0.05)
+    expect(moved.ids).toEqual(['t', 'f'])
+    expect([at(moved.s, 't'), at(moved.s, 'f')]).toMatchObject([{ x: 0, y: expect.closeTo(1.5, 9) }, { x: 1.5, y: expect.closeTo(1.5, 9) }])
+    // saved: the draft and the preview get the new corners too (the Studio's plan shows it), and the next edit starts there
+    const st = memStore()
+    makeDraft(railed, st)
+    expect(saveOpenings(railed, moved.s.unit, st)).toBe('ok')
+    expect(JSON.parse(st.getItem(DRAFT_KEY)!).unit.vertices).toEqual(moved.s.unit.vertices)
+    expect(JSON.parse(st.getItem(PREVIEW_KEY)!).vertices).toEqual(moved.s.unit.vertices)
+    expect(draftState(moved.s.unit, st)).toBe('ok')
   })
 
   it('a built-in unit (or another draft) is made the Studio draft and the preview first', () => {

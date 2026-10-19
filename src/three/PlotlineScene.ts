@@ -62,14 +62,18 @@ export type ArrangeEvent =
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 /**
- * Edit openings (staff): `select` a door / window / slider / passage (null: empty space); `slide` = its body dragged, the
- * offset (m from its wall's corner A) the pointer asks for; `resize` = an end dot dragged to uM along the wall; `drop` ends
- * the gesture. The Studio reducer (model.ts drag-opening / resize-opening) applies its rules to these.
+ * Edit openings (staff): `select` a door / window / slider / passage, or a low wall (null: empty space); `slide` = its body
+ * dragged, the offset (m from its wall's corner A) the pointer asks for; `resize` = an end dot dragged to uM along the wall;
+ * a low wall's `wall-end` = its end dot dragged to `at` on the wall's line (plan m; `rigid`: Alt held), `wall-move` = its
+ * body dragged `dM` across its line (along its normal as picked); `drop` ends the gesture. The Studio reducer applies its
+ * rules to these (model.ts drag-opening / resize-opening; arrange.ts wallDrag).
  */
 export type OpeningEvent =
   | { kind: 'select'; id: Id | null }
   | { kind: 'slide'; id: Id; offsetM: number }
   | { kind: 'resize'; id: Id; end: 'a' | 'b' | 'top' | 'sill'; uM: number }
+  | { kind: 'wall-end'; id: Id; end: 'a' | 'b'; at: Pt; rigid: boolean }
+  | { kind: 'wall-move'; id: Id; dM: number }
   | { kind: 'drop'; id: Id }
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 /** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
@@ -79,6 +83,14 @@ const REFUSED = '#ff4d4d'
 
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
+/**
+ * Vertical field of view (°) walking: 50 = 79° across a 16:9 screen, 73° across 16:10 — a 22 mm lens, the common
+ * walkthrough choice. Was 65 (97° across 16:9, a 16 mm lens): the centre of the view shrank to 0.73 of this, so rooms
+ * and furniture read small and far, and the edges stretched 2.3× (1.7× now) (founder 2026-10-19: "make the flats look a bit
+ * bigger"). The dollhouse and the Building view keep VIEW_FOV. viewer/frame.ts and spawn.ts still frame first views for 65.
+ */
+const WALK_FOV = 50
+const VIEW_FOV = 65
 const WALK_RADIUS = 0.3
 /** A wall this tall is a storey wall (not a parapet, a screen, a planter edge): under the slab above it reaches it. */
 const STOREY_WALL_M = 2.4
@@ -299,7 +311,8 @@ export class PlotlineScene {
   // Edit openings (staff): the mouse stays free as in Arrange; a grab slides the opening along its wall or moves one end
   private editingOpenings = false
   private openingCb: ((e: OpeningEvent) => void) | null = null
-  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean } | null = null
+  /** `line`: a low wall's grab — the pointer is read where its ray passes closest to this line (its end: the wall's line; its body: across it) */
+  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean; line?: { o: THREE.Vector3; d: THREE.Vector3 }; rigid?: boolean } | null = null
   /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
   private readonly opBox = new THREE.Group()
   /**
@@ -327,7 +340,7 @@ export class PlotlineScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
-    this.camera = new THREE.PerspectiveCamera(65, 1, 0.05, 300)
+    this.camera = new THREE.PerspectiveCamera(WALK_FOV, 1, 0.05, 300) // the scene opens walking
     this.camera.position.y = EYE
     this.rig.add(this.camera)
     this.scene.add(this.rig, this.staticGroup, this.ceilingGroup, this.furnitureGroup)
@@ -496,6 +509,8 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.camera.fov = mode === 'walk' ? WALK_FOV : VIEW_FOV
+    this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
@@ -819,13 +834,44 @@ export class PlotlineScene {
     this.openingCb = cb
   }
 
-  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
-  showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
+  private clearOpBox(): void {
     this.opBox.traverse((o) => {
       ;(o as THREE.Mesh).geometry?.dispose()
       ;((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose?.()
     })
     this.opBox.clear()
+  }
+
+  /**
+   * Outlines low wall `id` as the plan has it now (`a` → `b`, its height from its foot) with a dot on each end (a dot drag
+   * moves that end along the wall, a drag on the wall moves it across). null clears.
+   */
+  showWall(s: { id: Id; a: Pt; b: Pt; heightM: number; thicknessM: number } | null): void {
+    this.clearOpBox()
+    const L = s ? Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) : 0
+    this.opBox.userData = { id: s && L > 1e-6 ? s.id : undefined, wallId: s?.id, wall: true }
+    if (!s || L <= 1e-6) return
+    const dir = new THREE.Vector3((s.b.x - s.a.x) / L, 0, (s.b.y - s.a.y) / L)
+    const foot = Math.min(...(this.lifts.get(s.id)?.foot ?? [0])) // a wall's height is from its lower floor
+    this.opBox.matrixAutoUpdate = false
+    this.opBox.matrix.makeBasis(dir, UP, new THREE.Vector3(-dir.z, 0, dir.x)).setPosition(s.a.x, foot, s.a.y)
+    const mat = { color: SEL, depthTest: false, transparent: true }
+    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, s.heightM, s.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
+    box.position.set(L / 2, s.heightM / 2, 0)
+    box.raycast = () => {}
+    this.opBox.add(box)
+    for (const end of ['a', 'b'] as const) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
+      dot.position.set(end === 'a' ? 0 : L, s.heightM, 0)
+      dot.userData.end = end
+      this.opBox.add(dot)
+    }
+    for (const c of this.opBox.children) c.renderOrder = 11
+  }
+
+  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
+  showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
+    this.clearOpBox()
     const f = s && this.wallFrames.get(s.wallId)
     const w = s && this.unit?.walls.find((x) => x.id === s.wallId)
     this.opBox.userData = { id: f && w ? s.id : undefined, wallId: s?.wallId }
@@ -889,15 +935,35 @@ export class PlotlineScene {
     return best
   }
 
-  /** Edit openings: an end dot of the selected opening (resize), else an opening (selects it, slide), else empty space (walk: look around). */
+  /** A low wall under the pointer (a parapet, railing, planter edge, kerb — under core.LOW_WALL_M; a zone line is drawn as nothing) and where it was hit. */
+  private lowWallAt(ndc: THREE.Vector2): { id: Id; point: THREE.Vector3 } | null {
+    const hit = this.pick(ndc)
+    const w = hit?.kind === 'wall' ? this.unit?.walls.find((x) => x.id === hit.id) : undefined
+    return hit && w && w.heightM > 0 && w.heightM < core.LOW_WALL_M ? { id: w.id, point: new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z) } : null
+  }
+
+  /** Edit openings: an end dot of the selected opening or low wall (resize), else an opening (selects it, slide), else a low wall (selects it, moves it across), else empty space (walk: look around). */
   private openingDown(e: PointerEvent): void {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
-    const sel = this.opBox.userData as { id?: Id; wallId?: Id }
+    const sel = this.opBox.userData as { id?: Id; wallId?: Id; wall?: boolean }
     const dot = sel.id && this.opBox.children.length ? this.raycaster.intersectObjects(this.opBox.children.filter((c) => c.userData.end), false)[0] : undefined
-    if (dot && sel.id && sel.wallId) this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false }
-    else {
+    if (dot && sel.id && sel.wallId) {
+      this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false, rigid: e.altKey }
+      // a low wall's end moves along the wall's own line (as the plan has it now), at the dot's height
+      if (sel.wall) this.opGrab.line = { o: dot.object.getWorldPosition(new THREE.Vector3()), d: new THREE.Vector3(1, 0, 0).transformDirection(this.opBox.matrixWorld) }
+    } else {
       const o = this.openingAt(ndc)
+      const lw = o ? null : this.lowWallAt(ndc)
+      if (lw) {
+        // its body: moved across its line, from where it was grabbed
+        const f = this.wallFrames.get(lw.id)!
+        this.openingCb?.({ kind: 'select', id: lw.id })
+        this.opGrab = { id: lw.id, wallId: lw.id, off: 0, moved: false, line: { o: lw.point, d: new THREE.Vector3(f.normal.x, 0, f.normal.y) } }
+        this.orbit.enabled = false
+        this.canvas.setPointerCapture(e.pointerId)
+        return
+      }
       if (!o) {
         if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
         return
@@ -1332,6 +1398,16 @@ export class PlotlineScene {
       const d = this.pointerDown
       if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) return
       og.moved = true
+      if (og.line) {
+        // a low wall: the point on the line nearest the pointer's ray (any view angle; ±100 m of line)
+        this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+        const { o, d } = og.line
+        const P = new THREE.Vector3()
+        this.raycaster.ray.distanceSqToSegment(o.clone().addScaledVector(d, -100), o.clone().addScaledVector(d, 100), undefined, P)
+        if (og.end === 'a' || og.end === 'b') this.openingCb?.({ kind: 'wall-end', id: og.id, end: og.end, at: { x: P.x, y: P.z }, rigid: !!og.rigid })
+        else this.openingCb?.({ kind: 'wall-move', id: og.id, dM: P.sub(o).dot(d) })
+        return
+      }
       const p = this.alongWall(this.ndcOf(e), og.wallId) // along ITS wall, at any angle
       if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: og.end === 'top' || og.end === 'sill' ? p.v : p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
       return

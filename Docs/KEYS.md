@@ -80,7 +80,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Esc** | Gives the mouse back, and one step back: a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks; in Edit openings: unpicks; else stops Comment and drops an unsaved note | any | everyone | §2, §3 |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
 | **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° | Walk, Dollhouse | staff | §3 Edit furniture |
-| **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door or window | Walk, Dollhouse | staff | §3 |
+| **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
 | **Ctrl+Z** | Undo the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
 | Number keys | Nothing in the 3D view | — | — | — |
 | Drag / wheel / right-drag | Turn the view / zoom / slide it | Dollhouse, Building | everyone | §2, §4 |
@@ -90,6 +90,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Click a flat | Opens it | Building | everyone | §4 |
 | Click / drag / drag a dot | Click a piece = pick it (also through glass); drag = move it; drag a dot = bigger or smaller (curtains: wider or narrower on that side); drag the empty room = look around (Walk) | Edit furniture | staff | §3 Edit furniture |
 | Click / drag / drag a dot | Click = pick a door or window; drag = slide it along its wall; drag a dot = width, height, a window's sill; drag the empty room = look around (Walk) | Edit openings | staff | §3 Edit openings |
+| Click / drag / drag a dot (low wall) | Click = pick a low wall (under 1.2 m: railing, parapet, planter edge, kerb); drag an end dot = longer / shorter along its line (a joined end leaves its corner); drag the wall = move it across | Edit openings | staff | §3 Edit openings |
+| **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
 | VR trigger | Hold to aim at the floor, let go to jump there | in VR | everyone | §2 In VR |
 | VR thumbstick left / right | Turns you 45° | in VR | everyone | §2 In VR |
 | Keyboard while in VR | Ignored | in VR | — | — |
@@ -120,7 +122,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Comment** | Click anything to leave a note (C) | everyone |
 | **Share** | Copies a link that opens with the finishes you chose | everyone |
 | **Edit furniture** | Move, turn, resize, delete or add furniture | staff |
-| **Edit openings** | Move, resize, change or remove doors, windows, sliders, passages | staff, not on a buyer link |
+| **Edit openings** | Move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
 | **Edit plan** | Opens this flat or level in the Studio, in a new tab | staff |
 | **Enter VR** / **Exit VR** | Into / out of the headset — only when one is connected | everyone |
 
@@ -172,6 +174,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 |---|---|---|
 | **Door / Window / Slider / Passage** | Changes the picked opening's kind | staff |
 | **Width**, **Height**, **Sill** | Type a size (`3'-6"`, `3.5`, `1.07m`); Enter sets it | staff |
+| **Length**, **Height** (a low wall) | Type its length (the end B moves) or height | staff |
 | **Delete** | Removes the picked opening (Del) | staff |
 | **Undo** | Takes back the last change (Ctrl+Z) | staff |
 

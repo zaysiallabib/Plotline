@@ -68,6 +68,7 @@ Extras you can add to the end of a 3D address:
 - **Click a spot on the floor** — you walk there.
 - **Double-click** (or the Enter button) — the mouse now turns your head. **Esc** gives the mouse back.
 - You cannot walk through walls. You can climb steps and ramps. You cannot walk into a pool.
+- Walk sees about as much as a 22 mm camera lens: a little under 80° across a wide screen, from 1.45 m eye height (since 2026-10-19; it was a wider 16 mm look, which made rooms and furniture read small and far). The dollhouse and the Building view see wider, as before.
 
 **Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it (not while the Finishes panel is open: then the click picks that floor's finish).
 
@@ -128,12 +129,20 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 - **Add** opens the library: Living, Dining, Bedroom, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor. Pick one, point at the floor, a wall or the ceiling, click.
 - Saved in this browser only.
 
-### Edit openings (doors, windows, sliding doors, open passages)
+### Edit openings (doors, windows, sliding doors, open passages, low walls)
 
-- **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill.
+Works in Walk and in Dollhouse. The mouse stays free: drag empty space to look around.
+
+- **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill. An open passage is picked by clicking anywhere in its opening; its side dots make it wider or narrower.
 - Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
+- **Low walls** (since 2026-10-19) — a railing, parapet, planter edge or kerb: anything lower than 1.2 m (3'-11"). **Click it**: a blue box with a dot on each end, and the panel says "Low wall · 6'-9" long · 1'-6" high".
+  - **Drag an end dot**: that end slides along the wall's own line — the wall gets longer or shorter. An end joined to another wall leaves it, as with V in the Studio: a gap opens there, and the rooms on both sides become one (the Studio lists it under Issues, with **Extend** to close it again). Hold **Alt** while you drag to keep the corner joined instead: the wall it meets moves with it, so the room stays closed (a narrower veranda).
+  - **Drag the wall itself**: it moves across, sideways; its ends slide along the walls they meet. It snaps to nearby wall lines as in the Studio.
+  - Panel: type **Length** (the end B moves) and **Height**; **Delete**; **Undo**.
+- Keys: **Del** (or Backspace) removes what is picked · **Ctrl+Z** undoes (one drag = one step) · **Esc** unpicks it · **Alt** while dragging a low wall's end keeps its corner.
+- A room whose furniture nobody arranged is laid out again for its new walls (a planter's bed fills the moved planter); a room you arranged keeps its pieces.
+- The Studio open in another tab shows each change the moment you let go of the mouse, without reloading ("Changed in the 3D view … — the plan shows it now").
 - An opening's curtains go with it: move or resize the opening and they follow; delete it and they go. (The old **Curtains** tick box is gone — delete the curtains themselves in Edit furniture.)
-- Keys: **Del** (or Backspace) removes the picked one · **Ctrl+Z** undoes · **Esc** unpicks it.
 - The change is written into the Studio drawing too, so plan and 3D always agree.
 - On a built-in flat it first asks to make that flat your Studio drawing (this replaces the drawing you had there).
 
@@ -602,6 +611,8 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **A room with no door and no low edge to the flat is in no flat** (it shows untinted) on a drawing you traced by hand: pick its flat by hand. A planter edge, kerb or parapet lower than 4 feet counts as a way in. (After Auto-trace every room is already in its flat.) Auto-trace puts the printed "TYPE-A ±2736 SFT" on the drawing only when it stands in a closed room of the flat and its TYPE word was read (Sheltech L2 Type A and Type B yes; Level 4 Type A — open foyer — no: type it with R).
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
+- **3D Edit openings, low walls:** sliding a low wall whose end meets the middle of another wall also slides the doors and windows on that wall's piece with it (they keep their distance from that corner, as in the Studio). Walls higher than 1.2 m (a 7' screen, a full wall) cannot be moved in 3D yet.
+- **The first view of each room** (Enter, **Rooms**) was chosen for the old, wider walk lens: since 2026-10-19 it can cut the edge of a piece (Bed-1's AC and plant) — walk back a step.
 - The fix "Join with a zone line" can draw a long diagonal line across a lawn.
 - **R on a room with several gaps** says only "a wall is missing — draw it with W"; it does not yet show where. The Issues row "Label is not inside a closed room" still rings the nearest open spot, which can be outside that room.
 - While a column is picked, a wall end lying on its side cannot be dragged (the column's side handle takes the press): click elsewhere first.
@@ -630,8 +641,8 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Thing | In the 3D view | In the Studio | Cannot be changed anywhere |
 |---|---|---|---|
 | Wall | Its paint, one side at a time (Finishes open, click it) — nothing else | Yes — type, thickness (typed, or drag a face's dot: that side only), height, length, move, copy, delete; curved walls with A (as short straight pieces) | Its paint on the outside |
-| Boundary wall, parapet, low wall | No | Yes — same as a wall | Its finish |
-| Kerb, free-standing screen | No | Yes | — |
+| Boundary wall, parapet, low wall | Yes when lower than 1.2 m — Edit openings: click it, drag an end dot (longer / shorter), drag it across, type Length / Height, delete | Yes — same as a wall | Its finish |
+| Kerb, free-standing screen | Yes for a kerb and a screen lower than 1.2 m — as a low wall | Yes | — |
 | Glass wall | Yes — width, height, sill, slide along the wall, delete | Yes | Frame, glass colour. Cannot be *added* in 3D |
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — its four corners one by one (a tapered column), each side by mouse (or typed), move, delete, add; a wall touching it closes the room | — |
