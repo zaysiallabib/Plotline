@@ -1,7 +1,7 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind, Vertex, Wall } from '../core'
-import { GRID_M, layerOf, pieceLabel, pieceQuad, type Move } from './furniture'
+import { GRID_M, layerOf, pieceLabel, pieceQuad, sideDots, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
 import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
@@ -411,6 +411,9 @@ export function draw(a: DrawArgs): void {
       dot({ x: (c.x + cs[(i + 1) % 4].x) / 2, y: (c.y + cs[(i + 1) % 4].y) / 2 }, true, true)
     }
   }
+
+  // a selected curtain's two sides (tool F): drag one to make it wider or narrower on that side
+  for (const p of a.furniture ? (a.furniture.drag?.furniture ?? a.furniture.pieces) : []) if (p.openingId && sel.has(p.id)) for (const c of sideDots(p)) dot(c, true, true)
 
   // ramps: an arrow across the zone from its floor level (tail) to its to level (head); selected, the head is a handle
   const ramps = state.unit.roomLabels.flatMap((l) => {

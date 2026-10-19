@@ -350,14 +350,14 @@ function ArrangePanel(p: {
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {p.piece.openingId
-              ? 'Hangs on its window and follows it: drag it along the wall, or Delete it'
+              ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
               : resizeAxes(p.piece.assetId).length
                 ? `${dims(s)} · drag a dot to resize`
                 : 'This piece can be moved and turned'}
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their window's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>

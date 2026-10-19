@@ -228,8 +228,8 @@ export type Action =
   | { type: 'move-piece'; id: Id; x: number; y: number; rotationDeg?: number }
   /** 90° clockwise about its centre, then out of / flush to a wall it pokes into */
   | { type: 'rotate-piece'; id: Id }
-  /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall (furniture.resizePiece) */
-  | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number } }
+  /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall; `grow` = the side that moves (furniture.resizePiece) */
+  | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number }; grow?: { x: number; z: number } }
   /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); undo / reset bring it back */
   | { type: 'delete-piece'; id: Id }
   /** a new piece `id` of kit asset `assetId` from the library, dropped at (x, y) turned `rotationDeg` (furniture.placePiece); refused → toast */
@@ -1484,7 +1484,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!p) return s
       const r =
         a.type === 'resize-piece'
-          ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM)
+          ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM, a.grow)
           : a.type === 'rotate-piece'
             ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
             : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)

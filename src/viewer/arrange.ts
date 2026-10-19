@@ -73,6 +73,8 @@ export { surfaceOf }
 export interface DragTarget {
   at: Pt | null
   wall: WallFace | null
+  /** the face of the opening whose hole the pointer looks through (a doorway, a passage): where new curtains hang */
+  hole?: WallFace | null
 }
 
 /** What a drag of piece `id` moves (3D and Studio tool F): a piece resting on another (a TV on its unit, cushions) → the floor piece under it. */
@@ -135,7 +137,7 @@ export function holdAt(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
   const c = !h.assetId && pieces.find((x) => x.id === h.id && x.openingId)
   const w = t && (t.wall?.p ?? t.at)
   if (c && w && !h.grab) h = { ...h, grab: { x: c.x - w.x, y: c.y - w.y } }
-  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall) : dragTo(unit, rooms, pieces, h.id, t, rot, h.grab)
+  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall, t.hole) : dragTo(unit, rooms, pieces, h.id, t, rot, h.grab)
   return move ? { ...h, at: t, rot, move } : { ...h, rot }
 }
 
