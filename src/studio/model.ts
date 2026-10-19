@@ -358,8 +358,10 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     return splitWall(t.unit, t.wall, s / wallFrame(t.wall, t.unit.vertices).lengthM) as { unit: Unit; vertexId: Id } // (nothing straddles s now)
   }
   // the moved corners first (they join onto what stands still), then the corners inside a moved wall's body
+  let V = new Map<Id, Vertex>()
+  let mapped: Unit | null = null
   for (const id of new Set([...(ids ?? []), ...u.vertices.map((v) => v.id)])) {
-    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    if (mapped !== u) (V = new Map(u.vertices.map((v) => [v.id, v]))), (mapped = u) // (again only once the unit changed — s27 rows)
     const v = V.get(id)
     if (!v) continue
     const mine = !scope || scope.has(id)
@@ -645,7 +647,9 @@ function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; co
   const corners: Id[] = []
   for (let again = true; again; ) {
     again = false
-    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, u.vertices)]))
+    // (each frame from its own two corners: core's wallFrame maps every vertex on each call — s27 rows)
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, [V.get(w.a), V.get(w.b)].filter((x): x is Vertex => !!x))]))
     pairs: for (const [i, K] of u.walls.entries()) {
       for (const [j, S] of u.walls.entries()) {
         if (i === j || (ids && !at(K) && !at(S)) || Math.abs(K.heightM - S.heightM) > 0.01) continue
