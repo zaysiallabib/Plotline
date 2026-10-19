@@ -2054,6 +2054,16 @@ export default function StudioApp() {
           Building
         </button>
         <button
+          title="Start a new project: its name, basements, floors, rooftop"
+          onClick={() => {
+            setBuildingOpen(false)
+            activate(null)
+            setListOpen(true)
+          }}
+        >
+          New project
+        </button>
+        <button
           className={siteOpen ? 'on' : ''}
           title="Where the building stands: find it on the map, click the plot (neighbour blocks, roads, wind), set true north"
           onClick={() => {

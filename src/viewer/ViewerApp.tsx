@@ -491,6 +491,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** the sun's day (the scene starts on today too) and the wind: its month's rose and arrows, on or off */
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
+  /** the sun bar and the rose: on screen only while Sun & wind (top right) is pressed; the wind keeps blowing either way */
+  const [simOpen, setSimOpen] = useState(false)
   const [roseOn, setRoseOn] = useState(roseSaved)
   const [lightsMode, setLightsMode] = useState(lightsSaved)
   const alt = core.sunAt(unit.site, date, hour).altDeg
@@ -1175,6 +1177,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             osm={!!unit.site && unit.site.buildings.length + unit.site.roads.length > 0}
             onArrange={STAFF ? toggleArrange : null}
             editingOpenings={editingOpenings}
+            simOpen={simOpen}
+            onSim={() => setSimOpen((v) => !v)}
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
             onEditPlan={
               STAFF
@@ -1262,6 +1266,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               }}
             />
           )}
+          {simOpen && (
           <SunPill
             hour={hour}
             date={date}
@@ -1295,7 +1300,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               })
             }
           />
-          {windOn && roseOn && (
+          )}
+          {simOpen && windOn && roseOn && (
             <WindRose
               months={months}
               month={month}

@@ -78,12 +78,17 @@ interface Props {
   /** staff only: toggles Edit openings (doors, windows, sliders, passages in 3D); null hides the button */
   onOpenings: (() => void) | null
   editingOpenings: boolean
+  /** the sun bar (day, hour, lights, wind, months, rose) shows only while Sun & wind is pressed (founder 2026-10-19: one place, not always on screen) */
+  simOpen: boolean
+  onSim: () => void
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
 
 export default function Hud(p: Props) {
   const [roomsOpen, setRoomsOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
 
   return (
     <>
@@ -139,23 +144,37 @@ export default function Hud(p: Props) {
         <button className={`btn${p.commenting ? ' active' : ''}`} onClick={p.onToggleComment}>
           Comment
         </button>
+        <button className={`btn${p.simOpen ? ' active' : ''}`} title="The day and hour, the lamps, the wind and its months" onClick={p.onSim}>
+          Sun & wind
+        </button>
         <button className="btn" onClick={p.onShare}>
           Share
         </button>
-        {p.onArrange && (
-          <button className={`btn${p.arranging ? ' active' : ''}`} title="Staff only: move, turn, resize, delete or add furniture" onClick={p.onArrange}>
-            Edit furniture
+        {staffEdit && (
+          <button className={`btn${p.arranging || p.editingOpenings || editOpen ? ' active' : ''}`} title="Staff only: furniture, openings, the plan" onClick={() => setEditOpen((v) => !v)}>
+            Edit ▾
           </button>
         )}
-        {p.onOpenings && (
-          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
-            Edit openings
-          </button>
-        )}
-        {p.onEditPlan && (
-          <button className="btn" onClick={p.onEditPlan}>
-            Edit plan
-          </button>
+        {editOpen && (
+          <div className="glass edit-menu" onClick={() => setEditOpen(false)}>
+            {p.onArrange && (
+              <button className="room-row" title="Move, turn, resize, delete or add furniture" onClick={p.onArrange}>
+                <span>Furniture</span>
+                <span className="muted">{p.arranging ? 'on' : ''}</span>
+              </button>
+            )}
+            {p.onOpenings && (
+              <button className="room-row" title="Move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
+                <span>Openings</span>
+                <span className="muted">{p.editingOpenings ? 'on' : ''}</span>
+              </button>
+            )}
+            {p.onEditPlan && (
+              <button className="room-row" title="This plan in the Studio (new tab)" onClick={p.onEditPlan}>
+                <span>Plan (Studio)</span>
+              </button>
+            )}
+          </div>
         )}
         {p.onEnterVR && (
           <button className="btn" onClick={p.onEnterVR}>

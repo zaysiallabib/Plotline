@@ -28,7 +28,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **1 2 3 4** | Door / Window / Slider / Passage, at its usual width | O (also with O held) | §5 — O |
 | A digit or **.** | Opens the length box with it; **Enter** lays the wall at that length. **0** fits the view instead, so type `.5`, not `0.5` | W, while drawing (after the first corner) | §5 — W |
 | **Tab** | The length box switches between length and angle (0° = to the right) | the length box while drawing walls | §5 — W |
-| **Enter** | Confirms the box you are typing in: a wall's length, the scale's real length, the room box (= Save), a floor level, a wall width, Also on floors (= Apply), the New project name (= Create project), the Site address (= Find), the name box on the plan | text boxes | §5, §6 |
+| **Enter** | Confirms the box you are typing in: a wall's length, the scale's real length, the room box (= Save), a floor level, a wall width, a floor plan's floors box (= Apply), the New project name (= Create project), the Site address (= Find), the name box on the plan | text boxes | §5, §6 |
 | **Esc** | One step back, in this order: stops Auto-trace's "Point at a flat"; closes the problem box on the plan; lets go of the piece in your hand (F: a moved piece stays where it was, a new one is dropped); closes the room box; ends the wall you are drawing; else drops a half-done scale, line-up or arc and unpicks everything. In a length box: closes it | any tool | §5 Other keys |
 | **Backspace** | While drawing walls: takes back the last piece. Otherwise the same as Del | W; any tool | §5 — W |
 | **Del** | Deletes what is picked (asks first when doors or windows would go with the walls). In F: the picked piece and what rests on it — also the piece in your hand (a new one from the library is only let go) | any tool | §5 Other keys, — F |
@@ -75,7 +75,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **B** | The Building view | only when the flat is part of a tower | everyone | §2, §4 |
 | **F** | Opens / closes Finishes | any | everyone | §2 Finishes panel |
 | **C** | Comment on / off; then click the thing | any | everyone | §2 Notes |
-| **P** | Wind on / off — the same as the Wind button | Walk, Dollhouse, Building | everyone | §2 Always on screen |
+| **P** | Wind on / off — the same as the Wind button on the sun bar (Sun & wind, top right) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
 | **M** | Hides / shows the small map | Walk | everyone | §2 Always on screen |
 | **Esc** | Gives the mouse back, and one step back: a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks; in Edit openings: unpicks; else stops Comment and drops an unsaved note | any | everyone | §2, §3 |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |

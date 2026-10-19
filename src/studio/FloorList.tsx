@@ -5,11 +5,11 @@
  * puts the open drawing on more floors; Show building stacks them. Saved in this browser (data/building/projects.ts).
  */
 import { useState } from 'react'
-import { deriveFlats, deriveRooms } from '../core'
+import { deriveFlats, deriveRooms, newId } from '../core'
 import type { Id, Unit } from '../core'
 import { drawingName, parseFloors, planOf, removeDrawing, setSlot, slotsOf, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { emptyUnit } from './model'
-import { deletePicture } from './pictures'
+import { deletePicture, getPicture, putPicture } from './pictures'
 
 const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
 /** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
@@ -78,7 +78,7 @@ interface Props {
 }
 
 export function FloorList({ projects, project, drawing, unit, fresh, onStore, onCreate, onActivate, onOpen, onRename, onShow, onOldWay, onClose, onToast }: Props) {
-  const [also, setAlso] = useState('')
+  const [also, setAlso] = useState<Record<Id, string>>({})
   // a clicked button lets go of the keys (Enter / Space on it again must not draw another floor)
   const blur = (e: React.MouseEvent) => e.target instanceof HTMLButtonElement && e.target.blur()
 
@@ -129,18 +129,36 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
       u.id,
     )
   }
-  const applyAlso = () => {
-    const ks = parseFloors(also)
+  /** drawing `id` goes on the floors typed for it ("2, 4, 6-8"): one floor plan on many floors, any pattern (founder 2026-10-05, -19) */
+  const applyAlso = (id: Id) => {
+    const ks = parseFloors(also[id] ?? '')
     if (!ks) return onToast('Type floor numbers, like 2, 4, 6-8')
     const top = planOf(project).floors
     const ok = ks.filter((k) => k >= 1 && k <= top)
     if (ok.length < ks.length) onToast(`This project has floors 1 to ${top} (the ground floor, basements and rooftop: use their own rows)`)
-    if (!drawing || !ok.length) return
+    if (!ok.length) return
     // never a silent swap: a floor that carries another drawing is named first (user test, session 21)
-    const taken = slotsOf(project).filter((r) => typeof r.slot === 'number' && ok.includes(r.slot) && r.unitIds.length && !r.unitIds.includes(drawing))
-    if (taken.length && !window.confirm(`${taken.map((r) => `${r.label} has "${named(r.unitIds[0])}"`).join(', ')}. Put "${nameOf(unit)}" there instead? (The other drawing is kept.)`)) return
-    if (change((p) => ok.reduce((q, k) => setSlot(q, k, q.units[drawing] ?? null), p))) setAlso('')
+    const taken = slotsOf(project).filter((r) => typeof r.slot === 'number' && ok.includes(r.slot) && r.unitIds.length && !r.unitIds.includes(id))
+    if (taken.length && !window.confirm(`${taken.map((r) => `${r.label} has "${named(r.unitIds[0])}"`).join(', ')}. Put "${named(id)}" there instead? (The other drawing is kept.)`)) return
+    if (change((p) => ok.reduce((q, k) => setSlot(q, k, q.units[id] ?? null), p))) setAlso((a) => ({ ...a, [id]: '' }))
   }
+  /** a copy of drawing `id` as a new floor plan (for the floor that differs a little), with its picture; on no floor yet */
+  const copyDrawing = (id: Id) => {
+    const src = id === drawing ? unit : project.units[id]
+    if (!src) return
+    const u: Unit = { ...src, id: newId(), name: `${nameOf(src)} copy` }
+    void getPicture(id)
+      .then((pic) => pic && putPicture(u.id, pic))
+      .catch(() => {})
+    if (change((p) => ({ ...p, units: { ...p.units, [u.id]: u } }))) onToast(`${u.name}: type its floors under Floor plans, or Use drawing… on a floor`)
+  }
+  /** where drawing `id` stands now, bottom up: "B1, G, 2, 4, 6, Roof" */
+  const floorsOf = (id: Id) =>
+    slotsOf(project)
+      .filter((r) => r.unitIds.includes(id))
+      .map((r) => (r.slot === 'R' ? 'Roof' : r.slot === 0 ? 'G' : r.slot < 0 ? `B${-r.slot}` : String(r.slot)))
+      .reverse()
+      .join(', ')
   const deleteDrawing = () => {
     if (!drawing || !window.confirm(`Delete the drawing "${nameOf(unit)}"? It leaves every floor it is on. This cannot be undone.`)) return
     void deletePicture(drawing).catch(() => {})
@@ -159,7 +177,6 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }
   const inProject = !!drawing && !!project.units[drawing]
-  const onFloors = slotsOf(project).flatMap((r) => (typeof r.slot === 'number' && r.slot > 0 && !!drawing && r.unitIds.includes(drawing) ? [r.slot] : [])).reverse()
 
   return (
     <aside className="floors" onClick={blur}>
@@ -191,22 +208,6 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
           </label>
-          <label>
-            <span>Also on floors{onFloors.length ? ` (now on ${onFloors.join(', ')})` : ''}</span>
-            <div className="pair">
-              <input
-                value={also}
-                placeholder="2, 4, 6-8"
-                onChange={(e) => setAlso(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' || e.repeat) return // (a key held under the question must not ask twice)
-                  applyAlso()
-                  e.currentTarget.blur()
-                }}
-              />
-              <button onClick={applyAlso}>Apply</button>
-            </div>
-          </label>
           <button className="link" onClick={deleteDrawing}>
             Delete this drawing
           </button>
@@ -217,6 +218,36 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
             ? "The plan open now is not one of this project's drawings yet: it is kept as one when you open a floor (then Use drawing… puts it on floors)."
             : 'Pick a floor: Draw makes a new drawing for it.'}
         </p>
+      )}
+      {drawings.length > 0 && (
+        <section className="types">
+          <h4 title="Each drawing is a floor plan (a type): draw it once, put it on any floors">Floor plans — draw once, use on many floors</h4>
+          {drawings.map((d) => (
+            <div key={d} className={`type${d === drawing ? ' here' : ''}`}>
+              <div className="name">
+                <strong title={named(d)}>{named(d)}</strong>
+                <span className="muted">{floorsOf(d) ? `on ${floorsOf(d)}` : 'on no floor'}</span>
+              </div>
+              <div className="pair">
+                <input
+                  value={also[d] ?? ''}
+                  placeholder="on floors: 2, 4, 6-8"
+                  title="The floors this plan goes on (any pattern, like 1, 3, 5); Enter or Apply"
+                  onChange={(e) => setAlso((a) => ({ ...a, [d]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || e.repeat) return // (a key held under the question must not ask twice)
+                    applyAlso(d)
+                    e.currentTarget.blur()
+                  }}
+                />
+                <button onClick={() => applyAlso(d)}>Apply</button>
+                <button className="link" title="A copy of this plan as a new one, for a floor that differs a little" onClick={() => copyDrawing(d)}>
+                  Copy
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
       )}
       <ul className="slots">
         {slotsOf(project).map((r) => {
