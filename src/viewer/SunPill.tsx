@@ -94,7 +94,7 @@ export default function SunPill(p: Props) {
         <button
           className={`btn${p.lights ? ' active' : ''}`}
           onClick={p.onLights}
-          title={`The flat's lights are ${p.lights ? 'on' : 'off'}${p.lightsAuto ? ' (automatic: on after sunset)' : ' (your choice; click again for automatic)'}`}
+          title={`The flat's lights are ${p.lights ? 'on' : 'off'}${p.lightsAuto ? ' (automatic: on while the sun is down)' : ' (your choice; click again for automatic)'}`}
         >
           Lights
         </button>

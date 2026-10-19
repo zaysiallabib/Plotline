@@ -42,6 +42,13 @@ const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
 
+/** About 45 % of the other flats' windows are lit at night: a fixed hash of the flat, floor and opening. */
+export function litWindow(key: string): boolean {
+  let h = 2166136261
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
+  return (h >>> 0) % 100 < 45
+}
+
 export interface FlatRef {
   stem: string
   floor: number
@@ -132,7 +139,9 @@ export class Building extends THREE.Group {
   private readonly mark: THREE.Mesh
   /** dark, sky-reflecting panes: the empty shells behind them stay unseen (the unit's own GLASS is 90 % clear) */
   private readonly glass = new THREE.MeshStandardMaterial({ color: '#27303a', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap })
-  private readonly own: THREE.Material[] = [this.glass]
+  /** the panes of the windows lit at night (litWindow: about 45 %, the same ones every time), warm behind the curtains */
+  private readonly lit = new THREE.MeshStandardMaterial({ color: '#27303a', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap, emissive: '#ffc27e', emissiveIntensity: 0 })
+  private readonly own: THREE.Material[] = [this.glass, this.lit]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
 
@@ -151,8 +160,8 @@ export class Building extends THREE.Group {
     this.minCameraY = Math.max(...unit.walls.map((w) => w.heightM)) + 0.3
     const { FLATS, FLOORS, CORE, GROUND, ROOF, FLOOR_M } = t
     const PLATE_M = FLOOR_M - WALL_M
-    const lists = new Map<MaterialRef | 'glass', THREE.BufferGeometry[]>()
-    const put = (m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
+    const lists = new Map<MaterialRef | 'glass' | 'lit', THREE.BufferGeometry[]>()
+    const put = (m: MaterialRef | 'glass' | 'lit', ...g: THREE.BufferGeometry[]) => {
       if (g.length) lists.set(m, [...(lists.get(m) ?? []), ...g]) // an empty list (no tanks, no bays) must not reach merge
     }
     const top = topFloor(t) // a Studio project's traced rooftop is listed one floor above it
@@ -214,7 +223,7 @@ export class Building extends THREE.Group {
         for (const w of u.walls) {
           for (const o of w.openings) {
             if (o.kind === 'window' || o.kind === 'slider') {
-              put('glass', at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01)))
+              put(litWindow(`${s}|${k}|${o.id}`) ? 'lit' : 'glass', at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01)))
             }
           }
         }
@@ -254,10 +263,11 @@ export class Building extends THREE.Group {
     put(TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2)))
 
     for (const [m, geos] of lists) {
-      const mesh = new THREE.Mesh(merge(geos), m === 'glass' ? this.glass : materialFor(m))
-      mesh.castShadow = m !== 'glass' && m !== GREEN && m !== PAINT && m !== ASPHALT
-      mesh.receiveShadow = m !== 'glass'
-      if (m === 'glass') mesh.raycast = () => {}
+      const pane = m === 'glass' || m === 'lit'
+      const mesh = new THREE.Mesh(merge(geos), m === 'glass' ? this.glass : m === 'lit' ? this.lit : materialFor(m))
+      mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT
+      mesh.receiveShadow = !pane
+      if (pane) mesh.raycast = () => {}
       if (m === PAVING) mesh.userData.level = 0 // the plinth: his traced ground floor stands on it when cut there
       this.add(mesh)
     }
@@ -461,8 +471,9 @@ export class Building extends THREE.Group {
    * After Look.setHour: the sun's shadow frustum around the whole tower (Look's covers the flat only), reaching the
    * street behind it; the panes dim with the sky at dusk like GLASS.
    */
-  setSun(sun: THREE.DirectionalLight): void {
-    this.glass.envMapIntensity = 0.12 * GLASS.envMapIntensity
+  setSun(sun: THREE.DirectionalLight, night = 0): void {
+    this.glass.envMapIntensity = this.lit.envMapIntensity = 0.12 * GLASS.envMapIntensity
+    this.lit.emissiveIntensity = 0.18 * night // the neighbours' lights come on as the sky goes
     const cam = sun.shadow.camera
     cam.position.copy(sun.position)
     cam.lookAt(sun.target.position)

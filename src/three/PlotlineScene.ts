@@ -30,7 +30,7 @@ import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, lightsOn, needsFrame, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
 import { SEASON_TINT, WindFlow } from './wind'
 import { siteCut } from './context'
 
@@ -470,7 +470,7 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
-    if (this.mode === 'building') this.building?.setSun(this.sun)
+    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -510,7 +510,8 @@ export class PlotlineScene {
     // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
     const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
     if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
-    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's
+    this.look.outside = mode === 'building'
+    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's; the lamps' bounce
     if (mode !== 'walk') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
@@ -576,9 +577,10 @@ export class PlotlineScene {
     this.failCb = cb
   }
 
-  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches). */
+  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches), no lamp's either. */
   shadowsOff(): void {
     this.sun.castShadow = false
+    this.look.lampShadowsOff()
     this.wake()
   }
 

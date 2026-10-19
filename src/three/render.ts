@@ -194,8 +194,10 @@ export class Look {
   private lights: { light: THREE.SpotLight; base: number; id: string; room: Pt[] }[] = []
   /** the flat's lamps on (lightsOn) and the sky's light, as last set */
   private on = false
+  /** the Building view: the camera is outside the tower, whose shells take no bounce from this flat's lamps */
+  outside = false
   private alt = 45
-  private readonly casters: number
+  private casters: number
   /** where the shadow-casting lamps were last picked from */
   private readonly pickedAt = new THREE.Vector3(Infinity, 0, 0)
   /** the dome's twilight uniforms (setAltitude) */
@@ -505,7 +507,7 @@ export class Look {
     this.alt = altDeg
     const k = skyLight(altDeg)
     this.renderer.toneMappingExposure = k.exposure
-    const lamp = this.on ? 1 : 0
+    const lamp = this.on && !this.outside ? 1 : 0
     // the hemisphere = the sky's share + the lamps' bounce (warm, mostly up from the lit floor)
     this.hemi.intensity = 1
     this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * k.golden).multiplyScalar(HEMI * k.fill).add(this.c.copy(WARM).multiplyScalar(BOUNCE_DOWN * lamp))
@@ -526,7 +528,9 @@ export class Look {
     const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position)
     this.dome.sunDir.value.set(toSun.x, 0, toSun.z).normalize()
     setHaze(tint)
-    haze.value.lerp(this.dome.horizon.value, k.night)
+    // the haze (and the dome under the horizon, which a dollhouse looks down on) at dusk / night: between the horizon and
+    // the sky overhead, darker — the horizon's own pink alone filled the whole background at 17:45
+    haze.value.lerp(this.c.copy(this.dome.horizon.value).lerp(this.dome.zenith.value, 0.7).multiplyScalar(0.7), k.night)
     const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
     // the panes mirror this sky — at night, the lamps on, the lit room instead (faintly: the interior light probe, warm)
     const room = this.on && k.night > 0.5 && this.paneEnvs.room
@@ -549,6 +553,12 @@ export class Look {
     this.renderer.shadowMap.needsUpdate ||= lit
     this.pickedAt.set(Infinity, 0, 0)
     this.setAltitude(this.alt)
+  }
+
+  /** Lite and still slow (PlotlineScene.shadowsOff): no lamp casts a shadow, now or after the next setUnit. */
+  lampShadowsOff(): void {
+    this.casters = 0
+    for (const { light } of this.lights) light.castShadow = false
   }
 
   /** A ceiling light's materials (a mounted piece): those that glow (emissive) follow the lamps. */
@@ -626,7 +636,7 @@ export class Look {
    * a lamp that starts casting has its map drawn on this frame, the others keep theirs. Lamps off: nothing to draw.
    */
   private pickLampShadows(): void {
-    if (!this.on || this.lights.length <= this.casters || this.v.distanceTo(this.pickedAt) < 0.5) return
+    if (!this.on || !this.casters || this.lights.length <= this.casters || this.v.distanceTo(this.pickedAt) < 0.5) return
     this.pickedAt.copy(this.v)
     const here = (poly: Pt[]) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, poly)
     const pick = new Set(pickCasters(this.lights.map((l) => ({ x: l.light.position.x, z: l.light.position.z, here: here(l.room) })), { x: this.v.x, z: this.v.z }, this.casters))
