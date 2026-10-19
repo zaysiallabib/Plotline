@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1665,5 +1665,84 @@ describe('Studio tools (session 27: column corners, face drag, arc)', () => {
     // a tight arc: fewer, longer pieces (none under 0.3 m); a bulge under 1 cm: one straight wall
     expect(arcPoints({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0.5 })).toHaveLength(6)
     expect(arcPoints({ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 0.005 })).toHaveLength(2)
+  })
+})
+
+describe('multi-select (session 27: Shift+click, box, one change for many)', () => {
+  /** the 4 × 3 box with a window on the top wall (x 0.39–1.61), a door on the right wall, a column near the top-left */
+  const setup = () => {
+    let s = traceRect()
+    const [top, right] = s.unit.walls
+    s = run(s, { type: 'add-opening', wallId: top.id, t: 0.25, kind: 'window' }, { type: 'add-opening', wallId: right.id, t: 0.5, kind: 'door' }, { type: 'add-pillar', x: 0.4, y: 0.4, wM: 0.3, hM: 0.3 })
+    const win = s.unit.walls[0].openings[0]
+    const door = s.unit.walls[1].openings[0]
+    return { s: reducer(s, { type: 'select', ids: [] }), win, door, pillar: s.unit.pillars![0] }
+  }
+
+  it('Shift+click adds an item, and takes a picked one out again', () => {
+    const { s: s0 } = setup()
+    const [a, b] = s0.unit.walls.map((w) => w.id)
+    let s = reducer(s0, { type: 'select', ids: [a] })
+    s = reducer(s, { type: 'select', ids: [b], toggle: true })
+    expect(s.selection).toEqual([a, b])
+    s = reducer(s, { type: 'select', ids: [a], toggle: true })
+    expect(s.selection).toEqual([b])
+    expect(s.history.past).toHaveLength(s0.history.past.length) // picking is never an undo step
+  })
+
+  it('a box picks every wall, opening and column it touches — not the ones it misses', () => {
+    const { s, win, door, pillar } = setup()
+    const [top, right, , left] = s.unit.walls
+    const ids = idsInBox(s.unit, { x: 0.5, y: 0.5 }, { x: -0.2, y: -0.2 }) // dragged up-left: the same box
+    expect(new Set(ids)).toEqual(new Set([top.id, win.id, left.id, pillar.id]))
+    expect(ids).not.toContain(right.id)
+    expect(ids).not.toContain(door.id)
+    expect(selectionText(s.unit, ids)).toBe('2 walls, 1 window, 1 column selected')
+    // a box inside a room, touching nothing
+    expect(idsInBox(s.unit, { x: 1.5, y: 1 }, { x: 2.5, y: 2 })).toEqual([])
+  })
+
+  it('a thickness typed for three walls is one action, and one Undo gives all three back', () => {
+    const { s: s0 } = setup()
+    const ids = s0.unit.walls.slice(0, 3).map((w) => w.id)
+    const s = reducer(s0, { type: 'update-wall', id: ids, patch: { thicknessM: EXTERIOR_M } })
+    expect(s.unit.walls.map((w) => w.thicknessM)).toEqual([EXTERIOR_M, EXTERIOR_M, EXTERIOR_M, PARTITION_M])
+    expect(s.history.past).toHaveLength(s0.history.past.length + 1)
+    expect(reducer(s, { type: 'undo' }).unit.walls.map((w) => w.thicknessM)).toEqual([PARTITION_M, PARTITION_M, PARTITION_M, PARTITION_M])
+  })
+
+  it('a mixed field shows "mixed" (NaN) until a value is typed for all of them', () => {
+    let { s, win, door } = setup()
+    const sills = () => [win.id, door.id].map((id) => s.unit.walls.flatMap((w) => w.openings).find((o) => o.id === id)!.sillM)
+    expect(shared(sills())).toBeNaN() // a window's 3' sill, a door's 0
+    s = reducer(s, { type: 'update-opening', id: [win.id, door.id], patch: { sillM: 0.5 } })
+    expect(shared(sills())).toBe(0.5)
+    expect(shared([PARTITION_M, PARTITION_M])).toBe(PARTITION_M)
+    // one that does not fit stays as it was; the others change, and a toast says how many did not
+    s = reducer(s, { type: 'update-opening', id: [win.id, door.id], patch: { widthM: 3.5 } }) // the right wall is 3 m long
+    const w = (id: string) => s.unit.walls.flatMap((x) => x.openings).find((o) => o.id === id)!.widthM
+    expect([w(win.id), w(door.id)]).toEqual([3.5, door.widthM])
+    expect(s.toast?.text).toMatch(/^1 not changed: /)
+  })
+
+  it('Delete removes the whole selection in one step; Undo brings it all back', () => {
+    const { s: s0, door, pillar } = setup()
+    const [top, right] = s0.unit.walls
+    let s = run(s0, { type: 'select', ids: [top.id, pillar.id] }, { type: 'select', ids: [door.id], add: true }, { type: 'delete' })
+    expect(s.unit.walls.some((w) => w.id === top.id)).toBe(false)
+    expect(s.unit.pillars ?? []).toHaveLength(0)
+    expect(s.unit.walls.find((w) => w.id === right.id)!.openings).toHaveLength(0)
+    expect(s.history.past).toHaveLength(s0.history.past.length + 1)
+    s = reducer(s, { type: 'undo' })
+    expect(s.unit).toBe(s0.unit)
+  })
+
+  it('arrows nudge walls and their openings together (an opening on a moved wall stays put on it)', () => {
+    const { s: s0, win } = setup()
+    const top = s0.unit.walls[0]
+    const s = run(s0, { type: 'select', ids: [top.id, win.id] }, { type: 'nudge', dx: 0, dy: -0.0254 })
+    const t = s.unit.walls.find((w) => w.id === top.id) ?? s.unit.walls[0]
+    expect(s.unit.vertices.find((v) => v.id === t.a)!.y).toBeCloseTo(-0.0254)
+    expect(t.openings.find((o) => o.id === win.id)!.offsetM).toBeCloseTo(win.offsetM)
   })
 })
