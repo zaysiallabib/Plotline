@@ -12,7 +12,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, Openin
 import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, library, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
@@ -892,8 +892,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       return showToast(OPENINGS_WHY[why], 7000)
     }
     setPlanUnit(after)
-    // curtains follow their window (moved, resized) or go with it: the layout hung again on the new plan, no undo step of its own
-    steps.current = { ...steps.current, pieces: layoutFor({ ...after, furniture: steps.current.pieces }, core.deriveRooms(after)) }
+    // curtains follow their window (moved, resized) or go with it, a room still on its presets is furnished for its new
+    // walls (a planter bed fills the moved strip): the layout laid again on the new plan, no undo step of its own
+    steps.current = { ...steps.current, pieces: refurnish(unit, after, steps.current.pieces) }
     scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
     scene?.setLayout(steps.current.pieces)
     showOp()

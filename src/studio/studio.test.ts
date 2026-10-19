@@ -14,7 +14,7 @@ import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { fitSheet, frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { furnish } from '../furnish/presets'
-import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, resizeAxes } from './furniture'
+import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, refurnish, resizeAxes } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -1736,5 +1736,26 @@ describe('Low walls and passages edited from the 3D view (founder 2026-10-19): t
     const gone = reducer(s, { type: 'delete', ids: [p.id] })
     expect(gone.unit.walls.find((w) => w.id === top.id)!.openings).toHaveLength(0)
     expect(o(reducer(gone, { type: 'undo' })).id).toBe(p.id)
+  })
+})
+
+describe('refurnish: a room still on its presets follows its walls after a plan edit (the 3D view’s low wall / opening edits)', () => {
+  it('Type A’s planter edge moved 0.3 m into the planter: the planter bed is laid again for the narrower strip; an arranged room keeps its pieces', () => {
+    const before = normalizeUnit(typeA as unknown as Unit)
+    const laid = layoutFor(before, deriveRooms(before))
+    const edge = before.walls.find((w) => w.id === 'w_plant_s')!
+    const after = run({ ...initialState(), unit: before }, { type: 'drag', vertices: [edge.a, edge.b].map((id) => ({ ...before.vertices.find((v) => v.id === id)!, y: 7.379 - 0.3 })) }).unit
+    const planter = deriveRooms(before).find((r) => r.name === 'Planter')!.id
+    const living = deriveRooms(before).find((r) => r.name === 'Living room')!.id
+    const bed = (ps: FurniturePlacement[]) => ps.find((p) => p.roomId === planter && p.assetId.startsWith('planter_bed'))!.assetId
+    // the Living room arranged by hand (one piece moved 1 cm): it is not its presets any more
+    const arranged = laid.map((p, i) => (i === laid.findIndex((q) => q.roomId === living) ? { ...p, x: p.x + 0.01 } : p))
+    const next = refurnish(before, after, arranged)
+    expect(bed(next)).not.toBe(bed(laid))
+    expect(bed(next)).toBe(bed(layoutFor({ ...after, furniture: [] }, deriveRooms(after))))
+    const own = (ps: FurniturePlacement[]) => ps.filter((p) => p.roomId === living && !p.assetId.startsWith('curtain')) // its curtains follow their window: the T of the edge slid along its wall
+    expect(own(next)).toEqual(own(arranged))
+    // nothing changed in the plan: nothing changes in the layout
+    expect(refurnish(before, before, laid)).toEqual(laid)
   })
 })

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Site, Slope } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, type Move } from './furniture'
 import {
   PILLAR_M,
   WALL_TYPES,
@@ -617,7 +617,8 @@ export default function StudioApp() {
         const u = isUnit(d) ? d : (d as Partial<Draft>).unit
         const now = stateRef.current.unit
         if (!isUnit(u) || u.id !== now.id || planOf(u) === planOf(now)) return
-        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: withLayout(u) } as Draft }) // a bare unit restores too (init does the same)
+        const laid = withLayout(u) // a room still on its presets is furnished for its new walls, as the 3D view did (furniture.refurnish)
+        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: { ...laid, furniture: refurnish(now, laid, laid.furniture) } } as Draft }) // a bare unit restores too (init does the same)
         setNote({ text: 'Changed in the 3D view (doors, windows, passages, low walls) — the plan shows it now' })
       } catch {
         /* not a draft */
