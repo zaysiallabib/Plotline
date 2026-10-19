@@ -20,7 +20,7 @@ import { deriveRooms, newId, pointInPolygon, printedSizeCheck, roomInnerPolygon,
 import type { Opening, Pt, Room, Vertex, Wall } from '../core'
 import { darkMaxOf } from './rooms'
 import { glazing } from './walls'
-import type { Gray } from './types'
+import type { Gray, Px } from './types'
 
 export interface CloseLabel {
   at: Pt
@@ -47,6 +47,8 @@ export interface Piece {
   heightM: number
   /** its end may meet a wall inside a window: the window is split there (a veranda's railing meeting the window behind it) */
   cutsWindow?: boolean
+  /** a zone line laid on a dashed line the sheet draws (open plan, s27) */
+  on?: 'dashes'
 }
 export interface Closed {
   room: string
@@ -131,12 +133,65 @@ export const CLOSE = {
   colTol: 20,
   colM: 0.5,
   colDelta: 40,
+  /** a dashed line (dashedAlong): its dashes this long (m), this many, this much darker than the paper, over this share of the line */
+  dashMinM: 0.03,
+  dashMaxM: 1.2,
+  dashN: 4,
+  dashDelta: 30,
+  dashSpread: 0.6,
+  /** an open-plan space this long is looked at whole (m from the name) */
+  openReachM: 16,
+  /** a dashed side is looked for across a name's ray this far each side of it (m) */
+  dashProbeM: 0.75,
 }
 
 const d2 = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y)
 const crs = (u: Pt, v: Pt) => u.x * v.y - u.y * v.x
 const sub = (p: Pt, q: Pt): Pt => ({ x: p.x - q.x, y: p.y - q.y })
 const EPS = 1e-4
+
+/**
+ * s27 open plan: a dashed line drawn along a–b (sheet px; a light or coloured one too). At the best of a few offsets
+ * across (± 3 px) the grey along the line breaks into dashes darker than its paper and gaps: at least `dashN` dashes of
+ * one length (within 1.7× of their median, 0.03–1.2 m), each longer than it is wide (a line crossed — a tile joint, a
+ * stair tread, hatch — is wider than long along a–b), spaced evenly, spread over most of a–b. Never a wall (raster.ts
+ * dashMask); between two printed open-plan names, where one ends.
+ */
+export function dashedAlong(grayAt: (x: number, y: number) => number, a: Px, b: Px, k: number): boolean {
+  const L = Math.hypot(b.x - a.x, b.y - a.y)
+  if (L < 4) return false
+  const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L, n = Math.floor(L)
+  const lo = Math.max(2, CLOSE.dashMinM * k), hi = CLOSE.dashMaxM * k
+  for (let off = -3; off <= 3; off++) {
+    const at = (i: number, o = off) => grayAt(a.x + ux * i - uy * o, a.y + uy * i + ux * o)
+    const v = Array.from({ length: n + 1 }, (_, i) => at(i))
+    const paper = [...v].sort((p, q) => p - q)[Math.floor(0.9 * n)], dark = (g: number) => g <= paper - CLOSE.dashDelta
+    const runs: [number, number][] = []
+    for (let i = 0; i <= n; ) {
+      if (!dark(v[i])) { i++; continue }
+      let e = i
+      while (e <= n && dark(v[e])) e++
+      // (a run touching an end is the wall the line ends on)
+      if (i > 0 && e <= n && e - i >= lo && e - i <= hi) runs.push([i, e])
+      i = e
+    }
+    if (runs.length < CLOSE.dashN) continue
+    const med = runs.map(([s, e]) => e - s).sort((p, q) => p - q)[runs.length >> 1]
+    // (each dash longer than it is wide across a–b)
+    const wide = (s: number, e: number) => {
+      const m = (s + e) >> 1
+      let w = 1
+      for (const sg of [-1, 1]) for (let o = off + sg; Math.abs(o - off) < e - s && dark(at(m, o)); o += sg) w++
+      return w
+    }
+    const D = runs.filter(([s, e]) => e - s >= med / 1.7 && e - s <= med * 1.7 && wide(s, e) * 2 <= e - s)
+    if (D.length < CLOSE.dashN) continue
+    const steps = D.slice(1).map(([s], i) => s - D[i][0]), p = [...steps].sort((x, y) => x - y)[steps.length >> 1]
+    const even = steps.filter((x) => x >= 0.6 * p && x <= 1.6 * p).length >= 0.7 * steps.length
+    if (even && D[D.length - 1][1] - D[0][0] >= CLOSE.dashSpread * n) return true
+  }
+  return false
+}
 
 /** the point's distance to segment a–b and where along it (m from a) */
 function along(p: Pt, a: Pt, b: Pt): { d: number; s: number; L: number } {
@@ -444,8 +499,8 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     return Math.max(CLOSE.radiusM, sz ? Math.max(sz.aM, sz.bM) + 2 : 0)
   }
 
-  const tryLabel = (L: CloseLabel): boolean => {
-    const R = reachOf(L)
+  const tryLabel = (L: CloseLabel, wide = false): boolean => {
+    const R = wide ? Math.max(reachOf(L), CLOSE.openReachM) : reachOf(L)
     // (everything below on the walls near the name: the whole draft only takes the pieces kept)
     const loc = local(vs, ws, L.at, R + CLOSE.boxM)
     const lv = loc.vertices, lw = loc.walls
@@ -804,6 +859,113 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       if (x && !harmed(x)) S0.push(p)
     }
 
+    /**
+     * s27 open plan: this name shares its space with other printed open-plan names (living + dining, living + foyer) —
+     * a zone line only on a line the sheet draws between them: a dashed line across the space from wall to wall, or a box
+     * of dashes round this name against the walls (a foyer). Kept when this name's part holds it alone, every name left
+     * alone in its part matches its print (none read: a size its kind can have) and no room closed round one name
+     * changes. Else the space stays joined (its row asks). Wall stubs and a change of floor shade were tried as the line
+     * too (s27 open plan, measured): nothing gained on 38 example sheets — left out.
+     */
+    const splitOpen = (): { ps: Piece[]; size: Closed['size'] } | null => {
+      if (!CLOSE.openPlan.includes(L.kind ?? '')) return null
+      const px = (p: Pt): Px => ({ x: p.x * k, y: p.y * k })
+      const sets: Piece[][] = []
+      for (const m of shared.filter((x) => CLOSE.openPlan.includes(x.kind ?? '') && x.name.toUpperCase() !== L.name.toUpperCase())) {
+        const rel = sub(m.at, L.at), dist = Math.hypot(rel.x, rel.y)
+        const ax = axes.slice(0, 2).sort((p, q) => Math.abs(q.x * rel.x + q.y * rel.y) - Math.abs(p.x * rel.x + p.y * rel.y))[0]
+        const toward = ax.x * rel.x + ax.y * rel.y > 0 ? ax : { x: -ax.x, y: -ax.y }
+        const at = (t: number) => across({ x: L.at.x + toward.x * t, y: L.at.y + toward.y * t }, toward)
+        for (const t of runs(0.3, dist - 0.3, (t) => { const pc = at(t); return !!pc && dashedAlong(grayAt, px(pc.a), px(pc.b), k) })) {
+          const pc = at(t)
+          if (pc) sets.push([{ ...pc, on: 'dashes' }])
+        }
+      }
+      // …and a box drawn round this name in dashes against the walls (a foyer): each side the first dashed line across
+      // its ray from the name, else the wall it meets; every dashed side dashed its whole length, a wall side's corner on it
+      const dashT = (d: Pt, end: number) => {
+        const n = { x: -d.y, y: d.x }, h = CLOSE.dashProbeM
+        return runs(0.3, end, (t) => {
+          const c = { x: L.at.x + d.x * t, y: L.at.y + d.y * t }
+          return dashedAlong(grayAt, px({ x: c.x - n.x * h, y: c.y - n.y * h }), px({ x: c.x + n.x * h, y: c.y + n.y * h }), k)
+        })[0]
+      }
+      const sides = axes.map((d) => {
+        const w = rayHit(V, mw, L.at, d, CLOSE.boxReachM, '')
+        const t = dashT(d, w ? w.t - 0.15 : CLOSE.boxReachM)
+        return t !== undefined ? { t, dash: true } : w && !w.via ? { t: w.t, dash: false } : null
+      })
+      if (sides.every(Boolean) && sides.some((x) => x!.dash)) {
+        const [u1, v1, u0, v0] = sides.map((x, i) => (i < 2 ? x!.t : -x!.t))
+        const P = (u: number, v: number): Pt => ({ x: L.at.x + axes[0].x * u + axes[1].x * v, y: L.at.y + axes[0].y * u + axes[1].y * v })
+        // (side i runs between sides i - 1 and i + 1; toward a wall side it ends on that wall)
+        const ends: [Pt, Pt][] = [[P(u1, v0), P(u1, v1)], [P(u0, v1), P(u1, v1)], [P(u0, v0), P(u0, v1)], [P(u0, v0), P(u1, v0)]]
+        const box: Piece[] = []
+        for (let i = 0; i < 4; i++) {
+          if (!sides[i]!.dash) continue
+          let [a, b] = ends[i]
+          const along = { x: (b.x - a.x) / d2(a, b), y: (b.y - a.y) / d2(a, b) }, mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+          const snap = (q: Pt, dir: Pt, j: number) => {
+            if (sides[j]!.dash) return q
+            const w = rayHit(V, mw, mid, dir, d2(mid, q) + 0.3, '')
+            return w && !w.via ? w.at : null
+          }
+          const a2 = snap(a, { x: -along.x, y: -along.y }, i === 0 || i === 2 ? 3 : 2), b2 = snap(b, along, i === 0 || i === 2 ? 1 : 0)
+          if (!a2 || !b2) { box.length = 0; break }
+          ;[a, b] = [a2, b2]
+          const L0 = d2(a, b), cut = Math.min(0.1, L0 / 4)
+          if (!dashedAlong(grayAt, px({ x: a.x + along.x * cut, y: a.y + along.y * cut }), px({ x: b.x - along.x * cut, y: b.y - along.y * cut }), k)) { box.length = 0; break }
+          box.push({ ...piece(a, b, 'zone', 0), on: 'dashes' })
+        }
+        if (box.length) sets.push(box)
+      }
+      // (every line is drawn on the sheet: a printed size where one was read, else the kind's size — as a veranda's drawn box)
+      const check = (ps: Piece[]): { area: number; err: number; size: Closed['size'] } | null => {
+        const x = apply(ps)
+        if (!x || harmed(x)) return null
+        const F = faceAt(x, L.at)
+        if (!F || F.r.areaSqm < 0.8) return null
+        let err = 0, size: Closed['size'] = 'none'
+        // (a lobby / lift name in the space is no room to size; this name's part must not hold it)
+        for (const n of [L, ...shared.filter((m) => !m.only)]) {
+          const G = n === L ? F : faceAt(x, n.at)
+          if (!G) return null
+          if (here.some((m) => m !== n && inFace(G, m.at))) {
+            if (n === L) return null
+            continue // (still shares with a third name: checked when that one is split off)
+          }
+          const inner = roomInnerPolygon(G.r, x.g)
+          const pin = n.dims ?? (n.guess && !printedSizeCheck(inner, o.th0, n.guess.aM, n.guess.bM, o.rejectM).off ? n.guess : undefined)
+          if (!pin) {
+            if (G.r.areaSqm > (CLOSE.capSqm[n.kind ?? ''] ?? CLOSE.capOtherSqm)) return null
+            continue
+          }
+          const c = printedSizeCheck(inner, o.th0, pin.aM, pin.bM, o.rejectM)
+          if (c.off) return null
+          err += Math.abs(c.drawn.w - c.printed[0]) + Math.abs(c.drawn.h - c.printed[1])
+          if (n === L) size = pin !== n.dims ? 'guess' : printedSizeCheck(inner, o.th0, pin.aM, pin.bM, o.tolM).off ? 'near' : 'match'
+        }
+        return { area: F.r.areaSqm, err, size }
+      }
+      let got: { ps: Piece[]; r: NonNullable<ReturnType<typeof check>> } | null = null
+      for (const g of sets) {
+        const r = check([...S0, ...g])
+        if (r && (!got || r.err < got.r.err - 0.02)) got = { ps: [...S0, ...g], r }
+      }
+      if (!got) return null
+      // (a sure piece the split does not need is left out)
+      let ps = got.ps
+      for (const p of S0) {
+        const r = check(ps.filter((q) => q !== p))
+        if (r && Math.abs(r.area - got.r.area) <= 0.02 * got.r.area) ps = ps.filter((q) => q !== p)
+      }
+      return { ps, size: got.r.size }
+    }
+    // (on the walls a long open space reaches: only the split on what the sheet draws, never a guessed side)
+    if (wide) {
+      const sp = shared.length ? splitOpen() : null
+      return !!sp && commit(L, sp.ps, sp.size)
+    }
     // ── the sure pieces alone, else with one side line: the tightest room wins
     let best: { ps: Piece[]; r: NonNullable<ReturnType<typeof evalSet>>; shared?: Piece } | null = null
     const r0 = evalSet(S0)
@@ -861,6 +1023,11 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
         const r = evalSet([...S0, s])
         if (r && (!best || r.err < best.r.err - 0.02)) best = { ps: [...S0, s], r }
       }
+    // (s27 open plan: two or three printed open-plan names in one space — split on a line the sheet draws between them)
+    if (!best && shared.length) {
+      const sp = splitOpen()
+      if (sp) return commit(L, sp.ps, sp.size)
+    }
     if (!best) return false
     // a sure piece the room does not need is left out
     let ps = best.ps
@@ -873,7 +1040,10 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     const r = evalSet(ps, false, false, best.shared)
     // (no printed size to check them: a few guesses at most — more is a drawing the tracer has not read)
     if (!r || (r.size === 'none' && ps.filter((p) => d2(p.a, p.b) >= CLOSE.wallM).length > CLOSE.maxGuesses)) return false
-    // (into the whole draft — a piece that runs past the walls looked at and meets one there is no piece)
+    return commit(L, ps, r.size)
+  }
+  /** the pieces into the whole draft — a piece that runs past the walls looked at and meets one there is no piece */
+  const commit = (L: CloseLabel, ps: Piece[], size: Closed['size']): boolean => {
     let gv = vs, gw = ws
     for (const p of ps) {
       const x = insertPiece(gv, gw, p, make)
@@ -881,8 +1051,18 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
       ;(gv = x.vertices), (gw = x.walls)
     }
     ;(vs = gv), (ws = gw)
-    closed.push({ room: L.name, at: L.at, pieces: ps, size: r.size })
+    closed.push({ room: L.name, at: L.at, pieces: ps, size })
     return true
+  }
+  /**
+   * s27 open plan: an open-plan name in no closed room of the walls near it — whose space, longer than they reach, holds
+   * another printed open-plan name in the whole draft (a living and a dining 12 m end to end): tried again on walls that reach
+   */
+  const openShared = (L: CloseLabel): boolean => {
+    if (!CLOSE.openPlan.includes(L.kind ?? '')) return false
+    const R = CLOSE.openReachM + CLOSE.boxM, loc = local(vs, ws, L.at, R)
+    const f = faceAtOf(roomsOf(loc.vertices, loc.walls), L.at, o.maxSqm)
+    return !!f && names.some((m) => m !== L && !m.only && CLOSE.openPlan.includes(m.kind ?? '') && Math.abs(m.at.x - L.at.x) <= R && Math.abs(m.at.y - L.at.y) <= R && inFace(f, m.at))
   }
   // small rooms first (a veranda before the bedroom it opens off); twice — a room can close once its neighbour has
   const order = names.filter((l) => !l.only).sort((p, q) => (p.dims ? p.dims.aM * p.dims.bM : (CLOSE.capSqm[p.kind ?? ''] ?? CLOSE.capOtherSqm) / 2) - (q.dims ? q.dims.aM * q.dims.bM : (CLOSE.capSqm[q.kind ?? ''] ?? CLOSE.capOtherSqm) / 2))
@@ -897,7 +1077,7 @@ export function closeRooms<W extends Wall>(vertices: Vertex[], walls: W[], label
     for (const L of order) {
       if (tried.has(L) && !closed.slice(tried.get(L)).some((c) => near(L, c))) continue
       tried.set(L, closed.length)
-      if (tryLabel(L)) any = true
+      if (tryLabel(L) || (openShared(L) && tryLabel(L, true))) any = true
     }
     if (!any) break
   }

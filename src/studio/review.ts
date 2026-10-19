@@ -490,7 +490,7 @@ export function roomRow(p: PrintedRoom, s: RoomState, id = newId()): ReviewItem 
   const of = p.flat ? `${p.flat}: ` : ''
   if (s.s === 'unnamed')
     return { ...base, kind: 'unlabelled', entityId: s.room.id, message: s.d < 0.05 ? `${of}${s.room.name} — the printed name ${p.name} is in it` : `${of}${s.room.name} — printed name ${p.name} is ${s.d.toFixed(1)} m away` }
-  if (s.s === 'merged') return { ...base, kind: 'unclosed', message: `${of}${p.name} shares ${s.into.name}'s room — no wall between them` }
+  if (s.s === 'merged') return { ...base, kind: 'unclosed', message: `${of}${p.name} and ${s.into.name} share one space — split here?` }
   return { ...base, kind: 'unclosed', message: `${of}${p.name} is open — no closed room around its name` }
 }
 

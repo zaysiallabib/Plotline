@@ -143,7 +143,7 @@ describe('room count and room rows', () => {
     const u = unit([v('a', 0, 0), v('b', 4, 0), v('c', 4, 2), v('d', 0, 2)], [w('t', 'a', 'b'), w('r', 'b', 'c'), w('bt', 'c', 'd'), w('l', 'd', 'a')], [{ id: 'k', name: 'Kitchen', kind: 'kitchen', x: 1, y: 1 }])
     const printed = [P('Kitchen', 1, 1, 'kitchen'), P('Dining', 3, 1, 'dining')]
     const [row] = roomRows(u, deriveRooms(u), printed)
-    expect(row.message).toBe("Dining shares Kitchen's room — no wall between them")
+    expect(row.message).toBe("Dining and Kitchen share one space — split here?")
     const [f] = fixesFor(u, row, printed)
     expect(f.label).toBe('Close it — zone line')
     const t = apply({ ...initialState(), unit: u }, f)
