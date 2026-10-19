@@ -3,7 +3,8 @@ import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } f
 import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope, Unit } from '../core'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { library, resizeAxes } from './furniture'
+import { resizeAxes } from './furniture'
+import { LibraryPanel } from './LibraryPanel'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
@@ -306,19 +307,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
       {pieces && onPlace && (
         <section>
           <h3>Add a piece</h3>
-          <select value={placing ?? ''} onChange={(e) => onPlace(e.target.value)}>
-            <option value="">Pick from the library…</option>
-            {library().map((t) => (
-              <optgroup key={t.tab} label={t.tab}>
-                {t.items.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.label} · {i.size.x.toFixed(2)} × {i.size.z.toFixed(2)} m
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
           {placing && <p className="muted">Click the plan to put it there · R turns · Esc cancels</p>}
+          <LibraryPanel onPick={onPlace} picked={placing} />
         </section>
       )}
       {state.planImage && (

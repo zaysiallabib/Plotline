@@ -192,10 +192,7 @@
 .hand-tag.at-dot { left: 50%; top: calc(50% + 18px); transform: translateX(-50%); }
 .dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); pointer-events: none; }
 /* the staff library: above the Arrange panel */
-.library { position: absolute; left: 16px; bottom: 190px; width: 340px; max-height: calc(100vh - 330px); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.library-list { display: flex; flex-direction: column; overflow: auto; min-height: 0; }
-.library-list .room-row { font-size: 12px; padding: 6px 8px; }
-.library-list .room-row .muted { white-space: nowrap; }
+.library { position: absolute; left: 16px; bottom: 190px; width: 380px; max-height: calc(100vh - 330px); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 
 /* the sun's day and the wind (SunPill / WindRose) */
 .sun-date { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 12px; color-scheme: dark; }

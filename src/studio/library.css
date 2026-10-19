@@ -1,0 +1,17 @@
+/* the staff library (LibraryPanel.tsx): Studio tool F and the 3D view's Add */
+.lib { display: flex; flex-direction: column; gap: 6px; min-height: 0; font-size: 12px; }
+.lib .lib-search { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+.lib .lib-search:focus { outline: 1px solid var(--accent); }
+.lib-list { overflow: auto; min-height: 0; max-height: 52vh; display: flex; flex-direction: column; }
+.lib details { border-bottom: 1px solid var(--line); }
+.lib summary { cursor: pointer; padding: 6px 4px; color: var(--ink); user-select: none; }
+.lib summary:hover { background: var(--surface-2); }
+.lib-kind { padding: 6px 4px 2px 14px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.lib .lib-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; width: 100%; padding: 5px 4px 5px 14px; background: none; border: 0; border-radius: 6px; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.lib .lib-row:hover { background: var(--surface-2); }
+.lib .lib-row.on { background: var(--surface-2); outline: 1px solid var(--accent); }
+.lib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-feet { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lib-mark { font-size: 10px; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+.lib-mark.scan { border-color: var(--accent); color: var(--accent); }
+.lib p { margin: 8px 4px; }
