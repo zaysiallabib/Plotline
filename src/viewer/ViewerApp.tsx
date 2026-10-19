@@ -12,7 +12,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, Openin
 import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, library, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
@@ -31,6 +31,7 @@ import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
 import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
+import { LibraryPanel } from '../studio/LibraryPanel'
 import './viewer.css'
 
 const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
@@ -305,29 +306,11 @@ function QualityChip({ note, onPick }: { note: string | null; onPick: (q: Qualit
   )
 }
 
-/** The staff library (studio/furniture.ts library): every kit piece by tab; pick one, then point where it goes. */
+/** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
 function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
-  const tabs = useMemo(library, [])
-  const [tab, setTab] = useState(tabs[0].tab)
   return (
     <aside className="glass library">
-      <div className="arrange-row">
-        {tabs.map((t) => (
-          <button key={t.tab} className={`btn${t.tab === tab ? ' active' : ''}`} onClick={() => setTab(t.tab)}>
-            {t.tab}
-          </button>
-        ))}
-      </div>
-      <div className="library-list">
-        {tabs
-          .find((t) => t.tab === tab)!
-          .items.map((i) => (
-            <button key={i.id} className="room-row" onClick={() => onPick(i.id)}>
-              <span>{i.label}</span>
-              <span className="muted">{dims(i.size)}</span>
-            </button>
-          ))}
-      </div>
+      <LibraryPanel onPick={onPick} focus />
     </aside>
   )
 }

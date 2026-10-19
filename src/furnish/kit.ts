@@ -40,6 +40,7 @@ export type ObjectKind =
   | 'kitchen-cabinet' | 'sink' | 'hob' | 'hood' | 'fridge'
   | 'toilet' | 'vanity' | 'basin' | 'mixer' | 'mirror' | 'shower' | 'shower-tray' | 'shower-glass' | 'shower-head'
   | 'bench' | 'lounger' | 'table-set' | 'pergola' | 'play' | 'gym' | 'reception-desk' | 'car'
+  | 'lamp' | 'appliance' | 'dresser' | 'console' | 'shoe-rack' | 'prayer-mat' | 'crib' | 'drying-rack'
 
 export interface KitAsset {
   id: string
@@ -73,6 +74,7 @@ const MOUNT: Record<string, KitAsset['mount']> = {
   modern_ceiling_lamp_01: 'ceiling',
   wall_clock: 'wall',
   hanging_picture_frame_01: 'wall',
+  chandelier_01: 'ceiling',
 }
 
 // kit.data.ts guesses '+z' for every model; these two have their width (sizeM.x) along glTF z,
@@ -92,6 +94,7 @@ const KIND: Record<string, ObjectKind> = {
   modular_street_seating: 'bench',
   outdoor_table_chair_set_01: 'table-set',
   covered_car: 'car',
+  drawer_cabinet: 'dresser',
 }
 
 // bottom heights: clock centred at 2.4 m, above the 2.1 m door heads; the pillows sit on sofa_3seat's 0.45 m seat cushions
@@ -136,6 +139,8 @@ const dec = (v: number) => v.toFixed(2).replace(/0$/, '') // 3 → "3.0", 2.35 �
 const doors = (w: number) => (wardrobeDoors(w) === 1 ? '1 door' : `${wardrobeDoors(w)} doors`)
 const closet = (s: Size3) => `Open closet unit: rail, shelf, clothes (${dec(s.x)} m)`
 const rug = (s: Size3) => `Wool rug ${dec(s.x)} × ${dec(s.z)} m`
+const wardrobeFt = (s: Size3) => `Wardrobe ${Math.round(s.x / 0.3048)} ft (oak, ${doors(s.x)})`
+const tvUnit = (s: Size3) => `TV unit, oak (${dec(s.x)} m)`
 /** The size a kit label states ("(0.6 m)", "Ø38 cm", '55"'), restated at the built size. */
 const restate = (id: string, from: string, to: (s: Size3) => string) => [id, (s: Size3) => kitAsset(id)!.label.replace(from, to(s))] as const
 /** Mattress = width − the headboard's 16 cm. */
@@ -148,6 +153,16 @@ const SIZED: Record<string, (s: Size3) => string> = {
   closet_rail_s: closet,
   kitchen_tall: (s) => `Tall larder unit, oak (${dec(s.x)} m)`,
   dining_table: (s) => `Dining table, oak, ${tableSeats(s.x)} seats`,
+  dining_table_4: (s) => `Dining table, oak, ${tableSeats(s.x)} seats`,
+  dining_table_8: (s) => `Dining table, oak, ${tableSeats(s.x)} seats`,
+  wardrobe_4ft: wardrobeFt,
+  wardrobe_6ft: wardrobeFt,
+  bookshelf: (s) => `Bookshelf, oak, with books (${dec(s.x)} m)`,
+  dresser: (s) => `Chest of drawers, oak (${dec(s.x)} m)`,
+  tv_unit_150: tvUnit,
+  tv_unit_210: tvUnit,
+  rug_rect_medium: rug,
+  rug_runner: (s) => `Wool runner ${dec(s.x)} × ${dec(s.z)} m`,
   [CURTAINS]: (s) => `Curtains, linen (${dec(s.x)} m wide)`,
   rug_rect_large: rug,
   rug_rect_small: rug,
@@ -159,6 +174,7 @@ const SIZED: Record<string, (s: Size3) => string> = {
       restate('rug_round', '2.0 m', (s) => `${dec(s.x)} m`),
       restate('ceiling_light', '38 cm', (s) => `${Math.round(s.x * 100)} cm`),
       restate('ceiling_light_large', '50 cm', (s) => `${Math.round(s.x * 100)} cm`),
+      restate('pendant_light', '42 cm', (s) => `${Math.round(s.x * 100)} cm`),
       ...['tv_55', 'tv_55_wall'].map((id) => restate(id, '55"', (s) => `${Math.round((55 * s.x) / 1.23)}"`)),
     ],
   ),
@@ -182,6 +198,7 @@ const RUG = lim([1.2, 0.012, 0.8], [4.0, 0.012, 3.0])
 // headboard width: a 0.9 m single mattress to a 2.0 m king (bed_* = mattress + 0.16)
 const BED = lim([1.06, 1.15, 2.16], [2.16, 1.15, 2.16])
 const COT = lim([1.6, 0.58, 0.6], [2.0, 0.58, 0.9])
+const TV_UNIT = lim([1.0, 0.45, 0.35], [2.4, 0.8, 0.5])
 const REBUILD: Record<string, ResizeLimits> = {
   wardrobe_tall: WARDROBE,
   wardrobe_2door: WARDROBE,
@@ -197,6 +214,18 @@ const REBUILD: Record<string, ResizeLimits> = {
   sofa_2seat: lim([1.3, 0.82, 0.92], [2.0, 0.82, 0.92]),
   cot: COT,
   cot_s: COT,
+  // the library's more pieces (session 27): more shelves / drawers / doors / seats as they grow, never stretched ones
+  bookshelf: lim([0.6, 1.2, 0.28], [1.8, 2.4, 0.4]),
+  dresser: lim([0.8, 0.75, 0.42], [1.6, 1.1, 0.55]),
+  rug_rect_medium: RUG,
+  rug_runner: lim([1.2, 0.012, 0.6], [4.0, 0.012, 1.0]),
+  fridge_double: lim([0.55, 1.5, 0.6], [0.9, 2.0, 0.75]),
+  wardrobe_4ft: WARDROBE,
+  wardrobe_6ft: WARDROBE,
+  tv_unit_150: TV_UNIT,
+  tv_unit_210: TV_UNIT,
+  dining_table_4: lim([0.9, 0.75, 0.75], [2.6, 0.75, 1.2]),
+  dining_table_8: lim([0.9, 0.75, 0.75], [2.6, 0.75, 1.2]),
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, BED])),
   // a planter box gets more plants as it grows, never stretched ones
   ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, lim([0.6, 0.95, PLANTER_BOX_D + 0.05], [3.0, 0.95, PLANTER_BOX_D + 0.05])])),
@@ -225,6 +254,12 @@ const PROP: Rule = [['x', 'y', 'z'], 0.85, 1.15, true]
 const each = (ids: string[], r: Rule) => Object.fromEntries(ids.map((id) => [id, r]))
 const SCALE: Record<string, Rule> = {
   ...each(['sofa_02', 'ottoman_01', 'modern_wooden_cabinet', 'metal_office_desk', 'hook_rail', 'vanity'], LONG),
+  ...each(['sofa_01', 'sofa_03'], LONG),
+  chandelier_01: DECOR,
+  ...each(['console_table', 'shoe_rack', 'study_desk', 'kitchen_rack', 'bench_upholstered', 'drying_rack'], LONG),
+  ...each(['floor_lamp', 'table_lamp', 'pendant_light', 'geyser'], DECOR),
+  wall_mirror: [['x', 'y'], 0.7, 1.4, true],
+  rug_round_small: [['x', 'z'], 0.7, 1.4, true],
   ...each(['kitchen_counter', 'kitchen_counter_styled', 'kitchen_sink', 'kitchen_hob', 'kitchen_upper', 'kitchen_hood'], LONG),
   wooden_display_shelves_01: [['x', 'y'], 0.75, 1.4],
   modern_coffee_table_01: [['x', 'z'], 0.75, 1.25],

@@ -10,7 +10,7 @@
  */
 import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset } from '../furnish/kit'
+import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
 import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
 import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
@@ -427,9 +427,10 @@ export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement
   return face ? hangOn(unit, rooms, all, id, face) : { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
 }
 
-const TABS = ['Living', 'Dining', 'Bedroom', 'Kitchen', 'Bath', 'Lights & AC', 'Greenery', 'Outdoor', 'Lobby & gym', 'Decor'] as const
+const TABS = ['Living', 'Dining', 'Bedroom', 'Office', 'Kitchen', 'Bath', 'Lights & AC', 'Greenery', 'Outdoor', 'Lobby & gym', 'Decor'] as const
+type Tab = (typeof TABS)[number]
 /** By what it is, else by category; the rest (rugs, art, clock, vase) is Decor. Every plant (pots, planter boxes, shrubs, trees) is Greenery. */
-const TAB_OF: Record<string, (typeof TABS)[number]> = {
+const TAB_OF: Record<string, Tab> = {
   sofa: 'Living', armchair: 'Living', 'coffee-table': 'Living', 'tv-unit': 'Living', shelf: 'Living', tv: 'Living', ottoman: 'Living', cushions: 'Living',
   'dining-table': 'Dining', 'dining-chair': 'Dining',
   bed: 'Bedroom', bedside: 'Bedroom', wardrobe: 'Bedroom', desk: 'Bedroom', chair: 'Bedroom',
@@ -437,21 +438,34 @@ const TAB_OF: Record<string, (typeof TABS)[number]> = {
   plant: 'Greenery',
   bench: 'Outdoor', lounger: 'Outdoor', 'table-set': 'Outdoor', pergola: 'Outdoor', play: 'Outdoor', car: 'Outdoor',
   'reception-desk': 'Lobby & gym', gym: 'Lobby & gym', mirror: 'Lobby & gym',
+  appliance: 'Kitchen', dresser: 'Bedroom', console: 'Living', 'shoe-rack': 'Living', 'prayer-mat': 'Bedroom', crib: 'Bedroom', 'drying-rack': 'Outdoor',
 }
+/** Pieces whose own tab is not their kind's. */
+const TAB_ID: Record<string, Tab> = { bench_upholstered: 'Bedroom', geyser: 'Bath', wall_mirror: 'Bedroom', wash_basin: 'Dining' }
 /** Also listed in another tab: Dhaka dining areas have a hand-wash basin (founder 2026-09-28). */
-const ALSO_IN: Record<string, (typeof TABS)[number]> = { basin: 'Dining', vanity: 'Dining', [CURTAINS]: 'Living' }
+const ALSO_IN: Record<string, Tab[]> = {
+  basin: ['Dining'], vanity: ['Dining'], [CURTAINS]: ['Living'], wash_basin: ['Bath'], water_filter: ['Dining'], console_table: ['Dining'],
+  floor_lamp: ['Living'], table_lamp: ['Bedroom'], pendant_light: ['Dining'], chandelier_01: ['Dining', 'Living'],
+  bench_upholstered: ['Living'], prayer_mat: ['Living'], wall_mirror: ['Living'], washing_machine: ['Bath'], exhaust_fan: ['Bath'],
+}
+/** Kinds also listed in Office (a study's desk, chair and shelves are a bedroom's too). */
+const OFFICE = new Set(['desk', 'chair', 'shelf'])
 const BED_LINEN: Record<string, string> = { '': 'terracotta throw', _b: 'sage throw', _c: 'no throw' }
 export interface LibraryItem {
   id: string
   label: string
   size: KitAsset['sizeM']
+  kind: ObjectKind
+  /** a scanned model (a download), not built in code */
+  scan: boolean
 }
 /** The staff library: every kit asset (Poly Haven + procedural) by tab, but the stairs (building, not furniture); beds name their linen. */
 export function library(): { tab: string; items: LibraryItem[] }[] {
   const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)].map((id) => kitAsset(id)!).filter((a) => objectKind(a) !== 'stair')
   const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
-  const tabOf = (a: KitAsset) => TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
-  return TABS.map((tab) => ({ tab, items: all.filter((a) => tabOf(a) === tab || ALSO_IN[a.id] === tab).map((a) => ({ id: a.id, label: label(a), size: a.sizeM })) }))
+  const tabOf = (a: KitAsset) => TAB_ID[a.id] ?? TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
+  const inTab = (a: KitAsset, tab: Tab) => tabOf(a) === tab || ALSO_IN[a.id]?.includes(tab) || (tab === 'Office' && OFFICE.has(objectKind(a)))
+  return TABS.map((tab) => ({ tab, items: all.filter((a) => inTab(a, tab)).map((a) => ({ id: a.id, label: label(a), size: a.sizeM, kind: objectKind(a), scan: !a.url.startsWith('procedural:') })) }))
 }
 
 /** Resized sizes land on this step (m). */
