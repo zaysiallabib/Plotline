@@ -3,9 +3,11 @@
  * the Studio's rules (src/studio/furniture.ts). Pure glue: who is staff, the layout saved in the browser and shared with
  * the Studio's tool F, the undo stack, and where a drag in the 3D view puts a piece.
  */
-import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
+import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
 import { hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
-import { isUnit, normalizeUnit } from '../studio/model'
+import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
+import { snapMove } from '../studio/snap'
+import type { OpeningEvent } from '../three/PlotlineScene'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
@@ -149,7 +151,7 @@ export const dropHeld = (h: Held): FurniturePlacement[] | null => (h.move && !h.
 // the Studio opens — written into the Studio draft and the preview, so plan and 3D never disagree.
 export const DRAFT_KEY = 'plotline.studio.draft'
 export const PREVIEW_KEY = 'plotline.preview'
-const planOf = (u: Unit): string => JSON.stringify([u.vertices, u.walls])
+export const planOf = (u: Unit): string => JSON.stringify([u.vertices, u.walls])
 /** a stored draft is a Draft `{ unit, … }` or a bare Unit (StudioApp init accepts both) */
 const unitIn = (x: unknown): Unit | null => (isUnit(x) ? x : isUnit((x as { unit?: unknown } | null)?.unit) ? (x as { unit: Unit }).unit : null)
 
@@ -165,8 +167,8 @@ export function draftState(unit: Unit, store?: Store): 'ok' | 'other' | 'changed
 }
 
 /**
- * A committed opening edit: `after`'s walls (their openings) into the Studio draft and the preview, every other field of
- * theirs kept — only while the draft still holds `before`'s plan; else why not, and nothing is written.
+ * A committed opening / low wall edit: `after`'s corners and walls (their openings) into the Studio draft and the preview,
+ * every other field of theirs kept — only while the draft still holds `before`'s plan; else why not, and nothing is written.
  */
 export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | 'other' | 'changed' | 'full' {
   const s = store ?? localStorage
@@ -177,13 +179,40 @@ export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | '
       const d: unknown = JSON.parse(s.getItem(key) ?? 'null')
       const u = unitIn(d)
       if (!u || u.id !== after.id) continue
-      const v = { ...u, walls: after.walls }
+      const v = { ...u, vertices: after.vertices, walls: after.walls }
       s.setItem(key, JSON.stringify(isUnit(d) ? v : { ...(d as object), unit: v }))
     }
     return 'ok'
   } catch {
     return 'full' // ponytail: the draft may be written and the preview not; the Studio warns the same way when a draft outgrows storage
   }
+}
+
+/**
+ * Edit openings → a low wall dragged in 3D (founder 2026-10-19), with the Studio's V rules, on `s` (the plan mid-drag;
+ * `start` = it at drag-begin). `wall-end`: that end toward `at` along the wall's own line (model.endAlong: snapped, the
+ * walls at it straight), off a shared corner first as a picked wall's end leaves it in the Studio — `rigid` (Alt) keeps the
+ * corner instead. `wall-move`: both ends `dM` across the line from where they were, snapped as a dragged wall is, only
+ * across. Returns the plan and the corners the drop (drag-end) joins.
+ */
+export function wallDrag(s: StudioState, start: Unit, e: Extract<OpeningEvent, { kind: 'wall-end' | 'wall-move' }>, tolM: number): { s: StudioState; ids: Id[] } {
+  const w0 = start.walls.find((w) => w.id === e.id)
+  const w = s.unit.walls.find((x) => x.id === e.id)
+  if (!w0 || !w) return { s, ids: [] }
+  if (e.kind === 'wall-move') {
+    const n = wallFrame(w0, start.vertices).normal
+    const at = (d: number) => [w0.a, w0.b].map((id) => ({ id, x: vertexById(start.vertices, id).x + n.x * d, y: vertexById(start.vertices, id).y + n.y * d }))
+    const { dx, dy } = snapMove(at(e.dM), s.unit, tolM)
+    return { s: reducer(s, { type: 'drag', vertices: at(e.dM + dx * n.x + dy * n.y) }), ids: [w0.a, w0.b] }
+  }
+  let t = s
+  let end = w[e.end]
+  if (!e.rigid && end === w0[e.end] && s.unit.walls.filter((x) => x.a === end || x.b === end).length >= 2) {
+    end = newId()
+    t = reducer(t, { type: 'detach', wallId: w.id, vertexId: w[e.end], newId: end })
+  }
+  const r = endAlong(t.unit, w.id, end, e.at, { tolM })
+  return r ? { s: reducer(t, { type: 'drag', vertices: r.moves }), ids: r.ids } : { s: t, ids: [end] }
 }
 
 /** `unit` as this page shows it becomes the Studio draft and the preview (a built-in unit, or not the draft) — what Edit openings then edits. */

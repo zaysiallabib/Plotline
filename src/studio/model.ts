@@ -4,7 +4,7 @@
  */
 import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
-import { snapOpeningOffset, type OpeningSnap } from './snap'
+import { HARD, snapOpeningOffset, snapPoint, type OpeningSnap, type Snap } from './snap'
 import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
 import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
@@ -575,6 +575,36 @@ export function lengthMoves(u: Unit, wallId: Id, endId: Id, lengthM: number): { 
     const v = vertexById(u.vertices, id)
     return { id, x: v.x + dx, y: v.y + dy }
   })
+}
+
+/**
+ * Wall `wallId`'s end `endId` dragged toward `m` (the Studio's V on a picked wall's end; the 3D's Edit openings end dot):
+ * it slides along the wall's own line, snapped as a corner is — only guides across the line stop it; `free` (Shift): no
+ * snap — and the walls at it stay straight (lengthMoves). `ids`: the corners it moves (the drop joins them). null: through
+ * the other end.
+ */
+export function endAlong(u: Unit, wallId: Id, endId: Id, m: Pt, o: { tolM: number; free?: boolean }): { moves: { id: Id; x: number; y: number }[]; ids: Id[]; snap: Snap } | null {
+  const w = u.walls.find((x) => x.id === wallId)
+  if (!w || (w.a !== endId && w.b !== endId)) return null
+  const A = vertexById(u.vertices, w.a === endId ? w.b : w.a)
+  const E = vertexById(u.vertices, endId)
+  const L0 = Math.hypot(E.x - A.x, E.y - A.y)
+  if (L0 <= EPS) return null
+  const dir = { x: (E.x - A.x) / L0, y: (E.y - A.y) / L0 }
+  const along = (p: Pt) => (p.x - A.x) * dir.x + (p.y - A.y) * dir.y
+  const onLine = (L: number): Pt => ({ x: A.x + dir.x * L, y: A.y + dir.y * L })
+  const ids = lengthMoves(u, w.id, endId, L0).map((v) => v.id)
+  let L = along(m)
+  let snap: Snap = { ...onLine(L), kind: 'free', guides: [] }
+  if (!o.free) {
+    const s0 = snapPoint(onLine(L), u, { tolM: o.tolM, exclude: ids })
+    L = along(s0)
+    const guides = s0.guides.filter((g) => Math.abs(g.axis === 'x' ? dir.x : dir.y) > 1e-6) // only guides across the line stop the end
+    const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : HARD.has(s0.kind) ? s0.kind : 'free'
+    snap = { ...s0, ...onLine(L), kind, guides }
+  }
+  if (L < 0.05) return null // never through the anchor
+  return { moves: lengthMoves(u, w.id, endId, L), ids, snap }
 }
 
 type Frame = ReturnType<typeof wallFrame>

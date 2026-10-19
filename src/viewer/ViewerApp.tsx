@@ -8,18 +8,18 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
 import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, library, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
-import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action, type StudioState } from '../studio/model'
+import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -414,21 +414,35 @@ function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number
   )
 }
 
-/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches, delete, undo — and where it saves. */
+/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches — or low wall — length, height — delete, undo, and where it saves. */
 function OpeningPanel(p: {
   opening: Opening | null
+  wall: { w: Wall; lengthM: number } | null
   where: string
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
   onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onWall: (patch: { lengthM?: number; heightM?: number }) => void
   onDelete: () => void
   onUndo: () => void
 }) {
   const o = p.opening
+  const lw = p.wall
   return (
     <aside className="glass arrange">
-      {o ? (
+      {lw ? (
+        <>
+          <div className="arrange-name">
+            {WALL_TYPES[wallTypeOf(lw.w.heightM)].label} · {core.formatFeetInches(lw.lengthM)} long · {core.formatFeetInches(lw.w.heightM)} high
+          </div>
+          <div className="small muted">{p.where}</div>
+          <div className="arrange-row">
+            <FtIn label="Length" m={lw.lengthM} onSet={(lengthM) => p.onWall({ lengthM })} />
+            <FtIn label="Height" m={lw.w.heightM} onSet={(heightM) => p.onWall({ heightM })} />
+          </div>
+        </>
+      ) : o ? (
         <>
           <div className="arrange-name">
             {KINDS.find(([k]) => k === o.kind)?.[1]} · {core.formatFeetInches(o.widthM)} wide
@@ -448,10 +462,12 @@ function OpeningPanel(p: {
           </div>
         </>
       ) : (
-        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill.</div>
+        <div className="muted small">
+          Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill. Or click a low wall (railing, planter edge, kerb): drag an end dot to make it longer or shorter, drag the wall to move it across.
+        </div>
       )}
       <div className="arrange-row">
-        <button className="btn" disabled={!o} title="Remove it (Del)" onClick={p.onDelete}>
+        <button className="btn" disabled={!o && !lw} title="Remove it (Del)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} title="Ctrl+Z" onClick={p.onUndo}>
@@ -838,7 +854,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const plan = useRef<StudioState>({ ...initialState(), unit: given })
   /** the plan before the gesture in progress (a drag: from its first move to its drop) */
   const gesture = useRef<StudioState | null>(null)
+  /** a low wall's drag: the corners its drop joins (model drag-end), as the Studio's V drop does */
+  const dragIds = useRef<Id[] | null>(null)
   const showOp = (id = opSel) => {
+    const u = plan.current.unit
+    const w = id ? u.walls.find((x) => x.id === id) : undefined
+    if (w) return scene?.showWall({ id: w.id, a: core.vertexById(u.vertices, w.a), b: core.vertexById(u.vertices, w.b), heightM: w.heightM, thicknessM: w.thicknessM })
     const f = id ? findOpening(plan.current.unit, id) : null
     const { offsetM, widthM, heightM, sillM } = f?.opening ?? { offsetM: 0, widthM: 0, heightM: 0, sillM: 0 }
     scene?.showOpening(f && { id: f.opening.id, wallId: f.wall.id, offsetM, widthM, heightM, sillM, refused: plan.current.dragBlocked })
@@ -859,7 +880,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     const after = plan.current.unit
     plan.current = { ...plan.current, dragBlocked: false }
     if (!before) return showOp()
-    if (JSON.stringify(after.walls) === JSON.stringify(unit.walls)) {
+    if (planOf(after) === planOf(unit)) {
       // nothing changed (a drag back to where it was, a refused width): no undo step, no rebuild — but an undo keeps its step
       if (before.history.past.length <= plan.current.history.past.length) plan.current = { ...before, dragBlocked: false }
       return showOp()
@@ -887,8 +908,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       setOpSel(e.id)
       return showOp(e.id)
     }
-    if (e.kind === 'drop') return commitPlan()
+    if (e.kind === 'drop') {
+      if (dragIds.current) planDo({ type: 'drag-end', ids: dragIds.current }) // a low wall's ends join where they land
+      dragIds.current = null
+      return commitPlan()
+    }
     if (!gesture.current) planDo({ type: 'drag-begin' }) // one undo step for the whole drag
+    if (e.kind === 'wall-end' || e.kind === 'wall-move') {
+      const r = wallDrag(plan.current, gesture.current!.unit, e, OPENING_SNAP_M)
+      dragIds.current = r.ids
+      plan.current = r.s
+      showOp()
+      return redraw()
+    }
     planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
   }
   useEffect(() => scene?.onOpening(onOpening))
@@ -1019,6 +1051,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
   const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
   const opF = editingOpenings && opSel ? findOpening(plan.current.unit, opSel) : null
+  const opW = editingOpenings && opSel ? plan.current.unit.walls.find((w) => w.id === opSel) : undefined
+  const opWall = opW ? { w: opW, lengthM: core.wallFrame(opW, plan.current.unit.vertices).lengthM } : null
   // the level on the floor picked in the Building view (buyers too: a share link's level stays a buyer's link)
   const walkStem = levelAt(picked)
   return (
@@ -1173,15 +1207,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           {editingOpenings && (
             <OpeningPanel
               opening={opF?.opening ?? null}
-              where={opF ? rooms.filter((r) => r.wallIds.includes(opF.wall.id)).map((r) => r.name).join(' ↔ ') || 'On an outside wall' : ''}
+              wall={opWall}
+              where={opF || opW ? rooms.filter((r) => r.wallIds.includes(opF?.wall.id ?? opW!.id)).map((r) => r.name).join(' ↔ ') || (opF ? 'On an outside wall' : 'Outside') : ''}
               refused={plan.current.dragBlocked}
               canUndo={plan.current.history.past.length > 0}
               onKind={(kind) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch: { kind } })}
               onSize={(patch) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch })}
+              onWall={({ lengthM, heightM }) =>
+                opW && planCommit(lengthM !== undefined ? { type: 'set-wall-length', id: opW.id, lengthM } : { type: 'set-wall-type', ids: [opW.id], wall: wallTypeOf(heightM!), heightM })
+              }
               onDelete={() => {
-                if (!opF) return
+                if (!opF && !opW) return
                 setOpSel(null)
-                planCommit({ type: 'delete', ids: [opF.opening.id] })
+                planCommit({ type: 'delete', ids: [opF?.opening.id ?? opW!.id] })
               }}
               onUndo={() => planCommit({ type: 'undo' })}
             />

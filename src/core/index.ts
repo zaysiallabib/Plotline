@@ -102,7 +102,7 @@ export { mirrorUnit } from './mirror'
  * The flats of a whole-floor drawing, derived: rooms joined by doors / passages / sliders, the common core (isCore) in
  * none; RoomLabel.flat pins a room to a flat by name ('' = none). Names from a "TYPE-A ±2736 SFT" label, else "Flat N".
  */
-export { deriveFlats, isCore, type Flat } from './flats'
+export { LOW_WALL_M, deriveFlats, isCore, type Flat } from './flats'
 /** "Type A" for a label of kind 'other' reading "TYPE-A ±2736 SFT" (it names its flat; deriveRooms gives it no face), else null. */
 export { flatTypeOf } from './graph'
 
