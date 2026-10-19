@@ -431,12 +431,12 @@ describe('s27 rows: a whole floor of 1 000+ walls — each mark is checked on th
   })
 
   it('an edit far away leaves its signature as it was (the Studio keeps its fixes); an edit beside it does not', () => {
-    const sig = fixSig(u, m)
+    const sig = fixSig(u, m, rooms)
     const far = reducer(stateOf(u), { type: 'delete', ids: ['h0.0'] }).unit
     const near = reducer(stateOf(u), { type: 'delete', ids: ['h11.10'] }).unit
     const same = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i])
     expect(far.walls.length).toBe(u.walls.length - 1)
-    expect(same(fixSig(far, m), sig)).toBe(true)
-    expect(same(fixSig(near, m), sig)).toBe(false)
+    expect(same(fixSig(far, m, deriveRooms(far)), sig)).toBe(true)
+    expect(same(fixSig(near, m, deriveRooms(near)), sig)).toBe(false)
   })
 })

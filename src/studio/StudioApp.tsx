@@ -302,9 +302,9 @@ export default function StudioApp() {
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // the Issues and "Check these" rows as marks on the plan; their fixes are checked by applying them (issues.ts): once the
-  // plan has stood still for 150 ms (never mid-drag), in slices of a few marks so a long list never freezes the page, the
-  // mark open on the plan first; any edit drops them (never a fix from a stale plan) — but a mark the edit did not reach
-  // gets its fixes back at once (fixSig: s27 rows, a six-flat floor's 755 rows), and what is worked out shows as it comes
+  // plan has stood still for 150 ms (never mid-drag), in a worker (fixes.worker.ts: s27 rows, a six-flat floor's 755 rows
+  // took minutes of checks) — the mark open on the plan first, then what is in view — and shown as they come; any edit
+  // drops them (never a fix from a stale plan), but a mark the edit did not reach gets its fixes back at once (fixSig)
   const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
   /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
@@ -349,7 +349,7 @@ export default function StudioApp() {
     const start = () => {
       // a mark the edit did not reach keeps its fixes (fixSig); the others are worked out in the worker, one by one
       const todo = marks.filter((m) => {
-        const sig = fixSig(unit, m)
+        const sig = fixSig(unit, m, rooms)
         sigs.set(m.key, sig)
         const c = cache.get(m.key)
         if (!c || c.sig.length !== sig.length || c.sig.some((x, i) => x !== sig[i])) return true

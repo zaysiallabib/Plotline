@@ -32,8 +32,6 @@ export const LOCAL_M = 8
  * The plan around `at` a mark's fixes are checked on: every wall that reaches within `r` of it (whole), their corners and
  * the stray ones there, the labels and columns among them. Ids are kept (an issue / room of the piece has its key in the
  * unit); the unit itself when nothing is left out (one flat's sheet).
- * ponytail: a room reaching further than `r` from the spot is open in the piece, so a fix closing only such a room is not
- * offered (a long corridor); a bigger `r` if one ever needs it.
  */
 export function around(u: Unit, at: Pt, r = LOCAL_M): Unit {
   const V = new Map(u.vertices.map((v) => [v.id, v]))
@@ -51,6 +49,29 @@ export function around(u: Unit, at: Pt, r = LOCAL_M): Unit {
   const roomLabels = u.roomLabels.filter((l) => l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1)
   const pillars = u.pillars?.filter((c) => c.x + c.wM / 2 >= x0 && c.x - c.wM / 2 <= x1 && c.y + c.hM / 2 >= y0 && c.y - c.hM / 2 <= y1)
   return { ...u, vertices, walls, roomLabels, ...(pillars ? { pillars } : {}) }
+}
+
+/** each room's outline, once per deriveRooms result (a long list's marks all ask) */
+const outlines = new WeakMap<Room[], Pt[][]>()
+const outlinesOf = (rooms: Room[], u: Unit): Pt[][] => outlines.get(rooms) ?? (outlines.set(rooms, rooms.map((r) => roomPolygon(r, u))), outlines.get(rooms)!)
+
+/**
+ * How far around a mark's spot its fixes are checked (m): LOCAL_M, or as far as takes in whole the rooms a fix there joins
+ * or splits — an unnamed space and the rooms beside it ("Join it to …"), the room a printed name stands in ("Close it"
+ * across a shared room), the room around an island (bti Amabilia: "Join it to Dining & F. Lounge" reaches 9 m).
+ * ponytail: a room "Close it" closes reaching further than LOCAL_M from its name is open in the piece — not offered.
+ */
+function reachOf(u: Unit, m: Mark, rooms: () => Room[]): number {
+  const at = m.at, r = m.review, i = m.issue
+  if (!at) return LOCAL_M
+  let about: number[] = []
+  if (r?.room !== undefined) about = [roomIndexAt(r.at, rooms(), outlinesOf(rooms(), u))]
+  else if (r?.kind === 'unlabelled' && r.entityId) {
+    const me = rooms().find((x) => x.id === r.entityId)
+    about = me ? rooms().flatMap((x, k) => (x === me || x.wallIds.some((w) => me.wallIds.includes(w)) ? [k] : [])) : []
+  } else if (i?.code === 'island-in-room') about = [rooms().findIndex((x) => x.id === i.ids[0])]
+  const pts = about.flatMap((k) => (k >= 0 ? outlinesOf(rooms(), u)[k] : []))
+  return Math.max(LOCAL_M, ...pts.map((p) => Math.max(Math.abs(p.x - at.x), Math.abs(p.y - at.y)) + 1))
 }
 
 /** what breaks the 3D: an open room (no floor, skirting or daylight), doubled or crossing walls, an opening off its wall */
@@ -660,8 +681,9 @@ function guessFixes(u: Unit, id: Id): Fix[] {
  */
 export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: PrintedRoom[] = [], rooms?: Room[]): Map<string, MarkFixes> {
   const out = new Map<string, MarkFixes>()
+  const roomsNow = () => (rooms ??= deriveRooms(u))
   for (const m of marks) {
-    const sub = m.at ? around(u, m.at) : u
+    const sub = m.at ? around(u, m.at, reachOf(u, m, roomsNow)) : u
     let before: StudioIssue[] | undefined
     const near = () => (before ??= sub === u ? issues : studioIssues(sub, deriveRooms(sub)))
     if (m.review && (m.review.room !== undefined || (m.review.kind === 'unlabelled' && m.review.entityId))) {
@@ -690,8 +712,8 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
  * equal signatures: the same fixes, so StudioApp keeps a row's buttons through an edit elsewhere on the floor.
  * ponytail: a run of walls "Keep" marks, or a room around the spot, reaching further than that is not in it.
  */
-export function fixSig(u: Unit, m: Mark): unknown[] {
-  const p = m.at ? around(u, m.at, m.review?.room !== undefined ? CLOSE_R_M + CLOSE_MAX_M : LOCAL_M) : u
+export function fixSig(u: Unit, m: Mark, rooms: Room[]): unknown[] {
+  const p = m.at ? around(u, m.at, Math.max(reachOf(u, m, () => rooms), m.review?.room !== undefined ? CLOSE_R_M + CLOSE_MAX_M : 0)) : u
   const r = m.review
   return [JSON.stringify([m.key, m.at, m.nameAt, m.twinOf, m.issue, r && [r.room, r.kind, r.entityId, r.at]]), ...p.walls, ...p.vertices, ...p.roomLabels, ...(p.pillars ?? [])]
 }
