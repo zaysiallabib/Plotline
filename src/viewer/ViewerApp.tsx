@@ -920,7 +920,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     scene?.setOpeningEdit(true)
   }
 
-  // keys: Enter (load screen), O, F, C, Esc
+  // keys: Enter (load screen), O, F, C, P (the wind, as the Wind button), Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -959,6 +959,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
+      else if (k === 'p' && !e.repeat) setWindOn((v) => !v) // founder 2026-10-19: "make windpaths visible by pressing the button p"
       else if (k === 'escape') {
         setCommenting(false)
         setDraft(null)
