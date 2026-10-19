@@ -36,6 +36,8 @@ export interface Hover {
   moving?: Id[]
   /** C tool drag: the new column's box (plan m) */
   box?: { a: Pt; b: Pt }
+  /** V drag on empty plan: the box select (plan m) */
+  marquee?: { a: Pt; b: Pt }
   /** A tool: the walls a click would lay (their corners, plan m) */
   arc?: Pt[]
 }
@@ -441,6 +443,15 @@ export function draw(a: DrawArgs): void {
     ctx.strokeStyle = C.accent
     ctx.lineWidth = px(1.5)
     ctx.stroke()
+  }
+  // V box select: a thin dashed rectangle
+  const mq = a.hover?.marquee
+  if (mq) {
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = px(1)
+    ctx.setLineDash([px(5), px(4)])
+    ctx.strokeRect(Math.min(mq.a.x, mq.b.x), Math.min(mq.a.y, mq.b.y), Math.abs(mq.b.x - mq.a.x), Math.abs(mq.b.y - mq.a.y))
+    ctx.setLineDash([])
   }
 
   // screen space: wall lengths, labels, scale line

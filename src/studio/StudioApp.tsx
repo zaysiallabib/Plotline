@@ -19,7 +19,9 @@ import {
   openingAt,
   rampArrow,
   rampDirs,
+  idsInBox,
   reducer,
+  selectionText,
   slug,
   snapRampDir,
   studioIssues,
@@ -77,7 +79,7 @@ const HINTS: Record<Tool, string> = {
   pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, a side dot to move that side, a corner dot to move that corner alone (a tapered column)`,
   arc: 'Arc · click where the curved wall starts',
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Shift+click adds / removes, drag on empty plan = box select, Ctrl+A all walls, Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: `Scale · click both ends of anything whose real length you know: a printed size, the plot's width, a parking bay (about 8' × 16'), a door (about 3'-3")`,
   wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
@@ -280,6 +282,8 @@ export default function StudioApp() {
   const wallDragRef = useRef<{ sx: number; sy: number; at: Target; hold: boolean; moved: boolean } | null>(null)
   /** C tool press: a release where it was = a 12" × 20" column there; dragged = a column from the press to the release */
   const pillarDragRef = useRef<{ sx: number; sy: number; at: Pt; moved: boolean } | null>(null)
+  /** V press on empty plan: a drag of 3 px or more is a box select from `at` (plan m); `add` = Shift (adds to the selection) */
+  const boxRef = useRef<{ sx: number; sy: number; at: Pt; add: boolean; moved: boolean } | null>(null)
   const holdRef = useRef<Hold | null>(null)
   const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
@@ -1247,10 +1251,7 @@ export default function StudioApp() {
       }
       case 'select': {
         const hit = hitTest(sx, sy)
-        if (!hit) {
-          if (!e.shiftKey) dispatch({ type: 'select', ids: [] })
-          return
-        }
+        if (!hit) return void (boxRef.current = { sx, sy, at: m, add: e.shiftKey, moved: false }) // the release decides: a click clears, a drag box-selects
         const orig = new Map<Id, Pt>()
         if (hit.kind === 'wall') {
           const w = unit.walls.find((x) => x.id === hit.id)!
@@ -1295,6 +1296,12 @@ export default function StudioApp() {
       const h = computeHover(sx, sy, e.shiftKey)
       const to = arc.b ? toM(sx, sy) : (h.snap ?? h.m)
       return setHover({ ...h, ...(arc.b && { snap: null }), arc: arc.b ? arcPoints(arc.a, arc.b, to) : [arc.a, to] })
+    }
+    const bx = boxRef.current
+    if (bx) {
+      if (!bx.moved && Math.hypot(sx - bx.sx, sy - bx.sy) < 3) return
+      bx.moved = true
+      return setHover({ m: toM(sx, sy), px: toPx(sx, sy), snap: null, hit: null, marquee: { a: bx.at, b: toM(sx, sy) } })
     }
     const pd = pillarDragRef.current
     if (pd) {
@@ -1440,6 +1447,15 @@ export default function StudioApp() {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (panRef.current) setPanning(false)
     panRef.current = null
+    const bx = boxRef.current
+    boxRef.current = null
+    if (bx) {
+      const { sx, sy } = local(e)
+      // a click on empty plan clears (Shift keeps); the box picks every wall, opening and column it touches (Shift adds)
+      if (bx.moved) dispatch({ type: 'select', ids: idsInBox(unit, bx.at, toM(sx, sy)), add: bx.add })
+      else if (!bx.add) dispatch({ type: 'select', ids: [] })
+      return setHover(computeHover(sx, sy, e.shiftKey))
+    }
     const pd = pillarDragRef.current
     pillarDragRef.current = null
     if (pd) {
@@ -1476,8 +1492,7 @@ export default function StudioApp() {
     dragRef.current = null
     if (!d) return
     if (!d.moved) {
-      if (e.shiftKey) dispatch({ type: 'select', ids: [d.hit.id], add: true })
-      else dispatch({ type: 'select', ids: [d.hit.id] })
+      dispatch({ type: 'select', ids: [d.hit.id], toggle: e.shiftKey }) // Shift+click adds it, or takes it out again
     } else if (d.face) {
       const { sx, sy } = local(e)
       setHover(computeHover(sx, sy, e.shiftKey))
@@ -1597,6 +1612,10 @@ export default function StudioApp() {
       if (ctrl && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault()
         return dispatch({ type: 'duplicate' })
+      }
+      if (ctrl && (e.key === 'a' || e.key === 'A') && st.tool !== 'furniture') {
+        e.preventDefault() // never the page's text
+        return dispatch({ type: 'select', ids: st.unit.walls.map((w) => w.id) })
       }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
@@ -1871,6 +1890,10 @@ export default function StudioApp() {
     const len = w ? wallFrame(w, unit.vertices).lengthM : 0
     const snapped = shiftRef.current ? 'free' : `snapped: ${hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind}`
     centre = w ? `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${snapped}` : snapped
+  } else if (hover?.marquee) {
+    centre = selectionText(unit, idsInBox(unit, hover.marquee.a, hover.marquee.b)) || 'nothing in the box'
+  } else if (state.selection.length > 1 && tool !== 'furniture') {
+    centre = selectionText(unit, state.selection)
   } else if (hover?.hit) centre = hover.hit.kind === 'pillar' ? 'column' : hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : unit.walls.length ? 'Real sizes · no picture lined up' : 'Scale not set'
   /** the first floor of the project the open drawing is on (the drop prompt names it) */
