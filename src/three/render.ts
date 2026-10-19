@@ -62,7 +62,7 @@ const HEMI_GROUND = new THREE.Color('#cfcbc4')
 /** sky light + sky dome at sunrise / sunset (low sun) */
 const GOLDEN = new THREE.Color('#ffd2a8')
 /** the flat's lamps: 3000 K LEDs as a camera white-balanced for the room sees them (the raw blackbody #ffb46b turned every room orange) */
-const WARM = new THREE.Color('#ffd6a5')
+const WARM = new THREE.Color('#ffdfb8')
 /**
  * The lamps' light bounced off the room (scene lux, hemisphere): up from the lit floor onto the ceiling, down from the
  * ceiling. A 100 lm/m² room over ≈ 4.5 m² of surface per m² of floor, half reflected: ≈ 0.2 lux mean. Without it the
