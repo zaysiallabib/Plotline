@@ -17,6 +17,7 @@ import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '.
 import { fetchSharedUnit } from '../lib/supabase'
 import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { deleteHeld, draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
@@ -49,6 +50,16 @@ const roseSaved = (): boolean => {
     return localStorage.getItem(ROSE_KEY) === '1'
   } catch {
     return false
+  }
+}
+/** the flat's lights: automatic (on after sunset) or the person's pick (render.ts lightsOn), remembered in this browser */
+const LIGHTS_KEY = 'plotline.lights'
+const lightsSaved = (): LightsMode => {
+  try {
+    const v = localStorage.getItem(LIGHTS_KEY)
+    return v === 'on' || v === 'off' ? v : 'auto'
+  } catch {
+    return 'auto'
   }
 }
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
@@ -482,6 +493,20 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
   const [roseOn, setRoseOn] = useState(roseSaved)
+  const [lightsMode, setLightsMode] = useState(lightsSaved)
+  const alt = core.sunAt(unit.site, date, hour).altDeg
+  const lit = lightsOn(lightsMode, alt)
+  /** a click flips the lights; flipped back to what automatic would show, it is automatic again */
+  const flipLights = () => {
+    const mode: LightsMode = lit === lightsOn('auto', alt) ? (lit ? 'off' : 'on') : 'auto'
+    setLightsMode(mode)
+    scene?.setLightsMode(mode)
+    try {
+      localStorage.setItem(LIGHTS_KEY, mode)
+    } catch {
+      /* this browser keeps nothing: the lights stay as clicked for now */
+    }
+  }
   const months = unit.site?.wind ?? core.DHAKA_WIND
   const month = Number(date.slice(5, 7)) - 1
   const windRooms = useMemo(() => (windOn ? core.roomWind(unit, rooms, months[month].fromDeg) : []), [windOn, unit, rooms, months, month])
@@ -567,6 +592,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     })
     s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
     s.setUnit(given)
+    s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
@@ -1226,6 +1252,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               setDate(d)
               scene.setTimeOfDay(hour, d)
             }}
+            lights={lit}
+            lightsAuto={lightsMode === 'auto'}
+            onLights={flipLights}
             wind={windOn}
             onWind={() => setWindOn((v) => !v)}
             month={month}

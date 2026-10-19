@@ -22,7 +22,7 @@ import { Building, type FlatRef } from './building'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
-import { kitAsset, type ObjectKind } from '../furnish/kit'
+import { isCeilingLight, kitAsset, type ObjectKind } from '../furnish/kit'
 import { lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
@@ -30,7 +30,7 @@ import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, needsFrame, slowFrames, type Quality } from './render'
+import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
 import { SEASON_TINT, WindFlow } from './wind'
 import { siteCut } from './context'
 
@@ -251,6 +251,8 @@ export class PlotlineScene {
   private buildToken = 0
   private mode: SceneMode = 'walk'
   private hour = 13
+  /** the flat's lamps: auto (on after sunset) or the person's pick (render.ts lightsOn) */
+  private lightsMode: LightsMode = 'auto'
   /** the day the sun is drawn for (YYYY-MM-DD): today until the view picks another */
   private date = new Date().toLocaleDateString('en-CA')
   /** the wind arrows (null: off) and the month they show */
@@ -448,7 +450,7 @@ export class PlotlineScene {
   }
 
   /**
-   * hour 6..18 on the site's clock, on `date` (YYYY-MM-DD; default: the last one given, at first today): the sun where it
+   * hour 0..24 on the site's clock, on `date` (YYYY-MM-DD; default: the last one given, at first today): the sun where it
    * stands at the unit's site (core.sunAt; Dhaka without one), by its true north (unit.northDeg).
    */
   setTimeOfDay(hour: number, date = this.date): void {
@@ -467,8 +469,15 @@ export class PlotlineScene {
     // ≈ 1.8× and Neutral mapped it to a slightly lighter floor, not sun
     this.sun.intensity = 10 * Math.min(1, alt * 3)
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
-    this.look.setHour(hour)
-    if (this.mode === 'building') this.building?.setSun(this.sun)
+    this.look.setAltitude(altDeg)
+    this.look.setLights(lightsOn(this.lightsMode, altDeg))
+    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night)
+  }
+
+  /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
+  setLightsMode(mode: LightsMode): void {
+    this.lightsMode = mode
+    this.setTimeOfDay(this.hour)
   }
 
   /** The month's wind as streamlines through the flat (wind.ts), tinted by its season, or none. */
@@ -502,7 +511,8 @@ export class PlotlineScene {
     // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
     const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
     if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
-    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's
+    this.look.outside = mode === 'building'
+    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's; the lamps' bounce
     if (mode !== 'walk') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
@@ -568,9 +578,10 @@ export class PlotlineScene {
     this.failCb = cb
   }
 
-  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches). */
+  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches), no lamp's either. */
   shadowsOff(): void {
     this.sun.castShadow = false
+    this.look.lampShadowsOff()
     this.wake()
   }
 
@@ -1205,6 +1216,7 @@ export class PlotlineScene {
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)
     ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
+    if (isCeilingLight(p.assetId)) this.look.addGlows(obj) // its diffuser / globe glows while the lamps are on
   }
 
   private async loadEnvironment(): Promise<void> {
@@ -1223,6 +1235,8 @@ export class PlotlineScene {
       clampSun(sky)
       const env = pmrem.fromEquirectangular(sky).texture
       for (const m of PANES) m.envMap = env // panes reflect the sky; no sky: they keep scene.environment
+      Object.assign(this.look.paneEnvs, { sky: env, room: this.scene.environment ?? undefined })
+      this.setTimeOfDay(this.hour) // at night the panes take the room's
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()
