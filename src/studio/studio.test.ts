@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, entityPoints, guessKind, initialState, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -14,7 +14,7 @@ import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { fitSheet, frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { furnish } from '../furnish/presets'
-import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, resizeAxes } from './furniture'
+import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, refurnish, resizeAxes } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -1665,5 +1665,176 @@ describe('Studio tools (session 27: column corners, face drag, arc)', () => {
     // a tight arc: fewer, longer pieces (none under 0.3 m); a bulge under 1 cm: one straight wall
     expect(arcPoints({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0.5 })).toHaveLength(6)
     expect(arcPoints({ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 2, y: 0.005 })).toHaveLength(2)
+  })
+})
+
+describe('Low walls and passages edited from the 3D view (founder 2026-10-19): the Studio’s own actions', () => {
+  // the 4 × 3 m room with a 1.1 m low wall from the left wall (a T at (0, 1.5)) to a free end at (2, 1.5)
+  const railed = () => {
+    const s = run(traceRect(), { type: 'pick-wall', wall: 'low' }, { type: 'chain-start', at: { x: 0, y: 1.5, tolM: TOL } }, { type: 'chain-typed', lengthM: 2, dirDeg: 0, tolM: TOL }, { type: 'chain-end' })
+    const low = s.unit.walls.find((w) => w.heightM < 1.2)!
+    return { s: { ...s, history: { past: [], future: [] } }, id: low.id }
+  }
+  const lowOf = (s: StudioState, id: string) => s.unit.walls.find((w) => w.id === id)!
+  const ends = (s: StudioState, id: string) => [lowOf(s, id).a, lowOf(s, id).b].map((v) => s.unit.vertices.find((x) => x.id === v)!)
+  const len = (s: StudioState, id: string) => wallFrame(lowOf(s, id), s.unit.vertices).lengthM
+
+  it('its free end slides along its own line (endAlong, as V on a picked wall’s end), one undo step for the drag', () => {
+    const { s, id } = railed()
+    expect(lowOf(s, id).heightM).toBe(1.1)
+    const r = endAlong(s.unit, id, lowOf(s, id).b, { x: 2.6, y: 1.8 }, { tolM: TOL })!
+    const t = run(s, { type: 'drag-begin' }, { type: 'drag', vertices: r.moves }, { type: 'drag-end', ids: r.ids })
+    expect(ends(t, id)[1]).toMatchObject({ x: expect.closeTo(2.6, 9), y: expect.closeTo(1.5, 9) }) // on its line, not where the pointer was
+    expect(len(t, id)).toBeCloseTo(2.6, 9)
+    expect(len(reducer(t, { type: 'undo' }), id)).toBeCloseTo(2, 9)
+    expect(endAlong(s.unit, id, lowOf(s, id).b, { x: -1, y: 1.5 }, { tolM: TOL })).toBeNull() // never through its other end
+  })
+
+  it('its end at the T leaves the left wall (detach) and slides alone; the left wall stays where it is', () => {
+    const { s, id } = railed()
+    const t0 = run(s, { type: 'drag-begin' }, { type: 'detach', wallId: id, vertexId: lowOf(s, id).a, newId: 'n1' })
+    const r = endAlong(t0.unit, id, 'n1', { x: 0.5, y: 1.4 }, { tolM: TOL })!
+    const t = run(t0, { type: 'drag', vertices: r.moves }, { type: 'drag-end', ids: r.ids })
+    expect(ends(t, id)[0]).toMatchObject({ x: expect.closeTo(0.5, 9), y: expect.closeTo(1.5, 9) })
+    expect(t.unit.walls.filter((w) => w.heightM > 3).flatMap((w) => [w.a, w.b]).map((v) => t.unit.vertices.find((x) => x.id === v)!).filter((p) => p.x < 1).every((p) => Math.abs(p.x) < 1e-9)).toBe(true)
+    // without the detach (Alt in the Studio and the 3D): the corner stays, the left wall moves with the end instead
+    const rigid = endAlong(s.unit, id, lowOf(s, id).a, { x: 0.5, y: 1.4 }, { tolM: TOL })!
+    const v = new Map(run(s, { type: 'drag', vertices: rigid.moves }).unit.vertices.map((p) => [p.id, p]))
+    expect(rigid.moves).toHaveLength(3) // the T and the left wall's run: (0, 0), (0, 1.5), (0, 3)
+    for (const m of rigid.moves) expect(v.get(m.id)!.x).toBeCloseTo(0.5, 9)
+  })
+
+  it('typed height and length, delete and undo: set-wall-type / set-wall-length / delete, as the Studio’s panel', () => {
+    const { s, id } = railed()
+    const planter = reducer(s, { type: 'set-wall-type', ids: [id], wall: 'low', heightM: 0.45 })
+    expect(lowOf(planter, id).heightM).toBe(0.45)
+    expect(lowOf(reducer(planter, { type: 'undo' }), id).heightM).toBe(1.1)
+    const short = reducer(s, { type: 'set-wall-length', id, lengthM: 1.5 })
+    expect(len(short, id)).toBeCloseTo(1.5, 9)
+    const gone = reducer(s, { type: 'delete', ids: [id] })
+    expect(gone.unit.walls.some((w) => w.id === id)).toBe(false)
+    expect(lowOf(reducer(gone, { type: 'undo' }), id).heightM).toBe(1.1)
+  })
+
+  it('a passage: its end dot widens it along its wall (the far end stays), typed width, delete, undo', () => {
+    const s0 = traceRect()
+    const top = s0.unit.walls.find((w) => {
+      const f = wallFrame(w, s0.unit.vertices)
+      return Math.abs(f.origin.y) < 1e-9 && Math.abs(f.dir.y) < 1e-9
+    })!
+    const s = reducer(s0, { type: 'add-opening', wallId: top.id, t: 0.5, kind: 'passage', widthM: 1 })
+    const p = s.unit.walls.find((w) => w.id === top.id)!.openings[0]
+    expect(p).toMatchObject({ kind: 'passage', widthM: expect.closeTo(1, 9) })
+    const far = wallFrame(top, s.unit.vertices).dir.x > 0 ? 'b' : 'a' // the end toward +x
+    const o = (t: StudioState) => t.unit.walls.find((w) => w.id === top.id)!.openings[0]
+    const uFar = far === 'b' ? p.offsetM + 1.5 : p.offsetM + p.widthM - 1.5
+    const wide = run(s, { type: 'drag-begin' }, { type: 'resize-opening', id: p.id, end: far, uM: uFar, tolM: 0 })
+    expect(o(wide).widthM).toBeCloseTo(1.5, 9)
+    expect(far === 'b' ? o(wide).offsetM : o(wide).offsetM + o(wide).widthM).toBeCloseTo(far === 'b' ? p.offsetM : p.offsetM + p.widthM, 9)
+    expect(o(reducer(wide, { type: 'undo' })).widthM).toBeCloseTo(1, 9)
+    expect(o(reducer(s, { type: 'update-opening', id: p.id, patch: { widthM: 2 } })).widthM).toBe(2)
+    const gone = reducer(s, { type: 'delete', ids: [p.id] })
+    expect(gone.unit.walls.find((w) => w.id === top.id)!.openings).toHaveLength(0)
+    expect(o(reducer(gone, { type: 'undo' })).id).toBe(p.id)
+  })
+})
+
+describe('refurnish: a room still on its presets follows its walls after a plan edit (the 3D view’s low wall / opening edits)', () => {
+  it('Type A’s planter edge moved 0.3 m into the planter: the planter bed is laid again for the narrower strip; an arranged room keeps its pieces', () => {
+    const before = normalizeUnit(typeA as unknown as Unit)
+    const laid = layoutFor(before, deriveRooms(before))
+    const edge = before.walls.find((w) => w.id === 'w_plant_s')!
+    const after = run({ ...initialState(), unit: before }, { type: 'drag', vertices: [edge.a, edge.b].map((id) => ({ ...before.vertices.find((v) => v.id === id)!, y: 7.379 - 0.3 })) }).unit
+    const planter = deriveRooms(before).find((r) => r.name === 'Planter')!.id
+    const living = deriveRooms(before).find((r) => r.name === 'Living room')!.id
+    const bed = (ps: FurniturePlacement[]) => ps.find((p) => p.roomId === planter && p.assetId.startsWith('planter_bed'))!.assetId
+    // the Living room arranged by hand (one piece moved 1 cm): it is not its presets any more
+    const arranged = laid.map((p, i) => (i === laid.findIndex((q) => q.roomId === living) ? { ...p, x: p.x + 0.01 } : p))
+    const next = refurnish(before, after, arranged)
+    expect(bed(next)).not.toBe(bed(laid))
+    expect(bed(next)).toBe(bed(layoutFor({ ...after, furniture: [] }, deriveRooms(after))))
+    const own = (ps: FurniturePlacement[]) => ps.filter((p) => p.roomId === living && !p.assetId.startsWith('curtain')) // its curtains follow their window: the T of the edge slid along its wall
+    expect(own(next)).toEqual(own(arranged))
+    // nothing changed in the plan: nothing changes in the layout
+    expect(refurnish(before, before, laid)).toEqual(laid)
+  })
+})
+
+describe('multi-select (session 27: Shift+click, box, one change for many)', () => {
+  /** the 4 × 3 box with a window on the top wall (x 0.39–1.61), a door on the right wall, a column near the top-left */
+  const setup = () => {
+    let s = traceRect()
+    const [top, right] = s.unit.walls
+    s = run(s, { type: 'add-opening', wallId: top.id, t: 0.25, kind: 'window' }, { type: 'add-opening', wallId: right.id, t: 0.5, kind: 'door' }, { type: 'add-pillar', x: 0.4, y: 0.4, wM: 0.3, hM: 0.3 })
+    const win = s.unit.walls[0].openings[0]
+    const door = s.unit.walls[1].openings[0]
+    return { s: reducer(s, { type: 'select', ids: [] }), win, door, pillar: s.unit.pillars![0] }
+  }
+
+  it('Shift+click adds an item, and takes a picked one out again', () => {
+    const { s: s0 } = setup()
+    const [a, b] = s0.unit.walls.map((w) => w.id)
+    let s = reducer(s0, { type: 'select', ids: [a] })
+    s = reducer(s, { type: 'select', ids: [b], toggle: true })
+    expect(s.selection).toEqual([a, b])
+    s = reducer(s, { type: 'select', ids: [a], toggle: true })
+    expect(s.selection).toEqual([b])
+    expect(s.history.past).toHaveLength(s0.history.past.length) // picking is never an undo step
+  })
+
+  it('a box picks every wall, opening and column it touches — not the ones it misses', () => {
+    const { s, win, door, pillar } = setup()
+    const [top, right, , left] = s.unit.walls
+    const ids = idsInBox(s.unit, { x: 0.5, y: 0.5 }, { x: -0.2, y: -0.2 }) // dragged up-left: the same box
+    expect(new Set(ids)).toEqual(new Set([top.id, win.id, left.id, pillar.id]))
+    expect(ids).not.toContain(right.id)
+    expect(ids).not.toContain(door.id)
+    expect(selectionText(s.unit, ids)).toBe('2 walls, 1 window, 1 column selected')
+    // a box inside a room, touching nothing
+    expect(idsInBox(s.unit, { x: 1.5, y: 1 }, { x: 2.5, y: 2 })).toEqual([])
+  })
+
+  it('a thickness typed for three walls is one action, and one Undo gives all three back', () => {
+    const { s: s0 } = setup()
+    const ids = s0.unit.walls.slice(0, 3).map((w) => w.id)
+    const s = reducer(s0, { type: 'update-wall', id: ids, patch: { thicknessM: EXTERIOR_M } })
+    expect(s.unit.walls.map((w) => w.thicknessM)).toEqual([EXTERIOR_M, EXTERIOR_M, EXTERIOR_M, PARTITION_M])
+    expect(s.history.past).toHaveLength(s0.history.past.length + 1)
+    expect(reducer(s, { type: 'undo' }).unit.walls.map((w) => w.thicknessM)).toEqual([PARTITION_M, PARTITION_M, PARTITION_M, PARTITION_M])
+  })
+
+  it('a mixed field shows "mixed" (NaN) until a value is typed for all of them', () => {
+    let { s, win, door } = setup()
+    const sills = () => [win.id, door.id].map((id) => s.unit.walls.flatMap((w) => w.openings).find((o) => o.id === id)!.sillM)
+    expect(shared(sills())).toBeNaN() // a window's 3' sill, a door's 0
+    s = reducer(s, { type: 'update-opening', id: [win.id, door.id], patch: { sillM: 0.5 } })
+    expect(shared(sills())).toBe(0.5)
+    expect(shared([PARTITION_M, PARTITION_M])).toBe(PARTITION_M)
+    // one that does not fit stays as it was; the others change, and a toast says how many did not
+    s = reducer(s, { type: 'update-opening', id: [win.id, door.id], patch: { widthM: 3.5 } }) // the right wall is 3 m long
+    const w = (id: string) => s.unit.walls.flatMap((x) => x.openings).find((o) => o.id === id)!.widthM
+    expect([w(win.id), w(door.id)]).toEqual([3.5, door.widthM])
+    expect(s.toast?.text).toMatch(/^1 not changed: /)
+  })
+
+  it('Delete removes the whole selection in one step; Undo brings it all back', () => {
+    const { s: s0, door, pillar } = setup()
+    const [top, right] = s0.unit.walls
+    let s = run(s0, { type: 'select', ids: [top.id, pillar.id] }, { type: 'select', ids: [door.id], add: true }, { type: 'delete' })
+    expect(s.unit.walls.some((w) => w.id === top.id)).toBe(false)
+    expect(s.unit.pillars ?? []).toHaveLength(0)
+    expect(s.unit.walls.find((w) => w.id === right.id)!.openings).toHaveLength(0)
+    expect(s.history.past).toHaveLength(s0.history.past.length + 1)
+    s = reducer(s, { type: 'undo' })
+    expect(s.unit).toBe(s0.unit)
+  })
+
+  it('arrows nudge walls and their openings together (an opening on a moved wall stays put on it)', () => {
+    const { s: s0, win } = setup()
+    const top = s0.unit.walls[0]
+    const s = run(s0, { type: 'select', ids: [top.id, win.id] }, { type: 'nudge', dx: 0, dy: -0.0254 })
+    const t = s.unit.walls.find((w) => w.id === top.id) ?? s.unit.walls[0]
+    expect(s.unit.vertices.find((v) => v.id === t.a)!.y).toBeCloseTo(-0.0254)
+    expect(t.openings.find((o) => o.id === win.id)!.offsetM).toBeCloseTo(win.offsetM)
   })
 })

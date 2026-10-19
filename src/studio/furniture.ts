@@ -8,10 +8,10 @@
  * An empty `unit.furniture` IS the preset layout (layoutFor); the first move writes the whole array so it is exported,
  * "Reset all" empties it again; rooms with no stored pieces keep getting their presets. Reuses src/furnish (read-only).
  */
-import { newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
+import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
-import { GAP, chairSpots, curtainShift, footprint, furnish, hangCurtains, quadsOverlap, windowOnFace, windowZones } from '../furnish/presets'
+import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
 import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 /** 3" squares (founder 2026-09-28: 1 ft, then 6", were too coarse to place a piece where he wanted) */
@@ -42,6 +42,23 @@ export function layoutFor(unit: Unit, rooms: Room[]): FurniturePlacement[] {
   return hangCurtains(unit, rooms, added.length ? [...stored, ...added] : stored)
 }
 
+/**
+ * After a plan edit (`before` → `after`; `pieces` laid out on `before`): every room still holding exactly its presets —
+ * none moved, turned, resized, added or deleted — is furnished again for its new walls (a planter bed fills the moved
+ * strip, a chair clears a moved railing); an arranged room keeps its pieces. Then layoutFor (curtains, new rooms).
+ */
+export function refurnish(before: Unit, after: Unit, pieces: FurniturePlacement[]): FurniturePlacement[] {
+  const byRoom = (ps: FurniturePlacement[]) => {
+    const m = new Map<Id, string[]>()
+    for (const p of ps) m.set(p.roomId, [...(m.get(p.roomId) ?? []), JSON.stringify(p)])
+    return m
+  }
+  const preset = byRoom(furnish(before, deriveRooms(before)))
+  const mine = byRoom(pieces)
+  const asLaid = (id: Id) => JSON.stringify(mine.get(id)) === JSON.stringify(preset.get(id))
+  return layoutFor({ ...after, furniture: pieces.filter((p) => !asLaid(p.roomId)) }, deriveRooms(after))
+}
+
 /** The stored pieces without room `roomId`'s when those are still exactly its presets (none moved, turned, resized or deleted): a relabelled room re-furnishes. */
 export function forgetPresets(unit: Unit, rooms: Room[], roomId: Id): FurniturePlacement[] {
   const mine = unit.furniture.filter((p) => p.roomId === roomId)
@@ -61,6 +78,11 @@ export function deletePiece(pieces: FurniturePlacement[], id: Id): FurniturePlac
 const assetOf = (p: FurniturePlacement): KitAsset | undefined => kitAsset(p.assetId)
 const sizeOf = placementSize
 export const pieceQuad = (p: FurniturePlacement): Pt[] => footprint(p, p.rotationDeg, sizeOf(p))
+/** The middles of a piece's two sides, its +x side first: a curtain's resize dots on the plan (tool F). */
+export function sideDots(p: FurniturePlacement): [Pt, Pt] {
+  const q = pieceQuad(p)
+  return [{ x: (q[1].x + q[2].x) / 2, y: (q[1].y + q[2].y) / 2 }, { x: (q[0].x + q[3].x) / 2, y: (q[0].y + q[3].y) / 2 }]
+}
 /** "Queen bed, upholstered" → "Queen bed" */
 export const pieceLabel = (p: FurniturePlacement): string => placementLabel(p).split(/[,(]/)[0].trim()
 
@@ -83,7 +105,7 @@ const band = (p: FurniturePlacement): [number, number] => {
   return a ? heightRange({ ...a, sizeM: sizeOf(p) }) : [0, sizeOf(p).y] // a resized wall piece stays centred at 1.5 m
 }
 
-/** Curtains: hung on a window (presets.ts hangCurtain), sliding along their wall only. */
+/** Curtains: hung on an opening (presets.ts hangCurtain), sliding along their wall only, wider or narrower by a side. */
 const isCurtain = (p: FurniturePlacement) => p.assetId === CURTAINS
 
 /**
@@ -333,12 +355,16 @@ export function movePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[
  */
 function slideCurtain(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], p: FurniturePlacement, to: Pt): Move | null {
   const sh = curtainShift(unit, rooms, p, to, GRID_M)
-  if (sh === null) return null
-  const furniture = hangCurtains(unit, rooms, pieces.map((x) => (x.id === p.id ? { ...x, shiftM: sh || undefined } : x)))
-  const piece = furniture.find((x) => x.id === p.id)
+  return sh === null ? null : rehang(unit, rooms, pieces, p.id, { shiftM: sh || undefined })
+}
+
+/** Curtains `id` changed by `patch` (an opening, a slide, rod ends), hung again with the whole layout, refused on a move's rules. */
+function rehang(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, patch: Partial<FurniturePlacement>): Move | null {
+  const furniture = hangCurtains(unit, rooms, pieces.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  const piece = furniture.find((x) => x.id === id)
   if (!piece) return null
-  const error = whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, furniture.filter((x) => x.id !== p.id), piece)
-  return { furniture, piece, ids: [p.id], snapped: 'wall', error }
+  const error = whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, furniture.filter((x) => x.id !== id), piece)
+  return { furniture, piece, ids: [id], snapped: 'wall', error }
 }
 
 /** A wall face: a point on it and its normal into the room (plan metres). */
@@ -384,21 +410,19 @@ export function nearestFace(unit: Unit, rooms: Room[], at: Pt): WallFace | null 
  * A new piece of kit asset `assetId` (the staff library, CLAUDE.md 2026-09-27 late) dropped at `at`, turned
  * `rotationDeg`, on a move's rules: floor and ceiling pieces as movePiece puts them (3" grid, flush to a wall they
  * near, backed ones back to it); wall pieces on `wall` (the face under the 3D pointer), else on the face of `at`'s room
- * nearest `at` (hangOn). It belongs to the room it lands in. `error` = why not; the caller keeps the old layout.
+ * nearest `at` (hangOn). Curtains hang on the opening of any kind at `hole` (the doorway the 3D pointer looks through),
+ * else nearest that face. It belongs to the room it lands in. `error` = why not; the caller keeps the old layout.
  */
-export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], assetId: string, at: Pt, rotationDeg: number, id: Id = newId(), wall?: WallFace | null): Move | null {
+export function placePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], assetId: string, at: Pt, rotationDeg: number, id: Id = newId(), wall?: WallFace | null, hole?: WallFace | null): Move | null {
   if (!kitAsset(assetId)) return null
   const p: FurniturePlacement = { id, assetId, roomId: roomAt(at, rooms, unit)?.id ?? '', x: at.x, y: at.y, rotationDeg: norm(rotationDeg) }
   const all = [...pieces, p]
   if (surfaceOf(p) !== 'wall') return movePiece(unit, rooms, all, id, at, rotationDeg)
   const face = wall ?? nearestFace(unit, rooms, at)
   if (isCurtain(p)) {
-    // new curtains hang on the window (or sliding door) pointed at, sized by it
-    const on = face && windowOnFace(unit, rooms, face)
-    const hung = on && hangCurtains(unit, rooms, [...pieces, { ...p, ...on }])
-    const piece = hung?.find((x) => x.id === id)
-    if (!hung || !piece) return { furniture: all, piece: p, ids: [id], snapped: null, error: 'Point at a window or a sliding door' }
-    return { furniture: hung, piece, ids: [id], snapped: 'wall', error: whyNot(unit, rooms.find((r) => r.id === piece.roomId) ?? null, hung.filter((x) => x.id !== id), piece) }
+    // new curtains hang on the opening pointed at (a window, sliding door, door or passage: founder 2026-10-19), sized by it
+    const on = (hole && openingOnFace(unit, rooms, hole)) || (face && openingOnFace(unit, rooms, face))
+    return (on && rehang(unit, rooms, all, id, on)) || { furniture: all, piece: p, ids: [id], snapped: null, error: 'Point at an opening' }
   }
   return face ? hangOn(unit, rooms, all, id, face) : { furniture: all, piece: p, ids: [id], snapped: null, error: 'Outside the room' }
 }
@@ -457,11 +481,17 @@ export function resizeAxes(assetId: string): ('x' | 'y' | 'z')[] {
  * (resizeLimits; null = move / turn only → returns null). `grow` picks the face that moves per footprint axis (+1 the
  * +x / front face, −1 the other, 0 both halves): the opposite face stays. Then flush to a wall it nears, and refused on
  * the same rules as a move. What rests on it stays put; a dining table's chairs are laid again round it (relayChairs).
+ * Curtains change their width only, by the side `grow.x` picks (presets.ts curtainEnds), and hang on their opening again.
  */
 export function resizePiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, size: { x: number; y: number; z: number }, grow = { x: 0, z: 1 }): Move | null {
   const p = pieces.find((x) => x.id === id)
   const lim = p && resizeLimits(p.assetId)
   if (!p || !lim) return null
+  if (p.openingId) {
+    // curtains: wider / narrower by the side dragged (the other end stays), on 5 cm steps from their opening's edge
+    const ends = curtainEnds(unit, rooms, p, size.x, grow.x, SIZE_STEP_M, [lim.min.x, lim.max.x])
+    return ends && rehang(unit, rooms, pieces, id, { endsM: ends })
+  }
   const fit = (k: 'x' | 'y' | 'z') => Math.min(lim.max[k], Math.max(lim.min[k], Math.round(size[k] / SIZE_STEP_M) / (1 / SIZE_STEP_M))) // n / 20: 0.6, not 0.6000000000000001
   const s = { x: fit('x'), y: fit('y'), z: fit('z') }
   const old = sizeOf(p)

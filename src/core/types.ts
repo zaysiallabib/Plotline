@@ -189,12 +189,18 @@ export interface FurniturePlacement {
    */
   removed?: true
   /**
-   * Curtains (founder 2026-10-13): the window or sliding door they hang on. Their place, width and height come from it on
-   * every layout (furnish/presets.ts hangCurtains): they follow it when it moves or is resized and go when it is deleted.
+   * Curtains (founder 2026-10-13): the opening they hang on — a window or sliding door; staff may hang them on any opening,
+   * a door or a passage too (2026-10-19). Their place, width and height come from it on every layout (furnish/presets.ts
+   * hangCurtains): they follow it when it moves or is resized and go when it is deleted.
    */
   openingId?: Id
   /** Curtains slid along their wall (staff): metres from where they hang on their window, + toward the wall's end b. */
   shiftM?: number
+  /**
+   * Curtains widened / narrowed by a side (staff, 2026-10-19): how far each rod end reaches past its opening's edge, m
+   * (negative = short of it) — [the end toward the wall's end a, the end toward b]. Absent = as their opening hangs them.
+   */
+  endsM?: [number, number]
 }
 
 /**

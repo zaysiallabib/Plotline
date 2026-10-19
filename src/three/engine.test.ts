@@ -127,11 +127,11 @@ describe('furniture', () => {
 
 describe('resize (sizeM)', () => {
   const XYZ = ['x', 'y', 'z'] as const
-  const resizable = Object.keys(PROCEDURAL).filter((id) => rebuildsAtSize(id) && resizeLimits(id)) // curtains rebuild at the size their window gives, never resized by hand
+  const resizable = Object.keys(PROCEDURAL).filter((id) => rebuildsAtSize(id) && resizeLimits(id)) // curtains too: their width, by a side (2026-10-19)
 
   test('every kit asset but structure resizes, in a sane range around its kit size; scans scale 0.7–1.4×, flat pieces 0.5–2×', () => {
     const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)]
-    expect(all.filter((id) => !resizeLimits(id))).toEqual(Object.keys(PROCEDURAL).filter((id) => id === 'curtains' || id.startsWith('stair_')))
+    expect(all.filter((id) => !resizeLimits(id))).toEqual(Object.keys(PROCEDURAL).filter((id) => id.startsWith('stair_')))
     expect(resizable).toEqual(expect.arrayContaining(['wardrobe_tall', 'wardrobe_2door', 'closet_rail', 'closet_rail_s', 'kitchen_tall', 'fridge', 'desk_oak', 'dining_table', 'rug_rect_large', 'bed_queen', 'sofa_3seat', 'cot']))
     for (const id of all.filter((id) => resizeLimits(id))) {
       const { min, max, lock } = resizeLimits(id)!
@@ -141,7 +141,7 @@ describe('resize (sizeM)', () => {
         expect(min[k], `${id}.${k}`).toBeGreaterThan(0)
         expect(min[k], `${id}.${k}`).toBeLessThanOrEqual(kit[k] + 1e-9)
         expect(max[k], `${id}.${k}`).toBeGreaterThanOrEqual(kit[k] - 1e-9)
-        expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(Math.max(4, 1.4 * kit[k] + 1e-9)) // trees and a car are bigger than 4 m already
+        expect(max[k], `${id}.${k}`).toBeLessThanOrEqual(Math.max(id === 'curtains' ? 6 : 4, 1.4 * kit[k] + 1e-9)) // trees and a car are bigger than 4 m already; a rod may span a glass front
         if (rebuildsAtSize(id)) continue
         const flat = ['art', 'tv'].includes(objectKind(kitAsset(id)!)) || id === 'rug_round'
         expect(min[k] / kit[k], `${id}.${k}`).toBeGreaterThanOrEqual(flat ? 0.5 - 1e-9 : 0.7 - 1e-9)
@@ -198,7 +198,7 @@ describe('resize (sizeM)', () => {
       expect(fb.max.x).toBeGreaterThan(want.x / 2 - 0.1)
     }
     expect(rebuildsAtSize('curtains')).toBe(true)
-    expect(resizeLimits('curtains')).toBeNull() // their window sizes them
+    expect(resizeLimits('curtains')).toMatchObject({ min: { x: 0.4 }, max: { x: 6 } }) // their width only (by a side); their opening sets the rest
   })
 
   test('a wardrobe rebuilds with more doors, not wider ones: 2.4 m = 4 doors and 2 handle pairs', () => {

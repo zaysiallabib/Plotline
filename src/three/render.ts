@@ -20,12 +20,12 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
 import { isCeilingLight, placementSize } from '../furnish/kit'
-import { fixtureGlow } from '../furnish/procedural'
-import { buildContactShadows, buildStreet, haze, hazed, setHaze } from './context'
+import { setLeafGlow } from '../furnish/procedural'
+import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } from './context'
 import { dayMix, isCovered, openToSky } from './daylight'
 import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
-import { meterUVs, setGlassSky } from './openings'
+import { meterUVs, PANES, setGlassSky } from './openings'
 
 /**
  * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map. low: no AO, 1024 shadow. lite (weak machines,
@@ -54,28 +54,106 @@ const ROOF_LIFT = 0.04
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
 // ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
 // 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aims for walls ≈ 195–205.
-const EXPOSURE = 1
 const HEMI = 0.9
 const ENV = 1.1
 const HEMI_SKY = new THREE.Color('#e6e9ee') // barely cool: #dfe7f5 turned the warm-white walls grey
 /** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
-const HEMI_GROUND = '#cfcbc4'
+const HEMI_GROUND = new THREE.Color('#cfcbc4')
 /** sky light + sky dome at sunrise / sunset (low sun) */
 const GOLDEN = new THREE.Color('#ffd2a8')
-/** sky dome at dusk: a warm multiply, not a grey dim */
-const DUSK_SKY = new THREE.Color('#ffc9a0').multiplyScalar(0.55)
-/** 3000 K blackbody (Mitchell Charity table) */
-const WARM = '#ffb46b'
+/** the flat's lamps: 3000 K LEDs as a camera white-balanced for the room sees them (the raw blackbody #ffb46b turned every room orange) */
+const WARM = new THREE.Color('#ffdfb8')
 /**
- * Hemisphere ground colour at dusk: the lamps' light bounced off the lit floor and walls (the spots point down, so without
- * it the ceilings sat at sRGB 110–135 under walls at 145–150 at 18:00: a dim flat, not one with its lights on).
+ * The lamps' light bounced off the room (scene lux, hemisphere): up from the lit floor onto the ceiling, down from the
+ * ceiling. A 100 lm/m² room over ≈ 4.5 m² of surface per m² of floor, half reflected: ≈ 0.2 lux mean. Without it the
+ * downward lamps left every ceiling black.
  */
-const BOUNCE = new THREE.Color('#ffd9b0').multiplyScalar(2)
-/** point-light candela per m² of room at full daylight; ×DUSK_BOOST at dusk */
-const LIGHT_CD_PER_M2 = 0.1
-const DUSK_BOOST = 8
-/** + sun + hemisphere = 10 lights: forward shading pays for every light on every lit fragment */
-const MAX_ROOM_LIGHTS = 8
+const BOUNCE_UP = 0.28
+const BOUNCE_DOWN = 0.08
+/**
+ * Scene units: 1 scene lux ≈ 100 real lux at the lamps' calibration (the day's indirect fill, ENV + HEMI ≈ 2, reads as a
+ * ≈ 200 lux room; the sun patch is compressed, as a photo would). A room's lamp: 150 lm per m² of floor, 900–4500 lm
+ * (a 10–45 W LED ceiling light, or a fan's kit and a tube light), Lambertian under a flush diffuser: peak candela Φ / π.
+ */
+export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
+/** + sun + hemisphere: forward shading pays for every light on every lit fragment — at intensity 0 too (no recompile on / off) */
+const MAX_ROOM_LIGHTS = 12
+/** lamps casting shadows at once (the nearest to the camera; the count never changes: no recompile) */
+const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
+/** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
+const ON_GLOW = 4
+/** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
+const PANE_ROOM = 0.06
+/** the camera at night: the room exposed as a photo of a lit flat is, 2 stops over the day's */
+export const NIGHT_EXPOSURE = 4
+/** the sky's fill as SEEN (after exposure) by the sun's altitude, ° → fraction of the day's: a clear sky's diffuse light */
+const SEEN: [number, number][] = [
+  [10, 1],
+  [5, 0.8],
+  [0, 0.5],
+  [-3, 0.2],
+  [-6, 0.06],
+  [-10, 0.025],
+  [-18, 0.02], // a city's glow, never black
+]
+/** the dome's twilight / night gradient as seen (sRGB): [alt°, zenith, horizon, glow toward the sun's bearing] */
+const TWILIGHT: [number, string, string, string][] = [
+  [0, '#6f8fbf', '#e9b48c', '#ffa060'],
+  [-3, '#34528a', '#b88a80', '#d27a48'],
+  [-6, '#16264a', '#4a4660', '#6a4434'],
+  [-10, '#080d1c', '#1f1e26', '#201812'],
+  [-18, '#05070e', '#1e1b1c', '#000000'], // the city's glow low on the horizon
+]
+/** a table sorted by falling altitude: `f` mixes rows a and b (t 0 → a, the higher one) */
+function byAlt<T>(rows: [number, ...unknown[]][], alt: number, f: (a: number, b: number, t: number) => T): T {
+  const i = rows.findIndex((r) => alt >= r[0])
+  if (i === 0) return f(0, 0, 0)
+  if (i < 0) return f(rows.length - 1, rows.length - 1, 0)
+  return f(i - 1, i, (rows[i - 1][0] - alt) / (rows[i - 1][0] - rows[i][0]))
+}
+
+export interface SkyLight {
+  /** renderer.toneMappingExposure: 1 by day; the camera opens up as the sky goes, to NIGHT_EXPOSURE */
+  exposure: number
+  /** the sky's fill (environment + hemisphere) as a fraction of the day's, before exposure */
+  fill: number
+  /** 1 while the sun is low (≲ 14°) → 0 above ~30°: sky light and the dome go golden */
+  golden: number
+  /** 0 → 1 as the sun sets (2° up → 2° down): the dome turns from the photo sky to the twilight / night gradient */
+  night: number
+}
+
+/** The sky's light by the sun's altitude in degrees (below 0: under the horizon). Noon down to 10° is the day look unchanged. */
+export function skyLight(altDeg: number): SkyLight {
+  const exposure = 1 + (NIGHT_EXPOSURE - 1) * THREE.MathUtils.smoothstep(-altDeg, -5, 6)
+  const seen = byAlt(SEEN, altDeg, (a, b, t) => Math.exp((1 - t) * Math.log(SEEN[a][1]) + t * Math.log(SEEN[b][1])))
+  const s = Math.sin(THREE.MathUtils.degToRad(Math.max(altDeg, 1)))
+  return { exposure, fill: seen / exposure, golden: 1 - THREE.MathUtils.smoothstep(s, 0.24, 0.5), night: THREE.MathUtils.smoothstep(-altDeg, -2, 2) }
+}
+
+/** The dome's twilight gradient at this altitude, linear RGB as seen (Look divides by the exposure). */
+export function twilight(altDeg: number): { zenith: THREE.Color; horizon: THREE.Color; glow: THREE.Color } {
+  return byAlt(TWILIGHT, altDeg, (a, b, t) => {
+    const mix = (k: 1 | 2 | 3) => new THREE.Color(TWILIGHT[a][k]).lerp(new THREE.Color(TWILIGHT[b][k]), t)
+    return { zenith: mix(1), horizon: mix(2), glow: mix(3) }
+  })
+}
+
+/** Lights: 'auto' = on once the sun is under 5° (dusk inside a flat), off by day; or the person's pick. */
+export type LightsMode = 'auto' | 'on' | 'off'
+export const lightsOn = (mode: LightsMode, altDeg: number): boolean => (mode === 'auto' ? altDeg < 5 : mode === 'on')
+
+/**
+ * The lamps that cast shadows: those in the camera's room first, then the nearest to the camera; `k` of them (fewer only
+ * if there are fewer lamps). Indices into `lamps`.
+ */
+export function pickCasters(lamps: { x: number; z: number; here: boolean }[], cam: { x: number; z: number }, k: number): number[] {
+  return lamps
+    .map((l, i) => ({ i, rank: (l.here ? 0 : 1e6) + Math.hypot(l.x - cam.x, l.z - cam.z) }))
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, k)
+    .map((r) => r.i)
+}
 /** Covered zones (coverLights): a batten every GRID m, the real downlights among them, their candela. */
 const GRID = 3.6
 const COVER_LIGHTS = 4
@@ -112,13 +190,28 @@ export class Look {
   /** per unit (context.ts): contact shadows under the furniture; the street (in `indoor`: none around the dollhouse) */
   private contact: THREE.Mesh | null = null
   private street: THREE.Group | null = null
-  /** `id`: the fixture placement it hangs at */
-  private lights: { light: THREE.SpotLight; base: number; id: string }[] = []
+  /** `id`: the fixture placement it hangs at; `room`: its room's polygon (pickCasters: the camera's room first) */
+  private lights: { light: THREE.SpotLight; base: number; id: string; room: Pt[] }[] = []
+  /** the flat's lamps on (lightsOn) and the sky's light, as last set */
+  private on = false
+  /** the Building view: the camera is outside the tower, whose shells take no bounce from this flat's lamps */
+  outside = false
+  private alt = 45
+  private casters: number
+  /** where the shadow-casting lamps were last picked from */
+  private readonly pickedAt = new THREE.Vector3(Infinity, 0, 0)
+  /** the dome's twilight uniforms (setAltitude) */
+  private readonly dome = { night: { value: 0 }, zenith: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, glow: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(1, 0, 0) } }
+  /** materials that glow while the lamps are on (fixtureGlow, the pendant's globe, the fan's light kit): their own emissive intensity */
+  private readonly glows = new Map<THREE.MeshStandardMaterial, number>()
+  /** what the panes mirror (PlotlineScene.loadEnvironment): the sky's PMREM by day, the interior's at night */
+  readonly paneEnvs: { sky?: THREE.Texture; room?: THREE.Texture } = {}
   private readonly fitBox = new THREE.Box3()
   private topY = 3
   /** how far toward the sun the shadow box reaches past the flat: a site's blocks shade it (SITE_REACH_M), else 1 m */
   private reach = 1
   private readonly v = new THREE.Vector3()
+  private readonly c = new THREE.Color()
   /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
   private shadowKey = NaN
   private readonly onRestored = (): void => void (this.shadowKey = NaN)
@@ -131,8 +224,9 @@ export class Look {
     quality: Quality,
   ) {
     renderer.toneMapping = THREE.NeutralToneMapping
-    renderer.toneMappingExposure = EXPOSURE
     renderer.shadowMap.enabled = !switchedOff('shadows')
+    this.casters = CASTERS[quality]
+    sun.shadow.autoUpdate = false // render(): drawn again when what it sees changed (casterKey)
     renderer.shadowMap.autoUpdate = false // drawn when something it sees changes: render() / casterKey
     renderer.domElement.addEventListener('webglcontextrestored', this.onRestored)
     renderer.shadowMap.type = THREE.PCFShadowMap
@@ -148,12 +242,21 @@ export class Look {
     this.sky.frustumCulled = false
     // under the horizon the dome shows the HDRI's mirrored sky: a dark band between eye level and the ground's far
     // edge (2–6° down from a flat). It fades into the haze the ground ends in.
+    // after sunset the photo sky gives way to a twilight / night gradient (setAltitude): zenith to horizon, a glow toward
+    // where the sun went down
     this.sky.material.onBeforeCompile = (s) => {
       s.uniforms.hazeColor = haze
-      s.vertexShader = `varying float vSkyY;\n${s.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyY = normalize(position).y;')
-      s.fragmentShader = `uniform vec3 hazeColor;\nvarying float vSkyY;\n${s.fragmentShader}`.replace(
+      const d = this.dome
+      Object.assign(s.uniforms, { skyNight: d.night, skyZen: d.zenith, skyHor: d.horizon, skyGlow: d.glow, skySun: d.sunDir })
+      s.vertexShader = `varying vec3 vSkyDir;\n${s.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkyDir = normalize(position);')
+      s.fragmentShader = `uniform vec3 hazeColor;\nuniform float skyNight;\nuniform vec3 skyZen;\nuniform vec3 skyHor;\nuniform vec3 skyGlow;\nuniform vec3 skySun;\nvarying vec3 vSkyDir;\n${s.fragmentShader}`.replace(
         '#include <tonemapping_fragment>',
-        'gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, 1.0 - smoothstep(-0.03, 0.03, vSkyY));\n#include <tonemapping_fragment>',
+        `float up = max(vSkyDir.y, 0.0);
+        vec2 flat2 = normalize(vSkyDir.xz + vec2(1e-5));
+        vec3 dusk = mix(skyHor, skyZen, sqrt(up)) + skyGlow * pow(max(dot(flat2, skySun.xz), 0.0), 3.0) * exp(-8.0 * up);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, dusk, skyNight);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, 1.0 - smoothstep(-0.03, 0.03, vSkyDir.y));
+        #include <tonemapping_fragment>`,
       )
     }
     this.sky.renderOrder = -1
@@ -315,12 +418,25 @@ export class Look {
       const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
-      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, Math.PI / 2.6, 0.6, 2)
+      // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
+      // smoothstep(cos 83°, 1, cos θ) ≈ cos θ — the walls lit up to near the ceiling, falling off as a real lamp's
+      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, THREE.MathUtils.degToRad(83), 1, 2)
       light.position.set(at.x, lightY, at.y)
       light.target.position.set(at.x, level(room, at.x, at.y), at.y)
-      this.lights.push({ light, base: LIGHT_CD_PER_M2 * Math.max(6, room.areaSqm), id: hung.id })
+      const sh = light.shadow
+      sh.autoUpdate = false // drawn when picked (render) or when what it sees changed
+      sh.mapSize.setScalar(this.casters > 1 ? 1024 : 512)
+      sh.focus = 0.85 // a 141° frustum: a 166° one spends its texels on the walls' tops
+      sh.camera.near = 0.1
+      sh.bias = -0.0004
+      sh.normalBias = 0.02
+      sh.radius = 3
+      this.lights.push({ light, base: lampCandela(room.areaSqm), id: hung.id, room: core.roomPolygon(room, unit) })
       this.unitGroup.add(light, light.target)
     }
+    // the same number of shadow-casting lamps whatever the camera does (a count change recompiles every material)
+    this.lights.forEach((l, i) => (l.light.castShadow = i < this.casters))
+    this.pickedAt.set(Infinity, 0, 0)
     this.coverLights(unit, rooms, cover)
     this.unitGroup.add(slab, this.indoor)
   }
@@ -377,27 +493,83 @@ export class Look {
       light.position.z = p.y
       light.target.position.x = p.x // its y: the floor under it (setUnit)
       light.target.position.z = p.y
+      light.shadow.needsUpdate = light.castShadow
+      this.renderer.shadowMap.needsUpdate ||= light.castShadow
     }
   }
 
-  /** Call after the sun has been placed for `hour`. */
-  setHour(hour: number): void {
-    // 0 by day → 1 at 18:00 (and before 07:30): sky light fades, the fixtures take over
-    const dusk = Math.max(THREE.MathUtils.smoothstep(hour, 16.5, 18), 1 - THREE.MathUtils.smoothstep(hour, 6, 7.5))
-    // 1 while the sun is low (07:00 / 17:00, altitude ≲ 14°) → 0 above ~30°: sky light and the sky itself go golden
-    const alt = this.v.copy(this.sun.position).sub(this.sun.target.position).normalize().y
-    const golden = 1 - THREE.MathUtils.smoothstep(alt, 0.24, 0.5)
-    this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * golden)
-    this.hemi.intensity = HEMI * (1 - 0.55 * dusk)
-    this.hemi.groundColor.set(HEMI_GROUND).lerp(BOUNCE, dusk)
-    this.scene.environmentIntensity = ENV * (1 - 0.55 * dusk)
-    dayMix.value = 1 - dusk // after dark the lamps light the rooms, not the windows
-    const sky = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, golden).lerp(DUSK_SKY, dusk)
-    setHaze(sky)
-    setGlassSky(0.2126 * sky.r + 0.7152 * sky.g + 0.0722 * sky.b) // the panes mirror this sky
-    fixtureGlow().emissiveIntensity = 2.5 + 3.5 * dusk
-    for (const { light, base } of this.lights) light.intensity = base * (1 + (DUSK_BOOST - 1) * dusk)
+  /**
+   * Call after the sun has been placed: its altitude in degrees (under the horizon: below 0). Sunlight and the flat's own
+   * lamps are the only light: the sky's fill, the exposure and the dome follow the sun (skyLight); the lamps add their
+   * own pools and their bounce.
+   */
+  setAltitude(altDeg: number): void {
+    this.alt = altDeg
+    const k = skyLight(altDeg)
+    this.renderer.toneMappingExposure = k.exposure
+    const lamp = this.on && !this.outside ? 1 : 0
+    // the hemisphere = the sky's share + the lamps' bounce (warm, mostly up from the lit floor)
+    this.hemi.intensity = 1
+    this.hemi.color.copy(HEMI_SKY).lerp(GOLDEN, 0.5 * k.golden).multiplyScalar(HEMI * k.fill).add(this.c.copy(WARM).multiplyScalar(BOUNCE_DOWN * lamp))
+    this.hemi.groundColor.copy(HEMI_GROUND).multiplyScalar(HEMI * k.fill).add(this.c.copy(WARM).multiplyScalar(BOUNCE_UP * lamp))
+    this.scene.environmentIntensity = ENV * k.fill
+    // the daylight atlas (window falloff) weighs the sky's share of the indirect light; the lamps' bounce is even
+    const sky = k.fill * (ENV + HEMI)
+    dayMix.value = sky / (sky + lamp * (BOUNCE_UP + BOUNCE_DOWN) + 1e-6)
+    outdoorFill.value = (HEMI * k.fill) / (HEMI * k.fill + lamp * (BOUNCE_UP + BOUNCE_DOWN) / 2 + 1e-6) // the street gets no lamp bounce
+    // the dome: the photo sky, golden when low, dimming as it sets; then the twilight gradient (as seen ÷ exposure)
+    const seen = Math.min(1, k.fill * k.exposure)
+    const tint = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, k.golden).multiplyScalar(seen / k.exposure)
+    const tw = twilight(altDeg)
+    this.dome.night.value = k.night
+    this.dome.zenith.value.copy(tw.zenith).multiplyScalar(1 / k.exposure)
+    this.dome.horizon.value.copy(tw.horizon).multiplyScalar(1 / k.exposure)
+    this.dome.glow.value.copy(tw.glow).multiplyScalar(1 / k.exposure)
+    const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position)
+    this.dome.sunDir.value.set(toSun.x, 0, toSun.z).normalize()
+    setHaze(tint)
+    // the haze (and the dome under the horizon, which a dollhouse looks down on) at dusk / night: between the horizon and
+    // the sky overhead, darker — the horizon's own pink alone filled the whole background at 17:45
+    haze.value.lerp(this.c.copy(this.dome.horizon.value).lerp(this.dome.zenith.value, 0.7).multiplyScalar(0.7), k.night)
+    const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+    // the panes mirror this sky — at night, the lamps on, the lit room instead (faintly: the interior light probe, warm)
+    const room = this.on && k.night > 0.5 && this.paneEnvs.room
+    const env = (room ? this.paneEnvs.room : this.paneEnvs.sky) ?? null
+    for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
+    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night))
+    setLeafGlow(k.fill + 0.1 * lamp)
+    // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
+    ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)
     this.fitShadow()
+  }
+
+  /** The flat's lamps on or off (lightsOn): their candela, the fixtures' glow, their bounce. */
+  setLights(on: boolean): void {
+    const lit = on && !this.on // just switched on: the shadow-casting lamps draw their maps (off, none were kept up)
+    this.on = on
+    for (const { light, base } of this.lights) light.intensity = on ? base : 0
+    for (const [m, e] of this.glows) m.emissiveIntensity = on ? e * ON_GLOW : 0
+    if (lit) for (const l of this.lights) l.light.shadow.needsUpdate = l.light.castShadow
+    this.renderer.shadowMap.needsUpdate ||= lit
+    this.pickedAt.set(Infinity, 0, 0)
+    this.setAltitude(this.alt)
+  }
+
+  /** Lite and still slow (PlotlineScene.shadowsOff): no lamp casts a shadow, now or after the next setUnit. */
+  lampShadowsOff(): void {
+    this.casters = 0
+    for (const { light } of this.lights) light.castShadow = false
+  }
+
+  /** A ceiling light's materials (a mounted piece): those that glow (emissive) follow the lamps. */
+  addGlows(obj: THREE.Object3D): void {
+    obj.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
+      if (!m?.isMeshStandardMaterial || this.glows.has(m) || (!m.emissiveMap && m.emissive.getHex() === 0)) return
+      if (m.emissive.getHex() === 0) m.emissive.set('#fff0dc') // an emissive map with no factor (the fan's light kit): it never glowed
+      this.glows.set(m, m.emissiveIntensity)
+      m.emissiveIntensity = this.on ? m.emissiveIntensity * ON_GLOW : 0
+    })
   }
 
   /** Orthographic shadow frustum fitted to the unit box (and its shadow on the catcher) in light space. */
@@ -446,14 +618,36 @@ export class Look {
     const key = this.casterKey()
     if (key !== this.shadowKey) {
       this.renderer.shadowMap.needsUpdate = true
+      this.sun.shadow.needsUpdate = true
+      for (const l of this.lights) if (l.light.castShadow) l.light.shadow.needsUpdate = true
       this.shadowKey = key
     }
+    this.pickLampShadows()
     if (this.composer && !this.renderer.xr.isPresenting) {
       // AO from the depth RenderPass is about to write (normals reconstructed): no second geometry pass, and
       // alpha-tested leaves occlude as drawn. Re-pointed per frame so GTAO never samples the target it writes.
       this.ao!.setGBuffer(this.composer.readBuffer.depthTexture!)
       this.composer.render()
     } else this.renderer.render(this.scene, this.camera)
+  }
+
+  /**
+   * The lamps nearest the camera cast shadows (pickCasters, CASTERS of them), re-picked once the camera has moved 0.5 m;
+   * a lamp that starts casting has its map drawn on this frame, the others keep theirs. Lamps off: nothing to draw.
+   */
+  private pickLampShadows(): void {
+    if (!this.on || !this.casters || this.lights.length <= this.casters || this.v.distanceTo(this.pickedAt) < 0.5) return
+    this.pickedAt.copy(this.v)
+    const here = (poly: Pt[]) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, poly)
+    const pick = new Set(pickCasters(this.lights.map((l) => ({ x: l.light.position.x, z: l.light.position.z, here: here(l.room) })), { x: this.v.x, z: this.v.z }, this.casters))
+    this.lights.forEach(({ light }, i) => {
+      const cast = pick.has(i)
+      if (cast && !light.castShadow) {
+        light.shadow.needsUpdate = true
+        this.renderer.shadowMap.needsUpdate = true
+      }
+      light.castShadow = cast
+    })
   }
 
   /**

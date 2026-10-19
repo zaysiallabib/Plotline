@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomPolygon } from '../core'
 import type { Vertex, Wall } from '../core'
-import { closeRooms, insertPiece, joinLeftovers, type CloseLabel, type CloseOpts } from './close'
+import { closeRooms, dashedAlong, insertPiece, joinLeftovers, type CloseLabel, type CloseOpts } from './close'
 import { closeMessage } from './solve'
 import type { Gray } from './types'
 
@@ -261,5 +261,61 @@ describe('s27 clean 90: a wall stopping at a column', () => {
     expect(r.closed.map((c) => [c.room, c.pieces.map((p) => p.kind)])).toEqual([['Bed 2', ['wall']]])
     expect(r.room({ x: 3, y: 2.5 })?.areaSqm).toBeCloseTo(12, 0)
     expect(r.walls.flatMap((x) => x.openings.map((o) => o.widthM)).sort()).toEqual([0.4, 0.6].map((x) => expect.closeTo(x, 2)))
+  })
+})
+
+describe('s27 open plan: two printed names in one space, split on the dashed line the sheet draws between them', () => {
+  // a closed 4 × 6 m space (x 1 … 5, y 1 … 7); LIVING printed in a corner of its upper part (its size read), DINING below
+  // (no size read); the sheet draws a dashed line across at y 4 — or nothing
+  const box = () => ({
+    vertices: [v('a', 1, 1), v('b', 1, 7), v('c', 5, 7), v('d', 5, 1)],
+    walls: [w('L', 'a', 'b'), w('B', 'b', 'c'), w('R', 'c', 'd'), w('T', 'd', 'a')],
+  })
+  const dashed = (y: number): Gray => {
+    const W = 12 * K, H = 8 * K, data = new Uint8Array(W * H).fill(255)
+    // 15 cm dashes, 10 cm gaps, 2 px thick
+    for (let x = 1.1 * K; x <= 4.9 * K; x++) if ((x - 1.1 * K) % (0.25 * K) < 0.15 * K) for (const dy of [0, 1]) data[(Math.round(y * K) + dy) * W + Math.round(x)] = 0
+    return { width: W, height: H, data }
+  }
+  const labels: CloseLabel[] = [
+    { at: { x: 1.6, y: 1.4 }, name: 'Living', kind: 'living', dims: { aM: 3.87, bM: 2.87 } },
+    { at: { x: 3, y: 5.5 }, name: 'Dining', kind: 'dining' },
+  ]
+  test('a dashed line across: a zone line on it, each name its own room (the living at its printed size)', () => {
+    const r = close(box(), labels, dashed(4))
+    expect(r.closed.map((c) => [c.room, c.pieces.map((p) => [p.kind, p.on])])).toEqual([['Living', [['zone', 'dashes']]]])
+    expect(r.room({ x: 1.6, y: 1.4 })?.areaSqm).toBeCloseTo(12, 0)
+    expect(r.room({ x: 3, y: 5.5 })?.areaSqm).toBeCloseTo(12, 0)
+    expect(closeMessage(r.closed[0])).toContain('along the dashed line drawn there')
+  })
+  test('nothing drawn between them: the space stays joined (its row asks)', () => {
+    expect(close(box(), labels, dashed(-1)).closed).toEqual([])
+  })
+  test('dashedAlong: dashes yes; a solid line, a row of treads crossed, a blank floor no', () => {
+    const g = dashed(3.5), at = (gg: Gray) => (x: number, y: number) => gg.data[Math.round(y) * gg.width + Math.round(x)]
+    expect(dashedAlong(at(g), { x: 1 * K, y: 3.5 * K }, { x: 5 * K, y: 3.5 * K }, K)).toBe(true)
+    const solid = sheet([3.5])
+    expect(dashedAlong(at(solid), { x: 1 * K, y: 3.5 * K }, { x: 5 * K, y: 3.5 * K }, K)).toBe(false)
+    // treads: 1 px lines across the path every 0.25 m, 1 m long
+    const W = 12 * K, H = 8 * K, data = new Uint8Array(W * H).fill(255)
+    for (let x = 1.1 * K; x <= 4.9 * K; x += 0.25 * K) for (let y = 3 * K; y <= 4 * K; y++) data[y * W + Math.round(x)] = 0
+    expect(dashedAlong(at({ width: W, height: H, data }), { x: 1 * K, y: 3.5 * K }, { x: 5 * K, y: 3.5 * K }, K)).toBe(false)
+    expect(dashedAlong(at(dashed(-1)), { x: 1 * K, y: 3.5 * K }, { x: 5 * K, y: 3.5 * K }, K)).toBe(false)
+  })
+  test('a foyer drawn as a box of dashes in a corner of the living: closed on its two dashed sides, the living matching its print', () => {
+    // dashes along x 3.5 (y 1 … 2.5) and y 2.5 (x 3.5 … 5): the FOYER box in the top-right corner; LIVING printed off its middle
+    const W = 12 * K, H = 8 * K, data = new Uint8Array(W * H).fill(255)
+    // (15 cm dashes, 10 cm gaps)
+    const on = (t: number) => t % (0.25 * K) < 0.15 * K
+    for (let x = 3.55 * K; x <= 4.95 * K; x++) if (on(x - 3.55 * K)) data[2.5 * K * W + Math.round(x)] = 0
+    for (let y = 1.05 * K; y <= 2.45 * K; y++) if (on(y - 1.05 * K)) data[Math.round(y) * W + 3.5 * K] = 0
+    const two: CloseLabel[] = [
+      { at: { x: 4.25, y: 1.75 }, name: 'Foyer', kind: 'foyer' },
+      { at: { x: 1.6, y: 6.5 }, name: 'Living', kind: 'living', dims: { aM: 3.87, bM: 4.37 } },
+    ]
+    const r = close(box(), two, { width: W, height: H, data })
+    expect(r.closed.map((c) => [c.room, c.pieces.map((p) => [p.kind, p.on])])).toEqual([['Foyer', [['zone', 'dashes'], ['zone', 'dashes']]]])
+    expect(r.room({ x: 4.25, y: 1.75 })?.areaSqm).toBeCloseTo(2.25, 1)
+    expect(close(box(), two, sheet([])).closed).toEqual([])
   })
 })

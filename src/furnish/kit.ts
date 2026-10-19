@@ -4,7 +4,7 @@
  * Filled by the assets agent; presets (src/furnish/presets.ts) pick from here.
  */
 import { KIT } from './kit.data'
-import { ART, CURTAINS, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
+import { ART, CURTAIN_D, CURTAINS, PLANTER, PLANTER_BOX_D, PLANTER_BOXES, planterAsset, POTTED, PROCEDURAL, SHRUBS, tableSeats, TREES, wardrobeDoors } from './procedural.meta'
 
 export type KitCategory =
   | 'bed'
@@ -229,9 +229,11 @@ const REBUILD: Record<string, ResizeLimits> = {
   ...Object.fromEntries(Object.keys(PROCEDURAL).filter((id) => id.startsWith('bed_')).map((id) => [id, BED])),
   // a planter box gets more plants as it grows, never stretched ones
   ...Object.fromEntries(Object.keys(PLANTER_BOXES).map((id) => [id, lim([0.6, 0.95, PLANTER_BOX_D + 0.05], [3.0, 0.95, PLANTER_BOX_D + 0.05])])),
+  // width only, by a side (founder 2026-10-19): their height and place come from their opening (presets.ts hangCurtain)
+  [CURTAINS]: lim([0.4, 2.98, CURTAIN_D], [6.0, 2.98, CURTAIN_D]),
 }
 /** Built at its sizeM (REBUILD), not built at its kit size and scaled. */
-export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD || assetId === CURTAINS
+export const rebuildsAtSize = (assetId: string): boolean => assetId in REBUILD
 
 /**
  * Every other piece (every Poly Haven scan, the other builders) SCALES its mesh by sizeM / kit size: [lo, hi] × its kit
@@ -272,7 +274,7 @@ const SCALE: Record<string, Rule> = {
 export function resizeLimits(assetId: string): ResizeLimits | null {
   if (REBUILD[assetId]) return REBUILD[assetId]
   const a = kitAsset(assetId)
-  if (!a || a.kind === 'stair' || a.kind === 'curtain' || assetId.startsWith(PLANTER)) return null // curtains: sized by their window
+  if (!a || a.kind === 'stair' || assetId.startsWith(PLANTER)) return null
   const [axes, lo, hi, lock] = SCALE[assetId] ?? PROP
   const at = (k: number): Size3 => ({ ...a.sizeM, ...Object.fromEntries(axes.map((ax) => [ax, a.sizeM[ax] * k])) })
   return { min: at(lo), max: at(hi), ...(lock ? { lock: axes } : {}) }

@@ -5,7 +5,7 @@ import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testL
 import { placementLabel, placementSize } from '../furnish/kit'
 import { resizeAxes } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
-import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
+import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import type { Fix, Mark, MarkFixes, Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
@@ -145,6 +145,7 @@ export function LenInput({ valueM, onCommit, placeholder }: { valueM: number; on
     setBad(false)
   }, [valueM])
   const commit = () => {
+    if (!text.trim() && !Number.isFinite(valueM)) return // a "mixed" field left empty: nothing typed, nothing changes
     const m = parseLength(text)
     if (m == null || m < 0 || m > 100) return setBad(true)
     setBad(false)
@@ -174,7 +175,7 @@ interface Props {
   issues: StudioIssue[]
   /** the "Check these" rows, then the Issues, as marked on the plan (issues.ts markIssues) */
   marks: Mark[]
-  /** working fixes per mark key; null while the plan is still changing */
+  /** working fixes per mark key — an entry once worked out (s27 rows: a long list fills in as it goes); null while the plan is still changing */
   fixes: Map<string, MarkFixes> | null
   /** the mark open on the plan */
   active: string | null
@@ -330,6 +331,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           ))}
           {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
           {stats && fewRooms(stats) && <p className="warn">{fewRooms(stats)}</p>}
+          {/* (s27 rows: a long list's fixes fill in a row at a time; the page stays live) */}
+          {fixes && review.filter((m) => !fixes.has(m.key)).length > 10 && <p className="muted">Working out the rows' fixes — {review.filter((m) => !fixes.has(m.key)).length} rows left…</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
           {review.length || aiDone.length ? (
             <ul className="issues">
@@ -338,7 +341,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                   m,
                   <>
                     {/* a room row no line closes: he draws it — the plan goes there with the Wall tool picked */}
-                    {m.review!.room !== undefined && fixes && !fixes.get(m.key)?.fixes.length && (
+                    {m.review!.room !== undefined && fixes?.get(m.key)?.fixes.length === 0 && (
                       <button
                         className="link"
                         title="Go to it and pick the Wall tool: draw the missing line (keys 1–4: wall, low wall, kerb, zone line)"
@@ -435,6 +438,13 @@ function OpeningPick({ state, dispatch }: { state: StudioState; dispatch: (a: Ac
   )
 }
 
+const OPENING_KINDS: [OpeningKind, string][] = [
+  ['door', 'Door'],
+  ['slider', 'Sliding door'],
+  ['window', 'Window'],
+  ['passage', 'Passage'],
+]
+
 function Selection({ state, dispatch, rooms, flats }: { state: StudioState; dispatch: (a: Action) => void; rooms: Room[]; flats: Flat[] }) {
   const { unit, selection, chain } = state
   const ents = selection.map((id) => findEntity(unit, id)).filter((e) => e !== null)
@@ -453,22 +463,53 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
     const walls = ents.filter((e) => e.kind === 'wall')
     const ids = walls.map((w) => w.w.id)
     const type = walls.length && walls.every((w) => wallTypeOf(w.w.heightM) === wallTypeOf(walls[0].w.heightM)) ? wallTypeOf(walls[0].w.heightM) : null
+    // the openings' shared fields: a value they all have, else empty ("mixed"); typing one sets it on all of them, one undo
+    const ops = ents.filter((e) => e.kind === 'opening')
+    const oids = ops.map((e) => e.o.id)
+    const common = (k: 'widthM' | 'heightM' | 'sillM') => shared(ops.map((e) => e.o[k]))
+    const patchAll = (p: Partial<Omit<Opening, 'id'>>) => dispatch({ type: 'update-opening', id: oids, patch: p })
     return (
       <div className="props">
-        <p className="muted">{ents.length} selected</p>
+        <p className="muted">{selectionText(unit, selection)}</p>
         {walls.length > 0 && (
           <>
+            {ops.length > 0 && <p className="muted">{walls.length === 1 ? 'The wall' : `The ${walls.length} walls`}</p>}
             <WallTypes value={type} onPick={(t) => dispatch({ type: 'set-wall-type', ids, wall: t })} />
             <Row label="Height (all of them)">
-              <LenInput placeholder="mixed" valueM={walls.every((w) => w.w.heightM === walls[0].w.heightM) ? walls[0].w.heightM : NaN} onCommit={(m) => dispatch({ type: 'set-wall-type', ids, wall: wallTypeOf(m), heightM: m })} />
+              <LenInput placeholder="mixed" valueM={shared(walls.map((w) => w.w.heightM))} onCommit={(m) => dispatch({ type: 'set-wall-type', ids, wall: wallTypeOf(m), heightM: m })} />
             </Row>
             <Thickness
-              value={walls.every((w) => w.kind === 'wall' && w.w.thicknessM === walls[0].w.thicknessM) ? walls[0].w.thicknessM : NaN}
-              onChange={(t) => walls.forEach((w) => dispatch({ type: 'update-wall', id: w.w.id, patch: { thicknessM: t } }))}
+              value={shared(walls.map((w) => w.w.thicknessM))}
+              onChange={(t) => dispatch({ type: 'update-wall', id: ids, patch: { thicknessM: t } })}
             />
             <StandsAlone ids={ids} on={walls.every((w) => w.w.standsAlone)} dispatch={dispatch} />
           </>
         )}
+        {ops.length > 0 && (
+          <>
+            {walls.length > 0 && <p className="muted">{ops.length === 1 ? 'The opening' : `The ${ops.length} openings`}</p>}
+            <div className="seg">
+              {OPENING_KINDS.map(([k, label]) => (
+                <button key={k} className={ops.every((e) => e.o.kind === k) ? 'on' : ''} onClick={() => patchAll({ kind: k })}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Row label="Width">
+              <LenInput placeholder="mixed" valueM={common('widthM')} onCommit={(m) => patchAll({ widthM: m })} />
+            </Row>
+            <Row label="Height">
+              <LenInput placeholder="mixed" valueM={common('heightM')} onCommit={(m) => patchAll({ heightM: m })} />
+            </Row>
+            <Row label="Sill">
+              <LenInput placeholder="mixed" valueM={common('sillM')} onCommit={(m) => patchAll({ sillM: m })} />
+            </Row>
+          </>
+        )}
+        <p className="muted">Shift+click adds or takes one out; drag on empty plan for a box; Esc clears. Arrows nudge them all.</p>
+        <button className="link" onClick={() => dispatch({ type: 'delete' })}>
+          Delete them all (Del)
+        </button>
       </div>
     )
   }
@@ -527,14 +568,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
           {formatFeetInches(o.offsetM)} from corner A · {formatFeetInches(toB)} from corner B
         </p>
         <div className="seg">
-          {(
-            [
-              ['door', 'Door'],
-              ['slider', 'Sliding door'],
-              ['window', 'Window'],
-              ['passage', 'Passage'],
-            ] as [OpeningKind, string][]
-          ).map(([k, label]) => (
+          {OPENING_KINDS.map(([k, label]) => (
             <button key={k} className={o.kind === k ? 'on' : ''} onClick={() => patch({ kind: k })}>
               {label}
             </button>
@@ -680,14 +714,15 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           </button>
         </div>
       </Row>
-      {resizeAxes(p.assetId).length ? (
-        resizeAxes(p.assetId).map((k) => (
-          <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
-            <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
-          </Row>
-        ))
+      {resizeAxes(p.assetId).map((k) => (
+        <Row key={k} label={`${{ x: 'W', z: 'D', y: 'H' }[k]} (m)`}>
+          <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
+        </Row>
+      ))}
+      {p.openingId ? (
+        <p className="muted">Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower</p>
       ) : (
-        <p className="muted">{p.openingId ? 'Hangs on its window and follows it: drag it along the wall' : 'This piece can be moved and turned'}</p>
+        !resizeAxes(p.assetId).length && <p className="muted">This piece can be moved and turned</p>
       )}
       <div className="seg">
         <button disabled={!edited} title={`Put ${room?.name ?? 'this room'} back to the preset layout`} onClick={() => dispatch({ type: 'reset-furniture', roomId: p.roomId })}>

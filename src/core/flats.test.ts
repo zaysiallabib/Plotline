@@ -88,6 +88,9 @@ describe('deriveFlats', () => {
     expect(core.flatTypeOf({ name: 'UNIT-B', kind: 'other' })).toBe('Unit B')
     expect(core.flatTypeOf({ name: 'AC unit', kind: 'other' })).toBeNull()
     expect(core.flatTypeOf({ name: 'Community', kind: 'other' })).toBeNull()
+    // two units sold joined are one flat (Sheltech Banani Level 7, s27 flats 2); a word after "and" is no unit
+    expect(core.flatTypeOf({ name: 'UNIT A & B 3925 SFT', kind: 'other' })).toBe('Unit A & B')
+    expect(core.flatTypeOf({ name: 'Type A and Bed', kind: 'other' })).toBe('Type A')
     u.roomLabels[0] = { ...u.roomLabels[0], x: 40 }
     expect(core.validate(u).map((i) => i.code)).toEqual(['label-outside-any-room'])
   })

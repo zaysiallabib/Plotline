@@ -442,7 +442,7 @@ const NEUTRAL = new THREE.DataTexture(new Uint8Array([Math.round(255 / RANGE)]),
 NEUTRAL.needsUpdate = true
 /** the unit's atlas, shared by every daylit material (like context.ts's haze) */
 export const dayMap = { value: NEUTRAL as THREE.Texture }
-/** 1 by day → 0 at dusk: the lamps light the flat, not the windows */
+/** the sky's share of the indirect light (render.ts setAltitude): 1 by day → ≈ 0 at night with the lamps on */
 export const dayMix = { value: 1 }
 
 export function daylightTexture(d: Daylight): THREE.DataTexture {
@@ -461,7 +461,11 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nvarying vec2 vDayUv;\n${s.fragmentShader}`.replace(
       '#include <aomap_fragment>',
       `#include <aomap_fragment>
-      float dayK = mix(1.0, ${RANGE.toFixed(1)} * texture2D(dayMap, vDayUv).r, dayMix);
+      // the lamps' bounce (the rest of dayMix) reaches every room surface, not a face toward the outside or an open zone
+      // (the atlas's neutral block at texels 0–1): at night they stay dark
+      ivec2 daySize = textureSize(dayMap, 0);
+      float lampK = daySize.x > 1 && vDayUv.x * float(daySize.x) < 2.0 && vDayUv.y * float(daySize.y) < 2.0 ? 0.0 : 1.0;
+      float dayK = mix(lampK, ${RANGE.toFixed(1)} * texture2D(dayMap, vDayUv).r, dayMix);
       reflectedLight.indirectDiffuse *= dayK;
       reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out`,
     )

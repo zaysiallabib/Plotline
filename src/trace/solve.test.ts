@@ -777,3 +777,73 @@ describe('s27 clean 90: the whole floor keeps every printed room it can reach th
     expect(deriveRooms(r.unit).map((x) => x.name).sort()).toEqual(['Bed 2', 'Living', 'Ver'])
   })
 })
+
+describe('s27 flats 2: a flat ends at its entry door; one flat holds one kitchen', () => {
+  test('two flats off a deep lobby (over the room limit, its name far from the doors): a click in A glows A alone — its flood stops at its entry door, the lobby is no room of it', () => {
+    // twoFlats' flats, the lobby below them 16 × 6 m (96 m²: over the room limit, so no "core face") with LOBBY printed
+    // in its far middle, 5 m from either entry door
+    const width = Math.round(16 * K + 2 * O.x), height = Math.round(11 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const { g: g0, text } = twoFlats()
+    g.data.set(g0.data.subarray(0, Math.round(5.2 * K + O.y) * width))
+    const ext = 0.254 * K, h = 0.127
+    stroke(g, P(-h, 11), P(16 + h, 11), ext)
+    stroke(g, P(0, 5), P(0, 11), ext)
+    stroke(g, P(16, 5), P(16, 11), ext)
+    const c = P(8, 10)
+    const items = text.items.map((it) => (it.text === 'LOBBY' ? { ...it, box: { ...it.box, x: c.x - 25, y: c.y - 8 } } : it))
+    const p = prepareTraces(g, { text: { items } }, { pxPerM: K })
+    const pv = previewFlat(p, P(6, 1.25))
+    expect(Math.max(...pv.region.map((r) => r.x + r.w))).toBeLessThanOrEqual(P(8.2, 0).x)
+    expect(Math.max(...pv.region.map((r) => r.y + r.h))).toBeLessThanOrEqual(P(0, 5.2).y)
+  })
+
+  /**
+   * Three 5 × 5 m flats along a corridor (the s27 studios), each with a bed, a living and a kitchen printed in it; `labels`
+   * — the UNIT-A / UNIT-B / … names printed in them; `gapBC` — the party wall between B and C left open at y 1.5–3.5 (no door
+   * drawn: the trace cannot close it), C's names printed differently from B's ("LIVING ROOM", "KITCHEN 2").
+   */
+  function threeFlats(labels: string[], gapBC = false, extra: TextItem[] = []) {
+    const width = Math.round(15 * K + 2 * O.x), height = Math.round(7 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, h = 0.127
+    const items: TextItem[] = [...extra]
+    stroke(g, P(-h, 0), P(15 + h, 0), ext)
+    stroke(g, P(-h, 7), P(15 + h, 7), ext)
+    stroke(g, P(0, 0), P(0, 7), ext)
+    stroke(g, P(15, 0), P(15, 7), ext)
+    stroke(g, P(5, 0), P(5, 5), ext)
+    if (gapBC) (stroke(g, P(10, 0), P(10, 1.5), ext), stroke(g, P(10, 3.5), P(10, 5), ext))
+    else stroke(g, P(10, 0), P(10, 5), ext)
+    const room = (text: string, kind: string, at: Px): TextItem => ({ text, box: { x: at.x - 30, y: at.y - 10, w: 60, h: 20 }, kind: 'room', roomKind: kind, ...(kind === 'living' ? { dims: { aM: 4.75, bM: 4.75 } } : {}), conf: 0.9, source: 'ocr' })
+    for (const [i, dx] of [0, 5, 10].entries()) {
+      const Q = (x: number, y: number) => P(dx + x, y)
+      stroke(g, Q(i ? 0 : -h, 5), Q(1.5, 5), ext)
+      stroke(g, Q(2.4, 5), Q(5 + (i === 2 ? h : 0), 5), ext)
+      arc(g, Q(1.5, 5), 0.9, 0, Math.PI / 2)
+      const c = i === 2 && gapBC
+      items.push(room(`BED-${i + 1}`, 'bed', Q(1.2, 1)), room(c ? 'LIVING ROOM' : 'LIVING', 'living', Q(2.5, 2.5)), room(c ? 'KITCHEN 2' : 'KITCHEN', 'kitchen', Q(3.8, 1)))
+      if (labels[i]) items.push({ text: labels[i], box: { x: Q(2.5, 4).x - 30, y: Q(2.5, 4).y - 8, w: 60, h: 16 }, kind: 'other', conf: 0.9, source: 'ocr' })
+    }
+    const c = P(7.5, 6)
+    items.push({ text: 'LOBBY', box: { x: c.x - 25, y: c.y - 8, w: 50, h: 16 }, kind: 'room', roomKind: 'other', conf: 0.9, source: 'ocr' })
+    const pp = prepareTraces(g, { text: { items } }, { pxPerM: K })
+    ;(globalThis as any).F2dbg = []
+    const r = pickTraces(pp, undefined, true)
+    console.log((globalThis as any).F2dbg.join(' || '), pp.labelsAt(K).map((q) => [q, pp.inCore(q), pp.inOutside(q)]), r.stats.flats, r.unit.roomLabels.map((l) => l.name + ":" + l.flat))
+    return deriveFlats(r.unit, deriveRooms(r.unit)).map((f) => f.name)
+  }
+
+  test('more kitchens than flat labels read (UNIT-C not read): the third kitchen starts a flat of its own', () => {
+    expect(threeFlats(['UNIT-A', 'UNIT-B'])).toEqual(['Unit A', 'Unit B', 'Flat 1'])
+  })
+
+  test("a flat that took the next one's kitchen and living through an open party wall is split there (their names printed differently)", () => {
+    expect(threeFlats(['UNIT-A', 'UNIT-B'], true)).toEqual(['Unit A', 'Unit B', 'Flat 1'])
+  })
+
+  test('founder 2026-10-19 (Sheltech Banani Level 7): one stamp "UNIT A & B … SFT" and a "UNIT A" beside the plan = ONE flat, named so, whatever kitchens it holds', () => {
+    const title = (text: string, y: number, kind: 'area' | 'other'): TextItem => ({ text, box: { x: P(4, y).x, y: P(4, y).y, w: 200, h: 16 }, kind, ...(kind === 'area' ? { areaSqm: 1200 * 0.3048 ** 2 } : {}), conf: 0.9, source: 'ocr' })
+    expect(threeFlats([], false, [title('UNIT A & B 1200 SFT', 7.4, 'area'), title('UNIT A', -1, 'other')])).toEqual(['Unit A & B'])
+  })
+})

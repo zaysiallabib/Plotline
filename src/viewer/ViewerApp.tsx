@@ -8,18 +8,19 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
 import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
-import { deletePiece, layoutFor, movePiece, pieceQuad, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
+import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
-import { findOpening, initialState, isUnit, normalizeUnit, reducer, type Action, type StudioState } from '../studio/model'
+import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, type Held, type Steps } from './arrange'
+import { deleteHeld, draftState, dropHeld, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -50,6 +51,16 @@ const roseSaved = (): boolean => {
     return localStorage.getItem(ROSE_KEY) === '1'
   } catch {
     return false
+  }
+}
+/** the flat's lights: automatic (on after sunset) or the person's pick (render.ts lightsOn), remembered in this browser */
+const LIGHTS_KEY = 'plotline.lights'
+const lightsSaved = (): LightsMode => {
+  try {
+    const v = localStorage.getItem(LIGHTS_KEY)
+    return v === 'on' || v === 'off' ? v : 'auto'
+  } catch {
+    return 'auto'
   }
 }
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
@@ -333,14 +344,14 @@ function ArrangePanel(p: {
           <div className="arrange-name">{placementLabel(p.piece)}</div>
           <div className="muted small">
             {p.piece.openingId
-              ? 'Hangs on its window and follows it: drag it along the wall, or Delete it'
+              ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
               : resizeAxes(p.piece.assetId).length
                 ? `${dims(s)} · drag a dot to resize`
                 : 'This piece can be moved and turned'}
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their window's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
@@ -349,7 +360,7 @@ function ArrangePanel(p: {
         <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
           Turn 90° (R)
         </button>
-        <button className="btn" disabled={!p.piece || !!p.held} title="Delete this piece (and what rests on it)" onClick={p.onDelete}>
+        <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
@@ -397,21 +408,35 @@ function FtIn({ label, m, onSet }: { label: string; m: number; onSet: (m: number
   )
 }
 
-/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches, delete, undo — and where it saves. */
+/** Edit openings (staff): the selected opening — kind, width / height / sill in feet-inches — or low wall — length, height — delete, undo, and where it saves. */
 function OpeningPanel(p: {
   opening: Opening | null
+  wall: { w: Wall; lengthM: number } | null
   where: string
   refused: boolean
   canUndo: boolean
   onKind: (k: OpeningKind) => void
   onSize: (patch: Partial<Pick<Opening, 'widthM' | 'heightM' | 'sillM'>>) => void
+  onWall: (patch: { lengthM?: number; heightM?: number }) => void
   onDelete: () => void
   onUndo: () => void
 }) {
   const o = p.opening
+  const lw = p.wall
   return (
     <aside className="glass arrange">
-      {o ? (
+      {lw ? (
+        <>
+          <div className="arrange-name">
+            {WALL_TYPES[wallTypeOf(lw.w.heightM)].label} · {core.formatFeetInches(lw.lengthM)} long · {core.formatFeetInches(lw.w.heightM)} high
+          </div>
+          <div className="small muted">{p.where}</div>
+          <div className="arrange-row">
+            <FtIn label="Length" m={lw.lengthM} onSet={(lengthM) => p.onWall({ lengthM })} />
+            <FtIn label="Height" m={lw.w.heightM} onSet={(heightM) => p.onWall({ heightM })} />
+          </div>
+        </>
+      ) : o ? (
         <>
           <div className="arrange-name">
             {KINDS.find(([k]) => k === o.kind)?.[1]} · {core.formatFeetInches(o.widthM)} wide
@@ -431,10 +456,12 @@ function OpeningPanel(p: {
           </div>
         </>
       ) : (
-        <div className="muted small">Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill.</div>
+        <div className="muted small">
+          Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill. Or click a low wall (railing, planter edge, kerb): drag an end dot to make it longer or shorter, drag the wall to move it across.
+        </div>
       )}
       <div className="arrange-row">
-        <button className="btn" disabled={!o} title="Remove it (Del)" onClick={p.onDelete}>
+        <button className="btn" disabled={!o && !lw} title="Remove it (Del)" onClick={p.onDelete}>
           Delete
         </button>
         <button className="btn" disabled={!p.canUndo} title="Ctrl+Z" onClick={p.onUndo}>
@@ -465,6 +492,20 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
   const [roseOn, setRoseOn] = useState(roseSaved)
+  const [lightsMode, setLightsMode] = useState(lightsSaved)
+  const alt = core.sunAt(unit.site, date, hour).altDeg
+  const lit = lightsOn(lightsMode, alt)
+  /** a click flips the lights; flipped back to what automatic would show, it is automatic again */
+  const flipLights = () => {
+    const mode: LightsMode = lit === lightsOn('auto', alt) ? (lit ? 'off' : 'on') : 'auto'
+    setLightsMode(mode)
+    scene?.setLightsMode(mode)
+    try {
+      localStorage.setItem(LIGHTS_KEY, mode)
+    } catch {
+      /* this browser keeps nothing: the lights stay as clicked for now */
+    }
+  }
   const months = unit.site?.wind ?? core.DHAKA_WIND
   const month = Number(date.slice(5, 7)) - 1
   const windRooms = useMemo(() => (windOn ? core.roomWind(unit, rooms, months[month].fromDeg) : []), [windOn, unit, rooms, months, month])
@@ -550,6 +591,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     })
     s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
     s.setUnit(given)
+    s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
     s.onPick((hit) => {
       if (!hit) return
@@ -708,10 +750,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
   }
+  /** Delete: the piece in hand (G, a drag: deleteHeld), else the one picked; one undo step */
   const remove = () => {
-    if (!sel) return
-    settle(pushStep(steps.current, deletePiece(steps.current.pieces, sel)), null)
+    const h = held.current
+    const next = h ? deleteHeld(steps.current.pieces, h) : sel && deletePiece(steps.current.pieces, sel)
+    letGo()
     setSel(null)
+    if (next) settle(pushStep(steps.current, next), null)
   }
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
@@ -821,7 +866,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const plan = useRef<StudioState>({ ...initialState(), unit: given })
   /** the plan before the gesture in progress (a drag: from its first move to its drop) */
   const gesture = useRef<StudioState | null>(null)
+  /** a low wall's drag: the corners its drop joins (model drag-end), as the Studio's V drop does */
+  const dragIds = useRef<Id[] | null>(null)
   const showOp = (id = opSel) => {
+    const u = plan.current.unit
+    const w = id ? u.walls.find((x) => x.id === id) : undefined
+    if (w) return scene?.showWall({ id: w.id, a: core.vertexById(u.vertices, w.a), b: core.vertexById(u.vertices, w.b), heightM: w.heightM, thicknessM: w.thicknessM })
     const f = id ? findOpening(plan.current.unit, id) : null
     const { offsetM, widthM, heightM, sillM } = f?.opening ?? { offsetM: 0, widthM: 0, heightM: 0, sillM: 0 }
     scene?.showOpening(f && { id: f.opening.id, wallId: f.wall.id, offsetM, widthM, heightM, sillM, refused: plan.current.dragBlocked })
@@ -842,7 +892,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     const after = plan.current.unit
     plan.current = { ...plan.current, dragBlocked: false }
     if (!before) return showOp()
-    if (JSON.stringify(after.walls) === JSON.stringify(unit.walls)) {
+    if (planOf(after) === planOf(unit)) {
       // nothing changed (a drag back to where it was, a refused width): no undo step, no rebuild — but an undo keeps its step
       if (before.history.past.length <= plan.current.history.past.length) plan.current = { ...before, dragBlocked: false }
       return showOp()
@@ -854,8 +904,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       return showToast(OPENINGS_WHY[why], 7000)
     }
     setPlanUnit(after)
-    // curtains follow their window (moved, resized) or go with it: the layout hung again on the new plan, no undo step of its own
-    steps.current = { ...steps.current, pieces: layoutFor({ ...after, furniture: steps.current.pieces }, core.deriveRooms(after)) }
+    // curtains follow their window (moved, resized) or go with it, a room still on its presets is furnished for its new
+    // walls (a planter bed fills the moved strip): the layout laid again on the new plan, no undo step of its own
+    steps.current = { ...steps.current, pieces: refurnish(unit, after, steps.current.pieces) }
     scene?.setUnit({ ...after, furniture: steps.current.pieces }, true)
     scene?.setLayout(steps.current.pieces)
     showOp()
@@ -870,8 +921,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       setOpSel(e.id)
       return showOp(e.id)
     }
-    if (e.kind === 'drop') return commitPlan()
+    if (e.kind === 'drop') {
+      if (dragIds.current) planDo({ type: 'drag-end', ids: dragIds.current }) // a low wall's ends join where they land
+      dragIds.current = null
+      return commitPlan()
+    }
     if (!gesture.current) planDo({ type: 'drag-begin' }) // one undo step for the whole drag
+    if (e.kind === 'wall-end' || e.kind === 'wall-move') {
+      const r = wallDrag(plan.current, gesture.current!.unit, e, OPENING_SNAP_M)
+      dragIds.current = r.ids
+      plan.current = r.s
+      showOp()
+      return redraw()
+    }
     planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
   }
   useEffect(() => scene?.onOpening(onOpening))
@@ -903,7 +965,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     scene?.setOpeningEdit(true)
   }
 
-  // keys: Enter (load screen), O, F, C, Esc
+  // keys: Enter (load screen), O, F, C, P (the wind, as the Wind button), Esc
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -933,7 +995,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
         else pickUpAtPointer()
       } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
       else if (arranging && k === 'r') turn()
-      else if (arranging && !h && (k === 'delete' || k === 'backspace')) remove()
+      else if ((arranging || h) && (k === 'delete' || k === 'backspace')) remove()
       else if (arranging && k === 'escape') {
         setAdding(false)
         setSel(null)
@@ -942,6 +1004,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
+      else if (k === 'p' && !e.repeat) setWindOn((v) => !v) // founder 2026-10-19: "make windpaths visible by pressing the button p"
       else if (k === 'escape') {
         setCommenting(false)
         setDraft(null)
@@ -1002,6 +1065,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const hp = h && (h.move?.piece ?? pieceOf(h.id) ?? (h.assetId ? { assetId: h.assetId } : null))
   const handInfo: HandInfo | null = h && { label: hp ? placementLabel(hp) : '', error: h.move?.error ?? null, ready: !!h.move, adding: !!h.assetId }
   const opF = editingOpenings && opSel ? findOpening(plan.current.unit, opSel) : null
+  const opW = editingOpenings && opSel ? plan.current.unit.walls.find((w) => w.id === opSel) : undefined
+  const opWall = opW ? { w: opW, lengthM: core.wallFrame(opW, plan.current.unit.vertices).lengthM } : null
   // the level on the floor picked in the Building view (buyers too: a share link's level stays a buyer's link)
   const walkStem = levelAt(picked)
   return (
@@ -1107,6 +1172,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             arranging={arranging}
             hand={handInfo}
             staff={STAFF}
+            osm={!!unit.site && unit.site.buildings.length + unit.site.roads.length > 0}
             onArrange={STAFF ? toggleArrange : null}
             editingOpenings={editingOpenings}
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
@@ -1156,15 +1222,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           {editingOpenings && (
             <OpeningPanel
               opening={opF?.opening ?? null}
-              where={opF ? rooms.filter((r) => r.wallIds.includes(opF.wall.id)).map((r) => r.name).join(' ↔ ') || 'On an outside wall' : ''}
+              wall={opWall}
+              where={opF || opW ? rooms.filter((r) => r.wallIds.includes(opF?.wall.id ?? opW!.id)).map((r) => r.name).join(' ↔ ') || (opF ? 'On an outside wall' : 'Outside') : ''}
               refused={plan.current.dragBlocked}
               canUndo={plan.current.history.past.length > 0}
               onKind={(kind) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch: { kind } })}
               onSize={(patch) => opF && planCommit({ type: 'update-opening', id: opF.opening.id, patch })}
+              onWall={({ lengthM, heightM }) =>
+                opW && planCommit(lengthM !== undefined ? { type: 'set-wall-length', id: opW.id, lengthM } : { type: 'set-wall-type', ids: [opW.id], wall: wallTypeOf(heightM!), heightM })
+              }
               onDelete={() => {
-                if (!opF) return
+                if (!opF && !opW) return
                 setOpSel(null)
-                planCommit({ type: 'delete', ids: [opF.opening.id] })
+                planCommit({ type: 'delete', ids: [opF?.opening.id ?? opW!.id] })
               }}
               onUndo={() => planCommit({ type: 'undo' })}
             />
@@ -1204,6 +1274,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               setDate(d)
               scene.setTimeOfDay(hour, d)
             }}
+            lights={lit}
+            lightsAuto={lightsMode === 'auto'}
+            onLights={flipLights}
             wind={windOn}
             onWind={() => setWindOn((v) => !v)}
             month={month}

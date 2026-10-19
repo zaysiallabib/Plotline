@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, OpeningKind, Pt, RoomKind, Site, Slope } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
-import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
+import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, resizePiece, sideDots, type Move } from './furniture'
+import { placementSize } from '../furnish/kit'
 import {
   PILLAR_M,
   WALL_TYPES,
@@ -12,14 +13,16 @@ import {
   findEntity,
   formatTimer,
   guessKind,
+  idsInBox,
   initialState,
   isUnit,
-  lengthMoves,
+  endAlong,
   normalizeUnit,
   openingAt,
   rampArrow,
   rampDirs,
   reducer,
+  selectionText,
   slug,
   snapRampDir,
   studioIssues,
@@ -32,9 +35,10 @@ import {
 import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
+import type { FixesIn, FixesOut } from './fixes.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
@@ -43,7 +47,7 @@ import { getPicture, putPicture } from './pictures'
 import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
-import { STAFF_KEY, baseOf, readLayout, saveLayout } from '../viewer/arrange'
+import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
@@ -77,7 +81,7 @@ const HINTS: Record<Tool, string> = {
   pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, a side dot to move that side, a corner dot to move that corner alone (a tapered column)`,
   arc: 'Arc · click where the curved wall starts',
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Shift+click or a box on empty plan = several, Ctrl+A all walls, Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: `Scale · click both ends of anything whose real length you know: a printed size, the plot's width, a parking bay (about 8' × 16'), a door (about 3'-3")`,
   wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
@@ -278,8 +282,12 @@ export default function StudioApp() {
   const dragRef = useRef<Drag | null>(null)
   /** Wall tool press: a move of 3 px or more makes it press-drag-release (one wall to the release point); `hold` = held W */
   const wallDragRef = useRef<{ sx: number; sy: number; at: Target; hold: boolean; moved: boolean } | null>(null)
+  /** F tool: a selected curtain's side dot pressed (sign: its +x / −x side); dragged, that side alone moves (furniture.resizePiece) */
+  const sideRef = useRef<{ id: Id; sign: 1 | -1; sx: number; sy: number; moved: boolean } | null>(null)
   /** C tool press: a release where it was = a 12" × 20" column there; dragged = a column from the press to the release */
   const pillarDragRef = useRef<{ sx: number; sy: number; at: Pt; moved: boolean } | null>(null)
+  /** V press on empty plan: a drag of 3 px or more is a box select from `at` (plan m); `add` = Shift (adds to the selection) */
+  const boxRef = useRef<{ sx: number; sy: number; at: Pt; add: boolean; moved: boolean } | null>(null)
   const holdRef = useRef<Hold | null>(null)
   const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
@@ -301,36 +309,89 @@ export default function StudioApp() {
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // the Issues and "Check these" rows as marks on the plan; their fixes are checked by applying them (issues.ts): once the
-  // plan has stood still for 150 ms (never mid-drag), one mark per task so a long list never freezes the page; any edit
-  // drops them (never a fix from a stale plan)
+  // plan has stood still for 150 ms (never mid-drag), in a worker (fixes.worker.ts: s27 rows, a six-flat floor's 755 rows
+  // took minutes of checks) — the mark open on the plan first, then what is in view — and shown as they come; any edit
+  // drops them (never a fix from a stale plan), but a mark the edit did not reach gets its fixes back at once (fixSig)
   const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
+  /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
+  const fixCache = useRef(new Map<string, { unit: Unit; sig: unknown[]; got: MarkFixes }>())
+  /** marks still to work out (Export waits for them: every row's answers go into the file) */
+  const fixesLeft = useRef(0)
   // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
   const markKeys = marks.map((m) => m.key).join('\n')
+  /** rowAnswers for the rows among `ms` whose fixes (and their issue's) are worked out */
+  const answersOf = (u: Unit, ms: Mark[], found: Map<string, MarkFixes>) => {
+    const p = stateRef.current.planImage
+    return rowAnswers(u, ms.filter((m) => m.review && found.has(m.key) && (!m.twinOf || found.has(m.twinOf))), found, p ? { w: p.naturalW, h: p.naturalH } : undefined)
+  }
+  const fixWorker = useRef<Worker | null>(null)
+  const fixSeq = useRef(0)
+  useEffect(() => () => fixWorker.current?.terminate(), [])
   useEffect(() => {
     setFixes(null)
+    const cache = fixCache.current
     const found = new Map<string, MarkFixes>()
-    let k = 0
-    let id = 0
-    const step = () => {
-      if (k >= marks.length) {
-        setFixes(found)
-        // s27 AI-prep: the open rows' answers (= these buttons) and sheet boxes go into the draft, saved with it
-        const p = stateRef.current.planImage
-        return dispatch({ type: 'answers', unit, rows: rowAnswers(unit, marks, found, p ? { w: p.naturalW, h: p.naturalH } : undefined) })
-      }
-      for (const [key, f] of fixesOf(unit, [marks[k++]], issues, state.review?.stats.printed)) found.set(key, f)
-      id = window.setTimeout(step, 0)
+    const byKey = new Map(marks.map((m) => [m.key, m]))
+    const sigs = new Map<string, unknown[]>()
+    let left = marks.length
+    fixesLeft.current = left
+    let shown = 0
+    const take = (key: string, got: MarkFixes) => {
+      found.set(key, got)
+      cache.set(key, { unit, sig: sigs.get(key)!, got })
+      fixesLeft.current = --left
     }
-    id = window.setTimeout(step, 150)
-    return () => clearTimeout(id)
+    const publish = () => {
+      setFixes(new Map(found))
+      shown = performance.now()
+      if (left) return
+      // s27 AI-prep: the rows' answers (= these buttons) and sheet boxes go into the draft, saved with it — once all are
+      // worked out (a row clicked before that gets its own first: answer)
+      dispatch({ type: 'answers', unit, rows: answersOf(unit, marks, found) })
+      for (const k of cache.keys()) if (!found.has(k)) cache.delete(k)
+    }
+    const seq = ++fixSeq.current
+    const start = () => {
+      // a mark the edit did not reach keeps its fixes (fixSig); the others are worked out in the worker, one by one
+      const todo = marks.filter((m) => {
+        const c = cache.get(m.key)
+        const sig = c?.unit === unit ? c.sig : fixSig(unit, m, rooms) // (a row dismissed: the plan is the same)
+        sigs.set(m.key, sig)
+        if (!c || c.sig.length !== sig.length || c.sig.some((x, i) => x !== sig[i])) return true
+        take(m.key, c.got)
+        return false
+      })
+      publish()
+      if (!todo.length) return
+      // what is in view first, from the middle of the screen out (the mark open on the plan before all: `first`)
+      const c = screenToM(frame, { x: size.w / 2, y: size.h / 2 })
+      const far = (m: Mark) => (m.at ? Math.hypot(m.at.x - c.x, m.at.y - c.y) : Infinity)
+      todo.sort((p, q) => far(p) - far(q))
+      const w = (fixWorker.current ??= new Worker(new URL('./fixes.worker.ts', import.meta.url), { type: 'module' }))
+      w.onmessage = ({ data }: MessageEvent<FixesOut>) => {
+        if (data.seq !== seq) return
+        take(data.key, data.got)
+        const m = byKey.get(data.key)
+        if (!left || (m && (m.twinOf ?? m.key) === activeRef.current) || performance.now() - shown > 500) publish()
+      }
+      w.postMessage({ type: 'job', seq, unit, marks: todo, issues, printed: state.review?.stats.printed, rooms } satisfies FixesIn)
+      if (activeRef.current) w.postMessage({ type: 'first', key: activeRef.current } satisfies FixesIn)
+    }
+    const id = window.setTimeout(start, 150)
+    return () => {
+      clearTimeout(id)
+      if (fixWorker.current) (fixWorker.current.onmessage = null), fixWorker.current.postMessage({ type: 'stop' } satisfies FixesIn)
+    }
   }, [unit, markKeys, issues]) // eslint-disable-line react-hooks/exhaustive-deps -- (marks follow the review, its printed names with it)
   /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [hotKey, setHotKey] = useState<string | null>(null)
   const activeRef = useRef(activeKey)
   activeRef.current = activeKey
+  // (a mark opened while the list is still being worked out: its fixes next)
+  useEffect(() => void (activeKey && fixWorker.current?.postMessage({ type: 'first', key: activeKey } satisfies FixesIn)), [activeKey])
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
   const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
@@ -369,6 +430,17 @@ export default function StudioApp() {
     setFurnDrag(null)
   }
 
+  /** a curtain's side dragged to the pointer: its new width, that side moving (as the 3D view's side dots) */
+  const sideSize = (sd: { id: Id; sign: 1 | -1 }, sx: number, sy: number) => {
+    const p = piecesRef.current?.find((x) => x.id === sd.id)
+    if (!p) return null
+    const m = toM(sx, sy)
+    const t = (p.rotationDeg * Math.PI) / 180
+    const size = placementSize(p)
+    const u = (m.x - p.x) * Math.cos(t) + (m.y - p.y) * Math.sin(t) // along its +x
+    return { sizeM: { ...size, x: sd.sign * u + size.x / 2 }, grow: { x: sd.sign, z: 0 } }
+  }
+
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
@@ -378,10 +450,11 @@ export default function StudioApp() {
   // a new pick or R: the ghost where the pointer is; leaving tool F drops it
   useEffect(() => {
     if (placing && tool !== 'furniture') return hold(null)
+    if (placing && !placing.assetId && pieces && !pieces.some((x) => x.id === placing.id)) return hold(null) // deleted while in hand (the panel's Delete)
     if (!placing) return setFurnDrag(null)
     const p = lastPointer.current
     if (p) ghost(p.sx, p.sy)
-  }, [placing, tool]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [placing, tool, pieces]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- reducer toasts → note
   useEffect(() => {
@@ -607,8 +680,8 @@ export default function StudioApp() {
     const id = setTimeout(saveDraft, 400)
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, state.review, saveDraft])
-  // a door / window changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the plan takes
-  // it at once, so this tab's next autosave never writes the old openings back
+  // a door / window / low wall changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the
+  // plan takes it at once, so this tab's next autosave never writes the old plan back
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== DRAFT_KEY || !e.newValue) return
@@ -616,9 +689,10 @@ export default function StudioApp() {
         const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']
         const u = isUnit(d) ? d : (d as Partial<Draft>).unit
         const now = stateRef.current.unit
-        if (!isUnit(u) || u.id !== now.id || JSON.stringify(u.walls) === JSON.stringify(now.walls)) return
-        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: withLayout(u) } as Draft }) // a bare unit restores too (init does the same)
-        setNote({ text: 'Doors and windows changed in the 3D view — the plan shows them now' })
+        if (!isUnit(u) || u.id !== now.id || planOf(u) === planOf(now)) return
+        const laid = withLayout(u) // a room still on its presets is furnished for its new walls, as the 3D view did (furniture.refurnish)
+        dispatch({ type: 'restore', draft: { ...(isUnit(d) ? {} : d), unit: { ...laid, furniture: refurnish(now, laid, laid.furniture) } } as Draft }) // a bare unit restores too (init does the same)
+        setNote({ text: 'Changed in the 3D view (doors, windows, passages, low walls) — the plan shows it now' })
       } catch {
         /* not a draft */
       }
@@ -731,7 +805,18 @@ export default function StudioApp() {
     [importJson, loadImage],
   )
 
-  const exportJson = useCallback(() => {
+  const exportJson = useCallback(async () => {
+    // every open row's answers go into the file (s27 AI-prep): on a long list still being worked out, the export waits
+    const answered = () => {
+      const s = stateRef.current
+      if (fixesLeft.current) return false
+      const open = new Set(openReview(s).map((i) => i.id))
+      return (s.review?.items ?? []).every((i) => !open.has(i.id) || i.answers)
+    }
+    if (!answered()) {
+      toast(`Working out the fixes of the ${fixesLeft.current || 'last'} rows first — the file follows`)
+      for (let t = 0; t < 2400 && !answered(); t++) await new Promise((r) => setTimeout(r, 250)) // (≤ 10 min, then as it is)
+    }
     const st = stateRef.current
     const traced = `Traced in ${formatTimer(st.timer.elapsedMs)}`
     const n = issues.filter((i) => i.level === 'error').length
@@ -1247,10 +1332,7 @@ export default function StudioApp() {
       }
       case 'select': {
         const hit = hitTest(sx, sy)
-        if (!hit) {
-          if (!e.shiftKey) dispatch({ type: 'select', ids: [] })
-          return
-        }
+        if (!hit) return void (boxRef.current = { sx, sy, at: m, add: e.shiftKey, moved: false }) // the release decides: a click clears, a drag box-selects
         const orig = new Map<Id, Pt>()
         if (hit.kind === 'wall') {
           const w = unit.walls.find((x) => x.id === hit.id)!
@@ -1268,6 +1350,9 @@ export default function StudioApp() {
         return
       }
       case 'furniture': {
+        const cur = piecesRef.current?.find((x) => x.openingId && state.selection.includes(x.id))
+        const side = cur ? sideDots(cur).findIndex((c) => Math.hypot(toScreen(c).x - sx, toScreen(c).y - sy) <= 8) : -1
+        if (cur && side >= 0) return void (sideRef.current = { id: cur.id, sign: side ? -1 : 1, sx, sy, moved: false })
         const hit = hitTest(sx, sy)
         const p = hit && piecesRef.current?.find((x) => x.id === hit.id)
         dispatch({ type: 'select', ids: p ? [p.id] : [] })
@@ -1290,11 +1375,24 @@ export default function StudioApp() {
       return
     }
     if (placingRef.current && tool === 'furniture') return void ghost(sx, sy)
+    const sd = sideRef.current
+    if (sd) {
+      if (!sd.moved && Math.hypot(sx - sd.sx, sy - sd.sy) <= CLICK_PX) return
+      sd.moved = true
+      const r = sideSize(sd, sx, sy)
+      return void setFurnDrag(r && pieces && resizePiece(unit, rooms, pieces, sd.id, r.sizeM, r.grow))
+    }
     if (tool === 'arc' && arc) {
       // the A tool's preview: a straight line to the pointer until the end is clicked, then the arc bulging through it
       const h = computeHover(sx, sy, e.shiftKey)
       const to = arc.b ? toM(sx, sy) : (h.snap ?? h.m)
       return setHover({ ...h, ...(arc.b && { snap: null }), arc: arc.b ? arcPoints(arc.a, arc.b, to) : [arc.a, to] })
+    }
+    const bx = boxRef.current
+    if (bx) {
+      if (!bx.moved && Math.hypot(sx - bx.sx, sy - bx.sy) < 3) return
+      bx.moved = true
+      return setHover({ m: toM(sx, sy), px: toPx(sx, sy), snap: null, hit: null, marquee: { a: bx.at, b: toM(sx, sy) } })
     }
     const pd = pillarDragRef.current
     if (pd) {
@@ -1364,28 +1462,11 @@ export default function StudioApp() {
         const v = (m.x - f.origin.x) * f.normal.x + (m.y - f.origin.y) * f.normal.y
         dispatch({ type: 'wall-face', id: w.id, side: d.face, thicknessM: d.face * v + w.thicknessM / 2 })
       } else if (d.hit.kind === 'vertex' && d.lengthOf) {
-        // the end slides along its wall; the walls at it stay straight (model.lengthMoves)
-        const w = unit.walls.find((x) => x.id === d.lengthOf)
-        if (!w) return
-        const A = vertexById(unit.vertices, w.a === d.hit.id ? w.b : w.a)
-        const E = vertexById(unit.vertices, d.hit.id)
-        const L0 = Math.hypot(E.x - A.x, E.y - A.y)
-        const dir = { x: (E.x - A.x) / L0, y: (E.y - A.y) / L0 }
-        const along = (p: Pt) => (p.x - A.x) * dir.x + (p.y - A.y) * dir.y
-        const onLine = (L: number): Pt => ({ x: A.x + dir.x * L, y: A.y + dir.y * L })
-        const ids = lengthMoves(unit, w.id, d.hit.id, L0).map((v) => v.id)
-        let L = along(m)
-        let snap = loose(onLine(L))
-        if (!free) {
-          const s0 = snapPoint(onLine(L), unit, { tolM, exclude: ids })
-          L = along(s0)
-          const guides = s0.guides.filter((g) => Math.abs(g.axis === 'x' ? dir.x : dir.y) > 1e-6) // only guides across the line stop the end
-          const kind = guides.length ? (guides[0].axis === 'x' ? 'aligned x' : 'aligned y') : HARD.has(s0.kind) ? s0.kind : 'free'
-          snap = { ...s0, ...onLine(L), kind, guides }
-        }
-        if (L < 0.05) return // never through the anchor
-        dispatch({ type: 'drag', vertices: lengthMoves(unit, w.id, d.hit.id, L) })
-        show(snap, ids)
+        // the end slides along its wall, snapped; the walls at it stay straight (model.endAlong — the 3D's end dot too)
+        const r = endAlong(unit, d.lengthOf, d.hit.id, m, { tolM, free })
+        if (!r) return
+        dispatch({ type: 'drag', vertices: r.moves })
+        show(r.snap, r.ids)
       } else if (d.hit.kind === 'vertex') {
         const snap = free ? loose(m) : snapPoint(m, unit, { tolM, exclude: [d.hit.id] })
         dispatch({ type: 'drag', vertices: [{ id: d.hit.id, x: snap.x, y: snap.y }] })
@@ -1440,6 +1521,23 @@ export default function StudioApp() {
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (panRef.current) setPanning(false)
     panRef.current = null
+    const sd = sideRef.current
+    sideRef.current = null
+    if (sd) {
+      const { sx, sy } = local(e)
+      const r = sd.moved && sideSize(sd, sx, sy)
+      setFurnDrag(null)
+      return void (r && dispatch({ type: 'resize-piece', id: sd.id, ...r })) // refused: the reducer says why
+    }
+    const bx = boxRef.current
+    boxRef.current = null
+    if (bx) {
+      const { sx, sy } = local(e)
+      // a click on empty plan clears (Shift keeps); the box picks every wall, opening and column it touches (Shift adds)
+      if (bx.moved) dispatch({ type: 'select', ids: idsInBox(unit, bx.at, toM(sx, sy)), add: bx.add })
+      else if (!bx.add) dispatch({ type: 'select', ids: [] })
+      return setHover(computeHover(sx, sy, e.shiftKey))
+    }
     const pd = pillarDragRef.current
     pillarDragRef.current = null
     if (pd) {
@@ -1476,8 +1574,7 @@ export default function StudioApp() {
     dragRef.current = null
     if (!d) return
     if (!d.moved) {
-      if (e.shiftKey) dispatch({ type: 'select', ids: [d.hit.id], add: true })
-      else dispatch({ type: 'select', ids: [d.hit.id] })
+      dispatch({ type: 'select', ids: [d.hit.id], toggle: e.shiftKey }) // Shift+click adds it, or takes it out again
     } else if (d.face) {
       const { sx, sy } = local(e)
       setHover(computeHover(sx, sy, e.shiftKey))
@@ -1598,6 +1695,10 @@ export default function StudioApp() {
         e.preventDefault()
         return dispatch({ type: 'duplicate' })
       }
+      if (ctrl && (e.key === 'a' || e.key === 'A') && st.tool !== 'furniture') {
+        e.preventDefault() // never the page's text
+        return dispatch({ type: 'select', ids: st.unit.walls.map((w) => w.id) })
+      }
       if (ctrl) return
       const arrow = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key]
       // furniture tool: arrows move the selected piece one grid square, R turns it, Delete / Backspace deletes it; T / H never touch a piece
@@ -1605,7 +1706,13 @@ export default function StudioApp() {
         const pl = placingRef.current
         if (pl && e.key === 'Escape') return hold(null)
         if (pl && (e.key === 'r' || e.key === 'R')) return hold({ ...pl, rot: pl.rot + 90 })
-        if (pl && (arrow || e.key === 'Delete' || e.key === 'Backspace')) return e.preventDefault() // the piece in hand is not on the plan yet
+        if (pl && (e.key === 'Delete' || e.key === 'Backspace')) {
+          // the piece in hand goes (one undo step, as a Delete of a picked one); a library piece in hand is only let go
+          e.preventDefault()
+          hold(null)
+          return void (!pl.assetId && dispatch({ type: 'delete-piece', id: pl.id }))
+        }
+        if (pl && arrow) return e.preventDefault() // the piece in hand is not on the plan yet
         const p = piecesRef.current?.find((x) => st.selection.includes(x.id))
         if (arrow) {
           e.preventDefault()
@@ -1706,8 +1813,16 @@ export default function StudioApp() {
   }
   /** s27 AI-prep: a "Check these" row answered (its buttons, here and on the plan) — logged, then applied by id (applyAnswer) */
   const answer = (rowId: string, id: string) => {
+    // a row clicked while the list is still being worked out (s27 rows): its own answers go in first
+    let s = stateRef.current
+    const m = marks.find((x) => x.review?.id === rowId)
+    if (m && fixes && !s.review?.items.find((i) => i.id === rowId)?.answers) {
+      const own = { type: 'answers' as const, unit: s.unit, rows: answersOf(s.unit, [m], fixes) }
+      s = studioReducer(s, own)
+      dispatch(own)
+    }
     try {
-      logAnswer(localStorage, stateRef.current, rowId, id)
+      logAnswer(localStorage, s, rowId, id)
     } catch {
       /* storage full or blocked: the answer still counts on the plan */
     }
@@ -1871,6 +1986,10 @@ export default function StudioApp() {
     const len = w ? wallFrame(w, unit.vertices).lengthM : 0
     const snapped = shiftRef.current ? 'free' : `snapped: ${hover.snap.kind === 'wall' ? 'wall — will split' : hover.snap.kind}`
     centre = w ? `${formatFeetInches(len)} · ${len.toFixed(2)} m · ${snapped}` : snapped
+  } else if (hover?.marquee) {
+    centre = selectionText(unit, idsInBox(unit, hover.marquee.a, hover.marquee.b)) || 'nothing in the box'
+  } else if (state.selection.length > 1 && tool !== 'furniture') {
+    centre = selectionText(unit, state.selection)
   } else if (hover?.hit) centre = hover.hit.kind === 'pillar' ? 'column' : hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : unit.walls.length ? 'Real sizes · no picture lined up' : 'Scale not set'
   /** the first floor of the project the open drawing is on (the drop prompt names it) */

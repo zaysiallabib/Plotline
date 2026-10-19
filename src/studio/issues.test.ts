@@ -13,7 +13,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type Draft, type StudioState } from './model'
 import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, logAnswer, openReview, studioReducer } from './review'
-import { KEEP, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
+import { KEEP, around, closes, fixSig, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -397,5 +397,46 @@ describe('AI-prep (session 27): a row carries its sheet box and answers in the d
     expect(log[1]).toMatchObject({ answerId: LOOKS_RIGHT, answer: 'Looks right' })
     expect(logAnswer(store, s1, 'r', 'no-such-answer')).toBeNull()
     expect(JSON.parse(mem.get(ANSWERS_KEY)!)).toHaveLength(2)
+  })
+})
+
+describe('s27 rows: a whole floor of 1 000+ walls — each mark is checked on the plan around it, a row away from an edit keeps its buttons', () => {
+  // a 25 × 20 grid of named 3 m rooms (1 045 walls, as many as Sheltech Windflower's six flats), one wall stopping 0.6 m
+  // short of the corner in the middle: a loose end, its two rooms open
+  const vs: Vertex[] = [], ws: Wall[] = []
+  for (let i = 0; i <= 25; i++) for (let j = 0; j <= 20; j++) vs.push(v(`${i}.${j}`, 3 * i, 3 * j))
+  for (let i = 0; i <= 25; i++) for (let j = 0; j <= 20; j++) {
+    if (i < 25 && !(i === 12 && j === 10)) ws.push(w(`h${i}.${j}`, `${i}.${j}`, `${i + 1}.${j}`))
+    if (j < 20) ws.push(w(`v${i}.${j}`, `${i}.${j}`, `${i}.${j + 1}`, [door(`d${i}.${j}`, 1)]))
+  }
+  vs.push(v('end', 38.4, 30))
+  ws.push(w('short', '12.10', 'end'))
+  const labels = Array.from({ length: 500 }, (_, k) => ({ id: `r${k}`, name: `Room ${k}`, kind: 'bed' as const, x: 3 * (k % 25) + 1.5, y: 3 * Math.floor(k / 25) + 1.5 }))
+  const u: Unit = { ...emptyUnit(), id: 'floor', name: 'floor', planImage: SCALE, vertices: vs, walls: ws, roomLabels: labels }
+  const rooms = deriveRooms(u), issues = studioIssues(u, rooms), marks = markIssues(u, rooms, issues)
+  const m = markOf(marks, 'dangling-vertex', 'end')
+
+  it('the loose end gets its buttons from the plan around it, each one closing it on the whole floor; fast', () => {
+    expect(u.walls.length).toBeGreaterThan(1000)
+    const near = around(u, m.at!)
+    expect(near.walls.length).toBeLessThan(u.walls.length / 10)
+    expect(near.walls.every((x) => u.walls.includes(x))).toBe(true) // (the unit's own walls, ids kept)
+    const t = performance.now()
+    const fixes = fixesOf(u, [m], issues, [], rooms).get(m.key)!.fixes
+    const ms = performance.now() - t
+    expect(fixes.map((f) => f.label)).toEqual([expect.stringMatching(/^Extend /), KEEP])
+    for (const f of fixes) expect(closes(u, f.actions, m.issue!, issues), f.label).toBe(true)
+    // (dev PC: 24 ms around it; 413 ms on the whole floor, about 2 s before validate skipped far pairs — a loose bound)
+    expect(ms).toBeLessThan(1000)
+  })
+
+  it('an edit far away leaves its signature as it was (the Studio keeps its fixes); an edit beside it does not', () => {
+    const sig = fixSig(u, m, rooms)
+    const far = reducer(stateOf(u), { type: 'delete', ids: ['h0.0'] }).unit
+    const near = reducer(stateOf(u), { type: 'delete', ids: ['h11.10'] }).unit
+    const same = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i])
+    expect(far.walls.length).toBe(u.walls.length - 1)
+    expect(same(fixSig(far, m, deriveRooms(far)), sig)).toBe(true)
+    expect(same(fixSig(near, m, deriveRooms(near)), sig)).toBe(false)
   })
 })

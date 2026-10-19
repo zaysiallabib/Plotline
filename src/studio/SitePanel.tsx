@@ -14,7 +14,12 @@ const TILE = 256
 /** the 768 px tile grid is shown this much smaller */
 const SHOW = 0.625
 const RAD = Math.PI / 180
-/** the free map query server; when it does not answer within 20 s, OpenStreetMap's own read of the box round the plot (one request) */
+/**
+ * the free map query server; when it does not answer within 20 s, OpenStreetMap's own read of the box round the plot (one
+ * request). TEMPORARY: that editing-API read is against OpenStreetMap's usage policy for read-only use ("to edit the map
+ * data, not for read-only purposes") — replace it with a second Overpass mirror, or Geofabrik's Bangladesh extract served
+ * from our own files (Docs/SOURCES.md §4, row 1).
+ */
 const OVERPASS = 'https://overpass-api.de/api/interpreter'
 const OSM_MAP = 'https://api.openstreetmap.org/api/0.6/map.json'
 export const RADIUS_M = 250

@@ -330,8 +330,9 @@ function hashLoop(loop: Id[]): string {
  * never a face. null for any other label.
  */
 export function flatTypeOf(l: Pick<RoomLabel, 'name' | 'kind'>): string | null {
-  const m = l.kind === 'other' ? /\b(type|unit)[\s:-]*([a-z0-9]{1,2})\b/i.exec(l.name) : null
-  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase()}` : null
+  // ("UNIT A & B 3925 SFT": two units sold joined are ONE flat, named so — s27 flats 2)
+  const m = l.kind === 'other' ? /\b(type|unit)[\s:-]*([a-z0-9]{1,2}(?:\s*(?:&|\+|and\b)\s*[a-z0-9]{1,2})*)\b/i.exec(l.name) : null
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2].toUpperCase().split(/\s*(?:&|\+|AND)\s*/).join(' & ')}` : null
 }
 
 /** Label → the smallest face containing it; first label wins when two share a face; a flat's "Type A" label names none. */
@@ -465,9 +466,13 @@ export function validate(unit: Unit): ValidationIssue[] {
     else if (d === 1 && !meant.has(id) && !J.ends.has(id)) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
   }
 
-  // ponytail: O(n²) pair scan; a unit has tens of walls, not thousands
+  // ponytail: O(n²) pair scan, two walls whose boxes lie apart skipped first (s27 rows: a six-flat floor's 1 370 walls,
+  // the Studio validates on every edit); a sweep by x if the pairs themselves ever get too many
+  const box = good.map(({ a, b }) => [Math.min(a.x, b.x) - TOUCH_TOL_M, Math.min(a.y, b.y) - TOUCH_TOL_M, Math.max(a.x, b.x) + TOUCH_TOL_M, Math.max(a.y, b.y) + TOUCH_TOL_M])
   for (let i = 0; i < good.length; i++) {
     for (let j = i + 1; j < good.length; j++) {
+      const [p, q] = [box[i], box[j]]
+      if (q[0] > p[2] || p[0] > q[2] || q[1] > p[3] || p[1] > q[3]) continue
       const P = good[i]
       const Q = good[j]
       const shared = new Set([P.wall.a, P.wall.b].filter((id) => id === Q.wall.a || id === Q.wall.b))

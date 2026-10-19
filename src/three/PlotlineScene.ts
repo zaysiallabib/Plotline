@@ -22,7 +22,7 @@ import { Building, type FlatRef } from './building'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
-import { kitAsset, type ObjectKind } from '../furnish/kit'
+import { isCeilingLight, kitAsset, type ObjectKind } from '../furnish/kit'
 import { lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
@@ -30,7 +30,7 @@ import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from
 import { buildFurniture } from './furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, needsFrame, slowFrames, type Quality } from './render'
+import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
 import { SEASON_TINT, WindFlow } from './wind'
 import { siteCut } from './context'
 
@@ -52,23 +52,28 @@ export interface PickHit {
 export type SceneMode = 'walk' | 'orbit' | 'building'
 /**
  * Arrange (staff, src/viewer/arrange.ts): what the pointer does to a piece, in plan metres. `drag`: `at` = the piece's
- * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer).
+ * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer),
+ * `hole` = the face of the opening the pointer looks through (a doorway), when nearer than what it meets beyond.
  * `resize`: a handle dragged — the new size along `axis`, the `sign` face moving.
  */
 export type ArrangeEvent =
   | { kind: 'select'; id: Id | null }
-  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null }
+  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null; hole?: { p: Pt; n: Pt } | null }
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 /**
- * Edit openings (staff): `select` a door / window / slider / passage (null: empty space); `slide` = its body dragged, the
- * offset (m from its wall's corner A) the pointer asks for; `resize` = an end dot dragged to uM along the wall; `drop` ends
- * the gesture. The Studio reducer (model.ts drag-opening / resize-opening) applies its rules to these.
+ * Edit openings (staff): `select` a door / window / slider / passage, or a low wall (null: empty space); `slide` = its body
+ * dragged, the offset (m from its wall's corner A) the pointer asks for; `resize` = an end dot dragged to uM along the wall;
+ * a low wall's `wall-end` = its end dot dragged to `at` on the wall's line (plan m; `rigid`: Alt held), `wall-move` = its
+ * body dragged `dM` across its line (along its normal as picked); `drop` ends the gesture. The Studio reducer applies its
+ * rules to these (model.ts drag-opening / resize-opening; arrange.ts wallDrag).
  */
 export type OpeningEvent =
   | { kind: 'select'; id: Id | null }
   | { kind: 'slide'; id: Id; offsetM: number }
   | { kind: 'resize'; id: Id; end: 'a' | 'b' | 'top' | 'sill'; uM: number }
+  | { kind: 'wall-end'; id: Id; end: 'a' | 'b'; at: Pt; rigid: boolean }
+  | { kind: 'wall-move'; id: Id; dM: number }
   | { kind: 'drop'; id: Id }
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 /** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
@@ -78,6 +83,14 @@ const REFUSED = '#ff4d4d'
 
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
+/**
+ * Vertical field of view (°) walking: 50 = 79° across a 16:9 screen, 73° across 16:10 — a 22 mm lens, the common
+ * walkthrough choice. Was 65 (97° across 16:9, a 16 mm lens): the centre of the view shrank to 0.73 of this, so rooms
+ * and furniture read small and far, and the edges stretched 2.3× (1.7× now) (founder 2026-10-19: "make the flats look a bit
+ * bigger"). The dollhouse and the Building view keep VIEW_FOV. viewer/frame.ts and spawn.ts still frame first views for 65.
+ */
+const WALK_FOV = 50
+const VIEW_FOV = 65
 const WALK_RADIUS = 0.3
 /** A wall this tall is a storey wall (not a parapet, a screen, a planter edge): under the slab above it reaches it. */
 const STOREY_WALL_M = 2.4
@@ -250,6 +263,8 @@ export class PlotlineScene {
   private buildToken = 0
   private mode: SceneMode = 'walk'
   private hour = 13
+  /** the flat's lamps: auto (on after sunset) or the person's pick (render.ts lightsOn) */
+  private lightsMode: LightsMode = 'auto'
   /** the day the sun is drawn for (YYYY-MM-DD): today until the view picks another */
   private date = new Date().toLocaleDateString('en-CA')
   /** the wind arrows (null: off) and the month they show */
@@ -296,7 +311,8 @@ export class PlotlineScene {
   // Edit openings (staff): the mouse stays free as in Arrange; a grab slides the opening along its wall or moves one end
   private editingOpenings = false
   private openingCb: ((e: OpeningEvent) => void) | null = null
-  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean } | null = null
+  /** `line`: a low wall's grab — the pointer is read where its ray passes closest to this line (its end: the wall's line; its body: across it) */
+  private opGrab: { id: Id; wallId: Id; end?: 'a' | 'b' | 'top' | 'sill'; off: number; moved: boolean; line?: { o: THREE.Vector3; d: THREE.Vector3 }; rigid?: boolean } | null = null
   /** the selected opening's outline and its two end dots, in its wall's frame (seen through walls) */
   private readonly opBox = new THREE.Group()
   /**
@@ -324,7 +340,7 @@ export class PlotlineScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
-    this.camera = new THREE.PerspectiveCamera(65, 1, 0.05, 300)
+    this.camera = new THREE.PerspectiveCamera(WALK_FOV, 1, 0.05, 300) // the scene opens walking
     this.camera.position.y = EYE
     this.rig.add(this.camera)
     this.scene.add(this.rig, this.staticGroup, this.ceilingGroup, this.furnitureGroup)
@@ -447,7 +463,7 @@ export class PlotlineScene {
   }
 
   /**
-   * hour 6..18 on the site's clock, on `date` (YYYY-MM-DD; default: the last one given, at first today): the sun where it
+   * hour 0..24 on the site's clock, on `date` (YYYY-MM-DD; default: the last one given, at first today): the sun where it
    * stands at the unit's site (core.sunAt; Dhaka without one), by its true north (unit.northDeg).
    */
   setTimeOfDay(hour: number, date = this.date): void {
@@ -466,8 +482,15 @@ export class PlotlineScene {
     // ≈ 1.8× and Neutral mapped it to a slightly lighter floor, not sun
     this.sun.intensity = 10 * Math.min(1, alt * 3)
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
-    this.look.setHour(hour)
-    if (this.mode === 'building') this.building?.setSun(this.sun)
+    this.look.setAltitude(altDeg)
+    this.look.setLights(lightsOn(this.lightsMode, altDeg))
+    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night)
+  }
+
+  /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
+  setLightsMode(mode: LightsMode): void {
+    this.lightsMode = mode
+    this.setTimeOfDay(this.hour)
   }
 
   /** The month's wind as streamlines through the flat (wind.ts), tinted by its season, or none. */
@@ -486,6 +509,8 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.camera.fov = mode === 'walk' ? WALK_FOV : VIEW_FOV
+    this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
@@ -501,7 +526,8 @@ export class PlotlineScene {
     // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
     const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
     if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
-    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's
+    this.look.outside = mode === 'building'
+    if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's; the lamps' bounce
     if (mode !== 'walk') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
@@ -567,9 +593,10 @@ export class PlotlineScene {
     this.failCb = cb
   }
 
-  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches). */
+  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches), no lamp's either. */
   shadowsOff(): void {
     this.sun.castShadow = false
+    this.look.lampShadowsOff()
     this.wake()
   }
 
@@ -807,13 +834,44 @@ export class PlotlineScene {
     this.openingCb = cb
   }
 
-  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
-  showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
+  private clearOpBox(): void {
     this.opBox.traverse((o) => {
       ;(o as THREE.Mesh).geometry?.dispose()
       ;((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose?.()
     })
     this.opBox.clear()
+  }
+
+  /**
+   * Outlines low wall `id` as the plan has it now (`a` → `b`, its height from its foot) with a dot on each end (a dot drag
+   * moves that end along the wall, a drag on the wall moves it across). null clears.
+   */
+  showWall(s: { id: Id; a: Pt; b: Pt; heightM: number; thicknessM: number } | null): void {
+    this.clearOpBox()
+    const L = s ? Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y) : 0
+    this.opBox.userData = { id: s && L > 1e-6 ? s.id : undefined, wallId: s?.id, wall: true }
+    if (!s || L <= 1e-6) return
+    const dir = new THREE.Vector3((s.b.x - s.a.x) / L, 0, (s.b.y - s.a.y) / L)
+    const foot = Math.min(...(this.lifts.get(s.id)?.foot ?? [0])) // a wall's height is from its lower floor
+    this.opBox.matrixAutoUpdate = false
+    this.opBox.matrix.makeBasis(dir, UP, new THREE.Vector3(-dir.z, 0, dir.x)).setPosition(s.a.x, foot, s.a.y)
+    const mat = { color: SEL, depthTest: false, transparent: true }
+    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, s.heightM, s.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
+    box.position.set(L / 2, s.heightM / 2, 0)
+    box.raycast = () => {}
+    this.opBox.add(box)
+    for (const end of ['a', 'b'] as const) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
+      dot.position.set(end === 'a' ? 0 : L, s.heightM, 0)
+      dot.userData.end = end
+      this.opBox.add(dot)
+    }
+    for (const c of this.opBox.children) c.renderOrder = 11
+  }
+
+  /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
+  showOpening(s: { id: Id; wallId: Id; offsetM: number; widthM: number; heightM: number; sillM: number; refused: boolean } | null): void {
+    this.clearOpBox()
     const f = s && this.wallFrames.get(s.wallId)
     const w = s && this.unit?.walls.find((x) => x.id === s.wallId)
     this.opBox.userData = { id: f && w ? s.id : undefined, wallId: s?.wallId }
@@ -877,15 +935,35 @@ export class PlotlineScene {
     return best
   }
 
-  /** Edit openings: an end dot of the selected opening (resize), else an opening (selects it, slide), else empty space (walk: look around). */
+  /** A low wall under the pointer (a parapet, railing, planter edge, kerb — under core.LOW_WALL_M; a zone line is drawn as nothing) and where it was hit. */
+  private lowWallAt(ndc: THREE.Vector2): { id: Id; point: THREE.Vector3 } | null {
+    const hit = this.pick(ndc)
+    const w = hit?.kind === 'wall' ? this.unit?.walls.find((x) => x.id === hit.id) : undefined
+    return hit && w && w.heightM > 0 && w.heightM < core.LOW_WALL_M ? { id: w.id, point: new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z) } : null
+  }
+
+  /** Edit openings: an end dot of the selected opening or low wall (resize), else an opening (selects it, slide), else a low wall (selects it, moves it across), else empty space (walk: look around). */
   private openingDown(e: PointerEvent): void {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
-    const sel = this.opBox.userData as { id?: Id; wallId?: Id }
+    const sel = this.opBox.userData as { id?: Id; wallId?: Id; wall?: boolean }
     const dot = sel.id && this.opBox.children.length ? this.raycaster.intersectObjects(this.opBox.children.filter((c) => c.userData.end), false)[0] : undefined
-    if (dot && sel.id && sel.wallId) this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false }
-    else {
+    if (dot && sel.id && sel.wallId) {
+      this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false, rigid: e.altKey }
+      // a low wall's end moves along the wall's own line (as the plan has it now), at the dot's height
+      if (sel.wall) this.opGrab.line = { o: dot.object.getWorldPosition(new THREE.Vector3()), d: new THREE.Vector3(1, 0, 0).transformDirection(this.opBox.matrixWorld) }
+    } else {
       const o = this.openingAt(ndc)
+      const lw = o ? null : this.lowWallAt(ndc)
+      if (lw) {
+        // its body: moved across its line, from where it was grabbed
+        const f = this.wallFrames.get(lw.id)!
+        this.openingCb?.({ kind: 'select', id: lw.id })
+        this.opGrab = { id: lw.id, wallId: lw.id, off: 0, moved: false, line: { o: lw.point, d: new THREE.Vector3(f.normal.x, 0, f.normal.y) } }
+        this.orbit.enabled = false
+        this.canvas.setPointerCapture(e.pointerId)
+        return
+      }
       if (!o) {
         if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
         return
@@ -1204,6 +1282,7 @@ export class PlotlineScene {
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)
     ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
+    if (isCeilingLight(p.assetId)) this.look.addGlows(obj) // its diffuser / globe glows while the lamps are on
   }
 
   private async loadEnvironment(): Promise<void> {
@@ -1222,6 +1301,8 @@ export class PlotlineScene {
       clampSun(sky)
       const env = pmrem.fromEquirectangular(sky).texture
       for (const m of PANES) m.envMap = env // panes reflect the sky; no sky: they keep scene.environment
+      Object.assign(this.look.paneEnvs, { sky: env, room: this.scene.environment ?? undefined })
+      this.setTimeOfDay(this.hour) // at night the panes take the room's
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()
@@ -1317,6 +1398,16 @@ export class PlotlineScene {
       const d = this.pointerDown
       if (!og.moved && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) return
       og.moved = true
+      if (og.line) {
+        // a low wall: the point on the line nearest the pointer's ray (any view angle; ±100 m of line)
+        this.raycaster.setFromCamera(this.ndcOf(e), this.camera)
+        const { o, d } = og.line
+        const P = new THREE.Vector3()
+        this.raycaster.ray.distanceSqToSegment(o.clone().addScaledVector(d, -100), o.clone().addScaledVector(d, 100), undefined, P)
+        if (og.end === 'a' || og.end === 'b') this.openingCb?.({ kind: 'wall-end', id: og.id, end: og.end, at: { x: P.x, y: P.z }, rigid: !!og.rigid })
+        else this.openingCb?.({ kind: 'wall-move', id: og.id, dM: P.sub(o).dot(d) })
+        return
+      }
       const p = this.alongWall(this.ndcOf(e), og.wallId) // along ITS wall, at any angle
       if (p) this.openingCb?.(og.end ? { kind: 'resize', id: og.id, end: og.end, uM: og.end === 'top' || og.end === 'sill' ? p.v : p.u } : { kind: 'slide', id: og.id, offsetM: p.u - og.off })
       return
@@ -1364,9 +1455,21 @@ export class PlotlineScene {
       dist = h.distance
       break
     }
+    // the doorway / passage the pointer looks through, nearer than what it meets beyond: new curtains hang on it
+    let hole: { p: Pt; n: Pt } | null = null
+    let near = dist
+    for (const w of this.unit?.walls ?? []) {
+      const a = w.openings.length && !w.id.startsWith(GAP_PREFIX) ? this.alongWall(ndc, w.id) : null
+      const f = this.wallFrames.get(w.id)
+      if (!a || !f || a.d >= near || !w.openings.some((o) => a.u >= o.offsetM && a.u <= o.offsetM + o.widthM && a.v >= o.sillM && a.v <= o.sillM + o.heightM)) continue
+      const s = f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1
+      const k = (s * w.thicknessM) / 2
+      hole = { p: { x: f.origin.x + f.dir.x * a.u + f.normal.x * k, y: f.origin.y + f.dir.y * a.u + f.normal.y * k }, n: { x: s * f.normal.x, y: s * f.normal.y } }
+      near = a.d
+    }
     let at = P && { x: P.x + off.x, y: P.z + off.y }
     if (stopAtWalls && wall && (!P || dist < ray.origin.distanceTo(P))) at = { x: wall.p.x + wall.n.x * 0.3, y: wall.p.y + wall.n.y * 0.3 }
-    this.arrangeCb?.({ kind: 'drag', id, at, wall })
+    this.arrangeCb?.({ kind: 'drag', id, at, wall, hole })
   }
 
   private onPointerUp = (e: PointerEvent): void => {

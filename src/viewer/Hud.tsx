@@ -73,6 +73,8 @@ interface Props {
   hand: HandInfo | null
   /** staff (arrange.ts isStaff): G picks up furniture; the dot and the keys show in walk */
   staff: boolean
+  /** the unit has a site with the map's blocks or roads in the 3D: their credit in the footer */
+  osm?: boolean
   /** staff only: toggles Edit openings (doors, windows, sliders, passages in 3D); null hides the button */
   onOpenings: (() => void) | null
   editingOpenings: boolean
@@ -146,7 +148,7 @@ export default function Hud(p: Props) {
           </button>
         )}
         {p.onOpenings && (
-          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider or passage" onClick={p.onOpenings}>
+          <button className={`btn${p.editingOpenings ? ' active' : ''}`} title="Staff only: move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
             Edit openings
           </button>
         )}
@@ -167,7 +169,7 @@ export default function Hud(p: Props) {
         <HandTag hand={p.hand} locked={p.locked} />
       ) : p.editingOpenings && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
-          {`Click a door or window · drag it along its wall · drag a dot to resize · Del removes · Ctrl+Z undoes${p.mode === 'walk' ? ' · drag the room to look' : ''}`}
+          {`Click a door, window, passage or low wall · drag it · drag a dot to resize · Del removes · Ctrl+Z undoes${p.mode === 'walk' ? ' · drag the room to look' : ''}`}
         </div>
       ) : p.arranging && p.mode !== 'building' ? (
         <div className="glass hint hint-bottom">
@@ -202,7 +204,20 @@ export default function Hud(p: Props) {
         </>
       )}
       {p.toast && <div className="glass toast">{p.toast}</div>}
-      {!p.locked && <div className="footer">Powered by Plotline</div>}
+      {/* the map's neighbours and roads are OpenStreetMap's (ODbL): their credit shows wherever they do, also while walking */}
+      {(!p.locked || p.osm) && (
+        <div className="footer">
+          {!p.locked && 'Powered by Plotline'}
+          {p.osm && (
+            <>
+              {!p.locked && ' · '}
+              <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+                © OpenStreetMap contributors
+              </a>
+            </>
+          )}
+        </div>
+      )}
     </>
   )
 }

@@ -1421,7 +1421,7 @@ function walledIn(d: Draft, q: Pt, sides = 3): boolean {
  * rivals flood together, each cell goes to its nearest source, the click's share is the flat. Returns its cells and
  * every wall they touch.
  */
-function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number, names: { p: Pt; name: string }[] = []): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number; region: () => Rect[] } {
+function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number, names: { p: Pt; name: string }[] = [], shut = false, hard?: (p: Pt) => boolean): { inFlood: (p: Pt) => boolean; touched: Set<string>; sqm: number; region: () => Rect[] } {
   const cell = 0.1
   const V = new Map(d.unit.vertices.map((v) => [v.id, v]))
   const xs = d.unit.vertices.map((v) => v.x).concat(at.x), ys = d.unit.vertices.map((v) => v.y).concat(at.y)
@@ -1442,7 +1442,7 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
     const r = Math.max(1, Math.round(w.thicknessM / 2 / cell))
     for (let k = 0; k <= steps; k++) {
       const m = (L * k) / steps
-      if (w.openings.some((o) => o.kind !== 'window' && m > o.offsetM + 0.05 && m < o.offsetM + o.widthM - 0.05)) continue
+      if (!shut && w.openings.some((o) => o.kind !== 'window' && m > o.offsetM + 0.05 && m < o.offsetM + o.widthM - 0.05)) continue
       const cx = Math.floor((a.x + ((b.x - a.x) * k) / steps - x0) / cell), cy = Math.floor((a.y + ((b.y - a.y) * k) / steps - y0) / cell)
       for (let dy = -r; dy <= r; dy++)
         for (let dx = -r; dx <= r; dx++) {
@@ -1452,7 +1452,7 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
     }
   })
   // gaps rule 4 carried a wall across stay passable (maybe a door the swing test missed)
-  for (const g of d.resumed ?? []) {
+  for (const g of shut ? [] : (d.resumed ?? [])) {
     const L = d2(g.a, g.b), steps = Math.ceil(L / (cell / 2)) + 1
     for (let k = 1; k < steps; k++) {
       const cx = Math.floor((g.a.x + ((g.b.x - g.a.x) * k) / steps - x0) / cell), cy = Math.floor((g.a.y + ((g.b.y - g.a.y) * k) / steps - y0) / cell)
@@ -1500,13 +1500,13 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
   const walk = (through: (j: number) => boolean) => {
     for (let head = 0; head < queue.length && head < cap; head++) {
       const i = queue[head]
-      for (const j of near4(i)) if (j >= 0 && !seen[j] && (grid[j] < 0 || low[j] || through(j)) && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
+      for (const j of near4(i)) if (j >= 0 && !seen[j] && (grid[j] < 0 || (low[j] && !shut) || through(j)) && free(j)) (seen[j] = 1), (dist[j] = dist[i] + 1), queue.push(j)
     }
   }
   walk(() => false)
   // a click in a small space whose only ways out are windows (a veranda behind its slider, a balcony): its windows lead
   // in — once (the outside, planters, core and the next flat's rooms stay blocked)
-  if (queue.length * cell * cell < 10) {
+  if (!shut && queue.length * cell * cell < 10) {
     const n0 = queue.length
     for (let h = 0; h < n0; h++) for (const j of near4(queue[h])) if (j >= 0 && !seen[j] && win[j] && free(j)) (seen[j] = 1), (dist[j] = dist[queue[h]] + 1), queue.push(j)
     for (let h = n0; h < queue.length; h++) for (const j of near4(queue[h])) if (j >= 0 && !seen[j] && win[j] && free(j)) (seen[j] = 1), (dist[j] = dist[queue[h]] + 1), queue.push(j)
@@ -1520,22 +1520,27 @@ function floodFlat(d: Draft, at: Pt, blocked: (p: Pt) => boolean, capSqm: number
   // split lies halfway between them, wherever in the flat the click is
   const byName = new Map<string, { c: number; d: number }[]>()
   const stamps: { c: number; p: Pt }[] = []
+  // (s27 flats 2: '#RIVAL' — the next flat's kitchen / living / dining / master bed in a flat that took two, floorParts)
+  const extra: number[] = []
   for (const l of names) {
     const c = cellOf(l.p)
-    if (c >= 0 && l.name === '#STAMP') stamps.push({ c, p: l.p })
+    if (c >= 0 && l.name === '#RIVAL') extra.push(c)
+    else if (c >= 0 && l.name === '#STAMP') stamps.push({ c, p: l.p })
     else if (c >= 0 && seen[c]) byName.set(l.name, [...(byName.get(l.name) ?? []), { c, d: dist[c] }])
   }
   const mine = stamps.filter((s) => seen[s.c]).sort((p, q) => dist[p.c] - dist[q.c])[0]?.c
   // (a label the flood did not reach is a rival once the click's own was reached, and only on the plan — the single
   // flat's own title on the paper beside it would flood in)
   const far = mine === undefined ? [] : stamps.filter((s) => s.c !== mine && (seen[s.c] || walledIn(d, s.p))).map((s) => s.c)
-  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).concat(far).filter((c) => c !== start)
+  const rivals = [...byName.values()].flatMap((ls) => ls.sort((p, q) => p.d - q.d).slice(1).map((l) => l.c)).concat(far, extra).filter((c) => c !== start)
   const own = new Int8Array(nx * ny).fill(-1)
   const q2 = [start, ...(mine !== undefined && mine !== start ? [mine] : []), ...rivals]
   own[start] = 0
   if (mine !== undefined) own[mine] = 0
   for (const r of rivals) own[r] = 1
-  const open = (j: number) => seen[j] || ((grid[j] < 0 || low[j]) && free(j))
+  // (s27 flats 2: a rival also grows through what only the click may not enter — the rooms fitted to the next flat — so
+  // the next flat's name claims the open floor beyond them; never through `hard`: the outside, core, earlier flats)
+  const open = (j: number) => seen[j] || ((grid[j] < 0 || (low[j] && !shut)) && (hard ? !hard(centre(j)) : free(j)))
   for (let head = 0; head < q2.length; head++) {
     const i = q2[head]
     for (const j of near4(i)) if (j >= 0 && own[j] < 0 && (own[i] === 0 ? seen[j] : open(j))) (own[j] = own[i]), q2.push(j)
@@ -1590,6 +1595,8 @@ function pickFlat(
   blocked: (p: Pt) => boolean = () => false,
   /** of those, the planters: a planter face on the flooded floor's edge joins the flat as a planter */
   planter: (p: Pt) => boolean = () => false,
+  /** of the blocked cells, those a rival may not grow through either (floodFlat) */
+  hard?: (p: Pt) => boolean,
 ): { rooms: Set<Room>; open: boolean; touched: Set<string>; inFlood?: (p: Pt) => boolean; region?: () => Rect[] } {
   const byWall = new Map<string, Room[]>()
   for (const r of d.rooms) for (const w of r.wallIds) byWall.set(w, [...(byWall.get(w) ?? []), r])
@@ -1626,7 +1633,7 @@ function pickFlat(
   if (at) {
     // founder rule 3: the floor the flood from the click reaches; every closed face on it, the planters at its edge
     // the printed figure includes walls and a common share: the floor is about areaShare of it
-    const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm, names)
+    const fl = floodFlat(d, at, blocked, Number.isFinite(budgetSqm) ? budgetSqm * KNOBS.areaShare : KNOBS.defaultFlatSqm, names, false, hard)
     const inner = new Map(d.rooms.map((r) => [r, insidePoint(r, d.unit, d.rooms)]))
     const onFloor = d.rooms.filter((r) => ok(r) && fl.inFlood(inner.get(r)!))
     // a closed room the flood could not enter (its door not found, or carried over as wall) but mostly surrounded by
@@ -1674,7 +1681,7 @@ function pickFlat(
  * mostly along / inside a picked room (its sides that close no face). A click in no fitted room (an unsized dining)
  * starts from the nearest one within 4 m; null when there is none (the caller floods instead).
  */
-function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean, stamps: Pt[] = [], taken: ReadonlySet<number> = new Set()): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; others: number[]; inFlood?: (p: Pt) => boolean } | null {
+function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], outside: (p: Pt) => boolean, stamps: Pt[] = [], taken: ReadonlySet<number> = new Set(), extra: Pt[] = []): { rooms: Set<Room>; open: boolean; touched: Set<string>; fits: number[]; others: number[]; inFlood?: (p: Pt) => boolean } | null {
   type Box = { x0: number; y0: number; x1: number; y1: number }
   const R: Box[] = fits.map((f) => ({ x0: (f.rect.x0 - 0.5) / k, y0: (f.rect.y0 - 0.5) / k, x1: (f.rect.x1 - 0.5) / k, y1: (f.rect.y1 - 0.5) / k }))
   const inR = (r: Box, p: Pt, m = 0) => p.x >= r.x0 - m && p.x <= r.x1 + m && p.y >= r.y0 - m && p.y <= r.y1 + m
@@ -1748,7 +1755,7 @@ function pickByRooms(d: Draft, fits: RoomFit[], k: number, at: Pt, core: Pt[], o
   const rivals = [...byName.values()].flatMap((is) => is.sort((p, q) => far(p) - far(q)).slice(1)).concat([...taken]).filter((i) => i !== start)
   // (founder: a flat has one area stamp — the fitted room holding another stamp, or nearest it within 3 m, is the next flat's)
   const near = (p: Pt) => R.map((r, i) => ({ i, d: Math.hypot(Math.max(r.x0 - p.x, 0, p.x - r.x1), Math.max(r.y0 - p.y, 0, p.y - r.y1)) })).filter((x) => x.d <= 3 && !isCore(x.i)).sort((p, q) => p.d - q.d)[0]?.i
-  for (const p of stamps.slice().sort((p, q) => d2(p, at) - d2(q, at)).slice(1)) {
+  for (const p of [...stamps.slice().sort((p, q) => d2(p, at) - d2(q, at)).slice(1), ...extra]) {
     const i = near(p)
     if (i !== undefined && i !== start && !rivals.includes(i)) rivals.push(i)
   }
@@ -2256,8 +2263,40 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
   // …and where that face is not closed (a lobby whose double doors were not read), the floor within 1.2 m of its label:
   // a lobby is a corridor ~2 m deep, so the flood cannot walk along it past its name
   const corePts = coreAt(pxPerM)
-  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2)
-  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, labelsAt, inOutside, isPlanter, inStair, inCore }
+  // s27 flats 2 (founder: a flat ends at its entry door): the core's floor, flooded from each lobby / lift / stair label with
+  // every door and low wall shut, so it ends at the flats' entry doors — its share against the flats' room names and
+  // labels (each floor cell to the nearest: where a wall was not traced the lobby runs on into a flat, and the flat's
+  // names keep their side)
+  const toFloor = (it: TextItem): Pt => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })
+  const flatPts = [...text.items.filter((it) => it.kind === 'room' && it.roomKind && !/^(shaft|other)$/.test(it.roomKind) && !it.green && !coreText(it)).map(toFloor), ...labelsAt(pxPerM)]
+  // …and a closed face up to 8 m² against a stair flight for 1 m or more, with no flat's room name in it, is the core too:
+  // the landing / lift lobby whose LOBBY was not read (Foysal Smart Garden: it came out Unit A's "Kitchen 1"); a room
+  // whose name was not read is bigger (Accept Aftabnagar's drawing room)
+  // (only a stair the sheet names: a STAIR / LIFT word on its flight or within 1 m of it)
+  const coreTexts = text.items.filter(coreText).map((it) => mid(it))
+  const namedStairs = (draft.stairs ?? []).filter((s) => coreTexts.some((q) => q.x >= s.x0 - pxPerM && q.x <= s.x1 + pxPerM && q.y >= s.y0 - pxPerM && q.y <= s.y1 + pxPerM))
+  for (const r of draft.rooms) {
+    const poly = roomPolygon(r, draft.unit)
+    if (r.areaSqm > 8 || flatPts.some((q) => pointInPolygon(q, poly))) continue
+    let along = 0
+    poly.forEach((a, i) => {
+      const b = poly[(i + 1) % poly.length], L = d2(a, b)
+      for (let t = 0.05; t < L; t += 0.1) {
+        const x = (a.x + ((b.x - a.x) * t) / L) * pxPerM, y = (a.y + ((b.y - a.y) * t) / L) * pxPerM, m = 0.4 * pxPerM
+        if (namedStairs.some((s) => x >= s.x0 - m && x <= s.x1 + m && y >= s.y0 - m && y <= s.y1 + m)) along += 0.1
+      }
+    })
+    if (along >= 1) coreFaces.push(poly)
+  }
+  const coreFloors: ((p: Pt) => boolean)[] = []
+  const blk = (q: Pt) => inOutside(q) || isPlanter(q) || inStair(q)
+  for (const s of text.items.filter(coreText).map(toFloor)) {
+    if (blk(s) || coreFloors.some((f) => f(s))) continue
+    const fl = floodFlat(draft, s, blk, 300, flatPts.map((q) => ({ p: q, name: '#RIVAL' })), true)
+    if (fl.sqm > 0) coreFloors.push(fl.inFlood)
+  }
+  const inCore = (p: Pt) => coreFaces.some((f) => pointInPolygon(p, f)) || corePts.some((c) => d2(c, p) < 1.2) || coreFloors.some((f) => f(p))
+  return { ms: performance.now() - t0, gray, inputs, opts, text, tracker, pxPerM, scaleFrom, scaleFew, scaleNeedsPick, trace, hints, fits, merged, thin, closed, draft, origin0, outside, coreAt, namesAt, stampsAt, labelsAt, flatLabels, inOutside, isPlanter, inStair, inCore }
 }
 export type Prepared = ReturnType<typeof prepareTraces>
 
@@ -2284,7 +2323,7 @@ interface Sel {
 }
 type Taken = { fits: ReadonlySet<number>; rooms: ReadonlySet<Room>; has: (p: Pt) => boolean }
 
-function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null): Sel {
+function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null, rivals: Pt[] = []): Sel {
   const { inputs, text, tracker, pxPerM, fits, thin, origin0, coreAt, namesAt, stampsAt, inOutside, isPlanter, inStair, inCore } = p
   const draft = p.draft
   // the printed flat area nearest the click ("TYPE-A ±2736 SFT"), m²; the sheet title's figure when it is the only one
@@ -2298,10 +2337,11 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null): S
   // tracks + ≥ 3 fitted rooms: the flat is the fitted rooms around the click (pickByRooms) — plus what the flood from the
   // click reaches where no room was fitted (labels not read), the flood never entering a room fitted to the next flat or
   // the core (those rooms bound it, so it cannot leak through an open gap into them), nor another flat's floor
-  const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside, stampsAt(pxPerM), taken?.fits) : null
+  const byRooms = tracker === 'tracks' && pick && fits.length >= 3 ? pickByRooms(draft, fits, pxPerM, pick, coreAt(pxPerM), inOutside, stampsAt(pxPerM), taken?.fits, rivals) : null
   const otherRects = byRooms ? byRooms.others.map((i) => fits[i].rect) : []
   const inOther = (p: Pt) => otherRects.some((r) => p.x * pxPerM >= r.x0 && p.x * pxPerM <= r.x1 - 1 && p.y * pxPerM >= r.y0 && p.y * pxPerM <= r.y1 - 1)
-  const flood = pickFlat(draft, pick, coreAt(pxPerM), budget, namesAt(pxPerM), (p) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p) || inOther(p) || !!taken?.has(p), isPlanter)
+  const hard = (p: Pt) => inOutside(p) || isPlanter(p) || inStair(p) || inCore(p) || !!taken?.has(p)
+  const flood = pickFlat(draft, pick, coreAt(pxPerM), budget, [...namesAt(pxPerM), ...rivals.map((q) => ({ p: q, name: '#RIVAL' }))], (p) => hard(p) || inOther(p), isPlanter, hard)
   const picked = byRooms ? { ...flood, rooms: new Set([...byRooms.rooms, ...flood.rooms]), touched: new Set([...byRooms.touched, ...flood.touched]), open: false } : flood
   let flat = picked.rooms
   if (thin?.walls.length) {
@@ -2350,6 +2390,7 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null): S
         ...text.items.filter(coreText).map((it) => ({ x: (it.box.x + it.box.w / 2) / pxPerM, y: (it.box.y + it.box.h / 2) / pxPerM })),
         ...(byRooms ? byRooms.others.map((i) => ({ x: fits[i].at.x / pxPerM, y: fits[i].at.y / pxPerM })) : []),
         ...stampsAt(pxPerM).sort((p, q) => d2(p, pick) - d2(q, pick)).slice(1),
+        ...rivals,
         // (a stair flight drawn with no STAIR label — Sheltech's DN / UP — is the core too)
         ...(draft.stairs ?? []).map((s) => ({ x: (s.x0 + s.x1) / 2 / pxPerM, y: (s.y0 + s.y1) / 2 / pxPerM })),
       ]
@@ -2397,20 +2438,70 @@ export function floorParts(p: Prepared): Part[] {
   // s27 (founder: "two names = two flats"): the flat labels printed ON the plan (walls all round: a title under the plan,
   // walled on three sides by the building above it, is not — Eastern Housing Sapphire) first — one flat around each, the other
   // labels its rivals (floodFlat); a label whose flat holds no room printed with its size, no room fitted to the ink and
-  // under three closed rooms (a title block's panel) makes none. Then the room-name seeds below; with labelled flats, or
-  // one label on the whole sheet (a title's "UNIT A: 3910 SFT"), the floor has no more flats than that: what a seed finds
-  // beyond joins the flat it shares most walls with (a flat split by a door not found)
+  // under three closed rooms (a title block's panel) makes none. Then the room-name seeds below, up to as many flats as
+  // the labels name (s27 flats 2, below): what a seed finds beyond joins the flat it shares most walls with (a flat split
+  // by a door not found)
   const xs = p.draft.unit.vertices.map((v) => v.x), ys = p.draft.unit.vertices.map((v) => v.y)
   const onFloor = (q: Pt) => xs.length > 0 && q.x >= Math.min(...xs) && q.x <= Math.max(...xs) && q.y >= Math.min(...ys) && q.y <= Math.max(...ys) && !p.inOutside(q) && !p.isPlanter(q) && !p.inStair(q) && !p.inCore(q) && walledIn(p.draft, q, 4)
+  // s27 flats 2: how many flats the sheet names — its flat labels (area stamps, TYPE / UNIT names), one per flat they name:
+  // "UNIT A & B 3925 SFT" and a "Unit A" near it are ONE flat (Sheltech Banani Level 7), a legend's "TYPE C : 1469 SFT"
+  // and the plan's "TYPE-C" one; with no type read at all, each stamp is one — and its main kitchens (a dry / wet /
+  // service kitchen is none; two prints within 4 m are one kitchen read twice)
+  const letters = (it: TextItem): string[] => {
+    const t = [it, ...p.text.items.filter((o) => o.kind === 'other' && d2(c(o), c(it)) * k < 3 * Math.max(o.box.h, it.box.h))]
+      .map((x) => flatTypeOf({ name: x.text.split('\n')[0].replace(/[^A-Za-z0-9&+]+/g, ' '), kind: 'other' }))
+      .find(Boolean)
+    return t ? t.split(' ').slice(1).filter((x) => x !== '&') : []
+  }
+  const named: string[][] = []
+  let untyped = 0
+  for (const it of p.flatLabels) {
+    const ls = letters(it)
+    if (!ls.length) {
+      untyped++
+      continue
+    }
+    const same = named.filter((g) => g.some((x) => ls.includes(x)))
+    named.splice(0, named.length, ...named.filter((g) => !same.includes(g)), [...new Set([...ls, ...same.flat()])])
+  }
+  // (beside typed ones, a stamp read with no type is one of them misread — Kanakchapa's legend "TYPED: 1386 SFT")
+  const L = named.length || untyped
+  const main = (it: TextItem) => it.roomKind === 'kitchen' && !/\b(DRY|WET|SERVICE|DIRTY|HOT)\b/.test(normaliseName(it.text.split('\n')[0]))
+  const kitchenPts: Pt[] = []
+  for (const it of names.filter(main)) if (!kitchenPts.some((q) => d2(q, c(it)) <= 4)) kitchenPts.push(c(it))
+  const K = kitchenPts.length
+  // with labels read, the floor has as many flats as they name — more only where more kitchens than labels were read
+  // (labels missed: Sheltech Kanakchapa prints seven TYPE labels, six are read, seven kitchens; one label on the sheet is
+  // one flat whatever its kitchens). With none read, every room-name seed with a bedroom is a flat of its own
+  const cap = L === 1 ? 1 : L ? Math.max(L, K) : Infinity
+  // s27 flats 2 (founder: one flat holds one kitchen): a flat that took a second main kitchen, LIVING, DINING or M.BED more
+  // than 4 m from its own (the print nearest its label / seed) took the next flat too — where the floor may have more flats
+  // than labels (above), it is picked again with those prints as rivals: the floor between them splits where their floods
+  // meet, and their seeds start the next flat below. Never a flat one area stamp lies in (one printed area = one flat)
+  const once = (it: TextItem): string | null => {
+    // (a flat may have a family living, or a dry / service kitchen, besides: those are no second one)
+    const n = normaliseName(it.text.split('\n')[0]).replace(/[^A-Z]/g, '')
+    if (/FAMILY|FORMAL|DRAWING|LOUNGE|DRY|WET|SERVICE/.test(n)) return null
+    return /^(kitchen|living|dining)$/.test(it.roomKind ?? '') ? it.roomKind! : /^(MBED|MASTERBED)/.test(n) ? 'mbed' : null
+  }
+  const ones = names.flatMap((it) => (once(it) ? [{ key: once(it)!, at: c(it) }] : []))
+  const splits = L === 0 || (L >= 2 && K > L)
+  const select = (at: Pt): Part => {
+    const part = withRegion(p.draft, selectFlat(p, at, taken()))
+    if (!splits || p.stampsAt(k).filter((q) => onFloor(q) && part.has(q)).length === 1) return part
+    const far = [...new Set(ones.map((o) => o.key))].flatMap((key) => {
+      const held = ones.filter((o) => o.key === key && part.has(o.at)).map((o) => o.at).sort((a, b) => d2(a, at) - d2(b, at))
+      return held.slice(1).filter((q) => d2(q, held[0]) > 4)
+    })
+    return far.length ? withRegion(p.draft, selectFlat(p, at, taken(), far)) : part
+  }
   const labels = p.labelsAt(k)
   for (const at of labels) {
     if (!onFloor(at) || parts.some((q) => q.has(at))) continue
-    const part = withRegion(p.draft, selectFlat(p, at, taken()))
+    const part = select(at)
     if (part.fits.length || part.rooms.size >= 3 || names.some((x) => x.dims && part.has(c(x)))) parts.push(part)
   }
-  const labelled = parts.length
-  const most = labelled || (labels.length === 1 ? 1 : Infinity)
-  const kitchen = (q: Part) => names.some((x) => x.roomKind === 'kitchen' && q.has(c(x)))
+  const most = Math.max(parts.length, cap)
   const wallsOf = (q: Part) => new Set([...q.touched, ...[...q.rooms].flatMap((r) => r.wallIds)])
   const join = (a: Part, b: Part): Part =>
     withRegion(p.draft, {
@@ -2428,20 +2519,18 @@ export function floorParts(p: Prepared): Part[] {
   for (const it of seeds) {
     const at = c(it)
     if (parts.some((q) => q.has(at))) continue
-    const part = withRegion(p.draft, selectFlat(p, at, taken()))
+    const part = select(at)
     if (!beds.some(part.has) || names.filter((x) => part.has(c(x))).length < 2) continue
     if (parts.length < most) {
       parts.push(part)
       continue
     }
+    // (beyond that: a flat split by a door not found — the part joins the flat it shares most walls with, else the nearest)
     const ws = wallsOf(part)
     const shared = parts.map((q) => [...wallsOf(q)].filter((w) => ws.has(w)).length)
     const near = parts.map((q) => (q.at ? d2(q.at, at) : Infinity))
     const i = Math.max(...shared) > 0 ? shared.indexOf(Math.max(...shared)) : near.indexOf(Math.min(...near))
-    // (one label on the whole sheet and no flat from it: a part with its own kitchen beside one with a kitchen is a flat
-    // of its own — Eastern Housing Sapphire's three flats, one title figure read)
-    if (!labelled && kitchen(part) && kitchen(parts[i])) parts.push(part)
-    else parts[i] = join(parts[i], part)
+    parts[i] = join(parts[i], part)
   }
   // a printed room no flat reached (its door not found; Sheltech L2 B's Bed 2 behind a passage the lifts' face swallowed):
   // its closed face joins the flat it shares most walls with — the floor's flats lose no room the sheet names (s27: again
@@ -2927,7 +3016,17 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   // each flat's TYPE / UNIT label ("TYPE-A" printed over its "±2736 SFT", "Unit A:1375 Sft"): kept as a label of kind
   // 'other' that names the flat (core flatTypeOf: it names no room, deriveFlats calls the flat "Type A" / "Unit A"); one
   // standing in no closed room is dropped by fixAndReport below, as a person's would be flagged
-  const types = stamps.map((stamp) => stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => flatTypeOf({ name: it.text, kind: 'other' })).find(Boolean))
+  const typeNear = (stamp?: TextItem) => stamp && [stamp, ...text.items.filter((it) => it.kind === 'other' && Math.hypot(it.box.x + it.box.w / 2 - (stamp.box.x + stamp.box.w / 2), it.box.y + it.box.h / 2 - (stamp.box.y + stamp.box.h / 2)) < 3 * stamp.box.h)].map((it) => flatTypeOf({ name: it.text, kind: 'other' })).find(Boolean)
+  // (s27 flats 2: a flat found around its own label printed on the plan — "TYPE-F" — is that type, and a title figure of
+  // another type is not its figure: the legend's line of its own type is — Sheltech Kanakchapa's "TYPE A … G : n SFT",
+  // paired with the flats by place, named Type D's flat "Type C"; a flat with no label of its own then takes none)
+  const own = sels.map((s) => {
+    const it = s.at && text.items.find((x) => x.kind === 'other' && d2(m0(x), s.at!) < 0.05)
+    return (it && flatTypeOf({ name: it.text.split('\n')[0].replace(/[^A-Za-z0-9]+/g, ' '), kind: 'other' })) || undefined
+  })
+  const titles = text.items.filter((it) => it.kind === 'area' && it.areaSqm && !areas.includes(it))
+  if (own.some(Boolean)) stamps.forEach((st, i) => st && !areas.includes(st) && typeNear(st) !== own[i] && (stamps[i] = own[i] ? titles.find((a) => typeNear(a) === own[i]) : undefined))
+  const types = stamps.map((stamp, i) => own[i] ?? typeNear(stamp))
   stamps.forEach((stamp, i) => {
     if (stamp && types[i]) u.roomLabels.push({ id: newId(), name: `${types[i]} ±${Math.round(stamp.areaSqm! / (FT * FT))} sft`, kind: 'other', ...toM({ x: stamp.box.x + stamp.box.w / 2, y: stamp.box.y + stamp.box.h / 2 }) })
   })
@@ -2955,6 +3054,12 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     let i = sels.length === 1 ? 0 : sels.findIndex((s) => s.has({ x: l.x + shift.x, y: l.y + shift.y }))
     // (the whole floor: a room the flats' faces and floors do not hold — closed by their kept walls — goes to the flat
     // it lies against, within 0.3 m)
+    // (s27 flats 2: a room on the core's floor — a lobby whose name was not read, lying against both flats — is in none,
+    // pinned so: its doors would join it to the one flat whose door was found — Foysal's lobby came out Unit A's "Kitchen 1")
+    if (i < 0 && sels.length > 1 && p.inCore({ x: l.x + shift.x, y: l.y + shift.y })) {
+      l.flat = ''
+      continue
+    }
     const f = i < 0 ? finals.find((r) => r.id === l.id) : undefined
     if (f) {
       const d = sels.map((s) => Math.min(...roomPolygon(f, u).map((v) => distToRooms(p.draft, s.rooms, { x: v.x + shift.x, y: v.y + shift.y }))))
@@ -3011,7 +3116,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
 export function closeMessage(c: Pick<Closed, 'room' | 'size' | 'pieces'>): string {
   const what = (pc: Piece) => {
     const L = formatFeetInches(d2(pc.a, pc.via ?? pc.b))
-    return pc.kind === 'zone' ? `a zone line ${L} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the window line drawn there` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `a wall carried on ${L}`
+    return pc.kind === 'zone' ? `a zone line ${L}${pc.on === 'dashes' ? ' along the dashed line drawn there' : ''} (open plan: nothing in 3D)` : pc.kind === 'glass' ? `a glass wall ${L} along the window line drawn there` : pc.kind === 'low' ? `a low wall (railing) ${L} along the thin line` : pc.kind === 'door' ? `a ${L} door in the gap (no door swing is drawn there)` : `a wall carried on ${L}`
   }
   const list = c.pieces.map(what)
   const drew = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0]
