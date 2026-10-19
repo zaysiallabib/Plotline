@@ -115,10 +115,12 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 
 - **Click a piece** to pick it — also one you see through a window or a glass door. A click whose mouse slides up to 6 pixels is still a click: the piece is picked, never moved. **Drag** it (further) to move it — a drag on cushions, or on a TV standing on its unit, moves the piece under them. It turns red and tells you why if it cannot go there (outside the room, covers a window, overlaps another piece). Doors, passages and the entrance are NOT kept clear (founder, 2026-10-13): put a piece where you like — the same in the Studio's F tool.
 - **Drag a dot** on a piece to make it bigger or smaller (only pieces that can stretch).
-- **Curtains** are a piece of their own, hung on their window (since 2026-10-14). Click them: "Curtains" shows. **Drag** them (or **G**) and they slide along their own wall only, in 3-inch steps, and stay their window's: move or resize the window later and they follow it. They cannot be pushed into another pair (red: "Overlaps the curtains"). **Del** takes them away; **Undo** brings them back. **Add → Bedroom** (or Living) **→ Curtains**, then point at a window: a new pair hangs on it, sized to it. They are as wide as their window plus up to 15 cm past each side (less where a side wall or the next window is closer), floor to ceiling, drawn open: one gathered panel at each side, over the edge of the glass.
+- **Curtains** are a piece of their own, hung on their opening (since 2026-10-14). Click them: "Curtains" shows. **Drag** them (or **G**) and they slide along their own wall only, in 3-inch steps, and stay their opening's: move or resize the opening later and they follow it. They cannot be pushed into another pair (red: "Overlaps the curtains"). **Del** takes them away; **Undo** brings them back. **Add → Bedroom** (or Living) **→ Curtains**, then point at an opening — a window, a sliding door, a door or an open passage (since 2026-10-19; you may point through the doorway itself) — and click: a new pair hangs on it, centred, sized to it. Pointing at no opening says so in red: "Point at an opening". They are as wide as their opening plus up to 15 cm past each side (less where a side wall or the next opening is closer), floor to ceiling, drawn open: one gathered panel at each side. Curtains in a doorway do not stop you walking through it.
+- **Make curtains wider or narrower** (since 2026-10-19): click them, then drag the dot on one side — that side moves, the other stays. It moves in 5 cm steps counted from the opening's edge (so the edge itself is one step), from 0.4 m to 6 m wide, and stops short of a side wall (never round a corner). Moving or resizing the opening later keeps how far each side reaches past its edge.
 - Buttons in the small panel, bottom left: **Add**, **Turn 90°**, **Delete**, **Undo**, **Reset layout**.
 - Keys: **R** turns · **Del** deletes · **Ctrl+Z** undoes · **Esc** lets go.
 - **G** — picks up the piece under the mouse (also through glass) without opening Edit furniture; **G** again puts it down.
+- **Delete a piece in your hand** (since 2026-10-19): after **G**, or while a dragged piece is still in your hand, **Del** (or **Backspace**, or the panel's **Delete** button) deletes it — what moves in your hand goes, with what rests on it (G on the cushions takes the sofa and its cushions). Curtains too. **Undo** brings it back. A new piece from the library that is still in your hand is just let go.
 - **Add** opens the library: Living, Dining, Bedroom, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor. Pick one, point at the floor, a wall or the ceiling, click.
 - Saved in this browser only.
 
@@ -126,7 +128,7 @@ Three extra buttons appear top right: **Edit furniture**, **Edit openings**, **E
 
 - **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill.
 - Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
-- A window's curtains go with it: move or resize the window and they follow; delete it and they go. (The old **Curtains** tick box is gone — delete the curtains themselves in Edit furniture.)
+- An opening's curtains go with it: move or resize the opening and they follow; delete it and they go. (The old **Curtains** tick box is gone — delete the curtains themselves in Edit furniture.)
 - The change is written into the Studio drawing too, so plan and 3D always agree.
 - On a built-in flat it first asks to make that flat your Studio drawing (this replaces the drawing you had there).
 
@@ -230,7 +232,7 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - Point at a wall — a preview shows what you will get — click.
 - Kerbs and zone lines do not take doors or windows.
 - With a door picked: **H** flips the hinge side, **Shift+H** flips which way it swings.
-- **Curtains**: a window or sliding door in a bed, living, dining or study room gets a pair of curtains by itself when the other side is outside (a veranda, a shaft, open air). A glass wall never gets them. They are a piece: change or delete them with **F** (below) or Edit furniture in 3D; they follow their window when you move or resize it, and go when you delete it. A window switched off with the old tick box (drawings made before 2026-10-14) keeps none until you add a pair from the library.
+- **Curtains**: a window or sliding door in a bed, living, dining or study room gets a pair of curtains by itself when the other side is outside (a veranda, a shaft, open air). A glass wall never gets them. They are a piece: change or delete them with **F** (below) or Edit furniture in 3D; they follow their window when you move or resize it, and go when you delete it. A window switched off with the old tick box (drawings made before 2026-10-14) keeps none until you add a pair from the library. Doors and passages never get curtains by themselves; add a pair from the library on any of them.
 
 **R — Room**
 - Click inside a closed room. A small box opens: **Room name**, **Kind** (guessed from the name), **Printed size** (type what the sheet prints there, e.g. `12'-0" × 14'-2"`; leave it empty if the sheet prints none — the tool never fills it in for you, so the size check in "Check these" is always sheet against drawing, and a size you type gets its own size row there when the room does not match it; it accepts the room when either its main rectangle — the biggest rectangle that fits inside it, door recesses and nooks left out — or its whole outline matches what the sheet prints), **Floor level**, **Ramp** (tick it, type the level at the far end, pick the direction).
@@ -246,9 +248,9 @@ Every tool except **V** and **S** stays locked until the scale is set. A drawing
 - Walls stick to a column's sides, corners and centre. A wall that touches a column anywhere closes the room there (see W — Wall).
 
 **F — Furniture**
-- Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes. Arrow keys nudge it.
+- Click a piece, drag it, click where it should go. **R** turns it. **Del** deletes — also the piece in your hand (a refused drop keeps it there). Arrow keys nudge it.
 - **A click selects the piece under the mouse** — the one drawn on top: a wall cabinet or a hood over its counter, cushions over the sofa. A thin print or a wall TV is picked when you click within a few pixels of its line. A click whose mouse slides up to 6 pixels is still a click: the piece is selected, never moved. Drag further and the piece is in your hand; a drag on cushions or a TV standing on its unit moves the piece under them.
-- **Curtains** show as a thin strip along their window: click one, drag it along its wall, **Del** removes it. **Pick from the library… → Curtains**, then click beside a window: a pair hangs on it.
+- **Curtains** show as a thin strip along their opening: click one, drag it along its wall, **Del** removes it. A picked pair shows a dot at each end: **drag a dot** to make it wider or narrower on that side only (5 cm steps from the opening's edge, 0.4 to 6 m) — the same as in the 3D view; the **W** box on the right types an exact width (both sides move). **Pick from the library… → Curtains**, then click beside a window, sliding door, door or passage: a pair hangs on it.
 - **Pick from the library…** adds a new piece (same library as the 3D view).
 - **Reset to preset** puts one room back to the automatic layout; **Reset all** does every room.
 
@@ -636,7 +638,7 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Wall paint of one room / one wall / the outside / the boundary | Yes for one room or one wall — Finishes open, click the wall | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
 | Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
-| Curtains | Yes — slide along their wall, delete, add from the library onto any window; they follow their window | Yes (tool F) — same | Their width by hand, fabric and colour, drawing them closed |
+| Curtains | Yes — slide along their wall, wider or narrower by dragging a side, delete, add from the library onto any opening (window, sliding door, door, passage); they follow their opening | Yes (tool F) — same, plus a typed width | Fabric and colour, drawing them closed |
 | Neighbour buildings, road | No (they show; staff change them in the Studio) | Yes — Site: a building's height typed, a building or road deleted, the whole site fetched again or removed | Adding a building or road by hand |
 | Sky | No | No | Everything |
 | Day and time of day | Yes — the date and the slider | — | — |
