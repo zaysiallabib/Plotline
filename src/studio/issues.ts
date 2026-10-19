@@ -733,6 +733,17 @@ const BOX_HALF_M = 2.5
  * around it, image px (its spot, its entity and the answers' ghosts, BOX_PAD_M around, BOX_HALF_M at least each way;
  * clipped to the picture when its size is given; none before the scale is set). `fixes` = fixesOf's, complete.
  */
+/**
+ * s27 export: the review as Export writes it, at once — the open rows whose answers are worked out as they are, every
+ * other open row (`marks`: the open rows as marked) with its box, `answers: []` and `answersPending: true`: Export never
+ * waits for a long list (Murshed: 389 rows, about a minute in Firefox) and hides no row.
+ */
+export function exportedReview(u: Unit, review: Review, marks: Mark[], size?: { w: number; h: number }): Review {
+  const done = new Set(review.items.filter((i) => i.answers).map((i) => i.id))
+  const rows = rowAnswers(u, marks.filter((m) => m.review && !done.has(m.review.id)), new Map(), size)
+  return { ...review, items: review.items.map((i) => (rows[i.id] ? { ...i, ...(rows[i.id].box ? { box: rows[i.id].box } : {}), answers: [], answersPending: true } : i)) }
+}
+
 export function rowAnswers(u: Unit, marks: Mark[], fixes: Map<string, MarkFixes>, size?: { w: number; h: number }): Record<string, { box?: Box; answers: Answer[] }> {
   const out: Record<string, { box?: Box; answers: Answer[] }> = {}
   for (const m of marks) {
