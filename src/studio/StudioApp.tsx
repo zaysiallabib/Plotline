@@ -79,7 +79,7 @@ const HINTS: Record<Tool, string> = {
   pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, a side dot to move that side, a corner dot to move that corner alone (a tapered column)`,
   arc: 'Arc · click where the curved wall starts',
   furniture: 'Furniture · drag a piece to move it on the 3" grid, R turns it 90°, arrow keys move it one square; Add a piece from the panel',
-  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Shift+click adds / removes, drag on empty plan = box select, Ctrl+A all walls, Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
+  select: `Select · drag to move (Shift: no snap), drag a selected wall's or opening's end handle to resize it (Alt: neighbours follow), Shift+click or a box on empty plan = several, Ctrl+A all walls, Ctrl+D copies, Del deletes, arrows nudge 1" (Shift 1') · hold W + drag = a wall, hold O / R + click`,
   scale: `Scale · click both ends of anything whose real length you know: a printed size, the plot's width, a parking bay (about 8' × 16'), a door (about 3'-3")`,
   wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
