@@ -20,8 +20,9 @@ export const TRACKER_KEY = 'plotline.tracker'
 export interface Review {
   unitId: Id
   /** s27 AI-prep: an open row also carries `box` (the sheet around it, image px) and `answers` (its buttons), set by the
-   *  `answers` action once StudioApp has worked its fixes out on the plan as it stands — gone again on the next edit */
-  items: (ReviewItem & { sig?: string; box?: Box; answers?: Answer[] })[]
+   *  `answers` action once StudioApp has worked its fixes out on the plan as it stands — gone again on the next edit;
+   *  `answersPending`: only in an exported file — the row was still being worked out when it was saved (`answers: []`) */
+  items: (ReviewItem & { sig?: string; box?: Box; answers?: Answer[]; answersPending?: boolean })[]
   stats: AutoTraceStats
 }
 

@@ -13,7 +13,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type Draft, type StudioState } from './model'
 import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, logAnswer, openReview, studioReducer } from './review'
-import { KEEP, around, closes, fixSig, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
+import { KEEP, around, closes, exportedReview, fixSig, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -382,6 +382,15 @@ describe('AI-prep (session 27): a row carries its sheet box and answers in the d
     // Looks right is an answer too: the row leaves the list; an answer the row no longer has changes nothing
     expect(openReview(applyAnswer(loaded, 'r', LOOKS_RIGHT))).toEqual([])
     expect(applyAnswer(now, 'r', 'make-it-a-wall').unit).toBe(now.unit)
+  })
+
+  it('Export never waits: a row not yet worked out goes in with its box, no answers and answersPending (s27 export)', () => {
+    const marks = markIssues(u, deriveRooms(u), studioIssues(u, deriveRooms(u)), openReview(s0))
+    const out = exportedReview(u, s0.review!, marks, { w: 1000, h: 800 })
+    expect(out.items[0]).toMatchObject({ id: 'r', answers: [], answersPending: true })
+    expect(out.items[0].box).toEqual(item.box) // (its spot ± 2.5 m and its zone line, clipped — as when answered)
+    // a row whose answers are worked out goes in as it is
+    expect(exportedReview(u, s1.review!, marks, { w: 1000, h: 800 })).toEqual(s1.review)
   })
 
   it('every click is appended to the log, never changed', () => {

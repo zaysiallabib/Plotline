@@ -38,7 +38,7 @@ import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import type { FixesIn, FixesOut } from './fixes.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { exportedReview, fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
@@ -317,8 +317,6 @@ export default function StudioApp() {
   /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
   const fixCache = useRef(new Map<string, { unit: Unit; sig: unknown[]; got: MarkFixes }>())
-  /** marks still to work out (Export waits for them: every row's answers go into the file) */
-  const fixesLeft = useRef(0)
   // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
   const markKeys = marks.map((m) => m.key).join('\n')
   /** rowAnswers for the rows among `ms` whose fixes (and their issue's) are worked out */
@@ -336,12 +334,11 @@ export default function StudioApp() {
     const byKey = new Map(marks.map((m) => [m.key, m]))
     const sigs = new Map<string, unknown[]>()
     let left = marks.length
-    fixesLeft.current = left
     let shown = 0
     const take = (key: string, got: MarkFixes) => {
       found.set(key, got)
       cache.set(key, { unit, sig: sigs.get(key)!, got })
-      fixesLeft.current = --left
+      left--
     }
     const publish = () => {
       setFixes(new Map(found))
@@ -805,18 +802,7 @@ export default function StudioApp() {
     [importJson, loadImage],
   )
 
-  const exportJson = useCallback(async () => {
-    // every open row's answers go into the file (s27 AI-prep): on a long list still being worked out, the export waits
-    const answered = () => {
-      const s = stateRef.current
-      if (fixesLeft.current) return false
-      const open = new Set(openReview(s).map((i) => i.id))
-      return (s.review?.items ?? []).every((i) => !open.has(i.id) || i.answers)
-    }
-    if (!answered()) {
-      toast(`Working out the fixes of the ${fixesLeft.current || 'last'} rows first — the file follows`)
-      for (let t = 0; t < 2400 && !answered(); t++) await new Promise((r) => setTimeout(r, 250)) // (≤ 10 min, then as it is)
-    }
+  const exportJson = useCallback(() => {
     const st = stateRef.current
     const traced = `Traced in ${formatTimer(st.timer.elapsedMs)}`
     const n = issues.filter((i) => i.level === 'error').length
@@ -824,11 +810,15 @@ export default function StudioApp() {
     console.log(`[plotline] ${traced} (${st.timer.elapsedMs} ms)`)
     const name = st.unit.name.trim() || 'Untitled unit'
     // (s27 AI-prep: with this trace's Check-these rows — their sheet boxes and answers; Import leaves them out)
-    const out = { ...st.unit, name, planImage: st.unit.planImage && { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src }, review: st.review?.unitId === st.unit.id ? st.review : undefined }
+    // (s27 export: at once — a row whose answers are still being worked out goes in with its box, no answers and answersPending)
+    const p = st.planImage
+    const review = st.review?.unitId === st.unit.id ? exportedReview(st.unit, st.review, marks, p ? { w: p.naturalW, h: p.naturalH } : undefined) : undefined
+    const out = { ...st.unit, name, planImage: st.unit.planImage && { ...st.unit.planImage, src: st.planImage?.name ?? st.unit.planImage.src }, review }
     download(`${slug(name)}.plotline.json`, JSON.stringify(out, null, 2))
     dispatch({ type: 'exported' })
-    toast(traced)
-  }, [issues, toast])
+    const pending = review?.items.filter((i) => i.answersPending).length
+    toast(pending ? `${traced} · ${pending} rows still being checked went in without their answers (export again for them)` : traced)
+  }, [issues, marks, toast])
   // s27 AI-prep: every Check-these answer clicked in this browser (append-only), as a file — the test set for a model
   const exportAnswers = () => {
     const raw = localStorage.getItem(ANSWERS_KEY) ?? '[]'
