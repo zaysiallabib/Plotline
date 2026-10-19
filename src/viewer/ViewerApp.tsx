@@ -1128,6 +1128,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             arranging={arranging}
             hand={handInfo}
             staff={STAFF}
+            osm={!!unit.site && unit.site.buildings.length + unit.site.roads.length > 0}
             onArrange={STAFF ? toggleArrange : null}
             editingOpenings={editingOpenings}
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
