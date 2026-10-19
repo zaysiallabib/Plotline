@@ -1232,6 +1232,12 @@ const LEAF_KINDS = 3
  * with their own colour (emissive = the colour map): light through a thin leaf, never black in the shade.
  */
 const leafMat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, emissive: '#4a5a38', metalness: 0 })
+/** The leaves' glow is light through them: it follows the sky's fill (render.ts setAltitude), never a green glow at night. */
+let leafGlow = 1
+export function setLeafGlow(k: number): void {
+  leafGlow = k
+  for (const m of [leafMat, ...leafMats.values()]) m.emissiveIntensity = k
+}
 let leafGeos: Promise<THREE.BufferGeometry[]> | null = null
 function loadLeaves(): Promise<THREE.BufferGeometry[]> {
   return (leafGeos ??= new GLTFLoader().loadAsync('/assets/models/potted_plant_02/potted_plant_02_1k.gltf').then((g) => {
@@ -1539,7 +1545,7 @@ function atlasLeafMat(dir: string, file: string, onReady: () => void): THREE.Mes
   const key = `${dir}/${file}`
   let m = leafMats.get(key)
   if (!m) {
-    const mat = (m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, emissive: '#3d4b2c', roughness: 1, metalness: 0 }))
+    const mat = (m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, emissive: '#3d4b2c', emissiveIntensity: leafGlow, roughness: 1, metalness: 0 }))
     const u = (map: string, ext = 'jpg') => `/assets/models/${dir}/${file}_leaves_${map}_1k.${ext}`
     mat.userData.ready = browser()
       ? Promise.all([tex(u('diff'), 1, true), tex(u('alpha', 'png'), 1, false), tex(u('nor_gl'), 1, false), tex(u('arm'), 1, false)]).then(([map, alphaMap, normalMap, roughnessMap]) => {

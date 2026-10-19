@@ -172,6 +172,8 @@ const FADE_M = [120, 280]
 /** Haze colour, shared by every hazed material; Look.setHour tints it with the sky. */
 export const haze = { value: HORIZON.clone() }
 export const setHaze = (skyTint: THREE.Color) => haze.value.copy(HORIZON).multiply(skyTint)
+/** The sky's share of the hemisphere light (Look.setAltitude): the street and the blocks get no bounce from the flat's lamps. */
+export const outdoorFill = { value: 1 }
 
 /**
  * A site block any part of which is nearer the camera than this (m) is not drawn, whole: in Dollhouse and the Building
@@ -188,6 +190,7 @@ export const siteCut = { value: 0 }
 export function hazed<M extends THREE.Material>(m: M, cut = false): M {
   m.onBeforeCompile = (s) => {
     s.uniforms.hazeColor = haze
+    s.uniforms.outdoorFill = outdoorFill
     if (cut) {
       s.uniforms.siteCut = siteCut
       s.vertexShader = `attribute vec3 bmin;\nattribute vec3 bmax;\nvarying vec3 vMin;\nvarying vec3 vMax;\n${s.vertexShader}`.replace(
@@ -196,7 +199,9 @@ export function hazed<M extends THREE.Material>(m: M, cut = false): M {
       )
     }
     // before tone mapping: linear in both paths (composer target, and XR where the shader tone maps)
-    s.fragmentShader = `uniform vec3 hazeColor;\n${cut ? 'uniform float siteCut;\nvarying vec3 vMin;\nvarying vec3 vMax;\n' : ''}${s.fragmentShader}`.replace(
+    s.fragmentShader = `uniform vec3 hazeColor;\nuniform float outdoorFill;\n${cut ? 'uniform float siteCut;\nvarying vec3 vMin;\nvarying vec3 vMax;\n' : ''}${s.fragmentShader}`
+      .replace('#include <lights_fragment_end>', 'irradiance *= outdoorFill;\n#include <lights_fragment_end>')
+      .replace(
       '#include <tonemapping_fragment>',
       `float hazeD = length(vViewPosition);
       ${cut ? 'if (length(max(max(vMin - cameraPosition, cameraPosition - vMax), 0.0)) < siteCut) discard;' : ''}

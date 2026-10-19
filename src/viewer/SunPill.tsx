@@ -1,6 +1,6 @@
 /**
  * Bottom-centre sun bar: the compass (turned by northDeg), the day at its left end, the time of day — a sun mark and the
- * 06:00–18:00 slider (15-min steps) with its hour marks — and its label, Wind at its right end. Wind on: a thin line above
+ * 00:00–24:00 slider (15-min steps) with its hour marks — and its label, Lights and Wind at its right end. Wind on: a thin line above
  * it, the twelve months (a click picks one) and the month in words with its season ("June · monsoon · steady
  * south-south-east breeze, 3.5 m/s · hot and humid …"), and Rose (the wind rose, small, bottom left; remembered). The sun is
  * drawn where it stands at the site on that day and hour (PlotlineScene.setTimeOfDay); the wind is the date's month.
@@ -17,6 +17,10 @@ interface Props {
   date: string
   northDeg: number
   onChange: (hour: number) => void
+  /** the flat's lamps shown on (render.ts lightsOn), and whether that is the automatic choice; a click flips them */
+  lights: boolean
+  lightsAuto: boolean
+  onLights: () => void
   onDate: (date: string) => void
   wind: boolean
   onWind: () => void
@@ -29,15 +33,15 @@ interface Props {
   onRose: () => void
 }
 
-export const period = (h: number) => (h < 11 ? 'morning' : h < 14 ? 'midday' : h < 17 ? 'afternoon' : 'evening')
+export const period = (h: number) => (h < 5 || h >= 21 ? 'night' : h < 11 ? 'morning' : h < 14 ? 'midday' : h < 17 ? 'afternoon' : 'evening')
 export const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
 /** the hour marks under the slider: where (hour) and what */
 const MARKS: [number, string][] = [
+  [0, '0'],
   [6, '6'],
-  [9, 'morning'],
   [12, 'noon'],
-  [15, 'afternoon'],
   [18, '18'],
+  [24, '24'],
 ]
 
 export default function SunPill(p: Props) {
@@ -75,10 +79,10 @@ export default function SunPill(p: Props) {
           })}
         </svg>
         <div className="sun-track">
-          <input type="range" min={6} max={18} step={0.25} value={p.hour} onChange={(e) => p.onChange(Number(e.target.value))} aria-label="time of day" />
+          <input type="range" min={0} max={24} step={0.25} value={p.hour} onChange={(e) => p.onChange(Number(e.target.value))} aria-label="time of day" />
           <div className="sun-marks" aria-hidden="true">
             {MARKS.map(([h, t]) => (
-              <span key={h} style={{ left: `${((h - 6) / 12) * 100}%` }}>
+              <span key={h} style={{ left: `${(h / 24) * 100}%` }}>
                 {t}
               </span>
             ))}
@@ -87,6 +91,13 @@ export default function SunPill(p: Props) {
         <span className="sun-label">
           {hhmm(p.hour)} · {period(p.hour)}
         </span>
+        <button
+          className={`btn${p.lights ? ' active' : ''}`}
+          onClick={p.onLights}
+          title={`The flat's lights are ${p.lights ? 'on' : 'off'}${p.lightsAuto ? ' (automatic: on after sunset)' : ' (your choice; click again for automatic)'}`}
+        >
+          Lights
+        </button>
         <button className={`btn${p.wind ? ' active' : ''}`} onClick={p.onWind} title="The wind through the flat this month: where it comes in and where it goes out">
           Wind
         </button>
