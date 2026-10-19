@@ -65,7 +65,8 @@ export type StudioAction =
   | { type: 'spring-back'; tool: Tool; selection: Id[] }
   /** an Issues fix (issues.ts): its reducer actions in one go — one undo step (every fix holds exactly one commit / drag-begin) */
   | { type: 'apply-fix'; actions: Action[]; label: string }
-  /** s27 AI-prep: the open rows' boxes + answers, worked out on `unit` (ignored once the unit is another); other rows lose theirs */
+  /** s27 AI-prep: the open rows' boxes + answers, worked out on `unit` (ignored once the unit is another); other rows keep
+   *  theirs (s27 rows: a long list's answers come in as they are worked out; an edit clears them all — unanswered) */
   | { type: 'answers'; unit: Unit; rows: Record<string, { box?: Box; answers: Answer[] }> }
   /** s27 AI-prep: a row answered by id — its button, or a model later (applyAnswer) */
   | { type: 'answer'; rowId: string; answerId: string }
@@ -205,7 +206,7 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
     }
     case 'answers': {
       if (!s.review || a.unit !== s.unit) return s
-      const items = s.review.items.map((i) => ({ ...i, box: a.rows[i.id]?.box, answers: a.rows[i.id]?.answers }))
+      const items = s.review.items.map((i) => (a.rows[i.id] ? { ...i, box: a.rows[i.id].box, answers: a.rows[i.id].answers } : i))
       return JSON.stringify(items) === JSON.stringify(s.review.items) ? s : { ...s, review: { ...s.review, items } }
     }
     case 'answer': {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, OpeningKind, Pt, RoomKind, Site, Slope } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, type Move } from './furniture'
 import {
@@ -32,9 +32,10 @@ import {
 import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
+import type { FixesIn, FixesOut } from './fixes.worker'
 import { KindSelect, LevelFields, Panel, WALL_KEYS, formatArea } from './Panel'
 import { IssueLayer } from './IssueLayer'
-import { fixesOf, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
+import { fixSig, leaksAround, markIssues, rowAnswers, type Fix, type Mark, type MarkFixes } from './issues'
 import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
@@ -301,36 +302,89 @@ export default function StudioApp() {
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
   // the Issues and "Check these" rows as marks on the plan; their fixes are checked by applying them (issues.ts): once the
-  // plan has stood still for 150 ms (never mid-drag), one mark per task so a long list never freezes the page; any edit
-  // drops them (never a fix from a stale plan)
+  // plan has stood still for 150 ms (never mid-drag), in a worker (fixes.worker.ts: s27 rows, a six-flat floor's 755 rows
+  // took minutes of checks) — the mark open on the plan first, then what is in view — and shown as they come; any edit
+  // drops them (never a fix from a stale plan), but a mark the edit did not reach gets its fixes back at once (fixSig)
   const review = useMemo(() => openReview(state, rooms), [state.review, unit, rooms]) // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => markIssues(unit, rooms, issues, review), [unit, rooms, issues, review])
+  /** per mark key, its fixes — an entry (maybe with none) once worked out; null while the plan is changing */
   const [fixes, setFixes] = useState<Map<string, MarkFixes> | null>(null)
+  const fixCache = useRef(new Map<string, { unit: Unit; sig: unknown[]; got: MarkFixes }>())
+  /** marks still to work out (Export waits for them: every row's answers go into the file) */
+  const fixesLeft = useRef(0)
   // (by key: the rows' answers stored below change the review, not the marks' fixes — no second round)
   const markKeys = marks.map((m) => m.key).join('\n')
+  /** rowAnswers for the rows among `ms` whose fixes (and their issue's) are worked out */
+  const answersOf = (u: Unit, ms: Mark[], found: Map<string, MarkFixes>) => {
+    const p = stateRef.current.planImage
+    return rowAnswers(u, ms.filter((m) => m.review && found.has(m.key) && (!m.twinOf || found.has(m.twinOf))), found, p ? { w: p.naturalW, h: p.naturalH } : undefined)
+  }
+  const fixWorker = useRef<Worker | null>(null)
+  const fixSeq = useRef(0)
+  useEffect(() => () => fixWorker.current?.terminate(), [])
   useEffect(() => {
     setFixes(null)
+    const cache = fixCache.current
     const found = new Map<string, MarkFixes>()
-    let k = 0
-    let id = 0
-    const step = () => {
-      if (k >= marks.length) {
-        setFixes(found)
-        // s27 AI-prep: the open rows' answers (= these buttons) and sheet boxes go into the draft, saved with it
-        const p = stateRef.current.planImage
-        return dispatch({ type: 'answers', unit, rows: rowAnswers(unit, marks, found, p ? { w: p.naturalW, h: p.naturalH } : undefined) })
-      }
-      for (const [key, f] of fixesOf(unit, [marks[k++]], issues, state.review?.stats.printed)) found.set(key, f)
-      id = window.setTimeout(step, 0)
+    const byKey = new Map(marks.map((m) => [m.key, m]))
+    const sigs = new Map<string, unknown[]>()
+    let left = marks.length
+    fixesLeft.current = left
+    let shown = 0
+    const take = (key: string, got: MarkFixes) => {
+      found.set(key, got)
+      cache.set(key, { unit, sig: sigs.get(key)!, got })
+      fixesLeft.current = --left
     }
-    id = window.setTimeout(step, 150)
-    return () => clearTimeout(id)
+    const publish = () => {
+      setFixes(new Map(found))
+      shown = performance.now()
+      if (left) return
+      // s27 AI-prep: the rows' answers (= these buttons) and sheet boxes go into the draft, saved with it — once all are
+      // worked out (a row clicked before that gets its own first: answer)
+      dispatch({ type: 'answers', unit, rows: answersOf(unit, marks, found) })
+      for (const k of cache.keys()) if (!found.has(k)) cache.delete(k)
+    }
+    const seq = ++fixSeq.current
+    const start = () => {
+      // a mark the edit did not reach keeps its fixes (fixSig); the others are worked out in the worker, one by one
+      const todo = marks.filter((m) => {
+        const c = cache.get(m.key)
+        const sig = c?.unit === unit ? c.sig : fixSig(unit, m, rooms) // (a row dismissed: the plan is the same)
+        sigs.set(m.key, sig)
+        if (!c || c.sig.length !== sig.length || c.sig.some((x, i) => x !== sig[i])) return true
+        take(m.key, c.got)
+        return false
+      })
+      publish()
+      if (!todo.length) return
+      // what is in view first, from the middle of the screen out (the mark open on the plan before all: `first`)
+      const c = screenToM(frame, { x: size.w / 2, y: size.h / 2 })
+      const far = (m: Mark) => (m.at ? Math.hypot(m.at.x - c.x, m.at.y - c.y) : Infinity)
+      todo.sort((p, q) => far(p) - far(q))
+      const w = (fixWorker.current ??= new Worker(new URL('./fixes.worker.ts', import.meta.url), { type: 'module' }))
+      w.onmessage = ({ data }: MessageEvent<FixesOut>) => {
+        if (data.seq !== seq) return
+        take(data.key, data.got)
+        const m = byKey.get(data.key)
+        if (!left || (m && (m.twinOf ?? m.key) === activeRef.current) || performance.now() - shown > 500) publish()
+      }
+      w.postMessage({ type: 'job', seq, unit, marks: todo, issues, printed: state.review?.stats.printed, rooms } satisfies FixesIn)
+      if (activeRef.current) w.postMessage({ type: 'first', key: activeRef.current } satisfies FixesIn)
+    }
+    const id = window.setTimeout(start, 150)
+    return () => {
+      clearTimeout(id)
+      if (fixWorker.current) (fixWorker.current.onmessage = null), fixWorker.current.postMessage({ type: 'stop' } satisfies FixesIn)
+    }
   }, [unit, markKeys, issues]) // eslint-disable-line react-hooks/exhaustive-deps -- (marks follow the review, its printed names with it)
   /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [hotKey, setHotKey] = useState<string | null>(null)
   const activeRef = useRef(activeKey)
   activeRef.current = activeKey
+  // (a mark opened while the list is still being worked out: its fixes next)
+  useEffect(() => void (activeKey && fixWorker.current?.postMessage({ type: 'first', key: activeKey } satisfies FixesIn)), [activeKey])
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
   const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
@@ -731,7 +785,18 @@ export default function StudioApp() {
     [importJson, loadImage],
   )
 
-  const exportJson = useCallback(() => {
+  const exportJson = useCallback(async () => {
+    // every open row's answers go into the file (s27 AI-prep): on a long list still being worked out, the export waits
+    const answered = () => {
+      const s = stateRef.current
+      if (fixesLeft.current) return false
+      const open = new Set(openReview(s).map((i) => i.id))
+      return (s.review?.items ?? []).every((i) => !open.has(i.id) || i.answers)
+    }
+    if (!answered()) {
+      toast(`Working out the fixes of the ${fixesLeft.current || 'last'} rows first — the file follows`)
+      for (let t = 0; t < 2400 && !answered(); t++) await new Promise((r) => setTimeout(r, 250)) // (≤ 10 min, then as it is)
+    }
     const st = stateRef.current
     const traced = `Traced in ${formatTimer(st.timer.elapsedMs)}`
     const n = issues.filter((i) => i.level === 'error').length
@@ -1706,8 +1771,16 @@ export default function StudioApp() {
   }
   /** s27 AI-prep: a "Check these" row answered (its buttons, here and on the plan) — logged, then applied by id (applyAnswer) */
   const answer = (rowId: string, id: string) => {
+    // a row clicked while the list is still being worked out (s27 rows): its own answers go in first
+    let s = stateRef.current
+    const m = marks.find((x) => x.review?.id === rowId)
+    if (m && fixes && !s.review?.items.find((i) => i.id === rowId)?.answers) {
+      const own = { type: 'answers' as const, unit: s.unit, rows: answersOf(s.unit, [m], fixes) }
+      s = studioReducer(s, own)
+      dispatch(own)
+    }
     try {
-      logAnswer(localStorage, stateRef.current, rowId, id)
+      logAnswer(localStorage, s, rowId, id)
     } catch {
       /* storage full or blocked: the answer still counts on the plan */
     }
