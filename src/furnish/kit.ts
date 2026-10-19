@@ -74,6 +74,7 @@ const MOUNT: Record<string, KitAsset['mount']> = {
   modern_ceiling_lamp_01: 'ceiling',
   wall_clock: 'wall',
   hanging_picture_frame_01: 'wall',
+  chandelier_01: 'ceiling',
 }
 
 // kit.data.ts guesses '+z' for every model; these two have their width (sizeM.x) along glTF z,
@@ -93,6 +94,7 @@ const KIND: Record<string, ObjectKind> = {
   modular_street_seating: 'bench',
   outdoor_table_chair_set_01: 'table-set',
   covered_car: 'car',
+  drawer_cabinet: 'dresser',
 }
 
 // bottom heights: clock centred at 2.4 m, above the 2.1 m door heads; the pillows sit on sofa_3seat's 0.45 m seat cushions
@@ -250,6 +252,8 @@ const PROP: Rule = [['x', 'y', 'z'], 0.85, 1.15, true]
 const each = (ids: string[], r: Rule) => Object.fromEntries(ids.map((id) => [id, r]))
 const SCALE: Record<string, Rule> = {
   ...each(['sofa_02', 'ottoman_01', 'modern_wooden_cabinet', 'metal_office_desk', 'hook_rail', 'vanity'], LONG),
+  ...each(['sofa_01', 'sofa_03'], LONG),
+  chandelier_01: DECOR,
   ...each(['console_table', 'shoe_rack', 'study_desk', 'kitchen_rack', 'bench_upholstered', 'drying_rack'], LONG),
   ...each(['floor_lamp', 'table_lamp', 'pendant_light', 'geyser'], DECOR),
   wall_mirror: [['x', 'y'], 0.7, 1.4, true],

@@ -47,7 +47,8 @@ const TAGS: Record<string, string> = {
   exhaust_fan: 'ventilation', gas_stove: 'chula burner', microwave_stand: 'oven', kids_bed: 'children child', bunk_bed: 'children child',
   prayer_mat: 'salah', study_desk: 'computer', study_chair: 'computer swivel', wash_basin: 'hand wash', bookshelf: 'books library',
   console_table: 'entrance foyer hall', wall_mirror: 'dressing', pendant_light: 'hanging', floor_lamp: 'standing',
-  table_lamp: 'bedside reading', balcony_set: 'chairs', tv_unit_150: 'cabinet', tv_unit_210: 'cabinet', chandelier_01: 'jhar',
+  table_lamp: 'bedside reading', balcony_set: 'chairs', tv_unit_150: 'cabinet', tv_unit_210: 'cabinet', chandelier_01: 'jhar classic',
+  sofa_01: 'classic', sofa_03: 'classic', armchair_01: 'classic', classicnightstand_01: 'classic', drawer_cabinet: 'shelves storage',
 }
 
 export interface Entry extends LibraryItem {

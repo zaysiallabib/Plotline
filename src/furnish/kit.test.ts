@@ -28,6 +28,8 @@ describe('kit integrity (the library)', () => {
     const manifest = readFileSync('public/assets/MANIFEST.md', 'utf8')
     for (const a of Object.values(KIT)) {
       expect(existsSync(`public${a.url}`), a.url).toBe(true)
+      const g = JSON.parse(readFileSync(`public${a.url}`, 'utf8')) as { buffers?: { uri: string }[]; images?: { uri: string }[] }
+      for (const u of [...(g.buffers ?? []), ...(g.images ?? [])]) expect(existsSync(`public${a.url.replace(/[^/]+$/, '')}${u.uri}`), `${a.id}: ${u.uri}`).toBe(true)
       expect(manifest, a.id).toContain(`models/${a.url.split('/')[3]}/`)
       expect(manifest, a.id).toContain(a.source)
       expect(a.license).toBe('CC0')
