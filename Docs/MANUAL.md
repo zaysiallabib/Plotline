@@ -184,6 +184,8 @@ You draw over a plan picture. The order is written on the right under **Steps**:
 
 ### Top bar
 
+On a narrow window (under about 1 600 px wide) the top bar takes two lines, so every button stays on screen.
+
 | Control | What it does |
 |---|---|
 | Unit name, Project, Floor, Area | Plain fields saved with the drawing |
