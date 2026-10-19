@@ -43,10 +43,10 @@ describe('lamps', () => {
     expect(lightsOn('on', 60)).toBe(true)
     expect(lightsOn('off', -20)).toBe(false)
   })
-  test('candela: 100 lm per m² of floor, 800–3500 lm, Lambertian peak Φ/π, 1 scene lux = 100 lux', () => {
-    expect(lampCandela(20)).toBeCloseTo(2000 / Math.PI / 100)
-    expect(lampCandela(3)).toBeCloseTo(800 / Math.PI / 100)
-    expect(lampCandela(60)).toBeCloseTo(3500 / Math.PI / 100)
+  test('candela: 150 lm per m² of floor, 900–4500 lm, Lambertian peak Φ/π, 1 scene lux = 100 lux', () => {
+    expect(lampCandela(20)).toBeCloseTo(3000 / Math.PI / 100)
+    expect(lampCandela(3)).toBeCloseTo(900 / Math.PI / 100)
+    expect(lampCandela(60)).toBeCloseTo(4500 / Math.PI / 100)
   })
   test('shadow casters: the camera’s room first, then the nearest, k of them', () => {
     const lamps = [

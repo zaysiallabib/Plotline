@@ -25,7 +25,7 @@ import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } f
 import { dayMix, isCovered, openToSky } from './daylight'
 import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
-import { meterUVs, setGlassSky } from './openings'
+import { meterUVs, PANES, setGlassSky } from './openings'
 
 /**
  * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map. low: no AO, 1024 shadow. lite (weak machines,
@@ -68,22 +68,24 @@ const WARM = new THREE.Color('#ffd6a5')
  * ceiling. A 100 lm/m² room over ≈ 4.5 m² of surface per m² of floor, half reflected: ≈ 0.2 lux mean. Without it the
  * downward lamps left every ceiling black.
  */
-const BOUNCE_UP = 0.2
-const BOUNCE_DOWN = 0.06
+const BOUNCE_UP = 0.28
+const BOUNCE_DOWN = 0.08
 /**
  * Scene units: 1 scene lux ≈ 100 real lux at the lamps' calibration (the day's indirect fill, ENV + HEMI ≈ 2, reads as a
- * ≈ 200 lux room; the sun patch is compressed, as a photo would). A room's lamp: 100 lm per m² of floor, 800–3500 lm
- * (one 10–35 W LED ceiling light), Lambertian under a flush diffuser: peak candela Φ / π.
+ * ≈ 200 lux room; the sun patch is compressed, as a photo would). A room's lamp: 150 lm per m² of floor, 900–4500 lm
+ * (a 10–45 W LED ceiling light, or a fan's kit and a tube light), Lambertian under a flush diffuser: peak candela Φ / π.
  */
-export const lampCandela = (areaSqm: number): number => Math.min(3500, Math.max(800, 100 * areaSqm)) / Math.PI / 100
+export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
 /** + sun + hemisphere: forward shading pays for every light on every lit fragment — at intensity 0 too (no recompile on / off) */
 const MAX_ROOM_LIGHTS = 12
 /** lamps casting shadows at once (the nearest to the camera; the count never changes: no recompile) */
 const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
 /** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
 const ON_GLOW = 4
-/** the camera at night: the room exposed as a photo of a lit flat is, ≈ 1.6 stops over the day's */
-export const NIGHT_EXPOSURE = 3
+/** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
+const PANE_ROOM = 0.06
+/** the camera at night: the room exposed as a photo of a lit flat is, 2 stops over the day's */
+export const NIGHT_EXPOSURE = 4
 /** the sky's fill as SEEN (after exposure) by the sun's altitude, ° → fraction of the day's: a clear sky's diffuse light */
 const SEEN: [number, number][] = [
   [10, 1],
@@ -200,6 +202,8 @@ export class Look {
   private readonly dome = { night: { value: 0 }, zenith: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, glow: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(1, 0, 0) } }
   /** materials that glow while the lamps are on (fixtureGlow, the pendant's globe, the fan's light kit): their own emissive intensity */
   private readonly glows = new Map<THREE.MeshStandardMaterial, number>()
+  /** what the panes mirror (PlotlineScene.loadEnvironment): the sky's PMREM by day, the interior's at night */
+  readonly paneEnvs: { sky?: THREE.Texture; room?: THREE.Texture } = {}
   private readonly fitBox = new THREE.Box3()
   private topY = 3
   /** how far toward the sun the shadow box reaches past the flat: a site's blocks shade it (SITE_REACH_M), else 1 m */
@@ -524,8 +528,14 @@ export class Look {
     setHaze(tint)
     haze.value.lerp(this.dome.horizon.value, k.night)
     const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
-    setGlassSky(THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night)) // the panes mirror this sky
+    // the panes mirror this sky — at night, the lamps on, the lit room instead (faintly: the interior light probe, warm)
+    const room = this.on && k.night > 0.5 && this.paneEnvs.room
+    const env = (room ? this.paneEnvs.room : this.paneEnvs.sky) ?? null
+    for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
+    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
+    // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
+    ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)
     this.fitShadow()
   }
 
@@ -546,6 +556,7 @@ export class Look {
     obj.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
       if (!m?.isMeshStandardMaterial || this.glows.has(m) || (!m.emissiveMap && m.emissive.getHex() === 0)) return
+      if (m.emissive.getHex() === 0) m.emissive.set('#fff0dc') // an emissive map with no factor (the fan's light kit): it never glowed
       this.glows.set(m, m.emissiveIntensity)
       m.emissiveIntensity = this.on ? m.emissiveIntensity * ON_GLOW : 0
     })

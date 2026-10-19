@@ -1232,6 +1232,8 @@ export class PlotlineScene {
       clampSun(sky)
       const env = pmrem.fromEquirectangular(sky).texture
       for (const m of PANES) m.envMap = env // panes reflect the sky; no sky: they keep scene.environment
+      Object.assign(this.look.paneEnvs, { sky: env, room: this.scene.environment ?? undefined })
+      this.setTimeOfDay(this.hour) // at night the panes take the room's
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()
