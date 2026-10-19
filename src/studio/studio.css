@@ -329,3 +329,6 @@
 .local-ai code { user-select: all; word-break: break-all; }
 .spin { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.site-zoom { position: absolute; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 1; }
+.studio .site-zoom button { width: 24px; height: 24px; padding: 0; line-height: 1; background: rgba(23, 24, 26, 0.8); }
+.site-map:active { cursor: grabbing; }

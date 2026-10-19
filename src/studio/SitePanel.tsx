@@ -5,12 +5,17 @@
  * and the Building view never fetch. All free, no key, no card. A block or road clicked on the map: type its height or
  * delete it. True north is the drawing's own (Unit.northDeg): the arrow on the plan (NorthArrow) or typed here.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as core from '../core'
 import type { Pt, Site, Unit } from '../core'
 
 const Z = 18
+/** the map's zoom range (wheel, + / −), tile zoom levels */
+const ZMIN = 15
+const ZMAX = 19
 const TILE = 256
+/** the map shows this many tile pixels across (3 tiles) */
+const SIDE = 3 * TILE
 /** the 768 px tile grid is shown this much smaller */
 const SHOW = 0.625
 const RAD = Math.PI / 180
@@ -25,17 +30,17 @@ const OSM_MAP = 'https://api.openstreetmap.org/api/0.6/map.json'
 export const RADIUS_M = 250
 
 /** web-mercator pixels at zoom Z */
-const toPx = (lat: number, lon: number): Pt => {
-  const n = TILE * 2 ** Z
+const toPx = (lat: number, lon: number, z = Z): Pt => {
+  const n = TILE * 2 ** z
   const s = Math.sin(lat * RAD)
   return { x: ((lon + 180) / 360) * n, y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n }
 }
-const toLatLon = (p: Pt) => {
-  const n = TILE * 2 ** Z
+const toLatLon = (p: Pt, z = Z) => {
+  const n = TILE * 2 ** z
   return { lat: Math.atan(Math.sinh(Math.PI * (1 - (2 * p.y) / n))) / RAD, lon: (p.x / n) * 360 - 180 }
 }
 /** metres per map pixel at a latitude */
-const mpp = (lat: number) => (Math.cos(lat * RAD) * 2 * Math.PI * 6378137) / (TILE * 2 ** Z)
+const mpp = (lat: number, z = Z) => (Math.cos(lat * RAD) * 2 * Math.PI * 6378137) / (TILE * 2 ** z)
 
 /** "23.79, 90.41" (or with a space) → the spot; anything else → null (an address) */
 export function parseLatLon(s: string): { lat: number; lon: number } | null {
@@ -109,6 +114,7 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
+  const [z, setZ] = useState(Z)
 
   const find = async () => {
     const ll = parseLatLon(query)
@@ -140,13 +146,37 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
   }
 
   // the map: 3 × 3 tiles round the spot's tile, origin = the grid's top-left in map pixels
-  const c = center && toPx(center.lat, center.lon)
-  const tx = c ? Math.floor(c.x / TILE) - 1 : 0
-  const ty = c ? Math.floor(c.y / TILE) - 1 : 0
-  const scr = (p: Pt): Pt => ({ x: (p.x - tx * TILE) * SHOW, y: (p.y - ty * TILE) * SHOW })
-  const plot = site && toPx(site.lat, site.lon)
+  // the map: SIDE tile pixels round its centre at zoom z; o = its top-left in tile pixels; wheel / + / − zoom, a drag pans
+  const c = center && toPx(center.lat, center.lon, z)
+  const o = c ? { x: c.x - SIDE / 2, y: c.y - SIDE / 2 } : { x: 0, y: 0 }
+  const tiles: [number, number][] = []
+  for (let ty = Math.floor(o.y / TILE); ty * TILE < o.y + SIDE; ty++) for (let tx = Math.floor(o.x / TILE); tx * TILE < o.x + SIDE; tx++) tiles.push([tx, ty])
+  const scr = (p: Pt): Pt => ({ x: (p.x - o.x) * SHOW, y: (p.y - o.y) * SHOW })
+  /** zoom to nz keeping the spot at (px, py) on the map (screen px from its corner) where it is */
+  const zoomAt = (nz: number, px: number, py: number) => {
+    nz = Math.min(ZMAX, Math.max(ZMIN, nz))
+    if (!c || nz === z) return
+    const ll = toLatLon({ x: o.x + px / SHOW, y: o.y + py / SHOW }, z)
+    const p = toPx(ll.lat, ll.lon, nz)
+    setCenter(toLatLon({ x: p.x - px / SHOW + SIDE / 2, y: p.y - py / SHOW + SIDE / 2 }, nz))
+    setZ(nz)
+  }
+  const mapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = mapRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault() // the map zooms; the panel does not scroll
+      const r = el.getBoundingClientRect()
+      zoomAt(z + (e.deltaY < 0 ? 1 : -1), e.clientX - r.left, e.clientY - r.top)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  })
+  const drag = useRef<{ x: number; y: number; c: Pt; moved: boolean } | null>(null)
+  const plot = site && toPx(site.lat, site.lon, z)
   /** a site point (m east / south of the plot) on the map picture */
-  const fromSite = (q: Pt) => scr({ x: plot!.x + q.x / mpp(site!.lat), y: plot!.y + q.y / mpp(site!.lat) })
+  const fromSite = (q: Pt) => scr({ x: plot!.x + q.x / mpp(site!.lat, z), y: plot!.y + q.y / mpp(site!.lat, z) })
   const pts = (ps: Pt[]) => ps.map((q) => { const p = fromSite(q); return `${p.x.toFixed(1)},${p.y.toFixed(1)}` }).join(' ') // prettier-ignore
   // the drawing on the plot, turned by its north: plan → site frame (the inverse of core.siteToPlan)
   const anchor = core.siteAnchor(unit)
@@ -180,22 +210,44 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
       </form>
       {c && (
         <div
+          ref={mapRef}
           className="site-map"
-          style={{ width: 3 * TILE * SHOW, height: 3 * TILE * SHOW }}
+          style={{ width: SIDE * SHOW, height: SIDE * SHOW }}
+          onPointerDown={(e) => c && (drag.current = { x: e.clientX, y: e.clientY, c, moved: false })}
+          onPointerMove={(e) => {
+            const d = drag.current
+            if (!d || !(e.buttons & 1)) return
+            const [dx, dy] = [e.clientX - d.x, e.clientY - d.y]
+            if (!d.moved && Math.hypot(dx, dy) < 4) return
+            d.moved = true
+            setCenter(toLatLon({ x: d.c.x - dx / SHOW, y: d.c.y - dy / SHOW }, z))
+          }}
           onClick={(e) => {
-            if (busy) return
+            const dragged = drag.current?.moved
+            drag.current = null
+            if (busy || dragged) return // a drag pans, it never sets the plot
             if (site && !window.confirm('Move the plot here? Its blocks, roads and wind are fetched again (typed heights and deletions are lost).')) return
             const r = e.currentTarget.getBoundingClientRect()
-            const ll = toLatLon({ x: tx * TILE + (e.clientX - r.left) / SHOW, y: ty * TILE + (e.clientY - r.top) / SHOW })
+            const ll = toLatLon({ x: o.x + (e.clientX - r.left) / SHOW, y: o.y + (e.clientY - r.top) / SHOW }, z)
             void pick(ll.lat, ll.lon)
           }}
         >
-          {[0, 1, 2].flatMap((j) => [0, 1, 2].map((i) => <img key={`${i}${j}`} alt="" draggable={false} src={`https://tile.openstreetmap.org/${Z}/${tx + i}/${ty + j}.png`} style={{ left: i * TILE * SHOW, top: j * TILE * SHOW, width: TILE * SHOW, height: TILE * SHOW }} />))}
-          <svg width={3 * TILE * SHOW} height={3 * TILE * SHOW}>
+          {tiles.map(([tx, ty]) => (
+            <img key={`${z}/${tx}/${ty}`} alt="" draggable={false} src={`https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`} style={{ left: (tx * TILE - o.x) * SHOW, top: (ty * TILE - o.y) * SHOW, width: TILE * SHOW, height: TILE * SHOW }} />
+          ))}
+          <div className="site-zoom" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+            <button title="Zoom in (or the mouse wheel)" disabled={z >= ZMAX} onClick={() => zoomAt(z + 1, (SIDE * SHOW) / 2, (SIDE * SHOW) / 2)}>
+              +
+            </button>
+            <button title="Zoom out" disabled={z <= ZMIN} onClick={() => zoomAt(z - 1, (SIDE * SHOW) / 2, (SIDE * SHOW) / 2)}>
+              −
+            </button>
+          </div>
+          <svg width={SIDE * SHOW} height={SIDE * SHOW}>
             {site && plot && (
               <>
                 {site.roads.map((r) => (
-                  <polyline key={r.id} className={`site-road${sel === r.id ? ' on' : ''}`} points={pts(r.pts)} strokeWidth={Math.max(3, (r.widthM / mpp(site.lat)) * SHOW)} onClick={(e) => (e.stopPropagation(), setSel(r.id))}>
+                  <polyline key={r.id} className={`site-road${sel === r.id ? ' on' : ''}`} points={pts(r.pts)} strokeWidth={Math.max(3, (r.widthM / mpp(site.lat, z)) * SHOW)} onClick={(e) => (e.stopPropagation(), setSel(r.id))}>
                     <title>{`${r.name ?? 'Road'}, ${r.widthM} m wide`}</title>
                   </polyline>
                 ))}
