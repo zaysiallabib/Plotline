@@ -761,7 +761,9 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
   const d = dirFrom(u, w, far, V) // ahead: away from its own wall
   let best: ReturnType<typeof ahead> = null
   // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2, Sheltech
-  // Windflower's Whole floor: 1 400 walls, the import spent 100 s here)
+  // Windflower's Whole floor: 1 400 walls, the import spent 100 s here; the corners' degrees counted once — s27 rows)
+  const deg = new Map<Id, number>()
+  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
   for (const x of u.walls) {
     if (x === w) continue
     const f = wallFrame(x, [V.get(x.a)!, V.get(x.b)!])
@@ -776,7 +778,7 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
     for (const end of [x.a, x.b]) {
       if (end === far) continue
       const q = V.get(end)!
-      const free = degree(u, end) === 1 && r > EPS
+      const free = deg.get(end) === 1 && r > EPS
       // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
       const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
       const out = dirFrom(u, x, end === x.a ? x.b : x.a, V)
@@ -1416,7 +1418,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       if (!ids.size) return s
       const walls = s.unit.walls
         .filter((w) => !ids.has(w.id) && !ids.has(w.a) && !ids.has(w.b))
-        .map((w) => ({ ...w, openings: w.openings.filter((o) => !ids.has(o.id)) }))
+        .map((w) => (w.openings.some((o) => ids.has(o.id)) ? { ...w, openings: w.openings.filter((o) => !ids.has(o.id)) } : w)) // (the others as they were: s27 rows, issues.ts fixSig)
       // corners joined to nothing go; a corner left between two collinear walls joins them into one
       const used = new Set(walls.flatMap((w) => [w.a, w.b]))
       const vertices = s.unit.vertices.filter((v) => !ids.has(v.id) && used.has(v.id))

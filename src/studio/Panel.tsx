@@ -173,7 +173,7 @@ interface Props {
   issues: StudioIssue[]
   /** the "Check these" rows, then the Issues, as marked on the plan (issues.ts markIssues) */
   marks: Mark[]
-  /** working fixes per mark key; null while the plan is still changing */
+  /** working fixes per mark key — an entry once worked out (s27 rows: a long list fills in as it goes); null while the plan is still changing */
   fixes: Map<string, MarkFixes> | null
   /** the mark open on the plan */
   active: string | null
@@ -340,6 +340,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           ))}
           {/* never a silent guess, and it stays on screen (a toast was gone before it was read — user test, session 21) */}
           {stats && fewRooms(stats) && <p className="warn">{fewRooms(stats)}</p>}
+          {/* (s27 rows: a long list's fixes fill in a row at a time; the page stays live) */}
+          {fixes && review.filter((m) => !fixes.has(m.key)).length > 10 && <p className="muted">Working out the rows' fixes — {review.filter((m) => !fixes.has(m.key)).length} rows left…</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
           {review.length || aiDone.length ? (
             <ul className="issues">
@@ -348,7 +350,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                   m,
                   <>
                     {/* a room row no line closes: he draws it — the plan goes there with the Wall tool picked */}
-                    {m.review!.room !== undefined && fixes && !fixes.get(m.key)?.fixes.length && (
+                    {m.review!.room !== undefined && fixes?.get(m.key)?.fixes.length === 0 && (
                       <button
                         className="link"
                         title="Go to it and pick the Wall tool: draw the missing line (keys 1–4: wall, low wall, kerb, zone line)"

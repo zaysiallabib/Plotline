@@ -465,9 +465,13 @@ export function validate(unit: Unit): ValidationIssue[] {
     else if (d === 1 && !meant.has(id) && !J.ends.has(id)) warn('dangling-vertex', `vertex ${id} ends a dangling wall`, [id])
   }
 
-  // ponytail: O(n²) pair scan; a unit has tens of walls, not thousands
+  // ponytail: O(n²) pair scan, two walls whose boxes lie apart skipped first (s27 rows: a six-flat floor's 1 370 walls,
+  // the Studio validates on every edit); a sweep by x if the pairs themselves ever get too many
+  const box = good.map(({ a, b }) => [Math.min(a.x, b.x) - TOUCH_TOL_M, Math.min(a.y, b.y) - TOUCH_TOL_M, Math.max(a.x, b.x) + TOUCH_TOL_M, Math.max(a.y, b.y) + TOUCH_TOL_M])
   for (let i = 0; i < good.length; i++) {
     for (let j = i + 1; j < good.length; j++) {
+      const [p, q] = [box[i], box[j]]
+      if (q[0] > p[2] || p[0] > q[2] || q[1] > p[3] || p[1] > q[3]) continue
       const P = good[i]
       const Q = good[j]
       const shared = new Set([P.wall.a, P.wall.b].filter((id) => id === Q.wall.a || id === Q.wall.b))
