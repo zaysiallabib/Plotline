@@ -15,6 +15,7 @@ Why we don't chase render-level realism, and how to answer "why pay":
 Docs/PRODUCT_PHILOSOPHY.md.
 Every function a person can use, in plain words: Docs/MANUAL.md — update it in the
 same commit as any change to a button, key or page (founder, 2026-10-05).
+Every key and button in one list: Docs/KEYS.md (same rule). Every outside source (assets, APIs, hosting) and what is free only for now: Docs/SOURCES.md.
 `plotline_1.2/` is the OLD prototype — read-only reference, never import from it.
 
 ## Decisions made 2026-09-24 (override older docs where they conflict)
