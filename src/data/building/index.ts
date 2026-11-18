@@ -9,9 +9,10 @@ import * as sheltech from './sheltech-tower'
 
 /**
  * A built-in tower module's shape; LEVELS: the stems of its traced ground floor / basements / rooftop (stand-ins on
- * their own floors in FLOORS) and the floor each stands on.
+ * their own floors in FLOORS) and the floor each stands on; ELEVATIONS: an imported building's floor heights by floor
+ * number (m above the lowest floor; a floor not listed stands at floor × FLOOR_M).
  */
-export type Tower = typeof bti & { LEVELS?: Record<string, number> }
+export type Tower = typeof bti & { LEVELS?: Record<string, number>; ELEVATIONS?: Record<number, number> }
 
 const TOWERS: Tower[] = [bti, sheltech, banani, dmd]
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
-import type { Id, OpeningKind, Pt, RoomKind, Site, Slope, Unit } from '../core'
+import type { Id, OpeningKind, Pt, RoomKind, Shell, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, resizePiece, sideDots, type Move } from './furniture'
 import { placementSize } from '../furnish/kit'
@@ -44,7 +44,9 @@ import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
-import { newProject, projectTower, readProjects, saveProjects, slotsOf, syncUnit, type Project, type ProjectPlan } from '../data/building/projects'
+import { putShell } from './shells'
+import { IMPORT_ACCEPT, importFile, importFormatOf, type ImportResult, type ImportedStorey } from '../import'
+import { newProject, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
@@ -254,6 +256,8 @@ export default function StudioApp() {
   const [field, setField] = useState<Field | null>(null)
   const [popover, setPopover] = useState<Popover | null>(null)
   const [note, setNote] = useState<Note | null>(null)
+  /** what an architect's file gave (src/import), listed in the panel until dismissed */
+  const [importNotes, setImportNotes] = useState<string[] | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
@@ -792,14 +796,83 @@ export default function StudioApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * An architect's own file (src/import, session 29): a plain 3D model → the building's outside shape on the drawing open
+   * now, centred on it; one storey → the draft (as Import does); several → a whole project in one go, lowest first —
+   * basements (below 0 or named so) under the ground floor, floors 1..n, the top one the rooftop when its name says so or
+   * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
+   */
+  const importArchitect = async (file: File) => {
+    setNote({ text: `Reading ${file.name}…` })
+    let r: ImportResult
+    try {
+      r = await importFile(file)
+    } catch (e) {
+      return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    let shell: Shell | undefined
+    if (r.shell) {
+      const id = newId()
+      try {
+        await putShell(id, r.shell.glb)
+        shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles }
+      } catch {
+        toast('This browser would not keep the outside shape (storage full?)')
+      }
+    }
+    const at = (u: Unit, elevationM: number): Unit => (shell ? { ...u, shell: { ...shell, baseY: elevationM } } : u)
+    setNote(null)
+    if (!r.storeys.length) {
+      if (!shell) return toast(`Nothing to use in ${file.name}`)
+      const u = stateRef.current.unit
+      const b = u.vertices.length ? unitBounds(u) : null
+      dispatch({ type: 'set-shell', shell: { ...shell, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
+      setImportNotes(r.notes)
+      return
+    }
+    if (r.storeys.length === 1) {
+      const s = r.storeys[0]
+      dispatch({ type: 'load-unit', unit: at(s.unit, s.elevationM) })
+      fitView()
+      setImportNotes(r.notes)
+      return
+    }
+    const sorted = [...r.storeys].sort((a, b) => a.elevationM - b.elevationM)
+    const isBasement = (s: ImportedStorey) => s.elevationM < -0.01 || /basement|cellar|^b-?\d/i.test(s.name)
+    let bases = sorted.filter(isBasement)
+    let above = sorted.filter((s) => !isBasement(s))
+    if (!above.length) (above = sorted), (bases = [])
+    const last = above[above.length - 1]
+    const roof = above.length > 1 && (/roof|terrace/i.test(last.name) || !deriveRooms(last.unit).length) ? last : null
+    const floors = above.filter((s) => s !== roof)
+    const name = file.name.replace(/\.[^.]+$/, '')
+    let p = newProject(newId(), name, { basements: bases.length, floors: floors.length - 1, rooftop: !!roof })
+    const elevations: Record<string, number> = {}
+    const place = (slot: Slot, s: ImportedStorey) => {
+      p = setSlot(p, slot, at({ ...s.unit, name: s.unit.name.trim() || s.name || slotLabel(slot), projectName: name }, s.elevationM))
+      elevations[String(slot)] = s.elevationM
+    }
+    bases.forEach((s, i) => place(-(bases.length - i), s))
+    floors.forEach((s, i) => place(i, s))
+    if (roof) place('R', roof)
+    p = { ...p, elevations, ...(shell ? { shell } : {}) }
+    const ps = fresh()
+    setActive({ id: p.id })
+    setListOpen(true)
+    openDrawing([...ps, p], (floors[1] ?? floors[0]).unit.id)
+    setImportNotes(r.notes)
+    toast(`${name}: ${r.storeys.length} floors made — the list on the right`)
+  }
+
   const onFiles = useCallback(
     (files: FileList | null) => {
       const f = files?.[0]
       if (!f) return
-      if (f.name.endsWith('.json') || f.type === 'application/json') void importJson(f)
+      if (importFormatOf(f.name)) void importArchitect(f)
+      else if (f.name.endsWith('.json') || f.type === 'application/json') void importJson(f)
       else loadImage(f)
     },
-    [importJson, loadImage],
+    [importJson, loadImage], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const exportJson = useCallback(() => {
@@ -2083,8 +2156,8 @@ export default function StudioApp() {
             Change list
           </button>
         )}
-        <input ref={jsonRef} type="file" accept=".json,application/json" hidden onChange={(e) => onFiles(e.target.files)} />
-        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => onFiles(e.target.files)} />
+        <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
+        <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
       </header>
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
@@ -2320,6 +2393,8 @@ export default function StudioApp() {
           pieces={pieces}
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
+          notes={importNotes}
+          onDismissNotes={() => setImportNotes(null)}
         />
       </div>
 

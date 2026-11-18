@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Slope, Unit } from '../core'
+import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit } from '../core'
+import { deleteShell } from './shells'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { resizeAxes } from './furniture'
@@ -193,9 +194,12 @@ interface Props {
   /** tool F's library: the kit asset being placed; pick one ('' stops) */
   placing?: string | null
   onPlace?: (assetId: string) => void
+  /** what an architect's file gave (src/import notes), shown until dismissed */
+  notes?: string[] | null
+  onDismissNotes?: () => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -295,6 +299,22 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           ))}
         </ol>
       </section>
+      {!!notes?.length && (
+        <section>
+          <h3>
+            What was read from the file
+            <button className="link" onClick={onDismissNotes}>
+              Dismiss
+            </button>
+          </h3>
+          <ul className="notes">
+            {notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {unit.shell && <OutsideShape shell={unit.shell} dispatch={dispatch} />}
       <section>
         <h3>Selection</h3>
         {piece ? (
@@ -883,6 +903,43 @@ function StandsAlone({ ids, on, dispatch }: { ids: string[]; on: boolean; dispat
     <label className="check" title="A screen, fin, parapet length, decorative or wind wall: its free ends are meant, never an issue">
       <input type="checkbox" checked={on} onChange={(e) => dispatch({ type: 'stand-alone', ids, on: e.target.checked })} /> Stands alone (screen / decoration)
     </label>
+  )
+}
+
+/**
+ * The architect's outside shape (core Shell, src/import): where it stands in the plan — moved, turned, its floor height
+ * (the drawing's floor inside it) — each through the one reducer (Ctrl+Z); Remove deletes the model from this browser.
+ */
+function OutsideShape({ shell, dispatch }: { shell: Shell; dispatch: (a: Action) => void }) {
+  const set = (patch: Partial<Shell>) => dispatch({ type: 'set-shell', shell: { ...shell, ...patch } })
+  return (
+    <section>
+      <h3>Outside shape</h3>
+      <p className="muted">
+        {shell.name}
+        {shell.triangles ? ` · ${shell.triangles.toLocaleString()} triangles` : ''}
+      </p>
+      <Row label="Offset x (m)">
+        <NumInput value={shell.offset?.x ?? 0} onCommit={(x) => set({ offset: { x, y: shell.offset?.y ?? 0 } })} />
+      </Row>
+      <Row label="Offset y (m)">
+        <NumInput value={shell.offset?.y ?? 0} onCommit={(y) => set({ offset: { x: shell.offset?.x ?? 0, y } })} />
+      </Row>
+      <Row label="Turn (deg)">
+        <NumInput value={shell.rotDeg ?? 0} onCommit={(rotDeg) => set({ rotDeg })} />
+      </Row>
+      <Row label="Floor height (m)">
+        <NumInput value={shell.baseY} onCommit={(baseY) => set({ baseY })} />
+      </Row>
+      <button
+        onClick={() => {
+          void deleteShell(shell.id).catch(() => {})
+          dispatch({ type: 'set-shell', shell: undefined })
+        }}
+      >
+        Remove outside shape
+      </button>
+    </section>
   )
 }
 

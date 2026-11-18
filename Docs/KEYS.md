@@ -188,7 +188,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | ⏱ | How long you have been tracing |
 | **Undo** / **Redo** | Ctrl+Z / Ctrl+Y |
 | **Auto-trace** | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
-| **Import** | Opens a drawing file (Ctrl+O) |
+| **Import** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
 | **Export** | Saves the drawing as a file (Ctrl+S) |
 | **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` |
 | **Preview 3D** | Opens your drawing in the 3D view, in a new tab |
@@ -201,7 +201,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does |
 |---|---|
-| **Choose plan image…** | Picks the plan picture (or drop it on the page) |
+| **Choose plan image…** | Picks the plan picture (or drop it on the page) — the architect's file too (Import's list) |
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
@@ -223,6 +223,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Draw a** (W) | **Wall**, **Low wall**, **Kerb**, **Zone line**; **Low wall height** | What the next wall is (keys 1–4) |
 | **Place an opening** (O) | **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**; **Width** | What the next click on a wall puts in |
 | **Steps** | (none) | The checklist; ticks itself |
+| **What was read from the file** (after an architect's file) | **Dismiss** | The file's unit, what was guessed, what it lacked |
+| **Outside shape** (the drawing has one) | **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Where the architect's model stands over the plan, how high this floor is inside it; take it away (deleted from this browser) |
 | **Selection** — a corner | **X (m)**, **Y (m)** | Its exact place |
 | **Selection** — a wall | **Wall / Low wall / Kerb / Zone line**, **Width (inches)** with **Partition 5"** / **Exterior 10"**, **Height (0 = zone line)**, **Stands alone**, **Length (moves B)**, **Copy wall (Ctrl+D)**, **Delete wall (Del)** | Change one wall |
 | **Selection** — several | the wall types, **Height (all of them)**, **Width**, **Stands alone** | Change them all at once |
