@@ -10,9 +10,9 @@
  * "If there is a wall and an outside view then follow the measurements, no need to complicate things" (founder).
  */
 import type { ImportResult, ImportedStorey } from './types'
-import { deriveRooms, newId, validate } from '../core'
-import type { Id, Opening, OpeningKind, Pillar, Pt, RoomLabel, Vertex, Wall } from '../core'
-import { PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, initialState, reducer } from '../studio/model'
+import { deriveRooms, newId, pointInPolygon, roomPolygon, validate } from '../core'
+import type { Id, Opening, OpeningKind, Pillar, Pt, RoomLabel, Unit, Vertex, Wall } from '../core'
+import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, reducer } from '../studio/model'
 import { writeGlb, type GlbGroup } from './glb'
 
 type WebIfc = typeof import('web-ifc')
@@ -22,6 +22,12 @@ type Api = InstanceType<WebIfc['IfcAPI']>
 const SNAP_M = 0.01
 /** a curved axis is cut into chords this far from the arc at most */
 const CHORD_M = 0.02
+/** a wall end at least this close to another wall's centre line is moved onto it (more for a thick wall: half its thickness + 1 cm) */
+const END_SNAP_M = 0.05
+/** a wall piece shorter than this after the snap is a nib, not a wall */
+const MIN_PIECE_M = 0.05
+/** a space outline edge this close to a wall's centre line (more for a thick wall: half its thickness + 2 cm) is that wall, not a zone line */
+const ON_WALL_M = 0.1
 const TRIANGLE_CAP = 1_500_000
 
 // ---------- web-ifc ----------
@@ -132,6 +138,17 @@ interface Body {
   inside?: Pt
   insideY?: number
   insideArea?: number
+  /** the downward-facing triangles (a space's floor) with their height: its exact footprint outline comes from them */
+  floorTris?: { pts: [Pt, Pt, Pt]; y: number }[]
+}
+
+/** one wall's centre line on one storey, with its openings, before the Studio joins the graph */
+interface WallDraft {
+  pts: Pt[]
+  thicknessM: number
+  heightM: number
+  /** [segment index, opening] */
+  openings: [number, Opening][]
 }
 
 // ---------- the importer ----------
@@ -374,6 +391,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       if (N[a + 1] > -0.5) continue // the floor of the space faces down
       const ux = P[b] - P[a], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vz = P[c + 2] - P[a + 2]
       const area = Math.abs(ux * vz - uz * vx) / 2
+      ;(into.floorTris ??= []).push({ pts: [planOfWorld(P[a], P[a + 2]), planOfWorld(P[b], P[b + 2]), planOfWorld(P[c], P[c + 2])], y: Math.max(P[a + 1], P[b + 1], P[c + 1]) })
       if (area > (into.insideArea ?? 0)) {
         into.insideArea = area
         into.inside = planOfWorld((P[a] + P[b] + P[c]) / 3, (P[a + 2] + P[b + 2] + P[c + 2]) / 3)
@@ -598,13 +616,6 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return out.slice(skip)
   }
 
-  interface WallDraft {
-    pts: Pt[]
-    thicknessM: number
-    heightM: number
-    /** [segment index, opening] */
-    openings: [number, Opening][]
-  }
   const dropped: string[] = []
   let noAxis = 0
   let curved = 0
@@ -779,6 +790,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
 
   // ---------- spaces ----------
   let outsideLabels = 0
+  const outlineOf = new Map<Id, [Pt, Pt][]>() // label → the space's exact floor outline (edges)
   for (const id of idsOf(W.IFCSPACE)) {
     const s = storeyOf(id)
     if (!s) continue
@@ -792,55 +804,101 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const label: RoomLabel = { id: newId(), name, kind: guessKind(name), x: at.x, y: at.y, ...(Math.abs(lvl) > 0.05 && Math.abs(lvl) < 3 ? { levelM: lvl } : {}) }
     draftOf(s).labels.push(label)
     draftOf(s).noSpace = false
+    if (body.floorTris) outlineOf.set(label.id, boundaryEdges(body.floorTris.filter((t) => t.y <= body.minY + 0.02).map((t) => t.pts)))
   }
 
   // ---------- the units ----------
   const result: ImportedStorey[] = []
   const counts: string[] = []
+  let snapped = 0
+  let nibs = 0
+  let openPlan = 0
+  let zoneLines = 0
   for (const s of storeys) {
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
-    let unit = emptyUnit()
-    unit.name = s.name
-    unit.projectName = shellName
-    unit.northDeg = northDeg
-    const vertices: Vertex[] = []
-    const vertexAt = (p: Pt): Id => {
-      const near = vertices.find((v) => Math.hypot(v.x - p.x, v.y - p.y) <= SNAP_M)
-      if (near) return near.id
-      const v = { id: newId(), x: p.x, y: p.y }
-      vertices.push(v)
-      return v.id
-    }
-    const walls: Wall[] = []
-    for (const wd of d.walls) {
-      const segs: (Wall | null)[] = []
-      for (let i = 0; i + 1 < wd.pts.length; i++) {
-        const a = vertexAt(wd.pts[i]), b = vertexAt(wd.pts[i + 1])
-        if (a === b) {
-          segs.push(null)
-          continue
-        }
-        const w: Wall = { id: newId(), a, b, thicknessM: wd.thicknessM, heightM: wd.heightM, openings: [] }
-        segs.push(w)
-        walls.push(w)
+    let last = { snapped: 0, dropped: 0 }
+    const build = (drafts: WallDraft[]): Unit => {
+      // Revit axes end 2–5 cm short of / past the wall they meet: ends land on the centre line here, before the Studio joins
+      const e = (last = snapEnds(drafts))
+      let unit = emptyUnit()
+      unit.name = s.name
+      unit.projectName = shellName
+      unit.northDeg = northDeg
+      const vertices: Vertex[] = []
+      const vertexAt = (p: Pt): Id => {
+        const near = vertices.find((v) => Math.hypot(v.x - p.x, v.y - p.y) <= SNAP_M)
+        if (near) return near.id
+        const v = { id: newId(), x: p.x, y: p.y }
+        vertices.push(v)
+        return v.id
       }
-      for (const [i, o] of wd.openings) {
-        const w = segs[i]
-        if (!w) continue
-        const L = Math.hypot(vertices.find((v) => v.id === w.b)!.x - vertices.find((v) => v.id === w.a)!.x, vertices.find((v) => v.id === w.b)!.y - vertices.find((v) => v.id === w.a)!.y)
-        if (o.widthM > L + 0.02) {
-          dropped.push(`${o.kind} ${o.widthM.toFixed(2)} m wide on a ${L.toFixed(2)} m wall (${s.name})`)
-          continue
+      const walls: Wall[] = []
+      const byEnds = new Map<string, Wall>() // two pieces between the same corners (a wall over a wall) are one
+      for (const wd of e.walls) {
+        const segs: (Wall | null)[] = []
+        for (let i = 0; i + 1 < wd.pts.length; i++) {
+          const a = vertexAt(wd.pts[i]), b = vertexAt(wd.pts[i + 1])
+          if (a === b) {
+            segs.push(null)
+            continue
+          }
+          const key = a < b ? `${a}|${b}` : `${b}|${a}`
+          const same = byEnds.get(key)
+          if (same) {
+            same.heightM = Math.max(same.heightM, wd.heightM)
+            same.thicknessM = Math.max(same.thicknessM, wd.thicknessM)
+            segs.push(same.a === a ? same : null) // an opening of a reversed twin is left out: its offset would be mirrored
+            continue
+          }
+          const w: Wall = { id: newId(), a, b, thicknessM: wd.thicknessM, heightM: wd.heightM, openings: [] }
+          byEnds.set(key, w)
+          segs.push(w)
+          walls.push(w)
         }
-        w.openings.push({ ...o, offsetM: Math.max(0, Math.min(L - o.widthM, o.offsetM)) })
+        for (const [i, o] of wd.openings) {
+          const w = segs[i]
+          if (!w) continue
+          const L = Math.hypot(vertices.find((v) => v.id === w.b)!.x - vertices.find((v) => v.id === w.a)!.x, vertices.find((v) => v.id === w.b)!.y - vertices.find((v) => v.id === w.a)!.y)
+          if (o.widthM > L + 0.02) {
+            dropped.push(`${o.kind} ${o.widthM.toFixed(2)} m wide on a ${L.toFixed(2)} m wall (${s.name})`)
+            continue
+          }
+          w.openings.push({ ...o, offsetM: Math.max(0, Math.min(L - o.widthM, o.offsetM)) })
+        }
+        // voids stacked or overlapping on one wall (a window of three panes, a door with a fanlight) are one opening here
+        for (const w of segs) if (w && w.openings.length > 1) w.openings = mergeOpenings(w.openings)
       }
-      // voids stacked or overlapping on one wall (a window of three panes, a door with a fanlight) are one opening here
-      for (const w of segs) if (w && w.openings.length > 1) w.openings = mergeOpenings(w.openings)
+      unit = { ...unit, vertices, walls, pillars: d.pillars, roomLabels: d.labels }
+      // the Studio's own load path: corners within 1 cm merge, ends inside a wall join it (T-splits, crossings), stubs go
+      return reducer(initialState(), { type: 'load-unit', unit }).unit
     }
-    unit = { ...unit, vertices, walls, pillars: d.pillars, roomLabels: d.labels }
-    // the Studio's own load path: corners within 1 cm merge, ends inside a wall join it (T-splits, crossings), stubs go
-    unit = reducer(initialState(), { type: 'load-unit', unit }).unit
+    let unit = build(d.walls)
+    // open plan: two or more of the file's rooms in one closed face (Revit's room-separation lines are not in the IFC) —
+    // the rooms' own outlines, where they are not a wall already, become zone lines so each room gets its own face
+    const lines: WallDraft[] = []
+    const seen = new Set<string>()
+    for (const r of deriveRooms(unit)) {
+      const poly = roomPolygon(r, unit)
+      const inside = unit.roomLabels.filter((l) => pointInPolygon(l, poly))
+      if (inside.length < 2) continue
+      openPlan++
+      for (const l of inside) {
+        for (const [a, b] of outlineOf.get(l.id) ?? []) {
+          if (onWall(unit, a, b)) continue
+          const key = [a, b].map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).sort().join('|')
+          if (seen.has(key)) continue
+          seen.add(key)
+          lines.push({ pts: [a, b], thicknessM: ZONE_LINE_M, heightM: 0, openings: [] })
+        }
+      }
+    }
+    if (lines.length && process.env.IFC_ZONES) {
+      zoneLines += lines.length
+      unit = build([...d.walls, ...lines])
+    }
+    snapped += last.snapped
+    nibs += last.dropped
     const rooms = deriveRooms(unit)
     const issues = validate(unit)
     const n = (code: string) => issues.filter((i) => i.code === code).length
@@ -861,6 +919,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (curved) notes.push(`${curved} curved walls were cut into straight pieces (within ${CHORD_M * 100} cm of the arc).`)
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
   if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
+  if (snapped) notes.push(`${snapped} wall ends stopped a few centimetres short of (or ran past) the wall they meet: each was moved onto that wall's centre line${nibs ? `; ${nibs} pieces shorter than ${MIN_PIECE_M * 100} cm left by that were removed` : ''}.`)
+  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines} zone lines (flush, drawn as nothing) were added along the file's own room outlines so each name has its own room.`)
   if (hung) notes.push(`${hung} doors / windows had no opening cut in a wall (the file lacks IfcRelVoidsElement): each was hung on the nearest wall by its own body.`)
   if (unplaced) notes.push(`${unplaced} walls belong to no storey in the file and were left out of the plans (they are still in the outside shape).`)
   if (dropped.length) notes.push(`${dropped.length} openings did not fit their wall and were left out: ${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''}.`)
@@ -891,6 +951,177 @@ function mergeOpenings(list: Opening[]): Opening[] {
 }
 
 const fmt = (m: number): string => (Math.abs(m) < 0.0005 ? '0' : m.toFixed(2).replace(/\.?0+$/, ''))
+
+/**
+ * Revit writes wall axes that end 2–5 cm short of / past the centre line of the wall they meet; the Studio's join then leaves
+ * a hair-long nib and a crossing. Here, before the Studio sees the graph:
+ *  1. each chain end within END_SNAP_M (half the other wall's thickness + 1 cm for a thick wall) of another wall's centre
+ *     line moves onto it along its OWN line (no wall tilts); an end near-parallel to the other wall only onto that wall's
+ *     end when it is nearly collinear (an end-to-end gap). Two passes: an L whose two ends are both short meets on the second.
+ *  2. an end on another wall's line within MIN_PIECE_M of that wall's end becomes that end (no nib); an end on the line's
+ *     middle splits the other wall there (a T, or a wall drawn over a longer one: the twin pieces become one in build).
+ *  3. a piece shorter than MIN_PIECE_M goes.
+ */
+function snapEnds(drafts: WallDraft[]): { walls: WallDraft[]; snapped: number; dropped: number } {
+  const walls = drafts.map((w) => ({ ...w, pts: w.pts.map((p) => ({ x: p.x, y: p.y })), openings: w.openings.map(([i, o]) => [i, { ...o }] as [number, Opening]) }))
+  let snapped = 0
+  const ends = walls.flatMap((wall) => (wall.pts.length >= 2 ? [{ wall, first: true }, { wall, first: false }] : []))
+  const endOf = ({ wall, first }: { wall: WallDraft; first: boolean }) => {
+    const n = wall.pts.length
+    const e = first ? wall.pts[0] : wall.pts[n - 1]
+    const inner = first ? wall.pts[1] : wall.pts[n - 2]
+    const L = Math.hypot(e.x - inner.x, e.y - inner.y)
+    return { e, own: { x: (e.x - inner.x) / L, y: (e.y - inner.y) / L }, L } // own: out of the chain
+  }
+  /** openings on the first segment are measured from its start: when that moves they keep their place */
+  const move = (wall: WallDraft, first: boolean, e: Pt, to: Pt) => {
+    if (first && wall.pts.length >= 2) {
+      const i = wall.pts[1]
+      const L = Math.hypot(i.x - e.x, i.y - e.y) || 1
+      const du = ((to.x - e.x) * (i.x - e.x) + (to.y - e.y) * (i.y - e.y)) / L
+      for (const h of wall.openings) if (h[0] === 0) h[1].offsetM -= du
+    }
+    e.x = to.x
+    e.y = to.y
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    for (const end of ends) {
+      const { e, own, L: ownL } = endOf(end)
+      if (ownL < 1e-6) continue
+      let best: { p: Pt; dist: number } | null = null
+      for (const o of walls) {
+        if (o === end.wall) continue
+        const tol = Math.max(END_SNAP_M, o.thicknessM / 2 + 0.01)
+        for (let i = 0; i + 1 < o.pts.length; i++) {
+          const a = o.pts[i], b = o.pts[i + 1]
+          const L = Math.hypot(b.x - a.x, b.y - a.y)
+          if (L < 1e-6) continue
+          // a wall that already ends at this corner is a neighbour, not a target
+          if (Math.hypot(a.x - e.x, a.y - e.y) <= SNAP_M || Math.hypot(b.x - e.x, b.y - e.y) <= SNAP_M) continue
+          const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+          const u = (e.x - a.x) * d.x + (e.y - a.y) * d.y
+          const dist = Math.abs(-(e.x - a.x) * d.y + (e.y - a.y) * d.x)
+          if (dist > tol || u < -tol || u > L + tol || (best && dist >= best.dist)) continue
+          const sin = own.x * d.y - own.y * d.x
+          let p: Pt
+          if (Math.abs(sin) > 0.2) {
+            // where the end's own line crosses the other's centre line
+            const t = ((a.x - e.x) * d.y - (a.y - e.y) * d.x) / sin
+            p = { x: e.x + own.x * t, y: e.y + own.y * t }
+          } else if (dist <= 0.02 && (u < 0 || u > L)) p = u < 0 ? a : b // an end-to-end gap on one line
+          else continue // beside a parallel wall's middle: the Studio's own join decides
+          if (Math.hypot(p.x - e.x, p.y - e.y) > 2 * tol) continue
+          best = { p, dist }
+        }
+      }
+      if (!best || Math.hypot(best.p.x - e.x, best.p.y - e.y) < 1e-4) continue
+      move(end.wall, end.first, e, best.p)
+      snapped++
+    }
+  }
+  // ends on a line: into the other's end block → its end; on its middle → split it there
+  const splits = new Map<WallDraft, { i: number; u: number }[]>()
+  for (const end of ends) {
+    const { e } = endOf(end)
+    for (const o of walls) {
+      if (o === end.wall) continue
+      for (let i = 0; i + 1 < o.pts.length; i++) {
+        const a = o.pts[i], b = o.pts[i + 1]
+        const L = Math.hypot(b.x - a.x, b.y - a.y)
+        if (L < 1e-6) continue
+        const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+        const u = (e.x - a.x) * d.x + (e.y - a.y) * d.y
+        const dist = Math.abs(-(e.x - a.x) * d.y + (e.y - a.y) * d.x)
+        if (dist > SNAP_M || u < -SNAP_M || u > L + SNAP_M) continue
+        if (u <= MIN_PIECE_M || u >= L - MIN_PIECE_M) {
+          const to = u <= MIN_PIECE_M ? a : b
+          if (Math.hypot(to.x - e.x, to.y - e.y) > 1e-4) move(end.wall, end.first, e, to), snapped++
+        } else splits.set(o, [...(splits.get(o) ?? []), { i, u }])
+      }
+    }
+  }
+  for (const [w, list] of splits) {
+    // later segments first, longer u first: earlier indices stay valid
+    for (const { i, u } of list.sort((p, q) => q.i - p.i || q.u - p.u)) {
+      const a = w.pts[i], b = w.pts[i + 1]
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      w.pts.splice(i + 1, 0, { x: a.x + ((b.x - a.x) * u) / L, y: a.y + ((b.y - a.y) * u) / L })
+      w.openings = w.openings.map(([s, o]) => (s > i ? [s + 1, o] : s === i && o.offsetM >= u ? [s + 1, { ...o, offsetM: o.offsetM - u }] : [s, o]))
+    }
+  }
+  // pieces shorter than MIN_PIECE_M: a lone one goes, one inside a chain folds into its neighbour
+  let dropped = 0
+  const out: WallDraft[] = []
+  for (const w of walls) {
+    for (let i = 0; i + 1 < w.pts.length; ) {
+      if (Math.hypot(w.pts[i + 1].x - w.pts[i].x, w.pts[i + 1].y - w.pts[i].y) >= MIN_PIECE_M) {
+        i++
+        continue
+      }
+      w.pts.splice(i === 0 ? 1 : i, 1)
+      w.openings = w.openings.filter(([s]) => s !== i).map(([s, o]) => [s > i ? s - 1 : s, o])
+      dropped++
+    }
+    if (w.pts.length >= 2) out.push(w)
+  }
+  return { walls: out, snapped, dropped }
+}
+
+/** an edge that lies along one of the unit's walls (both ends within ON_WALL_M, or half the thickness + 2 cm, of its centre line) */
+function onWall(unit: Unit, a: Pt, b: Pt): boolean {
+  const vs = new Map(unit.vertices.map((v) => [v.id, v]))
+  for (const w of unit.walls) {
+    const p = vs.get(w.a), q = vs.get(w.b)
+    if (!p || !q) continue
+    const L = Math.hypot(q.x - p.x, q.y - p.y)
+    if (L < 1e-6) continue
+    const d = { x: (q.x - p.x) / L, y: (q.y - p.y) / L }
+    const tol = Math.max(ON_WALL_M, w.thicknessM / 2 + 0.02)
+    const near = (e: Pt) => {
+      const u = (e.x - p.x) * d.x + (e.y - p.y) * d.y
+      return u >= -tol && u <= L + tol && Math.abs(-(e.x - p.x) * d.y + (e.y - p.y) * d.x) <= tol
+    }
+    if (near(a) && near(b)) return true
+  }
+  return false
+}
+
+/** the outline of a triangulated floor: the edges used by one triangle only, straight runs joined into one edge */
+function boundaryEdges(tris: [Pt, Pt, Pt][]): [Pt, Pt][] {
+  const key = (p: Pt) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)}`
+  const count = new Map<string, { a: Pt; b: Pt; n: number }>()
+  for (const t of tris) {
+    for (let i = 0; i < 3; i++) {
+      const a = t[i], b = t[(i + 1) % 3]
+      const ka = key(a), kb = key(b)
+      if (ka === kb) continue
+      const k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+      const c = count.get(k)
+      if (c) c.n++
+      else count.set(k, { a, b, n: 1 })
+    }
+  }
+  let edges = [...count.values()].filter((c) => c.n === 1).map((c) => [c.a, c.b] as [Pt, Pt])
+  // join straight runs: a point with exactly two edges on one line is no corner
+  for (let changed = true; changed; ) {
+    changed = false
+    const at = new Map<string, number[]>()
+    edges.forEach((e, i) => e.forEach((p) => at.set(key(p), [...(at.get(key(p)) ?? []), i])))
+    for (const [k, idx] of at) {
+      if (idx.length !== 2) continue
+      const [e1, e2] = [edges[idx[0]], edges[idx[1]]]
+      const far1 = key(e1[0]) === k ? e1[1] : e1[0], far2 = key(e2[0]) === k ? e2[1] : e2[0]
+      const shared = key(e1[0]) === k ? e1[0] : e1[1]
+      const cross = (far1.x - shared.x) * (far2.y - shared.y) - (far1.y - shared.y) * (far2.x - shared.x)
+      const l1 = Math.hypot(far1.x - shared.x, far1.y - shared.y), l2 = Math.hypot(far2.x - shared.x, far2.y - shared.y)
+      if (l1 < 1e-6 || l2 < 1e-6 || Math.abs(cross) / (l1 * l2) > 0.01) continue
+      edges = edges.filter((_, i) => !idx.includes(i)).concat([[far1, far2]])
+      changed = true
+      break
+    }
+  }
+  return edges
+}
 
 // ---------- .ifczip ----------
 
