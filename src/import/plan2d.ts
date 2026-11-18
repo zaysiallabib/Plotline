@@ -150,7 +150,8 @@ function piece(a: Pt, b: Pt, thick: number): Piece {
  * plan ever shows up.
  */
 function pairWalls(lines: { a: Pt; b: Pt }[]): Piece[] {
-  const ls = lines.map((l) => ({ ...l, ...folded(l.a, l.b), L: len(sub(l.b, l.a)) })).filter((l) => l.L >= 0.03)
+  // (a wall face is seldom under 15 cm; shorter strokes are hatching, text outlines, arrow heads)
+  const ls = lines.map((l) => ({ ...l, ...folded(l.a, l.b), L: len(sub(l.b, l.a)) })).filter((l) => l.L >= 0.15)
   const ang = (l: { dir: Pt }) => Math.atan2(l.dir.y, l.dir.x)
   const buckets = new Map<number, number[]>()
   const B = 3 * (Math.PI / 180)
@@ -317,8 +318,17 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   // (a line on a text / room layer is geometry too: a plan drawn as room polygons)
   const wallLines = segs.filter((g) => (g.role === 'wall' || g.role === 'unknown' || g.role === 'text') && !(inColumn(g.a) && inColumn(g.b)))
   const explicit = wallLines.filter((g) => g.role === 'wall')
-  const pieces = pairWalls(explicit.length ? explicit : wallLines)
-  if (!explicit.length) notes.push('No wall layer found: walls were taken from any parallel line pair 5–60 cm apart.')
+  let pieces = pairWalls(explicit.length ? explicit : wallLines)
+  if (!explicit.length) {
+    // no layer says which pairs are walls (a PDF, a one-layer DXF): keep the plan's main thicknesses — the ones whose
+    // total length is at least a tenth of the longest-running one, and the two standard ones; furniture, stairs and hatching pair at odd gaps
+    const total = new Map<number, number>()
+    for (const p of pieces) total.set(p.thick, (total.get(p.thick) ?? 0) + (p.t1 - p.t0))
+    const top = Math.max(0, ...total.values())
+    const main = new Set([...total].filter(([t, L]) => L >= 0.1 * top || t === PARTITION_M || t === EXTERIOR_M).map(([t]) => t))
+    pieces = pieces.filter((p) => main.has(p.thick))
+    notes.push(`No wall layer found: walls were taken from parallel line pairs 5–60 cm apart of the plan's main thicknesses (${[...main].sort((p, q) => q - p).map((t) => `${Math.round(t * 1000)} mm`).join(', ') || 'none'}).`)
+  }
   let walls = mergeCollinear(pieces)
 
   // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
@@ -451,7 +461,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     }
     const area = parseArea(t.text)
     const flat = flatTypeOf({ name: t.text, kind: 'other' })
-    if (!/[A-Za-z]{2}/.test(t.text) && !flat) continue
+    // a name has letters; a measurement with a word on it ("8'-5\" CLG", "Sill H=3'-0\"", "2.4 m") names no room
+    if ((!/[A-Za-z]{2}/.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat) continue
     if (!room) {
       outside++
       continue
