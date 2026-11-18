@@ -12,7 +12,7 @@
 import type { ImportResult, ImportedStorey } from './types'
 import { deriveRooms, newId, validate } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, RoomLabel, Vertex, Wall } from '../core'
-import { PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, joinOverlaps, normalizeUnit } from '../studio/model'
+import { PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, initialState, reducer } from '../studio/model'
 import { writeGlb, type GlbGroup } from './glb'
 
 type WebIfc = typeof import('web-ifc')
@@ -776,7 +776,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       for (const w of segs) if (w && w.openings.length > 1) w.openings = mergeOpenings(w.openings)
     }
     unit = { ...unit, vertices, walls, pillars: d.pillars, roomLabels: d.labels }
-    unit = normalizeUnit(joinOverlaps(unit).unit)
+    // the Studio's own load path: corners within 1 cm merge, ends inside a wall join it (T-splits, crossings), stubs go
+    unit = reducer(initialState(), { type: 'load-unit', unit }).unit
     const rooms = deriveRooms(unit)
     const issues = validate(unit)
     const n = (code: string) => issues.filter((i) => i.code === code).length
