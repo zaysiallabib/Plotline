@@ -12,10 +12,14 @@
     "score30": "vitest run src/trace/eval/score30.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
+    "dxf-parser": "^1.1.2",
+    "pdfjs-dist": "^6.5.438",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "rhino3dm": "^8.35.0",
     "tesseract.js": "^7.0.0",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "web-ifc": "^0.0.79"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

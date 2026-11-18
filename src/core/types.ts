@@ -246,6 +246,26 @@ export interface Unit {
   planImage?: { src: string; pxPerM: number; originPx: { x: number; y: number } }
   /** where the building stands (Studio → Site), with the map's neighbours and the wind, cached: a buyer link never refetches */
   site?: Site
+  /**
+   * The architect's own outside shape (session 29, src/import): the building's exact facade as it came in the file, a GLB
+   * kept in this browser (studio/shells.ts) by `id`, placed in world axes (X = plan x, Y up, Z = plan y): the Building
+   * view and the walk draw it instead of boxes. The walls stay the truth for the rooms ("follow the measurements",
+   * founder 2026-11-19).
+   */
+  shell?: Shell
+}
+
+/** A stored exact outside shape and where it stands in the unit's plan frame. */
+export interface Shell {
+  /** key of the GLB in this browser's store */
+  id: Id
+  name: string
+  /** world Y of the unit's floor datum inside the shell (this storey's floor height above the shell's lowest floor) */
+  baseY: number
+  /** plan offset (m) added to the shell's X / Z and its turn about Y (degrees clockwise in plan), when staff align it */
+  offset?: { x: number; y: number }
+  rotDeg?: number
+  triangles?: number
 }
 
 /**
