@@ -1,0 +1,121 @@
+/**
+ * IFC import against real files (skipped when they are not on this machine). The eval table at the end prints one row
+ * per file: run `npx vitest run src/import/ifc.test.ts --disableConsoleIntercept` to read it.
+ */
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+import { deriveRooms, validate, wallFrame } from '../core'
+import { importIfc } from './ifc'
+import { readGlbJson } from './glb'
+
+const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
+const BENCH = 'E:/dev/ALTERNATIVE FORMAT TEST/ifc-bench/projects'
+const SCHEMAS = ['IFC 2.3.0.1 (IFC 2x3 TC1)', 'IFC 4.0.2.1 (IFC 4 ADD2 TC1)', 'IFC 4.3.2.0 (IFC 4.3 ADD2)']
+const WALL_FILE = `${CERT}/IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/wall-with-opening-and-window.ifc`
+
+/** real files only: a git-lfs pointer is ~130 bytes */
+const present = (p: string): boolean => existsSync(p) && statSync(p).size > 1024
+const load = (p: string) => {
+  const b = readFileSync(p)
+  return importIfc(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), p.split('/').pop()!)
+}
+
+describe('ifc import', () => {
+  it.skipIf(!present(WALL_FILE))('wall-with-opening-and-window: one wall, one window 1 m wide', async () => {
+    const r = await load(WALL_FILE)
+    expect(r.unitScale).toBe(0.001)
+    expect(r.storeys).toHaveLength(1)
+    const u = r.storeys[0].unit
+    expect(u.walls).toHaveLength(1)
+    const w = u.walls[0]
+    expect(wallFrame(w, u.vertices).lengthM).toBeCloseTo(3, 2)
+    expect(w.thicknessM).toBeCloseTo(0.3, 2)
+    expect(w.openings).toHaveLength(1)
+    expect(w.openings[0].kind).toBe('window')
+    expect(w.openings[0].widthM).toBeCloseTo(1, 2)
+    expect(w.openings[0].heightM).toBeCloseTo(1, 2)
+    expect(w.openings[0].sillM).toBeCloseTo(0.5, 1)
+    expect(r.shell?.triangles).toBeGreaterThan(0)
+  })
+
+  for (const schema of SCHEMAS) {
+    const file = `${CERT}/${schema}/Simple-Scene/Building-Architecture.ifc`
+    it.skipIf(!present(file))(`${schema} Simple-Scene: storeys, walls, rooms, shell`, async () => {
+      const r = await load(file)
+      expect(r.storeys.length).toBeGreaterThanOrEqual(1)
+      const u = r.storeys[0].unit
+      expect(u.walls.length).toBeGreaterThan(0)
+      for (const w of u.walls) {
+        const L = wallFrame(w, u.vertices).lengthM
+        for (const o of w.openings) {
+          expect(o.offsetM).toBeGreaterThanOrEqual(-1e-6)
+          expect(o.offsetM + o.widthM).toBeLessThanOrEqual(L + 1e-6)
+        }
+      }
+      // the scene has four outer walls only (no front / back): its two spaces are named, the rooms cannot close
+      expect(u.walls).toHaveLength(4)
+      expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['entry hall', 'living room'])
+      expect(deriveRooms(u).length).toBeGreaterThanOrEqual(0)
+      expect(validate(u).filter((i) => i.code === 'opening-out-of-bounds')).toHaveLength(0)
+      expect(r.shell).toBeDefined()
+      const { json, binLength } = readGlbJson(r.shell!.glb)
+      expect(binLength).toBeGreaterThan(0)
+      expect((json.accessors as unknown[]).length).toBeGreaterThanOrEqual(3)
+      expect(r.shell!.triangles).toBeGreaterThan(0)
+    })
+  }
+
+  const duplex = `${BENCH}/duplex/arc.ifc`
+  it.skipIf(!present(duplex))('duplex: four storeys, two of them real floors with rooms', async () => {
+    const r = await load(duplex)
+    expect(r.storeys.length).toBeGreaterThanOrEqual(2)
+    const floors = r.storeys.filter((s) => s.unit.walls.length > 20)
+    expect(floors.length).toBeGreaterThanOrEqual(2)
+    for (const s of floors) {
+      const u = s.unit
+      const rooms = deriveRooms(u)
+      console.log(`duplex ${s.name}: walls ${u.walls.length}, openings ${u.walls.reduce((a, w) => a + w.openings.length, 0)}, labels ${u.roomLabels.length}, rooms ${rooms.length}`)
+      expect(rooms.length).toBeGreaterThanOrEqual(5)
+      expect(u.walls.reduce((a, w) => a + w.openings.length, 0)).toBeGreaterThanOrEqual(10)
+    }
+  })
+
+  it('eval table', async () => {
+    const files = [
+      WALL_FILE,
+      ...SCHEMAS.map((s) => `${CERT}/${s}/Simple-Scene/Building-Architecture.ifc`),
+      ...(process.env.IFC_BENCH ?? 'duplex,fzk_house,wbdg_office,smiley_west,4351,ac20,dental_clinic,samuel_macalister_sample_house,city_house_munich')
+        .split(',')
+        .map((n) => `${BENCH}/${n}/arc.ifc`),
+    ].filter(present)
+    const rows: string[] = ['file | schema | storeys | walls | openings | columns | labels | closed rooms | dangling | errors | shell tris | ms']
+    for (const f of files) {
+      const t0 = Date.now()
+      try {
+        const r = await load(f)
+        const ms = Date.now() - t0
+        const sum = (fn: (s: (typeof r.storeys)[0]) => number) => r.storeys.reduce((a, s) => a + fn(s), 0)
+        const issues = r.storeys.flatMap((s) => validate(s.unit))
+        rows.push(
+          [
+            f.replace(`${CERT}/`, '').replace(`${BENCH}/`, '').replace('/Simple-Scene/Building-Architecture.ifc', '').replace('/arc.ifc', ''),
+            r.notes[0].replace('Schema ', '').split(',')[0],
+            r.storeys.length,
+            sum((s) => s.unit.walls.length),
+            sum((s) => s.unit.walls.reduce((a, w) => a + w.openings.length, 0)),
+            sum((s) => s.unit.pillars?.length ?? 0),
+            sum((s) => s.unit.roomLabels.length),
+            sum((s) => deriveRooms(s.unit).length),
+            issues.filter((i) => i.code === 'dangling-vertex').length,
+            issues.filter((i) => i.level === 'error' && i.code !== 'dangling-vertex').length,
+            r.shell?.triangles ?? 0,
+            ms,
+          ].join(' | '),
+        )
+      } catch (e) {
+        rows.push(`${f} | FAILED ${(e as Error).message} | ${Date.now() - t0}`)
+      }
+    }
+    console.log(rows.join('\n'))
+  }, 600_000)
+})
