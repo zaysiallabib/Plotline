@@ -30,6 +30,7 @@ export function roleOf(layer: string, block?: string): Role {
     if (/COL|PILLAR/i.test(block)) return 'column'
   }
   const L = layer.toUpperCase()
+  if (/WALL/.test(L) && /HATCH|PATT|POCHE/.test(L)) return 'wall' // the walls' hatching: its edges are the faces
   if (/HATCH|FURN|FIX|SANIT|ELEC|GRID|AXIS|TITLE|BORDER|SHEET|VIEWPORT|DEFPOINTS|DEFPOINT|PLUMB|LIGHT|STAIR|RAIL/.test(L)) return 'ignore'
   if (/DIM/.test(L)) return 'dim'
   if (/COL|PILLAR|STRUCT-COL|A-COLS/.test(L)) return 'column'
@@ -238,11 +239,50 @@ function mergeCollinear(pieces: Piece[]): WallDraft[] {
   return walls
 }
 
-/** A wall end within the other's half thickness of a crossing wall's centre line comes onto it (an L stops short, a T meets). */
+/**
+ * Two wall ends facing each other across a doorway, on offset centre lines (a thick outer wall meeting a thin partition at
+ * a door: the gap is on no single line, so mergeCollinear saw no opening): a bridge piece between them, as thin as the
+ * thinner, carrying a passage over its whole length (a door block or arc there turns it into a door).
+ */
+function bridgeGaps(walls: WallDraft[]): number {
+  const free = (w: WallDraft, E: Pt) =>
+    !walls.some((v) => v !== w && ([v.a, v.b].some((F) => len(sub(F, E)) <= 0.05) || (Math.abs(dot(sub(E, v.a), v.n)) <= v.thick / 2 + 0.02 && dot(E, v.dir) >= v.t0 - 0.02 && dot(E, v.dir) <= v.t1 + 0.02)))
+  const ends = walls.flatMap((w) => (['a', 'b'] as const).map((end) => ({ w, end, E: w[end], out: end === 'b' ? w.dir : { x: -w.dir.x, y: -w.dir.y } }))).filter((e) => free(e.w, e.E))
+  const used = new Set<(typeof ends)[number]>()
+  let bridges = 0
+  for (const e of ends) {
+    if (used.has(e)) continue
+    let best: { f: (typeof ends)[number]; along: number } | null = null
+    for (const f of ends) {
+      if (f === e || used.has(f) || f.w === e.w || Math.abs(crossZ(e.w.dir, f.w.dir)) > Math.sin(Math.PI / 36)) continue
+      const d = sub(f.E, e.E)
+      const along = dot(d, e.out)
+      const lateral = Math.abs(crossZ(d, e.out))
+      if (along < MIN_GAP || along > MAX_GAP || lateral > 0.2 || dot(f.out, e.out) > -0.9) continue
+      if (!best || along < best.along) best = { f, along }
+    }
+    if (!best) continue
+    const thick = Math.min(e.w.thick, best.f.w.thick)
+    const b: WallDraft = { ...piece(e.E, best.f.E, thick), openings: [] }
+    b.openings.push({ kind: 'passage', t0: b.t0, t1: b.t1 })
+    walls.push(b)
+    used.add(e)
+    used.add(best.f)
+    bridges++
+  }
+  return bridges
+}
+
+/**
+ * A wall end within the other's thickness of a crossing wall's centre line comes onto it (an L stops short, a T meets);
+ * two FREE ends (nothing else there) reach each other's crossing from up to half a metre (faces that stopped at jambs).
+ */
 function meetEnds(walls: WallDraft[]): void {
+  const free = (w: WallDraft, E: Pt) => !walls.some((v) => v !== w && Math.abs(dot(sub(E, v.a), v.n)) <= v.thick / 2 + 0.05 && dot(E, v.dir) >= v.t0 - 0.05 && dot(E, v.dir) <= v.t1 + 0.05)
   for (const w of walls) {
     for (const end of ['a', 'b'] as const) {
       const E = w[end]
+      const loose = free(w, E)
       let best: { P: Pt; d: number } | null = null
       for (const v of walls) {
         if (v === w || Math.abs(crossZ(w.dir, v.dir)) <= PAR) continue
@@ -250,9 +290,13 @@ function meetEnds(walls: WallDraft[]): void {
         const s = crossZ(sub(v.a, E), v.dir) / den // E + w.dir·s = P
         const P = { x: E.x + w.dir.x * s, y: E.y + w.dir.y * s }
         const tv = dot(P, v.dir)
-        if (tv < v.t0 - w.thick / 2 - 0.03 || tv > v.t1 + w.thick / 2 + 0.03) continue
+        // v's end nearest the crossing, and whether it is loose too: then both may reach further
+        const vEnd = tv - v.t0 < v.t1 - tv ? v.a : v.b
+        const both = loose && Math.abs(tv - dot(vEnd, v.dir)) <= 0.5 && free(v, vEnd)
+        const reach = both ? 0.5 : w.thick / 2 + 0.03
+        if (tv < v.t0 - reach || tv > v.t1 + reach) continue
         const towardIn = end === 'a' ? s > 0 : s < 0 // the move shortens w
-        if (Math.abs(s) > Math.max(v.thick, w.thick) + 0.05 || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
+        if (Math.abs(s) > (both ? 0.5 : Math.max(v.thick, w.thick) + 0.05) || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
         if (!best || Math.abs(s) < best.d) best = { P, d: Math.abs(s) }
       }
       if (!best) continue
@@ -358,6 +402,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
       if (Math.abs(dot(sub(w.a, v.a), v.n)) + w.thick / 2 <= v.thick / 2 + 0.01 && dot(w.a, v.dir) >= v.t0 - 0.01 && dot(w.b, v.dir) <= v.t1 + 0.01) inside.add(w)
     }
   const kept = walls.filter((w) => !inside.has(w))
+  const bridges = bridgeGaps(kept)
+  if (bridges) notes.push(`${bridges} doorway(s) between walls of different thickness bridged.`)
 
   // openings: window lines in a gap; door arcs; door / window blocks
   const windowLines = segs.filter((g) => g.role === 'window' || g.role === 'wall' || g.role === 'unknown')

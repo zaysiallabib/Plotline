@@ -5,6 +5,7 @@
  * staff the DXF version, the units found or guessed, each layer and what it was taken as, the counts, what was skipped.
  */
 import DxfParser from 'dxf-parser'
+import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
 import { buildPlan, roleOf, type ArcPrim, type Drawing, type Loop, type Role, type Seg, type TextPrim } from './plan2d'
@@ -51,6 +52,112 @@ interface Flat {
 }
 
 const CHORD_PER_QUARTER = 8
+
+/**
+ * HATCH, which dxf-parser leaves out: its boundary paths (a polyline path, or edges: lines, arcs, ellipses, splines as
+ * their control polygon) as closed loops. A hatched wall's edges are its faces; a solid hatch on a column layer is a column.
+ */
+interface IHatchEntity extends IEntity {
+  type: 'HATCH'
+  paths: Pt[][]
+  pattern: string
+}
+class Hatch {
+  ForEntityName = 'HATCH' as const
+  parseEntity(scanner: { next(): { code: number; value: unknown }; isEOF(): boolean }, curr: { code: number; value: unknown }): IHatchEntity {
+    const groups: { code: number; value: unknown }[] = []
+    const entity = { type: 'HATCH', paths: [], pattern: '', layer: '0' } as unknown as IHatchEntity
+    curr = scanner.next()
+    while (!scanner.isEOF() && curr.code !== 0) {
+      if (curr.code === 8) entity.layer = String(curr.value)
+      else if (curr.code === 2) entity.pattern = String(curr.value)
+      else if (curr.code === 67) entity.inPaperSpace = Number(curr.value) === 1
+      groups.push(curr)
+      curr = scanner.next()
+    }
+    // the boundary data runs from the first 91 group on, in order
+    let i = groups.findIndex((g) => g.code === 91)
+    if (i < 0) return entity
+    const num = (code: number): number => {
+      while (i < groups.length && groups[i].code !== code) i++
+      return i < groups.length ? Number(groups[i++].value) : NaN
+    }
+    const nPaths = num(91)
+    for (let p = 0; p < nPaths && i < groups.length; p++) {
+      const flags = num(92)
+      const pts: Pt[] = []
+      if (flags & 2) {
+        num(72) // has bulge
+        num(73) // closed
+        const n = num(93)
+        const raw: { x: number; y: number; bulge?: number }[] = []
+        for (let k = 0; k < n; k++) {
+          const x = num(10), y = num(20)
+          const v: { x: number; y: number; bulge?: number } = { x, y }
+          if (i < groups.length && groups[i].code === 42) v.bulge = Number(groups[i++].value)
+          raw.push(v)
+        }
+        raw.forEach((v, k) => {
+          const w = raw[(k + 1) % raw.length]
+          pts.push({ x: v.x, y: v.y })
+          if (!v.bulge) return
+          const th = 4 * Math.atan(v.bulge)
+          const chord = Math.hypot(w.x - v.x, w.y - v.y)
+          if (chord < 1e-9) return
+          const r = chord / (2 * Math.sin(Math.abs(th) / 2))
+          const mid = { x: (v.x + w.x) / 2, y: (v.y + w.y) / 2 }
+          const h = r * Math.cos(th / 2) * Math.sign(v.bulge)
+          const perp = { x: -(w.y - v.y) / chord, y: (w.x - v.x) / chord }
+          const c = { x: mid.x - perp.x * h, y: mid.y - perp.y * h }
+          const s0 = Math.atan2(v.y - c.y, v.x - c.x), s1 = Math.atan2(w.y - c.y, w.x - c.x)
+          const ch = arcChords(c, r, th > 0 ? s0 : s1, th > 0 ? s1 : s0).slice(1, -1)
+          pts.push(...(th > 0 ? ch : ch.reverse()))
+        })
+      } else {
+        const n = num(93)
+        for (let k = 0; k < n; k++) {
+          const type = num(72)
+          if (type === 1) pts.push({ x: num(10), y: num(20) }, { x: num(11), y: num(21) })
+          else if (type === 2) {
+            const c = { x: num(10), y: num(20) }, r = num(40), a0 = (num(50) * Math.PI) / 180, a1 = (num(51) * Math.PI) / 180, ccw = num(73)
+            const ch = arcChords(c, r, a0, a1)
+            pts.push(...(ccw ? ch : ch.reverse()))
+          } else if (type === 3) {
+            const c = { x: num(10), y: num(20) }, mx = num(11), my = num(21), ratio = num(40), a0 = (num(50) * Math.PI) / 180, a1 = (num(51) * Math.PI) / 180
+            num(73)
+            const ra = Math.hypot(mx, my), rot = Math.atan2(my, mx)
+            let sweep = a1 - a0
+            while (sweep <= 0) sweep += 2 * Math.PI
+            const m = Math.max(4, Math.ceil((sweep / (Math.PI / 2)) * CHORD_PER_QUARTER))
+            for (let j = 0; j <= m; j++) {
+              const t = a0 + (sweep * j) / m
+              const x = ra * Math.cos(t), y = ra * ratio * Math.sin(t)
+              pts.push({ x: c.x + x * Math.cos(rot) - y * Math.sin(rot), y: c.y + x * Math.sin(rot) + y * Math.cos(rot) })
+            }
+          } else if (type === 4) {
+            num(94)
+            num(73)
+            num(74)
+            const nk = num(95), nc = num(96)
+            for (let j = 0; j < nk; j++) num(40)
+            for (let j = 0; j < nc; j++) {
+              pts.push({ x: num(10), y: num(20) })
+              if (i < groups.length && groups[i].code === 42) i++
+            }
+            const nf = num(97)
+            for (let j = 0; j < nf; j++) (num(11), num(21))
+          } else break
+        }
+      }
+      const nSrc = num(97)
+      for (let k = 0; k < nSrc; k++) num(330)
+      // (consecutive duplicate points dropped)
+      const clean = pts.filter((q, k) => k === 0 || Math.hypot(q.x - pts[k - 1].x, q.y - pts[k - 1].y) > 1e-9)
+      if (clean.length >= 3) entity.paths.push(clean)
+    }
+    return entity
+  }
+}
 
 function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   let sweep = a1 - a0
@@ -169,6 +276,16 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
         if (pts.length >= 3) poly(e, pts, true)
         break
       }
+      case 'HATCH': {
+        const h = e as IHatchEntity
+        const r = roleOf(e.layer ?? '0', block)
+        if (r !== 'wall' && r !== 'column') {
+          skip('hatches off the wall / column layers')
+          break
+        }
+        for (const path of h.paths) poly(e, path, true)
+        break
+      }
       case 'SPLINE': {
         const s = e as ISplineEntity
         const pts = s.fitPoints?.length ? s.fitPoints : (s.controlPoints ?? [])
@@ -254,7 +371,9 @@ function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale
 }
 
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
-  const dxf = new DxfParser().parseSync(text)
+  const parser = new DxfParser()
+  parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
+  const dxf = parser.parseSync(text)
   if (!dxf) throw new Error('This file is not a DXF Plotline can read')
   const notes: string[] = []
   const h = dxf.header ?? {}
