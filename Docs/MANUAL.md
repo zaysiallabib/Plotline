@@ -193,7 +193,7 @@ On a narrow window (under about 1 600 px wide) the top bar takes two lines, so e
 | ⏱ | How long you have been tracing |
 | Undo / Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
 | Auto-trace | Tries to draw the flats for you from the picture. While it shows "Point at a flat": move the pointer over the plan — the flat a click there would take glows (all of it, open floor too), then click inside ONE flat to trace that flat, or press **Whole floor** (in the same box) to trace every flat of the floor and the lobby, stair and lifts between them in one go. It does not understand ground floors, basements or rooftops. |
-| Import | Opens a saved drawing file (Ctrl+O). In a project it goes into the drawing open now. |
+| Import | Opens a saved drawing file (Ctrl+O) — or the architect's own file: see "Bring in the architect's file" below. In a project it goes into the drawing open now. |
 | Export | Saves the drawing as a file (Ctrl+S). After an Auto-trace the file also holds the Check these rows, each with its picture box and its answers (see "Check these") |
 | Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against. The answers the Local AI gave (Ask AI) are in it too, each marked `"by": "ai"` with its model and reason; yours carry no mark |
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
@@ -216,6 +216,22 @@ The panel opens top right, and a gold **north arrow** appears in the middle of t
 **Where the heights come from:** the map's own height when it has one; else its number of floors × 3 m; else **a guess: 3 floors = 9 m** (most buildings in Dhaka have neither on the map — in Banani 396 of 407). A height that does not fit its floor count (60 m on 5 floors) is taken as a typo and the floors are used. **Fetch again** asks the map once more (your deletions and typed heights are lost). **Remove site** takes it all away: the 3D shows the made-up street again.
 
 It is saved with the drawing (and on every drawing of the project open, one site for the building): Preview 3D, the Building view and buyer links show it without asking the map again, also offline. The map and the buildings are © OpenStreetMap contributors; the wind is Open-Meteo's. All free, no account.
+
+### Bring in the architect's file
+
+Instead of a picture to trace, the architect's own file can be dropped on the Studio (or picked with **Import** / **Choose plan image…**). What happens depends on what the file holds:
+
+| File | What it holds | What happens |
+|---|---|---|
+| `.glb`, `.gltf`, `.obj`, `.fbx`, `.dae`, `.stl`, `.3dm` (Rhino) | A 3D model of the building: the **outside shape** only (facade, balconies, roof) — no rooms | The shape is attached to the drawing open now, centred on it. Preview 3D → the Building view shows that shape standing round your flat instead of the plain boxes, and in the walk you see its facade through the windows. |
+| `.ifc` (a BIM model) | The storeys with their walls, doors, windows, rooms and columns — and the outside shape | One storey: it opens as the drawing (like Import). Several: a whole **project** is made in one go — basements, ground floor, floors 1…n and the rooftop (the top storey when it is named Roof / Terrace or holds no room) each with its storey as its drawing, the outside shape saved once for the building; the first floor above ground opens. Every wall and room is yours to change, as a traced plan is. |
+| `.dxf`, `.pdf` (a vector drawing) | One floor's lines and texts | It opens as the drawing: walls, openings and room names read from the file, to check and finish as usual. |
+
+While it reads, the message says so ("Reading Tower.ifc…" — a big file takes a while). Afterwards the panel on the right lists **What was read from the file** in plain words — the file's unit, what was guessed (a `.obj` or `.stl` names no unit or up axis: the size says millimetres or metres, up is taken as Y), what the file lacked — until you click **Dismiss**.
+
+**Outside shape** (in the panel while the drawing has one): its name and triangle count, then **Offset x / y (m)** — slide the shape over the plan until its walls sit on yours; **Turn (deg)** — turn it (clockwise on the plan); **Floor height (m)** — how high this drawing's floor is inside the shape (an imported storey has it from the file; a plain model starts at 0 = the model's lowest point). Each is one step for Ctrl+Z. **Remove outside shape** deletes the model from this browser and from the drawing. In a project every drawing shares the building's shape (each at its own floor height); a drawing with its own keeps it.
+
+The model is kept in this browser only (like the pictures); an exported drawing file names it but does not hold it. The Lite tier skips a shape over 500 000 triangles and says so.
 
 ### The tools (letters on the left; press the letter to pick the tool)
 

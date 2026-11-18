@@ -3,7 +3,7 @@
  * Every coordinate in here is plan METERS. Pixels stay in StudioApp/draw.
  */
 import { FT, TOUCH_M, deriveRooms, formatFeetInches, isOutdoor, nearestWall, newId, parseLength, pillarCorners, roomAt, roomPolygon, validate, vertexById, wallFrame } from '../core'
-import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
+import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, Shell, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { HARD, snapOpeningOffset, snapPoint, type OpeningSnap, type Snap } from './snap'
 import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
@@ -153,6 +153,8 @@ export type Action =
   | { type: 'set-plan-image'; image: PlanImage | null }
   | { type: 'set-scale'; pxPerM: number; originPx?: Pt }
   | { type: 'set-meta'; patch: Partial<Pick<Unit, 'name' | 'projectName' | 'floor' | 'areaSqft' | 'northDeg' | 'site'>> }
+  /** the architect's outside shape (core Shell) as it stands: moved, turned, its floor height; undefined removes it (undoable) */
+  | { type: 'set-shell'; shell: Shell | undefined }
   /** `toggle` (Shift+click): each of `ids` already picked leaves the selection, the others join it */
   | { type: 'select'; ids: Id[]; add?: boolean; toggle?: boolean }
   /** `wall`: this chain's type instead of the W tool's pick (an Issues fix's zone line) */
@@ -1222,6 +1224,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
       })
     case 'set-meta':
       return { ...s, unit: { ...s.unit, ...a.patch } }
+    case 'set-shell':
+      return commit(s, { ...s.unit, shell: a.shell })
     case 'select': {
       if (!a.toggle) return { ...s, selection: a.add ? [...new Set([...s.selection, ...a.ids])] : a.ids }
       const off = new Set(a.ids.filter((id) => s.selection.includes(id)))

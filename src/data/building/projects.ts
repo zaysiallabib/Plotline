@@ -10,7 +10,7 @@
  * Pure: storage is read / written only by the helpers at the bottom.
  */
 import { deriveRooms, mirrorUnit, roomPolygon, unitBounds } from '../../core'
-import type { Id, Pillar, Pt, Unit } from '../../core'
+import type { Id, Pillar, Pt, Shell, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
 
@@ -43,6 +43,13 @@ export interface Project {
    * (a type is drawn before it is put on floors). Absent in older projects: planOf derives it.
    */
   plan?: ProjectPlan
+  /**
+   * The architect's outside shape (session 29, src/import), saved once for the building: projectTower puts it on every
+   * drawing that has none of its own, at that floor's elevation. Absent in older projects.
+   */
+  shell?: Shell
+  /** an imported building's storey floor heights (m above the lowest floor) by slot ('0', '1', '-1', 'R'); absent: every floor FLOOR_M */
+  elevations?: Record<string, number>
 }
 
 export interface ProjectPlan {
@@ -373,6 +380,14 @@ export function projectTower(p: Project): Tower {
   }
   for (const l of levels) FLATS[l.stem] = { unit: p.units[l.unitId], offset: l.offset }
   const LEVELS = Object.fromEntries(levels.map((l) => [l.stem, levelFloor(l, top)]))
+  const ELEVATIONS = elevationsOf(p, top)
+  // the building's outside shape on every drawing without its own, its floor datum at that drawing's floor height
+  // ponytail: one baseY per drawing (its first floor); a drawing on floors 1–5 is placed by the Building view's own floor arithmetic
+  if (p.shell)
+    for (const stem of Object.keys(FLATS)) {
+      const k = LEVELS[stem] ?? FLOORS.find((f) => f.flats.includes(stem))?.floor ?? 1
+      if (!FLATS[stem].unit.shell) FLATS[stem] = { ...FLATS[stem], unit: { ...FLATS[stem].unit, shell: { ...p.shell, baseY: ELEVATIONS?.[k] ?? k * FLOOR_M } } }
+    }
   const ground = levels.find((l) => l.kind === 'ground')
   // the ground: his traced ground floor; else the lowest flats' columns carry the tower and a flat with no column drawn
   // stands in with its shell (never a floating flat)
@@ -397,7 +412,15 @@ export function projectTower(p: Project): Tower {
   if (!bs.length) bs.push([-4, -4, 4, 4])
   const [x0, y0, x1, y1] = [Math.min(...bs.map((b) => b[0])) - 2, Math.min(...bs.map((b) => b[1])) - 2, Math.max(...bs.map((b) => b[2])) + 2, Math.max(...bs.map((b) => b[3])) + 2]
   const plot: Pt[] = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
-  return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS }
+  return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}) }
+}
+
+/** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */
+function elevationsOf(p: Project, top: number): Record<number, number> | undefined {
+  if (!p.elevations) return undefined
+  const out: Record<number, number> = {}
+  for (const [slot, m] of Object.entries(p.elevations)) out[slot === 'R' ? top + 1 : Number(slot)] = m
+  return out
 }
 
 /** A stored project list, shape-checked (a corrupt store reads as none). */
