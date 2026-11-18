@@ -79,7 +79,10 @@ export async function importMesh(bytes: ArrayBuffer, name: string): Promise<Impo
     case 'gltf': {
       if (e === 'glb' ? !isGlb(bytes) : !isGltfJson(text())) throw new Error(`${name} is not a glTF 2.0 file`)
       const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
-      const gltf = await new GLTFLoader().parseAsync(e === 'glb' ? bytes : text(), '')
+      const gltf = await new GLTFLoader().parseAsync(e === 'glb' ? bytes : text(), '').catch((err: unknown) => {
+        const m = err instanceof Error ? err.message : String(err)
+        throw new Error(/DRACO/i.test(m) ? `${name} is Draco-compressed: export it from the modelling tool without compression` : m)
+      })
       object = gltf.scene
       scale = 1
       notes.push('glTF: metres, Y up (as the format says)')
@@ -130,6 +133,18 @@ export async function importMesh(bytes: ArrayBuffer, name: string): Promise<Impo
       throw new Error(`Plotline cannot read .${e} files`)
   }
   if (zUp) object.rotateX(-Math.PI / 2), notes.push('Z up turned to Y up')
+  // a picture the file only points to (an .fbx / .obj beside its texture folder) never came: the exporter must not wait for it
+  let lost = 0
+  object.traverse((o) => {
+    const m = o as InstanceType<typeof THREE.Mesh>
+    if (!m.isMesh) return
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+      const slots = mat as unknown as Record<string, { image?: unknown } | null>
+      for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'bumpMap', 'specularMap', 'lightMap'])
+        if (slots[k] && !slots[k]!.image) (slots[k] = null), (mat.needsUpdate = true), lost++
+    }
+  })
+  if (lost) notes.push(`${lost} texture${lost === 1 ? '' : 's'} the file points to elsewhere were left out (a .glb with them inside keeps them)`)
   object.updateMatrixWorld(true)
   const raw = new THREE.Box3().setFromObject(object)
   if (raw.isEmpty()) throw new Error(`${name} holds no geometry`)
@@ -145,6 +160,7 @@ export async function importMesh(bytes: ArrayBuffer, name: string): Promise<Impo
     if (m.isMesh) triangles += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3
   })
   triangles = Math.round(triangles)
+  if (!triangles) throw new Error(`${name} holds no surfaces (lines or curves only)`)
   const f = framing(rawBox, scale)
   const bounds: Box = {
     min: [rawBox.min[0] * scale + f.dx, 0, rawBox.min[2] * scale + f.dz],
