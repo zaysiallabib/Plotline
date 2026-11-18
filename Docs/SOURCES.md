@@ -90,6 +90,9 @@ All open source and free. Versions from `package.json` (installed copies checked
 | Library | Version | Licence | Used for | In the live site? |
 |---|---|---|---|---|
 | **three.js** | 0.186.1 | MIT | The whole 3D view: drawing, light and shadows, loading models, walking and dollhouse controls, VR (WebXR) | yes |
+| **web-ifc** | 0.0.79 | MPL-2.0 (That Open Company) | Reading an IFC building file in the browser (Studio → Import, `src/import/ifc.ts`): walls, doors, windows, rooms, storeys, columns and the exact outside shape. Its engine (`web-ifc.wasm`, 1.7 MB) and code (3.5 MB) are loaded only when an .ifc is dropped | yes (Studio only, on demand) |
+| **dxf-parser** | 1.1.2 | MIT | Reading a DXF drawing (Studio → Import, `src/import/dxf.ts`): lines, arcs, blocks, texts, dimensions on their layers | yes (Studio only, on demand) |
+| **pdfjs-dist** (pdf.js, Mozilla) | 6.5.438 | Apache-2.0 | Reading a vector drawing PDF (Studio → Import, `src/import/pdf.ts`): the drawing's own lines and texts, page 1. Its worker (1.3 MB) loads only when a .pdf is dropped | yes (Studio only, on demand) |
 | **rhino3dm** | 8.35.0 | MIT | Reading a Rhino .3dm model of the building (Studio → Import, src/import/mesh.ts). Its `rhino3dm.js` + `rhino3dm.wasm` are COPIED from the package into `public/rhino3dm/` (three's 3DMLoader fetches both by name from one folder; a Vite `?url` import would rename them) — copy again after a version bump | yes (Studio only, loaded when a .3dm is dropped) |
 | **React** + **react-dom** | 19.3.0 | MIT | The screens and buttons | yes |
 | **tesseract.js** | 7.0.0 | Apache-2.0 | Reading the plan (§5) | yes (Studio only, loaded when Auto-trace starts) |
