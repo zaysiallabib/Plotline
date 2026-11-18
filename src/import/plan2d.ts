@@ -101,7 +101,7 @@ export interface Plan2dResult {
   notes: string[]
 }
 
-const WALL_MIN = 0.05
+const WALL_MIN = 0.04
 const WALL_MAX = 0.6
 const SNAP_THICK = 0.02
 const MIN_GAP = 0.3
@@ -122,7 +122,6 @@ interface Piece {
 
 interface WallDraft extends Piece {
   openings: { kind: OpeningKind; t0: number; t1: number; hinge?: 'a' | 'b'; swing?: 'in' | 'out' }[]
-  single?: boolean
 }
 
 const sub = (p: Pt, q: Pt): Pt => ({ x: p.x - q.x, y: p.y - q.y })
@@ -252,7 +251,7 @@ function meetEnds(walls: WallDraft[]): void {
         const tv = dot(P, v.dir)
         if (tv < v.t0 - w.thick / 2 - 0.03 || tv > v.t1 + w.thick / 2 + 0.03) continue
         const towardIn = end === 'a' ? s > 0 : s < 0 // the move shortens w
-        if (Math.abs(s) > v.thick / 2 + 0.03 || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
+        if (Math.abs(s) > Math.max(v.thick, w.thick) + 0.05 || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
         if (!best || Math.abs(s) < best.d) best = { P, d: Math.abs(s) }
       }
       if (!best) continue
@@ -315,26 +314,30 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const inColumn = (p: Pt) => columnBoxes.some((b) => p.x >= b.x0 - 0.01 && p.x <= b.x1 + 0.01 && p.y >= b.y0 - 0.01 && p.y <= b.y1 + 0.01)
 
   const segs = d.segs.map((g) => ({ a: P(g.a), b: P(g.b), role: role(g), layer: g.layer, block: g.block, inst: g.inst }))
-  const wallLines = segs.filter((g) => (g.role === 'wall' || g.role === 'unknown') && !(inColumn(g.a) && inColumn(g.b)))
+  // (a line on a text / room layer is geometry too: a plan drawn as room polygons)
+  const wallLines = segs.filter((g) => (g.role === 'wall' || g.role === 'unknown' || g.role === 'text') && !(inColumn(g.a) && inColumn(g.b)))
   const explicit = wallLines.filter((g) => g.role === 'wall')
   const pieces = pairWalls(explicit.length ? explicit : wallLines)
   if (!explicit.length) notes.push('No wall layer found: walls were taken from any parallel line pair 5–60 cm apart.')
-  const walls = mergeCollinear(pieces)
+  let walls = mergeCollinear(pieces)
 
-  // single long wall-layer lines no pair covered: a wall of PARTITION_M, noted
+  // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
+  // line itself, merged with the paired pieces so fragments of one edge become one wall
   let singles = 0
+  const singlePieces: Piece[] = []
   for (const g of explicit) {
     const L = len(sub(g.b, g.a))
-    if (L < 0.5) continue
+    if (L < 0.4) continue // (a shorter one is a jamb / end cap)
     const { dir, n } = folded(g.a, g.b)
     const t = [dot(g.a, dir), dot(g.b, dir)].sort((p, q) => p - q)
     const covered = walls
       .filter((w) => Math.abs(crossZ(w.dir, dir)) <= PAR && Math.abs(dot(sub(g.a, w.a), n)) <= w.thick / 2 + 0.03)
       .reduce((acc, w) => acc + Math.max(0, Math.min(t[1], w.t1) - Math.max(t[0], w.t0)), 0)
     if (covered > 0.3 * L) continue
-    walls.push({ ...piece(g.a, g.b, PARTITION_M), openings: [], single: true })
+    singlePieces.push(piece(g.a, g.b, PARTITION_M))
     singles++
   }
+  if (singles) walls = mergeCollinear([...pieces, ...singlePieces])
   if (singles) notes.push(`${singles} wall-layer line(s) had no parallel partner: taken as ${(PARTITION_M / FT) * 12}" walls on the line itself.`)
 
   // a thin wall lying inside a thicker wall's band is that wall's own detail (window lines, a plaster line)
@@ -401,12 +404,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   meetEnds(kept)
 
   // → the Unit
-  const all = kept.flatMap((w) => [w.a, w.b])
-  if (!all.length) {
-    notes.push('No walls found: no parallel line pairs 5–60 cm apart.')
-  }
-  const ox = all.length ? Math.min(...all.map((p) => p.x)) : 0
-  const oy = all.length ? Math.min(...all.map((p) => p.y)) : 0
+  if (!kept.length) notes.push('No walls found: no parallel line pairs 5–60 cm apart.')
+  let ox = Infinity, oy = Infinity
+  for (const w of kept) (ox = Math.min(ox, w.a.x, w.b.x)), (oy = Math.min(oy, w.a.y, w.b.y))
+  if (!kept.length) ox = oy = 0
   const shift = (p: Pt): Pt => ({ x: Math.round((p.x - ox) * 1e4) / 1e4, y: Math.round((p.y - oy) * 1e4) / 1e4 })
   const unit0: Unit = { ...emptyUnit(), name, pillars: pillars.map((p) => ({ ...p, ...shift(p) })) }
   for (const w of kept) {

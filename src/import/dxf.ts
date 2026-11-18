@@ -8,6 +8,7 @@ import DxfParser from 'dxf-parser'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
 import { buildPlan, roleOf, type ArcPrim, type Drawing, type Loop, type Role, type Seg, type TextPrim } from './plan2d'
+import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
 /** $INSUNITS → metres per unit (0 = unitless: guessed from the extent) */
@@ -35,6 +36,7 @@ export function stripMtext(s: string): string {
     .replace(/%%[dD]/g, '°')
     .replace(/%%[pP]/g, '±')
     .replace(/%%[cC]/g, 'Ø')
+    .replace(/%%[uUoO]/g, '')
     .replace(/%%%/g, '%')
     .replace(/[{}]/g, '')
 }
@@ -176,7 +178,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'TEXT': {
         const t = e as ITextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: t.text.replace(/%%[dD]/g, '°').replace(/%%[pP]/g, '±'), height: (t.textHeight ?? 1) * rscale })
+        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.textHeight ?? 1) * rscale })
         break
       }
       case 'MTEXT': {
@@ -225,13 +227,30 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/** a plan's extent in file units → the unit it is probably drawn in (0.001 mm, 0.3048 ft, 1 m) */
-function guessScale(extent: number): { scale: number; words: string } {
-  if (extent >= 5000 && extent <= 150000) return { scale: 0.001, words: 'millimetres (guessed from the extent)' }
-  if (extent >= 500 && extent < 5000) return { scale: 0.0254, words: 'inches (guessed from the extent)' }
-  if (extent >= 150 && extent < 500) return { scale: 0.3048, words: 'feet (guessed from the extent)' }
-  if (extent >= 5 && extent < 150) return { scale: 1, words: 'metres (guessed from the extent)' }
-  return { scale: 1, words: 'unknown — taken as metres; set the scale in the Studio (S)' }
+/**
+ * A unitless file's unit, guessed: of millimetres / centimetres / inches / feet / metres, the ones that make the plan
+ * 3–200 m across; among those, when the file prints room sizes ("12'0'' x 7'11''"), the one where the rooms' summed
+ * area is the most plausible share (~ half) of the plan's box — else the usual one for that extent.
+ */
+function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale: number; words: string } {
+  const C: [number, string][] = [
+    [0.001, 'millimetres'],
+    [0.01, 'centimetres'],
+    [0.0254, 'inches'],
+    [0.3048, 'feet'],
+    [1, 'metres'],
+  ]
+  const extent = Math.max(box.w, box.h)
+  const fits = C.filter(([k]) => extent * k >= 3 && extent * k <= 200)
+  if (!fits.length) return { scale: 1, words: 'unknown — taken as metres; set the scale in the Studio (S)' }
+  if (sizeAreaSqm > 0 && fits.length > 1) {
+    const best = fits.map(([k, w]) => ({ k, w, off: Math.abs(Math.log((sizeAreaSqm / (box.w * k * box.h * k)) / 0.5)) })).sort((p, q) => p.off - q.off)[0]
+    return { scale: best.k, words: `${best.w} (guessed: the printed room sizes fit the plan's size)` }
+  }
+  // without sizes: the usual unit for that extent (mm for thousands, inches for hundreds, feet for 15–150, metres under)
+  const usual = extent >= 5000 ? 0.001 : extent >= 500 ? 0.0254 : extent >= 150 ? 0.3048 : extent >= 15 ? 0.3048 : 1
+  const pick = fits.find(([k]) => k === usual) ?? fits[0]
+  return { scale: pick[0], words: `${pick[1]} (guessed from the extent)` }
 }
 
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
@@ -255,22 +274,29 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   const ins = Number(h['$INSUNITS'] ?? 0)
   const wallish = flat.segs.filter((g) => roleOf(g.layer, g.block) === 'wall')
   const ext = (gs: Seg[]) => {
-    if (!gs.length) return 0
-    const xs = gs.flatMap((g) => [g.a.x, g.b.x]), ys = gs.flatMap((g) => [g.a.y, g.b.y])
-    return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+    if (!gs.length) return { w: 0, h: 0 }
+    const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
+    for (const g of gs)
+      for (const p of [g.a, g.b]) (b.x0 = Math.min(b.x0, p.x)), (b.y0 = Math.min(b.y0, p.y)), (b.x1 = Math.max(b.x1, p.x)), (b.y1 = Math.max(b.y1, p.y))
+    return { w: b.x1 - b.x0, h: b.y1 - b.y0 }
   }
-  const extent = ext(wallish.length ? wallish : flat.segs)
+  const box = ext(wallish.length ? wallish : flat.segs)
+  const extent = Math.max(box.w, box.h)
+  const sizeArea = flat.texts.reduce((acc, t) => {
+    const d = parseDims(stripMtext(t.text))
+    return acc + (d ? d.aM * d.bM : 0)
+  }, 0)
   let scale: number
   if (INSUNITS[ins]) {
     scale = INSUNITS[ins][0]
     const m = extent * scale
     if (extent && (m < 3 || m > 500)) {
-      const g = guessScale(extent)
+      const g = guessScale(box, sizeArea)
       notes.push(`Units: the file says ${INSUNITS[ins][1]} but the plan would be ${m.toFixed(1)} m across — ${g.words} instead.`)
       scale = g.scale
     } else notes.push(`Units: ${INSUNITS[ins][1]} ($INSUNITS ${ins}); the plan is ${m.toFixed(1)} m across.`)
   } else {
-    const g = guessScale(extent)
+    const g = guessScale(box, sizeArea)
     scale = g.scale
     notes.push(`Units: ${ins ? `$INSUNITS ${ins} is not a length Plotline knows — ` : 'none in the file — '}${g.words}; the plan is ${(extent * scale).toFixed(1)} m across.`)
   }

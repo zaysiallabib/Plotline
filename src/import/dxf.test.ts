@@ -73,11 +73,12 @@ describe('dxf fixtures', () => {
   })
 })
 
-const SAMPLES = 'E:/dev/ALTERNATIVE FORMAT TEST/samples/dxf'
+const SAMPLES = 'E:/dev/ALTERNATIVE FORMAT TEST/samples'
+const FOLDERS = ['dxf', 'dwg/converted']
 const TABLE = 'E:/tmp/win/claude/9e3172d7f121e575/ff4d7c29-aad6-4e91-a50d-b60af8e47464/scratchpad/dxf-eval.md'
 
 describe.skipIf(!existsSync(SAMPLES))('real DXF samples', () => {
-  const files = existsSync(SAMPLES) ? readdirSync(SAMPLES).filter((f) => /\.dxf$/i.test(f)) : []
+  const files = FOLDERS.flatMap((d) => (existsSync(`${SAMPLES}/${d}`) ? readdirSync(`${SAMPLES}/${d}`).filter((f) => /.dxf$/i.test(f)).map((f) => `${d}/${f}`) : []))
   const rows: string[] = []
   test.each(files)('%s parses', async (f) => {
     const t0 = performance.now()
@@ -89,7 +90,7 @@ describe.skipIf(!existsSync(SAMPLES))('real DXF samples', () => {
     const version = /DXF version ([^.(]+)/.exec(r.notes[0])?.[1]?.trim() ?? '?'
     const units = /Units: ([^;(]+)/.exec(r.notes[1])?.[1]?.trim() ?? '?'
     const lines = /(\d+) lines read/.exec(r.notes.join('\n'))?.[1] ?? '?'
-    rows.push(`| ${f} | ${version} | ${units} | ${lines} | ${u.walls.length} | ${u.walls.reduce((a, w) => a + w.openings.length, 0)} | ${u.pillars?.length ?? 0} | ${u.roomLabels.length} | ${closed} | ${errors} | ${ms} ms |`)
+    rows.push(`| ${f.split('/').pop()} | ${version} | ${units} | ${lines} | ${u.walls.length} | ${u.walls.reduce((a, w) => a + w.openings.length, 0)} | ${u.pillars?.length ?? 0} | ${u.roomLabels.length} | ${closed} | ${errors} | ${ms} ms |`)
     expect(u).toBeDefined()
   }, 120_000)
   test('table', () => {
