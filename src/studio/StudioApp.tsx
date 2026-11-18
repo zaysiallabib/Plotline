@@ -45,7 +45,7 @@ import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
-import { IMPORT_ACCEPT, importFile, importFormatOf, type ImportResult, type ImportedStorey } from '../import'
+import { IMPORT_ACCEPT, importFile, importFormatOf, lockedFormatOf, type ImportResult, type ImportedStorey } from '../import'
 import { newProject, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -872,7 +872,9 @@ export default function StudioApp() {
     (files: FileList | null) => {
       const f = files?.[0]
       if (!f) return
-      if (importFormatOf(f.name)) void importArchitect(f)
+      const locked = lockedFormatOf(f.name)
+      if (locked) toast(locked)
+      else if (importFormatOf(f.name)) void importArchitect(f)
       else if (f.name.endsWith('.json') || f.type === 'application/json') void importJson(f)
       else loadImage(f)
     },
