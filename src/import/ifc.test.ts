@@ -82,6 +82,12 @@ describe('ifc import', () => {
       expect(binLength).toBeGreaterThan(0)
       expect((json.accessors as unknown[]).length).toBeGreaterThanOrEqual(3)
       expect(r.shell!.triangles).toBeGreaterThan(0)
+      // every accessor's bytes match its buffer view; the BIN chunk is the one buffer
+      const views = json.bufferViews as { byteLength: number }[]
+      for (const a of json.accessors as { bufferView: number; count: number; type: string; componentType: number }[])
+        expect(views[a.bufferView].byteLength).toBe(a.count * (a.type === 'VEC3' ? 3 : 1) * 4)
+      expect((json.buffers as { byteLength: number }[])[0].byteLength).toBe(binLength)
+      expect(r.shell!.bounds.max[1]).toBeGreaterThan(r.shell!.bounds.min[1])
     })
   }
 
