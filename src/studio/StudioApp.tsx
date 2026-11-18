@@ -810,6 +810,10 @@ export default function StudioApp() {
     } catch (e) {
       return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
+    await takeImport(r, file.name)
+  }
+  /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
+  const takeImport = async (r: ImportResult, fileName: string) => {
     let shell: Shell | undefined
     if (r.shell) {
       const id = newId()
@@ -823,7 +827,7 @@ export default function StudioApp() {
     const at = (u: Unit, elevationM: number): Unit => (shell ? { ...u, shell: { ...shell, baseY: elevationM } } : u)
     setNote(null)
     if (!r.storeys.length) {
-      if (!shell) return toast(`Nothing to use in ${file.name}`)
+      if (!shell) return toast(`Nothing to use in ${fileName}`)
       const u = stateRef.current.unit
       const b = u.vertices.length ? unitBounds(u) : null
       dispatch({ type: 'set-shell', shell: { ...shell, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
@@ -845,7 +849,7 @@ export default function StudioApp() {
     const last = above[above.length - 1]
     const roof = above.length > 1 && (/roof|terrace/i.test(last.name) || !deriveRooms(last.unit).length) ? last : null
     const floors = above.filter((s) => s !== roof)
-    const name = file.name.replace(/\.[^.]+$/, '')
+    const name = fileName.replace(/\.[^.]+$/, '')
     let p = newProject(newId(), name, { basements: bases.length, floors: floors.length - 1, rooftop: !!roof })
     const elevations: Record<string, number> = {}
     const place = (slot: Slot, s: ImportedStorey) => {
@@ -874,6 +878,7 @@ export default function StudioApp() {
     },
     [importJson, loadImage], // eslint-disable-line react-hooks/exhaustive-deps
   )
+  if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
 
   const exportJson = useCallback(() => {
     const st = stateRef.current
