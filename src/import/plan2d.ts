@@ -203,7 +203,7 @@ function pairWalls(lines: { a: Pt; b: Pt }[]): Piece[] {
 }
 
 /** Collinear pieces (same line within 2 cm) merged: overlaps and gaps < MIN_GAP become one, gaps of MIN_GAP–MAX_GAP an opening. */
-function mergeCollinear(pieces: Piece[]): WallDraft[] {
+function mergeCollinear(pieces: Piece[], maxGap = MAX_GAP): WallDraft[] {
   const groups: Piece[][] = []
   const sorted = [...pieces].sort((p, q) => Math.atan2(p.dir.y, p.dir.x) - Math.atan2(q.dir.y, q.dir.x) || p.c - q.c)
   for (const p of sorted) {
@@ -218,7 +218,7 @@ function mergeCollinear(pieces: Piece[]): WallDraft[] {
     let cur: WallDraft | null = null
     const at = (t: number): Pt => ({ x: ref.a.x + ref.dir.x * (t - dot(ref.a, ref.dir)), y: ref.a.y + ref.dir.y * (t - dot(ref.a, ref.dir)) })
     for (const r of runs) {
-      if (cur && r.t0 <= cur.t1 + MAX_GAP) {
+      if (cur && r.t0 <= cur.t1 + maxGap) {
         const gap = r.t0 - cur.t1
         if (gap >= MIN_GAP) cur.openings.push({ kind: 'passage', t0: cur.t1, t1: r.t0 })
         if (r.t1 - r.t0 > cur.t1 - cur.t0 && Math.abs(r.thick - cur.thick) > SNAP_THICK && gap < MIN_GAP && r.t0 > cur.t0 + 0.05) {
@@ -332,6 +332,116 @@ function putOpening(w: WallDraft, o: WallDraft['openings'][number]): boolean {
   return true
 }
 
+
+const ROOM_GAP = 0.35
+const DOOR_JOG = 1.5
+
+interface RoomMode {
+  pieces: Piece[]
+  doors: { a: Pt; b: Pt }[]
+  rooms: number
+}
+
+/**
+ * A plan drawn as ROOM OUTLINES (a scan product: one closed polygon per room on the wall layer, 5–35 cm apart, the
+ * polygon stepping toward its neighbour at each door): each loop is a room face. A door-sized step out and back in an
+ * outline is a doorway and is flattened; then every edge is moved onto its wall line — the centre line between it and
+ * the facing edge of another loop within ROOM_GAP (one wall, as thick as the gap, min PARTITION_M), else the edge itself
+ * (EXTERIOR_M when nothing runs parallel within 0.5 m, else PARTITION_M) — and the loop's corners are re-cut where the
+ * lines cross, so each loop is a closed ring of walls and two loops' shared wall is one wall. Null when under 60 % of
+ * the wall-layer length is in room-sized closed loops.
+ * ponytail: O(edges²) over all loops; bucket by direction if a 500-room floor ever shows up.
+ */
+function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
+  const area = (pts: Pt[]) => Math.abs(pts.reduce((acc, p, i) => acc + crossZ(p, pts[(i + 1) % pts.length]), 0)) / 2
+  const perim = (pts: Pt[]) => pts.reduce((acc, p, i) => acc + len(sub(pts[(i + 1) % pts.length], p)), 0)
+  const rooms = loops.filter((pts) => {
+    const A = area(pts), Pm = perim(pts)
+    return A >= 0.5 && A <= 200 && A / (Pm * Pm) >= 0.02
+  })
+  if (!rooms.length || rooms.reduce((acc, pts) => acc + perim(pts), 0) < 0.6 * wallLength) return null
+  const doors: { a: Pt; b: Pt }[] = []
+  const parallel = (p: Pt, q: Pt, r: Pt, s: Pt) => Math.abs(crossZ(folded(p, q).dir, folded(r, s).dir)) <= PAR
+  // the outlines cleaned: points under 1 cm apart and corners on a straight run dropped, door jogs flattened
+  const rings = rooms.map((raw) => {
+    let v = raw.filter((p, i) => i === 0 || len(sub(p, raw[i - 1])) > 0.01)
+    if (len(sub(v[v.length - 1], v[0])) <= 0.01) v = v.slice(0, -1)
+    const straighten = () => {
+      v = v.filter((p, i) => !parallel(v[(i + v.length - 1) % v.length], p, p, v[(i + 1) % v.length]))
+    }
+    straighten()
+    for (let i = 0; i < v.length && v.length >= 6; i++) {
+      const at = (k: number) => v[(i + k) % v.length]
+      const L = (k: number) => len(sub(at(k + 1), at(k)))
+      // edges i (step), i+1 (the doorway), i+2 (step back), with i-1 and i+3 on the same line
+      if (L(0) > ROOM_GAP || L(2) > ROOM_GAP || L(1) < MIN_GAP || L(1) > DOOR_JOG) continue
+      if (!parallel(at(-1), at(0), at(1), at(2)) || !parallel(at(1), at(2), at(3), at(4))) continue
+      if (dot(sub(at(1), at(0)), sub(at(3), at(2))) > 0) continue
+      doors.push({ a: at(1), b: at(2) })
+      const drop = new Set([(i + 1) % v.length, (i + 2) % v.length])
+      v = v.filter((_, k) => !drop.has(k))
+      straighten()
+      i = -1
+    }
+    return v
+  })
+  interface Edge {
+    loop: number
+    a: Pt
+    b: Pt
+    dir: Pt
+    n: Pt
+    c: number
+    t0: number
+    t1: number
+  }
+  const edges: Edge[][] = rings.map((v, loop) =>
+    v.map((a, i) => {
+      const b = v[(i + 1) % v.length]
+      const { dir, n } = folded(a, b)
+      const ta = dot(a, dir), tb = dot(b, dir)
+      return { loop, a, b, dir, n, c: dot(a, n), t0: Math.min(ta, tb), t1: Math.max(ta, tb) }
+    }),
+  )
+  const all = edges.flat()
+  const overlap = (e: Edge, f: Edge) => Math.min(e.t1, Math.max(dot(f.a, e.dir), dot(f.b, e.dir))) - Math.max(e.t0, Math.min(dot(f.a, e.dir), dot(f.b, e.dir)))
+  // each edge's wall line (c along its normal) and thickness
+  const lines = edges.map((es) =>
+    es.map((e) => {
+      let best: { f: Edge; gap: number; o: number } | null = null
+      let near = false
+      for (const f of all) {
+        if (f.loop === e.loop || Math.abs(crossZ(e.dir, f.dir)) > PAR) continue
+        const gap = Math.abs(dot(sub(f.a, e.a), e.n))
+        const o = overlap(e, f)
+        if (o < 0.05 || gap > 0.5) continue
+        near = true
+        if (gap <= ROOM_GAP && (!best || o > best.o)) best = { f, gap, o }
+      }
+      if (!best) return { c: e.c, thick: near ? PARTITION_M : EXTERIOR_M }
+      return { c: (e.c + dot(best.f.a, e.n)) / 2, thick: snapThick(Math.max(best.gap, PARTITION_M)) }
+    }),
+  )
+  // the ring re-cut: each corner where its two edges' wall lines cross
+  const pieces: Piece[] = []
+  edges.forEach((es, loop) => {
+    const corner = (k: number): Pt => {
+      const e = es[(k + es.length - 1) % es.length], f = es[k]
+      const le = lines[loop][(k + es.length - 1) % es.length], lf = lines[loop][k]
+      const den = crossZ(e.dir, f.dir)
+      if (Math.abs(den) < 0.02) return { x: f.n.x * lf.c + f.dir.x * dot(f.a, f.dir), y: f.n.y * lf.c + f.dir.y * dot(f.a, f.dir) }
+      // p · e.n = le.c, p · f.n = lf.c
+      const d = e.n.x * f.n.y - e.n.y * f.n.x
+      return { x: (le.c * f.n.y - lf.c * e.n.y) / d, y: (e.n.x * lf.c - f.n.x * le.c) / d }
+    }
+    es.forEach((_, k) => {
+      const A = corner(k), B = corner((k + 1) % es.length)
+      if (len(sub(B, A)) >= 0.02) pieces.push(piece(A, B, lines[loop][k].thick))
+    })
+  })
+  return { pieces, doors, rooms: rooms.length }
+}
+
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
 
 export function buildPlan(d: Drawing, name: string): Plan2dResult {
@@ -363,8 +473,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   // (a line on a text / room layer is geometry too: a plan drawn as room polygons)
   const wallLines = segs.filter((g) => (g.role === 'wall' || g.role === 'unknown' || g.role === 'text') && !(inColumn(g.a) && inColumn(g.b)))
   const explicit = wallLines.filter((g) => g.role === 'wall')
-  let pieces = pairWalls(explicit.length ? explicit : wallLines)
-  if (!explicit.length) {
+  const wallLoops = d.loops.filter((l) => (explicit.length ? role(l) === 'wall' : ['wall', 'unknown', 'text'].includes(role(l))))
+  const roomMode = roomPolygons(
+    wallLoops.map((l) => l.pts.map(P)),
+    (explicit.length ? explicit : wallLines).reduce((acc, g) => acc + len(sub(g.b, g.a)), 0),
+  )
+  let pieces = roomMode ? roomMode.pieces : pairWalls(explicit.length ? explicit : wallLines)
+  if (roomMode) notes.push(`Read as room outlines (${roomMode.rooms} rooms): one wall between neighbouring outlines, the outer edges as exterior walls.`)
+  if (!explicit.length && !roomMode) {
     // no layer says which pairs are walls (a PDF, a one-layer DXF): keep the plan's main thicknesses — the ones whose
     // total length is at least a tenth of the longest-running one, and the two standard ones; furniture, stairs and hatching pair at odd gaps
     const total = new Map<number, number>()
@@ -374,13 +490,13 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     pieces = pieces.filter((p) => main.has(p.thick))
     notes.push(`No wall layer found: walls were taken from parallel line pairs 5–60 cm apart of the plan's main thicknesses (${[...main].sort((p, q) => q - p).map((t) => `${Math.round(t * 1000)} mm`).join(', ') || 'none'}).`)
   }
-  let walls = mergeCollinear(pieces)
+  let walls = mergeCollinear(pieces, roomMode ? MIN_GAP : MAX_GAP)
 
   // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
   // line itself, merged with the paired pieces so fragments of one edge become one wall
   let singles = 0
   const singlePieces: Piece[] = []
-  for (const g of explicit) {
+  for (const g of roomMode ? [] : explicit) {
     const L = len(sub(g.b, g.a))
     if (L < 0.4) continue // (a shorter one is a jamb / end cap)
     const { dir, n } = folded(g.a, g.b)
@@ -406,6 +522,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const bridges = bridgeGaps(kept)
   if (bridges) notes.push(`${bridges} doorway(s) between walls of different thickness bridged.`)
   meetEnds(kept)
+  let jogDoors = 0
+  for (const j of roomMode?.doors ?? []) {
+    const w = wallAt(kept, { x: (j.a.x + j.b.x) / 2, y: (j.a.y + j.b.y) / 2 }, 0.1)
+    if (!w) continue
+    const t = [dot(j.a, w.dir), dot(j.b, w.dir)].sort((p, q) => p - q)
+    if (putOpening(w, { kind: 'door', t0: t[0], t1: t[1], hinge: 'a', swing: 'in' })) jogDoors++
+  }
+  if (jogDoors) notes.push(`${jogDoors} doorway(s) where a room outline steps toward its neighbour.`)
 
   // openings: window lines in a gap; door arcs; door / window blocks
   const windowLines = segs.filter((g) => g.role === 'window' || g.role === 'wall' || g.role === 'unknown')
