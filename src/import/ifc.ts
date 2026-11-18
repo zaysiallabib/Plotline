@@ -631,6 +631,30 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return b ? [{ ...b, top: Math.min(b.top, body?.maxY ?? b.bottom + WALL_HEIGHT_M) }] : []
   }
 
+  /** one wall's centre line with what hangs on it, before the storeys split it: segment, along-range, height range above the datum */
+  interface Chain {
+    pts: Pt[]
+    thickness: number
+    on: { s: Storey; bottom: number; top: number }[]
+    name: string
+    holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number }[]
+  }
+  const chainsOut: Chain[] = []
+  const segLen = (pts: Pt[], i: number) => Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+  /** the chain's segment nearest a plan point: its index, length, unit direction and the point's distance from it */
+  const nearestSeg = (pts: Pt[], cx: number, cy: number): { seg: number; L: number; d: Pt; dist: number } | null => {
+    let best: { seg: number; L: number; d: Pt; dist: number } | null = null
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const L = segLen(pts, i)
+      if (L < 1e-6) continue
+      const d = { x: (pts[i + 1].x - pts[i].x) / L, y: (pts[i + 1].y - pts[i].y) / L }
+      const u = Math.max(0, Math.min(L, (cx - pts[i].x) * d.x + (cy - pts[i].y) * d.y))
+      const dist = Math.hypot(pts[i].x + d.x * u - cx, pts[i].y + d.y * u - cy)
+      if (!best || dist < best.dist) best = { seg: i, L, d, dist }
+    }
+    return best
+  }
+
   const wallIds = [...idsOf(W.IFCWALL), ...idsOf(W.IFCCURTAINWALL)]
   for (const id of wallIds) {
     const w = line(id)
@@ -677,54 +701,66 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     thickness = thickness && thickness > 0.02 ? thickness : PARTITION_M
     const wallName = String(val(w.Name) ?? id)
     for (const pts of chains) {
-      const segLen = (i: number) => Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
-      /** the openings on this chain in wall terms: segment, along-range, height range above the datum */
-      const holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number }[] = []
-      if (curtain && body) holes.push({ seg: 0, kind: 'window', u0: 0, u1: segLen(0), y0: body.minY, y1: body.maxY })
+      const chain: Chain = { pts, thickness, on, name: wallName, holes: [] }
+      if (curtain && body) chain.holes.push({ seg: 0, kind: 'window', u0: 0, u1: segLen(pts, 0), y0: body.minY, y1: body.maxY })
       for (const op of voidsOf.get(id) ?? []) {
-        const ob = bodyMesh(op, false)
-        if (!ob) continue
-        // the segment nearest the opening's centre
-        const cx = ob.pts.reduce((a, p) => a + p.x, 0) / ob.pts.length, cy = ob.pts.reduce((a, p) => a + p.y, 0) / ob.pts.length
-        let seg = 0, segD = Infinity
-        for (let i = 0; i + 1 < pts.length; i++) {
-          const L = segLen(i)
-          if (L < 1e-6) continue
-          const d = { x: (pts[i + 1].x - pts[i].x) / L, y: (pts[i + 1].y - pts[i].y) / L }
-          const u = Math.max(0, Math.min(L, (cx - pts[i].x) * d.x + (cy - pts[i].y) * d.y))
-          const dist = Math.hypot(pts[i].x + d.x * u - cx, pts[i].y + d.y * u - cy)
-          if (dist < segD) (segD = dist), (seg = i)
-        }
-        const L = segLen(seg)
-        if (L < 1e-6) continue
-        const d = { x: (pts[seg + 1].x - pts[seg].x) / L, y: (pts[seg + 1].y - pts[seg].y) / L }
-        let u0 = Infinity, u1 = -Infinity
-        for (const p of ob.pts) {
-          const u = (p.x - pts[seg].x) * d.x + (p.y - pts[seg].y) * d.y
-          u0 = Math.min(u0, u), u1 = Math.max(u1, u)
-        }
         const fill = fillOf.get(op)
         const kind: OpeningKind = fill === undefined ? 'passage' : isA(fill, W.IFCDOOR) ? (slidingDoor(fill) ? 'slider' : 'door') : isA(fill, W.IFCWINDOW) ? 'window' : 'passage'
-        if (u1 - u0 > L + 0.02 || u1 - u0 < 0.1) {
-          dropped.push(`${kind} ${(u1 - u0).toFixed(2)} m wide on the ${L.toFixed(2)} m wall "${wallName}"`)
-          continue
-        }
-        holes.push({ seg, kind, u0, u1, y0: ob.minY, y1: ob.maxY })
+        hang(chain, op, kind)
       }
-      // one draft per storey the wall stands on, its height and openings cut to that storey's band
-      for (const { s, bottom, top } of on) {
-        const heightM = top - bottom > 0.1 ? top - bottom : WALL_HEIGHT_M
-        const draft: WallDraft = { pts, thicknessM: thickness, heightM, openings: [] }
-        for (const h of holes) {
-          const y0 = Math.max(h.y0, bottom) - bottom, y1 = Math.min(h.y1, bottom + heightM) - bottom
-          if (y1 - y0 < 0.1) continue
-          const sillM = h.kind === 'window' ? y0 : 0
-          const L = segLen(h.seg)
-          draft.openings.push([h.seg, { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM }])
-        }
-        draftOf(s).walls.push(draft)
-      }
+      chainsOut.push(chain)
     }
+  }
+  const filled = new Set(fillOf.values())
+  let hung = 0
+  for (const id of [...idsOf(W.IFCDOOR), ...idsOf(W.IFCWINDOW)]) {
+    if (filled.has(id)) continue
+    const kind: OpeningKind = isA(id, W.IFCDOOR) ? (slidingDoor(id) ? 'slider' : 'door') : 'window'
+    const ob = bodyMesh(id, false)
+    if (!ob) continue
+    const cx = ob.pts.reduce((a, p) => a + p.x, 0) / ob.pts.length, cy = ob.pts.reduce((a, p) => a + p.y, 0) / ob.pts.length
+    // the nearest chain whose line passes within the wall's half thickness (+ 15 cm) of the door's centre, at its height
+    let best: { chain: Chain; d: number } | null = null
+    for (const chain of chainsOut) {
+      if (!chain.on.some((b) => Math.min(ob.maxY, b.top) - Math.max(ob.minY, b.bottom) > 0.1)) continue
+      const near = nearestSeg(chain.pts, cx, cy)
+      if (near && near.dist <= chain.thickness / 2 + 0.15 && (!best || near.dist < best.d)) best = { chain, d: near.dist }
+    }
+    if (best && hang(best.chain, id, kind, ob)) hung++
+  }
+  // one draft per storey the wall stands on, its height and openings cut to that storey's band
+  for (const chain of chainsOut) {
+    for (const { s, bottom, top } of chain.on) {
+      const heightM = top - bottom > 0.1 ? top - bottom : WALL_HEIGHT_M
+      const draft: WallDraft = { pts: chain.pts, thicknessM: chain.thickness, heightM, openings: [] }
+      for (const h of chain.holes) {
+        const y0 = Math.max(h.y0, bottom) - bottom, y1 = Math.min(h.y1, bottom + heightM) - bottom
+        if (y1 - y0 < 0.1) continue
+        const sillM = h.kind === 'window' ? y0 : 0
+        const L = segLen(chain.pts, h.seg)
+        draft.openings.push([h.seg, { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM }])
+      }
+      draftOf(s).walls.push(draft)
+    }
+  }
+  /** an opening element's (or a void-less door's) body projected onto the chain's nearest segment; false when it does not fit */
+  function hang(chain: Chain, elem: number, kind: OpeningKind, ob = bodyMesh(elem, false)): boolean {
+    if (!ob) return false
+    const cx = ob.pts.reduce((a, p) => a + p.x, 0) / ob.pts.length, cy = ob.pts.reduce((a, p) => a + p.y, 0) / ob.pts.length
+    const near = nearestSeg(chain.pts, cx, cy)
+    if (!near) return false
+    const { seg, L, d } = near
+    let u0 = Infinity, u1 = -Infinity
+    for (const p of ob.pts) {
+      const u = (p.x - chain.pts[seg].x) * d.x + (p.y - chain.pts[seg].y) * d.y
+      u0 = Math.min(u0, u), u1 = Math.max(u1, u)
+    }
+    if (u1 - u0 > L + 0.02 || u1 - u0 < 0.1) {
+      dropped.push(`${kind} ${(u1 - u0).toFixed(2)} m wide on the ${L.toFixed(2)} m wall "${chain.name}"`)
+      return false
+    }
+    chain.holes.push({ seg, kind, u0, u1, y0: ob.minY, y1: ob.maxY })
+    return true
   }
 
   // ---------- columns ----------
@@ -825,6 +861,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (curved) notes.push(`${curved} curved walls were cut into straight pieces (within ${CHORD_M * 100} cm of the arc).`)
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
   if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
+  if (hung) notes.push(`${hung} doors / windows had no opening cut in a wall (the file lacks IfcRelVoidsElement): each was hung on the nearest wall by its own body.`)
   if (unplaced) notes.push(`${unplaced} walls belong to no storey in the file and were left out of the plans (they are still in the outside shape).`)
   if (dropped.length) notes.push(`${dropped.length} openings did not fit their wall and were left out: ${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''}.`)
   if (outsideLabels) notes.push(`${outsideLabels} room names landed outside any closed room (walls there do not close).`)
