@@ -267,16 +267,26 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     columns: number[]
     spaces: number[]
   }
-  const storeys: Storey[] = idsOf(W.IFCBUILDINGSTOREY).map((id) => {
+  const allStoreys: Storey[] = idsOf(W.IFCBUILDINGSTOREY).map((id) => {
     const s = line(id)
     const pz = s.ObjectPlacement ? worldFrame(s.ObjectPlacement.value).o[2] : NaN
     const ez = val(s.Elevation)
     return { id, name: String(val(s.Name) ?? val(s.LongName) ?? `Storey`), z: Number.isFinite(pz) ? pz : typeof ez === 'number' ? ez * scale : 0, walls: [], columns: [], spaces: [] }
   })
-  storeys.sort((a, b) => a.z - b.z)
+  allStoreys.sort((a, b) => a.z - b.z)
+  // storeys at one height are one floor (Revit writes one per linked model: the rooms on one, the walls on another)
+  const storeys: Storey[] = []
+  const storeyOfId = new Map<number, Storey>()
+  for (const s of allStoreys) {
+    const same = storeys.find((t) => Math.abs(t.z - s.z) <= 0.01)
+    if (same) {
+      if (s.name.length > same.name.length) same.name = s.name
+      storeyOfId.set(s.id, same)
+    } else storeys.push(s), storeyOfId.set(s.id, s)
+  }
   if (!storeys.length) notes.push('The file has no building storeys: no floor plan could be made, only the outside shape.')
+  if (allStoreys.length > storeys.length) notes.push(`${allStoreys.length} storeys in the file share ${storeys.length} heights: those at one height were joined into one floor.`)
   const baseY = storeys[0]?.z ?? 0
-  const storeyOfId = new Map<number, Storey>(storeys.map((s) => [s.id, s]))
   const parentOf = new Map<number, number>() // element → what contains or aggregates it
   for (const r of idsOf(W.IFCRELCONTAINEDINSPATIALSTRUCTURE)) {
     const rel = line(r)

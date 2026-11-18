@@ -3,6 +3,7 @@
  * per file: run `npx vitest run src/import/ifc.test.ts --disableConsoleIntercept` to read it.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
+import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
 import { importIfc } from './ifc'
@@ -18,6 +19,19 @@ const present = (p: string): boolean => existsSync(p) && statSync(p).size > 1024
 const load = (p: string) => {
   const b = readFileSync(p)
   return importIfc(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), p.split('/').pop()!)
+}
+
+/** a one-entry zip (deflate), as an .ifczip is */
+function zipOf(name: string, data: Buffer): ArrayBuffer {
+  const packed = deflateRawSync(data)
+  const n = Buffer.from(name)
+  const u32 = (v: number) => { const b = Buffer.alloc(4); b.writeUInt32LE(v); return b }
+  const u16 = (v: number) => { const b = Buffer.alloc(2); b.writeUInt16LE(v); return b }
+  const local = Buffer.concat([u32(0x04034b50), u16(20), u16(0), u16(8), u16(0), u16(0), u32(0), u32(packed.length), u32(data.length), u16(n.length), u16(0), n, packed])
+  const central = Buffer.concat([u32(0x02014b50), u16(20), u16(20), u16(0), u16(8), u16(0), u16(0), u32(0), u32(packed.length), u32(data.length), u16(n.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(0), n])
+  const eocd = Buffer.concat([u32(0x06054b50), u16(0), u16(0), u16(1), u16(1), u32(central.length), u32(local.length), u16(0)])
+  const all = Buffer.concat([local, central, eocd])
+  return all.buffer.slice(all.byteOffset, all.byteOffset + all.byteLength)
 }
 
 describe('ifc import', () => {
@@ -36,6 +50,12 @@ describe('ifc import', () => {
     expect(w.openings[0].heightM).toBeCloseTo(1, 2)
     expect(w.openings[0].sillM).toBeCloseTo(0.5, 1)
     expect(r.shell?.triangles).toBeGreaterThan(0)
+  })
+
+  it.skipIf(!present(WALL_FILE))('the same file inside an .ifczip reads the same', async () => {
+    const r = await importIfc(zipOf('wall.ifc', readFileSync(WALL_FILE)), 'wall.ifczip')
+    expect(r.storeys[0].unit.walls).toHaveLength(1)
+    expect(r.storeys[0].unit.walls[0].openings[0].widthM).toBeCloseTo(1, 2)
   })
 
   for (const schema of SCHEMAS) {
