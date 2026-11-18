@@ -275,7 +275,8 @@ function bridgeGaps(walls: WallDraft[]): number {
 
 /**
  * A wall end within the other's thickness of a crossing wall's centre line comes onto it (an L stops short, a T meets);
- * two FREE ends (nothing else there) reach each other's crossing from up to half a metre (faces that stopped at jambs).
+ * two FREE ends (nothing else there) reach each other's crossing from up to a metre (faces that stopped at a door's jambs
+ * beside a corner; the door arc / block then cuts its opening there).
  */
 function meetEnds(walls: WallDraft[]): void {
   const free = (w: WallDraft, E: Pt) => !walls.some((v) => v !== w && Math.abs(dot(sub(E, v.a), v.n)) <= v.thick / 2 + 0.05 && dot(E, v.dir) >= v.t0 - 0.05 && dot(E, v.dir) <= v.t1 + 0.05)
@@ -292,11 +293,11 @@ function meetEnds(walls: WallDraft[]): void {
         const tv = dot(P, v.dir)
         // v's end nearest the crossing, and whether it is loose too: then both may reach further
         const vEnd = tv - v.t0 < v.t1 - tv ? v.a : v.b
-        const both = loose && Math.abs(tv - dot(vEnd, v.dir)) <= 0.5 && free(v, vEnd)
-        const reach = both ? 0.5 : w.thick / 2 + 0.03
+        const both = loose && Math.abs(tv - dot(vEnd, v.dir)) <= 1 && free(v, vEnd)
+        const reach = both ? 1 : w.thick / 2 + 0.03
         if (tv < v.t0 - reach || tv > v.t1 + reach) continue
         const towardIn = end === 'a' ? s > 0 : s < 0 // the move shortens w
-        if (Math.abs(s) > (both ? 0.5 : Math.max(v.thick, w.thick) + 0.05) || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
+        if (Math.abs(s) > (both ? 1 : Math.max(v.thick, w.thick) + 0.05) || (towardIn && Math.abs(s) > w.t1 - w.t0 - 0.05)) continue
         if (!best || Math.abs(s) < best.d) best = { P, d: Math.abs(s) }
       }
       if (!best) continue
@@ -404,6 +405,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const kept = walls.filter((w) => !inside.has(w))
   const bridges = bridgeGaps(kept)
   if (bridges) notes.push(`${bridges} doorway(s) between walls of different thickness bridged.`)
+  meetEnds(kept)
 
   // openings: window lines in a gap; door arcs; door / window blocks
   const windowLines = segs.filter((g) => g.role === 'window' || g.role === 'wall' || g.role === 'unknown')
@@ -457,7 +459,6 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     if (hit && hit.kind === 'door' && kind === 'door') continue // the arc placed it already
     if (putOpening(w, { kind, t0, t1 })) blockOpenings++
   }
-  meetEnds(kept)
 
   // → the Unit
   if (!kept.length) notes.push('No walls found: no parallel line pairs 5–60 cm apart.')
