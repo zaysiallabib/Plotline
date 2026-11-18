@@ -110,11 +110,11 @@ describe('ifc import', () => {
     const files = [
       WALL_FILE,
       ...SCHEMAS.map((s) => `${CERT}/${s}/Simple-Scene/Building-Architecture.ifc`),
-      ...(process.env.IFC_BENCH ?? 'duplex,fzk_house,wbdg_office,smiley_west,4351,ac20,dental_clinic,samuel_macalister_sample_house,city_house_munich')
+      ...(process.env.IFC_BENCH ?? 'duplex,fzk_house,wbdg_office,smiley_west,4351,ac20,dental_clinic,samuel_macalister_sample_house,city_house_munich,hitos,fantasy_residential_building_1,fantasy_office_building_2')
         .split(',')
         .map((n) => `${BENCH}/${n}/arc.ifc`),
     ].filter(present)
-    const rows: string[] = ['file | schema | storeys | walls | openings | columns | labels | closed rooms | dangling | errors | shell tris | ms']
+    const rows: string[] = ['file | schema | storeys | walls | openings | columns | labels | closed rooms | dangling | crossings | labels outside | other errors | shell tris | ms']
     for (const f of files) {
       const t0 = Date.now()
       try {
@@ -133,7 +133,9 @@ describe('ifc import', () => {
             sum((s) => s.unit.roomLabels.length),
             sum((s) => deriveRooms(s.unit).length),
             issues.filter((i) => i.code === 'dangling-vertex').length,
-            issues.filter((i) => i.level === 'error' && i.code !== 'dangling-vertex').length,
+            issues.filter((i) => i.code === 'walls-intersect').length,
+            issues.filter((i) => i.code === 'label-outside-any-room').length,
+            issues.filter((i) => i.level === 'error' && !['dangling-vertex', 'walls-intersect', 'label-outside-any-room'].includes(i.code)).length,
             r.shell?.triangles ?? 0,
             ms,
           ].join(' | '),
