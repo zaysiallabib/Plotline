@@ -606,17 +606,32 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return d
   }
   let unplaced = 0
+  let multi = 0
+
+  /**
+   * The storeys a body stands on: every storey whose band (its floor up to the next floor; the top storey up to the body's
+   * top) the body crosses by more than 0.3 m — a wall Revit draws through five floors is on all five — else the storey the
+   * file put it in. Heights above the datum (Y).
+   */
+  const bands = storeys.map((s, i) => ({ s, bottom: s.z - baseY, top: i + 1 < storeys.length ? storeys[i + 1].z - baseY : Infinity }))
+  const storeysFor = (body: Body | undefined, s0: Storey | undefined): { s: Storey; bottom: number; top: number }[] => {
+    const hit = body ? bands.filter((b) => Math.min(body.maxY, b.top) - Math.max(body.minY, b.bottom) > 0.3) : []
+    if (hit.length) return hit.map((b) => ({ ...b, top: Math.min(b.top, body!.maxY) }))
+    const b = s0 && bands.find((b) => b.s === s0)
+    return b ? [{ ...b, top: Math.min(b.top, body?.maxY ?? b.bottom + WALL_HEIGHT_M) }] : []
+  }
 
   const wallIds = [...idsOf(W.IFCWALL), ...idsOf(W.IFCCURTAINWALL)]
   for (const id of wallIds) {
-    const s = storeyOf(id)
-    if (!s) {
-      unplaced++
-      continue
-    }
     const w = line(id)
     const curtain = isA(id, W.IFCCURTAINWALL)
     const body = bodies.get(id)
+    const on = storeysFor(body, storeyOf(id))
+    if (!on.length) {
+      unplaced++
+      continue
+    }
+    if (on.length > 1) multi++
     let chains = curtain ? null : axisOf(w)
     if (chains && chains.some((c) => c.length > 2)) curved++
     let thickness = layerThickness(id)
@@ -650,14 +665,12 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       }
     }
     thickness = thickness && thickness > 0.02 ? thickness : PARTITION_M
-    const heightM = body && body.maxY - body.minY > 0.1 ? body.maxY - body.minY : WALL_HEIGHT_M
     const wallName = String(val(w.Name) ?? id)
     for (const pts of chains) {
-      const draft: WallDraft = { pts, thicknessM: thickness, heightM, openings: [] }
       const segLen = (i: number) => Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
-      if (curtain) {
-        draft.openings.push([0, { id: newId(), kind: 'window', offsetM: 0, widthM: segLen(0), heightM, sillM: 0 }])
-      }
+      /** the openings on this chain in wall terms: segment, along-range, height range above the datum */
+      const holes: { seg: number; kind: OpeningKind; u0: number; u1: number; y0: number; y1: number }[] = []
+      if (curtain && body) holes.push({ seg: 0, kind: 'window', u0: 0, u1: segLen(0), y0: body.minY, y1: body.maxY })
       for (const op of voidsOf.get(id) ?? []) {
         const ob = bodyMesh(op, false)
         if (!ob) continue
@@ -682,25 +695,32 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         }
         const fill = fillOf.get(op)
         const kind: OpeningKind = fill === undefined ? 'passage' : isA(fill, W.IFCDOOR) ? (slidingDoor(fill) ? 'slider' : 'door') : isA(fill, W.IFCWINDOW) ? 'window' : 'passage'
-        const sillM = kind === 'window' ? Math.max(0, ob.minY - (s.z - baseY)) : 0
-        const top = ob.maxY - (s.z - baseY)
-        const widthM = u1 - u0
-        if (widthM > L + 0.02 || widthM < 0.1 || top - sillM < 0.1) {
-          dropped.push(`${kind} ${widthM.toFixed(2)} m wide on wall "${wallName}" (${s.name})`)
+        if (u1 - u0 > L + 0.02 || u1 - u0 < 0.1) {
+          dropped.push(`${kind} ${(u1 - u0).toFixed(2)} m wide on the ${L.toFixed(2)} m wall "${wallName}"`)
           continue
         }
-        const offsetM = Math.max(0, Math.min(L - widthM, u0))
-        draft.openings.push([seg, { id: newId(), kind, offsetM, widthM, heightM: Math.min(top, heightM) - sillM, sillM }])
+        holes.push({ seg, kind, u0, u1, y0: ob.minY, y1: ob.maxY })
       }
-      draftOf(s).walls.push(draft)
+      // one draft per storey the wall stands on, its height and openings cut to that storey's band
+      for (const { s, bottom, top } of on) {
+        const heightM = top - bottom > 0.1 ? top - bottom : WALL_HEIGHT_M
+        const draft: WallDraft = { pts, thicknessM: thickness, heightM, openings: [] }
+        for (const h of holes) {
+          const y0 = Math.max(h.y0, bottom) - bottom, y1 = Math.min(h.y1, bottom + heightM) - bottom
+          if (y1 - y0 < 0.1) continue
+          const sillM = h.kind === 'window' ? y0 : 0
+          const L = segLen(h.seg)
+          draft.openings.push([h.seg, { id: newId(), kind: h.kind, offsetM: Math.max(0, Math.min(L - (h.u1 - h.u0), h.u0)), widthM: h.u1 - h.u0, heightM: y1 - sillM, sillM }])
+        }
+        draftOf(s).walls.push(draft)
+      }
     }
   }
 
   // ---------- columns ----------
   for (const id of idsOf(W.IFCCOLUMN)) {
-    const s = storeyOf(id)
     const body = bodies.get(id)
-    if (!s || !body) continue
+    if (!body) continue
     const h = hull(body.pts)
     if (h.length < 3) continue
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
@@ -708,7 +728,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const pillar: Pillar = { id: newId(), x: (x0 + x1) / 2, y: (y0 + y1) / 2, wM: x1 - x0, hM: y1 - y0 }
     const axisAligned = h.every((p) => (Math.abs(p.x - x0) < 0.005 || Math.abs(p.x - x1) < 0.005) && (Math.abs(p.y - y0) < 0.005 || Math.abs(p.y - y1) < 0.005))
     if (h.length === 4 && !axisAligned) pillar.corners = h.map((p) => ({ x: p.x, y: p.y }))
-    if (pillar.wM > 0.02 && pillar.hM > 0.02) draftOf(s).pillars.push(pillar)
+    if (pillar.wM > 0.02 && pillar.hM > 0.02) for (const { s } of storeysFor(body, storeyOf(id))) draftOf(s).pillars.push({ ...pillar, id: newId() })
   }
 
   // ---------- spaces ----------
@@ -732,11 +752,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   const result: ImportedStorey[] = []
   const counts: string[] = []
   for (const s of storeys) {
-    const d = draftsByStorey.get(s.id)
-    if (!d) {
-      counts.push(`${s.name} (${fmt(s.z - baseY)} m): nothing on it.`)
-      continue
-    }
+    const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
+    if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let unit = emptyUnit()
     unit.name = s.name
     unit.projectName = shellName
@@ -788,7 +805,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     counts.push(
       `${s.name} (floor at ${fmt(s.z - baseY)} m): ${unit.walls.length} walls, ${openings} openings, ${unit.pillars?.length ?? 0} columns, ${closed} closed rooms (${labelled} named), ${n('dangling-vertex')} loose wall ends, ${n('label-outside-any-room')} names outside any room, ${n('walls-intersect')} crossings left.`,
     )
-    if (d.noSpace) counts.push(`${s.name}: the file names no rooms (IfcSpace) on this floor; the rooms stay "Space N".`)
+    if (d.noSpace && d.walls.length) counts.push(`${s.name}: the file names no rooms (IfcSpace) on this floor; the rooms stay "Space N".`)
     result.push({ name: s.name, elevationM: s.z - baseY, unit })
   }
 
@@ -797,6 +814,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (noAxis) notes.push(`${noAxis} walls had no centre line in the file: their line was taken from the body's footprint.`)
   if (curved) notes.push(`${curved} curved walls were cut into straight pieces (within ${CHORD_M * 100} cm of the arc).`)
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
+  if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
   if (unplaced) notes.push(`${unplaced} walls belong to no storey in the file and were left out of the plans (they are still in the outside shape).`)
   if (dropped.length) notes.push(`${dropped.length} openings did not fit their wall and were left out: ${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''}.`)
   if (outsideLabels) notes.push(`${outsideLabels} room names landed outside any closed room (walls there do not close).`)
