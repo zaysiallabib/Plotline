@@ -19,8 +19,9 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
+import { LITE_MAX_TRIANGLES, loadShell } from './shell'
 import * as core from '../core'
-import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Unit, Wall } from '../core'
+import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
 import { isCeilingLight, kitAsset, type ObjectKind } from '../furnish/kit'
 import { lite } from '../furnish/procedural'
@@ -288,6 +289,9 @@ export class PlotlineScene {
   private pointerDown: { x: number; y: number } | null = null
   /** built on the first switch to the Building view; hidden in walk / dollhouse */
   private building: Building | null = null
+  /** the architect's outside shape round the flat (three/shell.ts), in every mode; the dollhouse cuts it at the storey's top */
+  private shell: THREE.Group | null = null
+  private readonly shellClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6)
   private flatCb: ((flat: FlatRef | null) => void) | null = null
   // Arrange: the mouse stays free; a grab holds the piece (or handle) under the pointer, a look-drag turns the walker
   private arranging = false
@@ -330,6 +334,7 @@ export class PlotlineScene {
     const isLite = (lite.on = this.tier === 'lite')
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
+    this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
     this.renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio, 2))
     if (isLite) {
       // ponytail: three's own upload path halves every 1k picture (WebGLTextures resizeImage, 2k ones to a quarter); real
@@ -405,6 +410,7 @@ export class PlotlineScene {
     this.lifts = new Map(unit.walls.map((w) => [w.id, wallLift(w, unit, this.rooms)]))
     this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
     this.top = storeyTop(unit, this.rooms) || 3.048
+    if (unit.shell) void this.showShell(unit.shell, this.buildToken)
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.buildMarkings(unit)
@@ -514,6 +520,7 @@ export class PlotlineScene {
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.ceilingGroup.visible = mode === 'walk'
+    this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
@@ -1050,6 +1057,18 @@ export class PlotlineScene {
     this.wallFrames.clear()
     this.building?.dispose()
     this.building = null
+    this.shell?.removeFromParent()
+    this.shell = null
+  }
+
+  /** The architect's outside shape round the flat, once loaded and while this build is still the one shown; the lite tier leaves a heavy one out. */
+  private async showShell(s: Shell, token: number): Promise<void> {
+    if (this.tier === 'lite' && (s.triangles ?? 0) > LITE_MAX_TRIANGLES) return console.info(`[plotline] Lite: the outside shape (${s.triangles} triangles) is left out`)
+    const g = await loadShell(s, this.shellClip).catch((e: unknown) => (console.warn('[plotline] outside shape', e), null))
+    if (!g || token !== this.buildToken || this.disposed) return
+    this.shell = g
+    this.scene.add(g)
+    this.wake()
   }
 
   private buildWall(wall: Wall, unit: Unit): void {

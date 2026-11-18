@@ -160,6 +160,10 @@ export class Building extends THREE.Group {
     this.minCameraY = Math.max(...unit.walls.map((w) => w.heightM)) + 0.3
     const { FLATS, FLOORS, CORE, GROUND, ROOF, FLOOR_M } = t
     const PLATE_M = FLOOR_M - WALL_M
+    // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
+    // massing — the other flats' shells, plates, panes, the roof, plinth and ground pieces are left out so nothing draws
+    // twice; the flats keep their invisible pick proxies, traced levels still draw in full
+    const hasShell = !!unit.shell
     const lists = new Map<MaterialRef | 'glass' | 'lit', THREE.BufferGeometry[]>()
     const put = (m: MaterialRef | 'glass' | 'lit', ...g: THREE.BufferGeometry[]) => {
       if (g.length) lists.set(m, [...(lists.get(m) ?? []), ...g]) // an empty list (no tanks, no bays) must not reach merge
@@ -193,6 +197,7 @@ export class Building extends THREE.Group {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         const rooms = this.roomsOf(s)
         if (roof) {
+          if (hasShell) continue
           put(EXTERIOR_PLASTER, ...plate(u, rooms, roofLevel.length ? -UNDER_LEVEL_M : 0, PLATE_M).map(at))
           if (roofLevel.length) continue
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m, no openings
@@ -211,15 +216,15 @@ export class Building extends THREE.Group {
         const walls = shellWalls(u).map(at)
         // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
         // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
-        const slab = k === 0 ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
+        const slab = k === 0 || hasShell ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
         if (mine) put(EXTERIOR_PLASTER, ...slab)
         const mesh = new THREE.Mesh(merge(mine ? walls : [...walls, ...slab]), materialFor(EXTERIOR_PLASTER))
         mesh.castShadow = mesh.receiveShadow = true
-        mesh.visible = !mine // the furnished flat is drawn by the scene; this one is only its pick proxy
+        mesh.visible = !mine && !hasShell // the furnished flat is drawn by the scene; this one is only its pick proxy (every flat's, under the architect's shape)
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
         mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
-        if (mine) continue
+        if (mine || hasShell) continue
         for (const w of u.walls) {
           for (const o of w.openings) {
             if (o.kind === 'window' || o.kind === 'slider') {
@@ -231,7 +236,7 @@ export class Building extends THREE.Group {
     }
 
     // the core, ground to roof head: its traced walls at the ground and as the stair head + lift machine room
-    for (const [s, name] of CORE) {
+    for (const [s, name] of hasShell ? [] : CORE) {
       const { unit: u } = FLATS[s]
       const room = this.roomsOf(s).find((r) => r.name === name)
       if (!room) continue
@@ -252,15 +257,15 @@ export class Building extends THREE.Group {
     const flat = (r: Rect, y: number) => rectBox(plan(r), y, y + 0.01)
     const plot = new THREE.Shape(GROUND.plot.map((p) => new THREE.Vector2(p.x + c.x, p.y + c.y)))
     const plinthTop = groundLevel ? G + groundLow - 0.03 : G
-    put(PAVING, new THREE.ExtrudeGeometry(plot, { depth: 0.6, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, plinthTop, 0))
-    put(GREEN, ...[...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R))].map(meterUVs))
-    put(ASPHALT, ...GROUND.ramp.map((r) => flat(r, G)))
-    for (const [x0, y0, x1, y1] of GROUND.bays) {
+    if (!hasShell) put(PAVING, new THREE.ExtrudeGeometry(plot, { depth: 0.6, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, plinthTop, 0))
+    if (!hasShell) put(GREEN, ...[...GROUND.gardens.map((r) => flat(r, G)), ...ROOF.gardens.map((r) => flat(r, R))].map(meterUVs))
+    if (!hasShell) put(ASPHALT, ...GROUND.ramp.map((r) => flat(r, G)))
+    for (const [x0, y0, x1, y1] of hasShell ? [] : GROUND.bays) {
       const e = 0.08
       put(PAINT, ...[[x0, y0, x1, y0 + e], [x0, y1 - e, x1, y1], [x0, y0, x0 + e, y1], [x1 - e, y0, x1, y1]].map((r) => flat(r as Rect, G)))
     }
-    put(EXTERIOR_PLASTER, ...[...GROUND.blocks, ...GROUND.columns].map((r) => rectBox(plan(r), G, G + WALL_M)))
-    put(TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2)))
+    if (!hasShell) put(EXTERIOR_PLASTER, ...[...GROUND.blocks, ...GROUND.columns].map((r) => rectBox(plan(r), G, G + WALL_M)))
+    if (!hasShell) put(TANK, ...ROOF.tanks.map((r) => rectBox(plan(r), R + FLOOR_M, R + FLOOR_M + 1.2)))
 
     for (const [m, geos] of lists) {
       const pane = m === 'glass' || m === 'lit'
@@ -299,9 +304,11 @@ export class Building extends THREE.Group {
     void this.furnish()
   }
 
-  /** y of floor k's finished floor (0 = ground, top + 1 = roof). */
+  /** y of floor k's finished floor (0 = ground, top + 1 = roof): an imported building's own storey heights (ELEVATIONS) where it has them, else FLOOR_M a floor. */
   levelOf(k: number): number {
-    return (k - this.floor) * this.t.FLOOR_M
+    const e = this.t.ELEVATIONS
+    const at = (f: number) => e?.[f] ?? f * this.t.FLOOR_M
+    return at(k) - at(this.floor)
   }
 
 
