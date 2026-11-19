@@ -6,7 +6,7 @@ Last checked against the code: 2026-10-05; the keys, §2 walking, §3, §5 keys 
 
 **Every key and every button in one list: [KEYS.md](KEYS.md).** Where the furniture, the wind, the sun and the map come from, and what is free only for now: [SOURCES.md](SOURCES.md).
 
-Plotline has three places:
+Plotline has three places (and a front page, §0):
 
 - **The 3D view** — what a buyer sees. You walk through a flat or a level, pick finishes, leave notes.
 - **The Studio** — where staff draw a plan over the plan picture.
@@ -20,6 +20,18 @@ Two kinds of people:
 
 ---
 
+## 0. The front page
+
+Open the site with nothing after the name (`/`) and you get the front page: what Plotline does, in a few words, for a developer who has never seen it.
+
+- At the top: the name, one line, and two buttons. **See a flat** opens flat type A in 3D. **For developers** slides the page down to "How it works".
+- Below: "How it works" (bring the plan, walk the building, share), "What buyers do", "What the developer gets", each with real pictures taken from the 3D view. At the end, **See a flat** and **Open the Studio** again.
+- The thin bar on top stays while you scroll: **Plotline** (back to the top), **See a flat**, **Studio**.
+- Behind the page a faint floor plan drifts as you scroll; its lines lean toward the mouse and turn gold under it. The pictures tilt a little under the mouse. If the computer is set to "reduce motion", nothing moves.
+- The front page shows no prices and nothing a buyer could change.
+
+---
+
 ## 1. Addresses
 
 | Address | What opens |
@@ -29,7 +41,7 @@ Two kinds of people:
 | `/s/<code>` | A buyer link made with the Studio's **Share link**. Works anywhere. Needs the database (Supabase). |
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Asks for the staff key. Needs the database. |
-| `/` | Jumps to the first built-in plan (today that is Banani Basement 1 — see "Rough edges"). |
+| `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
 
 Extras you can add to the end of a 3D address:
 
@@ -657,7 +669,6 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Room names overlap each other on crowded plans.
 - Checks written for flats show on levels ("No entry door on an outer wall", the Area number).
 - The hint "Click to look around" is wrong — one click walks you to that spot; a double-click lets the mouse turn your head.
-- Opening the site with no address shows Banani Basement 1 instead of a flat.
 - There are two different "share" buttons: **Share** in the 3D view (a link with your finishes only) and **Share link** in the Studio (the real buyer link that feeds the change list).
 - **Start over** (on the "Draft restored" message) wipes the Studio drawing without asking.
 - Once a plan picture is loaded there is no button to swap it — only dropping a new one on the Studio.

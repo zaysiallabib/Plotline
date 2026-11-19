@@ -100,6 +100,15 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 ## 3. Every button and field
 
+### Front page (`/`)
+
+| Name | What it does | Who |
+|---|---|---|
+| **Plotline** (top left) | Back to the top of the front page | everyone |
+| **See a flat** (top bar, top of the page, end of the page) | Opens flat type A in 3D (`/u/type-a`) | everyone |
+| **Studio** (top bar), **Open the Studio** (end of the page) | Opens the Studio | everyone (like any visit to the Studio, it makes the browser staff) |
+| **For developers** | Slides the page down to "How it works" | everyone |
+
 ### 3D view — start screen
 
 | Name | What it does | Who |
