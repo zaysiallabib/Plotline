@@ -1268,6 +1268,17 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
                 windSource={unit.site?.wind ? `Wind at this site: Open-Meteo, ${windYears(unit.site.fetchedAt)}` : 'Wind: the Dhaka table (Open-Meteo 2015–2024) — no site set in the Studio'}
               />
             }
+            ways={
+              stairWays.length > 0 && !arranging && !editingOpenings ? (
+                <div className="glass walk-level" role="group" aria-label="Take the stair">
+                  {stairWays.map((w) => (
+                    <button key={w.d} className="btn" title="Take the stair: that floor opens, you stand on its stair" onClick={() => takeStair(w.to, w.d)}>
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            }
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
             onEditPlan={
               STAFF
@@ -1351,15 +1362,6 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               }}
               onUndo={() => planCommit({ type: 'undo' })}
             />
-          )}
-          {stairWays.length > 0 && !arranging && !editingOpenings && (
-            <div className="walk-level">
-              {stairWays.map((w) => (
-                <button key={w.d} className="btn" title="Take the stair: that floor opens, you stand on its stair" onClick={() => takeStair(w.to, w.d)}>
-                  {w.label}
-                </button>
-              ))}
-            </div>
           )}
           {arranging && adding && <AddPanel onPick={startPlacing} />}
           {arranging && (

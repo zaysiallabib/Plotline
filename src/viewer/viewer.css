@@ -153,6 +153,8 @@
   100% { opacity: 0; }
 }
 .dock .hint.keep { animation: none; color: var(--ink); }
+/* a stair room's Up to … / Down to …: a small glass bar over the pill */
+.walk-level { display: flex; gap: var(--s-1); padding: var(--s-1); border-radius: var(--r-pill); }
 .toast { position: absolute; left: 50%; top: 72px; transform: translateX(-50%); padding: 8px var(--s-4); border-radius: var(--r-pill); font-size: var(--fs-md); animation: drop var(--dur) var(--ease) both; }
 /* Quality: by itself only the first time (or after an automatic switch), bottom left */
 .q-toast { position: absolute; left: var(--s-4); bottom: var(--s-4); max-width: min(440px, calc(100vw - 32px)); display: flex; align-items: center; gap: var(--s-3); padding: 6px 6px 6px 14px; font-size: var(--fs-sm); line-height: 1.45; color: var(--ink-2); animation: rise var(--dur) var(--ease) both; }
