@@ -38,7 +38,7 @@ Open the site with nothing after the name (`/`) and you get the front page: what
 |---|---|
 | `/u/<name>` | The 3D view of a built-in flat or level. Names: `type-a`, `type-b`, `type-c`, `sheltech-a`, `sheltech-b`, `sheltech-ground`, `sheltech-l1`, `sheltech-b1`, `sheltech-b2`, `sheltech-roof`, `banani-ground`, `banani-b1`, `banani-b2`, `banani-roof`, `dmd-ground`, `dmd-b1`, `dmd-b2`, `dmd-roof` |
 | `/u/preview` | Whatever you last sent from the Studio with **Preview 3D**. Only works in the same browser. |
-| `/s/<code>` | A buyer link made with the Studio's **Share link**. Works anywhere, no account needed. Stops opening when staff **Turn off** the link. Needs the database (Supabase). |
+| `/s/<code>` | A buyer link made with the Studio's ⋯ → **Share link**. Works anywhere, no account needed. Stops opening when staff **Turn off** the link. Needs the database (Supabase). |
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: asks for the staff key (links made before accounts). Needs the database. |
 | `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
@@ -306,7 +306,7 @@ It is saved with the drawing (and on every drawing of the project open, one site
 
 ### Bring in the architect's file
 
-Instead of a picture to trace, the architect's own file can be dropped on the Studio (or picked with **Import** / **Choose plan image…**). What happens depends on what the file holds: A drawing that came from a file has no picture behind it: the walls ARE the file, so the "Drop the plan picture here" box does not show (the footer says "no picture lined up"). A picture can still be dropped on the page later to see the sheet behind the walls.
+Instead of a picture to trace, the architect's own file can be dropped on the Studio (or picked with ⋯ → **Import…** / **Choose plan image…**). What happens depends on what the file holds: A drawing that came from a file has no picture behind it: the walls ARE the file, so the "Start with a plan" box does not show (the status bar says "no picture lined up"). A picture can still be dropped on the page later to see the sheet behind the walls.
 
 | File | What it holds | What happens |
 |---|---|---|
@@ -739,7 +739,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **Site:** most neighbour heights are guesses (3 floors) — the map rarely has them in Dhaka; type the ones you know. The map may also miss new buildings or still show torn-down ones: delete those; a building cannot be added by hand yet. The plot is where the middle of the open drawing stands (in a project, of the flat you look at), not the plot's outline. Tall blocks right beside the flat can stand in the Dollhouse view's way. The wind lines only show one room at a time: wind through a door into the next room is not drawn. The 3D has no hover tooltip on a block: its height and "guessed" show in the Studio's Site map.
 - Renaming a project does not change the Project box of drawings made before the rename.
 - The "Draft restored — Start over" message shows at every opening; in a project **Start over** only empties the screen, the drawing is kept.
-- Undo does not go back past closing the browser or switching drawings. The ⏱ timer starts again for each drawing you open.
+- Undo does not go back past closing the browser or switching drawings. The tracing timer (bottom right) starts again for each drawing you open.
 - The top-bar Floor box shows the floor a drawing was first made for, not the floor you opened it from.
 - "Walk this level" from Show building first shows an Enter screen.
 - **A wrong scale found after tracing cannot be put right in one step**: S changes the scale, but the walls do not follow the picture.
@@ -765,7 +765,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Room names overlap each other on crowded plans.
 - Checks written for flats show on levels ("No entry door on an outer wall", the Area number).
 - The hint "Click to look around" is wrong — one click walks you to that spot; a double-click lets the mouse turn your head.
-- There are two different "share" buttons: **Share** in the 3D view (a link with your finishes only) and **Share link** in the Studio (the real buyer link that feeds the change list).
+- There are two different "share" buttons: **Share** in the 3D view (a link with your finishes only) and ⋯ → **Share link** in the Studio (the real buyer link that feeds the change list).
 - **Start over** (on the "Draft restored" message) wipes the Studio drawing without asking.
 - Once a plan picture is loaded there is no button to swap it — only dropping a new one on the Studio.
 - A drawing file opened again always asks for its plan picture.
