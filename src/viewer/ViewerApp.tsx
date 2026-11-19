@@ -708,11 +708,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
+    const before = steps.current
     steps.current = h
     const pieces = h.pieces
     perFloor(
       () => saveLayout(unit.id, pieces, base),
       () => ownFloor('furniture', (id) => saveLayout(id, pieces, base)),
+      () => {
+        // Esc on the "which floors?" box: nothing saved, the layout as it was before (as Esc on a piece in hand)
+        steps.current = before
+        scene?.setLayout(before.pieces)
+        showSel(pieceOf(show))
+        redraw()
+      },
     )
     scene?.setLayout(h.pieces)
     showSel(pieceOf(show))
@@ -751,9 +759,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   // ── One floor or all (founder 2026-11-20): on a Studio project's floor whose drawing is on other floors too, the first
   // staff change (a furniture step, Edit openings) asks, once per project (Studio → Building list: Ask again): this floor
   // only — it gets its own copy of the drawing and the page opens on that (arrange.ts forkHere) — or all those floors
-  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void } | null>(null)
-  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one` */
-  const perFloor = (all: () => void, one: () => void) => {
+  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void; cancel?: () => void } | null>(null)
+  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one`; Esc on the box: `cancel` */
+  const perFloor = (all: () => void, one: () => void, cancel?: () => void) => {
     const k = unit.floor
     const sh = STAFF && stem && level === undefined && k !== undefined ? sharedAt(readProjects(), stem, k) : null
     const said = sh && floorAnswer(sh.p.id)
@@ -761,7 +769,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (said === 'one') return one()
     document.exitPointerLock?.()
     const others = sh.slots.filter((s) => s !== k)
-    setAskFloor({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one })
+    // a second change before the answer: the answer takes the latest, Esc goes back to before the first
+    setAskFloor((a) => ({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one, cancel: a ? a.cancel : cancel }))
   }
   const answer = (a: FloorAnswer) => {
     if (!askFloor) return
@@ -1014,7 +1023,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
       const h = held.current
-      if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
+      if (askFloor && k === 'escape') {
+        // the "which floors?" box: Esc cancels the change it asks about (no answer remembered)
+        setAskFloor(null)
+        askFloor.cancel?.()
+      } else if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
         if (plan.current.history.past.length) planCommit({ type: 'undo' })
       } else if (editingOpenings && opSel && (k === 'delete' || k === 'backspace')) {
         setOpSel(null)
