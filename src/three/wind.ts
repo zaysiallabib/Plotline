@@ -1,9 +1,10 @@
 /**
  * Wind in the 3D view (founder 2026-10-18: "don't make them sloppy and tacky … be classy"): a breeze of thin streamlines —
- * 6 to 10 per outside opening facing within 60° of the month's wind, spread across it, each a gently curved line that
- * fades in at the window, crosses the room and fades out past the opening on its far side (core.roomWind), or fades out
- * in the room when it has none. Long soft dashes drift along them, slowly. 2 px, one slate blue, no arrowheads.
- * Lines at a window behind a taller block upwind (core.sheltered) are fainter. A guide, not a flow model.
+ * a sheet of them at each outside opening facing within 60° of the month's wind, across its width and up its height
+ * (windLanes; founder 2026-11-20: "make the lines taller"), each a gently curved line that fades in at the window, crosses
+ * the room and fades out past the opening on its far side (core.roomWind), or fades out in the room when it has none.
+ * Long soft dashes drift along them, slowly. 2 px, the season's tint, no arrowheads. Lines at a window behind a taller
+ * block upwind (core.sheltered: the site's, or the made-up street's) are fainter. A guide, not a flow model.
  */
 import * as THREE from 'three'
 import * as core from '../core'
@@ -33,7 +34,7 @@ const OPACITY = 0.95
 /** screen pixels (CSS) */
 const WIDTH_PX = 2
 /** a line at a sheltered window: this much of the others' opacity */
-const SHELTERED = 0.35
+const SHELTERED = 0.5
 
 export class WindFlow extends THREE.Group {
   private readonly mat: LineMaterial
@@ -57,15 +58,12 @@ export class WindFlow extends THREE.Group {
         const side = { x: -o.out.y, y: o.out.x }
         // the far opening's across, turned the same way as this one's so the lines never cross over
         const xs = exit && dot({ x: -exit.out.y, y: exit.out.x }, side) < 0 ? -1 : 1
-        const n = THREE.MathUtils.clamp(Math.round(o.widthM * 4), 6, 10)
-        for (let i = 0; i < n; i++) {
-          const f = (i + 0.5) / n - 0.5 // across the opening
-          const up = i % 2 ? 0.35 : 0.65 // two heights, alternating
+        for (const { f, up } of windLanes(o.widthM, Math.min(o.headM, 2.4) - o.sillM)) {
           const on = (w: core.WindOpening, s: number) => {
             const across = { x: -w.out.y * s, y: w.out.x * s }
             const x = w.at.x + across.x * f * Math.max(0.1, w.widthM - 0.2)
             const y = w.at.y + across.y * f * Math.max(0.1, w.widthM - 0.2)
-            const h = Math.min(2.2, w.sillM + up * (Math.min(w.headM, 2.4) - w.sillM))
+            const h = w.sillM + up * (Math.min(w.headM, 2.4) - w.sillM) // the same share of each opening's height
             return { x, y, h: core.roomLevelAt(r, unit, x, y) + h }
           }
           const a = on(o, 1)
@@ -75,7 +73,9 @@ export class WindFlow extends THREE.Group {
             const b = on(exit, xs)
             // a gentle bow half-way, the same way for every line of the opening: a breeze, not a ruler
             // half-way they fan out (the lane × 1.2 m) and bow a little, the same way: dense at the two openings, a breeze between
-            const mid = { x: (a.x + b.x) / 2 + side.x * (0.25 + f * 1.2), y: (a.y + b.y) / 2 + side.y * (0.25 + f * 1.2), h: (a.h + b.h) / 2 }
+            // (scaled down on a short way across, a corner: a full fan there tied the lines in knots)
+            const fan = Math.min(1, Math.hypot(b.x - a.x, b.y - a.y) / 4) * (0.25 + f * 1.2)
+            const mid = { x: (a.x + b.x) / 2 + side.x * fan, y: (a.y + b.y) / 2 + side.y * fan, h: (a.h + b.h) / 2 }
             pts.push(V(mid), V(b), V(b, exit.out, OUT_M))
           } else {
             // no way out: it runs in toward the room's middle and dies there
@@ -109,7 +109,7 @@ export class WindFlow extends THREE.Group {
         .replace(
           'gl_FragColor = vec4( diffuseColor.rgb, alpha );',
           `float ph = fract( ( vLineDistance + dashOffset ) / ${PERIOD_M.toFixed(2)} + vColor.g );
-          alpha *= vColor.r * smoothstep( 0.0, 0.18, ph ) * ( 1.0 - smoothstep( 0.42, 0.62, ph ) );
+          alpha *= vColor.r * smoothstep( 0.0, 0.15, ph ) * ( 1.0 - smoothstep( 0.6, 0.8, ph ) );
           gl_FragColor = vec4( diffuse, alpha );`,
         )
     }
@@ -140,3 +140,23 @@ export class WindFlow extends THREE.Group {
 }
 
 const dot = (p: { x: number; y: number }, d: { x: number; y: number }) => p.x * d.x + p.y * d.y
+
+/** the lines' share of an opening's height: from a quarter up to nine tenths (a window: sill → head; a door: the leaf) */
+export const LANE_UP: [number, number] = [0.25, 0.9]
+
+/**
+ * Where an opening's lines cross it (founder 2026-11-20: "make the lines taller"): a sheet of air, not two threads —
+ * `rows` heights spread evenly over LANE_UP of the opening's height (`heightM`: a 1.2 m window 3, a door 5), the same
+ * `cols` across its width in every row (one every 0.6 m, 2–5): each column a stack of lines, one above the other. f: across
+ * the opening, −0.5..0.5 of its width; up: share of its height.
+ */
+export function windLanes(widthM: number, heightM: number): { f: number; up: number }[] {
+  const rows = THREE.MathUtils.clamp(Math.round(heightM / 0.35), 3, 5)
+  const cols = THREE.MathUtils.clamp(Math.round(widthM / 0.6), 2, 5)
+  const out: { f: number; up: number }[] = []
+  for (let j = 0; j < rows; j++) {
+    const up = LANE_UP[0] + ((LANE_UP[1] - LANE_UP[0]) * j) / (rows - 1)
+    for (let i = 0; i < cols; i++) out.push({ f: (i + 0.5) / cols - 0.5, up })
+  }
+  return out
+}
