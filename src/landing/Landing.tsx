@@ -351,7 +351,7 @@ export default function Landing() {
           </ul>
           <div className="pair">
             <Shot src="finishes" alt="The Finishes panel open in the 3D walk: floor options, each with its price difference in taka" caption="Finishes · each option with its price difference" />
-            <Shot src="sun" alt="A bedroom in the 3D walk at 8 in the morning, sunlight falling across the bed, with the day and time bar open" caption="Sun · bedroom 1 at 08:00, the site's real sun" />
+            <Shot src="sun" alt="A bedroom in the 3D walk at 8 in the morning, the Sun & wind card open: the time, the day, the twelve months and a compass" caption="Sun · bedroom 1 at 08:00, the site's real sun" />
           </div>
         </section>
 
