@@ -139,6 +139,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Quality** (bottom left): Lite / Low / High, **OK** | How heavy the 3D is for this computer; OK closes the note. Steps aside while Edit furniture or Edit openings is open | everyone |
 | Small map (bottom right, Walk) | Where you are, with a compass to true north (M hides it) | everyone |
 | **Walk this level** (Building view) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
+| **Up to …** / **Down to …** (bottom middle, Walk, standing in a stair room of a building) | Takes the stair: the floor above / below opens, you stand on its stair. Walking up the stair's second flight (or down under it, from the floor) does the same | everyone |
 | Floor buttons R, the flat floors, G, B1, B2 (Building view, right) | Picks a floor; a basement hides what is above it | everyone |
 
 ### 3D view — Finishes panel and notes

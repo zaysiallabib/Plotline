@@ -9,7 +9,8 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, floorIn, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, floorIn, levelName, projectUnit, roleIn, stairTo, stemIn, topFloor, towerOf, type Tower } from '../data/building'
+import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
@@ -125,7 +126,7 @@ const towerStem = (u: Unit) => {
   return t ? stemIn(t, u) : undefined
 }
 /**
- * `?floor=N` (a flat picked in the Building view) puts the flat on floor N if the tower has it there; the JSON keeps its
+ * `?floor=N` (a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON keeps its
  * own. A level (ground, basement, rooftop) stands on its tower's floor for it.
  */
 function onFloor(u: Unit | null): Unit | null {
@@ -135,7 +136,7 @@ function onFloor(u: Unit | null): Unit | null {
   const level = t.LEVELS?.[stem]
   if (level !== undefined) return { ...u, floor: level }
   const n = Number(params.get('floor'))
-  return t.FLOORS.some((f) => f.floor === n && f.flats.includes(stem)) ? { ...u, floor: n } : u
+  return t.FLOORS.some((f) => f.floor === n && (f.flats.includes(stem) || f.standIns?.includes(stem))) ? { ...u, floor: n } : u // a stand-in too: the stair to it (takeStair)
 }
 /**
  * The load screen's list: the flats as they are; each tower's levels (ground, basements, rooftop) under its name, top
@@ -698,6 +699,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     setEntered(true)
     const e = entrySpawn(shown(), rooms)
     if (e) spawn(scene, e.p, e.face)
+    // come by the stair from the floor below / above (takeStair): on this floor's stair
+    const near = params.get('at')?.split(',').map(Number)
+    const by = near?.length === 2 && arriveBy(shown(), rooms, { x: near[0], y: near[1] }, params.get('stair') === 'up' ? 'below' : 'above')
+    if (by) spawn(scene, by.at, by.face, params.get('stair') === 'down' ? -0.6 : 0) // come down: looking down the flight below
+    if (by) return // no pointer lock without a click: "Click to look around"
     if (params.get('view') === 'dollhouse') go('orbit')
     else if (params.get('view') === 'building') {
       go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
@@ -716,7 +722,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const toggleMode = () => go(mode === 'walk' ? 'orbit' : 'walk')
   // a flat picked in the Building view opens straight into its dollhouse once loaded; the Studio's building into the tower
   useEffect(() => {
-    if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building')) enter()
+    if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building' || params.has('stair'))) enter()
   })
 
   const showToast = (msg: string, ms = 2500) => {
@@ -853,6 +859,31 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     showSel(next.piece, !!next.error)
   }
   useEffect(() => scene?.onArrange(onArrange))
+
+  // ── the stairs (founder 2026-11-20: "if i climb a stair i cannot reach the upper floor"): walked up a stair's flight to
+  // the floor above (or down to the one below; PlotlineScene.toNextFloor), or the Up / Down button in a stair room — that
+  // floor's unit loads with the walker on its stair (enter, ?stair=)
+  const myFloor = tower && stem ? (unit.floor ?? floorIn(tower, stem)) : 0
+  const takeStair = (to: { stem: string; floor: number; at: Pt }, dir: 1 | -1) =>
+    location.assign(`/u/${encodeURIComponent(to.stem)}?floor=${to.floor}&stair=${dir > 0 ? 'up' : 'down'}&at=${to.at.x.toFixed(3)},${to.at.y.toFixed(3)}${SHARED ? '&c=' : ''}`)
+  useEffect(() =>
+    scene?.onStair((dir, stair) => {
+      const d = dir === 'up' ? 1 : -1
+      const to = tower && stem ? stairTo(tower, stem, myFloor, stair, d) : null
+      if (to) takeStair(to, d)
+      else showToast(dir === 'up' ? 'This stair goes no higher' : 'This stair goes no lower')
+      return !!to
+    }),
+  )
+  const stairWays = useMemo(() => {
+    if (mode !== 'walk' || !room || !isStairRoom(room) || !tower || !stem) return []
+    const s = unit.furniture.find((p) => p.roomId === room.id && isStair(p))
+    const at = s ? { x: s.x, y: s.y } : room.centroid
+    return ([1, -1] as const).flatMap((d) => {
+      const to = stairTo(tower, stem, myFloor, at, d)
+      return to ? [{ d, to, label: `${d > 0 ? 'Up' : 'Down'} to ${tower.LEVELS?.[to.stem] !== undefined ? levelName(tower, to.floor) : `Floor ${to.floor}`}` }] : []
+    })
+  }, [mode, room, tower, stem, myFloor, unit.furniture])
   // the browser's Esc frees a locked mouse without telling the page: a carry in walk ends there, the piece back where it was
   useEffect(() => {
     const onLock = () => !document.pointerLockElement && !arranging && letGo()
@@ -1242,6 +1273,15 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               }}
               onUndo={() => planCommit({ type: 'undo' })}
             />
+          )}
+          {stairWays.length > 0 && !arranging && !editingOpenings && (
+            <div className="walk-level">
+              {stairWays.map((w) => (
+                <button key={w.d} className="btn" title="Take the stair: that floor opens, you stand on its stair" onClick={() => takeStair(w.to, w.d)}>
+                  {w.label}
+                </button>
+              ))}
+            </div>
           )}
           {arranging && adding && <AddPanel onPick={startPlacing} />}
           {arranging && (

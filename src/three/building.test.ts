@@ -6,7 +6,7 @@ import { floorIn, towerOf } from '../data/building'
 import * as bti from '../data/building/demo-tower'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
 import { alignColumns, flatBounds, levelOf, makeProject, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
-import { baseLevel, coverOf, levelName, roleIn, topFloor } from '../data/building'
+import { baseLevel, coverOf, levelName, roleIn, stairTo, topFloor } from '../data/building'
 import * as banani from '../data/building/banani-tower'
 import * as dmd from '../data/building/dmd-tower'
 import * as sheltech from '../data/building/sheltech-tower'
@@ -396,6 +396,21 @@ describe('towers of common levels (session 19): Banani and dmd registered, level
     const top = coverOf(sheltech, 'sheltech-a', 6)
     expect(has(top, poly(unitOf(sheltech, 'sheltech-roof'), 'Deck (west)')) || has(top, poly(unitOf(sheltech, 'sheltech-roof'), 'Deck (east)'))).toBe(true)
     expect(coverOf(sheltech, 'sheltech-a')).toEqual([]) // no floor: its own roof, as before
+  })
+
+  test('a stair leads to the floor above / below: the unit there with a stair room over it (founder 2026-11-20)', () => {
+    const at = { x: 3.53, y: 9.25 } // Sheltech A's stair
+    expect(stairTo(sheltech, 'sheltech-a', 2, at, 1)).toMatchObject({ stem: 'sheltech-a', floor: 3 })
+    expect(stairTo(sheltech, 'sheltech-a', 2, at, -1)).toMatchObject({ stem: 'sheltech-l1', floor: 1 }) // the common level under the flats
+    expect(stairTo(sheltech, 'sheltech-l1', 1, at, -1)).toMatchObject({ stem: 'sheltech-ground', floor: 0 })
+    expect(stairTo(sheltech, 'sheltech-a', 6, at, 1)).toMatchObject({ stem: 'sheltech-roof', floor: 7 })
+    expect(stairTo(sheltech, 'sheltech-roof', 7, at, 1)).toBeNull() // nothing above the rooftop
+    expect(stairTo(sheltech, 'sheltech-b2', -2, at, -1)).toBeNull()
+    expect(stairTo(sheltech, 'sheltech-a', 2, { x: 11.5, y: 16.8 }, 1)).toBeNull() // a veranda: no stair there
+    // BTI: B's stair; floor 2 is A (no stair) with B standing in for the untraced rest: B there
+    const b = core.deriveRooms(unitOf(bti, 'type-b')).find((r) => r.name === 'Stair')!.centroid
+    expect(stairTo(bti, 'type-b', 3, b, -1)).toMatchObject({ stem: 'type-b', floor: 2, at: b })
+    expect(stairTo(bti, 'type-b', 3, b, 1)).toMatchObject({ stem: 'type-b', floor: 4 })
   })
 
   test('a Studio project’s traced levels get the same cover, in the level’s own frame', () => {

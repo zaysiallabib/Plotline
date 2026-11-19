@@ -1,6 +1,7 @@
 /** The towers the Building view knows: the ones built in, and the projects made in the Studio (this browser). */
 import * as core from '../../core'
 import type { Pt, Room, Unit } from '../../core'
+import { isStairRoom } from '../../furnish/stairs'
 import * as banani from './banani-tower'
 import * as bti from './demo-tower'
 import * as dmd from './dmd-tower'
@@ -148,4 +149,26 @@ export function voidsOver(t: Tower, k: number): Pt[][] {
     const sinks = sinking(unit, rooms)
     return rooms.filter(sinks).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x, y: p.y + offset.y })))
   })
+}
+
+/**
+ * Where a stair leads (founder 2026-11-20: climbing a stair must reach the floor above): from unit `stem` on floor `k`, at
+ * plan point `at` (its own frame: the stair), one floor `dir` (+1 up, −1 down) — the unit on that floor with a stair room
+ * at that point (its flats first, then its levels and stand-ins; else the nearest stair room, its middle within 3 m) and
+ * the point in that unit's frame. null: no floor there, or no stair on it.
+ */
+export function stairTo(t: Tower, stem: string, k: number, at: Pt, dir: 1 | -1): { stem: string; floor: number; at: Pt } | null {
+  const f = t.FLOORS.find((x) => x.floor === k + dir)
+  const me = t.FLATS[stem]?.offset
+  if (!f || !me) return null
+  let best: { d: number; stem: string; at: Pt } | null = null
+  for (const s of [...f.flats, ...(f.standIns ?? [])]) {
+    const { unit, offset } = t.FLATS[s]
+    const p = { x: at.x + me.x - offset.x, y: at.y + me.y - offset.y }
+    for (const r of core.deriveRooms(unit).filter(isStairRoom)) {
+      const d = core.pointInPolygon(p, core.roomPolygon(r, unit)) ? 0 : Math.hypot(r.centroid.x - p.x, r.centroid.y - p.y)
+      if (d <= 3 && (!best || d < best.d)) best = { d, stem: s, at: p }
+    }
+  }
+  return best && { stem: best.stem, floor: k + dir, at: best.at }
 }
