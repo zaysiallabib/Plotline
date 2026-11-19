@@ -59,7 +59,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V). A column's side or corner dot: that side, or that corner alone (V or C). An opening's end dot: its width (V or O). Curtains' end dot: wider or narrower on that side (F). A ramp's arrow head: which way it runs (V). The Site's gold north arrow: true north; its round dot moves the arrow | V, C, O, F, Site open | §5 — V, C, F, Site |
 | Drop a picture or a file on the page | A plan picture (PNG, JPG, WEBP, up to 10 MB) goes under the drawing; a drawing file opens | any time | §5 "Loading the plan picture" |
 | **?** | Opens or closes the Keys sheet: every key in one list, the tool you are on explained in full at the top (the same as the **Keys** button, bottom right). **Esc** or a click elsewhere closes it | any time (not in a text box) | §5 "The status bar and the Keys sheet" |
-| **Esc** (a menu or the Keys sheet open) | Closes only that menu or sheet — nothing else is unpicked | ⋯ menu, Keys sheet | §5 Top bar |
+| **Esc** (a menu, the account card or the Keys sheet open) | Closes only that menu, card or sheet — nothing else is unpicked | ⋯ menu, account card, Keys sheet | §5 Top bar |
 
 ## 2. 3D view keys
 
@@ -252,7 +252,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Open theirs** / **Keep mine** | Only after "someone saved a newer version": take their copy, or save yours on top (theirs stays in Earlier saves) |
 | **Save as new** | Only after "it was deleted from the cloud": keeps your copy as a new one |
 | **Sign out** | Saves what is waiting, then signs out |
-| **Close** | Closes the card |
+| **Close** | Closes the card (or Esc) |
 
 ### Studio — the plan area
 

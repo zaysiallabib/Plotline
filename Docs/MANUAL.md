@@ -293,7 +293,7 @@ Without signing in, your work is kept in this browser only (section 9). Signed i
 
 **Signing in** (no password):
 
-1. Top bar, right: **⋯** → **Sign in**. A card opens.
+1. Top bar, right: **⋯** → **Sign in**. A card opens (its **Close**, or **Esc**, closes it).
 2. Type your email, click **Send me a link**. The card says **Check your email**.
 3. Open that email **on the same computer, in the same browser**, and click the link. The Studio opens with your email in the **⋯** menu instead of **Sign in**.
 4. The first time, it says **Not saved: not in a company yet** until the owner adds you (SETUP_ACCOUNTS.md, "Adding a staff member"). Then press F5.
