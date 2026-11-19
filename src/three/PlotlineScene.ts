@@ -24,6 +24,7 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
 import { isCeilingLight, kitAsset, type ObjectKind } from '../furnish/kit'
+import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
 import { lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
@@ -54,13 +55,13 @@ export interface PickHit {
 export type SceneMode = 'walk' | 'orbit' | 'building'
 /**
  * Arrange (staff, src/viewer/arrange.ts): what the pointer does to a piece, in plan metres. `drag`: `at` = the piece's
- * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer),
+ * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer; `y` the point's height above the floor),
  * `hole` = the face of the opening the pointer looks through (a doorway), when nearer than what it meets beyond.
  * `resize`: a handle dragged — the new size along `axis`, the `sign` face moving.
  */
 export type ArrangeEvent =
   | { kind: 'select'; id: Id | null }
-  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null; hole?: { p: Pt; n: Pt } | null }
+  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt; y?: number } | null; hole?: { p: Pt; n: Pt } | null }
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 /**
@@ -274,8 +275,13 @@ export class PlotlineScene {
   private windMonth: core.WindMonth | null = null
   private windSeason: core.Season = 'monsoon'
   private walker: Pt = { x: 0, y: 0 }
-  /** the floor under the walker, eased toward levelAt(walker): a step is climbed like a stair, not a jump */
+  /** the floor under the walker, eased toward walkLevel(walker): a step is climbed like a stair, not a jump */
   private floorY = 0
+  /** the layout's stairs (furnish/stairs.ts): their treads carry the walker; their flight B is the way to the next floor */
+  private stairs: FurniturePlacement[] = []
+  private stairCb: ((dir: 'up' | 'down', stair: FurniturePlacement) => boolean) | null = null
+  /** the last time the walker was turned back at a flight with no floor that way (asked at most once a second) */
+  private stairAsked = 0
   /** the storey's top (details.ts storeyTop): the slab above, where a covered storey wall reaches */
   private top = 3.048
   /** each wall's floors (details.ts wallLift) */
@@ -411,6 +417,7 @@ export class PlotlineScene {
     this.clearStatic()
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
+    this.stairs = unit.furniture.filter(isStair)
     const b = core.unitBounds(unit)
     this.center.set((b.minX + b.maxX) / 2, 0, (b.minY + b.maxY) / 2)
     this.radius = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2 + 1
@@ -465,7 +472,7 @@ export class PlotlineScene {
     }
     const first = this.rooms[0]
     this.walker = first ? { ...first.centroid } : { x: this.center.x, y: this.center.z }
-    this.floorY = this.levelAt(this.walker)
+    this.floorY = this.walkLevel(this.walker)
     this.moveTarget = null
     this.setMode(this.mode)
     void this.loadFurniture(unit)
@@ -566,7 +573,7 @@ export class PlotlineScene {
     const room = this.rooms.find((r) => r.id === roomId)
     if (!room) return
     this.walker = { ...room.centroid }
-    this.floorY = this.levelAt(this.walker)
+    this.floorY = this.walkLevel(this.walker)
     this.moveTarget = null
     this.setMode('walk')
   }
@@ -574,7 +581,7 @@ export class PlotlineScene {
   /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left), pitchRad down when < 0. Switches to walk mode. */
   spawnAt(p: Pt, yawRad: number, pitchRad = 0): void {
     this.walker = { ...p }
-    this.floorY = this.levelAt(p)
+    this.floorY = this.walkLevel(p)
     this.yaw = yawRad
     this.moveTarget = null
     this.setMode('walk')
@@ -739,8 +746,9 @@ export class PlotlineScene {
       }
       o.position.x = p.x
       o.position.z = p.y
-      const floor = this.floorOf(p) // moved onto another level: up or down with it
-      o.position.y += floor - (o.userData.floorM ?? 0)
+      const floor = this.floorOf(p) // moved onto another level: up or down with it; a wall piece also up or down its wall
+      const kitY = o.userData.kitY as number | undefined
+      o.position.y = kitY === undefined ? o.position.y + floor - (o.userData.floorM ?? 0) : floor + (p.mountY ?? kitY)
       o.userData.floorM = floor
       o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
       o.userData.roomId = p.roomId
@@ -767,6 +775,7 @@ export class PlotlineScene {
   /** A committed layout (drop, turn, delete, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
   setLayout(all: FurniturePlacement[]): void {
     this.placePieces(all, true)
+    this.stairs = all.filter(isStair) // a stair moved or deleted in Arrange: the walker climbs it where it now stands
     if (this.unit) this.look.setFurniture(present({ ...this.unit, furniture: all }))
   }
 
@@ -1291,6 +1300,29 @@ export class PlotlineScene {
     return r && this.unit ? core.roomLevelAt(r, this.unit, p.x, p.y) : this.levelAt(p)
   }
 
+  /** The stair whose footprint holds p, and where on it p is (furnish/stairs.ts), or null. */
+  private stairAt(p: Pt): { stair: FurniturePlacement; spot: NonNullable<ReturnType<typeof stairSpot>> } | null {
+    for (const stair of this.stairs) {
+      const spot = stairSpot(stair, p)
+      if (spot) return { stair, spot }
+    }
+    return null
+  }
+
+  /** What the walker stands on at p: the floor (levelAt), or a stair's tread or half landing over its floor. */
+  private walkLevel(p: Pt): number {
+    const s = this.stairAt(p)
+    return s && s.spot.part !== 'between' ? this.floorOf(s.stair) + s.spot.h : this.levelAt(p)
+  }
+
+  /**
+   * Walking up or down a stair to the next floor (founder 2026-11-20): `cb(dir, stair)` loads that floor and puts the
+   * walker on its stair (ViewerApp), true; false when there is no floor that way (the step is refused there).
+   */
+  onStair(cb: (dir: 'up' | 'down', stair: FurniturePlacement) => boolean): void {
+    this.stairCb = cb
+  }
+
   private async loadFurniture(unit: Unit): Promise<void> {
     const token = this.buildToken
     const byDistance = [...unit.furniture].sort(
@@ -1468,7 +1500,7 @@ export class PlotlineScene {
     this.raycaster.setFromCamera(ndc, this.camera)
     const ray = this.raycaster.ray
     const P = ray.intersectPlane(new THREE.Plane(UP, -y), new THREE.Vector3())
-    let wall: { p: Pt; n: Pt } | null = null
+    let wall: { p: Pt; n: Pt; y: number } | null = null
     let dist = Infinity
     for (const h of this.raycaster.intersectObjects(this.staticGroup.children, true)) {
       let o: THREE.Object3D | null = h.object
@@ -1480,7 +1512,8 @@ export class PlotlineScene {
       const s = f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1
       const n = { x: s * f.normal.x, y: s * f.normal.y }
       const k = w.thicknessM / 2 - ((h.point.x - f.origin.x) * n.x + (h.point.z - f.origin.y) * n.y) // onto the face
-      wall = { p: { x: h.point.x + n.x * k, y: h.point.z + n.y * k }, n }
+      const p = { x: h.point.x + n.x * k, y: h.point.z + n.y * k }
+      wall = { p, n, y: h.point.y - this.levelAt({ x: p.x + n.x * 0.1, y: p.y + n.y * 0.1 }) } // y: above the floor in front of it
       dist = h.distance
       break
     }
@@ -1614,11 +1647,29 @@ export class PlotlineScene {
    */
   private canStep(p: Pt): boolean {
     if (core.roomAt(p, this.rooms, this.unit!)?.kind === 'pool') return false
-    return Math.abs(this.levelAt(p) - this.levelAt(this.walker)) <= MAX_STEP_M
+    return Math.abs(this.walkLevel(p) - this.walkLevel(this.walker)) <= MAX_STEP_M
+  }
+
+  /**
+   * A step onto a stair's flight B (stairs.ts 'between'): from its half landing he goes up, from its floor down — the next
+   * floor loads (stairCb). With no floor that way, or over the rail from mid-flight, the step is refused. True: handled.
+   */
+  private toNextFloor(next: Pt): boolean {
+    const to = this.stairAt(next)
+    if (to?.spot.part !== 'between' || this.stairAt(this.walker)?.spot.part === 'between') return false
+    const h = this.walkLevel(this.walker) - this.floorOf(to.stair)
+    // the way the flight runs: up toward its front from the landing, down toward its back from the floor (not a step in from its side)
+    const t = (to.stair.rotationDeg * Math.PI) / 180
+    const ahead = ((next.x - this.walker.x) * -Math.sin(t) + (next.y - this.walker.y) * Math.cos(t)) / (Math.hypot(next.x - this.walker.x, next.y - this.walker.y) || 1)
+    const dir = h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
+    const now = performance.now()
+    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, to.stair) ? Infinity : now // going: never asked again
+    return true
   }
 
   private tryMove(vx: number, vz: number): void {
     const next = { x: this.walker.x + vx, y: this.walker.y + vz }
+    if (this.toNextFloor(next)) return
     const ok = (p: Pt) => !this.blocked(p) && this.canStep(p)
     if (ok(next)) {
       this.walker = next
@@ -1681,7 +1732,7 @@ export class PlotlineScene {
         }
       }
       // the eye follows the floor: eased (≈ 0.1 s), so a step is climbed like a stair and a ramp is walked, never a jump
-      this.floorY += (this.levelAt(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
+      this.floorY += (this.walkLevel(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts

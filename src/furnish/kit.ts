@@ -135,6 +135,13 @@ export function placementSize(p: { assetId: string; scale?: number; sizeM?: Size
   return { x: s.x * k, y: s.y * k, z: s.z * k }
 }
 
+/** Bottom and top of a placed piece above its floor: its own size, at its own height on the wall when staff moved it (mountY). */
+export function placementRange(p: { assetId: string; scale?: number; sizeM?: Size3; mountY?: number }): [number, number] {
+  const a = kitAsset(p.assetId)
+  const s = placementSize(p)
+  return a ? heightRange({ ...a, sizeM: s, mountY: p.mountY ?? a.mountY }) : [p.mountY ?? 0, (p.mountY ?? 0) + s.y]
+}
+
 const dec = (v: number) => v.toFixed(2).replace(/0$/, '') // 3 → "3.0", 2.35 → "2.35"
 const doors = (w: number) => (wardrobeDoors(w) === 1 ? '1 door' : `${wardrobeDoors(w)} doors`)
 const closet = (s: Size3) => `Open closet unit: rail, shelf, clothes (${dec(s.x)} m)`

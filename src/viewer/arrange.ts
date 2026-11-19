@@ -5,6 +5,7 @@
  */
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
 import { PROJECTS_KEY, forkFloor, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
+import { placementRange } from '../furnish/kit'
 import { deletePiece, hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
@@ -91,10 +92,11 @@ export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement
 /**
  * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 3" grid, wall snap,
  * refusals, riders along), turned to `rotationDeg` (default: as it stands). A wall piece goes onto the wall under the
- * pointer — back to it, front into the room, sliding in 3" steps along it — so it hops walls; curtains slide along their
- * own wall only (onto another window of it); the others slide on their plane.
+ * pointer — back to it, front into the room, sliding in 3" steps along it and up and down in 1" steps (its middle at the
+ * pointer's height + `lift`) — so it hops walls; curtains slide along their own wall only (onto another window of it);
+ * the others slide on their plane.
  */
-export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget, rotationDeg?: number, grab?: Pt): Move | null {
+export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, t: DragTarget, rotationDeg?: number, grab?: Pt, lift = 0): Move | null {
   const g = pieces.find((x) => x.id === id)
   const p = baseOf(pieces, id)
   if (!g || !p) return null
@@ -104,7 +106,7 @@ export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
     return to && movePiece(unit, rooms, pieces, p.id, { x: to.x + (grab?.x ?? 0), y: to.y + (grab?.y ?? 0) }, p.rotationDeg)
   }
   if (surfaceOf(p) !== 'wall') return t.at && movePiece(unit, rooms, pieces, p.id, { x: t.at.x + p.x - g.x, y: t.at.y + p.y - g.y }, rotationDeg ?? p.rotationDeg)
-  return t.wall && hangOn(unit, rooms, pieces, id, t.wall)
+  return t.wall && hangOn(unit, rooms, pieces, id, t.wall.y === undefined ? t.wall : { ...t.wall, y: t.wall.y + lift })
 }
 
 /**
@@ -127,6 +129,8 @@ export interface Held {
   move: Move | null
   /** curtains: their middle less the wall point first pointed at, so they slide with the hand, not jump to it */
   grab?: Pt
+  /** a wall piece: its middle's height less the wall point's first pointed at, so it goes up and down with the hand, not jump to it */
+  lift?: number
 }
 
 /** Piece `id` (a drag's first frame, or G) picked up as it stands. */
@@ -141,7 +145,9 @@ export function holdAt(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
   const c = !h.assetId && pieces.find((x) => x.id === h.id && x.openingId)
   const w = t && (t.wall?.p ?? t.at)
   if (c && w && !h.grab) h = { ...h, grab: { x: c.x - w.x, y: c.y - w.y } }
-  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall, t.hole) : dragTo(unit, rooms, pieces, h.id, t, rot, h.grab)
+  const hung = !h.assetId && h.lift === undefined && t?.wall?.y !== undefined && pieces.find((x) => x.id === h.id && !x.openingId && surfaceOf(x) === 'wall')
+  if (hung) h = { ...h, lift: placementRange(hung).reduce((a, b) => a + b) / 2 - t!.wall!.y! }
+  const move = !t ? null : h.assetId ? p && placePiece(unit, rooms, pieces, h.assetId, p, rot, h.id, t.wall, t.hole) : dragTo(unit, rooms, pieces, h.id, t, rot, h.grab, h.lift)
   return move ? { ...h, at: t, rot, move } : { ...h, rot }
 }
 

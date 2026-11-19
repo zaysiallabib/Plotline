@@ -49,7 +49,8 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * counter-clockwise, so clockwise-in-plan = NEGATIVE angle about Y.
  * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM,
  * 'wall' centres it at 1.5 m; `mountY` puts its bottom at that height instead
- * (TV on its unit, pillows on the sofa); 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
+ * (TV on its unit, pillows on the sofa), and the placement's own `mountY` (a wall piece staff moved up or down) wins over
+ * both; 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
  * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute.
  */
 export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0): Promise<THREE.Group> {
@@ -97,6 +98,8 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       if (asset.mountY !== undefined) pivot.position.y = floorM + asset.mountY
       else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)
       else if (asset.mount === 'wall') pivot.position.y = floorM + 1.5 - (box.max.y - box.min.y) / 2
+      pivot.userData.kitY = pivot.position.y - floorM // where its kit hangs it: a lift undone goes back there (PlotlineScene.placePieces)
+      if (p.mountY !== undefined) pivot.position.y = floorM + p.mountY // moved up or down the wall by staff
       model.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
           // ceiling pieces (lights, fan, pendant, AC) sit in the roof's sun shadow and the room lights cast none:

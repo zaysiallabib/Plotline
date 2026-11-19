@@ -1,6 +1,7 @@
 /** The towers the Building view knows: the ones built in, and the projects made in the Studio (this browser). */
 import * as core from '../../core'
 import type { Pt, Room, Unit } from '../../core'
+import { isStairRoom } from '../../furnish/stairs'
 import * as banani from './banani-tower'
 import * as bti from './demo-tower'
 import * as dmd from './dmd-tower'
@@ -147,21 +148,30 @@ export function baseLevel(unit: Unit, rooms: Room[]): number {
  * the level below; a ramp of that level rising into it passes up through it). Every floor above, not only the next: a
  * ground floor's porch under flats that overhang a smaller level 1 is under a slab, so is a basement-2 ramp under the
  * basement-1 ramp's void under the ground's lawn — up to the top floor: a rooftop level stands on the top floor's slab
- * and adds only ledges (a sunshade planter 20 m up is no soffit over the drive). [] for a flat (its Look roofs it) and
- * for the rooftop (open sky). Studio project towers get the same.
+ * and adds only ledges (a sunshade planter 20 m up is no soffit over the drive). [] for the rooftop (open sky). Studio
+ * project towers get the same.
+ * A flat on `floor` (founder 2026-11-20: "a gap in the ceiling that is supposed to be covered by the floor above is getting
+ * sunlight in"): the same, the top floor under the rooftop's floor too, but only the faces over its own rooms — a
+ * neighbour's slab would float outside its windows. No floor given: [] (its Look roofs it, small verandas open).
  */
-export function coverOf(t: Tower, stem: string): Pt[][] {
-  const k = t.LEVELS?.[stem]
+export function coverOf(t: Tower, stem: string, floor?: number): Pt[][] {
+  const level = t.LEVELS?.[stem]
+  const k = level ?? floor
   if (k === undefined) return []
   const me = t.FLATS[stem].offset
   const top = topFloor(t)
-  const above = new Set(t.FLOORS.filter((f) => f.floor > k && f.floor <= top).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
-  return [...above].flatMap((s) => {
+  const last = level === undefined ? Math.max(top, k + 1) : top
+  const above = new Set(t.FLOORS.filter((f) => f.floor > k && f.floor <= last).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
+  const cover = [...above].flatMap((s) => {
     const { unit, offset } = t.FLATS[s]
     const rooms = core.deriveRooms(unit)
     const sinks = sinking(unit, rooms)
     return rooms.filter((r) => r.kind !== 'shaft' && !sinks(r)).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x - me.x, y: p.y + offset.y - me.y })))
   })
+  if (level !== undefined) return cover
+  const { unit } = t.FLATS[stem]
+  const mine = core.deriveRooms(unit).map((r) => ({ c: r.centroid, poly: core.roomPolygon(r, unit) }))
+  return cover.filter((c) => mine.some((m) => core.pointInPolygon(m.c, c) || core.pointInPolygon(core.polygonCentroid(c), m.poly)))
 }
 
 /** Does a face's floor drop below its unit's base (a ramp going down through the slab to the level below)? */
@@ -183,4 +193,26 @@ export function voidsOver(t: Tower, k: number): Pt[][] {
     const sinks = sinking(unit, rooms)
     return rooms.filter(sinks).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x, y: p.y + offset.y })))
   })
+}
+
+/**
+ * Where a stair leads (founder 2026-11-20: climbing a stair must reach the floor above): from unit `stem` on floor `k`, at
+ * plan point `at` (its own frame: the stair), one floor `dir` (+1 up, −1 down) — the unit on that floor with a stair room
+ * at that point (its flats first, then its levels and stand-ins; else the nearest stair room, its middle within 3 m) and
+ * the point in that unit's frame. null: no floor there, or no stair on it.
+ */
+export function stairTo(t: Tower, stem: string, k: number, at: Pt, dir: 1 | -1): { stem: string; floor: number; at: Pt } | null {
+  const f = t.FLOORS.find((x) => x.floor === k + dir)
+  const me = t.FLATS[stem]?.offset
+  if (!f || !me) return null
+  let best: { d: number; stem: string; at: Pt } | null = null
+  for (const s of [...f.flats, ...(f.standIns ?? [])]) {
+    const { unit, offset } = t.FLATS[s]
+    const p = { x: at.x + me.x - offset.x, y: at.y + me.y - offset.y }
+    for (const r of core.deriveRooms(unit).filter(isStairRoom)) {
+      const d = core.pointInPolygon(p, core.roomPolygon(r, unit)) ? 0 : Math.hypot(r.centroid.x - p.x, r.centroid.y - p.y)
+      if (d <= 3 && (!best || d < best.d)) best = { d, stem: s, at: p }
+    }
+  }
+  return best && { stem: best.stem, floor: k + dir, at: best.at }
 }

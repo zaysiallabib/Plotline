@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveRooms } from '../core'
 import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
-import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
+import { library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
 import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
@@ -574,3 +574,49 @@ describe('one floor or all (founder 2026-11-20): a floor whose drawing is on oth
     expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units.a.walls[0].openings).toEqual([])
   })
 })
+describe('a wall piece goes up and down its wall too (founder 2026-11-20: "i can move on the sides but not up and down")', () => {
+  const top = { p: { x: 2.5, y: 0.1 }, n: { x: 0, y: 1 } } // the TV's own wall, its face toward the room
+  const tvAt = (y: number, h = pickUp(ps, 'tv')) => holdAt(unit, rooms, ps, h, { at: null, wall: { ...top, y } })
+
+  it('follows the hand by the height it was grabbed at, in 1" steps; Ctrl+Z is one step', () => {
+    const grabbed = tvAt(1.3) // first frame: grabbed 5 mm under its middle (0.95 + 0.71 / 2)
+    expect(grabbed.lift).toBeCloseTo(0.005, 6)
+    expect(grabbed.move!.piece.mountY).toBeCloseTo(37 * 0.0254, 6) // 0.95 m = 37.4": onto the 1" step
+    const up = tvAt(1.7, grabbed) // the hand 40 cm higher
+    expect(up.move!.error).toBeNull()
+    expect(up.move!.piece.mountY).toBeCloseTo(53 * 0.0254, 6) // 1.35 m → 53"
+    expect(up.move!.piece).toMatchObject({ x: expect.closeTo(33 * 0.0762, 6), rotationDeg: 0 }) // along the wall where it was (3" steps)
+    const f = dropHeld(up)!
+    const h = pushStep({ pieces: ps, past: [] }, f)
+    expect(at(h.pieces, 'tv').mountY).toBeCloseTo(1.3462, 6)
+    expect(at(undoStep(h).pieces, 'tv').mountY).toBeUndefined()
+  })
+
+  it('stays on the wall: over the skirting, its top under the ceiling', () => {
+    const grabbed = tvAt(1.3)
+    expect(tvAt(-2, grabbed).move!.piece.mountY).toBe(0.1)
+    expect(tvAt(9, grabbed).move!.piece.mountY).toBeCloseTo(3 - 0.71, 6)
+  })
+
+  it('never over a window or a doorway of its wall; above the door head it may hang', () => {
+    const ac = placePiece(withWin, deriveRooms(withWin), ps, 'ac_split', { x: 7.6, y: 1.8 }, 0, 'ac')!
+    expect(ac.error).toBeNull() // 2.3 m up: over the window head
+    expect(liftPiece(withWin, deriveRooms(withWin), ac.furniture, 'ac', 1.5)!.error).toBe('Covers the window')
+    const door = { p: { x: 4.9, y: 3.4 }, n: { x: -1, y: 0 } } // the partition door, from the Living
+    expect(dragTo(unit, rooms, ps, 'tv', { at: null, wall: { ...door, y: 1.3 } })!.error).toBe('Covers the doorway')
+    expect(dragTo(unit, rooms, ps, 'tv', { at: null, wall: { ...door, y: 2.6 } })!.error).toBeNull()
+    expect(liftPiece(unit, rooms, ps, 'sofa', 1)).toBeNull() // a floor piece does not go up the wall
+  })
+
+  it('Studio: Height from floor is one undo step; a refusal toasts and keeps the layout', () => {
+    const s0: StudioState = { ...initialState(), tool: 'furniture', unit }
+    const s = reducer(s0, { type: 'lift-piece', id: 'tv', mountY: 1.5 })
+    expect(at(s.unit.furniture, 'tv').mountY).toBeCloseTo(59 * 0.0254, 6)
+    expect(reducer(s, { type: 'undo' }).unit).toBe(unit)
+    const acUnit = { ...withWin, furniture: placePiece(withWin, deriveRooms(withWin), ps, 'ac_split', { x: 7.6, y: 1.8 }, 0, 'ac')!.furniture }
+    const no = reducer({ ...s0, unit: acUnit }, { type: 'lift-piece', id: 'ac', mountY: 1.5 })
+    expect(no.unit).toBe(acUnit)
+    expect(no.toast?.text).toBe('Covers the window')
+  })
+})
+const withWin: Unit = { ...unit, walls: unit.walls.map((w) => (w.id === 'wR' ? { ...w, openings: [{ id: 'w', kind: 'window', offsetM: 1, widthM: 1.5, heightM: 1.2, sillM: 0.9 }] } : w)) }

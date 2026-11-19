@@ -5,7 +5,7 @@
  */
 import * as core from '../core'
 import type { Opening, Pt, Unit, Wall } from '../core'
-import { heightRange, kitAsset, placementSize } from '../furnish/kit'
+import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 
 /** Eye height (m; PlotlineScene's EYE): a Dhaka buyer's standing eye (adults ~1.52–1.65 m tall), and the real-estate camera height (1.2–1.5 m) that keeps a room's walls tall and its floor deep. Was 1.6. */
 export const EYE = 1.45
@@ -55,7 +55,7 @@ const scene = (unit: Unit): Scene => {
     if (!k || k.mount === 'ceiling' || k.category === 'rug' || k.kind === 'curtain') return [] // curtains hang open at the windows' sides: no view is planned round them
     const r = (f.rotationDeg * Math.PI) / 180
     const s = placementSize(f)
-    const [h0, h1] = heightRange({ ...k, sizeM: s })
+    const [h0, h1] = placementRange(f)
     return [{ id: f.id, c: f, ex: { x: Math.cos(r), y: Math.sin(r) }, ey: { x: -Math.sin(r), y: Math.cos(r) }, hx: s.x / 2, hy: s.z / 2, h0, h1 }]
   })
   const s = { walls: unit.walls, furniture: unit.furniture, quads, shut, boxes, top: Math.max(...unit.walls.map((w) => w.heightM)) }
@@ -247,11 +247,11 @@ export const WHOLE_TOP = 1.9
  * How much of a piece a room's frame shows (0–1; 1: whole — a bed's foot and headboard, a sofa's seat and back): its
  * footprint corners at WHOLE_FOOT (its base if higher) and its back corners at its top (WHOLE_TOP at most) inside the frame.
  */
-export function pieceInFrame(f: { assetId: string; x: number; y: number; rotationDeg: number; scale?: number; sizeM?: { x: number; y: number; z: number } }, p: Pt, face: Pt, pitch = 0): number {
+export function pieceInFrame(f: { assetId: string; x: number; y: number; rotationDeg: number; scale?: number; sizeM?: { x: number; y: number; z: number }; mountY?: number }, p: Pt, face: Pt, pitch = 0): number {
   const k = kitAsset(f.assetId)
   if (!k) return 0
   const s = placementSize(f)
-  const [h0, h1] = heightRange({ ...k, sizeM: s })
+  const [h0, h1] = placementRange(f)
   return boxInFrame(f, s, Math.min(Math.max(h0, WHOLE_FOOT), h1), Math.min(h1, WHOLE_TOP), p, face, pitch, 1)
 }
 

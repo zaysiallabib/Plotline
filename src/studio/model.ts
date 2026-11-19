@@ -7,7 +7,7 @@ import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, S
 import { HARD, snapOpeningOffset, snapPoint, type OpeningSnap, type Snap } from './snap'
 import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
-import { deletePiece, forgetPresets, layoutFor, movePiece, placePiece, resizePiece } from './furniture'
+import { deletePiece, forgetPresets, layoutFor, liftPiece, movePiece, placePiece, resizePiece } from './furniture'
 import type { Review } from './review'
 
 export const PARTITION_M = 0.127
@@ -234,6 +234,8 @@ export type Action =
   | { type: 'rotate-piece'; id: Id }
   /** a resizable piece to width x, height y, depth z (m; 5 cm step, kit limits); the back stays on its wall; `grow` = the side that moves (furniture.resizePiece) */
   | { type: 'resize-piece'; id: Id; sizeM: { x: number; y: number; z: number }; grow?: { x: number; z: number } }
+  /** a wall piece's bottom to `mountY` m above the floor (furniture.liftPiece: 1" steps, skirting to ceiling; a window / doorway refuses it) */
+  | { type: 'lift-piece'; id: Id; mountY: number }
   /** the piece and what rests on it deleted (tombstones: its room is not re-furnished); undo / reset bring it back */
   | { type: 'delete-piece'; id: Id }
   /** a new piece `id` of kit asset `assetId` from the library, dropped at (x, y) turned `rotationDeg` (furniture.placePiece); refused → toast */
@@ -1579,7 +1581,8 @@ export function reducer(s: StudioState, a: Action): StudioState {
 
     case 'move-piece':
     case 'rotate-piece':
-    case 'resize-piece': {
+    case 'resize-piece':
+    case 'lift-piece': {
       const rooms = deriveRooms(s.unit)
       const pieces = layoutFor(s.unit, rooms)
       const p = pieces.find((x) => x.id === a.id)
@@ -1589,11 +1592,13 @@ export function reducer(s: StudioState, a: Action): StudioState {
           ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM, a.grow)
           : a.type === 'rotate-piece'
             ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
-            : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)
+            : a.type === 'lift-piece'
+              ? liftPiece(s.unit, rooms, pieces, p.id, a.mountY)
+              : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)
       if (!r) return s
       if (r.error) return withToast(s, r.error)
       const q = r.piece
-      if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM)) return s
+      if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM) && q.mountY === p.mountY) return s
       // the first move writes the whole preset layout: that is what Export and Preview 3D then carry
       return commit(s, { ...s.unit, furniture: r.furniture })
     }
