@@ -100,9 +100,25 @@ export function surfaceOf(p: { assetId: string }): 'floor' | 'wall' | 'ceiling' 
   if (a?.mount === 'wall' || (a?.mountY ?? 0) >= 0.9) return 'wall'
   return a?.mount === 'ceiling' ? 'ceiling' : 'floor'
 }
-const band = (p: FurniturePlacement): [number, number] => {
+/** Bottom and top over its floor; an `onTop` piece's on what it stands on among `pieces` (bottomOf). */
+const band = (p: FurniturePlacement, pieces?: FurniturePlacement[]): [number, number] => {
   const a = assetOf(p)
-  return a ? heightRange({ ...a, sizeM: sizeOf(p) }) : [0, sizeOf(p).y] // a resized wall piece stays centred at 1.5 m
+  if (!a) return [0, sizeOf(p).y]
+  const [y0, y1] = heightRange({ ...a, sizeM: sizeOf(p) }) // a resized wall piece stays centred at 1.5 m
+  const b = a.onTop && pieces ? bottomOf(pieces, p) : y0
+  return [b, b + y1 - y0]
+}
+/** What a piece that stands on top (kit `onTop`: a table lamp) may stand on: tables, desks, bedsides, chests, shelves, units, counters. */
+const TOPS: ObjectKind[] = ['bedside', 'desk', 'coffee-table', 'dining-table', 'shelf', 'tv-unit', 'dresser', 'console', 'shoe-rack', 'kitchen-cabinet', 'reception-desk']
+/**
+ * How high a piece's bottom is over its floor (m). An `onTop` piece (a table lamp) stands on the top of the table, desk,
+ * bedside… under its middle (TOPS; its built height: a taller chest lifts it), else on the floor; the others where their
+ * kit hangs them (heightRange). One rule for the rules here, the 3D view and its light (render.ts).
+ */
+export function bottomOf(pieces: FurniturePlacement[], p: FurniturePlacement): number {
+  if (!assetOf(p)?.onTop) return band(p)[0]
+  const under = pieceAt(pieces.filter((o) => o.id !== p.id && o.roomId === p.roomId && layerOf(o) === 0 && TOPS.includes(objectKind(assetOf(o)!))), p)
+  return under ? band(under)[1] : 0
 }
 
 /** Curtains: hung on an opening (presets.ts hangCurtain), sliding along their wall only, wider or narrower by a side. */
@@ -112,13 +128,13 @@ const isCurtain = (p: FurniturePlacement) => p.assetId === CURTAINS
  * Rugs only stop rugs, curtains only curtains (a sofa may stand against a curtained window), ceiling fixtures stop
  * nothing, the rest when their heights overlap (a frame above a sofa is fine), as presets.
  */
-function blocks(p: FurniturePlacement, o: FurniturePlacement): boolean {
+function blocks(p: FurniturePlacement, o: FurniturePlacement, pieces: FurniturePlacement[]): boolean {
   if (isCurtain(p) || isCurtain(o)) return isCurtain(p) && isCurtain(o)
   const [lp, lo] = [layerOf(p), layerOf(o)]
   if (lp === 3 || lo === 3) return lp === lo
   if (lp === 2 || lo === 2) return false
-  const [p0, p1] = band(p)
-  const [o0, o1] = band(o)
+  const [p0, p1] = band(p, pieces)
+  const [o0, o1] = band(o, pieces)
   return o1 > p0 + 0.02 && o0 < p1 - 0.02
 }
 
@@ -156,7 +172,7 @@ function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurnitureP
   if (layerOf(p) !== 0) return []
   const q = pieceQuad(p)
   const top = band(p)[1]
-  return [...pieces.filter((o) => o.id !== p.id && !o.removed && !isCurtain(o) && o.roomId === p.roomId && layerOf(o) === 1 && band(o)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
+  return [...pieces.filter((o) => o.id !== p.id && !o.removed && !isCurtain(o) && o.roomId === p.roomId && layerOf(o) === 1 && band(o, pieces)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
 }
 
 /** A chair's refusal, said of the set it belongs to. */
@@ -262,7 +278,7 @@ export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement
     const [y0, y1] = band(p)
     if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
   }
-  const hit = others.find((o) => !o.removed && blocks(p, o) && quadsOverlap(pieceQuad(o), q))
+  const hit = others.find((o) => !o.removed && blocks(p, o, others) && quadsOverlap(pieceQuad(o), q))
   if (!hit) return null
   const name = pieceLabel(hit)
   return `Overlaps the ${name[0].toLowerCase()}${name.slice(1)}`

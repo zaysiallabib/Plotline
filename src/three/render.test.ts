@@ -1,6 +1,8 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { lampCandela, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
+import { assignPool, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
+import { LAMP_RANGE } from './daylight'
+import type { Room } from '../core'
 
 describe('skyLight', () => {
   test('noon down to 10°: the day look unchanged (exposure 1, full fill, no night)', () => {
@@ -58,6 +60,42 @@ describe('lamps', () => {
     expect(pickCasters(lamps, { x: 1, z: 0 }, 2)).toEqual([1, 0])
     expect(pickCasters(lamps, { x: 1, z: 0 }, 3)).toEqual([1, 0, 2])
     expect(pickCasters(lamps.slice(0, 1), { x: 1, z: 0 }, 3)).toEqual([0])
+  })
+  test('the lamps’ bounce by room: a lit room 1, a table lamp alone ≈ 0.17; a room with none gets some through its opening, else 0', () => {
+    const room = (id: string, areaSqm: number) => ({ id, areaSqm }) as Room
+    const rooms = [room('liv', 30), room('din', 20), room('bed', 14), room('bath', 4), room('store', 3)]
+    const lamp = 350 / Math.PI / 100
+    const s = lampShares(
+      [
+        { roomId: 'liv', cd: lampCandela(30) },
+        { roomId: 'bed', cd: lamp },
+        ...[1, 2, 3].map(() => ({ roomId: 'bath', cd: lampCandela(4) })),
+      ],
+      rooms,
+      [['liv', 'din', 0.3], ['bed', 'store', 0.1]],
+    )
+    expect(s.get('liv')).toBeCloseTo(1)
+    expect(s.get('bed')).toBeCloseTo(350 / 2100)
+    expect(s.get('bath')).toBe(LAMP_RANGE)
+    expect(s.get('din')).toBeCloseTo(0.3) // its pendant deleted: the living's light through the passage
+    expect(s.get('store')).toBeCloseTo(0.1 * (350 / 2100))
+    expect(lampShares([], rooms).size).toBe(0)
+  })
+  test('the lamps’ pool: the camera’s room and the nearest first; the shadow-casting lights take ceiling fixtures only', () => {
+    const fx = [
+      { x: 0, z: 0, here: false, ceiling: true },
+      { x: 9, z: 0, here: true, ceiling: true },
+      { x: 1, z: 0, here: false, ceiling: false }, // a table lamp
+      { x: 5, z: 0, here: false, ceiling: true },
+      { x: 30, z: 0, here: false, ceiling: true },
+    ]
+    // room for all: the 2 casters take the camera's room's and the nearest ceiling light, then the rest by distance, then dark
+    expect(assignPool(fx, { x: 1, z: 0 }, 7, 2)).toEqual([1, 0, 2, 3, 4, -1, -1])
+    // too few: the farthest goes dark, never the lamp beside the camera
+    expect(assignPool(fx, { x: 1, z: 0 }, 4, 2)).toEqual([1, 0, 2, 3])
+    // a lamp never in a caster's place, even with no ceiling light left for it
+    expect(assignPool([fx[2]], { x: 1, z: 0 }, 4, 3)).toEqual([-1, -1, -1, 0])
+    expect(assignPool([], { x: 1, z: 0 }, 4, 3)).toEqual([-1, -1, -1, -1])
   })
 })
 

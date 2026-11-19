@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { entry } from '../studio/library'
 import { library } from '../studio/furniture'
-import { KIT, kitAsset, placementLabel, resizeLimits } from './kit'
+import { KIT, kitAsset, lightOf, placementLabel, resizeLimits } from './kit'
 import { PROCEDURAL } from './procedural.meta'
 
 const ids = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)]
@@ -42,5 +42,27 @@ describe('kit integrity (the library)', () => {
       expect(resizeLimits(id), id).not.toBeNull()
       expect(placementLabel({ assetId: id }), id).toBe(kitAsset(id)!.label)
     }
+  })
+})
+
+describe('lightOf: one rule for which pieces give light', () => {
+  it('every ceiling fixture (flush lights, pendants, the chandelier, the fan’s light kit) is the room’s main light', () => {
+    for (const id of ['ceiling_light', 'ceiling_light_large', 'pendant_light', 'modern_ceiling_lamp_01', 'chandelier_01', 'ceiling_fan'])
+      expect(lightOf(id), id).toEqual({ kind: 'ceiling' })
+  })
+  it('floor and table lamps: their own bulb, in the shade, a few hundred lumens', () => {
+    expect(lightOf('floor_lamp')).toMatchObject({ kind: 'floor' })
+    expect(lightOf('table_lamp')).toMatchObject({ kind: 'table' })
+    for (const id of ['floor_lamp', 'table_lamp']) {
+      const l = lightOf(id) as { lumens: number; bulbM: number }
+      expect(l.lumens).toBeGreaterThan(200)
+      expect(l.lumens).toBeLessThan(1500)
+      expect(l.bulbM).toBeGreaterThan(0.5 * kitAsset(id)!.sizeM.y) // up in the shade
+      expect(l.bulbM).toBeLessThan(kitAsset(id)!.sizeM.y)
+    }
+  })
+  it('every lamp-category piece gives light; nothing else does (an AC, a TV, a geyser’s pilot light)', () => {
+    for (const id of ids) expect(!!lightOf(id), id).toBe(kitAsset(id)!.category === 'lamp' || id === 'ceiling_fan')
+    expect(lightOf('nope')).toBeNull()
   })
 })

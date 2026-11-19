@@ -49,10 +49,11 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * counter-clockwise, so clockwise-in-plan = NEGATIVE angle about Y.
  * `mount` (kit.ts): 'ceiling' hangs the asset with its top at ceilingM,
  * 'wall' centres it at 1.5 m; `mountY` puts its bottom at that height instead
- * (TV on its unit, pillows on the sofa); 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
+ * (TV on its unit, pillows on the sofa) — an `onTop` piece (a table lamp) at `restM`, the top it stands on (studio/furniture.ts
+ * bottomOf); 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
  * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute.
  */
-export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0): Promise<THREE.Group> {
+export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0, restM?: number): Promise<THREE.Group> {
   const pivot = new THREE.Group()
   pivot.position.set(p.x, floorM, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
@@ -94,7 +95,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       }
       const c = box.getCenter(new THREE.Vector3())
       model.position.set(-c.x, -box.min.y, -c.z)
-      if (asset.mountY !== undefined) pivot.position.y = floorM + asset.mountY
+      if (asset.mountY !== undefined) pivot.position.y = floorM + (asset.onTop && restM !== undefined ? restM : asset.mountY)
       else if (asset.mount === 'ceiling') pivot.position.y = ceilingM - (box.max.y - box.min.y)
       else if (asset.mount === 'wall') pivot.position.y = floorM + 1.5 - (box.max.y - box.min.y) / 2
       model.traverse((o) => {

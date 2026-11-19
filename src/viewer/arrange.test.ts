@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveRooms } from '../core'
 import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
-import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
+import { bottomOf, library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
 import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
@@ -371,6 +371,25 @@ describe('placePiece: the staff library adds a kit piece on a move’s rules', (
     const tv = place('tv_55_wall', 2, 2, 0, { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 } })
     expect(tv.error).toBeNull()
     expect(tv.piece).toMatchObject({ rotationDeg: 270, roomId: 'A', x: expect.closeTo(0.1 + 0.005 + 0.03, 6) })
+  })
+
+  it('a table lamp stands ON the bedside / desk under it (its top, no gap), else on the floor; it goes with the desk', () => {
+    const side = place('table_lamp', 7.0, 0.95) // on the bedside (0.52 m)
+    expect(side.error).toBeNull()
+    expect(bottomOf(side.furniture, side.piece)).toBeCloseTo(0.52, 6)
+    const desk = placePiece(unit, rooms, ps, 'study_desk', { x: 2.5, y: 2.5 }, 0, 'desk')!
+    expect(desk.error).toBeNull()
+    const lamp = placePiece(unit, rooms, desk.furniture, 'table_lamp', { x: desk.piece.x + 0.3, y: desk.piece.y }, 0, 'lamp')!
+    expect(lamp.error).toBeNull() // not "overlaps the desk": it stands on it
+    expect(bottomOf(lamp.furniture, lamp.piece)).toBeCloseTo(0.75, 6) // the desk's built height
+    const moved = movePiece(unit, rooms, lamp.furniture, 'desk', { x: 2.0, y: 1.8 }, 0)!
+    expect(moved.error).toBeNull()
+    expect(moved.ids).toContain('lamp')
+    expect(bottomOf(moved.furniture, at(moved.furniture, 'lamp'))).toBeCloseTo(0.75, 6)
+    const floor = place('table_lamp', 1.2, 2.5)
+    expect(floor.error).toBeNull()
+    expect(bottomOf(floor.furniture, floor.piece)).toBe(0)
+    expect(place('table_lamp', 2.5, 4.39).error).toBe('Overlaps the 3-seat fabric sofa') // a sofa is no table
   })
 
   it('a ceiling piece goes anywhere on the ceiling of its room (over furniture too)', () => {

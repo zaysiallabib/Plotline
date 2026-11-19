@@ -18,11 +18,12 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
-import type { Pt, Room, Unit } from '../core'
-import { isCeilingLight, placementSize } from '../furnish/kit'
+import type { Id, Pt, Room, Unit } from '../core'
+import { kitAsset, lightOf, placementSize } from '../furnish/kit'
+import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } from './context'
-import { dayMix, isCovered, openToSky } from './daylight'
+import { dayMix, isCovered, LAMP_RANGE, openToSky, setLampShare } from './daylight'
 import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
@@ -76,8 +77,31 @@ const BOUNCE_DOWN = 0.08
  * (a 10–45 W LED ceiling light, or a fan's kit and a tube light), Lambertian under a flush diffuser: peak candela Φ / π.
  */
 export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
-/** + sun + hemisphere: forward shading pays for every light on every lit fragment — at intensity 0 too (no recompile on / off) */
-const MAX_ROOM_LIGHTS = 12
+/**
+ * The flat's lamps (kit.ts lightOf: ceiling fixtures, floor and table lamps) share a pool of spot lights, the nearest to
+ * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most MAX_LAMPS. Forward
+ * shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles every
+ * material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
+ */
+const MAX_LAMPS = 12
+const SPARE = 4
+/** a ceiling diffuser's cone (Lambertian: see setUnit); a lamp's shade lets its light out over the whole lower half */
+const CEILING_CONE = THREE.MathUtils.degToRad(83)
+const LAMP_CONE = Math.PI / 2
+/** A piece that gives light, where its light is (setFixtures): plan x / z, its height y over the floor at `floor`, peak candela, reach. */
+interface Fixture {
+  x: number
+  z: number
+  y: number
+  floor: number
+  cd: number
+  reach: number
+  /** a ceiling fixture (it may cast shadows); a floor / table lamp never does: its own shade would shadow its light */
+  ceiling: boolean
+  /** its room and that room's outline: the camera's room first (assignPool), the room's bounce (lampShares) */
+  roomId: Id
+  room: Pt[]
+}
 /** lamps casting shadows at once (the nearest to the camera; the count never changes: no recompile) */
 const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
 /** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
@@ -154,6 +178,39 @@ export function pickCasters(lamps: { x: number; z: number; here: boolean }[], ca
     .slice(0, k)
     .map((r) => r.i)
 }
+/**
+ * The pool's `n` lights → the fixtures they show (indices into `fx`, −1: dark): those in the camera's room first, then
+ * the nearest (pickCasters). Lights 0…casters−1 cast shadows: they take ceiling fixtures only, the rest the others in
+ * that order. A fixture past the pool (far off, the flat over-full of lamps) stays dark until the camera nears it.
+ */
+export function assignPool(fx: { x: number; z: number; here: boolean; ceiling: boolean }[], cam: { x: number; z: number }, n: number, casters: number): number[] {
+  const order = pickCasters(fx, cam, fx.length)
+  const out = new Array<number>(n).fill(-1)
+  const shadowed = order.filter((i) => fx[i].ceiling).slice(0, Math.min(casters, n))
+  shadowed.forEach((i, k) => (out[k] = i))
+  let k = Math.min(casters, n)
+  for (const i of order) if (k < n && !shadowed.includes(i)) out[k++] = i
+  return out
+}
+/** of a lit neighbour's bounce, what comes in through an open passage / any other opening between two rooms (a door ajar, glass) */
+const SPILL = { passage: 0.3, other: 0.1 }
+/**
+ * Each room's lamps as a share of a lit room's (one ceiling fixture: lampCandela, 150 lm per m² of floor) — a table lamp
+ * alone in a bedroom ≈ 0.2 — at most LAMP_RANGE: how much of their bounce lights its walls, floor and ceiling at night
+ * (daylight.ts setLampShare). A room with no lamp of its own gets some of its brightest neighbour's through the opening
+ * between them (`links`: the two rooms and that opening's SPILL); else 0, dark.
+ */
+export function lampShares(fx: { roomId: Id; cd: number }[], rooms: Room[], links: [Id, Id, number][] = []): Map<Id, number> {
+  const own = new Map<Id, number>()
+  for (const f of fx) {
+    const r = rooms.find((x) => x.id === f.roomId)
+    if (r) own.set(r.id, Math.min(LAMP_RANGE, (own.get(r.id) ?? 0) + f.cd / lampCandela(r.areaSqm)))
+  }
+  const out = new Map(own)
+  for (const [a, b, k] of links)
+    for (const [to, from] of [[a, b], [b, a]]) out.set(to, Math.max(out.get(to) ?? 0, (own.get(from) ?? 0) * k))
+  return out
+}
 /** Covered zones (coverLights): a batten every GRID m, the real downlights among them, their candela. */
 const GRID = 3.6
 const COVER_LIGHTS = 4
@@ -190,8 +247,13 @@ export class Look {
   /** per unit (context.ts): contact shadows under the furniture; the street (in `indoor`: none around the dollhouse) */
   private contact: THREE.Mesh | null = null
   private street: THREE.Group | null = null
-  /** `id`: the fixture placement it hangs at; `room`: its room's polygon (pickCasters: the camera's room first) */
-  private lights: { light: THREE.SpotLight; base: number; id: string; room: Pt[] }[] = []
+  /** the lamps' pool (setUnit): each light and the fixture it shows (null: none, dark) */
+  private pool: { light: THREE.SpotLight; at: Fixture | null }[] = []
+  /** every piece that gives light (setFixtures) */
+  private fixtures: Fixture[] = []
+  /** the unit's rooms as setUnit got them: setFurniture finds the lamps' rooms in them; the openings between them (lampShares) */
+  private rooms: Room[] = []
+  private links: [Id, Id, number][] = []
   /** the flat's lamps on (lightsOn) and the sky's light, as last set */
   private on = false
   /** the Building view: the camera is outside the tower, whose shells take no bounce from this flat's lamps */
@@ -308,11 +370,10 @@ export class Look {
     this.disposeContext()
     this.unitGroup.clear()
     this.indoor.clear()
-    this.lights = []
+    for (const s of this.pool) s.light.dispose() // its shadow map
 
     // floor levels (session 19): a room's floor at its label's level (a ramp: its plane), its ceiling at its walls' top
     const level = (r: Room, x: number, y: number) => core.roomLevelAt(r, unit, x, y)
-    const ceilingOf = (r: Room) => roomCeiling(r, unit, rooms) // as buildRoom (a covered storey: PlotlineScene lifts it to the slab)
     this.topY = storeyTop(unit, rooms)
     const lowest = Math.min(0, ...rooms.flatMap((r) => core.roomPolygon(r, unit).map((p) => level(r, p.x, p.y))))
 
@@ -406,23 +467,19 @@ export class Look {
     ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
     this.reach = this.street.userData.site ? SITE_REACH_M : 1
 
-    // a light at each room's ceiling fixture (flush light, fan or pendant: presets.ts places one in every lit room),
-    // biggest non-bath rooms first, then baths, up to the cap
-    const lit = [...rooms].sort((a, b) => Number(a.kind === 'bath') - Number(b.kind === 'bath') || b.areaSqm - a.areaSqm)
-    for (const room of lit) {
-      const hung = unit.furniture.find((p) => p.roomId === room.id && isCeilingLight(p.assetId))
-      if (!hung || this.lights.length >= MAX_ROOM_LIGHTS) continue
-      const at = { x: hung.x, y: hung.y }
-      // just under a flush diffuser; at the fan's light kit / the pendant's globe
-      const lightY = ceilingOf(room) - Math.max(0.12, 0.8 * placementSize(hung).y)
-      const reach = Math.max(...core.roomPolygon(room, unit).map((p) => Math.hypot(p.x - at.x, p.y - at.y)))
+    // the lamps' pool: sized here, and only here (its count recompiles every material); setFixtures says where they are
+    this.rooms = rooms
+    this.links = unit.walls.flatMap((w): [Id, Id, number][] => {
+      const [a, b] = w.openings.length ? sidesOf(w) : [null, null]
+      return a && b && a !== b ? [[a.id, b.id, w.openings.some((o) => o.kind === 'passage') ? SPILL.passage : SPILL.other]] : []
+    })
+    this.setFixtures(unit)
+    this.pool = Array.from({ length: Math.min(MAX_LAMPS, this.fixtures.length + SPARE) }, (_, i) => {
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
       // smoothstep(cos 83°, 1, cos θ) ≈ cos θ — the walls lit up to near the ceiling, falling off as a real lamp's
-      const light = new THREE.SpotLight(WARM, 0, reach + 1.5, THREE.MathUtils.degToRad(83), 1, 2)
-      light.position.set(at.x, lightY, at.y)
-      light.target.position.set(at.x, level(room, at.x, at.y), at.y)
+      const light = new THREE.SpotLight(WARM, 0, 10, CEILING_CONE, 1, 2)
       const sh = light.shadow
       sh.autoUpdate = false // drawn when picked (render) or when what it sees changed
       sh.mapSize.setScalar(this.casters > 1 ? 1024 : 512)
@@ -431,12 +488,11 @@ export class Look {
       sh.bias = -0.0004
       sh.normalBias = 0.02
       sh.radius = 3
-      this.lights.push({ light, base: lampCandela(room.areaSqm), id: hung.id, room: core.roomPolygon(room, unit) })
+      // the same number of shadow-casting lamps whatever the camera does (a count change recompiles every material)
+      light.castShadow = i < this.casters
       this.unitGroup.add(light, light.target)
-    }
-    // the same number of shadow-casting lamps whatever the camera does (a count change recompiles every material)
-    this.lights.forEach((l, i) => (l.light.castShadow = i < this.casters))
-    this.pickedAt.set(Infinity, 0, 0)
+      return { light, at: null }
+    })
     this.coverLights(unit, rooms, cover)
     this.unitGroup.add(slab, this.indoor)
   }
@@ -474,7 +530,31 @@ export class Look {
     }
   }
 
-  /** Arrange moved pieces: the contact shadows are redrawn (one canvas) and each room light follows its fixture. */
+  /**
+   * Every piece that gives light (kit.ts lightOf) and where its light is: a ceiling fixture's just under its diffuser / at
+   * the fan's light kit / the pendant's globe, sized to its room (lampCandela); a floor or table lamp's in its shade, over
+   * what it stands on (studio/furniture.ts bottomOf), its own lumens. The pool takes them on the next frame (assignLamps).
+   */
+  private setFixtures(unit: Unit): void {
+    const byId = new Map(this.rooms.map((r) => [r.id, r]))
+    this.fixtures = unit.furniture.flatMap((p): Fixture[] => {
+      const lamp = lightOf(p.assetId)
+      const room = byId.get(p.roomId)
+      if (!lamp || !room) return []
+      const floor = core.roomLevelAt(room, unit, p.x, p.y)
+      const h = placementSize(p).y
+      const poly = core.roomPolygon(room, unit)
+      const reach = Math.max(...poly.map((q) => Math.hypot(q.x - p.x, q.y - p.y)))
+      const at = { x: p.x, z: p.y, floor, reach, roomId: room.id, room: poly }
+      return lamp.kind === 'ceiling'
+        ? [{ ...at, y: roomCeiling(room, unit, this.rooms) - Math.max(0.12, 0.8 * h), cd: lampCandela(room.areaSqm), ceiling: true }] // its ceiling as buildRoom's
+        : [{ ...at, y: floor + bottomOf(unit.furniture, p) + (lamp.bulbM * h) / kitAsset(p.assetId)!.sizeM.y, cd: lamp.lumens / Math.PI / 100, ceiling: false }]
+    })
+    setLampShare(lampShares(this.fixtures, this.rooms, this.links))
+    this.pickedAt.set(Infinity, 0, 0)
+  }
+
+  /** Arrange changed the layout (move, add, delete, undo): the contact shadows are redrawn (one canvas) and the lamps follow their pieces. */
   setFurniture(unit: Unit): void {
     const c = this.contact
     if (c) {
@@ -486,16 +566,7 @@ export class Look {
     }
     this.contact = buildContactShadows(unit, core.unitBounds(unit))
     if (this.contact) this.unitGroup.add(this.contact)
-    for (const { light, id } of this.lights) {
-      const p = unit.furniture.find((x) => x.id === id)
-      if (!p) continue
-      light.position.x = p.x
-      light.position.z = p.y
-      light.target.position.x = p.x // its y: the floor under it (setUnit)
-      light.target.position.z = p.y
-      light.shadow.needsUpdate = light.castShadow
-      this.renderer.shadowMap.needsUpdate ||= light.castShadow
-    }
+    this.setFixtures(unit)
   }
 
   /**
@@ -547,9 +618,9 @@ export class Look {
   setLights(on: boolean): void {
     const lit = on && !this.on // just switched on: the shadow-casting lamps draw their maps (off, none were kept up)
     this.on = on
-    for (const { light, base } of this.lights) light.intensity = on ? base : 0
+    for (const { light, at } of this.pool) light.intensity = on && at ? at.cd : 0
     for (const [m, e] of this.glows) m.emissiveIntensity = on ? e * ON_GLOW : 0
-    if (lit) for (const l of this.lights) l.light.shadow.needsUpdate = l.light.castShadow
+    if (lit) for (const { light } of this.pool) light.shadow.needsUpdate = light.castShadow
     this.renderer.shadowMap.needsUpdate ||= lit
     this.pickedAt.set(Infinity, 0, 0)
     this.setAltitude(this.alt)
@@ -558,14 +629,17 @@ export class Look {
   /** Lite and still slow (PlotlineScene.shadowsOff): no lamp casts a shadow, now or after the next setUnit. */
   lampShadowsOff(): void {
     this.casters = 0
-    for (const { light } of this.lights) light.castShadow = false
+    for (const { light } of this.pool) light.castShadow = false
   }
 
-  /** A ceiling light's materials (a mounted piece): those that glow (emissive) follow the lamps. */
+  /** A lamp's materials (a mounted piece that gives light): those that glow (emissive: a diffuser, a globe, a shade) follow the lamps. */
   addGlows(obj: THREE.Object3D): void {
     obj.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
-      if (!m?.isMeshStandardMaterial || this.glows.has(m) || (!m.emissiveMap && m.emissive.getHex() === 0)) return
+      if (!m?.isMeshStandardMaterial || this.glows.has(m)) return
+      // a scan's shades / bulbs with no glow of their own (the chandelier's "lamps" material): lit as a linen shade is
+      if (!m.emissiveMap && m.emissive.getHex() === 0 && /^lamps?_|shade|bulb/i.test(m.name)) m.emissive.set('#ffd6a0').multiplyScalar(0.35)
+      if (!m.emissiveMap && m.emissive.getHex() === 0) return
       if (m.emissive.getHex() === 0) m.emissive.set('#fff0dc') // an emissive map with no factor (the fan's light kit): it never glowed
       this.glows.set(m, m.emissiveIntensity)
       m.emissiveIntensity = this.on ? m.emissiveIntensity * ON_GLOW : 0
@@ -619,10 +693,10 @@ export class Look {
     if (key !== this.shadowKey) {
       this.renderer.shadowMap.needsUpdate = true
       this.sun.shadow.needsUpdate = true
-      for (const l of this.lights) if (l.light.castShadow) l.light.shadow.needsUpdate = true
+      for (const { light } of this.pool) if (light.castShadow) light.shadow.needsUpdate = true
       this.shadowKey = key
     }
-    this.pickLampShadows()
+    this.assignLamps()
     if (this.composer && !this.renderer.xr.isPresenting) {
       // AO from the depth RenderPass is about to write (normals reconstructed): no second geometry pass, and
       // alpha-tested leaves occlude as drawn. Re-pointed per frame so GTAO never samples the target it writes.
@@ -632,21 +706,29 @@ export class Look {
   }
 
   /**
-   * The lamps nearest the camera cast shadows (pickCasters, CASTERS of them), re-picked once the camera has moved 0.5 m;
-   * a lamp that starts casting has its map drawn on this frame, the others keep theirs. Lamps off: nothing to draw.
+   * The pool to the fixtures nearest the camera (assignPool; its first CASTERS lights cast shadows), again once the camera
+   * has moved 0.5 m or the layout changed (setFixtures); a light that takes another fixture has its map drawn on this
+   * frame, the others keep theirs. Lamps off: nothing to do (setLights asks again when they go on).
    */
-  private pickLampShadows(): void {
-    if (!this.on || !this.casters || this.lights.length <= this.casters || this.v.distanceTo(this.pickedAt) < 0.5) return
+  private assignLamps(): void {
+    if (!this.on || this.v.distanceTo(this.pickedAt) < 0.5) return
     this.pickedAt.copy(this.v)
     const here = (poly: Pt[]) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, poly)
-    const pick = new Set(pickCasters(this.lights.map((l) => ({ x: l.light.position.x, z: l.light.position.z, here: here(l.room) })), { x: this.v.x, z: this.v.z }, this.casters))
-    this.lights.forEach(({ light }, i) => {
-      const cast = pick.has(i)
-      if (cast && !light.castShadow) {
-        light.shadow.needsUpdate = true
-        this.renderer.shadowMap.needsUpdate = true
-      }
-      light.castShadow = cast
+    const fx = this.fixtures
+    const slots = assignPool(fx.map((f) => ({ x: f.x, z: f.z, here: here(f.room), ceiling: f.ceiling })), { x: this.v.x, z: this.v.z }, this.pool.length, this.casters)
+    slots.forEach((i, k) => {
+      const s = this.pool[k]
+      const f = fx[i] ?? null
+      s.light.intensity = f ? f.cd : 0
+      if (s.at === f) return
+      s.at = f
+      if (!f) return
+      const l = s.light
+      l.position.set(f.x, f.y, f.z)
+      l.target.position.set(f.x, f.floor, f.z)
+      l.distance = f.reach + 1.5
+      l.angle = f.ceiling ? CEILING_CONE : LAMP_CONE
+      if (l.castShadow) l.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true
     })
   }
 

@@ -23,12 +23,13 @@ import { LITE_MAX_TRIANGLES, loadShell } from './shell'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
-import { isCeilingLight, kitAsset, type ObjectKind } from '../furnish/kit'
+import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
 import { lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
+import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
@@ -712,6 +713,7 @@ export class PlotlineScene {
    */
   placePieces(ps: FurniturePlacement[], all = false): void {
     if (all) {
+      this.layout = ps
       const ids = new Set(ps.map((p) => p.id))
       for (const o of [...this.furnitureGroup.children, ...this.ceilingGroup.children]) if (o.userData.kind === 'furniture' && !ids.has(o.userData.id)) o.visible = false
       for (const id of this.adding.keys()) if (!ids.has(id)) this.adding.set(id, null)
@@ -730,7 +732,8 @@ export class PlotlineScene {
       o.position.x = p.x
       o.position.z = p.y
       const floor = this.floorOf(p) // moved onto another level: up or down with it
-      o.position.y += floor - (o.userData.floorM ?? 0)
+      // a table lamp: on the top of what is under it now (a desk, a bedside), else on the floor
+      o.position.y = kitAsset(p.assetId)?.onTop ? floor + bottomOf(this.layout, p) : o.position.y + floor - (o.userData.floorM ?? 0)
       o.userData.floorM = floor
       o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
       o.userData.roomId = p.roomId
@@ -738,6 +741,8 @@ export class PlotlineScene {
     }
   }
 
+  /** the whole layout as last placed (placePieces `all`, loadFurniture): what a table lamp stands on */
+  private layout: FurniturePlacement[] = []
   /** Pieces being built for placePieces → where they should stand when done (null: left out of the layout since). */
   private readonly adding = new Map<Id, FurniturePlacement | null>()
   private async addPiece(p: FurniturePlacement): Promise<void> {
@@ -745,7 +750,7 @@ export class PlotlineScene {
     this.adding.set(p.id, p)
     if (building) return
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
     const now = this.adding.get(p.id)
     this.adding.delete(p.id)
     if (token !== this.buildToken || this.pieceObject(p.id)) return
@@ -808,7 +813,7 @@ export class PlotlineScene {
   private async rebuildPiece(old: THREE.Object3D, p: FurniturePlacement, size: string): Promise<void> {
     old.userData.size = size // a newer size supersedes this build
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
     const parent = old.parent
     if (token !== this.buildToken || !parent || old.userData.size !== size) return
     obj.userData.size = size
@@ -1283,11 +1288,12 @@ export class PlotlineScene {
 
   private async loadFurniture(unit: Unit): Promise<void> {
     const token = this.buildToken
+    this.layout = unit.furniture
     const byDistance = [...unit.furniture].sort(
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
     for (const p of byDistance) {
-      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p))
+      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p))
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed
@@ -1301,7 +1307,7 @@ export class PlotlineScene {
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)
     ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)
-    if (isCeilingLight(p.assetId)) this.look.addGlows(obj) // its diffuser / globe glows while the lamps are on
+    if (lightOf(p.assetId)) this.look.addGlows(obj) // its diffuser, globe or shade glows while the lamps are on
   }
 
   private async loadEnvironment(): Promise<void> {
@@ -1488,6 +1494,17 @@ export class PlotlineScene {
     }
     let at = P && { x: P.x + off.x, y: P.z + off.y }
     if (stopAtWalls && wall && (!P || dist < ray.origin.distanceTo(P))) at = { x: wall.p.x + wall.n.x * 0.3, y: wall.p.y + wall.n.y * 0.3 }
+    // a table lamp in hand goes where the pointer meets the top of a piece (a desk, a bedside: it stands on it, bottomOf),
+    // not the floor point far behind that top
+    if (this.hand?.id === id && kitAsset(this.layout.find((p) => p.id === id)?.assetId ?? '')?.onTop) {
+      const top = this.raycaster.intersectObjects(this.furnitureGroup.children, true).find((h) => {
+        let o: THREE.Object3D | null = h.object
+        while (o && o.userData.kind !== 'furniture') o = o.parent
+        const mine = o?.userData.id === id || String(o?.userData.id).startsWith(`${id}/`)
+        return !mine && h.face && h.distance < dist && h.face.normal.clone().transformDirection(h.object.matrixWorld).y > 0.7
+      })
+      if (top) at = { x: top.point.x, y: top.point.z }
+    }
     this.arrangeCb?.({ kind: 'drag', id, at, wall, hole })
   }
 
