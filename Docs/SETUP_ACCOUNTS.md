@@ -1,4 +1,4 @@
-# Turning on accounts: signing in, saving to the cloud, one space per company
+# Turning on accounts: signing in, saving online, one space per company
 
 Written 2026-11-20 for the founder. No earlier knowledge needed. About 20 minutes the first time.
 Do the steps in order. Every SQL step is safe to run twice.
@@ -22,7 +22,10 @@ Do the steps in order. Every SQL step is safe to run twice.
 | Owner / staff | People in a company. Today both work the same in the Studio; the owner is the one who asks you to add or remove people. |
 | Magic link | The sign-in link Plotline emails. It works once, for a short time, and only in the browser where the email was typed. |
 | SQL editor | The page in Supabase where you paste database text and press **Run**. |
-| Two-tenant check | A test that makes two pretend companies and proves one cannot reach the other. It removes everything it made. |
+| Two-tenant check | A test that makes two pretend companies ("tenant" is just another word for company) and proves one cannot reach the other. It removes everything it made. |
+| SQL | The short typed instructions the database understands. You never write any: you paste the ones given here and press **Run**. |
+| SMTP | The standard way a program sends email. An email service gives you its SMTP details (a few lines of text) to paste into Supabase. |
+| Key (publishable / secret) | A long code that lets a program talk to the database. The **publishable** one is safe to put in a website. The **secret** one is the master key and must never be shown to anyone. |
 
 ## Before you start
 
@@ -35,11 +38,11 @@ Do the steps in order. Every SQL step is safe to run twice.
 
 ## Step 1 — Paste the database part
 
-1. Supabase → the Plotline project → left side **SQL Editor** → **New query**.
+1. Supabase → the Plotline project → left side **SQL Editor** → **New query**. You see an empty text box with a **Run** button at its bottom right.
 2. On your computer open `E:\dev\Plotline\supabase\paste-into-sql-editor.sql` with Notepad.
    Press Ctrl+A, then Ctrl+C.
-3. Click in the Supabase query box, Ctrl+V, then **Run** (bottom right).
-4. The result is one row: **Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).**
+3. Click in the Supabase query box, press Ctrl+V (a long text appears), then click **Run** (bottom right).
+4. Under the box you see a small table with one row: **Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).**
 
 The file holds all three database parts in order (share links, the change list, accounts). The two
 older parts are already there from October: running them again changes nothing, and your old staff
@@ -49,7 +52,7 @@ key and old links keep working.
 
 1. SQL Editor → **New query**.
 2. Open `E:\dev\Plotline\supabase\tests\two_tenants.sql` in Notepad, Ctrl+A, Ctrl+C, paste, **Run**.
-3. The result must be one row: **All two-tenant checks passed**.
+3. Under the box you must see a table with one row: **All two-tenant checks passed**. (A red message instead is explained just below.)
 
 It makes two pretend companies with one person each, and checks — the same way the website reaches
 the database — that one cannot read, change or add to the other's projects, save history, links or
@@ -61,7 +64,7 @@ Claude. Do not go on.
 
 ## Step 3 — Tell Supabase where sign-in links may go
 
-1. Supabase → left side **Authentication** → **URL Configuration**.
+1. Supabase → left side **Authentication** → **URL Configuration**. You see a box named **Site URL** and a list named **Redirect URLs**.
 2. **Site URL**: `https://plotline-flax.vercel.app` → **Save**.
 3. **Redirect URLs** → **Add URL**: `https://plotline-flax.vercel.app/studio` → **Save**.
    Add `http://localhost:5173/studio` too (for Plotline running on your own computer).
@@ -78,7 +81,7 @@ free email sender:
 1. Make a free account with an email-sending service. Two with a free plan: **Brevo** (brevo.com) or
    **Resend** (resend.com — needs a web address (domain) of your own). Check their free limits on
    their pages; a few hundred emails a day is plenty.
-2. In that service, find its **SMTP** details: host, port, user name, password (sometimes called an
+2. In that service, find its **SMTP** details (see "Words used here"): host, port, user name, password (sometimes called an
    SMTP key), and set the sender address (for example `login@yourcompany.com`).
 3. Supabase → **Authentication** → **Emails** → **SMTP Settings** → turn on **custom SMTP** and fill
    in those details → **Save**.
@@ -182,7 +185,7 @@ update public.projects set deleted_at = null where name = 'Banani tower';
 
 - Only the **publishable** key is on Vercel and in the website. Never copy the **secret** key
   (`sb_secret_…` / `service_role`) anywhere: it bypasses every protection. The build refuses it.
-- Companies and members are added **only** in the SQL editor, by you. Nobody can add themselves to a
+- Companies and members are added **only** in the SQL editor (the box where you paste the SQL), by you. Nobody can add themselves to a
   company from the website.
 - Anyone can create an account by asking for a sign-in link; an account in no company reaches
   nothing. To stop even that: Authentication → **Sign In / Providers** → turn off **Allow new users
