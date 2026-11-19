@@ -124,7 +124,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
-| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
+| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. In the Building view: the floor you picked ("Floor 2 · Type A · 2703 sft", "Ground floor"). **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
 | **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is filled white | everyone |
 | **Finishes** | Opens the finishes panel (F) | everyone |
 | **Comment** | Click anything to leave a note (C) | everyone |

@@ -75,7 +75,7 @@ Extras you can add to the end of a 3D address:
 
 The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
 
-**Top left:** the room you are standing in — its floor, its name, its printed size and area. **Click it** for the list of rooms (this is where the old **Rooms** button went). Click a room to jump there. Esc, or a click elsewhere, closes the list.
+**Top left:** the room you are standing in — its floor, its name, its printed size and area. **Click it** for the list of rooms (this is where the old **Rooms** button went). Click a room to jump there. Esc, or a click elsewhere, closes the list. In the Building view the same box names the floor you picked instead (since 2026-11-20): "Floor 2 · Type A · 2703 sft", the flats on another floor, or "Ground floor", "Basement 1", "Rooftop".
 
 **The hint** (bottom middle) shows the keys for what you are doing ("Double-click to look with the mouse · click the floor to walk there · WASD to walk"). It fades after a few seconds so it never sits over the room. It comes back when it changes (the mouse locked or freed, another view, an editor on) or when you hold the mouse over where it was. While Comment is on it stays: "Click anything to leave a note · Esc stops".
 
@@ -239,6 +239,7 @@ Opens this flat or level in the Studio, in a new tab.
 
 - **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is filled white, and your own flat's floor has a small gold dot.
 - Picking a basement hides everything above it (a ground floor traced in the Studio too). The street round the tower and the next buildings stay (since 2026-11-20; before, they went with the floors above).
+- **Top left** the box names the floor you picked: "Floor 2" over the flat's name and size ("Type A · 2703 sft"), the flats of another floor, or the level ("Ground floor", "Basement 1", "Rooftop").
 - **Walk this level** (gold, right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
 - **Click a flat** to open it.
 - Drag to turn, scroll to zoom.

@@ -1,11 +1,27 @@
 // The HUD's rules (session 30): the bottom hint by mode, the Building rail's words, the compass's turn, the day's colours.
 import { describe, expect, it } from 'vitest'
-import { floorWord, hintOf } from './Hud'
+import * as bti from '../data/building/demo-tower'
+import * as banani from '../data/building/banani-tower'
+import * as sheltech from '../data/building/sheltech-tower'
+import { floorTitle, floorWord, hintOf } from './Hud'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
 const base = { mode: 'walk' as const, locked: false, staff: false, arranging: false, editingOpenings: false, holding: false }
 
 describe('hud', () => {
+  it('the Building view names the floor picked, not the room the walk stood in', () => {
+    expect(floorTitle(bti, 2, 'type-a')).toEqual({ label: 'Floor 2', name: 'Type A · 2703 sft' }) // its name has the area
+    expect(floorTitle(bti, 3, 'type-a')).toEqual({ label: 'Floor 3', name: 'Type B · 1747 sft, Type C · 2254 sft' }) // the flats there
+    expect(floorTitle(bti, 1, 'type-a')).toEqual({ name: 'Floor 1' }) // massing only
+    expect(floorTitle(bti, 0, 'type-a')).toEqual({ name: 'Ground floor' })
+    expect(floorTitle(bti, 9, 'type-a')).toEqual({ name: 'Rooftop' })
+    expect(floorTitle(sheltech, 0, 'sheltech-a')).toEqual({ name: 'Ground floor' }) // the level's name says it: once
+    expect(floorTitle(sheltech, -1, 'sheltech-a')).toEqual({ name: 'Basement 1' })
+    expect(floorTitle(banani, 0, 'banani-typical')).toEqual({ label: 'Ground floor', name: 'Ground level' })
+    const own = { ...bti, FLATS: { ...bti.FLATS, 'type-a': { ...bti.FLATS['type-a'], unit: { ...bti.FLATS['type-a'].unit, name: 'Type A' } } } }
+    expect(floorTitle(own, 2, 'type-a')).toEqual({ label: 'Floor 2', name: 'Type A', size: '2703 sft' }) // a Studio flat's bare name: the area under it
+  })
+
   it('the hint tells the keys of what is on', () => {
     expect(hintOf(base)).toMatch(/^Double-click to look with the mouse · click the floor to walk there · WASD to walk$/)
     expect(hintOf({ ...base, staff: true })).toMatch(/G picks up the piece under the mouse$/)

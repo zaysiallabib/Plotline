@@ -24,7 +24,7 @@ import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
-import Hud, { type HandInfo } from './Hud'
+import Hud, { floorTitle, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
@@ -1212,6 +1212,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             floor={unit.floor}
             floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
             roomNote={windOn && room ? core.windSentence(windRooms.find((w) => w.roomId === room.id), unit.northDeg) : null}
+            pickedFloor={tower && stem ? floorTitle(tower, picked, stem) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
             onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}

@@ -1,12 +1,13 @@
 /**
  * The HUD over the 3D (session 30: less on screen, the 3D is the product). Top left: the room you stand in with its floor —
- * click it for the Rooms list. Top right: one glass bar — the view switch (Walk · Dollhouse · Building), the buyer's
+ * click it for the Rooms list; in the Building view the floor picked instead (floorTitle). Top right: one glass bar — the view switch (Walk · Dollhouse · Building), the buyer's
  * Finishes, Comment and Share, staff's Edit ▾, and ⋯ (Quality). Bottom centre: a slim hint that fades after a few seconds
  * (it comes back when it changes or under the mouse) above the Sun & wind pill. Building view: the floor rail on the right
  * with Walk this level. Esc closes an open list or menu. Staff: the dot and the piece in hand.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { sqmToSqft, type Room } from '../core'
+import { levelName, topFloor, type Tower } from '../data/building'
 import type { SceneMode } from '../three/PlotlineScene'
 import { KEYS, local, NAME, QUALITIES, read, write, type Quality } from './quality'
 
@@ -68,6 +69,8 @@ interface Props {
   floorLabel?: string
   /** the room's wind while Wind is on ("Cross ventilation" …), else null */
   roomNote?: string | null
+  /** the Building view's floor picked (floorTitle): the room box says it in place of the walk's room */
+  pickedFloor?: FloorTitle | null
   /** Building view floor picker, top down; null: the flat is not part of a tower (no Building button) */
   floors: { k: number; label: string }[] | null
   picked: number
@@ -109,6 +112,31 @@ interface Props {
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
 /** the Building rail's words: R → Roof, G → Ground; floors and basements as they are (8, B1) */
 export const floorWord = (label: string): string => (label === 'R' ? 'Roof' : label === 'G' ? 'Ground' : label)
+
+export interface FloorTitle {
+  /** over the name: the floor ("Floor 2", "Ground floor"); none when the name says it already */
+  label?: string
+  name: string
+  /** the flat's area when its name does not give it */
+  size?: string
+}
+
+/**
+ * The room box in the Building view: floor k of tower `t` — its word (Floor 2, Ground floor, Basement 1, Rooftop) over
+ * what is on it: flat `stem` when it is there, else that floor's flats, else its traced level (ground, basement, rooftop),
+ * else the word alone (a floor of massing only). Never the room the walk stood in.
+ */
+export function floorTitle(t: Tower, k: number, stem: string): FloorTitle {
+  const word = k <= 0 || k > topFloor(t) ? levelName(t, k) : `Floor ${k}`
+  const f = t.FLOORS.find((x) => x.floor === k)
+  const level = f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
+  const on = f?.flats.includes(stem) ? [stem] : (f?.flats ?? [])
+  const units = (on.length ? on : level ? [level] : []).map((s) => t.FLATS[s].unit)
+  const name = units.map((u) => u.name).join(', ')
+  if (!name || name === word) return { name: word }
+  const u = units.length === 1 && !level ? units[0] : null
+  return { label: word, name, size: u && u.areaSqft > 0 && !/sft/i.test(u.name) ? `${u.areaSqft} sft` : undefined }
+}
 
 const Chevron = () => (
   <svg className="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -161,6 +189,8 @@ export default function Hud(p: Props) {
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
   const hint = hintOf({ ...p, holding: !!p.hand })
   const r = p.room
+  const b = p.mode === 'building' ? p.pickedFloor : null
+  const eyebrow = b ? b.label : p.floorLabel
   const modes: [SceneMode, string, string][] = [
     ['walk', 'Walk', 'O'],
     ['orbit', 'Dollhouse', 'O'],
@@ -171,18 +201,20 @@ export default function Hud(p: Props) {
     <>
       <div className="hud-tl">
         <button className={`glass room-chip${open === 'rooms' ? ' on' : ''}`} aria-expanded={open === 'rooms'} title="Rooms: jump to another room" onClick={() => toggle('rooms')}>
-          {p.floorLabel && <span className="eyebrow">{p.floorLabel}</span>}
+          {eyebrow && <span className="eyebrow">{eyebrow}</span>}
           <span className="room-name">
-            {r?.name ?? 'Rooms'}
+            {b ? b.name : (r?.name ?? 'Rooms')}
             <Chevron />
           </span>
-          {r && (
+          {b ? (
+            b.size && <span className="room-size">{b.size}</span>
+          ) : r && (
             <span className="room-size">
               {r.printedSize && `${r.printedSize} · `}
               {r.areaSqm.toFixed(1)} m² · {sqft(r.areaSqm)} sqft
             </span>
           )}
-          {p.roomNote && <span className="wind-note">{p.roomNote}</span>}
+          {!b && p.roomNote && <span className="wind-note">{p.roomNote}</span>}
         </button>
         {open === 'rooms' && (
           <div className="glass menu rooms-list" role="menu">
