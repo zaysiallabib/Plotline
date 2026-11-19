@@ -207,38 +207,57 @@ You draw over a plan picture. The order is written on the right under **Steps**:
 
 ### Top bar
 
-On a narrow window (under about 1 600 px wide) the top bar takes two lines, so every button stays on screen.
+One line, in three parts (since 2026-11-20). **Left:** the drawing's own fields. **Middle:** Undo and Redo (on a laptop
+screen they sit just left of the buttons). **Right:** Auto-trace, Preview 3D (the gold button), Building, and **⋯** — a
+small menu with everything else: Import, Export, Export answers, New project, Site, Share link, Change list and Sign in.
+Click **⋯**, then the item; **Esc** or a click anywhere else closes the menu. The keys still work without the menu:
+Ctrl+O imports, Ctrl+S exports.
 
 | Control | What it does |
 |---|---|
-| Unit name, Project, Floor, Area | Plain fields saved with the drawing |
-| ⏱ | How long you have been tracing |
-| Undo / Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
+| Unit name, Project, Floor, Area (sft) | Plain fields saved with the drawing. They look like plain words; the mouse over one shows its box — click and type |
+| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands in the cloud (see below). A problem shows in red |
+| ↶ Undo / ↷ Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
 | Auto-trace | Tries to draw the flats for you from the picture. While it shows "Point at a flat": move the pointer over the plan — the flat a click there would take glows (all of it, open floor too), then click inside ONE flat to trace that flat, or press **Whole floor** (in the same box) to trace every flat of the floor and the lobby, stair and lifts between them in one go. It does not understand ground floors, basements or rooftops. |
-| Import | Opens a saved drawing file (Ctrl+O) — or the architect's own file: see "Bring in the architect's file" below. In a project it goes into the drawing open now. |
-| Export | Saves the drawing as a file (Ctrl+S). After an Auto-trace the file also holds the Check these rows, each with its picture box and its answers (see "Check these") |
-| Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against. The answers the Local AI gave (Ask AI) are in it too, each marked `"by": "ai"` with its model and reason; yours carry no mark |
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
 | Building | Shows / hides the list of your project's floors on the right; with no project open: start one (section 6) |
-| Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below |
-| Share link | Makes a buyer link and copies it. Signed in: made for your company, nothing asked. Not signed in: asks once for the staff key. Needs the database. |
-| Change list | Opens `/changes`. Needs the database. |
-| Sign in / your email | Your account and your company's work in the cloud — see "Signing in and saving to the cloud" below. Needs the database. |
-| Saved · Saving… · Offline, will retry · Not saved: … | Next to your email when signed in: where your work stands in the cloud (see below) |
+| ⋯ → Import… | Opens a saved drawing file (Ctrl+O) — or the architect's own file: see "Bring in the architect's file" below. In a project it goes into the drawing open now. |
+| ⋯ → Export | Saves the drawing as a file (Ctrl+S). After an Auto-trace the file also holds the Check these rows, each with its picture box and its answers (see "Check these") |
+| ⋯ → Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against. The answers the Local AI gave (Ask AI) are in it too, each marked `"by": "ai"` with its model and reason; yours carry no mark |
+| ⋯ → New project | Opens the floor list with the New project card (section 6) |
+| ⋯ → Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below. "open" shows beside it while the panel is open; click it again (or the panel's ×) to close |
+| ⋯ → Share link | Makes a buyer link and copies it. Signed in: made for your company, nothing asked. Not signed in: asks once for the staff key. Needs the database. |
+| ⋯ → Change list ↗ | Opens `/changes` in a new tab. Needs the database. |
+| ⋯ → Sign in / your email | Your account and your company's work in the cloud — see "Signing in and saving to the cloud" below. Needs the database. |
 
-**Loading the plan picture:** drop the picture on the Studio, or click **Choose plan image…** (PNG, JPG or WEBP, up to 10 MB).
+**Loading the plan picture:** with nothing drawn yet the middle of the Studio says **Start with a plan**: a dashed box
+(drop the picture on it — or anywhere on the page — or click **Choose plan image…**; PNG, JPG or WEBP, up to 10 MB; the
+architect's IFC, DXF, PDF or 3D model can be dropped there too) and, beside it, the **New project** card (section 6).
 
-### Signing in and saving to the cloud (top bar → Sign in)
+**The tools** are the letters on the left. Point at a letter and its name shows beside it ("Wall (W)"); a faint letter is
+locked until the scale is set ("set the scale first").
+
+### The status bar and the Keys sheet
+
+The thin bar at the bottom says, on the left, what the tool you are on does — one short line (the mouse over it shows
+the whole sentence). In the middle, while you draw or drag: the length, the angle and what the point sticks to. On the
+right: how long you have been tracing (it was the ⏱ in the top bar), the plan's scale (1 px = … m) and the zoom.
+
+**Keys** (bottom right) — or the **?** key — opens a sheet with every key in one list: the tools, drawing, picking and
+moving, the view and the file keys, with the tool you are on explained in full at the top. **×**, Esc or a click
+anywhere else closes it. The full list with every detail is [KEYS.md](KEYS.md).
+
+### Signing in and saving to the cloud (top bar → ⋯ → Sign in)
 
 Without signing in, your work is kept in this browser only (section 9). Signed in, it is **also** kept in the
 database for your company, by itself, as you work. Setting it up (once, by the founder): [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).
 
 **Signing in** (no password):
 
-1. Top bar, right: **Sign in**. A card opens.
+1. Top bar, right: **⋯** → **Sign in**. A card opens.
 2. Type your email, click **Send me a link**. The card says **Check your email**.
 3. Open that email **on the same computer, in the same browser**, and click the link. The Studio opens with your
-   email at the top right instead of **Sign in**.
+   email in the **⋯** menu instead of **Sign in**.
 4. The first time, it says **Not saved: not in a company yet** until the owner adds you (SETUP_ACCOUNTS.md, "Adding
    a staff member"). Then press F5.
 
@@ -251,11 +270,11 @@ not saved to the cloud: keep the picture file (or drop it again on another compu
 | **Saving…** | Your latest change is on its way |
 | **Saved** | The cloud has exactly what you see (and this browser too) |
 | **Offline, will retry** | No internet. Keep working: it is in this browser, and it saves by itself when the internet is back |
-| **Not saved: someone saved a newer version — reload** | A colleague saved the same project after you opened it. Click your email: **Open theirs** (their copy replaces yours here) or **Keep mine** (yours becomes the newest; theirs stays under **Earlier saves**). Nothing is lost either way |
-| **Not saved: it was deleted from the cloud** | Someone deleted it meanwhile. Click your email → **Save as new** keeps your copy as a new one |
+| **Not saved: someone saved a newer version — reload** | A colleague saved the same project after you opened it. Click **⋯** → your email: **Open theirs** (their copy replaces yours here) or **Keep mine** (yours becomes the newest; theirs stays under **Earlier saves**). Nothing is lost either way |
+| **Not saved: it was deleted from the cloud** | Someone deleted it meanwhile. Click **⋯** → your email → **Save as new** keeps your copy as a new one |
 | **Not saved: …** (anything else) | The reason in words (for example too big: the most is 5 MB). Your work is still in this browser |
 
-**Click your email** (top right) for the card:
+**Click ⋯ → your email** (top right) for the card:
 
 - Your email and your company (owner or staff).
 - **Projects in the cloud** — your company's projects and drawings, last saved first, with who saved last ("by a
@@ -272,7 +291,7 @@ not saved to the cloud: keep the picture file (or drop it again on another compu
 Two people can work in the Studio at once on **different** projects without ever noticing each other. On the **same**
 project, the second save is the one that asks (see "someone saved a newer version" above).
 
-### Site — where the building stands (top bar → Site)
+### Site — where the building stands (top bar → ⋯ → Site)
 
 The panel opens top right, and a gold **north arrow** appears in the middle of the plan.
 
@@ -411,11 +430,12 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
 | 0 | Fit the whole plan on screen |
 | Mouse wheel | Zoom |
 | Space + drag, right-drag or middle-drag | Slide the plan |
-| Esc | Cancel / close / unpick |
+| Esc | Cancel / close / unpick (with the ⋯ menu or the Keys sheet open: closes only that) |
+| ? | Opens or closes the Keys sheet (every key) — the same as **Keys** at the bottom right |
 
 ### The right-hand panel
 
-- **Steps** — the checklist. It ticks itself; you cannot click it.
+- **Steps** — the checklist. It ticks itself (a gold tick); the next step to do is marked with a gold dot and written brighter; you cannot click it.
 - **Selection** — the details of what you picked, to type exact values:
   - *Corner* — position.
   - *Wall* — its type (Wall / Low wall / Kerb / Zone line), width, height, **Stands alone** (a screen or decoration wall that is not meant to close a room), length, copy, delete.
@@ -432,7 +452,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
   - **Unnamed space (5.8 m²) rows** — a closed room with no name read (also one left with no label at all): **Name it** opens a box on the plan, type the name you read on the sheet, Enter. **Join it to Dining** takes out the thin wall between it and that room (only offered when that leaves no new problem) — use it for a strip that is really part of the room beside it, not for a room whose name was just not read. Two rooms of one name beside it (two toilets): each button says which side of the space its room is on — **Join it to Toilet (left)**, **Join it to Toilet (right)** — and how much wall goes when both are on the same side (2026-10-18; before, two identical buttons).
   - Every fix is one Ctrl+Z.
   - **A big drawing** (a whole floor of five or six flats, 1 000 walls or more, 700 rows or more; 2026-10-19): all the rows show at once and their buttons fill in a few at a time while you work — first the row you click, then what is in view — and the list says "Working out the rows' fixes — 320 rows left…". The page stays usable meanwhile; a row's button works as soon as it shows. After a fix only the rows near it are worked out again; the others keep their buttons. Export saves the file at once (2026-10-19 evening): a row still being worked out goes in with its picture box but no answers, marked `"answersPending": true`, and the message says how many — export again once the list is done for them all. Tried on Sheltech Windflower Tower 1 (532 rows): the first buttons came 6 seconds after Whole floor and all of them within a minute; a row's Close it took under 3 seconds.
-  - **What a row keeps, and your clicks kept as a record** (2026-10-15, so an AI helper can later answer rows the way you do — none is switched on). Every row is saved with the drawing (in this browser, and in the Export file) together with the **picture box** around it — the piece of the plan picture an AI would be shown: the row's spot, what it is about and what its buttons would change, with about a metre around it so the walls show — and its **answers**: the same buttons you see (Close it, Join it to …, Make it a wall, Take it out, Show me, Looks right), each with a fixed name. A row's buttons do exactly what they did; after any edit the row's answers are worked out again on the plan as it is now. **Every answer you click is kept as a record**: the sheet (file name and size), the row's text, the button and the time, added at the end of a list and never changed afterwards — Looks right and Show me count as answers too. **Export answers** in the top bar saves that list as a file. Auto-trace also keeps where the print it could not use stands — a word it read as a room but did not trust, a room's size it could not read, the spot over a size where no name came out — and which way to turn each one to read it upright; only their places are kept (no pictures), one list per sheet. Typing a name with Name it is not kept as an answer yet.
+  - **What a row keeps, and your clicks kept as a record** (2026-10-15, so an AI helper can later answer rows the way you do — none is switched on). Every row is saved with the drawing (in this browser, and in the Export file) together with the **picture box** around it — the piece of the plan picture an AI would be shown: the row's spot, what it is about and what its buttons would change, with about a metre around it so the walls show — and its **answers**: the same buttons you see (Close it, Join it to …, Make it a wall, Take it out, Show me, Looks right), each with a fixed name. A row's buttons do exactly what they did; after any edit the row's answers are worked out again on the plan as it is now. **Every answer you click is kept as a record**: the sheet (file name and size), the row's text, the button and the time, added at the end of a list and never changed afterwards — Looks right and Show me count as answers too. **Export answers** (top bar → ⋯) saves that list as a file. Auto-trace also keeps where the print it could not use stands — a word it read as a room but did not trust, a room's size it could not read, the spot over a size where no name came out — and which way to turn each one to read it upright; only their places are kept (no pictures), one list per sheet. Typing a name with Name it is not kept as an answer yet.
   - **Sizes in a table beside the plan** (2026-10-14). Many brochure sheets print the room sizes in a list beside or under the drawing ("SUITE 1   13'-4" x 14'-0"", or a numbered legend "01. LIVING 10'-00" x 09'-06"" with only "01" in the room). Auto-trace finds such a list (three or more rows of a room name and a size, one under the other, away from the walls) and the floor-stack chart (19 … 01, G, B1): it never traces walls in them and never counts their words as rooms of the flat. Each row's size goes to the room of the same name on the drawing (the number's room for a numbered list), exactly as if it were printed in the room — the size row then checks it. A size it cannot read for sure is not used. A row whose name is on no room of the drawing becomes a Check these row: "Table says Suite 2 is 14'-0" × 11'-6" — no room on the plan carries that name": name that room with R and type the size.
   - **What Auto-trace draws that is not a wall** (2026-10-09). It draws a non-wall edge only where the sheet clearly shows one, and only where the room it closes then matches the size printed in it:
     - **Glass front** — two or three thin lines running side by side (a window's frame and pane, as Sheltech and BTI draw their big glazing) become a **glass wall**: a wall that is all window, from the floor to its top — the same thing O → Glass wall makes. A glass band in the sheet's blue counts too.
@@ -526,7 +546,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
 You say what the building is first, then give each floor a drawing. A drawing is one whole floor (all its flats and the lift lobby); one drawing can be on as many floors as you like, any floors.
 
 **Start a project**
-1. Open the Studio. Top bar → **New project** (or, with nothing open, the **New project** card is in the middle; or top bar → **Building**).
+1. Open the Studio. Top bar → **⋯** → **New project** (or, with nothing open, the **New project** card is in the middle, beside the plan picture box; or top bar → **Building**).
 2. Type its **Name**, how many **Basements** (0–5), how many **Floors above ground** (1–60), tick **Rooftop** or not. A ground floor is always there.
 3. Click **Create project**. The list of floors appears on the right of the plan and stays there: **Rooftop** at the top, then the floors from the highest down, **Ground floor**, **Basement 1**, **Basement 2**…
 

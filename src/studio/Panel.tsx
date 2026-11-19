@@ -273,6 +273,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     ['7 Check', unit.walls.length > 0 && errors === 0],
     ['8 Export', state.exported],
   ]
+  const next = steps.findIndex(([, done]) => !done) // the step to do now (marked in the list)
   return (
     <aside className="panel">
       {state.tool === 'opening' && <OpeningPick state={state} dispatch={dispatch} />}
@@ -291,8 +292,8 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
       <section>
         <h3>Steps</h3>
         <ol className="steps">
-          {steps.map(([label, done]) => (
-            <li key={label} className={done ? 'done' : ''}>
+          {steps.map(([label, done], i) => (
+            <li key={label} className={done ? 'done' : i === next ? 'now' : ''} aria-current={i === next ? 'step' : undefined}>
               <span className="tick">{done ? '✓' : ''}</span>
               {label}
             </li>

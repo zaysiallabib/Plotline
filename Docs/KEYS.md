@@ -1,6 +1,6 @@
 # Plotline — every key and every button
 
-All the keys, mouse moves and buttons a person can use, in one place. Read from the code on 2026-10-19 (branch `s27/finish` at 32aadf2: the P key for the wind, curtains on any opening and Delete on the piece in your hand are in); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
+All the keys, mouse moves and buttons a person can use, in one place. Read from the code on 2026-10-19 (branch `s27/finish` at 32aadf2: the P key for the wind, curtains on any opening and Delete on the piece in your hand are in); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯), and the Studio's the same night (Import, Export, Export answers, New project, Site, Share link, Change list and Sign in moved into the top bar's **⋯** menu; the timer moved to the status bar; a **Keys** button and the **?** key show every key). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
 
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 
@@ -58,6 +58,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Double-click a wall | Type its length | every tool but W and A | §5 — V |
 | Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V). A column's side or corner dot: that side, or that corner alone (V or C). An opening's end dot: its width (V or O). Curtains' end dot: wider or narrower on that side (F). A ramp's arrow head: which way it runs (V). The Site's gold north arrow: true north; its round dot moves the arrow | V, C, O, F, Site open | §5 — V, C, F, Site |
 | Drop a picture or a file on the page | A plan picture (PNG, JPG, WEBP, up to 10 MB) goes under the drawing; a drawing file opens | any time | §5 "Loading the plan picture" |
+| **?** | Opens or closes the Keys sheet: every key in one list, the tool you are on explained in full at the top (the same as the **Keys** button, bottom right). **Esc** or a click elsewhere closes it | any time (not in a text box) | §5 "The status bar and the Keys sheet" |
+| **Esc** (a menu or the Keys sheet open) | Closes only that menu or sheet — nothing else is unpicked | ⋯ menu, Keys sheet | §5 Top bar |
 
 ## 2. 3D view keys
 
@@ -204,24 +206,38 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 
 | Name | What it does |
 |---|---|
-| **Plotline** (top left) | Opens the 3D viewer |
-| Staff mode (badge) | Says this browser is in staff mode — not a button |
-| **Unit name**, **Project**, **Floor**, **Area sft** | Plain fields saved with the drawing (Floor takes numbers only) |
-| ⏱ | How long you have been tracing |
-| **Undo** / **Redo** | Ctrl+Z / Ctrl+Y |
-| **Auto-trace** | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
-| **Import** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
-| **Export** | Saves the drawing as a file (Ctrl+S) |
-| **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` |
-| **Preview 3D** | Opens your drawing in the 3D view, in a new tab |
-| **Building** | Shows / hides the project's floor list (or starts a project) |
-| **Site** | Where the building stands: map, plot, neighbours, wind, true north |
-| **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the database is set up) |
-| **Change list** | Opens `/changes` (only when the database is set up) |
-| **Sign in** / your email | Opens the account card below (only when the database is set up) |
-| Saved · Saving… · Offline, will retry · Not saved: … | Where your work stands in the cloud — not a button (MANUAL §5 "Signing in and saving to the cloud") |
+Left to right: the name and fields, then Undo / Redo, then the buttons, then **⋯** (everything else).
 
-### Studio — the account card (top bar → Sign in, or your email)
+| Name | What it does |
+|---|---|
+| **Plotline Studio** (top left) | Opens the 3D viewer |
+| Staff mode (small gold badge) | Says this browser is in staff mode — not a button |
+| **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only) |
+| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands in the cloud — not a button (MANUAL §5 "Signing in and saving to the cloud") |
+| ↶ / ↷ | Undo / Redo (Ctrl+Z / Ctrl+Y) |
+| **Auto-trace** (gold outline, once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
+| **Preview 3D** (the gold button) | Opens your drawing in the 3D view, in a new tab |
+| **Building** | Shows / hides the project's floor list (or starts a project) |
+| **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
+| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
+| ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
+| ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` |
+| ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
+| ⋯ → **Site** | Where the building stands: map, plot, neighbours, wind, true north (click again to close; "open" shows beside it) |
+| ⋯ → **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the database is set up) |
+| ⋯ → **Change list** ↗ | Opens `/changes` in a new tab (only when the database is set up) |
+| ⋯ → **Sign in** / your email | Opens the account card below (only when the database is set up) |
+
+### Studio — the status bar (bottom)
+
+| Name | What it does |
+|---|---|
+| The line on the left | What the tool you are on does, in one short line (the whole sentence shows when the mouse is over it) |
+| The middle | While you draw or drag: the length, the angle and what the point sticks to (red when a piece cannot go there) |
+| The time, **1 px = … m**, the zoom | How long you have been tracing; the plan's scale; how far in you are zoomed |
+| **Keys** | Opens the Keys sheet: every key in one list, the tool you are on explained in full at the top (or press **?**). **×**, Esc or a click elsewhere closes it |
+
+### Studio — the account card (top bar → ⋯ → Sign in, or your email)
 
 | Name | What it does |
 |---|---|
@@ -241,7 +257,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 
 | Name | What it does |
 |---|---|
-| **Choose plan image…** | Picks the plan picture (or drop it on the page) — the architect's file too (Import's list) |
+| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / 3D model" (Import's list). Or starts a project |
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
@@ -254,7 +270,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 
 | Name | What it does |
 |---|---|
-| **V Select**, **S Scale**, **W Wall**, **A Arc**, **O Opening**, **R Room**, **C Column**, **F Furniture** | Picks the tool; locked (greyed) until the scale is set, except V and S |
+| **V Select**, **S Scale**, **W Wall**, **A Arc**, **O Opening**, **R Room**, **C Column**, **F Furniture** | Picks the tool (the one you are on is filled white); locked (faint) until the scale is set, except V and S. The tool's name shows beside its letter when the mouse is over it ("set the scale first" on a locked one) |
 
 ### Studio — right-hand panel
 
@@ -262,7 +278,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 |---|---|---|
 | **Draw a** (W) | **Wall**, **Low wall**, **Kerb**, **Zone line**; **Low wall height** | What the next wall is (keys 1–4) |
 | **Place an opening** (O) | **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**; **Width** | What the next click on a wall puts in |
-| **Steps** | (none) | The checklist; ticks itself |
+| **Steps** | (none) | The checklist; ticks itself, the next step to do is marked with a gold dot |
 | **What was read from the file** (after an architect's file) | **Dismiss** | The file's unit, what was guessed, what it lacked |
 | **Outside shape** (the drawing has one) | **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Where the architect's model stands over the plan, how high this floor is inside it; take it away (deleted from this browser) |
 | **Selection** — a corner | **X (m)**, **Y (m)** | Its exact place |
@@ -278,7 +294,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 | **Check these** — settings | **Wall tracks** (tick box: which tracing method — leave it on); **AI helper (optional)**: a Gemini key; **Local AI (this PC, free)**: **Server**, **Model**, **Use it anyway**, **Test** | How Auto-trace and Ask AI work |
 | **Issues** | **Join walls (overlaps and crossings)**; click an issue = its fixes (Close the gap, Join, Extend, Remove end, Keep — it stands alone, Remove, Merge corners, Remove the copy, Shrink, Move it inside, Trim, Join here, End it here, Type the name, Join with a zone line) | Problems in the drawing |
 
-### Studio — Site panel (top bar → Site)
+### Studio — Site panel (top bar → ⋯ → Site)
 
 | Name | What it does |
 |---|---|
