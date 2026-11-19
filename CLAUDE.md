@@ -138,6 +138,22 @@ Every key and button in one list: Docs/KEYS.md (same rule). Every outside source
   LOW_WALL_M`); (5) a whole-floor drawing is named "Floor plan A, B…" — "Type A / B" is only ever a flat's name from
   the sheet.
 
+- **Claude is the long-term developer and CTO (founder, 2026-11-20 night):** "quality will only increase from here not
+  decrease. functional ease should only increase not decrease." Add what makes the experience smoother without asking;
+  never ship a change that makes any existing path slower, uglier or harder. Claude does the security checks itself
+  (RLS on every table, two-tenant tests, no secrets in the client, tokens >= 128 bits) and writes them down in
+  ARCHITECTURE.md "Security". Fable manages and judges; Opus / Sonnet / Haiku agents do the heavy lifting on worktrees.
+  Docs for the founder use no jargon: say what he sees and clicks.
+- **Realism of the street (founder, 2026-11-20):** neighbours stand 2.2-4 m from the building on the non-road sides,
+  one (sometimes two) road sides 6-9 m wide with buildings right across; "buildings don't normally leave any space.
+  with space there is much more light and wind which is not the case in real life. plotline is a simulation of real life."
+- **Lights follow the furniture (founder, 2026-11-20):** every lamp a person can see gives light (ceiling fixtures,
+  pendants, floor and table lamps); delete it and its light goes, add one and it lights; a table lamp sits ON the desk.
+  Daylight: contrast, not a flat wash - brighter at windows and in sun patches (day exposure x1.2), darker deep inside.
+- **Every floor can differ (founder, 2026-11-20, point 5 of the project-first workflow made real):** a drawing on
+  several floors is shared until the first edit on one floor, which asks "This floor only / All floors with this
+  drawing"; an architect-file (IFC) building has one drawing per storey from the start.
+
 ## Stack
 
 - TypeScript + React 19 + Vite 8

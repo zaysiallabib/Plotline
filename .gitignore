@@ -14,3 +14,4 @@ dist
 .claude/worktrees
 .vscode
 vite.walk.local.config.ts
+*.traineddata
