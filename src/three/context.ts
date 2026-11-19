@@ -8,6 +8,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
+import type { Street } from '../data/building'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 
@@ -125,42 +126,117 @@ function rng(seed: number): () => number {
   }
 }
 
-type Rect = Pick<Block, 'x0' | 'x1' | 'y0' | 'y1'>
+/** metres the made-up street runs past the building at each end */
+const REACH_M = 60
 
 /**
- * Blocks around the unit's box: a near ring 8–25 m off each side (6–10 storeys, 2–6 bays wide, 3–9 m gaps)
- * and a far ring 40–60 m off for depth. The rows off the box's minY/maxY sides run 40–70 m past its ends and cover
- * the diagonals; the rows off minX/maxX stay within its y span ± 6 m, so no two rows ever cross.
- * The road runs down the middle of the wider minY/maxY setback; the minX/maxX rows stop short of it.
+ * The made-up street round a building, as a Dhaka street is (founder 2026-11-20: "buildings don't normally leave any
+ * space … plotline is a simulation of real life"; RAJUK practice: a building stands 1.25–1.5 m off its plot's side and
+ * back lines, and so does the next one). Side k of the walls' box (0 −y, 1 +y, 2 −x, 3 +x): a road along the plot's edge —
+ * the drawing's, else one side 6–9 m wide (a corner plot: two) — with the blocks across it 1–1.5 m back from its far edge;
+ * every other side a row of neighbours 2.2–4 m from the walls (never nearer than 1.25–1.5 m past the plot). Two rows a
+ * side (the plots behind), 3–4 bays deep, the building's storeys ± 2, whole bays 0–1.5 m apart along the row. The −y / +y
+ * rows and roads run REACH_M past the building's ends (they take the corners); the −x / +x rows stop at what stands on
+ * those two sides. A road cuts every row it crosses.
  */
-export function neighbourBlocks(b: Bounds, seed: number): { blocks: Block[]; road: Rect } {
+export function neighbourBlocks(street: Street, seed: number): { blocks: Block[]; roads: Bounds[] } {
   const r = rng(seed)
   const between = (lo: number, hi: number) => lo + (hi - lo) * r()
   const int = (lo: number, hi: number) => Math.floor(between(lo, hi + 1))
-  const near = [0, 1, 2, 3].map(() => between(8, 25))
-  const s = near[1] > near[0] ? 1 : 0
-  const c = s ? b.maxY + near[1] / 2 : b.minY - near[0] / 2
-  const half = Math.min(3.5, near[s] / 2 - 1)
-  const road = { x0: b.minX - 80, x1: b.maxX + 80, y0: c - half, y1: c + half }
-  const blocks: Block[] = []
-  for (const ring of [0, 1]) {
-    for (let side = 0; side < 4; side++) {
-      const d = ring ? between(40, 60) : near[side]
-      const alongY = side >= 2 // sides 0/1: off minY/maxY, rows run along x; 2/3: off minX/maxX, along y
-      const reach = ring ? 70 : 40
-      const [t0, t1] = alongY ? [s ? b.minY - 6 : Math.max(b.minY - 6, road.y1 + 1), s ? Math.min(b.maxY + 6, road.y0 - 1) : b.maxY + 6] : [b.minX - reach, b.maxX + reach]
-      for (let t = t0 + between(0, 2); t1 - t >= 2 * BAY; ) {
-        const w = BAY * int(2, Math.min(6, Math.floor((t1 - t) / BAY)))
-        const depth = BAY * int(3, 4)
-        const base = alongY ? (side % 2 ? b.maxX : b.minX) : side % 2 ? b.maxY : b.minY
-        const [n0, n1] = side % 2 ? [base + d, base + d + depth] : [base - d - depth, base - d] // away from the box
-        const k = { storeys: int(6, 10), tint: int(0, TINTS.length - 1), facade: int(0, FACADES.length - 1) }
-        blocks.push(alongY ? { x0: n0, x1: n1, y0: t, y1: t + w, ...k } : { x0: t, x1: t + w, y0: n0, y1: n1, ...k })
-        t += w + between(3, 9)
-      }
+  const b = street.walls
+  const plot = street.plot ?? b
+  const face = [b.minY, b.maxY, b.minX, b.maxX]
+  const out = [-1, 1, -1, 1]
+  /** how far the plot reaches past side k's walls */
+  const margin = (k: number) => Math.max(0, out[k] * ([plot.minY, plot.maxY, plot.minX, plot.maxX][k] - face[k]))
+  /** the rect n0..n1 out from side k's face, t0..t1 along it */
+  const at = (k: number, n0: number, n1: number, t0: number, t1: number): Bounds => {
+    const [lo, hi] = out[k] < 0 ? [face[k] - n1, face[k] - n0] : [face[k] + n0, face[k] + n1]
+    return k < 2 ? { minX: t0, maxX: t1, minY: lo, maxY: hi } : { minX: lo, maxX: hi, minY: t0, maxY: t1 }
+  }
+  const along = (k: number): [number, number] => (k < 2 ? [b.minX - REACH_M, b.maxX + REACH_M] : [b.minY - REACH_M, b.maxY + REACH_M])
+  /** t0..t1 less where a road crosses side k's band n0..n1 (`pad` clear of it) */
+  const clear = (k: number, n0: number, n1: number, t0: number, t1: number, roads: Bounds[], pad = 1) => {
+    const band = at(k, n0, n1, t0, t1)
+    let free: [number, number][] = [[t0, t1]]
+    for (const q of roads) {
+      if (!(q.minX < band.maxX && band.minX < q.maxX && q.minY < band.maxY && band.minY < q.maxY)) continue
+      const [c0, c1] = k < 2 ? [q.minX - pad, q.maxX + pad] : [q.minY - pad, q.maxY + pad]
+      free = free.flatMap(([a, z]): [number, number][] => [[a, Math.min(z, c0)], [Math.max(a, c1), z]]).filter(([a, z]) => z > a)
+    }
+    return free
+  }
+  // the road off each side: [near, far] out from its face
+  const road: ([number, number] | null)[] = [null, null, null, null]
+  const given = street.roads ?? []
+  for (const q of given) {
+    for (let k = 0; k < 4; k++) {
+      const near = out[k] * ([q.maxY, q.minY, q.maxX, q.minX][k] - face[k])
+      const beside = k < 2 ? q.minX < b.maxX && b.minX < q.maxX : q.minY < b.maxY && b.minY < q.maxY
+      if (near >= -0.5 && beside && !(road[k] && road[k]![0] <= near)) road[k] = [near, near + (k < 2 ? q.maxY - q.minY : q.maxX - q.minX)]
     }
   }
-  return { blocks, road }
+  const made: Bounds[] = []
+  if (!given.length) {
+    const first = int(0, 3)
+    for (const k of r() < 0.3 ? [first, first < 2 ? int(2, 3) : int(0, 1)] : [first]) {
+      const near = Math.max(margin(k), 1.5)
+      road[k] = [near, near + between(6, 9)]
+    }
+    // the −y / +y road whole, a −x / +x one stopping at its edges: no two strips on one spot
+    for (let k = 0; k < 4; k++) {
+      const q = road[k]
+      if (q) made.push(...clear(k, q[0], q[1], ...along(k), made, 0).map(([t0, t1]) => at(k, q[0], q[1], t0, t1)))
+    }
+  }
+  const gap = [0, 1, 2, 3].map((k) => Math.max(between(2.2, 4), margin(k) + between(1.25, 1.5)))
+  /** how far out the nearest thing off side k stands: its road, else its row */
+  const inner = (k: number) => road[k]?.[0] ?? gap[k]
+  const [s0, s1] = street.storeys ? [Math.max(3, street.storeys - 2), street.storeys + 2] : [6, 10]
+  const roads = [...given, ...made]
+  const blocks: Block[] = []
+  for (let k = 0; k < 4; k++) {
+    const span: [number, number] = k < 2 ? along(k) : [b.minY - inner(0), b.maxY + inner(1)]
+    let n0 = road[k] ? road[k]![1] + between(1, 1.5) : gap[k]
+    for (let row = 0; row < 2; row++) {
+      const n1 = n0 + BAY * int(3, 4)
+      for (const [t0, t1] of clear(k, n0, n1, ...span, roads)) {
+        // whole bays, 2–6 a block, 0–1.5 m apart, the run centred on its stretch (what is left: half at each end)
+        const run: [number, number][] = []
+        for (let t = t0; ; ) {
+          const room = Math.floor((t1 - t) / BAY)
+          if (room < 2) break
+          const w = BAY * (room <= 6 ? room : int(2, Math.min(6, room - 3)))
+          run.push([t, t + w])
+          t += w + between(0, 1.5)
+        }
+        const shift = run.length ? (t1 - run[run.length - 1][1]) / 2 : 0
+        for (const [a, z] of run) {
+          const q = at(k, n0, n1, a + shift, z + shift)
+          blocks.push({ x0: q.minX, x1: q.maxX, y0: q.minY, y1: q.maxY, storeys: int(s0, s1), tint: int(0, TINTS.length - 1), facade: int(0, FACADES.length - 1) })
+        }
+      }
+      n0 = n1 + between(2.5, 3) // the next plot back
+    }
+  }
+  return { blocks, roads: made }
+}
+
+/** The made-up street round `street` (a unit with no site): the same blocks in the view, the daylight and the wind. */
+export function madeUpStreet(unit: Unit, street: Street): { blocks: Block[]; roads: Bounds[] } {
+  return neighbourBlocks(street, [...(street.seed ?? unit.id)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7))
+}
+
+/**
+ * What stands round the building, as the daylight bake and the wind's shelter rule read it: each neighbour's outline and
+ * its height over the street — the site's measured blocks (Studio → Site), else the made-up street's.
+ */
+export function neighbours(unit: Unit, street: Street): { plan: Pt[]; heightM: number }[] {
+  if (unit.site) return core.sitePlan(unit).buildings
+  return madeUpStreet(unit, street).blocks.map((k) => ({
+    plan: [{ x: k.x0, y: k.y0 }, { x: k.x1, y: k.y0 }, { x: k.x1, y: k.y1 }, { x: k.x0, y: k.y1 }],
+    heightM: k.storeys * STOREY,
+  }))
 }
 
 /** Sky radiance at the horizon of public/assets/hdri/sky.hdr (mean over altitude −2°..6°, linear). */
@@ -315,17 +391,31 @@ export function blockParts(k: Block, at: Pt, r: () => number): Part[] {
   return parts
 }
 
+/** Its box on every vertex of `g`: hazed's cut takes a block away whole. */
+function boxed(g: THREE.BufferGeometry, min: THREE.Vector3, max: THREE.Vector3): THREE.BufferGeometry {
+  const n = g.getAttribute('position').count
+  g.setAttribute('bmin', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [min.x, min.y, min.z]).flat(), 3))
+  return g.setAttribute('bmax', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [max.x, max.y, max.z]).flat(), 3))
+}
+
+/** Road strips on the ground, `y` up. */
+const roadStrips = (roads: Bounds[], y: number) =>
+  roads.map((q) => new THREE.PlaneGeometry(q.maxX - q.minX, q.maxY - q.minY).rotateX(-Math.PI / 2).translate((q.minX + q.maxX) / 2, y, (q.minY + q.maxY) / 2))
+
 /**
- * The street context in world space: blocks (one merged mesh per facade variant, a tint per block in vertex colours,
- * the facade in metre UVs, roofs and parts on the plain plaster texel) and the road, standing on `groundY`.
- * Neither casts nor receives shadow: they must never shade the unit, and the sun's shadow map only covers the unit.
- * A unit with a site (Studio → Site) gets its real neighbours and roads instead (buildSite).
+ * The made-up street in world space (madeUpStreet round `street`): blocks (one merged mesh per facade variant, a tint per
+ * block in vertex colours, the facade in metre UVs, roofs and parts on the plain plaster texel) and the roads (the
+ * drawing's and the made-up ones), standing on `groundY`. Like the site's they cast the sun's shadow — a neighbour 3 m
+ * off darkens the rooms facing it (Look / Building reach the shadow box to them) — and in Dollhouse / Building a block
+ * between the camera and the flat is left out (hazed's cut). A unit with a site (Studio → Site) gets its real neighbours
+ * and roads instead (buildSite).
  */
-export function buildStreet(unit: Unit, bounds: Bounds, groundY: number): THREE.Group {
+export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.Group {
   if (unit.site) return buildSite(unit, groundY)
-  const seed = [...unit.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
-  const { blocks, road } = neighbourBlocks(bounds, seed)
-  const at = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }
+  const { blocks, roads } = madeUpStreet(unit, street)
+  const seed = [...(street.seed ?? unit.id)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
+  const w = street.walls
+  const at = { x: (w.minX + w.maxX) / 2, y: (w.minY + w.maxY) / 2 }
   const tints = TINTS.map((t) => new THREE.Color(t))
   /** non-indexed and painted: a facade keeps metre UVs on its walls (along-face from the corner, height), the rest samples the plain texel */
   const paint = (geo: THREE.BufferGeometry, c: THREE.Color, facade: boolean) => {
@@ -346,23 +436,30 @@ export function buildStreet(unit: Unit, bounds: Bounds, groundY: number): THREE.
   blocks.forEach((k, i) => {
     const [W, H, D] = [k.x1 - k.x0, k.storeys * STOREY, k.y1 - k.y0]
     const tint = tints[k.tint]
-    geos[k.facade].push(paint(new THREE.BoxGeometry(W, H, D).translate(W / 2, H / 2, D / 2), tint, true).translate(k.x0, groundY, k.y0))
+    // the block and its parts (≤ 0.9 m out, tanks up to 4 m over the roof) go together
+    const box = (g: THREE.BufferGeometry) => boxed(g, new THREE.Vector3(k.x0 - 0.9, groundY, k.y0 - 0.9), new THREE.Vector3(k.x1 + 0.9, groundY + H + 4, k.y1 + 0.9))
+    geos[k.facade].push(box(paint(new THREE.BoxGeometry(W, H, D).translate(W / 2, H / 2, D / 2), tint, true).translate(k.x0, groundY, k.y0)))
     for (const q of blockParts(k, at, rng(seed + i + 1))) {
       const [w, h, d] = [q.x1 - q.x0, q.z1 - q.z0, q.y1 - q.y0]
       const g = q.tank ? new THREE.CylinderGeometry(w / 2, w / 2, h, 10) : new THREE.BoxGeometry(w, h, d)
-      geos[k.facade].push(paint(g, tint.clone().multiplyScalar(q.shade), false).translate((q.x0 + q.x1) / 2, groundY + (q.z0 + q.z1) / 2, (q.y0 + q.y1) / 2))
+      geos[k.facade].push(box(paint(g, tint.clone().multiplyScalar(q.shade), false).translate((q.x0 + q.x1) / 2, groundY + (q.z0 + q.z1) / 2, (q.y0 + q.y1) / 2)))
     }
   })
   const group = new THREE.Group()
   geos.forEach((list, v) => {
     if (!list.length) return
-    group.add(new THREE.Mesh(mergeGeometries(list)!, hazed(new THREE.MeshStandardMaterial({ map: facadeTexture(v), vertexColors: true, roughness: 0.92 }))))
+    const mesh = new THREE.Mesh(mergeGeometries(list)!, hazed(new THREE.MeshStandardMaterial({ map: facadeTexture(v), vertexColors: true, roughness: 0.92 }), true))
+    mesh.castShadow = mesh.receiveShadow = true
+    group.add(mesh)
     list.forEach((g) => g.dispose())
   })
-  const asphalt = hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 }))
-  const strip = new THREE.Mesh(new THREE.PlaneGeometry(road.x1 - road.x0, road.y1 - road.y0).rotateX(-Math.PI / 2), asphalt)
-  strip.position.set((road.x0 + road.x1) / 2, groundY + 0.05, (road.y0 + road.y1) / 2)
-  group.add(strip)
+  const strips = roadStrips([...(street.roads ?? []), ...roads], groundY + 0.05)
+  if (strips.length) {
+    const mesh = new THREE.Mesh(mergeGeometries(strips)!, hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 })))
+    mesh.receiveShadow = true
+    strips.forEach((g) => g.dispose())
+    group.add(mesh)
+  }
   return group
 }
 
@@ -383,13 +480,8 @@ export function buildSite(unit: Unit, groundY: number): THREE.Group {
     .filter((b) => b.heightM > 0 && Math.abs(core.signedArea(b.plan)) > 1)
     .map((b) => {
       const g = new THREE.ExtrudeGeometry(new THREE.Shape(b.plan.map((p) => new THREE.Vector2(p.x, p.y))), { depth: b.heightM, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, groundY + b.heightM, 0)
-      // its box on every vertex: hazed's cut takes a block away whole
       g.computeBoundingBox()
-      const { min, max } = g.boundingBox!
-      const n = g.getAttribute('position').count
-      g.setAttribute('bmin', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [min.x, min.y, min.z]).flat(), 3))
-      g.setAttribute('bmax', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [max.x, max.y, max.z]).flat(), 3))
-      return g
+      return boxed(g, g.boundingBox!.min, g.boundingBox!.max)
     })
   if (blocks.length) {
     const mesh = new THREE.Mesh(mergeGeometries(blocks)!, hazed(new THREE.MeshStandardMaterial({ color: BLOCK, roughness: 0.92 }), true))

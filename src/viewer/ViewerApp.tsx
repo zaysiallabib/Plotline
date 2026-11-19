@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, levelName, projectUnit, roleIn, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
@@ -597,6 +597,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       restart(cfgRef.current)
     })
     s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
+    s.street = tower && stem ? streetOf(tower, stem) : null // the made-up street round the whole tower, as the Building view's
     s.setUnit(given)
     s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)

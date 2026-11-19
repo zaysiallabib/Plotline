@@ -19,6 +19,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
+import type { Street } from '../data/building'
 import { isCeilingLight, placementSize } from '../furnish/kit'
 import { setLeafGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } from './context'
@@ -45,7 +46,7 @@ export function slowFrames(ms: number[]): boolean {
 }
 
 const STOREY_M = 3.2
-/** the site's neighbours are fetched 250 m round the plot: a block that far toward a low sun can still shade the flat */
+/** how far toward the sun the shadow box reaches past the flat: the site's neighbours are fetched 250 m round the plot (the made-up street's run 60–90 m), a block that far toward a low sun can still shade it */
 export const SITE_REACH_M = 300
 /** the sun's shadow bias in metres (−0.0005 of a flat's own ≈ 40 m depth range, as tuned before the site) */
 const SHADOW_BIAS_M = 0.02
@@ -208,8 +209,6 @@ export class Look {
   readonly paneEnvs: { sky?: THREE.Texture; room?: THREE.Texture } = {}
   private readonly fitBox = new THREE.Box3()
   private topY = 3
-  /** how far toward the sun the shadow box reaches past the flat: a site's blocks shade it (SITE_REACH_M), else 1 m */
-  private reach = 1
   private readonly v = new THREE.Vector3()
   private readonly c = new THREE.Color()
   /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
@@ -303,7 +302,7 @@ export class Look {
   }
 
   /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
-  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = []): void {
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     this.unitGroup.clear()
@@ -395,16 +394,15 @@ export class Look {
     // a flat with no floor typed (a Studio draft) stands where the Building view puts one (building.ts: floor 2), not on
     // the street: Dhaka flats start above the ground-floor parking. A ground level's sunken zones stay above the street plane.
     // (a basement's street is above it, whatever its ramps go down to: never lowered to them)
-    const street = -(unit.floor ?? 2) * STOREY_M - 0.2
-    this.ground.position.y = this.groundY = street > 0 ? street : Math.min(street, lowest - 0.05)
+    const streetY = -(unit.floor ?? 2) * STOREY_M - 0.2
+    this.ground.position.y = this.groundY = streetY > 0 ? streetY : Math.min(streetY, lowest - 0.05)
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)
-    this.street = buildStreet(unit, b, this.ground.position.y)
-    // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view, and the
-    // shadow box reaches back toward the sun to take their shadows (fitShadow)
+    this.street = buildStreet(unit, street, this.ground.position.y)
+    // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view. Both throw
+    // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
     ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
-    this.reach = this.street.userData.site ? SITE_REACH_M : 1
 
     // a light at each room's ceiling fixture (flush light, fan or pendant: presets.ts places one in every lit room),
     // biggest non-bath rooms first, then baths, up to the cap
@@ -598,7 +596,7 @@ export class Look {
     cam.right = hi.x
     cam.bottom = lo.y
     cam.top = hi.y
-    cam.near = Math.max(0.1, -hi.z - this.reach)
+    cam.near = Math.max(0.1, -hi.z - SITE_REACH_M)
     cam.far = -lo.z + 1
     // the bias is in the shadow map's depth units: keep it ≈ 2 cm in the room whatever the depth range (a site's reach made
     // the range 10× deeper, and −0.0005 of it 17 cm: walls and sills shadowed late)

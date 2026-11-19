@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { bakeDaylight, factorAt, formFactor, HI, isCovered, LO, mapDaylight, openToSky, RANGE, SHORT_WALL_M } from './daylight'
+import { bakeDaylight, facing, factorAt, formFactor, HI, isCovered, LO, mapDaylight, openToSky, RANGE, SHORT_WALL_M, zRaise } from './daylight'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
@@ -143,5 +143,50 @@ describe('outdoor zones in the bake (ground sample)', () => {
     expect(factorAt(d, 'floor:Lawn', 1, 5)).toBeCloseTo(0.75, 1)
     for (const key of lawnFaces(d)) expect(factorAt(d, key, 0.5, 1), key).toBeCloseTo(0.75, 1)
     expect(d.regions.has('floor:Driveway')).toBe(false)
+  })
+})
+
+describe('neighbours in the bake (founder 2026-11-20: "with space there is much more light … not the case in real life")', () => {
+  // TEST_UNIT on floor 2 (6.6 m over the street): the living's window looks south (−y), the bed's east (+x)
+  const rect = (x0: number, y0: number, x1: number, y1: number, heightM: number) => ({ plan: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], heightM })
+  const south = (gap: number, heightM = 25) => rect(-10, -gap - 12, 20, -gap, heightM)
+  const rooms = core.deriveRooms(TEST_UNIT)
+  const open = bakeDaylight(TEST_UNIT, rooms)
+  const mean = (d: ReturnType<typeof bake>, key: string) => [...d.regions.get(key)!.E].reduce((a, b) => a + b, 0) / d.regions.get(key)!.E.length
+
+  test('facing: the block straight out of the window — its distance and its top over the floor; none behind, none lower, none far off', () => {
+    const c = { x: 3, y: 0 }
+    const out = { x: 0, y: -1 }
+    expect(facing(c, out, 1.6, [south(3)], 6.6)).toEqual({ D: 3, H: 25 - 6.6 })
+    expect(facing(c, { x: 0, y: 1 }, 1.6, [south(3)], 6.6)).toBeNull()
+    expect(facing(c, out, 1.6, [south(3, 7)], 6.6)).toBeNull() // its roof 0.4 m over the floor: under the window
+    expect(facing(c, out, 1.6, [south(150)], 6.6)).toBeNull()
+    // two in line: the one standing higher over the line of sight
+    expect(facing(c, out, 1.6, [south(3, 12), rect(-10, -40, 20, -20, 60)], 6.6)).toEqual({ D: 20, H: 60 - 6.6 })
+  })
+
+  test("zRaise: a neighbour's roof line in the window plane, seen from inside", () => {
+    expect(zRaise(1, 0, 3, 20)).toBe(1) // at the window: its own horizon
+    expect(zRaise(1, 3, 3, 20)).toBeCloseTo(1 + 19 / 2, 9) // as far in as the block is out: halfway up
+    expect(zRaise(1, 3, 3, 0.5)).toBe(1) // a roof below the eye: the horizon
+  })
+
+  test('a block 3 m off the window darkens the room it faces, more than one 9 m off; the room facing the other way keeps its light', () => {
+    const near = bakeDaylight(TEST_UNIT, rooms, [], [south(3)])
+    const far = bakeDaylight(TEST_UNIT, rooms, [], [south(9)])
+    expect(mean(near, 'floor:living')).toBeLessThan(0.6 * mean(open, 'floor:living'))
+    expect(mean(near, 'floor:living')).toBeLessThan(mean(far, 'floor:living'))
+    expect(mean(far, 'floor:living')).toBeLessThan(mean(open, 'floor:living'))
+    // what the eye sees (the atlas): the living dimmer, the bed (its own window east) as before but for the door's share
+    for (const key of ['floor:living', 'wall:w5:1', 'wall:w5:-1', 'ceil:living']) {
+      if (!open.regions.has(key)) continue
+      expect(factorAt(near, key, 2.5, 1), key).toBeLessThan(factorAt(open, key, 2.5, 1) - 0.1)
+    }
+    expect(factorAt(near, 'floor:bed', 7, 2)).toBeGreaterThan(factorAt(open, 'floor:bed', 7, 2) - 0.05)
+  })
+
+  test('a block lower than the floor, or out of view, changes nothing', () => {
+    const d = bakeDaylight(TEST_UNIT, rooms, [], [south(3, 6), rect(-10, 4.5, 20, 20, 30)]) // under the floor; behind the living's blank north wall
+    expect([...d.data]).toEqual([...open.data])
   })
 })

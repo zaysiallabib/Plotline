@@ -315,7 +315,7 @@ const meets = (a: Pt, b: Pt, c: Pt, d: Pt) => {
  * (on the line from the opening toward the wind) whose top is above the flat's floor (floor k stands k × 3.2 m + 0.2 m
  * over the street, as the 3D does; no floor = 2). A plain rule: the block's whole height, no gaps, no wind round it.
  */
-export function sheltered(unit: Unit, at: Pt, fromDeg: number, blocks = sitePlan(unit).buildings): boolean {
+export function sheltered(unit: Unit, at: Pt, fromDeg: number, blocks: { plan: Pt[]; heightM: number }[] = sitePlan(unit).buildings): boolean {
   const d = bearingInPlan(unit.northDeg, fromDeg)
   const end = { x: at.x + d.x * SHELTER_M, y: at.y + d.y * SHELTER_M }
   const floorM = (unit.floor ?? 2) * 3.2 + 0.2
