@@ -54,8 +54,10 @@ const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
 // ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
-// 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aims for walls ≈ 195–205.
-const HEMI = 0.9
+// 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aimed for walls ≈ 195–205.
+// 2026-11-20 (founder: too bright inside even without sun): the hemisphere — the same light from every side, in every
+// room — 0.9 → 0.55; the daylight atlas (daylight.ts) carries the window-to-back falloff on top of the HDRI's share.
+const HEMI = 0.55
 const ENV = 1.1
 const HEMI_SKY = new THREE.Color('#e6e9ee') // barely cool: #dfe7f5 turned the warm-white walls grey
 /** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
@@ -108,7 +110,13 @@ const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
 const ON_GLOW = 4
 /** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
 const PANE_ROOM = 0.06
-/** the camera at night: the room exposed as a photo of a lit flat is, 2 stops over the day's */
+/**
+ * The camera by day (founder 2026-11-20: "default brightness during the day needs to be increased by 20%"; was 1): the sun
+ * patches, the window zones and the sky as seen 20 % brighter; the sky's fill is the same as seen (skyLight divides it by
+ * the exposure), so a room's back and a windowless bath stay as dim as the daylight atlas makes them.
+ */
+export const DAY_EXPOSURE = 1.2
+/** the camera at night: the room exposed as a photo of a lit flat is, 2 stops over the old day's (NIGHT unchanged: the lamps look as they did) */
 export const NIGHT_EXPOSURE = 4
 /** the sky's fill as SEEN (after exposure) by the sun's altitude, ° → fraction of the day's: a clear sky's diffuse light */
 const SEEN: [number, number][] = [
@@ -137,7 +145,7 @@ function byAlt<T>(rows: [number, ...unknown[]][], alt: number, f: (a: number, b:
 }
 
 export interface SkyLight {
-  /** renderer.toneMappingExposure: 1 by day; the camera opens up as the sky goes, to NIGHT_EXPOSURE */
+  /** renderer.toneMappingExposure: DAY_EXPOSURE by day; the camera opens up as the sky goes, to NIGHT_EXPOSURE */
   exposure: number
   /** the sky's fill (environment + hemisphere) as a fraction of the day's, before exposure */
   fill: number
@@ -149,7 +157,7 @@ export interface SkyLight {
 
 /** The sky's light by the sun's altitude in degrees (below 0: under the horizon). Noon down to 10° is the day look unchanged. */
 export function skyLight(altDeg: number): SkyLight {
-  const exposure = 1 + (NIGHT_EXPOSURE - 1) * THREE.MathUtils.smoothstep(-altDeg, -5, 6)
+  const exposure = DAY_EXPOSURE + (NIGHT_EXPOSURE - DAY_EXPOSURE) * THREE.MathUtils.smoothstep(-altDeg, -5, 6)
   const seen = byAlt(SEEN, altDeg, (a, b, t) => Math.exp((1 - t) * Math.log(SEEN[a][1]) + t * Math.log(SEEN[b][1])))
   const s = Math.sin(THREE.MathUtils.degToRad(Math.max(altDeg, 1)))
   return { exposure, fill: seen / exposure, golden: 1 - THREE.MathUtils.smoothstep(s, 0.24, 0.5), night: THREE.MathUtils.smoothstep(-altDeg, -2, 2) }
@@ -192,8 +200,9 @@ export function assignPool(fx: { x: number; z: number; here: boolean; ceiling: b
   for (const i of order) if (k < n && !shadowed.includes(i)) out[k++] = i
   return out
 }
-/** of a lit neighbour's bounce, what comes in through an open passage / any other opening between two rooms (a door ajar, glass) */
-const SPILL = { passage: 0.3, other: 0.1 }
+/** of a lit neighbour's bounce, what comes in through an open passage, a sliding glass door, any other opening (a door ajar, a window) */
+const SPILL: Record<string, number> = { passage: 0.3, slider: 0.2 }
+const SPILL_OTHER = 0.1
 /**
  * Each room's lamps as a share of a lit room's (one ceiling fixture: lampCandela, 150 lm per m² of floor) — a table lamp
  * alone in a bedroom ≈ 0.2 — at most LAMP_RANGE: how much of their bounce lights its walls, floor and ceiling at night
@@ -471,7 +480,7 @@ export class Look {
     this.rooms = rooms
     this.links = unit.walls.flatMap((w): [Id, Id, number][] => {
       const [a, b] = w.openings.length ? sidesOf(w) : [null, null]
-      return a && b && a !== b ? [[a.id, b.id, w.openings.some((o) => o.kind === 'passage') ? SPILL.passage : SPILL.other]] : []
+      return a && b && a !== b ? [[a.id, b.id, Math.max(...w.openings.map((o) => SPILL[o.kind] ?? SPILL_OTHER))]] : []
     })
     this.setFixtures(unit)
     this.pool = Array.from({ length: Math.min(MAX_LAMPS, this.fixtures.length + SPARE) }, (_, i) => {

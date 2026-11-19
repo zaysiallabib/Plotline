@@ -44,7 +44,12 @@ const RHO = 0.5
  * Both per surface class (floor / wall / ceiling), so each class keeps today's tuned level.
  * Tuned on type-a/-b at 15:30 (sRGB, 1280 × 720): between ≤ 1.1 lifted the long type-b living's window-facing wall and
  * ceiling into Neutral's knee (213 → 234, flat again); pivot 0.6 / γ 0.8 or normalising the room's MEAN to 1 sank the type-a
- * living's walls 213 → 182–197; this set keeps mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
+ * living's walls 213 → 182–197; this set kept mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
+ * Founder 2026-11-20: "way too bright inside the room even without sunlight" — every room read as bright as its window
+ * wall, a windowless toilet with its door shut at 80 % of a bedroom. Now the window zone reaches +50–60 %, a room's back
+ * −45–55 %, and between falls to 0.35 (γb 0.2): a deep dining lit through a passage (E ≈ 1/9 of the median) reads ≈ 0.65,
+ * a windowless toilet or closet (≈ 1/100) ≈ 0.35 — dim; a window room ≥ 0.9 as before. With render.ts's lower hemisphere
+ * share and the day exposure +20 %: brighter by the windows and in the sun, darker deep inside.
  */
 /** per class: floor, wall, ceiling (walls / ceilings steeper, wave 14) */
 const GAMMA = [0.75, 0.9, 0.9]
@@ -53,12 +58,12 @@ const PIVOT = 0.5
 // Wave 14: per class (floor, wall, ceiling) and SOFT (tanh in log space, no plateau): the hard clamp flattened a small room's
 // field into plateaus whose kinks read as blocks. Floors stay gentle; walls and ceilings carry the falloff, mostly downward.
 const WITHIN: [number, number][] = [
-  [0.75, 1.25],
-  [0.62, 1.25],
-  [0.6, 1.22],
+  [0.55, 1.5],
+  [0.45, 1.6],
+  [0.45, 1.5],
 ]
-const GAMMA_B = 0.25
-const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
+const GAMMA_B = 0.2
+const BETWEEN = [0.35, 1]
 export const LO = Math.min(...WITHIN.map((w) => w[0])) * BETWEEN[0]
 export const HI = Math.max(...WITHIN.map((w) => w[1])) * BETWEEN[1]
 /** ln(x) squashed into (ln lo, ln hi): slope 1 at x = 1, never reaching the bounds */

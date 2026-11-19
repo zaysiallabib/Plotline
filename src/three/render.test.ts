@@ -1,12 +1,17 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
+import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
 describe('skyLight', () => {
-  test('noon down to 10°: the day look unchanged (exposure 1, full fill, no night)', () => {
-    for (const alt of [80, 45, 20, 10]) expect(skyLight(alt)).toMatchObject({ exposure: 1, fill: 1, night: 0 })
+  test('noon down to 10°: the day exposure, 20 % over the old 1 (founder 2026-11-20); the sky’s fill as seen the full day’s; no night', () => {
+    expect(DAY_EXPOSURE).toBeCloseTo(1 * 1.2)
+    for (const alt of [80, 45, 20, 10]) {
+      const k = skyLight(alt)
+      expect(k).toMatchObject({ exposure: DAY_EXPOSURE, night: 0 })
+      expect(k.fill * k.exposure).toBeCloseTo(1)
+    }
   })
   test('golden only while the sun is low', () => {
     expect(skyLight(60).golden).toBe(0)
