@@ -128,7 +128,7 @@ function planField(cv: HTMLCanvasElement): () => void {
     cv.height = Math.round(h * dpr)
     g.setTransform(dpr, 0, 0, dpr, 0, 0)
     g.lineWidth = 1
-    if (segs.length === 0 || planW !== w) segs = plan(w + 2, TALL).map(([a, b, c, d]) => [a - 1, b - 1, c - 1, d - 1])
+    if (planW !== w) segs = plan(w + 2, TALL).map(([a, b, c, d]) => [a - 1, b - 1, c - 1, d - 1])
     planW = w
     draw()
   }
@@ -338,7 +338,7 @@ export default function Landing() {
           <ul className="steps">
             <li className="reveal" style={d(0)}>
               <h3>One change list</h3>
-              <p>Every note and choice, dated, in one list — ready to annex to the sale agreement.</p>
+              <p>Every note and choice, dated, in one list. Export it and attach it to the sale agreement.</p>
             </li>
             <li className="reveal" style={d(1)}>
               <h3>Finishes with prices</h3>
