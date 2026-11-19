@@ -1,6 +1,6 @@
 # Plotline — every key and every button
 
-All the keys, mouse moves and buttons a person can use, in one place. Read from the code on 2026-10-19 (branch `s27/finish` at 32aadf2: the P key for the wind, curtains on any opening and Delete on the piece in your hand are in); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯), and the Studio's the same night (Import, Export, Export answers, New project, Site, Share link, Change list and Sign in moved into the top bar's **⋯** menu; the timer moved to the status bar; a **Keys** button and the **?** key show every key). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
+All the keys, mouse moves and buttons a person can use, in one place. Checked against the program on 2026-10-19 (it already had the P key for the wind, curtains on any opening and Delete on the piece in your hand); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯), and the Studio's the same night (Import, Export, Export answers, New project, Site, Share link, Change list and Sign in moved into the top bar's **⋯** menu; the timer moved to the status bar; a **Keys** button and the **?** key show every key). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
 
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 
@@ -213,20 +213,20 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Plotline Studio** (top left) | Opens the 3D viewer |
 | Staff mode (small gold badge) | Says this browser is in staff mode — not a button |
 | **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only) |
-| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands in the cloud — not a button (MANUAL §5 "Signing in and saving to the cloud") |
+| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands online — not a button (MANUAL §5 "Signing in and saving online") |
 | ↶ / ↷ | Undo / Redo (Ctrl+Z / Ctrl+Y) |
 | **Auto-trace** (gold outline, once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
 | **Preview 3D** (the gold button) | Opens your drawing in the 3D view, in a new tab |
 | **Building** | Shows / hides the project's floor list (or starts a project) |
 | **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
-| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
+| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
 | ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
-| ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` |
+| ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as a file named `plotline-answers.json` |
 | ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
 | ⋯ → **Site** | Where the building stands: map, plot, neighbours, wind, true north (click again to close; "open" shows beside it) |
-| ⋯ → **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the database is set up) |
-| ⋯ → **Change list** ↗ | Opens `/changes` in a new tab (only when the database is set up) |
-| ⋯ → **Sign in** / your email | Opens the account card below (only when the database is set up) |
+| ⋯ → **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the online database is set up) |
+| ⋯ → **Change list** ↗ | Opens `/changes` in a new tab (only when the online database is set up) |
+| ⋯ → **Sign in** / your email | Opens the account card below (only when the online database is set up) |
 
 ### Studio — the status bar (bottom)
 
@@ -243,7 +243,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 |---|---|
 | Email, **Send me a link** (Enter works too) | Emails you a sign-in link; open it in this same browser |
 | **Use another email** | Back to the email box |
-| **Open** (per project) | Puts that cloud project or drawing in the Studio in place of what is open |
+| **Open** (per project) | Puts that online project or drawing in the Studio in place of what is open |
 | **Rename** | Its name, for everyone in the company |
 | **Earlier saves** → **Open this save** | Every save of it; puts that older copy in the Studio (it becomes the newest when it saves) |
 | **Hide earlier saves** | Closes that list |
