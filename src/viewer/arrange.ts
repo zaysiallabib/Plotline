@@ -5,7 +5,7 @@
  */
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
 import { PROJECTS_KEY, forkFloor, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
-import { placementRange } from '../furnish/kit'
+import { kitAsset, objectKind, placementRange } from '../furnish/kit'
 import { deletePiece, hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
@@ -90,6 +90,16 @@ export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement
 }
 
 /**
+ * A TV standing on its unit, pointed up onto the wall above it (the wall under the pointer more than 10 cm over the TV's
+ * top: the pointer has left the TV for the wall), is refused with why — never left in hand without a word. The kit
+ * decides: a piece that can hang (kit `mount: 'wall'`, or `mountY` ≥ 0.9 m: the wall TV tv_55_wall) is a wall piece,
+ * dragged on its own along the walls (hangOn), and never rides on a unit; the TV that rides on one (tv_55, "TV on
+ * stand", `mountY` = the unit's top) has its stand foot modelled, so it can only stand. Pointed back down, the drag moves
+ * the unit with it again. Cushions or a lamp on a piece, pointed at a wall, carry their piece as before.
+ */
+export const TV_STANDS = 'A TV on its stand cannot hang (Add has a wall-mounted TV)'
+
+/**
  * Piece `id` (or what it rests on, baseOf) dragged to `t`, on the Studio's rules (movePiece: 3" grid, wall snap,
  * refusals, riders along), turned to `rotationDeg` (default: as it stands). A wall piece goes onto the wall under the
  * pointer — back to it, front into the room, sliding in 3" steps along it and up and down in 1" steps (its middle at the
@@ -100,6 +110,8 @@ export function dragTo(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
   const g = pieces.find((x) => x.id === id)
   const p = baseOf(pieces, id)
   if (!g || !p) return null
+  if (g.id !== p.id && objectKind(kitAsset(g.assetId)!) === 'tv' && (t.wall?.y ?? 0) > placementRange(g)[1] + 0.1)
+    return { furniture: pieces, piece: g, ids: [g.id], snapped: null, error: TV_STANDS } // TV_STANDS: the kit's TV on its stand
   if (p.openingId) {
     // curtains slide along their own wall with the point under the pointer (+ where they were grabbed: Held.grab)
     const to = t.wall?.p ?? t.at

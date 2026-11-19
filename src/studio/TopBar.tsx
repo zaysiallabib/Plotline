@@ -2,7 +2,8 @@
  * The Studio's top bar (session 30). Left: the wordmark, the staff pill and the drawing's own fields (quiet until the
  * mouse is over one) with the cloud's save word. Middle: Undo / Redo. Right: Auto-trace (with a plan picture), Preview
  * 3D (the one gold button), Building, and ⋯ — Import, Export, Export answers, New project, Site, Share link, Change list
- * and the account. Esc or a click anywhere else closes ⋯. The keys (Ctrl+Z / Y / S / O) are StudioApp's, unchanged.
+ * and the account. Esc or a click anywhere else closes ⋯; Esc closes the account card too. The keys (Ctrl+Z / Y / S /
+ * O) are StudioApp's, unchanged.
  */
 import { useEffect, useState, type ComponentProps } from 'react'
 import type { Unit } from '../core'
@@ -56,22 +57,24 @@ export default function TopBar(p: Props) {
   const [menu, setMenu] = useState(false)
   const [account, setAccount] = useState(false)
   const session = useSession()
-  // Esc (that one step only: caught first, so the Studio's own Esc does not also unpick) or a press elsewhere closes ⋯
+  // Esc (that one step only: caught first, so the Studio's own Esc does not also unpick) closes ⋯, else the account card
+  // (also from its email box); a press elsewhere closes ⋯
   useEffect(() => {
-    if (!menu) return
+    if (!menu && !account) return
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       e.stopPropagation()
-      setMenu(false)
+      if (menu) setMenu(false)
+      else setAccount(false)
     }
-    const down = (e: PointerEvent) => !(e.target as Element).closest?.('.more') && setMenu(false)
+    const down = (e: PointerEvent) => menu && !(e.target as Element).closest?.('.more') && setMenu(false)
     addEventListener('keydown', key, true)
     addEventListener('pointerdown', down)
     return () => {
       removeEventListener('keydown', key, true)
       removeEventListener('pointerdown', down)
     }
-  }, [menu])
+  }, [menu, account])
   const { unit, onMeta } = p
 
   return (

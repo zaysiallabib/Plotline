@@ -75,7 +75,7 @@ Extras you can add to the end of a 3D address:
 
 The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
 
-**Top left:** the room you are standing in — its floor, its name, its printed size and area. **Click it** for the list of rooms (this is where the old **Rooms** button went). Click a room to jump there. Esc, or a click elsewhere, closes the list.
+**Top left:** the room you are standing in — its floor, its name, its printed size and area. **Click it** for the list of rooms (this is where the old **Rooms** button went). Click a room to jump there. Esc, or a click elsewhere, closes the list. In the Building view the same box names the floor you picked instead (since 2026-11-20): "Floor 2 · Type A · 2703 sft", the flats on another floor, or "Ground floor", "Basement 1", "Rooftop".
 
 **The hint** (bottom middle) shows the keys for what you are doing ("Double-click to look with the mouse · click the floor to walk there · WASD to walk"). It fades after a few seconds so it never sits over the room. It comes back when it changes (the mouse locked or freed, another view, an editor on) or when you hold the mouse over where it was. While Comment is on it stays: "Click anything to leave a note · Esc stops".
 
@@ -168,7 +168,7 @@ One extra button appears in the bar, top right: **Edit ▾** (gold while an edit
 ### Edit furniture
 
 - **Click a piece** to pick it — also one you see through a window or a glass door. A click where the mouse slides up to 6 pixels is still a click: the piece is picked, never moved.
-- **Drag** a piece (further) to move it. A drag on cushions, or on a TV standing on its unit, moves the piece under them. The piece turns red and tells you why if it cannot go there (outside the room, covers a window, overlaps another piece). Doors, passages and the entrance are NOT kept clear (founder, 2026-10-13): put a piece where you like. The Studio's F tool works the same way.
+- **Drag** a piece (further) to move it. A drag on cushions, or on a TV standing on its unit, moves the piece under them. Drag that TV up onto the wall above it and it turns red: "A TV on its stand cannot hang" — it has its stand foot, so it only stands (since 2026-11-20; before, it stayed in your hand without a word). For a TV on the wall: **Add → Living → 55" TV, wall-mounted**, and delete the one on the stand. Point back down at the floor and you carry the unit again. The piece turns red and tells you why if it cannot go there (outside the room, covers a window, overlaps another piece). Doors, passages and the entrance are NOT kept clear (founder, 2026-10-13): put a piece where you like. The Studio's F tool works the same way.
 - **Wall pieces go up and down too** (since 2026-11-20): a TV, a picture, the AC, a clock, a mirror, a geyser.
   - Drag it and it follows the mouse along the wall *and* up or down it: point higher on the wall and it goes up, lower and it comes down, in 1-inch steps.
   - It never goes below the skirting or through the ceiling. It turns red over a window ("Covers the window") or in a doorway ("Covers the doorway"). Above a door's head it may hang.
@@ -193,7 +193,7 @@ One extra button appears in the bar, top right: **Edit ▾** (gold while an edit
 
 - **A search box on top.** In the 3D view it is ready to type into as soon as Add opens. In the Studio click it first (there the letter keys still pick the tools).
   - Type any word and the list shrinks as you type: a name (*sofa*, *lamp*, *bookshelf*), a kind or an everyday word (*almirah*, *chula*, *jaynamaz*, *geyser*, *nightstand*), or a room (*balcony*, *kitchen*, *office*, *dining*). Plurals work (*lamps*). Pieces whose name has your word come first.
-  - **Enter** takes the first piece listed. **Esc** empties the box; **Esc** again leaves the box, so R / Esc / Del work on the plan again.
+  - **Enter** takes the first piece listed. **Esc** (one press, since 2026-11-20) empties the box and leaves it, so R / Esc / Del work again — in the 3D view the same Esc also closes the library.
 - **Without a search:** first **Recent** (the last six pieces you picked in this browser), then the groups, each with how many pieces it holds: **Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor**. Click a group's name to open or close it. Inside a group the pieces stand by kind, each kind with its count (Sofas 5, Armchairs 3, …). A piece can be in two groups: the hand-wash basins are under Dining and Bath (a Dhaka dining space has one), desks and office chairs under Bedroom and Office, the chandelier under Lights & AC, Dining and Living.
 - **Each row** shows the name, its footprint in feet (width × depth), and a small mark:
   - **built** = drawn by Plotline itself. There is no download, and when you resize it, it is built again at the new size (more shelves, drawers, doors or seats, never stretched).
@@ -238,7 +238,8 @@ Opens this flat or level in the Studio, in a new tab.
 ## 4. The Building view
 
 - **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is filled white, and your own flat's floor has a small gold dot.
-- Picking a basement hides everything above it.
+- Picking a basement hides everything above it (a ground floor traced in the Studio too). The street round the tower and the next buildings stay (since 2026-11-20; before, they went with the floors above).
+- **Top left** the box names the floor you picked: "Floor 2" over the flat's name and size ("Type A · 2703 sft"), the flats of another floor, or the level ("Ground floor", "Basement 1", "Rooftop").
 - **Walk this level** (gold, right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
 - **Click a flat** to open it.
 - Drag to turn, scroll to zoom.
@@ -293,7 +294,7 @@ Without signing in, your work is kept in this browser only (section 9). Signed i
 
 **Signing in** (no password):
 
-1. Top bar, right: **⋯** → **Sign in**. A card opens.
+1. Top bar, right: **⋯** → **Sign in**. A card opens (its **Close**, or **Esc**, closes it).
 2. Type your email, click **Send me a link**. The card says **Check your email**.
 3. Open that email **on the same computer, in the same browser**, and click the link. The Studio opens with your email in the **⋯** menu instead of **Sign in**.
 4. The first time, it says **Not saved: not in a company yet** until the owner adds you (SETUP_ACCOUNTS.md, "Adding a staff member"). Then press F5.
@@ -664,6 +665,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 - **In the 3D view** (staff): the first time you change the furniture (move, turn, resize, delete, add, undo) on a floor whose drawing is on other floors too — or click **Edit ▾ → Openings** there — a small box asks: "Floor plan A is also on floors 1, 3, 4. Change: **Floor 2 only** / **All 4 floors**".
   - **Floor 2 only**: floor 2 gets its own copy (as above), your change is kept on it, and the page opens again on that copy (a few seconds) with Edit furniture (or Edit openings) still on. A note says "Floor 2 has its own drawing now". Floors 1, 3 and 4 stay exactly as they were.
   - **All 4 floors**: the change goes to every floor with the drawing (as before this box existed).
+  - **Esc** (since 2026-11-20): takes the change back instead — the piece goes back where it was, nothing is saved, and nothing is remembered: the box asks again at your next change.
   - The answer is remembered for the project in this browser: the next floor you change does the same without asking. The Studio's floor list shows the remembered answer under **Show building**; **Ask again** forgets it.
 - **Finishes never spread to other floors.** What you or a buyer pick in **Finishes** (a floor, a wall colour) is not saved into the drawing: it lives in that page and in the **Share** link only, so it never changes another floor or another flat.
 - **A building from an architect's file** (an IFC dropped on the Studio, §5 "Bring in the architect's file"): every floor is its own drawing from the start — nothing is repeated, nothing to answer. **A traced building**: one drawing per floor type, put on many floors. In the 3D view, the first change you make on one floor asks whether it is for that floor only; in the Studio, a change to the drawing goes to all its floors — pick **Use drawing… → This floor only** on a floor first when it is for that floor alone.

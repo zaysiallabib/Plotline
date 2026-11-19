@@ -59,7 +59,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V). A column's side or corner dot: that side, or that corner alone (V or C). An opening's end dot: its width (V or O). Curtains' end dot: wider or narrower on that side (F). A ramp's arrow head: which way it runs (V). The Site's gold north arrow: true north; its round dot moves the arrow | V, C, O, F, Site open | §5 — V, C, F, Site |
 | Drop a picture or a file on the page | A plan picture (PNG, JPG, WEBP, up to 10 MB) goes under the drawing; a drawing file opens | any time | §5 "Loading the plan picture" |
 | **?** | Opens or closes the Keys sheet: every key in one list, the tool you are on explained in full at the top (the same as the **Keys** button, bottom right). **Esc** or a click elsewhere closes it | any time (not in a text box) | §5 "The status bar and the Keys sheet" |
-| **Esc** (a menu or the Keys sheet open) | Closes only that menu or sheet — nothing else is unpicked | ⋯ menu, Keys sheet | §5 Top bar |
+| **Esc** (a menu, the account card or the Keys sheet open) | Closes only that menu, card or sheet — nothing else is unpicked | ⋯ menu, account card, Keys sheet | §5 Top bar |
 
 ## 2. 3D view keys
 
@@ -79,7 +79,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **C** | Comment on / off; then click the thing | any | everyone | §2 Notes |
 | **P** | Wind on / off — the same as the Wind button on the Sun & wind card (the pill at the bottom middle) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
 | **M** | Hides / shows the small map (the same as its × and the **Map** button) | Walk | everyone | §2 Always on screen |
-| **Esc** | Gives the mouse back, and one step back: an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks; in Edit openings: unpicks; else stops Comment and drops an unsaved note; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| **Esc** | Gives the mouse back, and one step back: the "which floors?" box (Floor 2 only / All 4 floors) takes the change back — the piece goes back where it was, nothing saved; an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks (one Esc, also while the cursor is in its search box); in Edit openings: unpicks; else stops Comment and drops an unsaved note; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
 | **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
@@ -124,7 +124,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
-| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
+| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. In the Building view: the floor you picked ("Floor 2 · Type A · 2703 sft", "Ground floor"). **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
 | **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is filled white | everyone |
 | **Finishes** | Opens the finishes panel (F) | everyone |
 | **Comment** | Click anything to leave a note (C) | everyone |
@@ -191,6 +191,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 |---|---|---|
 | **Floor 2 only** | Floor 2 gets its own copy of the drawing; your change is kept on it and the page opens again on that copy (the other floors stay as they are) | staff |
 | **All 4 floors** | The change goes to every floor with the drawing | staff |
+| **Esc** | Takes the change back: the piece goes back where it was, nothing is saved; the box asks again at the next change | staff |
 
 ### 3D view — Edit openings panel (bottom left)
 
@@ -251,7 +252,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Open theirs** / **Keep mine** | Only after "someone saved a newer version": take their copy, or save yours on top (theirs stays in Earlier saves) |
 | **Save as new** | Only after "it was deleted from the cloud": keeps your copy as a new one |
 | **Sign out** | Saves what is waiting, then signs out |
-| **Close** | Closes the card |
+| **Close** | Closes the card (or Esc) |
 
 ### Studio — the plan area
 

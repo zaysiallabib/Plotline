@@ -427,7 +427,8 @@ export class Building extends THREE.Group {
   /**
    * Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of
    * them; on a floor without flats its stand-ins' outline (a traced level: ground, basement, rooftop; massing). A cut floor (cuts(k)): everything
-   * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground).
+   * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground) —
+   * but the street, its roads and the neighbour blocks stay: they stand round the plot, not over the floor looked at.
    */
   highlight(k: number): void {
     const { FLATS, FLOORS, FLOOR_M } = this.t
@@ -436,7 +437,7 @@ export class Building extends THREE.Group {
     const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : (entry.standIns ?? [])
     const cut = this.cuts(k)
     for (const o of this.children) {
-      if (o === this.mark) continue
+      if (o === this.mark || o === this.street) continue
       const hide = cut && !(typeof o.userData.level === 'number' && o.userData.level <= k)
       if (hide && o.visible) (o.visible = false), (o.userData.cut = true)
       else if (!hide && o.userData.cut) (o.visible = true), delete o.userData.cut

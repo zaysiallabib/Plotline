@@ -24,7 +24,7 @@ import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
-import Hud, { type HandInfo } from './Hud'
+import Hud, { floorTitle, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
@@ -269,10 +269,10 @@ const QUALITY_WHY =
   TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
 
 /** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
-function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
+function AddPanel({ onPick, onEsc }: { onPick: (assetId: string) => void; onEsc: () => void }) {
   return (
     <aside className="glass library">
-      <LibraryPanel onPick={onPick} focus />
+      <LibraryPanel onPick={onPick} focus onEsc={onEsc} />
     </aside>
   )
 }
@@ -708,11 +708,19 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
+    const before = steps.current
     steps.current = h
     const pieces = h.pieces
     perFloor(
       () => saveLayout(unit.id, pieces, base),
       () => ownFloor('furniture', (id) => saveLayout(id, pieces, base)),
+      () => {
+        // Esc on the "which floors?" box: nothing saved, the layout as it was before (as Esc on a piece in hand)
+        steps.current = before
+        scene?.setLayout(before.pieces)
+        showSel(pieceOf(show))
+        redraw()
+      },
     )
     scene?.setLayout(h.pieces)
     showSel(pieceOf(show))
@@ -735,6 +743,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
+  /** Esc in Edit furniture (also in the library's search box): the library closes, nothing picked */
+  const escArrange = () => {
+    setAdding(false)
+    setSel(null)
+    showSel(null)
+  }
   const toggleArrange = () => {
     letGo()
     if (editingOpenings) toggleOpenings() // one editor at a time
@@ -751,9 +765,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   // ── One floor or all (founder 2026-11-20): on a Studio project's floor whose drawing is on other floors too, the first
   // staff change (a furniture step, Edit openings) asks, once per project (Studio → Building list: Ask again): this floor
   // only — it gets its own copy of the drawing and the page opens on that (arrange.ts forkHere) — or all those floors
-  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void } | null>(null)
-  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one` */
-  const perFloor = (all: () => void, one: () => void) => {
+  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void; cancel?: () => void } | null>(null)
+  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one`; Esc on the box: `cancel` */
+  const perFloor = (all: () => void, one: () => void, cancel?: () => void) => {
     const k = unit.floor
     const sh = STAFF && stem && level === undefined && k !== undefined ? sharedAt(readProjects(), stem, k) : null
     const said = sh && floorAnswer(sh.p.id)
@@ -761,7 +775,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (said === 'one') return one()
     document.exitPointerLock?.()
     const others = sh.slots.filter((s) => s !== k)
-    setAskFloor({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one })
+    // a second change before the answer: the answer takes the latest, Esc goes back to before the first
+    setAskFloor((a) => ({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one, cancel: a ? a.cancel : cancel }))
   }
   const answer = (a: FloorAnswer) => {
     if (!askFloor) return
@@ -1014,7 +1029,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       if (inVR) return // a desk keyboard next to a tethered headset must not flip the scene to dollhouse
       const k = e.key.toLowerCase()
       const h = held.current
-      if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
+      if (askFloor && k === 'escape') {
+        // the "which floors?" box: Esc cancels the change it asks about (no answer remembered)
+        setAskFloor(null)
+        askFloor.cancel?.()
+      } else if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
         if (plan.current.history.past.length) planCommit({ type: 'undo' })
       } else if (editingOpenings && opSel && (k === 'delete' || k === 'backspace')) {
         setOpSel(null)
@@ -1033,11 +1052,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
       else if (arranging && k === 'r') turn()
       else if ((arranging || h) && (k === 'delete' || k === 'backspace')) remove()
-      else if (arranging && k === 'escape') {
-        setAdding(false)
-        setSel(null)
-        showSel(null)
-      } else if (k === 'o') toggleMode()
+      else if (arranging && k === 'escape') escArrange()
+      else if (k === 'o') toggleMode()
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
@@ -1196,6 +1212,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             floor={unit.floor}
             floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
             roomNote={windOn && room ? core.windSentence(windRooms.find((w) => w.roomId === room.id), unit.northDeg) : null}
+            pickedFloor={tower && stem ? floorTitle(tower, picked, stem) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
             onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}
@@ -1363,7 +1380,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               onUndo={() => planCommit({ type: 'undo' })}
             />
           )}
-          {arranging && adding && <AddPanel onPick={startPlacing} />}
+          {arranging && adding && <AddPanel onPick={startPlacing} onEsc={escArrange} />}
           {arranging && (
             <ArrangePanel
               piece={pieceOf(sel)}
