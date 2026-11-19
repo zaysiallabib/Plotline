@@ -141,6 +141,8 @@
 /* ── bottom centre: the hint over the Sun & wind pill / card ─────────────────────────────────────────────────────── */
 .dock { position: absolute; left: 50%; bottom: var(--s-4); transform: translateX(-50%); max-width: calc(100vw - 32px); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
 .dock > * { pointer-events: auto; }
+/* staff: Edit furniture / openings take the bottom left: the dock sits between that panel and the small map, never over either */
+.viewer:has(.arrange) .dock { left: 352px; right: 244px; transform: none; max-width: none; }
 .hint { max-width: 100%; padding: 6px 14px; border-radius: var(--r-pill); font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: none; }
 /* it shows, stays about 4 s, then fades; the mouse over where it was brings it back (a new hint starts again: React key) */
 .dock .hint { animation: hint 5s var(--ease) forwards; }
@@ -174,7 +176,7 @@
 .sun-mark { flex: none; }
 .sun-mark circle { fill: var(--accent); }
 .sun-mark line { stroke: var(--accent); stroke-width: 1.3; stroke-linecap: round; }
-.sun-card { display: flex; align-items: center; gap: var(--s-4); width: min(760px, calc(100vw - 32px)); padding: 14px var(--s-4) 14px 14px; border-radius: var(--r-lg); animation: rise var(--dur) var(--ease) both; }
+.sun-card { display: flex; align-items: center; gap: var(--s-4); width: min(760px, calc(100vw - 32px)); max-width: 100%; padding: 14px var(--s-4) 14px 14px; border-radius: var(--r-lg); animation: rise var(--dur) var(--ease) both; }
 .sun-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .sun-head { display: flex; align-items: center; gap: var(--s-3); }
 .sun-clock { display: flex; align-items: baseline; gap: var(--s-2); min-width: 150px; }

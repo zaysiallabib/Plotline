@@ -1044,7 +1044,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             <h1 className="unit-name">{unit.name}</h1>
             <div className="load-meta">
               {level !== undefined ? (
-                levelName(tower!, level)
+                levelName(tower!, level) !== unit.name && levelName(tower!, level) // "Ground floor" said once, not twice
               ) : (
                 <>
                   {unit.floor !== undefined && `Floor ${unit.floor} · `}
