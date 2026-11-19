@@ -40,9 +40,9 @@ export class WindFlow extends THREE.Group {
   private readonly lines: LineSegments2
   private readonly speed: number
 
-  constructor(unit: Unit, rooms: Room[], month: WindMonth, tint = SEASON_TINT.monsoon) {
+  /** `blocks`: what stands round the flat (context.ts neighbours) — a window behind one upwind gets the fainter lines */
+  constructor(unit: Unit, rooms: Room[], month: WindMonth, tint = SEASON_TINT.monsoon, blocks: { plan: core.Pt[]; heightM: number }[] = core.sitePlan(unit).buildings) {
     super()
-    const blocks = core.sitePlan(unit).buildings
     const byId = new Map(rooms.map((r) => [r.id, r]))
     const pos: number[] = []
     /** per segment end: its distance along its line; its colour carries (fade × shelter, the line's dash phase, 0) */

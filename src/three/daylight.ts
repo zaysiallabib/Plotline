@@ -59,7 +59,16 @@ const WITHIN: [number, number][] = [
 ]
 const GAMMA_B = 0.25
 const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
-export const LO = Math.min(...WITHIN.map((w) => w[0])) * BETWEEN[0]
+/**
+ * Neighbours (founder 2026-11-20: "with space there is much more light … which is not the case in real life"): a room's
+ * light with the blocks round the building / its light with an open view, ^SHADE_GAMMA, no lower than SHADE_LO, × its factor.
+ * The eye adapts again (the exposure follows), but not all the way: a bedroom facing a wall 3 m off reads dimmer.
+ */
+const SHADE_GAMMA = 0.5
+const SHADE_LO = 0.6
+/** a neighbour farther than this out of a window is not looked for (m) */
+const VIEW_M = 100
+export const LO = Math.min(...WITHIN.map((w) => w[0])) * BETWEEN[0] * SHADE_LO
 export const HI = Math.max(...WITHIN.map((w) => w[1])) * BETWEEN[1]
 /** ln(x) squashed into (ln lo, ln hi): slope 1 at x = 1, never reaching the bounds */
 const soft = (lnx: number, [lo, hi]: [number, number]) => {
@@ -129,6 +138,8 @@ interface Aperture {
   wallId: Id | null
   /** plan point the occlusion test aims at */
   c: Pt
+  /** a window's view out (`out`: plan normal to the outside) blocked by a neighbour D m off, H m over the floor (zRaise) */
+  obs?: { out: Pt; D: number; H: number }
 }
 
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -167,14 +178,43 @@ export function formFactor(p: V3, n: V3, poly: V3[]): number {
   return Math.min(1, Math.abs(s) / (2 * Math.PI))
 }
 
-/** Sky above the point's horizon at full radiance, the view below it at GROUND. */
-function seen(p: V3, n: V3, quad: V3[]): number {
+/** Sky above height `z` of the aperture (the point's horizon, or a neighbour's roof line) at full radiance, the view below it at GROUND. */
+function seen(p: V3, n: V3, quad: V3[], z = p[2]): number {
   let lo = Infinity
   let hi = -Infinity
   for (const v of quad) [lo, hi] = [Math.min(lo, v[2]), Math.max(hi, v[2])]
-  if (lo >= p[2]) return formFactor(p, n, quad)
-  if (hi <= p[2]) return GROUND * formFactor(p, n, quad)
-  return formFactor(p, n, clip(quad, (v) => v[2] - p[2])) + GROUND * formFactor(p, n, clip(quad, (v) => p[2] - v[2]))
+  if (lo >= z) return formFactor(p, n, quad)
+  if (hi <= z) return GROUND * formFactor(p, n, quad)
+  return formFactor(p, n, clip(quad, (v) => v[2] - z)) + GROUND * formFactor(p, n, clip(quad, (v) => z - v[2]))
+}
+
+/**
+ * Where a neighbour's roof line crosses the window's plane, seen from p: the line H m up, D m out past the window, from p
+ * dp m inside it — p's own horizon when the roof is below p. Above it p sees sky through the window, below it the block.
+ */
+export const zRaise = (pz: number, dp: number, D: number, H: number): number => pz + (Math.max(0, H - pz) * dp) / (dp + D)
+
+/**
+ * The neighbour a window at `c` looks at along `out` (plan): of the blocks the ray meets within VIEW_M, the one whose top
+ * stands highest over the line of sight from `z` — its distance and its height over the flat's floor (`floorM` over the street).
+ */
+export function facing(c: Pt, out: Pt, z: number, blocks: { plan: Pt[]; heightM: number }[], floorM: number): { D: number; H: number } | null {
+  let best: { D: number; H: number } | null = null
+  for (const k of blocks) {
+    let D = Infinity
+    k.plan.forEach((p, i) => {
+      const q = k.plan[(i + 1) % k.plan.length]
+      const e = { x: q.x - p.x, y: q.y - p.y }
+      const den = out.x * e.y - out.y * e.x
+      if (Math.abs(den) < 1e-12) return
+      const t = ((p.x - c.x) * e.y - (p.y - c.y) * e.x) / den
+      const s = ((p.x - c.x) * out.y - (p.y - c.y) * out.x) / den
+      if (t > 0 && s >= 0 && s <= 1) D = Math.min(D, t)
+    })
+    const H = k.heightM - floorM
+    if (D <= VIEW_M && H > z && (!best || (H - z) / D > (best.H - z) / best.D)) best = { D, H }
+  }
+  return best
 }
 
 /** Proper crossing of segments ab and cd (touching ends don't count). */
@@ -210,9 +250,13 @@ function blur(F: Float32Array, nu: number, nv: number): Float32Array {
   return pass(pass(F, 1, 0), 0, 1)
 }
 
-/** Bake every room surface of the unit (pure: no GL). */
-export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Daylight {
+/**
+ * Bake every room surface of the unit (pure: no GL). `blocks`: what stands round the building (context.ts neighbours,
+ * height over the street): a window facing one sees its wall where it would see sky.
+ */
+export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = []): Daylight {
   const t0 = performance.now()
+  const floorM = (unit.floor ?? 2) * 3.2 + 0.2 // over the street, as core.sheltered and the 3D
   const frames = new Map(unit.walls.map((w) => [w.id, core.wallFrame(w, unit.vertices)]))
   const sides = new Map<Id, [Room | null, Room | null]>()
   for (const w of unit.walls) {
@@ -233,14 +277,17 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
   for (const r of baked) {
     const list: Aperture[] = []
     const h = heightOf(r)
-    const rect = (w: Wall, u0: number, u1: number, z0: number, z1: number, L: number, from: Room | null) => {
+    /** `out`: toward the outside (+1: the wall's normal), when it opens onto the outside */
+    const rect = (w: Wall, u0: number, u1: number, z0: number, z1: number, L: number, from: Room | null, out = 0) => {
       const f = frames.get(w.id)!
       const k = Math.max(1, Math.ceil((u1 - u0) / STRIP))
+      const n = { x: f.normal.x * out, y: f.normal.y * out }
       for (let i = 0; i < k; i++) {
         const [a, b] = [u0 + ((u1 - u0) * i) / k, u0 + ((u1 - u0) * (i + 1)) / k]
         const P = (u: number): Pt => ({ x: f.origin.x + f.dir.x * u, y: f.origin.y + f.dir.y * u })
-        const [pa, pb] = [P(a), P(b)]
-        list.push({ quad: [[pa.x, pa.y, z0], [pb.x, pb.y, z0], [pb.x, pb.y, z1], [pa.x, pa.y, z1]], L, from, wallId: w.id, c: P((a + b) / 2) })
+        const [pa, pb, c] = [P(a), P(b), P((a + b) / 2)]
+        const ob = out && blocks.length ? facing(c, n, (z0 + z1) / 2, blocks, floorM) : null
+        list.push({ quad: [[pa.x, pa.y, z0], [pb.x, pb.y, z0], [pb.x, pb.y, z1], [pa.x, pa.y, z1]], L, from, wallId: w.id, c, ...(ob ? { obs: { out: n, ...ob } } : {}) })
       }
     }
     for (const id of r.wallIds) {
@@ -250,7 +297,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
       const other = s[0]?.id === r.id ? s[1] : s[1]?.id === r.id ? s[0] : null
       if ((s[0]?.id !== r.id && s[1]?.id !== r.id) || other === r) continue
       const through = (tau: number, u0: number, u1: number, z0: number, z1: number) =>
-        outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null) : rect(w, u0, u1, z0, z1, tau, other)
+        outdoor(other) ? rect(w, u0, u1, z0, z1, tau * skyOf(other, cover), null, s[0]?.id === r.id ? -1 : 1) : rect(w, u0, u1, z0, z1, tau, other)
       // a glass wall (openings.ts isGlazing) lets more through than a window's sashes and curtains
       for (const o of w.openings) through(isGlazing(o) ? 0.85 : (TAU[o.kind] ?? 0.5), o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM)
       // a parapet / planter wall lower than the room: open above it
@@ -320,18 +367,19 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
   }
 
   // ── pass 1: sky through outdoor openings; pass 2: the neighbour's light through doors / passages; one bounce ──
-  const light = (job: Job, p: V3, pass: 1 | 2, mean: Map<Id, number>) => {
+  const light = (job: Job, p: V3, pass: 1 | 2, mean: Map<Id, number>, open: boolean) => {
     let e = 0
     const bl = blockers.get(job.room.id)
     for (const a of apertures.get(job.room.id)!) {
       if ((pass === 1) !== (a.from === null)) continue
       if (bl && a.wallId && bl.some((b) => b.id !== a.wallId && b.id !== job.own && crosses({ x: p[0], y: p[1] }, a.c, b.a, b.b))) continue
       const L = pass === 1 ? a.L : a.L * RHO * (mean.get(a.from!.id) ?? 0)
-      if (L > 0) e += L * seen(p, job.n, a.quad)
+      const o = open ? undefined : a.obs
+      const z = o ? zRaise(p[2], Math.max(0, (a.c.x - p[0]) * o.out.x + (a.c.y - p[1]) * o.out.y), o.D, o.H) : p[2]
+      if (L > 0) e += L * seen(p, job.n, a.quad, z)
     }
     return e
   }
-  const E = jobs.map((j) => new Float32Array(j.nu * j.nv).fill(NaN))
   const pts = jobs.map((j) => {
     const out: (V3 | null)[] = []
     for (let y = 0; y < j.nv; y++) for (let x = 0; x < j.nu; x++) out.push(j.point(j.u0 + x * j.du, j.v0 + y * j.dv))
@@ -346,16 +394,27 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
     })
     return new Map([...sum].map(([id, [t, n]]) => [id, n ? t / n : 0]))
   }
-  const none = new Map<Id, number>()
-  jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] = light(j, p, 1, none))))
-  // a room's light as seen through its door: direct + its own bounce
-  const m1 = new Map([...roomMean(E)].map(([id, v]) => [id, v / (1 - RHO)]))
-  jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] += light(j, p, 2, m1))))
-  const m2 = roomMean(E)
-  jobs.forEach((j, k) => {
-    const b = (RHO / (1 - RHO)) * (m2.get(j.room.id) ?? 0)
-    for (let i = 0; i < E[k].length; i++) if (!Number.isNaN(E[k][i])) E[k][i] += b
-  })
+  /** `open`: as if no neighbour stood round the building */
+  const irradiance = (open: boolean) => {
+    const E = jobs.map((j) => new Float32Array(j.nu * j.nv).fill(NaN))
+    const none = new Map<Id, number>()
+    jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] = light(j, p, 1, none, open))))
+    // a room's light as seen through its door: direct + its own bounce
+    const m1 = new Map([...roomMean(E)].map(([id, v]) => [id, v / (1 - RHO)]))
+    jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] += light(j, p, 2, m1, open))))
+    const m2 = roomMean(E)
+    jobs.forEach((j, k) => {
+      const b = (RHO / (1 - RHO)) * (m2.get(j.room.id) ?? 0)
+      for (let i = 0; i < E[k].length; i++) if (!Number.isNaN(E[k][i])) E[k][i] += b
+    })
+    return { E, m2 }
+  }
+  const { E, m2 } = irradiance(false)
+  // each room's share of the light it would have with an open view (SHADE_*): baked again without them, if any is in view
+  const dim = new Map<Id, number>()
+  if ([...apertures.values()].some((l) => l.some((a) => a.obs))) {
+    for (const [id, v] of irradiance(true).m2) if (v > 0) dim.set(id, THREE.MathUtils.clamp(((m2.get(id) ?? 0) / v) ** SHADE_GAMMA, SHADE_LO, 1))
+  }
 
   // floor / ceiling texels outside the room (under its walls): the nearest inside value, so filtering at the edge never reads garbage
   jobs.forEach((j, k) => {
@@ -393,7 +452,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
     const rm = roomMed.get(`${room.id}:${c}`)!
     const within = rm > 0 ? soft(GAMMA[c] * Math.log(Math.max(e, 1e-9) / rm), WITHIN[c]) : 1
     const between = med[c] > 0 ? THREE.MathUtils.clamp((rm / med[c]) ** GAMMA_B, BETWEEN[0], BETWEEN[1]) : 1
-    return within * between
+    return within * between * (dim.get(room.id) ?? 1)
   }
 
   // ── atlas: a 2 × 2 neutral block at (0, 0) (exterior faces, and a missing attribute reads uv 0,0), then shelves ──

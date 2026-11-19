@@ -33,7 +33,8 @@ import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisot
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
 import { SEASON_TINT, WindFlow } from './wind'
-import { siteCut } from './context'
+import { neighbours, siteCut } from './context'
+import type { Street } from '../data/building'
 
 export type PickKind = 'wall' | 'floor' | 'ceiling' | 'opening' | 'furniture'
 export interface PickHit {
@@ -325,6 +326,13 @@ export class PlotlineScene {
    * Set BEFORE setUnit. Under it an outdoor zone is covered: a soffit, no sky in the daylight, lit by rule. Empty = open sky.
    */
   cover: Pt[][] = []
+  /**
+   * Where the building stands (data/building streetOf: its walls' box, plot, roads, storeys), in the unit's frame, for the
+   * made-up street round it. Set BEFORE setUnit. Null: a flat of no tower — the street goes round its own walls.
+   */
+  street: Street | null = null
+  /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
+  private blocks: { plan: Pt[]; heightM: number }[] = []
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -406,6 +414,8 @@ export class PlotlineScene {
     const b = core.unitBounds(unit)
     this.center.set((b.minX + b.maxX) / 2, 0, (b.minY + b.maxY) / 2)
     this.radius = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2 + 1
+    const street = this.street ?? { walls: b }
+    this.blocks = neighbours(unit, street)
 
     this.lifts = new Map(unit.walls.map((w) => [w.id, wallLift(w, unit, this.rooms)]))
     this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
@@ -429,7 +439,7 @@ export class PlotlineScene {
       this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: 'floor', ...(core.isOutdoor(room.kind) ? { ref: CONCRETE } : {}) }] }) // a zone's edge: concrete
     }
     // indirect light × where the sky reaches (daylight.ts)
-    const day = bakeDaylight(unit, this.rooms, this.cover)
+    const day = bakeDaylight(unit, this.rooms, this.cover, this.blocks)
     for (const s of this.surfaces) {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
@@ -444,7 +454,7 @@ export class PlotlineScene {
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
     this.applyMaterials()
-    this.look.setUnit(present(unit), this.rooms, this.cover) // fixtures, lights, slab, shadow fit box
+    this.look.setUnit(present(unit), this.rooms, this.cover, street) // fixtures, lights, slab, shadow fit box, the street
     this.setTimeOfDay(this.hour)
     if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
@@ -504,7 +514,7 @@ export class PlotlineScene {
     this.wind?.dispose()
     this.windMonth = month
     this.windSeason = season
-    this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month, SEASON_TINT[season]) : null
+    this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month, SEASON_TINT[season], this.blocks) : null
     if (this.wind) this.scene.add(this.wind)
   }
 

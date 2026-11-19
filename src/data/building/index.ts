@@ -69,6 +69,50 @@ export const topFloor = (t: Tower): number =>
 /** A level's name by its floor in tower `t`: Basement n, Ground floor, Level k (a common floor among the flats), Rooftop. */
 export const levelName = (t: Tower, k: number): string => (k < 0 ? `Basement ${-k}` : k === 0 ? 'Ground floor' : k > topFloor(t) ? 'Rooftop' : `Level ${k}`)
 
+/** plan m, x0 < x1, y0 < y1 */
+type Box = { minX: number; minY: number; maxX: number; maxY: number }
+
+/**
+ * Where a building stands, in its unit's plan frame: what context.ts lays the made-up street round (neighbours a few
+ * metres off, a road along one or two sides). With only `walls` (a flat of no tower): its own walls' box.
+ */
+export interface Street {
+  /** the box of the building's walls: what its windows look out of */
+  walls: Box
+  /** its plot: no neighbour on it, a road along its edge */
+  plot?: Box
+  /** the drawing's roads; none: one or two are made up */
+  roads?: Box[]
+  /** its storeys over the street (the neighbours: ± 2) */
+  storeys?: number
+  /** one made-up street for the whole building: every flat of it sees the same */
+  seed?: string
+}
+
+/**
+ * Tower t's street (Street) in the plan frame of its unit `stem`, the same for the walk and the Building view: the box of
+ * its flats and upper levels (floor 1 up), its plot, the drawing's roads, its storeys (the ground floor to the top floor).
+ */
+export function streetOf(t: Tower, stem: string): Street {
+  const o = t.FLATS[stem].offset
+  const box = (pts: Pt[]): Box => ({
+    minX: Math.min(...pts.map((p) => p.x)) - o.x,
+    minY: Math.min(...pts.map((p) => p.y)) - o.y,
+    maxX: Math.max(...pts.map((p) => p.x)) - o.x,
+    maxY: Math.max(...pts.map((p) => p.y)) - o.y,
+  })
+  const up = new Set(t.FLOORS.filter((f) => f.floor >= 1).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
+  const pts = [...up].flatMap((s) => t.FLATS[s].unit.vertices.map((v) => ({ x: v.x + t.FLATS[s].offset.x, y: v.y + t.FLATS[s].offset.y })))
+  const plot = box(t.GROUND.plot)
+  return {
+    walls: pts.length ? box(pts) : plot,
+    plot,
+    roads: t.GROUND.roads.map(([x0, y0, x1, y1]) => box([{ x: x0, y: y0 }, { x: x1, y: y1 }])),
+    storeys: topFloor(t) + 1,
+    seed: Object.keys(t.FLATS)[0],
+  }
+}
+
 /** The lowest floor of a face (m from its unit's datum): a ramp's lower end. */
 const lowestOf = (r: Room): number => Math.min(r.levelM ?? 0, r.slope?.toLevelM ?? r.levelM ?? 0)
 

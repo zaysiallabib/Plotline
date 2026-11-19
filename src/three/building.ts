@@ -14,7 +14,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
-import { floorIn, stemIn, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
+import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { finishSlotsFor } from '../furnish/finishes'
 import { layoutFor } from '../studio/furniture'
@@ -284,15 +284,9 @@ export class Building extends THREE.Group {
     for (const { floor: k, standIns = [] } of FLOORS.filter((f) => f.floor < 0))
       for (const s of standIns) if (!(k === floor && s === stem)) this.addLevel(s, k, this.streetY - this.levelOf(k) - 0.01)
 
-    // the street: the site's roads (a Studio project draws none: context.ts lays its own), and neighbour blocks (context.ts) around the plot and the roads;
-    // a unit with a site (Studio → Site): the map's own roads and blocks instead
-    if (GROUND.roads.length && !unit.site) {
-      const roads = new THREE.Mesh(merge(GROUND.roads.map((r) => flat(r, this.streetY))), materialFor(ASPHALT))
-      roads.receiveShadow = true
-      this.add(roads)
-    }
-    const b = this.box
-    this.street = buildStreet(unit, { minX: b.min.x - 12, maxX: b.max.x + 12, minY: b.min.z - 12, maxY: b.max.z + 12 }, this.streetY)
+    // the street (context.ts, the same as the walk's): the drawing's roads and the neighbours round the plot, a few metres
+    // off; a unit with a site (Studio → Site): the map's own roads and blocks instead
+    this.street = buildStreet(unit, streetOf(t, stem), this.streetY)
     this.add(this.street)
 
     const markMat = new THREE.MeshBasicMaterial({ color: '#e8c170' }) // --accent
@@ -491,13 +485,13 @@ export class Building extends THREE.Group {
     cam.right = c.x + s.radius
     cam.bottom = c.y - s.radius
     cam.top = c.y + s.radius
-    cam.near = -c.z - s.radius - (this.street.userData.site ? SITE_REACH_M : 0) // a site's blocks toward the sun shade the tower
+    cam.near = -c.z - s.radius - SITE_REACH_M // the neighbours toward the sun (the site's, or the made-up street's) shade the tower
     cam.far = -c.z + s.radius + 150 // a low sun throws the tower's shadow far down the street
-    sun.shadow.bias = -0.0005 // as tuned for the tower (Look sets its own for the flat)
+    sun.shadow.bias = -0.1 / (cam.far - cam.near) // ≈ 10 cm, as tuned for the tower (−0.0005 of its ≈ 200 m range before the reach); Look sets its own for the flat
     cam.updateProjectionMatrix()
   }
 
-  /** Orbit target on floor k (the tower's plan centre, 1.5 m up) and the street-corner eye (+x, +y: roads 10/A and 9/A), steep and inside the neighbours' ring (context.ts: 20+ m off the plot) so none stands in front. */
+  /** Orbit target on floor k (the tower's plan centre, 1.5 m up) and the street-corner eye (+x, +y: roads 10/A and 9/A), steep; a neighbour between it and the tower is left out (context.ts siteCut). */
   view(k: number): { target: THREE.Vector3; eye: THREE.Vector3 } {
     const c = this.box.getCenter(new THREE.Vector3())
     const size = this.box.getSize(new THREE.Vector3())
