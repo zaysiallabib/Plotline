@@ -1,6 +1,6 @@
 # Plotline — every key and every button
 
-All the keys, mouse moves and buttons a person can use, in one place. Read from the code on 2026-10-19 (branch `s27/finish` at 32aadf2: the P key for the wind, curtains on any opening and Delete on the piece in your hand are in). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
+All the keys, mouse moves and buttons a person can use, in one place. Read from the code on 2026-10-19 (branch `s27/finish` at 32aadf2: the P key for the wind, curtains on any opening and Delete on the piece in your hand are in); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
 
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 
@@ -75,9 +75,9 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **B** | The Building view | only when the flat is part of a tower | everyone | §2, §4 |
 | **F** | Opens / closes Finishes | any | everyone | §2 Finishes panel |
 | **C** | Comment on / off; then click the thing | any | everyone | §2 Notes |
-| **P** | Wind on / off — the same as the Wind button on the sun bar (Sun & wind, top right) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
-| **M** | Hides / shows the small map | Walk | everyone | §2 Always on screen |
-| **Esc** | Gives the mouse back, and one step back: a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks; in Edit openings: unpicks; else stops Comment and drops an unsaved note | any | everyone | §2, §3 |
+| **P** | Wind on / off — the same as the Wind button on the Sun & wind card (the pill at the bottom middle) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
+| **M** | Hides / shows the small map (the same as its × and the **Map** button) | Walk | everyone | §2 Always on screen |
+| **Esc** | Gives the mouse back, and one step back: an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks; in Edit openings: unpicks; else stops Comment and drops an unsaved note; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
 | **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
@@ -114,46 +114,49 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Name | What it does | Who |
 |---|---|---|
 | **Enter** | Goes in; you stand inside the front door | everyone |
-| The other flats and levels (links under it) | Open another built-in flat or level | `/u/…` addresses (not on a buyer link `/s/…`) |
-| **Studio** | Opens the Studio | `/u/…` addresses |
-| **Staff mode** / **Leave staff mode** | Turns staff mode on / off in this browser | `/u/…` addresses |
+| The other flats and levels (a quiet list at the bottom: Flats, then each tower's levels) | Open another built-in flat or level | `/u/…` addresses (not on a buyer link: `/s/…` or a Share link) |
+| **Studio** (small, top right) | Opens the Studio | `/u/…` addresses |
+| **Staff mode** / **Leave staff mode** (small, top right) | Turns staff mode on / off in this browser | `/u/…` addresses |
 
 ### 3D view — top
 
 | Name | What it does | Who |
 |---|---|---|
-| Room box (top left) | The room you stand in: name, floor, printed size; with Wind on, the wind in words | everyone |
-| **Rooms** | A list of the rooms; click one to jump there | everyone |
-| **Walk** | Walk inside at eye height (O) | everyone |
-| **Dollhouse** | The whole plan from above, roof off (O) | everyone |
-| **Building** | The whole tower (B) — only when the flat belongs to one | everyone |
+| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
+| **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is filled white | everyone |
 | **Finishes** | Opens the finishes panel (F) | everyone |
 | **Comment** | Click anything to leave a note (C) | everyone |
 | **Share** | Copies a link that opens with the finishes you chose | everyone |
-| **Edit furniture** | Move, turn, resize, delete or add furniture | staff |
-| **Edit openings** | Move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
-| **Edit plan** | Opens this flat or level in the Studio, in a new tab | staff |
+| **Edit ▾** → **Furniture** | Edit furniture: move, turn, resize, delete or add furniture | staff |
+| **Edit ▾** → **Openings** | Edit openings: move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
+| **Edit ▾** → **Plan (Studio)** | Edit plan: opens this flat or level in the Studio, in a new tab | staff |
+| **⋯** (the last button of the bar) → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a gold dot marks the one recommended for this device; a new choice reloads the page | everyone |
 | **Enter VR** / **Exit VR** | Into / out of the headset — only when one is connected | everyone |
 
 ### 3D view — bottom
 
 | Name | What it does | Who |
 |---|---|---|
-| Day (date, left end of the sun bar) | The day the sun (and the wind's month) is shown for; starts on today | everyone |
-| Time of day (slider) | 06:00 to 18:00; the sun moves with it | everyone |
-| **Wind** (right end of the sun bar) | The wind through the flat this month, on / off (P) | everyone |
-| Months **J F M … D** (above the bar, Wind on) | Pick a month; the day moves to it | everyone |
-| **Rose** (Wind on) | Shows / hides the wind rose (remembered in this browser) | everyone |
-| A month's line on the wind rose | Picks that month | everyone |
-| **Quality** (bottom left): Lite / Low / High, **OK** | How heavy the 3D is for this computer; OK closes the note. Steps aside while Edit furniture or Edit openings is open | everyone |
-| Small map (bottom right, Walk) | Where you are, with a compass to true north (M hides it) | everyone |
-| **Walk this level** (Building view) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
-| Floor buttons R, the flat floors, G, B1, B2 (Building view, right) | Picks a floor; a basement hides what is above it | everyone |
+| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. While Comment is on it stays: "Click anything to leave a note · Esc stops" | everyone |
+| **Sun & wind** pill (bottom middle: a sun, the time, the month, a small compass; "Wind" while the wind is on) | Opens the Sun & wind card | everyone |
+| **⌄** (top right of the card) | Closes the card back to the pill (or Esc) | everyone |
+| Compass (left of the card; small on the pill) | Where true north is as you look now — the top of the compass is straight ahead; it turns as you turn. N is gold | everyone |
+| Day (the date on the card) | The day the sun (and the wind's month) is shown for; starts on today | everyone |
+| Time of day (the slider, 0 to 24) | The sun moves with it; the slider is coloured by the site's own day (night, dawn, day, dusk) and the time shows large above it | everyone |
+| **Lights** (on the card) | The flat's lamps on / off (automatic after sunset) | everyone |
+| **Wind** (on the card) | The wind through the flat this month, on / off (P) | everyone |
+| Months **Jan … Dec** (on the card, always) | Pick a month; the day moves to it (the sun and the wind follow) | everyone |
+| A month's line on the compass (Wind on) | With the wind on, the compass shows every month's wind as a line toward where it comes from; a click on one picks that month (this replaces the old Rose button) | everyone |
+| Quality note (bottom left: "High quality. This device can show the full look.") | Shows by itself only the first time, or after an automatic switch; **Change** opens ⋯ → Quality, **×** closes it; it goes by itself after 12 seconds | everyone |
+| Small map (bottom right, Walk) | Where you are, with a compass to true north on the plan; **×** hides it, **Map** brings it back (or M). It steps aside while Finishes is open | everyone |
+| Floors (Building view, right): **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (the picked one is filled white, your flat's floor has a gold dot); a basement hides what is above it | everyone |
+| **Walk this level** (Building view, under the floors) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
 
 ### 3D view — Finishes panel and notes
 
 | Name | What it does | Who |
 |---|---|---|
+| **×** (top right of the panel) | Closes the panel (or F, or Esc) | everyone |
 | **Your name** | So the developer knows who asked | buyer links only |
 | A note in the list | Walks you to it | everyone |
 | **Remove** (on a note) | Deletes that note | everyone |

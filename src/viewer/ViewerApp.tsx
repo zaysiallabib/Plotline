@@ -27,9 +27,9 @@ import Hud, { type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
-import SunPill, { WindChips, WindRose } from './SunPill'
+import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
-import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
+import { chosen, KEYS, local, lower, NAME, probeDevice, read, recommend, tab, write } from './quality'
 import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
@@ -46,15 +46,6 @@ const DEFAULT_HOUR = 15.5
 
 /** the ten full years before the site was fetched (SitePanel asks for those) */
 const windYears = (at?: string): string => (at ? `${Number(at.slice(0, 4)) - 10}–${Number(at.slice(0, 4)) - 1}` : 'ten years')
-/** the wind rose shown (Wind on, Rose): remembered in this browser */
-const ROSE_KEY = 'plotline.windRose'
-const roseSaved = (): boolean => {
-  try {
-    return localStorage.getItem(ROSE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
 /** the flat's lights: automatic (on after sunset) or the person's pick (render.ts lightsOn), remembered in this browser */
 const LIGHTS_KEY = 'plotline.lights'
 const lightsSaved = (): LightsMode => {
@@ -272,44 +263,9 @@ function NoThreeD({ unit }: { unit: Unit }) {
   )
 }
 
-/**
- * Quality (quality.ts, everyone): Lite / Low / High, the device's recommendation marked. Open — the reason and OK — the
- * first time 3D opens in this browser and after an automatic switch; then just the menu. A pick is kept for good.
- */
-function QualityChip({ note, onPick }: { note: string | null; onPick: (q: Quality) => void }) {
-  const [open, setOpen] = useState(() => !!note || read(local, KEYS.seen) !== '1')
-  useEffect(() => void (note && setOpen(true)), [note])
-  const close = () => {
-    write(local, KEYS.seen, '1')
-    setOpen(false)
-  }
-  const why = TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
-  return (
-    <div className={`glass quality${open ? ' open' : ''}`} title={DEVICE.gpu && `Graphics: ${DEVICE.gpu}`}>
-      <label>
-        <span className="label">Quality</span>
-        <select value={TIER.tier} onChange={(e) => (close(), onPick(e.target.value as Quality))}>
-          {QUALITIES.map((q) => (
-            <option key={q} value={q}>
-              {NAME[q]}
-              {q === REC.tier ? ' (recommended for this device)' : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      {open && (
-        <>
-          <div className="small muted">
-            {note ?? why} Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants.
-          </div>
-          <button className="link" onClick={close}>
-            OK
-          </button>
-        </>
-      )}
-    </div>
-  )
-}
+/** Quality (quality.ts, everyone) in one line: why this tier — the HUD's ⋯ menu and its first-time toast say it */
+const QUALITY_WHY =
+  TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
 
 /** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
 function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
@@ -496,9 +452,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   /** the sun's day (the scene starts on today too) and the wind: its month's rose and arrows, on or off */
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [windOn, setWindOn] = useState(false)
-  /** the sun bar and the rose: on screen only while Sun & wind (top right) is pressed; the wind keeps blowing either way */
+  /** Sun & wind (bottom centre): the card open, or just its pill; the wind keeps blowing either way */
   const [simOpen, setSimOpen] = useState(false)
-  const [roseOn, setRoseOn] = useState(roseSaved)
   const [lightsMode, setLightsMode] = useState(lightsSaved)
   const alt = core.sunAt(unit.site, date, hour).altDeg
   const lit = lightsOn(lightsMode, alt)
@@ -1019,7 +974,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      // a text box keeps its letters; the hour slider takes none (after a drag the keys and Esc still work)
+      if ((tag === 'INPUT' && (e.target as HTMLInputElement).type !== 'range') || tag === 'TEXTAREA') return
       if (!entered) {
         if (e.key === 'Enter') enter()
         return
@@ -1056,8 +1012,14 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       else if (k === 'c') setCommenting((v) => !v)
       else if (k === 'p' && !e.repeat) setWindOn((v) => !v) // founder 2026-10-19: "make windpaths visible by pressing the button p"
       else if (k === 'escape') {
-        setCommenting(false)
-        setDraft(null)
+        // one step back: a note being written or Comment first, else the open panels (Finishes, Sun & wind)
+        if (commenting || draft) {
+          setCommenting(false)
+          setDraft(null)
+        } else {
+          setFinishesOpen(false)
+          setSimOpen(false)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1125,37 +1087,54 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
 
       {!entered && (
         <div className="load">
-          <div className="project">{unit.projectName}</div>
-          <div className="unit-name">{unit.name}</div>
-          <div className="muted">
-            {level !== undefined ? (
-              levelName(tower!, level)
-            ) : (
-              <>
-                {unit.floor !== undefined && `Floor ${unit.floor} · `}
-                {unit.areaSqft} sqft · {sqm} m²
-              </>
-            )}
+          <div className="load-main">
+            <div className="eyebrow">{unit.projectName}</div>
+            <h1 className="unit-name">{unit.name}</h1>
+            <div className="load-meta">
+              {level !== undefined ? (
+                levelName(tower!, level) !== unit.name && levelName(tower!, level) // "Ground floor" said once, not twice
+              ) : (
+                <>
+                  {unit.floor !== undefined && `Floor ${unit.floor} · `}
+                  {unit.areaSqft.toLocaleString('en-IN')} sqft · {sqm} m²
+                </>
+              )}
+            </div>
+            <div className={`progress${ready ? ' done' : ''}`} role="progressbar" aria-label="Loading the rooms" aria-valuemin={0} aria-valuemax={rooms.length} aria-valuenow={loaded}>
+              <div className="bar" style={{ width: `${rooms.length ? (loaded / rooms.length) * 100 : 100}%` }} />
+            </div>
+            <button className="btn primary enter" disabled={!ready} onClick={enter}>
+              {ready ? 'Enter' : 'Loading…'}
+            </button>
+            <div className="load-key">{ready ? 'or press Enter' : `${loaded} of ${rooms.length} rooms ready`}</div>
           </div>
-          <div className="progress">
-            <div className="bar" style={{ width: `${rooms.length ? (loaded / rooms.length) * 100 : 100}%` }} />
-          </div>
-          <div className="muted small">
-            {ready ? 'Ready' : `Loading… ${loaded} of ${rooms.length} rooms`}
-          </div>
-          <button className="btn primary enter" disabled={!ready} onClick={enter}>
-            {ready ? 'Enter' : 'Loading…'}
-          </button>
-          {/* ponytail: plain links until Phase A gives each developer a project list */}
-          <nav className="load-nav muted small">
-            {NAV.flats.map((u) => (
-              <a key={u.stem} href={`/u/${u.stem}`} className={u.unit.id === unit.id ? 'current' : ''}>
-                {u.unit.name}
-              </a>
-            ))}
-            {!SHARED && <a href="/studio">Studio</a>}
-            {!SHARED &&
-              (STAFF ? (
+          {/* ponytail: plain links until Phase A gives each developer a project list; never on a buyer's link */}
+          {!SHARED && (
+            <div className="load-more">
+              <nav className="load-nav">
+                <span className="label">Flats</span>
+                {NAV.flats.map((u) => (
+                  <a key={u.stem} href={`/u/${u.stem}`} className={u.unit.id === unit.id ? 'current' : ''}>
+                    {u.unit.name}
+                  </a>
+                ))}
+              </nav>
+              {NAV.towers.map((g) => (
+                <nav key={g.name} className="load-nav">
+                  <span className="label">{g.name}</span>
+                  {g.levels.map((l) => (
+                    <a key={l.stem} href={`/u/${l.stem}`} className={l.stem === stem ? 'current' : ''}>
+                      {l.label}
+                    </a>
+                  ))}
+                </nav>
+              ))}
+            </div>
+          )}
+          {!SHARED && (
+            <div className="load-corner">
+              <a href="/studio">Studio</a>
+              {STAFF ? (
                 <a href={staffHref('0')} title="See the flat as a buyer does (no Edit furniture, no Edit plan)">
                   Leave staff mode
                 </a>
@@ -1163,18 +1142,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
                 <a href={staffHref('1')} title="For the developer’s team: Edit furniture and Edit plan in this browser. Buyer links never show them.">
                   Staff mode
                 </a>
-              ))}
-          </nav>
-          {NAV.towers.map((g) => (
-            <nav key={g.name} className="load-nav load-levels muted small">
-              <span className="tower">{g.name}</span>
-              {g.levels.map((l) => (
-                <a key={l.stem} href={`/u/${l.stem}`} className={l.stem === stem ? 'current' : ''}>
-                  {l.label}
-                </a>
-              ))}
-            </nav>
-          ))}
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1225,8 +1195,48 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             osm={!!unit.site && unit.site.buildings.length + unit.site.roads.length > 0}
             onArrange={STAFF ? toggleArrange : null}
             editingOpenings={editingOpenings}
-            simOpen={simOpen}
-            onSim={() => setSimOpen((v) => !v)}
+            quality={{
+              tier: TIER.tier,
+              rec: REC.tier,
+              why: QUALITY_WHY,
+              note: qNote,
+              gpu: DEVICE.gpu,
+              onPick: (q) => {
+                write(local, KEYS.picked, q)
+                write(tab, KEYS.fallback, null) // the person's pick, from now on
+                restart(cfg)
+              },
+            }}
+            sun={
+              <SunPill
+                scene={scene}
+                open={simOpen}
+                onOpen={() => setSimOpen((v) => !v)}
+                hour={hour}
+                date={date}
+                northDeg={unit.northDeg}
+                site={unit.site}
+                onChange={(h) => {
+                  setHour(h)
+                  scene.setTimeOfDay(h)
+                }}
+                onDate={(d) => {
+                  setDate(d)
+                  scene.setTimeOfDay(hour, d)
+                }}
+                lights={lit}
+                lightsAuto={lightsMode === 'auto'}
+                onLights={flipLights}
+                wind={windOn}
+                onWind={() => setWindOn((v) => !v)}
+                month={month}
+                months={months}
+                onMonth={pickMonth}
+                windLine={core.monthLine(month, months, unit.site)}
+                windNote={core.seasonNote(month, months, unit.site)}
+                windSource={unit.site?.wind ? `Wind at this site: Open-Meteo, ${windYears(unit.site.fetchedAt)}` : 'Wind: the Dhaka table (Open-Meteo 2015–2024) — no site set in the Studio'}
+              />
+            }
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
             onEditPlan={
               STAFF
@@ -1252,7 +1262,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             </div>
           )}
           {finishesOpen && (
-            <aside className="glass panel" onKeyDown={(e) => e.stopPropagation()}>
+            <aside className="glass panel" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
+              <header className="panel-head">
+                <h2>Finishes</h2>
+                <button className="x" aria-label="Close Finishes" title="Close (F or Esc)" onClick={() => setFinishesOpen(false)}>
+                  ×
+                </button>
+              </header>
               {TOKEN && (
                 <label className="buyer-name">
                   <span className="label">Your name</span>
@@ -1328,66 +1344,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               }}
             />
           )}
-          {simOpen && (
-          <SunPill
-            hour={hour}
-            date={date}
-            northDeg={unit.northDeg}
-            onChange={(h) => {
-              setHour(h)
-              scene.setTimeOfDay(h)
-            }}
-            onDate={(d) => {
-              setDate(d)
-              scene.setTimeOfDay(hour, d)
-            }}
-            lights={lit}
-            lightsAuto={lightsMode === 'auto'}
-            onLights={flipLights}
-            wind={windOn}
-            onWind={() => setWindOn((v) => !v)}
-            month={month}
-            onMonth={pickMonth}
-            windLine={core.monthLine(month, months, unit.site)}
-            windNote={core.seasonNote(month, months, unit.site)}
-            rose={roseOn}
-            onRose={() =>
-              setRoseOn((v) => {
-                try {
-                  localStorage.setItem(ROSE_KEY, v ? '0' : '1')
-                } catch {
-                  /* this browser keeps nothing: the rose stays as clicked for now */
-                }
-                return !v
-              })
-            }
-          />
-          )}
-          {simOpen && windOn && roseOn && (
-            <WindRose
-              months={months}
-              month={month}
-              northDeg={unit.northDeg}
-              source={unit.site?.wind ? `Wind at this site: Open-Meteo, ${windYears(unit.site.fetchedAt)}` : 'Wind: the Dhaka table (Open-Meteo 2015–2024) — no site set in the Studio'}
-              onMonth={pickMonth}
-            />
-          )}
           {windOn && mode === 'walk' && room && (
             <WindChips scene={scene} unit={unit} room={room} rw={windRooms.find((w) => w.roomId === room.id)} fromDeg={months[month].fromDeg} />
           )}
           <PinLayer scene={scene} pins={pins} draft={draft} onSave={savePin} onCancel={() => setDraft(null)} />
           <Minimap scene={scene} unit={unit} rooms={rooms} walking={mode === 'walk'} />
         </>
-      )}
-      {!inVR && !arranging && !editingOpenings && !no3d && (
-        <QualityChip
-          note={qNote}
-          onPick={(q) => {
-            write(local, KEYS.picked, q)
-            write(tab, KEYS.fallback, null) // the person's pick, from now on
-            restart(cfg)
-          }}
-        />
       )}
       {no3d && <NoThreeD unit={unit} />}
     </div>
