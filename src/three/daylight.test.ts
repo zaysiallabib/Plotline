@@ -188,6 +188,9 @@ describe('neighbours in the bake (founder 2026-11-20: "with space there is much 
   test('a block lower than the floor, or out of view, changes nothing', () => {
     const d = bakeDaylight(TEST_UNIT, rooms, [], [south(3, 6), rect(-10, 4.5, 20, 20, 30)]) // under the floor; behind the living's blank north wall
     expect([...d.data]).toEqual([...open.data])
+  })
+})
+
 describe('a flat under the floor above (founder 2026-11-20: "a gap in the ceiling … getting sunlight in")', () => {
   const u = typeA as Unit
   const rooms = core.deriveRooms(u)
