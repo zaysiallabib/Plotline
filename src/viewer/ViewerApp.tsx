@@ -269,10 +269,10 @@ const QUALITY_WHY =
   TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
 
 /** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
-function AddPanel({ onPick }: { onPick: (assetId: string) => void }) {
+function AddPanel({ onPick, onEsc }: { onPick: (assetId: string) => void; onEsc: () => void }) {
   return (
     <aside className="glass library">
-      <LibraryPanel onPick={onPick} focus />
+      <LibraryPanel onPick={onPick} focus onEsc={onEsc} />
     </aside>
   )
 }
@@ -743,6 +743,12 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }
   /** the unit as arranged, deleted pieces out: what the first views frame */
   const shown = (): Unit => ({ ...unit, furniture: steps.current.pieces.some((p) => p.removed) ? steps.current.pieces.filter((p) => !p.removed) : steps.current.pieces })
+  /** Esc in Edit furniture (also in the library's search box): the library closes, nothing picked */
+  const escArrange = () => {
+    setAdding(false)
+    setSel(null)
+    showSel(null)
+  }
   const toggleArrange = () => {
     letGo()
     if (editingOpenings) toggleOpenings() // one editor at a time
@@ -1046,11 +1052,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       } else if (h && k === 'escape') letGo() // back where it was picked up; the selection stays
       else if (arranging && k === 'r') turn()
       else if ((arranging || h) && (k === 'delete' || k === 'backspace')) remove()
-      else if (arranging && k === 'escape') {
-        setAdding(false)
-        setSel(null)
-        showSel(null)
-      } else if (k === 'o') toggleMode()
+      else if (arranging && k === 'escape') escArrange()
+      else if (k === 'o') toggleMode()
       else if (k === 'b' && stem) go('building')
       else if (k === 'f') setFinishesOpen((v) => !v)
       else if (k === 'c') setCommenting((v) => !v)
@@ -1376,7 +1379,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               onUndo={() => planCommit({ type: 'undo' })}
             />
           )}
-          {arranging && adding && <AddPanel onPick={startPlacing} />}
+          {arranging && adding && <AddPanel onPick={startPlacing} onEsc={escArrange} />}
           {arranging && (
             <ArrangePanel
               piece={pieceOf(sel)}

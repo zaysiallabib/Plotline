@@ -193,7 +193,7 @@ One extra button appears in the bar, top right: **Edit ▾** (gold while an edit
 
 - **A search box on top.** In the 3D view it is ready to type into as soon as Add opens. In the Studio click it first (there the letter keys still pick the tools).
   - Type any word and the list shrinks as you type: a name (*sofa*, *lamp*, *bookshelf*), a kind or an everyday word (*almirah*, *chula*, *jaynamaz*, *geyser*, *nightstand*), or a room (*balcony*, *kitchen*, *office*, *dining*). Plurals work (*lamps*). Pieces whose name has your word come first.
-  - **Enter** takes the first piece listed. **Esc** empties the box; **Esc** again leaves the box, so R / Esc / Del work on the plan again.
+  - **Enter** takes the first piece listed. **Esc** (one press, since 2026-11-20) empties the box and leaves it, so R / Esc / Del work again — in the 3D view the same Esc also closes the library.
 - **Without a search:** first **Recent** (the last six pieces you picked in this browser), then the groups, each with how many pieces it holds: **Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor**. Click a group's name to open or close it. Inside a group the pieces stand by kind, each kind with its count (Sofas 5, Armchairs 3, …). A piece can be in two groups: the hand-wash basins are under Dining and Bath (a Dhaka dining space has one), desks and office chairs under Bedroom and Office, the chandelier under Lights & AC, Dining and Living.
 - **Each row** shows the name, its footprint in feet (width × depth), and a small mark:
   - **built** = drawn by Plotline itself. There is no download, and when you resize it, it is built again at the new size (more shelves, drawers, doors or seats, never stretched).

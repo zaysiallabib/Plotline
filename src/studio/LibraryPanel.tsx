@@ -1,8 +1,8 @@
 /**
  * The staff library (Studio tool F, the 3D view's Add): a search box over the pieces grouped by room, then by kind,
- * with counts, the groups folding; the pieces picked last on top. Enter picks the first match, Esc clears the box (again:
- * lets go of it, so the app's keys work). `focus`: typing goes to the box as it opens (the 3D Add panel; not the Studio,
- * whose letter keys pick tools). Listing and search: library.ts.
+ * with counts, the groups folding; the pieces picked last on top. Enter picks the first match; one Esc empties the box and
+ * lets go of it, so the app's keys work, and runs `onEsc` (the 3D view: the library closes). `focus`: typing goes to the box
+ * as it opens (the 3D Add panel; not the Studio, whose letter keys pick tools). Listing and search: library.ts.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { firstMatch, listing, pushRecent, RECENT_KEY, type Entry } from './library'
@@ -17,7 +17,7 @@ const readRecent = (): string[] => {
   }
 }
 
-export function LibraryPanel({ onPick, picked, focus }: { onPick: (assetId: string) => void; picked?: string | null; focus?: boolean }) {
+export function LibraryPanel({ onPick, picked, focus, onEsc }: { onPick: (assetId: string) => void; picked?: string | null; focus?: boolean; onEsc?: () => void }) {
   const [q, setQ] = useState('')
   const [recent, setRecent] = useState(readRecent)
   const box = useRef<HTMLInputElement>(null)
@@ -54,8 +54,9 @@ export function LibraryPanel({ onPick, picked, focus }: { onPick: (assetId: stri
             if (m) pick(m)
           } else if (e.key === 'Escape') {
             e.preventDefault()
-            if (q) setQ('')
-            else box.current?.blur()
+            setQ('')
+            box.current?.blur()
+            onEsc?.()
           }
         }}
       />
