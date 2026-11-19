@@ -1,7 +1,8 @@
 /**
  * The change list, Phase 0 (session 18, ask 8). What a buyer does on a share link (`/s/<token>`) — a note, a finish
  * choice — becomes an append-only `events` row (supabase/migrations/20261004120000_events.sql) through add_event;
- * staff read every link's rows with the staff key (events_for_staff). A newer row about the same thing (same link,
+ * signed-in staff read their company's links and rows (events_for_org, session 30); the old staff key reads the links
+ * made before accounts (events_for_staff). A newer row about the same thing (same link,
  * kind and ref) supersedes the older one: the server flags it on read, nothing is ever rewritten (invariant 6).
  * Offline: a row that cannot reach the server (no network, a 5xx) waits in this browser's outbox and goes with the next
  * send, the next load or when the browser is back online. Its id is minted here, so a resend never makes a second row.
@@ -137,12 +138,15 @@ export function sendEvent(token: string, kind: EventKind, ref: string, payload: 
 // ── staff side ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface StaffData {
-  links: { token: string; unit_name: string; created_at: string }[]
+  /** revoked_at: when staff turned the link off (it opens nothing since; its rows stay) */
+  links: { token: string; unit_name: string; created_at: string; revoked_at?: string | null }[]
   events: BuyerEvent[]
 }
 
-/** Every link and every event, newest first (a wrong key is a 403 RpcError). */
+/** The links made before accounts and their events, newest first (a wrong key is a 403 RpcError). */
 export const eventsForStaff = (staffKey: string): Promise<StaffData> => rpc<StaffData>('events_for_staff', { p_key: staffKey })
+/** Signed in: the company's links and their events, newest first (the database's policies pick the company). */
+export const eventsForOrg = (): Promise<StaffData> => rpc<StaffData>('events_for_org', {})
 
 const CATALOG = new Map(FINISH_CATALOG.flatMap((s) => s.options.map((o) => [o.id, o])))
 /** A choice's BDT delta: the catalog's own price for a catalog option (a buyer's browser could send any number), else as sent. */

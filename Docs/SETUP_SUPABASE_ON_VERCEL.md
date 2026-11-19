@@ -2,6 +2,8 @@
 
 Written 2026-10-04 for the founder. No earlier knowledge needed. About 10 minutes.
 
+(2026-11-20: after this, staff accounts and saving to the cloud are turned on with [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).)
+
 ## What this does
 
 The live site (https://plotline-flax.vercel.app) is built by **Vercel**. The buyer data

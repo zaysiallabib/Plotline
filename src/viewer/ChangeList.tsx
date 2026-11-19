@@ -1,12 +1,14 @@
 /**
  * The staff change list (`/changes`, session 18 ask 8): per share link, newest first, who asked what — notes on objects
  * and finish choices with their BDT deltas — the buyer's current choices and their total on top, replaced / removed rows
- * greyed (never rewritten: invariant 6), Export CSV. Read with the staff key (the one the Studio's Share link asks for,
- * kept in this browser as `plotline.staffKey`).
+ * greyed (never rewritten: invariant 6), Export CSV. Signed in (the Studio's Sign in, session 30): the company's links,
+ * each can be turned off. Not signed in: the links made before accounts, with the staff key (the one the Studio's
+ * Share link asks for, kept in this browser as `plotline.staffKey`).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { byLink, choiceOf, describe, eventsForStaff, toCsv, whoNames, type CommentPayload, type StaffData } from '../lib/events'
-import { RpcError, configured } from '../lib/supabase'
+import { myOrg, useSession, type Org } from '../lib/auth'
+import { byLink, choiceOf, describe, eventsForOrg, eventsForStaff, toCsv, whoNames, type CommentPayload, type StaffData } from '../lib/events'
+import { RpcError, configured, revokeLink } from '../lib/supabase'
 import { formatDelta } from './share'
 import './viewer.css'
 
@@ -21,19 +23,32 @@ const getKey = () => {
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 
 export default function ChangeList() {
+  const session = useSession()
+  const [org, setOrg] = useState<Org | null | undefined>(undefined)
   const [key, setKey] = useState(getKey)
   const [data, setData] = useState<StaffData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(async (k: string) => {
-    if (!k) return
+  useEffect(() => {
+    if (session === undefined) return
+    if (!session) return setOrg(null)
+    let live = true
+    myOrg()
+      .then((o) => live && setOrg(o))
+      .catch(() => live && setOrg(null))
+    return () => void (live = false)
+  }, [session?.user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** the company's list when signed in to one, else the old staff key's */
+  const load = useCallback(async (k: string, member: boolean) => {
+    if (!member && !k) return
     setBusy(true)
     setError(null)
     try {
-      setData(await eventsForStaff(k))
+      setData(await (member ? eventsForOrg() : eventsForStaff(k)))
     } catch (e) {
-      if (e instanceof RpcError && (e.status === 401 || e.status === 403)) {
+      if (!member && e instanceof RpcError && (e.status === 401 || e.status === 403)) {
         localStorage.removeItem(KEY)
         setKey('')
         setError('Wrong staff key — type it again.')
@@ -42,7 +57,17 @@ export default function ChangeList() {
       setBusy(false)
     }
   }, [])
-  useEffect(() => void load(key), [key, load])
+  useEffect(() => void (org !== undefined && load(key, !!org)), [key, org, load])
+
+  const turnOff = async (token: string, name: string) => {
+    if (!window.confirm(`Turn off this link to ${name}? Whoever has it sees "This unit isn't available" from now on; what they wrote stays here. It cannot be turned back on — make a new link instead.`)) return
+    try {
+      if (!(await revokeLink(token))) setError('That link could not be turned off (it is off already, or not your company’s).')
+      await load(key, true)
+    } catch (e) {
+      setError(`Could not turn it off: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   const exportCsv = () => {
     if (!data) return
@@ -55,7 +80,8 @@ export default function ChangeList() {
 
   if (!configured)
     return <div className="boot">The change list needs the database: add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (Vercel → Environment variables), then redeploy.</div>
-  if (!key)
+  if (org === undefined) return <div className="boot">Loading…</div>
+  if (!org && !key)
     return (
       <form
         className="boot changes-key"
@@ -69,7 +95,7 @@ export default function ChangeList() {
       >
         <div>
           <h1>Change list</h1>
-          <p className="muted">Staff key (the one printed when the database was set up, and that the Studio’s Share link asks for):</p>
+          <p className="muted">{session ? 'Your account is not in a company yet, so this list cannot show your company’s links. ' : 'Signed-in staff: sign in in the Studio (top right) and this list shows your company’s links. '}Links made before accounts open with the staff key (the one printed when the database was set up):</p>
           <input name="key" type="password" autoFocus autoComplete="off" />
           <button className="btn primary">Open</button>
           {error && <p className="refused">{error}</p>}
@@ -84,10 +110,10 @@ export default function ChangeList() {
   return (
     <div className="changes">
       <header>
-        <h1>Change list</h1>
+        <h1>Change list{org ? ` · ${org.name}` : ''}</h1>
         <span className="muted">{data ? `${links.length} link${links.length === 1 ? '' : 's'} · ${notes} open note${notes === 1 ? '' : 's'} · ${choices} finish choice${choices === 1 ? '' : 's'}` : busy ? 'Loading…' : ''}</span>
         <span className="grow" />
-        <button className="btn" disabled={busy} onClick={() => void load(key)}>
+        <button className="btn" disabled={busy} onClick={() => void load(key, !!org)}>
           {busy ? 'Loading…' : 'Refresh'}
         </button>
         <button className="btn primary" disabled={!data?.events.length} onClick={exportCsv}>
@@ -101,7 +127,10 @@ export default function ChangeList() {
           <div className="link-head">
             <div>
               <div className="unit-title">{l.unit_name}</div>
-              <div className="muted small">Link made {when(l.created_at)}</div>
+              <div className="muted small">
+                Link made {when(l.created_at)}
+                {l.revoked_at && <span className="tag">turned off {when(l.revoked_at)}</span>}
+              </div>
             </div>
             <span className="grow" />
             <a className="btn" href={`/s/${l.token}`} target="_blank" rel="noreferrer">
@@ -110,6 +139,11 @@ export default function ChangeList() {
             <button className="btn" onClick={() => void navigator.clipboard?.writeText(`${location.origin}/s/${l.token}`)}>
               Copy link
             </button>
+            {org && !l.revoked_at && (
+              <button className="btn" title="The link stops opening; what the buyer wrote stays" onClick={() => void turnOff(l.token, l.unit_name)}>
+                Turn off
+              </button>
+            )}
           </div>
           {!l.events.length ? (
             <p className="muted small">No notes or finish choices on this link yet.</p>

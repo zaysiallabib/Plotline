@@ -194,8 +194,26 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Preview 3D** | Opens your drawing in the 3D view, in a new tab |
 | **Building** | Shows / hides the project's floor list (or starts a project) |
 | **Site** | Where the building stands: map, plot, neighbours, wind, true north |
-| **Share link** | Makes a buyer link and copies it (asks once for the staff key; only when the database is set up) |
+| **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the database is set up) |
 | **Change list** | Opens `/changes` (only when the database is set up) |
+| **Sign in** / your email | Opens the account card below (only when the database is set up) |
+| Saved · Saving… · Offline, will retry · Not saved: … | Where your work stands in the cloud — not a button (MANUAL §5 "Signing in and saving to the cloud") |
+
+### Studio — the account card (top bar → Sign in, or your email)
+
+| Name | What it does |
+|---|---|
+| Email, **Send me a link** (Enter works too) | Emails you a sign-in link; open it in this same browser |
+| **Use another email** | Back to the email box |
+| **Open** (per project) | Puts that cloud project or drawing in the Studio in place of what is open |
+| **Rename** | Its name, for everyone in the company |
+| **Earlier saves** → **Open this save** | Every save of it; puts that older copy in the Studio (it becomes the newest when it saves) |
+| **Hide earlier saves** | Closes that list |
+| **Delete** | Takes it off the company's list (asks first; every save stays in the history) |
+| **Open theirs** / **Keep mine** | Only after "someone saved a newer version": take their copy, or save yours on top (theirs stays in Earlier saves) |
+| **Save as new** | Only after "it was deleted from the cloud": keeps your copy as a new one |
+| **Sign out** | Saves what is waiting, then signs out |
+| **Close** | Closes the card |
 
 ### Studio — the plan area
 
@@ -270,7 +288,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does |
 |---|---|
-| Staff key, **Open** | Opens the list (the key printed when the database was set up) |
+| Staff key, **Open** | Not signed in: opens the list of links made before accounts (the key printed when the database was set up). Signed in to a company: not asked — the list is your company's |
 | **Refresh** | Loads it again |
 | **Export CSV** | Saves every row as a spreadsheet file |
 | **Open link** / **Copy link** (per buyer link) | Opens or copies that buyer link |
+| **Turn off** (per buyer link, signed in) | Asks first, then the link stops opening for good ("This unit isn't available"); what the buyer wrote stays. A turned-off link shows "turned off" and the date |

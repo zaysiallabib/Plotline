@@ -392,4 +392,4 @@ end
 $$;
 revoke all on function private.add_member (text, text, text), private.adopt_old_links (text) from public;
 
-select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 3.' as result;
+select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;

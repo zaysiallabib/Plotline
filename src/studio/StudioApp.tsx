@@ -46,11 +46,14 @@ import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import { IMPORT_ACCEPT, importFile, importFormatOf, lockedFormatOf, type ImportResult, type ImportedStorey } from '../import'
-import { newProject, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
-import { RpcError, configured as sharingConfigured, publishUnit } from '../lib/supabase'
+import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
+import { myOrg, session } from '../lib/auth'
+import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
+import CloudBar from './CloudBar'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
@@ -964,31 +967,84 @@ export default function StudioApp() {
   }
 
   // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
-  // link (append-only): a client keeps seeing what he was sent. The staff key is asked for once per browser.
+  // link (append-only): a client keeps seeing what he was sent. Signed in to a company: made as its member (lib/auth);
+  // else the old staff key, asked for once per browser (until the founder deletes it: Docs/SETUP_ACCOUNTS.md).
   const [sharing, setSharing] = useState(false)
   const share = useCallback(async () => {
-    let key = localStorage.getItem(PUBLISH_KEY) ?? ''
-    if (!key) {
-      key = window.prompt('Staff key (printed when the Supabase migration ran):')?.trim() ?? ''
-      if (!key) return
-      localStorage.setItem(PUBLISH_KEY, key)
+    const org = await myOrg().catch(() => null)
+    let key = ''
+    if (!org) {
+      key = localStorage.getItem(PUBLISH_KEY) ?? ''
+      if (!key) {
+        key = window.prompt('Staff key (printed when the Supabase migration ran) — or Close this and Sign in, top right, to share as your company:')?.trim() ?? ''
+        if (!key) return
+        localStorage.setItem(PUBLISH_KEY, key)
+      }
     }
     setSharing(true)
     try {
       const st = stateRef.current
       const unit = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
-      const url = `${location.origin}/s/${await publishUnit(unit, key)}`
+      const me = org && (await session())
+      const saved = me ? linkStore(me.user.id).get(cloudItem()?.key ?? '') : undefined // the cloud row it was made from, for the change list
+      const token = org ? await shareUnit(org.id, unit, { project: saved?.id, stem: st.unit.id, floor: st.unit.floor }) : await publishUnit(unit, key)
+      const url = `${location.origin}/s/${token}`
       await navigator.clipboard.writeText(url).catch(() => {})
       toast(`Link copied: ${url}`, { label: 'Open', onClick: () => window.open(url, '_blank') })
     } catch (e) {
-      if (e instanceof RpcError && (e.status === 401 || e.status === 403)) {
+      if (!org && e instanceof RpcError && (e.status === 401 || e.status === 403)) {
         localStorage.removeItem(PUBLISH_KEY)
         toast('Wrong staff key — click Share again to retype it.')
       } else toast(`Could not share: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setSharing(false)
     }
-  }, [toast])
+  }, [toast]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ----- the cloud (CloudBar, lib/cloud.ts): what is open — the project, else the loose drawing — saved while signed in
+  /** pure read: the stored projects with the open drawing's edits where it stands (fresh() would also adopt it) */
+  const cloudItem = (): CloudItem | null => {
+    const a = projRef.current
+    const u = stateRef.current.unit
+    if (a) {
+      const ps = readProjects()
+      const p = (synced(ps) ?? ps).find((x) => x.id === a.id)
+      if (!p) return null
+      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: { ...p, units: Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)])) } }
+    }
+    return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withLayout(u) } : null
+  }
+  const cloudChanged = useMemo(() => ({}), [state.unit, projects, active])
+  /** a project / drawing from the cloud in place of what is open (CloudBar saved that first); its furniture as saved */
+  const openFromCloud = (kind: Kind, data: unknown): boolean => {
+    const s = synced(readProjects()) // the open drawing's last edits stay where it stands
+    if (s) saveProjects(s)
+    if (kind === 'project') {
+      const [p] = parseProjects(JSON.stringify([data]))
+      if (!p) return false
+      for (const u of Object.values(p.units)) saveLayout(u.id, u.furniture)
+      const keep = projRef.current?.id === p.id ? projRef.current.drawing : undefined
+      setActive({ id: p.id })
+      openDrawing([...readProjects().filter((x) => x.id !== p.id), p], keep && p.units[keep] ? keep : (slotsOf(p).flatMap((x) => x.unitIds)[0] ?? Object.keys(p.units)[0] ?? null))
+      setListOpen(true)
+      return true
+    }
+    if (!isUnit(data)) return false
+    setActive(null)
+    saveLayout(data.id, data.furniture)
+    setNote(null)
+    setRestored(null)
+    setMissingPlan(null)
+    dispatch({ type: 'set-plan-image', image: null })
+    dispatch({ type: 'load-unit', unit: data })
+    requestAnimationFrame(() => fitView()) // after the render that holds it (no picture: nothing else fits the view)
+    return true
+  }
+  const renameOpen = (name: string) => {
+    const a = projRef.current
+    if (a) storeProjects(readProjects().map((p) => (p.id === a.id ? { ...p, name } : p)))
+    else dispatch({ type: 'set-meta', patch: { name } })
+  }
 
   // ----- auto-trace: pick mode starts the worker reading the sheet at once (text, walls, the whole graph); a hover
   // previews the flat a click there picks; the click picks it on the same prepared sheet → the result replaces the unit
@@ -2163,6 +2219,7 @@ export default function StudioApp() {
             Change list
           </button>
         )}
+        <CloudBar snapshot={cloudItem} changed={cloudChanged} onOpen={openFromCloud} onRenameOpen={renameOpen} toast={toast} />
         <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
         <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
       </header>

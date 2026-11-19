@@ -12,6 +12,7 @@
     "score30": "vitest run src/trace/eval/score30.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "dxf-parser": "^1.1.2",
     "pdfjs-dist": "^6.5.438",
     "react": "^19.3.0",

@@ -170,7 +170,7 @@ describe('the SQL the founder pastes', () => {
 
   it('is one file: the three migrations, in order, unchanged (regenerate it when a migration changes)', () => {
     expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3)).toBe(true)
-    expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 3.' as result;")).toBe(true)
+    expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
   })
 
   it('is safe to run twice and keeps anon out (the real runs, PGlite: E:/dev/tmp/s18/laneD/pg/sqltest.mjs, E:/dev/tmp/s30/backend/pg/run.mjs)', () => {
