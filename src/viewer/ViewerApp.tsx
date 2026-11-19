@@ -351,7 +351,7 @@ function ArrangePanel(p: {
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>

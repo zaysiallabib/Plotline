@@ -3,8 +3,8 @@ import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } f
 import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit } from '../core'
 import { deleteShell } from './shells'
 import { LOCAL_AI_KEY, START_CMD, START_LINE, isLocalUrl, localAISettings, testLocalAI, type AiNote, type LocalAI } from './localAI'
-import { placementLabel, placementSize } from '../furnish/kit'
-import { resizeAxes } from './furniture'
+import { placementLabel, placementRange, placementSize } from '../furnish/kit'
+import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
@@ -739,6 +739,11 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
           <NumInput value={size[k]} onCommit={(v) => dispatch({ type: 'resize-piece', id: p.id, sizeM: { ...size, [k]: v } })} />
         </Row>
       ))}
+      {surfaceOf(p) === 'wall' && !p.openingId && (
+        <Row label="Height from floor (m)">
+          <NumInput value={placementRange(p)[0]} onCommit={(v) => dispatch({ type: 'lift-piece', id: p.id, mountY: v })} />
+        </Row>
+      )}
       {p.openingId ? (
         <p className="muted">Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower</p>
       ) : (

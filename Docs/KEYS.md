@@ -88,7 +88,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Click a floor, a wall or a ceiling | Chooses the finish for that one room or wall | Finishes open, Walk or Dollhouse | everyone | §2 Finishes panel |
 | Click anything | Puts a note on it | Comment on | everyone | §2 Notes |
 | Click a flat | Opens it | Building | everyone | §4 |
-| Click / drag / drag a dot | Click a piece = pick it (also through glass); drag = move it; drag a dot = bigger or smaller (curtains: wider or narrower on that side); drag the empty room = look around (Walk) | Edit furniture | staff | §3 Edit furniture |
+| Click / drag / drag a dot | Click a piece = pick it (also through glass); drag = move it — a TV, picture, AC, clock or mirror also up and down its wall (1-inch steps); drag a dot = bigger or smaller (curtains: wider or narrower on that side); drag the empty room = look around (Walk) | Edit furniture | staff | §3 Edit furniture |
 | Click / drag / drag a dot | Click = pick a door or window; drag = slide it along its wall; drag a dot = width, height, a window's sill; drag the empty room = look around (Walk) | Edit openings | staff | §3 Edit openings |
 | Click / drag / drag a dot (low wall) | Click = pick a low wall (under 1.2 m: railing, parapet, planter edge, kerb); drag an end dot = longer / shorter along its line (a joined end leaves its corner); drag the wall = move it across | Edit openings | staff | §3 Edit openings |
 | **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
@@ -232,7 +232,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Selection** — an opening | **Door / Window / Slider / Passage**, **Width**, **Height**, **Sill**, **From corner A**, **From corner B**; for a door **Hinge** and **Swing** | Change one opening |
 | **Selection** — a column | **Width (across)**, **Depth (up–down)**, **Delete** | Its size |
 | **Selection** — a room name | **Room name**, **Kind**, **Flat** (by its doors / a flat / Not in a flat / New flat / Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Change one room's name and details |
-| **Selection** — a piece (F) | **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)** (pieces that stretch; curtains: **W**), **Reset to preset**, **Reset all** | Change one piece; put a room (or all) back to the automatic layout |
+| **Selection** — a piece (F) | **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)** (pieces that stretch; curtains: **W**), **Height from floor (m)** (a TV, picture, AC, clock or mirror: its bottom edge), **Reset to preset**, **Reset all** | Change one piece; put a room (or all) back to the automatic layout |
 | **Add a piece** (F) | **Pick from the library…** | A new piece; click the plan to put it there (curtains: beside an opening) |
 | **Check these** (after Auto-trace) | per row: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / low wall / zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right**, **Ask AI** (then **Apply** or **Undo**); beside the heading **Ask AI for all**; click a row = go to it | Answer what Auto-trace was unsure of |
 | **Check these** — settings | **Wall tracks** (tick box: which tracing method — leave it on); **AI helper (optional)**: a Gemini key; **Local AI (this PC, free)**: **Server**, **Model**, **Use it anyway**, **Test** | How Auto-trace and Ask AI work |

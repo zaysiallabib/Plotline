@@ -194,6 +194,11 @@ export interface FurniturePlacement {
    * hangCurtains): they follow it when it moves or is resized and go when it is deleted.
    */
   openingId?: Id
+  /**
+   * A wall piece (TV, art, AC, clock, mirror) moved up or down by staff (founder 2026-11-20): its bottom above its floor, m.
+   * Absent = the height its kit hangs it at (kit.ts mountY / mount).
+   */
+  mountY?: number
   /** Curtains slid along their wall (staff): metres from where they hang on their window, + toward the wall's end b. */
   shiftM?: number
   /**

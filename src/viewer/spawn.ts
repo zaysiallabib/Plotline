@@ -2,7 +2,7 @@
 import * as core from '../core'
 import type { FurniturePlacement, Pt, Room, Unit } from '../core'
 import { isLevel } from '../furnish/finishes'
-import { heightRange, kitAsset, objectKind, placementSize, type KitAsset } from '../furnish/kit'
+import { heightRange, kitAsset, objectKind, placementRange, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
 import { EYE, RAY, boxInFrame, floorShare, frameHits, pieceInFrame, project, swings } from './frame'
 
@@ -511,7 +511,7 @@ export function roomView(room: Room, unit: Unit): View {
     )
   const pieces = items.flatMap((f) => {
     const k = kitAsset(f.assetId)
-    return k ? [{ f, k, top: heightRange({ ...k, sizeM: placementSize(f) })[1] }] : []
+    return k ? [{ f, k, top: placementRange(f)[1] }] : []
   })
 
   // what may not fill a frame beyond FLAT_MAX: every ajar leaf, every slab but a kitchen's run (a free-standing fridge is

@@ -10,7 +10,7 @@
  */
 import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBounds, wallFrame } from '../core'
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
-import { heightRange, KIT, kitAsset, objectKind, placementLabel, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
+import { KIT, kitAsset, objectKind, placementLabel, placementRange, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
 import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
 import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
@@ -100,9 +100,19 @@ export function surfaceOf(p: { assetId: string }): 'floor' | 'wall' | 'ceiling' 
   if (a?.mount === 'wall' || (a?.mountY ?? 0) >= 0.9) return 'wall'
   return a?.mount === 'ceiling' ? 'ceiling' : 'floor'
 }
-const band = (p: FurniturePlacement): [number, number] => {
-  const a = assetOf(p)
-  return a ? heightRange({ ...a, sizeM: sizeOf(p) }) : [0, sizeOf(p).y] // a resized wall piece stays centred at 1.5 m
+/** its bottom and top above the floor: where staff hung it (mountY), else as its kit hangs it (a resized wall piece stays centred at 1.5 m) */
+const band = placementRange
+
+/** Wall pieces go up and down in 1" steps (founder 2026-11-20: "move on the sides but not up and down"). */
+export const LIFT_STEP_M = 0.0254
+/** No lower than the skirting (details.ts SKIRTING_H 9 cm) */
+const SKIRT_M = 0.1
+
+/** Wall piece `p`'s bottom asked at `y0` (m above the floor): on the 1" step, over the skirting, its top under the ceiling (its room's tallest wall). */
+export function liftTo(unit: Unit, room: Room | null, p: FurniturePlacement, y0: number): number {
+  const ceiling = Math.max(0, ...(room?.wallIds ?? []).map((id) => unit.walls.find((w) => w.id === id)?.heightM ?? 0)) || 3
+  const y = Math.round(Math.round(y0 / LIFT_STEP_M) * LIFT_STEP_M * 1e4) / 1e4
+  return Math.min(Math.max(y, SKIRT_M), Math.max(SKIRT_M, ceiling - sizeOf(p).y))
 }
 
 /** Curtains: hung on an opening (presets.ts hangCurtain), sliding along their wall only, wider or narrower by a side. */
@@ -253,6 +263,21 @@ export function snapToWalls(c: Pt, from: Pt[], rotationDeg: number, size: { x: n
 const inside = (p: FurniturePlacement, q: Pt[]): Pt[] =>
   isCurtain(p) ? [{ x: (q[0].x + q[3].x) / 2, y: (q[0].y + q[3].y) / 2 }, { x: (q[1].x + q[2].x) / 2, y: (q[1].y + q[2].y) / 2 }, q[2], q[3]] : q
 
+/** The doors, sliders and passages in a room's walls: their span (5 cm in from each jamb) through the wall and 5 cm out of both faces, up to their head. */
+function doorHoles(unit: Unit, room: Room): { q: Pt[]; to: number }[] {
+  return unit.walls
+    .filter((w) => room.wallIds.includes(w.id))
+    .flatMap((w) => {
+      const f = wallFrame(w, unit.vertices)
+      const at = (u: number, v: number): Pt => ({ x: f.origin.x + f.dir.x * u + f.normal.x * v, y: f.origin.y + f.dir.y * u + f.normal.y * v })
+      const h = w.thicknessM / 2 + 0.05 // a piece flush on its face; not one on the wall beside it, round the corner
+      return w.openings.filter((o) => o.kind !== 'window' && o.widthM > 0.1).map((o) => {
+        const [u0, u1] = [o.offsetM + 0.05, o.offsetM + o.widthM - 0.05]
+        return { q: [at(u0, -h), at(u1, -h), at(u1, h), at(u0, h)], to: o.sillM + o.heightM }
+      })
+    })
+}
+
 /** Why p may not stand where it is (null = it may). `others` = every piece that is not moving with it. */
 export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement[], p: FurniturePlacement): string | null {
   const q = pieceQuad(p)
@@ -261,6 +286,7 @@ export function whyNot(unit: Unit, room: Room | null, others: FurniturePlacement
   if (surfaceOf(p) === 'wall' && !isCurtain(p)) {
     const [y0, y1] = band(p)
     if (windowZones(room, unit).some((w) => y1 > w.from && y0 < w.to && quadsOverlap(w.q, q))) return 'Covers the window'
+    if (doorHoles(unit, room).some((d) => y0 < d.to && quadsOverlap(d.q, q))) return 'Covers the doorway' // a TV hung in the hole
   }
   const hit = others.find((o) => !o.removed && blocks(p, o) && quadsOverlap(pieceQuad(o), q))
   if (!hit) return null
@@ -367,13 +393,21 @@ function rehang(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id,
   return { furniture, piece, ids: [id], snapped: 'wall', error }
 }
 
-/** A wall face: a point on it and its normal into the room (plan metres). */
+/** A wall face: a point on it and its normal into the room (plan metres); `y` = the point's height above the floor (the 3D pointer). */
 export interface WallFace {
   p: Pt
   n: Pt
+  y?: number
 }
 
-/** Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 3" steps; a move's rules (flush, refusals). */
+/** The layout with wall piece `id`'s bottom at `y0` above the floor of the room `at` is in (liftTo: 1" steps, skirting to ceiling). */
+const lifted = (unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, at: Pt, y0: number) =>
+  pieces.map((x) => (x.id === id ? { ...x, mountY: liftTo(unit, roomAt(at, rooms, unit), x, y0) } : x))
+
+/**
+ * Piece `id` hung on face `w`: back to it, front into the room, sliding along it in 3" steps; with a height `w.y`, its
+ * middle there (liftTo: 1" steps, kept on the wall); a move's rules (flush, refusals: a window or doorway it would cover).
+ */
 export function hangOn(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, w: WallFace): Move | null {
   const p = pieces.find((x) => x.id === id)
   if (!p) return null
@@ -383,7 +417,15 @@ export function hangOn(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], 
   const s = Math.round(u / GRID_M) * GRID_M - u
   const out = sizeOf(p).z / 2 + FLUSH_M
   const c = { x: w.p.x + d.x * s + n.x * out, y: w.p.y + d.y * s + n.y * out }
-  return movePiece(unit, rooms, pieces, id, c, (Math.atan2(-n.x, n.y) * 180) / Math.PI, false)
+  const all = w.y === undefined ? pieces : lifted(unit, rooms, pieces, id, c, w.y - sizeOf(p).y / 2)
+  return movePiece(unit, rooms, all, id, c, (Math.atan2(-n.x, n.y) * 180) / Math.PI, false)
+}
+
+/** Wall piece `id` (not curtains) up or down its wall: its bottom to `y0` m above the floor (liftTo), where it is, on a move's rules. null: not a wall piece. */
+export function liftPiece(unit: Unit, rooms: Room[], pieces: FurniturePlacement[], id: Id, y0: number): Move | null {
+  const p = pieces.find((x) => x.id === id)
+  if (!p || surfaceOf(p) !== 'wall' || isCurtain(p)) return null
+  return movePiece(unit, rooms, lifted(unit, rooms, pieces, id, p, y0), id, p, p.rotationDeg, false)
 }
 
 /** The inner wall face of `at`'s room nearest to it (a plan click in the Studio). */

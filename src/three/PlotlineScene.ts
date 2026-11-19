@@ -53,13 +53,13 @@ export interface PickHit {
 export type SceneMode = 'walk' | 'orbit' | 'building'
 /**
  * Arrange (staff, src/viewer/arrange.ts): what the pointer does to a piece, in plan metres. `drag`: `at` = the piece's
- * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer),
+ * centre on the horizontal plane it was grabbed at, `wall` = the wall face under the pointer (normal toward the viewer; `y` the point's height above the floor),
  * `hole` = the face of the opening the pointer looks through (a doorway), when nearer than what it meets beyond.
  * `resize`: a handle dragged — the new size along `axis`, the `sign` face moving.
  */
 export type ArrangeEvent =
   | { kind: 'select'; id: Id | null }
-  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt } | null; hole?: { p: Pt; n: Pt } | null }
+  | { kind: 'drag'; id: Id; at: Pt | null; wall: { p: Pt; n: Pt; y?: number } | null; hole?: { p: Pt; n: Pt } | null }
   | { kind: 'resize'; id: Id; axis: 'x' | 'y' | 'z'; sign: 1 | -1; sizeM: number }
   | { kind: 'drop'; id: Id }
 /**
@@ -729,8 +729,9 @@ export class PlotlineScene {
       }
       o.position.x = p.x
       o.position.z = p.y
-      const floor = this.floorOf(p) // moved onto another level: up or down with it
-      o.position.y += floor - (o.userData.floorM ?? 0)
+      const floor = this.floorOf(p) // moved onto another level: up or down with it; a wall piece also up or down its wall
+      const kitY = o.userData.kitY as number | undefined
+      o.position.y = kitY === undefined ? o.position.y + floor - (o.userData.floorM ?? 0) : floor + (p.mountY ?? kitY)
       o.userData.floorM = floor
       o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
       o.userData.roomId = p.roomId
@@ -1458,7 +1459,7 @@ export class PlotlineScene {
     this.raycaster.setFromCamera(ndc, this.camera)
     const ray = this.raycaster.ray
     const P = ray.intersectPlane(new THREE.Plane(UP, -y), new THREE.Vector3())
-    let wall: { p: Pt; n: Pt } | null = null
+    let wall: { p: Pt; n: Pt; y: number } | null = null
     let dist = Infinity
     for (const h of this.raycaster.intersectObjects(this.staticGroup.children, true)) {
       let o: THREE.Object3D | null = h.object
@@ -1470,7 +1471,8 @@ export class PlotlineScene {
       const s = f.normal.x * ray.direction.x + f.normal.y * ray.direction.z < 0 ? 1 : -1
       const n = { x: s * f.normal.x, y: s * f.normal.y }
       const k = w.thicknessM / 2 - ((h.point.x - f.origin.x) * n.x + (h.point.z - f.origin.y) * n.y) // onto the face
-      wall = { p: { x: h.point.x + n.x * k, y: h.point.z + n.y * k }, n }
+      const p = { x: h.point.x + n.x * k, y: h.point.z + n.y * k }
+      wall = { p, n, y: h.point.y - this.levelAt({ x: p.x + n.x * 0.1, y: p.y + n.y * 0.1 }) } // y: above the floor in front of it
       dist = h.distance
       break
     }
