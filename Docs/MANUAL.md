@@ -238,7 +238,7 @@ Opens this flat or level in the Studio, in a new tab.
 ## 4. The Building view
 
 - **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is filled white, and your own flat's floor has a small gold dot.
-- Picking a basement hides everything above it.
+- Picking a basement hides everything above it (a ground floor traced in the Studio too). The street round the tower and the next buildings stay (since 2026-11-20; before, they went with the floors above).
 - **Walk this level** (gold, right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
 - **Click a flat** to open it.
 - Drag to turn, scroll to zoom.
