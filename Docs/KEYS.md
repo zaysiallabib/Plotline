@@ -168,6 +168,15 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Undo** | Takes back the last change | staff |
 | **Reset layout** | Back to the flat's own layout (Undo brings yours back) | staff |
 
+### 3D view — "which floors?" box (a project floor whose drawing is on other floors too)
+
+Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor of a Studio project whose drawing is also on other floors: "Floor plan A is also on floors 1, 3, 4. Change:"
+
+| Name | What it does | Who |
+|---|---|---|
+| **Floor 2 only** | Floor 2 gets its own copy of the drawing; your change is kept on it and the page opens again on that copy (the other floors stay as they are) | staff |
+| **All 4 floors** | The change goes to every floor with the drawing | staff |
+
 ### 3D view — Edit openings panel (bottom left)
 
 | Name | What it does | Who |
@@ -264,6 +273,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Also on floors** + **Apply** | Puts the open drawing on more floors (`2, 4, 6-8`) |
 | **Delete this drawing** | Takes it off every floor and deletes it |
 | Per floor: **Draw**, **Open**, **Use drawing…**, **Clear** | Give a floor a drawing, open it, use another, or empty the floor |
+| Per floor, in the **Use drawing…** menu: **This floor only — its own copy** (only when that floor's drawing is on other floors too) | That floor gets its own copy of the drawing ("Floor plan A · floor 5") and it opens; changes to it stay on that floor |
+| **Ask again** (under **Show building**, after you answered the 3D view's "which floors?" box) | Forgets the answer: the 3D view asks again |
 | Old way: **Use this plan as** (A flat / Ground floor / Basement / Common floor / Rooftop), **Building**, **Name**, **This flat on floors … to …**, **Next to it on each floor** (None / Mirrored, left / Mirrored, right), **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project |
 
 ### Change list (`/changes`, staff)

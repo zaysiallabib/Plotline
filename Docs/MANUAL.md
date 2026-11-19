@@ -129,6 +129,7 @@ One extra button appears top right: **Edit ▾**, with **Furniture** (Edit furni
 - **Delete a piece in your hand** (since 2026-10-19): after **G**, or while a dragged piece is still in your hand, **Del** (or **Backspace**, or the panel's **Delete** button) deletes it — what moves in your hand goes, with what rests on it (G on the cushions takes the sofa and its cushions). Curtains too. **Undo** brings it back. A new piece from the library that is still in your hand is just let go.
 - **Add** opens the library (see **The library** just below): type what you want, or open a group, and click a piece (or press **Enter** for the first one listed); then point at the floor, a wall or the ceiling and click.
 - Saved in this browser only.
+- On a floor of a Studio project whose drawing is on other floors too, the first change asks "Floor 2 only" or "All 4 floors" (§6, "One floor different from the others").
 
 ### The library (Add in the 3D view, F in the Studio — the same list in both, since 2026-10-19)
 
@@ -161,6 +162,7 @@ Works in Walk and in Dollhouse. The mouse stays free: drag empty space to look a
 - An opening's curtains go with it: move or resize the opening and they follow; delete it and they go. (The old **Curtains** tick box is gone — delete the curtains themselves in Edit furniture.)
 - The change is written into the Studio drawing too, so plan and 3D always agree.
 - On a built-in flat it first asks to make that flat your Studio drawing (this replaces the drawing you had there).
+- On a floor of a Studio project whose drawing is on other floors too, it then asks "Floor 3 only" or "All 4 floors" (§6, "One floor different from the others"); the change is also saved into the project at once, so the Building view shows it on that floor.
 
 ### Edit plan
 
@@ -467,6 +469,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 - **Open**: that floor's drawing comes into the Studio. The drawing you were on is saved first, with its picture. Nothing is asked, nothing is lost — also after closing the browser.
 - **Use drawing…**: pick one of your drawings for this floor.
 - **Clear**: the floor is empty again; the drawing itself is kept.
+- **Use drawing… → This floor only — its own copy** (in the menu of a floor whose drawing is on other floors too): that floor gets its own copy of the drawing and the copy opens — see "One floor different from the others" below.
 - The floors of the drawing open now have a yellow outline.
 - Under a floor's drawing name, its flats: **Floor 2 — Level 2** with **— Flat 1, Flat 2** under it (or "Type A, Type B" when the drawing names them). They come from the drawing itself (section 5, "Flats in a whole-floor drawing"); nothing to type here. A ground floor, basement or rooftop shows none.
 
@@ -475,6 +478,16 @@ You say what the building is first, then give each floor a drawing. A drawing is
 - **Delete this drawing** — it leaves every floor and is gone (asks first).
 
 **Floor plans — draw once, use on many floors** (above the floor list, one row per drawing): the plan's name and the floors it is on now ("on G, 2, 4, 6"). Type the floors in its box — `2, 4, 6-8`, any pattern, Floor plan A on 2, 4, 6 and Floor plan B on 1, 3, 5 — and click **Apply** (or press Enter): the plan goes on those floors too, nothing drawn twice. If one of those floors already has another drawing, you are asked first; that other drawing is kept. Clearing a floor never asks (the drawing is kept too). **Copy** makes a new plan from this one (with its picture), for a floor that differs a little — it is on no floor until you type its floors or **Use drawing…** on a floor.
+
+**One floor different from the others** (since 2026-11-20)
+- A drawing on several floors is ONE drawing: change it in the Studio (a wall, a door, a room's name) and every floor that has it changes. That is the point of a floor plan: draw it once.
+- **Use drawing… → This floor only — its own copy** (the floor's menu in the list): that floor gets its own copy of the drawing, called "Floor plan A · floor 5", and the copy opens in the Studio. The other floors keep "Floor plan A" as it is. From then on, whatever you change on the copy (walls, doors, windows, furniture) stays on that floor, and changes to "Floor plan A" no longer reach it. The plan picture, the furniture you arranged and the notes come along with the copy.
+- **In the 3D view** (staff): the first time you change the furniture (move, turn, resize, delete, add, undo) on a floor whose drawing is on other floors too — or click **Edit ▾ → Openings** there — a small box asks: "Floor plan A is also on floors 1, 3, 4. Change: **Floor 2 only** / **All 4 floors**".
+  - **Floor 2 only**: floor 2 gets its own copy (as above), your change is kept on it, and the page opens again on that copy (a few seconds) with Edit furniture (or Edit openings) still on. A note says "Floor 2 has its own drawing now". Floors 1, 3 and 4 stay exactly as they were.
+  - **All 4 floors**: the change goes to every floor with the drawing (as before this box existed).
+  - The answer is remembered for the project in this browser: the next floor you change does the same without asking. The Studio's floor list shows the remembered answer under **Show building**; **Ask again** forgets it.
+- **Finishes never spread to other floors.** What you or a buyer pick in **Finishes** (a floor, a wall colour) is not saved into the drawing: it lives in that page and in the **Share** link only, so it never changes another floor or another flat.
+- **A building from an architect's file** (an IFC dropped on the Studio, §5 "Bring in the architect's file"): every floor is its own drawing from the start — nothing is repeated, nothing to answer. **A traced building**: one drawing per floor type, put on many floors. In the 3D view, the first change you make on one floor asks whether it is for that floor only; in the Studio, a change to the drawing goes to all its floors — pick **Use drawing… → This floor only** on a floor first when it is for that floor alone.
 
 **Show building** (top of the list) opens the stacked building in a new tab. A floor that has no drawing yet is filled with the one below it.
 
@@ -604,6 +617,7 @@ Never a room — fixture and drawing tags: DW, D.WASH, FRIDGE, FREEZER, REF, W/M
 - Furniture you moved
 - Notes on ordinary links
 - Buildings and projects you made, every drawing of a project and its plan picture
+- Your answer to the 3D view's "which floors?" box, per project (Studio → Building list: **Ask again**)
 - Staff mode, the staff key
 - Your Check these answers (the record Export answers saves, with the Local AI's answers marked) and, per sheet, where the print Auto-trace could not read stands
 - The Local AI settings (server, model). The model itself is on this PC's disk (`E:\dev\tools\ollama\models`), not in the browser
@@ -647,6 +661,9 @@ Things that are confusing or not finished. Each one is a job on the list.
 - **A whole-floor drawing knows its flats only in the Studio** (the tints, the Flat pick, the floor list): you cannot yet walk ONE flat of it on its own in 3D, and a buyer link and the Building view still treat the whole floor as one flat. Finishes go per room / per wall (as before), not per flat.
 - **Flat names follow the place**: "Flat 1, Flat 2" count from west to east, so a drawing turned into its mirror image counts them the other way. A room moved by hand to "Flat 2" goes with the number. "Type A" names do not move.
 - **A room with no door and no low edge to the flat is in no flat** (it shows untinted) on a drawing you traced by hand: pick its flat by hand. A planter edge, kerb or parapet lower than 4 feet counts as a way in. (After Auto-trace every room is already in its flat.) Auto-trace puts the printed "TYPE-A ±2736 SFT" on the drawing only when it stands in a closed room of the flat and its TYPE word was read (Sheltech L2 Type A and Type B yes; Level 4 Type A — open foyer — no: type it with R).
+- **"Which floors?" is asked only on a Studio project's floors of flats.** A built-in tower's flat (Type A on floors 2–8 of the BTI tower) and a level used on two floors (the same basement drawing on B1 and B2) still change on every floor that has them; for a level, use **Use drawing… → This floor only** in the Studio's floor list first.
+- **"Floor 2 only" opens the page again** (a few seconds) on floor 2's own copy: the view starts over (at the entrance in Walk, the whole flat in Dollhouse), not where you were.
+- **The old one-plan way does not know about own copies**: putting the plan on floors 1–4 again with **Put only this plan into a building…** after floor 2 got its own copy puts both on floor 2. Use the project floor list instead.
 - After typing in a box on the right, press **Enter** — then the tool keys (W, O…) work again. (Without Enter they still go into the box.)
 - Clicking a door on a thin low wall picks the wall; Del then removes the whole wall.
 - **3D Edit openings, low walls:** sliding a low wall whose end meets the middle of another wall also slides the doors and windows on that wall's piece with it (they keep their distance from that corner, as in the Studio). Walls higher than 1.2 m (a 7' screen, a full wall) cannot be moved in 3D yet.

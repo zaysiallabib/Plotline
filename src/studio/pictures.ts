@@ -26,3 +26,8 @@ const run = <T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest) 
 export const putPicture = (id: Id, pic: PlanImage) => run<void>('readwrite', (s) => s.put(pic, id))
 export const getPicture = (id: Id) => run<PlanImage | undefined>('readonly', (s) => s.get(id))
 export const deletePicture = (id: Id) => run<void>('readwrite', (s) => s.delete(id))
+/** drawing `from`'s picture kept for drawing `to` too (a copy of the drawing); never fails */
+export const copyPicture = (from: Id, to: Id): Promise<void> =>
+  getPicture(from)
+    .then((pic) => pic && putPicture(to, pic))
+    .catch(() => {})

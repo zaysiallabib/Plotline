@@ -243,3 +243,7 @@
 .no3d .minimap { position: static; pointer-events: auto; }
 .no3d svg { width: min(90vw, 760px); height: auto; max-height: 70vh; }
 .no3d text { fill: var(--ink); }
+
+/* one floor or all (staff, a Studio project's floor whose drawing is on other floors too) */
+.ask-floor { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); padding: 14px 16px; width: max-content; max-width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; z-index: 5; }
+.ask-floor .ask-row { display: flex; gap: 8px; flex-wrap: wrap; }
