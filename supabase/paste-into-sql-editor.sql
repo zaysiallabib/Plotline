@@ -282,6 +282,7 @@ create or replace trigger projects_history after insert or update on public.proj
 create or replace function private.append_only ()
   returns trigger
   language plpgsql
+  set search_path = ''
 as $$
 begin
   raise exception '% is append-only: nothing in it is ever changed or removed', tg_table_name using errcode = '55000';
