@@ -381,6 +381,23 @@ describe('towers of common levels (session 19): Banani and dmd registered, level
     expect(has(sg, poly(unitOf(sheltech, 'sheltech-roof'), 'Sunshade / planter (south)'))).toBe(false)
   })
 
+  test('a flat in its tower (founder 2026-11-20: no sun through a slab): the floor above over its own rooms, a shaft open, the top floor under the rooftop', () => {
+    const a = unitOf(sheltech, 'sheltech-a')
+    const on2 = coverOf(sheltech, 'sheltech-a', 2)
+    for (const n of ['Veranda 1', 'Planter (east)', 'Living']) expect(has(on2, poly(a, n)), n).toBe(true) // floor 3's flat A over floor 2's
+    expect(has(on2, poly(unitOf(sheltech, 'sheltech-b'), 'Living'))).toBe(false) // the neighbour's slab: not over this flat
+    const ta = unitOf(bti, 'type-a')
+    const shafts = core.deriveRooms(ta).filter((r) => r.kind === 'shaft')
+    const bal = core.deriveRooms(ta).find((r) => r.name === 'Veranda (study)')!
+    const ta2 = coverOf(bti, 'type-a', 2) // under type-c on floor 3 (and B's slab beside it, left out)
+    expect(ta2.some((c) => core.pointInPolygon(bal.centroid, c))).toBe(true)
+    // the AODs that stack under C's stay open to the sky; the two that floor 3's flat B builds over (its Bed-2, Bath-2) are roofed
+    expect(shafts.filter((r) => ta2.some((c) => core.pointInPolygon(r.centroid, c))).map((r) => r.name)).toEqual(['AOD (north)', 'AOD (east)'])
+    const top = coverOf(sheltech, 'sheltech-a', 6)
+    expect(has(top, poly(unitOf(sheltech, 'sheltech-roof'), 'Deck (west)')) || has(top, poly(unitOf(sheltech, 'sheltech-roof'), 'Deck (east)'))).toBe(true)
+    expect(coverOf(sheltech, 'sheltech-a')).toEqual([]) // no floor: its own roof, as before
+  })
+
   test('a Studio project’s traced levels get the same cover, in the level’s own frame', () => {
     const v = (id: string, x: number, y: number) => ({ id, x, y })
     // a ground: a drive at −1 behind a 4 m gate, a ramp beside it falling to −3.5 (a flush line between them)

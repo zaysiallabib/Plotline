@@ -145,3 +145,24 @@ describe('outdoor zones in the bake (ground sample)', () => {
     expect(d.regions.has('floor:Driveway')).toBe(false)
   })
 })
+
+describe('a flat under the floor above (founder 2026-11-20: "a gap in the ceiling … getting sunlight in")', () => {
+  const u = typeA as Unit
+  const rooms = core.deriveRooms(u)
+  const veranda = rooms.find((r) => r.name === 'Veranda (study)')! // 3.6 m²: a small recessed veranda
+  const shaft = rooms.find((r) => r.name === 'AOD (west)')!
+  const over = (r: core.Room) => [core.roomPolygon(r, u)] // the same face on the floor above
+
+  test('a small veranda or a shaft sees the sky only where no slab of the floor above is over it', () => {
+    expect([openToSky(veranda), openToSky(shaft)]).toEqual([true, true]) // no tower: as before
+    expect(openToSky(veranda, over(veranda))).toBe(false)
+    expect(openToSky(shaft, over(veranda))).toBe(true) // the slab is elsewhere: the shaft stays a light well
+  })
+
+  test('the bake gives the covered veranda no sky from above', () => {
+    const open = bakeDaylight(u, rooms).regions.get(`floor:${veranda.id}`)!.E
+    const shut = bakeDaylight(u, rooms, over(veranda)).regions.get(`floor:${veranda.id}`)!.E
+    const mean = (e: ArrayLike<number>) => Array.from(e).reduce((a, b) => a + b, 0) / e.length
+    expect(mean(shut)).toBeLessThan(mean(open) * 0.8) // its open sides (the rail) still light it
+  })
+})

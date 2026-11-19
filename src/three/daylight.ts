@@ -75,13 +75,14 @@ const HABITABLE: RoomKind[] = ['living', 'dining', 'bed', 'study', 'kitchen']
  * A zone (core.isOutdoor) under one of `cover`'s polygons (PlotlineScene.cover: the slab of the floor above) — by its
  * centroid. ponytail: a zone half under the slab is all covered or all open; split it with a flush line if that shows.
  */
-export const isCovered = (r: Room, cover: Pt[][]) => core.isOutdoor(r.kind) && cover.some((poly) => core.pointInPolygon(r.centroid, poly))
+const under = (r: Room, cover: Pt[][]) => cover.some((poly) => core.pointInPolygon(r.centroid, poly))
+export const isCovered = (r: Room, cover: Pt[][]) => core.isOutdoor(r.kind) && under(r, cover)
 /**
  * No storey above: AOD shafts, the planter and the small recessed verandas get sky from above (render.ts's roof skips
- * them), and every outdoor zone not under the `cover`.
+ * them), and every outdoor zone — each only where the `cover` (the slab of the floor above, in a tower) is not over it.
  */
 export const openToSky = (r: Room, cover: Pt[][] = []) =>
-  r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5) || (core.isOutdoor(r.kind) && !isCovered(r, cover))
+  (r.kind === 'shaft' || (r.kind === 'balcony' && r.areaSqm < 5) || core.isOutdoor(r.kind)) && !under(r, cover)
 const outdoor = (r: Room | null) => !r || r.kind === 'balcony' || r.kind === 'shaft' || core.isOutdoor(r.kind)
 /**
  * The indirect-light factor on a covered zone and the walls facing it (a parking deck under the slab): a flat shade, its
@@ -91,7 +92,7 @@ const COVERED = 0.75
 
 /** sky radiance seen through an opening onto `r`: open sky 1; a covered veranda's slab hides the upper sky; a shaft is a well */
 const skyOf = (r: Room | null, cover: Pt[][]) =>
-  !r ? 1 : r.kind === 'shaft' ? 0.3 : core.isOutdoor(r.kind) ? (isCovered(r, cover) ? 0.55 : 1) : openToSky(r) ? 0.85 : 0.55
+  !r ? 1 : r.kind === 'shaft' ? 0.3 : core.isOutdoor(r.kind) ? (isCovered(r, cover) ? 0.55 : 1) : openToSky(r, cover) ? 0.85 : 0.55
 
 export interface Region {
   /** atlas texel of (u0, v0) */
@@ -256,7 +257,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = []): Day
       // a parapet / planter wall lower than the room: open above it
       if (w.heightM < h - 0.05) through(TAU.gap, 0, frames.get(id)!.lengthM, w.heightM, h)
     }
-    if (openToSky(r)) {
+    if (openToSky(r, cover)) {
       const poly = core.roomInnerPolygon(r, unit)
       list.push({ quad: poly.map((p) => [p.x, p.y, h]), L: 1, from: null, wallId: null, c: r.centroid })
     }

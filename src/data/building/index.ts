@@ -103,21 +103,30 @@ export function baseLevel(unit: Unit, rooms: Room[]): number {
  * the level below; a ramp of that level rising into it passes up through it). Every floor above, not only the next: a
  * ground floor's porch under flats that overhang a smaller level 1 is under a slab, so is a basement-2 ramp under the
  * basement-1 ramp's void under the ground's lawn — up to the top floor: a rooftop level stands on the top floor's slab
- * and adds only ledges (a sunshade planter 20 m up is no soffit over the drive). [] for a flat (its Look roofs it) and
- * for the rooftop (open sky). Studio project towers get the same.
+ * and adds only ledges (a sunshade planter 20 m up is no soffit over the drive). [] for the rooftop (open sky). Studio
+ * project towers get the same.
+ * A flat on `floor` (founder 2026-11-20: "a gap in the ceiling that is supposed to be covered by the floor above is getting
+ * sunlight in"): the same, the top floor under the rooftop's floor too, but only the faces over its own rooms — a
+ * neighbour's slab would float outside its windows. No floor given: [] (its Look roofs it, small verandas open).
  */
-export function coverOf(t: Tower, stem: string): Pt[][] {
-  const k = t.LEVELS?.[stem]
+export function coverOf(t: Tower, stem: string, floor?: number): Pt[][] {
+  const level = t.LEVELS?.[stem]
+  const k = level ?? floor
   if (k === undefined) return []
   const me = t.FLATS[stem].offset
   const top = topFloor(t)
-  const above = new Set(t.FLOORS.filter((f) => f.floor > k && f.floor <= top).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
-  return [...above].flatMap((s) => {
+  const last = level === undefined ? Math.max(top, k + 1) : top
+  const above = new Set(t.FLOORS.filter((f) => f.floor > k && f.floor <= last).flatMap((f) => [...f.flats, ...(f.standIns ?? [])]))
+  const cover = [...above].flatMap((s) => {
     const { unit, offset } = t.FLATS[s]
     const rooms = core.deriveRooms(unit)
     const sinks = sinking(unit, rooms)
     return rooms.filter((r) => r.kind !== 'shaft' && !sinks(r)).map((r) => core.roomPolygon(r, unit).map((p) => ({ x: p.x + offset.x - me.x, y: p.y + offset.y - me.y })))
   })
+  if (level !== undefined) return cover
+  const { unit } = t.FLATS[stem]
+  const mine = core.deriveRooms(unit).map((r) => ({ c: r.centroid, poly: core.roomPolygon(r, unit) }))
+  return cover.filter((c) => mine.some((m) => core.pointInPolygon(m.c, c) || core.pointInPolygon(core.polygonCentroid(c), m.poly)))
 }
 
 /** Does a face's floor drop below its unit's base (a ramp going down through the slab to the level below)? */

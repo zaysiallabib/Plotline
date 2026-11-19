@@ -523,6 +523,8 @@ Projects, their drawings and their pictures are kept in this browser only.
 
 **Sun:** stands where the real sun stands at the building's site (Dhaka when no site is set) on the day and hour picked in the 3D, turned by the plan's true north.
 
+**The floor above** (since 2026-11-20): walking a flat that is part of a building, a veranda, planter or air shaft with a floor of the building over it gets no sun and no sky through its ceiling — the floor above's slab is there. Only what has nothing above it sees the sky: a part of the flat that sticks out past the floor above, an air shaft that the floor above keeps open too, and the rooftop. (A flat opened on its own, not in a building, still lets the sky into its small verandas and shafts.)
+
 ---
 
 ## 8. Room kinds and what each gets

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, floorIn, levelName, projectUnit, roleIn, stemIn, topFloor, towerOf, type Tower } from '../data/building'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
@@ -591,7 +591,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       write(tab, KEYS.note, `Switched to Lite: ${why === 'memory' ? 'the graphics ran out of memory' : 'the 3D stopped'} on this device.`)
       restart(cfgRef.current)
     })
-    s.cover = tower && stem ? coverOf(tower, stem) : [] // a level: the slab of the floors above it
+    s.cover = tower && stem ? coverOf(tower, stem, unit.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
     s.setUnit(given)
     s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
