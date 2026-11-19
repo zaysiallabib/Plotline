@@ -155,7 +155,7 @@
 .dock .hint.keep { animation: none; color: var(--ink); }
 /* a stair room's Up to … / Down to …: a small glass bar over the pill */
 .walk-level { display: flex; gap: var(--s-1); padding: var(--s-1); border-radius: var(--r-pill); }
-.toast { position: absolute; left: 50%; top: 72px; transform: translateX(-50%); padding: 8px var(--s-4); border-radius: var(--r-pill); font-size: var(--fs-md); animation: drop var(--dur) var(--ease) both; }
+.toast { position: absolute; left: 50%; top: 72px; translate: -50% 0; padding: 8px var(--s-4); border-radius: var(--r-pill); font-size: var(--fs-md); animation: drop var(--dur) var(--ease) both; }
 /* Quality: by itself only the first time (or after an automatic switch), bottom left */
 .q-toast { position: absolute; left: var(--s-4); bottom: var(--s-4); max-width: min(440px, calc(100vw - 32px)); display: flex; align-items: center; gap: var(--s-3); padding: 6px 6px 6px 14px; font-size: var(--fs-sm); line-height: 1.45; color: var(--ink-2); animation: rise var(--dur) var(--ease) both; }
 .q-toast b { color: var(--ink); font-weight: 500; }
@@ -373,6 +373,7 @@
   .sun-clock { min-width: 0; }
 }
 
-/* one floor or all (staff, a Studio project's floor whose drawing is on other floors too) */
-.ask-floor { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); padding: 14px 16px; width: max-content; max-width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; z-index: 5; }
-.ask-floor .ask-row { display: flex; gap: 8px; flex-wrap: wrap; }
+/* one floor or all (staff, a Studio project's floor whose drawing is on other floors too): top middle, under the toast
+   line (top 72px) so the "Edit furniture: …" note shown with the first change never covers it */
+.ask-floor { position: absolute; left: 50%; top: 120px; translate: -50% 0; padding: 14px var(--s-4); width: max-content; max-width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; z-index: 5; animation: drop var(--dur) var(--ease) both; }
+.ask-floor .ask-row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
