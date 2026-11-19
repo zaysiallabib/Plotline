@@ -2,7 +2,7 @@
 
 Written 2026-10-04 for the founder. No earlier knowledge needed. About 10 minutes.
 
-(2026-11-20: after this, staff accounts and saving to the cloud are turned on with [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).)
+(2026-11-20: after this, staff accounts and saving online are turned on with [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).)
 
 ## What this does
 
@@ -24,6 +24,8 @@ When you are done:
 |---|---|
 | Environment variable | A named value the site is given when it is built. Here there are two. |
 | Deploy | Build the site and put it live. One command. |
+| Terminal | A plain window where you type a command and press Enter. In VS Code: **Terminal → New Terminal**; it opens already pointing at the project folder. |
+| Supabase / Vercel | Supabase keeps the data (links, notes, choices). Vercel runs the live website. Two separate online services, each with its own login. |
 | Publishable key | The database key that is allowed to be public. It is safe inside the website. |
 | Staff key | Your own password for publishing links and reading the Change list. It is NOT one of the two values. Never put it on Vercel or in a file in the project. |
 
@@ -56,7 +58,7 @@ You need three things.
 4. For each line, the **name** is the part before `=` and the **value** is everything after `=`.
    Leave Notepad open; you will copy from it.
 
-Ignore the other line in that file (`VERCEL_OIDC_TOKEN`). Do not copy it anywhere.
+Ignore the other line in that file (`VERCEL_OIDC_TOKEN`, a long private code Vercel put there). Do not copy it anywhere.
 
 If you changed the key in Supabase since 2026-10-03, the file is out of date. Get the current
 values from Supabase instead: open the project → **Project Settings** (the gear) → **API Keys**
@@ -136,7 +138,7 @@ in the Change list forever (the list never deletes anything). That is expected.
 5. Click **Enter**. Press **C**, click a wall, type a note, **Save**. Open **Finishes** and
    pick one option.
 6. Back in your normal window: `/studio` → **Change list**. You must see the note and the
-   finish choice under that link. **Export CSV** downloads them.
+   finish choice under that link. **Export CSV** downloads them as a spreadsheet file.
 
 ## If something is wrong
 
@@ -155,8 +157,8 @@ in the Change list forever (the list never deletes anything). That is expected.
 - Only ever put the **publishable** key on Vercel. Supabase also has a **secret** key (also
   called `service_role`). Never copy that one anywhere: it bypasses all protection.
 - The **staff key** stays in your password manager. Not on Vercel, not in `.env.local`, not in
-  a chat, not in git.
-- Never commit `.env.local`. It is already ignored by git; leave it that way.
+  a chat, not in git (the program that keeps the project's history).
+- Never add `.env.local` to the project's history (a git "commit"). It is already set to be skipped; leave it that way.
 - Plotline's Supabase project is the one whose address contains `qhrtjf`. There is another
   project on the same account (`txbt…`) that belongs to a different app: never run Plotline
   SQL there.
