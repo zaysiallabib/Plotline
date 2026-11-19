@@ -53,7 +53,8 @@ import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arr
 import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
 import { myOrg, session } from '../lib/auth'
 import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
-import CloudBar from './CloudBar'
+import TopBar from './TopBar'
+import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
 
@@ -91,6 +92,17 @@ const HINTS: Record<Tool, string> = {
   wall: 'Wall · click the first corner, or drag from corner to corner',
   opening: "Opening · pick it on the right (1 door, 2 window, 3 slider, 4 passage), click a wall · drag a selected opening's end to resize",
   room: 'Room · click inside a closed room',
+}
+/** the status bar's one line per tool (session 30); the full HINTS line is in the Keys sheet */
+const SHORT: Record<Tool, string> = {
+  pillar: 'Column · click for a column, drag for its size',
+  arc: HINTS.arc,
+  furniture: 'Furniture · drag a piece to move it · R turns it · Add a piece on the right',
+  select: 'Select · click to pick, drag to move · Shift+click adds · Del deletes',
+  scale: 'Scale · click both ends of a length you know (a printed size)',
+  wall: HINTS.wall,
+  opening: 'Opening · pick it on the right (1–4), click a wall',
+  room: HINTS.room,
 }
 /** Spring-loaded tools: hold the key, act, release = back to the tool before (a tap still just switches) */
 const HOLD_HINTS: Record<string, string> = {
@@ -2056,8 +2068,8 @@ export default function StudioApp() {
     setMissingPlan(null)
   }
 
-  // ----- status text
-  const hint =
+  // ----- status text: `doing` = what the tool does now; the status bar shows its short line, the Keys sheet the full `hint`
+  const doing =
     trace === 'pick'
       ? 'Auto-trace · click inside the flat you want to trace, or Whole floor · Esc cancels'
       : held
@@ -2082,9 +2094,10 @@ export default function StudioApp() {
               ? arc.b
                 ? 'Arc · move (or drag) to bend it, click to lay it · Esc cancels'
                 : 'Arc · click where it ends · Esc cancels'
-              : HINTS[tool]) +
-    (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') +
-    ' · Space-drag to pan · wheel zooms'
+              : HINTS[tool])
+  const hint =
+    trace === 'pick' || held ? doing : doing + (tool === 'select' || tool === 'furniture' ? '' : ' · V to move things') + ' · Space-drag to pan · wheel zooms'
+  const line = doing === HINTS[tool] ? SHORT[tool] : doing
   let centre = ''
   // W's next corner or A's end: the length from the last point and what the click sticks to (A: no angle)
   const from = chain ? vertexById(unit.vertices, chain.ids[chain.ids.length - 1]) : tool === 'arc' && arc && !arc.b ? arc.a : null
@@ -2140,91 +2153,39 @@ export default function StudioApp() {
         onFiles(e.dataTransfer.files)
       }}
     >
-      <header className="topbar">
-        <span className="brand">
-          <a href="/" title="Open the buyer viewer">Plotline</a> <span className="muted">/ Studio</span>
-        </span>
-        <span className="staff-badge" title="Staff mode is on in this browser: the 3D viewer (Preview 3D, or any unit) shows Edit furniture — move, turn, resize, delete, add — and Edit plan. Buyer links never do.">
-          Staff mode
-        </span>
-        <input className="meta wide" placeholder="Unit name" value={unit.name} onChange={meta('name')} />
-        <input className="meta" placeholder="Project" value={unit.projectName} onChange={meta('projectName')} />
-        <input className="meta narrow" placeholder="Floor" type="number" value={unit.floor ?? ''} onChange={meta('floor')} />
-        <input className="meta narrow" placeholder="Area sft" title="The flat's area as the sheet prints it (sqft)" type="number" value={unit.areaSqft || ''} onChange={meta('areaSqft')} />
-        <span className="timer" title="Minutes to trace">
-          ⏱ {formatTimer(state.timer.elapsedMs)}
-        </span>
-        <span className="grow" />
-        <button disabled={!state.history.past.length} onClick={() => dispatch({ type: 'undo' })}>
-          Undo
-        </button>
-        <button disabled={!state.history.future.length} onClick={() => dispatch({ type: 'redo' })}>
-          Redo
-        </button>
-        <span className="sep" />
-        {state.planImage && (
-          <button
-            className="primary"
-            disabled={!img || !!trace}
-            title="Trace the plan automatically: click inside a flat, then check what it lists on the right. Everything stays editable."
-            onClick={startAutoTrace}
-          >
-            Auto-trace
-          </button>
-        )}
-        <button onClick={() => jsonRef.current?.click()}>Import</button>
-        <button onClick={exportJson}>Export</button>
-        <button title="Download every Check-these answer clicked in this browser (row, answer, sheet, time) — the test set for an AI helper later" onClick={exportAnswers}>
-          Export answers
-        </button>
-        {/* never locked on a draft (founder, 2026-10-03): the 3D shows the plan as it is, open rooms have no floor yet */}
-        <button className="primary" title={errors ? `${errors} error${errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : undefined} onClick={preview}>
-          Preview 3D
-        </button>
-        <button
-          className={listOpen ? 'on' : ''}
-          title="Your project's floors: make a project, draw each floor, then Show building"
-          onClick={() => {
-            setBuildingOpen(false)
-            setListOpen((v) => !v)
-          }}
-        >
-          Building
-        </button>
-        <button
-          title="Start a new project: its name, basements, floors, rooftop"
-          onClick={() => {
-            setBuildingOpen(false)
-            activate(null)
-            setListOpen(true)
-          }}
-        >
-          New project
-        </button>
-        <button
-          className={siteOpen ? 'on' : ''}
-          title="Where the building stands: find it on the map, click the plot (neighbour blocks, roads, wind), set true north"
-          onClick={() => {
-            setBuildingOpen(false)
-            setSiteOpen((v) => !v)
-          }}
-        >
-          Site
-        </button>
-        {sharingConfigured && (
-          <button disabled={sharing} title="Publish this draft and copy a buyer link (/s/…) — every click makes a new link" onClick={() => void share()}>
-            {sharing ? 'Sharing…' : 'Share link'}
-          </button>
-        )}
-        {sharingConfigured && (
-          <button title="What buyers noted and chose on your share links: who, when, which finish, the price" onClick={() => window.open('/changes', '_blank')}>
-            Change list
-          </button>
-        )}
-        <CloudBar snapshot={cloudItem} changed={cloudChanged} onOpen={openFromCloud} onRenameOpen={renameOpen} toast={toast} />
-        <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
-        <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
-      </header>
+      <TopBar
+        unit={unit}
+        onMeta={meta}
+        canUndo={!!state.history.past.length}
+        canRedo={!!state.history.future.length}
+        onUndo={() => dispatch({ type: 'undo' })}
+        onRedo={() => dispatch({ type: 'redo' })}
+        autoTrace={state.planImage ? { disabled: !img || !!trace, onClick: startAutoTrace } : null}
+        errors={errors}
+        onPreview={preview}
+        building={listOpen}
+        onBuilding={() => {
+          setBuildingOpen(false)
+          setListOpen((v) => !v)
+        }}
+        onNewProject={() => {
+          setBuildingOpen(false)
+          activate(null)
+          setListOpen(true)
+        }}
+        site={siteOpen}
+        onSite={() => {
+          setBuildingOpen(false)
+          setSiteOpen((v) => !v)
+        }}
+        onImport={() => jsonRef.current?.click()}
+        onExport={exportJson}
+        onExportAnswers={exportAnswers}
+        share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
+        cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
+      />
+      <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
+      <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <div className="canvas-wrap" ref={wrapRef}>
@@ -2278,7 +2239,9 @@ export default function StudioApp() {
                   key={t}
                   className={tool === t ? 'on' : ''}
                   disabled={locked}
-                  title={locked ? 'Set the scale first (S)' : `${label} (${k})`}
+                  aria-label={label}
+                  aria-pressed={tool === t}
+                  data-tip={locked ? `${label} — set the scale first (S)` : `${label} (${k})`}
                   onClick={() => {
                     setScaleStart(null)
                     setAlign(null)
@@ -2292,18 +2255,31 @@ export default function StudioApp() {
           </div>
           {!state.planImage && (!unit.vertices.length || missingPlan) && (
             <div className="empty">
-              {!project && !unit.vertices.length && !missingPlan && <NewProject onCreate={createProject} />}
-              <div className="drop">
-                <p>
-                  {missingPlan
-                    ? `Plan image not found — drop \`${missingPlan}\` here to trace over it`
-                    : openSlot
-                      ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here (PNG, JPG, WEBP)`
-                      : 'Drop the floor plan here (PNG, JPG, WEBP)'}
-                </p>
-                <button className="primary" onClick={() => fileRef.current?.click()}>
-                  Choose plan image…
-                </button>
+              {!missingPlan && <h2>Start with a plan</h2>}
+              <div className="start">
+                <div className="drop">
+                  <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                    <path d="M14 18V5m-5 5 5-5 5 5M5 17v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <p>
+                    {missingPlan
+                      ? `Plan image not found — drop \`${missingPlan}\` here to trace over it`
+                      : openSlot
+                        ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here`
+                        : 'Drop the floor plan here'}
+                  </p>
+                  <p className="small muted">PNG, JPG or WEBP, up to 10 MB</p>
+                  <button className="primary" onClick={() => fileRef.current?.click()}>
+                    Choose plan image…
+                  </button>
+                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / 3D model</p>}
+                </div>
+                {!project && !unit.vertices.length && !missingPlan && (
+                  <>
+                    <span className="or">or</span>
+                    <NewProject onCreate={createProject} />
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -2408,7 +2384,7 @@ export default function StudioApp() {
               <button className="link" onClick={startOver}>
                 Start over
               </button>
-              <button className="link" onClick={() => setRestored(null)}>
+              <button className="x" title="Hide this message" onClick={() => setRestored(null)}>
                 ×
               </button>
             </div>
@@ -2465,13 +2441,16 @@ export default function StudioApp() {
       </div>
 
       <footer className="statusbar">
-        <span>{hint}</span>
-        <span className="centre" style={furnDrag?.error ? { color: '#e5534b' } : undefined}>
-          {centre}
+        <span className="line" title={hint}>
+          {line}
         </span>
-        <span>
-          {scaleText} · {Math.round(view.zoom * 100)} %
+        <span className={furnDrag?.error ? 'centre refused' : 'centre'}>{centre}</span>
+        <span className="facts">
+          <span title="Minutes to trace">{formatTimer(state.timer.elapsedMs)}</span>
+          <span>{scaleText}</span>
+          <span>{Math.round(view.zoom * 100)} %</span>
         </span>
+        <KeysSheet now={hint} />
       </footer>
     </div>
   )

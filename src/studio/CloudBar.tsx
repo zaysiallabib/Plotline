@@ -1,5 +1,6 @@
 /**
- * The Studio top bar's account (session 30): Sign in → an email → "Check your email"; signed in, the save word
+ * The Studio top bar's account (session 30): the save word sits by the drawing's name; ⋯ → Sign in (or your email,
+ * TopBar.tsx) opens this card: an email → "Check your email"; signed in, the save word
  * (Saved · Saving… · Offline, will retry · Not saved: …), the company's projects in the cloud (open, rename, delete,
  * earlier saves) and Sign out. What is open is saved to the cloud 2 s after the last change (lib/cloud.ts autosaver);
  * the browser's own copy keeps working as before. Nothing here shows when the site has no database (configured false).
@@ -20,13 +21,15 @@ interface Props {
   /** rename what is open (its name lives in the Studio; the next save takes it to the cloud) */
   onRenameOpen: (name: string) => void
   toast: (text: string) => void
+  /** the account card is open (TopBar's ⋯ → Sign in / your email toggles it) */
+  open: boolean
+  onClose: () => void
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 export default function CloudBar(p: Props) {
   const session = useSession()
-  const [open, setOpen] = useState(false)
   const [org, setOrg] = useState<Org | null | undefined>(undefined)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const saver = useRef<Autosaver | null>(null)
@@ -76,14 +79,11 @@ export default function CloudBar(p: Props) {
           {word}
         </span>
       )}
-      <button title={session ? 'Your account and your company’s projects in the cloud' : 'Sign in to keep your work in the cloud for your company'} onClick={() => setOpen((v) => !v)}>
-        {session ? (session.user.email ?? 'Account') : 'Sign in'}
-      </button>
-      {open && (
+      {p.open && (
         <div className="popover project cloud" onKeyDown={(e) => e.stopPropagation()}>
           <div className="head">
             <strong>{session ? 'Your account' : 'Sign in'}</strong>
-            <button className="link" onClick={() => setOpen(false)}>
+            <button className="link" onClick={p.onClose}>
               Close
             </button>
           </div>

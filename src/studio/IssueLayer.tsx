@@ -107,7 +107,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
           <div className="head">
             <span className={`num ${open.severity}`}>{open.n}</span>
             <span className="grow">{open.message}</span>
-            <button className="link" title="Close (Esc)" onClick={() => onActivate(null)}>
+            <button className="x" title="Close (Esc)" onClick={() => onActivate(null)}>
               ×
             </button>
           </div>

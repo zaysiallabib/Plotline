@@ -90,7 +90,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
       <aside className="floors" onClick={blur}>
         <div className="head">
           <strong>Building</strong>
-          <button className="link" title="Close" onClick={onClose}>
+          <button className="x" title="Close" onClick={onClose}>
             ×
           </button>
         </div>
