@@ -1,15 +1,66 @@
+/*
+ * Plotline's design tokens (session 30): one type scale, one spacing scale, radii, ONE accent (warm gold), the dark
+ * glass the viewer floats over the 3D, hairlines, shadows, motion. Every component uses these; the Studio (studio.css)
+ * reads --bg --surface --surface-2 --ink --muted --line --accent --radius, kept as they were.
+ */
 :root {
+  /* colour */
   --bg: #0f0f10;
   --surface: #17181a;
   --surface-2: #1f2023;
   --ink: #f2f2f0;
+  --ink-2: #c9c9c4;
   --muted: #9a9a94;
   --line: #2a2b2f;
   --accent: #e8c170;
+  --accent-ink: #1a1408; /* text on the accent */
+  --accent-soft: rgba(232, 193, 112, 0.16);
+  --wind: #8fb0d0;
+  --danger: #ff6b6b;
+  /* the viewer's glass over the 3D */
+  --glass: rgba(18, 19, 21, 0.78);
+  --glass-strong: rgba(18, 19, 21, 0.9);
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hover: rgba(255, 255, 255, 0.07);
+  --press: rgba(255, 255, 255, 0.13);
+  --blur: blur(18px) saturate(1.2);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.22);
+  /* type: Inter (loaded in index.html), else the system sans */
+  --font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 40px;
+  --track: 0.08em; /* small capitals' letter spacing */
+  /* space */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  /* radii */
+  --r-sm: 8px;
   --radius: 12px;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  /* the one control height (buttons, the segmented switch, month buttons) */
+  --control: 36px;
+  /* motion */
+  --dur: 200ms;
+  --dur-fast: 150ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  font-family: var(--font);
   color: var(--ink);
   background: var(--bg);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur: 0ms; --dur-fast: 0ms; }
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }

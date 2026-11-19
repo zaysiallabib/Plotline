@@ -1,7 +1,7 @@
 /**
  * Walk-mode minimap (session 18, ask 12), bottom right, for everyone — orientation, not editing: the rooms (derived faces
  * of the wall graph) and the walls at floor level (doors and passages are gaps), the room you are in tinted and named,
- * you as a dot with a view cone, north from the unit's northDeg. M shows / hides it. Plan space is y-down like SVG, so
+ * you as a dot with a view cone, north from the unit's northDeg. M, or its × (a small Map button brings it back), hides it. Plan space is y-down like SVG, so
  * plan metres are the SVG's own coordinates and any wall angle draws as it is. The dot, the cone and the tint are
  * written straight to the DOM from the camera each frame (like PinLayer): no React re-render per frame.
  */
@@ -12,7 +12,7 @@ import type { Id, Room, RoomKind, Unit } from '../core'
 import type { PlotlineScene } from '../three/PlotlineScene'
 
 /** the map's longer side on screen, px */
-export const MAP_PX = 200
+export const MAP_PX = 156
 
 /** The compass (22 px box, centre 11, 11): the point `r` px out toward true north on the plan as drawn (unit.northDeg; plan-up = 0). */
 export const compassPoint = (northDeg: number, r: number): { x: number; y: number } => {
@@ -149,14 +149,23 @@ export default function Minimap({ scene, unit, rooms, walking }: Props) {
     return () => cancelAnimationFrame(raf)
   }, [scene, rooms, shown, walking])
 
-  if (!walking || !shown) return null
+  if (!walking) return null
+  if (!shown)
+    return (
+      <button className="glass map-show" title="Show the small map (M)" onClick={() => setShown(true)}>
+        Map
+      </button>
+    )
   const k = MAP_PX / Math.max(map.box.w, map.box.h)
   const { x, y, w, h } = map.box
   return (
     <div className="glass minimap" title="Where you are · M hides the map">
       <div className="minimap-head">
-        <div ref={name} className="minimap-name" />
         <Compass northDeg={unit.northDeg} />
+        <div ref={name} className="minimap-name" />
+        <button className="x" aria-label="Hide the map" title="Hide the map (M)" onClick={() => setShown(false)}>
+          ×
+        </button>
       </div>
       <svg width={Math.round(w * k)} height={Math.round(h * k)} viewBox={`${x} ${y} ${w} ${h}`} aria-label="minimap">
         {map.rooms.map((r) => (
