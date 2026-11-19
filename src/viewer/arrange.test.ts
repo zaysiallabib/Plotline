@@ -4,7 +4,7 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { bottomOf, library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
 import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
@@ -154,6 +154,24 @@ describe('arrange: dragging in the 3D view runs the Studio rules', () => {
     const ps2 = furnish(s, rs)
     const chair = ps2.find((p) => p.roomId === rs.find((r) => r.name === 'Veranda 1')!.id && /chair/.test(p.assetId))!
     expect(dragTo(s, rs, ps2, chair.id, { at: { x: chair.x, y: chair.y - 0.3048 }, wall: null })!.error).toBeNull()
+  })
+
+  it('a TV on its stand dragged up onto the wall above it is refused with why (it stays in hand, red); back down, the unit moves', () => {
+    const a = typeA as unknown as Unit
+    const ra = deriveRooms(a)
+    const pa = furnish(a, ra)
+    const tv = pa.find((p) => p.id === 'r_living:tv_55:1')!
+    const face = { p: { x: tv.x, y: tv.y }, n: { x: 1, y: 0 } }
+    const up = dragTo(a, ra, pa, tv.id, { at: null, wall: { ...face, y: 1.9 } })!
+    expect(up).toMatchObject({ error: TV_STANDS, piece: { id: tv.id }, ids: [tv.id] })
+    expect(up.furniture).toBe(pa) // nothing moves: the unit stays where it was
+    expect(dropHeld({ id: tv.id, rot: 0, at: null, move: up })).toBeNull() // a click / release does not put it there
+    // the pointer on the TV itself (the wall behind it at the screen's height): the drag still carries the unit
+    expect(dragTo(a, ra, pa, tv.id, { at: { x: 13.0, y: 6.4 }, wall: { ...face, y: 1.2 } })!.piece.id).toBe('r_living:modern_wooden_cabinet:1')
+    // cushions pointed up a wall carry their sofa as before; a wall TV hangs (it never rides on a unit)
+    const cush = at(ps, 'cush')
+    expect(dragTo(unit, rooms, ps, 'cush', { at: { x: cush.x - 0.5, y: cush.y }, wall: { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 }, y: 2 } })!.piece.id).toBe('sofa')
+    expect(dragTo(unit, rooms, ps, 'tv', { at: null, wall: { p: { x: 0.1, y: 2.5 }, n: { x: 1, y: 0 }, y: 2 } })!.error).toBeNull()
   })
 
   it('floor and ceiling pieces slide on their plane; a refused spot says why', () => {
