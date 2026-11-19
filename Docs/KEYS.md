@@ -153,7 +153,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Small map (bottom right, Walk) | Where you are, with a compass to true north on the plan; **×** hides it, **Map** brings it back (or M). It steps aside while Finishes is open | everyone |
 | Floors (Building view, right): **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (the picked one is filled white, your flat's floor has a gold dot); a basement hides what is above it | everyone |
 | **Walk this level** (Building view, under the floors) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
-| **Up to …** / **Down to …** (bottom middle, Walk, standing in a stair room of a building) | Takes the stair: the floor above / below opens, you stand on its stair. Walking up the stair's second flight (or down under it, from the floor) does the same | everyone |
+| **Up to …** / **Down to …** (bottom middle, just above the Sun & wind pill; Walk, standing in a stair room of a building) | Takes the stair: the floor above / below opens, you stand on its stair. Walking up the stair's second flight (or down under it, from the floor) does the same | everyone |
 
 ### 3D view — Finishes panel and notes
 

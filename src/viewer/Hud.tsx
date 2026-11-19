@@ -102,6 +102,8 @@ interface Props {
   quality: QualityInfo
   /** the Sun & wind pill / card (SunPill), docked bottom centre under the hint */
   sun: ReactNode
+  /** a stair room's Up to … / Down to … (ViewerApp stairWays), docked over the pill; null: none */
+  ways?: ReactNode
 }
 
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
@@ -315,6 +317,7 @@ export default function Hud(p: Props) {
             </div>
           )
         )}
+        {p.ways}
         {p.sun}
       </div>
 

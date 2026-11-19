@@ -89,7 +89,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
   - Walk up the stair: the first flight to the half landing, then turn onto the second flight. The floor above opens with you standing at the top of its stair, facing the stair room's door.
   - To go down, walk from the stair room's floor into the space under the second flight, toward the back (where the flight from the floor below comes up). The floor below opens with you on its half landing, looking down the last flight.
   - Each change of floor loads that floor (a few seconds, like opening it from the list).
-  - In a stair room, the buttons **Up to …** and **Down to …** (bottom middle) do the same in one click. They also work where the stair room is too small for a drawn stair.
+  - In a stair room, the buttons **Up to …** and **Down to …** (bottom middle, just above the Sun & wind pill) do the same in one click. They also work where the stair room is too small for a drawn stair.
   - A stair with no floor above (the rooftop) or below says so: "This stair goes no higher / lower".
 - Walk sees about as much as a 22 mm camera lens: a little under 80° across a wide screen, from 1.45 m eye height (since 2026-10-19; it used to be a wider 16 mm look, which made rooms and furniture look small and far). The dollhouse and the Building view see wider, as before.
 
