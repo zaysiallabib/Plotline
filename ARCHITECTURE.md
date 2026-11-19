@@ -92,60 +92,63 @@ Geometry algorithms in `src/core/` (pure functions, unit-tested):
 
 ## Backend (Supabase)
 
+In one sentence: this is the online storage that keeps your company's projects, the buyer links and what buyers write, and keeps each developer company's work apart from the others.
+
 Built 2026-11-20 (session 30). The SQL is `supabase/migrations/` (pasted by the founder:
 `Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js).
 
-Tables (RLS on every one; tenant = developer company, `orgs`):
-- `orgs`, `org_members` (user, company, `owner | staff`) — written only in the SQL editor (`private.add_member`).
-- `projects` — a Studio `Project` or one loose `Unit` as JSON, `version` for optimistic concurrency; never
-  deleted (Delete hides it: `deleted_at`).
-- `project_versions` — every save, written by a trigger, append-only (nobody can change or remove a row).
-- `units` + `share_links` — what a buyer link shows (a frozen copy) and its token; a link can be turned off.
-- `events` — append-only buyer notes and finish choices on a link (this IS the change list).
+Tables (RLS — "row level security", the database's own rule about which rows each person may touch — is on every one; "tenant" = one developer company, `orgs`):
+- `orgs`, `org_members` (user, company, `owner | staff`) — the companies and who belongs to which. Written only in the SQL editor (`private.add_member`).
+- `projects` — a Studio `Project` or one loose `Unit`, stored as JSON (a plain structured-text format). `version` stops two people overwriting each other unnoticed (optimistic concurrency: a save says which version it started from, and is refused if someone saved in between). Never deleted: Delete hides it (`deleted_at`).
+- `project_versions` — every save, written by a trigger (an automatic step inside the database), append-only: nobody can change or remove a row.
+- `units` + `share_links` — what a buyer link shows (a frozen copy of the flat) and its token (the long random code in the link that cannot be guessed). A link can be turned off.
+- `events` — append-only buyer notes and finish choices on a link. This IS the change list.
 
-Client: `src/lib/auth.ts` (email magic links, PKCE; the session; the person's company), `src/lib/cloud.ts`
-(save with the version it started from, list / open / rename / delete, history, the 2 s autosaver and its
-status word), `src/lib/events.ts` (the buyer outbox, the change list). Not configured (no env) = no client:
-every path stays in the browser, as before. The plan picture is not in the cloud yet (Supabase Storage, later).
+The browser side:
+- `src/lib/auth.ts` — email sign-in links (PKCE, explained under Security), the session (the signed-in state), the person's company.
+- `src/lib/cloud.ts` — saves with the version it started from; lists, opens, renames and deletes; history; the 2-second autosaver and its status word.
+- `src/lib/events.ts` — the buyer outbox and the change list.
+- Not configured (no env, i.e. the two values are not set) = no client: every path stays in the browser, as before.
+- The plan picture is not online yet (Supabase Storage, later).
 
-Proof: `supabase/tests/two_tenants.sql` (paste after the migration; it rolls itself back) — mandatory again
-for every schema change.
+Proof: `supabase/tests/two_tenants.sql` (paste it after the migration; it undoes everything it made) — mandatory again
+for every change to the tables' shape (schema).
 
 ## Security
 
-In plain words; the code that enforces each point is named in brackets.
+What this protects for you: a buyer sees only the flat you shared, a rival developer using Plotline never sees your work, and nothing a stranger types into the site can change your data. In plain words below; the code that enforces each point is named in brackets.
 
-- **What a buyer link can reach.** Only the one flat it was made for, while the link is on
-  (`unit_by_token`), and adding notes / finish choices to that link (`add_event`). Nothing else: no table,
+- **A buyer link opens one flat and nothing else.** It reaches only the flat it was made for, while the link is on
+  (`unit_by_token`), and can add notes / finish choices to that link (`add_event`). Nothing else: no table,
   no other link, no project, no company. A turned-off link opens nothing and takes nothing (`revoke_link`).
-- **What the public key (in every page) can do.** The same as a buyer link — those two calls — and ask
-  Supabase for a sign-in email. It reads and writes no table (privileges revoked from `anon`, and RLS
+- **The public key in every page cannot read your data.** It can do the same as a buyer link — those two calls — and ask
+  Supabase for a sign-in email. It reads and writes no table (privileges revoked from `anon`, the name for an unsigned visitor, and RLS
   everywhere behind that).
-- **What a member of company A can do to company B.** Nothing: every row carries its company and the
+- **Company A can never touch company B.** Every row carries its company and the
   database answers only the signed-in person's company (RLS policies on every table). A cannot read, save
   over, add to, delete, share or turn off anything of B's, cannot add itself to B, and cannot make a
   company. `supabase/tests/two_tenants.sql` checks each of these, and was itself checked by breaking each
   guard in turn (it must then fail).
-- **What a member can do in their own company.** Read, create and save projects; read the history (never
+- **Your own staff can do their work, and no more.** Members read, create and save projects; read the history (never
   change it); make and turn off share links; read the change list. A save names the version it started
   from; the database stamps the next version, who and when (a browser cannot forge them).
-- **Share tokens** are 128 random bits made by the database (`gen_random_bytes(16)`), never by a browser.
-- **No secret key in the website.** Only the publishable key is in the browser; the build refuses a
+- **Buyer links cannot be guessed.** Share tokens are 128 random bits made by the database (`gen_random_bytes(16)`), never by a browser.
+- **The master key is never in the website.** Only the publishable key is in the browser; the build refuses a
   secret / `service_role` key (`vite.config.ts`). The founder's tools (`private.add_member`,
-  `private.adopt_old_links`) live in a schema the website cannot reach.
-- **No passwords.** Sign-in is an emailed link (Supabase Auth). The link only works in the browser that
-  asked for it (PKCE: a code plus a secret this browser keeps), so a forwarded or intercepted email is
-  useless, and it brings the person back only to this site's `/studio` (`emailRedirectTo` = this origin;
+  `private.adopt_old_links`) live in a part of the database (a schema) the website cannot reach.
+- **No passwords to steal.** Sign-in is an emailed link (Supabase Auth). The link only works in the browser that
+  asked for it (PKCE: the browser keeps a secret that matches a code in the link), so a forwarded or intercepted email is
+  useless. It brings the person back only to this site's `/studio` (`emailRedirectTo` = this origin;
   Supabase refuses any address not on its Redirect URLs list — no open redirect, no login forgery from
   another site).
-- **Emails are not logged** by Plotline (no console output, no error text with the address; the founder's
+- **Staff email addresses are kept private.** Plotline does not log them (no console output, no error text with the address; the founder's
   SQL error for an unknown address does not repeat it). They live in Supabase Auth only.
-- **Rate limits** are Supabase's own (Dashboard → Authentication → Rate Limits): sign-in emails per hour,
-  one link a minute per address, sign-in and token requests per IP. Buyer notes have no limit per link
+- **Abuse is slowed down.** Rate limits are Supabase's own (Dashboard → Authentication → Rate Limits): sign-in emails per hour,
+  one link a minute per address, sign-in and token requests per IP address. Buyer notes have no limit per link
   yet (8 KB a row); a spammed link is turned off.
-- **Anyone can create an empty account** (by asking for a link); it reaches nothing until the founder adds
+- **A stranger can make an empty account, and it is useless.** Anyone can create one (by asking for a link); it reaches nothing until the founder adds
   it to a company. To close even that: turn off sign-ups in Supabase and invite people instead.
-- **The old staff key** (Phase 0) reaches only links made before accounts (no company) and stops working
+- **The old staff key stops working when you say so.** The Phase 0 staff key reaches only links made before accounts (no company) and stops working
   for good when the founder deletes it (`SETUP_ACCOUNTS.md`).
 
 ## Routes (the addresses)
