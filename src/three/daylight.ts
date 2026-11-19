@@ -44,7 +44,12 @@ const RHO = 0.5
  * Both per surface class (floor / wall / ceiling), so each class keeps today's tuned level.
  * Tuned on type-a/-b at 15:30 (sRGB, 1280 × 720): between ≤ 1.1 lifted the long type-b living's window-facing wall and
  * ceiling into Neutral's knee (213 → 234, flat again); pivot 0.6 / γ 0.8 or normalising the room's MEAN to 1 sank the type-a
- * living's walls 213 → 182–197; this set keeps mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
+ * living's walls 213 → 182–197; this set kept mid-room walls ≈ 200 with the window zone up to +35 % and the back −35 %.
+ * Founder 2026-11-20: "way too bright inside the room even without sunlight" — every room read as bright as its window
+ * wall, a windowless toilet with its door shut at 80 % of a bedroom. Now the window zone reaches +50–60 %, a room's back
+ * −45–55 %, and between falls to 0.35 (γb 0.2): a deep dining lit through a passage (E ≈ 1/9 of the median) reads ≈ 0.65,
+ * a windowless toilet or closet (≈ 1/100) ≈ 0.35 — dim; a window room ≥ 0.9 as before. With render.ts's lower hemisphere
+ * share and the day exposure +20 %: brighter by the windows and in the sun, darker deep inside.
  */
 /** per class: floor, wall, ceiling (walls / ceilings steeper, wave 14) */
 const GAMMA = [0.75, 0.9, 0.9]
@@ -53,12 +58,12 @@ const PIVOT = 0.5
 // Wave 14: per class (floor, wall, ceiling) and SOFT (tanh in log space, no plateau): the hard clamp flattened a small room's
 // field into plateaus whose kinks read as blocks. Floors stay gentle; walls and ceilings carry the falloff, mostly downward.
 const WITHIN: [number, number][] = [
-  [0.75, 1.25],
-  [0.62, 1.25],
-  [0.6, 1.22],
+  [0.55, 1.5],
+  [0.45, 1.6],
+  [0.45, 1.5],
 ]
-const GAMMA_B = 0.25
-const BETWEEN = [0.8, 1] // 0.75 greyed the window walls / baths 10–20 levels
+const GAMMA_B = 0.2
+const BETWEEN = [0.35, 1] // 0.8 left a flat wash; the stronger fall-off reads as a real room (2026-11-20)
 /**
  * Neighbours (founder 2026-11-20: "with space there is much more light … which is not the case in real life"): a room's
  * light with the blocks round the building / its light with an open view, ^SHADE_GAMMA, no lower than SHADE_LO, × its factor.
@@ -98,6 +103,8 @@ const outdoor = (r: Room | null) => !r || r.kind === 'balcony' || r.kind === 'sh
  * light comes from the rule's battens (render.ts), not a bake through openings it does not have.
  */
 const COVERED = 0.75
+/** where the atlas keeps it */
+const COVERED_AT = [3, 0] as const
 
 /** sky radiance seen through an opening onto `r`: open sky 1; a covered veranda's slab hides the upper sky; a shaft is a well */
 const skyOf = (r: Room | null, cover: Pt[][]) =>
@@ -474,7 +481,7 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], bloc
   const regions = new Map<string, Region>()
   // the COVERED block, 2 × 2 at (3, 0): a covered zone's floor and every wall face toward it read its centre texel
   for (const i of [3, 4, width + 3, width + 4]) data[i] = Math.round((255 * COVERED) / RANGE)
-  const shade = (key: string, roomId: Id) => regions.set(key, { x: 3, y: 0, nu: 1, nv: 1, u0: 0, v0: 0, du: 1, dv: 1, E: new Float32Array(1), roomId })
+  const shade = (key: string, roomId: Id) => regions.set(key, { x: COVERED_AT[0], y: COVERED_AT[1], nu: 1, nv: 1, u0: 0, v0: 0, du: 1, dv: 1, E: new Float32Array(1), roomId })
   for (const r of rooms) if (isCovered(r, cover)) shade(`floor:${r.id}`, r.id)
   for (const [id, pair] of sides) pair.forEach((r, i) => r && isCovered(r, cover) && shade(`wall:${id}:${i ? -1 : 1}`, r.id))
   jobs.forEach((j, k) => {
@@ -498,18 +505,46 @@ export function factorAt(d: Daylight, key: string, u: number, v: number): number
 
 // ───────────────────────────── GL glue ─────────────────────────────
 
-const NEUTRAL = new THREE.DataTexture(new Uint8Array([Math.round(255 / RANGE)]), 1, 1, THREE.RedFormat)
+/**
+ * The atlas's second channel: the lamps' bounce on each room's surfaces at night, as a share of a lit room's (render.ts
+ * lampShares; byte 255 = LAMP_RANGE) — a room whose lamps were deleted goes dark but for what comes through its doors.
+ * 0 on the neutral block (faces toward the outside, open zones): at night they stay dark.
+ */
+export const LAMP_RANGE = 2
+const share = (v: number) => Math.round((255 * THREE.MathUtils.clamp(v, 0, LAMP_RANGE)) / LAMP_RANGE)
+const NEUTRAL = new THREE.DataTexture(new Uint8Array([Math.round(255 / RANGE), share(1)]), 1, 1, THREE.RGFormat)
 NEUTRAL.needsUpdate = true
 /** the unit's atlas, shared by every daylit material (like context.ts's haze) */
 export const dayMap = { value: NEUTRAL as THREE.Texture }
 /** the sky's share of the indirect light (render.ts setAltitude): 1 by day → ≈ 0 at night with the lamps on */
 export const dayMix = { value: 1 }
+/** the atlas shown (setDaylight) and its texture's bytes: setLampShare rewrites their lamp channel */
+let shown: { d: Daylight; rg: Uint8Array; tex: THREE.DataTexture } | null = null
 
+/** Day factors (R) and every room at a lit room's lamp bounce (G) until setLampShare says otherwise; the neutral block 0. */
 export function daylightTexture(d: Daylight): THREE.DataTexture {
-  const t = new THREE.DataTexture(d.data, d.width, d.height, THREE.RedFormat)
+  const rg = new Uint8Array(d.width * d.height * 2)
+  for (let i = 0; i < d.data.length; i++) [rg[2 * i], rg[2 * i + 1]] = [d.data[i], share(1)]
+  for (const i of [0, 1, d.width, d.width + 1]) rg[2 * i + 1] = 0
+  const t = new THREE.DataTexture(rg, d.width, d.height, THREE.RGFormat)
   t.magFilter = t.minFilter = THREE.LinearFilter
   t.needsUpdate = true
   return t
+}
+
+/**
+ * Each room's lamp bounce (render.ts lampShares: 1 = a lit room's, 0 = no lamp) into the shown atlas; a room not listed
+ * has none. A covered zone keeps its own (its battens are always on: render.ts coverLights).
+ */
+export function setLampShare(shares: Map<Id, number>): void {
+  if (!shown) return
+  const { d, rg, tex } = shown
+  for (const r of d.regions.values()) {
+    if (r.x === COVERED_AT[0] && r.y === COVERED_AT[1]) continue
+    const v = share(shares.get(r.roomId) ?? 0)
+    for (let y = 0; y < r.nv; y++) for (let x = 0; x < r.nu; x++) rg[2 * ((r.y + y) * d.width + r.x + x) + 1] = v
+  }
+  tex.needsUpdate = true
 }
 
 /** Patch one material: its indirect diffuse + specular × the atlas at the fragment's `dayUv`. */
@@ -521,11 +556,10 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nvarying vec2 vDayUv;\n${s.fragmentShader}`.replace(
       '#include <aomap_fragment>',
       `#include <aomap_fragment>
-      // the lamps' bounce (the rest of dayMix) reaches every room surface, not a face toward the outside or an open zone
-      // (the atlas's neutral block at texels 0–1): at night they stay dark
-      ivec2 daySize = textureSize(dayMap, 0);
-      float lampK = daySize.x > 1 && vDayUv.x * float(daySize.x) < 2.0 && vDayUv.y * float(daySize.y) < 2.0 ? 0.0 : 1.0;
-      float dayK = mix(lampK, ${RANGE.toFixed(1)} * texture2D(dayMap, vDayUv).r, dayMix);
+      // the lamps' bounce (the rest of dayMix): its own room's lamps (the atlas's G, setLampShare); none on a face toward
+      // the outside or an open zone: at night they stay dark
+      vec2 dayRg = texture2D(dayMap, vDayUv).rg;
+      float dayK = mix(${LAMP_RANGE.toFixed(1)} * dayRg.g, ${RANGE.toFixed(1)} * dayRg.r, dayMix);
       reflectedLight.indirectDiffuse *= dayK;
       reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out`,
     )
@@ -586,5 +620,7 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
 /** The unit's atlas for every daylit material (null: neutral); the previous one is freed. */
 export function setDaylight(d: Daylight | null): void {
   if (dayMap.value !== NEUTRAL) dayMap.value.dispose()
-  dayMap.value = d ? daylightTexture(d) : NEUTRAL
+  const tex = d && daylightTexture(d)
+  shown = d && tex && { d, rg: tex.image.data as Uint8Array, tex }
+  dayMap.value = tex ?? NEUTRAL
 }

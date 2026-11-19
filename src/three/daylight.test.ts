@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
-import { bakeDaylight, facing, factorAt, formFactor, HI, isCovered, LO, mapDaylight, openToSky, RANGE, SHORT_WALL_M, zRaise } from './daylight'
+import * as THREE from 'three'
+import { bakeDaylight, dayMap, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, LO, mapDaylight, openToSky, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
@@ -62,6 +63,44 @@ describe('bakeDaylight', () => {
     expect(factorAt(d, 'floor:bed', 7, 2)).toBeGreaterThan(0.4)
   })
 
+  test('founder 2026-11-20 ("way too bright inside even without sunlight"): deep rooms dim by day, windowless ones dimmer, a strong window-to-back falloff', () => {
+    const d = bake(typeA as Unit)
+    const vals = (room: string, cls: string) =>
+      [...d.regions].filter(([k, r]) => r.roomId === room && k.startsWith(cls)).flatMap(([, r]) => Array.from({ length: r.nu * r.nv }, (_, i) => (RANGE * d.data[(r.y + Math.floor(i / r.nu)) * d.width + r.x + (i % r.nu)]) / 255))
+    const median = (v: number[]) => [...v].sort((a, b) => a - b)[v.length >> 1]
+    // the windowless toilet (one door, to the help bed) and the walk-in closet: dim, about a third
+    for (const room of ['r_htoilet', 'r_closet']) expect(median(vals(room, 'wall')), room).toBeLessThan(0.45)
+    // the dining, lit through the living's passage and the study's glass: dimmer than the window rooms, not dark
+    expect(median(vals('r_dining', 'wall'))).toBeGreaterThan(0.5)
+    expect(median(vals('r_dining', 'wall'))).toBeLessThan(0.8)
+    // a window room: its window zone ≥ 1.4, its back ≤ 0.7 (before: 1.25 and 0.75 at most)
+    for (const room of ['r_living', 'r_bed1', 'r_study']) {
+      const w = vals(room, 'wall')
+      expect(Math.max(...w), room).toBeGreaterThan(1.4)
+      expect(Math.min(...w), room).toBeLessThan(0.7)
+      expect(median(w), room).toBeGreaterThan(0.85)
+    }
+  })
+
+  test('the lamps’ bounce by room (the atlas’s second channel): a room’s own share, none toward the outside', () => {
+    const d = bake(TEST_UNIT)
+    setDaylight(d)
+    setLampShare(new Map([['living', 1]]))
+    const rg = (dayMap.value as THREE.DataTexture).image.data as Uint8Array
+    const g = (key: string) => {
+      const r = d.regions.get(key)!
+      return (LAMP_RANGE * rg[2 * (r.y * d.width + r.x) + 1]) / 255
+    }
+    expect(g('floor:living')).toBeCloseTo(1, 1)
+    expect(g('ceil:living')).toBeCloseTo(1, 1)
+    expect(g('floor:bed')).toBe(0) // its lamp deleted
+    expect(rg[1]).toBe(0) // the neutral block: faces toward the outside stay dark at night
+    setLampShare(new Map([['bed', 0.2]]))
+    expect(g('floor:bed')).toBeCloseTo(0.2, 1)
+    expect(g('floor:living')).toBe(0)
+    setDaylight(null)
+  })
+
   test('bounded on a real unit: every texel within the range, finite', () => {
     const d = bake(typeA as Unit)
     const E = [...d.regions.values()].flatMap((r) => [...r.E])
@@ -72,11 +111,14 @@ describe('bakeDaylight', () => {
 })
 
 describe('smooth atlas (wave 14: no texel pattern)', () => {
+  const step = (a: number, b: number) => (2 * Math.abs(a - b)) / (a + b)
   const texel = (d: ReturnType<typeof bake>, key: string) => {
     const r = d.regions.get(key)!
     return (x: number, y: number) => (RANGE * d.data[(r.y + y) * d.width + r.x + x]) / 255
   }
-  test('no texel-to-texel step above 0.25 in any indoor room (wave 13: 0.49 from the hard clamp and the wall-end texels)', () => {
+  // relative (the eye sees ratios): the stronger falloff of 2026-11-20 spans more range, so its smooth gradients take bigger
+  // absolute steps by a window (0.19 → 0.30); wave 13's pattern was ≈ 0.5 of the value, from a hard clamp
+  test('no texel-to-texel step above 35 % in any indoor room (wave 13: ≈ 50 % from the hard clamp and the wall-end texels)', () => {
     const u = typeA as Unit
     const rooms = core.deriveRooms(u)
     const d = bakeDaylight(u, rooms)
@@ -85,8 +127,8 @@ describe('smooth atlas (wave 14: no texel pattern)', () => {
       const at = texel(d, key)
       let m = 0
       for (let y = 0; y < r.nv; y++)
-        for (let x = 0; x < r.nu; x++) m = Math.max(m, x ? Math.abs(at(x, y) - at(x - 1, y)) : 0, y ? Math.abs(at(x, y) - at(x, y - 1)) : 0)
-      expect(m, key).toBeLessThanOrEqual(0.25)
+        for (let x = 0; x < r.nu; x++) m = Math.max(m, x ? step(at(x, y), at(x - 1, y)) : 0, y ? step(at(x, y), at(x, y - 1)) : 0)
+      expect(m, key).toBeLessThanOrEqual(0.35)
     }
   }, 30000)
   test("every face triangle reads its own face's region — the L-corner notch too (wave 13's sawtooth by the bed-1 door)", () => {

@@ -292,7 +292,7 @@ export const PROCEDURAL: Record<string, KitAsset> = {
   study_desk: P('study_desk', 'Study desk, oak top, drawer pedestal (1.2 m)', 'desk', 1.2, 0.75, 0.6),
   study_chair: P('study_chair', 'Office chair, swivel, charcoal', 'chair', 0.58, 1.04, 0.61),
   floor_lamp: { ...P('floor_lamp', 'Floor lamp, brass, linen shade', 'lamp', 0.44, 1.6, 0.44), kind: 'lamp' },
-  table_lamp: { ...P('table_lamp', 'Table lamp, stoneware + linen shade', 'lamp', 0.34, 0.5, 0.34, 0.52), kind: 'lamp' }, // on a bedside table's top
+  table_lamp: { ...P('table_lamp', 'Table lamp, stoneware + linen shade', 'lamp', 0.34, 0.5, 0.34, 0.52), kind: 'lamp', onTop: true }, // on what is under it; 0.52: a bedside's top
   pendant_light: { ...P('pendant_light', 'Pendant light, black dome Ø42 cm', 'lamp', 0.42, 0.9, 0.42), mount: 'ceiling' }, // a ceiling light: it lights its room
   wall_mirror: { ...P('wall_mirror', 'Wall mirror, oak frame', 'other', 0.64, 0.94, 0.021), mount: 'wall', kind: 'mirror' },
   rug_rect_medium: P('rug_rect_medium', 'Wool rug 2.0 × 1.4 m', 'rug', 2.0, 0.012, 1.4),

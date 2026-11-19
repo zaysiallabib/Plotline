@@ -17,7 +17,7 @@ import type { MaterialRef, Pt, Room, Unit, Wall } from '../core'
 import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
 import type { Rect } from '../data/building/demo-tower'
 import { finishSlotsFor } from '../furnish/finishes'
-import { layoutFor } from '../studio/furniture'
+import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
@@ -412,10 +412,11 @@ export class Building extends THREE.Group {
       const { unit: u } = this.t.FLATS[s]
       const rooms = this.roomsOf(s)
       const byId = new Map(rooms.map((r) => [r.id, r]))
-      for (const p of layoutFor(u, rooms)) {
+      const ps = layoutFor(u, rooms)
+      for (const p of ps) {
         const r = byId.get(p.roomId)
         if (p.removed || !r || !core.isOutdoor(r.kind)) continue
-        const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y))
+        const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
         if (this.disposed) return
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
         group.add(obj)

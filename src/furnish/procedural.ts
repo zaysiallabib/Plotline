@@ -163,9 +163,11 @@ function drape(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   m.userData.ownUV = true
   return m
 }
-/** Lamp-shade cloth: both faces drawn (an open drum). */
+/** Lamp-shade cloth: both faces drawn (an open drum); lit from inside it glows warm (render.ts addGlows: only while the lamps are on). */
 function shadeCloth(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   m.side = THREE.DoubleSide
+  m.emissive.set('#ffc890')
+  m.emissiveIntensity = 0.07
   return m
 }
 /** Wood whose figure runs along each panel's long side (boxUV grain). */
