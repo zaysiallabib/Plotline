@@ -46,7 +46,7 @@ import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import { IMPORT_ACCEPT, importFile, importFormatOf, lockedFormatOf, type ImportResult, type ImportedStorey } from '../import'
-import { newProject, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, newProject, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
@@ -682,9 +682,11 @@ export default function StudioApp() {
     return () => clearTimeout(id)
   }, [state.unit, state.planImage, state.view, state.review, saveDraft])
   // a door / window / low wall changed in the 3D view (viewer Edit openings) is written into this draft from that tab: the
-  // plan takes it at once, so this tab's next autosave never writes the old plan back
+  // plan takes it at once, so this tab's next autosave never writes the old plan back; a floor given its own drawing there
+  // (viewer "Floor 5 only") shows in the floor list at once
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
+      if (e.key === PROJECTS_KEY) setProjects(readProjects())
       if (e.key !== DRAFT_KEY || !e.newValue) return
       try {
         const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']

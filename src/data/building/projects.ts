@@ -323,6 +323,64 @@ export function removeDrawing(p: Project, unitId: Id): Project {
   return { ...q, units, levels: (q.levels ?? []).filter((l) => l.unitId !== unitId) }
 }
 
+/** The floors drawing `unitId` is on in `p`, top down (slotsOf's order). */
+export const slotsWith = (p: Project, unitId: Id): Slot[] => slotsOf(p).filter((r) => r.unitIds.includes(unitId)).map((r) => r.slot)
+/** Floors in short, bottom up: "B1, G, 2, 4, Roof". */
+export const slotsText = (ss: Slot[]): string =>
+  [...ss]
+    .sort((a, b) => (a === 'R' ? 1 : b === 'R' ? -1 : a - b))
+    .map((s) => (s === 'R' ? 'Roof' : s === 0 ? 'G' : s < 0 ? `B${-s}` : String(s)))
+    .join(', ')
+
+/**
+ * Floor `s` on its own (founder 2026-11-20: "if we copy a floor onto a couple of floors and change a few designs on just one
+ * every duplicate changes"): drawing `unitId` stays on every other floor it is on, floor `s` gets a deep copy of it with the
+ * new unit id `forkId`, named "Floor plan A · floor 5" — where it stood (offset, mirrored neighbour: `<forkId>-m`), the
+ * project's elevations, shape and outside shape untouched. From then on they are two drawings: a change to one (in the
+ * Studio, or furniture / openings in 3D — saved by unit id) never reaches the other.
+ * Ids: the copy keeps its walls', corners', rooms', openings' and pieces' ids. Ids are unique within a unit, and whatever
+ * is anchored to them — a note's pin, an arranged layout, a buyer's change request — is stored under the unit id first
+ * (invariant 4: entity id + offset inside its unit), so the copy's anchors are its own from the start, and a note copied
+ * with it still finds its wall. `p` unchanged when the drawing is not on floor `s`.
+ */
+export function forkFloor(p: Project, s: Slot, unitId: Id, forkId: Id): Project {
+  const u = p.units[unitId]
+  if (!u || !slotsWith(p, unitId).includes(s)) return p
+  const name = `${u.name.trim() || 'Untitled drawing'} · ${slotLabel(s).toLowerCase()}`
+  const fork: Unit = { ...structuredClone(u), id: forkId, name, ...(s !== 'R' && s > 0 ? { floor: s } : {}) }
+  const units = { ...p.units, [forkId]: fork }
+  const lv = levelAt(p, s)
+  if (lv) return { ...p, units, levels: (p.levels ?? []).map((l) => (l === lv ? { ...l, unitId: forkId } : l)) }
+  const k = s as number
+  const mine = [stemOf(unitId, false), stemOf(unitId, true)]
+  const swap = (st: string) => (st === mine[0] ? stemOf(forkId, false) : st === mine[1] ? stemOf(forkId, true) : st)
+  // every run of floors through floor k holding the drawing splits round it: below, floor k with the copy, above
+  const floors = p.floors.flatMap((g) =>
+    g.from > k || k > g.to || !g.flats.some((st) => mine.includes(st))
+      ? [g]
+      : [...(g.from < k ? [{ ...g, to: k - 1 }] : []), { from: k, to: k, flats: g.flats.map(swap) }, ...(k < g.to ? [{ ...g, from: k + 1 }] : [])],
+  )
+  const used = new Set(floors.flatMap((g) => g.flats))
+  const flats = { ...p.flats }
+  for (const st of mine) {
+    if (flats[st]) flats[swap(st)] = { ...flats[st], unitId: forkId }
+    if (!used.has(st)) delete flats[st]
+  }
+  return prune({ ...p, units, flats, floors })
+}
+
+/**
+ * The 3D view's question: the first project whose floor `k` holds flat `stem`, its drawing, and every floor that drawing is
+ * on — only when that is more than this floor (a change to it changes them all); else null.
+ */
+export function sharedAt(ps: Project[], stem: string, k: number): { p: Project; unitId: Id; slots: Slot[] } | null {
+  const p = ps.find((x) => x.flats[stem] && x.units[x.flats[stem].unitId])
+  if (!p || !onFloor(p, k).includes(stem)) return null
+  const unitId = p.flats[stem].unitId
+  const slots = slotsWith(p, unitId)
+  return slots.length > 1 ? { p, unitId, slots } : null
+}
+
 /** "2, 4, 6-8" → [2, 4, 6, 7, 8] (commas or spaces, ranges with - or –); null when a piece is not a floor number or a range. */
 export function parseFloors(text: string): number[] | null {
   const out: number[] = []

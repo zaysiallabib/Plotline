@@ -4,7 +4,9 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { library, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
+import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
 import { shareUrl } from './share'
 import typeA from '../data/units/type-a.json'
@@ -509,3 +511,66 @@ function segDist(p: { x: number; y: number }, a: { x: number; y: number }, b: { 
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)))
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
 }
+
+describe('one floor or all (founder 2026-11-20): a floor whose drawing is on other floors too', () => {
+  /** a drawing: one closed room 10 × 8 m with a window */
+  const box = (id: string): Unit => {
+    const pts = [[0, 0], [10, 0], [10, 8], [0, 8]]
+    return {
+      ...JSON.parse(JSON.stringify(typeA)),
+      id,
+      name: 'Floor plan A',
+      vertices: pts.map(([x, y], i) => ({ id: `v${i}`, x, y })),
+      walls: pts.map((_, i) => ({ id: `w${i}`, a: `v${i}`, b: `v${(i + 1) % 4}`, thicknessM: 0.25, heightM: 3, openings: i ? [] : [{ id: 'win', kind: 'window', offsetM: 2, widthM: 1.5, heightM: 1.2, sillM: 0.9 }] })),
+      roomLabels: [{ id: 'l', name: 'Living', kind: 'living', x: 5, y: 4 }],
+      furniture: [],
+    }
+  }
+  const tower = (s: ReturnType<typeof memStore>) => {
+    const p = [1, 2, 3, 4].reduce((q, k) => setSlot(q, k, box('a')), newProject('p', 'Tower', { basements: 0, floors: 4, rooftop: false }))
+    s.setItem(PROJECTS_KEY, JSON.stringify([p]))
+  }
+
+  it('"this floor only": floor 2 gets its own copy, with the layout and notes kept for the drawing; a change to it stays there', () => {
+    const s = memStore()
+    tower(s)
+    const laid = JSON.stringify([piece('sofa', 'sofa_3seat', 'l', 4, 2)])
+    s.setItem(layoutKey('a'), laid)
+    s.setItem(pinsKey('a'), '[{"id":"n1"}]')
+    const f = forkHere('a', 2, s)!
+    expect(f.stem).toBe(f.unit.id)
+    expect(f.unit.name).toBe('Floor plan A · floor 2')
+    const p = parseProjects(s.getItem(PROJECTS_KEY))[0]
+    expect(slotsOf(p).map((r) => `${r.label}:${r.unitIds.map((id) => (id === f.stem ? 'copy' : id))}`)).toEqual(['Floor 4:a', 'Floor 3:a', 'Floor 2:copy', 'Floor 1:a', 'Ground floor:'])
+    expect([s.getItem(layoutKey(f.stem)), s.getItem(pinsKey(f.stem))]).toEqual([laid, '[{"id":"n1"}]'])
+    saveLayout(f.stem, [piece('sofa', 'sofa_3seat', 'l', 6, 2)], undefined, s)
+    expect(s.getItem(layoutKey('a'))).toBe(laid) // floors 1, 3, 4 keep the sofa where it was
+    expect(forkHere(f.stem, 2, s)).toBeNull() // on its own now: nothing to ask
+    expect(forkHere('a', 2, s)).toBeNull() // not on floor 2 any more
+  })
+
+  it('a mirrored neighbour forks with its own stem; the answer is kept per project until "Ask again"', () => {
+    const s = memStore()
+    s.setItem(PROJECTS_KEY, JSON.stringify([makeProject('q', box('a'), 1, 3, 'right')]))
+    s.setItem(layoutKey('a-m'), '[]')
+    const f = forkHere('a-m', 3, s)!
+    expect(f.stem).toBe(`${f.unit.id}-m`)
+    expect(s.getItem(layoutKey(f.stem))).toBe('[]')
+    expect(floorAnswer('q', s)).toBeUndefined()
+    setFloorAnswer('q', 'one', s)
+    setFloorAnswer('z', 'all', s)
+    expect([floorAnswer('q', s), floorAnswer('z', s)]).toEqual(['one', 'all'])
+    setFloorAnswer('q', null, s)
+    expect([floorAnswer('q', s), floorAnswer('z', s)]).toEqual([undefined, 'all'])
+  })
+
+  it('an opening changed in 3D goes into the project drawing too (the Building view draws the other floors from it)', () => {
+    const s = memStore()
+    tower(s)
+    const a = box('a')
+    makeDraft(a, s)
+    const after = { ...a, walls: a.walls.map((w) => ({ ...w, openings: [] })) }
+    expect(saveOpenings(a, after, s)).toBe('ok')
+    expect(parseProjects(s.getItem(PROJECTS_KEY))[0].units.a.walls[0].openings).toEqual([])
+  })
+})

@@ -4,10 +4,12 @@
  * the Studio's tool F, the undo stack, and where a drag in the 3D view puts a piece.
  */
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
+import { PROJECTS_KEY, forkFloor, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
 import { deletePiece, hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
 import type { OpeningEvent } from '../three/PlotlineScene'
+import { pinsKey } from './storage'
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
@@ -174,6 +176,8 @@ export function draftState(unit: Unit, store?: Store): 'ok' | 'other' | 'changed
 /**
  * A committed opening / low wall edit: `after`'s corners and walls (their openings) into the Studio draft and the preview,
  * every other field of theirs kept — only while the draft still holds `before`'s plan; else why not, and nothing is written.
+ * A project drawing takes it at once too (the Building view draws the other floors from the projects), as the Studio's
+ * autosave would.
  */
 export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | 'other' | 'changed' | 'full' {
   const s = store ?? localStorage
@@ -186,6 +190,8 @@ export function saveOpenings(before: Unit, after: Unit, store?: Store): 'ok' | '
       if (!u || u.id !== after.id) continue
       const v = { ...u, vertices: after.vertices, walls: after.walls }
       s.setItem(key, JSON.stringify(isUnit(d) ? v : { ...(d as object), unit: v }))
+      const ps = key === DRAFT_KEY && syncUnit(parseProjects(s.getItem(PROJECTS_KEY)), v)
+      if (ps) s.setItem(PROJECTS_KEY, JSON.stringify(ps))
     }
     return 'ok'
   } catch {
@@ -229,5 +235,64 @@ export function makeDraft(unit: Unit, store?: Store): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+// ── One floor or all (founder 2026-11-20: "change a few designs on just one every duplicate changes"): a project floor whose
+// drawing is on other floors too shares that drawing's furniture and openings (both saved by unit id). The first staff
+// change there asks: this floor only — it gets its own copy of the drawing (projects.ts forkFloor) — or every floor with it.
+export type FloorAnswer = 'one' | 'all'
+/** the answer per project, until "Ask again" (Studio → Building list) */
+export const FLOOR_ANSWER_KEY = 'plotline.floorAnswer'
+
+export function floorAnswer(projectId: Id, store?: Store): FloorAnswer | undefined {
+  try {
+    const a = (JSON.parse((store ?? localStorage).getItem(FLOOR_ANSWER_KEY) ?? '{}') as Record<string, unknown>)[projectId]
+    return a === 'one' || a === 'all' ? a : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function setFloorAnswer(projectId: Id, a: FloorAnswer | null, store?: Store): void {
+  try {
+    const s = store ?? localStorage
+    const all = JSON.parse(s.getItem(FLOOR_ANSWER_KEY) ?? '{}') as Record<string, FloorAnswer>
+    if (a) all[projectId] = a
+    else delete all[projectId]
+    s.setItem(FLOOR_ANSWER_KEY, JSON.stringify(all))
+  } catch {
+    /* storage blocked: it asks again */
+  }
+}
+
+/** What this browser keeps for drawing `from` by its id — its arranged layouts and notes, as itself and mirrored — copied to drawing `to`. */
+export function copyKept(from: Id, to: Id, store?: Store): void {
+  const s = store ?? localStorage
+  for (const m of [false, true])
+    for (const key of [layoutKey, pinsKey]) {
+      const v = s.getItem(key(stemOf(from, m)))
+      if (v !== null) s.setItem(key(stemOf(to, m)), v)
+    }
+}
+
+/**
+ * "This floor only" in the 3D view: floor `k` of the project holding flat `stem` gets its own copy of the drawing, with
+ * what copyKept copies. Returns the copy's stem on floor `k` (mirrored when `stem` is), the copy, and the drawing it was
+ * copied from; null when the drawing is on no other floor any more, or the browser would not save.
+ */
+export function forkHere(stem: string, k: number, store?: Store): { stem: string; unit: Unit; from: Id } | null {
+  const s = store ?? localStorage
+  try {
+    const ps = parseProjects(s.getItem(PROJECTS_KEY))
+    const sh = sharedAt(ps, stem, k)
+    if (!sh) return null
+    const id = newId()
+    const p = forkFloor(sh.p, k, sh.unitId, id)
+    s.setItem(PROJECTS_KEY, JSON.stringify(ps.map((x) => (x === sh.p ? p : x))))
+    copyKept(sh.unitId, id, s)
+    return { stem: stemOf(id, stem !== sh.unitId), unit: p.units[id], from: sh.unitId }
+  } catch {
+    return null
   }
 }

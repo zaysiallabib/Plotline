@@ -7,9 +7,10 @@
 import { useState } from 'react'
 import { deriveFlats, deriveRooms, newId } from '../core'
 import type { Id, Unit } from '../core'
-import { drawingName, parseFloors, planOf, removeDrawing, setSlot, slotsOf, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { drawingName, forkFloor, parseFloors, planOf, removeDrawing, setSlot, slotsOf, slotsText, slotsWith, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { copyKept, floorAnswer, setFloorAnswer } from '../viewer/arrange'
 import { emptyUnit } from './model'
-import { deletePicture, getPicture, putPicture } from './pictures'
+import { copyPicture, deletePicture } from './pictures'
 
 const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
 /** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
@@ -21,6 +22,8 @@ const flatsOf = (u: Unit | undefined): string => {
 }
 /** a number box kept as typed (a cleared box is not a 0 yet), clamped when used */
 const num = (s: string, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(s) || 0)))
+/** the floor menu's "This floor only" (never a unit id: ids have no spaces) */
+const OWN = ' own'
 
 /** The "New project" card: its name and shape (a ground floor always). */
 export function NewProject({ onCreate }: { onCreate: (name: string, plan: ProjectPlan) => void }) {
@@ -147,18 +150,31 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     const src = id === drawing ? unit : project.units[id]
     if (!src) return
     const u: Unit = { ...src, id: newId(), name: `${nameOf(src)} copy` }
-    void getPicture(id)
-      .then((pic) => pic && putPicture(u.id, pic))
-      .catch(() => {})
+    void copyPicture(id, u.id)
     if (change((p) => ({ ...p, units: { ...p.units, [u.id]: u } }))) onToast(`${u.name}: type its floors under Floor plans, or Use drawing… on a floor`)
   }
   /** where drawing `id` stands now, bottom up: "B1, G, 2, 4, 6, Roof" */
-  const floorsOf = (id: Id) =>
-    slotsOf(project)
-      .filter((r) => r.unitIds.includes(id))
-      .map((r) => (r.slot === 'R' ? 'Roof' : r.slot === 0 ? 'G' : r.slot < 0 ? `B${-r.slot}` : String(r.slot)))
-      .reverse()
-      .join(', ')
+  const floorsOf = (id: Id) => slotsText(slotsWith(project, id))
+  /**
+   * "This floor only" (founder 2026-11-20): floor `slot` gets its own copy of drawing `id` (forkFloor: the others keep it),
+   * with its picture, arranged layout and notes, and the copy opens — what he changes then stays on this floor.
+   */
+  const ownFloor = (slot: Slot, id: Id, label: string) => {
+    const ps = fresh()
+    const p = mine(ps)
+    const f = newId()
+    const q = p && forkFloor(p, slot, id, f)
+    if (!p || !q || q === p) return
+    copyKept(id, f)
+    void copyPicture(id, f).then(() => {
+      onOpen(
+        ps.map((x) => (x === p ? q : x)),
+        f,
+      )
+      onToast(`${label} has its own drawing now: what you change on it stays on this floor`)
+    })
+  }
+  const said = floorAnswer(pid)
   const deleteDrawing = () => {
     if (!drawing || !window.confirm(`Delete the drawing "${nameOf(unit)}"? It leaves every floor it is on. This cannot be undone.`)) return
     void deletePicture(drawing).catch(() => {})
@@ -197,6 +213,14 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
       <button className="primary" title="All the floors stacked, in a new tab" onClick={onShow}>
         Show building
       </button>
+      {said && (
+        <p className="muted">
+          Furniture and openings changed in 3D on a floor that shares its drawing: {said === 'one' ? 'that floor only (it gets its own copy)' : 'every floor with that drawing'}, as you answered.{' '}
+          <button className="link" title="The 3D view asks again the next time" onClick={() => (setFloorAnswer(pid, null), onToast('The 3D view asks again'))}>
+            Ask again
+          </button>
+        </p>
+      )}
       {inProject ? (
         <section className="open-drawing">
           <label>
@@ -253,6 +277,8 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
         {slotsOf(project).map((r) => {
           const id = r.unitIds[0]
           const here = !!id && id === drawing
+          /** its drawing is on other floors too: the menu offers "This floor only" */
+          const shared = !!id && r.unitIds.length === 1 && slotsWith(project, id).length > 1
           // a whole-floor drawing's flats under its name: "Floor 2 — Type A, Type B"
           const flats = r.unitIds.length === 1 ? flatsOf(here ? unit : project.units[id]) : ''
           return (
@@ -277,13 +303,22 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
                   )
                 )}
                 {drawings.length > 0 && (
-                  <select value="" title="Put one of your drawings on this floor" onChange={(e) => e.target.value && change((p) => setSlot(p, r.slot, p.units[e.target.value] ?? null))}>
+                  <select
+                    value=""
+                    title={`Put one of your drawings on this floor${shared ? `, or give ${r.label.toLowerCase()} its own copy of "${named(id)}" (This floor only): what you change on it then stays on this floor` : ''}`}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v === OWN) ownFloor(r.slot, id, r.label)
+                      else if (v) change((p) => setSlot(p, r.slot, p.units[v] ?? null))
+                    }}
+                  >
                     <option value="">Use drawing…</option>
                     {drawings.map((d) => (
                       <option key={d} value={d}>
                         {named(d)}
                       </option>
                     ))}
+                    {shared && <option value={OWN}>This floor only — its own copy</option>}
                   </select>
                 )}
                 {id && (

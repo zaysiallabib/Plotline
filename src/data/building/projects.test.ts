@@ -1,7 +1,7 @@
 /** Project first (founder 2026-10-05): the floors said first, any drawing on any floor. The older flows: three/building.test.ts. */
 import { describe, expect, test } from 'vitest'
 import type { Unit } from '../../core'
-import { drawingName, makeProject, newProject, parseFloors, planOf, projectTower, removeDrawing, setSlot, slotsOf, type Project, type Slot } from './projects'
+import { drawingName, forkFloor, makeProject, newProject, parseFloors, planOf, projectTower, removeDrawing, setSlot, sharedAt, slotsOf, slotsText, type Project, type Slot } from './projects'
 
 /** a drawing: one closed room w × h m */
 const box = (id: string, w = 10, h = 8): Unit => {
@@ -109,5 +109,64 @@ describe('project first: floors said first, any drawing on any floor', () => {
     // a floor of it given another drawing: the range splits, the mirrored neighbour stays on the others
     const q = setSlot(p, 4, box('b'))
     expect(q.floors.map((g) => `${g.from}-${g.to}:${g.flats}`)).toEqual(['2-3:a,a-m', '4-4:b', '5-7:a,a-m'])
+  })
+})
+
+describe('one floor on its own: a drawing on floors 1-4, floor 2 forked (founder 2026-11-20)', () => {
+  const a = box('a')
+  a.walls[0].openings.push({ id: 'a-win', kind: 'window', offsetM: 2, widthM: 1.5, heightM: 1.2, sillM: 0.9 })
+  const p0 = { ...put(newProject('p', 'Tower', { basements: 1, floors: 4, rooftop: true }), [1, 2, 3, 4], a), elevations: { '0': 0, '1': 3.2 } }
+
+  test('the drawing stays on the other floors; floor 2 gets a deep copy with a new unit id and the same wall / opening ids', () => {
+    const p = forkFloor(p0, 2, 'a', 'f')
+    expect(rows(p).slice(1, 5)).toEqual(['Floor 4:a', 'Floor 3:a', 'Floor 2:f', 'Floor 1:a'])
+    expect(p.floors.map((g) => `${g.from}-${g.to}:${g.flats}`)).toEqual(['1-1:a', '2-2:f', '3-4:a'])
+    const f = p.units.f
+    expect([f.id, f.name, f.floor]).toEqual(['f', 'a · floor 2', 2])
+    expect(f.walls.map((w) => w.id)).toEqual(a.walls.map((w) => w.id)) // ids are per unit: kept (see forkFloor)
+    expect(f.walls[0].openings[0].id).toBe('a-win')
+    expect(f.walls).not.toBe(a.walls) // a deep copy: changing one never touches the other
+    expect(f.walls[0].openings).not.toBe(a.walls[0].openings)
+    expect(p.units.a).toBe(a)
+    expect([p.plan, p.elevations]).toEqual([p0.plan, p0.elevations])
+    // the Building view draws floor 2 from the copy: its own openings (one window taken out there only)
+    const q = { ...p, units: { ...p.units, f: { ...f, walls: f.walls.map((w) => ({ ...w, openings: [] })) } } }
+    const t = projectTower(q)
+    expect(t.FLOORS.filter((x) => x.floor >= 1).map((x) => `${x.floor}:${x.flats}`)).toEqual(['1:a', '2:f', '3:a', '4:a'])
+    expect(t.FLATS.f.unit.walls[0].openings).toEqual([])
+    expect(t.FLATS.a.unit.walls[0].openings.map((o) => o.id)).toEqual(['a-win'])
+    // forking a floor it is not on, or a drawing it does not have: nothing changes
+    expect(forkFloor(p, 2, 'a', 'g')).toBe(p)
+    expect(forkFloor(p, 3, 'nope', 'g')).toBe(p)
+  })
+
+  test('an older project: the mirrored neighbour comes along, where it stood', () => {
+    const p = forkFloor(makeProject('q', box('a'), 2, 7, 'right'), 4, 'a', 'f')
+    expect(p.floors.map((g) => `${g.from}-${g.to}:${g.flats}`)).toEqual(['2-3:a,a-m', '4-4:f,f-m', '5-7:a,a-m'])
+    expect(p.flats['f-m']).toEqual({ unitId: 'f', offset: { x: 0, y: 0 }, mirror: 'right' })
+    expect(projectTower(p).FLATS['f-m'].unit.id).toBe('f-m')
+    // only on one floor (its top one forked too): the old stem goes, the drawing with it (an older project keeps only what it uses)
+    const one = forkFloor(makeProject('r', box('a'), 2, 2, 'none'), 2, 'a', 'f')
+    expect([Object.keys(one.flats), Object.keys(one.units)]).toEqual([['f'], ['f']])
+  })
+
+  test('a level: the same drawing on both basements, basement 2 forked', () => {
+    const park = box('park', 30, 30)
+    const two = put(newProject('p', 'T', { basements: 2, floors: 2, rooftop: false }), [-1, -2], park)
+    const q = forkFloor(two, -2, 'park', 'f')
+    expect(rows(q).slice(-2)).toEqual(['Basement 1:park', 'Basement 2:f'])
+    expect(q.units.f.name).toBe('park · basement 2')
+    expect(q.units.f.floor).toBeUndefined()
+  })
+
+  test('the question: asked only on a floor whose drawing is on another floor too', () => {
+    const b = box('b')
+    const p = setSlot(p0, 3, b)
+    expect(sharedAt([p], 'a', 2)).toEqual({ p, unitId: 'a', slots: [4, 2, 1] })
+    expect(sharedAt([p], 'b', 3)).toBeNull() // b is only on floor 3
+    expect(sharedAt([p], 'a', 3)).toBeNull() // not on floor 3
+    expect(sharedAt([forkFloor(p, 2, 'a', 'f')], 'f', 2)).toBeNull() // forked: on its own
+    expect(sharedAt([makeProject('q', box('m'), 2, 3, 'left')], 'm-m', 3)?.unitId).toBe('m')
+    expect(slotsText(['R', 4, 0, -1, 2])).toBe('B1, G, 2, 4, Roof')
   })
 })

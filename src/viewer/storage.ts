@@ -30,11 +30,11 @@ export interface Pin {
 
 type Row = Pin | { removedId: Id; createdAt: string }
 
-const key = (unitId: Id) => `plotline.pins.${unitId}`
+export const pinsKey = (unitId: Id): string => `plotline.pins.${unitId}`
 
 function rows(unitId: Id): Row[] {
   try {
-    const v = JSON.parse(localStorage.getItem(key(unitId)) ?? '[]')
+    const v = JSON.parse(localStorage.getItem(pinsKey(unitId)) ?? '[]')
     return Array.isArray(v) ? v : []
   } catch {
     return []
@@ -43,7 +43,7 @@ function rows(unitId: Id): Row[] {
 
 function append(unitId: Id, row: Row): void {
   try {
-    localStorage.setItem(key(unitId), JSON.stringify([...rows(unitId), row]))
+    localStorage.setItem(pinsKey(unitId), JSON.stringify([...rows(unitId), row]))
   } catch (e) {
     console.warn('[plotline] could not save note', e)
   }
