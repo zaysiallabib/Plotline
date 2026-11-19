@@ -104,6 +104,16 @@ Access: operator app uses authenticated role; buyer link uses the signed token
 via an edge function / RPC that scopes every read/write to that unit. The
 two-tenant RLS test is mandatory for every schema change.
 
+## Routes (the addresses)
+
+One page (`index.html`), no router: `src/main.tsx` picks the app from the address and loads only that one.
+
+- `/` — the front page (`src/landing/`): plain React + CSS + one small canvas, no three.js. `/` with `?c=`, `?floor=`,
+  `?staff=` or `?view=` (an old share link or staff bookmark) opens the viewer instead — `landing/route.ts landingOrViewer`.
+- `/u/<stem>` — the viewer on a built-in flat or level; `/u/preview` — the Studio's draft; `/s/<token>` — a published buyer link.
+- `/studio` — the Studio. `/changes` — the staff change list.
+- Anything else opens the viewer, which sends it to the first built-in unit.
+
 ## Repo layout
 
 ```
@@ -114,6 +124,7 @@ plotline/
     core/       # wall graph + geometry (pure, tested)
     three/      # scene generation, controls, perf
     furnish/    # kit registry + presets
+    landing/    # the front page at / (no three.js)
     viewer/     # buyer-facing React app (Bangla-first)
     studio/     # tracing editor — part of the PRODUCT (weeks 2–4):
                 # dimension-driven input, snapping, openings, publish
