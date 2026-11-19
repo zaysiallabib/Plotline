@@ -192,7 +192,7 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
     <div className="popover project site" onKeyDown={(e) => e.stopPropagation()}>
       <div className="head">
         <strong>Site · where the building stands</strong>
-        <button className="link" title="Close" onClick={onClose}>
+        <button className="x" title="Close" onClick={onClose}>
           ×
         </button>
       </div>

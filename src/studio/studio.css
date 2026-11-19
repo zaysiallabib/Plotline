@@ -64,7 +64,7 @@
 }
 :where(.studio) button.link:where(:hover) { background: none; color: var(--ink); text-decoration-color: currentColor; }
 /* a round close button (×) */
-.studio .x {
+.studio .x { /* × on a panel, a box, a message */
   flex: none; width: 28px; height: 28px; min-height: 0; padding: 0;
   background: none; border: 0; border-radius: var(--r-pill); color: var(--muted); font-size: var(--fs-xl); line-height: 1;
 }
@@ -242,12 +242,12 @@
 .new-project .primary { min-height: 32px; margin-top: var(--s-1); }
 
 /* the length box and the room box on the plan */
-.field, .popover { position: absolute; z-index: 5; padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.field, .popover { position: absolute; z-index: 6; /* over a passing message: the box you type in stays on top */ padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
 .field { width: 170px; }
 .field .err { color: var(--danger); font-size: var(--fs-xs); }
 .popover { width: 260px; }
 .popover label { display: flex; flex-direction: column; gap: var(--s-1); }
-.popover .row { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); } /* narrow: names above their fields */
+.popover .row { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1); } /* narrow: names above their fields */
 .popover p { margin: 0; font-size: var(--fs-sm); }
 /* panels that open over the plan, top right: Building (one plan), Site, the account card */
 .popover.project { top: var(--s-3); right: var(--s-3); width: 320px; gap: var(--s-3); padding: var(--s-4); }
@@ -256,7 +256,7 @@
 
 /* messages at the bottom of the plan */
 .toast {
-  position: absolute; bottom: var(--s-4); left: 50%; z-index: 6; transform: translateX(-50%);
+  position: absolute; bottom: var(--s-4); left: 50%; z-index: 5; transform: translateX(-50%);
   display: flex; align-items: center; gap: var(--s-3);
   padding: 8px var(--s-4); border-radius: var(--r-pill); white-space: nowrap; font-size: var(--fs-md);
   animation: rise var(--dur) var(--ease) both;
@@ -363,9 +363,8 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issue-layer .g-area { fill: rgba(232, 193, 112, 0.3); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .issue-layer .tint { fill: rgba(242, 157, 56, 0.07); }
 .issue-layer .tint.on { fill: rgba(242, 157, 56, 0.22); stroke: var(--sev-amber); stroke-width: 1.5; }
-.issue-pop { position: absolute; z-index: 5; width: 264px; padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); animation: rise var(--dur) var(--ease) both; }
+.issue-pop { position: absolute; z-index: 6; width: 264px; padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); animation: rise var(--dur) var(--ease) both; }
 .issue-pop .head { display: flex; gap: var(--s-2); align-items: flex-start; font-size: var(--fs-sm); line-height: 1.45; }
-.issue-pop .head .link { padding: 0 var(--s-1); font-size: var(--fs-lg); text-decoration: none; color: var(--muted); }
 .issue-pop p { margin: 0; font-size: var(--fs-sm); line-height: 1.45; }
 
 /* ── the floor list beside the plan (FloorList.tsx): the project first ───────────────────────────────────────────── */
@@ -373,7 +372,6 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .floors .head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); }
 .floors .head strong { font-size: var(--fs-lg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .floors .head > span { display: flex; gap: 10px; white-space: nowrap; }
-.floors .head .link:only-child, .floors > .head > .link { font-size: var(--fs-lg); text-decoration: none; color: var(--muted); }
 .floors p { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
 .floors > .link { align-self: flex-start; }
 .floors > .primary { min-height: 32px; }

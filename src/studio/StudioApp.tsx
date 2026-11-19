@@ -2384,7 +2384,7 @@ export default function StudioApp() {
               <button className="link" onClick={startOver}>
                 Start over
               </button>
-              <button className="link" onClick={() => setRestored(null)}>
+              <button className="x" title="Hide this message" onClick={() => setRestored(null)}>
                 ×
               </button>
             </div>

@@ -154,7 +154,7 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
     <div className="popover project" onKeyDown={(e) => e.stopPropagation()}>
       <div className="head">
         <strong>{mine ? `Building · ${mine.name}` : asLevel && lv ? `${asLevel.name} · its ${levelName(lv.kind, lv.n)}` : 'Make a building'}</strong>
-        <button className="link" title="Close" onClick={onClose}>
+        <button className="x" title="Close" onClick={onClose}>
           ×
         </button>
       </div>
