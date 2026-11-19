@@ -92,17 +92,61 @@ Geometry algorithms in `src/core/` (pure functions, unit-tested):
 
 ## Backend (Supabase)
 
-Tables (all RLS-protected, tenant = developer org):
-- `orgs`, `projects`, `units` (unit JSON in storage, row holds metadata + version)
-- `share_links` (unit_id, signed token, buyer label, expires)
-- `buyers` (name, phone — minimal PII)
-- `events` (append-only: link_open {geo, ua}, selection {optionId}, comment
-  {anchorId, offset, text}, change_request, approval — this IS the change list)
-- `assets` manifest mirror (license audit)
+Built 2026-11-20 (session 30). The SQL is `supabase/migrations/` (pasted by the founder:
+`Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js).
 
-Access: operator app uses authenticated role; buyer link uses the signed token
-via an edge function / RPC that scopes every read/write to that unit. The
-two-tenant RLS test is mandatory for every schema change.
+Tables (RLS on every one; tenant = developer company, `orgs`):
+- `orgs`, `org_members` (user, company, `owner | staff`) — written only in the SQL editor (`private.add_member`).
+- `projects` — a Studio `Project` or one loose `Unit` as JSON, `version` for optimistic concurrency; never
+  deleted (Delete hides it: `deleted_at`).
+- `project_versions` — every save, written by a trigger, append-only (nobody can change or remove a row).
+- `units` + `share_links` — what a buyer link shows (a frozen copy) and its token; a link can be turned off.
+- `events` — append-only buyer notes and finish choices on a link (this IS the change list).
+
+Client: `src/lib/auth.ts` (email magic links, PKCE; the session; the person's company), `src/lib/cloud.ts`
+(save with the version it started from, list / open / rename / delete, history, the 2 s autosaver and its
+status word), `src/lib/events.ts` (the buyer outbox, the change list). Not configured (no env) = no client:
+every path stays in the browser, as before. The plan picture is not in the cloud yet (Supabase Storage, later).
+
+Proof: `supabase/tests/two_tenants.sql` (paste after the migration; it rolls itself back) — mandatory again
+for every schema change.
+
+## Security
+
+In plain words; the code that enforces each point is named in brackets.
+
+- **What a buyer link can reach.** Only the one flat it was made for, while the link is on
+  (`unit_by_token`), and adding notes / finish choices to that link (`add_event`). Nothing else: no table,
+  no other link, no project, no company. A turned-off link opens nothing and takes nothing (`revoke_link`).
+- **What the public key (in every page) can do.** The same as a buyer link — those two calls — and ask
+  Supabase for a sign-in email. It reads and writes no table (privileges revoked from `anon`, and RLS
+  everywhere behind that).
+- **What a member of company A can do to company B.** Nothing: every row carries its company and the
+  database answers only the signed-in person's company (RLS policies on every table). A cannot read, save
+  over, add to, delete, share or turn off anything of B's, cannot add itself to B, and cannot make a
+  company. `supabase/tests/two_tenants.sql` checks each of these, and was itself checked by breaking each
+  guard in turn (it must then fail).
+- **What a member can do in their own company.** Read, create and save projects; read the history (never
+  change it); make and turn off share links; read the change list. A save names the version it started
+  from; the database stamps the next version, who and when (a browser cannot forge them).
+- **Share tokens** are 128 random bits made by the database (`gen_random_bytes(16)`), never by a browser.
+- **No secret key in the website.** Only the publishable key is in the browser; the build refuses a
+  secret / `service_role` key (`vite.config.ts`). The founder's tools (`private.add_member`,
+  `private.adopt_old_links`) live in a schema the website cannot reach.
+- **No passwords.** Sign-in is an emailed link (Supabase Auth). The link only works in the browser that
+  asked for it (PKCE: a code plus a secret this browser keeps), so a forwarded or intercepted email is
+  useless, and it brings the person back only to this site's `/studio` (`emailRedirectTo` = this origin;
+  Supabase refuses any address not on its Redirect URLs list — no open redirect, no login forgery from
+  another site).
+- **Emails are not logged** by Plotline (no console output, no error text with the address; the founder's
+  SQL error for an unknown address does not repeat it). They live in Supabase Auth only.
+- **Rate limits** are Supabase's own (Dashboard → Authentication → Rate Limits): sign-in emails per hour,
+  one link a minute per address, sign-in and token requests per IP. Buyer notes have no limit per link
+  yet (8 KB a row); a spammed link is turned off.
+- **Anyone can create an empty account** (by asking for a link); it reaches nothing until the founder adds
+  it to a company. To close even that: turn off sign-ups in Supabase and invite people instead.
+- **The old staff key** (Phase 0) reaches only links made before accounts (no company) and stops working
+  for good when the founder deletes it (`SETUP_ACCOUNTS.md`).
 
 ## Routes (the addresses)
 

@@ -165,14 +165,15 @@ describe('the SQL the founder pastes', () => {
   const dir = new URL('../../supabase/', import.meta.url)
   const m1 = readFileSync(new URL('migrations/20261003120000_share_links.sql', dir), 'utf8')
   const m2 = readFileSync(new URL('migrations/20261004120000_events.sql', dir), 'utf8')
+  const m3 = readFileSync(new URL('migrations/20261120120000_accounts.sql', dir), 'utf8')
   const paste = readFileSync(new URL('paste-into-sql-editor.sql', dir), 'utf8')
 
-  it('is one file: both migrations, in order, unchanged (regenerate it when a migration changes)', () => {
-    expect(paste.endsWith(m1 + '\n' + m2)).toBe(true)
-    expect(paste.trimEnd().endsWith("select value as staff_key from private.config where key = 'staff_key';")).toBe(true)
+  it('is one file: the three migrations, in order, unchanged (regenerate it when a migration changes)', () => {
+    expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3)).toBe(true)
+    expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
   })
 
-  it('is safe to run twice and keeps anon out (the real run: E:/dev/tmp/s18/laneD/pg/sqltest.mjs, PGlite)', () => {
+  it('is safe to run twice and keeps anon out (the real runs, PGlite: E:/dev/tmp/s18/laneD/pg/sqltest.mjs, E:/dev/tmp/s30/backend/pg/run.mjs)', () => {
     for (const sql of [m1, m2]) {
       expect(sql).not.toMatch(/create table (?!if not exists)/i)
       expect(sql).not.toMatch(/\bdrop\b|create policy|grant (select|insert|update|delete|all) on (table )?public\./i)
@@ -181,5 +182,23 @@ describe('the SQL the founder pastes', () => {
     expect(m1).toMatch(/insert into private\.config[^;]*on conflict \(key\) do nothing;/)
     expect(m2).toMatch(/alter table public\.events enable row level security;/)
     expect(m2).toMatch(/revoke all on public\.events from anon, authenticated;/)
+  })
+
+  it('accounts: every table under RLS, every policy made again, nothing granted to anon but the buyer calls', () => {
+    expect(m3).not.toMatch(/create table (?!if not exists)/i)
+    expect(m3).not.toMatch(/create (trigger|function) /i)
+    expect(m3).not.toMatch(/\bdrop (table|function|trigger|schema|column)\b/i)
+    const tables = [...m3.matchAll(/create table if not exists (public\.\w+)/g)].map((m) => m[1])
+    expect(tables).toEqual(['public.orgs', 'public.org_members', 'public.projects', 'public.project_versions'])
+    for (const t of [...tables, 'public.units', 'public.share_links', 'public.events']) expect(m3).toContain(`alter table ${t} enable row level security;`)
+    const policies = [...m3.matchAll(/create policy ("[^"]+") on (public\.\w+)/g)]
+    expect(policies.length).toBeGreaterThanOrEqual(9)
+    for (const [, name, table] of policies) expect(m3).toContain(`drop policy if exists ${name} on ${table};`)
+    // the only grant to anon: execute on the buyer calls (and the old staff-key ones, which check the key)
+    const toAnon = [...m3.matchAll(/^grant [^;]*\banon\b[^;]*;/gm)].map((m) => m[0])
+    expect(toAnon).toHaveLength(1)
+    expect(toAnon[0]).toMatch(/^grant execute on function public\.unit_by_token \(uuid\), public\.add_event /)
+    expect(m3).toMatch(/revoke all on function public\.share_unit [^;]* from public, anon;/)
+    expect(m3).toContain("set default (encode(extensions.gen_random_bytes(16), 'hex'))::uuid;")
   })
 })

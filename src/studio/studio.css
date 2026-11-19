@@ -345,3 +345,19 @@
 .site-zoom { position: absolute; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 1; }
 .studio .site-zoom button { width: 24px; height: 24px; padding: 0; line-height: 1; background: rgba(23, 24, 26, 0.8); }
 .site-map:active { cursor: grabbing; }
+
+/* s30 top bar → Sign in / your account (CloudBar.tsx): the save word, the account card under the top bar */
+.topbar .cloud-status { color: var(--muted); white-space: nowrap; font-size: 12px; }
+.topbar .cloud-status.offline, .topbar .cloud-status.stale, .topbar .cloud-status.gone, .topbar .cloud-status.refused { color: #e5534b; }
+.popover.project.cloud { position: fixed; top: 56px; right: 12px; width: 380px; max-height: calc(100vh - 72px); overflow: auto; z-index: 7; background: var(--surface); /* opaque: it lies over the right-hand panel */ }
+.popover.cloud .cloud-h { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+.popover.cloud .cloud-error, .popover.cloud .cloud-conflict b { color: #e5534b; }
+.popover.cloud .cloud-conflict { border: 1px solid #e5534b; border-radius: 8px; padding: 8px; display: grid; gap: 6px; }
+.cloud-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cloud-list li { display: grid; gap: 2px; padding: 6px 8px; border-radius: 8px; }
+.cloud-list li.here { background: var(--surface-2); outline: 1px solid var(--accent); }
+.cloud-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.cloud-list .small { font-size: 12px; }
+.cloud-list .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.studio .cloud-list .acts button { padding: 3px 8px; }
+.cloud-history { display: grid; gap: 4px; }

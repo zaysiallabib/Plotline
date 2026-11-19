@@ -38,9 +38,9 @@ Open the site with nothing after the name (`/`) and you get the front page: what
 |---|---|
 | `/u/<name>` | The 3D view of a built-in flat or level. Names: `type-a`, `type-b`, `type-c`, `sheltech-a`, `sheltech-b`, `sheltech-ground`, `sheltech-l1`, `sheltech-b1`, `sheltech-b2`, `sheltech-roof`, `banani-ground`, `banani-b1`, `banani-b2`, `banani-roof`, `dmd-ground`, `dmd-b1`, `dmd-b2`, `dmd-roof` |
 | `/u/preview` | Whatever you last sent from the Studio with **Preview 3D**. Only works in the same browser. |
-| `/s/<code>` | A buyer link made with the Studio's **Share link**. Works anywhere. Needs the database (Supabase). |
+| `/s/<code>` | A buyer link made with the Studio's **Share link**. Works anywhere, no account needed. Stops opening when staff **Turn off** the link. Needs the database (Supabase). |
 | `/studio` | The Studio. |
-| `/changes` | The staff list of everything buyers chose and wrote. Asks for the staff key. Needs the database. |
+| `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: asks for the staff key (links made before accounts). Needs the database. |
 | `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
 
 Extras you can add to the end of a 3D address:
@@ -213,10 +213,56 @@ On a narrow window (under about 1 600 px wide) the top bar takes two lines, so e
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
 | Building | Shows / hides the list of your project's floors on the right; with no project open: start one (section 6) |
 | Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below |
-| Share link | Makes a buyer link and copies it. Asks once for the staff key. Needs the database. |
+| Share link | Makes a buyer link and copies it. Signed in: made for your company, nothing asked. Not signed in: asks once for the staff key. Needs the database. |
 | Change list | Opens `/changes`. Needs the database. |
+| Sign in / your email | Your account and your company's work in the cloud — see "Signing in and saving to the cloud" below. Needs the database. |
+| Saved · Saving… · Offline, will retry · Not saved: … | Next to your email when signed in: where your work stands in the cloud (see below) |
 
 **Loading the plan picture:** drop the picture on the Studio, or click **Choose plan image…** (PNG, JPG or WEBP, up to 10 MB).
+
+### Signing in and saving to the cloud (top bar → Sign in)
+
+Without signing in, your work is kept in this browser only (section 9). Signed in, it is **also** kept in the
+database for your company, by itself, as you work. Setting it up (once, by the founder): [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).
+
+**Signing in** (no password):
+
+1. Top bar, right: **Sign in**. A card opens.
+2. Type your email, click **Send me a link**. The card says **Check your email**.
+3. Open that email **on the same computer, in the same browser**, and click the link. The Studio opens with your
+   email at the top right instead of **Sign in**.
+4. The first time, it says **Not saved: not in a company yet** until the owner adds you (SETUP_ACCOUNTS.md, "Adding
+   a staff member"). Then press F5.
+
+**Saving** happens by itself 2 seconds after you stop changing things. What is saved: the project open in the
+Studio (all its floors and drawings), or — with no project open — the drawing you are on. The plan picture is
+not saved to the cloud: keep the picture file (or drop it again on another computer). The word next to your email:
+
+| Word | Means |
+|---|---|
+| **Saving…** | Your latest change is on its way |
+| **Saved** | The cloud has exactly what you see (and this browser too) |
+| **Offline, will retry** | No internet. Keep working: it is in this browser, and it saves by itself when the internet is back |
+| **Not saved: someone saved a newer version — reload** | A colleague saved the same project after you opened it. Click your email: **Open theirs** (their copy replaces yours here) or **Keep mine** (yours becomes the newest; theirs stays under **Earlier saves**). Nothing is lost either way |
+| **Not saved: it was deleted from the cloud** | Someone deleted it meanwhile. Click your email → **Save as new** keeps your copy as a new one |
+| **Not saved: …** (anything else) | The reason in words (for example too big: the most is 5 MB). Your work is still in this browser |
+
+**Click your email** (top right) for the card:
+
+- Your email and your company (owner or staff).
+- **Projects in the cloud** — your company's projects and drawings, last saved first, with who saved last ("by a
+  colleague") and when. The one open now is outlined.
+  - **Open** — puts it in the Studio in place of what is open (what is open is saved first; if it could not be, you are
+    asked).
+  - **Rename** — its name, for everyone.
+  - **Earlier saves** — every save of it, newest first (version, when, you or a colleague). **Open this save** puts that
+    older copy in the Studio; it becomes the newest when it saves. Nothing is ever lost: the later saves stay in the list.
+  - **Delete** (with a question first) — takes it off the list for everyone in the company. This browser keeps its own
+    copy, and every save stays in the history (the founder can bring it back).
+- **Sign out** — saves what is waiting, then signs out. Your work stays in this browser.
+
+Two people can work in the Studio at once on **different** projects without ever noticing each other. On the **same**
+project, the second save is the one that asks (see "someone saved a newer version" above).
 
 ### Site — where the building stands (top bar → Site)
 
@@ -630,7 +676,7 @@ Never a room — fixture and drawing tags: DW, D.WASH, FRIDGE, FREEZER, REF, W/M
 - Notes on ordinary links
 - Buildings and projects you made, every drawing of a project and its plan picture
 - Your answer to the 3D view's "which floors?" box, per project (Studio → Building list: **Ask again**)
-- Staff mode, the staff key
+- Staff mode, the staff key, your sign-in (until **Sign out**)
 - Your Check these answers (the record Export answers saves, with the Local AI's answers marked) and, per sheet, where the print Auto-trace could not read stands
 - The Local AI settings (server, model). The model itself is on this PC's disk (`E:\dev\tools\ollama\models`), not in the browser
 
@@ -641,6 +687,8 @@ The **Site** (place, north, blocks, roads, wind) is part of the drawing: kept wh
 - The built-in flats and levels
 - Anything exported as a file (the file does not contain the plan picture — keep the picture too)
 - Buyer links made with **Share link** and what buyers do on them (in the database)
+- Signed in to a company: the open project or drawing and **every save of it** (in the database, for your company
+  only). The plan picture is not in it
 
 **Never saved:** the finishes you clicked, unless you press **Share** (they go into the link).
 
