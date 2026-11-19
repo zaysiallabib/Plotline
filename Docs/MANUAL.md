@@ -219,7 +219,7 @@ It is saved with the drawing (and on every drawing of the project open, one site
 
 ### Bring in the architect's file
 
-Instead of a picture to trace, the architect's own file can be dropped on the Studio (or picked with **Import** / **Choose plan image…**). What happens depends on what the file holds:
+Instead of a picture to trace, the architect's own file can be dropped on the Studio (or picked with **Import** / **Choose plan image…**). What happens depends on what the file holds: A drawing that came from a file has no picture behind it: the walls ARE the file, so the "Drop the plan picture here" box does not show (the footer says "no picture lined up"). A picture can still be dropped on the page later to see the sheet behind the walls.
 
 | File | What it holds | What happens |
 |---|---|---|

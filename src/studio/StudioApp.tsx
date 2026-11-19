@@ -2231,7 +2231,7 @@ export default function StudioApp() {
               )
             })}
           </div>
-          {!state.planImage && (
+          {!state.planImage && (!unit.vertices.length || missingPlan) && (
             <div className="empty">
               {!project && !unit.vertices.length && !missingPlan && <NewProject onCreate={createProject} />}
               <div className="drop">
