@@ -926,7 +926,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      // a text box keeps its letters; the hour slider takes none (after a drag the keys and Esc still work)
+      if ((tag === 'INPUT' && (e.target as HTMLInputElement).type !== 'range') || tag === 'TEXTAREA') return
       if (!entered) {
         if (e.key === 'Enter') enter()
         return

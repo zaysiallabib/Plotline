@@ -120,7 +120,7 @@
 .toolbar .sep { width: 1px; height: 18px; margin: 0 var(--s-1); background: var(--hairline); }
 
 /* the lists and menus that open from the HUD */
-.menu { position: absolute; top: calc(100% + var(--s-2)); right: 0; min-width: 210px; padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: drop var(--dur) var(--ease) both; }
+.menu { position: absolute; z-index: 5; top: calc(100% + var(--s-2)); right: 0; min-width: 210px; padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: drop var(--dur) var(--ease) both; }
 .menu-wide { width: 300px; }
 .menu-title { padding: 6px 10px 4px; font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: var(--track); color: var(--muted); }
 .menu-row {
@@ -136,7 +136,7 @@
 .menu .seg { margin: 2px 4px 0; }
 .seg-fill button { flex: 1; }
 .rec { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.rooms-list { position: static; min-width: 260px; max-height: min(60vh, 520px); overflow: auto; }
+.rooms-list { position: relative; top: 0; right: auto; min-width: 260px; max-height: min(60vh, 520px); overflow: auto; }
 
 /* ── bottom centre: the hint over the Sun & wind pill / card ─────────────────────────────────────────────────────── */
 .dock { position: absolute; left: 50%; bottom: var(--s-4); transform: translateX(-50%); max-width: calc(100vw - 32px); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }

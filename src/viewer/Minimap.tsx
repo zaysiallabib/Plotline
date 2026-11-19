@@ -116,7 +116,8 @@ export default function Minimap({ scene, unit, rooms, walking }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'm') setShown((v) => !v)
+      const text = (tag === 'INPUT' && (e.target as HTMLInputElement).type !== 'range') || tag === 'TEXTAREA'
+      if (!text && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'm') setShown((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
