@@ -60,27 +60,34 @@ Extras you can add to the end of a 3D address:
 
 ## 2. The 3D view — everyone
 
-**Start screen.** You see the project's name in small capitals, the flat's name large, and its floor and size. A thin gold line fills as the rooms load ("12 of 27 rooms ready"). Then **Enter** (the button, or the Enter key) takes you in. You stand just inside the flat's front door, looking in. A drawing with no door yet puts you in its living room (or its first room), never facing a bare wall (2026-10-18). At the bottom, quietly: the other flats and each tower's levels (not on a buyer's link). Top right, small: **Studio** and **Staff mode** / **Leave staff mode** (not on a buyer's link).
+**The look** (since 2026-11-20, session 31: "Marble" — the old black and gold is gone). Everything over the 3D is light frosted stone with dark text, thin lines instead of boxes, small spaced capitals for labels, and one deep blue for what is picked or on.
 
-**What is on screen** (since 2026-11-20, session 30: less over the 3D). Top left is the room you are in. Top right is one bar. Bottom middle are a hint and the Sun & wind pill. Bottom right is the small map. Everything else opens from these and closes again with **Esc**.
+**Start screen.** A light stone screen with the room faintly behind it. You see the project's name in small capitals, the flat's name large in a serif letter, and its floor and size. A thin dark line fills as the rooms load ("12 of 27 rooms ready"). Then the blue **Enter** (or the Enter key) takes you in. You stand just inside the flat's front door, looking in. A drawing with no door yet puts you in its living room (or its first room), never facing a bare wall (2026-10-18). Under Enter, one quiet line says the quality and why ("High quality · This device can show the full look.") with **Change**: click it and **Lite · Low · High** show right there (a pick opens the page again with it). At the bottom, quietly: the other flats and each tower's levels (not on a buyer's link). Top right, small: **Studio** and **Staff mode** / **Leave staff mode** (not on a buyer's link).
+
+**What is on screen** (since 2026-11-20: less over the 3D). Top left is the room you are in. Top right is one bar. Bottom middle are the hint and the Sun & wind pill; a short message after something you did ("Link copied …") shows there too, just above them. Bottom right is the small map. Everything else opens from these and closes again with **Esc**.
 
 **The bar, top right** — from left to right:
 
 | Button | Key | What it does |
 |---|---|---|
-| Walk · Dollhouse · Building (one switch; the view you are in is filled white) | O switches Walk ↔ Dollhouse; B the Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to a tower) |
-| Finishes | F | Opens the panel on the right: floor, wall and ceiling options (and your notes). While it is open, clicking a floor, a wall or a ceiling chooses for that one room or wall. Its **×** (or F, or Esc) closes it |
-| Comment | C | Click anything to leave a note on it |
+| Walk · Dollhouse · Building (one switch; the view you are in is white) | O switches Walk ↔ Dollhouse; B the Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to a tower) |
+| Finishes | F | Opens the panel on the right: floor, wall and ceiling options. While it is open, clicking a floor, a wall or a ceiling chooses for that one room or wall. Its **×** (or F, or Esc) closes it |
+| Comment | C | Opens the Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns: opening one closes the other |
 | Share | — | Copies a link that opens with the finishes you chose |
 | Enter VR | — | Only shows when a VR headset is connected |
 | Edit ▾ (staff only) | — | Furniture, Openings, Plan (Studio) — see §3 |
-| ⋯ | — | **Quality**: Lite · Low · High (see **Choosing quality** below) |
+| ⋯ | — | **Clean view** (H) and **Quality**: Lite · Low · High (see **Choosing quality** below) |
+| The eye (last button) | H | **Clean view**: hides everything on screen so you see only the flat (below) |
 
-The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
+The button that is on (Finishes open, Comment on, an Edit mode on) has a light blue wash and blue words.
 
-**Top left:** the room you are standing in — its floor, its name, its printed size and area. **Click it** for the list of rooms (this is where the old **Rooms** button went). Click a room to jump there. Esc, or a click elsewhere, closes the list. In the Building view the same box names the floor you picked instead (since 2026-11-20): "Floor 2 · Type A · 2703 sft", the flats on another floor, or "Ground floor", "Basement 1", "Rooftop".
+**Top left:** the room you are standing in — its floor in small capitals, its name in the serif, its printed size and area under it. There is no box: a soft haze of frosted stone sits behind the words so they read over any wall. **Click it** for the list of rooms (this is where the old **Rooms** button went); the room you are in is the white row. Click a room to jump there. Esc, or a click elsewhere, closes the list. In the Building view the same place names the floor you picked instead (since 2026-11-20): "Floor 2 · Type A · 2703 sft", the flats on another floor, or "Ground floor", "Basement 1", "Rooftop".
 
-**The hint** (bottom middle) shows the keys for what you are doing ("Double-click to look with the mouse · click the floor to walk there · WASD to walk"). It fades after a few seconds so it never sits over the room. It comes back when it changes (the mouse locked or freed, another view, an editor on) or when you hold the mouse over where it was. While Comment is on it stays: "Click anything to leave a note · Esc stops".
+**The hint** (bottom middle) shows the keys for what you are doing ("Double-click to look with the mouse · click the floor to walk there · WASD to walk"). It fades after a few seconds so it never sits over the room. It comes back when it changes (the mouse locked or freed, another view, an editor on) or when you hold the mouse over where it was. On a phone or tablet (a finger, no mouse) it is not shown.
+
+**Resting** (since 2026-11-20, session 31). In Walk, when the mouse has not moved for 3 seconds, everything fades away except the room's name top left — the bar, the hint, the Sun & wind pill, the small map. Move the mouse, click, scroll or press a key and it all comes back at once. The walking keys (W A S D, the arrows, Shift) and turning your head with the mouse do not bring it back: you are looking at the room. It never fades while a panel, a list or a menu is open (Finishes, Comment, Sun & wind, Rooms, Edit, ⋯, the staff editors), while you hold a piece of furniture, in the Dollhouse or in the Building view, or while the mouse rests on the bar or a panel.
+
+**Clean view** (since 2026-11-20, session 31; buyers and staff). Press **H**, click the **eye** (the last button of the bar), or **⋯ → Clean view**: everything on screen goes — the room's name, the bar, the hint, the Sun & wind pill, the small map, the note pins, the wind's labels, the staff panels, and no message pops up. Only a faint small dot stays top right. **H**, **Esc** or a click (a tap on a phone) on the dot brings it all back. **F**, **C** and (staff) **G** also bring it back and do their own job (the panel opens, the note starts, the piece is picked up); walking, **O**, **P** and **M** keep the view clean. This browser tab remembers it: open another flat in the same tab and it starts clean too.
 
 **Moving in Walk**
 
@@ -101,22 +108,22 @@ The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
 **Finishes panel**
 
 - **One room or one wall:** with the panel open, click a floor, a wall or a ceiling — in Walk or in Dollhouse. The panel's top block names it ("Bed-1 · floor", "Living room · north-east wall": the side of the room the wall is on, by the compass) and shows the options for it. Click one: only that floor or that wall changes. Bed-2 keeps its own floor, and the other walls keep their paint.
-  - For a wall: **This wall** or **The whole room** (every wall of that room, columns too). A wall is the whole straight wall you see, even where the plan has it in pieces.
+  - For a wall: a switch **This wall · The whole room** (every wall of that room, columns too). A wall is the whole straight wall you see, even where the plan has it in pieces.
   - **Same as the group** (for one wall: **Same as the room**) takes your choice back, and shows what that is. **Done** closes the block.
   - If the mouse is turning your head, press **Esc** first. A click then picks what is under the middle of the screen.
-- Each block below is one thing you choose for a group of rooms (for example "Bedroom floors"). Click an option. Each shows its brand and the price difference. A room or wall with its own choice keeps it when the group changes.
+- Each block below is one thing you choose for a group of rooms (for example "Bedroom floors"). Click an option. Each shows its brand and the price difference; the one chosen is the white row. A room or wall with its own choice keeps it when the group changes.
 - **Chosen for one room or wall** lists those choices. **undo** takes one back.
 - **Options total** and **Reset to included** sit at the bottom. The total is each group's choice plus each one-room / one-wall choice once, at that option's own price (not shared out by floor area). Reset also clears the one-room choices.
 - **Share** puts the one-room and one-wall choices into the link too. On a buyer link each one goes to the change list under its room's name ("Bed-1 · floor: White marble"). Taking it back is a row too ("Same as the group").
-- Your notes are listed at the top. Click a note to walk to it. **Remove** deletes it.
+- On a buyer link, **Your name** sits at the top (the same field as in the Comment panel).
 
-**Notes (Comment):** press **C**, click the thing, type, **Save**. A numbered pin stays on it.
+**Notes (Comment panel)** (since 2026-11-20, session 31 the notes live here, not in Finishes): press **C** or click **Comment**. A panel opens on the right where Finishes opens (Finishes closes): "Click anything in the flat … and write what you would change", then **Your notes** with how many. Click the thing, type, **Save**: a numbered blue pin stays on it and the note shows in the list at once. Comment stays on, so the next click starts another note. Click a note in the list to walk to it; **Remove** deletes it. **Esc** first drops a note you have not saved, then a second **Esc** (or C, or the panel's **×**) stops Comment. On a buyer link **Your name** is in this panel too.
 
 **Always on screen**
 
-- **Sun & wind** (bottom middle) — a slim pill showing a small sun, the time ("15:30"), the month ("Nov"), the word "Wind" while the wind is on, and a small compass. Click it and it opens into the **Sun & wind card**. The **⌄** at the card's top right (or Esc) folds it back into the pill. The sun and the wind keep going while it is folded (the wind's lines and chips stay).
-- **The compass** (the card's left; small on the pill) — a compass rose with N in gold, turned so that **the top of the compass is straight ahead of you**. Walking, N to the right means north is on your right. In the Dollhouse and the Building view it turns as you turn the view. It uses the plan's true north (set in the Studio's Site), the same north the sun and the wind use. It is always there while the card or the pill shows (it used to hide behind the Quality box on laptop screens — fixed 2026-11-20).
-- **Sun & wind card, the sun.** The **time of day** is large ("15:30 afternoon"), with a slider under it for the whole day (0 to 24; "0 · 6 · noon · 18 · 24" under it). The slider's handle is a small sun, and the slider is coloured by that day at the site — dark at night, rose at dawn and dusk, warm through the day — so you see when the sun is up. The **day** sits beside the time (click the date and pick one; it starts on today). Under the slider are the **twelve months**, Jan to Dec, as buttons (the picked one filled white). A click moves the day to that month, and the sun and the wind follow.
+- **Sun & wind** (bottom middle) — a slim pill showing a small sun, the time ("15:30"), the month ("Nov"), the word "Wind" while the wind is on, and a small compass. Click it and it opens into the **Sun & wind card** in its place: a narrow card (since session 31) headed SUN & WIND — the compass and the time on top, then the slider, the months, and **Lights** · **Wind** side by side. The **⌄** at the card's top right (or Esc) folds it back into the pill. The sun and the wind keep going while it is folded (the wind's lines and chips stay).
+- **The compass** (the card's top left; small on the pill) — a compass rose on a white face with N in blue and the letters a little larger than before (always readable), turned so that **the top of the compass is straight ahead of you**. Walking, N to the right means north is on your right. In the Dollhouse and the Building view it turns as you turn the view. It uses the plan's true north (set in the Studio's Site), the same north the sun and the wind use. It is always there while the card or the pill shows (it used to hide behind the Quality box on laptop screens — fixed 2026-11-20).
+- **Sun & wind card, the sun.** The **time of day** is large ("15:30 afternoon"), with a slider under it for the whole day (0 to 24; "0 · 6 · noon · 18 · 24" under it). The slider's handle is a small white disc, and the slider is coloured by that day at the site — dark at night, rose at dawn and dusk, warm through the day — so you see when the sun is up. The **day** sits under the time (click the date and pick one; it starts on today). Under the slider are the **twelve months**, Jan to Dec, as buttons, six to a row so they are easy to read (the picked one white). A click moves the day to that month, and the sun and the wind follow.
   - The sun stands where it really stands at the building's site on that day at that hour, by the plan's true north. A June noon in Dhaka is almost overhead, a December noon low in the south. A room only gets a sun patch when the sun is on its side of the building (Type A's living room faces north-east and south-east: sun in the morning, none at 15:00).
   - No site set in the Studio: Dhaka. The time is the site's own clock (Bangladesh time for Dhaka).
   - **The only light is the sun and the flat's own lamps.** From noon down to a low sun the rooms look as they always have. As the sun sets the windows' light fades, the sky turns golden, then deep blue (blue hour), then near black with a faint city glow low on the horizon, and the neighbour blocks become dark shapes. With the lamps off, a room at night is dark — only that faint glow comes through the windows.
@@ -141,14 +148,14 @@ The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
   - Each building gets its own street: the same every time you open it, and the same for every flat of it, from inside and in the Building view.
   - These buildings throw the sun's shadow into the flat, and they **darken the rooms facing them**. A bedroom looking at a wall 3 m away is dimmer than a room facing the road, and the low floors more than the high ones — as in real life, where the space between buildings is what lets light and wind in.
   - The made-up street is seen from inside (Walk) and in the Building view, not round the Dollhouse.
-- **Small map** (bottom right, Walk only) — where you are. Its **×** (or **M**) hides it. A small **Map** button stays in its place to bring it back (or M again). It steps aside while the Finishes panel is open. Its tiny compass (top left of the card: a gold needle tip and a small N) points to true north on the plan. The map is drawn the plan's way up, so it stays put as you turn.
+- **Small map** (bottom right, Walk only) — where you are: white rooms, dark walls, the room you are in washed light blue, you as a blue dot with a cone. It has no title bar since session 31 (the room's name is top left already). Its **×** shows in its top right corner when the mouse is over the map; the × (or **M**) hides it. A small **Map** button stays in its place to bring it back (or M again). It steps aside while the Finishes or Comment panel is open. Its tiny compass (its top left corner: a blue needle tip and a small N) points to true north on the plan. The map is drawn the plan's way up, so it stays put as you turn.
 - **Quality** (⋯ in the bar) — see below.
 
 **Choosing quality** (everyone: buyer links, the Studio's Preview 3D, the built-in flats)
 
-- **⋯** (the last button of the bar, top right) → **Quality** with **Lite**, **Low** and **High**. The one in use is filled white, and a small gold dot marks the one this computer should use. Under them one line says why. Hover the menu to see the graphics chip's name.
-- The first time the 3D opens in a browser, a small note shows bottom left for 12 seconds: "**High quality.** This device can show the full look. Change ×". If another quality is advised, the note says why in one line: *integrated graphics* (the graphics built into the processor: Intel HD / UHD / Iris, phone chips), *no graphics chip in use (software drawing)*, *4 GB memory*, *4 processor threads*, *no WebGL 2 in this browser* (WebGL 2 is the browser's 3D drawing feature), or *slow frames*.
-  - **Change** opens ⋯ → Quality. **×** closes the note. After that it never shows by itself again (only after an automatic switch, below). It steps aside while the Sun & wind card is open (staff: also while the Edit furniture or Edit openings panel is open).
+- **⋯** (top right, next to the eye) → **Quality** with **Lite**, **Low** and **High**. The one in use is white, and a small blue dot marks the one this computer should use. Under them one line says why. Hover the menu to see the graphics chip's name.
+- **The start screen says it too** (since session 31; it replaces the small note that used to pop up bottom left the first time): under **Enter**, one quiet line — "High quality · This device can show the full look. **Change**". If another quality is advised, the line says why: *integrated graphics* (the graphics built into the processor: Intel HD / UHD / Iris, phone chips), *no graphics chip in use (software drawing)*, *4 GB memory*, *4 processor threads*, *no WebGL 2 in this browser* (WebGL 2 is the browser's 3D drawing feature), or *slow frames*. After an automatic switch (below) it says that instead ("Switched to Low: frames were slow on this device").
+  - **Change** shows **Lite · Low · High** right there (the dot marks the recommended one); a pick opens the page again with it. Nothing pops up over the 3D about quality any more. When Lite has to turn its sun shadows off while you walk, ⋯ → Quality says so (*Shadows off: frames were still slow*).
 - Pick another one and the page opens again with it (you press **Enter** again; the finishes you chose stay). Your pick is kept in this browser, and the 3D never changes it by itself — with one exception: if the graphics stop working (see below).
 - If you never picked: when walking turns out slower than 30 frames a second, the 3D steps down once (High → Low, or Low → Lite), opens again and says *Switched to …: frames were slow on this device*. It is remembered as this computer's recommendation.
 - **High** = the full look: soft shading in corners, smooth edges, the sharpest pictures, up to twice the screen's pixels.
@@ -160,13 +167,15 @@ The button that is on (Finishes open, Comment on, an Edit mode on) is gold.
 - No 3D in this browser at all (no WebGL 2, or the 3D could not start): *This browser or machine cannot draw 3D. Try another browser, or open on a PC.* Under it, the flat's plan with its room names. The Studio still works (it draws in 2D).
 - The graphics stop in the middle (the browser loses them, or they run out of memory): the 3D opens again in **Lite** once and says *Switched to Lite: the 3D stopped on this device* (or *… the graphics ran out of memory …*) — even if you had picked High. For that browser tab it stays Lite until you pick again. If it was already Lite and the graphics do not come back within 5 seconds: the same message and plan as above, never a frozen black picture.
 
+**On a phone** (a screen narrower than 720 px; since session 31 — the layout only: walking and looking by finger come later). The bar moves to the bottom of the screen in two rows: Walk · Dollhouse · Building on top, then Finishes, Comment, Share, (staff) Edit, ⋯ and the eye, each big enough for a finger. The Sun & wind pill sits just above it. The room's name is a little smaller, top left, and the small map is top right. Finishes, Comment, the Sun & wind card, the Rooms list and the menus come up from the bottom edge as a sheet (up to 70 % of the screen); while one is up the bar steps away, and its **×** or **⌄** (or a tap outside a menu) closes it. In Clean view a tap on the dot brings everything back. No key hints are shown under a finger.
+
 **In VR:** hold the trigger to aim at the floor, let go to jump there. Thumbstick left/right turns you 45° at a time.
 
 ---
 
 ## 3. The 3D view — staff only
 
-One extra button appears in the bar, top right: **Edit ▾** (gold while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings) and **Plan (Studio) ↗** (Edit plan). The one that is on says "on" beside it.
+One extra button appears in the bar, top right: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings) and **Plan (Studio) ↗** (Edit plan). The one that is on is the white row and says "on" beside it.
 
 ### Edit furniture
 
@@ -219,7 +228,7 @@ One extra button appears in the bar, top right: **Edit ▾** (gold while an edit
 Works in Walk and in Dollhouse. The mouse stays free: drag empty space to look around.
 
 - **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill (the height of its bottom edge above the floor). An open passage is picked by clicking anywhere in its opening; its side dots make it wider or narrower.
-- Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
+- Panel, bottom left: change its kind (a switch: **Door · Window · Slider · Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
 - **Low walls** (since 2026-10-19) — a railing, parapet, planter edge or kerb: anything lower than 1.2 m (3'-11"). **Click it**: a blue box with a dot on each end appears, and the panel says "Low wall · 6'-9" long · 1'-6" high".
   - **Drag an end dot:** that end slides along the wall's own line, so the wall gets longer or shorter. An end joined to another wall leaves it, as with V in the Studio. A gap opens there, and the rooms on both sides become one (the Studio lists it under Issues, with **Extend** to close it again). Hold **Alt** while you drag to keep the corner joined instead: the wall it meets moves with it, so the room stays closed (a narrower veranda).
   - **Drag the wall itself:** it moves across, sideways, and its ends slide along the walls they meet. It snaps to nearby wall lines as in the Studio.
@@ -240,10 +249,10 @@ Opens this flat or level in the Studio, in a new tab.
 
 ## 4. The Building view
 
-- **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is filled white, and your own flat's floor has a small gold dot.
+- **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is the white row, and your own flat's floor has a small blue dot.
 - Picking a basement hides everything above it (a ground floor traced in the Studio too). The street round the tower and the next buildings stay (since 2026-11-20; before, they went with the floors above).
 - **Top left** the box names the floor you picked: "Floor 2" over the flat's name and size ("Type A · 2703 sft"), the flats of another floor, or the level ("Ground floor", "Basement 1", "Rooftop").
-- **Walk this level** (gold, right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
+- **Walk this level** (the blue button right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
 - **Click a flat** to open it.
 - Drag to turn, scroll to zoom.
 - **Round the tower** you see the made-up street (§2, "Around the flat"): the next buildings a few metres past the plot on the sides with no road, the drawing's roads (a built-in building) or a made-up one, and the buildings across them right at the road's edge. With a site set in the Studio (§5, Site), the map's blocks and roads show instead. Both throw their shadows on the tower. A block between you and the tower is left out while you look (its shadow stays), so it never hides the floor you picked.

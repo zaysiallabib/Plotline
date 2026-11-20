@@ -1,15 +1,18 @@
 /**
- * The HUD over the 3D (session 30: less on screen, the 3D is the product). Top left: the room you stand in with its floor —
- * click it for the Rooms list; in the Building view the floor picked instead (floorTitle). Top right: one glass bar — the view switch (Walk · Dollhouse · Building), the buyer's
- * Finishes, Comment and Share, staff's Edit ▾, and ⋯ (Quality). Bottom centre: a slim hint that fades after a few seconds
- * (it comes back when it changes or under the mouse) above the Sun & wind pill. Building view: the floor rail on the right
- * with Walk this level. Esc closes an open list or menu. Staff: the dot and the piece in hand.
+ * The HUD over the 3D (session 31, "Marble": the 3D is the product, the chrome a thin frame round it — Docs/DESIGN.md).
+ * Top left: the room you stand in — its floor in small capitals over its name in the serif and its size, no box; click
+ * it for the Rooms list (Building view: the floor picked, floorTitle). Top right: one pill — the view switch, Finishes ·
+ * Comment · Share, staff's Edit ▾, ⋯ (Clean view, Quality) and the eye (Clean view). Bottom centre: a toast, the hint
+ * (fades after a few seconds), a stair's Up / Down, the Sun & wind pill. Building: the floor rail on the right.
+ * Rest: 3 s without the mouse in Walk and everything but the room's name fades (chromeOf). Clean view (H, the eye, ⋯):
+ * nothing but a faint dot top right — H, Esc or the dot brings it all back; remembered for the tab. Esc closes an open
+ * list or menu. Staff: the dot and the piece in hand. Phones (under 720 px): the pill is a bottom bar (viewer.css).
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { sqmToSqft, type Room } from '../core'
 import { levelName, topFloor, type Tower } from '../data/building'
 import type { SceneMode } from '../three/PlotlineScene'
-import { KEYS, local, NAME, QUALITIES, read, write, type Quality } from './quality'
+import { NAME, QUALITIES, read, tab, write, type Quality } from './quality'
 
 /** The piece in hand (ViewerApp, arrange.ts Held): its name, why it may not stay here (null: it may), whether it is anywhere yet, new from the library or not. */
 export interface HandInfo {
@@ -45,14 +48,14 @@ function HandTag({ hand, locked }: { hand: HandInfo; locked: boolean }) {
   )
 }
 
-/** Quality (quality.ts) as the ⋯ menu and its first-time toast show it */
+/** Quality (quality.ts) as the ⋯ menu shows it (the start screen says it too: ViewerApp) */
 export interface QualityInfo {
   tier: Quality
   /** the device check's pick (marked "recommended") */
   rec: Quality
   /** one line: why this tier ("This device can show the full look.", "Set by this link." …) */
   why: string
-  /** an automatic switch's note ("Switched to Lite: …"): the toast shows it once */
+  /** an automatic step's note ("Shadows off: …"): said in the menu in place of `why` */
   note: string | null
   /** the graphics chip's name (hover) */
   gpu: string
@@ -69,7 +72,7 @@ interface Props {
   floorLabel?: string
   /** the room's wind while Wind is on ("Cross ventilation" …), else null */
   roomNote?: string | null
-  /** the Building view's floor picked (floorTitle): the room box says it in place of the walk's room */
+  /** the Building view's floor picked (floorTitle): the room's place says it in place of the walk's room */
   pickedFloor?: FloorTitle | null
   /** Building view floor picker, top down; null: the flat is not part of a tower (no Building button) */
   floors: { k: number; label: string }[] | null
@@ -79,6 +82,8 @@ interface Props {
   onWalkLevel: (() => void) | null
   finishesOpen: boolean
   commenting: boolean
+  /** the Sun & wind card open (not just its pill): a panel, so the chrome does not rest */
+  sunOpen: boolean
   locked: boolean
   /** set when immersive-vr is supported: shows "Enter VR" */
   onEnterVR: (() => void) | null
@@ -122,7 +127,7 @@ export interface FloorTitle {
 }
 
 /**
- * The room box in the Building view: floor k of tower `t` — its word (Floor 2, Ground floor, Basement 1, Rooftop) over
+ * The room's place in the Building view: floor k of tower `t` — its word (Floor 2, Ground floor, Basement 1, Rooftop) over
  * what is on it: flat `stem` when it is there, else that floor's flats, else its traced level (ground, basement, rooftop),
  * else the word alone (a floor of massing only). Never the room the walk stood in.
  */
@@ -138,12 +143,6 @@ export function floorTitle(t: Tower, k: number, stem: string): FloorTitle {
   return { label: word, name, size: u && u.areaSqft > 0 && !/sft/i.test(u.name) ? `${u.areaSqft} sft` : undefined }
 }
 
-const Chevron = () => (
-  <svg className="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-    <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-
 /** The bottom hint: the keys of what is on (staff: the editors'); null while a piece is in hand (its tag says it) */
 export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; arranging: boolean; editingOpenings: boolean; holding: boolean }): string | null {
   const walk = p.mode === 'walk'
@@ -156,8 +155,52 @@ export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; ar
   return `Double-click to look with the mouse · click the floor to walk there · WASD to walk${p.staff ? ' · G picks up the piece under the mouse' : ''}`
 }
 
+/** how long the mouse may rest in Walk before the chrome fades, ms */
+const REST_MS = 3000
+/** Clean view, remembered for the tab (sessionStorage) */
+const CLEAN_KEY = 'plotline.clean'
+
+/** What the chrome shows: `all`; `room` — resting, the room's name alone; `none` — Clean view, only its dot. */
+export type Chrome = 'all' | 'room' | 'none'
+/**
+ * Clean view shows nothing; a mouse at rest in Walk leaves the room's name alone — never in the Dollhouse or the
+ * Building view, never with a panel or a menu open (`busy`) or a piece in hand (also `busy`).
+ */
+export const chromeOf = (s: { clean: boolean; idle: boolean; mode: SceneMode; busy: boolean }): Chrome =>
+  s.clean ? 'none' : s.idle && s.mode === 'walk' && !s.busy ? 'room' : 'all'
+
+/** keys that walk: they never wake the resting chrome (the person is looking at the room, not reaching for a button) */
+const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'])
+export const wakes = (key: string): boolean => !WALK_KEYS.has(key.toLowerCase())
+
+/**
+ * Clean view and a key: H turns it on or off; Esc only turns it off (nothing else happens with that press); F, C and G
+ * turn it off and do their own job (a panel, a note, a piece in hand — things the person must see). `stop`: the key is used up.
+ */
+export function cleanKey(clean: boolean, key: string): { clean: boolean; stop: boolean } {
+  const k = key.toLowerCase()
+  if (k === 'h') return { clean: !clean, stop: true }
+  if (clean && k === 'escape') return { clean: false, stop: true }
+  return { clean: clean && !['f', 'c', 'g'].includes(k), stop: false }
+}
+
+/** the chrome a resting mouse may hover without the chrome fading under it */
+const CHROME = '.hud-tl, .hud-tr, .dock, .floor-rail, .minimap, .map-show, .panel, .arrange, .library, .ask-floor'
+
+const Chevron = () => (
+  <svg className="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+    <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+const Eye = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+    <path d="M1.5 9S4.2 3.8 9 3.8 16.5 9 16.5 9 13.8 14.2 9 14.2 1.5 9 1.5 9Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <circle cx="9" cy="9" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+)
+
 export default function Hud(p: Props) {
-  /** the one list or menu open: Rooms (the room chip), Edit (staff), ⋯ (Quality) */
+  /** the one list or menu open: Rooms (the room's name), Edit (staff), ⋯ (Clean view, Quality) */
   const [open, setOpen] = useState<'rooms' | 'edit' | 'more' | null>(null)
   const toggle = (k: typeof open) => setOpen((v) => (v === k ? null : k))
   // Esc (that one step only: caught first, so the panels behind stay), or a press anywhere else, closes it
@@ -176,15 +219,62 @@ export default function Hud(p: Props) {
       removeEventListener('pointerdown', down)
     }
   }, [open])
-  // Quality's toast: by itself only the first time the 3D opens in this browser, or with an automatic switch's note
-  const [qToast, setQToast] = useState(() => !!p.quality.note || read(local, KEYS.seen) !== '1')
-  useEffect(() => void (p.quality.note && setQToast(true)), [p.quality.note])
+
+  // Clean view: H, the eye or ⋯ → on; H, Esc or the dot → off (cleanKey). Caught first, so Esc leaving it does nothing else.
+  const [clean, setClean] = useState(() => read(tab, CLEAN_KEY) === '1')
+  useEffect(() => write(tab, CLEAN_KEY, clean ? '1' : null), [clean])
   useEffect(() => {
-    if (!qToast) return
-    write(local, KEYS.seen, '1')
-    const t = setTimeout(() => setQToast(false), 12000)
-    return () => clearTimeout(t)
-  }, [qToast])
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || (t?.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range') || t?.tagName === 'TEXTAREA') return
+      const r = cleanKey(clean, e.key)
+      if (r.stop) e.stopPropagation()
+      if (r.clean !== clean) {
+        setClean(r.clean)
+        setOpen(null)
+      }
+    }
+    addEventListener('keydown', key, true)
+    return () => removeEventListener('keydown', key, true)
+  }, [clean])
+
+  // Rest: one timer — any free-mouse move, click, wheel or key (but the walking keys) starts it again; over the chrome it waits
+  const [idle, setIdle] = useState(false)
+  useEffect(() => {
+    let t = 0
+    const wake = () => {
+      setIdle(false)
+      clearTimeout(t)
+      t = window.setTimeout(() => setIdle(true), REST_MS)
+    }
+    const move = (e: PointerEvent) => {
+      if (document.pointerLockElement) return // the mouse turns the head: looking, not reaching for a button
+      if (!(e.target as Element).closest?.(CHROME)) return wake()
+      setIdle(false)
+      clearTimeout(t)
+    }
+    const key = (e: KeyboardEvent) => wakes(e.key) && wake()
+    wake()
+    addEventListener('pointermove', move)
+    addEventListener('pointerdown', wake)
+    addEventListener('wheel', wake)
+    addEventListener('keydown', key, true) // caught first too: the Esc that leaves Clean view (used up there) still wakes it all
+    document.addEventListener('pointerlockchange', wake)
+    return () => {
+      clearTimeout(t)
+      removeEventListener('pointermove', move)
+      removeEventListener('pointerdown', wake)
+      removeEventListener('wheel', wake)
+      removeEventListener('keydown', key, true)
+      document.removeEventListener('pointerlockchange', wake)
+    }
+  }, [])
+  const busy = !!open || p.finishesOpen || p.commenting || p.sunOpen || p.arranging || p.editingOpenings || !!p.hand
+  const chrome = chromeOf({ clean, idle, mode: p.mode, busy })
+  const goClean = () => {
+    setClean(true)
+    setOpen(null)
+  }
 
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
   const hint = hintOf({ ...p, holding: !!p.hand })
@@ -198,27 +288,29 @@ export default function Hud(p: Props) {
   ]
 
   return (
-    <>
+    <div className={`hud${chrome === 'room' ? ' rest' : chrome === 'none' ? ' clean' : ''}`}>
       <div className="hud-tl">
-        <button className={`glass room-chip${open === 'rooms' ? ' on' : ''}`} aria-expanded={open === 'rooms'} title="Rooms: jump to another room" onClick={() => toggle('rooms')}>
-          {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-          <span className="room-name">
+        <button className={`room-title${open === 'rooms' ? ' on' : ''}`} aria-expanded={open === 'rooms'} title="Rooms: jump to another room" onClick={() => toggle('rooms')}>
+          {eyebrow && <span className="label">{eyebrow}</span>}
+          <span className="room-name display">
             {b ? b.name : (r?.name ?? 'Rooms')}
             <Chevron />
           </span>
           {b ? (
             b.size && <span className="room-size">{b.size}</span>
-          ) : r && (
-            <span className="room-size">
-              {r.printedSize && `${r.printedSize} · `}
-              {r.areaSqm.toFixed(1)} m² · {sqft(r.areaSqm)} sqft
-            </span>
+          ) : (
+            r && (
+              <span className="room-size">
+                {r.printedSize && `${r.printedSize} · `}
+                {r.areaSqm.toFixed(1)} m² · {sqft(r.areaSqm)} sqft
+              </span>
+            )
           )}
           {!b && p.roomNote && <span className="wind-note">{p.roomNote}</span>}
         </button>
         {open === 'rooms' && (
           <div className="glass menu rooms-list" role="menu">
-            <div className="menu-title">Rooms</div>
+            <div className="menu-head label">Rooms</div>
             {p.rooms.map((x) => (
               <button
                 key={x.id}
@@ -238,7 +330,7 @@ export default function Hud(p: Props) {
       </div>
 
       <div className="hud-tr">
-        <nav className="glass toolbar">
+        <nav className="glass toolbar" aria-label="Views and tools">
           <div className="seg" role="group" aria-label="View">
             {modes.map(([m, label, key]) => (
               <button key={m} className={p.mode === m ? 'on' : ''} aria-pressed={p.mode === m} title={`${label} (${key})`} onClick={() => p.onMode(m)}>
@@ -247,10 +339,10 @@ export default function Hud(p: Props) {
             ))}
           </div>
           <span className="sep" />
-          <button className={`tb${p.finishesOpen ? ' on' : ''}`} aria-pressed={p.finishesOpen} title="Choose floors, walls and ceilings — your notes are there too (F)" onClick={p.onToggleFinishes}>
+          <button className={`tb${p.finishesOpen ? ' on' : ''}`} aria-pressed={p.finishesOpen} title="Choose floors, walls and ceilings (F)" onClick={p.onToggleFinishes}>
             Finishes
           </button>
-          <button className={`tb${p.commenting ? ' on' : ''}`} aria-pressed={p.commenting} title="Click anything to leave a note (C)" onClick={p.onToggleComment}>
+          <button className={`tb${p.commenting ? ' on' : ''}`} aria-pressed={p.commenting} title="Click anything to leave a note — your notes are listed there (C)" onClick={p.onToggleComment}>
             Comment
           </button>
           <button className="tb" title="Copy a link that opens with your finishes" onClick={p.onShare}>
@@ -268,25 +360,28 @@ export default function Hud(p: Props) {
               <Chevron />
             </button>
           )}
-          <button className={`tb icon${open === 'more' ? ' on' : ''}`} aria-label="More" aria-expanded={open === 'more'} title="More: quality" onClick={() => toggle('more')}>
+          <button className={`tb icon${open === 'more' ? ' on' : ''}`} aria-label="More" aria-expanded={open === 'more'} title="More: Clean view, quality" onClick={() => toggle('more')}>
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="3" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="13" cy="8" r="1.4" fill="currentColor" />
+              <circle cx="3" cy="8" r="1.3" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+              <circle cx="13" cy="8" r="1.3" fill="currentColor" />
             </svg>
+          </button>
+          <button className="tb icon" aria-label="Clean view" title="Clean view: hide everything and just look (H)" onClick={goClean}>
+            <Eye />
           </button>
         </nav>
         {open === 'edit' && (
           <div className="glass menu" role="menu" onClick={() => setOpen(null)}>
-            <div className="menu-title">Staff</div>
+            <div className="menu-head label">Staff</div>
             {p.onArrange && (
-              <button className="menu-row" role="menuitem" title="Move, turn, resize, delete or add furniture" onClick={p.onArrange}>
+              <button className={`menu-row${p.arranging ? ' on' : ''}`} role="menuitem" title="Move, turn, resize, delete or add furniture" onClick={p.onArrange}>
                 <span>Furniture</span>
                 <span className="state">{p.arranging ? 'on' : ''}</span>
               </button>
             )}
             {p.onOpenings && (
-              <button className="menu-row" role="menuitem" title="Move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
+              <button className={`menu-row${p.editingOpenings ? ' on' : ''}`} role="menuitem" title="Move, resize, change or remove a door, window, slider, passage or low wall" onClick={p.onOpenings}>
                 <span>Openings</span>
                 <span className="state">{p.editingOpenings ? 'on' : ''}</span>
               </button>
@@ -301,7 +396,12 @@ export default function Hud(p: Props) {
         )}
         {open === 'more' && (
           <div className="glass menu menu-wide" title={p.quality.gpu && `Graphics: ${p.quality.gpu}`}>
-            <div className="menu-title">Quality</div>
+            <button className="menu-row" role="menuitem" title="Hide everything on screen; H, Esc or the dot top right brings it back" onClick={goClean}>
+              <span>Clean view</span>
+              <kbd>H</kbd>
+            </button>
+            <div className="menu-rule" />
+            <div className="menu-head label">Quality</div>
             <div className="seg seg-fill" role="group" aria-label="Quality">
               {QUALITIES.map((q) => (
                 <button key={q} className={q === p.quality.tier ? 'on' : ''} aria-pressed={q === p.quality.tier} onClick={() => q !== p.quality.tier && p.quality.onPick(q)}>
@@ -311,7 +411,7 @@ export default function Hud(p: Props) {
               ))}
             </div>
             <p className="menu-note">
-              {p.quality.why} The dot marks the one recommended for this device. Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants. A new choice reloads the page.
+              {p.quality.note ?? p.quality.why} The dot marks the one recommended for this device. Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants. A new choice reloads the page.
             </p>
           </div>
         )}
@@ -322,7 +422,7 @@ export default function Hud(p: Props) {
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">
           <div className="glass rail" role="group" aria-label="Floors">
-            <div className="menu-title">Floors</div>
+            <div className="menu-head label">Floors</div>
             {p.floors.map(({ k, label }) => (
               <button key={k} className={`rail-item${p.picked === k ? ' on' : ''}`} aria-pressed={p.picked === k} title={p.floor === k ? 'Your flat’s floor' : undefined} onClick={() => p.onPickFloor(k)}>
                 {floorWord(label)}
@@ -339,40 +439,22 @@ export default function Hud(p: Props) {
       )}
 
       <div className="dock">
-        {/* keyed by its text: a new hint shows again, then fades (CSS only); the mouse over it brings it back */}
-        {p.commenting ? (
-          <div className="glass hint keep">Click anything to leave a note · Esc stops</div>
-        ) : (
-          hint && (
-            <div key={hint} className="glass hint">
-              {hint}
-            </div>
-          )
+        {/* an answer to what the person just did: fades in where it stands, keyed so a new one shows again */}
+        {p.toast && (
+          <div key={p.toast} className="glass toast" role="status">
+            {p.toast}
+          </div>
+        )}
+        {/* keyed by its text: a new hint shows again, then fades (CSS only); the mouse over it brings it back. Comment says its own in its panel */}
+        {hint && !p.commenting && (
+          <div key={hint} className="glass hint">
+            {hint}
+          </div>
         )}
         {p.ways}
         {p.sun}
       </div>
 
-      {qToast && !p.arranging && !p.editingOpenings && (
-        <div className="glass q-toast" role="status">
-          <span>
-            <b>{NAME[p.quality.tier]} quality.</b> {p.quality.note ?? p.quality.why}
-          </span>
-          <button
-            className="link"
-            onClick={() => {
-              setQToast(false)
-              setOpen('more')
-            }}
-          >
-            Change
-          </button>
-          <button className="x" aria-label="Close" onClick={() => setQToast(false)}>
-            ×
-          </button>
-        </div>
-      )}
-      {p.toast && <div className="glass toast">{p.toast}</div>}
       {/* the map's neighbours and roads are OpenStreetMap's (ODbL): their credit shows wherever they do, also while walking */}
       {(!p.locked || p.osm) && (
         <div className="footer">
@@ -387,6 +469,7 @@ export default function Hud(p: Props) {
           )}
         </div>
       )}
-    </>
+      {chrome === 'none' && <button className="clean-dot" aria-label="Show the controls" title="Show the controls (H or Esc)" onClick={() => setClean(false)} />}
+    </div>
   )
 }

@@ -124,7 +124,7 @@ function Rose({ scene, northDeg, size, wind }: { scene: PlotlineScene; northDeg:
           last = turn.current = a
           g.current?.setAttribute('transform', `rotate(${a} ${C} ${C})`)
           letters.current.forEach((el, k) => {
-            const p = at(a + k * 90, R + 13)
+            const p = at(a + k * 90, R + 17)
             el?.setAttribute('x', p.x.toFixed(1))
             el?.setAttribute('y', p.y.toFixed(1))
           })
@@ -137,8 +137,8 @@ function Rose({ scene, northDeg, size, wind }: { scene: PlotlineScene; northDeg:
   }, [scene, northDeg, wind !== undefined])
   /** the pill's tiny one: ring and needle only */
   const mini = size < 40
-  /** the letters about 9.5 px on screen whatever the rose's size */
-  const fs = (9.5 * (2 * C + 12)) / size
+  /** the letters 11 px on screen whatever the rose's size (the founder: always legible) */
+  const fs = (11 * (2 * C + 12)) / size
   const top = wind ? Math.max(4, Math.ceil(Math.max(...wind.months.map((m) => m.speedMs)))) : 0
   const tip = (m: WindMonth) => at(m.fromDeg, (R * m.speedMs) / (top || 1))
   const pick = wind && tip(wind.months[wind.month])
@@ -195,7 +195,7 @@ function Rose({ scene, northDeg, size, wind }: { scene: PlotlineScene; northDeg:
         {!mini && <circle className="hub" cx={C} cy={C} r={wind ? 4 : 6} />}
       </g>
       {!mini && ['N', 'E', 'S', 'W'].map((t, k) => {
-        const p = at(k * 90, R + 13)
+        const p = at(k * 90, R + 17)
         return (
           <text key={t} ref={(el) => void (letters.current[k] = el)} className={k ? 'cardinal' : 'cardinal north'} fontSize={fs} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central">
             {t}
@@ -229,63 +229,65 @@ export default function SunPill(p: Props) {
     )
   const w = p.months[p.month]
   return (
-    <div className={`glass sun-card${p.wind ? ' with-wind' : ''}`}>
-      <Rose scene={p.scene} northDeg={p.northDeg} size={p.wind ? 124 : 72} wind={p.wind ? { months: p.months, month: p.month, onMonth: p.onMonth } : undefined} />
-      <div className="sun-body">
-        <div className="sun-head">
-          <div className="sun-clock">
-            <span className="sun-time big">{hhmm(p.hour)}</span>
-            <span className="muted">{period(p.hour)}</span>
-          </div>
+    <div className={`glass sun-card${p.wind ? ' with-wind' : ''}`} role="dialog" aria-label="Sun & wind">
+      <div className="panel-head">
+        <span className="label">Sun &amp; wind</span>
+        <button className="x" aria-label="Close Sun & wind" title="Close (Esc)" onClick={p.onOpen}>
+          <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+      <div className="sun-top">
+        <Rose scene={p.scene} northDeg={p.northDeg} size={p.wind ? 120 : 84} wind={p.wind ? { months: p.months, month: p.month, onMonth: p.onMonth } : undefined} />
+        <div className="sun-clock">
+          <span className="sun-time big">{hhmm(p.hour)}</span>
+          <span className="muted">{period(p.hour)}</span>
           <input type="date" className="sun-date" value={p.date} onChange={(e) => e.target.value && p.onDate(e.target.value)} aria-label="day" title="The day the sun (and the wind's month) is shown for" />
-          <span className="grow" />
-          <button
-            className={`pill-btn${p.lights ? ' on' : ''}`}
-            aria-pressed={p.lights}
-            onClick={p.onLights}
-            title={`The flat's lights are ${p.lights ? 'on' : 'off'}${p.lightsAuto ? ' (automatic: on while the sun is down)' : ' (your choice; click again for automatic)'}`}
-          >
-            Lights
-          </button>
-          <button className={`pill-btn${p.wind ? ' on' : ''}`} aria-pressed={p.wind} onClick={p.onWind} title="The wind through the flat this month: where it comes in and where it goes out (P)">
-            Wind
-          </button>
-          <button className="x" aria-label="Close Sun & wind" title="Close (Esc)" onClick={p.onOpen}>
-            <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
         </div>
-        <div className="sun-track" style={{ '--day': dayGradient(p.site, p.date) } as React.CSSProperties}>
-          <input type="range" min={0} max={24} step={0.25} value={p.hour} onChange={(e) => p.onChange(Number(e.target.value))} aria-label="time of day" aria-valuetext={`${hhmm(p.hour)}, ${period(p.hour)}`} />
-          <div className="sun-marks" aria-hidden="true">
-            {MARKS.map(([h, t]) => (
-              <span key={h} style={{ left: `${(h / 24) * 100}%` }}>
-                {t}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="months" role="group" aria-label="month">
-          {MONTHS.map((m, i) => (
-            <button key={m} className={i === p.month ? 'on' : ''} aria-pressed={i === p.month} title={m} onClick={() => p.onMonth(i)}>
-              {m.slice(0, 3)}
-            </button>
+      </div>
+      <div className="sun-track" style={{ '--day': dayGradient(p.site, p.date) } as React.CSSProperties}>
+        <input type="range" min={0} max={24} step={0.25} value={p.hour} onChange={(e) => p.onChange(Number(e.target.value))} aria-label="time of day" aria-valuetext={`${hhmm(p.hour)}, ${period(p.hour)}`} />
+        <div className="sun-marks" aria-hidden="true">
+          {MARKS.map(([h, t]) => (
+            <span key={h} style={{ left: `${(h / 24) * 100}%` }}>
+              {t}
+            </span>
           ))}
         </div>
-        {p.wind && (
-          <div className="wind-line">
-            <div className="wind-words">
-              {p.windLine}
-              {p.windNote && <span className="muted"> · {p.windNote}</span>}
-            </div>
-            <div className="muted small">
-              {w.steady < 0.5 ? 'It turns a lot this month: no steady direction. ' : ''}
-              {p.windSource}. A guide, not a wind simulation.
-            </div>
-          </div>
-        )}
       </div>
+      <div className="months" role="group" aria-label="month">
+        {MONTHS.map((m, i) => (
+          <button key={m} className={i === p.month ? 'on' : ''} aria-pressed={i === p.month} title={m} onClick={() => p.onMonth(i)}>
+            {m.slice(0, 3)}
+          </button>
+        ))}
+      </div>
+      <div className="sun-toggles">
+        <button
+          className={`btn${p.lights ? ' on' : ''}`}
+          aria-pressed={p.lights}
+          onClick={p.onLights}
+          title={`The flat's lights are ${p.lights ? 'on' : 'off'}${p.lightsAuto ? ' (automatic: on while the sun is down)' : ' (your choice; click again for automatic)'}`}
+        >
+          Lights
+        </button>
+        <button className={`btn${p.wind ? ' on' : ''}`} aria-pressed={p.wind} onClick={p.onWind} title="The wind through the flat this month: where it comes in and where it goes out (P)">
+          Wind
+        </button>
+      </div>
+      {p.wind && (
+        <div className="wind-line">
+          <div className="wind-words">
+            {p.windLine}
+            {p.windNote && <span className="muted"> · {p.windNote}</span>}
+          </div>
+          <div className="muted small">
+            {w.steady < 0.5 ? 'It turns a lot this month: no steady direction. ' : ''}
+            {p.windSource}. A guide, not a wind simulation.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
