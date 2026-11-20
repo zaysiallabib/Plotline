@@ -547,13 +547,22 @@ export function setLampShare(shares: Map<Id, number>): void {
   tex.needsUpdate = true
 }
 
+/**
+ * Painted plaster's cloudiness (materials.ts MOTTLE, session 31): a hand-plastered, painted wall is never one flat colour.
+ * A material with the MOTTLE define (its strength) has its indirect diffuse × 1 + MOTTLE × (this picture − its own mean,
+ * the top of its mip chain), MOTTLE_UV of its colour map's tile a tile, blurred 4× (a mip bias): soft clouds a hand wide,
+ * no specks; as bright as before on average, the paint's colour its own. Shared by every painted wall.
+ */
+export const mottleMap = { value: null as THREE.Texture | null }
+
 /** Patch one material: its indirect diffuse + specular × the atlas at the fragment's `dayUv`. */
 export function daylit(m: THREE.MeshStandardMaterial): void {
   m.onBeforeCompile = (s) => {
     s.uniforms.dayMap = dayMap
     s.uniforms.dayMix = dayMix
+    s.uniforms.mottleMap = mottleMap
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nvarying vec2 vDayUv;\n${s.fragmentShader}`.replace(
+    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform sampler2D mottleMap;\nvarying vec2 vDayUv;\n${s.fragmentShader}`.replace(
       '#include <aomap_fragment>',
       `#include <aomap_fragment>
       // the lamps' bounce (the rest of dayMix): its own room's lamps (the atlas's G, setLampShare); none on a face toward
@@ -561,7 +570,10 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
       vec2 dayRg = texture2D(dayMap, vDayUv).rg;
       float dayK = mix(${LAMP_RANGE.toFixed(1)} * dayRg.g, ${RANGE.toFixed(1)} * dayRg.r, dayMix);
       reflectedLight.indirectDiffuse *= dayK;
-      reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out`,
+      reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out
+      #if defined(MOTTLE) && defined(USE_MAP)
+      reflectedLight.indirectDiffuse *= 1.0 + MOTTLE * (texture2D(mottleMap, vMapUv * MOTTLE_UV, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
+      #endif`,
     )
   }
   m.customProgramCacheKey = () => 'daylit'

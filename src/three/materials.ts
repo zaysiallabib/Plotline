@@ -8,8 +8,8 @@
 import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { roomKey, slotFor, wallKey } from '../furnish/finishes'
-import { textureSet } from '../furnish/textures'
-import { daylit as daylitPatch } from './daylight'
+import { textureSet, type TextureSet } from '../furnish/textures'
+import { daylit as daylitPatch, mottleMap } from './daylight'
 
 const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
@@ -67,6 +67,23 @@ export function texture(url: string, repeatM: number, srgb: boolean, repeatYM = 
   return p
 }
 
+/**
+ * Painted plaster (session 31: "flat grey-beige walls"): the walls', ceilings' and columns' paint over the plaster scan
+ * gets a faint cloudiness under the indirect light (daylight.ts mottleMap) — the concrete scan's roughness picture, one
+ * tile every 3.5 m, ±≈ 6 % — so a wall is not one flat colour; its paint colour and its mean brightness stay the finish's.
+ * Lite: none (colour only). One more picture, one more lookup per wall pixel.
+ */
+const MOTTLE = { url: '/assets/textures/concrete/roughness.jpg', tileM: 3.5, k: 1 }
+function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
+  texture(MOTTLE.url, 1, false)
+    .then((t) => {
+      mottleMap.value = t
+      m.defines = { ...m.defines, MOTTLE: MOTTLE.k.toFixed(2), MOTTLE_UV: (set.repeatM / MOTTLE.tileM).toFixed(4) }
+      m.needsUpdate = true
+    })
+    .catch(() => {}) // already warned; a plain wall
+}
+
 /** Flat colour that stands in for a texture set that is not on disk yet. */
 function fallbackColor(textureId: string): string {
   if (/wood|oak|teak|deck/.test(textureId)) return '#8a6a4a'
@@ -119,6 +136,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       if (set.matte) Object.assign(m, { roughness: 1, normalScale: new THREE.Vector2(0.5, 0.5) })
       else apply('roughnessMap', set.roughness)
       apply('aoMap', set.ao)
+      if (daylit && !lite.on && set.id === 'plaster_white') mottle(m, set)
     }
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
