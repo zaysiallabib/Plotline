@@ -122,7 +122,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @keyframes slate-in { from { opacity: 0; } }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .slate {
-  position: fixed; inset: 0; overflow: auto; display: grid; align-content: center; gap: var(--s-7);
+  position: fixed; inset: 0; z-index: 20; overflow: auto; display: grid; align-content: center; gap: var(--s-7); /* over any HUD left behind (no 3D after Enter) */
   padding: calc(var(--s-8) + env(safe-area-inset-top)) calc(var(--s-6) + env(safe-area-inset-right)) var(--s-8) calc(var(--s-6) + env(safe-area-inset-left));
   background: var(--bg); color: var(--ink); text-align: left; animation: slate-in var(--dur) var(--ease) both;
 }
