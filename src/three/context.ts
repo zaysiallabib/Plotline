@@ -352,24 +352,49 @@ function facadeTexture(variant: number): THREE.CanvasTexture {
  * The neighbours at night (session 31: they were black shapes): about 40 % of their windows lit warm, a fixed pattern
  * LIT_BAYS × LIT_STOREYS windows wide (the facade's own panes, PANE_PAINT), each block reading it from its own corner
  * (buildStreet offsets it by whole bays and storeys). Its emissive × streetNight: dark by day.
+ * Each lit window is a room seen from outside (polish, qa2 V2: "flat beige cards" through the living room's glass 6–9 m
+ * off): brightest at its ceiling light, a little above the middle, its walls darker toward the frame; the frame's head and
+ * jambs throw a shadow line on it and a mullion stays dark in front; its light one of LIT_TINTS (the pattern's own seed).
+ * LIT_PX texels a metre: at 12 a window's edge blurred over a hand's width at that distance.
  */
 const LIT_BAYS = 5
 const LIT_STOREYS = 7
+const LIT_PX = 30
+/** a warm bulb, a neutral tube light, a cool LED */
+const LIT_TINTS = ['#ffc685', '#ffdcae', '#f2e8d6']
 const lits: THREE.CanvasTexture[] = []
 function litTexture(variant: number): THREE.CanvasTexture {
   if (lits[variant]) return lits[variant]
-  const px = 12
+  const px = LIT_PX
   const c = document.createElement('canvas')
   c.width = LIT_BAYS * BAY * px
   c.height = LIT_STOREYS * STOREY * px
   const g = c.getContext('2d')!
   g.fillRect(0, 0, c.width, c.height)
   const r = rng(variant + 11)
+  const panes = FACADES[variant].filter(([col]) => PANE_PAINT.includes(col))
+  /** what stands in front of a pane (a mullion) */
+  const bars = FACADES[variant].filter(([col, u0, v0, u1, v1]) => !PANE_PAINT.includes(col) && panes.some((p) => u0 >= p[1] && u1 <= p[3] && v0 >= p[2] && v1 <= p[4]))
   for (let b = 0; b < LIT_BAYS; b++)
     for (let s = 0; s < LIT_STOREYS; s++) {
       if (r() > 0.4) continue
-      g.fillStyle = r() < 0.6 ? '#ffcf96' : '#ffe6c4' // a warm bulb, a cooler LED
-      for (const [col, u0, v0, u1, v1] of FACADES[variant]) if (PANE_PAINT.includes(col)) g.fillRect((b * BAY + u0) * px, c.height - (s * STOREY + v1) * px, (u1 - u0) * px, (v1 - v0) * px)
+      const tint = new THREE.Color(LIT_TINTS[Math.floor(r() * LIT_TINTS.length)])
+      const at = ([, u0, v0, u1, v1]: Paint): [number, number, number, number] => [(b * BAY + u0) * px, c.height - (s * STOREY + v1) * px, (u1 - u0) * px, (v1 - v0) * px]
+      for (const q of panes) {
+        const [x, y, w, h] = at(q)
+        const glow = g.createRadialGradient(x + w / 2, y + 0.3 * h, 0, x + w / 2, y + 0.3 * h, 0.5 * Math.hypot(w, h))
+        glow.addColorStop(0, tint.getStyle())
+        glow.addColorStop(0.45, tint.clone().multiplyScalar(0.45).getStyle())
+        glow.addColorStop(1, tint.clone().multiplyScalar(0.08).getStyle())
+        g.fillStyle = glow
+        g.fillRect(x, y, w, h)
+        g.fillStyle = 'rgba(0, 0, 0, 0.6)' // the frame's shadow: head 6 cm, jambs 4 cm
+        g.fillRect(x, y, w, 0.06 * px)
+        g.fillRect(x, y, 0.04 * px, h)
+        g.fillRect(x + w - 0.04 * px, y, 0.04 * px, h)
+      }
+      g.fillStyle = '#000'
+      for (const q of bars) g.fillRect(...at(q))
     }
   const t = (lits[variant] = new THREE.CanvasTexture(c))
   t.colorSpace = THREE.SRGBColorSpace

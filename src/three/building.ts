@@ -18,12 +18,12 @@ import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } f
 import type { Rect } from '../data/building/demo-tower'
 import { finishSlotsFor } from '../furnish/finishes'
 import { bottomOf, layoutFor } from '../studio/furniture'
-import { buildStreet } from './context'
+import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
 import { SITE_REACH_M } from './render'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
-import { GLASS, WATER, meterUVs } from './openings'
+import { WATER, meterUVs } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
@@ -41,8 +41,36 @@ const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
-/** the tower's panes mirror the sky this many times GLASS does (its sky ÷ its 0.3 opacity: 2.5× the sky's own light; Fresnel keeps them dark head-on, bright at a slant) */
-const SKY_GLINT = 0.75
+/**
+ * The tower's panes (session 31 polish, qa2 V1): mirrors of the haze the tower stands in — context.ts `haze`, the colour the
+ * screen shows round it by day and at dusk — as the neighbours' painted panes read, never the photo sky's blue (a navy
+ * beside the picked flat's blue outline). A metal-like mirror (no light of its own, Fresnel brighter at a slant) whose
+ * reflection is the haze × PANE_HAZE × the day's share (setSun): PANE its own darkness, the glass's grey, paler toward each
+ * pane's head (paneBox: the upper glass mirrors the haze over the street, the lower the street) as the neighbours' are; a lit
+ * one's glow too (its ceiling light bright, the room's foot in shade: no flat card).
+ */
+const PANE = '#8a8e93'
+const PANE_HAZE = 2
+function hazePane(sky: { value: number }, emissive?: string): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color: PANE, roughness: 0.08, metalness: 1, vertexColors: true, ...(emissive && { emissive, emissiveIntensity: 0 }) })
+  m.onBeforeCompile = (s) => {
+    s.uniforms.hazeColor = haze
+    s.uniforms.paneSky = sky
+    s.fragmentShader = `uniform vec3 hazeColor;\nuniform float paneSky;\n${s.fragmentShader}`.replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance = hazeColor * paneSky;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vColor.r;')
+  }
+  m.customProgramCacheKey = () => 'haze-pane'
+  return m
+}
+/** A pane's box (alongWall) shaded from 0.55 at its foot to 1 at its head, in vertex colours. */
+function paneBox(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const p = g.attributes.position
+  g.computeBoundingBox()
+  const { min, max } = g.boundingBox!
+  const c = new Float32Array(p.count * 3)
+  for (let i = 0; i < p.count; i++) c.fill(0.55 + (0.45 * (p.getY(i) - min.y)) / (max.y - min.y || 1), i * 3, i * 3 + 3)
+  return g.setAttribute('color', new THREE.BufferAttribute(c, 3))
+}
 
 /** About 45 % of the other flats' windows are lit at night: a fixed hash of the flat, floor and opening. */
 export function litWindow(key: string): boolean {
@@ -107,11 +135,11 @@ const merge = (geos: THREE.BufferGeometry[]) => {
   return g
 }
 
-/** A geometry as a merge takes it: non-indexed, position + normal + uv only (none: zeros), no groups. */
+/** A geometry as a merge takes it: non-indexed, position + normal + uv (none: zeros) + a pane's colour, no groups. */
 function plain(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const n = g.index ? g.toNonIndexed() : g
   if (n !== g) g.dispose()
-  for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') n.deleteAttribute(k)
+  for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv' && k !== 'color') n.deleteAttribute(k)
   if (!n.attributes.normal) n.computeVertexNormals()
   if (!n.attributes.uv) n.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n.attributes.position.count * 2), 2))
   n.clearGroups()
@@ -139,13 +167,12 @@ export class Building extends THREE.Group {
   private readonly stem: string
   private readonly street: THREE.Group
   private readonly mark: THREE.Mesh
-  /**
-   * sky-reflecting panes: the empty shells behind them stay unseen (the unit's own GLASS is 70 % clear). Session 31: a
-   * slate blue-grey mirroring the sky SKY_GLINT× GLASS (they were near-black: 0.12×, and #27303a)
-   */
-  private readonly glass = new THREE.MeshStandardMaterial({ color: '#3d4a57', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap })
+  /** the haze's share in the panes (setSun) */
+  private readonly paneSky = { value: PANE_HAZE }
+  /** haze-mirroring panes (hazePane): the empty shells behind them stay unseen (the unit's own GLASS is 70 % clear) */
+  private readonly glass = hazePane(this.paneSky)
   /** the panes of the windows lit at night (litWindow: about 45 %, the same ones every time), warm behind the curtains */
-  private readonly lit = new THREE.MeshStandardMaterial({ color: '#3d4a57', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap, emissive: '#ffc27e', emissiveIntensity: 0 })
+  private readonly lit = hazePane(this.paneSky, '#ffc27e')
   private readonly own: THREE.Material[] = [this.glass, this.lit]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
@@ -233,7 +260,7 @@ export class Building extends THREE.Group {
         for (const w of u.walls) {
           for (const o of w.openings) {
             if (o.kind === 'window' || o.kind === 'slider') {
-              put(litWindow(`${s}|${k}|${o.id}`) ? 'lit' : 'glass', at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01)))
+              put(litWindow(`${s}|${k}|${o.id}`) ? 'lit' : 'glass', paneBox(at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01))))
             }
           }
         }
@@ -378,7 +405,7 @@ export class Building extends THREE.Group {
       built.openings.forEach((o) => {
         if (o.kind !== 'window' && o.kind !== 'slider') return
         const t = (o.offsetM + o.widthM / 2) / L
-        put(this.glass, alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0))
+        put(this.glass, paneBox(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0)))
       })
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
@@ -477,10 +504,10 @@ export class Building extends THREE.Group {
 
   /**
    * After Look.setHour: the sun's shadow frustum around the whole tower (Look's covers the flat only), reaching the
-   * street behind it; the panes dim with the sky at dusk like GLASS.
+   * street behind it; the panes dim with the haze at dusk.
    */
   setSun(sun: THREE.DirectionalLight, night = 0): void {
-    this.glass.envMapIntensity = this.lit.envMapIntensity = SKY_GLINT * GLASS.envMapIntensity * (1 - night) // the day sky they mirror goes with the light
+    this.paneSky.value = PANE_HAZE * (1 - night) // the haze they mirror goes with the light
     this.lit.emissiveIntensity = 0.18 * night // the neighbours' lights come on as the sky goes
     const cam = sun.shadow.camera
     cam.position.copy(sun.position)

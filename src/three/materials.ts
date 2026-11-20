@@ -84,6 +84,16 @@ function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
     .catch(() => {}) // already warned; a plain wall
 }
 
+/**
+ * The plaster scan's colour picture has pores — dark specks 2–6 mm wide (1–3 of its 2 mm texels) that a wall at arm's length
+ * under the lamps showed as pitted stucco (qa2 V3: with the scan's relief switched off in the page the specks stayed, with
+ * its colour picture off they went). There the picture is magnified (4 screen pixels a texel at 0.5 m), so a painted wall
+ * reads it this many mip levels softer than the screen asks (daylight.ts mapBias): at arm's length 3 levels down (16 mm a
+ * texel), the pits melt into the paint; farther off the picture is all but even at any level. Its mean colour stays; every
+ * tier; a smaller level is no dearer to read.
+ */
+const PORE_BLUR = 5
+
 /** Flat colour that stands in for a texture set that is not on disk yet. */
 function fallbackColor(textureId: string): string {
   if (/wood|oak|teak|deck/.test(textureId)) return '#8a6a4a'
@@ -137,6 +147,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       else apply('roughnessMap', set.roughness)
       apply('aoMap', set.ao)
       if (daylit && !lite.on && set.id === 'plaster_white') mottle(m, set)
+      if (daylit && set.id === 'plaster_white') m.userData.mapBias = PORE_BLUR
     }
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
