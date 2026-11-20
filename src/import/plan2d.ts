@@ -186,7 +186,7 @@ function piece(a: Pt, b: Pt, thick: number, h?: number): Piece {
 
 /**
  * A closed four-sided outline with square corners, 4–60 cm across one way: one wall piece on its long axis, as thick as
- * its short side (Plotline's own DXF export draws every wall piece so, as many CAD drawings do). Both sides under 60 cm:
+ * its short side (Plotline's own DXF export draws every wall piece so: read for such a file only). Both sides under 60 cm:
  * `axis` picks which way it runs (null: neither).
  */
 function rectPiece(raw: Pt[], h: number | undefined, axis?: (a: Piece, b: Piece) => Piece | null): Piece | null {
@@ -535,7 +535,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   }
   const inColumn = (p: Pt) => columnBoxes.some((b) => p.x >= b.x0 - 0.01 && p.x <= b.x1 + 0.01 && p.y >= b.y0 - 0.01 && p.y <= b.y1 + 0.01)
 
-  // a wall drawn as its closed outline (a thin rectangle on a wall or kerb layer) is that wall piece, its lines not paired
+  // Plotline's own export: a wall drawn as its closed outline (a thin rectangle on a wall or kerb layer) is that wall piece, its lines not paired
   // again; a kerb with no height of its own stands KERB_M
   const heightOf = (x: { h?: number; layer: string; block?: string }) => (x.h ? x.h * s : role(x) === 'kerb' ? KERB_M : undefined)
   const rects: Piece[] = []
