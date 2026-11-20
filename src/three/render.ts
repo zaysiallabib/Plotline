@@ -44,12 +44,12 @@ export type Quality = 'high' | 'low' | 'lite'
  * the street outside keeps the sun. `lamps`: lights in the lamps' pool (the camera's room first); `lampShadows`: of those,
  * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer). `batch`: the flat's meshes drawn
  * as one mesh per material once they settle (batch.ts: ~310 → ~60 draw calls a frame on type-a, and a sun-shadow redraw
- * from ~620 to ~60).
+ * from ~620 to ~60). `sleep`: no frame drawn while nothing can change it (needsFrame), and then no frame loop at all.
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; batch: boolean }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, batch: false },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, batch: true },
-  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, batch: true },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; batch: boolean; sleep: boolean }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, batch: false, sleep: false },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, batch: true, sleep: true },
+  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, batch: true, sleep: true },
 }
 
 /**
@@ -68,9 +68,12 @@ export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, 
   return Math.min(dpr, tier === 'high' ? 2 : 1) * (forced ?? 1)
 }
 
-/** Lite draws a frame only when it can differ from the last one: the camera moved, input or a load within the wake window, VR. */
-export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number }): boolean =>
-  s.tier !== 'lite' || s.xr || s.moved || s.now < s.wakeUntil
+/**
+ * Lite and Low (TIERS.sleep) draw a frame only when it can differ from the last one: the camera moved, input or a load
+ * within the wake window, VR, or something drifting on its own (`animating`: the wind's lines).
+ */
+export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number; animating?: boolean }): boolean =>
+  !TIERS[s.tier].sleep || s.xr || s.moved || !!s.animating || s.now < s.wakeUntil
 
 /** Frame times (ms) taken while moving are slow: the median of at least 45 is worse than 30 fps (35 ms: rAF steps by 16.7 ms). */
 export function slowFrames(ms: number[]): boolean {

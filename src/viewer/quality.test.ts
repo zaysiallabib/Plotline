@@ -41,13 +41,14 @@ describe('who sets the tier: GPU fallback > the link > the person > the device',
   test('a value that is not a tier is ignored', () => expect(chosen({ ...none, picked: 'ultra', link: '' })).toEqual({ tier: 'lite', by: 'device' }))
 })
 
-describe('Lite draws no idle frames', () => {
+describe('Lite and Low draw no idle frames', () => {
   const idle = { tier: 'lite' as const, xr: false, moved: false, now: 5000, wakeUntil: 4000 }
-  test('nothing moved, nothing woke it: no frame', () => expect(needsFrame(idle)).toBe(false))
+  test('nothing moved, nothing woke it: no frame, on Lite and on Low', () => expect([needsFrame(idle), needsFrame({ ...idle, tier: 'low' })]).toEqual([false, false]))
   test('the camera moved', () => expect(needsFrame({ ...idle, moved: true })).toBe(true))
   test('input or a load within the wake window', () => expect(needsFrame({ ...idle, wakeUntil: 5001 })).toBe(true))
   test('VR draws every frame', () => expect(needsFrame({ ...idle, xr: true })).toBe(true))
-  test('High and Low draw every frame', () => expect([needsFrame({ ...idle, tier: 'high' }), needsFrame({ ...idle, tier: 'low' })]).toEqual([true, true]))
+  test('the wind’s lines drift on their own: drawn while shown', () => expect(needsFrame({ ...idle, animating: true })).toBe(true))
+  test('High draws every frame', () => expect(needsFrame({ ...idle, tier: 'high' })).toBe(true))
 })
 
 describe('slow frames: worse than 30 fps while moving', () => {

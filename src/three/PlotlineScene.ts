@@ -278,8 +278,10 @@ export class PlotlineScene {
   /** Lite / Low: what changed since the groups were last batched (rebatch), and the timer that batches them once it settles */
   private readonly unsettled = new Set<'static' | 'furniture'>()
   private batchTimer = 0
-  /** Lite draws until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
+  /** Lite / Low draw until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
   private wakeUntil = 0
+  /** Lite / Low with nothing to draw: the frame loop is off (no callback every frame at all) until wake() */
+  private sleeping = false
   private lastPose = NaN
   private drewLast = false
   /** frame times (ms) taken while moving, from 2 s after the first (render.ts slowFrames); null once judged */
@@ -556,6 +558,7 @@ export class PlotlineScene {
     this.windSeason = season
     this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month, SEASON_TINT[season], this.blocks) : null
     if (this.wind) this.scene.add(this.wind)
+    this.wake()
   }
 
   setMode(mode: SceneMode): void {
@@ -657,8 +660,13 @@ export class PlotlineScene {
     this.resize()
   }
 
-  /** Lite: draw for the next WAKE_MS (something changed that the camera does not show). */
-  wake = (): void => void (this.wakeUntil = performance.now() + WAKE_MS)
+  /** Lite / Low: draw for the next WAKE_MS (something changed that the camera does not show); a sleeping frame loop starts again. */
+  wake = (): void => {
+    this.wakeUntil = performance.now() + WAKE_MS
+    if (!this.sleeping || this.disposed) return
+    this.sleeping = false
+    this.renderer.setAnimationLoop(this.tick)
+  }
 
   /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */
   showFloor(k: number): void {
@@ -1826,7 +1834,15 @@ export class PlotlineScene {
     const moved = pose !== this.lastPose
     this.lastPose = pose
     const xr = this.renderer.xr.isPresenting
-    if (!needsFrame({ tier: this.tier, xr, moved, now, wakeUntil: this.wakeUntil })) return void (this.drewLast = false)
+    if (!needsFrame({ tier: this.tier, xr, moved, now, wakeUntil: this.wakeUntil, animating: !!this.wind })) {
+      this.drewLast = false
+      // asleep: no frame callback at all until wake() — not with VR switched on (three's loop hands over to the headset's)
+      if (!this.renderer.xr.enabled) {
+        this.sleeping = true
+        this.renderer.setAnimationLoop(null)
+      }
+      return
+    }
     if (moved && this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
     this.look.render()
     this.drewLast = true
