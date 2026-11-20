@@ -358,6 +358,24 @@ describe('solveTraces on a synthetic flat', () => {
     expect(aod.map((x) => x.message)).toEqual(['Room type guessed from its size and thin-line sides (an AOD / shaft, no door?); its edges are traced as low walls — check'])
   })
 
+  test('s31 calm: an open-plan side traced as a passage is ONE row (the passage\'s), not the boundary\'s row besides', () => {
+    // a living 0–4 m whose east side is open between two 0.5 m wall stubs, an unnamed space 4–6, a bed 6–8
+    const width = Math.round(8 * K + 2 * O.x), height = Math.round(5 * K + 2 * O.y)
+    const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+    const ext = 0.254 * K, par = 0.127 * K, h = ext / 2 / K
+    stroke(g, P(-h, 0), P(8 + h, 0), ext)
+    stroke(g, P(-h, 5), P(8 + h, 5), ext)
+    stroke(g, P(0, 0), P(0, 5), ext)
+    stroke(g, P(8, 0), P(8, 5), ext)
+    stroke(g, P(4, 0), P(4, 0.5), par)
+    stroke(g, P(4, 4.5), P(4, 5), par)
+    stroke(g, P(6, 0), P(6, 5), par)
+    const item = (name: string, kind: string, cx: number, aM: number): TextItem => ({ text: `${name}\n${aM}x${5 - 0.254}`, box: { x: P(cx, 2.5).x - 30, y: P(cx, 2.5).y - 10, w: 60, h: 20 }, kind: 'room', roomKind: kind, dims: { aM, bM: 5 - 0.254 }, conf: 0.9, source: 'ocr' })
+    const r = withTracker('tracks', () => solveTraces(g, { text: { items: [item('LIVING', 'living', 2, 4 - 0.127 - 0.0635), item('BED-1', 'bed', 7, 2 - 0.0635 - 0.127)] } }, { pickPx: P(2, 2.5), pxPerM: K }))
+    expect(r.review.filter((x) => /^Passage .* wide\?/.test(x.message)).length).toBe(1)
+    expect(r.review.filter((x) => /Open-plan boundary/.test(x.message))).toEqual([])
+  })
+
   test('3 named rooms + 1 unnamed, scale from the printed sizes, doors in the partitions, a Unit that validates', () => {
     const { g, text } = synthetic()
     const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })
