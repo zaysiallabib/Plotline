@@ -33,7 +33,7 @@ import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
 import type { Street } from '../data/building'
@@ -249,6 +249,8 @@ export class PlotlineScene {
 
   private disposed = false
   private readonly tier: Quality
+  /** Lite's share of its pixel budget (render.ts pixelRatioFor): halved when still slow (lighter) */
+  private budget = 1
   /** Lite draws until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
   private wakeUntil = 0
   private lastPose = NaN
@@ -350,7 +352,6 @@ export class PlotlineScene {
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
     this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
-    this.renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio, 2))
     if (isLite) {
       // ponytail: three's own upload path halves every 1k picture (WebGLTextures resizeImage, 2k ones to a quarter); real
       // half-size files on disk if the decoded originals in memory ever matter
@@ -618,11 +619,10 @@ export class PlotlineScene {
     this.failCb = cb
   }
 
-  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches), no lamp's either. */
-  shadowsOff(): void {
-    this.sun.castShadow = false
-    this.look.lampShadowsOff()
-    this.wake()
+  /** Lite and still slow: half the pixels (render.ts pixelRatioFor's budget). */
+  lighter(): void {
+    this.budget = 0.5
+    this.resize()
   }
 
   /** Lite: draw for the next WAKE_MS (something changed that the camera does not show). */
@@ -1032,6 +1032,8 @@ export class PlotlineScene {
     this.wake()
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
+    // the drawing buffer at the tier's pixels; the canvas keeps its CSS size (setSize's false): the browser scales it up
+    this.renderer.setPixelRatio(pixelRatioFor(this.tier, devicePixelRatio, w, h, forcedScale(), this.budget))
     this.renderer.setSize(w, h, false)
     this.look.setSize(w, h)
     this.camera.aspect = w / h

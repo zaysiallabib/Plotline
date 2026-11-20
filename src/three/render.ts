@@ -50,6 +50,22 @@ export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: n
   lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false },
 }
 
+/**
+ * Lite's pixel budget (session 31): 0.75 × 0.75 of a 1600 × 1000 window, the browser scaling the picture up — at 9× the
+ * pixels a frame is pixel-bound on any chip, and Lite at 0.75 took 14 → 8.5 ms there. A smaller window (a phone, a
+ * 1366 × 768 laptop) draws nearer its own size, never under half of it.
+ */
+export const LITE_PIXELS = 900_000
+/**
+ * Drawing-buffer pixels per CSS pixel for a w × h CSS-pixel canvas: High the screen's own up to 2×, Low 1× (its CSS pixels),
+ * Lite within LITE_PIXELS × `budget` (a Lite still slow halves it). `forced` (?scale=) multiplies High's and Low's, and is
+ * Lite's.
+ */
+export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, forced: number | null = null, budget = 1): number {
+  if (tier === 'lite') return forced ?? THREE.MathUtils.clamp(Math.sqrt((LITE_PIXELS * budget) / Math.max(1, w * h)), 0.5, 1)
+  return Math.min(dpr, tier === 'high' ? 2 : 1) * (forced ?? 1)
+}
+
 /** Lite draws a frame only when it can differ from the last one: the camera moved, input or a load within the wake window, VR. */
 export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number }): boolean =>
   s.tier !== 'lite' || s.xr || s.moved || s.now < s.wakeUntil
@@ -245,6 +261,11 @@ const BATTEN = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#f3
  */
 const SWITCHES = new URLSearchParams(globalThis.location?.search ?? '')
 export const switchedOff = (name: 'ao' | 'shadows'): boolean => SWITCHES.get(name) === '0'
+/** `?scale=0.5` … `?scale=2`: the picture's pixels forced (pixelRatioFor), to compare costs; null: the tier's own */
+export const forcedScale = (): number | null => {
+  const v = Number(SWITCHES.get('scale'))
+  return v >= 0.25 && v <= 2 ? v : null
+}
 
 export class Look {
   private readonly composer: EffectComposer | null = null
@@ -655,11 +676,6 @@ export class Look {
     this.setAltitude(this.alt)
   }
 
-  /** Lite and still slow (PlotlineScene.shadowsOff): no lamp casts a shadow, now or after the next setUnit. */
-  lampShadowsOff(): void {
-    this.casters = 0
-    for (const { light } of this.pool) light.castShadow = false
-  }
 
   /** A lamp's materials (a mounted piece that gives light): those that glow (emissive: a diffuser, a globe, a shade) follow the lamps. */
   addGlows(obj: THREE.Object3D): void {
@@ -710,6 +726,7 @@ export class Look {
   }
 
   setSize(w: number, h: number): void {
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio()) // the composer keeps the ratio it was made with
     this.composer?.setSize(w, h)
   }
 
