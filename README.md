@@ -3,9 +3,10 @@
 **The digital show flat.** A property developer sells flats before they are built. Plotline lets their team turn the
 architect's floor plan into a furnished 3D flat in the browser, and send buyers a link to walk through it — on a
 computer, a phone or a VR headset. Buyers look around, choose from the finishes the developer offers, and leave notes on
-anything they see. Every choice and note lands in one list for the developer.
+anything they see. Every choice and note lands in one list for the developer. Plotline is made in Dhaka, for Dhaka's
+developers first.
 
-There are three places in it:
+There are three screens:
 
 - **The front page** (`/`) — what Plotline is, as a short story you scroll through.
 - **The 3D view** (`/u/<flat>`, `/s/<link>`) — what a buyer sees: walk, dollhouse, the whole building.
@@ -49,7 +50,8 @@ The site is plain files (no server of its own) hosted on [Vercel](https://vercel
 rules and the headers (security rules and how long browsers keep each file).
 
 1. Once: `npx vercel link` in this folder, and add the two database settings below in the Vercel project
-   (Settings → Environment Variables).
+   (Settings → Environment Variables), step by step in `Docs/SETUP_SUPABASE_ON_VERCEL.md`. Optional: the two DWG
+   settings (`Docs/SETUP_FORMATS.md`).
 2. Every release: `npx vercel --prod --yes`. Pushing to GitHub does not publish by itself.
 3. Check the live site: the front page, a flat (`/u/type-a`), the Studio (`/studio`).
 
@@ -80,14 +82,20 @@ settings, never more: the project's address and its **publishable** key. On your
 | `src/data/units/` | The flats and floors that come built in |
 | `public/assets/` | 3D models, textures and sky pictures; `MANIFEST.md` says where each came from and its licence (all free to use) |
 | `supabase/` | The database's tables, its rules and their safety test |
+| `api/` | The one server function: the DWG converter (`dwg.js`, off until set up) |
+| `scripts/` | `verify-share.mjs` checks the live database once it is set up |
 
 ## The documents
 
-- `Docs/MANUAL.md` — every function a person can use, in plain words (and what to do when something goes wrong, §12).
-- `Docs/KEYS.md` — every key and button in one list.
+- `Docs/MANUAL.md` — every function a person can use, in plain words; begin at its "Start here" (and what to do when
+  something goes wrong, §12).
+- `Docs/KEYS.md` — every key and button, one table per screen.
+- `Docs/SETUP_SUPABASE_ON_VERCEL.md`, `Docs/SETUP_ACCOUNTS.md`, `Docs/SETUP_FORMATS.md` — turning on buyer links, staff
+  accounts and DWG files, one sitting each.
 - `Docs/DESIGN.md` — the look: colours, type, spacing, the rules every screen follows.
 - `Docs/SOURCES.md` — every outside source (furniture, maps, weather, hosting) and what is free only for now.
-- `Docs/FORMATS.md` — the architect's files Plotline can read.
+- `Docs/FORMATS.md` — the architect's files Plotline reads and writes.
+- `Docs/AUTOTRACE_SCOREBOARD.md` — how well Auto-trace does on real plan sheets, measured.
 - `ARCHITECTURE.md` — how it is built, and how the data is kept safe ("Security").
 - `CLAUDE.md` — the working rules and the decisions in force.
 - `HANDOFF.md` — the latest state of the work.
