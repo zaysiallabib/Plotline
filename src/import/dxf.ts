@@ -159,6 +159,73 @@ class Hatch {
   }
 }
 
+/**
+ * MLINE (AutoCAD's multiline: a wall drawn as two or more parallel lines at once), which dxf-parser leaves out. Each vertex
+ * carries its miter direction and, per element, the element's distance along that miter (scale and justification already
+ * in), so each element's own polyline is vertex + miter × distance — the walls' two faces, without the style table.
+ */
+interface IMlineEntity extends IEntity {
+  type: 'MLINE'
+  elements: Pt[][]
+  closed: boolean
+}
+class Mline {
+  ForEntityName = 'MLINE' as const
+  parseEntity(scanner: { next(): { code: number; value: unknown }; isEOF(): boolean }, curr: { code: number; value: unknown }): IMlineEntity {
+    const e = { type: 'MLINE', elements: [], closed: false, layer: '0' } as unknown as IMlineEntity
+    let vertex: Pt | null = null
+    let miter: Pt = { x: 0, y: 1 }
+    let element = -1
+    let firstParam = false
+    curr = scanner.next()
+    while (!scanner.isEOF() && curr.code !== 0) {
+      const v = Number(curr.value)
+      switch (curr.code) {
+        case 8: e.layer = String(curr.value); break
+        case 67: e.inPaperSpace = v === 1; break
+        case 71: e.closed = (v & 2) !== 0; break
+        case 11: vertex = { x: v, y: 0 }; element = -1; break
+        case 21: if (vertex) vertex.y = v; break
+        case 13: miter = { x: v, y: 0 }; break
+        case 23: miter.y = v; break
+        case 74: element++; firstParam = true; break
+        case 41:
+          if (firstParam && vertex && element >= 0) (e.elements[element] ??= []).push({ x: vertex.x + miter.x * v, y: vertex.y + miter.y * v })
+          firstParam = false
+          break
+      }
+      curr = scanner.next()
+    }
+    return e
+  }
+}
+
+/**
+ * A SPLINE's curve (non-rational B-spline by de Boor, 8 points per span); its fit points, else its control polygon, when
+ * the knots do not match. ponytail: weights (group 41) are not read by dxf-parser — a rational spline (rare in plans: a
+ * true circle drawn as a spline) comes out slightly off; read them in a handler like Mline's if one ever matters.
+ */
+export function splinePoints(ctrl: Pt[], knots: number[] | undefined, degree: number | undefined, fit?: Pt[]): Pt[] {
+  const p = degree ?? 3
+  if (!knots || ctrl.length <= p || knots.length !== ctrl.length + p + 1) return fit && fit.length >= 2 ? fit : ctrl
+  const at = (t: number): Pt => {
+    let k = p
+    while (k < ctrl.length - 1 && t >= knots[k + 1]) k++
+    const d = Array.from({ length: p + 1 }, (_, j) => ({ ...ctrl[k - p + j] }))
+    for (let r = 1; r <= p; r++)
+      for (let j = p; j >= r; j--) {
+        const i = k - p + j
+        const den = knots[i + p - r + 1] - knots[i]
+        const a = den ? (t - knots[i]) / den : 0
+        d[j] = { x: (1 - a) * d[j - 1].x + a * d[j].x, y: (1 - a) * d[j - 1].y + a * d[j].y }
+      }
+    return d[p]
+  }
+  const t0 = knots[p], t1 = knots[ctrl.length]
+  const n = Math.max(2, (ctrl.length - p) * 8)
+  return Array.from({ length: n + 1 }, (_, i) => at(t0 + ((t1 - t0) * i) / n))
+}
+
 function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   let sweep = a1 - a0
   while (sweep <= 0) sweep += 2 * Math.PI
@@ -288,9 +355,13 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'SPLINE': {
         const s = e as ISplineEntity
-        const pts = s.fitPoints?.length ? s.fitPoints : (s.controlPoints ?? [])
+        const pts = splinePoints(s.controlPoints ?? [], s.knotValues, s.degreeOfSplineCurve, s.fitPoints)
         if (pts.length >= 2) poly(e, pts, !!s.closed)
-        skip('splines (drawn as their control polygon)')
+        break
+      }
+      case 'MLINE': {
+        const m = e as IMlineEntity
+        for (const el of m.elements) if (el.length >= 2) poly(e, el, m.closed)
         break
       }
       case 'TEXT': {
@@ -373,6 +444,7 @@ function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
+  parser.registerEntityHandler(Mline as unknown as new () => IGeometry)
   const dxf = parser.parseSync(text)
   if (!dxf) throw new Error('This file is not a DXF Plotline can read')
   const notes: string[] = []
