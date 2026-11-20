@@ -1,10 +1,10 @@
 # CLAUDE.md — Plotline
 
 Plotline is a "digital show flat" TOOL, licensed to real-estate developers
-pre-selling apartments (Dhaka first): their team traces a unit's floor plan
+pre-selling apartments anywhere in the world (founder, 2026-11-20: "remove anything about dhaka. we are going international"): their team traces a unit's floor plan
 in the Studio (typing the dimensions printed on the plan), generates a
 furnished, realistic 3D walkthrough, and shares buyer links. Buyers explore,
-pick developer-approved finish options (with BDT price deltas), and file
+pick developer-approved finish options (with price deltas in the project's currency), and file
 object-anchored comments/change requests logged in a shared change list.
 The Studio (tracing editor) is part of the product, not internal tooling.
 Budget rule: $0 until revenue — free tiers and CC0 assets only.
@@ -138,6 +138,12 @@ Every key and button in one list: Docs/KEYS.md (same rule). Every outside source
   LOW_WALL_M`); (5) a whole-floor drawing is named "Floor plan A, B…" — "Type A / B" is only ever a flat's name from
   the sheet.
 
+- **Session 31 (founder, 2026-11-20, away 10 hours): "get it to production level … remove anything about dhaka. we are going
+  international … finish the whole website and the tool. get the new format compatibility to the max … make sure that whatever
+  changes you make and whatever models you make I can make the same with least difficulty and maximum efficiency."** The design
+  language is `Docs/DESIGN.md` (marble, ink, one Aegean blue; black-and-gold is dead). Everything Claude adds must be
+  doable by a person in the product (a model dropped into the library, a finish option typed in, a plan traced) and
+  written in MANUAL.
 - **Claude is the long-term developer and CTO (founder, 2026-11-20 night):** "quality will only increase from here not
   decrease. functional ease should only increase not decrease." Add what makes the experience smoother without asking;
   never ship a change that makes any existing path slower, uglier or harder. Claude does the security checks itself
@@ -170,8 +176,10 @@ Every key and button in one list: Docs/KEYS.md (same rule). Every outside source
    Never duplicate a wall per room. A door cut in a wall affects both rooms.
 2. **Walls are arbitrary-angle.** Never assume axis-aligned/rectangular rooms.
    Real Dhaka plans have chamfered corners, angled verandas, shear walls, shafts.
-3. **All lengths in meters (floats), all money in integer BDT.** Pixels exist
-   only inside the Studio, converted at the boundary.
+3. **All lengths in meters (floats), all money in integer minor units of the project's currency** (the stored
+   field is still named `priceDeltaBdt`; `currency` on the Unit / Project says which; one formatter in `src/core`).
+   Sizes print in the drawing's units (metric / imperial) through one formatter. Pixels exist only inside the
+   Studio, converted at the boundary.
 4. **Stable IDs everywhere** (`newId()` = crypto.randomUUID). Comments/change
    requests anchor to entity IDs plus a local offset — never to world coords alone.
 5. **Finish options are structured:** `{brand, sku, label, priceDeltaBdt,
