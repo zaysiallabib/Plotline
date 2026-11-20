@@ -14,6 +14,7 @@ import { deriveRooms, newId, pointInPolygon, roomPolygon, validate } from '../co
 import type { Id, Opening, OpeningKind, Pillar, Pt, RoomLabel, Unit, Vertex, Wall } from '../core'
 import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, reducer } from '../studio/model'
 import { writeGlb, type GlbGroup } from './glb'
+import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
 
 type WebIfc = typeof import('web-ifc')
 type Api = InstanceType<WebIfc['IfcAPI']>
@@ -33,6 +34,11 @@ const TRIANGLE_CAP = 1_500_000
 // ---------- web-ifc ----------
 
 let apiPromise: Promise<{ W: WebIfc; api: Api }> | null = null
+/** Node (the tests) — not the browser's page or its worker (ifc.worker.ts), which have no `process` */
+const NODE = typeof process !== 'undefined' && !!process.versions?.node
+
+/** How far a read is, for the Studio's progress line: what it is doing in plain words, and 0..1. */
+export type Progress = (stage: string, fraction: number) => void
 
 /** One wasm instance for the session (web-ifc's Init is the slow part). Browser: the wasm comes from Vite's asset URL. */
 function loadApi(): Promise<{ W: WebIfc; api: Api }> {
@@ -40,7 +46,7 @@ function loadApi(): Promise<{ W: WebIfc; api: Api }> {
     const mod = (await import('web-ifc')) as WebIfc & { default?: WebIfc }
     const W = mod.IfcAPI ? mod : mod.default! // Node's CommonJS build lands under `default`
     const api = new W.IfcAPI()
-    if (typeof window !== 'undefined') {
+    if (!NODE) {
       const wasmUrl = (await import('web-ifc/web-ifc.wasm?url')).default
       await api.Init((path, prefix) => (path.endsWith('.wasm') ? wasmUrl : prefix + path))
     } else await api.Init()
@@ -153,19 +159,21 @@ interface WallDraft {
 
 // ---------- the importer ----------
 
-export async function importIfc(bytes: ArrayBuffer, name: string): Promise<ImportResult> {
+export async function importIfc(bytes: ArrayBuffer, name: string, progress: Progress = () => {}): Promise<ImportResult> {
   const t0 = Date.now()
+  progress('starting the reader', 0)
   const { W, api } = await loadApi()
-  const data = name.toLowerCase().endsWith('.ifczip') ? await unzipIfc(bytes) : new Uint8Array(bytes)
+  const data = name.toLowerCase().endsWith('.ifczip') ? unzipIfc(new Uint8Array(bytes)) : new Uint8Array(bytes)
+  progress(`opening the file (${Math.max(1, Math.round(data.byteLength / 1e6))} MB)`, 0.03)
   const model = api.OpenModel(data, { COORDINATE_TO_ORIGIN: false })
   try {
-    return readModel(W, api, model, name, t0)
+    return readModel(W, api, model, name, t0, progress)
   } finally {
     api.CloseModel(model)
   }
 }
 
-function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: number): ImportResult {
+function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: number, progress: Progress): ImportResult {
   const notes: string[] = []
   const line = (id: number): any => api.GetLine(model, id)
   const val = (x: any): any => (x == null ? undefined : typeof x === 'object' && 'value' in x ? x.value : x)
@@ -427,7 +435,15 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return b
   }
 
+  // the 3D is most of the time: one step per element with a body (the openings are not streamed; measured on molio,
+  // hitos, duplex: the stream visits 95–99 % of this count — products would count hitos' 9 203 annotations too)
+  const products = Math.max(1, idsOf(W.IFCELEMENT).length - idsOf(W.IFCOPENINGELEMENT).length)
+  let streamed = 0
+  let said = -1
+  progress('building the 3D', 0.1)
   api.StreamAllMeshes(model, (mesh) => {
+    const f = Math.min(1, ++streamed / products)
+    if (f - said >= 0.02) (said = f), progress(`building the 3D (${Math.round(f * 100)} %)`, 0.1 + 0.65 * f)
     const tn = typeName(mesh.expressID)
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
@@ -483,6 +499,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- walls ----------
+  progress('walls, doors and windows', 0.78)
   const voidsOf = new Map<number, number[]>() // wall → openings
   for (const r of idsOf(W.IFCRELVOIDSELEMENT)) {
     const rel = line(r)
@@ -789,6 +806,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- spaces ----------
+  progress('rooms', 0.86)
   let outsideLabels = 0
   const outlineOf = new Map<Id, [Pt, Pt][]>() // label → the space's exact floor outline (edges)
   for (const id of idsOf(W.IFCSPACE)) {
@@ -814,7 +832,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let nibs = 0
   let openPlan = 0
   let zoneLines = 0
-  for (const s of storeys) {
+  for (const [k, s] of storeys.entries()) {
+    progress(`floor ${k + 1} of ${storeys.length}`, 0.9 + (0.1 * k) / storeys.length)
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let last = { snapped: 0, dropped: 0 }
@@ -893,7 +912,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         }
       }
     }
-    if (lines.length && process.env.IFC_ZONES) {
+    if (lines.length && NODE && process.env.IFC_ZONES) {
       zoneLines += lines.length
       unit = build([...d.walls, ...lines])
     }
@@ -1125,43 +1144,11 @@ function boundaryEdges(tris: [Pt, Pt, Pt][]): [Pt, Pt][] {
 
 // ---------- .ifczip ----------
 
-/** the first .ifc inside a zip (stored or deflated); the browser and Node both have DecompressionStream */
-async function unzipIfc(bytes: ArrayBuffer): Promise<Uint8Array> {
-  const dv = new DataView(bytes)
-  const u8 = new Uint8Array(bytes)
-  let eocd = -1
-  for (let i = bytes.byteLength - 22; i >= Math.max(0, bytes.byteLength - 66000); i--)
-    if (dv.getUint32(i, true) === 0x06054b50) {
-      eocd = i
-      break
-    }
-  if (eocd < 0) throw new Error('not a zip file')
-  const count = dv.getUint16(eocd + 10, true)
-  let at = dv.getUint32(eocd + 16, true)
-  let fallback: number | null = null
-  for (let i = 0; i < count; i++) {
-    if (dv.getUint32(at, true) !== 0x02014b50) break
-    const nameLen = dv.getUint16(at + 28, true), extraLen = dv.getUint16(at + 30, true), commentLen = dv.getUint16(at + 32, true)
-    const name = new TextDecoder().decode(u8.subarray(at + 46, at + 46 + nameLen))
-    const local = dv.getUint32(at + 42, true)
-    if (name.toLowerCase().endsWith('.ifc')) return inflateEntry(bytes, local)
-    fallback ??= local
-    at += 46 + nameLen + extraLen + commentLen
-  }
-  if (fallback === null) throw new Error('the zip holds no .ifc file')
-  return inflateEntry(bytes, fallback)
-}
-
-async function inflateEntry(bytes: ArrayBuffer, local: number): Promise<Uint8Array> {
-  const dv = new DataView(bytes)
-  if (dv.getUint32(local, true) !== 0x04034b50) throw new Error('broken zip entry')
-  const method = dv.getUint16(local + 8, true)
-  const compressed = dv.getUint32(local + 18, true)
-  const nameLen = dv.getUint16(local + 26, true), extraLen = dv.getUint16(local + 28, true)
-  const start = local + 30 + nameLen + extraLen
-  const data = new Uint8Array(bytes, start, compressed || bytes.byteLength - start)
-  if (method === 0) return data.slice()
-  if (method !== 8) throw new Error(`zip method ${method} is not supported`)
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-  return new Uint8Array(await new Response(stream).arrayBuffer())
+/** the first .ifc inside a zip (else its first file): fflate, which three ships (no dependency of our own) */
+function unzipIfc(bytes: Uint8Array): Uint8Array {
+  const files = unzipSync(bytes)
+  const names = Object.keys(files).filter((n) => !n.endsWith('/'))
+  const pick = names.find((n) => n.toLowerCase().endsWith('.ifc')) ?? names[0]
+  if (!pick) throw new Error('the zip holds no .ifc file')
+  return files[pick]
 }

@@ -296,6 +296,8 @@ export default function StudioApp() {
   const [note, setNote] = useState<Note | null>(null)
   /** what an architect's file gave (src/import), listed in the panel until dismissed */
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
+  /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
+  const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
@@ -843,13 +845,18 @@ export default function StudioApp() {
    * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
    */
   const importArchitect = async (file: File) => {
-    setNote({ text: `Reading ${file.name}…` })
+    const stop = new AbortController()
+    setNote(null)
+    setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file)
+      r = await importFile(file, { signal: stop.signal, progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
     } catch (e) {
+      setReading(null)
+      if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
       return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
+    setReading(null)
     await takeImport(r, file.name)
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
@@ -2341,6 +2348,15 @@ export default function StudioApp() {
                 </>
               )}
               <button onClick={() => cancelTrace.current()}>Cancel</button>
+            </div>
+          )}
+          {reading && (
+            <div className="trace-card" role="status">
+              <span>
+                Reading {reading.name} · {reading.stage}
+              </span>
+              <progress value={reading.fraction ?? undefined} />
+              <button onClick={() => reading.stop.abort()}>Cancel</button>
             </div>
           )}
           {field && (

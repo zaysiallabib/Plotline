@@ -52,6 +52,18 @@ describe('ifc import', () => {
     expect(r.shell?.triangles).toBeGreaterThan(0)
   })
 
+  it.skipIf(!present(WALL_FILE))('says how far it is: stages in plain words, fractions that only grow, to the last floor', async () => {
+    const seen: [string, number][] = []
+    const b = readFileSync(WALL_FILE)
+    await importIfc(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), 'wall.ifc', (stage, f) => seen.push([stage, f]))
+    expect(seen[0][0]).toMatch(/starting/)
+    expect(seen.some(([s]) => /opening the file/.test(s))).toBe(true)
+    expect(seen.some(([s]) => /building the 3D/.test(s))).toBe(true)
+    expect(seen.at(-1)![0]).toMatch(/floor 1 of 1/)
+    for (let i = 1; i < seen.length; i++) expect(seen[i][1]).toBeGreaterThanOrEqual(seen[i - 1][1])
+    expect(seen.every(([, f]) => f >= 0 && f <= 1)).toBe(true)
+  })
+
   it.skipIf(!present(WALL_FILE))('the same file inside an .ifczip reads the same', async () => {
     const r = await importIfc(zipOf('wall.ifc', readFileSync(WALL_FILE)), 'wall.ifczip')
     expect(r.storeys[0].unit.walls).toHaveLength(1)

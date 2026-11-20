@@ -267,6 +267,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / 3D model" (Import's list). Or starts a project |
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
+| **Cancel** (the "Reading …" box at the top while an architect's file is read) | Stops reading the file; nothing changes in the Studio |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
 | Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |
