@@ -15,7 +15,7 @@ import { footprint, furnish } from '../furnish/presets'
 import {
   AC_AHEAD, AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
-  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
+  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, PORTRAIT_SIGHT, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, nearestSpoke, period } from './SunPill'
 import { EYE, boxInFrame, floorShare, frameShares, pieceInFrame, project, swings } from './frame'
@@ -222,21 +222,23 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect([cuts(u, before), acCut(u, before)]).toEqual([true, true])
   })
 
-  it("an upright phone enters looking down the room's length, not at a door across it (polish P1); a wide screen as before", () => {
-    /** the wall the middle of the frame lands on (eye height) and whether it lands in a swinging door */
+  it("an upright phone whose first frame would show a door across the room looks down the room's length instead (polish P1); otherwise, and on a wide screen, as before", () => {
+    /** where the middle of the frame lands (eye height): the first full-height wall, through passages, sliders and windows; in a swinging door? */
     const centre = (u: Unit, p: Pt, face: Pt) => {
-      let hit = { t: Infinity, door: false }
+      let hit = { t: 30, door: false }
       for (const w of u.walls.filter((x) => x.heightM >= EYE)) {
         const { origin: o, dir: d, lengthM } = core.wallFrame(w, u.vertices)
         const den = face.x * d.y - face.y * d.x
         if (Math.abs(den) < 1e-9) continue
         const t = ((o.x - p.x) * d.y - (o.y - p.y) * d.x) / den
         const s = ((o.x - p.x) * face.y - (o.y - p.y) * face.x) / den
-        if (t > 0.05 && s >= 0 && s <= lengthM && t < hit.t) hit = { t, door: w.openings.some((x) => swings(x) && s >= x.offsetM && s <= x.offsetM + x.widthM) }
+        const at = w.openings.find((x) => s >= x.offsetM && s <= x.offsetM + x.widthM)
+        if (t > 0.05 && s >= 0 && s <= lengthM && t < hit.t && !(at && !swings(at))) hit = { t, door: !!at }
       }
       return hit
     }
-    const doorAhead: string[] = []
+    const turned: string[] = []
+    const doorInFrame: string[] = []
     for (const u0 of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
       const rs = core.deriveRooms(u0)
       const u = { ...u0, furniture: furnish(u0, rs) }
@@ -244,14 +246,23 @@ describe('viewer', { timeout: 20_000 }, () => {
       const tall = entrySpawn(u, rs, true)!
       const room = core.roomAt(wide.p, rs, u)!
       expect(core.roomAt(tall.p, rs, u)?.id, u.id).toBe(room.id) // the same room, the same door
+      // the phone's frame (±10°, a ray every 2.5°) shows no door; its middle sees PORTRAIT_SIGHT into the room
+      const doors = Array.from({ length: 9 }, (_, i) => (10 * (i / 4 - 1) * Math.PI) / 180).filter((r) => centre(u, tall.p, { x: tall.face.x * Math.cos(r) - tall.face.y * Math.sin(r), y: tall.face.x * Math.sin(r) + tall.face.y * Math.cos(r) }).door)
+      expect(centre(u, tall.p, tall.face).door, `${u.id}: no door in the middle`).toBe(false)
+      expect(centre(u, tall.p, tall.face).t, `${u.id}: the middle sees the room`).toBeGreaterThanOrEqual(PORTRAIT_SIGHT)
+      if (doors.length) doorInFrame.push(u.id)
+      expect(acLooms(u, tall, true), u.id).toBe(false)
+      if (JSON.stringify(tall) === JSON.stringify(wide)) continue
+      turned.push(u.id)
       // along the length (the stand point may have slid down it past a pendant, then turned at most 25° off it or an AC)
       const axis = lengthwise(core.roomInnerPolygon(room, u), tall.p)!
       expect(Math.min(deg(tall.face, axis), 180 - deg(tall.face, axis)), `${u.id}: down the length`).toBeLessThanOrEqual(25 + 1e-6)
-      if (centre(u, tall.p, tall.face).door) doorAhead.push(u.id)
-      expect(acLooms(u, tall, true), u.id).toBe(false)
     }
-    expect(doorAhead).toEqual([])
-    // type-a: the wide screen's middle lands on the door across the dining room (qa2 2p-02); the phone's looks 5 m down it
+    // type-a and type-c: the wide screen's middle shows the door across the dining room (qa2 2p-02); the phone looks 5 m down it
+    expect(turned).toEqual(['unit_type_a_2703', 'unit_type_c_2254'])
+    // Sheltech B's foyer: its length is a blank wall 2 m off, so it keeps the wide view — its dining table in the middle, a
+    // door at the frame's edge
+    expect(doorInFrame).toEqual(['unit_sheltech_b_2736'])
     const rs = core.deriveRooms(unit)
     const u = { ...unit, furniture: furnish(unit, rs) }
     expect(centre(u, entrySpawn(u, rs)!.p, entrySpawn(u, rs)!.face).door).toBe(true)

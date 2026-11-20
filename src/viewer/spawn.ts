@@ -151,9 +151,10 @@ function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
  * nothing is no entrance there (a whole floor's outer wall: a traced window or veranda door — session 31 QA stood the
  * Preview 3D nose-to-curtain), and the walk starts in the largest living room (then dining room), seen as the Rooms
  * list shows it (roomView) — as with no usable door at all.
- * `portrait` (an upright phone, polish P1): its frame is a third as wide — only the middle of that view, often a door across
- * the room — so the first view looks down the room's length instead (`lengthwise`), clearing its pendants and ACs alike
- * (none clears: the wide view's heading, cleared as before).
+ * `portrait` (an upright phone, polish P1): its frame is a third as wide — only the middle of that view. When a door across
+ * the room shows in it, or its middle meets a wall nearer than PORTRAIT_SIGHT (`middle`; type-a and type-c: a wall and a
+ * door), the view looks down the room's length instead (`lengthwise`, pendants and ACs judged in the phone's narrow
+ * frame) when that frame is clear of both; else as before.
  */
 export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt; face: Pt } | null {
   const level = isLevel(rooms) && levelEntry(unit, rooms)
@@ -191,7 +192,6 @@ export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt
     const toC = { x: (c.x - p.x) / d, y: (c.y - p.y) / d }
     const inner = core.roomInnerPolygon(room, unit)
     const wide = d > 1 && (into || toC.x * n.x + toC.y * n.y > 0) ? toC : n
-    const long = portrait && lengthwise(inner, p)
     const standable = (q: Pt) =>
       core.pointInPolygon(q, inner) &&
       inner.every((a, j) => segDist(q, a, inner[(j + 1) % inner.length]) >= VIEW_INSET) &&
@@ -199,8 +199,7 @@ export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt
         const k = pl.roomId === room.id && kitAsset(pl.assetId)
         return !k || k.mount === 'ceiling' || k.category === 'rug' || k.kind === 'curtain' || footprintDist(q, pl) >= 0.3
       })
-    // the room's length first on an upright phone; nothing there clears its pendants and ACs: the wide view's heading
-    for (const face of long ? [long, wide] : [wide]) {
+    const clear = (face: Pt, narrow = false): { p: Pt; face: Pt } => {
       const turn = (deg: number): Pt => {
         const r = (deg * Math.PI) / 180
         return { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
@@ -208,9 +207,21 @@ export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt
       for (let s = 0; s < 12; s += 0.1)
         for (const q of s ? [add(p, face, -s), add(p, face, s)] : [p])
           for (let a = 0; a <= 25; a += 5)
-            for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t, true, portrait)) return { p: q, face: t }
+            for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t, true, narrow)) return { p: q, face: t }
+      return { p, face }
     }
-    return { p, face: long || wide }
+    const first = clear(wide)
+    // a phone's frame, ±PORTRAIT_DEG: a swinging door anywhere across it (a ray every 2.5°), or a wall nearer than PORTRAIT_SIGHT in its middle
+    const blocked = (v: { p: Pt; face: Pt }) =>
+      middle(unit, v.p, v.face).t < PORTRAIT_SIGHT ||
+      Array.from({ length: 9 }, (_, i) => PORTRAIT_DEG * (i / 4 - 1)).some((a) => {
+        const r = (a * Math.PI) / 180
+        return middle(unit, v.p, { x: v.face.x * Math.cos(r) - v.face.y * Math.sin(r), y: v.face.x * Math.sin(r) + v.face.y * Math.cos(r) }).door
+      })
+    if (!portrait || !blocked(first)) return first
+    const long = lengthwise(inner, p)
+    const along = long && clear(long, true)
+    return along && !blocked(along) ? along : first
   }
   const largest = (kind: Room['kind']) => rooms.filter((r) => r.kind === kind).sort((a, b) => b.areaSqm - a.areaSqm)[0]
   const living = largest('living') ?? largest('dining') ?? rooms[0]
@@ -219,6 +230,30 @@ export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt
   // its middle facing plan-up, a wall filling the screen (bug hunt 2026-10-18)
   const { p, face } = roomView(living, unit)
   return { p, face }
+}
+
+/** An upright phone's first view sees this far (m) down its middle (`middle`), and no door within PORTRAIT_DEG (°) of it (its frame: ~12°). */
+export const PORTRAIT_SIGHT = 3
+export const PORTRAIT_DEG = 10
+/**
+ * Where the middle of a view from p lands at eye height: the first full-height wall it meets (t, m) and whether there it
+ * meets a swinging door; a passage, a slider or a window lets it on (as inSight). Nothing within 30 m: t 30.
+ */
+export function middle(unit: Unit, p: Pt, face: Pt): { t: number; door: boolean } {
+  let hit = { t: 30, door: false }
+  for (const w of unit.walls) {
+    if (w.heightM < EYE) continue
+    const { origin: o, dir: d, lengthM } = core.wallFrame(w, unit.vertices)
+    const den = face.x * d.y - face.y * d.x
+    if (Math.abs(den) < 1e-9) continue
+    const t = ((o.x - p.x) * d.y - (o.y - p.y) * d.x) / den
+    const u = ((o.x - p.x) * face.y - (o.y - p.y) * face.x) / den
+    if (t <= 0.05 || t >= hit.t || u < 0 || u > lengthM) continue
+    const at = w.openings.find((x) => u >= x.offsetM && u <= x.offsetM + x.widthM)
+    if (at && !swings(at)) continue
+    hit = { t, door: !!at }
+  }
+  return hit
 }
 
 /**
