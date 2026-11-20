@@ -1117,7 +1117,7 @@ export default function StudioApp() {
     const { writeDxf } = await import('../import/dxfWrite')
     const name = u.name.trim() || 'Untitled unit'
     download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
-    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, ZONES`)
+    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
   const exportGlb = () => (stateRef.current.unit.walls.length ? previewWith('?export=glb') : toast('Nothing drawn yet to export'))
   const [printOpen, setPrintOpen] = useState(false)

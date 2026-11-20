@@ -917,10 +917,14 @@ says so.
 From the ⋯ menu, what a developer or their architect asks for:
 
 - **Export as DXF** — a `.dxf` in metres that AutoCAD and every drawing program opens, each part on its own layer:
-  **WALLS** (closed outlines), **DOORS** (leaf and swing), **WINDOWS**, **COLUMNS**, **TEXT** (names and sizes), **ZONES**
-  (a level's flush lines). Dropped back untouched it opens exactly as it was ("Written by Plotline and not changed
-  since"); once changed in a CAD program it is read from its lines — close, not exact (Type A: 103 walls back for its 90,
-  30 of 33 openings, 21 of 27 rooms).
+  **WALLS** (closed outlines; each wall's height rides along as its thickness, so a CAD program shows the walls in 3D),
+  **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
+  **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
+  lines) and **PLOTLINE_KERBS** (walls of 20 cm or less). Dropped back untouched it opens exactly as it was ("Written by
+  Plotline and not changed since"). Saved again by a CAD program it is read from its lines and layers ("Exported by
+  Plotline … read to the letter"): 10 of the 20 built-in flats and levels come back exactly the same, Type A among them;
+  the rest within a few lines — curved ramp walls, parking bays, a door right at a corner
+  ([FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md)).
 - **Export 3D model** — the 3D view opens in a new tab and, once every room has arrived, saves the furnished flat as one
   `.glb` (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the sky): about 55 MB
   (Type A 54 MB). Blender, 3ds Max, SketchUp and any glTF viewer open it; a render artist who wants it smaller runs it

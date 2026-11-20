@@ -238,12 +238,20 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   const det = xf.m[0] * xf.m[3] - xf.m[1] * xf.m[2]
   const rscale = Math.sqrt(Math.abs(det))
   const skip = (what: string) => out.skipped.set(what, (out.skipped.get(what) ?? 0) + 1)
-  const base = (e: IEntity) => ({ layer: e.layer ?? '0', block, inst })
-  const line = (e: IEntity, a: Pt, b: Pt) => out.segs.push({ ...base(e), a: apply(xf, a), b: apply(xf, b) })
+  // (an entity's thickness, group 39 — POLYLINE's thickness, LWPOLYLINE's "depth" here — is its extruded height)
+  const thick = (e: IEntity): number | undefined => {
+    const t = (e as { thickness?: number; depth?: number }).thickness ?? (e as { depth?: number }).depth
+    return t ? Math.abs(t) : undefined
+  }
+  const base = (e: IEntity) => ({ layer: e.layer ?? '0', block, inst, ...(thick(e) ? { h: thick(e) } : {}) })
+  const line = (e: IEntity, a: Pt, b: Pt, loop?: number) => out.segs.push({ ...base(e), a: apply(xf, a), b: apply(xf, b), ...(loop === undefined ? {} : { loop }) })
   const poly = (e: IEntity, pts: Pt[], closed: boolean) => {
-    for (let i = 0; i + 1 < pts.length; i++) line(e, pts[i], pts[i + 1])
-    if (closed && pts.length > 2) line(e, pts[pts.length - 1], pts[0])
-    if (closed && pts.length > 2) out.loops.push({ layer: e.layer ?? '0', pts: pts.map((p) => apply(xf, p)) })
+    const loop = closed && pts.length > 2 ? out.loops.length : undefined
+    for (let i = 0; i + 1 < pts.length; i++) line(e, pts[i], pts[i + 1], loop)
+    if (loop !== undefined) {
+      line(e, pts[pts.length - 1], pts[0], loop)
+      out.loops.push({ layer: e.layer ?? '0', pts: pts.map((p) => apply(xf, p)), ...(thick(e) ? { h: thick(e) } : {}) })
+    }
   }
   const arc = (e: IEntity, c: Pt, r: number, a0: number, a1: number) => {
     // under the insert's transform: centre and end points mapped, the radius scaled, a mirrored insert runs the other way
@@ -367,7 +375,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'TEXT': {
         const t = e as ITextEntity
-        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.textHeight ?? 1) * rscale })
+        if (t.text) out.texts.push({ layer: e.layer ?? '0', at: apply(xf, t.startPoint ?? { x: 0, y: 0, z: 0 }), text: stripMtext(t.text), height: (t.textHeight ?? 1) * rscale, ...(t.startPoint?.z ? { z: t.startPoint.z } : {}) })
         break
       }
       case 'MTEXT': {
@@ -482,7 +490,9 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   if (frozen.size) notes.push(`Frozen / hidden layers left out: ${[...frozen].join(', ')}.`)
 
   const columnLayer = Object.values(dxf.tables?.layer?.layers ?? {}).some((l) => roleOf(l.name) === 'column')
-  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer }
+  const ownLayers = Object.keys(dxf.tables?.layer?.layers ?? {}).some((l) => /^PLOTLINE_(ZONES|KERBS)$/.test(l))
+  if (ownLayers) notes.push('Exported by Plotline (its own layers are in the file): read to the letter — each wall piece its outline, each opening its block.')
+  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer, own: ownLayers }
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0

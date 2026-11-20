@@ -129,7 +129,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **⋯** | The menu: Drawing · Building · Buyers · Account; Esc or a click elsewhere closes it | top bar, right | §5 Top bar |
 | **⋯ → Import…** · **Ctrl+O** | Opens a drawing file, or the architect's own (.ifc, .ifczip, .dxf, .dwg once turned on, .pdf, .svg, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip; several files at once (a model with its pictures). Ctrl+O works in a text box too | any time | §5 Bring in the architect's file |
 | **⋯ → Export** · **Ctrl+S** | Saves the drawing as a Plotline file (.json). Ctrl+S works in a text box too | any time | §5 Top bar |
-| **⋯ → Export as DXF** | The drawing for AutoCAD or any drawing program (.dxf, metres, layers WALLS · DOORS · WINDOWS · COLUMNS · TEXT · ZONES) | ⋯ | §5 Give the drawing back |
+| **⋯ → Export as DXF** | The drawing for AutoCAD or any drawing program (.dxf, metres, layers WALLS · DOORS · WINDOWS · COLUMNS · TEXT · PLOTLINE_ZONES · PLOTLINE_KERBS) | ⋯ | §5 Give the drawing back |
 | **⋯ → Export 3D model** | Opens the 3D view in a new tab, which saves the furnished flat as a .glb | ⋯ | §5 Give the drawing back |
 | **⋯ → Print plan…** · **Paper** (A4 · A3 · A2 · A1) · **Scale** (1 : 50 · 1 : 100 · 1 : 200) · **Print** · **Close** / × / Esc | The plan as a sheet; Print opens the browser's print window (Save as PDF there) | ⋯, the Print box | §5 Give the drawing back |
 | **⋯ → Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` | ⋯ | §5 Auto-trace and Check these |
