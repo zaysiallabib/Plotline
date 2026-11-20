@@ -247,12 +247,12 @@
   content: '';
   position: absolute;
   z-index: -1;
-  inset: calc(-1 * var(--s-5)) calc(-1 * var(--s-7)) calc(-1 * var(--s-5)) calc(-1 * var(--s-5));
+  inset: calc(-1 * var(--s-4)) calc(-1 * var(--s-6)) calc(-1 * var(--s-4)) calc(-1 * var(--s-4));
   background: var(--glass);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
-  -webkit-mask-image: radial-gradient(farthest-side at 40% 50%, black 45%, transparent);
-  mask-image: radial-gradient(farthest-side at 40% 50%, black 45%, transparent);
+  -webkit-mask-image: radial-gradient(farthest-side at 40% 50%, black 60%, transparent);
+  mask-image: radial-gradient(farthest-side at 40% 50%, black 60%, transparent);
   pointer-events: none;
 }
 .room-name { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-2xl); }
