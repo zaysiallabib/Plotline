@@ -101,10 +101,13 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
 - **Double-click** (or the Enter button) — the mouse now turns your head. **Esc** gives the mouse back.
 - You cannot walk through walls. You can climb steps and ramps. You cannot walk into a pool.
 - **Stairs between floors** (since 2026-11-20), in a flat or level that is part of a building:
-  - Walk up the stair: the first flight to the half landing, then turn onto the second flight. The floor above opens with you standing at the top of its stair, facing the stair room's door.
-  - To go down, walk from the stair room's floor into the space under the second flight, toward the back (where the flight from the floor below comes up). The floor below opens with you on its half landing, looking down the last flight.
-  - Each change of floor loads that floor (a few seconds, like opening it from the list).
-  - In a stair room, the buttons **Up to …** and **Down to …** (bottom middle, just above the Sun & wind pill) do the same in one click. They also work where the stair room is too small for a drawn stair.
+  - Walk up the stair: the first flight to the half landing, then turn onto the second flight. The floor above appears with you standing at the top of its stair, facing the stair room's door.
+  - To go down, walk from the stair room's floor into the space under the second flight, toward the back (where the flight from the floor below comes up). The floor below appears with you standing on its floor at the foot of its stair, facing the stair room's door (since session 31; before, you landed on the half landing, between two floors).
+  - Where that door is only a step away (Type B's stair), you face along the stair instead, so the first thing you see is not a door an arm's length off.
+  - **No new page** (since session 31): the next floor comes into the same 3D. While it gets ready you stay where you are and the line at the bottom says where you are going ("Floor 4 …"); the floor you leave stays on screen until the new one is complete, then the picture changes in one go. The finishes you chose, the time of day, the wind, Clean view and the quality all stay. Anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
+  - The address in the browser changes to that floor, so **reload** opens it, and the browser's **Back** and **Forward** buttons take the stair back down or up again (also without a new page).
+  - In a stair room, the buttons **Up to …** and **Down to …** (bottom middle, just above the Sun & wind pill) do the same in one click. They also work where the stair room is too small for a drawn stair (the Sheltech ground floor's stairs): you then stand in the middle of that floor's stair room.
+  - It goes through the whole building: basements, ground floor, the common level, every floor of flats and the rooftop (the Sheltech tower has them all: from Basement 2 up to the rooftop and back).
   - A stair with no floor above (the rooftop) or below says so: "This stair goes no higher / lower".
 - Walk sees about as much as a 22 mm camera lens: a little under 80° across a wide screen, from 1.45 m eye height (since 2026-10-19; it used to be a wider 16 mm look, which made rooms and furniture look small and far). The dollhouse and the Building view see wider, as before.
 

@@ -22,6 +22,7 @@ import { fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
+import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
@@ -31,11 +32,11 @@ import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
-import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
+import { arrivalFace, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
-import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
+import { decodeConfig, encodeConfig, finishKeys, shareUrl, stairUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
@@ -126,17 +127,30 @@ const towerStem = (u: Unit) => {
   return t ? stemIn(t, u) : undefined
 }
 /**
- * `?floor=N` (a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON keeps its
- * own. A level (ground, basement, rooftop) stands on its tower's floor for it.
+ * Floor `n` (`?floor=N`: a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON
+ * keeps its own. A level (ground, basement, rooftop) stands on its tower's floor for it.
  */
-function onFloor(u: Unit | null): Unit | null {
+function onFloor(u: Unit | null, n = Number(params.get('floor'))): Unit | null {
   const t = u && towerOf(u)
   const stem = t && stemIn(t, u)
   if (!u || !t || !stem) return u
   const level = t.LEVELS?.[stem]
   if (level !== undefined) return { ...u, floor: level }
-  const n = Number(params.get('floor'))
   return t.FLOORS.some((f) => f.floor === n && (f.flats.includes(stem) || f.standIns?.includes(stem))) ? { ...u, floor: n } : u // a stand-in too: the stair to it (takeStair)
+}
+/**
+ * A unit as the viewer shows it (the page's, or a floor reached by the stair): on its floor, what a Studio draft / auto-trace
+ * / its share link lacks filled in (finishes, area, name: defaults.ts); `base` = its own layout (its JSON's, presets for
+ * rooms without pieces), under the one arranged in this browser (Arrange, Studio F) — both through layoutFor, so a room
+ * added since gets its presets.
+ */
+function prepare(raw: Unit | null, floor?: number): { unit: Unit; base: FurniturePlacement[] } | null {
+  const u = onFloor(raw, floor)
+  if (!u) return null
+  const rooms = core.deriveRooms(u)
+  const base = layoutFor(u, rooms)
+  const saved = readLayout(u.id)
+  return { unit: { ...withDefaults(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base }
 }
 /**
  * The load screen's list: the flats as they are; each tower's levels (ground, basements, rooftop) under its name, top
@@ -217,17 +231,8 @@ export default function ViewerApp() {
         .catch((e) => (console.warn('[plotline] share link', e), 'offline' as const))
         .then(setFetched)
   }, [])
-  // `base` = the unit's own layout (its JSON's, presets for rooms without pieces); a layout arranged in this browser
-  // (Arrange, Studio F) wins; both through layoutFor, so a room added since gets its presets
-  const [unit, base] = useMemo(() => {
-    const u = onFloor(TOKEN ? (fetched === 'offline' ? null : (fetched ?? null)) : resolveUnit())
-    if (!u) return [null, []]
-    const rooms = core.deriveRooms(u)
-    const base = layoutFor(u, rooms)
-    const saved = readLayout(u.id)
-    // what a Studio draft / auto-trace / its share link lacks (finishes, area, name): defaults.ts
-    return [{ ...withDefaults(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
-  }, [fetched])
+  const shown = useMemo(() => prepare(TOKEN ? (fetched === 'offline' ? null : (fetched ?? null)) : resolveUnit()), [fetched])
+  const unit = shown?.unit ?? null
   useEffect(() => {
     document.title = unit ? pageTitle(unit.name) : fetched === undefined || fetched === 'offline' ? pageTitle() : pageTitle('Not found')
   }, [unit, fetched])
@@ -240,7 +245,7 @@ export default function ViewerApp() {
         <NoThreeD unit={unit} />
       </div>
     )
-  return <Viewer unit={unit} base={base} />
+  return <Viewer first={shown!} />
 }
 
 const dims = (s: { x: number; y: number; z: number }) => `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high`
@@ -504,7 +509,9 @@ function OpeningPanel(p: {
   )
 }
 
-function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] }) {
+function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }) {
+  // the unit on show and its own layout (prepare): the page's, then each floor the stair reaches (takeStair) — one 3D for all
+  const [{ unit: given, base }, setFloorUnit] = useState(first)
   // the plan as the 3D shows it: `given`, then whatever Edit openings commits (the scene is rebuilt in place, not re-made)
   const [unit, setPlanUnit] = useState(given)
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
@@ -598,7 +605,9 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     [unit.finishSlots, cfg],
   )
 
-  // engine (made once per unit loaded; an opening edit rebuilds it in place — its rooms, so the closures below, stay the same)
+  /** where the unit being built puts the walker (a floor reached by the stair: at its stair), read once by the unit effect */
+  const arrival = useRef<{ at: Pt; face: Pt } | null>(null)
+  // engine: made once for the page — the renderer, the sky, the sun and the quality stay for every unit it is given
   useEffect(() => {
     let s: PlotlineScene
     try {
@@ -627,11 +636,46 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       write(tab, KEYS.note, `Switched to Lite: ${why === 'memory' ? 'the graphics ran out of memory' : 'the 3D stopped'} on this device.`)
       restart(cfgRef.current)
     })
-    s.cover = tower && stem ? coverOf(tower, stem, unit.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
-    s.street = tower && stem ? streetOf(tower, stem) : null // the made-up street round the whole tower, as the Building view's
-    s.setUnit(given)
     s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
+    let alive = true // StrictMode/HMR dispose this scene before the promise settles
+    void Promise.resolve(xrEmulation)
+      .then(() => navigator.xr?.isSessionSupported('immersive-vr'))
+      .then((ok) => {
+        if (!ok || !alive) return
+        setXr(s.enableXR())
+        s.renderer.xr.addEventListener('sessionstart', () => {
+          setMode('walk') // engine forces walk in VR; keep the button label honest
+          setInVR(true)
+        })
+        s.renderer.xr.addEventListener('sessionend', () => setInVR(false))
+      })
+    if (import.meta.env.DEV) Object.assign(window, { __plotline: s })
+    setScene(s)
+    return () => {
+      alive = false
+      s.dispose()
+    }
+  }, [])
+  // the unit into the engine: the page's, then each floor the stair reaches, standing where it arrives (an opening edit
+  // rebuilds in place instead: commitPlan)
+  useEffect(() => {
+    if (!scene) return
+    scene.cover = tower && stem ? coverOf(tower, stem, given.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
+    scene.street = tower && stem ? streetOf(tower, stem) : null // the made-up street round the whole tower, as the Building view's
+    scene.setUnit(given)
+    const a = arrival.current
+    arrival.current = null
+    if (a) spawn(scene, a.at, a.face)
+    if (going.current) {
+      going.current = null // "Floor 3 …" stood there until now: the floor is built, its first frame comes next
+      redraw()
+    }
+  }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
+  // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)
+  useEffect(() => {
+    if (!scene) return
+    const s = scene
     s.onPick((hit) => {
       if (!hit) return
       // the Finishes panel open: a floor / wall / ceiling picks that room's (that wall's) finish — in the dollhouse instead of dropping in
@@ -659,25 +703,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       setMode('orbit')
       s.setMode('orbit')
     })
-    let alive = true // StrictMode/HMR dispose this scene before the promise settles
-    void Promise.resolve(xrEmulation)
-      .then(() => navigator.xr?.isSessionSupported('immersive-vr'))
-      .then((ok) => {
-        if (!ok || !alive) return
-        setXr(s.enableXR())
-        s.renderer.xr.addEventListener('sessionstart', () => {
-          setMode('walk') // engine forces walk in VR; keep the button label honest
-          setInVR(true)
-        })
-        s.renderer.xr.addEventListener('sessionend', () => setInVR(false))
-      })
-    if (import.meta.env.DEV) Object.assign(window, { __plotline: s })
-    setScene(s)
-    return () => {
-      alive = false
-      s.dispose()
-    }
-  }, [given]) // eslint-disable-line react-hooks/exhaustive-deps
+  })
 
   // Wind on: the month's arrows through the flat (three/wind.ts)
   useEffect(() => scene?.setWind(windOn ? months[month] : null, core.seasonOf(month, unit.site)), [scene, windOn, months, month, unit.site])
@@ -740,11 +766,6 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     setEntered(true)
     const e = entrySpawn(shown(), rooms, innerWidth < innerHeight) // an upright phone looks down the room
     if (e) spawn(scene, e.p, e.face)
-    // come by the stair from the floor below / above (takeStair): on this floor's stair
-    const near = params.get('at')?.split(',').map(Number)
-    const by = near?.length === 2 && arriveBy(shown(), rooms, { x: near[0], y: near[1] }, params.get('stair') === 'up' ? 'below' : 'above')
-    if (by) spawn(scene, by.at, by.face, params.get('stair') === 'down' ? -0.6 : 0) // come down: looking down the flight below
-    if (by) return // no pointer lock without a click: "Click to look around"
     if (params.get('view') === 'dollhouse') go('orbit')
     else if (params.get('view') === 'building') {
       go(stem ? 'building' : 'orbit') // the Studio's "Show building" (taken out of it since: the dollhouse)
@@ -765,7 +786,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const toggleMode = () => go(mode === 'walk' ? 'orbit' : 'walk')
   // a flat picked in the Building view opens straight into its dollhouse once loaded; the Studio's building into the tower
   useEffect(() => {
-    if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building' || (STAFF && params.has('edit')) || params.has('stair'))) enter()
+    if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building' || (STAFF && params.has('edit')))) enter()
   })
 
   /** a quality picked (the start screen's Change, or ⋯): kept in this browser, the page opens again with it */
@@ -992,29 +1013,88 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   useEffect(() => scene?.onArrange(onArrange))
 
   // ── the stairs (founder 2026-11-20: "if i climb a stair i cannot reach the upper floor"): walked up a stair's flight to
-  // the floor above (or down to the one below; PlotlineScene.toNextFloor), or the Up / Down button in a stair room — that
-  // floor's unit loads with the walker on its stair (enter, ?stair=)
+  // the floor above (or down to the one below; PlotlineScene.toNextFloor), or the Up / Down button in a stair room. Session
+  // 31: that floor loads into this same 3D (no new page) and he stands at its stair, the walk going on
   const myFloor = tower && stem ? (unit.floor ?? floorIn(tower, stem)) : 0
-  const takeStair = (to: { stem: string; floor: number; at: Pt }, dir: 1 | -1) =>
-    location.assign(`/u/${encodeURIComponent(to.stem)}?floor=${to.floor}&stair=${dir > 0 ? 'up' : 'down'}&at=${to.at.x.toFixed(3)},${to.at.y.toFixed(3)}${SHARED ? '&c=' : ''}`)
+  /** the floor a stair reaches, as the buttons and the loading line say it */
+  const floorWord = (to: { stem: string; floor: number }) => (tower?.LEVELS?.[to.stem] !== undefined ? levelName(tower, to.floor) : `Floor ${to.floor}`)
+  /** a stair being taken: "Floor 3 …" in the hint's place while that floor loads; null: none */
+  const going = useRef<string | null>(null)
+  /**
+   * Takes the stair to `to` (stairTo: that floor's unit and this stair's point in its plan). That floor's models load while
+   * he stays where he is, the floor he leaves still drawn and "Floor 3 …" where the hint is; then the floor is swapped in
+   * one frame and he stands at its stair (arriveBy), facing into it. `from` (this floor's stair point) goes into the
+   * browser's history with the address (stairUrl), so Back takes the same stair back; `from` null: Back / Forward brought
+   * him here, the history is already right. False: a stair is already being taken.
+   */
+  const takeStair = (to: { stem: string; floor: number; at: Pt }, from: Pt | null): boolean => {
+    const next = tower ? prepare(tower.FLATS[to.stem]?.unit ?? null, to.floor) : null
+    if (going.current || !next) return false
+    going.current = `${floorWord(to)} …`
+    redraw()
+    // ponytail: 15 s cap — a model still downloading after that streams in on the new floor (as on a page load). Then two
+    // frames, so the line is on screen before the floor is built (a moment the 3D stands still, even with every model at hand)
+    const frame = () => new Promise((r) => requestAnimationFrame(r))
+    void Promise.race([preloadModels(next.unit.furniture), new Promise((r) => setTimeout(r, 15_000))]).then(frame).then(frame).then(() => {
+      if (from && stem) {
+        history.replaceState({ ...history.state, stair: { stem, floor: myFloor, at: from } }, '') // where Back arrives
+        history.pushState({ stair: to }, '', stairUrl(location.search, to.stem, to.floor, SHARED))
+      }
+      const rs = core.deriveRooms(next.unit)
+      const by = arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
+      arrival.current = by && { at: by.at, face: arrivalFace(next.unit, by) }
+      // the floor he leaves: what was open on it closes; the finishes chosen, the sun, the wind and Clean view stay
+      letGo()
+      scene?.setArrange(false)
+      scene?.setOpeningEdit(false)
+      setArranging(false)
+      setEditingOpenings(false)
+      setOpSel(null)
+      setAdding(false)
+      setSel(null)
+      setSurface(null)
+      setDraft(null)
+      setAskFloor(null)
+      setFloorUnit(next)
+      setPlanUnit(next.unit)
+      steps.current = { pieces: next.unit.furniture, past: [] }
+      live.current = null
+      plan.current = { ...initialState(), unit: next.unit }
+      gesture.current = null
+      setPins(readPins(next.unit.id))
+      setPicked(next.unit.floor ?? 0)
+      setRoom((by && core.roomAt(by.at, rs, next.unit)) || null)
+      setMode('walk')
+      document.title = pageTitle(next.unit.name) // (the line goes once the floor is built: the unit effect)
+    })
+    return true
+  }
   useEffect(() =>
     scene?.onStair((dir, stair) => {
-      const d = dir === 'up' ? 1 : -1
-      const to = tower && stem ? stairTo(tower, stem, myFloor, stair, d) : null
-      if (to) takeStair(to, d)
+      const to = tower && stem ? stairTo(tower, stem, myFloor, stair, dir === 'up' ? 1 : -1) : null
+      if (to) takeStair(to, stair)
       else showToast(dir === 'up' ? 'This stair goes no higher' : 'This stair goes no lower')
       return !!to
     }),
   )
+  // Back / Forward between floors the stair reached: the same stair, no new page; an address the stair did not make opens as a page
+  useEffect(() => {
+    const pop = (e: PopStateEvent) => {
+      const to = (e.state as { stair?: { stem: string; floor: number; at: Pt } } | null)?.stair
+      if (!to || !takeStair(to, null)) location.reload()
+    }
+    addEventListener('popstate', pop)
+    return () => removeEventListener('popstate', pop)
+  })
   const stairWays = useMemo(() => {
     if (mode !== 'walk' || !room || !isStairRoom(room) || !tower || !stem) return []
     const s = unit.furniture.find((p) => p.roomId === room.id && isStair(p))
     const at = s ? { x: s.x, y: s.y } : room.centroid
     return ([1, -1] as const).flatMap((d) => {
       const to = stairTo(tower, stem, myFloor, at, d)
-      return to ? [{ d, to, label: `${d > 0 ? 'Up' : 'Down'} to ${tower.LEVELS?.[to.stem] !== undefined ? levelName(tower, to.floor) : `Floor ${to.floor}`}` }] : []
+      return to ? [{ d, to, at, label: `${d > 0 ? 'Up' : 'Down'} to ${floorWord(to)}` }] : []
     })
-  }, [mode, room, tower, stem, myFloor, unit.furniture])
+  }, [mode, room, tower, stem, myFloor, unit.furniture]) // eslint-disable-line react-hooks/exhaustive-deps
   // the browser's Esc frees a locked mouse without telling the page: a carry in walk ends there, the piece back where it was
   useEffect(() => {
     const onLock = () => !document.pointerLockElement && !arranging && letGo()
@@ -1354,6 +1434,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             locked={locked}
             onEnterVR={xr ? toggleVR : null}
             toast={toast}
+            going={going.current}
             onJump={(r) => {
               const v = roomView(r, shown()) // the arranged layout, deleted pieces out
               // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
@@ -1411,10 +1492,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               />
             }
             ways={
-              stairWays.length > 0 && !arranging && !editingOpenings ? (
+              stairWays.length > 0 && !arranging && !editingOpenings && !going.current ? (
                 <div className="glass walk-level" role="group" aria-label="Take the stair">
                   {stairWays.map((w) => (
-                    <button key={w.d} className="btn" title="Take the stair: that floor opens, you stand on its stair" onClick={() => takeStair(w.to, w.d)}>
+                    <button key={w.d} className="btn" title="Take the stair: that floor opens here, you stand at its stair" onClick={() => takeStair(w.to, w.at)}>
                       {w.label}
                     </button>
                   ))}

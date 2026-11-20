@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { optionsTotal } from './FinishesPanel'
 import { compassPoint } from './Minimap'
-import { decodeConfig, encodeConfig, finishKeys, formatDelta, formatTaka } from './share'
+import { decodeConfig, encodeConfig, finishKeys, formatDelta, formatTaka, stairUrl } from './share'
 import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
 import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
@@ -863,6 +863,17 @@ describe('viewer', { timeout: 20_000 }, () => {
     const c = { x: f.origin.x + f.dir.x * (door.offsetM + door.widthM / 2), y: f.origin.y + f.dir.y * (door.offsetM + door.widthM / 2) }
     expect(Math.hypot(v.p.x - c.x, v.p.y - c.y)).toBeCloseTo(w.thicknessM / 2 + 0.9)
     expect(core.pointInPolygon(v.p, core.roomInnerPolygon(bath, u))).toBe(true)
+  })
+})
+
+describe('the stair\'s address (session 31: a floor reached by the stair is this page on that floor)', () => {
+  it('a reload lands on that floor; what only the first arrival asked for goes; a link stays what it was', () => {
+    expect(stairUrl('?floor=3', 'type-b', 4, false)).toBe('/u/type-b?floor=4')
+    expect(stairUrl('', 'sheltech-roof', 7, false)).toBe('/u/sheltech-roof?floor=7') // a level: its floor, the same way
+    expect(stairUrl('?floor=2&view=building&pick=2&quality=lite', 'sheltech-l1', 1, false)).toBe('/u/sheltech-l1?floor=1&quality=lite')
+    expect(stairUrl('?floor=3&edit=furniture&own=1&export=glb', 'type-b', 2, false)).toBe('/u/type-b?floor=2')
+    expect(stairUrl('?floor=3&c=abc', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=abc') // a buyer's finishes ride along
+    expect(stairUrl('', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=') // from a published link: still a buyer's link
   })
 })
 

@@ -19,6 +19,19 @@ export function shareUrl(loc: { origin: string; pathname: string; search: string
   return `${loc.origin}${loc.pathname}?${f}c=${encodeConfig(cfg)}`
 }
 
+/**
+ * The address of a floor reached by the stair (ViewerApp takeStair): this page on that floor, so a reload lands there — the
+ * stem and `?floor=`, what only the first arrival asked for dropped (the Building view's pick, an editor, an export), the
+ * rest kept (a link's quality, a share link's finishes); from a published link (`/s/…`) still a buyer's link (`c=`).
+ */
+export function stairUrl(search: string, stem: string, floor: number, shared: boolean): string {
+  const q = new URLSearchParams(search)
+  for (const k of ['view', 'pick', 'edit', 'own', 'export']) q.delete(k)
+  q.set('floor', String(floor))
+  if (shared && !q.has('c')) q.set('c', '')
+  return `/u/${encodeURIComponent(stem)}?${q}`
+}
+
 export type FinishKeys = Map<string, { slot: FinishSlot; scope: string }>
 
 const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']

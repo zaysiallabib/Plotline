@@ -141,6 +141,8 @@ interface Props {
   /** set when immersive-vr is supported: shows "Enter VR" */
   onEnterVR: (() => void) | null
   toast: string | null
+  /** a stair being taken (ViewerApp takeStair): "Floor 3 …" stands in the hint's place, not fading, while that floor loads */
+  going?: string | null
   onJump: (room: Room) => void
   onMode: (mode: SceneMode) => void
   onToggleFinishes: () => void
@@ -332,7 +334,7 @@ export default function Hud(p: Props) {
       document.removeEventListener('pointerlockchange', wake)
     }
   }, [])
-  const busy = !!open || p.finishesOpen || p.commenting || p.sunOpen || p.arranging || p.editingOpenings || !!p.hand
+  const busy = !!open || p.finishesOpen || p.commenting || p.sunOpen || p.arranging || p.editingOpenings || !!p.hand || !!p.going
   const chrome = chromeOf({ clean, idle, mode: p.mode, busy })
   const goClean = () => {
     setClean(true)
@@ -346,7 +348,7 @@ export default function Hud(p: Props) {
   useEffect(() => rail.current?.querySelector('.rail-item.on')?.scrollIntoView({ block: 'nearest' }), [p.picked, p.mode])
   const finger = useFinger()
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
-  const hint = hintOf({ ...p, holding: !!p.hand, finger })
+  const hint = p.going ?? hintOf({ ...p, holding: !!p.hand, finger })
   const r = p.room
   const b = p.mode === 'building' ? p.pickedFloor : null
   const eyebrow = b ? b.label : p.floorLabel
@@ -533,8 +535,8 @@ export default function Hud(p: Props) {
           </div>
         )}
         {/* keyed by its text: a new hint shows again, then fades (CSS only); the mouse over it brings it back. Comment says its own in its panel */}
-        {hint && !p.commenting && (
-          <div key={hint} className="glass hint">
+        {hint && (!p.commenting || p.going) && (
+          <div key={hint} className={`glass hint${p.going ? ' going' : ''}`} role={p.going ? 'status' : undefined}>
             {hint}
           </div>
         )}
