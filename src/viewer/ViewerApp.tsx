@@ -665,13 +665,18 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
     scene.cover = tower && stem ? coverOf(tower, stem, given.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
     scene.street = tower && stem ? streetOf(tower, stem) : null // the made-up street round the whole tower, as the Building view's
     scene.down = tower && stem ? stairsDown(tower, stem, given.floor ?? floorIn(tower, stem), given.furniture.filter(isStair)) : [] // the hole and the flight below
-    scene.setUnit(given)
     const a = arrival.current
     arrival.current = null
-    if (a) spawn(scene, a.at, a.face)
-    if (going.current) {
-      going.current = null // "Floor 3 …" stood there until now: the floor is built, its first frame comes next
+    const shown = () => {
+      if (!going.current) return
+      going.current = null // "Floor 3 …" stood there until now: the floor is ready, its first frame comes next
       redraw()
+    }
+    // a floor reached by the stair: made ready while the one he leaves stays on screen (no freeze), then he stands at its stair
+    if (a) void scene.arrive(given, a.at, yawFor(a.face)).then(shown)
+    else {
+      scene.setUnit(given)
+      shown()
     }
   }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
   // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)

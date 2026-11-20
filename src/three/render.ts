@@ -155,13 +155,6 @@ const BOUNCE_DOWN = 0.08
  * (a 10–45 W LED ceiling light, or a fan's kit and a tube light), Lambertian under a flush diffuser: peak candela Φ / π.
  */
 export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
-/**
- * The flat's lamps (kit.ts lightOf: ceiling fixtures, floor and table lamps) share a pool of spot lights, the nearest to
- * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most the tier's (TIERS.lamps).
- * Forward shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles
- * every material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
- */
-const SPARE = 4
 /** a ceiling diffuser's cone (Lambertian: see setUnit); a lamp's shade lets its light out over the whole lower half */
 const CEILING_CONE = THREE.MathUtils.degToRad(83)
 const LAMP_CONE = Math.PI / 2
@@ -322,7 +315,8 @@ export class Look {
     new THREE.SphereGeometry(250, 48, 24).scale(1, 1, -1), // mirrored: u matches three's equirectUv, faces point inward
     new THREE.MeshBasicMaterial({ depthWrite: false }),
   )
-  private readonly unitGroup = new THREE.Group()
+  /** this floor's slab, lights, contact shadows and street (PlotlineScene.warm compiles it before a stair's swap) */
+  readonly unitGroup = new THREE.Group()
   /** the slab above: exists only while the camera is under the ceiling (walk / VR) */
   private readonly indoor = new THREE.Group()
   private readonly catcher = new THREE.Mesh(
@@ -454,7 +448,7 @@ export class Look {
 
   showGround(plane: boolean, flat = plane): void {
     this.ground.visible = plane
-    this.unitGroup.visible = flat
+    this.unitGroup.visible = flat && !this.leaving // a floor built for a stair stays hidden until swap()
   }
 
   /** Equirect sky texture for the dome; lighting stays on the interior HDRI. */
@@ -470,12 +464,22 @@ export class Look {
    * at the stairs that lead down (PlotlineScene builds the flight and the core under them): the slab, the street plane and
    * the contact shadows leave them open, the sun's shadow box reaches down to their floor.
    */
-  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }, wells: Well[] = []): void {
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
+    this.drop() // a floor a stair left, still shown: gone now
+    if (hold) {
+      // a stair taken (PlotlineScene.arrive): the floor shown until now stays on screen as it is, this one is built hidden
+      const roof = new THREE.Group().add(...this.indoor.children) // the walker is under the ceiling: its roof stays
+      const group = new THREE.Group().add(...this.unitGroup.children.filter((o) => o !== this.indoor), roof)
+      this.leaving = { group, pool: this.pool, contact: this.contact, street: this.street }
+      ;[this.pool, this.contact, this.street] = [[], null, null]
+      this.scene.add(group)
+    }
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     this.unitGroup.clear()
     this.indoor.clear()
     for (const s of this.pool) s.light.dispose() // its shadow map
+    if (hold) this.unitGroup.visible = false
 
     // floor levels (session 19): a room's floor at its label's level (a ramp: its plane), its ceiling at its walls' top
     const level = (r: Room, x: number, y: number) => core.roomLevelAt(r, unit, x, y)
@@ -565,7 +569,8 @@ export class Look {
     // the street: Dhaka flats start above the ground-floor parking. A ground level's sunken zones stay above the street plane.
     // (a basement's street is above it, whatever its ramps go down to: never lowered to them)
     const streetY = -(unit.floor ?? 2) * STOREY_M - 0.2
-    this.ground.position.y = this.groundY = streetY > 0 ? streetY : Math.min(streetY, lowest - 0.05)
+    this.groundY = streetY > 0 ? streetY : Math.min(streetY, lowest - 0.05)
+    if (!hold) this.ground.position.y = this.groundY // (hold: at swap — the street of the floor still shown stays under it)
     // the planes under the flat are open over a well that goes down past them (the ground floor's stair to the basements)
     const openOver = (m: THREE.Mesh, size: number, deeper: Well[]) => {
       if (!deeper.length && !m.userData.holed) return
@@ -582,20 +587,25 @@ export class Look {
     const shade = junctionShade(unit, rooms, wells.map((w) => w.poly))
     if (shade.floor) this.unitGroup.add(new THREE.Mesh(shade.floor, SHADE))
     if (shade.ceiling) this.indoor.add(new THREE.Mesh(shade.ceiling, SHADE))
-    this.street = buildStreet(unit, street, this.ground.position.y)
+    this.street = buildStreet(unit, street, this.groundY)
     // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view. Both throw
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
     ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
 
     this.openSky = rooms.filter((r) => core.isOutdoor(r.kind) && !isCovered(r, cover)).map((r) => core.roomPolygon(r, unit))
-    // the lamps' pool: sized here, and only here (its count recompiles every material); setFixtures says where they are
+    // the lamps' pool (kit.ts lightOf: ceiling fixtures, floor and table lamps), the nearest to the camera first (assignPool;
+    // setFixtures says where they are): the tier's number (TIERS.lamps) on every floor. Forward shading pays for every light
+    // on every lit fragment — at intensity 0 too — and a change in their number recompiles every material: the same count
+    // on each floor a stair reaches, so a first visit compiles only its new materials (session 31: sized to a floor's own
+    // lamps + 4 on High, a level with few lamps changed the count — 15–22 of a first visit's 19–26 programs; on Lite and
+    // Low that was the tier's number already). An unused light burns at 0, as the lamps off do.
     this.rooms = rooms
     this.links = unit.walls.flatMap((w): [Id, Id, number][] => {
       const [a, b] = w.openings.length ? sidesOf(w) : [null, null]
       return a && b && a !== b ? [[a.id, b.id, Math.max(...w.openings.map((o) => SPILL[o.kind] ?? SPILL_OTHER))]] : []
     })
     this.setFixtures(unit)
-    this.pool = Array.from({ length: Math.min(this.maxLamps, this.fixtures.length + SPARE) }, (_, i) => {
+    this.pool = Array.from({ length: this.maxLamps }, (_, i) => {
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
@@ -671,7 +681,7 @@ export class Look {
         ? [{ ...at, y: roomCeiling(room, unit, this.rooms) - Math.max(0.12, 0.8 * h), cd: lampCandela(room.areaSqm), ceiling: true }] // its ceiling as buildRoom's
         : [{ ...at, y: floor + bottomOf(unit.furniture, p) + (lamp.bulbM * h) / kitAsset(p.assetId)!.sizeM.y, cd: lamp.lumens / Math.PI / 100, ceiling: false }]
     })
-    setLampShare(lampShares(this.fixtures, this.rooms, this.links))
+    if (!this.leaving) setLampShare(lampShares(this.fixtures, this.rooms, this.links)) // (a floor built for a stair: at swap, into its own atlas)
     this.pickedAt.set(Infinity, 0, 0)
   }
 
@@ -889,16 +899,55 @@ export class Look {
   }
 
   /** The context meshes' own materials and the shadow mask (their geometry goes with unitGroup's). */
-  private disposeContext(): void {
-    const c = this.contact?.material as THREE.MeshBasicMaterial | undefined
+  private disposeContext(contact = this.contact, street = this.street): void {
+    const c = contact?.material as THREE.MeshBasicMaterial | undefined
     c?.alphaMap?.dispose()
     c?.dispose()
-    this.street?.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
-    this.contact = this.street = null
+    street?.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
+    if (contact === this.contact && street === this.street) this.contact = this.street = null
+  }
+
+  /** the floor a stair leaves (setUnit `hold`): its slab, roof, lights, contact shadows and street, drawn as they were until swap() */
+  private leaving: { group: THREE.Group; pool: Look['pool']; contact: THREE.Mesh | null; street: THREE.Group | null } | null = null
+
+  /** The floor setUnit built with `hold` on screen, in one frame: the one the stair left freed, the street plane at this one's level. */
+  swap(): void {
+    this.drop()
+    this.unitGroup.visible = true
+    this.ground.position.y = this.groundY
+    setLampShare(lampShares(this.fixtures, this.rooms, this.links))
+  }
+
+  /** The floor a stair left, if still shown: off screen and freed (its geometry, its context materials, its lights' shadow maps). */
+  private drop(): void {
+    const l = this.leaving
+    if (!l) return
+    this.leaving = null
+    l.group.removeFromParent()
+    l.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
+    this.disposeContext(l.contact, l.street)
+    for (const s of l.pool) s.light.dispose()
+  }
+
+  /**
+   * obj's programs as the floor setUnit built with `hold` will draw it: its lights (not those of the floor still shown), into
+   * the target the scene is drawn to (the composer's on High) — what its first frame after swap() would compile.
+   */
+  compile(obj: THREE.Object3D): void {
+    const l = this.leaving?.group
+    if (l) l.visible = false
+    this.unitGroup.visible = true
+    const rt = this.renderer.getRenderTarget()
+    if (this.composer && !this.renderer.xr.isPresenting) this.renderer.setRenderTarget(this.composer.readBuffer)
+    this.renderer.compile(obj, this.camera, this.scene)
+    this.renderer.setRenderTarget(rt)
+    if (l) l.visible = true
+    this.unitGroup.visible = !l
   }
 
   dispose(): void {
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onRestored)
+    this.drop()
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     for (const m of [this.ground, this.catcher, this.sky]) {

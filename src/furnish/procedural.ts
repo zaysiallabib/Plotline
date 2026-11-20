@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
-import { lean, lite, texture } from '../three/materials'
+import { lean, lite, texture, track } from '../three/materials'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
@@ -1250,7 +1250,7 @@ export function setLeafGlow(k: number): void {
 }
 let leafGeos: Promise<THREE.BufferGeometry[]> | null = null
 function loadLeaves(): Promise<THREE.BufferGeometry[]> {
-  return (leafGeos ??= new GLTFLoader().loadAsync('/assets/models/potted_plant_02/potted_plant_02_1k.gltf').then((g) => {
+  return (leafGeos ??= track(new GLTFLoader().loadAsync('/assets/models/potted_plant_02/potted_plant_02_1k.gltf')).then((g) => {
     const src = g.scene.getObjectByName('potted_plant_02_leaves') as THREE.Mesh
     const m = src.material as THREE.MeshStandardMaterial
     Object.assign(leafMat, { map: m.map, emissiveMap: m.map, normalMap: m.normalMap, roughnessMap: m.roughnessMap, roughness: 1 })
@@ -1411,7 +1411,7 @@ const scanFiles = new Map<string, Promise<THREE.Object3D>>()
 function scanFile(s: Scan): Promise<THREE.Object3D> {
   let p = scanFiles.get(s.url)
   if (!p) {
-    p = new GLTFLoader().loadAsync(s.url).then(async (g) => {
+    p = track(new GLTFLoader().loadAsync(s.url)).then(async (g) => {
       if (s.alpha) {
         const a = await loader.loadAsync(s.alpha)
         a.flipY = false
@@ -1422,7 +1422,7 @@ function scanFile(s: Scan): Promise<THREE.Object3D> {
       }
       return g.scene
     })
-    scanFiles.set(s.url, p)
+    scanFiles.set(s.url, track(p))
   }
   return p
 }

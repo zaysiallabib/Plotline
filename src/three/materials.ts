@@ -13,6 +13,18 @@ import { daylit as daylitPatch, mottleMap } from './daylight'
 
 const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
+
+/**
+ * Every picture or scan still on its way (texture(), procedural.ts's plant scans): a floor reached by the stair waits for them
+ * before it shows (PlotlineScene.arrive) — its shaders are compiled with their maps, nothing pops in after.
+ */
+export const loading = new Set<Promise<unknown>>()
+export function track<T>(p: Promise<T>): Promise<T> {
+  loading.add(p)
+  const done = () => void loading.delete(p)
+  p.then(done, done)
+  return p
+}
 const matCache = new Map<string, THREE.MeshStandardMaterial>()
 let maxAnisotropy = 1
 
@@ -62,7 +74,7 @@ export function texture(url: string, repeatM: number, srgb: boolean, repeatYM = 
       return tex
     })
     p.catch(() => {})
-    texCache.set(key, p)
+    texCache.set(key, track(p))
   }
   return p
 }
