@@ -447,7 +447,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   const onMesh = (mesh: { expressID: number; geometries: { size(): number; get(i: number): { geometryExpressID: number; flatTransformation: number[]; color: { x: number; y: number; z: number; w: number } } } }) => {
     seen.add(mesh.expressID)
     const f = Math.min(1, ++streamed / products)
-    if (f - said >= 0.02) (said = f), progress(`building the 3D (${Math.round(f * 100)} %)`, 0.1 + 0.65 * f)
+    if (f - said >= 0.02) (said = f), progress(`building the 3D (${Math.round(f * 100)} %)`, 0.1 + 0.5 * f)
     const tn = typeName(mesh.expressID)
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
@@ -517,7 +517,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- walls ----------
-  progress('walls, doors and windows', 0.78)
+  progress('walls, doors and windows', 0.62)
   const voidsOf = new Map<number, number[]>() // wall → openings
   for (const r of idsOf(W.IFCRELVOIDSELEMENT)) {
     const rel = line(r)
@@ -824,7 +824,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- spaces ----------
-  progress('rooms', 0.86)
+  progress('rooms', 0.66)
   let outsideLabels = 0
   const outlineOf = new Map<Id, [Pt, Pt][]>() // label → the space's exact floor outline (edges)
   const floorOf = new Map<Id, [Pt, Pt, Pt][]>() // label → the space's floor triangles
@@ -858,7 +858,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let zoneLines = 0
   let touches = 0
   for (const [k, s] of storeys.entries()) {
-    progress(`floor ${k + 1} of ${storeys.length}`, 0.9 + (0.1 * k) / storeys.length)
+    progress(`floor ${k + 1} of ${storeys.length}`, 0.7 + (0.3 * k) / storeys.length) // (each floor is joined and checked: on a big building the longest part)
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let last = { snapped: 0, dropped: 0 }
@@ -989,7 +989,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
   if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
   if (snapped) notes.push(`${snapped} wall ends stopped a few centimetres short of (or ran past) the wall they meet: each was moved onto that wall's centre line${nibs ? `; ${nibs} pieces shorter than ${MIN_PIECE_M * 100} cm left by that were removed` : ''}.`)
-  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines} zone lines (flush, drawn as nothing) were added along the file's own room outlines so each name has its own room.`)
+  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines ? `${zoneLines} zone lines (flush, drawn as nothing) were added where the file draws their boundary, so each name has its own room` : 'no zone line along the file\'s own room outlines left fewer things to check, so none was added (the Issues list says where)'}.`)
   if (areaNames.length) notes.push(`${areaNames.length} of the file's spaces hold other rooms (a gross area, a zone) and were left out as room names: ${[...new Set(areaNames)].slice(0, 4).join(', ')}${areaNames.length > 4 ? ', …' : ''}.`)
   if (touches) notes.push(`${touches} wall ends that touched another wall without a shared corner were joined to it.`)
   if (hung) notes.push(`${hung} doors / windows had no opening cut in a wall (the file lacks IfcRelVoidsElement): each was hung on the nearest wall by its own body.`)
