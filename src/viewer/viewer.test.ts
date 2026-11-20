@@ -13,7 +13,7 @@ import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
 import { kitAsset, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
-  AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
+  AC_AHEAD, AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
@@ -160,6 +160,22 @@ describe('viewer', { timeout: 20_000 }, () => {
     // facing away from the door (along the same side normal we stepped in on)
     expect(e.face.x * (e.p.x - at.x) + e.face.y * (e.p.y - at.y)).toBeGreaterThan(0)
     expect(core.roomAt({ x: e.p.x + e.face.x * 0.5, y: e.p.y + e.face.y * 0.5 }, rooms, unit)?.id).toBe(room.id)
+  })
+
+  it('the entry view (furnished as shown) has no wall AC looming in a top corner: no end of one within AC_IN_VIEW and ~53° of the view, nor within AC_AHEAD and 40° of it, the frame (session 31)', () => {
+    for (const u of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
+      const rs = core.deriveRooms(u)
+      const shown = { ...u, furniture: furnish(u, rs) }
+      const e = entrySpawn(shown, rs)!
+      for (const ac of shown.furniture.filter((p) => p.assetId === 'ac_split')) {
+        for (const q of [ac, ...footprint(ac, ac.rotationDeg, placementSize(ac))]) {
+          const d = Math.hypot(q.x - e.p.x, q.y - e.p.y)
+          const ahead = (ac.x - e.p.x) * e.face.x + (ac.y - e.p.y) * e.face.y
+          const cos = ((q.x - e.p.x) * e.face.x + (q.y - e.p.y) * e.face.y) / d
+          if (ahead > 0 && inSight(shown, e.p, ac)) expect((d < AC_IN_VIEW && cos > 0.6) || (d < AC_AHEAD && cos > Math.cos((40 * Math.PI) / 180)), `${u.id} ${ac.id}`).toBe(false)
+        }
+      }
+    }
   })
 
   it('Type B: entry faces down the 36-ft living room, not into the hall across the door; a 2.6 m slider does not push the Bed-1 view to the headboard', () => {
