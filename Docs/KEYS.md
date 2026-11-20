@@ -201,7 +201,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Add** | Opens the library: groups Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor (and **Your own**); pick one, point at the floor, a wall, the ceiling or (curtains) an opening, click | staff |
 | **+ Add your own…** (the library, under the search box; the Studio's too) | Opens the box for a 3D model of your own: drop or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB and 2 million triangles), then **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (Width, Depth, Height: type one, the others follow), **It gives light**; **Add to the library** puts it in your hand; **Cancel**, **×** or Esc closes | staff |
 | **⋯** (on a row marked **yours**) | **Rename**, **Change size** (the same box, **Save**), **Remove…** (asks once: **Remove** / **Keep**; pieces already placed stay) | staff |
-| **Turn 90° (R)** | Turns the picked piece (or the one in your hand) | staff |
+| **Turn 90° (R)** (on a phone: **Turn 90°**) | Turns the picked piece (or the one in your hand) | staff |
 | **Delete** | Deletes the picked piece and what rests on it — also the one in your hand (Del) | staff |
 | **Undo** | Takes back the last change | staff |
 | **Reset layout** | Back to the flat's own layout (Undo brings yours back) | staff |
@@ -379,6 +379,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 |---|---|---|
 | **Cancel** (or **Esc**) | Says no: nothing changes | staff |
 | The second button — it names what happens: **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**… (or **Enter**) | Says yes. Red when something is deleted or taken away | staff |
+| The line to type in (a new name, the staff key) | Opens with the old name in it, selected: type over it. **Rename** / **Share** (or **Enter**) takes it | staff |
 
 ### Pages that say something went wrong (MANUAL §12)
 

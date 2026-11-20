@@ -65,7 +65,7 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
-import { ask } from '../lib/ask'
+import { ask, askText } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 const PREVIEW_KEY = 'plotline.preview'
@@ -1171,7 +1171,7 @@ export default function StudioApp() {
     if (!org) {
       key = localStorage.getItem(PUBLISH_KEY) ?? ''
       if (!key) {
-        key = window.prompt('Staff key (printed when the Supabase migration ran) — or Close this and Sign in, top right, to share as your company:')?.trim() ?? ''
+        key = (await askText('Type the staff key (printed when the online database was set up). Or Cancel, then Sign in at the top right to share as your company.', { placeholder: 'Staff key' }, 'Share'))?.trim() ?? ''
         if (!key) return
         localStorage.setItem(PUBLISH_KEY, key)
       }

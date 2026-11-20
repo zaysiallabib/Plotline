@@ -7,12 +7,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatFeetInches, newId, parseLength } from '../core'
 import { CATEGORIES, facing, furnitureScale, MAX_MODEL_BYTES, modelRefusal, nameOf, scaledTo, type Front, type OwnModel, type Sits } from '../furnish/own'
+import type { DropFile } from '../import/bundle'
+import { filesOfDrop } from '../import/drop'
 import { fileOf, hashOf, saveOwn } from '../lib/library'
 import type { Turntable } from './turntable'
 import './own.css'
 
 type Size3 = { x: number; y: number; z: number }
-const ACCEPT = '.glb,.gltf,.obj,.fbx,.dae,.stl'
+const MODEL = /\.(glb|gltf|obj|fbx|dae|stl)$/i
+/** a model, or the files it keeps beside it (a .gltf's .bin and pictures, an .obj's .mtl), or a .zip of them */
+const ACCEPT = '.glb,.gltf,.obj,.fbx,.dae,.stl,.zip,.bin,.mtl,.png,.jpg,.jpeg,.webp'
 const SITS: { id: Sits; label: string }[] = [
   { id: 'floor', label: 'Floor' },
   { id: 'wall', label: 'Wall' },
@@ -36,8 +40,8 @@ const m2 = (v: number) => v.toFixed(2)
 /** "a .gltf that keeps its parts in other files", "Draco", or the loader's own words, in plain words */
 function readError(name: string, e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)
-  if (/\.gltf$/i.test(name) && /buffer|fetch|load|404|uri/i.test(m))
-    return 'This .gltf keeps its parts in other files (.bin, pictures). Export it as one file: in Blender, File → Export → glTF 2.0, Format "glTF Binary (.glb)".'
+  if (/\.gltf$/i.test(name) && /keeps its 3D|buffer|fetch|load|404|uri/i.test(m))
+    return 'This .gltf keeps its parts in other files (.bin, pictures). Drop them together: its whole folder, a .zip of it, or all its files at once.'
   return `Plotline could not read ${name}: ${m}`
 }
 
@@ -90,15 +94,22 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
     if (!edit) setBox({ x: t.box.x * k, y: t.box.y * k, z: t.box.z * k })
   }
 
-  async function take(files: FileList | File[] | null) {
-    const file = files && [...files].find((f) => /\.(glb|gltf|obj|fbx|dae|stl)$/i.test(f.name))
-    if (!file) return files?.length && setRefused('Choose a 3D model: a .glb, .gltf, .obj, .fbx, .dae or .stl file.')
+  /** one drop or pick: a model alone, or a folder, a .zip or several files — the model among them opens with the rest beside it */
+  async function take(dropped: DropFile[]) {
+    if (!dropped.length) return
+    const { expandZips, mainFile, siblingsOf } = await import('../import/bundle')
+    const files = dropped.some((f) => /\.zip$/i.test(f.path)) ? await expandZips(dropped).catch(() => null) : dropped
+    if (!files) return setRefused('That .zip could not be opened.')
+    const at = mainFile(files.map((f) => f.path).filter((p) => MODEL.test(p)))
+    const main = files.find((f) => f.path === at)
+    if (!main) return setRefused('Choose a 3D model: a .glb, .gltf, .obj, .fbx, .dae or .stl file (or its folder, or a .zip of it).')
+    const file = { name: main.path.split('/').pop()!, size: main.data.size }
     setRefused(modelRefusal({ bytes: file.size }))
     if (file.size > MAX_MODEL_BYTES) return
     setBusy(`Reading ${file.name}…`)
     try {
       const { importMesh } = await import('../import/mesh')
-      const r = await importMesh(await file.arrayBuffer(), file.name)
+      const r = await importMesh(await main.data.arrayBuffer(), file.name, files.length > 1 ? siblingsOf(files, main.path) : undefined)
       const sh = r.shell!
       const no = modelRefusal({ triangles: sh.triangles, bytes: sh.glb.byteLength })
       setBusy(null)
@@ -157,7 +168,7 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
   const drop = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation() // the Studio sheet takes a dropped model as the building's outside shape: not this one
-    if (!edit) void take(e.dataTransfer.files)
+    if (!edit) void filesOfDrop(e.dataTransfer).then(take) // a dropped folder walked (drop.ts): its files must be taken now
   }
   return (
     <dialog
@@ -177,10 +188,10 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
       </header>
       {!read && !edit ? (
         <label className={`own-drop${busy ? ' busy' : ''}`}>
-          <input type="file" accept={ACCEPT} hidden onChange={(e) => void take(e.target.files)} />
+          <input type="file" accept={ACCEPT} multiple hidden onChange={(e) => void take([...(e.target.files ?? [])].map((f) => ({ path: f.name, data: f })))} />
           <span className="own-drop-title">{busy ?? 'Drop a 3D model here'}</span>
           {!busy && <span className="own-button">Choose a file…</span>}
-          <span className="muted small">GLB, glTF, OBJ, FBX, DAE or STL · up to 30 MB and 2 million triangles</span>
+          <span className="muted small">GLB, glTF, OBJ, FBX, DAE or STL, or its folder or .zip · up to 30 MB and 2 million triangles</span>
         </label>
       ) : (
         <div className="own-body">

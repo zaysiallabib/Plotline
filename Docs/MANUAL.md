@@ -18,7 +18,7 @@ Two kinds of people:
 - **Staff** — can also move furniture, change doors and windows, and open the Studio.
   A browser becomes "staff" the first time it opens the Studio, or when you add `?staff=1` to the address. `?staff=0` turns it off.
 
-**When something "asks first"** (since 2026-11-20, session 31): a white card opens in the middle of the screen with the question, and the page behind it goes pale and takes no clicks. **Cancel** (or **Esc**) says no and nothing changes. The second button says yes and names what it does — **Delete**, **Replace**, **Continue**, **Turn off**, **Make it my draft**; it is red when something is deleted or taken away. **Enter** says yes too. The browser's own grey box is never used any more.
+**When something "asks first"** (since 2026-11-20, session 31): a white card opens in the middle of the screen with the question, and the page behind it goes pale and takes no clicks. **Cancel** (or **Esc**) says no and nothing changes. The second button says yes and names what it does — **Delete**, **Replace**, **Continue**, **Turn off**, **Make it my draft**; it is red when something is deleted or taken away. **Enter** says yes too. When it asks for a word — a new name (**Rename** of a project or of a cloud save) or the staff key (**Share link** when not signed in) — the card has a line to type in, with the old name already in it and selected, so you just type over it; **Enter** or the second button (**Rename**, **Share**) takes it (since 2026-11-21). The browser's own grey box is never used any more.
 
 ---
 
@@ -48,7 +48,7 @@ Open the site with nothing after its name (`/`) and you get the front page. It t
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: it asks for the staff key (for links made before accounts existed). Needs the online database. |
 | `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
-| anything else | A page that says "Nothing stands at this address" with **Go to the front page** (§12). (Until 2026-11-20 any unknown address opened the first flat in the list.) |
+| anything else | A page that says "Nothing stands at this address" with **Go to the front page** (§12). (Until 2026-11-20 any unknown address opened the first flat in the list.) On the live site it now also tells search engines the page does not exist (since 2026-11-21); it looks the same. |
 
 Extras you can add to the end of a 3D address:
 
@@ -192,7 +192,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
 - **Clean view:** the eye hides everything; a tap on the faint dot top right brings it back.
 - **A phone on its side, a tablet:** on a short screen the start screen scrolls, with the list of flats under the Enter button. On a screen 721 to 1080 px wide (a tablet upright) the bar stays at the top and the room's name sits just under it, so the two never overlap.
 - A computer with a touch screen works both ways: the mouse as always, a finger as above (the hint follows whichever you used last).
-- **Staff on a phone** (Edit → Furniture works, but a computer is still the tool for it): drag a piece with a finger to move it, drag the empty room to look; the piece's tag says "Tap puts it down · the panel turns or removes it" — no keys.
+- **Staff on a phone** (Edit → Furniture works, but a computer is still the tool for it): drag a piece with a finger to move it, drag the empty room to look; the piece's tag says "Tap puts it down · the panel turns or removes it" — no keys. The panel says **Turn 90°** (no "(R)"), "Tap a piece…" and "Tap to put it here" (since 2026-11-21). A picked piece's resize dots never grow bigger than about a fingertip on the screen (7 % of the screen's short side, at most 44 px): close to a picture on the wall they used to cover it.
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. Thumbstick left/right turns you 45° at a time.
 
@@ -259,8 +259,11 @@ in a few clicks. They then work exactly like the built-in ones.
 1. Open the library: in the 3D view **Edit ▾ → Furniture → Add**; in the Studio press **F** (the list is on the right).
 2. Click **+ Add your own…** (just under the search box). A white box opens: **Drop a 3D model here**.
 3. Drag the file from your computer onto the box, or click **Choose a file…**. Plotline reads: **GLB, glTF, OBJ, FBX,
-   DAE, STL**. Best is one **.glb** file (Blender: File → Export → glTF 2.0, Format "glTF Binary (.glb)"). A .gltf that
-   keeps its parts in separate files: export it as one .glb (Plotline says so).
+   DAE, STL**. Best is one **.glb** file (Blender: File → Export → glTF 2.0, Format "glTF Binary (.glb)"). A model that
+   keeps its parts in separate files (a .gltf with its .bin and a textures folder, an .obj with its .mtl and pictures):
+   **drop its whole folder, or a .zip of it**, or select all its files and drop them together (or pick them all with
+   **Choose a file…**) — Plotline finds the model among them and its pictures beside it (since 2026-11-21; before, a
+   split .gltf was refused). Dropped alone, a .gltf says to drop its files together.
 4. The model turns slowly on the left, with its size under it in feet and inches (and metres) and how many triangles it
    has. On the right:
    - **Name** — filled in from the file's name; type the name your staff and buyers will see.
@@ -274,7 +277,7 @@ in a few clicks. They then work exactly like the built-in ones.
    - **It gives light** — tick it for a lamp: at night it lights the room, and deleting it takes its light away.
      Picking the kind "Lamp or light" ticks it for you.
 5. Click **Add to the library**. A short line says where it is kept, and the piece is **in your hand at once**: point at
-   the floor (or the wall, the ceiling, a table top) and click. Then it moves, turns (R), resizes, deletes and undoes
+   the floor (or the wall, the ceiling, a table top) and click (the line goes as soon as the piece is down). Then it moves, turns (R), resizes, deletes and undoes
    like any other piece.
 
 It is listed on top of the library under **Your own** (and in its room's group). Each of your own rows has a mark
@@ -634,7 +637,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
   - *Room name* — name, kind, **Flat** (which flat of the drawing it is in — see "Flats in a whole-floor drawing"), printed size, floor level, ramp.
   - *Several things picked* — the top line says what ("3 walls, 2 windows selected"). For the walls: type (Wall / Low wall / Kerb / Zone line), height, width, **Stands alone**. For the openings: kind (Door / Sliding door / Window / Passage), width, height, sill. A box shows the value when they all have the same one; an empty box marked "mixed" means they differ — type a value and every picked wall (or opening) takes it, one Ctrl+Z for all. An opening the new size does not fit on its wall stays as it was, and a note says how many did not change. **Delete them all** removes everything picked.
 - **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**.
-  - **Grouped by room** (2026-11-20). A room with two rows or more is one line: its name, how many rows, and its first row in grey — click the line to show its rows, click again to fold them. A room with one row shows that row. Rows whose spot is in no closed room go under the printed name they are about ("Aod"), the rest under **Elsewhere**. Two rooms of one name in a whole floor say their flat ("Bed · Flat 2"). No row is left out: the heading's count is every row.
+  - **Grouped by room** (2026-11-20). A room with two rows or more is one line: its name, how many rows, and its first row in grey — click the line to show its rows, click again to fold them. A room with one row shows that row. Rows whose spot is in no closed room go under the printed name they are about ("Aod"), the rest under **Elsewhere**. An Elsewhere of more than 12 rows comes in parts, one per kind of row — **Elsewhere · Outline not closed**, **Elsewhere · Not sure about this**, **Elsewhere · Opening kind is a guess**… (since 2026-11-21; on the BTI 3rd floor sheet its 16 rows are 4 + 12). Two rooms of one name in a whole floor say their flat ("Bed · Flat 2"). No row is left out: the heading's count is every row.
   - **The keys in the list.** Click in the list (a row or a room's line), then **↑ / ↓** pick the row above or below (the room it is in opens by itself) and its mark on the plan turns blue; **Enter** goes to it on the plan and opens it, as a click on the row does. A click on the plan gives the arrow keys back to nudging what is picked.
   - **The marks on the plan** (2026-11-20) — so the sheet reads as a drawing, not a list of errors:
     - **Red** (it breaks the 3D: a room left open, a loose wall end, a gap) — a numbered badge, as before.

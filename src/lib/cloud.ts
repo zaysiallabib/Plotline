@@ -7,7 +7,7 @@
  * Two people on one project: a save names the version it started from; when someone saved a newer one meanwhile the
  * save is refused ("stale") and the Studio asks: open theirs, or keep mine (saved on top — theirs stays in the history).
  */
-import { sb } from './supabase'
+import { configured, getSb } from './supabase'
 
 export type Kind = 'project' | 'unit'
 /** what the Studio has open, as the cloud keeps it; `key` names it in this browser (`project:<id>` / `unit:<id>`) */
@@ -55,8 +55,9 @@ export class CloudError extends Error {
 export const MAX_BYTES = 5_000_000
 const COLS = 'id, name, kind, version, updated_at, updated_by'
 
-const db = () => {
-  if (!sb) throw new CloudError('refused', 'accounts are not set up on this site')
+const db = async () => {
+  const sb = await getSb()
+  if (!sb) throw configured ? new CloudError('offline', 'no connection') : new CloudError('refused', 'accounts are not set up on this site')
   return sb
 }
 /** a PostgREST answer's error: no network (status 0) or the server down (5xx) = offline, try again; else refused */
@@ -87,7 +88,7 @@ export function whyNoRow(row: { version: number; deleted_at: string | null } | n
  * or as a new row when it was deleted. Resolves to the new place and version.
  */
 export async function saveProject(org: string, item: CloudItem, link?: Pick<Link, 'id' | 'version'>, over = false): Promise<Omit<Link, 'hash'>> {
-  const c = db()
+  const c = await db()
   const bytes = JSON.stringify(item.data).length
   if (bytes > MAX_BYTES) throw new CloudError('refused', `too big for the cloud (${(bytes / 1e6).toFixed(1)} MB, the most is 5 MB)`)
   const name = item.name.trim().slice(0, 200) || 'Untitled'
@@ -113,20 +114,20 @@ export async function saveProject(org: string, item: CloudItem, link?: Pick<Link
 }
 
 async function current(id: string): Promise<{ version: number; deleted_at: string | null } | null> {
-  const { data, error, status } = await db().from('projects').select('version, deleted_at').eq('id', id).maybeSingle()
+  const { data, error, status } = await (await db()).from('projects').select('version, deleted_at').eq('id', id).maybeSingle()
   if (error) throw fail(error, status)
   return data as { version: number; deleted_at: string | null } | null
 }
 
 /** The company's projects and drawings, last saved first (deleted ones hidden). */
 export async function listProjects(org: string): Promise<CloudRow[]> {
-  const { data, error, status } = await db().from('projects').select(COLS).eq('org_id', org).is('deleted_at', null).order('updated_at', { ascending: false })
+  const { data, error, status } = await (await db()).from('projects').select(COLS).eq('org_id', org).is('deleted_at', null).order('updated_at', { ascending: false })
   if (error) throw fail(error, status)
   return data as CloudRow[]
 }
 
 export async function loadProject(id: string): Promise<CloudRow & { data: unknown }> {
-  const { data, error, status } = await db().from('projects').select(`${COLS}, data`).eq('id', id).is('deleted_at', null).maybeSingle()
+  const { data, error, status } = await (await db()).from('projects').select(`${COLS}, data`).eq('id', id).is('deleted_at', null).maybeSingle()
   if (error) throw fail(error, status)
   if (!data) throw new CloudError('gone', 'it is not in the cloud any more')
   return data as CloudRow & { data: unknown }
@@ -141,19 +142,19 @@ export async function renameProject(id: string, name: string): Promise<Omit<Link
 
 /** Hidden from the list; every save of it stays in the history (the founder can bring it back in the SQL editor). */
 export async function deleteProject(id: string): Promise<void> {
-  const { error, status } = await db().from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+  const { error, status } = await (await db()).from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id)
   if (error) throw fail(error, status)
 }
 
 /** Its saves, newest first (at most 50). */
 export async function projectHistory(id: string): Promise<SavedVersion[]> {
-  const { data, error, status } = await db().from('project_versions').select('version, name, saved_at, saved_by, deleted').eq('project_id', id).order('version', { ascending: false }).limit(50)
+  const { data, error, status } = await (await db()).from('project_versions').select('version, name, saved_at, saved_by, deleted').eq('project_id', id).order('version', { ascending: false }).limit(50)
   if (error) throw fail(error, status)
   return data as SavedVersion[]
 }
 
 export async function loadVersion(id: string, version: number): Promise<unknown> {
-  const { data, error, status } = await db().from('project_versions').select('data').eq('project_id', id).eq('version', version).maybeSingle()
+  const { data, error, status } = await (await db()).from('project_versions').select('data').eq('project_id', id).eq('version', version).maybeSingle()
   if (error) throw fail(error, status)
   if (!data) throw new CloudError('gone', 'that save is not there')
   return (data as { data: unknown }).data

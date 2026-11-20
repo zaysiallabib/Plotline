@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  The site's real "not found" (session 31 tidy): Vercel answers an address no page of the site has with this file and
+  the status 404 (vercel.json sends only /, /u/…, /s/…, /studio… and /changes… to the app). The same words and marble as
+  the app's own not-found page (src/lib/pages.tsx NotFound, the .slate rules in src/index.css); the tokens below are
+  copies of src/index.css's, kept equal by src/lib/route.test.ts. No script: it must show even when nothing else loads.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f3ef" />
+    <meta name="color-scheme" content="light" />
+    <meta name="robots" content="noindex" />
+    <title>Not found · Plotline</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&display=swap" />
+    <style>
+      :root {
+        --bg: #f5f3ef;
+        --ink: #17191c;
+        --ink-2: #4b4f55;
+        --muted: #62666d;
+        --line: rgba(23, 25, 28, 0.14);
+        --accent: #2458a6;
+        --accent-ink: #ffffff;
+        --font: 'Instrument Sans', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+        --fs-2xs: 10px;
+        --fs-md: 13px;
+        --fs-lg: 15px;
+        --fs-xl: 18px;
+        --fs-2xl: 28px;
+        --fs-3xl: 45px;
+        --track: 0.12em;
+        --lh: 1.45;
+        --s-3: 12px;
+        --s-4: 16px;
+        --s-5: 24px;
+        --s-6: 32px;
+        --s-7: 48px;
+        --s-8: 80px;
+        --r-sm: 6px;
+        --touch: 44px;
+        --dur: 180ms;
+        --dur-fast: 120ms;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+        font-family: var(--font);
+        font-size: var(--fs-md);
+        line-height: var(--lh);
+        color: var(--ink);
+        background: var(--bg);
+        font-feature-settings: 'tnum' 1, 'cv11' 1;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        :root { --dur: 0ms; --dur-fast: 0ms; }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .label { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+      .display { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; }
+      .grain::before {
+        content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+      @keyframes slate-in { from { opacity: 0; } }
+      .slate {
+        position: fixed; inset: 0; overflow: auto; display: grid; align-content: center; gap: var(--s-7);
+        padding: calc(var(--s-8) + env(safe-area-inset-top)) calc(var(--s-6) + env(safe-area-inset-right)) var(--s-8) calc(var(--s-6) + env(safe-area-inset-left));
+        background: var(--bg); color: var(--ink); text-align: left; animation: slate-in var(--dur) var(--ease) both;
+      }
+      .slate-mark { position: absolute; z-index: 1; top: calc(var(--s-5) + env(safe-area-inset-top)); left: calc(var(--s-6) + env(safe-area-inset-left)); font-size: var(--fs-xl); color: var(--ink); text-decoration: none; }
+      .slate-body { position: relative; z-index: 1; width: 100%; max-width: 560px; margin: 0 auto; }
+      .slate-body > .label { padding-top: var(--s-3); border-top: 1px solid var(--line); }
+      .slate h1 { margin: var(--s-5) 0 var(--s-4); font-size: var(--fs-3xl); text-wrap: balance; }
+      .slate-line { max-width: 44ch; font-size: var(--fs-lg); color: var(--ink-2); }
+      .slate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-6); }
+      .slate .btn {
+        display: inline-flex; align-items: center; justify-content: center; height: var(--touch); padding: 0 var(--s-5);
+        border: 1px solid transparent; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink);
+        font-size: var(--fs-lg); font-weight: 500; text-decoration: none; transition: background var(--dur-fast) var(--ease);
+      }
+      .slate .btn:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
+      @media (max-width: 599px) {
+        .slate { padding-left: calc(var(--s-4) + env(safe-area-inset-left)); padding-right: calc(var(--s-4) + env(safe-area-inset-right)); }
+        .slate-mark { left: calc(var(--s-4) + env(safe-area-inset-left)); }
+        .slate h1 { font-size: var(--fs-2xl); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="slate grain">
+      <a class="slate-mark display" href="/" aria-label="Plotline, front page">Plotline</a>
+      <div class="slate-body">
+        <div class="label">Not found</div>
+        <h1 class="display">Nothing stands at this address.</h1>
+        <div class="slate-line">It may be mistyped, or the page has moved.</div>
+        <div class="slate-actions"><a class="btn primary" href="/">Go to the front page</a></div>
+      </div>
+    </main>
+  </body>
+</html>

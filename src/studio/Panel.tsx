@@ -8,21 +8,12 @@ import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
-import { groupRows, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
-import type { AutoTraceStats, ReviewItem } from '../trace/types'
+import { groupRows, REVIEW_KIND, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
+import type { AutoTraceStats } from '../trace/types'
 
 const SEVERITY: Record<Severity, string> = { red: 'Breaks the 3D', amber: 'Worth a look', grey: 'Cosmetic' }
 
 /** what a review row is about, per kind (its number's tooltip) */
-const REVIEW_KIND: Record<ReviewItem['kind'], string> = {
-  'size-mismatch': 'Size differs from the printed size',
-  unclosed: 'Outline not closed',
-  unlabelled: 'Room has no name',
-  'opening-guess': 'Opening kind is a guess',
-  'low-confidence': 'Not sure about this',
-  scale: 'Scale',
-  other: 'Check this',
-}
 const SCALE_FROM: Record<AutoTraceStats['scaleFrom'], string> = { dims: 'printed dims', area: 'the printed area', thickness: 'wall thickness', given: 'your scale' }
 const statsLine = (s: AutoTraceStats) =>
   `Traced ${s.walls} walls, ${s.rooms} rooms, ${s.labelled} labelled · scale from ${SCALE_FROM[s.scaleFrom]}${s.tracker === 'tracks' ? ' · wall tracks' : s.tracker === 'bands' ? ' · band tracker' : ''} · ${(s.ms / 1000).toFixed(1)} s`

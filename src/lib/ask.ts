@@ -5,6 +5,16 @@
  * and Tab stays inside. `yes` names what saying yes does ("Delete", "Replace"); `danger` draws it in terracotta.
  */
 export function ask(question: string, yes = 'OK', danger = false): Promise<boolean> {
+  return card(question, yes, danger).then((v) => v !== null)
+}
+
+/**
+ * The same card with a line to type (a new name, a key; the browser's grey prompt() is gone too): it opens with `value`,
+ * all of it selected, the cursor in it. Enter or `yes` gives what was typed; Esc or Cancel gives null.
+ */
+export const askText = (question: string, input: { value?: string; placeholder?: string } = {}, yes = 'OK'): Promise<string | null> => card(question, yes, false, input)
+
+function card(question: string, yes: string, danger: boolean, input?: { value?: string; placeholder?: string }): Promise<string | null> {
   return new Promise((done) => {
     const d = document.createElement('dialog')
     d.className = 'ask'
@@ -12,12 +22,17 @@ export function ask(question: string, yes = 'OK', danger = false): Promise<boole
     q.id = 'ask-question'
     q.textContent = question
     d.setAttribute('aria-describedby', q.id)
+    const field = input ? d.appendChild(document.createElement('input')) : null
+    if (field) {
+      Object.assign(field, { type: 'text', value: input!.value ?? '', placeholder: input!.placeholder ?? '', spellcheck: false, autocomplete: 'off' })
+      field.setAttribute('aria-labelledby', q.id)
+    }
     const row = d.appendChild(document.createElement('div'))
     row.className = 'ask-row'
     const end = (v: boolean) => {
       d.close()
       d.remove()
-      done(v)
+      done(v ? (field?.value ?? '') : null)
     }
     const button = (text: string, cls: string, v: boolean) => {
       const b = row.appendChild(document.createElement('button'))
@@ -31,7 +46,7 @@ export function ask(question: string, yes = 'OK', danger = false): Promise<boole
       end(false) // Esc
     })
     // Enter says yes on its release, and only one pressed here: the Enter that asked (a typed scale) must not answer too.
-    // No key gets past the box to the page's own keys (walking, R, Delete…).
+    // No key gets past the box to the page's own keys (walking, R, Delete…), typing in its field included.
     let armed = false
     const key = (e: KeyboardEvent) => {
       e.stopPropagation()
@@ -43,6 +58,7 @@ export function ask(question: string, yes = 'OK', danger = false): Promise<boole
     for (const t of ['keydown', 'keypress', 'keyup']) d.addEventListener(t, key as EventListener)
     document.body.append(d)
     d.showModal()
-    no.focus()
+    if (field) field.focus(), field.select()
+    else no.focus()
   })
 }

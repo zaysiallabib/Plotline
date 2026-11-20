@@ -280,6 +280,19 @@ export function spotsOf(marks: Mark[], toScreen: (p: Pt) => Pt, px = SPOT_PX): S
   return out
 }
 
+/** a "Check these" row's kind in words (its number's tooltip; the name of a part of a long "Elsewhere") */
+export const REVIEW_KIND: Record<ReviewItem['kind'], string> = {
+  'size-mismatch': 'Size differs from the printed size',
+  unclosed: 'Outline not closed',
+  unlabelled: 'Room has no name',
+  'opening-guess': 'Opening kind is a guess',
+  'low-confidence': 'Not sure about this',
+  scale: 'Scale',
+  other: 'Check this',
+}
+/** "Elsewhere" holding more rows than this is split by the rows' kind (s31 tidy: 30 rows in one fold were not read) */
+export const ELSEWHERE_MAX = 12
+
 /** One group of the "Check these" list: the rows about one room (or one printed name with no room, or the rest). */
 export interface RowGroup {
   key: string
@@ -289,7 +302,8 @@ export interface RowGroup {
 
 /**
  * The "Check these" rows grouped by room (s31 calm): each row goes to the smallest closed room around its spot — a room row
- * about a printed name in no closed room to that name — the rest to "Elsewhere". Groups in the order of their first row,
+ * about a printed name in no closed room to that name — the rest to "Elsewhere" (over ELSEWHERE_MAX rows: one "Elsewhere ·
+ * <kind>" per kind of row, in the order of their first row). Groups in the order of their first row,
  * rows in list order; `flatOf` (room id → flat name) adds the flat to a name two groups share ("Bed · Flat 2").
  */
 export function groupRows(rows: Mark[], u: Unit, rooms: Room[], flatOf: (roomId: Id) => string | undefined = () => undefined): RowGroup[] {
@@ -302,12 +316,22 @@ export function groupRows(rows: Mark[], u: Unit, rooms: Room[], flatOf: (roomId:
     const g = by.get(key) ?? by.set(key, { key, name: r ? r.name : (m.review?.room ?? 'Elsewhere'), rows: [] }).get(key)!
     g.rows.push(m)
   }
-  const groups = [...by.values()]
+  const groups = [...by.values()].flatMap((g) => (g.key === 'elsewhere' && g.rows.length > ELSEWHERE_MAX ? byKind(g.rows) : [g]))
   const twice = new Set(groups.map((g) => g.name).filter((n, i, all) => all.indexOf(n) !== i))
   return groups.map((g) => {
     const flat = g.key.startsWith('room:') && twice.has(g.name) ? flatOf(g.key.slice(5)) : undefined
     return flat ? { ...g, name: `${g.name} · ${flat}` } : g
   })
+}
+
+/** "Elsewhere" in parts, one per kind of row */
+function byKind(rows: Mark[]): RowGroup[] {
+  const by = new Map<string, RowGroup>()
+  for (const m of rows) {
+    const k = m.review?.kind ?? 'other'
+    ;(by.get(k) ?? by.set(k, { key: `elsewhere:${k}`, name: `Elsewhere · ${REVIEW_KIND[k]}`, rows: [] }).get(k)!).rows.push(m)
+  }
+  return [...by.values()]
 }
 
 /** what a room a fix closes brings with it, never a new problem: an unnamed space, the first room's "no entry door yet" */

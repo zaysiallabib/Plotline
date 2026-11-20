@@ -95,7 +95,10 @@ Geometry algorithms in `src/core/` (pure functions, unit-tested):
 In one sentence: this is the online storage that keeps your company's projects, the buyer links and what buyers write, and keeps each developer company's work apart from the others.
 
 Built 2026-11-20 (sessions 30 and 31). The SQL is `supabase/migrations/` (pasted by the founder:
-`Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js).
+`Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js). The
+client's code (56 kB gz) is fetched by the first call that needs it (`getSb()`: a share link, sign-in, a cloud save, the
+library online, the Studio's account bar); a walk of a flat by someone never signed in on that browser never loads it
+(`maySignIn()` looks for the kept session first; `publicUrl()` writes a library file's address without the client).
 
 Tables (RLS — "row level security", the database's own rule about which rows each person may touch — is on every one; "tenant" = one developer company, `orgs`):
 - `orgs`, `org_members` (user, company, `owner | staff`) — the companies and who belongs to which. The founder makes a company and its first owner in the SQL editor (`private.add_member`); from then on owners manage their people in the Studio (Members) through the database functions `org_people`, `invite_member`, `cancel_invite`, `remove_member`, `set_member_role`.
@@ -194,6 +197,10 @@ One page (`index.html`), no router: `src/main.tsx` picks the app from the addres
 - `/u/<stem>` — the viewer on a built-in flat or level; `/u/preview` — the Studio's draft; `/s/<token>` — a published buyer link.
 - `/studio` — the Studio. `/changes` — the staff change list.
 - Anything else is the not-found page (`src/lib/route.ts routeOf`, tested; until session 31 it opened the first built-in unit).
+  On Vercel only `/`, `/u/…`, `/s/…`, `/studio…` and `/changes…` reach the app (`vercel.json` rewrites); any other address
+  gets `public/404.html` — the same words and marble, no script — with a real 404 status, so search engines and link
+  checkers see a missing page as missing (since 2026-11-21; it answered 200 before). Its tokens are copies of
+  `index.css`'s, kept equal by `route.test.ts`. `npm run preview` still answers 200 everywhere (it has no rewrite rules).
   An unknown flat, a turned-off link, no connection and no 3D each have their own plain page, and an error boundary round
   every app shows "Something broke here" instead of a white screen (`src/lib/pages.tsx`, styles in `index.css` so they
   work even when an app's code failed to download). The tab's title names the page (`pageTitle`).

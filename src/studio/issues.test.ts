@@ -495,4 +495,21 @@ describe('s31 calm: the plan reads as a drawing — one badge per spot, grey onl
       ['Elsewhere', ['5']],
     ])
   })
+
+  it('"Elsewhere" over 12 rows comes in parts, one per kind of row (in the order of their first row); 12 stay one group', () => {
+    const u = box()
+    const rooms = deriveRooms(u)
+    const row = (key: string, kind: NonNullable<Mark['review']>['kind']): Mark => mk(key, 90, 90, 'amber', { review: { id: key, at: { x: 90, y: 90 }, kind, message: key } })
+    const kinds = ['low-confidence', 'opening-guess', 'low-confidence', 'unclosed'] as const
+    const rows = Array.from({ length: 13 }, (_, i) => row(String(i), kinds[i % 4]))
+    expect(groupRows(rows.slice(0, 12), u, rooms).map((g) => [g.name, g.rows.length])).toEqual([['Elsewhere', 12]])
+    const parts = groupRows(rows, u, rooms)
+    expect(parts.map((g) => [g.name, g.rows.length])).toEqual([
+      ['Elsewhere · Not sure about this', 7],
+      ['Elsewhere · Opening kind is a guess', 3],
+      ['Elsewhere · Outline not closed', 3],
+    ])
+    expect(parts.flatMap((g) => g.rows)).toHaveLength(13) // none left out
+    expect(new Set(parts.map((g) => g.key)).size).toBe(3)
+  })
 })
