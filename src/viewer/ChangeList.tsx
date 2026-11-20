@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { myOrg, useSession, type Org } from '../lib/auth'
 import { byLink, choiceOf, describe, eventsForOrg, eventsForStaff, toCsv, whoNames, type CommentPayload, type StaffData } from '../lib/events'
 import { RpcError, configured, revokeLink } from '../lib/supabase'
+import { Skeleton, Slate } from '../lib/pages'
 import { formatDelta } from './share'
 import './viewer.css'
 
@@ -60,7 +61,7 @@ export default function ChangeList() {
   useEffect(() => void (org !== undefined && load(key, !!org)), [key, org, load])
 
   const turnOff = async (token: string, name: string) => {
-    if (!window.confirm(`Turn off this link to ${name}? Whoever has it sees "This unit isn't available" from now on; what they wrote stays here. It cannot be turned back on — make a new link instead.`)) return
+    if (!window.confirm(`Turn off this link to ${name}? Whoever has it sees "This link no longer opens a flat" from now on; what they wrote stays here. It cannot be turned back on — make a new link instead.`)) return
     try {
       if (!(await revokeLink(token))) setError('That link could not be turned off (it is off already, or not your company’s).')
       await load(key, true)
@@ -79,8 +80,8 @@ export default function ChangeList() {
   }
 
   if (!configured)
-    return <div className="boot">The change list needs the database: add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (Vercel → Environment variables), then redeploy.</div>
-  if (org === undefined) return <div className="boot">Loading…</div>
+    return <Slate eyebrow="Change list" title="The change list needs the online database." line="This site has no database address and key yet. Docs/SETUP_SUPABASE_ON_VERCEL.md says where to put them; then redeploy." />
+  if (org === undefined) return <Skeleton kind="page" />
   if (!org && !key)
     return (
       <form

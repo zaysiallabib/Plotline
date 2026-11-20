@@ -116,3 +116,64 @@ button, input, select, textarea { font: inherit; color: inherit; }
   content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0.035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* ── the plain pages (lib/pages.tsx): not found, a link turned off, no connection, no 3D, the error card ─────────── */
+/* Here, not in an app's stylesheet: the error card must look right when an app's code failed to load. */
+@keyframes slate-in { from { opacity: 0; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.slate {
+  position: fixed; inset: 0; overflow: auto; display: grid; align-content: center; gap: var(--s-7);
+  padding: calc(var(--s-8) + env(safe-area-inset-top)) calc(var(--s-6) + env(safe-area-inset-right)) var(--s-8) calc(var(--s-6) + env(safe-area-inset-left));
+  background: var(--bg); color: var(--ink); text-align: left; animation: slate-in var(--dur) var(--ease) both;
+}
+.slate-mark { position: absolute; z-index: 1; top: calc(var(--s-5) + env(safe-area-inset-top)); left: calc(var(--s-6) + env(safe-area-inset-left)); font-size: var(--fs-xl); color: var(--ink); text-decoration: none; }
+.slate-body { position: relative; z-index: 1; width: 100%; max-width: 560px; margin: 0 auto; }
+.slate-body > .label { padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.slate h1 { margin: var(--s-5) 0 var(--s-4); font-size: var(--fs-3xl); text-wrap: balance; }
+.slate-line { max-width: 44ch; font-size: var(--fs-lg); color: var(--ink-2); }
+.slate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-6); }
+.slate .btn {
+  display: inline-flex; align-items: center; justify-content: center; height: var(--touch); padding: 0 var(--s-5);
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent; color: var(--ink);
+  font-size: var(--fs-lg); font-weight: 400; text-decoration: none; cursor: pointer; transition: background var(--dur-fast) var(--ease);
+}
+.slate .btn:hover { background: var(--hover); }
+.slate .btn.primary { border-color: transparent; background: var(--accent); color: var(--accent-ink); font-weight: 500; }
+.slate .btn.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
+/* a page with a picture (no 3D: the flat's plan): words left, the plan right; stacked on a narrow screen */
+.slate-figure { position: relative; z-index: 1; margin: 0; min-width: 0; }
+.slate .slate-figure svg { display: block; width: 100%; height: auto; max-height: calc(100vh - 2 * var(--s-8)); }
+.slate .slate-figure text { fill: var(--ink-2); font-family: var(--font); }
+.slate .minimap { position: static; transform: none; padding: 0; }
+@media (min-width: 900px) {
+  .slate:has(.slate-figure) { grid-template-columns: minmax(0, 440px) minmax(0, 760px); justify-content: center; align-items: center; column-gap: var(--s-8); }
+  .slate:has(.slate-figure) .slate-body { margin: 0; }
+}
+@media (max-width: 599px) {
+  .slate { padding-left: calc(var(--s-4) + env(safe-area-inset-left)); padding-right: calc(var(--s-4) + env(safe-area-inset-right)); }
+  .slate-mark { left: calc(var(--s-4) + env(safe-area-inset-left)); }
+  .slate h1 { font-size: var(--fs-2xl); }
+}
+
+/* ── the loading skeleton (lib/pages.tsx Skeleton): the page's frame in still marble shapes, shown after a beat ────── */
+.skel { position: fixed; inset: 0; background: var(--bg); animation: slate-in var(--dur-slow) var(--ease) var(--dur-slow) both; }
+.skel i { display: block; flex: none; height: var(--s-3); border-radius: var(--r-sm); background: var(--surface-2); }
+.skel .w1 { width: 96px; }
+.skel .w2 { width: 128px; }
+.skel .w3 { width: 192px; }
+.skel .w4 { width: min(256px, 70%); }
+.skel .w5 { width: min(360px, 80%); }
+.skel .lbl { height: var(--s-2); }
+.skel .ttl { height: var(--s-7); margin: var(--s-2) 0; }
+.skel .act { width: 168px; height: var(--touch); margin-top: var(--s-6); }
+.skel-body { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: var(--s-4); padding: 0 var(--s-8); }
+.skel-viewer .skel-body { align-items: center; }
+/* the Studio's frame: the top bar, the tool rail, the white inspector, the status bar */
+.skel-top { position: absolute; top: 0; left: 0; right: 0; height: var(--s-7); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-4); border-bottom: 1px solid var(--hairline); }
+.skel-rail { position: absolute; top: var(--s-7); bottom: var(--s-6); left: 0; width: calc(var(--s-7) + var(--s-2)); border-right: 1px solid var(--hairline); }
+.skel-side { position: absolute; top: var(--s-7); bottom: var(--s-6); right: 0; width: 320px; display: flex; flex-direction: column; gap: var(--s-4); padding: var(--s-5) var(--s-4); background: var(--surface); border-left: 1px solid var(--hairline); }
+.skel-studio::after { content: ''; position: absolute; left: 0; right: 0; bottom: var(--s-6); border-top: 1px solid var(--hairline); }
+@media (max-width: 719px) {
+  .skel-side { display: none; }
+  .skel-body { padding: 0 var(--s-4); }
+}

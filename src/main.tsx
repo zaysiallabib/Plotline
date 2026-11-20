@@ -1,19 +1,34 @@
-import { StrictMode, lazy, Suspense } from 'react'
+import { StrictMode, lazy, Suspense, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import { landingOrViewer } from './landing/route'
+import { ErrorCard, NotFound, Skeleton } from './lib/pages'
+import { routeOf, routeTitle } from './lib/route'
 
-// ponytail: pathname switch instead of a router — four routes don't need one.
+// ponytail: pathname switch instead of a router — five routes don't need one.
 const Studio = lazy(() => import('./studio/StudioApp'))
 const Viewer = lazy(() => import('./viewer/ViewerApp'))
 const Changes = lazy(() => import('./viewer/ChangeList'))
 const Landing = lazy(() => import('./landing/Landing'))
-const path = location.pathname
+const route = routeOf(location.pathname, location.search)
+const App = { studio: Studio, viewer: Viewer, changes: Changes, landing: Landing, missing: NotFound }[route]
+document.title = routeTitle(route)
+
+/** Dev only (gone from a production build): `?boom=1` breaks the page 3 s after it opens, to see the error card. */
+const BOOM = import.meta.env.DEV && new URLSearchParams(location.search).has('boom')
+function Boom() {
+  const [now, setNow] = useState(false)
+  useEffect(() => void setTimeout(() => setNow(true), 3000), [])
+  if (now) throw new Error('?boom=1 — a test of the error card')
+  return null
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Suspense fallback={<div className="boot">Loading…</div>}>
-      {path.startsWith('/studio') ? <Studio /> : path.startsWith('/changes') ? <Changes /> : landingOrViewer(path, location.search) === 'landing' ? <Landing /> : <Viewer />}
-    </Suspense>
+    <ErrorCard>
+      <Suspense fallback={<Skeleton kind={route === 'studio' || route === 'viewer' ? route : 'page'} />}>
+        {BOOM && <Boom />}
+        <App />
+      </Suspense>
+    </ErrorCard>
   </StrictMode>,
 )

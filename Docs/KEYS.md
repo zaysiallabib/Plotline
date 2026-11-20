@@ -331,6 +331,16 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **â
 | **Ask again** (under **Show building**, after you answered the 3D view's "which floors?" box) | Forgets the answer: the 3D view asks again |
 | Old way: **Use this plan as** (A flat / Ground floor / Basement / Common floor / Rooftop), **Building**, **Name**, **This flat on floors â€¦ to â€¦**, **Next to it on each floor** (None / Mirrored, left / Mirrored, right), **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project |
 
+### Pages that say something went wrong (MANUAL Â§12)
+
+| Name | What it does | Who |
+|---|---|---|
+| **Plotline** (top left of each of these pages) | Opens the front page | everyone |
+| **Go to the front page** (not found, link turned off) | Opens the front page | everyone |
+| **Open the Studio** ("Nothing was sent from the Studio") | Opens the Studio | staff |
+| **Try again** (the flat could not be fetched; no 3D on this device) | Opens the page again | everyone |
+| **Reload** / **Go back** ("Something broke here.") | Opens the page again / goes back to the page before (the front page if there is none) | everyone |
+
 ### Change list (`/changes`, staff)
 
 | Name | What it does |
@@ -339,4 +349,4 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **â
 | **Refresh** | Loads it again |
 | **Export CSV** | Saves every row as a spreadsheet file |
 | **Open link** / **Copy link** (per buyer link) | Opens or copies that buyer link |
-| **Turn off** (per buyer link, signed in) | Asks first, then the link stops opening for good ("This unit isn't available"); what the buyer wrote stays. A turned-off link shows "turned off" and the date |
+| **Turn off** (per buyer link, signed in) | Asks first, then the link stops opening for good ("This link no longer opens a flat."); what the buyer wrote stays. A turned-off link shows "turned off" and the date |
