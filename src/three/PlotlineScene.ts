@@ -25,7 +25,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pi
 import { faceWallId } from '../furnish/finishes'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
 import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
-import { lite } from '../furnish/procedural'
+import { lean, lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
@@ -383,15 +383,15 @@ export class PlotlineScene {
   ) {
     this.tier = opts.quality ?? 'high'
     const isLite = (lite.on = this.tier === 'lite')
+    lean.on = !TIERS[this.tier].extras
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
     this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
-    if (isLite) {
-      // ponytail: three's own upload path halves every 1k picture (WebGLTextures resizeImage, 2k ones to a quarter); real
-      // half-size files on disk if the decoded originals in memory ever matter
-      this.renderer.capabilities.maxTextureSize = 512
-      this.renderer.capabilities.getMaxAnisotropy = () => 1
-    }
+    // ponytail: three's own upload path halves a bigger picture (WebGLTextures resizeImage: Lite's 1k ones, Low's 2k ones);
+    // real smaller files on disk if the decoded originals in memory ever matter
+    const cap = TIERS[this.tier].maxTexture
+    if (cap) this.renderer.capabilities.maxTextureSize = Math.min(cap, this.renderer.capabilities.maxTextureSize)
+    if (isLite) this.renderer.capabilities.getMaxAnisotropy = () => 1
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 

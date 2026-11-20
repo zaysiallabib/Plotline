@@ -21,13 +21,19 @@ export function setMaxAnisotropy(n: number): void {
 }
 
 /**
- * Lite (render.ts Quality, set by PlotlineScene; procedural.ts re-exports it): the scanned plants (1.2–6.3 MB files each)
- * are not loaded — a pot keeps its soil, a planter bed its earth, a kit plant model is left out (furniture.ts) — the
- * models' pictures are decoded at half size, the street is plain boxes (context.ts), and (session 31) a texture set gives
- * its colour and roughness only — no relief (normal) or ambient-occlusion maps: 28 of Lite's 96 textures on type-a, for a
- * few % of a pixel-bound frame (procedural.ts pbr and furniture.ts's models follow it).
+ * Lite (render.ts Quality, set by PlotlineScene; procedural.ts re-exports it): the models' pictures are decoded at half
+ * size, the street is plain boxes (context.ts), and (session 31) a texture set gives its colour and roughness only — no
+ * relief (normal) or ambient-occlusion maps: 28 of Lite's 96 textures on type-a, for a few % of a pixel-bound frame
+ * (procedural.ts pbr and furniture.ts's models follow it).
  */
 export const lite = { on: false }
+/**
+ * Lite and Low (render.ts TIERS.extras off; procedural.ts re-exports it): the two costliest extras left out — the scanned
+ * plants (1.2–6.3 MB files each, ~290k of Low's 510k triangles a frame on type-a, alpha-tested leaves) are not loaded — a
+ * pot keeps its soil, a planter bed its earth, a kit plant model is left out (furniture.ts) — and a mirror is plain
+ * silvery glass, never a live reflection (that pass draws the whole flat again).
+ */
+export const lean = { on: false }
 
 /**
  * One texture per (url, tile size), every one of a url sharing its picture: one download, one decode and one upload to

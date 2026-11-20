@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
-import { lite, texture } from '../three/materials'
+import { lean, lite, texture } from '../three/materials'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
@@ -279,8 +279,8 @@ let reflecting = false
 /**
  * A w × h mirror facing +z at (x, y, z): a real reflection (three Reflector, 512² target) while the camera is
  * within 4 m in front of it, outside XR, and it is on screen (onBeforeRender only runs for drawn objects);
- * otherwise the flat `mirror` material. userData.mirror.forceOff switches it off (cost measurements; always on Lite: a
- * reflection pass draws the whole flat again).
+ * otherwise the flat `mirror` material. userData.mirror.forceOff switches it off (cost measurements; always on Lite and
+ * Low, three/materials.ts lean: a reflection pass draws the whole flat again).
  * ponytail: the render target is not disposed with the unit (one 512² target per vanity); dispose on unit swap if units start changing at runtime.
  */
 function mirror(w: number, h: number, x: number, y: number, z: number): THREE.Mesh {
@@ -292,7 +292,7 @@ function mirror(w: number, h: number, x: number, y: number, z: number): THREE.Me
   })
   r.position.set(x, y, z)
   r.userData.solo = true
-  const state = { forceOff: lite.on }
+  const state = { forceOff: lean.on }
   r.userData.mirror = state
   const live = r.material
   const off = M().mirror
@@ -1378,7 +1378,7 @@ function planterBed(id: string): THREE.Object3D[] {
     im.visible = false // until the scan's blades are in
     return im
   })
-  if (browser() && !lite.on)
+  if (browser() && !lean.on)
     loadLeaves()
       .then((geos) =>
         ims.forEach((im, k) => {
@@ -1394,8 +1394,8 @@ function planterBed(id: string): THREE.Object3D[] {
 // ───────────────────────────── greenery (session 19) ─────────────────────────────
 
 const browser = () => typeof globalThis.document?.createElement === 'function'
-/** Lite: three/materials.ts holds the switch (what it leaves out is listed there). */
-export { lite }
+/** Lite, and Lite and Low: three/materials.ts holds the switches (what each leaves out is listed there). */
+export { lean, lite }
 
 /** An empty mesh with a bounding box: furniture.ts sizes and grounds a piece by its bbox, before its scans have loaded. */
 function layoutBox(min: [number, number, number], max: [number, number, number]): THREE.Mesh {
@@ -1435,7 +1435,7 @@ function plant(id: ScanId, at: [number, number, number], rotY = 0, k = 1): THREE
   g.rotation.y = rotY
   g.scale.setScalar(k)
   g.userData.solo = true
-  if (browser() && !lite.on)
+  if (browser() && !lean.on)
     scanFile(s)
       .then((scene) => {
         for (const name of s.nodes) {

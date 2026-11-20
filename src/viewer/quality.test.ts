@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { lite } from '../furnish/procedural'
+import { lean } from '../furnish/procedural'
 import { buildFurniture } from '../three/furniture'
 import { JUDGE_MS, needsFrame, slowFrames } from '../three/render'
 import { chosen, lower, recommend } from './quality'
@@ -66,15 +66,15 @@ describe('slow frames: worse than 30 fps, judged within ~3 s', () => {
   test('a few hitches (shader compiles, pictures uploading) in smooth frames are not slow', () => expect(slowFrames([...at(16.7, 60), ...at(400, 10)])).toBe(false))
 })
 
-describe('Lite leaves the scanned plant models out', () => {
+describe('Lite and Low leave the scanned plant models out', () => {
   test('a potted plant (6 MB model) is an empty piece: nothing loaded, still in the layout with its id', async () => {
-    lite.on = true
+    lean.on = true
     try {
       const o = await buildFurniture({ id: 'p1', assetId: 'potted_plant_01', roomId: 'r', x: 1, y: 2, rotationDeg: 0 })
       expect(o.children).toHaveLength(0)
       expect(o.userData).toMatchObject({ kind: 'furniture', id: 'p1' })
     } finally {
-      lite.on = false
+      lean.on = false
     }
   })
 })

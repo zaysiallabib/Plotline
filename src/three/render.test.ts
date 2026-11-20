@@ -9,6 +9,10 @@ describe('what each quality tier draws (session 31)', () => {
     expect(TIERS.lite).toMatchObject({ sun: 0, lamps: 2, lampShadows: 0, ao: false }))
   test('Low: the sun’s 1024 shadow map only (no lamp shadows), four lamps', () => expect(TIERS.low).toMatchObject({ sun: 1024, lamps: 4, lampShadows: 0, ao: false }))
   test('High as before: 2048 sun, twelve lamps, three casting, corner shading', () => expect(TIERS.high).toMatchObject({ sun: 2048, lamps: 12, lampShadows: 3, ao: true }))
+  test('scanned plants and live mirrors on High only; pictures at most 512 px on Lite, 1024 on Low, the chip’s own on High', () => {
+    expect([TIERS.high.extras, TIERS.low.extras, TIERS.lite.extras]).toEqual([true, false, false])
+    expect([TIERS.high.maxTexture, TIERS.low.maxTexture, TIERS.lite.maxTexture]).toEqual([0, 1024, 512])
+  })
   test('a lighter tier never draws more', () => {
     for (const [a, b] of [['high', 'low'], ['low', 'lite']] as const) {
       expect(TIERS[b].sun).toBeLessThanOrEqual(TIERS[a].sun)

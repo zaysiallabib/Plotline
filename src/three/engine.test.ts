@@ -15,7 +15,7 @@ import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits 
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
-import { EDGE_PLASTER, lite, materialFor, resolveFinishRef, texture } from './materials'
+import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
 import { clampSun, evenBearings, pickedAt, shrinkHdr } from './PlotlineScene'
 
@@ -470,16 +470,16 @@ describe('textures: one picture per url, Lite’s colour-only sets', () => {
   })
 })
 
-describe('Lite: no live mirror', () => {
-  test('a wall mirror on Lite never draws its reflection pass (the flat drawn again); elsewhere it may', () => {
+describe('Lite and Low: no live mirror', () => {
+  test('a wall mirror on Lite and Low (materials.ts lean) never draws its reflection pass (the flat drawn again); on High it may', () => {
     const state = (on: boolean) => {
-      lite.on = on
+      lean.on = on
       try {
         let s: { forceOff: boolean } | undefined
         buildProcedural('wall_mirror')!.traverse((o) => (s ??= o.userData.mirror))
         return s?.forceOff
       } finally {
-        lite.on = false
+        lean.on = false
       }
     }
     expect([state(true), state(false)]).toEqual([true, false])

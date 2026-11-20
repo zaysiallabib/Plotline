@@ -45,11 +45,13 @@ export type Quality = 'high' | 'low' | 'lite'
  * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer). `batch`: the flat's meshes drawn
  * as one mesh per material once they settle (batch.ts: ~310 → ~60 draw calls a frame on type-a, and a sun-shadow redraw
  * from ~620 to ~60). `sleep`: no frame drawn while nothing can change it (needsFrame), and then no frame loop at all.
+ * `extras`: the scanned plants and live mirrors (materials.ts lean). `maxTexture`: the largest picture side sent to the
+ * graphics chip (0: the chip's own; three halves a bigger one on upload).
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; batch: boolean; sleep: boolean }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, batch: false, sleep: false },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, batch: true, sleep: true },
-  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, batch: true, sleep: true },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; batch: boolean; sleep: boolean; extras: boolean; maxTexture: number }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, batch: false, sleep: false, extras: true, maxTexture: 0 },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, batch: true, sleep: true, extras: false, maxTexture: 1024 },
+  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, batch: true, sleep: true, extras: false, maxTexture: 512 },
 }
 
 /**
