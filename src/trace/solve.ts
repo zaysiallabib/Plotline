@@ -1144,7 +1144,7 @@ export function buildGraph(trace: WallTrace, pxPerM: number, originPx: Px, gray:
   const unit: Unit = {
     id: newId(),
     projectName: '',
-    name: 'Auto-trace draft',
+    name: '', // the drawing keeps its own name (studio/review.ts); the viewer titles a nameless one (viewer/defaults.ts)
     northDeg: 0,
     vertices: m.vertices,
     walls: m.walls.map(stripWall),

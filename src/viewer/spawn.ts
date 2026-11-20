@@ -25,8 +25,10 @@ export const yawFor = (dir: Pt): number => Math.atan2(-dir.x, -dir.y)
  * "Space N" just inside a Studio draft's entrance is (both 'other').
  */
 const enterable = (r: Room | null): r is Room => !!r && r.kind !== 'shaft' && !(r.kind === 'other' && isCommonCore(r))
+/** the common core (stair, lift, lobby) drawn as a room of its own */
+const isCore = (r: Room | null): r is Room => !!r && r.kind === 'other' && isCommonCore(r)
 /** the far side of an entrance: outside the traced flat, or its common core */
-const outside = (r: Room | null): boolean => !r || (r.kind === 'other' && isCommonCore(r))
+const outside = (r: Room | null): boolean => !r || isCore(r)
 
 /**
  * Rooms-list rooms: ones you can walk into (a door or passage on their walls) of at least 2 m²; no shafts, planters or
@@ -144,7 +146,11 @@ function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
  * when the centre is not ahead. A pendant, fan or wall AC spoiling that frame (see `hangs`) turns the view up to 25° (an
  * AC at the frame's edge) and slides the stand point along the view, the smallest shift back or forward past it,
  * staying VIEW_INSET off the walls and clear of furniture.
- * Falls back to the centroid of the largest living room (then any room).
+ * A drawing with its common core in it (a whole floor, or a flat with its lift lobby) is entered from that core, into its
+ * first flat (core deriveFlats: west → east) when it has several; with no door from the core into a flat, a door onto
+ * nothing is no entrance there (a whole floor's outer wall: a traced window or veranda door — session 31 QA stood the
+ * Preview 3D nose-to-curtain), and the walk starts in the largest living room (then dining room), seen as the Rooms
+ * list shows it (roomView) — as with no usable door at all.
  */
 export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
   const level = isLevel(rooms) && levelEntry(unit, rooms)
@@ -159,7 +165,12 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     const off = w.thicknessM / 2 + 0.05
     return [{ w, door, f, at, front: core.roomAt(add(at, f.normal, off), rooms, unit), back: core.roomAt(add(at, f.normal, -off), rooms, unit) }]
   })
-  const entrance = doors.find((d) => (outside(d.front) && enterable(d.back)) || (outside(d.back) && enterable(d.front))) ?? doors[0]
+  const flats = rooms.some(isCore) ? core.deriveFlats(unit, rooms) : []
+  const first = new Set(flats.length > 1 ? flats[0].roomIds : []) // a floor of several flats: the first one's
+  const fromCore = doors.filter((d) => (isCore(d.front) && enterable(d.back)) || (isCore(d.back) && enterable(d.front)))
+  const entrance = rooms.some(isCore)
+    ? (fromCore.find((d) => first.has((isCore(d.front) ? d.back : d.front)!.id)) ?? fromCore[0])
+    : (doors.find((d) => (outside(d.front) && enterable(d.back)) || (outside(d.back) && enterable(d.front))) ?? doors[0])
   // (a loop of at most one: `break` = no usable entry, the fallback below)
   for (const { w, f, at, front, back } of entrance ? [entrance] : []) {
     let side = 0
@@ -194,7 +205,8 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
           for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t)) return { p: q, face: t }
     return { p, face }
   }
-  const living = rooms.filter((r) => r.kind === 'living').sort((a, b) => b.areaSqm - a.areaSqm)[0] ?? rooms[0]
+  const largest = (kind: Room['kind']) => rooms.filter((r) => r.kind === kind).sort((a, b) => b.areaSqm - a.areaSqm)[0]
+  const living = largest('living') ?? largest('dining') ?? rooms[0]
   if (!living) return null
   // no usable door (a Studio draft before its doors): the room's own view, as a jump from the Rooms list gives — not
   // its middle facing plan-up, a wall filling the screen (bug hunt 2026-10-18)
