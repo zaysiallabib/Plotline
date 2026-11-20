@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
-import { importPdf, readsAsPlan } from './pdf'
+import { importPdf, penRoles, readsAsPlan } from './pdf'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)
@@ -71,5 +71,16 @@ describe.skipIf(!existsSync(SAMPLES))('real vector PDFs', () => {
     const table = ['| file | scale | lines | walls | openings | labels | closed rooms | validate errors | time |', '|---|---|---|---|---|---|---|---|---|', ...rows].join('\n')
     console.log(table)
     writeFileSync(TABLE, table)
+  })
+})
+
+describe('a PDF has no layers: its pens', () => {
+  const seg = (layer: string, L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, layer })
+  test('the heaviest stroked pen and a grey fill draw the walls; thin lines, white and coloured fills do not', () => {
+    const segs = [seg('pen 0.24 0,0,0', 500), seg('pen 0.48 0,0,0', 100), seg('pen 1.32 0,0,0', 300), seg('fill #c0c0c0', 200), seg('fill #ffffff', 200), seg('fill #4d5b89', 200), seg('pen 2.00 0,0,0', 1)]
+    expect([...penRoles(segs).walls].sort()).toEqual(['fill #c0c0c0', 'pen 1.32 0,0,0'])
+  })
+  test('one pen for everything: nothing is sorted (every line pair counts, as before)', () => {
+    expect(penRoles([seg('pen 0.24 0,0,0', 500)]).walls.size).toBe(0)
   })
 })
