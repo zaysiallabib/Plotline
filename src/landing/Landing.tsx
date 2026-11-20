@@ -108,7 +108,7 @@ export default function Landing() {
       <section className="story" aria-label="From a floor plan to a building">
         <div className="stage" data-act="1">
           <canvas role="img" aria-label="The Type A floor plan on a sheet of paper; as the page scrolls its walls rise, then floors of it stack into a tower on a colonnade" />
-          <div className="hero cap" style={span(-1, 0.12)}>
+          <div className="hero cap" style={span(-1, 0.14)}>
             <p className="label">Digital show flat · Dhaka</p>
             <h1 className="display">Plotline</h1>
             <p className="lead">The architect's plan becomes a furnished flat your buyers can walk, long before it is built.</p>
@@ -122,7 +122,7 @@ export default function Landing() {
               </a>
             </div>
           </div>
-          <div className="act cap" style={span(0.17, 0.47)} aria-hidden="true">
+          <div className="act cap" style={span(0.15, 0.47)} aria-hidden="true">
             <p className="label">II · The walls</p>
             <p className="say display">Every wall stands where the sheet draws it.</p>
             <p className="more">Its real thickness and height, with the doors and windows cut where the plan puts them.</p>

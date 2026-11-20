@@ -153,4 +153,5 @@ body:has(.landing) { overflow: auto; } /* the rest of the app never scrolls the 
   .landing .hero { opacity: 1; }
   .landing .stage .hero { pointer-events: auto; }
   .landing .act, .landing .acts { display: none; }
+  .landing:not(.scrolled) .mark { opacity: 0; } /* the big name is on screen */
 }
