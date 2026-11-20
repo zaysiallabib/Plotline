@@ -33,7 +33,8 @@ import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { batch, CELL_M, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
 import type { Street } from '../data/building'
@@ -107,6 +108,8 @@ const CLICK_PX = 6
 /** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
 const WAKE = ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup'] as const
 const WAKE_MS = 1000
+/** Lite / Low (render.ts TIERS.batch): a group is batched again once nothing in it has changed for this long */
+const BATCH_MS = 400
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000
@@ -272,6 +275,9 @@ export class PlotlineScene {
   private readonly tier: Quality
   /** Lite's share of its pixel budget (render.ts pixelRatioFor): halved when still slow (lighter) */
   private budget = 1
+  /** Lite / Low: what changed since the groups were last batched (rebatch), and the timer that batches them once it settles */
+  private readonly unsettled = new Set<'static' | 'furniture'>()
+  private batchTimer = 0
   /** Lite draws until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
   private wakeUntil = 0
   private lastPose = NaN
@@ -382,6 +388,7 @@ export class PlotlineScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
+    this.raycaster.layers.enable(HIDDEN) // batched meshes (batch.ts) are picked as before
     this.camera = new THREE.PerspectiveCamera(WALK_FOV, 1, 0.05, 300) // the scene opens walking
     this.camera.position.y = EYE
     this.rig.add(this.camera)
@@ -489,8 +496,10 @@ export class PlotlineScene {
     if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
     this.ready = true
+    this.rebatch('static')
     if (keepView) {
       for (const [g, o] of kept) g.add(o)
+      this.rebatch('furniture')
       return
     }
     const first = this.rooms[0]
@@ -506,6 +515,7 @@ export class PlotlineScene {
     this.wake()
     this.cfg = cfg
     this.applyMaterials()
+    this.rebatch('static')
   }
 
   /**
@@ -619,6 +629,7 @@ export class PlotlineScene {
       pivot.userData.ajar ??= pivot.rotation.y
       pivot.rotation.y = o.userData.id === `${openingId}/leaf` ? 0 : pivot.userData.ajar
     })
+    this.rebatch('static')
   }
 
   onPick(cb: (hit: PickHit | null) => void): void {
@@ -687,6 +698,7 @@ export class PlotlineScene {
       this.showSelection(null)
       this.hand = null
     }
+    this.rebatch('furniture') // the pieces one by one while they may move; batched again after
   }
 
   onArrange(cb: (e: ArrangeEvent) => void): void {
@@ -702,6 +714,7 @@ export class PlotlineScene {
   setHand(h: { id: Id; y: number; off?: Pt } | null): void {
     this.hand = h && { ...h, off: h.off ?? { x: 0, y: 0 } }
     this.aimedFrom = ''
+    this.rebatch('furniture')
     if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
     if (this.hand && this.mode !== 'building') this.aimHand()
   }
@@ -750,6 +763,7 @@ export class PlotlineScene {
    * yet (a chair a longer dining table gained) is built. `all`: ps is the whole layout, pieces left out of it are hidden.
    */
   placePieces(ps: FurniturePlacement[], all = false): void {
+    this.rebatch('furniture')
     if (all) {
       this.layout = ps
       const ids = new Set(ps.map((p) => p.id))
@@ -864,6 +878,7 @@ export class PlotlineScene {
     parent.add(obj)
     old.removeFromParent()
     this.wake()
+    this.rebatch('furniture')
     // procedural geometry is per build (glTF clones share theirs, and never resize)
     if (kitAsset(p.assetId)?.url.startsWith('procedural:')) old.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
     if (selected) this.fitSelection(obj, this.selBox.userData.axesList)
@@ -1048,6 +1063,29 @@ export class PlotlineScene {
     return this.xr
   }
 
+  /**
+   * Lite / Low (TIERS.batch, batch.ts): `kind`'s groups — the walls, floors and openings, or the furniture — and the
+   * ceilings (room ceilings and the fixtures on them) are drawn mesh by mesh again at once, so the change shows on the next
+   * frame, and batched again once nothing has changed for BATCH_MS; the furniture and ceilings never while a piece is in
+   * hand or Arrange is on (pieces move under the pointer).
+   */
+  private rebatch(kind: 'static' | 'furniture'): void {
+    if (!TIERS[this.tier].batch) return
+    for (const g of kind === 'static' ? [this.staticGroup, this.ceilingGroup] : [this.furnitureGroup, this.ceilingGroup]) unbatch(g)
+    this.unsettled.add(kind)
+    clearTimeout(this.batchTimer)
+    this.batchTimer = window.setTimeout(this.settle, BATCH_MS)
+  }
+
+  private settle = (): void => {
+    if (this.disposed || !this.ready) return
+    const still = !this.arranging && !this.hand
+    const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
+    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
+    this.unsettled.clear()
+    this.wake()
+  }
+
   resize(): void {
     if (this.renderer.xr.isPresenting) return
     this.wake()
@@ -1063,6 +1101,7 @@ export class PlotlineScene {
 
   dispose(): void {
     this.disposed = true
+    clearTimeout(this.batchTimer)
     this.renderer.setAnimationLoop(null)
     this.ro.disconnect()
     window.removeEventListener('keydown', this.onKey)
@@ -1367,6 +1406,7 @@ export class PlotlineScene {
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
     this.wake()
+    this.rebatch('furniture')
     obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
     obj.userData.floorM = this.floorOf(p)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays

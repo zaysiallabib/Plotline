@@ -14,6 +14,7 @@
  */
 import * as THREE from 'three'
 import { sqmToSqft, type Pt, type Room } from '../core'
+import { HIDDEN } from './batch'
 
 export const SNAP_RAD = Math.PI / 4
 const FIRE = 0.6
@@ -108,6 +109,7 @@ export class XRControls {
   private shadowSize = 0
 
   constructor(private readonly h: XRHooks) {
+    this.raycaster.layers.enable(HIDDEN) // Lite / Low's batched floors (batch.ts) are aimed at as before
     const xr = h.renderer.xr
     xr.enabled = true
     xr.setReferenceSpaceType('local-floor') // three's default; explicit because the rig puts the floor at y = 0

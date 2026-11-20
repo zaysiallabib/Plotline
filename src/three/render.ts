@@ -42,12 +42,14 @@ export type Quality = 'high' | 'low' | 'lite'
  * `sun`: the sun's shadow map size; 0 = no shadow maps at all, and then the sun lights nothing while the camera is under the
  * ceiling (it would pour through every ceiling onto every floor): the daylight atlas and the contact shadows carry the rooms,
  * the street outside keeps the sun. `lamps`: lights in the lamps' pool (the camera's room first); `lampShadows`: of those,
- * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer).
+ * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer). `batch`: the flat's meshes drawn
+ * as one mesh per material once they settle (batch.ts: ~310 → ~60 draw calls a frame on type-a, and a sun-shadow redraw
+ * from ~620 to ~60).
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false },
-  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; batch: boolean }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, batch: false },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, batch: true },
+  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, batch: true },
 }
 
 /**
