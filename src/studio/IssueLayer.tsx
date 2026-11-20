@@ -103,7 +103,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
         })}
       </svg>
       {open && at && (
-        <div className="issue-pop" style={{ left: Math.max(4, Math.min(at.x + 26, width - 264)), top: Math.max(4, Math.min(at.y - 8, height - 150)) }} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="issue-pop" style={{ left: Math.max(4, Math.min(at.x + 26, width - 264)), top: Math.max(4, Math.min(at.y - 8, height - 260)) }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="head">
             <span className={`num ${open.severity}`}>{open.n}</span>
             <span className="grow">{open.message}</span>

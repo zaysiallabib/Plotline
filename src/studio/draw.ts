@@ -372,7 +372,7 @@ export function draw(a: DrawArgs): void {
     ctx.stroke()
     if (!selected && hot?.kind === 'wall' && hot.id === w.id) {
       ctx.strokeStyle = fade(C.accent, 0.4)
-      ctx.lineWidth = px(4)
+      ctx.lineWidth = px(6)
       ctx.stroke()
     }
 

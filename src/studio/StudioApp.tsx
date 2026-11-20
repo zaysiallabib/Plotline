@@ -2344,7 +2344,7 @@ export default function StudioApp() {
             </div>
           )}
           {field && (
-            <div className="field" style={{ left: Math.max(0, Math.min(field.x + 12, size.w - 180)), top: Math.max(0, Math.min(field.y + 12, size.h - 90)) }}>
+            <div className="field" style={{ left: Math.max(0, Math.min(field.x + 12, size.w - 192)), top: Math.max(0, Math.min(field.y + 12, size.h - 112)) }}>
               <label>{field.purpose === 'scale' ? 'Its real length' : field.mode === 'angle' ? 'Angle (°)' : 'Length'}</label>
               <input
                 ref={fieldRef}
@@ -2366,7 +2366,7 @@ export default function StudioApp() {
             </div>
           )}
           {popover && (
-            <div className="popover" style={{ left: Math.min(popover.sx + 12, size.w - 280), top: Math.max(0, Math.min(popover.sy + 12, size.h - (popover.slope ? 420 : 330))) }}>
+            <div className="popover" style={{ left: Math.min(popover.sx + 12, size.w - 280), top: Math.max(0, Math.min(popover.sy + 12, size.h - (popover.slope ? 540 : 420))) }}>
               <label>
                 <span>Room name</span>
                 <input
