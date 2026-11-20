@@ -1094,10 +1094,26 @@ function ceilingLight(ctx: Ctx): void {
 }
 
 /**
- * Split AC 2.3 m up (its mountY), centred on the longest clear stretch of wall: every side is cut at its doors and
- * windows, and the AC must keep AC_CLEAR from those cuts and from the room's corners. A stretch behind a bed's
- * headboard comes last (cold air on the sleeper); one over anything taller than 1.8 m (wardrobe, shelves, larder) is
- * out. No stretch qualifies: no AC.
+ * The room's best view (session 31): the middle of its biggest window (by its glass's area), on the plan; null: no window.
+ */
+export function bestView(sides: { p0: Pt; d: Pt; wins: { u0: number; u1: number; sill: number; top: number }[] }[]): Pt | null {
+  let best: { at: Pt; a: number } | null = null
+  for (const s of sides)
+    for (const w of s.wins) {
+      const a = (w.u1 - w.u0) * (w.top - w.sill)
+      if (!best || a > best.a + EPS) best = { at: add(s.p0, s.d, (w.u0 + w.u1) / 2), a }
+    }
+  return best?.at ?? null
+}
+
+/**
+ * Split AC 2.3 m up (its mountY) on a clear stretch of wall: every side is cut at its doors and windows, and the AC must
+ * keep AC_CLEAR from those cuts and from the room's corners. Which stretch, in order (session 31: "an AC unit cutting into
+ * the best view"): one on a wall with no window (an AC beside a window hangs in the view out); not behind a bed's headboard
+ * (cold air on the sleeper) nor over a sofa (the wall its art and the eye go to) — on a sofa's wall it slides along the
+ * stretch from its middle, 0.25 m at a time, until it clears the sofa; on the wall facing the room's best view (bestView:
+ * you have your back to it as you look out), in quarter steps; then the longest. One over anything taller than 1.8 m
+ * (wardrobe, shelves, larder) is out. No stretch qualifies: no AC.
  */
 function wallAC(ctx: Ctx): void {
   const id = 'ac_split'
@@ -1105,6 +1121,8 @@ function wallAC(ctx: Ctx): void {
   const bed = ctx.out.find((p) => p.assetId.startsWith('bed_'))
   const t = ((bed?.rotationDeg ?? 0) * Math.PI) / 180
   const behindBed = (s: Side) => !!bed && dot(s.n, { x: -Math.sin(t), y: Math.cos(t) }) > 0.9
+  const sofas = ctx.out.filter((p) => kitAsset(p.assetId)?.category === 'sofa').map((p) => footprint(p, p.rotationDeg, placementSize(p)))
+  const view = bestView(ctx.sides)
   const stretches = ctx.sides.flatMap((s) => {
     const cuts = [...s.doors, ...s.wins.map((w): [number, number] => [w.u0, w.u1]), [s.len, s.len]].sort((a, b) => a[0] - b[0])
     const out: { s: Side; u: number; len: number }[] = []
@@ -1115,11 +1133,22 @@ function wallAC(ctx: Ctx): void {
     }
     return out
   })
-  stretches.sort((a, b) => Number(behindBed(a.s)) - Number(behindBed(b.s)) || b.len - a.len)
-  for (const { s, u, len } of stretches) {
-    const c = againstSide(s, id, u, FLUSH)
-    const rot = rotationFacing(s.n)
-    const q = footprint(c, rot, size(id))
+  const ranked = stretches.map((st) => {
+    const rot = rotationFacing(st.s.n)
+    const at = (du: number) => {
+      const c = againstSide(st.s, id, st.u + du, FLUSH)
+      return { c, q: footprint(c, rot, size(id)) }
+    }
+    const slide = Math.max(0, Math.floor((st.len / 2 - hw - AC_CLEAR) / 0.25)) // quarter-metre steps it may slide each way, AC_CLEAR kept
+    const steps = [0, ...Array.from({ length: slide }, (_, k) => [-(k + 1) * 0.25, (k + 1) * 0.25]).flat()]
+    const { c, q } = at(steps.find((du) => !sofas.some((f) => quadsOverlap(f, at(du).q))) ?? 0)
+    const toView = view ? Math.round((4 * dot(st.s.n, { x: view.x - c.x, y: view.y - c.y })) / (dist(view, c) || 1)) : 0
+    const win = st.s.wins.length ? 1 : 0
+    const seat = behindBed(st.s) || sofas.some((f) => quadsOverlap(f, q)) ? 1 : 0
+    return { ...st, c, rot, q, win, seat, toView }
+  })
+  ranked.sort((a, b) => a.win - b.win || a.seat - b.seat || b.toView - a.toView || b.len - a.len)
+  for (const { s, len, c, rot, q } of ranked) {
     // openings: by the stretch's length; corners: AC_CLEAR past each end must still be in the room
     if (len < 2 * (hw + AC_CLEAR) || ![-1, 1].every((k) => pointInPolygon(add(c, s.d, k * (hw + AC_CLEAR)), ctx.inner))) continue
     if (ctx.quads.some((o) => o.y1 > 1.8 && quadsOverlap(o.q, q))) continue

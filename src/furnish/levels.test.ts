@@ -119,14 +119,19 @@ describe('presets for the levels: by kind and geometry (session 19)', () => {
 
 describe('the flats are unchanged but for a balcony planter set', () => {
   const flats = Object.values(import.meta.glob('../data/units/{type-a,type-b,type-c,sheltech-a,sheltech-b}.json', { eager: true, import: 'default' }) as Record<string, Unit>)
-  /** FNV-1a of the preset layout without the planter boxes (session 19's only addition to a flat), locked on the pre-session-19 output. */
+  /**
+   * FNV-1a of the preset layout without the planter boxes (session 19's only addition to a flat), locked on the pre-session-19
+   * output; relocked in session 31 when the split AC moved out of the view (presets.ts wallAC) — every other piece byte-same,
+   * checked against the old rule (7 of 28 ACs moved: Bed-2 and the dining's on type-a, three on type-b, the living rooms of type-c
+   * and sheltech-b).
+   */
   const hash = (s: string) => [...s].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0, 2166136261)
   const LOCK: Record<string, [number, number]> = {
     unit_sheltech_a_2736: [97, 1328157010],
-    unit_sheltech_b_2736: [95, 26069719],
-    unit_type_a_2703: [103, 2589603506],
-    unit_type_b_1747: [82, 635063143],
-    unit_type_c_2254: [107, 3523187327],
+    unit_sheltech_b_2736: [95, 1373086241],
+    unit_type_a_2703: [103, 3837305781],
+    unit_type_b_1747: [82, 4272349498],
+    unit_type_c_2254: [107, 1486906525],
   }
   test.each(flats.map((u) => [u.id, u] as const))('%s: byte-same presets (curtains, a piece since 2026-10-14, aside); planter boxes only on a balcony', (id, u) => {
     const rooms = deriveRooms(u)

@@ -865,6 +865,8 @@ Projects, their drawings and their pictures are kept in this browser only.
 
 **Rooms in a flat**
 
+**Where the AC goes** (since session 31): on a wall with no window when there is one (an AC beside a window sits in the view out), never over the bed's headboard, and slid along the wall until it is clear of the sofa (the wall the pictures go on). Of the walls left, the one facing the room's biggest window — behind you as you look out — then the longest.
+
 | Kind | Gets |
 |---|---|
 | bed | Bed, bedside tables, rug, wardrobe, pictures, light, AC |
