@@ -44,12 +44,13 @@ export function colourOnly<T extends THREE.Object3D>(model: T): T {
 /** Rotation about Y that turns the asset's declared front axis into +Z (see kit.ts frontAxis). */
 export const FRONT_FIX: Record<string, number> = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }
 
+/** a piece whose model could not be had (a buyer link whose own piece never went online): a plain block of its size, in a
+ * quiet stone tone — it keeps the room's layout honest and says nothing */
 function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D {
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(size.x, size.y, size.z),
-    new THREE.MeshStandardMaterial({ color: '#8d8d8d', roughness: 0.9, transparent: true, opacity: 0.6 }),
-  )
+  const m = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), new THREE.MeshStandardMaterial({ color: '#cfc9bf', roughness: 0.9 }))
   m.position.y = size.y / 2
+  m.userData.placeholder = true
+  m.castShadow = m.receiveShadow = true
   return m
 }
 
