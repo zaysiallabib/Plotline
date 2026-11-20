@@ -23,7 +23,7 @@ import type { Street } from '../data/building'
 import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
-import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } from './context'
+import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
 import { dayMix, isCovered, LAMP_RANGE, openToSky, setLampShare } from './daylight'
 import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
@@ -691,6 +691,7 @@ export class Look {
     for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
     setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(this.tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
+    streetNight.value = STREET_LIT * k.night
     this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
     ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)

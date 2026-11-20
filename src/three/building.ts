@@ -41,6 +41,8 @@ const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
+/** the tower's panes mirror the sky this many times GLASS does (its sky ÷ its 0.3 opacity: 2.5× the sky's own light; Fresnel keeps them dark head-on, bright at a slant) */
+const SKY_GLINT = 0.75
 
 /** About 45 % of the other flats' windows are lit at night: a fixed hash of the flat, floor and opening. */
 export function litWindow(key: string): boolean {
@@ -137,10 +139,13 @@ export class Building extends THREE.Group {
   private readonly stem: string
   private readonly street: THREE.Group
   private readonly mark: THREE.Mesh
-  /** dark, sky-reflecting panes: the empty shells behind them stay unseen (the unit's own GLASS is 90 % clear) */
-  private readonly glass = new THREE.MeshStandardMaterial({ color: '#27303a', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap })
+  /**
+   * sky-reflecting panes: the empty shells behind them stay unseen (the unit's own GLASS is 70 % clear). Session 31: a
+   * slate blue-grey mirroring the sky SKY_GLINT× GLASS (they were near-black: 0.12×, and #27303a)
+   */
+  private readonly glass = new THREE.MeshStandardMaterial({ color: '#3d4a57', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap })
   /** the panes of the windows lit at night (litWindow: about 45 %, the same ones every time), warm behind the curtains */
-  private readonly lit = new THREE.MeshStandardMaterial({ color: '#27303a', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap, emissive: '#ffc27e', emissiveIntensity: 0 })
+  private readonly lit = new THREE.MeshStandardMaterial({ color: '#3d4a57', roughness: 0.06, metalness: 0.2, envMap: GLASS.envMap, emissive: '#ffc27e', emissiveIntensity: 0 })
   private readonly own: THREE.Material[] = [this.glass, this.lit]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
@@ -475,7 +480,7 @@ export class Building extends THREE.Group {
    * street behind it; the panes dim with the sky at dusk like GLASS.
    */
   setSun(sun: THREE.DirectionalLight, night = 0): void {
-    this.glass.envMapIntensity = this.lit.envMapIntensity = 0.12 * GLASS.envMapIntensity
+    this.glass.envMapIntensity = this.lit.envMapIntensity = SKY_GLINT * GLASS.envMapIntensity * (1 - night) // the day sky they mirror goes with the light
     this.lit.emissiveIntensity = 0.18 * night // the neighbours' lights come on as the sky goes
     const cam = sun.shadow.camera
     cam.position.copy(sun.position)
