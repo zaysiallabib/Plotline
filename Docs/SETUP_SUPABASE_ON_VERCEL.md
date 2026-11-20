@@ -77,7 +77,8 @@ never deletes anything); that is expected. Lost the staff key? Supabase → **SQ
 
 **C — the real thing, as a buyer.**
 1. In the live Studio, with a drawing open: **⋯ → Share link**. Signed in to your company nothing is asked; not signed
-   in, a small box asks once for the staff key. The message says "Link copied: …".
+   in, the white card asks once for the staff key ("Type the staff key …"): paste it, **Share**. The message says
+   "Link copied: …".
 2. Open a **private window** (Ctrl+Shift+N in Chrome or Edge, Ctrl+Shift+P in Firefox) and paste the link: this is what a
    buyer sees.
 3. **Enter**, press **C**, click a wall, type a note, **Save**. Open **Finishes** and pick one option.
