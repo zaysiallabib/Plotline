@@ -12,7 +12,7 @@
   --surface-2: #ece9e3; /* sunken: wells, a selected row, the tool rail base */
   --ink: #17191c; /* near-black, a touch cool: text, icons */
   --ink-2: #4b4f55; /* second text */
-  --muted: #6b7077; /* labels, hints (4.9:1 on marble) */
+  --muted: #62666d; /* labels, hints (5.2:1 on marble, 4.8:1 on --surface-2: AA everywhere, lib/contrast.test.ts) */
   --line: rgba(23, 25, 28, 0.14); /* a drawn line: borders of inputs, dividers that must read */
   --hairline: rgba(23, 25, 28, 0.08); /* a hairline: panel edges, quiet dividers */
   --hover: rgba(23, 25, 28, 0.05);

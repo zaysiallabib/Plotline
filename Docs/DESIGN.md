@@ -35,14 +35,14 @@ Five rules, in order of weight:
 | `--surface-2` | #ece9e3 | sunken: wells, the picked row, a rail's base |
 | `--ink` | #17191c | text, icons |
 | `--ink-2` | #4b4f55 | second text |
-| `--muted` | #6b7077 | labels, hints |
+| `--muted` | #62666d | labels, hints |
 | `--line` / `--hairline` | 14 % / 8 % ink | a drawn edge / a quiet edge |
 | `--accent` | #2458a6 | the one accent; white text on it |
 | `--accent-soft` | 10 % accent | an "on" toggle's wash (Finishes on, Wind on) |
 | `--danger` | #b5432b | terracotta: refused, broken, delete |
 | `--glass` / `--glass-strong` | marble 80 % / 94 % + `--blur` | floating panels over the 3D |
 
-Contrast: ink on marble 15:1, muted on marble 4.9:1, white on accent 7:1. Everything passes AA; body text passes AAA.
+Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts): ink on marble 15.9:1, ink-2 7.4:1, muted on marble 5.2:1 and 4.8:1 on `--surface-2`, white on accent 6.9:1, terracotta 5.0:1. Everything passes AA; body text passes AAA. On the glass over a dark night scene muted text falls under AA (about 3.3:1 over black): a label over the 3D that must be read uses `--ink-2`, or the panel uses `--glass-strong`.
 
 ## Type
 

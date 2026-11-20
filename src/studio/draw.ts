@@ -15,7 +15,7 @@ function tokens(): typeof C {
   if (C.ink) return C
   const css = getComputedStyle(document.documentElement)
   const v = (n: string, or: string) => css.getPropertyValue(n).trim() || or
-  C = { paper: v('--surface', '#ffffff'), ink: v('--ink', '#17191c'), ink2: v('--ink-2', '#4b4f55'), muted: v('--muted', '#6b7077'), accent: v('--accent', '#2458a6'), red: v('--danger', '#b5432b'), font: v('--font', 'system-ui, sans-serif') }
+  C = { paper: v('--surface', '#ffffff'), ink: v('--ink', '#17191c'), ink2: v('--ink-2', '#4b4f55'), muted: v('--muted', '#62666d'), accent: v('--accent', '#2458a6'), red: v('--danger', '#b5432b'), font: v('--font', 'system-ui, sans-serif') }
   return C
 }
 /** a token's colour at alpha `a` (the tokens are #rrggbb) */
