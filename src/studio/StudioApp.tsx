@@ -45,6 +45,9 @@ import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
+import PdfPages from './PdfPages'
+import { CONVERTED_PICTURE } from '../import/picture'
+import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
 import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
@@ -300,6 +303,9 @@ export default function StudioApp() {
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
   /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
   const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
+  /** a PDF of several pages waiting for "which page is the plan?" (PdfPages), and the page being read after a click */
+  const [pdfPick, setPdfPick] = useState<{ name: string; doc: PdfDoc; busy: number | null } | null>(null)
+  const openPdfDoc = useRef<PdfDoc | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
@@ -339,6 +345,8 @@ export default function StudioApp() {
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
   const fitOnLoad = useRef(false)
   const fitOnUnit = useRef(false)
+  /** a message for once the imported drawing is in (after the cleanup message the load itself gives) */
+  const afterLoad = useRef<(() => void) | null>(null)
 
   const { unit, view, tool, chain } = state
   useEffect(() => setArc(null), [tool]) // another tool drops a half-placed arc
@@ -573,6 +581,8 @@ export default function StudioApp() {
     if (!fitOnUnit.current) return
     fitOnUnit.current = false
     fitView()
+    afterLoad.current?.()
+    afterLoad.current = null
   }, [state.unit.id, fitView])
   useEffect(() => {
     // first layout of a restored/empty studio: fit if the view is untouched
@@ -781,7 +791,12 @@ export default function StudioApp() {
   // ----- files
   const loadImage = useCallback(
     (file: File) => {
-      const fail = () => toast("Couldn't open that image. Use PNG, JPG or WEBP under 10 MB.")
+      // a TIFF (scanner, plotter) or an iPhone's HEIC: turned into a WEBP first (src/import/picture.ts)
+      if (CONVERTED_PICTURE.test(file.name))
+        return void import('../import/picture')
+          .then((p) => p.toPlanPicture(file))
+          .then((f) => loadImage(f), (e: unknown) => toast(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+      const fail = () => toast("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
       if (file.size > MAX_IMAGE_BYTES || !/^image\/(png|jpeg|webp)$/.test(file.type)) return fail()
       const reader = new FileReader()
       reader.onerror = fail
@@ -854,6 +869,7 @@ export default function StudioApp() {
    * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
    */
   const importArchitect = async (file: File, siblings?: Map<string, Blob>) => {
+    if (/\.pdf$/i.test(file.name)) return openPdfFile(file)
     const stop = new AbortController()
     setNote(null)
     setReading({ name: file.name, stage: 'starting', fraction: null, stop })
@@ -867,6 +883,63 @@ export default function StudioApp() {
     }
     setReading(null)
     await takeImport(r, file.name)
+  }
+  /**
+   * A PDF: one page is read at once; several ask which page is the plan (PdfPages). A page whose lines make a plan (two or
+   * more closed rooms) opens as the drawing; else the page becomes the plan picture to trace (a brochure page is a photo,
+   * or a picture with its words turned into outlines). Either way the message offers the other.
+   */
+  const openPdfFile = async (file: File) => {
+    let doc: PdfDoc
+    try {
+      doc = await (await import('../import/pdf')).openPdf(await file.arrayBuffer())
+    } catch (e) {
+      return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    // (the last PDF stays open while its message offers "as a picture" / "its lines": the next one closes it)
+    void openPdfDoc.current?.loadingTask.destroy()
+    openPdfDoc.current = doc
+    if (doc.numPages === 1) return readPdfPage(file.name, doc, 1).catch((e) => toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+    setNote(null)
+    setPdfPick({ name: file.name, doc, busy: null })
+  }
+  const closePdf = () => setPdfPick(null)
+  const pdfThumb = useCallback(async (page: number, px: number) => (await (await import('../import/pdf')).renderPage(pdfPick!.doc, page, px)).toDataURL('image/jpeg', 0.85), [pdfPick?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
+  const readPdfPage = async (name: string, doc: PdfDoc, page: number) => {
+    const stop = new AbortController()
+    setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
+    try {
+      await readPdfPageNow(name, doc, page, stop.signal)
+    } finally {
+      setReading((x) => (x?.stop === stop ? null : x))
+    }
+  }
+  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, stopped: AbortSignal) => {
+    const pdf = await import('../import/pdf')
+    const r = await pdf.importPdf(doc, name, page).catch(() => null)
+    if (stopped.aborted) return
+    // the page as the plan picture: its longer side 4000 px (a plan picture's usual size), WEBP to stay under the 10 MB limit
+    const asPicture = async () => {
+      const canvas = await pdf.renderPage(doc, page, 4000)
+      const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/webp', 0.92))
+      if (stopped.aborted) return
+      if (!blob) return toast('This browser could not turn the page into a picture')
+      loadImage(new File([blob], `${name.replace(/\.pdf$/i, '')} p${page}.webp`, { type: 'image/webp' }))
+    }
+    const where = doc.numPages > 1 ? `Page ${page}` : name
+    if (r && pdf.readsAsPlan(r)) {
+      afterLoad.current = () => toast(`${where} read as a drawing (its own lines)`, { label: 'Use it as a picture instead', onClick: () => void asPicture() })
+      await takeImport(r, name)
+    } else {
+      await asPicture()
+      if (r) toast(`${where} is now the plan picture (its lines did not make a clean plan) — set the scale (S), then Auto-trace`, { label: 'Read its lines instead', onClick: () => void takeImport(r, name) })
+    }
+  }
+  const pickPdfPage = async (page: number) => {
+    if (!pdfPick) return
+    setPdfPick({ ...pdfPick, busy: page })
+    await readPdfPage(pdfPick.name, pdfPick.doc, page).catch((e) => toast(`Could not read page ${page}: ${e instanceof Error ? e.message : String(e)}`))
+    closePdf()
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
   const takeImport = async (r: ImportResult, fileName: string) => {
@@ -946,7 +1019,7 @@ export default function StudioApp() {
     const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
     const main = mainFile(files.map((f) => f.path))
     if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
-    const usable = files.find((f) => /\.(png|jpe?g|webp|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
+    const usable = files.find((f) => /\.(png|jpe?g|webp|tiff?|heic|heif|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
     onFile(asFile(usable))
   }
   const onFiles = (list: FileList | null) => void onDropped([...(list ?? [])].map((f) => ({ path: f.name, data: f })))
@@ -2241,7 +2314,7 @@ export default function StudioApp() {
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
       />
       <input ref={jsonRef} type="file" multiple accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
-      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
+      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <nav className="tools" aria-label="Tools">
@@ -2337,7 +2410,7 @@ export default function StudioApp() {
                         ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here`
                         : 'Drop the floor plan here'}
                   </p>
-                  <p className="small muted">PNG, JPG or WEBP, up to 10 MB</p>
+                  <p className="small muted">PNG, JPG, WEBP or TIFF, up to 10 MB — or the brochure PDF</p>
                   <button className="primary" onClick={() => fileRef.current?.click()}>
                     Choose plan image…
                   </button>
@@ -2373,6 +2446,7 @@ export default function StudioApp() {
               <button onClick={() => cancelTrace.current()}>Cancel</button>
             </div>
           )}
+          {pdfPick && <PdfPages name={pdfPick.name} count={pdfPick.doc.numPages} thumb={pdfThumb} busy={pdfPick.busy} onPick={(p) => void pickPdfPage(p)} onClose={closePdf} />}
           {reading && (
             <div className="trace-card" role="status">
               <span>

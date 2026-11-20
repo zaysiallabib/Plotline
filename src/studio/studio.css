@@ -122,7 +122,7 @@
 .studio .seg button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
 
 /* what floats over the sheet: white, a hairline, the one floating shadow */
-.field, .popover, .issue-pop, .trace-card, .menu, .keys-sheet {
+.field, .popover, .issue-pop, .trace-card, .menu, .keys-sheet, .pages-sheet {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
@@ -130,8 +130,8 @@
   animation: studio-fade var(--dur) var(--ease) both;
 }
 /* a title row: an inscription on the left, × on the right */
-:is(.popover, .floors, .keys-head) .head, .keys-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
-.popover .head strong, .keys-head strong { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+:is(.popover, .floors, .keys-head, .pages-sheet) .head, .keys-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+:is(.popover, .pages-sheet) .head strong, .keys-head strong { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 
 /* ── the top bar: wordmark · the drawing's quiet fields · Undo Redo · Auto-trace, Preview 3D, Building, ⋯ ──────────── */
 .topbar {
@@ -270,6 +270,28 @@
 }
 .toast:not(:has(button)) { padding-right: var(--s-4); }
 .toast + .toast { bottom: 76px; }
+
+/* a PDF of several pages: "Which page is the floor plan?" — its pages as small sheets of paper, centred on the sheet */
+.pages-sheet {
+  position: absolute; inset: var(--s-6); z-index: 7; margin: auto;
+  width: min(880px, calc(100% - 2 * var(--s-6))); height: max-content; max-height: calc(100% - 2 * var(--s-6)); overflow: auto;
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4) var(--s-5) var(--s-5); border-radius: var(--r-lg);
+}
+.pages-sheet h2 { margin: var(--s-2) 0 0; font-size: var(--fs-2xl); }
+.pages-sheet p { margin: 0 0 var(--s-2); font-size: var(--fs-sm); }
+.pages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: var(--s-5) var(--s-4); }
+.pages button { display: flex; flex-direction: column; gap: var(--s-2); width: 100%; height: auto; padding: 0; border: 0; background: none; text-align: left; }
+.pages button:hover:not(:disabled), .pages button.on { background: none; }
+.pages .page {
+  display: flex; align-items: center; justify-content: center; height: 176px; padding: var(--s-2); overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.pages .page img { display: block; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: var(--shadow-sm); }
+.pages button:hover:not(:disabled) .page { border-color: var(--accent-line); }
+.pages button.on .page { border-color: var(--accent); }
+.pages button.on .label { color: var(--accent); }
+.pages button.on:disabled { opacity: 1; }
 
 /* Auto-trace's card, top middle */
 .trace-card {

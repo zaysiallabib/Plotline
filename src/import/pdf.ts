@@ -7,7 +7,7 @@
  * unitScale 1 with a "scale not set" note for the Studio's S tool. A PDF whose page is only a picture is refused in
  * plain words.
  */
-import type { Pt } from '../core'
+import { deriveRooms, type Pt } from '../core'
 import { buildPlan, quarterArc, sheetScale, type ArcPrim, type Drawing, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
@@ -18,16 +18,44 @@ type M = [number, number, number, number, number, number]
 const mul = (m: M, n: M): M => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]]
 const ap = (m: M, x: number, y: number): Pt => ({ x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] })
 
-/** page 1's lines (the clip paths left out) and texts, in PDF user space turned the way the page is shown */
-async function readPage(bytes: ArrayBuffer): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; pictures: number; pages: number }> {
-  // the browser takes the normal build with its worker; Node (the tests) the legacy build, which carries its own polyfills
+/** an open PDF: its pages are read or drawn one by one (the Studio's page picker keeps it open; doc.loadingTask.destroy() closes it) */
+export type PdfDoc = import('pdfjs-dist').PDFDocumentProxy
+
+/** the browser takes the normal build with its worker; Node (the tests) the legacy build, which carries its own polyfills */
+async function lib() {
   const pdfjs = await (typeof window === 'undefined' ? import('pdfjs-dist/legacy/build/pdf.mjs') : import('pdfjs-dist'))
   if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
     const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default
   }
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise
-  const page = await doc.getPage(1)
+  return pdfjs
+}
+
+/** Opens a PDF (a copy of the bytes: pdf.js moves what it is given to its worker). */
+export async function openPdf(bytes: ArrayBuffer): Promise<PdfDoc> {
+  return (await lib()).getDocument({ data: new Uint8Array(bytes.slice(0)), verbosity: 0 }).promise as Promise<PdfDoc>
+}
+
+/**
+ * A page drawn on a white canvas, its longer side `longPx` pixels (browser only): the page picker's small pictures, and a
+ * brochure page that is a picture becoming the plan picture to trace.
+ */
+export async function renderPage(doc: PdfDoc, pageNo: number, longPx: number): Promise<HTMLCanvasElement> {
+  const page = await doc.getPage(pageNo)
+  const one = page.getViewport({ scale: 1 })
+  const viewport = page.getViewport({ scale: longPx / Math.max(one.width, one.height) })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  await page.render({ canvas, viewport, background: '#ffffff' }).promise
+  page.cleanup()
+  return canvas
+}
+
+/** a page's lines (the clip paths left out) and texts, in PDF user space turned the way the page is shown */
+async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; pictures: number; pages: number }> {
+  const pdfjs = await lib()
+  const page = await doc.getPage(pageNo)
   const rot = ((page.rotate % 360) + 360) % 360
   const turn = (p: Pt): Pt => (rot === 90 ? { x: p.y, y: -p.x } : rot === 180 ? { x: -p.x, y: -p.y } : rot === 270 ? { x: -p.y, y: p.x } : p)
   const ops = await page.getOperatorList()
@@ -107,16 +135,28 @@ async function readPage(bytes: ArrayBuffer): Promise<{ segs: Seg[]; arcs: ArcPri
   // (a label's point is the middle of its text, so it lands in its room)
   // (fonts print the foot mark as a curly quote)
   const texts: TextPrim[] = merged.map((r) => ({ layer: '', at: turn({ x: (r.at.x + r.end.x) / 2, y: (r.at.y + r.end.y) / 2 }), text: r.str.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'), height: r.h }))
-  const pages = doc.numPages
-  await doc.cleanup()
-  return { segs, arcs, texts, pictures, pages }
+  page.cleanup()
+  return { segs, arcs, texts, pictures, pages: doc.numPages }
 }
 
-export async function importPdf(bytes: ArrayBuffer, name: string): Promise<ImportResult> {
-  const { segs, arcs, texts, pictures, pages } = await readPage(bytes)
+/**
+ * Whether a page read as a drawing makes a plan: two or more closed rooms, and no more than 20 walls a room. A brochure
+ * page drawn in vectors (a photo frame, words turned into outlines) gives lines but no rooms; a CAD print whose walls are
+ * hatched gives a wall for every hatch line (measured: twindo's print 50 walls a room, real plans 3–9). Such a page is
+ * better traced as a picture.
+ */
+export const readsAsPlan = (r: ImportResult): boolean =>
+  r.storeys.some((s) => {
+    const rooms = deriveRooms(s.unit).filter((x) => x.areaSqm >= 1).length
+    return rooms >= 2 && s.unit.walls.length <= 20 * rooms
+  })
+
+/** One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. */
+export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1): Promise<ImportResult> {
+  const doc = src instanceof ArrayBuffer ? await openPdf(src) : src
+  const { segs, arcs, texts, pictures, pages } = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
-  const notes: string[] = [`PDF: ${pages} page(s); page 1 read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
-  if (pages > 1) notes.push('Only page 1 is read; split the PDF for the other floors.')
+  const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
   const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`)
   notes.push(note)
   const drawing: Drawing = { segs, arcs, texts, loops: [], scale }

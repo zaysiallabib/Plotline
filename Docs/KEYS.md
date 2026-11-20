@@ -268,6 +268,8 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
 | **Cancel** (the "Reading …" box at the top while an architect's file is read) | Stops reading the file; nothing changes in the Studio |
+| A page in **Which page is the floor plan?** (a PDF of several pages) | Uses that page: a clean line drawing opens as the drawing, anything else becomes the plan picture to trace; **×** or **Esc** closes the box |
+| **Use it as a picture instead** / **Read its lines instead** (the message after a PDF page) | Takes the same page the other way |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
 | Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |
