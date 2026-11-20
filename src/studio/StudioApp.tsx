@@ -445,6 +445,8 @@ export default function StudioApp() {
   /** the mark open on the plan (its ghost + fix buttons) and the one whose row is hovered (it pulses) */
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [hotKey, setHotKey] = useState<string | null>(null)
+  /** s31 calm: the Check these row picked in the list (↑ / ↓ there): its badge on the plan is the accent */
+  const [pickedKey, setPickedKey] = useState<string | null>(null)
   const activeRef = useRef(activeKey)
   activeRef.current = activeKey
   // (a mark opened while the list is still being worked out: its fixes next)
@@ -2137,6 +2139,7 @@ export default function StudioApp() {
     const sel = ids.filter((id) => findEntity(unit, id))
     focusOn([...(m.at ? [m.at] : []), ...sel.flatMap((id) => entityPoints(unit, id))], sel, 3)
     setActiveKey(m.key)
+    if (row.review) setPickedKey(row.key)
   }
   /** s27 AI-prep: a "Check these" row answered (its buttons, here and on the plan) — logged, then applied by id (applyAnswer) */
   const answer = (rowId: string, id: string) => {
@@ -2447,6 +2450,7 @@ export default function StudioApp() {
               height={size.h}
               active={activeKey}
               hot={hotKey}
+              picked={pickedKey}
               onActivate={setActiveKey}
               onFix={applyFix}
               onName={nameRoom}
@@ -2644,6 +2648,8 @@ export default function StudioApp() {
           marks={marks}
           fixes={fixes}
           active={activeKey}
+          picked={pickedKey}
+          onPick={setPickedKey}
           onHot={setHotKey}
           onOpen={openMark}
           onFix={applyFix}

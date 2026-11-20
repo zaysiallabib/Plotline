@@ -13,10 +13,11 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { parseLength } from '../../core'
+import { deriveRooms, parseLength } from '../../core'
 import type { Unit } from '../../core'
-import { initialState } from '../../studio/model'
-import { studioReducer } from '../../studio/review'
+import { markIssues } from '../../studio/issues'
+import { initialState, studioIssues } from '../../studio/model'
+import { openReview, studioReducer } from '../../studio/review'
 import { loadPgm, loadPpm, writeUnitOverlay } from '../evalio'
 import { normalPolarity, sheetTurn, turnOf, turnRaster } from '../raster'
 import { pick, pickFloor, prepare } from '../solve'
@@ -81,7 +82,7 @@ describe.skipIf(!RUN)('score30: the 30 sheets', () => {
           ? (S.flats ?? []).map((f, i) => ({ name: f.name, i, result: pick(prep, { x: f.at[0], y: f.at[1] }) }))
           : [{ name: 'floor', i: 0, result: pickFloor(prep) }]
       const score: SheetScore = { rooms: [], falseRooms: [], pillarsInRooms: [] }
-      const traced: { name: string; walls: number; rooms: number; labelled: number; review: number }[] = []
+      const traced: { name: string; walls: number; rooms: number; labelled: number; review: number; marks: number; rows: string[] }[] = []
       for (const p of picks) {
         const st = imported(p.result)
         const unit: Unit = st.unit
@@ -91,7 +92,14 @@ describe.skipIf(!RUN)('score30: the 30 sheets', () => {
         score.falseRooms.push(...s.falseRooms)
         score.pillarsInRooms.push(...s.pillarsInRooms)
         const { walls, rooms, labelled } = p.result.stats
-        traced.push({ name: p.name, walls, rooms, labelled, review: st.review?.items.length ?? 0 })
+        // what the Studio shows after the trace: the "Check these" rows, and the marks on the plan (those rows + the Issues)
+        const R = deriveRooms(unit)
+        const open = openReview(st, R)
+        const marks = markIssues(unit, R, studioIssues(unit, R), open).filter((m) => m.at && !m.twinOf)
+        const pi = unit.planImage
+        const px = (p: { x: number; y: number } | null) => (p && pi ? ` @${Math.round(pi.originPx.x + p.x * pi.pxPerM)},${Math.round(pi.originPx.y + p.y * pi.pxPerM)}` : '')
+        const rows = [...open.map((i) => `${i.kind}: ${i.message}${px(i.at)}`), ...marks.filter((m) => m.issue).map((m) => `issue ${m.severity} ${m.issue!.code}: ${m.message}${px(m.at)}`)]
+        traced.push({ name: p.name, walls, rooms, labelled, review: open.length, marks: marks.length, rows })
         const bf = env.SCORE30_BROWSER && `${env.SCORE30_BROWSER}/${key}-${p.name}.unit.json`
         if (bf && existsSync(bf)) {
           const bu: Unit = JSON.parse(readFileSync(bf, 'utf8'))
@@ -112,7 +120,7 @@ describe.skipIf(!RUN)('score30: the 30 sheets', () => {
         `${OUT}${key}.json`,
         JSON.stringify({ key, style: S.style, pxPerM, s: sec, textS: (tText - t0) / 1000, textCached: cached, traced, row, ...score }, null, 1),
       )
-      console.log(`${key}: ${row.right} of ${row.printed} right (core ${row.coreRight}/${row.core}), ${row.wrong} wrong, ${row.unnamed} unnamed, ${row.merged} merged, ${row.open} open; ${row.falseRooms} false rooms, ${row.pillars} pillars in rooms; ${sec.toFixed(0)} s (text ${cached ? 'cached' : `read ${((tText - t0) / 1000).toFixed(0)} s`})`)
+      console.log(`${key}: Check these ${traced.map((t) => t.review).join('+')}, marks ${traced.map((t) => t.marks).join('+')}; ${row.right} of ${row.printed} right (core ${row.coreRight}/${row.core}), ${row.wrong} wrong, ${row.unnamed} unnamed, ${row.merged} merged, ${row.open} open; ${row.falseRooms} false rooms, ${row.pillars} pillars in rooms; ${sec.toFixed(0)} s (text ${cached ? 'cached' : `read ${((tText - t0) / 1000).toFixed(0)} s`})`)
     }
     const unknown = keys.flatMap((k) => (sheets[k]?.expected ?? []).filter((e) => !classifyRoom(e.name)).map((e) => `${k}: ${e.name}`))
     const table = `${formatTable(rows)}\nrun: ${((performance.now() - t00) / 60000).toFixed(1)} min for ${rows.length} sheets${unknown.length ? `\nprinted names the tracer has no kind for (never "right"): ${unknown.join(' · ')}` : ''}`

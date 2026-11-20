@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FT, flatTypeOf, formatFeetInches, parseLength, sqmToSqft, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Opening, OpeningKind, Room, RoomKind, Shell, Slope, Unit } from '../core'
 import { deleteShell } from './shells'
@@ -8,7 +8,7 @@ import { resizeAxes, surfaceOf } from './furniture'
 import { LibraryPanel } from './LibraryPanel'
 import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDefaults, parseLevel, rampDirs, selectionText, shared, wallTypeOf, type StudioIssue, type StudioState, type WallType } from './model'
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
-import type { Fix, Mark, MarkFixes, Severity } from './issues'
+import { groupRows, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats, ReviewItem } from '../trace/types'
 
 const SEVERITY: Record<Severity, string> = { red: 'Breaks the 3D', amber: 'Worth a look', grey: 'Cosmetic' }
@@ -180,6 +180,9 @@ interface Props {
   fixes: Map<string, MarkFixes> | null
   /** the mark open on the plan */
   active: string | null
+  /** s31 calm: the row picked in the Check these list (↑ / ↓ there; Enter goes to it) */
+  picked?: string | null
+  onPick?: (key: string | null) => void
   /** a row hovered: its mark pulses (null: none) */
   onHot: (key: string | null) => void
   /** a row clicked: the plan goes to its mark and opens it */
@@ -199,7 +202,7 @@ interface Props {
   onDismissNotes?: () => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -209,8 +212,27 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
   const listed = marks.filter((m) => m.issue)
   // a mark opened on the plan: its row comes into view once (not on every render: the timer re-renders each second)
   useEffect(() => {
-    if (active) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
-  }, [active])
+    if (active || picked) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
+  }, [active, picked])
+  // s31 calm: the Check these rows grouped by room (issues.ts groupRows) — a group opens on a click, or by itself while it
+  // holds the picked / open row; ↑ / ↓ walk the rows in that order (the list has the keys while it has the focus)
+  const groups = useMemo(() => groupRows(marks.filter((m) => m.review), unit, rooms, (id) => flats.find((f) => f.roomIds.includes(id))?.name), [marks, unit, rooms, flats])
+  const order = groups.flatMap((g) => g.rows)
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
+  const isOn = (m: Mark) => (m.twinOf ?? m.key) === active || m.key === picked
+  const onListKey = (e: React.KeyboardEvent) => {
+    const i = order.findIndex((m) => m.key === picked)
+    if (e.key === 'Enter') {
+      if (e.target !== e.currentTarget || i < 0) return // (Enter on a button in it is that button's)
+      e.preventDefault()
+      return onOpen(order[i])
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    e.stopPropagation() // (never the plan's nudge of what is picked there)
+    const j = i < 0 ? 0 : Math.max(0, Math.min(order.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))
+    if (order[j]) onPick?.(order[j].key)
+  }
   /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
   const row = (m: Mark, extra?: React.ReactNode) => {
     const key = m.twinOf ?? m.key // a "Check these" row on an issue's spot is that issue's mark
@@ -221,7 +243,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     return (
       <li
         key={m.key}
-        className={`${m.at ? 'find' : ''}${key === active ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
+        className={`${m.at ? 'find' : ''}${isOn(m) ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
         title={m.at ? 'Click to go to it on the plan' : undefined}
         onMouseEnter={() => m.at && onHot(key)}
         onMouseLeave={() => onHot(null)}
@@ -260,6 +282,36 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
       </li>
     )
   }
+  /** a Check these row's own buttons (besides its fixes): Show me when nothing closes a room row, Looks right, Ask AI */
+  const reviewActs = (m: Mark) => (
+    <>
+      {/* a room row no line closes: he draws it — the plan goes there with the Wall tool picked */}
+      {m.review!.room !== undefined && fixes?.get(m.key)?.fixes.length === 0 && (
+        <button
+          className="link"
+          title="Go to it and pick the Wall tool: draw the missing line (keys 1–4: wall, low wall, kerb, zone line)"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpen(m)
+            onAnswer(m.review!.id, SHOW_ME)
+          }}
+        >
+          Show me
+        </button>
+      )}
+      <button
+        className="link"
+        title="Take it off the list"
+        onClick={(e) => {
+          e.stopPropagation()
+          onAnswer(m.review!.id, LOOKS_RIGHT)
+        }}
+      >
+        Looks right
+      </button>
+      {ai && <AskAI id={m.review!.id} ai={ai} />}
+    </>
+  )
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const count = stats && roomCount(unit, rooms, stats, flats)
   const errors = issues.filter((i) => i.level === 'error').length
@@ -362,39 +414,39 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
           {fixes && review.filter((m) => !fixes.has(m.key)).length > 10 && <p className="muted">Working out the rows' fixes — {review.filter((m) => !fixes.has(m.key)).length} rows left…</p>}
           {stats?.scaleFrom === 'thickness' && <p className="warn">No printed size was found, so the scale is a GUESS. Press S and click the two ends of anything whose length you know (the plot's width is best).</p>}
           {review.length || aiDone.length ? (
-            <ul className="issues">
-              {review.map((m) =>
-                row(
-                  m,
-                  <>
-                    {/* a room row no line closes: he draws it — the plan goes there with the Wall tool picked */}
-                    {m.review!.room !== undefined && fixes?.get(m.key)?.fixes.length === 0 && (
-                      <button
-                        className="link"
-                        title="Go to it and pick the Wall tool: draw the missing line (keys 1–4: wall, low wall, kerb, zone line)"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onOpen(m)
-                          onAnswer(m.review!.id, SHOW_ME)
-                        }}
-                      >
-                        Show me
-                      </button>
-                    )}
+            <ul className="issues" tabIndex={0} aria-label="Check these: ↑ ↓ pick a row, Enter goes to it" onKeyDown={onListKey}>
+              {groups.map((g) => {
+                if (g.rows.length === 1) return row(g.rows[0], reviewActs(g.rows[0]))
+                const open = opened.has(g.key) || g.rows.some(isOn)
+                const sev: Severity = g.rows.some((m) => m.severity === 'red') ? 'red' : g.rows.some((m) => m.severity === 'amber') ? 'amber' : 'grey'
+                return (
+                  <li key={g.key} className={`group${open ? ' open' : ''}`}>
                     <button
-                      className="link"
-                      title="Take it off the list"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAnswer(m.review!.id, LOOKS_RIGHT)
-                      }}
+                      className="ghead"
+                      aria-expanded={open}
+                      title={open ? 'Fold the rows away' : 'Show its rows'}
+                      onClick={() =>
+                        setOpened((o) => {
+                          const n = new Set(o)
+                          if (open) n.delete(g.key)
+                          else n.add(g.key)
+                          return n
+                        })
+                      }
                     >
-                      Looks right
+                      <span className={`num ${sev}`} />
+                      <span className="grow">
+                        <span className="gname">
+                          {g.name} <span className="gcount">{g.rows.length}</span>
+                        </span>
+                        {!open && <span className="gfirst">{g.rows[0].message}</span>}
+                      </span>
+                      <span className="chev" aria-hidden="true" />
                     </button>
-                    {ai && <AskAI id={m.review!.id} ai={ai} />}
-                  </>,
-                ),
-              )}
+                    {open && <ul className="issues">{g.rows.map((m) => row(m, reviewActs(m)))}</ul>}
+                  </li>
+                )
+              })}
               {/* a row the AI's fix closed has left the list: what it did stays here, with its Undo */}
               {aiDone.map(([id, n]) => (
                 <li key={id} className="grey">

@@ -1,12 +1,15 @@
 /**
- * The Issues and "Check these" rows drawn ON the plan (issues.ts): a numbered mark at each spot in its severity's
- * colour, the first fix's ghost faintly under every mark that has one, the open one's ghosts in full with its fix
- * buttons (or the room's name field) beside it. SVG over the canvas: only the numbered badges take the pointer, so the
- * corner under a mark stays draggable — and only in V (`clickable`): with a drawing tool picked (W, O, R, C, S, F) the
- * marks stay visible but the click goes to the tool (C on a marked corner places a column, it does not open the mark).
+ * The Issues and "Check these" rows drawn ON the plan (issues.ts): a badge at each spot in its severity's colour, the
+ * open one's fix ghosts with its fix buttons (or the room's name field) beside it. SVG over the canvas: only the badges
+ * take the pointer, so the corner under a mark stays draggable — and only in V (`clickable`): with a drawing tool picked
+ * (W, O, R, C, S, F) the marks stay visible but the click goes to the tool (C on a marked corner places a column).
+ * s31 calm (founder: "the screen reads as an error list, not a drawing"): red (breaks the 3D) is a numbered badge; amber a
+ * small dot with no number until the mouse comes near or its row is picked; grey is not drawn (the list holds it); rows
+ * at one spot share one badge with their count (issues.ts spotsOf); the picked row's badge is the accent.
  */
+import { useEffect, useRef, useState } from 'react'
 import type { Pt } from '../core'
-import type { Fix, Ghost, Mark, MarkFixes } from './issues'
+import { spotsOf, type Fix, type Ghost, type Mark, type MarkFixes, type Spot } from './issues'
 
 /** a fixless mark: what to do by hand */
 const BY_HAND: Partial<Record<string, string>> = {
@@ -15,6 +18,9 @@ const BY_HAND: Partial<Record<string, string>> = {
   'duplicate-wall': 'Delete one of the two walls (both carry openings).',
   'label-outside-any-room': 'Close the room around this name: join its loose wall ends.',
 }
+
+/** an amber dot shows its badge while the mouse is this close (px) */
+const NEAR_PX = 40
 
 interface Props {
   marks: Mark[]
@@ -25,6 +31,8 @@ interface Props {
   height: number
   active: string | null
   hot: string | null
+  /** the row picked in the list (↑ / ↓): its badge is the accent */
+  picked?: string | null
   onActivate: (key: string | null) => void
   onFix: (fix: Fix) => void
   onName: (at: Pt, name: string) => void
@@ -35,17 +43,45 @@ interface Props {
 /** where a mark's numbered badge goes, from its spot: up-right, else the first other corner no earlier badge sits on */
 const OFFSETS: Pt[] = [{ x: 12, y: -12 }, { x: 12, y: 12 }, { x: -12, y: -12 }, { x: -12, y: 12 }, { x: 0, y: -26 }, { x: 0, y: 26 }, { x: 26, y: 0 }, { x: -26, y: 0 }]
 
-export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, onActivate, onFix, onName, clickable }: Props) {
+export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, picked, onActivate, onFix, onName, clickable }: Props) {
   const pts = (ps: Pt[]) => ps.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ')
+  const spots = spotsOf(marks, toScreen)
+  /** a spot holding the open / hovered / picked row (a twin row: its issue's) */
+  const has = (s: Spot, k: string | null | undefined) => !!k && s.marks.some((m) => m.key === k)
+  const lit = (s: Spot) => has(s, active) || has(s, hot) || has(s, picked)
+  // the amber dots the mouse is near (keys, joined): only a change re-renders
+  const svg = useRef<SVGSVGElement>(null)
+  const spotsRef = useRef(spots)
+  spotsRef.current = spots
+  const [near, setNear] = useState('')
+  useEffect(() => {
+    const el = svg.current?.parentElement
+    if (!el) return
+    const move = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect()
+      const x = e.clientX - r.left, y = e.clientY - r.top
+      const keys = spotsRef.current.filter((s) => s.severity === 'amber' && Math.hypot(s.at.x - x, s.at.y - y) <= NEAR_PX).map((s) => s.key).join(',')
+      setNear((k) => (k === keys ? k : keys))
+    }
+    const leave = () => setNear('')
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerleave', leave)
+    return () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerleave', leave)
+    }
+  }, [])
+  const nearSet = new Set(near.split(','))
+  /** an amber spot stays a dot unless the mouse is near or one of its rows is open / hovered / picked */
+  const dot = (s: Spot) => s.severity === 'amber' && !lit(s) && !nearSet.has(s.key)
   // badges never cover each other (two issues a few cm apart, e.g. a loose end inside an unnamed space)
   const placed: Pt[] = []
   const badgeAt = new Map<string, Pt>()
-  for (const m of marks) {
-    if (!m.at || m.twinOf) continue
-    const p = toScreen(m.at)
-    const o = OFFSETS.find((d) => placed.every((q) => Math.hypot(p.x + d.x - q.x, p.y + d.y - q.y) >= 18)) ?? OFFSETS[0]
-    placed.push({ x: p.x + o.x, y: p.y + o.y })
-    badgeAt.set(m.key, o)
+  for (const s of spots) {
+    if (dot(s)) continue
+    const o = OFFSETS.find((d) => placed.every((q) => Math.hypot(s.at.x + d.x - q.x, s.at.y + d.y - q.y) >= 18)) ?? OFFSETS[0]
+    placed.push({ x: s.at.x + o.x, y: s.at.y + o.y })
+    badgeAt.set(s.key, o)
   }
   const ghost = (g: Ghost, k: number) => {
     if (g.kind === 'area') return <polygon key={k} className="g-area" points={pts(g.pts)} />
@@ -61,42 +97,54 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
       </g>
     )
   }
+  // (a spot's lead mark opens; a spot holding the open row keeps it open)
+  const lead = (s: Spot) => s.marks.find((m) => m.key === active) ?? s.marks[0]
+  const shown = new Set(spots.filter((s) => !dot(s)).flatMap((s) => s.marks.map((m) => m.key)))
   const open = marks.find((m) => m.key === active && m.at)
   const f = open && fixes?.get(open.key)
   const at = open?.at && toScreen(open.at)
   return (
     <>
-      <svg className={`issue-layer${clickable ? '' : ' passive'}`} width={width} height={height}>
-        {/* unnamed rooms: tinted, the open one strongly */}
-        {marks.map((m) => m.outline && m.at && (m.severity === 'amber' || m.key === active || m.key === hot) && <polygon key={`t${m.key}`} className={`tint${m.key === active || m.key === hot ? ' on' : ''}`} points={pts(m.outline)} />)}
-        {/* every fix's first ghost faintly; the open / hovered one's in full */}
+      <svg ref={svg} className={`issue-layer${clickable ? '' : ' passive'}`} width={width} height={height}>
+        {/* unnamed rooms: the open / hovered one tinted (a dot's room stays untinted until then) */}
+        {marks.map((m) => m.outline && m.at && (m.key === active || m.key === hot || (m.severity === 'amber' && shown.has(m.key))) && <polygon key={`t${m.key}`} className={`tint${m.key === active || m.key === hot ? ' on' : ''}`} points={pts(m.outline)} />)}
+        {/* the first fix's ghost faintly under each badge shown; the open / hovered one's in full */}
         {marks.map((m) => {
           const on = m.key === active || m.key === hot
           const list = fixes?.get(m.key)?.fixes ?? []
-          return list.length > 0 && m.at && <g key={`g${m.key}`} className={`ghost${on ? ' on' : ''}`}>{(on ? list.flatMap((x) => x.ghost) : list[0].ghost).map(ghost)}</g>
+          return list.length > 0 && m.at && (on || shown.has(m.key)) && <g key={`g${m.key}`} className={`ghost${on ? ' on' : ''}`}>{(on ? list.flatMap((x) => x.ghost) : list[0].ghost).map(ghost)}</g>
         })}
         {open?.hint && (() => {
           const p = toScreen(open.hint.at)
           return <circle className="g-ring hint" cx={p.x} cy={p.y} r={14} />
         })()}
-        {marks.map((m) => {
-          if (!m.at || m.twinOf) return null // a "Check these" row on an issue's spot: the issue's mark stands for both
-          const p = toScreen(m.at)
+        {spots.map((s) => {
+          const m = lead(s)
+          const pick = (e: React.PointerEvent) => {
+            e.stopPropagation()
+            onActivate(m.key === active ? null : m.key)
+          }
+          const title = s.marks.map((x) => (x.n ? `${x.n}. ${x.message}` : x.message)).join('\n')
+          const cls = `mark ${s.severity}${has(s, active) ? ' on' : ''}${has(s, hot) ? ' hot' : ''}${has(s, picked) ? ' picked' : ''}`
+          if (dot(s))
+            return (
+              <g key={s.key} className={`${cls} dot`} transform={`translate(${s.at.x} ${s.at.y})`}>
+                <g className="badge" onPointerDown={pick}>
+                  <title>{title}</title>
+                  <circle className="hit" r={8} />
+                  <circle r={4} />
+                </g>
+              </g>
+            )
+          const o = badgeAt.get(s.key)!
           return (
-            <g key={m.key} className={`mark ${m.severity}${m.key === active ? ' on' : ''}${m.key === hot ? ' hot' : ''}`} transform={`translate(${p.x} ${p.y})`}>
-              <circle className="ring" r={m.severity === 'grey' ? 6 : 9} />
+            <g key={s.key} className={`${cls}${s.marks.length > 1 ? ' many' : ''}`} transform={`translate(${s.at.x} ${s.at.y})`}>
+              <circle className="ring" r={9} />
               <circle className="pulse" r={9} />
-              <g
-                className="badge"
-                transform={`translate(${badgeAt.get(m.key)!.x} ${badgeAt.get(m.key)!.y})`}
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                  onActivate(m.key === active ? null : m.key)
-                }}
-              >
-                <title>{m.message}</title>
-                <circle r={m.severity === 'grey' ? 7 : 9} />
-                <text>{m.n}</text>
+              <g className="badge" transform={`translate(${o.x} ${o.y})`} onPointerDown={pick}>
+                <title>{title}</title>
+                <circle r={9} />
+                <text>{s.marks.length > 1 ? s.marks.length : m.n}</text>
               </g>
             </g>
           )
@@ -111,6 +159,21 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
               ×
             </button>
           </div>
+          {(() => {
+            // the other rows at this spot: one click opens each
+            const s = spots.find((x) => has(x, open.key))
+            const others = s ? s.marks.filter((x) => x.key !== open.key) : []
+            return others.length > 0 && (
+              <p className="muted at-spot">
+                Also here:{' '}
+                {others.map((x) => (
+                  <button key={x.key} className="link" title={x.message} onClick={() => onActivate(x.key)}>
+                    {x.n}
+                  </button>
+                ))}
+              </p>
+            )
+          })()}
           {open.hint && <p className="muted">Ringed: {open.hint.why}</p>}
           {f?.nameAt && (
             <input

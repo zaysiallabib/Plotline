@@ -373,7 +373,7 @@
 ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-2); }
 
 /* Issues and Check these: the number in its severity's colour (= its mark on the plan), the words, the fixes */
-.issues { list-style: none; margin: 0 calc(-1 * var(--s-2)); padding: 0; display: grid; gap: 1px; }
+.issues { list-style: none; margin: 0 calc(-1 * var(--s-2)); padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; }
 .issues li { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-2); border-radius: var(--r-sm); font-size: var(--fs-sm); line-height: 1.45; color: var(--ink-2); transition: background var(--dur-fast) var(--ease); }
 .issues li .num { margin-top: 1px; }
 .issues li.find { cursor: pointer; }
@@ -384,6 +384,20 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issues .acts { display: flex; flex-wrap: wrap; gap: 2px var(--s-3); margin-top: var(--s-1); }
 .issues .acts .link { white-space: nowrap; }
 .issues .acts .ai-note { flex-basis: 100%; color: var(--muted); }
+/* s31 calm: Check these grouped by room — one line per room (its count, its first row); a click or a picked row opens it */
+.issues:focus-visible { outline-offset: -2px; }
+.issues li.group { display: block; padding: 0; }
+.issues .ghead {
+  display: flex; align-items: flex-start; gap: var(--s-3); width: 100%; height: auto; padding: var(--s-2); border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.45; text-align: left; white-space: normal;
+}
+.issues .ghead > .num { margin-top: var(--s-1); }
+.issues .gname { color: var(--ink); font-weight: 500; }
+.issues .gcount { margin-left: var(--s-1); color: var(--muted); font-weight: 400; }
+.issues .gfirst { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+.issues .chev { flex: none; width: var(--s-2); height: var(--s-2); margin-top: var(--s-1); border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease); }
+.issues li.group.open > .ghead .chev { transform: rotate(45deg); }
+.issues li.group > .issues { margin: 0 0 var(--s-1) var(--s-4); }
 .num {
   flex: none; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
   border-radius: var(--r-pill); font-size: var(--fs-xs); font-weight: 500; line-height: 1; color: var(--surface);
@@ -408,7 +422,6 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issue-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .issue-layer .mark.red { --c: var(--sev-red); }
 .issue-layer .mark.amber { --c: var(--sev-amber); }
-.issue-layer .mark.grey { --c: var(--sev-grey); opacity: 0.75; }
 .issue-layer .ring { fill: none; stroke: var(--c); stroke-width: 1.5; }
 .issue-layer .mark.on .ring { stroke-width: 2.5; }
 .issue-layer .pulse { fill: none; stroke: var(--c); stroke-width: 2; opacity: 0; transform-box: fill-box; transform-origin: center; }
@@ -420,6 +433,15 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issue-layer .badge circle { fill: var(--c); stroke: var(--surface); stroke-width: 1.5; }
 .issue-layer .badge text { fill: var(--surface); font-family: var(--font); font-size: var(--fs-xs); font-weight: 500; text-anchor: middle; dominant-baseline: central; }
 .issue-layer .mark.on .badge circle, .issue-layer .mark.hot .badge circle { stroke: var(--ink); }
+/* s31 calm: rows at one spot share a badge with their count (outlined: a count, not a number); amber waits as a small dot */
+.issue-layer .mark.many .badge circle { fill: var(--surface); stroke: var(--c); }
+.issue-layer .mark.many .badge text { fill: var(--c); }
+.issue-layer .mark.dot .badge circle { stroke: var(--surface); stroke-width: 1; }
+.issue-layer .mark.dot .badge .hit { fill: transparent; stroke: none; }
+/* the row picked in the list: its badge is the accent */
+.issue-layer .mark.picked { --c: var(--accent); }
+.issue-layer .mark.picked .badge circle { fill: var(--accent); stroke: var(--surface); }
+.issue-layer .mark.picked .badge text { fill: var(--accent-ink); }
 .issue-layer .ghost { opacity: 0.45; }
 .issue-layer .ghost.on { opacity: 1; }
 .issue-layer .g-line line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
@@ -437,6 +459,7 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issue-pop p { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--ink-2); }
 .issue-pop p.muted { color: var(--muted); }
 .issue-pop .fixes { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.issue-pop .at-spot .link { margin-left: var(--s-1); }
 
 /* ── the floor list beside the sheet (FloorList.tsx): marble, the floor open now white ────────────────────────────── */
 .floors { display: flex; flex-direction: column; gap: var(--s-4); min-height: 0; padding: var(--s-5) var(--s-4); overflow: auto; background: var(--bg); border-left: 1px solid var(--hairline); }

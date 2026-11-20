@@ -173,7 +173,7 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
       const R = deriveRooms(t.unit)
       const rows = a.result.stats.printed ? roomRows(t.unit, R, a.result.stats.printed) : []
       const claimed = new Set(rows.map((r) => r.entityId))
-      const kept = a.result.review.filter((i) => !(i.kind === 'unlabelled' && claimed.has(i.entityId)))
+      const kept = a.result.review.flatMap((i) => (i.kind === 'unlabelled' && claimed.has(i.entityId) ? [] : endFollowed(i, r, t.unit)))
       // a closed room left with no label at all (the walls joined on import made it): its row too, on its Issues mark
       const listed = new Set([...claimed, ...kept.map((i) => i.entityId)])
       const bare: ReviewItem[] = R.filter((r) => isUnnamed(r) && r.areaSqm >= 0.5 && !listed.has(r.id) && !t.unit.roomLabels.some((l) => l.id === r.id)).map((r) => ({
@@ -219,6 +219,21 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
     default:
       return reducer(s, a) // load-unit / reset start from initialState: no review
   }
+}
+
+/** a corner's walls */
+const degreeOf = (u: Unit, id: Id): number => u.walls.reduce((n, w) => n + Number(w.a === id) + Number(w.b === id), 0)
+
+/**
+ * s31 calm: a trace row about a wall end (a gap's jamb) through the import's join: the corner gone, the row follows the
+ * free end the join left at that spot (it merged that corner into another); no free end there — the join met a wall with
+ * it, or took it out as a stub — the row is answered and goes ([]). Every other row as it is.
+ */
+function endFollowed(i: ReviewItem, traced: Unit, u: Unit): ReviewItem[] {
+  const p = i.entityId ? traced.vertices.find((v) => v.id === i.entityId) : undefined
+  if (!p || u.vertices.some((v) => v.id === i.entityId)) return [i]
+  const q = u.vertices.find((v) => Math.hypot(v.x - p.x, v.y - p.y) < 0.05 && degreeOf(u, v.id) === 1)
+  return q ? [{ ...i, entityId: q.id }] : []
 }
 
 /**
@@ -329,6 +344,8 @@ export function openReview(s: StudioState, rooms?: Room[]): Review['items'] {
     }
     // a dead end the trace flagged on a wall the user kept standing alone: his answer
     if (i.entityId && s.unit.walls.some((w) => w.standsAlone && (w.a === i.entityId || w.b === i.entityId))) continue
+    // (s31 calm) a row about a wall end (a gap's jamb) goes once that end meets a wall: a door / window / wall put there
+    if (i.entityId && s.unit.vertices.some((v) => v.id === i.entityId) && degreeOf(s.unit, i.entityId) !== 1) continue
     if (!i.sig || entitySig(s.unit, i.entityId!) === i.sig) out.push(i)
   }
   return out
