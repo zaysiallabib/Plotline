@@ -73,7 +73,9 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
 
   A slow device steps down once by itself; lost graphics fall back to Lite; no WebGL 2 shows the plan instead.
 - Daylight is measured once per room (`daylight.ts`): brighter by the windows, darker deep inside, darker facing a
-  neighbour 3 m away. Lamps are the furniture's own (a lamp deleted takes its light). The street is the site's real
+  neighbour 3 m away. Each piece of furniture reads the same daylight at one point, the floor under its middle
+  (`pieceDayUv`, `lightPiece`), and is relit when it moves; outdoor pieces keep a neutral light. Lamps are the
+  furniture's own (a lamp deleted takes its light). The street is the site's real
   blocks or a rule-made Dhaka street (`context.ts`); the Building view draws other flats as shells (`building.ts`); the
   architect's outside shape is `shell.ts`; the wind lines `wind.ts`.
 - Nothing in `src/three` or `src/furnish` may name a unit, project or room (`greenery.test.ts` enforces it): the look
@@ -112,7 +114,7 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   `StudioApp.tsx` / `draw.ts`), the top bar, the tool strip, the right-hand panel, the floor list, the Site panel, the
   account card.
 - `src/lib/` — shared by every page: `route.ts` (which app an address opens), `pages.tsx` (the plain pages and the error
-  card), `ask.ts` (the one marble question card; a test keeps `confirm(` out of `src`), the database clients.
+  card), `ask.ts` (the one marble question card, `ask` and `askText` for a typed word; a test keeps `confirm(`, `prompt(` and `alert(` out of `src`), the database clients.
 - **The look** is one stylesheet of tokens, `src/index.css` (marble, ink, one Aegean blue, terracotta for a refusal,
   Instrument Sans / Serif), specified in `Docs/DESIGN.md`; no component types a colour, size or easing of its own, and
   `src/lib/contrast.test.ts` fails if a token's contrast drifts.
@@ -124,7 +126,10 @@ each developer company's work apart from the others.
 
 The SQL is `supabase/migrations/` (pasted by the founder as one file, `supabase/paste-into-sql-editor.sql`:
 `Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js). Not
-configured (the two values not set) = no client: everything stays in the browser, as before.
+configured (the two values not set) = no client: everything stays in the browser, as before. The client's code (56 kB
+compressed) is fetched only by the first call that needs it (`getSb()`: a share link, signing in, a cloud save, the
+library online, the Studio's account bar). A walk of a flat by someone never signed in on that browser never loads it:
+`maySignIn()` looks for a kept session first, and `publicUrl()` writes a library file's address without the client.
 
 Tables (RLS — "row level security", the database's own rule about which rows each person may touch — is on every one;
 "tenant" = one developer company, `orgs`):
@@ -226,8 +231,10 @@ point is named in brackets.
   microphone, location, payments or USB (`Permissions-Policy`; VR is allowed). Every address allowed, and why:
   `Docs/SOURCES.md`. **A new outside service = a line in the CSP, a row in `Docs/SOURCES.md` and a line here, in one
   commit.**
-- Known, not yet fixed: the not-found page answers HTTP 200 (a single-page site sends every unknown address to
-  `index.html`); `/studio` allows `eval` (rhino3dm).
+- **A missing page says it is missing.** Only the app's own addresses reach `index.html` (Routes, below); any other
+  address gets `public/404.html` — no script at all — with a real 404 status, so search engines and link checkers see
+  it as missing.
+- Known, not yet fixed: `/studio` allows `eval` (rhino3dm needs it).
 
 ## Routes (the addresses)
 
@@ -240,12 +247,18 @@ screen.
 - `/u/<stem>` — the viewer on a built-in flat or level (every `src/data/units/*.json`); `/u/preview` — the Studio's
   draft; `/s/<token>` — a published buyer link.
 - `/studio` — the Studio. `/changes` — the staff change list.
-- Anything else — the not-found page. An unknown flat, a turned-off link, no connection and no 3D each have their own
-  plain page (`src/lib/pages.tsx`, styled in `index.css` so they work even when an app's code failed to download). The
-  tab's title names the page (`pageTitle`).
-- `api/dwg` — the one server function (Vercel), the optional DWG converter. Vercel's rewrites send every address but
-  `assets/`, `plans/` and `api/` to `index.html`; cache headers keep the built code for a year and the models, textures
-  and front-page pictures for a week.
+- Anything else — the not-found page. On Vercel only `/`, `/u/…`, `/s/…`, `/studio…` and `/changes…` reach the app
+  (`vercel.json` rewrites); any other address gets `public/404.html` — the same words and marble, no script — with a
+  real 404 status. Its colours and fonts are copies of `index.css`'s tokens, kept equal by `route.test.ts`.
+  `npm run preview` has no rewrite rules, so there it still answers 200 (the app's own not-found page).
+- An unknown flat, a turned-off link, no connection and no 3D each have their own plain page (`src/lib/pages.tsx`, styled
+  in `index.css` so they work even when an app's code failed to download). The tab's title names the page
+  (`pageTitle`).
+- A stair changes floor inside the same page: the next floor loads into the same scene and the address becomes
+  `/u/<stem>?floor=N` through the browser's history (`history.pushState`), so reload, Back and Forward work without a
+  page load (`src/viewer/share.ts stairUrl`).
+- `api/dwg` — the one server function (Vercel), the optional DWG converter. Cache headers keep the built code for a
+  year and the models, textures and front-page pictures for a week.
 
 ## Repo layout
 
@@ -277,7 +290,8 @@ The redesign is on branch `s31/redesign`, not yet merged to main or deployed (th
 look on every screen (`src/index.css`, `Docs/DESIGN.md`), the scroll-story front page, the 3D view's one-bar HUD with the
 idle fade and Clean view, touch on phones, the Studio rebuilt, three measured quality tiers (Lite made truly light),
 accounts with members, invites, plan pictures and the staff's own library online, the security headers above, every
-architect's format in and out, and the one marble question card. Not yet tried on a real phone or on the real Supabase
+architect's format in and out, the one marble question card (for typed words too), stairs that change floor without a
+new page, furniture lit by its own room, a database client loaded only when needed and a real 404. Not yet tried on a real phone or on the real Supabase
 project (both proven against stand-ins). Next, in order, is in HANDOFF "SESSION 31".
 
 ## Phasing (what exists when)

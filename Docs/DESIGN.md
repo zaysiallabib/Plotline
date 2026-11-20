@@ -90,9 +90,11 @@ Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts)
   white smudge at night and over curtains.
 - **Question card** (`src/lib/ask.ts`, `.ask` in `index.css`): every "are you sure?" in the product. A white card in the
   middle, the page behind washed with 55 % marble and taking no clicks; the question in `--fs-lg`; **Cancel** (Esc) and
-  one button that names the action (Enter), terracotta when something is taken away. The browser's grey `confirm()` box
-  is never used (a test keeps `confirm(` out of `src`); the one `prompt()` left is the staff key for Share link while not
-  signed in.
+  one button that names the action (Enter), terracotta when something is taken away. When it needs a word (`askText`: a
+  new name, the staff key) it adds one input line, the old value in it and selected. The browser's grey `confirm()`,
+  `prompt()` and `alert()` boxes are never used (`ask.test.ts` keeps all three out of `src`).
+- **Not-found page** (`public/404.html`): the app's "Nothing stands at this address" in plain HTML, no script, its
+  colours and fonts copied from the tokens (`route.test.ts` keeps them equal) — change both together.
 
 ## The three screens
 

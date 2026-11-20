@@ -12,6 +12,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | Any key while the cursor is in a text box | Goes into the box (the letters are typed). **Enter** or a click on the plan / the 3D gives the keys back. Ctrl+S and Ctrl+O still work in the Studio | every screen | everyone | §10 |
 | **Cancel** (or **Esc**) on a question card | Says no: nothing changes | the white card in the middle of the screen | staff | Start here |
 | The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
+| The line to type in on a question card | Opens with the old name in it, selected: type over it; **Rename** / **Share** (or **Enter**) takes it | the card, when it asks for a new name or the staff key | staff | Start here |
 
 ## Front page (`/`)
 
@@ -36,7 +37,8 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **Shift** held | Walk faster (about 4 m/s instead of 1.8) | Walk | everyone | §2 Moving in Walk |
 | Click a spot on the floor | Walk there (not while Comment or Finishes is open) | Walk, mouse free | everyone | §2 Moving in Walk |
 | Double-click | The mouse turns your head; **Esc** gives it back | Walk, not in an editor | everyone | §2 Moving in Walk |
-| **Up to …** / **Down to …** | Takes the stair: the floor above / below opens with you on its stair (walking up the second flight, or under it from the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
+| **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or under it from the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
+| The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
 | Click a flat | Opens it | Building | everyone | §4 |
@@ -85,13 +87,13 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | A note in the list · **Remove** | Walks you to it · deletes it | Comment, "Your notes" | everyone | §2 Notes |
 | Click a piece · drag it · drag a dot | Picks it (also through glass) · moves it (a TV, picture, AC, clock or mirror also up and down its wall, 1-inch steps) · bigger or smaller (curtains: wider or narrower on that side); drag the empty room to look round | Edit furniture | staff | §3 Edit furniture |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
-| **R** · **Turn 90° (R)** | Turns the piece picked or in your hand 90° (a TV on its unit turns the unit, the TV still on it) | Walk, Dollhouse | staff | §3 Edit furniture |
+| **R** · **Turn 90° (R)** (on a phone: **Turn 90°**) | Turns the piece picked or in your hand 90° (a TV on its unit turns the unit, the TV still on it) | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** / **Backspace** · **Delete** | Deletes the picked piece, or the one in your hand, with what rests on it (a new one from the library is only let go) | Edit furniture, or a piece in your hand | staff | §3 Edit furniture |
 | **Ctrl+Z** · **Undo** | Takes back the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
 | **Reset layout** | Back to the flat's own layout (Undo brings yours back) | Edit furniture panel | staff | §3 Edit furniture |
 | **Add** | Opens the library: the search box (ready to type), **Recent**, the groups Living · Dining · Bedroom · Office · Kitchen · Bath · Lights & AC · Greenery · Outdoor · Lobby & gym · Decor (and **Your own**); click a piece, point at the floor, a wall, the ceiling or (curtains) an opening, click | Edit furniture panel | staff | §3 The library |
 | **Enter** · **Esc** in the library's search box | Takes the first piece listed · empties the box and closes the library | the library | staff | §3 The library |
-| **+ Add your own…** | A 3D model of your own: drop it or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB, 2 million triangles), **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (type one side), **It gives light**, **Add to the library** (it is in your hand), **Cancel** / **×** / Esc | the library, under the search box | staff | §3 Your own … |
+| **+ Add your own…** | A 3D model of your own: drop it or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB, 2 million triangles; a model in several files: its folder, a .zip, or all its files together), **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (type one side), **It gives light**, **Add to the library** (it is in your hand), **Cancel** / **×** / Esc | the library, under the search box | staff | §3 Your own … |
 | **⋯** on a row marked **yours** | **Rename**, **Change size** (**Save**), **Remove…** (**Remove** / **Keep**; placed pieces stay) | the library | staff | §3 Your own … |
 | **Floor 2 only** · **All 4 floors** · **Esc** | Floor 2 gets its own copy and keeps your change (the page opens again on it) · the change goes to every floor with the drawing · the change is taken back, asked again next time | "Floor plan A is also on floors … Change:", at the first change on a shared project floor | staff | §6 One floor different |
 | Click · drag · drag a dot | Picks a door, window or passage · slides it along its wall · width, height, a window's sill; drag the empty room to look round | Edit openings | staff | §3 Edit openings |
@@ -133,7 +135,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **⋯ → Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` | ⋯ | §5 Auto-trace and Check these |
 | **⋯ → New project** | The floor list with the New project card | ⋯ | §6 |
 | **⋯ → Site** | The Site panel (click again to close; "open" shows beside it) | ⋯ | §5 Site |
-| **⋯ → Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key) | ⋯, with the online database | §5 Top bar |
+| **⋯ → Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key, in the marble card) | ⋯, with the online database | §5 Top bar |
 | **⋯ → Change list ↗** | Opens `/changes` in a new tab | ⋯, with the online database | §1 |
 | **⋯ → Sign in** / your email | Opens the account card | ⋯, with the online database | §5 Accounts |
 | Drop a picture or a file on the page · **Choose plan image…** | A plan picture (PNG, JPG, WEBP or TIFF, up to 10 MB) goes under the drawing; a drawing or architect's file opens | any time; the "Start with a plan" box | §5 Top bar |

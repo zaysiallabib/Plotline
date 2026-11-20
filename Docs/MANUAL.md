@@ -30,8 +30,9 @@ when `?staff=1` is added to a 3D address (`?staff=0` turns it off). A buyer link
 **When something asks first:** a white card opens in the middle of the screen and the page behind it goes pale.
 **Cancel** (or **Esc**) says no and nothing changes. The second button names what it does — **Delete**, **Replace**,
 **Continue**, **Turn off**, **Remove**, **Make it my draft** — and is red when something is taken away; **Enter** says
-yes too. One exception: the staff key that **Share link** asks for while you are not signed in still comes in the
-browser's own small box.
+yes too. When it needs a word — a new name (**Rename** of a project or a save) or the staff key (**Share link** while
+not signed in) — the card has a line to type in, the old name already in it and selected, so you just type over it;
+**Enter** or the second button (**Rename**, **Share**) takes it. The browser's own grey box is never used.
 
 ---
 
@@ -70,7 +71,7 @@ Which address opens what, and what can be added to the end of a 3D address.
 | `/s/<code>` | A buyer link made with the Studio's **⋯ → Share link**. Opens anywhere, no account needed, until staff **Turn off** the link. Needs the online database. |
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: it asks for the staff key (for links made before accounts existed). Needs the online database. |
-| anything else | "Nothing stands at this address" with **Go to the front page** (§12). |
+| anything else | "Nothing stands at this address" with **Go to the front page** (§12). On the live site it also tells search engines and link checkers that the page does not exist; it looks the same. |
 
 Extras for the end of a 3D address:
 
@@ -157,12 +158,23 @@ remembers it: the next flat opened in the same tab starts clean too.
   note or the finish and you stay where you are.
 - **Double-click** (or Enter on the start screen) and the mouse turns your head; **Esc** gives the mouse back.
 - You cannot walk through walls or into a pool; you climb steps and ramps.
-- **Stairs between floors**, in a flat or level that is part of a building: walk up the first flight to the half landing
-  and on up the second; the floor above opens with you at the top of its stair, facing the stair room's door. To go
-  down, walk from the stair room's floor under the second flight, toward the back; the floor below opens with you on its
-  half landing. In a stair room, **Up to …** and **Down to …** (bottom middle) do the same in one click, also where the
-  room is too small for a drawn stair. The rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
-  Each change of floor loads that floor (a few seconds).
+- **Stairs between floors**, in a flat or level that is part of a building — through the whole building, basements,
+  ground floor, common level, every floor of flats and the rooftop (the Sheltech tower has them all: Basement 2 up to the
+  rooftop and back):
+  - **Up:** walk the first flight to the half landing and on up the second; you stand at the top of the next floor's
+    stair, facing the stair room's door.
+  - **Down:** walk from the stair room's floor under the second flight, toward the back; you stand on the floor below at
+    the foot of its stair, facing the stair room's door. Where that door is only a step away (Type B) you face along the
+    stair instead.
+  - **Up to …** and **Down to …** (bottom middle, in a stair room) do the same in one click, also where the room is too
+    small for a drawn stair (the Sheltech ground floor): you then stand in the middle of that floor's stair room. The
+    rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
+  - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are, the line at the
+    bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until the new one is complete
+    — then the picture changes in one go. Your finishes, the time of day, the wind, Clean view and the quality stay;
+    anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
+  - The address changes to that floor (`/u/<flat or level>?floor=4`), so a reload opens it, and the browser's **Back** and **Forward** take
+    the stair down or up again, also without a new page.
 - Walk sees about as much as a 22 mm camera lens (a little under 80° across a wide screen) from 1.45 m eye height. The
   Dollhouse and the Building view see wider.
 
@@ -246,6 +258,14 @@ colour you chose (Low and High; Lite shows the plain colour); up close at night 
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
 Building view the tower's windows mirror the pale haze it stands in.
 
+**Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
+middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
+the window as bright as the floor there, and a dining table lit only through the living room's opening is dimmer than
+the living room's pieces. A piece across two rooms (a rug in a doorway) takes the room its middle is in. Move a piece in
+Edit furniture (or carry it with **G**) and it takes the light of where you put it at once. At night the lamps light
+the furniture as they light the walls: a room whose lamps you deleted goes dim, pieces and all. Pieces outdoors (a lawn,
+a pool deck, a play area) look as they always did, by day and at night.
+
 **Around the flat.** The neighbouring buildings and roads, seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
 facing the road, a low floor more than a high one. In the Dollhouse and Building view a block between you and the flat
@@ -327,7 +347,10 @@ steps aside while Finishes or Comment is open.
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
 - **Staff on a phone:** Edit → Furniture works (drag a piece with a finger to move it, drag the empty room to look; the
-  piece's tag says "Tap puts it down · the panel turns or removes it"), but a computer is still the tool for it.
+  piece's tag says "Tap puts it down · the panel turns or removes it"), but a computer is still the tool for it. The
+  panel speaks of fingers — **Turn 90°** (no "(R)"), "Tap a piece…", "Tap to put it here" — and a picked piece's resize
+  dots are never bigger than a fingertip (7 % of the screen's short side, at most 44 px), so they no longer cover a
+  picture on the wall up close.
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. The thumbstick left / right turns you 45°.
 
@@ -410,15 +433,18 @@ exactly like the built-in ones.
 1. Open the library (3D view: **Edit ▾ → Furniture → Add**; Studio: **F**) and click **+ Add your own…** under the search
    box. A white box opens: **Drop a 3D model here**.
 2. Drag the file onto it, or **Choose a file…**: **GLB, glTF, OBJ, FBX, DAE, STL**. Best is one **.glb** (Blender: File →
-   Export → glTF 2.0, Format "glTF Binary (.glb)"); a .gltf whose parts are separate files must be exported as one .glb
-   (Plotline says so).
+   Export → glTF 2.0, Format "glTF Binary (.glb)"). A model that keeps its parts in separate files (a .gltf with its
+   .bin and a textures folder, an .obj with its .mtl and pictures): drop its **whole folder or a .zip of it**, or select
+   all its files and drop (or choose) them together — Plotline finds the model among them and its pictures beside it.
+   A .gltf dropped alone says to drop its files together.
 3. The model turns slowly on the left, with its size in feet and inches (and metres) and its triangle count. On the
    right: **Name**; **Kind** (decides its group); **Which side is the front** (click the arrow of the front side until it
    faces you); **Where it sits** — **Floor**, **Wall** (eye height, like a picture), **Ceiling** (hangs, like a pendant)
    or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
-4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click to place it.
+4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click to place it
+   (the line goes as soon as the piece is down).
 
 It is listed on top of the library under **Your own** (and in its group), marked **yours**, with **⋯**: **Rename**;
 **Change size** (pieces already placed take the new size at once); **Remove…** (asks once; pieces already placed stay —
@@ -517,7 +543,7 @@ one thin line at the bottom saying what the tool does.
 | | **Export answers** | Saves every Check these answer clicked in this browser as `plotline-answers.json` (the Local AI's answers marked `"by": "ai"`) |
 | Building | **New project** | The floor list with the New project card (§6) |
 | | **Site** | Where the building stands ("Site" below); "open" shows beside it while the panel is open |
-| Buyers | **Share link** | Makes a buyer link and copies it. Signed in: for your company, nothing asked. Not signed in: asks once for the staff key. Only with the online database |
+| Buyers | **Share link** | Makes a buyer link and copies it. Signed in: for your company, nothing asked. Not signed in: asks once for the staff key, in the marble card. Only with the online database |
 | | **Change list ↗** | Opens `/changes` in a new tab. Only with the online database |
 | Account | **Sign in** / your email | Your account, your company's projects, members and buyer links ("Accounts" below). Only with the online database |
 
@@ -697,7 +723,9 @@ more room. Each flat is tinted with its name written once above it.
 
 **The list.** Rows are grouped by room: a room with two rows or more is one line (its name, the count, its first row in
 grey) — click it to show or fold its rows; rows in no closed room go under the printed name they are about, the rest
-under **Elsewhere**. Every row is listed: the heading counts them all. Click in the list and **↑ / ↓** pick the row
+under **Elsewhere** — more than 12 of those come in parts, one per kind of row (**Elsewhere · Outline not closed**,
+**Elsewhere · Not sure about this**, **Elsewhere · Opening kind is a guess**…; on the BTI 3rd floor sheet its 16 rows
+are 4 + 12). Every row is listed: the heading counts them all. Click in the list and **↑ / ↓** pick the row
 above or below (its mark turns blue), **Enter** goes to it on the plan. The same thing is never asked twice: loose wall
 ends are listed only under Issues, a box Auto-trace guessed (an AOD, a planter) is one row. Every fix is one Ctrl+Z.
 
@@ -1175,7 +1203,6 @@ Things that are confusing or not finished. Each one is a job on the list.
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.
-- Staff editing on a phone works but is rough (big resize dots, "Turn 90° (R)" names a key a phone does not have).
 
 **Site:** most neighbour heights are guesses (3 floors) — type the ones you know. The map may miss new buildings or keep
 torn-down ones (delete those; a building cannot be added by hand yet). The plot is where the middle of the open drawing
