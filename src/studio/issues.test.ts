@@ -246,6 +246,22 @@ describe('walls that stand alone, flush lines (session 19)', () => {
     expect(openReview(studioReducer(s, { type: 'update-wall', id: 'part', patch: { standsAlone: true } }))).toEqual([])
   })
 
+  it("s31 calm: a trace row about a wall end goes once the end meets a wall — on import (the join took it) or later", () => {
+    // a 0.2 m nib on the bottom wall's corner (the import's join takes it out as a stub) and a 1.5 m wall into the room
+    const u = splitBottom(box([v('nib', 2, 2.8), v('p3', 1, 1.5), v('p4', 1, 0)], [w('n', 'p1', 'nib'), w('long', 'p4', 'p3')]))
+    const gap = (id: string, entityId: string) => ({ id, at: { x: 2, y: 2.9 }, kind: 'unclosed' as const, message: 'A 2\'-0" gap in the wall with no door swing or window drawn in it — a door, a window, or open?', entityId })
+    const result = { unit: u, review: [gap('r1', 'nib'), gap('r2', 'p3')], stats: { ms: 0, pxPerM: 100, scaleFrom: 'given' as const, walls: 8, rooms: 1, labelled: 0 } }
+    const s = studioReducer(initialState(), { type: 'auto-trace', result })
+    expect(s.unit.vertices.some((x) => x.id === 'nib')).toBe(false)
+    const gaps = (x: StudioState) => openReview(x).filter((i) => i.kind === 'unclosed').map((i) => i.id)
+    expect(gaps(s)).toEqual(['r2'])
+    // an edit elsewhere keeps it; a wall from the loose end to the left wall: the end meets a wall, the row is answered
+    const t = studioReducer(s, { type: 'update-wall', id: 'right', patch: { heightM: 3 } })
+    expect(gaps(t)).toEqual(['r2'])
+    const joined: StudioState = { ...s, unit: { ...s.unit, vertices: [...s.unit.vertices, v('l', 0, 1.5)], walls: [...s.unit.walls, w('to-left', 'p3', 'l')] } }
+    expect(gaps(joined)).toEqual([])
+  })
+
   it('a flush line (height 0) between a lawn and paving survives load; zones with their kinds and levels, no issue', () => {
     const z = splitBottom(box([v('p0', 2, 0)], [], []))
     const u: Unit = {
@@ -449,3 +465,4 @@ describe('s27 rows: a whole floor of 1 000+ walls — each mark is checked on th
     expect(same(fixSig(near, m, deriveRooms(near)), sig)).toBe(false)
   })
 })
+

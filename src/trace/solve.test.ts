@@ -310,6 +310,54 @@ describe('solveTraces on a synthetic flat', () => {
     expect(deriveRooms(withTracker('bands', () => withCloser(() => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))).unit).length).toBe(4)
   })
 
+  test('s31 calm: a loose wall end is no "Check these" row — the Issues list (validate) carries it, once', () => {
+    const { g, text } = synthetic()
+    stroke(g, P(0, 1.5), P(1.5, 1.5), 0.127 * K) // a 1.5 m wall into the living from its west wall, ending in the room
+    const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })
+    expect(validate(r.unit).some((i) => i.code === 'dangling-vertex')).toBe(true)
+    expect(r.review.filter((x) => /wall ends here/i.test(x.message))).toEqual([])
+  })
+
+  test('s31 calm: glass drawn like a window onto a veranda with no other way in is a sliding door, no row; a door elsewhere on the veranda keeps the question', () => {
+    // a bed 0–4 × 0–4 m over a veranda 0–4 × 4–5.5 m; between them a 2 m pane drawn as two thin lines (x 1–3)
+    const sheet = (door: boolean) => {
+      const width = Math.round(4 * K + 2 * O.x), height = Math.round(5.5 * K + 2 * O.y)
+      const g: Gray = { width, height, data: new Uint8Array(width * height).fill(255) }
+      const ext = 0.254 * K, h = 0.127
+      stroke(g, P(-h, 0), P(4 + h, 0), ext)
+      stroke(g, P(-h, 5.5), P(4 + h, 5.5), ext)
+      stroke(g, P(0, 0), P(0, 5.5), ext)
+      stroke(g, P(4, 0), P(4, door ? 4.3 : 5.5), ext)
+      if (door) stroke(g, P(4, 5.2), P(4, 5.5), ext) // the veranda's own door out, 0.9 m, its swing drawn
+      if (door) arc(g, P(4, 4.3), 0.9, Math.PI / 2, 0)
+      stroke(g, P(0, 4), P(1, 4), 0.127 * K)
+      stroke(g, P(3, 4), P(4, 4), 0.127 * K)
+      for (const dy of [-0.04, 0.04]) for (let x = Math.round(P(1, 0).x); x < Math.round(P(3, 0).x); x++) g.data[Math.round(P(0, 4 + dy).y) * width + x] = 120
+      const item = (name: string, kind: string, cx: number, cy: number): TextItem => ({ text: name, box: { x: P(cx, cy).x - 30, y: P(cx, cy).y - 10, w: 60, h: 20 }, kind: 'room', roomKind: kind, conf: 0.9, source: 'ocr' })
+      return withTracker('tracks', () => solveTraces(g, { text: { items: [item('BED', 'bed', 2, 2), item('VERANDA', 'balcony', 2, 4.75)] } }, { pickPx: P(2, 2), pxPerM: K }))
+    }
+    const alone = sheet(false)
+    const ops = alone.unit.walls.flatMap((w) => w.openings)
+    expect(ops.some((o) => o.kind === 'slider')).toBe(true)
+    expect(alone.review.filter((x) => /^Slider/.test(x.message))).toEqual([])
+    const two = sheet(true)
+    expect(two.unit.walls.flatMap((w) => w.openings).some((o) => o.kind === 'slider')).toBe(true)
+    expect(two.review.filter((x) => /^Slider .* \(drawn like a window, rooms say slider\)/.test(x.message)).length).toBe(1)
+  })
+
+  test('s31 calm: a shaft guessed whole from its thin-line side is ONE row (its type guess), not one per line nor an "offered" row besides', () => {
+    const { g: g0, text } = synthetic()
+    // the flat drawn on a wider sheet; on its east wall a 1.2 × 2 m shaft between two wall stubs, closed by one thin line
+    const g: Gray = { width: g0.width + 100, height: g0.height, data: new Uint8Array((g0.width + 100) * g0.height).fill(255) }
+    for (let y = 0; y < g0.height; y++) g.data.set(g0.data.subarray(y * g0.width, (y + 1) * g0.width), y * g.width)
+    stroke(g, P(8, 0.5), P(9.2, 0.5), 0.127 * K)
+    stroke(g, P(8, 2.5), P(9.2, 2.5), 0.127 * K)
+    for (let y = Math.round(P(0, 0.5).y); y <= Math.round(P(0, 2.5).y); y++) g.data[y * g.width + Math.round(P(9.2, 0).x)] = 150
+    const r = withTracker('tracks', () => solveTraces(g, { text }, { pickPx: P(2, 2.5) }))
+    const aod = r.review.filter((x) => /AOD|shaft|Thin-line boundary/.test(x.message))
+    expect(aod.map((x) => x.message)).toEqual(['Room type guessed from its size and thin-line sides (an AOD / shaft, no door?); its edges are traced as low walls — check'])
+  })
+
   test('3 named rooms + 1 unnamed, scale from the printed sizes, doors in the partitions, a Unit that validates', () => {
     const { g, text } = synthetic()
     const r = solveTraces(g, { text }, { pickPx: P(2, 2.5) })

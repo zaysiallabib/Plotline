@@ -2759,6 +2759,8 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   const count = new Map<string, number>()
   const roomLabels: RoomLabel[] = []
   let labelled = 0
+  /** s31 calm: the labels of rooms guessed whole from their thin-line sides (an AOD) or their green (a planter) */
+  const guessedBy = new Set<string>()
   const dimsOf = new Map<string, { aM: number; bM: number }>()
   const kindOf = new Map<Room, RoomKind>()
   // (s26: the size table's rows a room here took its name from — a row names one room)
@@ -2778,8 +2780,11 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     const id = newId()
     roomLabels.push({ id, name: h.green ? 'Planter' : h.what === 'stair treads' ? 'Stair' : h.what === AOD_HINT ? 'AOD' : row ? labelName({ ...row, text: row.name } as unknown as TextItem) : `${KIND_NAME[kind]} ${n}`, kind, ...at })
     labelled++
+    // (a room guessed whole: its edges are part of the guess, one row — s31 calm, the thin-line loops below)
+    const whole = h.green || h.source === 'green' || h.what === AOD_HINT
+    if (whole) guessedBy.add(id)
     const what = h.source === 'colour' ? 'the fill colour of named rooms' : h.source === 'green' ? 'the green (planter) fill' : h.what === AOD_HINT ? 'its size and thin-line sides (an AOD / shaft, no door?)' : (h.what ?? 'a drawn fixture')
-    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''} — check`, entityId: id })
+    review.push({ id: newId(), at, kind: 'low-confidence', message: `Room type guessed from ${what}${row ? `, its name from the size table (the row of that size)` : ''}${whole ? '; its edges are traced as low walls' : ''} — check`, entityId: id })
   }
   const pending: Room[] = []
   // (s27: a guessed kind only where the room is big enough to be one — a 3 m² toilet sharing the bedrooms' floor colour
@@ -2854,6 +2859,12 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
 
   // ── opening kinds from the rooms on both sides
   const side = new Map<string, Room[]>()
+  // s31 calm: a sliding door drawn like a window (these sheets draw a slider's glass as a window's) onto a veranda with no
+  // other way in — the veranda is reached through it, so the rooms' reading is sure: no row (kept when the veranda has a door
+  // elsewhere: then this glass may be a window)
+  const sliderRows: { row: ReviewItem; wall: string; rooms: Room[] }[] = []
+  /** where a passage got its own row ("Passage … wide?"): the open-plan boundary it was traced from is that question already */
+  const passageRows: Pt[] = []
   for (const r of named) for (const w of r.wallIds) side.set(w, [...(side.get(w) ?? []), r])
   for (const w of u.walls) {
     const g = G.get(w.id)
@@ -2900,10 +2911,18 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
         const m = o.offsetM + o.widthM / 2
         const at = { x: a.x + dir.x * m, y: a.y + dir.y * m }
         const why = !gs ? 'a gap with nothing drawn in it' : gs.kind === 'passage' ? 'nothing drawn across it, nor on the rooms\' edges: open, or a door whose swing is not drawn' : gs.kind === kind ? 'faint evidence' : gs.kind === 'unknown' ? `no clear symbol, rooms say ${kind}` : `drawn like a ${gs.kind}, rooms say ${kind}`
-        review.push({ id: newId(), at, kind: 'opening-guess', message: `${titleCase(kind)} ${formatFeetInches(o.widthM)} wide? (${why})`, entityId: o.id })
+        const row: ReviewItem = { id: newId(), at, kind: 'opening-guess', message: `${titleCase(kind)} ${formatFeetInches(o.widthM)} wide? (${why})`, entityId: o.id }
+        if (kind === 'slider' && gs?.kind === 'window') sliderRows.push({ row, wall: w.id, rooms: rs })
+        else review.push(row)
+        if (kind === 'passage') passageRows.push(at)
       }
       return [op]
     })
+  }
+  for (const { row, wall, rooms } of sliderRows) {
+    const ver = rooms.filter((r) => r.kind === 'balcony' && !/planter/i.test(r.name))
+    const otherWay = (r: Room) => r.wallIds.some((id) => id !== wall && (u.walls.find((x) => x.id === id)?.openings ?? []).some((o) => o.kind !== 'window'))
+    if (!ver.length || ver.some(otherWay)) review.push(row)
   }
 
   // ── printed sizes: the face along the sheet's axes vs the label's dims (core printedSizeCheck, the Studio's own rule)
@@ -2919,17 +2938,14 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   const deg = new Map<string, number>()
   for (const w of u.walls) for (const v of [w.a, w.b]) deg.set(v, (deg.get(v) ?? 0) + 1)
   // tracks: a gap in a wall with nothing drawn in it (no arc, no glazing) stays open — one item for both of its jambs
-  const jambs = new Set<string>()
   for (const g of draft.gaps ?? []) {
     const a = { x: g.a.x - shift.x, y: g.a.y - shift.y }, b = { x: g.b.x - shift.x, y: g.b.y - shift.y }
     const ends = u.vertices.filter((v) => deg.get(v.id) === 1 && (d2(v, a) < 0.03 || d2(v, b) < 0.03))
     if (!ends.length) continue // not this flat's
-    ends.forEach((v) => jambs.add(v.id))
     review.push({ id: newId(), at: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, kind: 'unclosed', message: `A ${formatFeetInches(d2(a, b))} gap in the wall with no door swing or window drawn in it — a door, a window, or open?`, entityId: ends[0].id })
   }
-  // (an end on / inside one of the flat's columns is joined there — core validate's rule, founder 2026-10-06)
-  const inColumn = (v: Vertex) => (u.pillars ?? []).some((c) => Math.abs(v.x - c.x) <= c.wM / 2 + 1e-6 && Math.abs(v.y - c.y) <= c.hM / 2 + 1e-6)
-  for (const [vid, n] of deg) if (n === 1 && !jambs.has(vid) && !inColumn(V.get(vid)!)) review.push({ id: newId(), at: V.get(vid)!, kind: 'unclosed', message: 'A wall ends here without meeting another — close it or delete it', entityId: vid })
+  // (s31 calm: no row per loose wall end — the Studio's Issues list shows every one, live, with its fixes (Extend / Remove
+  // end / Keep): one end was two rows, and a row for an end the import then joined stayed on as a false alarm)
   for (const w of draft.walls)
     if (w.bridge === 'track' && d2(V.get(w.a)!, V.get(w.b)!) >= 3) {
       const a = V.get(w.a)!, b = V.get(w.b)!
@@ -2948,9 +2964,16 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
   // tracks + rooms: room-edge stretches left for the human (thin / open / unsure / readings that disagree), the low walls
   // added along thin lines — those of this flat (in its picked rooms, else in the draft's box)
   // lever 2: the low walls along thin lines and the AODs offered (faces.ts) — those on this flat's walls / in its rooms
+  // (s31 calm: a room guessed whole — an AOD from its thin-line sides, a planter from its green — is ONE row, its "Room type
+  // guessed from …": the low walls traced on its outline and the AOD offered inside it are that one guess, no row each — an
+  // AOD box was three or four rows, a planter one per edge piece)
+  const guessed = named.filter((r) => guessedBy.has(r.id)).map((r) => roomPolygon(r, u))
+  const onOutline = (p: Pt, poly: Pt[]) => poly.some((q, j) => segDist(p, q, poly[(j + 1) % poly.length]) < 0.06)
+  const partOfGuess = (a: Pt, b: Pt) => guessed.some((poly) => (d2(a, b) < 0.01 ? pointInPolygon(a, poly) : [a, b, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }].every((p) => onOutline(p, poly))))
   for (const m of thin?.review ?? []) {
     if (verified.has(m)) continue // (checked against its room's printed size: the Level 1 gate above)
     const a = toM(m.a), b = toM(m.b), at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    if (partOfGuess(a, b)) continue
     if (u.walls.some((w) => segDist(at, V.get(w.a)!, V.get(w.b)!) < 0.05) || named.some((r) => pointInPolygon(at, roomPolygon(r, u)))) review.push({ id: newId(), at, kind: 'low-confidence', message: m.message })
   }
   // step 2 (close.ts): each room closed by guessed pieces gets one row — what was drawn, why it was kept, a question
@@ -2973,7 +2996,9 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     }
     const KIND: Record<string, ReviewItem['kind']> = { low: 'low-confidence', conflict: 'low-confidence', thin: 'unclosed', open: 'unclosed', unsure: 'unclosed', 'gap-thin': 'unclosed' }
     for (const m of merged.review) {
-      if (verified.has(m)) continue
+      if (verified.has(m) || partOfGuess(toM(m.a), toM(m.b))) continue
+      // (s31 calm: an open-plan boundary traced as a passage that has its own row — one question, not two)
+      if (m.kind === 'open' && passageRows.some((p) => segDist(p, toM(m.a), toM(m.b)) < 0.15)) continue
       const at = toM({ x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 })
       if (inFlat(at)) review.push({ id: newId(), at, kind: KIND[m.kind], message: m.message })
     }
