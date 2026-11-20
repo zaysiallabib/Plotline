@@ -166,10 +166,11 @@ describe('the SQL the founder pastes', () => {
   const m1 = readFileSync(new URL('migrations/20261003120000_share_links.sql', dir), 'utf8')
   const m2 = readFileSync(new URL('migrations/20261004120000_events.sql', dir), 'utf8')
   const m3 = readFileSync(new URL('migrations/20261120120000_accounts.sql', dir), 'utf8')
+  const m4 = readFileSync(new URL('migrations/20261120180000_members_pictures.sql', dir), 'utf8')
   const paste = readFileSync(new URL('paste-into-sql-editor.sql', dir), 'utf8')
 
-  it('is one file: the three migrations, in order, unchanged (regenerate it when a migration changes)', () => {
-    expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3)).toBe(true)
+  it('is one file: the four migrations, in order, unchanged (regenerate it when a migration changes)', () => {
+    expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3 + '\n' + m4)).toBe(true)
     expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
   })
 
@@ -200,5 +201,24 @@ describe('the SQL the founder pastes', () => {
     expect(toAnon[0]).toMatch(/^grant execute on function public\.unit_by_token \(uuid\), public\.add_event /)
     expect(m3).toMatch(/revoke all on function public\.share_unit [^;]* from public, anon;/)
     expect(m3).toContain("set default (encode(extensions.gen_random_bytes(16), 'hex'))::uuid;")
+  })
+
+  it('members and pictures: the invites table closed, every function for signed-in staff only, the bucket private (real run: E:/dev/tmp/s31/cloud/pg/run.mjs)', () => {
+    expect(m4).not.toMatch(/create table (?!if not exists)/i)
+    expect(m4).not.toMatch(/create (trigger|function) /i)
+    expect(m4).not.toMatch(/\bdrop (table|function|trigger|schema|column)\b/i)
+    expect(m4).toContain('alter table public.org_invites enable row level security;')
+    expect(m4).toContain('revoke all on public.org_invites from anon, authenticated;')
+    expect(m4).not.toMatch(/^grant [^;]*\bon (table )?public\.org_(invites|members)\b/m) // no write (or read) grant: the functions are the only way
+    const policies = [...m4.matchAll(/create policy ("[^"]+") on (storage\.objects)/g)]
+    expect(policies).toHaveLength(2) // read + add; never change or delete (a saved version points at its picture)
+    for (const [, name, table] of policies) expect(m4).toContain(`drop policy if exists ${name} on ${table};`)
+    expect(m4).not.toMatch(/for (update|delete|all) to/)
+    expect(m4).toMatch(/values \('plans', 'plans', false, 10485760, array\['image\/png', 'image\/jpeg', 'image\/webp'\]\)/)
+    expect(m4).not.toMatch(/^grant [^;]*\banon\b/m)
+    const definers = [...m4.matchAll(/create or replace function (public\.\w+) \(([^)]*)\)/g)].map((m) => m[1])
+    expect(definers).toEqual(['public.org_people', 'public.invite_member', 'public.cancel_invite', 'public.remove_member', 'public.set_member_role', 'public.accept_invites', 'public.unit_by_token', 'public.project_links'])
+    for (const f of definers.filter((f) => f !== 'public.unit_by_token')) expect(m4).toMatch(new RegExp(`revoke all on function [^;]*${f.replace('.', '\\.')} \\([^;]* from public, anon;`))
+    expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
   })
 })
