@@ -9,6 +9,7 @@
  * Several files dropped together, a folder or a .zip: bundle.ts picks the one to open, the rest are its pictures / buffers.
  */
 import type { ImportFormat, ImportResult } from './types'
+import { DWG_CONVERTER } from './dwg'
 
 export type * from './types'
 export { expandZips, mainFile, siblingsOf, type DropFile } from './bundle'
@@ -33,8 +34,8 @@ export const IMPORT_EXTENSIONS: Record<string, ImportFormat> = {
   ply: 'mesh',
 }
 
-/** the `accept` list for the file input, beside the pictures and .json (and a .zip of any of them) */
-export const IMPORT_ACCEPT = [...Object.keys(IMPORT_EXTENSIONS), 'zip'].map((e) => `.${e}`).join(',')
+/** the `accept` list for the file input, beside the pictures and .json (and a .zip of any of them; a .dwg with a converter) */
+export const IMPORT_ACCEPT = [...Object.keys(IMPORT_EXTENSIONS), 'zip', ...(DWG_CONVERTER ? ['dwg'] : [])].map((e) => `.${e}`).join(',')
 
 /**
  * The locked files Plotline cannot read, and the one-click export that gives the same thing (Docs/FORMATS.md §3). DWG: the
@@ -52,10 +53,12 @@ export const LOCKED_FORMATS: Record<string, string> = {
   dwfx: 'A .dwf / .dwfx is a print, not a drawing: ask for the DXF or IFC instead.',
 }
 
-/** Plain words for a locked file the Studio should refuse, or null when the file is not one of them. */
-export const lockedFormatOf = (name: string): string | null => LOCKED_FORMATS[name.toLowerCase().split('.').pop() ?? ''] ?? null
+const extOf = (name: string) => name.toLowerCase().split('.').pop() ?? ''
 
-export const importFormatOf = (name: string): ImportFormat | null => IMPORT_EXTENSIONS[name.toLowerCase().split('.').pop() ?? ''] ?? null
+/** Plain words for a locked file the Studio should refuse, or null when the file is not one of them (a .dwg is not, with a converter). */
+export const lockedFormatOf = (name: string): string | null => (extOf(name) === 'dwg' && DWG_CONVERTER ? null : (LOCKED_FORMATS[extOf(name)] ?? null))
+
+export const importFormatOf = (name: string): ImportFormat | null => (extOf(name) === 'dwg' && DWG_CONVERTER ? 'dxf' : (IMPORT_EXTENSIONS[extOf(name)] ?? null))
 
 /** How far a read is, for the Studio's progress line: what it is doing in plain words, and 0..1 (null: not known). */
 export type ReadProgress = (stage: string, fraction: number | null) => void
@@ -98,8 +101,13 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
     case 'ifc':
       if (typeof Worker !== 'undefined' && typeof window !== 'undefined') return ifcInWorker(bytes, file.name, opts)
       return (await import('./ifc')).importIfc(bytes, file.name, opts.progress)
-    case 'dxf':
-      return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name)
+    case 'dxf': {
+      if (extOf(file.name) !== 'dwg') return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name)
+      opts.progress?.('converting the DWG to DXF', null)
+      const dxf = await (await import('./dwg')).convertDwg(bytes, file.name, DWG_CONVERTER!, opts.signal)
+      const r = await (await import('./dxf')).importDxf(dxf, file.name.replace(/\.dwg$/i, '.dxf'))
+      return { ...r, notes: ['Converted from DWG to DXF by the converter set up for this site (Docs/SETUP_FORMATS.md).', ...r.notes] }
+    }
     case 'pdf':
       return (await import('./pdf')).importPdf(bytes, file.name)
     case 'svg':
