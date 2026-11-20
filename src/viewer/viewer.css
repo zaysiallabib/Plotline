@@ -142,7 +142,7 @@
 .seg button:hover { color: var(--ink); }
 .seg button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
 .seg-fill { display: flex; width: 100%; }
-.seg-fill button { flex: 1; }
+.seg-fill button { flex: 1; min-width: 0; padding: 0 var(--s-2); }
 /* the quality recommended for this device */
 .rec { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 
@@ -205,7 +205,7 @@
 .viewer:has(.hud.rest) > :is(.minimap, .map-show) { opacity: 0; pointer-events: none; transition-duration: var(--dur-slow); }
 /* Clean view: nothing on screen but the dot (the pins, the wind's chips, the staff panels too) */
 .hud.clean > :not(.clean-dot),
-.viewer:has(.hud.clean) > :not(.scene, .hud) { display: none; }
+.viewer:has(.hud.clean) > :not(.scene, .hud, .no3d) { display: none; }
 .clean-dot {
   position: absolute;
   top: calc(var(--safe-t) + var(--edge) + (var(--bar-h) - var(--s-5)) / 2);

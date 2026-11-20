@@ -225,7 +225,7 @@ One extra button appears in the bar, top right: **Edit ▾** (washed blue while 
 Works in Walk and in Dollhouse. The mouse stays free: drag empty space to look around.
 
 - **Click one** to pick it. **Drag** it along its wall. **Drag a dot** to change width, height, or a window's sill (the height of its bottom edge above the floor). An open passage is picked by clicking anywhere in its opening; its side dots make it wider or narrower.
-- Panel, bottom left: change its kind (**Door / Window / Slider / Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
+- Panel, bottom left: change its kind (a switch: **Door · Window · Slider · Passage**), type **Width / Height / Sill**, **Delete**, **Undo**.
 - **Low walls** (since 2026-10-19) — a railing, parapet, planter edge or kerb: anything lower than 1.2 m (3'-11"). **Click it**: a blue box with a dot on each end appears, and the panel says "Low wall · 6'-9" long · 1'-6" high".
   - **Drag an end dot:** that end slides along the wall's own line, so the wall gets longer or shorter. An end joined to another wall leaves it, as with V in the Studio. A gap opens there, and the rooms on both sides become one (the Studio lists it under Issues, with **Extend** to close it again). Hold **Alt** while you drag to keep the corner joined instead: the wall it meets moves with it, so the room stays closed (a narrower veranda).
   - **Drag the wall itself:** it moves across, sideways, and its ends slide along the walls they meet. It snaps to nearby wall lines as in the Studio.

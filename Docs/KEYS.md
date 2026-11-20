@@ -204,7 +204,7 @@ Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor
 
 | Name | What it does | Who |
 |---|---|---|
-| **Door / Window / Slider / Passage** | Changes the picked opening's kind | staff |
+| **Door · Window · Slider · Passage** (a switch; the picked one is white) | Changes the picked opening's kind | staff |
 | **Width**, **Height**, **Sill** | Type a size (`3'-6"`, `3.5`, `1.07m`); Enter sets it | staff |
 | **Length**, **Height** (a low wall) | Type its length (the end B moves) or height | staff |
 | **Delete** | Removes the picked opening (Del) | staff |

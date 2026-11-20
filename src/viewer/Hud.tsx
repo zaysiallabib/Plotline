@@ -156,7 +156,7 @@ export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; ar
 }
 
 /** how long the mouse may rest in Walk before the chrome fades, ms */
-export const REST_MS = 3000
+const REST_MS = 3000
 /** Clean view, remembered for the tab (sessionStorage) */
 const CLEAN_KEY = 'plotline.clean'
 

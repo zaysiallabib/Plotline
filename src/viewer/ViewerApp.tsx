@@ -442,9 +442,9 @@ function OpeningPanel(p: {
             {KINDS.find(([k]) => k === o.kind)?.[1]} · {core.formatFeetInches(o.widthM)} wide
           </div>
           <div className={`small ${p.refused ? 'refused' : 'muted'}`}>{p.refused ? 'Not there: another opening is in the way' : p.where}</div>
-          <div className="arrange-row">
+          <div className="seg seg-fill" role="group" aria-label="Kind">
             {KINDS.map(([k, label]) => (
-              <button key={k} className={`btn${o.kind === k ? ' active' : ''}`} onClick={() => k !== o.kind && p.onKind(k)}>
+              <button key={k} className={o.kind === k ? 'on' : ''} aria-pressed={o.kind === k} onClick={() => k !== o.kind && p.onKind(k)}>
                 {label}
               </button>
             ))}
