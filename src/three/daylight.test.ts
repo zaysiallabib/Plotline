@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
 import * as THREE from 'three'
-import { bakeDaylight, dayMap, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
+import { bakeDaylight, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
 import { batch } from './batch'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
@@ -290,14 +290,22 @@ describe('furniture reads the daylight of its room (session 31: "furniture in a 
     expect(inRegion(pieceDayUv(dt, trs, TEST_UNIT, { x: 2.5, y: -0.1 }, 'bed'), 'floor:bed')).toBe(true) // in the outer wall's outer half: no room
   })
 
-  test('a piece on an open zone (a lawn: not baked) reads the neutral block, as the lawn does', () => {
+  test('a piece on an open zone (a lawn: not baked) reads the OPEN texel: neutral by day, a lit room at night — as before', () => {
     const g = GROUND_SAMPLE
     const gr = core.deriveRooms(g)
     const dg = bakeDaylight(g, gr)
     const at = { x: 1, y: 8 } // the lawn round the lobby
     expect(core.roomAt(at, gr, g)?.id).toBe('Lawn')
-    expect(pieceDayUv(dg, gr, g, at, 'Lawn')).toEqual([1 / dg.width, 1 / dg.height])
-    expect(pieceDayUv(dg, gr, g, { x: 4, y: 4 }, 'Lawn')).not.toEqual([1 / dg.width, 1 / dg.height]) // listed on the lawn, its middle in the lobby
+    const uv = pieceDayUv(dg, gr, g, at, 'Lawn')
+    const [x, y] = [Math.floor(uv[0] * dg.width), Math.floor(uv[1] * dg.height)]
+    expect(dg.regions.has('floor:Lawn')).toBe(false)
+    expect([...dg.regions.values()].some((r) => x >= r.x && x < r.x + r.nu && y >= r.y && y < r.y + r.nv)).toBe(false) // no room's texel
+    const rg = daylightTexture(dg).image.data as Uint8Array
+    expect(rg[2 * (y * dg.width + x)]).toBe(Math.round(255 / RANGE)) // factor 1 by day
+    expect(rg[2 * (y * dg.width + x) + 1]).toBeGreaterThan(0) // at night a lit room's lamp share (the neutral block's is 0: dark)
+    expect(rg[2 * (y * dg.width + x) + 1]).toBe(rg[2 * 5 + 1])
+    expect(rg[1]).toBe(0)
+    expect(pieceDayUv(dg, gr, g, { x: 4, y: 4 }, 'Lawn')).not.toEqual(uv) // listed on the lawn, its middle in the lobby
   })
 
   test("lightPiece: each piece its own dayUv over its model's shared vertices; the material patched once; a moved piece only gets new numbers", () => {

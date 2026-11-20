@@ -464,7 +464,8 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], bloc
     return within * between * (dim.get(room.id) ?? 1)
   }
 
-  // ── atlas: a 2 × 2 neutral block at (0, 0) (exterior faces, and a missing attribute reads uv 0,0), then shelves ──
+  // ── atlas: a 2 × 2 neutral block at (0, 0) (exterior faces, and a missing attribute reads uv 0,0), the COVERED block, the
+  // OPEN texel between them (furniture on an open zone, pieceDayUv), then shelves ──
   const order = jobs.map((_, k) => k).sort((a, b) => jobs[b].nv - jobs[a].nv)
   const width = Math.max(256, ...jobs.map((j) => j.nu + 1))
   const pos: [number, number][] = []
@@ -504,6 +505,13 @@ export function factorAt(d: Daylight, key: string, u: number, v: number): number
   return (RANGE * d.data[(r.y + y) * d.width + r.x + x]) / 255
 }
 
+/**
+ * A piece on an open zone (a lawn, a pool deck: not baked) reads this texel: neutral by day (the fill) and a lit room's lamp
+ * share at night (daylightTexture; setLampShare never writes it) — lit exactly as before: no zone floor takes a lamp's
+ * bounce, but the pieces always did, and the neutral block's 0 at night left a lawn's trees black on a lamp-lit lawn.
+ */
+const OPEN_AT = [2, 0] as const
+
 /** `key`'s region at (u, v) as atlas texture coordinates, clamped to its texel grid (filtering never reads a neighbour); no such region: the neutral block. */
 function uvOf(d: Daylight, key: string | null, u: number, v: number): [number, number] {
   const r = key ? d.regions.get(key) : undefined
@@ -515,10 +523,12 @@ function uvOf(d: Daylight, key: string | null, u: number, v: number): [number, n
  * The atlas point a piece of furniture reads (session 31: "furniture in a windowless room is still lit as if it had a
  * window"): one per piece — the floor of the room its middle `at` stands in, at that point (a rug across a doorway: the room
  * its middle is in; its own `roomId` when the middle is in no room). A wardrobe in a windowless closet is as dim as the
- * closet, a sofa by the window as bright as the floor there; an open zone (not baked) reads the neutral block, as its floor.
+ * closet, a sofa by the window as bright as the floor there; on a covered zone the COVERED shade; on an open zone (not baked)
+ * the OPEN texel: as before.
  */
 export function pieceDayUv(d: Daylight, rooms: Room[], unit: Unit, at: Pt, roomId: Id): [number, number] {
-  return uvOf(d, `floor:${core.roomAt(at, rooms, unit)?.id ?? roomId}`, at.x, at.y)
+  const key = `floor:${core.roomAt(at, rooms, unit)?.id ?? roomId}`
+  return d.regions.has(key) ? uvOf(d, key, at.x, at.y) : [(OPEN_AT[0] + 0.5) / d.width, (OPEN_AT[1] + 0.5) / d.height]
 }
 
 // ───────────────────────────── GL glue ─────────────────────────────
