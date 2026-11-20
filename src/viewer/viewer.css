@@ -237,7 +237,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .clean-dot::after { content: ''; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); }
 .clean-dot:hover, .clean-dot:focus-visible { opacity: 1; }
 
-/* top left: the room you stand in — no box, a soft marble veil under the words so they read over any wall */
+/* top left: the room you stand in — no box, a soft marble veil under the words so they read over any wall, by night too */
 .hud-tl { position: absolute; z-index: 2; top: calc(var(--safe-t) + var(--edge)); left: calc(var(--safe-l) + var(--edge)); display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); max-width: calc(100% - 2 * var(--edge)); }
 .room-title {
   position: relative;
@@ -255,15 +255,21 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   cursor: pointer;
 }
 .room-title::before {
+  /* the words' own block, then 24 px round it over which the veil fades out (session 31 QA: the old oval read as a white
+     smudge at night and over curtains): 70 % marble under the words to nothing, softly rounded where the fades meet */
+  --fade-x: linear-gradient(to right, transparent, black var(--s-5), black calc(100% - var(--s-5)), transparent);
+  --fade-y: linear-gradient(to bottom, transparent, black var(--s-5), black calc(100% - var(--s-5)), transparent);
   content: '';
   position: absolute;
   z-index: -1;
-  inset: calc(-1 * var(--s-4)) calc(-1 * var(--s-6)) calc(-1 * var(--s-4)) calc(-1 * var(--s-4));
-  background: var(--glass);
+  inset: calc(-1 * var(--s-5));
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
-  -webkit-mask-image: radial-gradient(farthest-side at 40% 50%, black 60%, transparent);
-  mask-image: radial-gradient(farthest-side at 40% 50%, black 60%, transparent);
+  -webkit-mask-image: var(--fade-x), var(--fade-y);
+  -webkit-mask-composite: source-in;
+  mask-image: var(--fade-x), var(--fade-y);
+  mask-composite: intersect;
   pointer-events: none;
 }
 .room-name { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-2xl); }
@@ -646,7 +652,6 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   }
   .hud-tl { max-width: calc(100% - 2 * var(--edge) - 132px); }
   .room-name { font-size: var(--fs-xl); }
-  .room-title::before { inset: calc(-1 * var(--s-4)) calc(-1 * var(--s-6)) calc(-1 * var(--s-4)) calc(-1 * var(--s-4)); }
   .hud-tr { top: auto; left: calc(var(--safe-l) + var(--edge)); right: calc(var(--safe-r) + var(--edge)); bottom: var(--bar-bottom); align-items: stretch; }
   .toolbar { height: auto; flex-wrap: wrap; gap: var(--s-1); border-radius: var(--r-lg); }
   .toolbar .seg { flex: 1 1 100%; }
