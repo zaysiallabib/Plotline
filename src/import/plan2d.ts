@@ -81,6 +81,8 @@ export interface Drawing {
   loops: Loop[]
   /** file units → metres */
   scale: number
+  /** the file has a column layer (a DXF's layer table names one): then only its shapes are columns */
+  columnLayer?: boolean
 }
 
 export interface Counts {
@@ -454,12 +456,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const P = (p: Pt): Pt => ({ x: p.x * s, y: -p.y * s })
   const role = (x: { layer: string; block?: string }): Role => roleOf(x.layer, x.block)
 
-  // columns first: their outlines are no walls
+  // columns first: their outlines are no walls. A file with a column layer draws its columns there: then a small closed
+  // shape on the wall layer is a short wall piece (Plotline's own DXF export draws every wall piece closed)
   const pillars: Pillar[] = []
   const columnBoxes: { x0: number; y0: number; x1: number; y1: number }[] = []
+  const columnsKnown = d.columnLayer || d.loops.some((l) => role(l) === 'column')
   for (const l of d.loops) {
     const r = role(l)
-    if (r !== 'column' && r !== 'wall' && r !== 'unknown') continue
+    if (r !== 'column' && (columnsKnown || (r !== 'wall' && r !== 'unknown'))) continue
     const pts = l.pts.map(P)
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
     const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys)

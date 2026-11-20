@@ -135,6 +135,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Edit ▾** → **Furniture** | Edit furniture: move, turn, resize, delete or add furniture | staff |
 | **Edit ▾** → **Openings** | Edit openings: move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
 | **Edit ▾** → **Plan (Studio)** | Edit plan: opens this flat or level in the Studio, in a new tab | staff |
+| **Edit ▾** → **Download 3D model** | Saves this flat as one 3D model file (`.glb`) once every room has arrived | staff |
 | **⋯** → **Clean view** | The same as H or the eye | everyone |
 | **⋯** → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a blue dot marks the one recommended for this device; a new choice reloads the page | everyone |
 | The eye (the last button of the bar) | **Clean view**: hides everything on screen (H) | everyone |
@@ -228,6 +229,9 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
 | ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .ifczip, .dxf, .pdf, .svg, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip of any of them; several files can be picked together (a model with its pictures) — see MANUAL §5 "Bring in the architect's file" |
 | ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
+| ⋯ → **Export as DXF** | Saves the drawing for AutoCAD or any drawing program (`.dxf`, metres, layers WALLS / DOORS / WINDOWS / COLUMNS / TEXT / ZONES) |
+| ⋯ → **Export 3D model** | Opens the 3D view in a new tab, which saves the furnished flat as a `.glb` |
+| ⋯ → **Print plan…** | Opens the Print box: **Paper** (A4 · A3 · A2 · A1), **Scale** (1 : 50 · 1 : 100 · 1 : 200), **Print** (the browser's print window; Save as PDF there), **Close** / × / Esc |
 | ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as a file named `plotline-answers.json` |
 | ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
 | ⋯ → **Site** | Where the building stands: map, plot, neighbours, wind, true north (click again to close; "open" shows beside it) |

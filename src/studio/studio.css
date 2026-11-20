@@ -51,8 +51,8 @@
 :where(.studio) button.primary:where(:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
 /* a box's own main action (Save, Create project, Show building, a fix): an ordinary button, firmer — the screen keeps
    its one blue button (Preview 3D; Choose plan image… on the empty sheet) */
-:where(.studio) :is(.popover, .floors, .new-project, .issue-pop) button.primary { background: transparent; border-color: color-mix(in srgb, var(--ink) 30%, transparent); color: var(--ink); }
-:where(.studio) :is(.popover, .floors, .new-project, .issue-pop) button.primary:where(:hover:not(:disabled)) { background: var(--hover); }
+:where(.studio) :is(.popover, .floors, .new-project, .issue-pop, .print-box) button.primary { background: transparent; border-color: color-mix(in srgb, var(--ink) 30%, transparent); color: var(--ink); }
+:where(.studio) :is(.popover, .floors, .new-project, .issue-pop, .print-box) button.primary:where(:hover:not(:disabled)) { background: var(--hover); }
 :where(.studio) button.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
 :where(.studio) button.on:where(:hover:not(:disabled)) { background: var(--accent-soft); }
 :where(.studio) button.link {
@@ -122,7 +122,7 @@
 .studio .seg button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
 
 /* what floats over the sheet: white, a hairline, the one floating shadow */
-.field, .popover, .issue-pop, .trace-card, .menu, .keys-sheet, .pages-sheet {
+.field, .popover, .issue-pop, .trace-card, .menu, .keys-sheet, .pages-sheet, .print-box {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
@@ -130,8 +130,8 @@
   animation: studio-fade var(--dur) var(--ease) both;
 }
 /* a title row: an inscription on the left, × on the right */
-:is(.popover, .floors, .keys-head, .pages-sheet) .head, .keys-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
-:is(.popover, .pages-sheet) .head strong, .keys-head strong { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+:is(.popover, .floors, .keys-head, .pages-sheet, .print-box) .head, .keys-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+:is(.popover, .pages-sheet, .print-box) .head strong, .keys-head strong { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 
 /* ── the top bar: wordmark · the drawing's quiet fields · Undo Redo · Auto-trace, Preview 3D, Building, ⋯ ──────────── */
 .topbar {
@@ -292,6 +292,42 @@
 .pages button.on .page { border-color: var(--accent); }
 .pages button.on .label { color: var(--accent); }
 .pages button.on:disabled { opacity: 1; }
+
+/* Print the plan (PrintBox.tsx): the sheet as it will print, paper and scale under it */
+.print-box {
+  position: absolute; inset: var(--s-6); z-index: 7; margin: auto;
+  width: min(640px, calc(100% - 2 * var(--s-6))); height: max-content; max-height: calc(100% - 2 * var(--s-6)); overflow: auto;
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4) var(--s-5) var(--s-5); border-radius: var(--r-lg);
+}
+.print-box p { margin: 0; font-size: var(--fs-sm); }
+.print-preview { display: flex; justify-content: center; padding: var(--s-4); background: var(--surface-2); border-radius: var(--r-sm); }
+.print-preview svg { width: 100%; height: auto; max-height: 52vh; box-shadow: var(--shadow-sm); }
+
+/* the plan sheet (import/sheet.ts sheetSvg), the same on screen and on paper; lengths are paper millimetres */
+.plan-sheet { font-family: var(--font); color: var(--ink); }
+.plan-sheet .ps-paper { fill: var(--surface); }
+.plan-sheet .ps-walls polygon, .plan-sheet .ps-columns polygon { fill: var(--ink); }
+.plan-sheet .ps-zones line { stroke: var(--muted); stroke-width: 0.13; stroke-dasharray: 1.2 0.8; }
+.plan-sheet .ps-openings line { stroke: var(--ink); stroke-width: 0.18; }
+.plan-sheet .ps-swings path { fill: none; stroke: var(--ink-2); stroke-width: 0.13; }
+.plan-sheet .ps-name { font-size: 2.1px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; text-anchor: middle; fill: var(--ink); }
+.plan-sheet .ps-size { font-size: 1.7px; text-anchor: middle; fill: var(--ink-2); }
+.plan-sheet .ps-rule { stroke: var(--line); stroke-width: 0.2; }
+.plan-sheet .ps-label { font-size: 1.8px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; fill: var(--muted); }
+.plan-sheet .ps-value { font-size: 3px; fill: var(--ink); }
+.plan-sheet .ps-project { font-family: var(--font-display); font-size: 5.5px; fill: var(--ink); }
+.plan-sheet .ps-bar-a { fill: var(--ink); }
+.plan-sheet .ps-bar-b { fill: var(--surface); stroke: var(--ink); stroke-width: 0.15; }
+.plan-sheet .ps-north circle { fill: none; stroke: var(--line); stroke-width: 0.2; }
+.plan-sheet .ps-north path { fill: var(--ink); }
+/* on paper: only the sheet, at its own page size (PrintBox sets @page) */
+.print-sheet { display: none; }
+@media print {
+  #root { display: none !important; }
+  html, body { height: auto; overflow: visible; background: var(--surface); }
+  .print-sheet { display: block; }
+  .print-sheet svg { display: block; }
+}
 
 /* Auto-trace's card, top middle */
 .trace-card {

@@ -8,6 +8,7 @@ import DxfParser from 'dxf-parser'
 import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
+import { ownDrawingOf } from './dxfWrite'
 import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
@@ -416,6 +417,12 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
 }
 
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
+  // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
+  const own = ownDrawingOf(text)
+  if (own) {
+    const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
+    return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
+  }
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
   parser.registerEntityHandler(Mline as unknown as new () => IGeometry)
@@ -474,7 +481,8 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   if (blocks.size) notes.push(`Door / window blocks: ${[...blocks].join(', ')}.`)
   if (frozen.size) notes.push(`Frozen / hidden layers left out: ${[...frozen].join(', ')}.`)
 
-  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale }
+  const columnLayer = Object.values(dxf.tables?.layer?.layers ?? {}).some((l) => roleOf(l.name) === 'column')
+  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer }
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0

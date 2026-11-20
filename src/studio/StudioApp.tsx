@@ -46,6 +46,7 @@ import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import PdfPages from './PdfPages'
+import PrintBox from './PrintBox'
 import { CONVERTED_PICTURE } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
@@ -273,9 +274,9 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
   return { gray: { width: c.width, height: c.height, data }, rgb: { width: c.width, height: c.height, data: rgba } }
 }
 
-const download = (name: string, text: string) => {
+const download = (name: string, text: string, type = 'application/json') => {
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+  a.href = URL.createObjectURL(new Blob([text], { type }))
   a.download = name
   a.click()
   URL.revokeObjectURL(a.href)
@@ -1056,15 +1057,32 @@ export default function StudioApp() {
   }
 
   // never locked by errors (founder 2026-10-03, 310fe76 unlocked the button but left this early return: a click did nothing)
-  const preview = useCallback(() => {
-    try {
-      localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
-    } catch {
-      return toast('Draft too large to autosave — export your JSON often.')
-    }
-    const w = window.open('/u/preview', '_blank')
-    if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
-  }, [toast])
+  /** the draft in the 3D view, new tab; `query`: what that tab should do (`?export=glb`: save the 3D model, then stay) */
+  const previewWith = useCallback(
+    (query: string) => {
+      try {
+        localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
+      } catch {
+        return toast('Draft too large to autosave — export your JSON often.')
+      }
+      const url = `/u/preview${query}`
+      const w = window.open(url, '_blank')
+      if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open(url, '_blank') })
+    },
+    [toast],
+  )
+  const preview = useCallback(() => previewWith(''), [previewWith])
+  // ⋯ → Export as DXF (import/dxfWrite.ts) / Export 3D model (the 3D view makes it: PlotlineScene.exportGlb) / Print plan…
+  const exportDxf = async () => {
+    const u = stateRef.current.unit
+    if (!u.walls.length) return toast('Nothing drawn yet to export')
+    const { writeDxf } = await import('../import/dxfWrite')
+    const name = u.name.trim() || 'Untitled unit'
+    download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
+    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, ZONES`)
+  }
+  const exportGlb = () => (stateRef.current.unit.walls.length ? previewWith('?export=glb') : toast('Nothing drawn yet to export'))
+  const [printOpen, setPrintOpen] = useState(false)
   // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
   const [buildingOpen, setBuildingOpen] = useState(false)
   // Site (s27): where the building stands — one site for the whole building, so every drawing of the open project gets it
@@ -2309,6 +2327,9 @@ export default function StudioApp() {
         }}
         onImport={() => jsonRef.current?.click()}
         onExport={exportJson}
+        onExportDxf={() => void exportDxf()}
+        onExportGlb={exportGlb}
+        onPrint={() => (unit.walls.length ? setPrintOpen(true) : toast('Nothing drawn yet to print'))}
         onExportAnswers={exportAnswers}
         share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
@@ -2446,6 +2467,7 @@ export default function StudioApp() {
               <button onClick={() => cancelTrace.current()}>Cancel</button>
             </div>
           )}
+          {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {pdfPick && <PdfPages name={pdfPick.name} count={pdfPick.doc.numPages} thumb={pdfThumb} busy={pdfPick.busy} onPick={(p) => void pickPdfPage(p)} onClose={closePdf} />}
           {reading && (
             <div className="trace-card" role="status">

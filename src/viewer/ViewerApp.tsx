@@ -692,6 +692,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }, [scene, rooms])
 
   const ready = loaded >= rooms.length
+  const readyRef = useRef(ready)
+  readyRef.current = ready
 
   const enter = () => {
     if (!scene || !ready) return
@@ -737,6 +739,30 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     setToast(msg)
     setTimeout(() => setToast((t) => (t === msg ? null : t)), ms)
   }
+
+  /** staff: the flat as a .glb (Edit → Download 3D model; the Studio's ⋯ → Export → 3D model opens /u/preview?export=glb) */
+  const downloadGlb = async (s: PlotlineScene) => {
+    setToast('Making the 3D model… (waiting for every piece to arrive)')
+    try {
+      // every room's furniture in the scene (the start screen's count), then every picture arrived
+      for (let t = 0; !readyRef.current && t < 240; t++) await new Promise((r) => setTimeout(r, 250))
+      await s.settled()
+      const glb = await s.exportGlb()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }))
+      a.download = `${(unit.name || 'flat').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'flat'}.glb`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
+      showToast(`Saved ${a.download} (${(glb.byteLength / 1e6).toFixed(1)} MB)`, 5000)
+    } catch (e) {
+      showToast(`The 3D model could not be saved: ${e instanceof Error ? e.message : String(e)}`, 6000)
+    }
+  }
+  useEffect(() => {
+    if (!scene || !STAFF || new URLSearchParams(location.search).get('export') !== 'glb') return
+    history.replaceState(null, '', location.pathname + location.search.replace(/[?&]export=glb/, '').replace(/^&/, '?'))
+    void downloadGlb(scene)
+  }, [scene]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const share = () => {
     const url = shareUrl(location, unit.floor, fullCfg) // the flat picked in the Building view stays on its floor; never `staff`
@@ -1349,6 +1375,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               ) : null
             }
             onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
+            onDownloadGlb={STAFF && !TOKEN && scene ? () => void downloadGlb(scene) : null}
             onEditPlan={
               STAFF
                 ? () => {

@@ -75,7 +75,7 @@ Extras you can add to the end of a 3D address:
 | Comment | C | Opens the Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns: opening one closes the other |
 | Share | — | Copies a link that opens with the finishes you chose |
 | Enter VR | — | Only shows when a VR headset is connected |
-| Edit ▾ (staff only) | — | Furniture, Openings, Plan (Studio) — see §3 |
+| Edit ▾ (staff only) | — | Furniture, Openings, Plan (Studio), Download 3D model — see §3 |
 | ⋯ | — | **Clean view** (H) and **Quality**: Lite · Low · High (see **Choosing quality** below) |
 | The eye (last button) | H | **Clean view**: hides everything on screen so you see only the flat (below) |
 
@@ -175,7 +175,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
 
 ## 3. The 3D view — staff only
 
-One extra button appears in the bar, top right: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings) and **Plan (Studio) ↗** (Edit plan). The one that is on is the white row and says "on" beside it.
+One extra button appears in the bar, top right: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings), **Plan (Studio) ↗** (Edit plan) and **Download 3D model** (saves this flat as one `.glb` file once every room has arrived — Studio §5 "Give the drawing back"). The one that is on is the white row and says "on" beside it.
 
 ### Edit furniture
 
@@ -286,6 +286,9 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 | Building | Shows / hides the list of your project's floors on the right. With no project open: start one (section 6) |
 | ⋯ → Import… | Opens a saved drawing file (Ctrl+O) — or the architect's own file: see "Bring in the architect's file" below. In a project it goes into the drawing open now. |
 | ⋯ → Export | Saves the drawing as a file (Ctrl+S). After an Auto-trace the file also holds the Check these rows, each with its picture box and its answers (see "Check these") |
+| ⋯ → Export as DXF | Saves the drawing for AutoCAD or any drawing program (`.dxf`, in metres) — see "Give the drawing back" below |
+| ⋯ → Export 3D model | Opens the 3D view in a new tab, which saves the furnished flat as one 3D model file (`.glb`) — see "Give the drawing back" |
+| ⋯ → Print plan… | The plan as an architect's sheet, to print or save as a PDF — see "Give the drawing back" |
 | ⋯ → Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against. The answers the Local AI gave (Ask AI) are in it too, each marked `"by": "ai"` with its model and reason; yours carry no mark |
 | ⋯ → New project | Opens the floor list with the New project card (section 6) |
 | ⋯ → Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below. "open" shows beside it while the panel is open; click it again (or the panel's ×) to close |
@@ -372,6 +375,28 @@ While it reads, a box at the top of the sheet says what it is doing, with a thin
 **Outside shape** (in the panel while the drawing has one): its name and triangle count (how many small flat faces make up the model), then **Offset x / y (m)** — slide the shape over the plan until its walls sit on yours; **Turn (deg)** — turn it (clockwise on the plan); **Floor height (m)** — how high this drawing's floor is inside the shape (an imported storey has it from the file; a plain model starts at 0 = the model's lowest point). Each is one step for Ctrl+Z. **Remove outside shape** deletes the model from this browser and from the drawing. In a project every drawing shares the building's shape (each at its own floor height); a drawing with its own keeps it.
 
 The model is kept in this browser only (like the pictures); an exported drawing file names it but does not hold it. The Lite quality skips a shape over 500 000 triangles and says so.
+
+### Give the drawing back: DXF, 3D model, printed plan
+
+What a developer or their architect asks for, from the ⋯ menu (top right):
+
+- **Export as DXF** saves the drawing as a `.dxf` file that AutoCAD and every drawing program opens, in metres. Each part
+  is on its own layer: **WALLS** (each piece of wall between openings as a closed outline, corners filled), **DOORS**
+  (each door with its leaf and its swing; a sliding door), **WINDOWS**, **COLUMNS**, **TEXT** (room names and their
+  printed sizes) and **ZONES** (the flush lines of a level: parking bays, lawn edges). Dropped back on the Studio
+  untouched, it opens exactly as it was ("Written by Plotline and not changed since"). Once someone changes it in a
+  drawing program, it is read from its lines like any architect's DXF — close, not exact (for Type A: 103 walls back
+  for its 90, 30 of its 33 openings, 21 of its 27 rooms; levels lose more, as their zone lines are not walls).
+- **Export 3D model** opens the 3D view in a new tab; once every room and picture has arrived it saves the furnished
+  flat as one `.glb` file (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the
+  sky), and says "Saved …". A furnished flat is about 60 MB (Type A: 63 MB, a million triangles). Staff can also save it
+  from any flat in the 3D view: **Edit ▾ → Download 3D model**. Blender, 3ds Max, SketchUp and any glTF viewer open it.
+- **Print plan…** shows the plan as a sheet: the walls filled black, doors with their swings, windows, the names and
+  printed sizes, and along the foot the project, the drawing and floor, the area, the scale, a scale bar and the north
+  arrow. Pick the **Paper** (A4, A3, A2, A1) and the **Scale** (1 : 50, 1 : 100, 1 : 200 — a scale the plan does not fit
+  on that paper is greyed); **Print** opens the browser's print window, where **Save as PDF** makes the PDF. Esc, × or
+  **Close** shuts the box.
+- The buyers' notes and choices: ⋯ → **Change list** → **Export CSV** (a spreadsheet file).
 
 ### The tools (the strip on the left; press the letter to pick the tool)
 
