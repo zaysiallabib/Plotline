@@ -1,5 +1,5 @@
 /**
- * A plain 3D model of the building (.glb .gltf .obj .fbx .dae .stl .3dm) → the exact outside shape only (ImportedShell), no
+ * A plain 3D model of the building (.glb .gltf .obj .fbx .dae .stl .3dm .3ds .kmz .wrl .ply) → the exact outside shape only (ImportedShell), no
  * storeys: an architect's massing / facade model stands around the traced flats. Every format goes through three's own
  * loader and comes out as one GLB (GLTFExporter), in the frame of types.ts: Y up, the lowest point at Y = 0, the
  * footprint centred on X / Z = 0.
@@ -11,6 +11,7 @@
  * The pure parts (magic check, unit guess, framing) are tested in mesh.test.ts; the loaders run in the browser only.
  */
 import type { ImportResult, ImportedShell } from './types'
+import { findSibling } from './bundle'
 
 /** metres per file unit, and why */
 export interface UnitGuess {
@@ -66,85 +67,203 @@ export const inFrame = (b: Box): boolean => Math.abs(b.min[1]) < 0.01 && Math.ab
 
 const ext = (name: string) => name.toLowerCase().split('.').pop() ?? ''
 
-export async function importMesh(bytes: ArrayBuffer, name: string): Promise<ImportResult> {
+/**
+ * The loaders' file finder: a file a model points to (a .gltf's .bin, a picture, an .obj's .mtl) comes from the files
+ * dropped with it (bundle.ts); one that is not there fails at once (no request to the server) and is counted.
+ */
+function finder(THREE: typeof import('three'), siblings: Map<string, Blob>) {
+  const manager = new THREE.LoadingManager()
+  const urls = new Map<Blob, string>()
+  const missing = new Set<string>()
+  let busy = false
+  manager.onStart = () => (busy = true)
+  manager.onLoad = () => (busy = false)
+  manager.setURLModifier((url) => {
+    if (/^(data|blob):/i.test(url) || /draco|meshopt/i.test(url)) return url
+    const b = findSibling(siblings, url)
+    if (!b) {
+      missing.add(decodeURIComponent(url).split(/[\\/]/).pop() ?? url)
+      return 'data:,'
+    }
+    let u = urls.get(b)
+    if (!u) urls.set(b, (u = URL.createObjectURL(b)))
+    return u
+  })
+  return {
+    manager,
+    missing,
+    /** until every picture a loader started has come (or failed), 30 s at most */
+    settle: async () => {
+      for (let i = 0; busy && i < 600; i++) await new Promise((r) => setTimeout(r, 50))
+    },
+    done: () => urls.forEach((u) => URL.revokeObjectURL(u)),
+  }
+}
+
+/** a .gltf's buffers that live in other files and were not dropped with it (they hold the 3D itself) */
+export function missingBuffers(gltf: { buffers?: { uri?: string }[] }, has: (uri: string) => boolean): string[] {
+  return (gltf.buffers ?? []).map((b) => b.uri).filter((u): u is string => !!u && !/^data:/i.test(u) && !has(u))
+}
+
+/**
+ * `siblings`: the other files of the drop (bundle.ts), by their path from this file's folder — a .gltf's .bin and
+ * textures, an .obj's .mtl, the pictures an .fbx / .glb / .dae / .3ds points to.
+ */
+export async function importMesh(bytes: ArrayBuffer, name: string, siblings: Map<string, Blob> = new Map()): Promise<ImportResult> {
   const THREE = await import('three')
   const notes: string[] = []
   const e = ext(name)
+  const files = finder(THREE, siblings)
+  const { manager } = files
   let object: InstanceType<typeof THREE.Object3D>
   let scale: number | null = null // null = guess
   let zUp = false
+  let passThrough = e === 'glb' // the bytes may go to the viewer as they are (in frame, nothing outside them, not compressed)
   const text = () => new TextDecoder().decode(bytes)
-  switch (e) {
-    case 'glb':
-    case 'gltf': {
-      if (e === 'glb' ? !isGlb(bytes) : !isGltfJson(text())) throw new Error(`${name} is not a glTF 2.0 file`)
-      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
-      const gltf = await new GLTFLoader().parseAsync(e === 'glb' ? bytes : text(), '').catch((err: unknown) => {
-        const m = err instanceof Error ? err.message : String(err)
-        throw new Error(/DRACO/i.test(m) ? `${name} is Draco-compressed: export it from the modelling tool without compression` : m)
-      })
-      object = gltf.scene
-      scale = 1
-      notes.push('glTF: metres, Y up (as the format says)')
-      break
+  try {
+    switch (e) {
+      case 'glb':
+      case 'gltf': {
+        if (e === 'glb' ? !isGlb(bytes) : !isGltfJson(text())) throw new Error(`${name} is not a glTF 2.0 file`)
+        if (e === 'gltf') {
+          const lost = missingBuffers(JSON.parse(text()), (u) => !!findSibling(siblings, u))
+          if (lost.length) throw new Error(`${name} keeps its 3D in ${lost.join(', ')}: drop the whole folder (or a .zip of it), not the .gltf alone`)
+        }
+        const [{ GLTFLoader }, { DRACOLoader }, { MeshoptDecoder }] = await Promise.all([
+          import('three/addons/loaders/GLTFLoader.js'),
+          import('three/addons/loaders/DRACOLoader.js'),
+          import('three/addons/libs/meshopt_decoder.module.js'),
+        ])
+        // compressed meshes (Draco, meshopt): the decoders three ships, found through Vite
+        const draco = new DRACOLoader()
+        const gltf = await new GLTFLoader(manager)
+          .setDRACOLoader(draco)
+          .setMeshoptDecoder(MeshoptDecoder)
+          .parseAsync(e === 'glb' ? bytes : text(), '')
+          .finally(() => draco.dispose())
+          .catch((err: unknown) => {
+            const m = err instanceof Error ? err.message : String(err)
+            throw new Error(/KTX2|basisu/i.test(m) ? `${name} has KTX2 (compressed) pictures: export it with PNG / JPEG pictures` : m)
+          })
+        const used = (gltf.parser.json.extensionsUsed ?? []) as string[]
+        if (used.some((x) => /draco|meshopt/i.test(x))) (passThrough = false), notes.push('glTF: compressed meshes unpacked')
+        if (files.missing.size || (gltf.parser.json.images ?? []).some((i: { uri?: string }) => i.uri && !/^data:/i.test(i.uri))) passThrough = false
+        object = gltf.scene
+        scale = 1
+        notes.push('glTF: metres, Y up (as the format says)')
+        break
+      }
+      case 'obj': {
+        const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js')
+        const loader = new OBJLoader(manager)
+        // its colours and pictures: the .mtl it names, when it came in the same drop
+        const lib = /^mtllib\s+(.+?)\s*$/m.exec(text())?.[1]
+        // (renamed files keep their old mtllib line: then the .mtl named as the .obj is, or the only one dropped)
+        const mtls = [...siblings.keys()].filter((k) => k.endsWith('.mtl') && !k.includes('/'))
+        const mtl = (lib ? findSibling(siblings, lib) : null) ?? findSibling(siblings, name.replace(/\.obj$/i, '.mtl')) ?? (mtls.length === 1 ? siblings.get(mtls[0])! : null)
+        if (mtl) {
+          const { MTLLoader } = await import('three/addons/loaders/MTLLoader.js')
+          const materials = new MTLLoader(manager).parse(await mtl.text(), '')
+          materials.preload()
+          loader.setMaterials(materials)
+          notes.push(`OBJ: colours and pictures from ${lib}`)
+        } else if (lib) notes.push(`OBJ: its colours are in ${lib}, which was not in the drop (drop the folder or a .zip to keep them)`)
+        object = loader.parse(text())
+        notes.push('OBJ names no up axis: read as Y up (Turn / Floor height in the Studio fix it; a CAD export is often Z up)')
+        break
+      }
+      case 'stl': {
+        const { STLLoader } = await import('three/addons/loaders/STLLoader.js')
+        const g = new STLLoader().parse(bytes)
+        object = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.8 }))
+        notes.push('STL has no materials or up axis: plain plaster, read as Y up')
+        break
+      }
+      case 'ply': {
+        const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js')
+        const g = new PLYLoader().parse(bytes)
+        if (!g.index) throw new Error(`${name} is a point cloud (dots, no surfaces): export it as a mesh`)
+        object = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: g.getAttribute('color') ? '#ffffff' : '#d9d6cf', vertexColors: !!g.getAttribute('color'), roughness: 0.8 }))
+        notes.push('PLY names no unit or up axis: read as Y up')
+        break
+      }
+      case 'fbx': {
+        const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js')
+        object = new FBXLoader(manager).parse(bytes, '')
+        const f = (object.userData as { unitScaleFactor?: number }).unitScaleFactor
+        if (typeof f === 'number' && f > 0) (scale = f / 100), notes.push(`FBX unit scale factor ${f}: ${f} cm per unit`)
+        else notes.push('FBX names no unit scale')
+        break
+      }
+      case 'dae': {
+        const { ColladaLoader } = await import('three/addons/loaders/ColladaLoader.js')
+        const dae = new ColladaLoader(manager).parse(text(), '')
+        if (!dae?.scene) throw new Error(`${name} holds no scene`)
+        object = dae.scene // the loader applies <unit meter> and <up_axis> itself
+        scale = 1
+        notes.push('Collada: its own <unit> and <up_axis> applied')
+        break
+      }
+      case 'kmz': {
+        // SketchUp's "Google Earth" export: a zipped Collada with its pictures inside
+        const { KMZLoader } = await import('three/addons/loaders/KMZLoader.js')
+        object = new KMZLoader().parse(bytes).scene
+        scale = 1
+        notes.push('KMZ (SketchUp / Google Earth): the Collada inside, its own unit and up axis applied')
+        break
+      }
+      case 'wrl': {
+        const { VRMLLoader } = await import('three/addons/loaders/VRMLLoader.js')
+        object = new VRMLLoader(manager).parse(text(), '')
+        // its lamps and its sky (a 10 km sphere the loader draws first) are not the building
+        const drop: InstanceType<typeof THREE.Object3D>[] = []
+        object.traverse((o) => ((o as InstanceType<typeof THREE.Light>).isLight || o.renderOrder === -Infinity) && drop.push(o))
+        for (const o of drop) o.removeFromParent()
+        scale = 1
+        notes.push('VRML: metres, Y up (as the format says)')
+        break
+      }
+      case '3ds': {
+        const { TDSLoader } = await import('three/addons/loaders/TDSLoader.js')
+        object = new TDSLoader(manager).parse(bytes, '')
+        zUp = true
+        notes.push('3DS names no unit: guessed from the size; Z up (3ds Max, ArchiCAD and SketchUp write it so)')
+        break
+      }
+      case '3dm': {
+        const { Rhino3dmLoader } = await import('three/addons/loaders/3DMLoader.js')
+        const loader = new Rhino3dmLoader().setLibraryPath('/rhino3dm/') // public/rhino3dm/ = the rhino3dm package's js + wasm (Docs/SOURCES.md)
+        object = await new Promise((ok, no) => loader.parse(bytes, ok, no))
+        loader.dispose()
+        const sys = (object.userData as { settings?: { modelUnitSystem?: number | { value?: number } } }).settings?.modelUnitSystem
+        scale = rhinoUnitScale(typeof sys === 'object' ? sys?.value : sys)
+        notes.push(scale === null ? 'Rhino file names no unit system' : `Rhino unit system: ${scale} m per unit`)
+        zUp = true
+        break
+      }
+      default:
+        throw new Error(`Plotline cannot read .${e} files`)
     }
-    case 'obj': {
-      const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js')
-      object = new OBJLoader().parse(text())
-      notes.push('OBJ names no up axis: read as Y up (Turn / Floor height in the Studio fix it; a CAD export is often Z up)')
-      break
-    }
-    case 'stl': {
-      const { STLLoader } = await import('three/addons/loaders/STLLoader.js')
-      const g = new STLLoader().parse(bytes)
-      object = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.8 }))
-      notes.push('STL has no materials or up axis: plain plaster, read as Y up')
-      break
-    }
-    case 'fbx': {
-      const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js')
-      object = new FBXLoader().parse(bytes, '')
-      const f = (object.userData as { unitScaleFactor?: number }).unitScaleFactor
-      if (typeof f === 'number' && f > 0) (scale = f / 100), notes.push(`FBX unit scale factor ${f}: ${f} cm per unit`)
-      else notes.push('FBX names no unit scale')
-      break
-    }
-    case 'dae': {
-      const { ColladaLoader } = await import('three/addons/loaders/ColladaLoader.js')
-      const dae = new ColladaLoader().parse(text(), '')
-      if (!dae?.scene) throw new Error(` holds no scene`)
-      object = dae.scene // the loader applies <unit meter> and <up_axis> itself
-      scale = 1
-      notes.push('Collada: its own <unit> and <up_axis> applied')
-      break
-    }
-    case '3dm': {
-      const { Rhino3dmLoader } = await import('three/addons/loaders/3DMLoader.js')
-      const loader = new Rhino3dmLoader().setLibraryPath('/rhino3dm/') // public/rhino3dm/ = the rhino3dm package's js + wasm (Docs/SOURCES.md)
-      object = await new Promise((ok, no) => loader.parse(bytes, ok, no))
-      loader.dispose()
-      const sys = (object.userData as { settings?: { modelUnitSystem?: number | { value?: number } } }).settings?.modelUnitSystem
-      scale = rhinoUnitScale(typeof sys === 'object' ? sys?.value : sys)
-      notes.push(scale === null ? 'Rhino file names no unit system' : `Rhino unit system: ${scale} m per unit`)
-      zUp = true
-      break
-    }
-    default:
-      throw new Error(`Plotline cannot read .${e} files`)
+    await files.settle()
+  } finally {
+    files.done()
   }
   if (zUp) object.rotateX(-Math.PI / 2), notes.push('Z up turned to Y up')
-  // a picture the file only points to (an .fbx / .obj beside its texture folder) never came: the exporter must not wait for it
+  // a picture the file points to that never came: the exporter must not wait for it
   let lost = 0
   object.traverse((o) => {
     const m = o as InstanceType<typeof THREE.Mesh>
     if (!m.isMesh) return
     for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
-      const slots = mat as unknown as Record<string, { image?: unknown } | null>
+      const slots = mat as unknown as Record<string, { image?: { width?: number } } | null>
       for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap', 'bumpMap', 'specularMap', 'lightMap'])
-        if (slots[k] && !slots[k]!.image) (slots[k] = null), (mat.needsUpdate = true), lost++
+        if (slots[k] && !(slots[k]!.image && slots[k]!.image!.width)) (slots[k] = null), (mat.needsUpdate = true), lost++
     }
   })
-  if (lost) notes.push(`${lost} texture${lost === 1 ? '' : 's'} the file points to elsewhere were left out (a .glb with them inside keeps them)`)
+  const missing = [...files.missing].filter((f) => !/\.(bin|mtl)$/i.test(f))
+  if (missing.length) notes.push(`${missing.length} picture${missing.length === 1 ? '' : 's'} the file points to ${missing.length === 1 ? 'was' : 'were'} not in the drop (${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ', …' : ''}): drop the whole folder or a .zip of it to keep ${missing.length === 1 ? 'it' : 'them'}`)
+  else if (lost) notes.push(`${lost} picture${lost === 1 ? '' : 's'} could not be read and ${lost === 1 ? 'was' : 'were'} left out`)
+  if (lost || missing.length) passThrough = false
   object.updateMatrixWorld(true)
   const raw = new THREE.Box3().setFromObject(object)
   if (raw.isEmpty()) throw new Error(`${name} holds no geometry`)
@@ -167,7 +286,7 @@ export async function importMesh(bytes: ArrayBuffer, name: string): Promise<Impo
     max: [rawBox.max[0] * scale + f.dx, (rawBox.max[1] - rawBox.min[1]) * scale, rawBox.max[2] * scale + f.dz],
   }
   let glb: ArrayBuffer
-  if (e === 'glb' && inFrame(rawBox)) glb = bytes
+  if (passThrough && inFrame(rawBox)) glb = bytes
   else {
     const root = new THREE.Group()
     root.add(object)

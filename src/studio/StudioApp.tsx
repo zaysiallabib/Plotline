@@ -45,7 +45,7 @@ import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
-import { IMPORT_ACCEPT, importFile, importFormatOf, lockedFormatOf, type ImportResult, type ImportedStorey } from '../import'
+import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
 import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -73,6 +73,8 @@ const SNAP_PX = 7 // was 10: founder 2026-10-06, "30 % less magnetic"
 /** a press on a piece that drifts at most this far is a click (tool F): it selects, never moves; the 3D view uses the same (PlotlineScene) */
 const CLICK_PX = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+/** a file out of a .zip has no type: the picture check reads it from the name */
+const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', json: 'application/json' }
 const TOOLS: [Tool, string, string][] = [
   ['select', 'V', 'Select'],
   ['scale', 'S', 'Scale'],
@@ -844,13 +846,13 @@ export default function StudioApp() {
    * basements (below 0 or named so) under the ground floor, floors 1..n, the top one the rooftop when its name says so or
    * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
    */
-  const importArchitect = async (file: File) => {
+  const importArchitect = async (file: File, siblings?: Map<string, Blob>) => {
     const stop = new AbortController()
     setNote(null)
     setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file, { signal: stop.signal, progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
+      r = await importFile(file, { siblings, signal: stop.signal, progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
     } catch (e) {
       setReading(null)
       if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
@@ -915,10 +917,8 @@ export default function StudioApp() {
     toast(`${name}: ${r.storeys.length} floors made — the list on the right`)
   }
 
-  const onFiles = useCallback(
-    (files: FileList | null) => {
-      const f = files?.[0]
-      if (!f) return
+  const onFile = useCallback(
+    (f: File) => {
       const locked = lockedFormatOf(f.name)
       if (locked) toast(locked)
       else if (importFormatOf(f.name)) void importArchitect(f)
@@ -927,6 +927,22 @@ export default function StudioApp() {
     },
     [importJson, loadImage], // eslint-disable-line react-hooks/exhaustive-deps
   )
+  /**
+   * One drop or pick. Several files, a folder or a .zip: the architect's file among them opens (bundle.ts mainFile) with the
+   * rest beside it — a .gltf's .bin and pictures, an .obj's .mtl; else the first picture / saved drawing, as one file is.
+   */
+  const onDropped = async (dropped: DropFile[]) => {
+    const files = dropped.length > 1 || dropped.some((f) => /\.zip$/i.test(f.path)) ? await expandZips(dropped).catch(() => null) : dropped
+    if (!files) return toast("That .zip could not be opened")
+    if (!files.length) return
+    const name = (p: string) => p.split('/').pop() ?? p
+    const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
+    const main = mainFile(files.map((f) => f.path))
+    if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
+    const usable = files.find((f) => /\.(png|jpe?g|webp|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
+    onFile(asFile(usable))
+  }
+  const onFiles = (list: FileList | null) => void onDropped([...(list ?? [])].map((f) => ({ path: f.name, data: f })))
   if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
 
   const exportJson = useCallback(() => {
@@ -2182,7 +2198,7 @@ export default function StudioApp() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
-        onFiles(e.dataTransfer.files)
+        void filesOfDrop(e.dataTransfer).then(onDropped)
       }}
     >
       <TopBar
@@ -2217,8 +2233,8 @@ export default function StudioApp() {
         share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
       />
-      <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
-      <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
+      <input ref={jsonRef} type="file" multiple accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
+      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <nav className="tools" aria-label="Tools">
