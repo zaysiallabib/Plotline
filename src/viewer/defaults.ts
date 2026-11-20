@@ -5,7 +5,7 @@
  * Not here: `floor` (the 3D stands an unnumbered flat where the Building view does, render.ts — the load screen and
  * the room chip still show no floor rather than an invented one); `northDeg` (0 = plan-up, normalizeUnit).
  */
-import { deriveFlats, isOutdoor, sqmToSqft, type Room, type Unit } from '../core'
+import { deriveFlats, isOutdoor, sqmToSqft, type Flat, type Room, type Unit } from '../core'
 import { finishSlotsFor } from '../furnish/finishes'
 import { withOwnOptions } from '../furnish/own'
 import { isCommonCore } from '../furnish/presets'
@@ -17,12 +17,12 @@ const TRACED = 'Auto-trace draft'
  * A drawing's title when it has none (session 31 QA: Preview 3D of a traced floor said "Auto-trace draft · 3,493 sqft"):
  * its one flat's printed type ("Type A"), else "Floor plan A" for a whole floor — several flats, or the stair and lift
  * drawn in it (a whole-floor drawing's name, founder 2026-10-09) — else "Untitled unit". The project's name, when it has
- * one, is the line above it on the start screen.
+ * one, is the line above it on the start screen. The Studio's name box shows it in grey while no name is typed.
  */
-function titleOf(u: Unit, rooms: Room[]): string {
+export function titleOf(u: Unit, rooms: Room[], known?: Flat[]): string {
   const own = u.name?.trim()
   if (own && own !== TRACED) return own
-  const flats = deriveFlats(u, rooms)
+  const flats = known ?? deriveFlats(u, rooms)
   if (flats.length === 1 && !/^Flat \d+$/.test(flats[0].name)) return flats[0].name
   return flats.length > 1 || rooms.some((r) => r.kind === 'other' && isCommonCore(r)) ? 'Floor plan A' : 'Untitled unit'
 }

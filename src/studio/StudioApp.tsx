@@ -55,6 +55,7 @@ import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, sa
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
+import { titleOf } from '../viewer/defaults'
 import { forShare } from '../lib/library'
 import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
 import { myOrg, session, useSession } from '../lib/auth'
@@ -365,6 +366,8 @@ export default function StudioApp() {
   const lineUp = unit.walls.length > 0 && !unit.planImage
   const rooms = useMemo(() => deriveRooms(unit), [unit])
   const flats = useMemo(() => deriveFlats(unit, rooms), [unit, rooms])
+  /** what Preview 3D titles the drawing while no name is typed (viewer/defaults.ts): the top bar's name box shows it in grey */
+  const untitled = useMemo(() => titleOf({ ...unit, name: '' }, rooms, flats), [unit, rooms, flats])
   const issues = useMemo(() => studioIssues(unit, rooms), [unit, rooms])
   const labelSides = useMemo(() => wallLabelSides(unit, rooms), [unit, rooms])
   const errors = issues.filter((i) => i.level === 'error').length
@@ -2355,6 +2358,7 @@ export default function StudioApp() {
         autoTrace={state.planImage ? { disabled: !img || !!trace, onClick: startAutoTrace } : null}
         errors={errors}
         quiet={empty}
+        untitled={untitled}
         onPreview={preview}
         building={listOpen}
         onBuilding={() => {

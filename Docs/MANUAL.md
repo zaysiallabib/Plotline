@@ -369,7 +369,7 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 
 | Control | What it does |
 |---|---|
-| Unit name, Project, Floor, Area (sft) | Plain fields saved with the drawing. They look like plain words; the mouse over one shows its box — click and type |
+| Unit name, Project, Floor, Area (sft) | Plain fields saved with the drawing. They look like plain words; the mouse over one shows its box — click and type. While you have typed no name, the name box shows in grey the name Preview 3D will give the drawing: the flat's printed type ("Type A"), **Floor plan A** for a whole floor, else "Untitled unit" (since 2026-11-20; before, it said "Unit name" while the 3D said "Floor plan A") |
 | Saved · just now · Saving… · Offline · will retry · Someone else saved · Not saved: … | After the fields, when signed in: where your work stands online (see "Accounts" below). A problem shows in red; a click opens the account card |
 | ↶ Undo / ↷ Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
 | Auto-trace | Tries to draw the flats for you from the picture. While it shows "Point at a flat": move the pointer over the plan, and the flat a click there would take glows (all of it, open floor too). Then click inside ONE flat to trace that flat, or press **Whole floor** (in the same box) to trace every flat of the floor and the lobby, stair and lifts between them in one go. It does not understand ground floors, basements or rooftops. |

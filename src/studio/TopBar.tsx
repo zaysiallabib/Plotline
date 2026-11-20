@@ -26,6 +26,8 @@ interface Props {
   errors: number
   /** the Studio is empty: its own Choose plan image… is the one blue button, Preview 3D waits plain */
   quiet: boolean
+  /** the name Preview 3D gives this drawing while none is typed ("Floor plan A" for a whole floor): the name box's grey words */
+  untitled: string
   onPreview: () => void
   building: boolean
   onBuilding: () => void
@@ -92,7 +94,7 @@ export default function TopBar(p: Props) {
       </a>
       <span className="sep" />
       <div className="tb-fields">
-        <input className="meta name" placeholder="Unit name" aria-label="Unit name" title="Unit name" value={unit.name} onChange={onMeta('name')} />
+        <input className="meta name" placeholder={p.untitled} aria-label="Unit name" title="Unit name" value={unit.name} onChange={onMeta('name')} />
         <input className="meta project" placeholder="Project" aria-label="Project" title="Project" value={unit.projectName} onChange={onMeta('projectName')} />
         <label className="meta-num" title="The floor this drawing is on (numbers only)">
           <span className="label">Floor</span>
