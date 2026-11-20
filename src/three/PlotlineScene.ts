@@ -85,6 +85,8 @@ type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 const present = (u: Unit): Unit => (u.furniture.some((p) => p.removed) ? { ...u, furniture: u.furniture.filter((p) => !p.removed) } : u)
 const SEL = '#39a0ff'
 const REFUSED = '#ff4d4d'
+/** what a built piece is built at: its own size, and a staff's own model's library size (changed there: built again) */
+const sizeKey = (p: FurniturePlacement): string => JSON.stringify([p.sizeM ?? null, kitAsset(p.assetId)?.own ? kitAsset(p.assetId)!.sizeM : null])
 
 /** Eye height (m): a Dhaka buyer's standing eye and the real-estate camera height; viewer/frame.ts EYE mirrors it. Was 1.6: rooms read cramped. */
 const EYE = 1.45
@@ -789,7 +791,7 @@ export class PlotlineScene {
         if (!p.removed || this.adding.has(p.id)) void this.addPiece(p)
         continue
       }
-      const size = JSON.stringify(p.sizeM ?? null)
+      const size = sizeKey(p)
       if (o.userData.size !== size) {
         void this.rebuildPiece(o, p, size)
         continue
@@ -1420,7 +1422,7 @@ export class PlotlineScene {
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
     this.wake()
     this.rebatch('furniture')
-    obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
+    obj.userData.size = sizeKey(p) // Arrange rebuilds a piece when this changes
     obj.userData.floorM = this.floorOf(p)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)

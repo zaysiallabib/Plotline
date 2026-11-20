@@ -42,7 +42,7 @@ export function colourOnly<T extends THREE.Object3D>(model: T): T {
 }
 
 /** Rotation about Y that turns the asset's declared front axis into +Z (see kit.ts frontAxis). */
-const FRONT_FIX: Record<string, number> = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }
+export const FRONT_FIX: Record<string, number> = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }
 
 function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D {
   const m = new THREE.Mesh(

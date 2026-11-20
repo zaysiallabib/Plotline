@@ -46,3 +46,38 @@
 .lib-mark { padding: 1px 7px; border: 1px solid var(--hairline); border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 .lib-mark.scan { border-color: var(--line); color: var(--ink-2); }
 .lib p { margin: var(--s-2) var(--s-1); color: var(--muted); }
+
+/* the staff's own pieces (session 31): Add your own, their rows with a more button, its small menu */
+.lib .lib-add {
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--s-2);
+  width: 100%; height: var(--control); padding: 0 var(--s-3);
+  background: transparent; color: var(--ink);
+  border: 1px dashed var(--line); border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-md); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.lib .lib-add:hover { background: var(--hover); border-color: var(--accent-line); }
+.lib .lib-add > span { color: var(--accent); font-size: var(--fs-lg); line-height: 1; }
+.lib .lib-note { margin: 0 var(--s-1); color: var(--ink-2); font-size: var(--fs-xs); }
+.lib-own { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; }
+.lib-own:last-child { margin-bottom: var(--s-2); }
+.lib-own .lib-row:last-child { margin-bottom: 0; }
+.lib .lib-more {
+  width: 28px; height: 28px; padding: 0;
+  background: none; border: 0; border-radius: var(--r-sm); color: var(--muted); font: inherit; font-size: var(--fs-lg); line-height: 1; cursor: pointer;
+}
+.lib .lib-more:hover, .lib .lib-more[aria-expanded='true'] { background: var(--hover); color: var(--ink); }
+.lib-mark.own { border-color: var(--line); color: var(--ink); }
+.lib-menu {
+  position: absolute; z-index: 3; top: 30px; right: 0; width: 220px;
+  display: flex; flex-direction: column; padding: var(--s-1);
+  background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.lib-menu > button, .lib-menu-row > button {
+  height: 32px; padding: 0 var(--s-3);
+  background: none; border: 0; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer;
+}
+.lib-menu > button:hover, .lib-menu-row > button:hover { background: var(--hover); }
+.lib-menu .danger { color: var(--danger); }
+.lib-menu p { margin: var(--s-2) var(--s-2) var(--s-1); color: var(--ink); font-size: var(--fs-sm); }
+.lib-menu-row { display: flex; gap: var(--s-1); }

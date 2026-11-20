@@ -4,7 +4,9 @@
  */
 import { useEffect, useState } from 'react'
 import type { Configuration, FinishOption, FinishSlot, MaterialRef } from '../core'
-import { TEXTURES } from '../furnish/textures'
+import { isOwnId, ownItem, type OwnFinish } from '../furnish/own'
+import { textureSet } from '../furnish/textures'
+import { OwnFinishForm } from './OwnFinish'
 import { formatDelta, formatTaka, type FinishKeys } from './share'
 
 /** A floor / wall / ceiling clicked in 3D while the panel is open: its room's key (finishes.ts roomKey), a wall's face key too. */
@@ -23,11 +25,13 @@ interface Props {
   onSelect: (key: string, optionId: string | null) => void
   onCloseSurface: () => void
   onReset: () => void
+  /** staff (never a buyer link): "Add option" under each group, and their own options editable */
+  staff?: boolean
 }
 
 function swatchStyle(m: MaterialRef): React.CSSProperties {
   if (m.kind === 'color') return { background: m.color }
-  const tex = TEXTURES[m.textureId]
+  const tex = textureSet(m.textureId)
   const tint = m.tint ?? '#ffffff'
   // tint × albedo, like the renderer (materials.ts), so a deep paint shows deep, not washed out
   return tex
@@ -98,13 +102,15 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
   )
 }
 
-export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset }: Props) {
+export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff }: Props) {
+  /** the Add option form open under this slot, or one of the staff's own options being changed */
+  const [form, setForm] = useState<{ slotId: string; edit?: OwnFinish } | null>(null)
   // warm the HTTP cache so the engine's TextureLoader hits it (≤ 200 ms swap after caching)
   useEffect(() => {
     for (const s of slots) {
       for (const o of s.options) {
         if (o.material.kind !== 'pbr') continue
-        const t = TEXTURES[o.material.textureId]
+        const t = textureSet(o.material.textureId)
         for (const url of [t?.albedo, t?.normal, t?.roughness, t?.ao]) if (url) new Image().src = url
       }
     }
@@ -129,10 +135,36 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
           <div key={slot.id} className="slot">
             <div className="label">{slot.label}</div>
             <div className="chips">
-              {slot.options.map((o) => (
-                <Chip key={o.id} o={o} on={o.id === sel} onClick={() => onSelect(slot.id, o.id)} />
-              ))}
+              {slot.options.map((o) =>
+                staff && isOwnId(o.id) ? (
+                  <div key={o.id} className="chip-own">
+                    <Chip o={o} on={o.id === sel} onClick={() => onSelect(slot.id, o.id)} />
+                    <button className="chip-edit" aria-label={`Change ${o.label}`} title="Your own option: change or remove it" onClick={() => setForm({ slotId: slot.id, edit: ownItem(o.id) as OwnFinish })}>
+                      ⋯
+                    </button>
+                  </div>
+                ) : (
+                  <Chip key={o.id} o={o} on={o.id === sel} onClick={() => onSelect(slot.id, o.id)} />
+                ),
+              )}
             </div>
+            {staff &&
+              (form?.slotId === slot.id ? (
+                <OwnFinishForm
+                  key={form.edit?.id ?? 'new'}
+                  slots={slots}
+                  slotId={slot.id}
+                  edit={form.edit}
+                  onDone={(saved) => {
+                    setForm(null)
+                    if (saved && !form.edit) onSelect(saved.slotId, saved.id) // the new option on, so it shows in the 3D at once
+                  }}
+                />
+              ) : (
+                <button className="link add-option" onClick={() => setForm({ slotId: slot.id })}>
+                  + Add option
+                </button>
+              ))}
           </div>
         )
       })}

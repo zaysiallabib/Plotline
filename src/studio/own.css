@@ -1,0 +1,129 @@
+/*
+ * The staff's own pieces and finishes (OwnModel.tsx, viewer/OwnFinish.tsx): the "Add your own…" box and the Finishes
+ * panel's Add option form, the same in the Studio and the 3D view. Marble tokens only (src/index.css): a white sheet on a
+ * frosted marble backdrop, the serif title, inscriptions over the fields, hairlines, the one blue button.
+ */
+.own { color: var(--ink); font-size: var(--fs-md); line-height: var(--lh); }
+.own .label { display: block; }
+
+/* the box: a white sheet over the page, frosted marble behind it */
+dialog.own {
+  width: min(760px, calc(100vw - 2 * var(--s-4)));
+  max-height: calc(100dvh - 2 * var(--s-4));
+  padding: var(--s-5);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+dialog.own[open] { display: flex; flex-direction: column; gap: var(--s-5); animation: own-in var(--dur-slow) var(--ease) both; }
+dialog.own::backdrop { background: var(--glass); backdrop-filter: var(--blur); }
+@keyframes own-in { from { opacity: 0; } }
+
+.own-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4); }
+.own-head h2 { margin: 0; font-size: var(--fs-2xl); overflow: hidden; text-overflow: ellipsis; }
+.own .own-x {
+  flex: none; width: var(--control); height: var(--control); padding: 0;
+  background: none; border: 0; border-radius: var(--r-sm); color: var(--muted); font-size: var(--fs-xl); line-height: 1; cursor: pointer;
+}
+.own .own-x:hover { background: var(--hover); color: var(--ink); }
+
+/* buttons: ink on transparent, a hairline edge; the one primary in accent */
+.own .own-button, .own .own-seg button, .own .own-front {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  height: var(--control); padding: 0 14px;
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-md); white-space: nowrap; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.own .own-button:hover:not(:disabled), .own .own-seg button:hover, .own .own-front:hover { background: var(--hover); }
+.own .own-button:disabled { opacity: 0.4; cursor: default; }
+.own .own-button.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 500; }
+.own .own-button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
+.own .own-button.danger { color: var(--danger); }
+
+/* the drop: a dashed hairline on marble */
+.own-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3);
+  min-height: 260px; padding: var(--s-6) var(--s-5);
+  background: var(--bg); border: 1px dashed var(--line); border-radius: var(--radius);
+  text-align: center; cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.own-drop:hover { border-color: var(--accent-line); }
+.own-drop.busy { cursor: progress; }
+.own-drop-title { font-family: var(--font-display); font-size: var(--fs-2xl); line-height: 1.05; letter-spacing: -0.01em; }
+
+.own-body { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--s-5); align-items: start; }
+.own-view { margin: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.own-view canvas { display: block; width: 100%; aspect-ratio: 1; background: var(--bg); border-radius: var(--radius); }
+.own-view figcaption { text-align: center; }
+
+.own-form { display: flex; flex-direction: column; gap: var(--s-4); }
+.own-field { display: flex; flex-direction: column; gap: var(--s-1); }
+.own input:not([type='checkbox']):not([type='color']), .own select {
+  width: 100%; height: var(--control); padding: 0 10px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-md);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.own input:focus, .own select:focus { outline: none; border-color: var(--accent); }
+.own input:disabled { opacity: 0.4; }
+.own-row { display: flex; align-items: center; gap: var(--s-4); }
+
+/* the front: four arrows round the piece seen from above */
+.own-fronts {
+  flex: none; display: grid; grid-template: repeat(3, 28px) / repeat(3, 28px); gap: 2px;
+}
+/* the piece, seen from above, in the middle */
+.own-fronts::after { content: ''; grid-area: 2 / 2; place-self: center; width: 12px; height: 12px; border: 1px solid var(--line); border-radius: 2px; }
+.own .own-front { width: 28px; height: 28px; padding: 0; font-size: var(--fs-md); border-color: var(--hairline); color: var(--muted); }
+.own .own-front.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 500; }
+.own-front.at-up { grid-area: 1 / 2; }
+.own-front.at-left { grid-area: 2 / 1; }
+.own-front.at-right { grid-area: 2 / 3; }
+.own-front.at-down { grid-area: 3 / 2; }
+
+/* where it sits: one segmented switch */
+.own-seg { display: flex; padding: 2px; background: var(--surface-2); border-radius: var(--r-pill); }
+.own .own-seg button { flex: 1; min-width: 0; height: calc(var(--control) - 4px); padding: 0 var(--s-2); border: 0; border-radius: var(--r-pill); color: var(--muted); }
+.own .own-seg button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
+
+.own-sizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+.own-sizes label { display: flex; flex-direction: column; gap: 2px; }
+.own-check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.own-check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+.own-refused { margin: 0; color: var(--danger); }
+.own-foot { display: flex; justify-content: flex-end; gap: var(--s-2); padding-top: var(--s-4); border-top: 1px solid var(--hairline); }
+.own .muted { color: var(--muted); }
+.own .small { font-size: var(--fs-xs); }
+
+@media (max-width: 640px) {
+  dialog.own { padding: var(--s-4); }
+  .own-body { grid-template-columns: 1fr; }
+  .own-view canvas { aspect-ratio: 4 / 3; }
+}
+
+/* ── the Finishes panel's Add option form (viewer/OwnFinish.tsx): on the panel's frosted marble, no sheet of its own ── */
+.own-finish { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); }
+.own-finish .own-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-2); }
+.own-finish .own-foot { padding-top: var(--s-3); }
+.own-finish .own-look { display: flex; align-items: center; gap: var(--s-3); }
+.own-finish input[type='color'] { flex: none; width: 44px; height: var(--control); padding: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; }
+.own-finish .own-drop { min-height: 96px; padding: var(--s-4); gap: var(--s-2); }
+.own-finish .own-drop-title { font-family: inherit; font-size: var(--fs-md); }
+.own-swatch { flex: none; width: var(--s-7); height: var(--s-7); border-radius: var(--r-sm); background: var(--surface-2) center / cover; box-shadow: inset 0 0 0 1px var(--hairline); }
+.own input.bad { border-color: var(--danger); }
+.own-finish .own-field.grow { flex: 1; min-width: 0; }
+.own-finish .own-foot .grow { flex: 1; }
+/* the Finishes panel: an own option's chip with its more button, and the quiet Add option line */
+.chip-own { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; gap: 2px; }
+.chip-own .chip-edit {
+  width: 28px; height: 28px; padding: 0;
+  background: none; border: 0; border-radius: var(--r-sm); color: var(--muted); font: inherit; font-size: var(--fs-lg); line-height: 1; cursor: pointer;
+}
+.chip-own .chip-edit:hover { background: var(--hover); color: var(--ink); }

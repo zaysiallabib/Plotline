@@ -51,6 +51,7 @@ import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, sa
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
+import { forShare } from '../lib/library'
 import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
 import { myOrg, session, useSession } from '../lib/auth'
 import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
@@ -1050,7 +1051,10 @@ export default function StudioApp() {
     setSharing(true)
     try {
       const st = stateRef.current
-      const unit = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
+      const laid = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
+      // and none of the staff's own pieces / finishes: their records go with it (their files online first: lib/library.ts)
+      const library = await forShare(laid)
+      const unit = library.length ? { ...laid, library } : laid
       const me = org && (await session())
       const saved = me ? linkStore(me.user.id).get(cloudItem()?.key ?? '') : undefined // the cloud row it was made from, for the change list
       const token = org ? await shareUnit(org.id, unit, { project: saved?.id, stem: st.unit.id, floor: st.unit.floor }) : await publishUnit(unit, key)

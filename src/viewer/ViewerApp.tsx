@@ -5,7 +5,7 @@
  * `plotline.preview`; `/u/:id` by Unit.id or the JSON's filename stem;
  * `/s/<token>` ← Supabase (a link the Studio's Share published).
  */
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
@@ -14,8 +14,10 @@ import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
 import { placementLabel, placementSize } from '../furnish/kit'
+import { onOwnChange, ownVersion, refreshOwnOptions } from '../furnish/own'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
+import { learnCarried } from '../lib/library'
 import { fetchSharedUnit } from '../lib/supabase'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
@@ -206,7 +208,7 @@ export default function ViewerApp() {
   useEffect(() => {
     if (TOKEN)
       fetchSharedUnit(TOKEN)
-        .then(asUnit)
+        .then(async (raw) => (await learnCarried((raw as { library?: unknown } | null)?.library), asUnit(raw))) // its own pieces and finishes first
         .catch((e) => (console.warn('[plotline] share link', e), null))
         .then(setFetched)
   }, [])
@@ -307,10 +309,10 @@ const BuyerName = () => (
 )
 
 /** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
-function AddPanel({ onPick, onEsc }: { onPick: (assetId: string) => void; onEsc: () => void }) {
+function AddPanel({ onPick, onEsc, onNote }: { onPick: (assetId: string) => void; onEsc: () => void; onNote: (text: string) => void }) {
   return (
     <aside className="glass library">
-      <LibraryPanel onPick={onPick} focus onEsc={onEsc} />
+      <LibraryPanel onPick={onPick} focus onEsc={onEsc} onNote={onNote} />
     </aside>
   )
 }
@@ -555,6 +557,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   finishesRef.current = finishesOpen
   const modeRef = useRef(mode)
   modeRef.current = mode
+  // the staff's own finishes (furnish/own.ts): one added or changed while the 3D runs joins its slot in place — the scene
+  // holds these very slots, so the panel, the materials and a buyer's choice all have it without building the flat again
+  const ownV = useSyncExternalStore(onOwnChange, ownVersion)
+  useMemo(() => refreshOwnOptions(unit.finishSlots), [unit.finishSlots, ownV])
   /** every slot resolved (selection or its default), plus the one-room / one-wall choices — what the engine and the share link get */
   const fullCfg = useMemo<Configuration>(
     () => ({ ...Object.fromEntries(unit.finishSlots.map((s) => [s.id, s.defaultOptionId])), ...cfg }),
@@ -771,6 +777,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     showSel(pieceOf(show))
     redraw()
   }
+  // a piece of the staff's own resized in the library (Edit furniture → Add → ⋯): the ones placed are built again at it
+  const ownAt = useRef(ownV)
+  useEffect(() => {
+    if (ownV === ownAt.current) return
+    ownAt.current = ownV
+    if (arranging) scene?.setLayout(steps.current.pieces) // the layout is built by then (Edit furniture opens after Enter)
+  }, [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   const undo = () => steps.current.past.length && settle(undoStep(steps.current))
   const turn = () => {
     const p = pieceOf(sel)
@@ -1397,7 +1410,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             </aside>
           )}
           {finishesOpen && (
-            <aside className="glass panel" aria-label="Finishes" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
+            <aside className="glass panel" aria-label="Finishes" onKeyDown={(e) => ['INPUT', 'SELECT'].includes((e.target as HTMLElement).tagName) && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
               <header className="panel-head">
                 <span className="label">Finishes</span>
                 <button className="x" aria-label="Close Finishes" title="Close (F or Esc)" onClick={() => setFinishesOpen(false)}>
@@ -1407,6 +1420,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               <div className="panel-body">
                 {TOKEN && <BuyerName />}
                 <FinishesPanel
+                  staff={STAFF && !TOKEN}
                   slots={unit.finishSlots}
                   cfg={cfg}
                   keys={keys}
@@ -1442,7 +1456,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               onUndo={() => planCommit({ type: 'undo' })}
             />
           )}
-          {arranging && adding && <AddPanel onPick={startPlacing} onEsc={escArrange} />}
+          {arranging && adding && <AddPanel onPick={startPlacing} onEsc={escArrange} onNote={(t) => showToast(t, 6000)} />}
           {arranging && (
             <ArrangePanel
               piece={pieceOf(sel)}
