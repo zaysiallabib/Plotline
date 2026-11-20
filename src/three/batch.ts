@@ -115,6 +115,9 @@ export function batch(root: THREE.Object3D, cellM = CELL_M): THREE.Mesh[] {
   return out
 }
 
+// ponytail: the batched meshes keep their own geometry, so the flat's is held twice (type-a's furniture ≈ 280k triangles);
+// dispose the originals' graphics buffers after batching (three uploads them again when drawn) if a phone runs out of memory.
+
 /** `root`'s batches gone, its meshes drawn one by one again. */
 export function unbatch(root: THREE.Object3D): void {
   for (const c of [...root.children]) {
