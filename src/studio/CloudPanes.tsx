@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import type { Org } from '../lib/auth'
 import { cancelInvite, inviteMember, orgPeople, plainError, removeMember, setMemberRole, whyNotInvite, whyNotRemove, whyNotSetRole, type People, type Role } from '../lib/members'
 import { projectLinks, revokeLink, type ProjectLink } from '../lib/supabase'
+import { ask } from '../lib/ask'
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', {
@@ -83,8 +84,8 @@ export function Members({ org, me }: { org: Org; me: string }) {
                     <button
                       disabled={busy}
                       title={flip === 'owner' ? 'Owners can also invite and remove people' : 'Staff do the work; only owners invite and remove people'}
-                      onClick={() => {
-                        if (m.user_id === me && !window.confirm('Make yourself staff? You will no longer be able to invite or remove people.')) return
+                      onClick={async () => {
+                        if (m.user_id === me && !(await ask('Make yourself staff? You will no longer be able to invite or remove people.', 'Make me staff'))) return
                         void act(() => setMemberRole(org.id, m.user_id, flip))
                       }}
                     >
@@ -96,8 +97,8 @@ export function Members({ org, me }: { org: Org; me: string }) {
                       className="danger"
                       disabled={busy}
                       title="They keep their account but reach nothing of the company’s; everything they saved stays"
-                      onClick={() => {
-                        if (!window.confirm(`Remove ${m.email} from ${org.name}? They keep their account but reach nothing of the company’s from now on. Everything they saved stays with the company.`)) return
+                      onClick={async () => {
+                        if (!(await ask(`Remove ${m.email} from ${org.name}? They keep their account but reach nothing of the company’s from now on. Everything they saved stays with the company.`, 'Remove', true))) return
                         void act(() => removeMember(org.id, m.user_id))
                       }}
                     >
@@ -192,7 +193,7 @@ export function Links({ project, me }: { project: string | undefined; me: string
 
   const url = (t: string) => `${location.origin}/s/${t}`
   const turnOff = async (l: ProjectLink) => {
-    if (!window.confirm(`Turn off this link to ${l.unit_name}? Whoever has it is told it no longer works; what they wrote stays in the Change list. It cannot be turned back on — make a new link instead.`)) return
+    if (!(await ask(`Turn off this link to ${l.unit_name}? Whoever has it is told it no longer works; what they wrote stays in the Change list. It cannot be turned back on — make a new link instead.`, 'Turn off', true))) return
     setError(null)
     try {
       if (!(await revokeLink(l.token))) setError('That link could not be turned off (it is off already).')

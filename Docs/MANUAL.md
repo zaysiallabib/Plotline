@@ -18,6 +18,8 @@ Two kinds of people:
 - **Staff** — can also move furniture, change doors and windows, and open the Studio.
   A browser becomes "staff" the first time it opens the Studio, or when you add `?staff=1` to the address. `?staff=0` turns it off.
 
+**When something "asks first"** (since 2026-11-20, session 31): a white card opens in the middle of the screen with the question, and the page behind it goes pale and takes no clicks. **Cancel** (or **Esc**) says no and nothing changes. The second button says yes and names what it does — **Delete**, **Replace**, **Continue**, **Turn off**, **Make it my draft**; it is red when something is deleted or taken away. **Enter** says yes too. The browser's own grey box is never used any more.
+
 ---
 
 ## 0. The front page

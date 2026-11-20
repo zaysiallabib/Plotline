@@ -371,6 +371,13 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Ask again** (under **Show building**, after you answered the 3D view's "which floors?" box) | Forgets the answer: the 3D view asks again |
 | Old way: **Use this plan as** (A flat / Ground floor / Basement / Common floor / Rooftop), **Building**, **Name**, **This flat on floors … to …**, **Next to it on each floor** (None / Mirrored, left / Mirrored, right), **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project |
 
+### The question box ("asks first", everywhere)
+
+| Name | What it does | Who |
+|---|---|---|
+| **Cancel** (or **Esc**) | Says no: nothing changes | staff |
+| The second button — it names what happens: **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**… (or **Enter**) | Says yes. Red when something is deleted or taken away | staff |
+
 ### Pages that say something went wrong (MANUAL §12)
 
 | Name | What it does | Who |

@@ -12,6 +12,7 @@ import { RpcError, configured, revokeLink } from '../lib/supabase'
 import { Skeleton, Slate } from '../lib/pages'
 import { formatDelta } from './share'
 import './viewer.css'
+import { ask } from '../lib/ask'
 
 const KEY = 'plotline.staffKey'
 const getKey = () => {
@@ -61,7 +62,7 @@ export default function ChangeList() {
   useEffect(() => void (org !== undefined && load(key, !!org)), [key, org, load])
 
   const turnOff = async (token: string, name: string) => {
-    if (!window.confirm(`Turn off this link to ${name}? Whoever has it sees "This link no longer opens a flat" from now on; what they wrote stays here. It cannot be turned back on — make a new link instead.`)) return
+    if (!(await ask(`Turn off this link to ${name}? Whoever has it sees "This link no longer opens a flat" from now on; what they wrote stays here. It cannot be turned back on — make a new link instead.`, 'Turn off', true))) return
     try {
       if (!(await revokeLink(token))) setError('That link could not be turned off (it is off already, or not your company’s).')
       await load(key, true)

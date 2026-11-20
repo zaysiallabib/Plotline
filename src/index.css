@@ -177,3 +177,29 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .skel-side { display: none; }
   .skel-body { padding: 0 var(--s-4); }
 }
+
+/* ── the one question box (lib/ask.ts), Studio and viewer alike: a white card over a marble wash, never the browser's grey box */
+@keyframes ask-in { from { opacity: 0; transform: translateY(var(--s-1)); } }
+.ask {
+  width: min(420px, calc(100vw - 2 * var(--s-4)));
+  margin: auto;
+  padding: var(--s-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  animation: ask-in var(--dur) var(--ease) both;
+}
+.ask::backdrop { background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.ask p { margin: 0 0 var(--s-5); font-size: var(--fs-lg); line-height: var(--lh); white-space: pre-line; text-wrap: pretty; }
+.ask-row { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.ask button {
+  height: var(--control); padding: 0 var(--s-4); border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent;
+  color: var(--ink); font-size: var(--fs-md); cursor: pointer; transition: background var(--dur-fast) var(--ease);
+}
+.ask button:hover { background: var(--hover); }
+.ask button.primary { border-color: transparent; background: var(--accent); color: var(--accent-ink); font-weight: 500; }
+.ask button.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
+.ask button.danger { color: var(--danger); font-weight: 500; }
+.ask button.danger:hover { background: var(--danger-soft); }

@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as core from '../core'
 import type { Pt, Site, Unit } from '../core'
+import { ask } from '../lib/ask'
 
 const Z = 18
 /** the map's zoom range (wheel, + / −), tile zoom levels */
@@ -222,12 +223,12 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
             d.moved = true
             setCenter(toLatLon({ x: d.c.x - dx / SHOW, y: d.c.y - dy / SHOW }, z))
           }}
-          onClick={(e) => {
+          onClick={async (e) => {
             const dragged = drag.current?.moved
             drag.current = null
             if (busy || dragged) return // a drag pans, it never sets the plot
-            if (site && !window.confirm('Move the plot here? Its blocks, roads and wind are fetched again (typed heights and deletions are lost).')) return
-            const r = e.currentTarget.getBoundingClientRect()
+            const r = e.currentTarget.getBoundingClientRect() // read before the question: the event is gone after it
+            if (site && !(await ask('Move the plot here? Its blocks, roads and wind are fetched again (typed heights and deletions are lost).', 'Move the plot'))) return
             const ll = toLatLon({ x: o.x + (e.clientX - r.left) / SHOW, y: o.y + (e.clientY - r.top) / SHOW }, z)
             void pick(ll.lat, ll.lon)
           }}

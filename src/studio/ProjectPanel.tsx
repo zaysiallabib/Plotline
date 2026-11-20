@@ -27,6 +27,7 @@ import {
   type Placement,
   type Project,
 } from '../data/building/projects'
+import { ask } from '../lib/ask'
 
 interface Props {
   unit: Unit
@@ -104,25 +105,25 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
     return true
   }
   /** every other building without this plan (it stands in one); null when he keeps a building that would lose its only flat */
-  const others = (keep: string): Project[] | null => {
+  const others = async (keep: string): Promise<Project[] | null> => {
     const lost = projects.find((p) => p.id !== keep && p.flats[unit.id] && !removeFlat(p, unit.id))
-    if (lost && !window.confirm(`This plan is the only flat of ${lost.name}: that building and its levels go. Continue?`)) return null
+    if (lost && !(await ask(`This plan is the only flat of ${lost.name}: that building and its levels go. Continue?`, 'Continue', true))) return null
     return projects.flatMap((p) => (p.id === keep ? [] : p.flats[unit.id] ? (removeFlat(p, unit.id) ?? []) : [levelOf(p, unit.id) ? removeLevel(p, unit.id) : p]))
   }
-  const show = () => {
+  const show = async () => {
     const lo = Math.max(1, Math.min(from, to))
     const hi = Math.min(99, Math.max(from, to, lo))
-    const rest = others(target)
+    const rest = await others(target)
     if (!rest) return
     // into the chosen building (where it stood, else where its drawing puts it) or a new one
     const b = into && (levelOf(into, unit.id) ? removeLevel(into, unit.id) : into)
     const made = b ? placeFlat({ ...b, name: name.trim() || b.name }, unit, lo, hi, neighbour, placementOf(b, unit.id)?.offset ?? sheetOffset(b, unit)) : { ...makeProject(newId(), unit, lo, hi, neighbour), name: name.trim() || 'Building' }
     if (store([...rest, made])) onShow(lo, hi)
   }
-  const showLevel = () => {
+  const showLevel = async () => {
     if (!hostP || role === 'flat') return
     if (role === 'common' && topOf < 2) return onToast('A common floor goes under the flats: put the flats on higher floors first')
-    const rest = others(hostP.id)
+    const rest = await others(hostP.id)
     if (!rest) return
     const made = placeLevel(hostP, unit, role, role === 'common' ? Math.min(n, topOf - 1) : n, offset, by)
     if (made === hostP) return onToast(`This plan is the only flat of ${hostP.name}: add another flat first`)
@@ -132,10 +133,10 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
     const flat = Object.keys(made.flats).find((s) => !made.flats[s].mirror) ?? Object.keys(made.flats)[0]
     onOpen(`/u/${encodeURIComponent(flat)}?floor=${floorIn(t, flat)}&view=building&pick=${t.LEVELS?.[unit.id] ?? 0}`)
   }
-  const leave = () => {
+  const leave = async () => {
     if (mine) {
       const left = removeFlat(mine, unit.id)
-      if ((mine.levels ?? []).length && !left && !window.confirm(`${mine.name} has no other flat: it goes, with its ${mine.levels!.length} level(s). Continue?`)) return
+      if ((mine.levels ?? []).length && !left && !(await ask(`${mine.name} has no other flat: it goes, with its ${mine.levels!.length} level(s). Continue?`, 'Continue', true))) return
       if (store(projects.flatMap((p) => (p !== mine ? [p] : left ? [left] : [])))) {
         setTarget('new')
         onToast(left ? `Taken out of ${mine.name}` : `${mine.name} removed (it had no other flat)`)

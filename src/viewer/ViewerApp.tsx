@@ -40,6 +40,7 @@ import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
 import './viewer.css'
+import { ask } from '../lib/ask'
 
 const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
 const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
@@ -1100,7 +1101,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
   }
   useEffect(() => scene?.onOpening(onOpening))
-  const toggleOpenings = () => {
+  const toggleOpenings = async () => {
     if (editingOpenings) {
       setEditingOpenings(false)
       setOpSel(null)
@@ -1111,10 +1112,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (at === 'other') {
       // its doors and windows live in the Studio draft: this unit becomes the draft (as Edit plan does), asked first
       const builtIn = location.pathname !== '/u/preview'
-      const ask = builtIn
+      const question = builtIn
         ? `${unit.name} is a built-in unit. Its doors and windows are edited on your Studio draft: this makes it your Studio draft (replacing the unit open in the Studio — export that first if you need it) and reopens it here. Continue?`
         : 'Edit openings saves into your Studio draft, and your Studio draft is not this unit. Make this unit your Studio draft? (It replaces the unit open in the Studio — export that one first if you need it.)'
-      if (!window.confirm(ask)) return
+      if (!(await ask(question, 'Make it my draft'))) return
       if (!makeDraft(unit)) return showToast(OPENINGS_WHY.full, 7000)
       if (builtIn) return location.assign(`/u/preview?${unit.floor !== undefined ? `floor=${unit.floor}&` : ''}edit=openings`) // (on its floor)
     }
