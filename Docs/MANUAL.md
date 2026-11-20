@@ -256,8 +256,11 @@ in a few clicks. They then work exactly like the built-in ones.
 1. Open the library: in the 3D view **Edit ▾ → Furniture → Add**; in the Studio press **F** (the list is on the right).
 2. Click **+ Add your own…** (just under the search box). A white box opens: **Drop a 3D model here**.
 3. Drag the file from your computer onto the box, or click **Choose a file…**. Plotline reads: **GLB, glTF, OBJ, FBX,
-   DAE, STL**. Best is one **.glb** file (Blender: File → Export → glTF 2.0, Format "glTF Binary (.glb)"). A .gltf that
-   keeps its parts in separate files: export it as one .glb (Plotline says so).
+   DAE, STL**. Best is one **.glb** file (Blender: File → Export → glTF 2.0, Format "glTF Binary (.glb)"). A model that
+   keeps its parts in separate files (a .gltf with its .bin and a textures folder, an .obj with its .mtl and pictures):
+   **drop its whole folder, or a .zip of it**, or select all its files and drop them together (or pick them all with
+   **Choose a file…**) — Plotline finds the model among them and its pictures beside it (since 2026-11-21; before, a
+   split .gltf was refused). Dropped alone, a .gltf says to drop its files together.
 4. The model turns slowly on the left, with its size under it in feet and inches (and metres) and how many triangles it
    has. On the right:
    - **Name** — filled in from the file's name; type the name your staff and buyers will see.
