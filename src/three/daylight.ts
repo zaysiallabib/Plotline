@@ -684,6 +684,8 @@ function own(g: THREE.BufferGeometry, id: number): THREE.BufferGeometry {
  * patch (daylit) once — the programs are the rooms' where the maps match; no new material. Called again when the piece
  * moves: only the numbers change. The batches (batch.ts) carry each piece's own numbers, one draw per material as before.
  */
+// ponytail: every vertex of a piece holds its one dayUv (8 bytes: type-a ≈ 4.5 MB on Lite, 8 MB on High, again in the batches);
+// a 16-bit attribute or a per-piece index into a small table if a phone runs short of memory.
 export function lightPiece(obj: THREE.Object3D, uv: [number, number]): void {
   const [u, v] = [Math.fround(uv[0]), Math.fround(uv[1])]
   obj.traverse((o) => {
