@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
 import * as THREE from 'three'
-import { bakeDaylight, dayMap, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, LO, mapDaylight, openToSky, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
+import { bakeDaylight, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
+import { batch } from './batch'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
 import { TEST_UNIT } from './testUnit'
@@ -251,5 +252,97 @@ describe('a flat under the floor above (founder 2026-11-20: "a gap in the ceilin
     const shut = bakeDaylight(u, rooms, over(veranda)).regions.get(`floor:${veranda.id}`)!.E
     const mean = (e: ArrayLike<number>) => Array.from(e).reduce((a, b) => a + b, 0) / e.length
     expect(mean(shut)).toBeLessThan(mean(open) * 0.8) // its open sides (the rail) still light it
+  })
+})
+
+describe('furniture reads the daylight of its room (session 31: "furniture in a windowless room is still lit as if it had a window")', () => {
+  const u = typeA as Unit
+  const rooms = core.deriveRooms(u)
+  const d = bakeDaylight(u, rooms)
+  /** the factor a piece gets: the atlas texel its dayUv falls in (the nearest, as factorAt reads) */
+  const got = (uv: [number, number]) => (RANGE * d.data[Math.floor(uv[1] * d.height) * d.width + Math.floor(uv[0] * d.width)]) / 255
+  const piece = (x: number, y: number, roomId: string) => pieceDayUv(d, rooms, u, { x, y }, roomId)
+
+  test("a piece reads its room's floor where its middle stands: a closet's rail and a windowless toilet's basin dim, a sofa by the window bright", () => {
+    const rail = piece(9.22, 12.6, 'r_closet') // the walk-in closet: no window
+    const basin = piece(4.24, 9.44, 'r_htoilet') // the help's toilet: one door, no window
+    const sofa = piece(11.16, 5.62, 'r_living') // its back to the living room's windows
+    expect(got(rail)).toBe(factorAt(d, 'floor:r_closet', 9.22, 12.6))
+    expect(got(basin)).toBe(factorAt(d, 'floor:r_htoilet', 4.24, 9.44))
+    expect(got(sofa)).toBe(factorAt(d, 'floor:r_living', 11.16, 5.62))
+    for (const v of [got(rail), got(basin)]) expect(v).toBeLessThan(0.5)
+    expect(got(sofa)).toBeGreaterThan(1)
+    // the dining, lit through the living room's opening: between the two
+    const table = got(piece(6.67, 10.04, 'r_dining'))
+    expect(table).toBeGreaterThan(got(rail))
+    expect(table).toBeLessThan(got(sofa))
+  })
+
+  test('a piece across two rooms takes the room its middle is in; a middle in no room keeps its own room', () => {
+    const dt = bakeDaylight(TEST_UNIT, core.deriveRooms(TEST_UNIT))
+    const inRegion = (uv: [number, number], key: string) => {
+      const r = dt.regions.get(key)!
+      const [x, y] = [uv[0] * dt.width, uv[1] * dt.height]
+      return x >= r.x && x <= r.x + r.nu && y >= r.y && y <= r.y + r.nv
+    }
+    const trs = core.deriveRooms(TEST_UNIT)
+    expect(inRegion(pieceDayUv(dt, trs, TEST_UNIT, { x: 4.6, y: 2 }, 'bed'), 'floor:living')).toBe(true) // listed in the bed, its middle in the living
+    expect(inRegion(pieceDayUv(dt, trs, TEST_UNIT, { x: 2.5, y: -0.1 }, 'bed'), 'floor:bed')).toBe(true) // in the outer wall's outer half: no room
+  })
+
+  test('a piece on an open zone (a lawn: not baked) reads the OPEN texel: neutral by day, a lit room at night — as before', () => {
+    const g = GROUND_SAMPLE
+    const gr = core.deriveRooms(g)
+    const dg = bakeDaylight(g, gr)
+    const at = { x: 1, y: 8 } // the lawn round the lobby
+    expect(core.roomAt(at, gr, g)?.id).toBe('Lawn')
+    const uv = pieceDayUv(dg, gr, g, at, 'Lawn')
+    const [x, y] = [Math.floor(uv[0] * dg.width), Math.floor(uv[1] * dg.height)]
+    expect(dg.regions.has('floor:Lawn')).toBe(false)
+    expect([...dg.regions.values()].some((r) => x >= r.x && x < r.x + r.nu && y >= r.y && y < r.y + r.nv)).toBe(false) // no room's texel
+    const rg = daylightTexture(dg).image.data as Uint8Array
+    expect(rg[2 * (y * dg.width + x)]).toBe(Math.round(255 / RANGE)) // factor 1 by day
+    expect(rg[2 * (y * dg.width + x) + 1]).toBeGreaterThan(0) // at night a lit room's lamp share (the neutral block's is 0: dark)
+    expect(rg[2 * (y * dg.width + x) + 1]).toBe(rg[2 * 5 + 1])
+    expect(rg[1]).toBe(0)
+    expect(pieceDayUv(dg, gr, g, { x: 4, y: 4 }, 'Lawn')).not.toEqual(uv) // listed on the lawn, its middle in the lobby
+  })
+
+  test("lightPiece: each piece its own dayUv over its model's shared vertices; the material patched once; a moved piece only gets new numbers", () => {
+    const geo = new THREE.BoxGeometry(1, 1, 1) // a model's clones share one geometry
+    const mat = new THREE.MeshStandardMaterial()
+    const own = new THREE.MeshStandardMaterial()
+    own.onBeforeCompile = () => {} // a material with its own shader (a pane, water): left alone
+    const glass = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.1 }) // a shower screen: seen through, left alone
+    const a = new THREE.Group().add(new THREE.Mesh(geo, mat), new THREE.Mesh(geo, own), new THREE.Mesh(geo, glass))
+    const b = new THREE.Group().add(new THREE.Mesh(geo, mat))
+    lightPiece(a, [0.25, 0.5])
+    lightPiece(b, [0.75, 0.125])
+    const [ma, mo] = a.children as THREE.Mesh[]
+    const mb = b.children[0] as THREE.Mesh
+    const uvs = (m: THREE.Mesh) => [...new Set(Array.from(m.geometry.getAttribute('dayUv').array as Float32Array).map((v, i) => `${i % 2}:${v}`))]
+    expect(uvs(ma)).toEqual(['0:0.25', '1:0.5'])
+    expect(uvs(mb)).toEqual(['0:0.75', '1:0.125'])
+    expect(ma.geometry).not.toBe(geo)
+    expect(ma.geometry.attributes.position).toBe(geo.attributes.position) // the vertices are not copied
+    expect(ma.geometry.index).toBe(geo.index)
+    expect(geo.getAttribute('dayUv')).toBeUndefined()
+    expect(mat.customProgramCacheKey()).toBe('daylit') // the room surfaces' programs
+    expect(mo.geometry).toBe(geo)
+    expect(own.customProgramCacheKey()).not.toBe('daylit')
+    expect((a.children[2] as THREE.Mesh).geometry).toBe(geo)
+    expect(glass.customProgramCacheKey()).not.toBe('daylit')
+    // moved into another room: the same geometry, new numbers
+    const before = ma.geometry
+    const v0 = (ma.geometry.getAttribute('dayUv') as THREE.BufferAttribute).version
+    lightPiece(a, [0.5, 0.5])
+    expect(ma.geometry).toBe(before)
+    expect(uvs(ma)).toEqual(['0:0.5', '1:0.5'])
+    expect((ma.geometry.getAttribute('dayUv') as THREE.BufferAttribute).version).toBeGreaterThan(v0)
+    // batched (batch.ts), the two pieces stay one draw, each with its own numbers
+    const root = new THREE.Group().add(a, b)
+    const out = batch(root).filter((m) => m.material === mat)
+    expect(out).toHaveLength(1)
+    expect(uvs(out[0])).toEqual(['0:0.5', '1:0.5', '0:0.75', '1:0.125'])
   })
 })
