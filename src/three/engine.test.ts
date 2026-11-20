@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
 import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, evenBearings, isClick, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, isClick, pickedAt, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -502,5 +502,19 @@ describe('a press let go: click or not (the walk, the pin, the Building view)', 
     expect(isClick({ ...tap, ms: 500 })).toBe(false) // a long press
     expect(isClick({ ...tap, multi: true })).toBe(false) // the last finger of a pinch
     expect(isClick({ ...press, multi: true })).toBe(true) // a mouse never pinches
+  })
+})
+
+describe('a drag dot is never huge on screen (session 31 tidy: on a phone near a picture the dots hid it)', () => {
+  test('at most 7 % of the short side, never over a fingertip (44 px)', () => {
+    expect(dotMaxPx(1600, 1000)).toBe(44)
+    expect(dotMaxPx(390, 844)).toBeCloseTo(27.3, 1)
+  })
+  test('far off it is its own 15 cm; close up it shrinks to the cap; never grown', () => {
+    const across = (d: number, view: number) => (0.075 * view) / (d * Math.tan((50 * Math.PI) / 360)) // diameter, px
+    expect(dotScale(0.075, 6, 50, 1000, 44)).toBe(1) // 29 px across already
+    expect(dotScale(0.075, 1, 50, 1000, 44) * across(1, 1000)).toBeCloseTo(44, 6) // 161 px → 44
+    expect(dotScale(0.075, 0.6, 50, 844, dotMaxPx(390, 844)) * across(0.6, 844)).toBeCloseTo(27.3, 1) // the phone
+    expect(dotScale(0.075, 0, 50, 1000, 44)).toBeGreaterThan(0) // the camera on the dot: tiny, not NaN
   })
 })

@@ -102,12 +102,38 @@ function outline(edges: THREE.BufferGeometry, line: LineMaterial, halo: LineMate
   edges.dispose()
   return [halo, line].map((m, i) => Object.assign(new LineSegments2(geo, m), { renderOrder: 10 + i, raycast: () => {} }))
 }
-/** a drag dot at `at`: the white rim is what a click finds, the coloured core is drawn over it */
+/** a drag dot's rim, m (its core 0.058) */
+const DOT_M = 0.075
+/**
+ * The most a drag dot measures across on screen, CSS px: 7 % of the view's short side, never over a fingertip's 44 (the
+ * --touch size) — on a phone, near a picture on the wall, the 15 cm balls hid the piece (session 31 tidy).
+ */
+export const dotMaxPx = (w: number, h: number): number => Math.min(44, 0.07 * Math.min(w, h))
+/** The scale that keeps a ball of `radiusM` at `distM` from a `fovDeg` (vertical) camera on a view `viewPx` tall at most `maxPx` across; 1 when it is smaller already. */
+export function dotScale(radiusM: number, distM: number, fovDeg: number, viewPx: number, maxPx: number): number {
+  const across = (radiusM * viewPx) / (Math.max(distM, 1e-3) * Math.tan((fovDeg * Math.PI) / 360))
+  return across > maxPx ? maxPx / across : 1
+}
+const dotSeen = { at: new THREE.Vector3(), eye: new THREE.Vector3(), k: new THREE.Vector3(), view: new THREE.Vector2() }
+/** a drag dot at `at`: the white rim is what a click finds, the coloured core is drawn over it; up close it shrinks (dotMaxPx) */
 function dragDot(at: THREE.Vector3, core: THREE.Material, rim: THREE.Material): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 8), rim)
+  const m = new THREE.Mesh(new THREE.SphereGeometry(DOT_M, 16, 8), rim)
   m.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.058, 16, 8), core), { renderOrder: 13, raycast: () => {} }))
   m.position.copy(at)
   m.renderOrder = 12
+  // drawn rim first (renderOrder), so its core is drawn with the size set here; a click finds the dot as it is drawn
+  m.onBeforeRender = (renderer, _scene, camera) => {
+    const { at, eye, k, view } = dotSeen
+    m.scale.setScalar(1)
+    m.updateMatrixWorld(true)
+    const cam = camera as THREE.PerspectiveCamera
+    if (!cam.isPerspectiveCamera || renderer.xr.isPresenting) return
+    renderer.getSize(view)
+    k.setFromMatrixScale(m.matrixWorld) // the piece's own scale, carried by the dot
+    const d = at.setFromMatrixPosition(m.matrixWorld).distanceTo(eye.setFromMatrixPosition(cam.matrixWorld))
+    m.scale.setScalar(dotScale(DOT_M * Math.max(k.x, k.y, k.z), d, cam.fov, view.y, dotMaxPx(view.x, view.y)))
+    m.updateMatrixWorld(true)
+  }
   return m
 }
 /** what a built piece is built at: its own size, and a staff's own model's library size (changed there: built again) */

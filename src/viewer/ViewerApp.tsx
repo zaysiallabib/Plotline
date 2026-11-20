@@ -359,6 +359,7 @@ function ArrangePanel(p: {
   onAdd: () => void
 }) {
   const s = p.piece && placementSize(p.piece)
+  const finger = useFinger() // a finger has no R or Esc: the words say what it can do
   return (
     <aside className="glass arrange">
       {p.held ? (
@@ -367,7 +368,7 @@ function ArrangePanel(p: {
             {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
           </div>
           <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
-            {p.held.error ?? (p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
+            {p.held.error ?? (p.held.ready ? (finger ? 'Tap to put it here' : `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}`) : 'Point at the floor, a wall or the ceiling')}
           </div>
         </>
       ) : p.piece && s ? (
@@ -382,14 +383,14 @@ function ArrangePanel(p: {
           </div>
         </>
       ) : (
-        <div className="muted small">Click a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        <div className="muted small">{finger ? 'Tap' : 'Click'} a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
       )}
       <div className="arrange-row">
         <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
           Add
         </button>
         <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
-          Turn 90° (R)
+          {finger ? 'Turn 90°' : 'Turn 90° (R)'}
         </button>
         <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
           Delete
