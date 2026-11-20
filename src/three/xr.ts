@@ -102,7 +102,7 @@ export class XRControls {
   private readonly pt: Pt = { x: 0, y: 0 }
   private readonly q = new THREE.Quaternion()
   private readonly euler = new THREE.Euler()
-  private readonly okColor = new THREE.Color('#e8c170')
+  private readonly okColor = new THREE.Color('#2458a6') // --accent (src/index.css)
   private readonly badColor = new THREE.Color('#e0604f')
   /** last known standable head spot: exit falls back to it if the player walked into a wall */
   private safe: Pt = { x: 0, y: 0 }

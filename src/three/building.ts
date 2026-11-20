@@ -289,7 +289,7 @@ export class Building extends THREE.Group {
     this.street = buildStreet(unit, streetOf(t, stem), this.streetY)
     this.add(this.street)
 
-    const markMat = new THREE.MeshBasicMaterial({ color: '#e8c170' }) // --accent
+    const markMat = new THREE.MeshBasicMaterial({ color: '#2458a6' }) // --accent (src/index.css)
     this.own.push(markMat)
     this.mark = new THREE.Mesh(new THREE.BufferGeometry(), markMat)
     this.mark.raycast = () => {}

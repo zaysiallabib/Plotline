@@ -337,7 +337,7 @@ Opens this flat or level in the Studio, in a new tab.
 
 ## 4. The Building view
 
-- **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is the white row, and your own flat's floor has a small blue dot.
+- **Floors on the right** (a list headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**, **B2**. The picked floor is the white row, and your own flat's floor has a small blue dot. On the tower, thin blue bands run round the picked floor's flat (they were gold until 2026-11-20).
 - Picking a basement hides everything above it (a ground floor traced in the Studio too). The street round the tower and the next buildings stay (since 2026-11-20; before, they went with the floors above).
 - **Top left** the box names the floor you picked: "Floor 2" over the flat's name and size ("Type A · 2703 sft"), the flats of another floor, or the level ("Ground floor", "Basement 1", "Rooftop").
 - **Walk this level** (the blue button right under the floors) shows when the picked floor is a ground floor, basement, rooftop or common floor. Click to walk it.
@@ -444,7 +444,7 @@ The panel opens top right, and a blue **north arrow** appears in the middle of t
 
 1. **Find the place:** type an address ("Banani, Dhaka", "Road 11, Banani") and press **Find** (or Enter) — or paste the plot's position as "23.7903, 90.4077" (in Google Maps: right-click the plot, click the numbers to copy them). A map picture shows round it.
 2. **Zoom and pan** if you need to: the mouse wheel over the map (it zooms where the pointer is) or **+ / −** in its top-right corner, five steps; drag the map to slide it. Nothing is fetched again, the blocks, roads and your drawing stay on it.
-  - **Click your plot** on the map. The buildings and roads within 250 m and the wind of the last ten years come in (a few seconds; up to half a minute when the map server is busy). On the map: grey shapes = buildings (dashed outline = height guessed), dark lines = roads, gold = your drawing, the gold dot = the plot.
+  - **Click your plot** on the map. The buildings and roads within 250 m and the wind of the last ten years come in (a few seconds; up to half a minute when the map server is busy). On the map: grey shapes = buildings (dashed outline = height guessed), dark lines = roads, blue = your drawing, the blue dot = the plot.
   - The middle of your drawing stands on the dot; a building the map has on that spot (within 1 m of your drawing — the old house, or this very building if it is already mapped) is left out of the 3D and drawn dotted on the map.
   - Clicking the map again moves the plot (it asks first: what you typed or deleted is lost).
 3. **Set true north:** drag the blue arrow on the plan (anywhere along it) until it points the same way as the north arrow printed on the sheet; drag its round dot to move it over that arrow first. Or type the degrees in **True north** (0 = up the page, 90 = to the right). The drawing on the map turns with it — check that it sits on the plot the right way round.

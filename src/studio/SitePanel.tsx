@@ -275,7 +275,7 @@ export function SitePanel({ unit, onSite, onNorth, onClose }: Props) {
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
             OpenStreetMap contributors
           </a>
-          {site ? ' · grey: blocks (dashed: height guessed), dark: roads, gold: your drawing — click one to change it' : ''}
+          {site ? ' · grey: blocks (dashed: height guessed), dark: roads, blue: your drawing — click one to change it' : ''}
         </div>
       )}
       {status && <p>{status}</p>}
