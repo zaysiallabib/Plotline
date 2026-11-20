@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import * as THREE from 'three'
 import * as core from '../core'
-import type { FurniturePlacement, Unit } from '../core'
+import type { FurniturePlacement, Pt, Unit } from '../core'
 import { buildProcedural } from './procedural'
-import { arriveBy, isStair, isStairRoom, LANDING_M, stairArrival, stairSpot } from './stairs'
+import { arriveBy, HOLE_REACH, isStair, isStairRoom, LANDING_M, stairArrival, stairHole, stairSpot, treadBelow } from './stairs'
 import { layoutFor } from '../studio/furniture'
-import { stairTo, type Tower } from '../data/building'
+import { stairsDown, stairTo, type Tower } from '../data/building'
 import { arrivalFace, DOOR_LEAF_MAX } from '../viewer/spawn'
 import { frameShares } from '../viewer/frame'
 import * as bti from '../data/building/demo-tower'
@@ -145,5 +145,64 @@ describe('walking the dog-leg stair (founder 2026-11-20: "if i climb a stair i c
     const sa = look(sheltech.FLATS['sheltech-a'].unit, 'above')
     expect(sa.leaf).toBeLessThanOrEqual(DOOR_LEAF_MAX)
     expect(sa.face).toEqual(sa.by.face) // 1.4 m: the door, into the floor
+  })
+})
+
+describe('the way down drawn (session 31): a hole in the floor at a stair that leads down, the flight below walked', () => {
+  /** a stair's frame point → plan (stairs.ts plan) */
+  const at = (s: FurniturePlacement, x: number, z: number) => {
+    const t = (s.rotationDeg * Math.PI) / 180
+    return { x: s.x + x * Math.cos(t) - z * Math.sin(t), y: s.y + x * Math.sin(t) + z * Math.cos(t) }
+  }
+  const btiStair = () => {
+    const u = bti.FLATS['type-b'].unit
+    const rooms = core.deriveRooms(u)
+    const s = layoutFor(u, rooms).find(isStair)!
+    return { u, rooms, s, inner: core.roomInnerPolygon(rooms.find((r) => r.id === s.roomId)!, u) }
+  }
+
+  test('the hole is the stair footprint; its back and sides reach the walls standing within HOLE_REACH, its front stays where he steps on', () => {
+    const r6 = (ps: Pt[]) => ps.map((p) => [+p.x.toFixed(6), +p.y.toFixed(6)])
+    const free = stair(90, 3, 9) // nothing round it: its footprint
+    expect(r6(stairHole(free))).toEqual(r6([at(free, -1.4, -1.55), at(free, 1.4, -1.55), at(free, 1.4, 1.55), at(free, -1.4, 1.55)]))
+    const { s, inner } = btiStair() // stair_32 against the stair room's back wall (5 mm), 0.2 m from each side wall
+    const hole = stairHole(s, inner)
+    const gap = (p: Pt) => Math.min(...inner.map((a, i) => { const b = inner[(i + 1) % inner.length]; const L = Math.hypot(b.x - a.x, b.y - a.y); const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / L ** 2)); return Math.hypot(p.x - a.x - t * (b.x - a.x), p.y - a.y - t * (b.y - a.y)) }))
+    for (const p of hole.slice(0, 2)) expect(gap(p), 'back corners: in the walls’ corners').toBeLessThan(1e-6)
+    expect(gap(at(s, 0, 1.55))).toBeGreaterThan(1) // the front: open floor before it
+    expect(hole[2]).toMatchObject({ x: expect.closeTo(at(s, 1.6 + 0.198, 1.55).x, 2), y: expect.closeTo(at(s, 1.6 + 0.198, 1.55).y, 2) }) // the front edge out to the side walls
+    // stair_28 (1.4 m each side of its middle) in a room 0.2 m off its left, 0.4 m off its right (past HOLE_REACH), 0.1 m behind
+    const h2 = stairHole(stair(), [{ x: -1.6, y: -1.65 }, { x: 1.8, y: -1.65 }, { x: 1.8, y: 4 }, { x: -1.6, y: 4 }])
+    expect(HOLE_REACH).toBeLessThan(0.3) // under the walker's 0.3 m: nobody stands on the strip it opens
+    expect(r6(h2)).toEqual([[-1.6, -1.65], [1.4, -1.65], [1.4, 1.55], [-1.6, 1.55]])
+  })
+
+  test('the flight below: its treads one storey under the stair’s own flight B, walked from one riser under this floor to its foot', () => {
+    const s = stair()
+    expect(treadBelow(s, { x: 0.7, y: 1.5 })).toBeCloseTo(-1 / 6, 9) // the top tread, by this floor's edge
+    expect(treadBelow(s, { x: 0.7, y: -0.4 })).toBeCloseTo(LANDING_M - 3 + 1 / 6, 9) // the foot: one riser over the landing below
+    const g = buildProcedural('stair_28')!
+    g.updateMatrixWorld(true)
+    const top = (x: number, z: number) => new THREE.Raycaster(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0)).intersectObject(g, true)[0]?.point.y
+    for (let j = 1; j <= 8; j++) {
+      const z = -1.55 + 1.1 + (j - 0.5) * 0.25 // tread j of flight B, the model's own
+      expect(treadBelow(s, { x: 0.7, y: z }), `tread ${j}`).toBeCloseTo(top(0.7, z)! - 3, 2)
+    }
+  })
+
+  test('which floors have the hole: every floor with a stair room below it; never the lowest', () => {
+    const down = (t: Tower, stem: string, k: number) => {
+      const u = t.FLATS[stem].unit
+      return stairsDown(t, stem, k, layoutFor(u, core.deriveRooms(u)).filter(isStair)).length
+    }
+    const T = sheltech as unknown as Tower
+    expect(down(T, 'sheltech-b2', -2)).toBe(0) // the lowest basement: nothing under it
+    expect(down(T, 'sheltech-b1', -1)).toBe(1)
+    expect(down(T, 'sheltech-l1', 1)).toBe(1)
+    expect([2, 3, 6].map((k) => down(T, 'sheltech-a', k))).toEqual([1, 1, 1])
+    expect(down(T, 'sheltech-roof', 7)).toBe(1)
+    const B = bti as unknown as Tower
+    expect(down(B, 'type-b', 1)).toBe(0) // BTI's first floor: no ground level traced under it
+    expect([2, 3, 8].map((k) => down(B, 'type-b', k))).toEqual([1, 1, 1])
   })
 })

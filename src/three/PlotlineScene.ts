@@ -27,16 +27,17 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
-import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
-import { lean, lite } from '../furnish/procedural'
+import { LANDING_M, isStair, stairHole, stairSpot, treadBelow } from '../furnish/stairs'
+import { buildProcedural, lean, lite } from '../furnish/procedural'
+import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
+import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
 import { bakeDaylight, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, CELL_M, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
@@ -448,6 +449,13 @@ export class PlotlineScene {
    * made-up street round it. Set BEFORE setUnit. Null: a flat of no tower — the street goes round its own walls.
    */
   street: Street | null = null
+  /**
+   * The stairs of this unit that lead down (data/building stairsDown): each gets a hole in its floor with the flight below
+   * and the stair core under it drawn, and walking down that flight is the way down. Set BEFORE setUnit. Empty: none.
+   */
+  down: Id[] = []
+  /** the holes setUnit opened (down, where the hole lies inside its room's floor), with the stair as it stood then */
+  private wells: (Well & { stair: FurniturePlacement })[] = []
   /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
   private blocks: { plan: Pt[]; heightM: number }[] = []
 
@@ -531,6 +539,14 @@ export class PlotlineScene {
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
     this.stairs = unit.furniture.filter(isStair)
+    // a stair that leads down: a hole in its room's floor, the stair's footprint out to the walls beside it (inside the
+    // room's floor, else no hole: the step under flight B takes him down as before)
+    this.wells = this.stairs.flatMap((s) => {
+      const room = this.rooms.find((r) => r.id === s.roomId)
+      const poly = room && stairHole(s, core.roomInnerPolygon(room, unit))
+      if (!room || !poly || !this.down.includes(s.id) || !poly.every((p) => core.pointInPolygon(p, core.roomPolygon(room, unit)))) return []
+      return [{ id: s.id, roomId: room.id, poly, bottom: this.floorOf(s) - STAIR_RISE, stair: s }]
+    })
     const b = core.unitBounds(unit)
     this.center.set((b.minX + b.maxX) / 2, 0, (b.minY + b.maxY) / 2)
     this.radius = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2 + 1
@@ -545,7 +561,7 @@ export class PlotlineScene {
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.buildMarkings(unit)
     // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish, on its floor
-    for (const [roomId, mesh] of buildSkirtings(unit, this.rooms)) {
+    for (const [roomId, mesh] of buildSkirtings(unit, this.rooms, this.wells.map((w) => w.poly))) {
       const r = this.rooms.find((x) => x.id === roomId)!
       mesh.position.y = core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y)
       this.staticGroup.add(mesh)
@@ -572,10 +588,12 @@ export class PlotlineScene {
     }
     const storey = this.top
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
+    for (const w of this.wells) this.buildWell(w, unit, day) // the same
     setDaylight(day)
     this.day = day
+    for (const w of this.wells) this.buildFlightBelow(w.stair, w.bottom)
     this.applyMaterials()
-    this.look.setUnit(present(unit), this.rooms, this.cover, street) // fixtures, lights, slab, shadow fit box, the street
+    this.look.setUnit(present(unit), this.rooms, this.cover, street, this.wells) // fixtures, lights, slab, shadow fit box, the street
     this.setTimeOfDay(this.hour)
     if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
@@ -980,6 +998,12 @@ export class PlotlineScene {
 
   /** A committed layout (drop, turn, delete, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
   setLayout(all: FurniturePlacement[]): void {
+    // a stair over a hole moved, turned or deleted (Arrange): the floor is built again, the hole where the stair now stands
+    const moved = this.wells.some(({ stair: w }) => {
+      const s = all.find((p) => p.id === w.id)
+      return !s || s.removed || s.x !== w.x || s.y !== w.y || s.rotationDeg !== w.rotationDeg
+    })
+    if (moved && this.unit) this.setUnit({ ...this.unit, furniture: all }, true)
     this.placePieces(all, true)
     this.stairs = all.filter(isStair) // a stair moved or deleted in Arrange: the walker climbs it where it now stands
     if (this.unit) this.look.setFurniture(present({ ...this.unit, furniture: all }))
@@ -1410,7 +1434,8 @@ export class PlotlineScene {
 
   private buildRoom(room: Room, unit: Unit): void {
     const floorGeo = floorGeometry(room, unit) // its level; a ramp's vertices on its plane (details.ts)
-    const floor = new THREE.Mesh(stepGeometry(room, unit) ?? floorGeo) // a steep slope: a flight of steps (details.ts)
+    const holes = this.wells.filter((w) => w.roomId === room.id).map((w) => w.poly) // a stair that leads down (its ceiling stays whole)
+    const floor = new THREE.Mesh(stepGeometry(room, unit) ?? (holes.length ? floorGeometry(room, unit, holes) : floorGeo)) // a steep slope: a flight of steps (details.ts)
     floor.receiveShadow = true
     floor.userData = { kind: 'floor', id: room.id, roomId: room.id, label: `${room.name} floor`, objectKind: 'floor' }
     this.staticGroup.add(floor)
@@ -1440,6 +1465,50 @@ export class PlotlineScene {
     ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id, label: `${room.name} ceiling`, objectKind: 'ceiling' }
     this.ceilingGroup.add(ceiling)
     this.surfaces.push({ mesh: ceiling, sides: [{ roomId: room.id, target: 'ceiling' }] })
+  }
+
+  /**
+   * The stair core under a hole (details.ts wellParts), down to the floor below: a side along a wall of its room goes on
+   * down that wall — its finish, its daylight — the others and its floor are the room's. Not picked: decoration of the hole.
+   */
+  private buildWell(w: Well, unit: Unit, day: Daylight): void {
+    const room = this.rooms.find((r) => r.id === w.roomId)!
+    for (const { edge, geo } of wellParts(w.poly, w.bottom + STAIR_RISE, w.bottom)) {
+      const m = edge && { x: (edge[0].x + edge[1].x) / 2, y: (edge[0].y + edge[1].y) / 2 }
+      const along =
+        m &&
+        unit.walls.find((x) => {
+          if (!room.wallIds.includes(x.id)) return false
+          const f = core.wallFrame(x, unit.vertices)
+          const [u, n] = [(m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y, (m.x - f.origin.x) * f.normal.x + (m.y - f.origin.y) * f.normal.y]
+          return u > 0 && u < f.lengthM && Math.abs(Math.abs(n) - x.thicknessM / 2) < 0.03
+        })
+      mapDaylight(day, geo, unit, along ? 'wall' : 'floor', along ? along.id : room.id)
+      const mesh = new THREE.Mesh(geo)
+      mesh.receiveShadow = true
+      this.staticGroup.add(mesh)
+      this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: edge ? 'wall' : 'floor', ...(along ? { wallId: along.id } : {}) }] })
+    }
+  }
+
+  /**
+   * The flight below a hole (stairHole): stair `s` itself one storey down, its floor at `floorM` — seen and walked down
+   * (walkLevel, treadBelow), never picked or arranged. Its middle reads its room's daylight, as the stair above does.
+   */
+  private buildFlightBelow(s: FurniturePlacement, floorM: number): void {
+    const model = buildProcedural(s.assetId)
+    if (!model) return
+    const box = new THREE.Box3().setFromObject(model)
+    const c = box.getCenter(new THREE.Vector3())
+    model.position.set(-c.x, -box.min.y, -c.z) // grounded and centred as buildFurniture places the stair above
+    model.traverse((o) => ((o.castShadow = false), (o.receiveShadow = true))) // under the slab: nothing there to shade
+    const pivot = new THREE.Group()
+    pivot.position.set(s.x, floorM, s.y)
+    pivot.rotation.y = -THREE.MathUtils.degToRad(s.rotationDeg)
+    pivot.userData.roomId = s.roomId
+    pivot.add(model)
+    this.staticGroup.add(pivot)
+    this.readDaylight(pivot)
   }
 
   /** A parking level's paint (details.ts bayMarkings): the bay lines (one mesh) and each bay's number, flat on its floor. */
@@ -1537,7 +1606,10 @@ export class PlotlineScene {
   /** What the walker stands on at p: the floor (levelAt), or a stair's tread or half landing over its floor. */
   private walkLevel(p: Pt): number {
     const s = this.stairAt(p)
-    return s && s.spot.part !== 'between' ? this.floorOf(s.stair) + s.spot.h : this.levelAt(p)
+    if (!s) return this.levelAt(p)
+    if (s.spot.part !== 'between') return this.floorOf(s.stair) + s.spot.h
+    // flight B's side: over a hole, the flight below's treads (walked down); else this floor, under flight B
+    return this.wells.some((w) => w.id === s.stair.id) ? this.floorOf(s.stair) + treadBelow(s.stair, p) : this.levelAt(p)
   }
 
   /**
@@ -1919,17 +1991,24 @@ export class PlotlineScene {
   /**
    * A step onto a stair's flight B (stairs.ts 'between'): from its half landing he goes up, from its floor down — the next
    * floor loads (stairCb). With no floor that way, or over the rail from mid-flight, the step is refused. True: handled.
+   * Over a hole (wells) the way down is walked: onto the flight below from this floor, down it tread by tread (canStep), and
+   * the step off its foot toward its half landing takes him to the floor below.
    */
   private toNextFloor(next: Pt): boolean {
     const to = this.stairAt(next)
-    if (to?.spot.part !== 'between' || this.stairAt(this.walker)?.spot.part === 'between') return false
-    const h = this.walkLevel(this.walker) - this.floorOf(to.stair)
+    const from = this.stairAt(this.walker)
+    const well = (s: FurniturePlacement) => this.wells.some((w) => w.id === s.id)
+    const below = from?.spot.part === 'between' && well(from.stair)
+    if (below ? to?.stair !== from.stair || to.spot.part !== 'landing' : to?.spot.part !== 'between' || from?.spot.part === 'between') return false
+    const stair = to!.stair
+    const h = this.walkLevel(this.walker) - this.floorOf(stair)
+    if (!below && h < 0.05 && well(stair)) return false // from this floor onto the flight below: walked
     // the way the flight runs: up toward its front from the landing, down toward its back from the floor (not a step in from its side)
-    const t = (to.stair.rotationDeg * Math.PI) / 180
+    const t = (stair.rotationDeg * Math.PI) / 180
     const ahead = ((next.x - this.walker.x) * -Math.sin(t) + (next.y - this.walker.y) * Math.cos(t)) / (Math.hypot(next.x - this.walker.x, next.y - this.walker.y) || 1)
-    const dir = h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
+    const dir = below ? (ahead < -0.3 ? 'down' : null) : h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
     const now = performance.now()
-    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, to.stair) ? Infinity : now // going: not asked again until that floor is in (setUnit)
+    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, stair) ? Infinity : now // going: not asked again until that floor is in (setUnit)
     return true
   }
 

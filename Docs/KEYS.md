@@ -37,7 +37,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **Shift** held | Walk faster (about 4 m/s instead of 1.8) | Walk | everyone | §2 Moving in Walk |
 | Click a spot on the floor | Walk there (not while Comment or Finishes is open) | Walk, mouse free | everyone | §2 Moving in Walk |
 | Double-click | The mouse turns your head; **Esc** gives it back | Walk, not in an editor | everyone | §2 Moving in Walk |
-| **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or under it from the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
+| **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or down the flight you see through the opening in the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |

@@ -163,9 +163,11 @@ remembers it: the next flat opened in the same tab starts clean too.
   rooftop and back):
   - **Up:** walk the first flight to the half landing and on up the second; you stand at the top of the next floor's
     stair, facing the stair room's door.
-  - **Down:** walk from the stair room's floor under the second flight, toward the back; you stand on the floor below at
-    the foot of its stair, facing the stair room's door. Where that door is only a step away (Type B) you face along the
-    stair instead.
+  - **Down:** where there is a floor below, the stair room's floor is open round the stair, as in a real stair core: you
+    see the flight coming up from the floor below and its half landing. Walk onto that flight from the floor and on down
+    it; at its foot, one more step toward the half landing and you stand on the floor below at the foot of its stair,
+    facing the stair room's door. Where that door is only a step away (Type B) you face along the stair instead. The
+    lowest floor (a bottom basement, BTI's first floor) has no opening: there is nothing below.
   - **Up to …** and **Down to …** (bottom middle, in a stair room) do the same in one click, also where the room is too
     small for a drawn stair (the Sheltech ground floor): you then stand in the middle of that floor's stair room. The
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").

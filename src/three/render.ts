@@ -107,6 +107,25 @@ export const SITE_REACH_M = 300
 const SHADOW_BIAS_M = 0.02
 const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
+
+/** The hole in the floor at a stair that leads down (furnish/stairs.ts stairHole): the stair's id, its room, the hole in plan, the floor below's level. */
+export interface Well {
+  id: Id
+  roomId: Id
+  poly: Pt[]
+  bottom: number
+}
+
+/** A size × size plane facing up, centred on its mesh's (cx, cz), open over `holes` (plan polygons, world frame). */
+function planeGeometry(size: number, holes: Pt[][], cx: number, cz: number): THREE.BufferGeometry {
+  if (!holes.length) return new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2)
+  const h = size / 2
+  // plan (x, y) as (x, −y): rotateX(−π/2) puts it at world (x, 0, y), facing up (details.ts's lid)
+  const flip = (ps: Pt[]) => ps.map((p) => new THREE.Vector2(p.x - cx, cz - p.y))
+  const outline = new THREE.Shape(flip([{ x: cx - h, y: cz - h }, { x: cx + h, y: cz - h }, { x: cx + h, y: cz + h }, { x: cx - h, y: cz + h }]))
+  outline.holes = holes.map((p) => new THREE.Path(flip(p)))
+  return new THREE.ShapeGeometry(outline).rotateX(-Math.PI / 2)
+}
 // Measured on the living-room view (sRGB of shaded walls/ceiling): ENV 0.7/HEMI 0.6 → walls 160, ceiling 170;
 // ENV 1.4/HEMI 1.2 → walls 221–231 — too close to white: a sun patch had no headroom left and the hour didn't show.
 // 0.8/0.6 read grey (art director, wave 5); the midpoint 1.1/0.9 aimed for walls ≈ 195–205.
@@ -446,8 +465,12 @@ export class Look {
     this.setAltitude(this.alt) // the dome's colour: the photo's tint, no longer the plain sky's
   }
 
-  /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
-  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }): void {
+  /**
+   * Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. `wells`: the holes in the floor
+   * at the stairs that lead down (PlotlineScene builds the flight and the core under them): the slab, the street plane and
+   * the contact shadows leave them open, the sun's shadow box reaches down to their floor.
+   */
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }, wells: Well[] = []): void {
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     this.unitGroup.clear()
@@ -458,15 +481,18 @@ export class Look {
     const level = (r: Room, x: number, y: number) => core.roomLevelAt(r, unit, x, y)
     this.topY = storeyTop(unit, rooms)
     const lowest = Math.min(0, ...rooms.flatMap((r) => core.roomPolygon(r, unit).map((p) => level(r, p.x, p.y))))
+    this.wells = wells
 
     // slab: room undersides (centreline polygons, each under its floor) + a box under every wall to reach the outer face
-    const roomParts = rooms.map((r) =>
-      new THREE.ShapeGeometry(new THREE.Shape(core.roomPolygon(r, unit).map((p) => new THREE.Vector2(p.x, p.y))))
+    const v2 = (ps: Pt[]) => ps.map((p) => new THREE.Vector2(p.x, p.y))
+    const underside = (r: Room, holes: Pt[][] = []) =>
+      new THREE.ShapeGeometry(Object.assign(new THREE.Shape(v2(core.roomPolygon(r, unit))), { holes: holes.map((h) => new THREE.Path(v2(h))) }))
         .rotateX(Math.PI / 2) // plan (x, y) → world (x, 0, z=y), facing down
-        .translate(0, -SLAB_M, 0),
-    )
+        .translate(0, -SLAB_M, 0)
+    const roomParts = rooms.map((r) => underside(r))
     const underFloors = roomParts.map((g, i) => {
-      const c = g.clone()
+      const holes = wells.filter((w) => w.roomId === rooms[i].id).map((w) => w.poly)
+      const c = holes.length ? underside(rooms[i], holes) : g.clone()
       const p = c.attributes.position
       for (let k = 0; k < p.count; k++) p.setY(k, level(rooms[i], p.getX(k), p.getZ(k)) - SLAB_M)
       return c
@@ -540,11 +566,20 @@ export class Look {
     // (a basement's street is above it, whatever its ramps go down to: never lowered to them)
     const streetY = -(unit.floor ?? 2) * STOREY_M - 0.2
     this.ground.position.y = this.groundY = streetY > 0 ? streetY : Math.min(streetY, lowest - 0.05)
+    // the planes under the flat are open over a well that goes down past them (the ground floor's stair to the basements)
+    const openOver = (m: THREE.Mesh, size: number, deeper: Well[]) => {
+      if (!deeper.length && !m.userData.holed) return
+      m.geometry.dispose()
+      m.geometry = planeGeometry(size, deeper.map((w) => w.poly), m.position.x, m.position.z)
+      m.userData.holed = deeper.length > 0
+    }
+    openOver(this.ground, 600, wells.filter((w) => w.bottom < this.groundY))
+    openOver(this.catcher, 200, wells)
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
-    this.contact = buildContactShadows(unit, b)
+    this.contact = buildContactShadows(this.unshadowed(unit), b)
     if (this.contact) this.unitGroup.add(this.contact)
     // the corners' soft shading: the floor's with the flat, the ceiling's only while the ceilings show (under them)
-    const shade = junctionShade(unit, rooms)
+    const shade = junctionShade(unit, rooms, wells.map((w) => w.poly))
     if (shade.floor) this.unitGroup.add(new THREE.Mesh(shade.floor, SHADE))
     if (shade.ceiling) this.indoor.add(new THREE.Mesh(shade.ceiling, SHADE))
     this.street = buildStreet(unit, street, this.ground.position.y)
@@ -650,10 +685,14 @@ export class Look {
       m.alphaMap?.dispose()
       m.dispose()
     }
-    this.contact = buildContactShadows(unit, core.unitBounds(unit))
+    this.contact = buildContactShadows(this.unshadowed(unit), core.unitBounds(unit))
     if (this.contact) this.unitGroup.add(this.contact)
     this.setFixtures(unit)
   }
+
+  /** the stairs over a well cast no contact shadow: it would lie over the hole (setUnit wells) */
+  private unshadowed = (unit: Unit): Unit => (this.wells.length ? { ...unit, furniture: unit.furniture.filter((p) => !this.wells.some((w) => w.id === p.id)) } : unit)
+  private wells: Well[] = []
 
   /**
    * Call after the sun has been placed: its altitude in degrees (under the horizon: below 0). Sunlight and the flat's own
@@ -753,6 +792,13 @@ export class Look {
       lo.min(p)
       hi.max(p)
     }
+    // a well's floor too: the slab's shadow keeps the sun off the flight below but where it comes through the hole
+    for (const w of this.wells)
+      for (const c of w.poly) {
+        p.set(c.x, w.bottom, c.y).applyMatrix4(cam.matrixWorldInverse)
+        lo.min(p)
+        hi.max(p)
+      }
     cam.left = lo.x
     cam.right = hi.x
     cam.bottom = lo.y
