@@ -338,3 +338,69 @@ there the flood reaches the unnamed box between the lift lobby and the powder ro
 
 **Node eval (`npx vitest run src/trace/solve.test.ts --silent=false`, NEW READER):** **75 of 116** — unchanged (Sheltech A
 13, B 12, BTI Type A 15, Type B 16, Type C 19).
+
+## Session 31 (2026-11-20, "calm"): fewer Check-these rows needed, and a sheet that reads as a drawing
+
+**Why.** QA, as the founder, dropped the BTI 2nd floor sheet, set the scale and ran Auto-trace on the whole floor: 85
+"Check these" rows and 88 numbered red / amber circles — "the screen reads as an error list, not a drawing". His rule:
+never hide a warning, build so fewer are needed; every row stays in the list.
+
+**The rows by cause, before (node, the 12 flat sheets below, 847 rows):** a loose wall end 173 — every one either the
+same end the Issues list already shows (with its fixes) or one the import's own joining had already met with a wall
+(52: their corner was gone, the row stayed for ever); a gap 101 (30 of them already closed: the import had joined
+their end); a printed size not read 99; a thin line traced as a low wall 81 (many of them the sides of an AOD box that was
+already a row of its own, and the box asked twice: "A small space … offered as an AOD" + "Room type guessed from its size
+and thin-line sides"); a planter edge 65 (most on the outline of a planter that was already a row); a size off 53; a
+sliding door drawn like a window 47 (on a veranda reached by nothing else in 21 of them); a passage 34, an open side 25
+(the same piece asked twice where an open-plan side became a passage).
+
+**What changed (general rules, each with a test in `solve.test.ts` / `issues.test.ts`; nothing is hidden — a row goes
+only where the same thing is asked elsewhere or its problem is gone):** no "A wall ends here" row (the Issues list carries
+every loose end, live); a trace row about a wall end follows it through the import's join and goes once the end meets a
+wall; a room guessed whole (an AOD from its thin-line sides, a planter from its green) is ONE row, its edges part of it; an
+open-plan side traced as a passage is one row; glass drawn like a window onto a veranda with no other way in is a sliding
+door with no row (a door elsewhere on the veranda keeps the question). The canvas (Studio): red keeps its numbered badge;
+amber is an 8 px dot until the mouse is near or its row is picked; grey is list only; rows at one spot share an outlined
+badge with their count; the list is grouped by room; ↑ / ↓ / Enter in the list.
+
+**How it was measured — the founder's path.** Firefox (Playwright's build on E:, headless, one browser, a fresh browser
+context per sheet), the real Studio at 1600 × 1000: drop the sheet picture, **S** on the printed length of the s27 batch
+files (`E:/dev/tmp/s27/batchK.json`, `batchO.json`), **Auto-trace**, **Whole floor**, then the panel's "Check these (N)" and
+"Issues (N)" and the marks on the plan counted from the page, the plan shot, Export. "Before" = `s31/redesign` 370ea02,
+"after" = `s31/calm`; same harness, same clicks (`E:/dev/tmp/s31/calm/fx.mjs`, `l0.json`; logs and shots
+`E:/dev/plotline-shots/s31/calm/before/` and `after/`). Rooms right = the exported drafts scored with `score30.ts` against
+the printed points `E:/dev/tmp/s27/pts` (`E:/dev/tmp/s31/calm/scorefx.mjs`).
+
+| Sheet (whole floor) | Check these before → after | Issues | Marks on the plan: before (all numbered) → after numbered + dots | Rooms closed + named right before → after (printed) | Walls traced |
+|---|---|---|---|---|---|
+| BTI 3rd floor (`img_2`) | 89 → **70** | 8 → 8 | 92 → **15** + 55 dots | 30 → 30 (32) | 235 → 235 |
+| BTI 2nd floor (`img_3`) | 81 → **57** | 13 → 13 | 84 → **23** + 43 dots | 28 → 28 (28) | 226 → 226 |
+| Sheltech Level 2 | 68 → **54** | 5 → 5 | 70 → **12** + 46 dots | 25 → 25 (38) | 195 → 195 |
+| Sheltech Level 3 | 94 → **55** | 10 → 10 | 94 → **13** + 48 dots | 26 → 26 (36) | 217 → 217 |
+| Sheltech Level 4 | 71 → **47** | 9 → 9 | 73 → **15** + 35 dots | 26 → 26 (37) | 211 → 211 |
+| Sheltech Level 5 | 84 → **63** | 8 → 8 | 86 → **16** + 49 dots | 25 → 25 (36) | 197 → 197 |
+| Sheltech Level 6 | 84 → **63** | 8 → 8 | 86 → **16** + 49 dots | 25 → 25 (36) | 197 → 197 |
+| Banani Level 2-6 | 68 → **39** | 37 → 37 | 84 → **48** + 16 dots | 6 → 6 (22) | 117 → 117 |
+| Banani Level 7 | 44 → **23** | 22 → 22 | 51 → **29** + 11 dots | 2 → 2 (21) | 80 → 80 |
+| Banani Level 8 | 3 → 3 | 0 → 0 | 3 → **0** + 3 dots | 0 → 0 (18) | 16 → 16 |
+| Banani Level 9-13 | 6 → 6 | 0 → 0 | 6 → **0** + 6 dots | 1 → 1 (17) | 20 → 20 |
+| DMD Level 3-14 *(out of scope)* | 132 → **63** | 85 → 85 | 179 → **72** + 18 dots | 0 → 0 (47) | 227 → 227 |
+| **all 12** | **824 → 543 (−34 %)** | 205 → 205 | **908 → 259** numbered + 379 dots | 194 → 194 (368) | the same |
+
+Three more developers' sheets the same way (`E:/dev/tmp/s31/calm/others.json`, from `sheets30.json`): Assure Hermitage
+typical floor 111 → **80** rows, 121 → **33** numbered + 55 dots; Rangs White Lake A + B 92 → **55**, 94 → **28** + 38; Finlay
+Nirvana typical 55 → **39**, 58 → **10** + 29 — the same walls, rooms and labels traced (240 / 32 / 22, 196 / 33 / 29,
+246 / 39 / 35 both times).
+
+**Walls and rooms did not move:** every sheet traced the same walls, rooms and labels before and after (the "Traced …"
+lines, the exported drafts); the node table (`solve.test.ts`, NEW READER, the five hand-traced flats) is 76 of 116 rooms
+matched before and after with the same wall recall / precision (Sheltech A 65 / 79 %, B 67 / 86 %, BTI Type A 52 / 71 %,
+Type B 78 / 87 %, Type C 75 / 90 %); the trace's own review rows there 227 → 156. On the 30 scorer sheets (`npm run
+score30`, node): Check these rows 2132 → **1339** (−37 %), rows + Issues marks 2346 → 1950, 434 of 522 printed rooms closed and named right = 83.1 % before and after, names read 458 of 522 both (`E:/dev/tmp/s31/calm/s30-before.log` / `s30-after.log`; score30 now writes each sheet's open rows and marks into its `<key>.json`).
+
+**Left, and why (the next lane):** the rows still most common are a printed size the reader could not read (99 on the 12
+sheets: the print is small or a line runs through it — reading, not rules), a gap in a wall with nothing drawn in it (68,
+mostly DMD's grey walls and Banani's thin walls, where the trace itself fails), a size a few inches off its print (53), the
+thin-line low walls round verandas and the foliage edges of planters that are no room of their own, and the passages with
+nothing drawn across them. The red marks left on the BTI sheet are mostly the AC ledges' fins at the top, which stop at a
+dashed grille — real loose ends until a person closes them or keeps them standing alone.
