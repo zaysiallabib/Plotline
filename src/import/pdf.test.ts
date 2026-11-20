@@ -76,9 +76,13 @@ describe.skipIf(!existsSync(SAMPLES))('real vector PDFs', () => {
 
 describe('a PDF has no layers: its pens', () => {
   const seg = (layer: string, L: number) => ({ a: { x: 0, y: 0 }, b: { x: L, y: 0 }, layer })
-  test('the heaviest stroked pen and a grey fill draw the walls; thin lines, white and coloured fills do not', () => {
-    const segs = [seg('pen 0.24 0,0,0', 500), seg('pen 0.48 0,0,0', 100), seg('pen 1.32 0,0,0', 300), seg('fill #c0c0c0', 200), seg('fill #ffffff', 200), seg('fill #4d5b89', 200), seg('pen 2.00 0,0,0', 1)]
-    expect([...penRoles(segs).walls].sort()).toEqual(['fill #c0c0c0', 'pen 1.32 0,0,0'])
+  test('the heaviest stroked pen and a wall-thin grey fill draw the walls; thin lines, white, coloured and room-wide fills do not', () => {
+    const segs = [seg('pen 0.24 0,0,0', 500), seg('pen 0.48 0,0,0', 100), seg('pen 1.32 0,0,0', 300), seg('fill #c0c0c0', 200), seg('fill #808080', 200), seg('fill #ffffff', 200), seg('fill #4d5b89', 200), seg('pen 2.00 0,0,0', 1)]
+    // at 1 cm a point: the light grey shapes are 10 cm wide on average (walls), the darker ones 1 m (rooms shaded grey)
+    const fills = new Map([['fill #c0c0c0', { area: 100, outline: 200 }], ['fill #808080', { area: 10000, outline: 200 }], ['fill #ffffff', { area: 100, outline: 200 }], ['fill #4d5b89', { area: 100, outline: 200 }]])
+    expect([...penRoles(segs, fills, 0.01).walls].sort()).toEqual(['fill #c0c0c0', 'pen 1.32 0,0,0'])
+    // no scale on the page: a fill says nothing about walls
+    expect([...penRoles(segs, fills, null).walls]).toEqual(['pen 1.32 0,0,0'])
   })
   test('one pen for everything: nothing is sorted (every line pair counts, as before)', () => {
     expect(penRoles([seg('pen 0.24 0,0,0', 500)]).walls.size).toBe(0)
