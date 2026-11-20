@@ -862,6 +862,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let last = { snapped: 0, dropped: 0 }
+    const joinedBy = new Map<Unit, number>()
     const build = (drafts: WallDraft[]): Unit => {
       // Revit axes end 2–5 cm short of / past the wall they meet: ends land on the centre line here, before the Studio joins
       const e = (last = snapEnds(drafts))
@@ -916,7 +917,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       unit = { ...unit, vertices, walls, pillars: d.pillars, roomLabels: d.labels }
       // the Studio's own load path: corners within 1 cm merge, ends inside a wall join it (T-splits, crossings), stubs go
       const n = settleImport(unit)
-      touches += n.joined
+      joinedBy.set(n.unit, n.joined)
       return n.unit
     }
     // a space that holds two or more of the others (a gross area, a fire zone, a flat's whole floor) is an area, not a room
@@ -966,6 +967,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       })
     }
     zoneLines += lines.length
+    touches += joinedBy.get(unit) ?? 0 // (the floor kept, not the zone lines tried and dropped)
     snapped += last.snapped
     nibs += last.dropped
     const rooms = deriveRooms(unit)
