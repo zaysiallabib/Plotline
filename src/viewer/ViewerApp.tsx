@@ -957,6 +957,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (!h?.move || !furniture) return
     held.current = null
     scene?.setHand(null)
+    if (h.assetId) setToast(null) // a new piece is down: "… Click where it goes" has been done
     const id = arranging ? h.move.piece.id : null // Arrange keeps it selected; a walk carry leaves nothing selected
     setSel(id)
     settle(pushStep(steps.current, furniture), id)

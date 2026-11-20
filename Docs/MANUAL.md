@@ -274,7 +274,7 @@ in a few clicks. They then work exactly like the built-in ones.
    - **It gives light** — tick it for a lamp: at night it lights the room, and deleting it takes its light away.
      Picking the kind "Lamp or light" ticks it for you.
 5. Click **Add to the library**. A short line says where it is kept, and the piece is **in your hand at once**: point at
-   the floor (or the wall, the ceiling, a table top) and click. Then it moves, turns (R), resizes, deletes and undoes
+   the floor (or the wall, the ceiling, a table top) and click (the line goes as soon as the piece is down). Then it moves, turns (R), resizes, deletes and undoes
    like any other piece.
 
 It is listed on top of the library under **Your own** (and in its room's group). Each of your own rows has a mark
