@@ -1,41 +1,60 @@
 /*
- * Plotline's design tokens (session 30): one type scale, one spacing scale, radii, ONE accent (warm gold), the dark
- * glass the viewer floats over the 3D, hairlines, shadows, motion. Every component uses these; the Studio (studio.css)
- * reads --bg --surface --surface-2 --ink --muted --line --accent --radius, kept as they were.
+ * Plotline's design language (session 31, 2026-11-20, from scratch): MARBLE.
+ * Greek architecture as the model — stone and light, proportion, one deep sea blue. The 3D is the product; every
+ * screen is a thin marble frame round it. Light surfaces, charcoal ink, hairlines instead of boxes, inscription-style
+ * capitals for labels, a serif for titles. Spec in Docs/DESIGN.md. Every component reads these tokens and nothing else:
+ * no colour, size or easing is typed anywhere but here.
  */
 :root {
-  /* colour */
-  --bg: #0f0f10;
-  --surface: #17181a;
-  --surface-2: #1f2023;
-  --ink: #f2f2f0;
-  --ink-2: #c9c9c4;
-  --muted: #9a9a94;
-  --line: #2a2b2f;
-  --accent: #e8c170;
-  --accent-ink: #1a1408; /* text on the accent */
-  --accent-soft: rgba(232, 193, 112, 0.16);
-  --wind: #8fb0d0;
-  --danger: #ff6b6b;
-  /* the viewer's glass over the 3D */
-  --glass: rgba(18, 19, 21, 0.78);
-  --glass-strong: rgba(18, 19, 21, 0.9);
-  --hairline: rgba(255, 255, 255, 0.09);
-  --hover: rgba(255, 255, 255, 0.07);
-  --press: rgba(255, 255, 255, 0.13);
-  --blur: blur(18px) saturate(1.2);
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.22);
-  /* type: Inter (loaded in index.html), else the system sans */
-  --font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* ── colour ──────────────────────────────────────────────────────────────────────────────────────────────────── */
+  --bg: #f5f3ef; /* marble: the page, the Studio sheet, the viewer's glass base */
+  --surface: #ffffff; /* raised: panels, cards, inputs */
+  --surface-2: #ece9e3; /* sunken: wells, a selected row, the tool rail base */
+  --ink: #17191c; /* near-black, a touch cool: text, icons */
+  --ink-2: #4b4f55; /* second text */
+  --muted: #6b7077; /* labels, hints (4.9:1 on marble) */
+  --line: rgba(23, 25, 28, 0.14); /* a drawn line: borders of inputs, dividers that must read */
+  --hairline: rgba(23, 25, 28, 0.08); /* a hairline: panel edges, quiet dividers */
+  --hover: rgba(23, 25, 28, 0.05);
+  --press: rgba(23, 25, 28, 0.09);
+  --accent: #2458a6; /* Aegean: the ONE accent — primary buttons, the selected state, links, focus */
+  --accent-ink: #ffffff; /* text on the accent */
+  --accent-soft: rgba(36, 88, 166, 0.1); /* an "on" toggle's wash */
+  --accent-line: rgba(36, 88, 166, 0.4);
+  --danger: #b5432b; /* terracotta: refused, broken, delete */
+  --danger-soft: rgba(181, 67, 43, 0.1);
+  --ok: #3a7d5c;
+  --wind: #5b8db8;
+  /* Severity dots (Studio issues) */
+  --sev-red: var(--danger);
+  --sev-amber: #b4791f;
+  --sev-grey: var(--muted);
+  /* the viewer's frosted marble over the 3D (reads over a sunlit room and over the night) */
+  --glass: rgba(245, 243, 239, 0.8);
+  --glass-strong: rgba(245, 243, 239, 0.94);
+  --blur: blur(20px) saturate(1.4);
+  --shadow: 0 1px 2px rgba(23, 25, 28, 0.06), 0 12px 32px -12px rgba(23, 25, 28, 0.22);
+  --shadow-sm: 0 1px 2px rgba(23, 25, 28, 0.08);
+
+  /* ── type ────────────────────────────────────────────────────────────────────────────────────────────────────── */
+  --font: 'Instrument Sans', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  /* UI scale: 1.2 steps on 13 */
   --fs-2xs: 10px;
   --fs-xs: 11px;
   --fs-sm: 12px;
   --fs-md: 13px;
   --fs-lg: 15px;
   --fs-xl: 18px;
-  --fs-2xl: 40px;
-  --track: 0.08em; /* small capitals' letter spacing */
-  /* space */
+  /* display scale: golden steps on 28 (serif, weight 400, letter-spacing -0.01em, line-height 1.05) */
+  --fs-2xl: 28px;
+  --fs-3xl: 45px;
+  --fs-4xl: 73px;
+  --fs-5xl: 118px;
+  --track: 0.12em; /* inscription capitals: labels, eyebrows, section names */
+  --lh: 1.45;
+
+  /* ── space (8-pt grid) ───────────────────────────────────────────────────────────────────────────────────────── */
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;
@@ -43,27 +62,57 @@
   --s-5: 24px;
   --s-6: 32px;
   --s-7: 48px;
-  /* radii */
-  --r-sm: 8px;
-  --radius: 12px;
-  --r-lg: 16px;
-  --r-pill: 999px;
-  /* the one control height (buttons, the segmented switch, month buttons) */
-  --control: 36px;
-  /* motion */
-  --dur: 200ms;
-  --dur-fast: 150ms;
-  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --s-8: 80px;
+
+  /* ── edges (stone, not bubbles) ──────────────────────────────────────────────────────────────────────────────── */
+  --r-sm: 6px; /* inputs, small buttons */
+  --radius: 10px; /* panels, cards */
+  --r-lg: 14px; /* sheets, big cards */
+  --r-pill: 999px; /* the view switch and tags only */
+
+  /* ── controls ────────────────────────────────────────────────────────────────────────────────────────────────── */
+  --control: 36px; /* every button / input on a desktop */
+  --touch: 44px; /* the same with a finger */
+
+  /* ── motion (expo-out; nothing bounces) ──────────────────────────────────────────────────────────────────────── */
+  --dur: 180ms;
+  --dur-fast: 120ms;
+  --dur-slow: 400ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
   color: var(--ink);
   background: var(--bg);
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+@media (pointer: coarse) {
+  :root { --control: var(--touch); }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur: 0ms; --dur-fast: 0ms; }
+  :root { --dur: 0ms; --dur-fast: 0ms; --dur-slow: 0ms; }
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 body { overflow: hidden; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-soft); }
 .boot { display: grid; place-items: center; height: 100%; color: var(--muted); }
+
+/* ── the words every screen shares ─────────────────────────────────────────────────────────────────────────────── */
+/* an inscription: a small label in tracked capitals */
+.label { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+/* a title: the serif */
+.display { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; }
+.muted { color: var(--muted); }
+.small { font-size: var(--fs-xs); }
+.grow { flex: 1; }
+/* a faint stone grain over a large plain surface (the front page, the Studio sheet); never over the 3D */
+.grain::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0; opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}

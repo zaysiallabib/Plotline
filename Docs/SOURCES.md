@@ -36,7 +36,7 @@ All of it is in `public/assets/` (about 89 MB: models 59 MB, textures 26 MB, sky
 
 | What | Used for | From | Licence / cost | Status |
 |---|---|---|---|---|
-| **Inter** (light and regular) | All the text on every page | Google Fonts — fetched from `fonts.googleapis.com` each time a page opens | SIL Open Font License, free | permanent. Could be copied into the site so pages stop asking Google (optional) |
+| **Instrument Sans** (interface) and **Instrument Serif** (titles) | All the text on every page: the sans for buttons and labels, the serif for titles and the room name | Google Fonts — fetched from `fonts.googleapis.com` each time a page opens | SIL Open Font License, free | permanent. Could be copied into the site so pages stop asking Google (optional) |
 | Georgia | The N E S W letters on the wind rose | The computer's own font, nothing downloaded | — | permanent |
 
 ## 3. Sunlight
