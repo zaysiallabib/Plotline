@@ -232,6 +232,9 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     e.stopPropagation() // (never the plan's nudge of what is picked there)
     const j = i < 0 ? 0 : Math.max(0, Math.min(order.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))
     if (order[j]) onPick?.(order[j].key)
+    // the keys now belong to the list itself: Enter goes to the picked row, not to a group's header or a fix button that
+    // was clicked before the arrows (s31 qa2: click "Aod 3", ↓ ↓, Enter only folded that group)
+    ;(e.currentTarget as HTMLElement).focus({ preventScroll: true })
   }
   /** one row of either list: its number in its severity's colour (= the mark on the plan), the message, the working fixes */
   const row = (m: Mark, extra?: React.ReactNode) => {
