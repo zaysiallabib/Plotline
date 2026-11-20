@@ -32,6 +32,7 @@ Open the site with nothing after its name (`/`) and you get the front page. It t
 - The thin bar on top stays while you scroll: **Plotline** (back to the top; it appears once the big name has scrolled away), **See a flat**, **Studio**.
 - If the computer is set to "reduce motion", the story does not play: the page shows the finished tower beside the first words.
 - The front page shows no prices and nothing a buyer could change.
+- A link to the site pasted into a chat, an email or a post shows a small card: the tower drawn in ink, **Plotline** and one line. The tab shows a marble square with a plan corner and a door swing; the same drawing is the icon when the site is saved to a phone's home screen.
 
 ---
 
