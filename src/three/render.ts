@@ -71,6 +71,14 @@ export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, 
 }
 
 /**
+ * Whether the sun lights the picture: always with shadow maps; without them (Lite) not while the camera is under the
+ * ceiling (it would pour through the slab onto every floor and wall facing it) — but yes outside the flat (the Dollhouse,
+ * the Building view) and standing in an open zone (a lawn, a pool deck, a roof terrace: rooms seen from there through
+ * glass catch it too, the lesser wrong).
+ */
+export const sunLit = (s: { shadows: boolean; under: boolean; outside: boolean; openSky: boolean }): boolean => s.shadows || !s.under || s.outside || s.openSky
+
+/**
  * Lite and Low (TIERS.sleep) draw a frame only when it can differ from the last one: the camera moved, input or a load
  * within the wake window, VR, or something drifting on its own (`animating`: the wind's lines).
  */
@@ -325,6 +333,8 @@ export class Look {
   private readonly shadows: boolean
   /** the sun's intensity as PlotlineScene last set it (setAltitude): render() switches it off indoors when there are no shadows */
   private sunI = 0
+  /** the open zones' outlines (setUnit): standing in one, Lite's sun stays on (sunLit) */
+  private openSky: Pt[][] = []
   /** where the shadow-casting lamps were last picked from */
   private readonly pickedAt = new THREE.Vector3(Infinity, 0, 0)
   /** the dome's twilight uniforms (setAltitude) */
@@ -534,6 +544,7 @@ export class Look {
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
     ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
 
+    this.openSky = rooms.filter((r) => core.isOutdoor(r.kind) && !isCovered(r, cover)).map((r) => core.roomPolygon(r, unit))
     // the lamps' pool: sized here, and only here (its count recompiles every material); setFixtures says where they are
     this.rooms = rooms
     this.links = unit.walls.flatMap((w): [Id, Id, number][] => {
@@ -755,8 +766,10 @@ export class Look {
     this.sky.position.copy(this.v)
     this.indoor.visible = under
     this.catcher.visible = !under && this.shadows
-    // no shadow maps: under the ceiling the sun would light every floor and every wall facing it, through the slab above
-    if (!this.shadows) this.sun.intensity = under && !this.outside ? 0 : this.sunI
+    if (!this.shadows) {
+      const openSky = this.openSky.some((p) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, p))
+      this.sun.intensity = sunLit({ shadows: false, under, outside: this.outside, openSky }) ? this.sunI : 0
+    }
     const key = this.shadows ? this.casterKey() : this.shadowKey
     if (key !== this.shadowKey) {
       this.renderer.shadowMap.needsUpdate = true

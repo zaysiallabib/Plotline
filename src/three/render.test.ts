@@ -1,6 +1,6 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, TIERS, twilight } from './render'
+import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -20,6 +20,14 @@ describe('what each quality tier draws (session 31)', () => {
       expect(TIERS[b].lampShadows).toBeLessThanOrEqual(TIERS[a].lampShadows)
     }
   })
+})
+
+describe('the sun without shadow maps (Lite: sunLit)', () => {
+  const lite = { shadows: false, under: true, outside: false, openSky: false }
+  test('inside the flat: off (it would light every floor through the slab)', () => expect(sunLit(lite)).toBe(false))
+  test('in the Dollhouse (camera above), the Building view, or standing on an open lawn / deck: on', () =>
+    expect([sunLit({ ...lite, under: false }), sunLit({ ...lite, outside: true }), sunLit({ ...lite, openSky: true })]).toEqual([true, true, true]))
+  test('with shadow maps (Low, High): always on', () => expect(sunLit({ ...lite, shadows: true })).toBe(true))
 })
 
 describe('the picture’s pixels per tier (pixelRatioFor)', () => {
