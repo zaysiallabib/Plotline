@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { roomKey, slotFor, wallKey } from '../furnish/finishes'
-import { TEXTURES } from '../furnish/textures'
+import { textureSet } from '../furnish/textures'
 import { daylit as daylitPatch } from './daylight'
 
 const images = new Map<string, Promise<THREE.Texture>>()
@@ -38,10 +38,11 @@ export const lean = { on: false }
 /**
  * One texture per (url, tile size), every one of a url sharing its picture: one download, one decode and one upload to
  * the graphics chip (three shares a Source across textures with the same sampling), whatever the tile size — the rooms
- * and the code-built furniture (procedural.ts) used to load the same picture once each, per tile size.
+ * and the code-built furniture (procedural.ts) used to load the same picture once each, per tile size. `repeatYM`: a
+ * tile that is no square (a staff's own 60 × 30 cm picture).
  */
-export function texture(url: string, repeatM: number, srgb: boolean): Promise<THREE.Texture> {
-  const key = `${url}|${repeatM}`
+export function texture(url: string, repeatM: number, srgb: boolean, repeatYM = repeatM): Promise<THREE.Texture> {
+  const key = `${url}|${repeatM}|${repeatYM}`
   let p = texCache.get(key)
   if (!p) {
     let base = images.get(url)
@@ -57,7 +58,7 @@ export function texture(url: string, repeatM: number, srgb: boolean): Promise<TH
     }
     p = base.then((b) => {
       const tex = b.clone() // the same picture (Source); its own tiling
-      tex.repeat.set(1 / repeatM, 1 / repeatM)
+      tex.repeat.set(1 / repeatM, 1 / repeatYM)
       return tex
     })
     p.catch(() => {})
@@ -96,7 +97,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       metalness: ref.metalness ?? 0,
     })
   } else {
-    const set = TEXTURES[ref.textureId]
+    const set = textureSet(ref.textureId)
     m = new THREE.MeshStandardMaterial({ color: ref.tint ?? fallbackColor(ref.textureId), roughness: 0.9 })
     if (!set) {
       console.warn(`[plotline] unknown textureId "${ref.textureId}" — using flat colour`)
@@ -104,7 +105,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
       const mat = m
       const apply = (slot: 'map' | 'normalMap' | 'roughnessMap' | 'aoMap', url: string | undefined, srgb = false) => {
         if (!url || (lite.on && (slot === 'normalMap' || slot === 'aoMap'))) return
-        texture(url, set.repeatM, srgb)
+        texture(url, set.repeatM, srgb, set.repeatYM)
           .then((t) => {
             mat[slot] = t
             if (slot === 'map') mat.color.set(ref.tint ?? '#ffffff').multiply(new THREE.Color(set.tint ?? '#ffffff'))

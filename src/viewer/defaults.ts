@@ -7,6 +7,7 @@
  */
 import { isOutdoor, sqmToSqft, type Room, type Unit } from '../core'
 import { finishSlotsFor } from '../furnish/finishes'
+import { withOwnOptions } from '../furnish/own'
 
 export function withDefaults(u: Unit, rooms: Room[]): Unit {
   return {
@@ -14,7 +15,7 @@ export function withDefaults(u: Unit, rooms: Room[]): Unit {
     name: u.name?.trim() || 'Untitled unit',
     // as auto-trace does without a printed area: the closed rooms' total (shafts out; a lawn, drive or deck is no floor area)
     areaSqft: u.areaSqft || Math.round(sqmToSqft(rooms.filter((r) => r.kind !== 'shaft' && !isOutdoor(r.kind)).reduce((t, r) => t + r.areaSqm, 0))),
-    // no slots of its own: the catalog by room kind (furnish/finishes.ts)
-    finishSlots: finishSlotsFor(u, rooms),
+    // no slots of its own: the catalog by room kind (furnish/finishes.ts); the staff's own options at the end of theirs
+    finishSlots: withOwnOptions(finishSlotsFor(u, rooms)),
   }
 }

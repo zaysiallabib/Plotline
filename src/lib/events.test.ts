@@ -167,10 +167,11 @@ describe('the SQL the founder pastes', () => {
   const m2 = readFileSync(new URL('migrations/20261004120000_events.sql', dir), 'utf8')
   const m3 = readFileSync(new URL('migrations/20261120120000_accounts.sql', dir), 'utf8')
   const m4 = readFileSync(new URL('migrations/20261120180000_members_pictures.sql', dir), 'utf8')
+  const m5 = readFileSync(new URL('migrations/20261120200000_library.sql', dir), 'utf8')
   const paste = readFileSync(new URL('paste-into-sql-editor.sql', dir), 'utf8')
 
-  it('is one file: the four migrations, in order, unchanged (regenerate it when a migration changes)', () => {
-    expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3 + '\n' + m4)).toBe(true)
+  it('is one file: the five migrations, in order, unchanged (regenerate it when a migration changes)', () => {
+    expect(paste.endsWith(m1 + '\n' + m2 + '\n' + m3 + '\n' + m4 + '\n' + m5)).toBe(true)
     expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
   })
 
@@ -220,5 +221,20 @@ describe('the SQL the founder pastes', () => {
     expect(definers).toEqual(['public.org_people', 'public.invite_member', 'public.cancel_invite', 'public.remove_member', 'public.set_member_role', 'public.accept_invites', 'public.unit_by_token', 'public.project_links'])
     for (const f of definers.filter((f) => f !== 'public.unit_by_token')) expect(m4).toMatch(new RegExp(`revoke all on function [^;]*${f.replace('.', '\\.')} \\([^;]* from public, anon;`))
     expect(paste.trimEnd().endsWith("select 'Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the security check).' as result;")).toBe(true)
+  })
+
+  it('the library: its table under RLS for members only, no delete anywhere, the bucket readable by exact name and listed by members only', () => {
+    expect(m5).not.toMatch(/create table (?!if not exists)/i)
+    expect(m5).not.toMatch(/create (trigger|function) /i)
+    expect(m5).not.toMatch(/\bdrop (table|function|trigger|schema|column)\b/i)
+    expect(m5).toContain('alter table public.library_items enable row level security;')
+    expect(m5).toContain('revoke all on public.library_items from anon, authenticated;')
+    expect(m5).not.toMatch(/^grant [^;]*\banon\b/m)
+    expect(m5).not.toMatch(/^grant [^;]*\bdelete\b/m)
+    const policies = [...m5.matchAll(/create policy ("[^"]+") on (public\.library_items|storage\.objects) for (\w+)/g)]
+    expect(policies.map((p) => `${p[2]} ${p[3]}`)).toEqual(['public.library_items select', 'public.library_items insert', 'public.library_items update', 'storage.objects select', 'storage.objects insert'])
+    for (const [, name, table] of policies) expect(m5).toContain(`drop policy if exists ${name} on ${table};`)
+    for (const p of m5.match(/create policy [^;]*;/g)!) expect(p).toMatch(/to authenticated\s+(using|with check) \((bucket_id = 'library' and )?.*org_members m where m\.user_id = \(select auth\.uid\(\)\)/)
+    expect(m5).toMatch(/values \('library', 'library', true, 31457280, array\['model\/gltf-binary', 'image\/jpeg', 'image\/png'\]\)/)
   })
 })

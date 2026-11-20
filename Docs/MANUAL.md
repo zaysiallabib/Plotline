@@ -213,6 +213,7 @@ One extra button appears in the bar, top right: **Edit ▾** (washed blue while 
 - **Each row** shows the name, its footprint in feet (width × depth), and a small mark:
   - **built** = drawn by Plotline itself. There is no download, and when you resize it, it is built again at the new size (more shelves, drawers, doors or seats, never stretched).
   - **scan** = a photo-real scanned model (Poly Haven, free licence). It loads when you place it, and resizing stretches it a little.
+  - **yours** = a model your staff added (next section), with a **⋯** to rename, resize or remove it.
 - **Added 2026-10-19** (154 pieces now, was 110):
   - *Living*: bookshelf with books (also Office), console table, shoe rack, two TV units (1.5 m and 2.1 m), floor lamp, classic sofa (scan), carved drawing-room sofa (scan), classic armchair (scan), upholstered bench, prayer mat (jaynamaz, also Bedroom).
   - *Dining*: dining tables for 4 and 8 (the 6-seat one was there), a small wooden table for 4 (scan), a white painted chair (scan), a hand-wash basin with a mirror, the water filter on its stand, a pendant light and the chandelier (scan).
@@ -225,6 +226,74 @@ One extra button appears in the bar, top right: **Edit ▾** (washed blue while 
 - **Resizing** (drag a dot, or the size boxes in the Studio) works for every piece but the stairs and curtains.
   - Built again at the new size: the upholstered beds, wardrobes (also the 4 ft and 6 ft), closets, larder, fridges, desks, dining tables (all three — the chairs follow the seats), sofas, cots, rectangular rugs and the runner, planter boxes, the bookshelf, the chest of drawers and both TV units.
   - The rest stretch within limits: longer only for benches, consoles, racks and the study desk; the same shape for lamps, mirrors, plants and the round rugs.
+
+### Your own furniture, finishes and textures (since 2026-11-20)
+
+Staff can put their own 3D models, their own finish options and their own texture pictures into Plotline themselves,
+in a few clicks. They then work exactly like the built-in ones.
+
+**Your own piece of furniture** (a sofa model from your supplier, a lamp from Sketchfab, a desk you drew in Blender):
+
+1. Open the library: in the 3D view **Edit ▾ → Furniture → Add**; in the Studio press **F** (the list is on the right).
+2. Click **+ Add your own…** (just under the search box). A white box opens: **Drop a 3D model here**.
+3. Drag the file from your computer onto the box, or click **Choose a file…**. Plotline reads: **GLB, glTF, OBJ, FBX,
+   DAE, STL**. Best is one **.glb** file (Blender: File → Export → glTF 2.0, Format "glTF Binary (.glb)"). A .gltf that
+   keeps its parts in separate files: export it as one .glb (Plotline says so).
+4. The model turns slowly on the left, with its size under it in feet and inches (and metres) and how many triangles it
+   has. On the right:
+   - **Name** — filled in from the file's name; type the name your staff and buyers will see.
+   - **Kind** — sofa, armchair, bed, lamp or light, plant, kitchen… It decides which group of the library it goes in.
+   - **Which side is the front** — four arrows. Click the arrow of the side that is the front; the model turns so that
+     side faces you, with a small arrow on the floor. Keep clicking until the front faces you.
+   - **Where it sits** — **Floor**, **Wall** (hung at eye height, like a picture or a TV), **Ceiling** (hangs from it,
+     like a pendant light) or **On a table** (stands on the desk, bedside or chest you point at, like the table lamp).
+   - **Real size** — Width, Depth, Height, filled in from the file. Type one side (6'2", 1.9 m or 190 cm) and press
+     Enter: the other two follow, so it never gets squashed. (A file drawn in centimetres is read as such.)
+   - **It gives light** — tick it for a lamp: at night it lights the room, and deleting it takes its light away.
+     Picking the kind "Lamp or light" ticks it for you.
+5. Click **Add to the library**. A short line says where it is kept, and the piece is **in your hand at once**: point at
+   the floor (or the wall, the ceiling, a table top) and click. Then it moves, turns (R), resizes, deletes and undoes
+   like any other piece.
+
+It is listed on top of the library under **Your own** (and in its room's group). Each of your own rows has a mark
+**yours** and a **⋯** button:
+
+- **Rename** — the same box, the name ready to type over. **Save**.
+- **Change size** — the same box, the width ready to type over (the other sides follow). **Save**. Pieces already
+  placed take the new size at once.
+- **Remove…** — asks once: "Remove … from the library? Pieces already placed stay where they are." **Remove** or
+  **Keep**. It leaves the library; to take a placed one away, delete it in Edit furniture.
+
+**Too big:** a file over **30 MB** or a model over **2 million triangles** is refused, with the reason and how to make
+it lighter (Blender, free: select the model → Modifiers → Add Modifier → Decimate, Ratio 0.5, Apply, export as .glb).
+Over that, the walk would stutter on an ordinary laptop.
+
+**Your own finish option** (a tile, a parquet, a paint your developer offers):
+
+1. In the 3D view, staff mode: **Finishes**. Under each group (Bedroom floors, Living & dining floors, Wall paint, Bath
+   walls…) there is **+ Add option**. Click it under the group the option belongs to.
+2. Fill in:
+   - **Name** (Teak parquet), **Brand** (Akij Ceramics), **Code** (their product code; leave it empty and Plotline makes
+     one).
+   - **Price difference ৳** — what it adds to the flat's price: 0 = included, a minus for cheaper (−12000). Commas are
+     fine (52,000).
+   - **Offered in** — the group again, if you want another one.
+   - **Its look** — three ways:
+     - **Colour**: click the colour square and pick.
+     - **Texture**: any surface of Plotline's own list (oak, walnut, marble, tiles, stone, paving, deck, fabric…), and
+       **Tinted** to give it a colour.
+     - **Picture**: drop a photo of the surface (one tile, a plank, a piece of the stone) onto the box, or click it.
+       JPG or PNG, up to 4 MB; a bigger picture is made 2048 pixels across for you. Then **One picture covers**: how
+       big that photo is on the floor or wall, across × down (60 cm × 60 cm for one 60 cm tile). Type one side, the other
+       follows the photo's shape.
+3. **Add option.** It joins the group, is chosen at once, and the 3D shows it straight away.
+
+Your own options have a **⋯** next to them (staff only): the same form, to change it, **Save**, or **Remove**.
+
+**Where it is kept:** in this browser — the models and pictures too, however big. Signed in to your company (Studio →
+⋯ → Sign in), it is also kept online for the whole company: colleagues see your pieces and options in their library
+and Finishes, and **buyer links** you make with **Share link** draw them. A buyer link made while signed out shows your
+own piece as a plain box of its size (the file was never sent online) — sign in and share again.
 
 ### Edit openings (doors, windows, sliding doors, open passages, low walls)
 
@@ -858,6 +927,7 @@ Never a room — fixture and drawing tags: DW, D.WASH, FRIDGE, FREEZER, REF, W/M
 - Buildings and projects you made, every drawing of a project and its plan picture
 - Your answer to the 3D view's "which floors?" box, per project (Studio → Building list: **Ask again**)
 - Staff mode, the staff key, your sign-in (until **Sign out**)
+- Your own furniture, finishes and texture pictures (also online for your company when signed in — see below)
 - Your Check these answers (the record Export answers saves, with the Local AI's answers marked) and, per sheet, where the print Auto-trace could not read stands
 - The Local AI settings (server, model). The model itself is on this PC's disk (`E:\dev\tools\ollama\models`), not in the browser
 
@@ -869,6 +939,7 @@ The **Site** (place, north, blocks, roads, wind) is part of the drawing: kept wh
 - Anything exported as a file (the file does not contain the plan picture — keep the picture too)
 - Buyer links made with **Share link** and what buyers do on them (in the database)
 - Signed in to a company: the open project or drawing and **every save of it** (in the database, for your company only), with each drawing's plan picture (in your company's private folder online; a save names the picture it was traced on)
+- Signed in to a company: your own furniture, finish options and texture pictures (§3, "Your own furniture, finishes and textures"), for every colleague, and in the buyer links that show them
 
 **Never saved:** the finishes you clicked, unless you press **Share** (they go into the link).
 
@@ -975,6 +1046,8 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 | Wall paint of one room / one wall / the outside / the boundary | Yes for one room or one wall — Finishes open, click the wall | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant | Yes — move, turn, resize, delete, add from the library | Yes (tool F) | Swap for another in one step |
 | Furniture, loungers, pergola | Yes — same | Yes (tool F) | — |
+| Your own furniture model (since 2026-11-20) | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (tool F, the same) | — |
+| A finish option of your own (colour, texture, your picture) | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |
 | Curtains | Yes — slide along their wall, wider or narrower by dragging a side, delete, add from the library onto any opening (window, sliding door, door, passage); they follow their opening | Yes (tool F) — same, plus a typed width | Fabric and colour, drawing them closed |
 | Neighbour buildings, road | No (they show; staff change them in the Studio) | Yes — Site: a building's height typed, a building or road deleted, the whole site fetched again or removed | Adding a building or road by hand |
 | Sky | No | No | Everything |

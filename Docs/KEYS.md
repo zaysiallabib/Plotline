@@ -179,13 +179,17 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **undo** (under "Chosen for one room or wall") | Takes that one choice back | everyone |
 | Options total | The sum of the price differences (shows only) | everyone |
 | **Reset to included** | Every choice back to what the flat comes with | everyone |
+| **+ Add option** (under each group) | A finish option of your own in that group: **Name**, **Brand**, **Code**, **Price difference ৳**, **Offered in**, **Its look** (**Colour** · **Texture** · **Picture**: a colour square; a texture of the list with **Tinted**; a dropped JPG / PNG up to 4 MB and **One picture covers** across × down), **Add option** (chosen at once), **Cancel** | staff, not on buyer links |
+| **⋯** (beside an option of your own) | The same form: **Save**, **Remove**, **Cancel** | staff, not on buyer links |
 | Note box: text, **Save**, **Cancel** | Writes the note and pins it to what you clicked; Comment stays on for the next one | everyone |
 
 ### 3D view — Edit furniture panel (bottom left)
 
 | Name | What it does | Who |
 |---|---|---|
-| **Add** | Opens the library: tabs Living, Dining, Bedroom, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor (110 pieces); pick one, point at the floor, a wall, the ceiling or (curtains) an opening, click | staff |
+| **Add** | Opens the library: groups Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor (and **Your own**); pick one, point at the floor, a wall, the ceiling or (curtains) an opening, click | staff |
+| **+ Add your own…** (the library, under the search box; the Studio's too) | Opens the box for a 3D model of your own: drop or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB and 2 million triangles), then **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (Width, Depth, Height: type one, the others follow), **It gives light**; **Add to the library** puts it in your hand; **Cancel**, **×** or Esc closes | staff |
+| **⋯** (on a row marked **yours**) | **Rename**, **Change size** (the same box, **Save**), **Remove…** (asks once: **Remove** / **Keep**; pieces already placed stay) | staff |
 | **Turn 90° (R)** | Turns the picked piece (or the one in your hand) | staff |
 | **Delete** | Deletes the picked piece and what rests on it — also the one in your hand (Del) | staff |
 | **Undo** | Takes back the last change | staff |
@@ -322,7 +326,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Selection** — a column | **Width (across)**, **Depth (up–down)**, **Delete** | Its size |
 | **Selection** — a room name | **Room name**, **Kind**, **Flat** (by its doors / a flat / Not in a flat / New flat / Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Change one room's name and details |
 | **Selection** — a piece (F) | **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)** (pieces that stretch; curtains: **W**), **Height from floor (m)** (a TV, picture, AC, clock or mirror: its bottom edge), **Reset to preset**, **Reset all** | Change one piece; put a room (or all) back to the automatic layout |
-| **Add a piece** (F) | **Pick from the library…** | A new piece; click the plan to put it there (curtains: beside an opening) |
+| **Add a piece** (F) | The library: search, the groups, **+ Add your own…** (a 3D model of your own: see the 3D view's Edit furniture rows), **⋯** on your own pieces | A new piece; click the plan to put it there (curtains: beside an opening) |
 | **Check these** (after Auto-trace) | per row: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / low wall / zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right**, **Ask AI** (then **Apply** or **Undo**); beside the heading **Ask AI for all**; click a row = go to it | Answer what Auto-trace was unsure of |
 | **Check these** — settings | **Wall tracks** (tick box: which tracing method — leave it on); **AI helper (optional)**: a Gemini key; **Local AI (this PC, free)**: **Server**, **Model**, **Use it anyway**, **Test** | How Auto-trace and Ask AI work |
 | **Issues** | **Join walls (overlaps and crossings)**; click an issue = its fixes (Close the gap, Join, Extend, Remove end, Keep — it stands alone, Remove, Merge corners, Remove the copy, Shrink, Move it inside, Trim, Join here, End it here, Type the name, Join with a zone line) | Problems in the drawing |

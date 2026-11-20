@@ -3,6 +3,7 @@
  * and tags; the pieces by room (furniture.ts library() tabs), then by kind, with counts; the pieces used last first. Pure.
  */
 import { formatFeetInches } from '../core'
+import { ownItem, ownVersion } from '../furnish/own'
 import { library, type LibraryItem } from './furniture'
 
 /** Group headings for the kinds (ObjectKind); the rest read as their kind, capitalised. */
@@ -66,6 +67,8 @@ export interface Group {
 }
 
 export const RECENT_MAX = 6
+/** the group of the staff's own pieces, on top (open) */
+export const OWN_GROUP = 'Your own'
 export const RECENT_KEY = 'plotline.library.recent'
 /** The piece just picked first, then the others, at most RECENT_MAX. */
 export const pushRecent = (recent: string[], id: string): string[] => [id, ...recent.filter((r) => r !== id)].slice(0, RECENT_MAX)
@@ -73,10 +76,10 @@ export const pushRecent = (recent: string[], id: string): string[] => [id, ...re
 const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
 const kindLabel = (k: string) => KIND_LABEL[k] ?? k[0].toUpperCase() + k.slice(1).replace(/-/g, ' ')
 
-let cache: { tabs: { tab: string; items: Entry[] }[]; byId: Map<string, Entry> } | null = null
-/** library() with each piece's groups, tags and feet; built once (the kit never changes while the page runs). */
+let cache: { tabs: { tab: string; items: Entry[] }[]; byId: Map<string, Entry>; v: number } | null = null
+/** library() with each piece's groups, tags and feet; built again only when the staff's own pieces change (furnish/own.ts). */
 function entries() {
-  if (cache) return cache
+  if (cache?.v === ownVersion()) return cache
   const tabs = library()
   const rooms = new Map<string, string[]>()
   for (const t of tabs) for (const i of t.items) rooms.set(i.id, [...(rooms.get(i.id) ?? []), t.tab])
@@ -84,13 +87,13 @@ function entries() {
   const entry = (i: LibraryItem): Entry => {
     let e = byId.get(i.id)
     if (!e) {
-      const tags = [...new Set(words(`${i.kind} ${KIND_WORDS[i.kind] ?? ''} ${TAGS[i.id] ?? ''}`))]
+      const tags = [...new Set(words(`${i.kind} ${KIND_WORDS[i.kind] ?? ''} ${TAGS[i.id] ?? ''} ${i.own ? 'own mine my yours' : ''}`))]
       e = { ...i, rooms: rooms.get(i.id)!, tags, feet: `${formatFeetInches(i.size.x)} × ${formatFeetInches(i.size.z)}` }
       byId.set(i.id, e)
     }
     return e
   }
-  cache = { tabs: tabs.map((t) => ({ tab: t.tab, items: t.items.map(entry) })), byId }
+  cache = { tabs: tabs.map((t) => ({ tab: t.tab, items: t.items.map(entry) })), byId, v: ownVersion() }
   return cache
 }
 export const entry = (id: string): Entry | undefined => entries().byId.get(id)
@@ -115,8 +118,10 @@ export function score(e: Entry, q: string[]): number {
 }
 
 /**
- * The list under the search box. No query: Recent (the ids in `recent`), then every group with its pieces by kind (kit
- * order). A query: the groups holding a match, each best match first, the group with the best match first.
+ * The list under the search box. No query: Recent (the ids in `recent`), Your own (the staff's own pieces, the last
+ * changed first),
+ * then every group with its pieces by kind (kit order). A query: the groups holding a match, each best match first, the
+ * group with the best match first.
  */
 export function listing(query: string, recent: string[] = []): Group[] {
   const { tabs, byId } = entries()
@@ -129,7 +134,13 @@ export function listing(query: string, recent: string[] = []): Group[] {
       return [...m].map(([k, items]) => ({ name: kindLabel(k), items }))
     }
     const rest = tabs.filter((t) => t.items.length).map((t) => ({ name: t.tab, count: t.items.length, kinds: byKind(t.items) }))
-    return rec.length ? [{ name: 'Recent', count: rec.length, kinds: [{ name: '', items: rec }] }, ...rest] : rest
+    const at = (e: Entry) => ownItem(e.id)?.at ?? ''
+    const own = [...byId.values()].filter((e) => e.own).sort((a, b) => at(b).localeCompare(at(a)))
+    return [
+      ...(rec.length ? [{ name: 'Recent', count: rec.length, kinds: [{ name: '', items: rec }] }] : []),
+      ...(own.length ? [{ name: OWN_GROUP, count: own.length, kinds: [{ name: '', items: own }] }] : []),
+      ...rest,
+    ]
   }
   return tabs
     .map((t) => {

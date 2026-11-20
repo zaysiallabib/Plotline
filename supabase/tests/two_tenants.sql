@@ -1,11 +1,13 @@
--- Two-tenant test (sessions 30 + 31): the security check of supabase/migrations/20261120120000_accounts.sql and
--- 20261120180000_members_pictures.sql. Paste this whole file into the Supabase SQL editor AFTER the setup SQL and Run.
+-- Two-tenant test (sessions 30 + 31): the security check of supabase/migrations/20261120120000_accounts.sql,
+-- 20261120180000_members_pictures.sql and 20261120200000_library.sql. Paste this whole file into the Supabase SQL editor
+-- AFTER the setup SQL and Run.
 --
 -- It makes two companies (A and B), one person in each, a project, a share link and a buyer's note in B, then acts
 -- as A - through the same database roles the website uses (`authenticated` with A's sign-in, `anon` for a buyer) -
 -- and checks that A cannot read, change or add to anything of B's; that a buyer reads no table; that a save from an
 -- old version is refused; and that a turned-off link opens nothing and takes no note. Session 31 adds: plan pictures
--- (one private folder per company), the links list and its view count, and the member rules (only an owner invites,
+-- (one private folder per company), the staff's own library (records for members only, files readable by exact name, never
+-- listed outside the company, never changed or deleted), the links list and its view count, and the member rules (only an owner invites,
 -- removes or changes roles; never themself out, never the last owner; an invite joins only its own confirmed email).
 -- It all runs in one transaction that is rolled back at the end: nothing it made is left behind.
 --
@@ -296,6 +298,83 @@ begin
   end;
   if n <> 0 then raise exception 'FAIL: a buyer can see plan pictures'; end if;
 
+  -- the staff's own library: records for members of the company only; files in a folder per company, readable by exact
+  -- name (a buyer link), never listed by anyone outside, never changed or deleted
+  perform set_config('role', 'none', true);
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into n from storage.buckets b where b.id = 'library' and b.public = true and b.file_size_limit = 31457280;
+  if n <> 1 then raise exception 'FAIL: the library bucket is missing, not readable by name, or not capped at 30 MB'; end if;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
+  insert into public.library_items (org_id, id, item) values (ob, 'own_bbbbbbbb-0000-4000-8000-000000000001', '{"label":"B sofa"}');
+  insert into public.library_items (org_id, id, item) values (ob, 'own_bbbbbbbb-0000-4000-8000-000000000001', '{"label":"B sofa, renamed"}')
+    on conflict (org_id, id) do update set item = excluded.item;
+  select count(*) into n from public.library_items l where l.org_id = ob and l.item ->> 'label' = 'B sofa, renamed';
+  if n <> 1 then raise exception 'FAIL: B cannot save (and save again) a piece of its own library'; end if;
+  insert into storage.objects (bucket_id, name) values ('library', ob::text || '/b-sofa.glb');
+  select count(*) into n from storage.objects o where o.bucket_id = 'library' and o.name like ob::text || '/%';
+  if n <> 1 then raise exception 'FAIL: B cannot list its own library files'; end if;
+  begin
+    delete from public.library_items l where l.org_id = ob;
+    get diagnostics n = row_count;
+  exception when insufficient_privilege then n := 0;
+  end;
+  if n <> 0 then raise exception 'FAIL: a member deleted a library record (placed pieces and buyer links use it)'; end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.library_items l where l.org_id = ob;
+  if n <> 0 then raise exception 'FAIL: A reads B''s library'; end if;
+  update public.library_items set item = '{"label":"taken by A"}'; -- no WHERE: only the change policy stands between A and B's rows
+  begin
+    insert into public.library_items (org_id, id, item) values (ob, 'own_aaaaaaaa-0000-4000-8000-000000000001', '{"label":"planted by A"}');
+    raise exception 'FAIL: A added a piece to B''s library';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public.library_items (org_id, id, item) values (oa, 'own_aaaaaaaa-0000-4000-8000-000000000002', '{"label":"A lamp"}');
+  begin
+    update public.library_items l set org_id = ob where l.org_id = oa;
+    raise exception 'FAIL: A moved a piece of its library into B''s';
+  exception when insufficient_privilege then null;
+  end;
+  select count(*) into n from storage.objects o where o.bucket_id = 'library' and o.name like ob::text || '/%';
+  if n <> 0 then raise exception 'FAIL: A lists B''s library files'; end if;
+  begin
+    insert into storage.objects (bucket_id, name) values ('library', ob::text || '/planted-by-a.glb');
+    raise exception 'FAIL: A added a file to B''s library folder';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into storage.objects (bucket_id, name) values ('library', 'no-folder.glb');
+    raise exception 'FAIL: a library file outside any company''s folder was taken';
+  exception when insufficient_privilege then null;
+  end;
+  insert into storage.objects (bucket_id, name) values ('library', oa::text || '/a-lamp.glb');
+  update storage.objects o set name = oa::text || '/renamed.glb' where o.bucket_id = 'library' and o.name = oa::text || '/a-lamp.glb';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: a member changed a library file (a buyer link points at it)'; end if;
+  begin
+    delete from storage.objects o where o.bucket_id = 'library' and o.name = oa::text || '/a-lamp.glb';
+    get diagnostics n = row_count;
+  exception when others then n := 0; -- Supabase refuses direct deletes in its storage schema outright: also no delete
+  end;
+  if n <> 0 then raise exception 'FAIL: a member deleted a library file (a buyer link points at it)'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
+  select count(*) into n from public.library_items l where l.org_id = ob and l.item ->> 'label' = 'B sofa, renamed';
+  if n <> 1 then raise exception 'FAIL: A changed B''s library'; end if;
+
+  perform set_config('role', 'anon', true);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  begin
+    select count(*) into n from public.library_items;
+  exception when insufficient_privilege then n := 0;
+  end;
+  if n <> 0 then raise exception 'FAIL: a buyer reads a company''s library records'; end if;
+  begin
+    select count(*) into n from storage.objects o where o.bucket_id = 'library';
+  exception when insufficient_privilege then n := 0;
+  end;
+  if n <> 0 then raise exception 'FAIL: a buyer can list library files'; end if;
+
   -- members: only an owner invites, removes or changes roles; an invite joins only its own confirmed email; never the
   -- owner themself out, never a company with no owner
   perform set_config('role', 'authenticated', true);
@@ -400,8 +479,8 @@ begin
   if not public.cancel_invite(oa, 'two-tenant-d@plotline.invalid') then raise exception 'FAIL: an owner could not take an invite back'; end if;
   if not public.remove_member(oa, ua) then raise exception 'FAIL: an owner could not remove a member'; end if;
   perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
-  select (select count(*) from public.projects) + (select count(*) from storage.objects o where o.bucket_id = 'plans') into n;
-  if n <> 0 then raise exception 'FAIL: a removed member still reads the company''s projects or pictures'; end if;
+  select (select count(*) from public.projects) + (select count(*) from storage.objects o where o.bucket_id in ('plans', 'library')) + (select count(*) from public.library_items) into n;
+  if n <> 0 then raise exception 'FAIL: a removed member still reads the company''s projects, pictures or library'; end if;
 end
 $$;
 

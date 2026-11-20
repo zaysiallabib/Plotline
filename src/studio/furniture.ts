@@ -12,6 +12,7 @@ import { deriveRooms, newId, pointInPolygon, roomAt, roomInnerPolygon, unitBound
 import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { KIT, kitAsset, objectKind, placementLabel, placementRange, placementSize, resizeLimits, type KitAsset, type ObjectKind } from '../furnish/kit'
 import { GAP, chairSpots, curtainEnds, curtainShift, footprint, furnish, hangCurtains, openingOnFace, quadsOverlap, windowZones } from '../furnish/presets'
+import { ownModels } from '../furnish/own'
 import { CURTAINS, PROCEDURAL, tableSeats } from '../furnish/procedural.meta'
 
 /** 3" squares (founder 2026-09-28: 1 ft, then 6", were too coarse to place a piece where he wanted) */
@@ -518,14 +519,19 @@ export interface LibraryItem {
   kind: ObjectKind
   /** a scanned model (a download), not built in code */
   scan: boolean
+  /** added by the staff (furnish/own.ts): theirs to rename, resize or remove */
+  own?: true
 }
-/** The staff library: every kit asset (Poly Haven + procedural) by tab, but the stairs (building, not furniture); beds name their linen. */
+/**
+ * The staff library: every kit asset (Poly Haven + procedural) by tab, but the stairs (building, not furniture), then the
+ * staff's own models (furnish/own.ts, not the removed ones) in the tab of their kind; beds name their linen.
+ */
 export function library(): { tab: string; items: LibraryItem[] }[] {
-  const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL)].map((id) => kitAsset(id)!).filter((a) => objectKind(a) !== 'stair')
+  const all = [...Object.keys(KIT), ...Object.keys(PROCEDURAL), ...ownModels().map((m) => m.id)].map((id) => kitAsset(id)!).filter((a) => a && objectKind(a) !== 'stair')
   const label = (a: KitAsset) => (a.category === 'bed' && a.id.startsWith('bed_') ? `${a.label} (${BED_LINEN[a.id.match(/_[bc]$/)?.[0] ?? '']})` : a.label)
   const tabOf = (a: KitAsset) => TAB_ID[a.id] ?? TAB_OF[objectKind(a)] ?? TAB_OF[a.category] ?? 'Decor'
   const inTab = (a: KitAsset, tab: Tab) => tabOf(a) === tab || ALSO_IN[a.id]?.includes(tab) || (tab === 'Office' && OFFICE.has(objectKind(a)))
-  return TABS.map((tab) => ({ tab, items: all.filter((a) => inTab(a, tab)).map((a) => ({ id: a.id, label: label(a), size: a.sizeM, kind: objectKind(a), scan: !a.url.startsWith('procedural:') })) }))
+  return TABS.map((tab) => ({ tab, items: all.filter((a) => inTab(a, tab)).map((a) => ({ id: a.id, label: label(a), size: a.sizeM, kind: objectKind(a), scan: !a.url.startsWith('procedural:'), ...(a.own ? { own: true as const } : {}) })) }))
 }
 
 /** Resized sizes land on this step (m). */
