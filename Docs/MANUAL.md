@@ -30,8 +30,8 @@ link (`/s/…`) shows a staff browser exactly what a buyer sees — to edit, ope
 
 **When something asks first:** a white card opens in the middle of the screen and the page behind it goes pale.
 **Cancel** (or **Esc**) says no and nothing changes. The second button names what it does — **Delete**, **Replace**,
-**Continue**, **Turn off**, **Remove**, **Make it my draft** — and is red when something is taken away; **Enter** says
-yes too. When it needs a word — a new name (**Rename** of a project or a save) or the staff key (**Share link** while
+**Continue**, **Turn off**, **Remove**, **Start over**, **Make it my draft** — and is red when something is taken away;
+**Enter** says yes too. When it needs a word — a new name (**Rename** of a project or a save) or the staff key (**Share link** while
 not signed in) — the card has a line to type in, the old name already in it and selected, so you just type over it;
 **Enter** or the second button (**Rename**, **Share**) takes it. The browser's own grey box is never used.
 
@@ -522,6 +522,12 @@ draw stand out in dark ink. Doors are drawn with their swing, windows as three t
 an architect's sheet. What you picked is **blue**; what is under the mouse gets a light blue edge before you click. Room
 names are in small capitals with the printed size under them. Tools on the left, details of what you picked on the right,
 one thin line at the bottom saying what the tool does.
+
+**Draft restored.** The Studio opens on the drawing you left, with a message at the bottom: "Draft restored — its name",
+**Start over** and **×** (hides the message). **Start over** asks first: "Start over? The drawing, its picture and its
+furniture go. Undo cannot bring them back." — **Start over** (red) empties the Studio for good; **Cancel** or **Esc**
+keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list)
+and only the screen empties.
 
 ### Top bar
 
@@ -1162,8 +1168,7 @@ Things that are confusing or not finished. Each one is a job on the list.
   open foyer, add it with R.
 
 **The Studio**
-- **Start over** (on the "Draft restored" message) wipes the drawing without asking; the message shows at every opening.
-  In a project Start over only empties the screen (the drawing is kept).
+- The "Draft restored" message shows at every opening of the Studio, not only after a closed tab.
 - A wrong scale found after tracing cannot be put right in one step: S changes the scale, but the walls do not follow.
 - Once a plan picture is in there is no button to swap it (drop a new one); a drawing file opened again always asks for
   its picture. Lining a picture up needs zooming between the clicks when the two are far apart in size.

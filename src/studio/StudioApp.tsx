@@ -2252,7 +2252,9 @@ export default function StudioApp() {
     setPopover(null)
   }
 
-  const startOver = () => {
+  const startOver = async () => {
+    // a project drawing is kept in its project (only the screen empties); a draft of no project goes for good: asked first
+    if (!projRef.current?.drawing && !(await ask('Start over? The drawing, its picture and its furniture go. Undo cannot bring them back.', 'Start over', true))) return
     const a = projRef.current
     if (a?.drawing) setActive({ id: a.id }) // the project drawing keeps what it had; the empty Studio is not it
     localStorage.removeItem(DRAFT_KEY)

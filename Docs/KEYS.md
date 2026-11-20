@@ -12,7 +12,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 |---|---|---|---|---|
 | Any key while the cursor is in a text box | Goes into the box (the letters are typed). **Enter** or a click on the plan / the 3D gives the keys back. Ctrl+S and Ctrl+O still work in the Studio | every screen | everyone | §10 |
 | **Cancel** (or **Esc**) on a question card | Says no: nothing changes | the white card in the middle of the screen | staff | Start here |
-| The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
+| The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Start over**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
 | The line to type in on a question card | Opens with the old name in it, selected: type over it; **Rename** / **Share** (or **Enter**) takes it | the card, when it asks for a new name or the staff key | staff | Start here |
 
 ## Front page (`/`)
@@ -146,7 +146,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | A page in **Which page is the floor plan?** · **×** / Esc | Uses that page (a clean line drawing opens as the drawing, anything else becomes the plan picture) · closes the box | a PDF of several pages | §5 Bring in the architect's file |
 | **Use it as a picture instead** / **Read its lines instead** | Takes the same page the other way | the message after a PDF page | §5 Bring in the architect's file |
 | **Use its scale and position** | A picture the same size as one already scaled: no scale to set, the drawings sit over each other (15 seconds) | the message after loading a picture | §6 |
-| **Start over** · **×** | Empties the Studio (without asking) · hides the message | the "Draft restored" message | §10 |
+| **Start over** · **×** | Asks first ("The drawing, its picture and its furniture go. Undo cannot bring them back.": **Start over** in red empties the Studio for good, **Cancel** / **Esc** keeps it; a project's drawing is not asked about, it stays in the project) · hides the message | the "Draft restored" message | §5 |
 | **V** · **S** · **W** · **A** · **O** · **R** · **C** · **F** | Select · Scale · Wall · Arc · Opening · Room · Column · Furniture; all but V and S locked until the scale is set ("set the scale first (S)") | the tool strip on the left | §5 The tools |
 | Hold **W**, **O** or **R** | The tool works while held; let go and you are back on the tool you had (a quick tap just switches) | any tool | §5 The tools |
 | Shift + a tool letter | Does not switch the tool (Shift+H is the door swing) | — | — |
