@@ -246,7 +246,7 @@ describe('no database configured (no env): every path stays in this browser, as 
     const auth = await import('./auth')
     const cloud = await import('./cloud')
     expect(supabase.configured).toBe(false)
-    expect(supabase.sb).toBeNull()
+    expect(await supabase.getSb()).toBeNull()
     expect(await auth.session()).toBeNull()
     expect(await auth.myOrg()).toBeNull()
     await expect(auth.signIn('someone@example.com')).rejects.toThrow('not set up')
@@ -258,5 +258,39 @@ describe('no database configured (no env): every path stays in this browser, as 
     vi.stubEnv('VITE_SUPABASE_URL', 'https://x.supabase.co')
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test')
     vi.resetModules()
+  })
+})
+
+describe('the client is fetched only when a call needs it (session 31 tidy: 56 kB gz off every walk)', () => {
+  it('its session kept under supabase-js own default name (no one signed out); a public file address without the client', async () => {
+    vi.resetModules()
+    const { createClient } = await import('@supabase/supabase-js')
+    const s = await import('./supabase')
+    const c = (await s.getSb())!
+    const keyOf = (x: typeof c) => (x.auth as unknown as { storageKey: string }).storageKey
+    expect(keyOf(c)).toBe('sb-x-auth-token')
+    expect(keyOf(createClient('https://x.supabase.co', 'sb_publishable_test'))).toBe('sb-x-auth-token')
+    expect(await s.getSb()).toBe(c) // one client
+    expect(s.publicUrl('library', 'org-1/ab cd.glb')).toBe(c.storage.from('library').getPublicUrl('org-1/ab cd.glb').data.publicUrl)
+  })
+
+  it('never signed in here (no kept session, no emailed code in the address): no session, no client asked for', async () => {
+    vi.resetModules()
+    const kept = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => kept.get(k) ?? null })
+    vi.stubGlobal('location', { search: '' })
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const s = await import('./supabase')
+    const auth = await import('./auth')
+    expect(s.maySignIn()).toBe(false)
+    expect(await auth.session()).toBeNull()
+    expect(await auth.myOrg()).toBeNull()
+    expect(f).not.toHaveBeenCalled()
+    vi.stubGlobal('location', { search: '?code=abc' }) // the emailed link came back
+    expect(s.maySignIn()).toBe(true)
+    vi.stubGlobal('location', { search: '' })
+    kept.set('sb-x-auth-token', '{}') // a session kept from before
+    expect(s.maySignIn()).toBe(true)
   })
 })

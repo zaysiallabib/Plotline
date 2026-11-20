@@ -10,7 +10,7 @@
  */
 import { isOwnItem, ownItem, ownItems, registerOwn, type OwnFile, type OwnItem } from '../furnish/own'
 import { myOrg } from './auth'
-import { sb } from './supabase'
+import { getSb, publicUrl as fileUrl } from './supabase'
 
 export const BUCKET = 'library'
 const TYPE: Record<OwnFile['ext'], string> = { glb: 'model/gltf-binary', jpg: 'image/jpeg', png: 'image/png' }
@@ -49,7 +49,7 @@ export async function hashOf(bytes: ArrayBuffer): Promise<string> {
 export const fileOfItem = (it: OwnItem): OwnFile | null => (it.type === 'model' ? it.file : 'file' in it.look ? it.look.file : null)
 
 const urls = new Map<string, string>()
-const publicUrl = (path: string) => (sb ? sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : '')
+const publicUrl = (path: string) => fileUrl(BUCKET, path)
 /** where a file is read from: this browser's copy, else its name online, else nowhere ('' — the piece draws as its box) */
 async function urlOf(f: OwnFile): Promise<string> {
   const have = urls.get(f.hash)
@@ -84,6 +84,7 @@ const withPath = (it: OwnItem, path: string): OwnItem =>
 
 /** This record online for the company: its file first (once: the same bytes are never sent twice), then the record. */
 async function pushOnline(item: OwnItem, org: { id: string }): Promise<OwnItem | null> {
+  const sb = await getSb()
   if (!sb) return null
   let it = item
   const f = fileOfItem(it)
@@ -105,6 +106,7 @@ async function pushOnline(item: OwnItem, org: { id: string }): Promise<OwnItem |
 /** Signed in: the company's records come here (the newer copy wins), and what was made here signed out goes online. */
 async function syncOnline(): Promise<void> {
   const org = await myOrg().catch(() => null)
+  const sb = org && (await getSb())
   if (!sb || !org) return
   const { data, error } = await sb.from('library_items').select('item').eq('org_id', org.id)
   if (error) return

@@ -7,33 +7,44 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { acceptInvites } from './members'
-import { sb } from './supabase'
+import { configured, getSb, maySignIn } from './supabase'
 
 /**
  * Emails a sign-in link. It comes back to this site's Studio only: `emailRedirectTo` is this origin, and Supabase
  * refuses any address not on its Redirect URLs list (no open redirect). The email address is never logged here.
  */
 export async function signIn(email: string): Promise<void> {
-  if (!sb) throw new Error('Accounts are not set up on this site')
+  const sb = await getSb()
+  if (!sb) throw new Error(configured ? 'No connection: try again in a moment' : 'Accounts are not set up on this site')
   const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${location.origin}/studio`, shouldCreateUser: true } })
   if (error) throw new Error(error.status === 429 ? 'Too many emails asked for: wait a minute and try again' : error.message)
 }
 
 export async function signOut(): Promise<void> {
-  await sb?.auth.signOut()
+  if (maySignIn()) await (await getSb())?.auth.signOut()
 }
 
 export async function session(): Promise<Session | null> {
+  const sb = maySignIn() ? await getSb() : null // never signed in here: the client is not even loaded
   return sb ? (await sb.auth.getSession()).data.session : null
 }
 
 /** The session as it changes (sign in, sign out, the hourly refresh, another tab); undefined while it is being read. */
 export function useSession(): Session | null | undefined {
-  const [s, setS] = useState<Session | null | undefined>(sb ? undefined : null)
+  const [s, setS] = useState<Session | null | undefined>(configured ? undefined : null)
   useEffect(() => {
-    if (!sb) return
-    const { data } = sb.auth.onAuthStateChange((_event, next) => setS(next)) // fires INITIAL_SESSION at once
-    return () => data.subscription.unsubscribe()
+    let stop: (() => void) | undefined
+    let gone = false
+    void getSb().then((sb) => {
+      if (gone) return
+      if (!sb) return setS(null)
+      const { data } = sb.auth.onAuthStateChange((_event, next) => setS(next)) // fires INITIAL_SESSION at once
+      stop = () => data.subscription.unsubscribe()
+    })
+    return () => {
+      gone = true
+      stop?.()
+    }
   }, [])
   return s
 }
@@ -51,7 +62,7 @@ let mine: { user: string; org: Promise<Org | null> } | null = null
  */
 export async function myOrg(): Promise<Org | null> {
   const user = (await session())?.user.id
-  const c = sb
+  const c = user ? await getSb() : null
   if (!c || !user) return null
   if (mine?.user !== user) {
     const read = async (): Promise<Org | null> => {

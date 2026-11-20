@@ -7,7 +7,7 @@
  * first time that drawing opens. Not configured, signed out or offline: nothing here sends anything, and the browser
  * keeps its pictures exactly as before (studio/pictures.ts, the draft).
  */
-import { sb } from './supabase'
+import { configured, getSb } from './supabase'
 
 /** a plan picture as the Studio holds it (studio/model.ts PlanImage) */
 export interface Picture {
@@ -100,10 +100,12 @@ export const forgetPictures = (): void => {
  */
 export async function putOnline(org: string, id: string, pic: Picture | null | undefined): Promise<boolean> {
   const b = pic && bytesOf(pic.dataUrl)
-  if (!sb || !pic || !b || b.bytes.length > MAX_PICTURE_BYTES) return false
+  if (!configured || !pic || !b || b.bytes.length > MAX_PICTURE_BYTES) return false
   const path = await pathHere(id, org, pic, b)
   if (online[id]?.path === path) return false
   if (!Object.values(online).some((p) => p.path === path)) {
+    const sb = await getSb()
+    if (!sb) return false
     const { error } = await sb.storage.from('plans').upload(path, new Blob([b.bytes as Uint8Array<ArrayBuffer>], { type: b.type }), { contentType: b.type, upsert: false, cacheControl: '31536000' })
     const e = error as { statusCode?: string; status?: number; message?: string } | null
     if (e && !(e.statusCode === '409' || e.status === 409 || /exists|duplicate/i.test(e.message ?? ''))) return false
@@ -134,9 +136,11 @@ export function adoptPictures(data: unknown): unknown {
  */
 export async function pictureFromCloud(id: string, here: Picture | null | undefined): Promise<Picture | null> {
   const cp = online[id]
-  if (!sb || !cp) return null
+  if (!configured || !cp) return null
   const b = here && bytesOf(here.dataUrl)
   if (here && b && (await pathHere(id, cp.path.split('/')[0], here, b)) === cp.path) return null
+  const sb = await getSb()
+  if (!sb) return null
   const { data, error } = await sb.storage.from('plans').download(cp.path)
   if (error || !data) return null
   const type = EXT[data.type] ? data.type : TYPE[cp.path.split('.').pop()!]
