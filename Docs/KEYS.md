@@ -71,7 +71,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **A** / **D** | Step left / right | Walk | everyone | §2 |
 | **←** / **→** | Turn left / right while the mouse is free; step left / right while the mouse turns your head | Walk | everyone | §2 |
 | **Shift** held | Walk faster (about 4 m/s instead of 1.8) | Walk | everyone | §2 |
-| Click a spot on the floor | Walk there | Walk, mouse free | everyone | §2 |
+| Click a spot on the floor | Walk there (not while Comment or Finishes is open: the click is for the note or the finish, you stay) | Walk, mouse free | everyone | §2 |
 | Double-click | The mouse turns your head; **Esc** gives the mouse back | Walk (not in Edit furniture / Edit openings) | everyone | §2 |
 | **O** | Walk ↔ Dollhouse (from the Building view: back to Walk) | any | everyone | §2 Buttons |
 | **B** | The Building view | only when the flat is part of a tower | everyone | §2, §4 |
@@ -90,12 +90,20 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Drag / wheel / right-drag | Turn the view / zoom / slide it | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
 | Click a floor, a wall or a ceiling | Chooses the finish for that one room or wall | Finishes open, Walk or Dollhouse | everyone | §2 Finishes panel |
-| Click anything | Puts a note on it | Comment on | everyone | §2 Notes |
+| Click anything | Puts a note on it (clicking the floor no longer walks you there too) | Comment on | everyone | §2 Notes |
 | Click a flat | Opens it | Building | everyone | §4 |
 | Click / drag / drag a dot | Click a piece = pick it (also through glass); drag = move it — a TV, picture, AC, clock or mirror also up and down its wall (1-inch steps); drag a dot = bigger or smaller (curtains: wider or narrower on that side); drag the empty room = look around (Walk) | Edit furniture | staff | §3 Edit furniture |
 | Click / drag / drag a dot | Click = pick a door or window; drag = slide it along its wall; drag a dot = width, height, a window's sill; drag the empty room = look around (Walk) | Edit openings | staff | §3 Edit openings |
 | Click / drag / drag a dot (low wall) | Click = pick a low wall (under 1.2 m: railing, parapet, planter edge, kerb); drag an end dot = longer / shorter along its line (a joined end leaves its corner); drag the wall = move it across | Edit openings | staff | §3 Edit openings |
 | **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
+| **One finger** drag | Look round: the room follows the finger (drag left = turn right, drag up = look down) | Walk, a finger | everyone | §2 On a phone or tablet |
+| **Tap** the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |
+| **Long press** (half a second or more, still) | Nothing | anywhere on the 3D, a finger | everyone | §2 On a phone or tablet |
+| **One finger** drag · **two fingers** pinch / drag | Turn · zoom · slide | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
+| **Tap** a room's floor · a flat | Drops you into that room (Dollhouse) · opens that flat (Building); never after a pinch | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
+| **Tap** anything | Puts a note on it (you stay where you are) | Comment on, a finger | everyone | §2 On a phone or tablet |
+| Pull a sheet's **grip** down | Closes that sheet (Finishes, Comment, Sun & wind, Rooms, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
+| **Tap** where the faded bar was | Only brings the bar back (presses nothing) | Walk resting, a phone | everyone | §2 On a phone or tablet |
 | VR trigger | Hold to aim at the floor, let go to jump there | in VR | everyone | §2 In VR |
 | VR thumbstick left / right | Turns you 45° | in VR | everyone | §2 In VR |
 | Keyboard while in VR | Ignored | in VR | — | — |
@@ -117,7 +125,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
-| **Enter** | Goes in; you stand inside the front door | everyone |
+| **Enter** | Goes in; you stand inside the front door. Under it "or press Enter" (not under a finger: a phone has no keys) | everyone |
 | **Change** (in the quality line under Enter: "High quality · …") | Shows **Lite · Low · High** right there (a blue dot marks the one recommended); a pick opens the page again with it | everyone |
 | The other flats and levels (a quiet list at the bottom: Flats, then each tower's levels) | Open another built-in flat or level | `/u/…` addresses (not on a buyer link: `/s/…` or a Share link) |
 | **Studio** (small, top right) | Opens the Studio | `/u/…` addresses |
@@ -146,7 +154,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Name | What it does | Who |
 |---|---|---|
 | A short message (bottom middle, above the hint) | Answers what you just did ("Link copied …"); fades by itself | everyone |
-| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. Not shown under a finger (phones, tablets) | everyone |
+| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. Under a finger it never names a key: "Drag to look · tap the floor to walk there" (Walk), "Drag to turn · pinch to zoom · tap a room’s floor to walk in it" (Dollhouse), "Tap a flat to open it · drag to turn · pinch to zoom" (Building) | everyone |
 | **Sun & wind** pill (bottom middle: a sun, the time, the month, a small compass; "Wind" while the wind is on) | Opens the Sun & wind card | everyone |
 | **⌄** (top right of the card) | Closes the card back to the pill (or Esc) | everyone |
 | Compass (top left of the card; small on the pill) | Where true north is as you look now — the top of the compass is straight ahead; it turns as you turn. N is blue | everyone |
@@ -165,6 +173,8 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
+| The grip (a short grey bar at the top of a sheet; a phone only) | Pull it down to close the sheet: Finishes, Comment, Sun & wind, the Rooms list, Edit, ⋯ | everyone |
+| **×** (top right of the Rooms list; a phone only) | Closes the list | everyone |
 | **×** (top right of Finishes) | Closes the panel (or F, or Esc) | everyone |
 | **×** (top right of Comment) | Stops Comment (or C, or Esc) | everyone |
 | **Your name** (in both panels) | So the developer knows who asked | buyer links only |

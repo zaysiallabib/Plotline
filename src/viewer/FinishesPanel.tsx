@@ -3,6 +3,7 @@
  * of rooms), chips with a tinted albedo swatch, brand, delta; the one-room choices made; Options total; Reset.
  */
 import { useEffect, useState } from 'react'
+import { useFinger } from './Hud'
 import type { Configuration, FinishOption, FinishSlot, MaterialRef } from '../core'
 import { TEXTURES } from '../furnish/textures'
 import { formatDelta, formatTaka, type FinishKeys } from './share'
@@ -110,6 +111,7 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
     }
   }, [slots])
 
+  const finger = useFinger()
   const total = optionsTotal(slots, cfg)
   const ones = Object.entries(cfg).flatMap(([key, id]) => {
     const k = keys.get(key)
@@ -121,7 +123,7 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
       {surface ? (
         <SurfaceBlock key={`${surface.roomKey}|${surface.wallKey}`} surface={surface} keys={keys} cfg={cfg} onSelect={onSelect} onClose={onCloseSurface} />
       ) : (
-        <p className="muted small">Click a floor, a wall or a ceiling to choose for that room or that wall alone. Each block below covers a group of rooms.</p>
+        <p className="muted small">{finger ? 'Tap' : 'Click'} a floor, a wall or a ceiling to choose for that room or that wall alone. Each block below covers a group of rooms.</p>
       )}
       {slots.map((slot) => {
         const sel = chosen(slot, cfg)?.id

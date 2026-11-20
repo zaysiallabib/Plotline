@@ -6,7 +6,8 @@
  * (fades after a few seconds), a stair's Up / Down, the Sun & wind pill. Building: the floor rail on the right.
  * Rest: 3 s without the mouse in Walk and everything but the room's name fades (chromeOf). Clean view (H, the eye, ⋯):
  * nothing but a faint dot top right — H, Esc or the dot brings it all back; remembered for the tab. Esc closes an open
- * list or menu. Staff: the dot and the piece in hand. Phones (under 720 px): the pill is a bottom bar (viewer.css).
+ * list or menu. Staff: the dot and the piece in hand. Phones (under 720 px): the pill is a bottom bar, the lists and panels
+ * bottom sheets with a grip to pull them down (Grip); under a finger the hint says finger words, never keys (useFinger).
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { sqmToSqft, type Room } from '../core'
@@ -20,6 +21,52 @@ export interface HandInfo {
   error: string | null
   ready: boolean
   adding: boolean
+}
+
+/**
+ * A finger is in use: the screen's main pointer is a finger (a phone, a tablet), or the last press was one (a touch
+ * laptop). Then the hints say what a finger does and never name a key.
+ */
+export function useFinger(): boolean {
+  const [finger, setFinger] = useState(() => !!globalThis.matchMedia?.('(pointer: coarse)').matches)
+  useEffect(() => {
+    const down = (e: PointerEvent) => setFinger(e.pointerType !== 'mouse')
+    addEventListener('pointerdown', down, true)
+    return () => removeEventListener('pointerdown', down, true)
+  }, [])
+  return finger
+}
+
+/** how far a sheet's grip is pulled down before the sheet closes, px */
+const SWIPE_PX = 64
+/**
+ * A bottom sheet's grip (phones; viewer.css hides it on a desktop): pull it down and the sheet follows the finger; let
+ * go past SWIPE_PX and the sheet closes, else it settles back.
+ */
+export function Grip({ onClose }: { onClose: () => void }) {
+  const y0 = useRef<number | null>(null)
+  const pull = (el: HTMLElement, dy: number) => (el.parentElement!.style.transform = dy > 0 ? `translateY(${dy}px)` : '')
+  return (
+    <div
+      className="grip"
+      aria-hidden="true"
+      onPointerDown={(e) => {
+        y0.current = e.clientY
+        e.currentTarget.setPointerCapture(e.pointerId)
+      }}
+      onPointerMove={(e) => y0.current !== null && pull(e.currentTarget, e.clientY - y0.current)}
+      onPointerUp={(e) => {
+        const dy = y0.current === null ? 0 : e.clientY - y0.current
+        y0.current = null
+        pull(e.currentTarget, 0)
+        if (dy > SWIPE_PX) onClose()
+      }}
+      onPointerCancel={(e) => {
+        y0.current = null
+        pull(e.currentTarget, 0)
+      }}
+    />
+  )
 }
 
 /** where the free mouse last was: the hand's tag starts there (guarded: the tests load this file without a window) */
@@ -143,9 +190,17 @@ export function floorTitle(t: Tower, k: number, stem: string): FloorTitle {
   return { label: word, name, size: u && u.areaSqft > 0 && !/sft/i.test(u.name) ? `${u.areaSqft} sft` : undefined }
 }
 
-/** The bottom hint: the keys of what is on (staff: the editors'); null while a piece is in hand (its tag says it) */
-export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; arranging: boolean; editingOpenings: boolean; holding: boolean }): string | null {
+/** The bottom hint: the keys of what is on (staff: the editors'); null while a piece is in hand (its tag says it). `finger`: what a finger does, no keys. */
+export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; arranging: boolean; editingOpenings: boolean; holding: boolean; finger?: boolean }): string | null {
   const walk = p.mode === 'walk'
+  if (p.finger) {
+    if (p.mode === 'building') return 'Tap a flat to open it · drag to turn · pinch to zoom'
+    if (p.holding) return null
+    if (p.editingOpenings) return `Tap a door, window, passage or low wall · drag it · drag a dot to resize${walk ? ' · drag the room to look' : ''}`
+    if (p.arranging) return `Drag a piece to move it · the panel turns, removes and undoes${walk ? ' · drag the room to look' : ''}`
+    if (!walk) return 'Drag to turn · pinch to zoom · tap a room’s floor to walk in it'
+    return 'Drag to look · tap the floor to walk there'
+  }
   if (p.mode === 'building') return 'Click a flat to open it · drag to turn · scroll to zoom · O back to Walk'
   if (p.holding) return null
   if (p.editingOpenings) return `Click a door, window, passage or low wall · drag it · drag a dot to resize · Del removes · Ctrl+Z undoes${walk ? ' · drag the room to look' : ''}`
@@ -248,7 +303,7 @@ export default function Hud(p: Props) {
       t = window.setTimeout(() => setIdle(true), REST_MS)
     }
     const move = (e: PointerEvent) => {
-      if (document.pointerLockElement) return // the mouse turns the head: looking, not reaching for a button
+      if (document.pointerLockElement || e.pointerType === 'touch') return // the mouse turns the head, a finger drags the view: looking, not reaching for a button
       if (!(e.target as Element).closest?.(CHROME)) return wake()
       setIdle(false)
       clearTimeout(t)
@@ -276,8 +331,11 @@ export default function Hud(p: Props) {
     setOpen(null)
   }
 
+  // at rest a phone's faded chrome still takes a finger (viewer.css): that first tap only brings it back, it presses nothing
+  const resting = useRef(false)
+  const finger = useFinger()
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
-  const hint = hintOf({ ...p, holding: !!p.hand })
+  const hint = hintOf({ ...p, holding: !!p.hand, finger })
   const r = p.room
   const b = p.mode === 'building' ? p.pickedFloor : null
   const eyebrow = b ? b.label : p.floorLabel
@@ -288,7 +346,11 @@ export default function Hud(p: Props) {
   ]
 
   return (
-    <div className={`hud${chrome === 'room' ? ' rest' : chrome === 'none' ? ' clean' : ''}`}>
+    <div
+      className={`hud${chrome === 'room' ? ' rest' : chrome === 'none' ? ' clean' : ''}`}
+      onPointerDownCapture={() => (resting.current = chrome === 'room')}
+      onClickCapture={(e) => resting.current && !(e.target as Element).closest('.hud-tl') && e.stopPropagation()}
+    >
       <div className="hud-tl">
         <button className={`room-title${open === 'rooms' ? ' on' : ''}`} aria-expanded={open === 'rooms'} title="Rooms: jump to another room" onClick={() => toggle('rooms')}>
           {eyebrow && <span className="label">{eyebrow}</span>}
@@ -310,7 +372,13 @@ export default function Hud(p: Props) {
         </button>
         {open === 'rooms' && (
           <div className="glass menu rooms-list" role="menu">
-            <div className="menu-head label">Rooms</div>
+            <Grip onClose={() => setOpen(null)} />
+            <div className="menu-head label">
+              Rooms
+              <button className="x" aria-label="Close Rooms" onClick={() => setOpen(null)}>
+                ×
+              </button>
+            </div>
             {p.rooms.map((x) => (
               <button
                 key={x.id}
@@ -373,6 +441,7 @@ export default function Hud(p: Props) {
         </nav>
         {open === 'edit' && (
           <div className="glass menu" role="menu" onClick={() => setOpen(null)}>
+            <Grip onClose={() => setOpen(null)} />
             <div className="menu-head label">Staff</div>
             {p.onArrange && (
               <button className={`menu-row${p.arranging ? ' on' : ''}`} role="menuitem" title="Move, turn, resize, delete or add furniture" onClick={p.onArrange}>
@@ -396,6 +465,7 @@ export default function Hud(p: Props) {
         )}
         {open === 'more' && (
           <div className="glass menu menu-wide" title={p.quality.gpu && `Graphics: ${p.quality.gpu}`}>
+            <Grip onClose={() => setOpen(null)} />
             <button className="menu-row" role="menuitem" title="Hide everything on screen; H, Esc or the dot top right brings it back" onClick={goClean}>
               <span>Clean view</span>
               <kbd>H</kbd>

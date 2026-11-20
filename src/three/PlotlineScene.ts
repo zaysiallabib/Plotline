@@ -105,6 +105,9 @@ const UP = new THREE.Vector3(0, 1, 0)
 const SIZE = new THREE.Vector3()
 /** a press that drifts at most this far is a click: it selects, never moves a piece or an opening (a hand's click drifts 3–5 px; Studio tool F the same) */
 const CLICK_PX = 6
+/** a finger's tap may drift this far (a fingertip rolls more than a mouse) and must end within LONG_PRESS_MS: held longer it is a long press, which does nothing */
+const TAP_PX = 12
+const LONG_PRESS_MS = 500
 /** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
 const WAKE = ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup'] as const
 const WAKE_MS = 1000
@@ -117,6 +120,15 @@ const BATCH_MS = 400
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000
+
+/**
+ * A press let go: was it a click? A mouse: it drifted at most CLICK_PX (as before). A finger or a pen: at most TAP_PX,
+ * let go within LONG_PRESS_MS, and never part of a two-finger gesture (a pinch's last finger up is no tap).
+ */
+export function isClick(p: { dx: number; dy: number; ms: number; finger: boolean; multi: boolean }): boolean {
+  const d = Math.hypot(p.dx, p.dy)
+  return p.finger ? !p.multi && p.ms < LONG_PRESS_MS && d <= TAP_PX : d <= CLICK_PX
+}
 
 /**
  * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
@@ -329,8 +341,14 @@ export class PlotlineScene {
   private moveTarget: Pt | null = null
   private center = new THREE.Vector3()
   private radius = 10
-  private pickCb: ((hit: PickHit | null) => void) | null = null
-  private pointerDown: { x: number; y: number } | null = null
+  /** a click's hit; true back: the click was used (a pin, a finish) and the walker does not walk there */
+  private pickCb: ((hit: PickHit | null) => boolean | void) | null = null
+  private pointerDown: { x: number; y: number; t: number } | null = null
+  /** the last press was a finger or a pen (then no pointer lock: one finger looks, a tap walks); before any press, a phone's screen */
+  private finger = !!globalThis.matchMedia?.('(pointer: coarse)').matches
+  /** the fingers on the canvas now; `multi`: this gesture has had two (a pinch, a two-finger drag): no look, no tap */
+  private fingers = new Set<number>()
+  private multi = false
   /** built on the first switch to the Building view; hidden in walk / dollhouse */
   private building: Building | null = null
   /** the architect's outside shape round the flat (three/shell.ts), in every mode; the dollhouse cuts it at the storey's top */
@@ -408,6 +426,7 @@ export class PlotlineScene {
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
     canvas.addEventListener('webglcontextlost', this.onContextLost)
     for (const e of WAKE) window.addEventListener(e, this.wake, { passive: true })
+    window.addEventListener('pointerdown', this.notePointer, { capture: true, passive: true })
     THREE.DefaultLoadingManager.onProgress = this.wake // a texture, model or sky arrived (every loader here uses the default manager)
     this.wake()
 
@@ -430,6 +449,7 @@ export class PlotlineScene {
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointermove', this.onPointerMove)
     canvas.addEventListener('pointerup', this.onPointerUp)
+    canvas.addEventListener('pointercancel', this.onPointerCancel)
     canvas.addEventListener('dblclick', this.onDblClick)
     this.ro = new ResizeObserver(() => this.resize())
     this.ro.observe(canvas)
@@ -601,6 +621,8 @@ export class PlotlineScene {
       b?.highlight(b.floor)
       this.camera.position.copy(v?.eye ?? this.center.clone().add(new THREE.Vector3(this.radius, this.radius * 1.3, this.radius)))
       this.orbit.target.copy(v?.target ?? this.center)
+      // a screen taller than wide (a phone): back off until the flat / the tower fits its width (a wide screen, an iPad upright: as before)
+      this.camera.position.sub(this.orbit.target).multiplyScalar(Math.max(1, 0.75 / this.camera.aspect)).add(this.orbit.target)
       this.orbit.update()
     } else {
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
@@ -640,7 +662,8 @@ export class PlotlineScene {
     this.rebatch('static')
   }
 
-  onPick(cb: (hit: PickHit | null) => void): void {
+  /** A click (a tap) on the flat; the callback returns true when it used it (a pin, a finish): a floor click then does not walk. */
+  onPick(cb: (hit: PickHit | null) => boolean | void): void {
     this.pickCb = cb
   }
 
@@ -696,9 +719,9 @@ export class PlotlineScene {
     return core.roomAt(this.walker, this.rooms, this.unit)?.id ?? null
   }
 
-  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging or editing openings. */
+  /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging or editing openings, never under a finger. */
   lockPointer(): void {
-    if (this.mode === 'walk' && !this.arranging && !this.editingOpenings) this.plc.lock()
+    if (this.mode === 'walk' && !this.arranging && !this.editingOpenings && !this.finger) this.plc.lock()
   }
 
   // ───────────────────────────── arrange (staff) ─────────────────────────────
@@ -1121,7 +1144,9 @@ export class PlotlineScene {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
+    this.canvas.removeEventListener('pointercancel', this.onPointerCancel)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
+    window.removeEventListener('pointerdown', this.notePointer, true)
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost)
     for (const e of WAKE) window.removeEventListener(e, this.wake)
@@ -1477,13 +1502,32 @@ export class PlotlineScene {
     else this.keys.delete(e.key.toLowerCase())
   }
 
+  private notePointer = (e: PointerEvent): void => {
+    this.finger = e.pointerType !== 'mouse'
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
-    this.pointerDown = { x: e.clientX, y: e.clientY }
+    if (e.pointerType !== 'mouse') {
+      this.fingers.add(e.pointerId)
+      if (this.fingers.size > 1) {
+        this.multi = true // a second finger: the dollhouse pinches (OrbitControls); nothing here looks, taps or grabs
+        this.look2 = null
+        return
+      }
+    }
+    this.pointerDown = { x: e.clientX, y: e.clientY, t: e.timeStamp }
     if (this.editingOpenings && this.mode !== 'building') return this.openingDown(e)
     if (this.arranging && this.mode !== 'building') {
       if (!this.hand) this.arrangeDown(e)
       else if (this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY }
-    }
+    } else if (e.pointerType !== 'mouse' && this.mode === 'walk') this.look2 = { x: e.clientX, y: e.clientY } // one finger looks round (the grab-the-room look)
+  }
+
+  /** the browser took a finger back (a system gesture): it ends, nothing clicks */
+  private onPointerCancel = (e: PointerEvent): void => {
+    this.fingers.delete(e.pointerId)
+    if (!this.fingers.size) this.multi = false
+    if (!this.arranging && !this.editingOpenings) this.pointerDown = this.look2 = null
   }
 
   private ndcOf(e: PointerEvent): THREE.Vector2 {
@@ -1632,18 +1676,21 @@ export class PlotlineScene {
 
   private onPointerUp = (e: PointerEvent): void => {
     const d = this.pointerDown
+    const click = !!d && isClick({ dx: e.clientX - d.x, dy: e.clientY - d.y, ms: e.timeStamp - d.t, finger: e.pointerType !== 'mouse', multi: this.multi })
+    this.fingers.delete(e.pointerId)
+    if (!this.fingers.size) this.multi = false
     this.pointerDown = null
     if (this.editingOpenings && this.mode !== 'building') {
       const g = this.opGrab
       this.opGrab = this.look2 = null
       this.orbit.enabled = this.mode !== 'walk'
       if (g?.moved) this.openingCb?.({ kind: 'drop', id: g.id })
-      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) this.openingCb?.({ kind: 'select', id: null })
+      else if (!g && click) this.openingCb?.({ kind: 'select', id: null })
       return
     }
     if (this.hand && this.mode !== 'building') {
       this.look2 = null
-      if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) {
+      if (click) {
         this.aimHand() // where the click is (the crosshair while locked), then drop there
         this.arrangeCb?.({ kind: 'drop', id: this.hand.id })
       }
@@ -1656,10 +1703,11 @@ export class PlotlineScene {
       // a dragged piece stays in hand until the drop fits (ask 10: a refused spot keeps it, red); the handler lets go
       if (g?.moved && !g.handle) this.hand = { id: g.id, y: g.y, off: g.off }
       if (g?.moved) this.arrangeCb?.({ kind: 'drop', id: g.id })
-      else if (!g && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= CLICK_PX) this.arrangeCb?.({ kind: 'select', id: null })
+      else if (!g && click) this.arrangeCb?.({ kind: 'select', id: null })
       return
     }
-    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_PX) return // a drag, not a click
+    this.look2 = null // a finger's look ends
+    if (!click) return // a drag, a long press or a pinch: not a click
     const ndc = new THREE.Vector2(0, 0)
     if (!this.plc.isLocked) {
       const r = this.canvas.getBoundingClientRect()
@@ -1671,8 +1719,8 @@ export class PlotlineScene {
       return
     }
     const hit = this.pick(ndc)
-    this.pickCb?.(hit)
-    if (hit?.kind === 'floor' && this.mode === 'walk' && !this.plc.isLocked) {
+    const used = this.pickCb?.(hit)
+    if (!used && hit?.kind === 'floor' && this.mode === 'walk' && !this.plc.isLocked) {
       this.moveTarget = { x: hit.point.x, y: hit.point.z }
     }
   }
