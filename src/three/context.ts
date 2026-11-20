@@ -11,7 +11,7 @@ import type { Pt, Unit } from '../core'
 import type { Street } from '../data/building'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
-import { lite } from '../furnish/procedural'
+import { lean, lite } from '../furnish/procedural'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
 
@@ -112,8 +112,12 @@ export interface Block {
 export const STOREY = 3.2
 /** facade bay: one window per bay and storey */
 export const BAY = 3.6
-/** × the facade texture's plaster: washed off-white to weathered grey-beige, Dhaka apartment blocks, "plain" */
-const TINTS = ['#ffffff', '#efece7', '#e9e1d3', '#dededc', '#d4ccbf']
+/**
+ * × the facade texture's plaster, Dhaka apartment blocks in three families (session 31: five near-whites read as one
+ * diagram): washed off-white, warm sand / cream, cool pale grey. Picked per block from the street's own seed: the same
+ * every time.
+ */
+const TINTS = ['#ffffff', '#f2e3c6', '#e6cfb0', '#d9dee1', '#efece7']
 
 /** Deterministic PRNG in [0, 1) (mulberry32). */
 function rng(seed: number): () => number {
@@ -390,8 +394,11 @@ export interface Part {
  * What a plain Dhaka block has besides windows: a roof parapet, the stair/lift head room with black water tanks on
  * it, outdoor AC units under some windows and, on balcony blocks (facade 2), a slab + parapet at every bay's door.
  * Facade parts only on the faces that look toward `at` (the others are never seen), none on the ground storey (parking).
+ * `lines` (High, session 31: "a street, not a diagram"): the other blocks get their floor slabs' edge as a band across
+ * the face at every floor, 0.5 m out and a shade lighter — the line each floor's balconies and sunshades hang on, and a
+ * shadow line in the sun.
  */
-export function blockParts(k: Block, at: Pt, r: () => number): Part[] {
+export function blockParts(k: Block, at: Pt, r: () => number, lines = false): Part[] {
   const H = k.storeys * STOREY
   const T = 0.15
   const parts: Part[] = [
@@ -420,6 +427,7 @@ export function blockParts(k: Block, at: Pt, r: () => number): Part[] {
       const ys = [o[1] + d[1] * u0 + n[1] * w0, o[1] + d[1] * u1 + n[1] * w1]
       parts.push({ x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), z0, z1, shade })
     }
+    if (lines && k.facade !== 2) for (let s = 1; s < k.storeys; s++) box(0, len, s * STOREY, s * STOREY + 0.15, 0, 0.5, 1.12)
     for (let b = 0; b + BAY <= len + 1e-6; b += BAY) {
       for (let s = 1; s < k.storeys; s++) {
         const z = s * STOREY
@@ -484,7 +492,7 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
     // the block and its parts (≤ 0.9 m out, tanks up to 4 m over the roof) go together
     const box = (g: THREE.BufferGeometry) => boxed(g, new THREE.Vector3(k.x0 - 0.9, groundY, k.y0 - 0.9), new THREE.Vector3(k.x1 + 0.9, groundY + H + 4, k.y1 + 0.9))
     geos[k.facade].push(box(paint(new THREE.BoxGeometry(W, H, D).translate(W / 2, H / 2, D / 2), tint, true, BAY * ((3 * i) % LIT_BAYS), STOREY * ((5 * i) % LIT_STOREYS)).translate(k.x0, groundY, k.y0)))
-    for (const q of blockParts(k, at, rng(seed + i + 1))) {
+    for (const q of blockParts(k, at, rng(seed + i + 1), !lean.on)) {
       const [w, h, d] = [q.x1 - q.x0, q.z1 - q.z0, q.y1 - q.y0]
       const g = q.tank ? new THREE.CylinderGeometry(w / 2, w / 2, h, 10) : new THREE.BoxGeometry(w, h, d)
       geos[k.facade].push(box(paint(g, tint.clone().multiplyScalar(q.shade), false).translate((q.x0 + q.x1) / 2, groundY + (q.z0 + q.z1) / 2, (q.y0 + q.y1) / 2)))
