@@ -305,7 +305,8 @@ describe('furniture reads the daylight of its room (session 31: "furniture in a 
     const mat = new THREE.MeshStandardMaterial()
     const own = new THREE.MeshStandardMaterial()
     own.onBeforeCompile = () => {} // a material with its own shader (a pane, water): left alone
-    const a = new THREE.Group().add(new THREE.Mesh(geo, mat), new THREE.Mesh(geo, own))
+    const glass = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.1 }) // a shower screen: seen through, left alone
+    const a = new THREE.Group().add(new THREE.Mesh(geo, mat), new THREE.Mesh(geo, own), new THREE.Mesh(geo, glass))
     const b = new THREE.Group().add(new THREE.Mesh(geo, mat))
     lightPiece(a, [0.25, 0.5])
     lightPiece(b, [0.75, 0.125])
@@ -321,6 +322,8 @@ describe('furniture reads the daylight of its room (session 31: "furniture in a 
     expect(mat.customProgramCacheKey()).toBe('daylit') // the room surfaces' programs
     expect(mo.geometry).toBe(geo)
     expect(own.customProgramCacheKey()).not.toBe('daylit')
+    expect((a.children[2] as THREE.Mesh).geometry).toBe(geo)
+    expect(glass.customProgramCacheKey()).not.toBe('daylit')
     // moved into another room: the same geometry, new numbers
     const before = ma.geometry
     const v0 = (ma.geometry.getAttribute('dayUv') as THREE.BufferAttribute).version

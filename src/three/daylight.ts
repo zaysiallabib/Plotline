@@ -649,9 +649,12 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
   geo.setAttribute('dayUv', new THREE.BufferAttribute(uv, 2))
 }
 
-/** a material furniture shares the room surfaces' patch with: a plain lit one (never one with a shader of its own, a mirror's or a line's) */
+/**
+ * A material furniture shares the room surfaces' patch with: a plain lit, solid one — never one with a shader of its own (a
+ * mirror's, a line's), never glass: it is seen through, and patched it left the windows' glass program (Lite +2 programs).
+ */
 const patchable = (m: THREE.Material): m is THREE.MeshStandardMaterial =>
-  !!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && (m.userData.dayPiece || m.onBeforeCompile === THREE.Material.prototype.onBeforeCompile)
+  !!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !m.transparent && (m.userData.dayPiece || m.onBeforeCompile === THREE.Material.prototype.onBeforeCompile)
 
 /** A geometry of mesh `id`'s own over `g`'s vertices (not copied: a model's clones share one geometry), with an empty `dayUv`. */
 function own(g: THREE.BufferGeometry, id: number): THREE.BufferGeometry {
