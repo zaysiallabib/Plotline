@@ -44,7 +44,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Arrow keys** | Nudge what is picked 1 inch | every tool but F | §5 Other keys |
 | **Shift + arrow keys** | Nudge 1 foot | every tool but F | §5 Other keys |
 | **Arrow keys** | Move the picked piece one 3-inch square (Shift changes nothing; nothing while a piece is in your hand) | F | §5 — F |
-| **R** | Turn the picked piece 90° — or the piece in your hand | F | §5 — F |
+| **R** | Turn the picked piece 90° — or the piece in your hand; a TV on its unit or cushions turn their unit with them on it | F | §5 — F |
 | **0** | Fit the whole plan on screen | any tool | §5 Other keys |
 | **Space** held + drag | Slide the plan | any tool | §5 Other keys |
 | **Shift** held | No snapping or sticking while you point, draw or drag (corners, wall lines, wall faces, columns; a column corner's square-up stick); the status bar shows it at once | V, W, A, C | §5 — V, W, C |
@@ -83,7 +83,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Esc** | Gives the mouse back, and one step back: in Clean view it only brings everything back (nothing else happens with that press); the "which floors?" box (Floor 2 only / All 4 floors) takes the change back — the piece goes back where it was, nothing saved; an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks (one Esc, also while the cursor is in its search box); in Edit openings: unpicks; else drops a note you have not saved; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
 | Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back everything that faded while the mouse rested (3 s still in Walk: all but the room's name fades) | Walk | everyone | §2 Resting |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
-| **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° | Walk, Dollhouse | staff | §3 Edit furniture |
+| **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° (a TV on its unit turns the unit, the TV on it) | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
 | **Ctrl+Z** | Undo the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
 | Number keys | Nothing in the 3D view | — | — | — |

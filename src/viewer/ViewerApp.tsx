@@ -26,7 +26,7 @@ import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -845,7 +845,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }, [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   const undo = () => steps.current.past.length && settle(undoStep(steps.current))
   const turn = () => {
-    const p = pieceOf(sel)
+    const p = sel ? baseOf(steps.current.pieces, sel) : null // a TV on its unit: the unit turns, the TV on it
     const m = p && movePiece(unit, rooms, steps.current.pieces, p.id, p, p.rotationDeg + 90, false)
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
