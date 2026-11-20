@@ -867,7 +867,7 @@ export class PlotlineScene {
       // a table lamp: on the top of what is under it now (a desk, a bedside), else on the floor
       o.position.y = kitAsset(p.assetId)?.onTop ? floor + bottomOf(this.layout, p) : kitY === undefined ? o.position.y + floor - (o.userData.floorM ?? 0) : floor + (p.mountY ?? kitY)
       o.userData.floorM = floor
-      o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
+      o.rotation.set(0, -THREE.MathUtils.degToRad(p.rotationDeg), 0) // about the vertical only (fitSelection)
       o.userData.roomId = p.roomId
       o.visible = !p.removed
     }
@@ -907,14 +907,16 @@ export class PlotlineScene {
     this.selBox.removeFromParent()
     this.selBox.traverse((c) => (c as THREE.Mesh).geometry?.dispose())
     this.selBox.clear()
-    const [p, q, k] = [o.position.clone(), o.quaternion.clone(), o.scale.clone()]
+    // the Euler, not the quaternion: a half turn copied back as a quaternion reads as (180°, 0°, 180°), and the next
+    // placePieces set y alone on that — the piece stood backwards (the TV cabinet showed its plain back, session 31 QA V7)
+    const [p, r, k] = [o.position.clone(), o.rotation.clone(), o.scale.clone()]
     o.position.set(0, 0, 0)
-    o.quaternion.identity()
+    o.rotation.set(0, 0, 0)
     o.scale.set(1, 1, 1)
     o.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(o)
     o.position.copy(p)
-    o.quaternion.copy(q)
+    o.rotation.copy(r)
     o.scale.copy(k)
     o.updateMatrixWorld(true)
     const lines = new THREE.Box3Helper(box, SEL)
