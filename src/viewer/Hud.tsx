@@ -339,6 +339,9 @@ export default function Hud(p: Props) {
 
   // at rest a phone's faded chrome still takes a finger (viewer.css): that first tap only brings it back, it presses nothing
   const resting = useRef(false)
+  // the floors list: the picked floor scrolled into sight (a phone shows only part of a tall tower's list)
+  const rail = useRef<HTMLDivElement>(null)
+  useEffect(() => rail.current?.querySelector('.rail-item.on')?.scrollIntoView({ block: 'nearest' }), [p.picked, p.mode])
   const finger = useFinger()
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
   const hint = hintOf({ ...p, holding: !!p.hand, finger })
@@ -497,7 +500,7 @@ export default function Hud(p: Props) {
       {p.staff && p.locked && p.mode === 'walk' && <div className="dot" />}
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">
-          <div className="glass rail" role="group" aria-label="Floors">
+          <div ref={rail} className="glass rail" role="group" aria-label="Floors">
             <div className="menu-head label">Floors</div>
             {p.floors.map(({ k, label }) => (
               <button key={k} className={`rail-item${p.picked === k ? ' on' : ''}`} aria-pressed={p.picked === k} title={p.floor === k ? 'Your flat’s floor' : undefined} onClick={() => p.onPickFloor(k)}>

@@ -22,13 +22,15 @@
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  /* a finger: no grey flash on a tap, no words selected by a long press, no double-tap zoom delay on a button */
+  /* a finger: no grey flash on a tap, no double-tap zoom delay on a button */
   -webkit-tap-highlight-color: transparent;
-  user-select: none;
-  -webkit-user-select: none;
 }
-.viewer :is(input, textarea) { user-select: text; -webkit-user-select: text; }
 .viewer :is(button, a, input, select) { touch-action: manipulation; }
+/* a finger's long press selects no words (a mouse still selects and copies as before) */
+@media (pointer: coarse) {
+  .viewer { user-select: none; -webkit-user-select: none; }
+  .viewer :is(input, textarea) { user-select: text; -webkit-user-select: text; }
+}
 /* the page never bounces or pulls to refresh behind the 3D */
 html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .viewer.commenting canvas { cursor: crosshair; }
@@ -547,7 +549,9 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 
 /* ── Building view: the floors, a quiet list on the right; Walk this level under it ──────────────────────────────── */
 .floor-rail { position: absolute; z-index: 2; right: calc(var(--safe-r) + var(--edge)); top: 50%; translate: 0 -50%; display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); max-height: calc(100% - 2 * var(--dock-top)); }
-.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; padding: var(--s-2); overflow: auto; }
+.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; min-height: 0; padding: var(--s-2); overflow: auto; }
+/* a long list of floors scrolls; Walk this level under it keeps its full height (it was squeezed on a phone) */
+.floor-rail > .btn { flex: none; }
 .rail-item {
   display: flex;
   align-items: center;
