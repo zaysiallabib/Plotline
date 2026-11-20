@@ -28,6 +28,7 @@ import {
   studioIssues,
   wallLabelSides,
   type Draft,
+  type PlanImage,
   type StudioState,
   type Target,
   type Tool,
@@ -51,8 +52,9 @@ import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
-import { myOrg, session } from '../lib/auth'
+import { myOrg, session, useSession } from '../lib/auth'
 import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
+import { adoptPictures, pictureFromCloud, putOnline, withPictures } from '../lib/pictures'
 import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
@@ -644,6 +646,7 @@ export default function StudioApp() {
     dispatch({ type: 'load-unit', unit: withLayout(u) })
     void getPicture(u.id)
       .catch(() => undefined)
+      .then(async (pic) => (await pictureFromCloud(u.id, pic).catch(() => null)) ?? pic) // a colleague's picture (lib/pictures.ts)
       .then((pic) => {
         if (opening.current !== u.id) return // he opened another meanwhile
         if (pic) {
@@ -675,6 +678,32 @@ export default function StudioApp() {
     const d = projRef.current?.drawing
     if (d && pi?.dataUrl.startsWith('data:')) putPicture(d, pi).catch(() => toast('This browser would not keep the plan picture: load it again when you come back to this drawing'))
   }, [state.planImage]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ----- plan pictures online (lib/pictures.ts): signed in to a company, each drawing's picture goes to the company's
+  // folder once and the saved project / drawing names it (picTick: save again), so a colleague who opens it gets the
+  // picture back; signed out, offline or no database: nothing is sent, the browser keeps them as before
+  const signedIn = useSession()?.user.id
+  const [picTick, setPicTick] = useState(0)
+  const pictureOnline = (id: Id, pic: PlanImage | null | undefined): Promise<unknown> =>
+    signedIn && pic
+      ? myOrg()
+          .then((o) => o && putOnline(o.id, id, pic))
+          .then((changed) => changed && setPicTick((n) => n + 1))
+          .catch(() => {})
+      : Promise.resolve()
+  useEffect(() => void pictureOnline(projRef.current?.drawing ?? state.unit.id, state.planImage), [state.planImage, signedIn]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = active?.id
+    if (!id || !signedIn) return
+    let live = true
+    void (async () => {
+      for (const u of Object.keys(readProjects().find((p) => p.id === id)?.units ?? {})) {
+        const pic = await getPicture(u).catch(() => undefined) // one at a time: a project's pictures are a few MB each
+        if (!live) return
+        await pictureOnline(u, pic)
+      }
+    })()
+    return () => void (live = false)
+  }, [active?.id, signedIn]) // eslint-disable-line react-hooks/exhaustive-deps
   /**
    * A picture loaded onto a project drawing with no scale yet, the same pixel size as another drawing's that has one (sheets
    * exported from one set share their framing): offer that drawing's scale and position — all floors in one frame. Never silently.
@@ -1047,13 +1076,14 @@ export default function StudioApp() {
       const ps = readProjects()
       const p = (synced(ps) ?? ps).find((x) => x.id === a.id)
       if (!p) return null
-      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: { ...p, units: Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)])) } }
+      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units: Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)])) }, Object.keys(p.units)) }
     }
-    return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withLayout(u) } : null
+    return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withPictures(withLayout(u), [u.id]) } : null
   }
-  const cloudChanged = useMemo(() => ({}), [state.unit, projects, active])
+  const cloudChanged = useMemo(() => ({}), [state.unit, projects, active, picTick])
   /** a project / drawing from the cloud in place of what is open (CloudBar saved that first); its furniture as saved */
-  const openFromCloud = (kind: Kind, data: unknown): boolean => {
+  const openFromCloud = (kind: Kind, saved: unknown): boolean => {
+    const data = adoptPictures(saved) // its plan pictures: each drawing fetches its own as it opens (openDrawing)
     const s = synced(readProjects()) // the open drawing's last edits stay where it stands
     if (s) saveProjects(s)
     if (kind === 'project') {
@@ -1075,6 +1105,13 @@ export default function StudioApp() {
     dispatch({ type: 'set-plan-image', image: null })
     dispatch({ type: 'load-unit', unit: data })
     requestAnimationFrame(() => fitView()) // after the render that holds it (no picture: nothing else fits the view)
+    void pictureFromCloud(data.id, null)
+      .catch(() => null)
+      .then((pic) => {
+        if (!pic || stateRef.current.unit.id !== data.id || stateRef.current.planImage) return // another one opened, or a picture dropped meanwhile
+        fitOnLoad.current = true
+        dispatch({ type: 'set-plan-image', image: pic })
+      })
     return true
   }
   const renameOpen = (name: string) => {

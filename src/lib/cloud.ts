@@ -77,7 +77,7 @@ export function hashOf(s: string): string {
 export function whyNoRow(row: { version: number; deleted_at: string | null } | null, from: number): CloudError {
   if (!row) return new CloudError('gone', 'it is not in the cloud any more')
   if (row.deleted_at) return new CloudError('gone', 'it was deleted from the cloud')
-  if (row.version !== from) return new CloudError('stale', `someone saved a newer version (${row.version}) — reload`)
+  if (row.version !== from) return new CloudError('stale', `someone else saved it after you opened it (their version ${row.version})`)
   return new CloudError('refused', 'the cloud did not take it')
 }
 
@@ -173,21 +173,46 @@ export interface Links {
   get(key: string): Link | undefined
   set(key: string, link: Link | null): void
 }
-export function linkStore(user: string, store: Store | null = local()): Links {
-  const k = `plotline.cloud.${user}`
-  const all = (): Record<string, Link> => {
-    try {
-      return (JSON.parse(store?.getItem(k) ?? '{}') as Record<string, Link>) ?? {}
-    } catch {
-      return {}
-    }
+const PREFIX = 'plotline.cloud.'
+const parse = (raw: string | null | undefined): Record<string, Link> => {
+  try {
+    return (JSON.parse(raw ?? '{}') as Record<string, Link>) ?? {}
+  } catch {
+    return {}
   }
+}
+/**
+ * This tab's own memory of the version it opened or saved, per store and person, read from the browser's ONCE: a save
+ * in another tab of this browser (same storage) must not move this tab's version, or this tab's next save would go
+ * over theirs without asking (the two-tab proof, session 31). The browser's copy is still written, for the next load.
+ */
+const tabs = new WeakMap<object, Map<string, Record<string, Link>>>()
+const NO_STORE = {}
+const tabOf = (store: Store | null, k: string): Record<string, Link> => {
+  let m = tabs.get(store ?? NO_STORE)
+  if (!m) tabs.set(store ?? NO_STORE, (m = new Map()))
+  if (!m.has(k)) m.set(k, parse(store?.getItem(k)))
+  return m.get(k)!
+}
+// read when the Studio's code loads (before its draft is read), so a save another tab makes meanwhile never seeds this one
+try {
+  const s = local()
+  for (let i = 0; s && i < localStorage.length; i++) if (localStorage.key(i)?.startsWith(PREFIX)) tabOf(s, localStorage.key(i)!)
+} catch {
+  /* no storage: nothing to remember */
+}
+export function linkStore(user: string, store: Store | null = local()): Links {
+  const k = `${PREFIX}${user}`
   return {
-    get: (key) => all()[key],
+    get: (key) => tabOf(store, k)[key],
     set: (key, link) => {
-      const a = all()
-      if (link) a[key] = link
-      else delete a[key]
+      const tab = tabOf(store, k)
+      const a = parse(store?.getItem(k)) // the browser's, with what other tabs remembered for their items
+      if (link) tab[key] = a[key] = link
+      else {
+        delete tab[key]
+        delete a[key]
+      }
       try {
         store?.setItem(k, JSON.stringify(a))
       } catch {
@@ -199,19 +224,29 @@ export function linkStore(user: string, store: Store | null = local()): Links {
 
 // ── autosave ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export type Status = { kind: 'idle' | 'saving' | 'saved' | 'offline' } | { kind: 'stale' | 'gone' | 'refused'; reason: string }
+/** saved: `at` = when this tab last sent it (unknown for a copy that was already in the cloud when it was opened) */
+export type Status = { kind: 'idle' | 'saving' | 'offline' } | { kind: 'saved'; at?: number } | { kind: 'stale' | 'gone' | 'refused'; reason: string }
 
-/** the word beside the account button */
-export function statusWord(s: Status): string {
+/** the word beside the drawing's name in the top bar */
+export function statusWord(s: Status, now = Date.now()): string {
   switch (s.kind) {
     case 'idle':
       return ''
     case 'saving':
       return 'Saving…'
-    case 'saved':
-      return 'Saved'
+    case 'saved': {
+      if (s.at === undefined) return 'Saved'
+      const min = Math.floor((now - s.at) / 60000)
+      if (min < 1) return 'Saved · just now'
+      if (min < 60) return `Saved · ${min} min ago`
+      return `Saved · ${new Date(s.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+    }
     case 'offline':
-      return 'Offline, will retry'
+      return 'Offline · will retry'
+    case 'stale':
+      return 'Someone else saved'
+    case 'gone':
+      return 'Deleted in the cloud'
     default:
       return `Not saved: ${s.reason}`
   }
@@ -266,11 +301,11 @@ export function autosaver(o: {
     blocked = null
     const json = JSON.stringify(item.data)
     const hash = hashOf(json)
-    if (!over && link?.hash === hash) return set({ kind: 'saved' })
+    if (!over && link?.hash === hash) return set(status.kind === 'saved' ? status : { kind: 'saved' })
     set({ kind: 'saving' })
     try {
       o.links.set(item.key, { ...(await o.save(item, link, over)), hash })
-      set({ kind: 'saved' })
+      set({ kind: 'saved', at: Date.now() })
     } catch (e) {
       const err = e instanceof CloudError ? e : new CloudError('offline', e instanceof Error ? e.message : String(e))
       if (err.why === 'offline') {

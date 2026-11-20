@@ -53,3 +53,21 @@ export const shareUnit = (org: string, unit: object, at: { project?: string; ste
 
 /** Turns a link of the member's company off for good (its notes stay); false = not theirs, or off already. */
 export const revokeLink = (token: string): Promise<boolean> => rpc<boolean>('revoke_link', { p_token: token })
+
+/** A share link as the Studio's Links card lists it: views = opens by anyone outside the company (session 31). */
+export interface ProjectLink {
+  token: string
+  unit_name: string
+  stem: string | null
+  floor: number | null
+  created_at: string
+  created_by: string | null
+  by_email: string | null
+  revoked_at: string | null
+  views: number
+  last_viewed_at: string | null
+  /** notes and finish choices buyers sent on it */
+  events: number
+}
+/** Every link made from cloud row `project` (a project or a loose drawing), newest first. */
+export const projectLinks = (project: string): Promise<ProjectLink[]> => rpc<ProjectLink[]>('project_links', { p_project: project })

@@ -484,6 +484,8 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .cloud-list .small { font-size: var(--fs-sm); }
 .cloud-list .acts { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-1); }
 .cloud-history { display: grid; gap: var(--s-2); }
+.cloud-list li.off .name { color: var(--muted); font-weight: 400; } /* a link turned off */
+.popover.cloud .cloud-note { display: grid; gap: var(--s-2); justify-items: start; padding: var(--s-3); background: var(--surface-2); border-radius: var(--r-sm); } /* after Invite: what to tell them */
 
 /* ── narrower windows: the long words go first, then the second fields; under 900 px the side columns narrow ───────── */
 @media (max-width: 1100px) {

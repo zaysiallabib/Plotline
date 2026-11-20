@@ -1,10 +1,12 @@
 /**
  * Staff accounts (session 30): sign in with an email link — no password to leak or forget. Who is in which company
- * (org) is the database's business (org_members, added by the owner in the SQL editor: Docs/SETUP_ACCOUNTS.md);
- * this browser only keeps the session Supabase gives it. Not configured: no session, ever, and nothing is sent.
+ * (org) is the database's business (org_members: the founder adds the first owner in the SQL editor, owners invite the
+ * rest from the Studio's Members card — lib/members.ts); this browser only keeps the session Supabase gives it.
+ * Not configured: no session, ever, and nothing is sent.
  */
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { acceptInvites } from './members'
 import { sb } from './supabase'
 
 /**
@@ -44,20 +46,24 @@ export interface Org {
 
 let mine: { user: string; org: Promise<Org | null> } | null = null
 /**
- * The signed-in person's company; null = not signed in, or in no company yet (the owner adds them).
+ * The signed-in person's company; null = not signed in, or in no company yet (no invite for their email).
  * ponytail: one company per person (the first); a picker when someone works for two developers.
  */
 export async function myOrg(): Promise<Org | null> {
   const user = (await session())?.user.id
-  if (!sb || !user) return null
+  const c = sb
+  if (!c || !user) return null
   if (mine?.user !== user) {
-    const org = (async () => {
+    const read = async (): Promise<Org | null> => {
       // orgs(...) is many-to-one: PostgREST gives one object (supabase-js, without the schema's types, guesses an array)
-      const { data, error } = await sb.from('org_members').select('role, orgs(id, name)').eq('user_id', user).limit(1)
+      const { data, error } = await c.from('org_members').select('role, orgs(id, name)').eq('user_id', user).limit(1)
       if (error) throw new Error(error.message)
       const m = data?.[0] as unknown as { role: Org['role']; orgs: { id: string; name: string } | null } | undefined
       return m?.orgs ? { id: m.orgs.id, name: m.orgs.name, role: m.role } : null
-    })()
+    }
+    // in no company yet: an owner's invite for this email joins it now (Members, session 31); a database without that
+    // part yet (the founder's paste) answers 404 — read as "no invite"
+    const org = read().then(async (o) => o ?? ((await acceptInvites().catch(() => 0)) ? read() : null))
     const entry = { user, org }
     mine = entry
     org.catch(() => mine === entry && (mine = null)) // a failed read (offline) is asked again next time

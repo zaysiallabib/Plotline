@@ -1,15 +1,17 @@
 /**
- * The Studio top bar's account (session 30): the save word sits by the drawing's name; ⋯ → Sign in (or your email,
- * TopBar.tsx) opens this card: an email → "Check your email"; signed in, the save word
- * (Saved · Saving… · Offline, will retry · Not saved: …), the company's projects in the cloud (open, rename, delete,
- * earlier saves) and Sign out. What is open is saved to the cloud 2 s after the last change (lib/cloud.ts autosaver);
- * the browser's own copy keeps working as before. Nothing here shows when the site has no database (configured false).
+ * The Studio top bar's account (session 30): the save word sits by the drawing's name (a click opens the card); ⋯ →
+ * Sign in (or your email, TopBar.tsx) opens this card: an email → "Check your email"; signed in, the company's projects
+ * in the cloud (open, rename, delete, earlier saves), its Members and the Links made from what is open (session 31,
+ * CloudPanes.tsx), and Sign out. What is open is saved to the cloud 2 s after the last change (lib/cloud.ts autosaver),
+ * its plan pictures with it (lib/pictures.ts, StudioApp); the browser's own copy keeps working as before. Nothing here
+ * shows when the site has no database (configured false).
  */
 import { useEffect, useRef, useState } from 'react'
 import { myOrg, signIn, signOut, useSession, type Org } from '../lib/auth'
 import { autosaver, deleteProject, hashOf, itemKey, linkStore, listProjects, loadProject, loadVersion, projectHistory, renameProject, saveProject, statusWord } from '../lib/cloud'
 import type { Autosaver, CloudItem, CloudRow, Kind, SavedVersion, Status } from '../lib/cloud'
 import { configured } from '../lib/supabase'
+import { Links, Members } from './CloudPanes'
 
 interface Props {
   /** what is open, to save (null: nothing worth saving, e.g. an empty drawing); read when a save starts */
@@ -24,6 +26,8 @@ interface Props {
   /** the account card is open (TopBar's ⋯ → Sign in / your email toggles it) */
   open: boolean
   onClose: () => void
+  /** the save word was clicked: open the card */
+  onCard: () => void
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -36,6 +40,7 @@ export default function CloudBar(p: Props) {
   const props = useRef(p)
   props.current = p
   const user = session?.user.id
+  const [, tick] = useState(0)
 
   // the company, once per person signed in
   useEffect(() => {
@@ -69,15 +74,26 @@ export default function CloudBar(p: Props) {
     }
   }, [user, org])
   useEffect(() => saver.current?.touch(), [p.changed])
+  // "Saved · 4 min ago" moves on by itself
+  useEffect(() => {
+    if (status.kind !== 'saved' || status.at === undefined) return
+    const id = setInterval(() => tick((n) => n + 1), 30_000)
+    return () => clearInterval(id)
+  }, [status])
 
   if (!configured || session === undefined) return null
   const word = session && org === null ? 'Not saved: not in a company yet' : statusWord(status)
+  const why = 'reason' in status ? `Not saved: ${status.reason}. ` : ''
   return (
     <>
       {word && (
-        <span className={`cloud-status ${status.kind}`} title={status.kind === 'saved' ? 'In the cloud for your company, and in this browser' : undefined}>
+        <button
+          className={`link cloud-status ${session && org === null ? 'refused' : status.kind}`}
+          title={status.kind === 'saved' ? 'In the cloud for your company, and in this browser. Click: your account' : `${why}Click: your account${status.kind === 'stale' ? ' — open theirs, or keep yours' : ''}`}
+          onClick={p.onCard}
+        >
           {word}
-        </span>
+        </button>
       )}
       {p.open && (
         <div className="popover project cloud" onKeyDown={(e) => e.stopPropagation()}>
@@ -144,6 +160,7 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
   const [rows, setRows] = useState<CloudRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<{ row: CloudRow; saves: SavedVersion[] } | null>(null)
+  const [pane, setPane] = useState<'projects' | 'members' | 'links'>('projects')
   const openKey = bar.snapshot()?.key
   const links = linkStore(user)
   const openId = openKey ? links.get(openKey)?.id : undefined
@@ -209,12 +226,13 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
           </span>
         )}
       </p>
-      {org === null && <p>Your account is not in a company yet. Ask your company’s owner to add {email} — your work stays in this browser until then.</p>}
+      {org === null && <p>Your account is not in a company yet. Ask your company’s owner to invite {email} (their account card → Members), then press F5. Your work stays in this browser until then.</p>}
       {(status.kind === 'stale' || status.kind === 'gone') && (
         <div className="cloud-conflict">
           <p>
             <b>Not saved:</b> {status.reason}.
           </p>
+          <p className="muted">{status.kind === 'stale' ? 'What you see here is not in the cloud yet. Open theirs: their copy replaces yours here. Keep mine: yours becomes the newest, theirs stays under Earlier saves.' : 'What you see here is still in this browser.'}</p>
           <div className="actions">
             {status.kind === 'stale' && openId && (
               <button onClick={() => void open(openId!)} title="Their newer copy replaces yours here (yours is not in the cloud)">
@@ -228,6 +246,17 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
         </div>
       )}
       {org && (
+        <div className="seg" role="tablist" aria-label="Your account">
+          {(['projects', 'members', 'links'] as const).map((k) => (
+            <button key={k} role="tab" aria-selected={pane === k} className={pane === k ? 'on' : ''} onClick={() => setPane(k)}>
+              {k === 'projects' ? 'Projects' : k === 'members' ? 'Members' : 'Links'}
+            </button>
+          ))}
+        </div>
+      )}
+      {org && pane === 'members' && <Members org={org} me={user} />}
+      {org && pane === 'links' && <Links project={openId} me={user} />}
+      {org && pane === 'projects' && (
         <>
           <span className="cloud-h">Projects in the cloud</span>
           {rows === null && !error && <p className="muted">Loading…</p>}

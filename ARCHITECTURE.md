@@ -94,22 +94,25 @@ Geometry algorithms in `src/core/` (pure functions, unit-tested):
 
 In one sentence: this is the online storage that keeps your company's projects, the buyer links and what buyers write, and keeps each developer company's work apart from the others.
 
-Built 2026-11-20 (session 30). The SQL is `supabase/migrations/` (pasted by the founder:
+Built 2026-11-20 (sessions 30 and 31). The SQL is `supabase/migrations/` (pasted by the founder:
 `Docs/SETUP_ACCOUNTS.md`); the browser talks to it through one client, `src/lib/supabase.ts` (supabase-js).
 
 Tables (RLS — "row level security", the database's own rule about which rows each person may touch — is on every one; "tenant" = one developer company, `orgs`):
-- `orgs`, `org_members` (user, company, `owner | staff`) — the companies and who belongs to which. Written only in the SQL editor (`private.add_member`).
+- `orgs`, `org_members` (user, company, `owner | staff`) — the companies and who belongs to which. The founder makes a company and its first owner in the SQL editor (`private.add_member`); from then on owners manage their people in the Studio (Members) through the database functions `org_people`, `invite_member`, `cancel_invite`, `remove_member`, `set_member_role`.
+- `org_invites` (company, email, role) — an owner's invitation, not a member yet. The invited person's first sign-in with that email (confirmed by the sign-in link) turns it into a membership (`accept_invites`, asked by the Studio when an account is in no company). No browser can read or write this table directly.
 - `projects` — a Studio `Project` or one loose `Unit`, stored as JSON (a plain structured-text format). `version` stops two people overwriting each other unnoticed (optimistic concurrency: a save says which version it started from, and is refused if someone saved in between). Never deleted: Delete hides it (`deleted_at`).
 - `project_versions` — every save, written by a trigger (an automatic step inside the database), append-only: nobody can change or remove a row.
-- `units` + `share_links` — what a buyer link shows (a frozen copy of the flat) and its token (the long random code in the link that cannot be guessed). A link can be turned off.
+- `units` + `share_links` — what a buyer link shows (a frozen copy of the flat) and its token (the long random code in the link that cannot be guessed). A link can be turned off. It counts its views (opens by anyone outside the company); `project_links` lists a project's links for the Studio's Links card.
+- Storage bucket `plans` — the plan pictures: private, one folder per company (`<company id>/<sha-256>.png|jpg|webp`, 10 MB each). A save (`projects.data.pictures`) names each drawing's picture by its path; the bytes live only in the bucket. Nothing in it is ever changed or deleted, so every saved version still finds the picture it was traced on.
 - `events` — append-only buyer notes and finish choices on a link. This IS the change list.
 
 The browser side:
 - `src/lib/auth.ts` — email sign-in links (PKCE, explained under Security), the session (the signed-in state), the person's company.
-- `src/lib/cloud.ts` — saves with the version it started from; lists, opens, renames and deletes; history; the 2-second autosaver and its status word.
+- `src/lib/cloud.ts` — saves with the version it started from; lists, opens, renames and deletes; history; the 2-second autosaver and its status word. Each browser tab remembers the version IT opened or saved (a save in another tab never moves it), so two tabs cannot overwrite each other silently either.
+- `src/lib/members.ts` — the member rules (who may invite, remove, change roles) and their database calls.
+- `src/lib/pictures.ts` — plan pictures online: sent once per picture (named by its bytes), named in the save, fetched by a colleague when a drawing opens.
 - `src/lib/events.ts` — the buyer outbox and the change list.
 - Not configured (no env, i.e. the two values are not set) = no client: every path stays in the browser, as before.
-- The plan picture is not online yet (Supabase Storage, later).
 
 Proof: `supabase/tests/two_tenants.sql` (paste it after the migration; it undoes everything it made) — mandatory again
 for every change to the tables' shape (schema).
@@ -120,17 +123,22 @@ What this protects for you: a buyer sees only the flat you shared, a rival devel
 
 - **A buyer link opens one flat and nothing else.** It reaches only the flat it was made for, while the link is on
   (`unit_by_token`), and can add notes / finish choices to that link (`add_event`). Nothing else: no table,
-  no other link, no project, no company. A turned-off link opens nothing and takes nothing (`revoke_link`).
+  no other link, no project, no company, no plan picture (the `plans` bucket has no rule for buyers at all). A turned-off link opens nothing and takes nothing (`revoke_link`).
 - **The public key in every page cannot read your data.** It can do the same as a buyer link — those two calls — and ask
   Supabase for a sign-in email. It reads and writes no table (privileges revoked from `anon`, the name for an unsigned visitor, and RLS
   everywhere behind that).
 - **Company A can never touch company B.** Every row carries its company and the
   database answers only the signed-in person's company (RLS policies on every table). A cannot read, save
   over, add to, delete, share or turn off anything of B's, cannot add itself to B, and cannot make a
-  company. `supabase/tests/two_tenants.sql` checks each of these, and was itself checked by breaking each
-  guard in turn (it must then fail).
+  company. A cannot see B's people or plan pictures, invite into B, or put a picture in B's folder.
+  `supabase/tests/two_tenants.sql` checks each of these, and was itself checked by breaking each guard in turn (it
+  must then fail: 32 broken guards, each caught — PGlite run, session 31).
 - **Your own staff can do their work, and no more.** Members read, create and save projects; read the history (never
-  change it); make and turn off share links; read the change list. A save names the version it started
+  change it); make and turn off share links; read the change list; read and add their company's plan pictures (never
+  change or delete one). Only an **owner** invites, removes people or changes roles — never removing themself, never
+  leaving the company without an owner (`invite_member`, `remove_member`, `set_member_role`; checked in the database, the
+  company's row locked so two owners cannot both step down at once). An invite joins only the person who can open that
+  email's sign-in link, and only into the company that invited it. A save names the version it started
   from; the database stamps the next version, who and when (a browser cannot forge them).
 - **Buyer links cannot be guessed.** Share tokens are 128 random bits made by the database (`gen_random_bytes(16)`), never by a browser.
 - **The master key is never in the website.** Only the publishable key is in the browser; the build refuses a

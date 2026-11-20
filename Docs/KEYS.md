@@ -220,7 +220,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 |---|---|
 | **Plotline STUDIO** (top left) | Opens the front page; the mouse over **STUDIO** says this browser is in staff mode |
 | **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only). Under about 1000 px wide, Project and Area step aside |
-| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands online — not a button (MANUAL §5 "Signing in and saving online") |
+| Saved · just now · Saving… · Offline · will retry · Someone else saved · Not saved: … | After the fields, when signed in: where your work stands online. Click it to open the account card (MANUAL §5 "Accounts") |
 | ↶ / ↷ | Undo / Redo (Ctrl+Z / Ctrl+Y) |
 | **Auto-trace** (once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
 | **Preview 3D** (the blue button; plain while the Studio is empty, when **Choose plan image…** is the blue one) | Opens your drawing in the 3D view, in a new tab |
@@ -255,10 +255,29 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Earlier saves** → **Open this save** | Every save of it; puts that older copy in the Studio (it becomes the newest when it saves) |
 | **Hide earlier saves** | Closes that list |
 | **Delete** | Takes it off the company's list (asks first; every save stays in the history) |
-| **Open theirs** / **Keep mine** | Only after "someone saved a newer version": take their copy, or save yours on top (theirs stays in Earlier saves) |
+| **Projects** · **Members** · **Links** | Signed in to a company: the three parts of the card (Projects is the list below) |
+| **Open theirs** / **Keep mine** | Only after "Someone else saved": take their copy, or save yours on top (theirs stays in Earlier saves) |
 | **Save as new** | Only after "it was deleted from the cloud": keeps your copy as a new one |
 | **Sign out** | Saves what is waiting, then signs out |
 | **Close** | Closes the card (or Esc) |
+
+**Members** (everyone in the company sees the list; only an owner sees the buttons):
+
+| Name | What it does |
+|---|---|
+| Their work email, **Staff** / **Owner**, **Invite** | Invites that email into your company with that role. They join the first time they sign in with it (Plotline sends no email of its own) |
+| **Copy this for them** | After Invite: copies a line telling them where to sign in |
+| **Make owner** / **Make staff** | Changes their role. Never shows when it would leave the company with no owner |
+| **Remove** | Takes them out of the company (asks first). Never on yourself; what they saved stays |
+| **Take back** | Cancels an invite not used yet |
+
+**Links** (every buyer link made from what is open):
+
+| Name | What it does |
+|---|---|
+| **Copy link** | Copies that buyer link |
+| **Turn off** | Turns the link off for good (asks first): whoever has it is told it no longer works; what they wrote stays in the Change list |
+| **Change list** | Opens `/changes` in a new tab |
 
 ### Studio — the plan area
 

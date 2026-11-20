@@ -37,7 +37,7 @@ interface Props {
   onExportAnswers: () => void
   /** the database is set up: Share link (busy while it publishes) and Change list; null: neither shows */
   share: { busy: boolean; onShare: () => void } | null
-  cloud: Omit<ComponentProps<typeof CloudBar>, 'open' | 'onClose'>
+  cloud: Omit<ComponentProps<typeof CloudBar>, 'open' | 'onClose' | 'onCard'>
 }
 
 const Icon = ({ d }: { d: string }) => (
@@ -100,7 +100,7 @@ export default function TopBar(p: Props) {
           <input type="number" placeholder="–" value={unit.areaSqft || ''} onChange={onMeta('areaSqft')} />
           <span className="unit">sft</span>
         </label>
-        <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} />
+        <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} onCard={() => setAccount(true)} />
       </div>
 
       <div className="tb-right">
