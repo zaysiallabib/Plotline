@@ -22,9 +22,20 @@
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
+  /* a finger: no grey flash on a tap, no double-tap zoom delay on a button */
+  -webkit-tap-highlight-color: transparent;
 }
+.viewer :is(button, a, input, select) { touch-action: manipulation; }
+/* a finger's long press selects no words (a mouse still selects and copies as before) */
+@media (pointer: coarse) {
+  .viewer { user-select: none; -webkit-user-select: none; }
+  .viewer :is(input, textarea) { user-select: text; -webkit-user-select: text; }
+}
+/* the page never bounces or pulls to refresh behind the 3D */
+html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .viewer.commenting canvas { cursor: crosshair; }
-.scene { display: block; width: 100%; height: 100%; transition: filter var(--dur-slow) var(--ease); }
+/* every finger on the 3D is the scene's (PlotlineScene: look, tap, pinch): the browser neither scrolls, zooms nor offers a menu */
+.scene { display: block; width: 100%; height: 100%; touch-action: none; -webkit-touch-callout: none; transition: filter var(--dur-slow) var(--ease); }
 .scene.blurred { filter: blur(var(--s-5)); }
 
 @keyframes appear { from { opacity: 0; } }
@@ -532,9 +543,15 @@
 .popover { position: absolute; left: var(--s-4); top: calc(-1 * var(--s-2)); width: 280px; padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); pointer-events: auto; animation: appear var(--dur) var(--ease) both; }
 .popover textarea { width: 100%; height: auto; padding: var(--s-2) var(--s-3); line-height: var(--lh); resize: none; }
 
+/* a bottom sheet's grip (Hud Grip): only on a phone */
+.grip { display: none; }
+.menu-head .x { display: none; }
+
 /* ── Building view: the floors, a quiet list on the right; Walk this level under it ──────────────────────────────── */
 .floor-rail { position: absolute; z-index: 2; right: calc(var(--safe-r) + var(--edge)); top: 50%; translate: 0 -50%; display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); max-height: calc(100% - 2 * var(--dock-top)); }
-.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; padding: var(--s-2); overflow: auto; }
+.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; min-height: 0; padding: var(--s-2); overflow: auto; }
+/* a long list of floors scrolls; Walk this level under it keeps its full height (it was squeezed on a phone) */
+.floor-rail > .btn { flex: none; }
 .rail-item {
   display: flex;
   align-items: center;
@@ -600,12 +617,23 @@
 .changes tr.superseded td { color: var(--muted); opacity: 0.6; }
 .changes .tag { margin-left: var(--s-2); padding: 1px var(--s-2); border: 1px solid var(--line); border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 
-/* ── a narrow window: the dock steps left of an open panel so the Sun & wind card never sits under it ──────────── */
+/* ── a narrow window (a tablet upright): the room's name steps under the bar, which would cover it; the dock steps left
+   of an open panel so the Sun & wind card never sits under it ───────────────────────────────────────────────────── */
 @media (max-width: 1080px) and (min-width: 721px) {
+  .hud-tl { top: var(--dock-top); }
   .viewer:has(.panel) .dock { right: calc(var(--panel-w) + 2 * var(--edge)); }
 }
+/* ── a short screen (a phone on its side): the start screen scrolls, its list of flats under the button, not over it ─ */
+@media (max-height: 560px) {
+  .load { overflow: auto; place-items: start center; padding-top: var(--s-8); }
+  .load-more { position: static; margin-top: var(--s-6); }
+  .unit-name { font-size: var(--fs-3xl); }
+  .minimap { transform: scale(0.72); transform-origin: bottom right; }
+  .load-main > .label { margin-bottom: var(--s-2); }
+  .progress { margin: var(--s-4) 0; }
+}
 
-/* ── phones (under 720 px; touch controls in the 3D come later): the pill is a bottom bar, panels are bottom sheets ── */
+/* ── phones (under 720 px): the pill is a bottom bar, panels are bottom sheets with a grip; the 3D takes a finger ──── */
 @media (max-width: 720px) {
   .viewer {
     --control: var(--touch);
@@ -649,8 +677,9 @@
     bottom: 0;
     width: auto;
     max-width: none;
-    max-height: 70vh;
+    max-height: 70dvh;
     overflow: auto;
+    overscroll-behavior: contain;
     translate: none;
     background: var(--glass-strong);
     border-width: 1px 0 0;
@@ -658,6 +687,17 @@
     padding-bottom: calc(var(--s-4) + var(--safe-b));
   }
   .menu { padding-left: var(--s-3); padding-right: var(--s-3); }
+  /* Finishes and Comment work by tapping the 3D: half the screen stays for it; a note being written hides its sheet */
+  .panel { max-height: 50dvh; }
+  .viewer:has(.popover) .panel { visibility: hidden; }
+  /* the grip: a short bar at the top of every sheet; pull it down to close the sheet */
+  .grip { display: block; position: relative; flex: none; height: var(--s-6); touch-action: none; cursor: grab; }
+  .grip::before { content: ''; position: absolute; left: 50%; top: var(--s-3); width: var(--s-6); height: var(--s-1); translate: -50% 0; border-radius: var(--s-1); background: var(--line); }
+  .menu > .grip { margin-top: calc(-1 * var(--s-2)); }
+  .menu-head:has(.x) { display: flex; align-items: center; justify-content: space-between; }
+  .menu-head .x { display: inline-grid; }
+  /* at rest the faded bar still takes a tap: it brings the chrome back and presses nothing (Hud) — never the 3D behind it */
+  .hud.rest > .hud-tr { pointer-events: auto; }
   .sun-card { gap: var(--s-3); }
   /* while a sheet is up the bar and the dock step away, so nothing shows through it (its × or ⌄ closes it; a tap outside closes a menu) */
   .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor)) .toolbar,
@@ -673,7 +713,4 @@
   .load-more { bottom: calc(var(--safe-b) + var(--s-4)); }
   .changes { padding: var(--s-5) var(--s-4) var(--s-7); }
 }
-/* under a finger no keys are shown */
-@media (pointer: coarse) {
-  .dock .hint { display: none; }
-}
+

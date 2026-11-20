@@ -11,6 +11,18 @@ export interface Draft {
   label?: string
 }
 
+/**
+ * Where the note being written opens, from its pin at (x, y) on a w × h screen, the note pw × ph: beside the pin where it
+ * fits (its right, else its left; lifted off the bottom edge), else — a phone's narrow screen — over the pin (under it
+ * when the pin is near the top: the keyboard rises from below), kept inside the screen's sides.
+ */
+export function noteAt(x: number, y: number, w: number, h: number, pw: number, ph: number): { dx: number; dy: number } {
+  const M = 8
+  const G = 16
+  if (x + G + pw <= w - M || x - G - pw >= M) return { dx: x + G + pw <= w - M ? G : -G - pw, dy: Math.min(-M, h - M - ph - y) }
+  return { dx: Math.min(Math.max(M - x, -pw / 2), w - M - pw - x), dy: y - G - ph >= M ? -G - ph : G }
+}
+
 /** "Door handle · Bed-1"; "Bed-1 floor" already names its room. */
 export const tagOf = (label?: string, room?: string): string =>
   [label, room && !label?.startsWith(room) ? room : ''].filter(Boolean).join(' · ')
@@ -42,7 +54,15 @@ export function PinLayer({ scene, pins, draft, onSave, onCancel }: LayerProps) {
         v.set(p.x, p.y, p.z).project(scene.camera)
         const visible = v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2
         el.style.display = visible ? '' : 'none'
-        if (visible) el.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px)`
+        const x = ((v.x + 1) / 2) * w
+        const y = ((1 - v.y) / 2) * h
+        if (visible) el.style.transform = `translate(${x}px, ${y}px)`
+        const note = el.querySelector<HTMLElement>('.popover')
+        if (note) {
+          const { dx, dy } = noteAt(x, y, w, h, note.offsetWidth, note.offsetHeight) // never off the screen's edge
+          note.style.left = `${dx}px`
+          note.style.top = `${dy}px`
+        }
       }
       for (const p of pins) place(p.id, p.point)
       if (draft) place('draft', draft.point)

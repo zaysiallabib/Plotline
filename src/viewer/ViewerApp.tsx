@@ -28,7 +28,7 @@ import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
-import Hud, { floorTitle, type HandInfo } from './Hud'
+import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
@@ -516,6 +516,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const [qNote, setQNote] = useState(SWITCHED)
   const [loaded, setLoaded] = useState(0)
   const [entered, setEntered] = useState(false)
+  /** a finger in use: no "press Enter", "tap" for "click" (Hud useFinger) */
+  const finger = useFinger()
   const [mode, setMode] = useState<SceneMode>('walk')
   const [hour, setHour] = useState(DEFAULT_HOUR)
   /** the sun's day (the scene starts on today too) and the wind: its month's rose and arrows, on or off */
@@ -635,11 +637,14 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       const r = finishesRef.current && hit.kind !== 'opening' && hit.kind !== 'furniture' ? rooms.find((x) => x.id === hit.roomId) : undefined
       const room = r && roomKey(r.id, hit.kind as FinishSlot['target'])
       const face = r && hit.kind === 'wall' ? wallKey(faceWallId(unit, r, hit.id), r.id) : undefined // a column: none, its room's walls
+      // a pin or a finish uses the click: the walker stays where he is (a floor tap under a finger must not walk onto the pin)
       if (commentingRef.current) {
         const roomId = hit.roomId ?? core.roomAt({ x: hit.point.x, y: hit.point.z }, rooms, unit)?.id
         setDraft({ hit: { ...hit, roomId }, point: hit.point, label: tagOf(hit.label, rooms.find((r) => r.id === roomId)?.name) })
+        return true
       } else if (room && keys.has(room)) {
         setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
+        return true
       } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
         // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
         s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
@@ -1274,7 +1279,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             <button className="btn primary enter" disabled={!ready} onClick={enter}>
               {ready ? 'Enter' : 'Loading…'}
             </button>
-            <div className="load-key">{ready ? 'or press Enter' : `${loaded} of ${rooms.length} rooms ready`}</div>
+            <div className="load-key">{ready ? !finger && 'or press Enter' : `${loaded} of ${rooms.length} rooms ready`}</div>
             <QualityLine onPick={pickQuality} />
           </div>
           {/* ponytail: plain links until Phase A gives each developer a project list; never on a buyer's link */}
@@ -1442,6 +1447,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           )}
           {commenting && (
             <aside className="glass panel" aria-label="Comment" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name */}>
+              <Grip onClose={toggleComment} />
               <header className="panel-head">
                 <span className="label">Comment</span>
                 <button className="x" aria-label="Stop commenting" title="Stop (C or Esc)" onClick={toggleComment}>
@@ -1449,7 +1455,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
                 </button>
               </header>
               <div className="panel-body">
-                <p className="panel-lead">Click anything in the flat — a wall, a window, a piece of furniture — and write what you would change. A numbered pin stays on it.</p>
+                <p className="panel-lead">{finger ? 'Tap' : 'Click'} anything in the flat — a wall, a window, a piece of furniture — and write what you would change. A numbered pin stays on it.</p>
                 {TOKEN && <BuyerName />}
                 <NotesList
                   pins={pins}
@@ -1466,6 +1472,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
           )}
           {finishesOpen && (
             <aside className="glass panel" aria-label="Finishes" onKeyDown={(e) => ['INPUT', 'SELECT'].includes((e.target as HTMLElement).tagName) && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
+              <Grip onClose={() => setFinishesOpen(false)} />
               <header className="panel-head">
                 <span className="label">Finishes</span>
                 <button className="x" aria-label="Close Finishes" title="Close (F or Esc)" onClick={() => setFinishesOpen(false)}>

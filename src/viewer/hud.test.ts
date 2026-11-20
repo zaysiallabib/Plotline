@@ -4,6 +4,7 @@ import * as bti from '../data/building/demo-tower'
 import * as banani from '../data/building/banani-tower'
 import * as sheltech from '../data/building/sheltech-tower'
 import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, wakes } from './Hud'
+import { noteAt } from './Notes'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
 const base = { mode: 'walk' as const, locked: false, staff: false, arranging: false, editingOpenings: false, holding: false }
@@ -55,6 +56,28 @@ describe('hud', () => {
     expect(hintOf({ ...base, editingOpenings: true, arranging: true })).toMatch(/^Click a door/) // openings win
     expect(hintOf({ ...base, holding: true })).toBeNull() // the piece's own tag says it
     expect(hintOf({ ...base, holding: true, mode: 'building' })).toMatch(/^Click a flat/)
+  })
+
+  it('under a finger the hint says what a finger does and never names a key', () => {
+    const f = { ...base, finger: true }
+    expect(hintOf(f)).toBe('Drag to look · tap the floor to walk there')
+    expect(hintOf({ ...f, mode: 'orbit' })).toBe('Drag to turn · pinch to zoom · tap a room’s floor to walk in it')
+    expect(hintOf({ ...f, mode: 'building' })).toBe('Tap a flat to open it · drag to turn · pinch to zoom')
+    expect(hintOf({ ...f, holding: true })).toBeNull()
+    const keys = /WASD|Esc|Ctrl|Del\b|\bG\b|\bR\b|\bO\b|Double-click|scroll|mouse/
+    for (const mode of ['walk', 'orbit', 'building'] as const)
+      for (const staff of [{}, { staff: true }, { arranging: true }, { editingOpenings: true }, { locked: true }]) expect(hintOf({ ...f, mode, ...staff }) ?? '').not.toMatch(keys)
+  })
+
+  it('the note being written never leaves the screen: beside its pin on a desktop, over or under it on a phone', () => {
+    expect(noteAt(600, 400, 1600, 1000, 280, 150)).toEqual({ dx: 16, dy: -8 }) // as before: right of the pin
+    expect(noteAt(1500, 400, 1600, 1000, 280, 150)).toEqual({ dx: -296, dy: -8 }) // the right edge: its left
+    expect(noteAt(600, 950, 1600, 1000, 280, 150).dy).toBe(1000 - 8 - 150 - 950) // the bottom edge: lifted
+    const phone = noteAt(258, 400, 390, 844, 280, 150) // 390 wide: neither side fits
+    expect(258 + phone.dx).toBeGreaterThanOrEqual(8)
+    expect(258 + phone.dx + 280).toBeLessThanOrEqual(390 - 8)
+    expect(phone.dy).toBe(-166) // over the pin, away from the keyboard
+    expect(noteAt(200, 100, 390, 844, 280, 150)).toEqual({ dx: -140, dy: 16 }) // near the top: under it, centred on it
   })
 
   it('the Building rail says Roof and Ground in words', () => {

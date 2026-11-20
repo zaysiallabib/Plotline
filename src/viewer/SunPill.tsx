@@ -11,6 +11,7 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Room, Site, Unit, WindMonth } from '../core'
 import type { PlotlineScene } from '../three/PlotlineScene'
+import { Grip } from './Hud'
 
 interface Props {
   scene: PlotlineScene
@@ -230,6 +231,7 @@ export default function SunPill(p: Props) {
   const w = p.months[p.month]
   return (
     <div className={`glass sun-card${p.wind ? ' with-wind' : ''}`} role="dialog" aria-label="Sun & wind">
+      <Grip onClose={p.onOpen} />
       <div className="panel-head">
         <span className="label">Sun &amp; wind</span>
         <button className="x" aria-label="Close Sun & wind" title="Close (Esc)" onClick={p.onOpen}>

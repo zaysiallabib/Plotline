@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
 import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, evenBearings, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, evenBearings, isClick, pickedAt, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -483,5 +483,24 @@ describe('Lite and Low: no live mirror', () => {
       }
     }
     expect([state(true), state(false)]).toEqual([true, false])
+  })
+})
+
+describe('a press let go: click or not (the walk, the pin, the Building view)', () => {
+  const press = { dx: 0, dy: 0, ms: 120, finger: false, multi: false }
+  test('a mouse: 6 px of drift, however long it is held (as before phones)', () => {
+    expect(isClick(press)).toBe(true)
+    expect(isClick({ ...press, dx: 6 })).toBe(true)
+    expect(isClick({ ...press, dx: 5, dy: 5 })).toBe(false) // 7.1 px: a drag
+    expect(isClick({ ...press, ms: 5000 })).toBe(true)
+  })
+  test('a finger: 12 px of drift, a long press does nothing, a pinch is never a tap', () => {
+    const tap = { ...press, finger: true }
+    expect(isClick({ ...tap, dx: 10 })).toBe(true) // a fingertip rolls
+    expect(isClick({ ...tap, dx: 13 })).toBe(false) // a look-drag
+    expect(isClick({ ...tap, ms: 499 })).toBe(true)
+    expect(isClick({ ...tap, ms: 500 })).toBe(false) // a long press
+    expect(isClick({ ...tap, multi: true })).toBe(false) // the last finger of a pinch
+    expect(isClick({ ...press, multi: true })).toBe(true) // a mouse never pinches
   })
 })
