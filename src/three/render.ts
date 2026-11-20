@@ -30,8 +30,10 @@ import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
 
 /**
- * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map. low: no AO, 1024 shadow. lite (weak machines,
- * PlotlineScene): also 1× pixels, no MSAA, anisotropy 1, textures at half size, no scanned plants, no idle frames.
+ * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map, 12 lamps (3 casting). low: 1× pixels with MSAA, no AO,
+ * 1024 sun shadow, 4 lamps, no scanned plants or live mirrors, pictures ≤ 1k, no idle frames. lite (weak machines, phones):
+ * a 900k-pixel picture stretched, no MSAA, no shadow maps, 2 lamps, anisotropy 1, colour + roughness pictures at half
+ * size, a plain street and sky, no idle frames. TIERS and pixelRatioFor below; PlotlineScene applies them.
  */
 export type Quality = 'high' | 'low' | 'lite'
 

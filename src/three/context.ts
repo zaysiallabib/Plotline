@@ -465,7 +465,7 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
   return group
 }
 
-/** Lite's street faces: shaded by a fixed afternoon light from the south-west, as Lite's sun is off indoors (render.ts TIERS) */
+/** Lite's street faces: shaded by one fixed light from above and one side, as Lite's sun is off indoors (render.ts sunLit) */
 const PLAIN_LIGHT = new THREE.Vector3(-0.5, 0.8, 0.35).normalize()
 /** a face's shade under PLAIN_LIGHT: 0.7 turned away … 1 facing it */
 export const plainShade = (n: THREE.Vector3): number => 0.7 + 0.3 * Math.max(0, n.dot(PLAIN_LIGHT))
