@@ -202,7 +202,7 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     for (let s = 0; s < 12; s += 0.1)
       for (const q of s ? [add(p, face, -s), add(p, face, s)] : [p])
         for (let a = 0; a <= 25; a += 5)
-          for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t)) return { p: q, face: t }
+          for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t, true)) return { p: q, face: t }
     return { p, face }
   }
   const largest = (kind: Room['kind']) => rooms.filter((r) => r.kind === kind).sort((a, b) => b.areaSqm - a.areaSqm)[0]
@@ -275,6 +275,8 @@ export const HANG_IN_VIEW = 3
 export const AC_NEAR = 1
 /** …and closer than this in the frame it looms in a top corner (its top is 1 m above the eye; the A/C entry AC sat at 2.21 m). */
 export const AC_IN_VIEW = 2.5
+/** …and in the entry view this far with an end in the frame (FRAME_DEG): its body still sat cut by the frame's top. */
+export const AC_AHEAD = 3.5
 /** A ceiling fan (~0.5 m drop, under HANG_DROP) keeps this far away… */
 export const FAN_CLEAR = 1.5
 /** …and this far in the frame: nearer, its 1.46 m blades fill the top of the view. */
@@ -401,7 +403,7 @@ type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }
  * the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC ahead of the eye within AC_NEAR / AC_IN_VIEW;
  * a slab (wardrobe, shelf, tall piece) whose footprint is within TALL_IN_VIEW with a corner within ±FRAME_DEG.
  */
-const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
+const hangs = (unit: Unit, p: Pt, face: Pt, wholeAC = false): boolean =>
   unit.furniture.some((f) => {
     const k = kitAsset(f.assetId)
     if (!k) return false
@@ -413,6 +415,17 @@ const hangs = (unit: Unit, p: Pt, face: Pt): boolean =>
     // a wall AC behind the eye (its centre behind the eye's plane, its top ~1 m up) is out of any frame: the stand point may be
     // under it (the wave-14 C Bed-3's only spots past the bed's foot stand under its AC)
     if (kind === 'ac' && ahead < 0) return false
+    // `wholeAC` (the entry view, the first one a buyer sees, session 31): an AC by its whole width — an end within AC_IN_VIEW
+    // and ~53° of the view looms in a top corner as much as its middle, and one up to AC_AHEAD away with an end in the frame
+    // (FRAME_DEG) still sits cut by its top (type-a's entry had the dining's AC so, once it slid off the sofa). A room's own
+    // view keeps the middle's rule (its best spot by penalties).
+    if (kind === 'ac' && wholeAC) {
+      const looms = (q: Pt) => {
+        const dq = Math.hypot(q.x - p.x, q.y - p.y)
+        return (dq < AC_IN_VIEW && (q.x - p.x) * face.x + (q.y - p.y) * face.y > 0.6 * dq) || (dq < AC_AHEAD && inFrame(p, face, q))
+      }
+      return (d < AC_NEAR || [f, ...footprint(f, f.rotationDeg, placementSize(f))].some(looms)) && inSight(unit, p, f)
+    }
     const [near, inView] =
       kind === 'ac' ? [AC_NEAR, AC_IN_VIEW]
       : kind === 'ceiling-fan' ? [FAN_CLEAR, FAN_IN_VIEW]

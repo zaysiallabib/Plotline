@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, WATER_DROP_M, bayMarkings, carriesRoof, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, bayMarkings, junctionShade, carriesRoof, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
 import sheltechRoof from '../data/units/sheltech-roof.json'
 import bananiRoof from '../data/units/banani-roof.json'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
@@ -125,6 +125,53 @@ test('type-a/c reveals (jambs, heads, sills) move with the face group asked for;
       expect(area(g0, 2), w.id).toBeCloseTo(area(g1, 2), 6)
     }
   }
+})
+
+describe('junction shading: the corners of a room, every tier (session 31)', () => {
+  const alphas = (g: THREE.BufferGeometry) => Array.from({ length: g.attributes.color.count }, (_, i) => g.attributes.color.getW(i))
+  test('floor: two strips per skirting run (up the wall from its top, out across the floor), a frame line on each window sill; ceiling: two per face of each room', () => {
+    const rooms = core.deriveRooms(TEST_UNIT)
+    const { floor, ceiling } = junctionShade(TEST_UNIT, rooms)
+    const runs = skirtingRuns(TEST_UNIT, rooms)
+    expect(floor!.attributes.position.count).toBe(24 * runs.length + 12 * 2) // two windows, a room on one side of each
+    const faces = rooms.reduce((n, r) => n + core.roomInnerPolygon(r, TEST_UNIT).length, 0)
+    expect(ceiling!.attributes.position.count).toBe(24 * faces)
+    // black, dark at the corner and clear away from it; the sill line a touch darker
+    expect(Math.max(...alphas(floor!))).toBeCloseTo(1.5 * SHADE_A, 6)
+    expect(Math.min(...alphas(floor!))).toBe(0)
+    const c = ceiling!.attributes.color
+    expect([...Array(c.count).keys()].every((i) => c.getX(i) === 0 && c.getY(i) === 0 && c.getZ(i) === 0)).toBe(true)
+    // the ceiling's strips lie at the ceiling (3 m), a third of SHADE_M or SHADE_M under it; the darkest edge at the ceiling
+    const p = ceiling!.attributes.position
+    for (let i = 0; i < p.count; i++) {
+      expect([3, 3 - 0.002, 3 - SHADE_M / 3, 3 - SHADE_M].some((y) => Math.abs(p.getY(i) - y) < 1e-6)).toBe(true) // float32
+      if (c.getW(i) > SHADE_A / 3 + 1e-6) expect(p.getY(i)).toBeGreaterThan(3 - 0.01)
+    }
+  })
+
+  test('a glass wall up to the ceiling cuts the ceiling corner along it and has no sill line', () => {
+    const walls = TEST_UNIT.walls.map((w) => (w.id === 'w1' ? { ...w, openings: [{ id: 'gl', kind: 'window' as const, offsetM: 1.4, widthM: 1.6, heightM: 3, sillM: 0 }] } : w))
+    const unit = { ...TEST_UNIT, walls }
+    const rooms = core.deriveRooms(unit)
+    const { floor, ceiling } = junctionShade(unit, rooms)
+    const faces = rooms.reduce((n, r) => n + core.roomInnerPolygon(r, unit).length, 0)
+    expect(ceiling!.attributes.position.count).toBe(24 * (faces + 1)) // the face along w1 in two pieces
+    expect(floor!.attributes.position.count).toBe(24 * skirtingRuns(unit, rooms).length + 12) // only the bedroom's window sill
+  })
+
+  test('type-a: every room with a ceiling has its corners shaded; none in an outdoor zone (a level)', () => {
+    const unit = typeA as unknown as Unit
+    const rooms = core.deriveRooms(unit)
+    const { ceiling } = junctionShade(unit, rooms)
+    expect(ceiling!.attributes.position.count).toBeGreaterThan(24 * rooms.length)
+    const level = GROUND_SAMPLE as unknown as Unit
+    const lr = core.deriveRooms(level)
+    const zones = lr.filter((r) => core.isOutdoor(r.kind))
+    expect(zones.length).toBeGreaterThan(0)
+    const shaded = junctionShade(level, lr).ceiling
+    const p = shaded?.attributes.position
+    for (let i = 0; p && i < p.count; i++) expect(zones.some((z) => core.pointInPolygon({ x: p.getX(i), y: p.getZ(i) }, core.roomInnerPolygon(z, level)))).toBe(false)
+  })
 })
 
 describe('skirtingRuns', () => {

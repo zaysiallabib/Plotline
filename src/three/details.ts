@@ -6,7 +6,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { FinishSlot, Id, Opening, Pillar, Pt, Room, RoomKind, Unit, Wall } from '../core'
-import { CASING_P, CASING_W, buildOpening, meterUVs } from './openings'
+import { CASING_P, CASING_W, buildOpening, isGlazing, meterUVs } from './openings'
 
 export const SKIRTING_H = 0.09
 const SKIRTING_T = 0.012
@@ -198,6 +198,106 @@ export function buildSkirtings(unit: Unit, rooms: Room[]): Map<Id, THREE.Mesh> {
     out.set(id, mesh)
   }
   return out
+}
+
+/** How far the junction shading reaches from a corner (m), and how dark it is there (0–1 of the light: junctionShade). */
+export const SHADE_M = 0.3
+export const SHADE_A = 0.3
+
+/**
+ * Soft light's corners (session 31: "plasticky soft light"): a faint dark gradient where surfaces meet, as a camera sees a
+ * room's corners — up the wall from its skirting and out across the floor from it (skirtingRuns: what is built, its
+ * openings cut; none in a bath or on a balcony, as the skirting), down the wall from the ceiling and across the ceiling
+ * from the wall (every face of a room with a ceiling whose wall reaches it; an opening reaching within SHADE_M of the
+ * ceiling cut), and a contact line on each window's stone sill along its frame. Black strips, SHADE_A at the corner fading
+ * to 0 (vertex alpha); one geometry over the floors (`floor`, sills too) and one under the ceilings (`ceiling`: hidden
+ * with them); null where there is none. No post pass: every tier draws it, two draw calls.
+ */
+const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
+export function junctionShade(unit: Unit, rooms: Room[]): { floor: THREE.BufferGeometry | null; ceiling: THREE.BufferGeometry | null } {
+  const lists: [number[], number[]][] = [[[], []], [[], []]] // floor, ceiling: positions, colours (rgba)
+  /**
+   * a strip: edge a–b at the corner (alpha `k` × SHADE_A), edge d–c away from it (alpha 0), a third of the way out a third
+   * of the corner's: the shade falls off fast, as light round a corner does, no grey band
+   */
+  const strip = (to: 0 | 1, a: V3, b: V3, c: V3, d: V3, k = 1) => {
+    const [pos, col] = lists[to]
+    const third = (p: V3, q: V3): V3 => [p[0] + (q[0] - p[0]) / 3, p[1] + (q[1] - p[1]) / 3, p[2] + (q[2] - p[2]) / 3]
+    const [e, g] = [third(a, d), third(b, c)]
+    const quad = (p: V3, q: V3, r: V3, t: V3, k0: number, k1: number) => {
+      for (const [v, al] of [[p, k0], [q, k0], [r, k1], [p, k0], [r, k1], [t, k1]] as [V3, number][]) {
+        pos.push(...v)
+        col.push(0, 0, 0, al * SHADE_A)
+      }
+    }
+    quad(a, b, g, e, k, k / 3)
+    quad(e, g, c, d, k / 3, 0)
+  }
+  const at = (p: Pt, y: number): V3 => [p.x, y, p.y]
+  const level = (r: Room) => core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y)
+  // the floor's corners: on each skirting run, up the wall from the skirting's top and out from its face
+  for (const r of skirtingRuns(unit, rooms)) {
+    const y = level(r.room)
+    const p0 = add(r.p, r.d, r.s0)
+    const p1 = add(r.p, r.d, r.s1)
+    const on = (p: Pt, out: number) => add(p, r.n, out)
+    strip(0, at(on(p0, 0.002), y + SKIRTING_H), at(on(p1, 0.002), y + SKIRTING_H), at(on(p1, 0.002), y + SKIRTING_H + SHADE_M), at(on(p0, 0.002), y + SKIRTING_H + SHADE_M), 0.6)
+    strip(0, at(on(p0, SKIRTING_T + 0.001), y + 0.003), at(on(p1, SKIRTING_T + 0.001), y + 0.003), at(on(p1, SKIRTING_T + SHADE_M), y + 0.003), at(on(p0, SKIRTING_T + SHADE_M), y + 0.003))
+  }
+  // the ceiling's corners: each inner face of a room with a ceiling, where its wall reaches it
+  const walls = new Map(unit.walls.map((w) => [w.id, w]))
+  for (const r of rooms) {
+    if (core.isOutdoor(r.kind) || r.kind === 'shaft') continue
+    const y0 = level(r)
+    const top = roomCeiling(r, unit, rooms)
+    const inner = core.roomInnerPolygon(r, unit)
+    inner.forEach((P, i) => {
+      const w = walls.get(r.wallIds[i])
+      if (!w || w.heightM < top - y0 - 0.05) return // a low wall, a zone line: no corner up there
+      const Q = inner[(i + 1) % inner.length]
+      const len = Math.hypot(Q.x - P.x, Q.y - P.y)
+      if (len < 0.05) return
+      const d = { x: (Q.x - P.x) / len, y: (Q.y - P.y) / len }
+      const n = { x: -d.y, y: d.x } // into the room (loops run counter-clockwise)
+      const f = core.wallFrame(w, unit.vertices)
+      const cuts = w.openings
+        .filter((o) => o.sillM + o.heightM > top - y0 - SHADE_M)
+        .map((o) => [o.offsetM, o.offsetM + o.widthM].map((u) => (f.origin.x + f.dir.x * u - P.x) * d.x + (f.origin.y + f.dir.y * u - P.y) * d.y).sort((a, b) => a - b))
+      let free: [number, number][] = [[0, len]]
+      for (const [c0, c1] of cuts) free = free.flatMap(([a, z]): [number, number][] => [[a, Math.min(z, c0)], [Math.max(a, c1), z]]).filter(([a, z]) => z - a > 0.01)
+      for (const [t0, t1] of free) {
+        const [a, b] = [add(add(P, d, t0), n, 0.002), add(add(P, d, t1), n, 0.002)]
+        strip(1, at(a, top), at(b, top), at(b, top - SHADE_M), at(a, top - SHADE_M))
+        strip(1, at(a, top - 0.002), at(b, top - 0.002), at(add(b, n, SHADE_M), top - 0.002), at(add(a, n, SHADE_M), top - 0.002))
+      }
+    })
+  }
+  // a window's frame on its stone sill (openings.ts buildWindow: the sill's top 20 mm over the opening's, from the frame's face)
+  for (const w of unit.walls) {
+    const f = core.wallFrame(w, unit.vertices)
+    const l = wallLift(w, unit, rooms)
+    for (const o of w.openings) {
+      if (o.kind !== 'window' || isGlazing(o)) continue
+      const sides = openingRooms(o, w, unit, rooms)
+      const D = Math.min(0.08, w.thicknessM - 0.02) / 2
+      const y = l.base[0] + ((l.base[1] - l.base[0]) * (o.offsetM + o.widthM / 2)) / (f.lengthM || 1) + o.sillM + 0.022
+      const pt = (u: number, out: number): V3 => [f.origin.x + f.dir.x * u + f.normal.x * out, y, f.origin.y + f.dir.y * u + f.normal.y * out]
+      sides.forEach((room, i) => {
+        if (!room) return
+        const s = i ? -1 : 1
+        const [u0, u1] = [o.offsetM, o.offsetM + o.widthM]
+        strip(0, pt(u0, s * D), pt(u1, s * D), pt(u1, s * (D + 0.06)), pt(u0, s * (D + 0.06)), 1.5)
+      })
+    }
+  }
+  const geo = ([pos, col]: [number[], number[]]) => {
+    if (!pos.length) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4))
+    return g
+  }
+  return { floor: geo(lists[0]), ceiling: geo(lists[1]) }
 }
 
 /**

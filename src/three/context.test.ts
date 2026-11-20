@@ -186,6 +186,36 @@ describe('neighbourBlocks', () => {
   })
 })
 
+describe('High’s street: a floor line on every block', () => {
+  test('a block without balconies gets its slab edge across each face it shows, at every upper floor, 0.5 m out; a balcony block and Low / Lite none', () => {
+    const b = core.unitBounds(base)
+    const at = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }
+    const { blocks } = neighbourBlocks({ walls: b }, 7)
+    const key = (q: object) => JSON.stringify(q)
+    let seen = 0
+    for (const k of blocks) {
+      const plain = blockParts(k, at, () => 0.5)
+      const lined = blockParts(k, at, () => 0.5, true)
+      const extra = lined.filter((q) => !new Set(plain.map(key)).has(key(q)))
+      if (k.facade === 2) {
+        expect(extra).toHaveLength(0)
+        continue
+      }
+      const faces = [k.y0 > at.y, k.y1 < at.y, k.x0 > at.x, k.x1 < at.x].filter(Boolean).length
+      expect(extra).toHaveLength(faces * (k.storeys - 1))
+      for (const q of extra) {
+        expect(q.z1 - q.z0).toBeCloseTo(0.15, 9)
+        expect(q.z0 / STOREY).toBeCloseTo(Math.round(q.z0 / STOREY), 9)
+        expect(q.z0).toBeGreaterThanOrEqual(STOREY) // never on the parking storey
+        expect(Math.min(q.x1 - q.x0, q.y1 - q.y0)).toBeCloseTo(0.5, 9) // 0.5 m out, the face's whole length along
+        expect(Math.max(q.x1 - q.x0, q.y1 - q.y0)).toBeCloseTo(q.x1 - q.x0 > q.y1 - q.y0 ? k.x1 - k.x0 : k.y1 - k.y0, 9)
+      }
+      seen += extra.length
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+})
+
 describe('Lite’s street: plain boxes, one mesh', () => {
   test('one draw call, no picture, vertex colours; each block a bare box (no parapets, tanks or AC units), each road a strip', () => {
     const street = streetOf(towerOf(base)!, 'type-a')

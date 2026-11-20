@@ -53,15 +53,32 @@ const STONE: MaterialRef = { kind: 'color', color: '#e6e2da', roughness: 0.18 }
  * setGlassSky makes envMapIntensity = sky / opacity: the sky at full strength, as real glass mirrors it: Fresnel keeps a
  * pane almost clear head-on (4 %) and shows the sky at grazing angles. A fifth of it was invisible in every Rooms-list
  * view. Look.setHour dims it with the sky dome at dusk.
+ * Session 31 ("windows as real glass"): the view through it is multiplied by PANE_TINT instead of faded toward black — the
+ * same 70 % but the faint green-grey of float glass (blend: its own colour, the reflection, × its opacity + behind ×
+ * PANE_TINT; the canvas's alpha kept).
  */
-export const GLASS = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false })
+export const PANE_TINT = new THREE.Color(0.68, 0.71, 0.7)
+export const GLASS = new THREE.MeshStandardMaterial({
+  color: '#000000',
+  roughness: 0.05,
+  transparent: true,
+  opacity: 0.3,
+  depthWrite: false,
+  blending: THREE.CustomBlending,
+  blendSrc: THREE.SrcAlphaFactor,
+  blendDst: THREE.ConstantColorFactor,
+  blendSrcAlpha: THREE.ZeroFactor,
+  blendDstAlpha: THREE.OneFactor,
+  blendColor: PANE_TINT,
+})
+const pane = (opacity: number, color = '#000000') => new THREE.MeshStandardMaterial({ color, roughness: 0.05, transparent: true, opacity, depthWrite: false })
 /** The shower screen: 10 mm clear glass, 10 %. Tinted like the windows it laid a grey sheet across the bath view. */
-export const CLEAR_GLASS = Object.assign(GLASS.clone(), { opacity: 0.1 })
+export const CLEAR_GLASS = pane(0.1)
 /**
  * A glass wall's panes (a lobby's 10–12 mm toughened glass): the faint green of thick float glass, 18 %. As clear as the
  * shower screen a lobby's glazing read as an empty frame of mullions from the lawn and from inside.
  */
-export const GLAZING_GLASS = Object.assign(GLASS.clone(), { color: new THREE.Color('#2f4644'), opacity: 0.18 })
+export const GLAZING_GLASS = pane(0.18, '#2f4644')
 /**
  * A pool's water: clear blue-green over its tiled basin, glossy, a slight ripple (a tileable sum of sines, 1.5 m a repeat,
  * drifting — PlotlineScene.tick); it mirrors the sky as the panes do. No refraction / caustics: a plain standard material.

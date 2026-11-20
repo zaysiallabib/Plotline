@@ -23,9 +23,9 @@ import type { Street } from '../data/building'
 import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
-import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze } from './context'
+import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
 import { dayMix, isCovered, LAMP_RANGE, openToSky, setLampShare } from './daylight'
-import { carriesRoof, roomCeiling, storeyTop, wallLift } from './details'
+import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
 
@@ -160,6 +160,8 @@ interface Fixture {
   roomId: Id
   room: Pt[]
 }
+/** junctionShade's strips (details.ts): black by their vertex alpha over the surfaces where they meet; no depth write, pulled forward */
+const SHADE = new THREE.MeshBasicMaterial({ color: '#000000', vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 })
 /** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
 const ON_GLOW = 4
 /** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
@@ -541,6 +543,10 @@ export class Look {
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(unit, b)
     if (this.contact) this.unitGroup.add(this.contact)
+    // the corners' soft shading: the floor's with the flat, the ceiling's only while the ceilings show (under them)
+    const shade = junctionShade(unit, rooms)
+    if (shade.floor) this.unitGroup.add(new THREE.Mesh(shade.floor, SHADE))
+    if (shade.ceiling) this.indoor.add(new THREE.Mesh(shade.ceiling, SHADE))
     this.street = buildStreet(unit, street, this.ground.position.y)
     // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view. Both throw
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
@@ -691,6 +697,7 @@ export class Look {
     for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
     setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(this.tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
+    streetNight.value = STREET_LIT * k.night
     this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
     ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)

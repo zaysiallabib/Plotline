@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, pointInPolygon, roomInnerPolygon, type FurniturePlacement, type Opening, type Pt, type Room, type RoomKind, type Unit } from '../core'
 import { heightRange, isCeilingLight, kitAsset, placementLabel, placementSize } from './kit'
-import { AC_KINDS, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
+import { AC_KINDS, bestView, doorClearZones, ENTRY, footprint, furnish, isCommonCore, isPlanter, LIT_KINDS, PATH_W, quadsOverlap, WARDROBE_CLEAR } from './presets'
 import { buildProcedural } from './procedural'
 import { ART_SETS, CURTAINS, parsePlanter, PLANTER } from './procedural.meta'
 
@@ -422,6 +422,27 @@ describe('furnish', () => {
     const glassy = rect('study', 2.4, 2.4)
     glassy.walls.forEach((w, i) => w.openings.push({ id: `w${i}`, kind: 'window', offsetM: 0.7, widthM: 1.0, heightM: 1.4, sillM: 0.9 }))
     expect(furnish(glassy, deriveRooms(glassy)).map((p) => p.assetId)).not.toContain('ac_split')
+  })
+
+  test('AC out of the view: on a blank wall rather than beside a window, never over the sofa, on the wall facing the biggest window', () => {
+    // 5 × 4 living room: the door at the top wall's left end, the big window (2 m) in the bottom wall, a small one (1 m)
+    // in the right wall. The old rule (the longest stretch) hung it on the left wall, side-on to the view.
+    const unit = rect('living', 5, 4, { wall: 0, offsetM: 0.2 })
+    unit.walls[2].openings.push({ id: 'big', kind: 'window', offsetM: 1.5, widthM: 2, heightM: 1.5, sillM: 0.9 })
+    unit.walls[1].openings.push({ id: 'small', kind: 'window', offsetM: 1.5, widthM: 1, heightM: 1.2, sillM: 0.9 })
+    const rooms = deriveRooms(unit)
+    const ps = furnish(unit, rooms)
+    const ac = ps.find((p) => p.assetId === 'ac_split')!
+    expect(ac, 'an AC').toBeDefined()
+    expect(ac.y, 'on the top wall, its back to nothing but the wall, facing the big window').toBeLessThan(0.5)
+    expectACClearOfOpenings(ac, rooms[0], unit)
+    for (const sofa of ps.filter((p) => kitAsset(p.assetId)!.category === 'sofa')) expect(quadsOverlap(quad(sofa), quad(ac)), 'not over the sofa').toBe(false)
+  })
+
+  test('bestView: the middle of the biggest window by glass area (a tall narrow one can beat a wide low one); none without windows', () => {
+    const side = (wins: { u0: number; u1: number; sill: number; top: number }[]) => ({ p0: { x: 0, y: 0 }, d: { x: 1, y: 0 }, wins })
+    expect(bestView([side([{ u0: 1, u1: 2, sill: 0.9, top: 2.1 }]), { ...side([{ u0: 0, u1: 1.5, sill: 1.5, top: 2.1 }]), p0: { x: 0, y: 3 } }])).toEqual({ x: 1.5, y: 0 })
+    expect(bestView([side([])])).toBeNull()
   })
 
   test('a help room (help/servant/maid, or a bedroom under 4 m²) gets a cot along a wall and a hook rail, nothing else', () => {
