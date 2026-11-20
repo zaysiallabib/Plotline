@@ -73,14 +73,14 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
   const oneWall = key === surface.wallKey
   const fallback = (oneWall ? own(cfg[surface.roomKey]) : undefined) ?? chosen(k.slot, cfg)
   return (
-    <div className="slot">
+    <div className="slot surface">
       <div className="label">{k.scope}</div>
       {surface.wallKey && (
-        <div className="arrange-row">
-          <button className={`btn${wide ? '' : ' active'}`} onClick={() => setWide(false)}>
+        <div className="seg seg-fill" role="group" aria-label="Which walls">
+          <button className={wide ? '' : 'on'} aria-pressed={!wide} onClick={() => setWide(false)}>
             This wall
           </button>
-          <button className={`btn${wide ? ' active' : ''}`} onClick={() => setWide(true)}>
+          <button className={wide ? 'on' : ''} aria-pressed={wide} onClick={() => setWide(true)}>
             The whole room
           </button>
         </div>

@@ -101,18 +101,18 @@ interface ListProps {
 export function NotesList({ pins, rooms, onFocus, onRemove }: ListProps) {
   return (
     <section className="notes">
-      <div className="label">Notes ({pins.length})</div>
-      {pins.length === 0 && <div className="muted empty">No notes yet. Press C and click anything you'd change.</div>}
+      <div className="label">Your notes · {pins.length}</div>
+      {pins.length === 0 && <div className="muted empty">None yet.</div>}
       {pins.map((p, i) => (
         <div key={p.id} className="note">
-          <button className="note-main" onClick={() => onFocus(p)}>
+          <button className="note-main" title="Walk to it" onClick={() => onFocus(p)}>
             <span className="pin-dot small">{i + 1}</span>
             <span className="note-text">
               <span>{p.text.split('\n')[0]}</span>
               <span className="muted">{tagOf(p.anchor.label, rooms.find((r) => r.id === p.roomId)?.name)}</span>
             </span>
           </button>
-          <button className="link" onClick={() => onRemove(p)}>
+          <button className="link danger" onClick={() => onRemove(p)}>
             Remove
           </button>
         </div>

@@ -75,11 +75,13 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Double-click | The mouse turns your head; **Esc** gives the mouse back | Walk (not in Edit furniture / Edit openings) | everyone | §2 |
 | **O** | Walk ↔ Dollhouse (from the Building view: back to Walk) | any | everyone | §2 Buttons |
 | **B** | The Building view | only when the flat is part of a tower | everyone | §2, §4 |
-| **F** | Opens / closes Finishes | any | everyone | §2 Finishes panel |
-| **C** | Comment on / off; then click the thing | any | everyone | §2 Notes |
+| **F** | Opens / closes Finishes (closes Comment); in Clean view it also brings everything back | any | everyone | §2 Finishes panel |
+| **C** | Comment on / off (the Comment panel; closes Finishes); then click the thing. In Clean view it also brings everything back | any | everyone | §2 Notes |
+| **H** | **Clean view** on / off: everything on screen goes, only a faint dot top right stays (the same as the eye button, or ⋯ → Clean view); remembered for the browser tab | any (not in a text box) | everyone | §2 Clean view |
 | **P** | Wind on / off — the same as the Wind button on the Sun & wind card (the pill at the bottom middle) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
 | **M** | Hides / shows the small map (the same as its × and the **Map** button) | Walk | everyone | §2 Always on screen |
-| **Esc** | Gives the mouse back, and one step back: the "which floors?" box (Floor 2 only / All 4 floors) takes the change back — the piece goes back where it was, nothing saved; an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks (one Esc, also while the cursor is in its search box); in Edit openings: unpicks; else stops Comment and drops an unsaved note; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| **Esc** | Gives the mouse back, and one step back: in Clean view it only brings everything back (nothing else happens with that press); the "which floors?" box (Floor 2 only / All 4 floors) takes the change back — the piece goes back where it was, nothing saved; an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks (one Esc, also while the cursor is in its search box); in Edit openings: unpicks; else drops a note you have not saved; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back everything that faded while the mouse rested (3 s still in Walk: all but the room's name fades) | Walk | everyone | §2 Resting |
 | **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
 | **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
@@ -116,6 +118,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | Name | What it does | Who |
 |---|---|---|
 | **Enter** | Goes in; you stand inside the front door | everyone |
+| **Change** (in the quality line under Enter: "High quality · …") | Shows **Lite · Low · High** right there (a blue dot marks the one recommended); a pick opens the page again with it | everyone |
 | The other flats and levels (a quiet list at the bottom: Flats, then each tower's levels) | Open another built-in flat or level | `/u/…` addresses (not on a buyer link: `/s/…` or a Share link) |
 | **Studio** (small, top right) | Opens the Studio | `/u/…` addresses |
 | **Staff mode** / **Leave staff mode** (small, top right) | Turns staff mode on / off in this browser | `/u/…` addresses |
@@ -124,54 +127,58 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
-| Room box (top left) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. In the Building view: the floor you picked ("Floor 2 · Type A · 2703 sft", "Ground floor"). **Click it** for the list of rooms (it replaces the old Rooms button); click a room to jump there | everyone |
-| **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is filled white | everyone |
-| **Finishes** | Opens the finishes panel (F) | everyone |
-| **Comment** | Click anything to leave a note (C) | everyone |
+| The room's name (top left, no box) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. In the Building view: the floor you picked ("Floor 2 · Type A · 2703 sft", "Ground floor"). **Click it** for the list of rooms (it replaces the old Rooms button; your room is the white row); click a room to jump there | everyone |
+| **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is white | everyone |
+| **Finishes** | Opens the finishes panel (F); closes Comment | everyone |
+| **Comment** | Opens the Comment panel: click anything to leave a note; your notes are listed there (C); closes Finishes | everyone |
 | **Share** | Copies a link that opens with the finishes you chose | everyone |
 | **Edit ▾** → **Furniture** | Edit furniture: move, turn, resize, delete or add furniture | staff |
 | **Edit ▾** → **Openings** | Edit openings: move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
 | **Edit ▾** → **Plan (Studio)** | Edit plan: opens this flat or level in the Studio, in a new tab | staff |
-| **⋯** (the last button of the bar) → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a gold dot marks the one recommended for this device; a new choice reloads the page | everyone |
+| **⋯** → **Clean view** | The same as H or the eye | everyone |
+| **⋯** → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a blue dot marks the one recommended for this device; a new choice reloads the page | everyone |
+| The eye (the last button of the bar) | **Clean view**: hides everything on screen (H) | everyone |
+| The faint dot (top right, only in Clean view) | Brings everything back (or H, or Esc); a tap on a phone | everyone |
 | **Enter VR** / **Exit VR** | Into / out of the headset — only when one is connected | everyone |
 
 ### 3D view — bottom
 
 | Name | What it does | Who |
 |---|---|---|
-| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. While Comment is on it stays: "Click anything to leave a note · Esc stops" | everyone |
+| A short message (bottom middle, above the hint) | Answers what you just did ("Link copied …"); fades by itself | everyone |
+| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. Not shown under a finger (phones, tablets) | everyone |
 | **Sun & wind** pill (bottom middle: a sun, the time, the month, a small compass; "Wind" while the wind is on) | Opens the Sun & wind card | everyone |
 | **⌄** (top right of the card) | Closes the card back to the pill (or Esc) | everyone |
-| Compass (left of the card; small on the pill) | Where true north is as you look now — the top of the compass is straight ahead; it turns as you turn. N is gold | everyone |
+| Compass (top left of the card; small on the pill) | Where true north is as you look now — the top of the compass is straight ahead; it turns as you turn. N is blue | everyone |
 | Day (the date on the card) | The day the sun (and the wind's month) is shown for; starts on today | everyone |
 | Time of day (the slider, 0 to 24) | The sun moves with it; the slider is coloured by the site's own day (night, dawn, day, dusk) and the time shows large above it | everyone |
 | **Lights** (on the card) | The flat's lamps on / off (automatic after sunset) | everyone |
 | **Wind** (on the card) | The wind through the flat this month, on / off (P) | everyone |
-| Months **Jan … Dec** (on the card, always) | Pick a month; the day moves to it (the sun and the wind follow) | everyone |
+| Months **Jan … Dec** (on the card, always; six to a row) | Pick a month; the day moves to it (the sun and the wind follow) | everyone |
 | A month's line on the compass (Wind on) | With the wind on, the compass shows every month's wind as a line toward where it comes from; a click on one picks that month (this replaces the old Rose button) | everyone |
-| Quality note (bottom left: "High quality. This device can show the full look.") | Shows by itself only the first time, or after an automatic switch; **Change** opens ⋯ → Quality, **×** closes it; it goes by itself after 12 seconds | everyone |
-| Small map (bottom right, Walk) | Where you are, with a compass to true north on the plan; **×** hides it, **Map** brings it back (or M). It steps aside while Finishes is open | everyone |
-| Floors (Building view, right): **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (the picked one is filled white, your flat's floor has a gold dot); a basement hides what is above it | everyone |
-| **Walk this level** (Building view, under the floors) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
+| Small map (bottom right, Walk; top right on a phone) | Where you are, with a compass to true north on the plan in its corner; its **×** shows when the mouse is over it and hides it, **Map** brings it back (or M). It steps aside while Finishes or Comment is open | everyone |
+| Floors (Building view, right): **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (the picked one is the white row, your flat's floor has a blue dot); a basement hides what is above it | everyone |
+| **Walk this level** (Building view, the blue button under the floors) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
 | **Up to …** / **Down to …** (bottom middle, just above the Sun & wind pill; Walk, standing in a stair room of a building) | Takes the stair: the floor above / below opens, you stand on its stair. Walking up the stair's second flight (or down under it, from the floor) does the same | everyone |
 
-### 3D view — Finishes panel and notes
+### 3D view — Finishes panel and the Comment panel
 
 | Name | What it does | Who |
 |---|---|---|
-| **×** (top right of the panel) | Closes the panel (or F, or Esc) | everyone |
-| **Your name** | So the developer knows who asked | buyer links only |
-| A note in the list | Walks you to it | everyone |
+| **×** (top right of Finishes) | Closes the panel (or F, or Esc) | everyone |
+| **×** (top right of Comment) | Stops Comment (or C, or Esc) | everyone |
+| **Your name** (in both panels) | So the developer knows who asked | buyer links only |
+| A note in the list (Comment panel, "Your notes") | Walks you to it | everyone |
 | **Remove** (on a note) | Deletes that note | everyone |
 | The block for the clicked floor / wall / ceiling | Names it ("Bed-1 · floor") and shows its options | everyone |
-| **This wall** / **The whole room** | A wall's choice for that wall only, or every wall of the room | everyone |
+| **This wall** · **The whole room** (a switch) | A wall's choice for that wall only, or every wall of the room | everyone |
 | **Same as the group** / **Same as the room** | Takes a one-room / one-wall choice back | everyone |
 | An option (brand, price difference) | Chooses it | everyone |
 | **Done** | Closes the clicked thing's block | everyone |
 | **undo** (under "Chosen for one room or wall") | Takes that one choice back | everyone |
 | Options total | The sum of the price differences (shows only) | everyone |
 | **Reset to included** | Every choice back to what the flat comes with | everyone |
-| Note box: text, **Save**, **Cancel** | Writes the note and pins it to what you clicked | everyone |
+| Note box: text, **Save**, **Cancel** | Writes the note and pins it to what you clicked; Comment stays on for the next one | everyone |
 
 ### 3D view — Edit furniture panel (bottom left)
 

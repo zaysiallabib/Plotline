@@ -123,7 +123,7 @@ export default function ChangeList() {
       {error && <p className="refused">{error}</p>}
       {data && !links.length && <p className="muted">No links yet. In the Studio, Share link publishes a draft and copies its buyer link.</p>}
       {links.map((l) => (
-        <section key={l.token} className="glass link-card">
+        <section key={l.token} className="link-card">
           <div className="link-head">
             <div>
               <div className="unit-title">{l.unit_name}</div>

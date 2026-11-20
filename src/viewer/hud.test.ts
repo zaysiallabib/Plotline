@@ -1,14 +1,36 @@
-// The HUD's rules (session 30): the bottom hint by mode, the Building rail's words, the compass's turn, the day's colours.
+// The HUD's rules (sessions 30–31): what shows when (rest, Clean view), the bottom hint by mode, the Building rail's words, the compass's turn, the day's colours.
 import { describe, expect, it } from 'vitest'
 import * as bti from '../data/building/demo-tower'
 import * as banani from '../data/building/banani-tower'
 import * as sheltech from '../data/building/sheltech-tower'
-import { floorTitle, floorWord, hintOf } from './Hud'
+import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, wakes } from './Hud'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
 const base = { mode: 'walk' as const, locked: false, staff: false, arranging: false, editingOpenings: false, holding: false }
 
 describe('hud', () => {
+  it('what shows: all of it, the room’s name alone at rest in Walk, nothing in Clean view', () => {
+    const s = { clean: false, idle: false, mode: 'walk' as const, busy: false }
+    expect(chromeOf(s)).toBe('all')
+    expect(chromeOf({ ...s, idle: true })).toBe('room') // 3 s without the mouse in Walk
+    expect(chromeOf({ ...s, idle: true, busy: true })).toBe('all') // a panel / menu open, or a piece in hand: never rests
+    expect(chromeOf({ ...s, idle: true, mode: 'orbit' })).toBe('all') // the Dollhouse: you drag it, it never rests
+    expect(chromeOf({ ...s, idle: true, mode: 'building' })).toBe('all') // the Building view neither
+    expect(chromeOf({ ...s, clean: true })).toBe('none') // Clean view hides everything …
+    expect(chromeOf({ ...s, clean: true, busy: true, mode: 'building' })).toBe('none') // … whatever else is going on
+  })
+
+  it('the keys and Clean view: H on and off, Esc only off, F / C / G off and on to their job; walking never wakes the HUD', () => {
+    expect(cleanKey(false, 'h')).toEqual({ clean: true, stop: true })
+    expect(cleanKey(true, 'H')).toEqual({ clean: false, stop: true }) // Shift+H too
+    expect(cleanKey(true, 'Escape')).toEqual({ clean: false, stop: true }) // that Esc does nothing else (no panel closes behind it)
+    expect(cleanKey(false, 'Escape')).toEqual({ clean: false, stop: false }) // not in Clean view: Esc goes on to the app
+    for (const k of ['f', 'c', 'g']) expect(cleanKey(true, k)).toEqual({ clean: false, stop: false }) // the panel or the piece must be seen
+    for (const k of ['w', 'o', 'p', 'm']) expect(cleanKey(true, k)).toEqual({ clean: true, stop: false }) // walk, switch view, wind, map: stays clean
+    expect(['w', 'A', 'ArrowUp', 'Shift'].map(wakes)).toEqual([false, false, false, false]) // walking is looking
+    expect(['f', 'Escape', 'g', 'Tab'].map(wakes)).toEqual([true, true, true, true])
+  })
+
   it('the Building view names the floor picked, not the room the walk stood in', () => {
     expect(floorTitle(bti, 2, 'type-a')).toEqual({ label: 'Floor 2', name: 'Type A · 2703 sft' }) // its name has the area
     expect(floorTitle(bti, 3, 'type-a')).toEqual({ label: 'Floor 3', name: 'Type B · 1747 sft, Type C · 2254 sft' }) // the flats there

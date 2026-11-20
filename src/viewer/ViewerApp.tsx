@@ -30,7 +30,7 @@ import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
-import { chosen, KEYS, local, lower, NAME, probeDevice, read, recommend, tab, write } from './quality'
+import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
 import { decodeConfig, encodeConfig, finishKeys, shareUrl } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
@@ -264,9 +264,47 @@ function NoThreeD({ unit }: { unit: Unit }) {
   )
 }
 
-/** Quality (quality.ts, everyone) in one line: why this tier — the HUD's ⋯ menu and its first-time toast say it */
+/** Quality (quality.ts, everyone) in one line: why this tier — the start screen's quality line and the HUD's ⋯ menu say it */
 const QUALITY_WHY =
   TIER.by === 'link' ? 'Set by this link.' : TIER.by === 'fallback' ? 'Lite since the 3D failed on this device.' : REC.why ? `Recommended for this device: ${REC.why}.` : 'This device can show the full look.'
+
+/**
+ * The start screen's quality line (session 31: in place of the first-visit toast): the tier and why — or the note an
+ * automatic switch left — and Change, which opens Lite · Low · High right there (a pick reloads the page, as in ⋯).
+ */
+function QualityLine({ onPick }: { onPick: (q: Quality) => void }) {
+  const [open, setOpen] = useState(false)
+  if (!open)
+    return (
+      <div className="load-q" title={DEVICE.gpu && `Graphics: ${DEVICE.gpu}`}>
+        {NAME[TIER.tier]} quality · {SWITCHED ?? QUALITY_WHY}{' '}
+        <button className="link" onClick={() => setOpen(true)}>
+          Change
+        </button>
+      </div>
+    )
+  return (
+    <div className="load-q open">
+      <div className="seg" role="group" aria-label="Quality">
+        {QUALITIES.map((q) => (
+          <button key={q} className={q === TIER.tier ? 'on' : ''} aria-pressed={q === TIER.tier} onClick={() => (q === TIER.tier ? setOpen(false) : onPick(q))}>
+            {NAME[q]}
+            {q === REC.tier && <span className="rec" title="Recommended for this device" />}
+          </button>
+        ))}
+      </div>
+      <span className="muted small">The dot: recommended here. Lite is lightest on the computer; a new choice reloads the page.</span>
+    </div>
+  )
+}
+
+/** One shared field (share links): the buyer's name, on the change list beside every note and finish choice */
+const BuyerName = () => (
+  <label className="buyer-name">
+    <span className="label">Your name</span>
+    <input defaultValue={buyer().name} placeholder="So the developer knows who asked" maxLength={80} onChange={(e) => setBuyerName(e.target.value)} />
+  </label>
+)
 
 /** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
 function AddPanel({ onPick, onEsc }: { onPick: (assetId: string) => void; onEsc: () => void }) {
@@ -688,6 +726,13 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (ready && !entered && (params.get('view') === 'dollhouse' || params.get('view') === 'building' || (STAFF && params.has('edit')) || params.has('stair'))) enter()
   })
 
+  /** a quality picked (the start screen's Change, or ⋯): kept in this browser, the page opens again with it */
+  const pickQuality = (q: Quality) => {
+    write(local, KEYS.picked, q)
+    write(tab, KEYS.fallback, null) // the person's pick, from now on
+    restart(cfgRef.current)
+  }
+
   const showToast = (msg: string, ms = 2500) => {
     setToast(msg)
     setTimeout(() => setToast((t) => (t === msg ? null : t)), ms)
@@ -1055,15 +1100,14 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       else if (arranging && k === 'escape') escArrange()
       else if (k === 'o') toggleMode()
       else if (k === 'b' && stem) go('building')
-      else if (k === 'f') setFinishesOpen((v) => !v)
-      else if (k === 'c') setCommenting((v) => !v)
+      else if (k === 'f') toggleFinishes()
+      else if (k === 'c') toggleComment()
       else if (k === 'p' && !e.repeat) setWindOn((v) => !v) // founder 2026-10-19: "make windpaths visible by pressing the button p"
       else if (k === 'escape') {
-        // one step back: a note being written or Comment first, else the open panels (Finishes, Sun & wind)
-        if (commenting || draft) {
-          setCommenting(false)
-          setDraft(null)
-        } else {
+        // one step back: a note being written first, then Comment, else the open panels (Finishes, Sun & wind)
+        if (draft) setDraft(null)
+        else if (commenting) setCommenting(false)
+        else {
           setFinishesOpen(false)
           setSimOpen(false)
         }
@@ -1087,9 +1131,18 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     appendPin(unit.id, pin)
     if (TOKEN) void sendEvent(TOKEN, 'comment', pin.id, { text, object: draft.label, anchor: pin.anchor, roomId: pin.roomId })
     setPins(readPins(unit.id))
-    setDraft(null)
+    setDraft(null) // Comment stays on: its panel lists the note just saved; the next click starts another (Esc or C stops)
+  }
+  /** Finishes and Comment take the same place on the right: one opens, the other closes */
+  const toggleFinishes = () => {
+    setFinishesOpen((v) => !v)
     setCommenting(false)
-    setFinishesOpen(true)
+    setDraft(null)
+  }
+  const toggleComment = () => {
+    setCommenting((v) => !v)
+    setFinishesOpen(false)
+    setDraft(null)
   }
   /**
    * A finish choice: a slot id, or a one-room / one-wall key (null: back to the group's choice). On a share link it goes to
@@ -1134,9 +1187,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
 
       {!entered && (
         <div className="load">
+          <div className="load-mark display">Plotline</div>
           <div className="load-main">
-            <div className="eyebrow">{unit.projectName}</div>
-            <h1 className="unit-name">{unit.name}</h1>
+            <div className="label">{unit.projectName}</div>
+            <h1 className="unit-name display">{unit.name}</h1>
             <div className="load-meta">
               {level !== undefined ? (
                 levelName(tower!, level) !== unit.name && levelName(tower!, level) // "Ground floor" said once, not twice
@@ -1154,6 +1208,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               {ready ? 'Enter' : 'Loading…'}
             </button>
             <div className="load-key">{ready ? 'or press Enter' : `${loaded} of ${rooms.length} rooms ready`}</div>
+            <QualityLine onPick={pickQuality} />
           </div>
           {/* ponytail: plain links until Phase A gives each developer a project list; never on a buyer's link */}
           {!SHARED && (
@@ -1222,6 +1277,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
             }}
             finishesOpen={finishesOpen}
             commenting={commenting}
+            sunOpen={simOpen}
             locked={locked}
             onEnterVR={xr ? toggleVR : null}
             toast={toast}
@@ -1234,8 +1290,8 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               setMode('walk')
             }}
             onMode={go}
-            onToggleFinishes={() => setFinishesOpen((v) => !v)}
-            onToggleComment={() => setCommenting((v) => !v)}
+            onToggleFinishes={toggleFinishes}
+            onToggleComment={toggleComment}
             onShare={share}
             arranging={arranging}
             hand={handInfo}
@@ -1249,11 +1305,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               why: QUALITY_WHY,
               note: qNote,
               gpu: DEVICE.gpu,
-              onPick: (q) => {
-                write(local, KEYS.picked, q)
-                write(tab, KEYS.fallback, null) // the person's pick, from now on
-                restart(cfg)
-              },
+              onPick: pickQuality,
             }}
             sun={
               <SunPill
@@ -1320,44 +1372,54 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
               <div className="muted small">Floor {askFloor.k} only: it gets its own copy of the drawing; the other floors stay as they are. Asked once for this project (Studio → Building: Ask again).</div>
             </div>
           )}
-          {finishesOpen && (
-            <aside className="glass panel" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
+          {commenting && (
+            <aside className="glass panel" aria-label="Comment" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name */}>
               <header className="panel-head">
-                <h2>Finishes</h2>
+                <span className="label">Comment</span>
+                <button className="x" aria-label="Stop commenting" title="Stop (C or Esc)" onClick={toggleComment}>
+                  ×
+                </button>
+              </header>
+              <div className="panel-body">
+                <p className="panel-lead">Click anything in the flat — a wall, a window, a piece of furniture — and write what you would change. A numbered pin stays on it.</p>
+                {TOKEN && <BuyerName />}
+                <NotesList
+                  pins={pins}
+                  rooms={rooms}
+                  onFocus={focusPin}
+                  onRemove={(p) => {
+                    removePin(unit.id, p.id)
+                    if (TOKEN) void sendEvent(TOKEN, 'comment', p.id, { removed: true })
+                    setPins(readPins(unit.id))
+                  }}
+                />
+              </div>
+            </aside>
+          )}
+          {finishesOpen && (
+            <aside className="glass panel" aria-label="Finishes" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name; Esc on a chip still closes the panel */}>
+              <header className="panel-head">
+                <span className="label">Finishes</span>
                 <button className="x" aria-label="Close Finishes" title="Close (F or Esc)" onClick={() => setFinishesOpen(false)}>
                   ×
                 </button>
               </header>
-              {TOKEN && (
-                <label className="buyer-name">
-                  <span className="label">Your name</span>
-                  <input defaultValue={buyer().name} placeholder="So the developer knows who asked" maxLength={80} onChange={(e) => setBuyerName(e.target.value)} />
-                </label>
-              )}
-              {/* Notes first: a just-saved note must be visible without scrolling past the finishes */}
-              <NotesList
-                pins={pins}
-                rooms={rooms}
-                onFocus={focusPin}
-                onRemove={(p) => {
-                  removePin(unit.id, p.id)
-                  if (TOKEN) void sendEvent(TOKEN, 'comment', p.id, { removed: true })
-                  setPins(readPins(unit.id))
-                }}
-              />
-              <FinishesPanel
-                slots={unit.finishSlots}
-                cfg={cfg}
-                keys={keys}
-                surface={surface}
-                onSelect={choose}
-                onCloseSurface={() => setSurface(null)}
-                onReset={() => {
-                  for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
-                  for (const k of Object.keys(cfg)) if (keys.has(k)) choose(k, null)
-                  setCfg({})
-                }}
-              />
+              <div className="panel-body">
+                {TOKEN && <BuyerName />}
+                <FinishesPanel
+                  slots={unit.finishSlots}
+                  cfg={cfg}
+                  keys={keys}
+                  surface={surface}
+                  onSelect={choose}
+                  onCloseSurface={() => setSurface(null)}
+                  onReset={() => {
+                    for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
+                    for (const k of Object.keys(cfg)) if (keys.has(k)) choose(k, null)
+                    setCfg({})
+                  }}
+                />
+              </div>
             </aside>
           )}
           {editingOpenings && (

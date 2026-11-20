@@ -1,12 +1,33 @@
 /*
- * Viewer chrome (session 30): calm dark glass over the 3D — the 3D is the product. Every value comes from the tokens in
- * src/index.css. Selected = filled light (the view, a month, a floor, a quality); on = the warm accent, soft (Finishes,
- * Comment, Lights, Wind); primary = the accent filled (Enter, Walk this level, Save). Motion: CSS only, 150–250 ms ease-out.
+ * The viewer's chrome (session 31, written from scratch on "Marble" — Docs/DESIGN.md → Walk / Dollhouse / Building).
+ * A thin frame of frosted marble round the 3D: ink on marble, hairlines instead of boxes, small tracked capitals for
+ * labels, the serif for names, one Aegean blue. Every colour, size, font and easing is a token from src/index.css; the
+ * few layout lengths below are named once on .viewer and built from tokens. Motion: opacity only (nothing slides).
+ * Rest (the mouse still in Walk) fades all but the room's name; Clean view hides everything but its dot (Hud.tsx).
  */
-.viewer { position: fixed; inset: 0; font-size: var(--fs-md); font-weight: 400; color: var(--ink); -webkit-font-smoothing: antialiased; }
+.viewer {
+  /* the one width of a panel, the bar's height, the gap to the screen's edge, the line under the bar where panels dock */
+  --panel-w: 320px;
+  --edge: var(--s-4);
+  --bar-h: calc(var(--control) + 2 * var(--s-1));
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --dock-top: calc(var(--safe-t) + var(--edge) + var(--bar-h) + var(--s-2));
+  /* the Edit furniture panel's usual height: the library opens above it */
+  --arrange-h: calc(23 * var(--s-2));
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+}
 .viewer.commenting canvas { cursor: crosshair; }
-.scene { display: block; width: 100%; height: 100%; transition: filter 600ms var(--ease); }
-.scene.blurred { filter: blur(14px) brightness(0.6); }
+.scene { display: block; width: 100%; height: 100%; transition: filter var(--dur-slow) var(--ease); }
+.scene.blurred { filter: blur(var(--s-5)); }
+
+@keyframes appear { from { opacity: 0; } }
 
 /* ── the parts every panel is made of ─────────────────────────────────────────────────────────────────────────────── */
 .glass {
@@ -18,362 +39,641 @@
   box-shadow: var(--shadow);
   color: var(--ink);
 }
-.label { font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: var(--track); color: var(--muted); }
-.muted { color: var(--muted); }
-.small { font-size: var(--fs-xs); }
-.grow { flex: 1; }
-
 .btn {
   appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--s-2);
-  min-height: 32px;
-  padding: 0 var(--s-4);
-  background: rgba(255, 255, 255, 0.06);
+  height: var(--control);
+  padding: 0 calc(var(--s-3) + var(--s-1) / 2);
+  background: transparent;
   color: var(--ink);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   font-size: var(--fs-md);
   font-weight: 400;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.btn:hover:not(:disabled) { background: var(--hover); border-color: rgba(255, 255, 255, 0.16); }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn:active:not(:disabled) { background: var(--press); }
 .btn:disabled { opacity: 0.4; cursor: default; }
-.btn.active { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
-.btn.primary:hover:not(:disabled) { background: #f0cd85; border-color: #f0cd85; }
-.link { background: none; border: 0; color: var(--ink-2); cursor: pointer; padding: var(--s-1) 0; font-size: var(--fs-sm); text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); text-underline-offset: 3px; }
-.link:hover { color: var(--ink); text-decoration-color: currentColor; }
-/* a round icon button: close, collapse */
+.btn.on, .btn.active { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 500; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 86%, var(--ink)); }
+.btn.danger { color: var(--danger); }
+.link {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent-line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color var(--dur-fast) var(--ease);
+}
+.link:hover { text-decoration-color: currentColor; }
+.link.danger { color: var(--danger); text-decoration-color: var(--danger-soft); }
+.link.danger:hover { text-decoration-color: currentColor; }
+/* an icon button: close, fold */
 .x {
-  flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0;
-  background: none; border: 0; border-radius: var(--r-pill); color: var(--muted); font-size: var(--fs-xl); line-height: 1; cursor: pointer;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: calc(var(--control) - var(--s-2));
+  height: calc(var(--control) - var(--s-2));
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font-size: var(--fs-xl);
+  line-height: 1;
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .x:hover { background: var(--hover); color: var(--ink); }
-.chev { flex: none; opacity: 0.7; transition: transform var(--dur) var(--ease); }
-[aria-expanded='true'] > .chev, [aria-expanded='true'] .room-name .chev { transform: rotate(180deg); }
-.viewer :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
-@keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
-
-/* ── the start screen ─────────────────────────────────────────────────────────────────────────────────────────────── */
-.load {
-  position: absolute; inset: 0;
-  display: grid; place-items: center;
-  padding: var(--s-6) var(--s-4);
-  background: radial-gradient(ellipse at 50% 45%, rgba(15, 15, 16, 0.35), rgba(15, 15, 16, 0.78));
+.chev { flex: none; opacity: 0.6; transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease); }
+[aria-expanded='true'] > .chev, [aria-expanded='true'] .chev { transform: rotate(180deg); opacity: 1; }
+.viewer kbd {
+  min-width: calc(var(--s-5) - var(--s-1));
+  padding: 0 var(--s-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: calc(var(--s-5) - var(--s-1) - 2px);
   text-align: center;
+  color: var(--ink-2);
 }
-.load-main { display: flex; flex-direction: column; align-items: center; animation: rise 400ms var(--ease) both; }
-.load .eyebrow { font-size: var(--fs-xs); font-weight: 500; text-transform: uppercase; letter-spacing: 0.22em; color: var(--muted); margin-bottom: var(--s-3); }
-.load .unit-name { margin: 0; font-size: var(--fs-2xl); font-weight: 300; letter-spacing: -0.01em; line-height: 1.1; }
-.load-meta { margin-top: var(--s-3); font-size: var(--fs-md); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.load .progress { width: 200px; height: 1px; margin: var(--s-6) 0 var(--s-5); background: var(--hairline); overflow: hidden; transition: opacity var(--dur) var(--ease); }
-.load .progress.done { opacity: 0.45; }
-.load .bar { height: 100%; background: var(--accent); transition: width var(--dur) var(--ease); }
-.load .enter { min-width: 168px; min-height: 44px; padding: 0 var(--s-6); font-size: var(--fs-lg); letter-spacing: 0.02em; }
-.load-key { margin-top: var(--s-3); min-height: 16px; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.refused { color: var(--danger); }
+.row { display: flex; gap: var(--s-2); }
+
+/* the segmented switch: one pill, the picked segment white and raised (the view, a quality, This wall · The whole room) */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  height: calc(var(--control) - 6px);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.seg button:hover { color: var(--ink); }
+.seg button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
+.seg-fill { display: flex; width: 100%; }
+.seg-fill button { flex: 1; }
+/* the quality recommended for this device */
+.rec { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+/* inputs: white, a drawn edge, the accent edge on focus */
+.buyer-name input,
+.popover textarea,
+.ftin input,
+.sun-date,
+.changes-key input {
+  height: var(--control);
+  padding: 0 var(--s-3);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-md);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.buyer-name input:focus, .popover textarea:focus, .ftin input:focus, .sun-date:focus, .changes-key input:focus { border-color: var(--accent); }
+
+/* ── the start screen: marble, the flat's name in the serif, the one blue button ─────────────────────────────────── */
+.load {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-7) var(--s-4) var(--s-8);
+  background: var(--glass-strong);
+  text-align: center;
+  animation: appear var(--dur-slow) var(--ease) both;
+}
+.load-mark { position: absolute; top: calc(var(--safe-t) + var(--s-5)); left: calc(var(--safe-l) + var(--s-6)); font-size: var(--fs-xl); color: var(--ink); }
+.load-main { display: flex; flex-direction: column; align-items: center; max-width: min(960px, 100%); }
+.load-main > .label { margin-bottom: var(--s-4); }
+.unit-name { margin: 0; font-size: var(--fs-4xl); color: var(--ink); text-wrap: balance; }
+.load-meta { margin-top: var(--s-4); min-height: 1lh; font-size: var(--fs-lg); color: var(--ink-2); }
+.progress { width: 160px; height: 1px; margin: var(--s-6) 0; background: var(--line); overflow: hidden; transition: opacity var(--dur-slow) var(--ease); }
+.progress.done { opacity: 0; }
+.progress .bar { height: 100%; background: var(--ink); transition: width var(--dur) var(--ease); }
+.load .enter { min-width: 168px; height: var(--touch); padding: 0 var(--s-6); font-size: var(--fs-lg); letter-spacing: 0.01em; }
+.load-key { margin-top: var(--s-3); min-height: 1lh; font-size: var(--fs-xs); color: var(--muted); }
+.load-q { margin-top: var(--s-6); max-width: 460px; font-size: var(--fs-sm); line-height: var(--lh); color: var(--muted); }
+.load-q.open { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+.load-q .link { font-size: var(--fs-sm); }
 /* the other flats and levels: a quiet list at the bottom (not on a buyer's link) */
-.load-more { position: absolute; left: 50%; bottom: var(--s-6); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 64px); display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+.load-more { position: absolute; left: var(--s-4); right: var(--s-4); bottom: calc(var(--safe-b) + var(--s-6)); display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .load-nav { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: var(--s-1) var(--s-4); font-size: var(--fs-sm); }
 .load-nav .label { margin-right: var(--s-1); }
-.load-nav a, .load-corner a { color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--dur-fast) var(--ease); }
-.load-nav a:hover, .load-corner a:hover { color: var(--ink); }
-.load-nav a.current { color: var(--ink); border-bottom-color: var(--accent); }
-.load-corner { position: absolute; top: var(--s-4); right: var(--s-5); display: flex; gap: var(--s-4); font-size: var(--fs-sm); }
+.load-nav a, .load-corner a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid transparent; transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.load-nav a:hover, .load-corner a:hover { color: var(--ink); border-bottom-color: var(--line); }
+.load-nav a.current { color: var(--ink); border-bottom-color: var(--ink); }
+.load-corner { position: absolute; top: calc(var(--safe-t) + var(--s-5)); right: calc(var(--safe-r) + var(--s-6)); display: flex; gap: var(--s-5); font-size: var(--fs-sm); }
 
-/* ── HUD: top left, the room you are in ───────────────────────────────────────────────────────────────────────────── */
-.hud-tl { position: absolute; top: var(--s-4); left: var(--s-4); display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); max-width: calc(100vw - 32px); }
-.room-chip {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
-  min-width: 180px; max-width: 340px; padding: 10px 14px 11px;
-  font: inherit; text-align: left; cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+/* ── the HUD: its root has no box; Rest and Clean view act on its children ────────────────────────────────────────── */
+.hud { display: contents; }
+.hud > *, .viewer > .minimap, .viewer > .map-show { transition: opacity var(--dur) var(--ease); }
+/* Rest: everything but the room's name fades — slowly out, quickly back */
+.hud.rest > :not(.hud-tl),
+.viewer:has(.hud.rest) > :is(.minimap, .map-show) { opacity: 0; pointer-events: none; transition-duration: var(--dur-slow); }
+/* Clean view: nothing on screen but the dot (the pins, the wind's chips, the staff panels too) */
+.hud.clean > :not(.clean-dot),
+.viewer:has(.hud.clean) > :not(.scene, .hud) { display: none; }
+.clean-dot {
+  position: absolute;
+  top: calc(var(--safe-t) + var(--edge) + (var(--bar-h) - var(--s-5)) / 2);
+  right: calc(var(--safe-r) + var(--edge) + var(--s-2));
+  width: var(--s-5);
+  height: var(--s-5);
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity var(--dur) var(--ease);
+  animation: appear var(--dur-slow) var(--ease) both;
 }
-.room-chip:hover, .room-chip.on { border-color: rgba(255, 255, 255, 0.18); background: var(--glass-strong); }
-.room-chip .eyebrow { font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
-.room-chip .room-name { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-lg); letter-spacing: 0.005em; }
-.room-chip .room-size { font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
-.wind-note { color: #a3b5c6; font-size: var(--fs-sm); line-height: 1.4; }
+.clean-dot::after { content: ''; position: absolute; inset: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-2); }
+.clean-dot:hover, .clean-dot:focus-visible { opacity: 1; }
 
-/* ── HUD: top right, one bar ──────────────────────────────────────────────────────────────────────────────────────── */
-.hud-tr { position: absolute; top: var(--s-4); right: var(--s-4); display: flex; flex-direction: column; align-items: flex-end; }
-.toolbar { display: flex; align-items: center; gap: 2px; padding: var(--s-1); border-radius: var(--r-pill); }
-.seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.05); }
-.seg button, .tb {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 30px; padding: 0 14px; border: 0; border-radius: var(--r-pill);
-  background: none; color: var(--ink-2); font-size: var(--fs-md); white-space: nowrap; cursor: pointer;
+/* top left: the room you stand in — no box, a soft marble veil under the words so they read over any wall */
+.hud-tl { position: absolute; z-index: 2; top: calc(var(--safe-t) + var(--edge)); left: calc(var(--safe-l) + var(--edge)); display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); max-width: calc(100% - 2 * var(--edge)); }
+.room-title {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  max-width: 440px;
+  padding: var(--s-1) var(--s-3) var(--s-2) var(--s-1);
+  background: none;
+  border: 0;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.room-title::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: calc(-1 * var(--s-5)) calc(-1 * var(--s-7)) calc(-1 * var(--s-5)) calc(-1 * var(--s-5));
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  -webkit-mask-image: radial-gradient(farthest-side at 40% 50%, black 45%, transparent);
+  mask-image: radial-gradient(farthest-side at 40% 50%, black 45%, transparent);
+  pointer-events: none;
+}
+.room-name { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-2xl); }
+.room-name .chev { opacity: 0.35; }
+.room-title:hover .chev, .room-title.on .chev { opacity: 1; }
+.room-size { font-size: var(--fs-sm); color: var(--muted); }
+.wind-note { max-width: 320px; font-size: var(--fs-sm); line-height: var(--lh); color: var(--ink-2); }
+
+/* top right: one pill */
+.hud-tr { position: absolute; z-index: 3; top: calc(var(--safe-t) + var(--edge)); right: calc(var(--safe-r) + var(--edge)); display: flex; flex-direction: column; align-items: flex-end; }
+.toolbar { display: flex; align-items: center; gap: 2px; height: var(--bar-h); padding: var(--s-1); border-radius: var(--r-pill); }
+.toolbar .sep { flex: none; width: 1px; height: calc(var(--control) / 2); margin: 0 var(--s-1); background: var(--line); }
+.tb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1);
+  height: var(--control);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.seg button:hover, .tb:hover { background: var(--hover); color: var(--ink); }
-.seg button.on { background: var(--ink); color: #141416; font-weight: 500; }
-.tb { padding: 0 12px; }
+.tb:hover { background: var(--hover); color: var(--ink); }
 .tb.on { background: var(--accent-soft); color: var(--accent); }
-.tb.icon { width: 32px; padding: 0; }
-.toolbar .sep { width: 1px; height: 18px; margin: 0 var(--s-1); background: var(--hairline); }
+.tb.icon { width: var(--control); padding: 0; }
 
-/* the lists and menus that open from the HUD */
-.menu { position: absolute; z-index: 5; top: calc(100% + var(--s-2)); right: 0; min-width: 210px; padding: 6px; display: flex; flex-direction: column; gap: 2px; animation: drop var(--dur) var(--ease) both; }
-.menu-wide { width: 300px; }
-.menu-title { padding: 6px 10px 4px; font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: var(--track); color: var(--muted); }
+/* the lists and menus that open from the HUD: Rooms, Edit, ⋯ */
+.menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  min-width: 240px;
+  padding: var(--s-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: appear var(--dur) var(--ease) both;
+}
+.menu-wide { width: var(--panel-w); }
+.menu-head { padding: var(--s-2) var(--s-2) var(--s-1); }
 .menu-row {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s-4);
-  min-height: 34px; padding: 0 10px; border: 0; border-radius: var(--r-sm);
-  background: none; color: var(--ink); font-size: var(--fs-md); text-align: left; cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  min-height: var(--control);
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  font-size: var(--fs-md);
+  text-align: left;
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
 .menu-row:hover { background: var(--hover); }
-.menu-row.on { background: rgba(255, 255, 255, 0.05); box-shadow: inset 2px 0 0 var(--accent); }
+.menu-row.on { background: var(--surface); box-shadow: var(--shadow-sm); font-weight: 500; }
+.menu-row .muted { font-weight: 400; }
 .menu-row .state { color: var(--accent); font-size: var(--fs-sm); }
-.menu-note { margin: var(--s-2) 10px var(--s-1); font-size: var(--fs-sm); line-height: 1.5; color: var(--muted); }
-.menu .seg { margin: 2px 4px 0; }
-.seg-fill button { flex: 1; }
-.rec { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
-.rooms-list { position: relative; top: 0; right: auto; min-width: 260px; max-height: min(60vh, 520px); overflow: auto; }
+.menu-rule { height: 1px; margin: var(--s-1) calc(-1 * var(--s-2)); background: var(--hairline); }
+.menu-note { margin: var(--s-2) var(--s-2) var(--s-1); font-size: var(--fs-sm); line-height: var(--lh); color: var(--muted); }
+.menu .seg { margin: 0 var(--s-1); width: auto; }
+.rooms-list { position: relative; top: 0; right: auto; width: var(--panel-w); max-height: min(60vh, 520px); overflow: auto; }
 
-/* ── bottom centre: the hint over the Sun & wind pill / card ─────────────────────────────────────────────────────── */
-.dock { position: absolute; left: 50%; bottom: var(--s-4); transform: translateX(-50%); max-width: calc(100vw - 32px); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
+/* ── bottom centre: an answer to what you did, the hint, the stair, the Sun & wind pill ──────────────────────────── */
+.dock { position: absolute; z-index: 2; left: var(--edge); right: var(--edge); bottom: calc(var(--safe-b) + var(--edge)); display: flex; flex-direction: column; align-items: center; gap: var(--s-2); pointer-events: none; }
 .dock > * { pointer-events: auto; }
-/* staff: Edit furniture / openings take the bottom left: the dock sits between that panel and the small map, never over either */
-.viewer:has(.arrange) .dock { left: 352px; right: 244px; transform: none; max-width: none; }
-.hint { max-width: 100%; padding: 6px 14px; border-radius: var(--r-pill); font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: none; }
+.toast { max-width: min(560px, 100%); padding: var(--s-2) var(--s-4); font-size: var(--fs-md); text-align: center; animation: appear var(--dur) var(--ease) both; }
+.hint { max-width: 100%; padding: var(--s-1) var(--s-3); border-radius: var(--r-pill); font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: none; }
 /* it shows, stays about 4 s, then fades; the mouse over where it was brings it back (a new hint starts again: React key) */
 .dock .hint { animation: hint 5s var(--ease) forwards; }
 .dock .hint:hover { animation: none; opacity: 1; }
 @keyframes hint {
-  0% { opacity: 0; transform: translateY(4px); }
-  5%, 80% { opacity: 1; transform: none; }
+  0% { opacity: 0; }
+  6%, 80% { opacity: 1; }
   100% { opacity: 0; }
 }
-.dock .hint.keep { animation: none; color: var(--ink); }
-/* a stair room's Up to … / Down to …: a small glass bar over the pill */
-.walk-level { display: flex; gap: var(--s-1); padding: var(--s-1); border-radius: var(--r-pill); }
-.toast { position: absolute; left: 50%; top: 72px; translate: -50% 0; padding: 8px var(--s-4); border-radius: var(--r-pill); font-size: var(--fs-md); animation: drop var(--dur) var(--ease) both; }
-/* Quality: by itself only the first time (or after an automatic switch), bottom left */
-.q-toast { position: absolute; left: var(--s-4); bottom: var(--s-4); max-width: min(440px, calc(100vw - 32px)); display: flex; align-items: center; gap: var(--s-3); padding: 6px 6px 6px 14px; font-size: var(--fs-sm); line-height: 1.45; color: var(--ink-2); animation: rise var(--dur) var(--ease) both; }
-.q-toast b { color: var(--ink); font-weight: 500; }
-.viewer:has(.sun-card) .q-toast { display: none; } /* never over the compass (the old Quality box hid it on laptops) */
-.q-toast .link { white-space: nowrap; }
-.footer { position: absolute; right: var(--s-4); bottom: 12px; font-size: var(--fs-2xs); color: var(--muted); opacity: 0.8; }
+/* a stair room's Up to … / Down to … */
+.walk-level { display: flex; gap: var(--s-1); padding: var(--s-1); }
+.walk-level .btn { border-color: transparent; }
+.footer { position: absolute; right: calc(var(--safe-r) + var(--edge)); bottom: calc(var(--safe-b) + var(--s-1)); font-size: var(--fs-2xs); letter-spacing: 0.02em; color: var(--muted); }
 .footer a { color: inherit; text-decoration: none; }
-.footer a:hover { text-decoration: underline; }
+.footer a:hover { color: var(--ink); text-decoration: underline; }
 
-/* ── Sun & wind ───────────────────────────────────────────────────────────────────────────────────────────────────── */
+/* ── Sun & wind: the pill, then its card (320 wide, in the pill's place) ─────────────────────────────────────────── */
 .sun-pill {
-  display: inline-flex; align-items: center; gap: var(--s-2);
-  height: 38px; padding: 0 6px 0 12px; border-radius: var(--r-pill);
-  font: inherit; font-size: var(--fs-md); cursor: pointer;
-  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--control);
+  padding: 0 var(--s-1) 0 var(--s-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
 }
-.sun-pill:hover { background: var(--glass-strong); border-color: rgba(255, 255, 255, 0.18); }
-.sun-time { font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: 0.02em; }
-.sun-pill .wind-on { padding: 1px 8px; border-radius: var(--r-pill); background: rgba(143, 176, 208, 0.16); color: var(--wind); font-size: var(--fs-xs); }
-.sun-mark { flex: none; }
-.sun-mark circle { fill: var(--accent); }
-.sun-mark line { stroke: var(--accent); stroke-width: 1.3; stroke-linecap: round; }
-.sun-card { display: flex; align-items: center; gap: var(--s-4); width: min(760px, calc(100vw - 32px)); max-width: 100%; padding: 14px var(--s-4) 14px 14px; border-radius: var(--r-lg); animation: rise var(--dur) var(--ease) both; }
-.sun-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.sun-head { display: flex; align-items: center; gap: var(--s-3); }
-.sun-clock { display: flex; align-items: baseline; gap: var(--s-2); min-width: 150px; }
-.sun-time.big { font-size: 22px; font-weight: 300; }
-.sun-date { height: 30px; padding: 0 var(--s-2); background: rgba(255, 255, 255, 0.05); color: var(--ink-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); font-size: var(--fs-sm); color-scheme: dark; }
-.pill-btn {
-  height: 30px; padding: 0 14px; border: 1px solid var(--hairline); border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.04); color: var(--ink-2); font-size: var(--fs-md); cursor: pointer;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-}
-.pill-btn:hover { background: var(--hover); color: var(--ink); }
-.pill-btn.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-/* the hour: a sun on the site's own day (night → dawn → day → dusk, ViewerApp gives --day), its marks under it */
-.sun-track { position: relative; padding-bottom: 16px; }
-.sun-track input[type='range'] { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer; }
-.sun-track input[type='range']::-moz-range-track { height: 6px; border-radius: 3px; background: var(--day); }
-.sun-track input[type='range']::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--day); }
-.sun-track input[type='range']::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid #fff8e6; border-radius: 50%; background: #ffd27a; box-shadow: 0 0 0 5px rgba(255, 210, 122, 0.22), 0 1px 4px rgba(0, 0, 0, 0.45); }
-.sun-track input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border: 2px solid #fff8e6; border-radius: 50%; background: #ffd27a; box-shadow: 0 0 0 5px rgba(255, 210, 122, 0.22), 0 1px 4px rgba(0, 0, 0, 0.45); }
-.sun-marks { position: absolute; left: 9px; right: 9px; bottom: 0; height: 12px; font-size: var(--fs-2xs); color: var(--muted); }
-.sun-marks span { position: absolute; transform: translateX(-50%); white-space: nowrap; letter-spacing: 0.02em; }
-/* the twelve months: real buttons, three letters, the picked one filled */
-.months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--s-1); }
+.sun-pill:hover { background: var(--glass-strong); }
+.sun-mark { flex: none; color: var(--ink-2); }
+.sun-mark circle { fill: none; stroke: currentColor; stroke-width: 1.3; }
+.sun-mark line { stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+.sun-time { font-weight: 500; letter-spacing: 0.02em; }
+.sun-pill .wind-on { padding: 0 var(--s-2); border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent); font-size: var(--fs-xs); line-height: calc(var(--s-5) - var(--s-1)); }
+.sun-card { width: var(--panel-w); max-width: 100%; padding: 0 var(--s-4) var(--s-4); display: flex; flex-direction: column; gap: var(--s-4); animation: appear var(--dur-slow) var(--ease) both; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); min-height: var(--s-7); margin-right: calc(-1 * var(--s-2)); }
+.sun-top { display: flex; align-items: center; gap: var(--s-4); }
+.sun-clock { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); min-width: 0; }
+.sun-time.big { font-size: var(--fs-2xl); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; }
+.sun-date { margin-top: var(--s-1); color-scheme: light; }
+/* the hour: the slider coloured by the site's own day (night, dawn, day, dusk — data, from the sun's height), its marks under it */
+.sun-track { position: relative; padding-bottom: var(--s-4); }
+.sun-track input[type='range'] { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: var(--s-5); margin: 0; background: transparent; cursor: pointer; }
+.sun-track input[type='range']::-moz-range-track { height: var(--s-1); border-radius: var(--s-1); background: var(--day); }
+.sun-track input[type='range']::-webkit-slider-runnable-track { height: var(--s-1); border-radius: var(--s-1); background: var(--day); }
+.sun-track input[type='range']::-moz-range-thumb { width: var(--s-4); height: var(--s-4); border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); }
+.sun-track input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: var(--s-4); height: var(--s-4); margin-top: calc((var(--s-1) - var(--s-4)) / 2); border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); }
+.sun-marks { position: absolute; left: var(--s-2); right: var(--s-2); bottom: 0; height: var(--s-3); font-size: var(--fs-xs); color: var(--muted); }
+.sun-marks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+/* the twelve months: six a row, readable; the picked one white and raised */
+.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: var(--radius); background: var(--surface-2); }
 .months button {
-  min-height: 36px; padding: 0; border: 1px solid var(--hairline); border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.03); color: var(--ink-2); font-size: var(--fs-sm); letter-spacing: 0.02em; cursor: pointer;
+  height: calc(var(--control) - 6px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .months button:hover { background: var(--hover); color: var(--ink); }
-.months button.on { background: var(--ink); border-color: transparent; color: #141416; font-weight: 500; }
-.wind-line { display: flex; flex-direction: column; gap: 3px; padding-top: var(--s-2); border-top: 1px solid var(--hairline); font-size: var(--fs-sm); line-height: 1.45; }
+.months button.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
+.sun-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.wind-line { display: flex; flex-direction: column; gap: var(--s-1); padding-top: var(--s-3); border-top: 1px solid var(--hairline); font-size: var(--fs-sm); line-height: var(--lh); }
 .wind-words { color: var(--ink); }
-/* the compass rose (SunPill Rose): strokes stay 1 px whatever its size */
+/* the compass rose (SunPill Rose): a white face, ink ticks, the north needle in the accent; strokes stay 1 px at any size */
 .rose { flex: none; display: block; overflow: visible; }
 .rose * { vector-effect: non-scaling-stroke; }
-.rose .face { fill: rgba(255, 255, 255, 0.03); stroke: var(--hairline); stroke-width: 1; }
+.rose .face { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
 .rose.mini .face { fill: none; stroke: var(--ink-2); stroke-opacity: 0.55; }
-.rose .ring { fill: none; stroke: var(--ink); stroke-opacity: 0.12; stroke-width: 1; }
-.rose .tick { stroke: var(--ink); stroke-opacity: 0.32; stroke-width: 1; }
-.rose .tick.major { stroke-opacity: 0.75; stroke-width: 1.5; }
+.rose .ring { fill: none; stroke: var(--ink); stroke-opacity: 0.1; stroke-width: 1; }
+.rose .tick { stroke: var(--ink); stroke-opacity: 0.3; stroke-width: 1; }
+.rose .tick.major { stroke-opacity: 0.8; stroke-width: 1.5; }
 .rose .needle-n { fill: var(--accent); }
-.rose .needle-s { fill: var(--ink); opacity: 0.32; }
+.rose .needle-s { fill: var(--ink); opacity: 0.22; }
 .rose .hub { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1; }
-.rose .cardinal { fill: var(--muted); font-family: var(--font); font-weight: 500; }
-.rose .cardinal.north { fill: var(--accent); font-weight: 600; }
+.rose .cardinal { fill: var(--ink-2); font-family: var(--font); font-weight: 500; }
+.rose .cardinal.north { fill: var(--accent); }
 .rose-wind { cursor: pointer; }
 .rose .grab { stroke: transparent; stroke-width: 12; stroke-linecap: round; }
-.rose .spoke { stroke: #a3b5c6; stroke-opacity: 0.5; stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.rose .spoke { stroke: var(--wind); stroke-opacity: 0.4; stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
 .rose .hit:hover .spoke { stroke-opacity: 0.9; }
-.rose .spoke.on { stroke: var(--wind); stroke-opacity: 1; stroke-width: 2.5; }
-.rose .spoke-end { fill: var(--wind); pointer-events: none; }
-/* where the wind comes in and goes out (walk view): quiet chips over the openings */
-.wind-chip { position: absolute; left: 0; top: 0; padding: 3px 9px; border-radius: var(--r-pill); font-size: var(--fs-xs); letter-spacing: 0.02em; border-color: rgba(143, 176, 208, 0.45); box-shadow: none; white-space: nowrap; pointer-events: none; }
+.rose .spoke.on { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2.5; }
+.rose .spoke-end { fill: var(--accent); pointer-events: none; }
+/* where the wind comes in and goes out (walk view): quiet tags over the openings */
+.wind-chip { position: absolute; left: 0; top: 0; padding: 2px var(--s-2); border-radius: var(--r-pill); font-size: var(--fs-xs); color: var(--ink); box-shadow: none; white-space: nowrap; pointer-events: none; }
 .wind-chip.out { color: var(--muted); }
 
-/* ── the small map (Walk, everyone): bottom right; only its × takes the mouse ────────────────────────────────────── */
-.minimap { position: absolute; right: var(--s-4); bottom: 34px; padding: 6px 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-.minimap-head { display: flex; align-items: center; gap: 6px; min-height: 22px; }
-.minimap-name { flex: 1; min-width: 0; max-width: 150px; font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: var(--track); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.minimap .x { width: 22px; height: 22px; font-size: var(--fs-lg); pointer-events: auto; }
+/* ── the small map (Walk, everyone): bottom right, glass, no title bar ───────────────────────────────────────────── */
+.minimap { position: absolute; z-index: 1; right: calc(var(--safe-r) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--s-4)); padding: var(--s-3); }
 .minimap svg { display: block; overflow: hidden; }
-.map-show { position: absolute; right: var(--s-4); bottom: 34px; height: 30px; padding: 0 14px; border-radius: var(--r-pill); font: inherit; font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer; }
+.minimap .compass.mini { position: absolute; left: var(--s-1); top: var(--s-1); }
+.minimap > .x { position: absolute; top: 2px; right: 2px; width: var(--s-5); height: var(--s-5); font-size: var(--fs-lg); opacity: 0; }
+.minimap:hover > .x, .minimap > .x:focus-visible { opacity: 1; }
+.map-show { position: absolute; right: calc(var(--safe-r) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--s-4)); height: var(--control); padding: 0 var(--s-3); font-size: var(--fs-sm); color: var(--ink-2); cursor: pointer; }
 .map-show:hover { color: var(--ink); background: var(--glass-strong); }
-.minimap .room { fill: rgba(242, 242, 240, 0.07); }
-.minimap .room.zone { fill: rgba(190, 186, 176, 0.12); }
-.minimap .room.z-lawn, .minimap .room.z-planter, .minimap .room.z-play { fill: rgba(120, 170, 100, 0.22); }
-.minimap .room.z-pool { fill: rgba(90, 160, 200, 0.3); }
-.minimap .room.z-driveway, .minimap .room.z-parking { fill: rgba(120, 120, 124, 0.18); }
-.minimap .room.z-deck { fill: rgba(170, 130, 90, 0.2); }
-.minimap .room.here { fill: rgba(232, 193, 112, 0.42); }
-.minimap .wall { stroke: var(--ink-2); stroke-linecap: square; fill: none; }
-.minimap .wall.flush { stroke: rgba(201, 201, 196, 0.45); stroke-dasharray: 0.4 0.3; stroke-linecap: butt; }
-.minimap .wall.kerb { stroke: rgba(201, 201, 196, 0.7); }
-.minimap .cone { fill: rgba(232, 193, 112, 0.35); }
+/* the plan: white rooms, ink walls, the room you are in washed in the accent; outdoor zones lightly tinted by kind */
+.minimap .room { fill: var(--surface); }
+.minimap .room.zone { fill: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
+.minimap .room.z-lawn, .minimap .room.z-planter, .minimap .room.z-play { fill: color-mix(in srgb, var(--ok) 20%, var(--surface)); }
+.minimap .room.z-pool { fill: color-mix(in srgb, var(--wind) 28%, var(--surface)); }
+.minimap .room.z-driveway, .minimap .room.z-parking { fill: color-mix(in srgb, var(--ink) 10%, var(--surface)); }
+.minimap .room.z-deck { fill: color-mix(in srgb, var(--sev-amber) 16%, var(--surface)); }
+.minimap .room.here { fill: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.minimap .wall { stroke: var(--ink); stroke-linecap: square; fill: none; }
+.minimap .wall.flush { stroke: var(--muted); stroke-dasharray: 0.4 0.3; stroke-linecap: butt; }
+.minimap .wall.kerb { stroke: var(--ink-2); }
+.minimap .cone { fill: var(--accent); fill-opacity: 0.18; }
 .minimap .me { fill: var(--accent); stroke: var(--surface); stroke-width: 0.08; }
-/* the map's tiny compass: thin ring, slim needle (north half accent), a small N — turned to true north on the plan */
-.minimap .compass.mini { flex: none; overflow: visible; }
-.compass.mini .ring { fill: none; stroke: var(--muted); stroke-width: 0.75; }
+/* the map's tiny compass: thin ring, slim needle (north half in the accent), a small N — turned to true north on the plan */
+.compass.mini { flex: none; overflow: visible; }
+.compass.mini .ring { fill: var(--glass-strong); stroke: var(--muted); stroke-width: 0.75; }
 .compass.mini .north { fill: var(--accent); }
-.compass.mini .south { fill: var(--muted); opacity: 0.7; }
-.compass.mini text { fill: var(--muted); font-size: 5.5px; font-weight: 600; }
+.compass.mini .south { fill: var(--muted); opacity: 0.6; }
+.compass.mini text { fill: var(--ink-2); font-size: 5.5px; font-weight: 500; }
 
-/* ── Finishes (and the notes), right ─────────────────────────────────────────────────────────────────────────────── */
-.panel { background: var(--glass-strong); position: absolute; top: 72px; right: var(--s-4); bottom: var(--s-4); width: 340px; max-width: calc(100vw - 32px); overflow: auto; padding: 0 var(--s-4) var(--s-4); display: flex; flex-direction: column; gap: 18px; animation: rise var(--dur) var(--ease) both; }
-/* Finishes takes the right side: the small map steps aside while it is open; a narrow window keeps the Sun & wind card clear */
-.viewer:has(.panel) .minimap, .viewer:has(.panel) .map-show { display: none; }
-@media (max-width: 1500px) { .viewer:has(.sun-card) .panel { bottom: 240px; } }
-.panel-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; margin: 0 calc(-1 * var(--s-4)); padding: 12px 10px 10px var(--s-4); background: rgba(24, 25, 27, 0.94); border-bottom: 1px solid var(--hairline); }
-.panel-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 500; letter-spacing: 0.01em; }
-.finishes { display: flex; flex-direction: column; gap: 18px; }
+/* ── panels on the right, docked under the bar: Finishes, Comment ───────────────────────────────────────────────── */
+.panel {
+  position: absolute;
+  z-index: 4;
+  top: var(--dock-top);
+  right: calc(var(--safe-r) + var(--edge));
+  width: var(--panel-w);
+  max-width: calc(100% - 2 * var(--edge));
+  max-height: calc(100% - var(--dock-top) - var(--edge));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--glass-strong);
+  animation: appear var(--dur-slow) var(--ease) both;
+}
+/* the title row stays; only the body under it scrolls */
+.panel > .panel-head { flex: none; margin: 0; padding: 0 var(--s-2) 0 var(--s-4); }
+.panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 var(--s-4) var(--s-4); display: flex; flex-direction: column; gap: var(--s-5); }
+.panel-lead { margin: 0; font-size: var(--fs-md); line-height: var(--lh); color: var(--ink-2); }
+/* a panel on the right takes the small map's place; the floors step left of it */
+.viewer:has(.panel) > :is(.minimap, .map-show) { display: none; }
+.viewer:has(.panel) .floor-rail { right: calc(var(--safe-r) + var(--panel-w) + 2 * var(--edge)); }
+.finishes { display: flex; flex-direction: column; gap: var(--s-5); }
 .slot { display: flex; flex-direction: column; gap: var(--s-2); }
-.chips { display: flex; flex-direction: column; gap: 6px; }
-.chip { display: flex; align-items: center; gap: var(--s-3); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--hairline); border-radius: 10px; padding: 7px 10px 7px 7px; color: var(--ink); font: inherit; cursor: pointer; text-align: left; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.slot.surface { padding-bottom: var(--s-4); border-bottom: 1px solid var(--hairline); }
+.chips { display: flex; flex-direction: column; gap: 2px; }
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: var(--s-7);
+  padding: var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
 .chip:hover { background: var(--hover); }
-.chip.selected { border-color: var(--accent); background: rgba(232, 193, 112, 0.08); }
-.swatch { width: 32px; height: 32px; border-radius: 6px; flex: none; border: 1px solid var(--hairline); }
-.chip-text { display: flex; flex-direction: column; flex: 1; line-height: 1.3; }
+.chip.selected { background: var(--surface); box-shadow: var(--shadow-sm); }
+.chip.selected .chip-text > :first-child { font-weight: 500; }
+.swatch { flex: none; width: var(--s-6); height: var(--s-6); border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--hairline); }
+.chip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .chip-text .muted { font-size: var(--fs-xs); }
-.delta { font-size: var(--fs-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.panel-footer { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--hairline); padding-top: var(--s-3); }
-.total { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.delta { font-size: var(--fs-sm); white-space: nowrap; color: var(--ink-2); }
+.panel-footer { display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--s-3); border-top: 1px solid var(--hairline); }
+.total { font-size: var(--fs-lg); font-weight: 500; }
+/* a share link's name field (the change list says who asked) */
+.buyer-name { display: flex; flex-direction: column; gap: var(--s-2); }
 
-/* a share link's name field, above the notes (the change list says who asked) */
-.buyer-name { display: flex; flex-direction: column; gap: 6px; }
-.buyer-name input { background: rgba(255, 255, 255, 0.05); color: var(--ink); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 8px 10px; font-size: var(--fs-md); }
-
-/* notes */
-.notes { display: flex; flex-direction: column; gap: var(--s-2); border-bottom: 1px solid var(--hairline); padding-bottom: 14px; }
-.notes .empty { font-size: var(--fs-sm); line-height: 1.5; }
+/* notes (the Comment panel) */
+.notes { display: flex; flex-direction: column; gap: var(--s-1); }
+.notes > .label { margin-bottom: var(--s-1); }
+.notes .empty { font-size: var(--fs-sm); }
 .note { display: flex; align-items: center; gap: var(--s-2); }
-.note-main { flex: 1; display: flex; align-items: center; gap: 10px; background: none; border: 0; color: var(--ink); padding: var(--s-1) 0; font: inherit; text-align: left; cursor: pointer; }
-.note-text { display: flex; flex-direction: column; line-height: 1.3; }
+.note-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2); margin-left: calc(-1 * var(--s-2)); border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); text-align: left; cursor: pointer; transition: background var(--dur-fast) var(--ease); }
+.note-main:hover { background: var(--hover); }
+.note-text { min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .note-text .muted { font-size: var(--fs-xs); }
+.note .link { font-size: var(--fs-sm); align-self: center; }
 
-/* pins */
+/* pins: numbered blue dots on what was clicked, and the note being written */
 .pin-layer { position: absolute; inset: 0; pointer-events: none; }
 .pin { position: absolute; left: 0; top: 0; pointer-events: none; }
 .pin-dot {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; margin: -11px 0 0 -11px;
-  border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-xs); font-weight: 500;
-  box-shadow: 0 0 0 2px rgba(15, 15, 16, 0.6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--surface), var(--shadow);
   pointer-events: auto;
 }
-.pin-dot.small { width: 18px; height: 18px; margin: 0; font-size: var(--fs-2xs); flex: none; }
-.popover { position: absolute; left: var(--s-4); top: -8px; width: 260px; padding: 10px; display: flex; flex-direction: column; gap: var(--s-2); pointer-events: auto; }
-.popover textarea { width: 100%; resize: none; background: rgba(255, 255, 255, 0.05); color: var(--ink); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--s-2); font: inherit; font-size: var(--fs-md); }
-.row { display: flex; gap: var(--s-2); }
+.pin-dot.small { flex: none; width: 20px; height: 20px; margin: 0; box-shadow: none; }
+.popover { position: absolute; left: var(--s-4); top: calc(-1 * var(--s-2)); width: 280px; padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); pointer-events: auto; animation: appear var(--dur) var(--ease) both; }
+.popover textarea { width: 100%; height: auto; padding: var(--s-2) var(--s-3); line-height: var(--lh); resize: none; }
 
-/* ── Building view: the floor rail, right; Walk this level under it ──────────────────────────────────────────────── */
-.floor-rail { position: absolute; right: var(--s-4); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; max-height: calc(100vh - 160px); }
-.rail { display: flex; flex-direction: column; gap: 2px; min-width: 96px; padding: 6px; overflow: auto; }
+/* ── Building view: the floors, a quiet list on the right; Walk this level under it ──────────────────────────────── */
+.floor-rail { position: absolute; z-index: 2; right: calc(var(--safe-r) + var(--edge)); top: 50%; translate: 0 -50%; display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); max-height: calc(100% - 2 * var(--dock-top)); }
+.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; padding: var(--s-2); overflow: auto; }
 .rail-item {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
-  min-height: 32px; padding: 0 12px; border: 0; border-radius: var(--r-sm);
-  background: none; color: var(--ink-2); font-size: var(--fs-md); font-variant-numeric: tabular-nums; text-align: left; cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: calc(var(--control) - var(--s-1));
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  text-align: left;
+  cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .rail-item:hover { background: var(--hover); color: var(--ink); }
-.rail-item.on { background: var(--ink); color: #141416; font-weight: 500; }
+.rail-item.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
 .rail-item .own { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
-/* ── staff: Edit furniture / Edit openings (bottom left), the library, the piece in hand ─────────────────────────── */
-.arrange { position: absolute; left: var(--s-4); bottom: var(--s-4); width: 320px; padding: var(--s-3) 14px; display: flex; flex-direction: column; gap: var(--s-2); }
-.arrange-name { font-size: var(--fs-md); }
-.arrange-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.arrange-row .btn { min-height: 28px; padding: 0 var(--s-3); font-size: var(--fs-sm); }
-.arrange .refused, .hand-tag .refused { color: var(--danger); }
+/* ── staff: Edit furniture / Edit openings (bottom left), the library, the piece in hand, which floors ───────────── */
+.arrange { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
+.arrange-name { font-size: var(--fs-md); font-weight: 500; }
+.arrange-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+/* the dock stands between that panel and the small map, never over either */
+.viewer:has(.arrange) .dock { left: calc(var(--panel-w) + 2 * var(--edge)); right: calc(var(--panel-w) + 2 * var(--edge)); }
 /* Edit openings: width / height / sill in feet-inches */
-.ftin { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-xs); color: var(--muted); }
-.ftin input { width: 74px; background: rgba(255, 255, 255, 0.05); color: var(--ink); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px var(--s-2); font-size: var(--fs-sm); }
+.ftin { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); color: var(--muted); }
+.ftin input { width: 84px; font-size: var(--fs-sm); }
 .ftin input.bad { border-color: var(--danger); }
 /* the piece in hand: beside the pointer, or under the dot while the mouse is locked; the dot = what G and a click aim at */
-.hand-tag { position: absolute; left: 0; top: 0; max-width: 340px; padding: 7px 11px; font-size: var(--fs-sm); line-height: 1.5; pointer-events: none; }
-.hand-tag.at-dot { left: 50%; top: calc(50% + 18px); transform: translateX(-50%); }
-.dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); pointer-events: none; }
-.library { position: absolute; left: var(--s-4); bottom: 190px; width: 380px; max-height: calc(100vh - 330px); padding: 10px; display: flex; flex-direction: column; gap: var(--s-2); }
+.hand-tag { position: absolute; z-index: 6; left: 0; top: 0; max-width: 340px; padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); line-height: var(--lh); pointer-events: none; }
+.hand-tag.at-dot { left: 50%; top: calc(50% + var(--s-5)); transform: translateX(-50%); }
+.dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--ink-2); pointer-events: none; }
+.library { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--arrange-h) + var(--s-2)); width: 380px; max-width: calc(100% - 2 * var(--edge)); max-height: calc(100% - var(--arrange-h) - var(--dock-top) - 2 * var(--edge)); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+/* one floor or all (staff, a project floor whose drawing is on other floors too): top middle, under the bar's line */
+.ask-floor { position: absolute; z-index: 5; left: 50%; top: var(--dock-top); translate: -50% 0; width: max-content; max-width: min(440px, calc(100% - 2 * var(--edge))); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); line-height: var(--lh); animation: appear var(--dur) var(--ease) both; }
+.ask-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
-/* ── no 3D on this machine: the message and the flat's plan (the minimap's drawing, large) ───────────────────────── */
+/* ── no 3D on this machine: the message and the flat's plan (the small map's drawing, large) ───────────────────────── */
 .no3d { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); padding: var(--s-5); background: var(--bg); text-align: center; }
-.no3d p { margin: 0; font-size: var(--fs-lg); }
-.no3d .minimap { position: static; pointer-events: auto; }
+.no3d p { margin: 0; max-width: 640px; font-family: var(--font-display); font-size: var(--fs-2xl); line-height: 1.15; letter-spacing: -0.01em; }
+.no3d .minimap { position: static; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .no3d svg { width: min(90vw, 760px); height: auto; max-height: 70vh; }
-.no3d text { fill: var(--ink); }
+.no3d text { fill: var(--ink-2); font-family: var(--font); }
 
 /* ── the staff change list (/changes): one card per share link, newest first; replaced / removed rows greyed ─────── */
-.changes { height: 100%; overflow: auto; box-sizing: border-box; padding: var(--s-5) var(--s-6) var(--s-7); display: flex; flex-direction: column; gap: var(--s-4); }
-.changes header { display: flex; align-items: center; gap: var(--s-3); }
-.changes h1, .changes-key h1 { font-size: 20px; font-weight: 300; margin: 0; }
-.changes .refused, .changes-key .refused { color: var(--danger); }
-.changes-key > div { display: flex; flex-direction: column; gap: 10px; width: 360px; }
-.changes-key input { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s-2) 10px; font-size: 14px; }
-.link-card { padding: 14px var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
-.link-head { display: flex; align-items: center; gap: var(--s-2); }
-.link-head .btn { font-size: var(--fs-sm); min-height: 28px; padding: 0 var(--s-3); }
-.unit-title { font-size: var(--fs-lg); }
-.chosen { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
-.chosen-item b { font-weight: 500; color: var(--accent); }
-.changes table { border-collapse: collapse; width: 100%; font-size: var(--fs-md); }
-.changes th { text-align: left; font-weight: 400; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--track); color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
-.changes td { padding: var(--s-2) 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: pre-wrap; }
+.changes { height: 100%; overflow: auto; box-sizing: border-box; max-width: 1240px; margin: 0 auto; padding: var(--s-7) var(--s-6) var(--s-8); display: flex; flex-direction: column; gap: var(--s-5); }
+.changes header { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
+.changes h1, .changes-key h1 { margin: 0; font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; }
+.changes-key > div { display: flex; flex-direction: column; gap: var(--s-3); width: 380px; max-width: calc(100vw - 2 * var(--s-4)); text-align: left; color: var(--ink); }
+.changes-key p { margin: 0; line-height: var(--lh); }
+.link-card { padding: var(--s-4) var(--s-5) var(--s-5); display: flex; flex-direction: column; gap: var(--s-4); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.link-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.unit-title { font-family: var(--font-display); font-size: var(--fs-2xl); line-height: 1.1; }
+.chosen { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); align-items: baseline; }
+.chosen-item b { font-weight: 500; color: var(--ink); }
+.changes table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
+.changes th { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); text-align: left; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+.changes td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--hairline); vertical-align: top; white-space: pre-wrap; }
 .changes .num { text-align: right; }
 .changes .nowrap { white-space: nowrap; }
-.changes tr.superseded td { color: var(--muted); opacity: 0.55; }
-.changes .tag { margin-left: var(--s-2); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--track); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 1px 6px; }
+.changes tr.superseded td { color: var(--muted); opacity: 0.6; }
+.changes .tag { margin-left: var(--s-2); padding: 1px var(--s-2); border: 1px solid var(--line); border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 
-/* phones and narrow windows: the bar's words stay, smaller; the hint wraps */
-@media (max-width: 760px) {
-  .seg button, .tb { padding: 0 9px; font-size: var(--fs-sm); }
-  .room-chip { min-width: 0; }
-  .hint { white-space: normal; text-align: center; }
-  .sun-clock { min-width: 0; }
+/* ── a narrow window: the dock steps left of an open panel so the Sun & wind card never sits under it ──────────── */
+@media (max-width: 1080px) and (min-width: 721px) {
+  .viewer:has(.panel) .dock { right: calc(var(--panel-w) + 2 * var(--edge)); }
 }
 
-/* one floor or all (staff, a Studio project's floor whose drawing is on other floors too): top middle, under the toast
-   line (top 72px) so the "Edit furniture: …" note shown with the first change never covers it */
-.ask-floor { position: absolute; left: 50%; top: 120px; translate: -50% 0; padding: 14px var(--s-4); width: max-content; max-width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 10px; z-index: 5; animation: drop var(--dur) var(--ease) both; }
-.ask-floor .ask-row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+/* ── phones (under 720 px; touch controls in the 3D come later): the pill is a bottom bar, panels are bottom sheets ── */
+@media (max-width: 720px) {
+  .viewer {
+    --control: var(--touch);
+    --edge: var(--s-3);
+    /* two rows: the view switch, then the tools */
+    --bar-h: calc(2 * var(--control) + 3 * var(--s-1));
+    --bar-bottom: calc(var(--safe-b) + var(--s-5));
+  }
+  .hud-tl { max-width: calc(100% - 2 * var(--edge) - 132px); }
+  .room-name { font-size: var(--fs-xl); }
+  .room-title::before { inset: calc(-1 * var(--s-4)) calc(-1 * var(--s-6)) calc(-1 * var(--s-4)) calc(-1 * var(--s-4)); }
+  .hud-tr { top: auto; left: calc(var(--safe-l) + var(--edge)); right: calc(var(--safe-r) + var(--edge)); bottom: var(--bar-bottom); align-items: stretch; }
+  .toolbar { height: auto; flex-wrap: wrap; gap: var(--s-1); border-radius: var(--r-lg); }
+  .toolbar .seg { flex: 1 1 100%; }
+  .toolbar .seg button { flex: 1; }
+  .toolbar .sep { display: none; }
+  .toolbar .tb { flex: 1 1 0; min-width: 0; padding: 0 var(--s-1); font-size: var(--fs-sm); }
+  .toolbar .tb.icon { flex: 0 0 var(--control); }
+  /* no layers of their own here: a sheet (z 10) must rise over the bar, the dock and the room's name */
+  .hud-tl, .hud-tr, .dock { z-index: auto; }
+  .dock { bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); }
+  .hint { white-space: normal; text-align: center; }
+  .footer { bottom: calc(var(--safe-b) + var(--s-1)); }
+  .clean-dot { top: calc(var(--safe-t) + var(--edge)); right: calc(var(--safe-r) + var(--edge)); }
+  /* the small map goes top right (the bar holds the bottom), a little smaller */
+  .minimap, .map-show { top: calc(var(--safe-t) + var(--edge)); bottom: auto; }
+  .minimap { transform: scale(0.72); transform-origin: top right; }
+  /* the floors stand over the Sun & wind pill */
+  .floor-rail { top: auto; translate: none; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--control) + 2 * var(--s-2)); max-height: 45vh; }
+  /* every panel and menu: a sheet from the bottom edge */
+  .panel,
+  .menu,
+  .rooms-list,
+  .sun-card,
+  .ask-floor {
+    position: fixed;
+    z-index: 10;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    max-height: 70vh;
+    overflow: auto;
+    translate: none;
+    background: var(--glass-strong);
+    border-width: 1px 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding-bottom: calc(var(--s-4) + var(--safe-b));
+  }
+  .menu { padding-left: var(--s-3); padding-right: var(--s-3); }
+  .sun-card { gap: var(--s-3); }
+  /* while a sheet is up the bar and the dock step away, so nothing shows through it (its × or ⌄ closes it; a tap outside closes a menu) */
+  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor)) .toolbar,
+  .viewer:has(:is(.panel, .menu, .ask-floor)) .dock,
+  .dock:has(.sun-card) > :not(.sun-card) { visibility: hidden; }
+  /* staff's editors (a phone is not their tool yet): full width over the bar, the library at the top */
+  .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; }
+  .library { left: var(--edge); right: var(--edge); width: auto; top: calc(var(--safe-t) + var(--edge)); bottom: auto; max-height: 40vh; }
+  .viewer:has(.arrange) .dock { visibility: hidden; }
+  .load-mark { left: calc(var(--safe-l) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); }
+  .load-corner { right: calc(var(--safe-r) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); gap: var(--s-4); }
+  .unit-name { font-size: var(--fs-3xl); }
+  .load-more { bottom: calc(var(--safe-b) + var(--s-4)); }
+  .changes { padding: var(--s-5) var(--s-4) var(--s-7); }
+}
+/* under a finger no keys are shown */
+@media (pointer: coarse) {
+  .dock .hint { display: none; }
+}
