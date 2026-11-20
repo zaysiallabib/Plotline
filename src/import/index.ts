@@ -9,7 +9,7 @@
  * Several files dropped together, a folder or a .zip: bundle.ts picks the one to open, the rest are its pictures / buffers.
  */
 import type { ImportFormat, ImportResult } from './types'
-import { DWG_CONVERTER } from './dwg'
+import { DWG_CONVERTER, convertDwg } from './dwg'
 
 export type * from './types'
 export { expandZips, mainFile, siblingsOf, type DropFile } from './bundle'
@@ -104,7 +104,7 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
     case 'dxf': {
       if (extOf(file.name) !== 'dwg') return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name)
       opts.progress?.('converting the DWG to DXF', null)
-      const dxf = await (await import('./dwg')).convertDwg(bytes, file.name, DWG_CONVERTER!, opts.signal)
+      const dxf = await convertDwg(bytes, file.name, DWG_CONVERTER!, opts.signal)
       const r = await (await import('./dxf')).importDxf(dxf, file.name.replace(/\.dwg$/i, '.dxf'))
       return { ...r, notes: ['Converted from DWG to DXF by the converter set up for this site (Docs/SETUP_FORMATS.md).', ...r.notes] }
     }

@@ -47,7 +47,7 @@ import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import PdfPages from './PdfPages'
 import PrintBox from './PrintBox'
-import { CONVERTED_PICTURE } from '../import/picture'
+import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
 import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
@@ -794,9 +794,10 @@ export default function StudioApp() {
     (file: File) => {
       // a TIFF (scanner, plotter) or an iPhone's HEIC: turned into a WEBP first (src/import/picture.ts)
       if (CONVERTED_PICTURE.test(file.name))
-        return void import('../import/picture')
-          .then((p) => p.toPlanPicture(file))
-          .then((f) => loadImage(f), (e: unknown) => toast(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+        return void toPlanPicture(file).then(
+          (f) => loadImage(f),
+          (e: unknown) => toast(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`),
+        )
       const fail = () => toast("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
       if (file.size > MAX_IMAGE_BYTES || !/^image\/(png|jpeg|webp)$/.test(file.type)) return fail()
       const reader = new FileReader()
