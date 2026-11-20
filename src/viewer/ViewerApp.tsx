@@ -176,8 +176,10 @@ const asUnit = (u: unknown): Unit | null => (isUnit(u) ? normalizeUnit(u) : null
 function resolveUnit(): Unit | null {
   const m = location.pathname.match(/^\/u\/([^/]+)/)
   if (!m) {
-    history.replaceState(null, '', `/u/${UNITS[0].stem}${location.search}`)
-    return UNITS[0].unit
+    // an old `/?c=…` link (before the front page existed): the demo flat, never the first file on disk (a basement)
+    const first = UNITS.find((u) => u.stem === 'type-a') ?? UNITS[0]
+    history.replaceState(null, '', `/u/${first.stem}${location.search}`)
+    return first.unit
   }
   const id = decodeURIComponent(m[1])
   if (id === 'preview') {
