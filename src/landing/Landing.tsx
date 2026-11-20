@@ -1,249 +1,103 @@
 /**
- * The front page (`/`): what Plotline is, for a developer who has never seen it. Plain React + CSS + one small canvas:
- * a faint floor plan behind everything that bends toward the mouse (planField), sections that rise in as they scroll
- * into view, product pictures (public/landing, shot in Firefox from the buyer's viewer) that drift a little and tilt
- * under the mouse. Never imports the viewer or three.js — `/` must stay a small page.
+ * The front page (`/`): one story told as the person scrolls — the Type A sheet, its walls rising, a tower of that plan
+ * (story.ts draws it on one canvas) — then what Plotline does, in prose and six pictures from the 3D view. Plain React +
+ * CSS; never imports the viewer or three.js, so `/` stays a small page.
  */
-import { useEffect, useRef, type CSSProperties, type PointerEvent } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
+import { floor, name, northDeg, projectName, roomLabels, vertices, walls } from '../data/units/type-a.json'
+import type { Unit } from '../core'
+import { draw, moment, planOf, type Box, type Inks } from './story'
 import './landing.css'
 
 const FLAT = '/u/type-a'
-const still = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** Small seeded random (mulberry32): the plan is the same on every visit. */
-function rng(seed: number): () => number {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+/** The story's three acts, as the scroll passes them (the canvas and the words read the same position). */
+const actAt = (p: number) => (p < 0.14 ? 1 : p < 0.47 ? 2 : 3)
 
-type Seg = [number, number, number, number]
-
-/** A made-up floor plan filling w×h: rooms split in two until they are room-sized, each split wall with a door gap. */
-function plan(w: number, h: number): Seg[] {
-  const r = rng(7)
-  const out: Seg[] = [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]
-  const split = (x: number, y: number, rw: number, rh: number): void => {
-    const vertical = rw > rh * 1.15 || (rw > rh / 1.15 && r() < 0.5)
-    const len = vertical ? rw : rh
-    if (len < 220 || (len < 420 && r() < 0.3)) return
-    const at = len * (0.32 + r() * 0.36)
-    const span = vertical ? rh : rw
-    const door = Math.min(38, span * 0.3)
-    const d = span * (0.15 + r() * 0.6)
-    if (vertical) {
-      out.push([x + at, y, x + at, y + d], [x + at, y + d + door, x + at, y + rh])
-      split(x, y, at, rh)
-      split(x + at, y, rw - at, rh)
-    } else {
-      out.push([x, y + at, x + d, y + at], [x + d + door, y + at, x + rw, y + at])
-      split(x, y, rw, at)
-      split(x, y + at, rw, rh - at)
-    }
-  }
-  split(0, 0, w, h)
-  return out
-}
-
-/** How far the plan moves for each pixel scrolled (a slow layer behind the page). */
-const DRIFT = 0.35
-/** The plan's height (px): enough for any page height × DRIFT; fixed, so the plan only changes when the width does. */
-const TALL = 4200
-/** The pull toward the mouse: strength and reach (px). */
-const PULL = 0.3
-const REACH = 170
-
-/**
- * The background: the plan, drawn faint; near the mouse its lines lean toward it and warm to gold. Draws only when
- * something changes (the mouse, the scroll, the size); the loop stops once the lines settle and never runs in a hidden tab.
- */
-function planField(cv: HTMLCanvasElement): () => void {
+/** Wires the story to the scroll: one draw per frame while the page moves or resizes, nothing while it rests. */
+function story(root: HTMLElement): () => void {
+  const section = root.querySelector<HTMLElement>('.story')!
+  const stage = section.querySelector<HTMLElement>('.stage')!
+  const cv = stage.querySelector('canvas')!
   const g = cv.getContext('2d')
   if (!g) return () => {}
-  const calm = still()
-  let segs: Seg[] = []
-  let w = 0
-  let h = 0
-  let planW = 0
+  const css = getComputedStyle(root)
+  const v = (n: string) => css.getPropertyValue(n).trim()
+  const ink: Inks = { ink: v('--ink'), ink2: v('--ink-2'), muted: v('--muted'), line: v('--line'), hairline: v('--hairline'), paper: v('--surface'), sans: v('--font'), serif: v('--font-display') }
+  const plan = planOf({ vertices, walls, roomLabels, name, projectName, floor, northDeg } as unknown as Unit)
+  const still = matchMedia('(prefers-reduced-motion: reduce)')
   let raf = 0
-  const target = { x: 0, y: 0, on: 0 }
-  const at = { x: 0, y: 0, on: 0 }
-  const lean = (x: number, y: number): [number, number] => {
-    const dx = at.x - x
-    const dy = at.y - y
-    const f = PULL * at.on * Math.exp(-(dx * dx + dy * dy) / (REACH * REACH))
-    return [x + dx * f, y + dy * f]
-  }
-  const draw = (): void => {
-    const off = calm ? 0 : -scrollY * DRIFT
-    g.clearRect(0, 0, w, h)
-    if (at.on > 0.01) {
-      const glow = g.createRadialGradient(at.x, at.y, 0, at.x, at.y, 420)
-      glow.addColorStop(0, `rgba(232,193,112,${0.07 * at.on})`)
-      glow.addColorStop(1, 'rgba(232,193,112,0)')
-      g.fillStyle = glow
-      g.fillRect(0, 0, w, h)
-    }
-    const ink = g.createRadialGradient(at.x, at.y, 0, at.x, at.y, REACH * 2.2)
-    ink.addColorStop(0, `rgba(232,193,112,${0.07 + 0.38 * at.on})`)
-    ink.addColorStop(1, 'rgba(242,242,240,0.07)')
-    g.strokeStyle = ink
-    g.beginPath()
-    for (const [x1, y1a, x2, y2a] of segs) {
-      const y1 = y1a + off
-      const y2 = y2a + off
-      if (Math.max(y1, y2) < -2 || Math.min(y1, y2) > h + 2) continue
-      const mx = Math.max(Math.min(at.x, Math.max(x1, x2)), Math.min(x1, x2))
-      const my = Math.max(Math.min(at.y, Math.max(y1, y2)), Math.min(y1, y2))
-      const near = at.on > 0.01 && Math.hypot(mx - at.x, my - at.y) < REACH * 2.5
-      const n = near ? Math.max(2, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 12)) : 1
-      for (let i = 0; i <= n; i++) {
-        const [x, y] = near ? lean(x1 + ((x2 - x1) * i) / n, y1 + ((y2 - y1) * i) / n) : i ? [x2, y2] : [x1, y1]
-        if (i) g.lineTo(x, y)
-        else g.moveTo(x, y)
-      }
-    }
-    g.stroke()
-  }
-  const tick = (): void => {
-    raf = 0
-    const k = 0.14
-    at.x += (target.x - at.x) * k
-    at.y += (target.y - at.y) * k
-    at.on += (target.on - at.on) * 0.08
-    draw()
-    if (Math.abs(target.x - at.x) + Math.abs(target.y - at.y) > 0.3 || Math.abs(target.on - at.on) > 0.005) kick()
-  }
-  const kick = (): void => {
-    if (!raf && !document.hidden) raf = requestAnimationFrame(tick)
-  }
+  let last = -1
+  let box: Box = { x: 0, y: 0, w: 0, h: 0, dpr: 1 }
   const size = (): void => {
+    const W = stage.clientWidth
+    const H = stage.clientHeight
     const dpr = Math.min(devicePixelRatio || 1, 2)
-    w = innerWidth
-    h = innerHeight
-    cv.width = Math.round(w * dpr)
-    cv.height = Math.round(h * dpr)
-    g.setTransform(dpr, 0, 0, dpr, 0, 0)
-    g.lineWidth = 1
-    if (planW !== w) segs = plan(w + 2, TALL).map(([a, b, c, d]) => [a - 1, b - 1, c - 1, d - 1])
-    planW = w
-    draw()
+    cv.width = Math.round(W * dpr)
+    cv.height = Math.round(H * dpr)
+    // desktop: the drawing stands right of the words; phone: under them, full width
+    const words = stage.querySelector<HTMLElement>('.hero')!.getBoundingClientRect()
+    const top = stage.getBoundingClientRect().top
+    box = W >= 900 ? { x: W * 0.4, y: 64, w: W * 0.6 - 48, h: H - 96, dpr } : { x: 16, y: words.bottom - top + 8, w: W - 32, h: H - (words.bottom - top) - 24, dpr }
+    last = -1
   }
-  const move = (e: globalThis.PointerEvent): void => {
-    if (calm || e.pointerType !== 'mouse') return
-    if (!target.on) (at.x = e.clientX), (at.y = e.clientY) // arriving: start where the mouse is, not where it left
-    target.x = e.clientX
-    target.y = e.clientY
-    target.on = 1
-    kick()
-  }
-  const leave = (e: globalThis.PointerEvent): void => {
-    if (!e.relatedTarget) (target.on = 0), kick()
-  }
-  size()
-  addEventListener('resize', size)
-  addEventListener('pointermove', move, { passive: true })
-  document.addEventListener('pointerout', leave)
-  if (!calm) addEventListener('scroll', kick, { passive: true })
-  document.addEventListener('visibilitychange', kick)
-  return () => {
-    cancelAnimationFrame(raf)
-    removeEventListener('resize', size)
-    removeEventListener('pointermove', move)
-    document.removeEventListener('pointerout', leave)
-    removeEventListener('scroll', kick)
-    document.removeEventListener('visibilitychange', kick)
-  }
-}
-
-/** Sections rise in once as they come into view; pictures drift with the scroll; the top bar gets its line once scrolled. */
-function motion(root: HTMLElement): () => void {
-  const io = new IntersectionObserver(
-    (es) => {
-      for (const e of es)
-        if (e.isIntersecting) {
-          e.target.classList.add('in')
-          io.unobserve(e.target)
-        }
-    },
-    { rootMargin: '0px 0px -12% 0px' },
-  )
-  root.querySelectorAll('.reveal').forEach((el) => io.observe(el))
-  const shots = [...root.querySelectorAll<HTMLElement>('.shot')]
-  const calm = still()
-  let raf = 0
   const frame = (): void => {
     raf = 0
     root.classList.toggle('scrolled', scrollY > 8)
-    if (calm) return
-    const vh = innerHeight
-    for (const s of shots) {
-      const r = s.getBoundingClientRect()
-      if (r.bottom > -vh && r.top < vh * 2) s.style.setProperty('--p', ((r.top + r.height / 2 - vh / 2) / vh).toFixed(3))
-    }
+    const r = section.getBoundingClientRect()
+    if (r.bottom < 0 || r.top > innerHeight) return
+    const p = still.matches ? 1 : Math.min(1, Math.max(0, -r.top / (r.height - innerHeight)))
+    if (p === last) return
+    last = p
+    root.style.setProperty('--p', p.toFixed(4))
+    stage.dataset.act = String(actAt(p))
+    draw(g, plan, moment(p), box, ink)
   }
-  const onScroll = (): void => {
+  const kick = (): void => {
     raf ||= requestAnimationFrame(frame)
   }
+  const resize = (): void => {
+    size()
+    kick()
+  }
+  size()
   frame()
-  addEventListener('scroll', onScroll, { passive: true })
-  addEventListener('resize', onScroll)
+  document.fonts.ready.then(resize)
+  addEventListener('scroll', kick, { passive: true })
+  addEventListener('resize', resize)
+  still.addEventListener('change', resize)
   return () => {
-    io.disconnect()
     cancelAnimationFrame(raf)
-    removeEventListener('scroll', onScroll)
-    removeEventListener('resize', onScroll)
+    removeEventListener('scroll', kick)
+    removeEventListener('resize', resize)
+    still.removeEventListener('change', resize)
   }
 }
 
-/** Under the mouse a picture tips a few degrees toward it and a soft light follows. */
-function tilt(e: PointerEvent<HTMLElement>): void {
-  if (e.pointerType !== 'mouse' || still()) return
-  const el = e.currentTarget
-  const r = el.getBoundingClientRect()
-  const x = (e.clientX - r.left) / r.width
-  const y = (e.clientY - r.top) / r.height
-  el.style.setProperty('--rx', `${((0.5 - y) * 4).toFixed(2)}deg`)
-  el.style.setProperty('--ry', `${((x - 0.5) * 5).toFixed(2)}deg`)
-  el.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`)
-  el.style.setProperty('--my', `${(y * 100).toFixed(1)}%`)
-}
-const untilt = (e: PointerEvent<HTMLElement>): void => {
-  for (const k of ['--rx', '--ry']) e.currentTarget.style.setProperty(k, '0deg')
-}
-
-function Shot({ src, alt, caption, eager }: { src: string; alt: string; caption: string; eager?: boolean }) {
+/** A plate in the book: a picture from the 3D view with its number and caption. */
+function Plate({ n, src, alt, caption }: { n: string; src: string; alt: string; caption: string }) {
   return (
-    <figure className="shot reveal">
-      <div className="frame" onPointerMove={tilt} onPointerLeave={untilt}>
-        <img src={`/landing/${src}.jpg`} alt={alt} width={1600} height={1000} loading={eager ? 'eager' : 'lazy'} decoding="async" />
-      </div>
-      <figcaption>{caption}</figcaption>
+    <figure className="plate">
+      <img src={`/landing/${src}.jpg`} alt={alt} width={1600} height={1000} loading="lazy" decoding="async" />
+      <figcaption>
+        <span className="label">Plate {n}</span>
+        <span>{caption}</span>
+      </figcaption>
     </figure>
   )
 }
 
-const Arrow = () => (
-  <span className="arrow" aria-hidden="true">
-    →
-  </span>
-)
+/** The words of one act, shown while the scroll is between a and b. */
+const span = (a: number, b: number) => ({ '--a': a, '--b': b }) as CSSProperties
 
 export default function Landing() {
   const root = useRef<HTMLDivElement>(null)
-  const canvas = useRef<HTMLCanvasElement>(null)
-  useEffect(() => motion(root.current!), [])
-  useEffect(() => planField(canvas.current!), [])
-  const d = (i: number) => ({ '--d': `${i * 90}ms` }) as CSSProperties
+  useEffect(() => story(root.current!), [])
   return (
-    <div className="landing" ref={root}>
-      <canvas className="field" ref={canvas} aria-hidden="true" />
+    <div className="landing grain" ref={root}>
       <header className="bar">
-        <a className="mark" href="/" aria-label="Plotline, front page">
-          Plotline<span className="dot">.</span>
+        <a className="mark display" href="/" aria-label="Plotline, front page">
+          Plotline
         </a>
         <nav aria-label="Main">
           <a href={FLAT}>See a flat</a>
@@ -251,128 +105,139 @@ export default function Landing() {
         </nav>
       </header>
 
-      <main>
-        <section className="hero">
-          <p className="eyebrow rise" style={d(0)}>
-            Digital show flat · Dhaka
-          </p>
-          <h1 className="word">
-            <span className="sr">Plotline</span>
-            <span aria-hidden="true">
-              {[...'Plotline'].map((c, i) => (
-                <span key={i} className="ch" style={{ '--i': i } as CSSProperties}>
-                  {c}
-                </span>
-              ))}
-              <span className="ch dot" style={{ '--i': 8 } as CSSProperties}>
-                .
-              </span>
-            </span>
-          </h1>
-          <p className="lead rise" style={d(6)}>
-            The architect's plan, as a furnished 3D flat your buyers can walk.
-          </p>
-          <div className="actions rise" style={d(7)}>
-            <a className="l-btn primary" href={FLAT}>
-              See a flat <Arrow />
-            </a>
-            <a className="l-btn" href="#how">
-              For developers
-            </a>
+      <section className="story" aria-label="From a floor plan to a building">
+        <div className="stage" data-act="1">
+          <canvas role="img" aria-label="The Type A floor plan on a sheet of paper; as the page scrolls its walls rise, then floors of it stack into a tower on a colonnade" />
+          <div className="hero cap" style={span(-1, 0.12)}>
+            <p className="label">Digital show flat · Dhaka</p>
+            <h1 className="display">Plotline</h1>
+            <p className="lead">The architect's plan becomes a furnished flat your buyers can walk, long before it is built.</p>
+            <div className="actions">
+              <a className="btn primary" href={FLAT}>
+                See a flat
+              </a>
+              <a className="quiet" href="/studio">
+                <span className="u">Open the Studio</span>
+                <span aria-hidden="true">→</span>
+              </a>
+            </div>
           </div>
-          <span className="cue" aria-hidden="true" />
-        </section>
+          <div className="act cap" style={span(0.17, 0.47)} aria-hidden="true">
+            <p className="label">II · The walls</p>
+            <p className="say display">Every wall stands where the sheet draws it.</p>
+            <p className="more">Its real thickness and height, with the doors and windows cut where the plan puts them.</p>
+          </div>
+          <div className="act cap" style={span(0.48, 2)} aria-hidden="true">
+            <p className="label">III · The building</p>
+            <p className="say display">One plan, every floor.</p>
+            <p className="more">Stack the floors into the tower, set it in its street, and light it with the real sun of its site.</p>
+          </div>
+          <ol className="acts" aria-hidden="true">
+            <li className="label">I · Plan</li>
+            <li className="label">II · Walls</li>
+            <li className="label">III · Building</li>
+          </ol>
+        </div>
+      </section>
 
-        <section className="wide">
-          <Shot src="dining" alt="Inside a flat in the 3D walk: the dining and family living room, furnished, in afternoon sun" caption="Type A · dining and family living · 15:30" eager />
-        </section>
-
-        <section id="how" className="block">
-          <h2 className="reveal">How it works</h2>
-          <ol className="steps">
-            <li className="reveal" style={d(0)}>
-              <span className="n">01</span>
-              <h3>Bring the plan</h3>
-              <p>A drawing, or the architect's IFC or DXF file. Your team checks the walls against the printed sizes.</p>
+      <main>
+        <section className="sec" id="how">
+          <p className="label">How it works</p>
+          <h2 className="display">From a sheet of paper to a building you can walk.</h2>
+          <ol className="cols">
+            <li>
+              <span className="num display">I</span>
+              <h3 className="display">Bring the plan</h3>
+              <p>A drawing, a photo of one, or the architect's IFC or DXF file. Your team checks each wall against the printed sizes.</p>
             </li>
-            <li className="reveal" style={d(1)}>
-              <span className="n">02</span>
-              <h3>Walk the building</h3>
-              <p>Every room furnishes itself. Stack the floors into the whole tower.</p>
+            <li>
+              <span className="num display">II</span>
+              <h3 className="display">Walk the building</h3>
+              <p>Every room furnishes itself. Stack the floors into the whole tower, in its street.</p>
             </li>
-            <li className="reveal" style={d(2)}>
-              <span className="n">03</span>
-              <h3>Share, then listen</h3>
-              <p>Send each buyer a link. Every choice and every note comes back to you.</p>
+            <li>
+              <span className="num display">III</span>
+              <h3 className="display">Share, then listen</h3>
+              <p>Each buyer gets a link. Every choice and every note comes back to you.</p>
             </li>
           </ol>
+          <Plate n="I" src="dining" alt="Inside a flat in the 3D walk: the dining and family living room, furnished, in afternoon sun" caption="Type A, dining and family living, at 15:30" />
           <div className="pair">
-            <Shot src="dollhouse" alt="The whole flat seen from above with the roof lifted off, every room furnished" caption="Dollhouse · the whole flat from above" />
-            <Shot src="building" alt="The whole tower in 3D with one floor picked out, in its street" caption="Building · every floor of the tower" />
+            <Plate n="II" src="dollhouse" alt="The whole flat seen from above with the roof lifted off, every room furnished" caption="The whole flat from above, the roof lifted" />
+            <Plate n="III" src="building" alt="The whole tower in 3D with one floor picked out, in its street" caption="Every floor of the tower, in its street" />
           </div>
         </section>
 
-        <section className="block split">
+        <section className="sec split">
           <div>
-            <h2 className="reveal">What buyers do</h2>
-            <ul className="points">
-              <li className="reveal" style={d(0)}>
-                <h3>Walk the exact flat</h3>
-                <p>The one they are buying, on its floor — from Dhaka or from abroad.</p>
+            <p className="label">For buyers</p>
+            <h2 className="display">What buyers do</h2>
+            <ul className="rows">
+              <li>
+                <h3 className="display">Walk the exact flat</h3>
+                <p>The one they are buying, on its own floor, from Dhaka or from abroad.</p>
               </li>
-              <li className="reveal" style={d(1)}>
-                <h3>Choose finishes</h3>
+              <li>
+                <h3 className="display">Choose finishes</h3>
                 <p>Only from the options you approved.</p>
               </li>
-              <li className="reveal" style={d(2)}>
-                <h3>Leave a note on anything</h3>
+              <li>
+                <h3 className="display">Leave a note on anything</h3>
                 <p>A wall, a door, a tile. The note stays pinned to it.</p>
               </li>
             </ul>
           </div>
-          <Shot src="living" alt="Inside a flat in the 3D walk: the living room with a sofa, an armchair and corner windows onto the street" caption="Type A · living room" />
+          <Plate n="IV" src="living" alt="Inside a flat in the 3D walk: the living room with a sofa, an armchair and corner windows onto the street" caption="Type A, the living room" />
         </section>
 
-        <section className="block">
-          <h2 className="reveal">What the developer gets</h2>
-          <ul className="steps">
-            <li className="reveal" style={d(0)}>
-              <h3>One change list</h3>
+        <section className="sec">
+          <p className="label">For developers</p>
+          <h2 className="display">What the developer gets</h2>
+          <ul className="cols">
+            <li>
+              <h3 className="display">One change list</h3>
               <p>Every note and choice, dated, in one list. Export it and attach it to the sale agreement.</p>
             </li>
-            <li className="reveal" style={d(1)}>
-              <h3>Finishes with prices</h3>
+            <li>
+              <h3 className="display">Finishes with prices</h3>
               <p>Floors, paint, tiles: each option with its price difference in taka.</p>
             </li>
-            <li className="reveal" style={d(2)}>
-              <h3>Sun and wind</h3>
+            <li>
+              <h3 className="display">Sun and wind</h3>
               <p>The real sun for your site on any day, the wind month by month, the neighbours around you.</p>
             </li>
           </ul>
           <div className="pair">
-            <Shot src="finishes" alt="The Finishes panel open in the 3D walk: floor options, each with its price difference in taka" caption="Finishes · each option with its price difference" />
-            <Shot src="sun" alt="A bedroom in the 3D walk at 8 in the morning, the Sun & wind card open: the time, the day, the twelve months and a compass" caption="Sun · bedroom 1 at 08:00, the site's real sun" />
+            <Plate n="V" src="finishes" alt="The Finishes panel open in the 3D walk: floor options, each with its price difference in taka" caption="Finishes, each with its price difference" />
+            <Plate n="VI" src="sun" alt="A room in the 3D walk with the Sun and wind card open: the time, the day, the months and a compass" caption="The site's real sun, hour by hour" />
           </div>
         </section>
 
         <section className="close">
-          <p className="big reveal">
+          <p className="display">
             Show every flat,
             <br />
             before it is built.
           </p>
-          <div className="actions reveal" style={d(1)}>
-            <a className="l-btn primary" href={FLAT}>
-              See a flat <Arrow />
+          <div className="actions">
+            <a className="btn primary" href={FLAT}>
+              See a flat
             </a>
-            <a className="l-btn" href="/studio">
-              Open the Studio
+            <a className="quiet" href="/studio">
+              <span className="u">Open the Studio</span>
+                <span aria-hidden="true">→</span>
             </a>
           </div>
         </section>
       </main>
 
-      <footer className="foot">Plotline · Dhaka</footer>
+      <footer className="foot">
+        <span className="label">Plotline · Dhaka</span>
+        <nav aria-label="Footer">
+          <a href={FLAT}>See a flat</a>
+          <a href="/studio">Studio</a>
+        </nav>
+      </footer>
     </div>
   )
 }

@@ -106,10 +106,10 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 
 | Name | What it does | Who |
 |---|---|---|
-| **Plotline** (top left) | Back to the top of the front page | everyone |
-| **See a flat** (top bar, top of the page, end of the page) | Opens flat type A in 3D (`/u/type-a`) | everyone |
-| **Studio** (top bar), **Open the Studio** (end of the page) | Opens the Studio | everyone (like any visit to the Studio, it makes the browser staff) |
-| **For developers** | Slides the page down to "How it works" | everyone |
+| **Plotline** (top left, once you scroll) | Back to the top of the front page | everyone |
+| **See a flat** (top bar, the blue button by the plan, end of the page, footer) | Opens flat type A in 3D (`/u/type-a`) | everyone |
+| **Studio** (top bar, footer), **Open the Studio** (by the plan, end of the page) | Opens the Studio | everyone (like any visit to the Studio, it makes the browser staff) |
+| Scrolling | Plays the story: the plan's walls rise, then the floors stack into a tower; scrolling up plays it back | everyone |
 
 ### 3D view — start screen
 

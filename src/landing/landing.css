@@ -1,166 +1,156 @@
-/* The front page. Its own tokens, scoped to .landing, matched to the viewer's (dark, warm, one gold, hairlines). */
+/*
+ * The front page on the marble language (Docs/DESIGN.md → "Front page"). Tokens only: nothing here types a colour, a
+ * size or an easing of its own. The story's words fade by the scroll position: Landing.tsx sets --p (0–1) on the page,
+ * and each act's words are shown while --p is between their --a and --b.
+ */
+body:has(.landing) { overflow: auto; } /* the rest of the app never scrolls the page; this one does */
+
 .landing {
-  --l-bg: #0f0f10;
-  --l-surface: #17181a;
-  --l-ink: #f2f2f0;
-  --l-muted: #a5a59e;
-  --l-line: rgba(242, 242, 240, 0.1);
-  --l-accent: #e8c170;
-  --l-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
-  --l-gutter: clamp(20px, 5vw, 72px);
+  --p: 0;
+  --gut: var(--s-8);
+  --bar: calc(var(--s-7) + var(--s-4));
+  --max: calc(var(--s-8) * 16);
   position: relative;
   min-height: 100%;
-  color: var(--l-ink);
-  background: var(--l-bg);
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-weight: 300;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--bg);
+  font-size: var(--fs-lg);
 }
-/* the rest of the app never scrolls the page; this one does */
-body:has(.landing) { overflow: auto; }
-html:has(.landing) { scroll-behavior: smooth; scroll-padding-top: 72px; }
-
-.landing a { color: inherit; text-decoration: none; }
-.landing :focus-visible { outline: 2px solid var(--l-accent); outline-offset: 4px; border-radius: 6px; }
-.landing .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.landing.grain::before { z-index: 2; } /* the stone grain lies over the drawing too, under the bar and the pictures */
 .landing h1, .landing h2, .landing h3, .landing p, .landing ul, .landing ol, .landing figure { margin: 0; padding: 0; }
 .landing ul, .landing ol { list-style: none; }
+.landing a { color: inherit; text-decoration: none; }
 
-.landing .field { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.landing .bar, .landing main, .landing .foot { position: relative; z-index: 1; }
-
-/* top bar */
+/* ── the bar ──────────────────────────────────────────────────────────────────────────────────────────────────── */
 .landing .bar {
-  position: sticky; top: 0; z-index: 2;
+  position: fixed; inset: 0 0 auto; z-index: 4;
   display: flex; align-items: center; justify-content: space-between;
-  height: 56px; padding: 0 var(--l-gutter);
+  height: var(--bar); padding: 0 var(--gut);
   border-bottom: 1px solid transparent;
-  transition: background 0.4s, border-color 0.4s;
+  transition: background var(--dur-slow) var(--ease), border-color var(--dur-slow) var(--ease);
 }
 .landing.scrolled .bar {
-  background: rgba(15, 15, 16, 0.72);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-bottom-color: var(--l-line);
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  border-bottom-color: var(--hairline);
 }
-.landing .mark { font-size: 17px; font-weight: 400; letter-spacing: -0.02em; }
-.landing .dot { color: var(--l-accent); }
-.landing .bar nav { display: flex; gap: 28px; font-size: 14px; }
-.landing .bar nav a { color: var(--l-muted); position: relative; padding: 6px 0; transition: color 0.25s; }
-.landing .bar nav a::after {
-  content: ''; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px;
-  background: var(--l-accent); transform: scaleX(0); transform-origin: left; transition: transform 0.35s var(--l-ease);
+/* the small name appears once the big one has gone */
+.landing .mark { font-size: var(--fs-2xl); opacity: clamp(0, calc((var(--p) - 0.08) * 14), 1); }
+.landing .bar nav, .landing .foot nav { display: flex; gap: var(--s-5); }
+.landing nav a {
+  display: inline-flex; align-items: center; height: var(--control);
+  font-size: var(--fs-md); color: var(--ink-2);
+  transition: color var(--dur) var(--ease);
 }
-.landing .bar nav a:hover { color: var(--l-ink); }
-.landing .bar nav a:hover::after { transform: scaleX(1); }
+.landing nav a:hover { color: var(--ink); }
 
-/* hero */
-.landing .hero {
-  min-height: calc(100svh - 56px);
-  display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
-  padding: 48px var(--l-gutter) 96px;
-  position: relative;
+/* ── buttons ──────────────────────────────────────────────────────────────────────────────────────────────────── */
+.landing .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-5); }
+.landing .btn {
+  display: inline-flex; align-items: center; height: var(--touch); padding: 0 var(--s-5);
+  border-radius: var(--r-sm); font-size: var(--fs-lg); font-weight: 500;
+  transition: box-shadow var(--dur) var(--ease);
 }
-.landing .hero::before { /* a warm light behind the name */
-  content: ''; position: absolute; left: 8%; top: 22%; width: min(70vw, 900px); aspect-ratio: 1.6;
-  background: radial-gradient(closest-side, rgba(232, 193, 112, 0.09), transparent);
-  pointer-events: none;
+.landing .btn.primary { background: var(--accent); color: var(--accent-ink); }
+.landing .btn.primary:hover { box-shadow: inset 0 0 0 var(--s-8) var(--press); }
+.landing .btn.primary:active { box-shadow: inset 0 0 0 var(--s-8) var(--line); }
+.landing .quiet { display: inline-flex; align-items: center; gap: var(--s-2); height: var(--touch); font-size: var(--fs-lg); color: var(--ink); }
+.landing .quiet .u {
+  text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: var(--line);
+  text-underline-offset: var(--s-1);
+  transition: text-decoration-color var(--dur) var(--ease);
 }
-.landing .eyebrow { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--l-accent); margin-bottom: 28px; }
-.landing .word {
-  font-size: clamp(84px, 15.5vw, 248px); font-weight: 300; letter-spacing: -0.055em; line-height: 0.9;
-  margin-left: -0.05em;
-}
-.landing .word .ch { display: inline-block; animation: l-rise 1.1s var(--l-ease) both; animation-delay: calc(var(--i) * 55ms + 120ms); }
-.landing .lead { font-size: clamp(19px, 2vw, 26px); color: var(--l-muted); max-width: 30ch; margin-top: 36px; line-height: 1.35; }
-.landing .rise { animation: l-fade 1s var(--l-ease) both; animation-delay: calc(var(--d, 0ms) + 200ms); }
-.landing .actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 44px; }
-.landing .cue {
-  position: absolute; left: var(--l-gutter); bottom: 28px; width: 1px; height: 56px;
-  background: linear-gradient(var(--l-accent), transparent); transform-origin: top;
-  animation: l-cue 2.4s var(--l-ease) 1.6s infinite both;
-}
-@keyframes l-rise { from { transform: translateY(0.5em); opacity: 0; } }
-@keyframes l-fade { from { transform: translateY(14px); opacity: 0; } }
-@keyframes l-cue { 0% { transform: scaleY(0); opacity: 1; } 60% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
+.landing .quiet:hover .u { text-decoration-color: var(--ink); }
 
-/* buttons */
-.landing .l-btn {
-  display: inline-flex; align-items: center; gap: 10px;
-  height: 48px; padding: 0 24px; border-radius: 999px;
-  border: 1px solid var(--l-line); font-size: 15px; font-weight: 400;
-  background: rgba(15, 15, 16, 0.5);
-  transition: border-color 0.3s, color 0.3s, background 0.3s, transform 0.3s var(--l-ease);
+/* ── the story: a tall section, a stage that stays while it scrolls past ─────────────────────────────────────── */
+.landing .story { position: relative; height: 480svh; }
+.landing .stage { position: sticky; top: 0; height: 100svh; overflow: hidden; }
+.landing .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.landing .cap {
+  position: absolute; left: var(--gut); top: 50%; translate: 0 -50%;
+  width: calc(40% - var(--gut) - var(--s-5));
+  opacity: clamp(0, min(calc((var(--p) - var(--a)) * 14), calc((var(--b) - var(--p)) * 14)), 1);
 }
-.landing .l-btn:hover { border-color: var(--l-accent); color: var(--l-accent); transform: translateY(-2px); }
-.landing .l-btn.primary { background: var(--l-accent); border-color: var(--l-accent); color: #1a1408; }
-.landing .l-btn.primary:hover { background: #f1d08d; color: #1a1408; box-shadow: 0 10px 40px -12px rgba(232, 193, 112, 0.55); }
-.landing .arrow { display: inline-block; transition: transform 0.3s var(--l-ease); }
-.landing .l-btn:hover .arrow { transform: translateX(4px); }
+.landing .stage:not([data-act='1']) .hero { pointer-events: none; }
+.landing .hero:focus-within { opacity: 1; }
+.landing .hero h1 { font-size: var(--fs-5xl); margin: var(--s-4) 0 var(--s-5); }
+.landing .lead { font-size: var(--fs-xl); color: var(--ink-2); max-width: 26ch; }
+.landing .hero .actions { margin-top: var(--s-6); }
+.landing .say { font-size: var(--fs-3xl); margin: var(--s-4) 0; max-width: 14ch; }
+.landing .more { color: var(--ink-2); max-width: 32ch; }
+/* where the story is: I · II · III, the current act in ink over a hairline */
+.landing .acts { position: absolute; left: var(--gut); bottom: var(--s-6); display: flex; gap: var(--s-5); }
+.landing .acts li { padding-top: var(--s-2); border-top: 1px solid var(--hairline); transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.landing [data-act='1'] .acts li:nth-child(1),
+.landing [data-act='2'] .acts li:nth-child(2),
+.landing [data-act='3'] .acts li:nth-child(3) { color: var(--ink); border-top-color: var(--ink); }
 
-/* sections */
-.landing .block { padding: clamp(96px, 14vw, 180px) var(--l-gutter) 0; }
-.landing .wide { padding: 0 var(--l-gutter); }
-.landing h2 {
-  font-size: clamp(34px, 4.6vw, 64px); font-weight: 300; letter-spacing: -0.03em; line-height: 1.05;
-  margin-bottom: clamp(40px, 6vw, 72px);
+/* ── the sections ─────────────────────────────────────────────────────────────────────────────────────────────── */
+.landing main { position: relative; }
+.landing .sec { max-width: var(--max); margin: 0 auto; padding: calc(var(--s-8) * 2) var(--gut) 0; }
+.landing .sec > .label, .landing .split > div > .label { display: block; padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.landing h2 { font-size: var(--fs-3xl); margin: var(--s-5) 0 var(--s-7); max-width: 18ch; }
+.landing h3 { font-size: var(--fs-2xl); margin-bottom: var(--s-3); }
+.landing .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-6); }
+.landing .cols li, .landing .rows li { padding-top: var(--s-5); border-top: 1px solid var(--hairline); }
+.landing .cols p, .landing .rows p { color: var(--ink-2); max-width: 32ch; }
+.landing .num { display: block; font-size: var(--fs-2xl); color: var(--muted); margin-bottom: var(--s-5); }
+.landing .rows { display: grid; gap: var(--s-5); }
+.landing .split { display: grid; grid-template-columns: 5fr 7fr; gap: var(--s-8); align-items: end; }
+.landing .split h2 { margin-bottom: var(--s-6); }
+
+/* plates: the pictures as a book prints them, a hairline edge, the number as an inscription */
+.landing .plate { position: relative; z-index: 3; margin-top: var(--s-8); }
+.landing .split .plate { margin-top: 0; }
+.landing .plate img {
+  display: block; width: 100%; height: auto; aspect-ratio: 16 / 10;
+  border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface-2);
 }
-.landing h2::before { content: ''; display: block; width: 40px; height: 1px; background: var(--l-accent); margin-bottom: 24px; }
-.landing h3 { font-size: 19px; font-weight: 400; letter-spacing: -0.01em; margin-bottom: 8px; }
-.landing .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(24px, 4vw, 56px); }
-.landing .steps li, .landing .points li { position: relative; padding-top: 22px; border-top: 1px solid var(--l-line); }
-.landing .steps li::before, .landing .points li::before {
-  content: ''; position: absolute; left: 0; top: -1px; width: 100%; height: 1px;
-  background: var(--l-accent); transform: scaleX(0); transform-origin: left; transition: transform 0.6s var(--l-ease);
-}
-.landing .steps li:hover::before, .landing .points li:hover::before { transform: scaleX(1); }
-.landing .steps p, .landing .points p { color: var(--l-muted); font-size: 16px; max-width: 34ch; }
-.landing .n { display: block; font-size: 13px; letter-spacing: 0.1em; color: var(--l-accent); margin-bottom: 18px; font-variant-numeric: tabular-nums; }
-.landing .pair { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(20px, 3vw, 40px); margin-top: clamp(64px, 8vw, 112px); }
-.landing .pair .shot:nth-child(2) { margin-top: clamp(0px, 6vw, 96px); }
-.landing .split { display: grid; grid-template-columns: 5fr 7fr; gap: clamp(40px, 6vw, 96px); align-items: center; }
-.landing .points { display: grid; gap: 32px; }
+.landing figcaption { display: flex; align-items: baseline; gap: var(--s-4); margin-top: var(--s-3); font-size: var(--fs-sm); color: var(--muted); }
+.landing figcaption .label { color: var(--ink); }
+.landing .pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6); align-items: start; }
+.landing .pair .plate:nth-child(2) { margin-top: calc(var(--s-8) * 2); }
 
-/* product pictures: rise in (translate), drift with the scroll (transform), tip under the mouse (the frame) */
-.landing .shot { transform: translate3d(0, calc(var(--p, 0) * -36px), 0); will-change: transform; }
-.landing .frame {
-  position: relative; border-radius: 14px; overflow: hidden;
-  border: 1px solid var(--l-line); background: var(--l-surface);
-  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(0, 0, 0, 0.4);
-  transform: perspective(1400px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
-  transition: transform 0.6s var(--l-ease), border-color 0.4s;
-}
-.landing .frame:hover { border-color: rgba(232, 193, 112, 0.35); }
-.landing .frame::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.4s;
-  background: radial-gradient(600px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 240, 210, 0.08), transparent 60%);
-}
-.landing .frame:hover::after { opacity: 1; }
-.landing .frame img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; }
-.landing figcaption { margin-top: 14px; font-size: 13px; color: var(--l-muted); letter-spacing: 0.02em; }
-
-/* closing */
-.landing .close { padding: clamp(140px, 18vw, 240px) var(--l-gutter) clamp(96px, 12vw, 160px); text-align: center; display: grid; justify-items: center; }
-.landing .big { font-size: clamp(40px, 6.4vw, 96px); font-weight: 300; letter-spacing: -0.04em; line-height: 1.02; }
-.landing .close .actions { justify-content: center; }
-.landing .foot { padding: 28px var(--l-gutter) 36px; border-top: 1px solid var(--l-line); font-size: 13px; color: var(--l-muted); }
-
-/* scroll reveal: in once, as the section comes into view */
-.landing .reveal { opacity: 0; translate: 0 28px; transition: opacity 1s var(--l-ease), translate 1s var(--l-ease); transition-delay: var(--d, 0ms); }
-.landing .reveal.in { opacity: 1; translate: 0 0; }
-
-@media (max-width: 760px) {
-  .landing .bar nav { gap: 20px; }
-  .landing .steps, .landing .pair, .landing .split { grid-template-columns: 1fr; }
-  .landing .pair .shot:nth-child(2) { margin-top: 0; }
-  .landing .steps { gap: 36px; }
-  .landing .hero { padding-bottom: 112px; }
-  .landing .actions { width: 100%; }
+.landing .close { padding: calc(var(--s-8) * 2.5) var(--gut) calc(var(--s-8) * 2); text-align: center; }
+.landing .close p { font-size: var(--fs-4xl); }
+.landing .close .actions { justify-content: center; margin-top: var(--s-6); }
+.landing .foot {
+  display: flex; align-items: center; justify-content: space-between;
+  width: calc(100% - 2 * var(--gut)); max-width: calc(var(--max) - 2 * var(--gut)); margin: 0 auto;
+  padding: var(--s-5) 0 var(--s-6); border-top: 1px solid var(--line);
 }
 
+/* ── narrower screens ─────────────────────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1279px) {
+  .landing .hero h1 { font-size: var(--fs-4xl); }
+}
+/* phone: the words on top, the drawing under them, full width (Landing.tsx measures the words to place it) */
+@media (max-width: 899px) {
+  .landing { --gut: var(--s-4); }
+  .landing .cap { top: calc(var(--bar) + var(--s-2)); right: var(--gut); width: auto; translate: none; }
+  .landing .hero h1 { margin: var(--s-2) 0 var(--s-3); }
+  .landing .lead, .landing .more { font-size: var(--fs-lg); }
+  .landing .hero .actions { margin-top: var(--s-4); gap: var(--s-4); }
+  .landing .say { font-size: var(--fs-2xl); margin: var(--s-2) 0; max-width: none; }
+  .landing .acts { display: none; }
+  .landing .sec { padding-top: calc(var(--s-8) * 1.25); }
+  .landing h2 { font-size: var(--fs-2xl); margin-bottom: var(--s-6); }
+  .landing .cols, .landing .pair, .landing .split { grid-template-columns: 1fr; }
+  .landing .cols { gap: var(--s-5); }
+  .landing .pair { gap: 0; }
+  .landing .pair .plate:nth-child(2) { margin-top: var(--s-6); }
+  .landing .plate { margin-top: var(--s-6); }
+  .landing .split { gap: var(--s-6); }
+  .landing .close { padding: calc(var(--s-8) * 1.5) var(--gut); }
+  .landing .close p { font-size: var(--fs-3xl); }
+  .landing nav a { height: var(--touch); }
+}
+
+/* reduced motion: no scrolling story; the stage shows the last frame (the tower) under the first words */
 @media (prefers-reduced-motion: reduce) {
-  html:has(.landing) { scroll-behavior: auto; }
-  .landing *, .landing *::before, .landing *::after { animation: none !important; transition: none !important; }
-  .landing .reveal { opacity: 1; translate: none; }
-  .landing .shot, .landing .frame { transform: none; }
+  .landing .story { height: auto; }
+  .landing .stage { position: relative; }
+  .landing .hero { opacity: 1; }
+  .landing .stage .hero { pointer-events: auto; }
+  .landing .act, .landing .acts { display: none; }
 }
