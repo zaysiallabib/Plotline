@@ -1,10 +1,10 @@
 /** Pure spawn/camera helpers for the viewer (no Three, no DOM) — Vitest-covered. */
 import * as core from '../core'
-import type { FurniturePlacement, Pt, Room, Unit } from '../core'
+import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { isLevel } from '../furnish/finishes'
 import { heightRange, kitAsset, objectKind, placementRange, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
-import { EYE, RAY, boxInFrame, floorShare, frameHits, pieceInFrame, project, swings } from './frame'
+import { EYE, RAY, boxInFrame, floorShare, frameHits, frameShares, pieceInFrame, project, swings } from './frame'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
 const segDist = (p: Pt, a: Pt, b: Pt): number => {
@@ -456,6 +456,14 @@ export const WET_PITCH = (-25 * Math.PI) / 180
 const THRESHOLD = 0.15
 /** A door view (a help room, a closet, a tiny room) fails when a leaf fills more than this (it is exempt from FLAT_MAX). */
 export const DOOR_LEAF_MAX = 0.25
+
+/**
+ * Which way he looks on arriving by the stair (furnish/stairs.ts arriveBy): at its room's door, into the floor — unless
+ * that door is a step away and its leaf fills more than DOOR_LEAF_MAX of the frame (BTI's stair foot: a door at 1 m); then
+ * along the stair's front, away from the door, the stair beside him.
+ */
+export const arrivalFace = (unit: Unit, a: { at: Pt; face: Pt; door?: Id; aside?: Pt }): Pt =>
+  a.door && a.aside && (frameShares(unit, a.at, a.face).get(a.door) ?? 0) > DOOR_LEAF_MAX ? a.aside : a.face
 /**
  * The largest leaf in the chosen frame is shut for the shot (`closeLeaf`) when that takes back at least this share of it: a
  * leaf standing into the view goes flat; a door seen along its own wall fills the same, shut or ajar, and stays ajar.

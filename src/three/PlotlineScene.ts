@@ -563,6 +563,7 @@ export class PlotlineScene {
     this.walker = first ? { ...first.centroid } : { x: this.center.x, y: this.center.z }
     this.floorY = this.walkLevel(this.walker)
     this.moveTarget = null
+    this.stairAsked = 0 // a floor reached by the stair (the same scene): its own stair can be taken again
     this.setMode(this.mode)
     void this.loadFurniture(unit)
   }
@@ -1882,7 +1883,7 @@ export class PlotlineScene {
     const ahead = ((next.x - this.walker.x) * -Math.sin(t) + (next.y - this.walker.y) * Math.cos(t)) / (Math.hypot(next.x - this.walker.x, next.y - this.walker.y) || 1)
     const dir = h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
     const now = performance.now()
-    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, to.stair) ? Infinity : now // going: never asked again
+    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, to.stair) ? Infinity : now // going: not asked again until that floor is in (setUnit)
     return true
   }
 

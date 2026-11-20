@@ -29,6 +29,18 @@ function loadModel(url: string): Promise<THREE.Group> {
   return p
 }
 
+/**
+ * Every model these pieces need, downloaded and decoded (a stair's next floor waits on this while the floor it leaves stays
+ * on screen): buildFurniture then takes them from the cache in the same moment, so the new floor shows whole, not piece by
+ * piece. A model that fails is left to buildFurniture's placeholder.
+ */
+export const preloadModels = (ps: FurniturePlacement[]): Promise<unknown> =>
+  Promise.all(
+    [...new Set(ps.flatMap((p) => kitAsset(p.assetId) ?? []).filter((a) => !a.url.startsWith('procedural:') && !(lean.on && a.category === 'plant')))].map((a) =>
+      loadModel(a.url).catch(() => null),
+    ),
+  )
+
 /** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
 export function colourOnly<T extends THREE.Object3D>(model: T): T {
   model.traverse((o) => {

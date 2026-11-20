@@ -350,6 +350,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 /* it shows, stays about 4 s, then fades; the mouse over where it was brings it back (a new hint starts again: React key) */
 .dock .hint { animation: hint 5s var(--ease) forwards; }
 .dock .hint:hover { animation: none; opacity: 1; }
+/* a stair being taken: "Floor 3 …" stays until that floor is in */
+.dock .hint.going { animation: appear var(--dur) var(--ease) both; }
 /* the open Sun & wind card is what the person is reading: no key hint floating over it in mid-screen */
 .dock:has(.sun-card) > .hint { display: none; }
 @keyframes hint {
