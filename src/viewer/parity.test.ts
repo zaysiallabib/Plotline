@@ -9,6 +9,7 @@ import type { Unit } from '../core'
 import { floorIn, towerOf } from '../data/building'
 import { makeProject, projectTower } from '../data/building/projects'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
+import btiFloor from '../data/fixtures/autotrace-bti-floor-2026-11-20.json'
 import typeA from '../data/units/type-a.json'
 import { kitAsset } from '../furnish/kit'
 import { layoutFor } from '../studio/furniture'
@@ -36,7 +37,8 @@ describe("parity: the founder's draft gets what the hand-authored units show", {
   })
 
   it('load screen: a name and an area (typed wins; else the closed rooms, as auto-trace does)', () => {
-    expect(unit.name).toBe('Auto-trace draft')
+    expect(unit.name).toBe('Untitled unit') // stored as "Auto-trace draft", which names nothing (session 31)
+    expect(withDefaults({ ...loaded, name: 'Type A, west' }, rooms).name).toBe('Type A, west')
     expect(unit.areaSqft).toBe(2736)
     const bare = withDefaults({ ...loaded, name: '  ', areaSqft: 0 }, rooms)
     expect(bare.name).toBe('Untitled unit')
@@ -109,4 +111,33 @@ describe("parity: the founder's draft gets what the hand-authored units show", {
     expect(t.FLOORS.filter((f) => f.flats.includes(unit.id)).map((f) => f.floor)).toEqual([2, 3, 4, 5, 6, 7])
   })
   it.todo('passage height default for Studio passages (Lane A, ask 5)')
+})
+
+// session 31 QA: Preview 3D of the BTI whole floor, traced as the founder does it in Firefox (drop img_3, S on Bed-1's 16'-0",
+// Auto-trace → Whole floor), started nose-to-curtain under the title "Auto-trace draft · 3,493 sqft"
+describe('a traced whole floor in Preview 3D', () => {
+  const floor = normalizeUnit(btiFloor as unknown as Unit)
+  const fr = core.deriveRooms(floor)
+  const shown = { ...floor, furniture: layoutFor(floor, fr) }
+  it('is titled "Floor plan A", never "Auto-trace draft"', () => {
+    expect(withDefaults(floor, fr).name).toBe('Floor plan A')
+    expect(withDefaults({ ...floor, name: '' }, fr).name).toBe('Floor plan A')
+  })
+  it('starts in a living or dining room looking across it, not at a wall: no door onto nothing is its entrance', () => {
+    const e = entrySpawn(shown, fr)!
+    const r = core.roomAt(e.p, fr, shown)!
+    expect(['living', 'dining']).toContain(r.kind)
+    // how far the eye sees along the view before a wall of the plan
+    const hit = (a: core.Pt, b: core.Pt) => {
+      const [dx, dy, ex, ey] = [e.face.x, e.face.y, b.x - a.x, b.y - a.y]
+      const den = dx * ey - dy * ex
+      if (Math.abs(den) < 1e-9) return Infinity
+      const t = ((a.x - e.p.x) * ey - (a.y - e.p.y) * ex) / den
+      const u = ((a.x - e.p.x) * dy - (a.y - e.p.y) * dx) / den
+      return t > 0 && u >= 0 && u <= 1 ? t : Infinity
+    }
+    const inner = core.roomInnerPolygon(r, shown)
+    const seen = Math.min(...inner.map((a, i) => hit(a, inner[(i + 1) % inner.length])))
+    expect(seen).toBeGreaterThan(2.5)
+  })
 })

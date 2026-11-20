@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveRooms, formatFeetInches, roomAt, roomInnerPolygon, validate, wallFrame } from '../core'
+import { deriveRooms, formatFeetInches, pointInPolygon, roomAt, roomInnerPolygon, validate, wallFrame } from '../core'
 import type { Opening, Unit, Wall } from '../core'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
@@ -14,7 +14,7 @@ import { snapMove, snapOpeningOffset, snapPoint } from './snap'
 import { fitSheet, frameOf, mToPx, mToScreen, pxToM, screenToM } from './transform'
 import type { FurniturePlacement } from '../core'
 import { furnish } from '../furnish/presets'
-import { GRID_M, layoutFor, movePiece, pieceAt, pieceQuad, refurnish, resizeAxes } from './furniture'
+import { GRID_M, baseOf, layoutFor, movePiece, pieceAt, pieceQuad, refurnish, resizeAxes } from './furniture'
 
 const TOL = 0.05
 const run = (s: StudioState, ...actions: Action[]) => actions.reduce(reducer, s)
@@ -1432,6 +1432,31 @@ describe('furniture tool: grid move, wall snap, rotate, refusals', () => {
     expect(at(s, 'chair')).toMatchObject({ rotationDeg: 0, x: expect.closeTo(7.9 - 0.05 - 0.235, 6) })
     // R still turns freely against a wall
     expect(at(reducer(s, { type: 'rotate-piece', id: 'chair' }), 'chair').rotationDeg).toBe(90)
+  })
+
+  it('R or an arrow on a TV standing on its unit turns / moves the unit, the TV on it (session 31: it was pushed off and left in the air)', () => {
+    const u = typeA as Unit
+    const rooms = deriveRooms(u)
+    const ps = furnish(u, rooms)
+    const [cab, tv] = ['r_living:modern_wooden_cabinet:1', 'r_living:tv_55:1'].map((id) => ps.find((p) => p.id === id)!)
+    const onIt = (f: FurniturePlacement[]) => pointInPolygon(f.find((p) => p.id === tv.id)!, pieceQuad(f.find((p) => p.id === cab.id)!))
+    expect(onIt(ps)).toBe(true)
+    expect(baseOf(ps, tv.id)?.id).toBe(cab.id)
+    const b = baseOf(ps, tv.id)! // the 3D view's R: what the TV rests on, turned
+    const turned = movePiece(u, rooms, ps, b.id, b, b.rotationDeg + 90, false)!
+    expect(turned.error).toBeNull()
+    expect(turned.ids).toEqual([cab.id, tv.id]) // the unit first, the TV with it
+    expect(turned.piece.rotationDeg).toBe((cab.rotationDeg + 90) % 360)
+    expect(onIt(turned.furniture)).toBe(true)
+    // the Studio's R and arrows on the picked TV, the same
+    const s0: StudioState = { ...initialState(), tool: 'furniture', unit: { ...u, furniture: ps } }
+    const s = reducer(s0, { type: 'rotate-piece', id: tv.id })
+    expect(onIt(s.unit.furniture)).toBe(true)
+    const m = reducer(s0, { type: 'move-piece', id: tv.id, x: tv.x - 4 * GRID_M, y: tv.y })
+    expect(m.unit.furniture.find((p) => p.id === cab.id)!.x).toBeLessThan(cab.x - 3 * GRID_M)
+    expect(onIt(m.unit.furniture)).toBe(true)
+    // a piece over another it does not rest on (a TV hung above a low table) is moved alone
+    expect(baseOf([...ps, { ...tv, id: 'tv2', x: cab.x, y: cab.y, mountY: 1.5 }], 'tv2')?.id).toBe('tv2')
   })
 
   it('resizeAxes: structure none; an axis with min = max stays fixed', () => {

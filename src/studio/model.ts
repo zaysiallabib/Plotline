@@ -7,7 +7,7 @@ import type { Id, Opening, OpeningKind, Pillar, Pt, Room, RoomKind, RoomLabel, S
 import { HARD, snapOpeningOffset, snapPoint, type OpeningSnap, type Snap } from './snap'
 import { classifyRoom } from '../trace/text'
 import { furnish } from '../furnish/presets'
-import { deletePiece, forgetPresets, layoutFor, liftPiece, movePiece, placePiece, resizePiece } from './furniture'
+import { baseOf, deletePiece, forgetPresets, layoutFor, liftPiece, movePiece, placePiece, resizePiece } from './furniture'
 import type { Review } from './review'
 
 export const PARTITION_M = 0.127
@@ -1585,8 +1585,10 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'lift-piece': {
       const rooms = deriveRooms(s.unit)
       const pieces = layoutFor(s.unit, rooms)
-      const p = pieces.find((x) => x.id === a.id)
-      if (!p) return s
+      const picked = pieces.find((x) => x.id === a.id)
+      if (!picked) return s
+      // a TV on its unit, cushions, a lamp on a desk: moved or turned, it is what it rests on that moves (furniture.ts baseOf)
+      const p = a.type === 'move-piece' || a.type === 'rotate-piece' ? (baseOf(pieces, a.id) ?? picked) : picked
       const r =
         a.type === 'resize-piece'
           ? resizePiece(s.unit, rooms, pieces, p.id, a.sizeM, a.grow)
@@ -1594,7 +1596,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
             ? movePiece(s.unit, rooms, pieces, p.id, p, p.rotationDeg + 90, false)
             : a.type === 'lift-piece'
               ? liftPiece(s.unit, rooms, pieces, p.id, a.mountY)
-              : movePiece(s.unit, rooms, pieces, p.id, { x: a.x, y: a.y }, a.rotationDeg ?? p.rotationDeg)
+              : movePiece(s.unit, rooms, pieces, p.id, { x: a.x + p.x - picked.x, y: a.y + p.y - picked.y }, (a.rotationDeg ?? picked.rotationDeg) + p.rotationDeg - picked.rotationDeg)
       if (!r) return s
       if (r.error) return withToast(s, r.error)
       const q = r.piece

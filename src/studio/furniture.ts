@@ -188,6 +188,18 @@ function riders(pieces: FurniturePlacement[], p: FurniturePlacement): FurnitureP
   return [...pieces.filter((o) => o.id !== p.id && !o.removed && !isCurtain(o) && o.roomId === p.roomId && layerOf(o) === 1 && band(o, pieces)[0] <= top + 0.02 && pointInPolygon(o, q)), ...chairsOf(pieces, p)]
 }
 
+/**
+ * What a person's move or turn of piece `id` moves (a drag in 3D or on the plan, R, the arrows): the piece it rests on — a TV on its
+ * unit, cushions on a sofa, a lamp on a desk (riders) — else itself. So a TV never turns or slides off its unit on its own
+ * (session 31 QA: R on the TV pushed it off the unit's front, and the unit then moved without it).
+ */
+export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement | null {
+  const p = pieces.find((x) => x.id === id)
+  if (!p || surfaceOf(p) !== 'floor' || layerOf(p) !== 1) return p ?? null
+  const b = pieceAt(pieces.filter((o) => o.roomId === p.roomId && layerOf(o) === 0), p)
+  return b && riders(pieces, b).includes(p) ? b : p
+}
+
 /** A chair's refusal, said of the set it belongs to. */
 const chairWhy = (e: string | null): string | null => e && (e === 'Outside the room' ? 'No room for the chairs' : `A chair ${e[0].toLowerCase()}${e.slice(1)}`)
 

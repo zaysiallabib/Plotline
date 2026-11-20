@@ -26,7 +26,7 @@ import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -40,6 +40,7 @@ import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
 import './viewer.css'
+import { ask } from '../lib/ask'
 
 const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Unit>
 const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
@@ -845,7 +846,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   }, [ownV]) // eslint-disable-line react-hooks/exhaustive-deps
   const undo = () => steps.current.past.length && settle(undoStep(steps.current))
   const turn = () => {
-    const p = pieceOf(sel)
+    const p = sel ? baseOf(steps.current.pieces, sel) : null // a TV on its unit: the unit turns, the TV on it
     const m = p && movePiece(unit, rooms, steps.current.pieces, p.id, p, p.rotationDeg + 90, false)
     if (m?.error) showToast(m.error)
     else if (m) settle(pushStep(steps.current, m.furniture))
@@ -1100,7 +1101,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     planDo(e.kind === 'slide' ? { type: 'drag-opening', id: e.id, offsetM: e.offsetM, tolM: OPENING_SNAP_M } : { type: 'resize-opening', id: e.id, end: e.end, uM: e.uM, tolM: OPENING_SNAP_M })
   }
   useEffect(() => scene?.onOpening(onOpening))
-  const toggleOpenings = () => {
+  const toggleOpenings = async () => {
     if (editingOpenings) {
       setEditingOpenings(false)
       setOpSel(null)
@@ -1111,10 +1112,10 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
     if (at === 'other') {
       // its doors and windows live in the Studio draft: this unit becomes the draft (as Edit plan does), asked first
       const builtIn = location.pathname !== '/u/preview'
-      const ask = builtIn
+      const question = builtIn
         ? `${unit.name} is a built-in unit. Its doors and windows are edited on your Studio draft: this makes it your Studio draft (replacing the unit open in the Studio — export that first if you need it) and reopens it here. Continue?`
         : 'Edit openings saves into your Studio draft, and your Studio draft is not this unit. Make this unit your Studio draft? (It replaces the unit open in the Studio — export that one first if you need it.)'
-      if (!window.confirm(ask)) return
+      if (!(await ask(question, 'Make it my draft'))) return
       if (!makeDraft(unit)) return showToast(OPENINGS_WHY.full, 7000)
       if (builtIn) return location.assign(`/u/preview?${unit.floor !== undefined ? `floor=${unit.floor}&` : ''}edit=openings`) // (on its floor)
     }

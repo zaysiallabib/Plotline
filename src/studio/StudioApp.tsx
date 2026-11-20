@@ -64,6 +64,7 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
+import { ask } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 const PREVIEW_KEY = 'plotline.preview'
@@ -206,9 +207,9 @@ const withLayout = <U extends Draft['unit']>(u: U): U => ({ ...u, furniture: rea
 /**
  * `/studio?unit=<stem|id>` (the viewer's "Edit plan"): open that unit from src/data/units instead of the draft.
  * Asks first when the draft holds anything but that unit untouched; drops the param so a reload keeps the edits.
- * Module level so StrictMode's double init never asks twice.
+ * Module level so StrictMode's double init never asks twice; the Studio waits for the answer (as the browser's box did).
  */
-const EDIT = ((): Draft['unit'] | null => {
+const EDIT = await (async (): Promise<Draft['unit'] | null> => {
   const q = new URLSearchParams(location.search).get('unit')
   const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'default' }) as Record<string, Draft['unit']>
   const found = q && Object.entries(files).find(([path, x]) => path.endsWith(`/${q}.json`) || x.id === q)?.[1]
@@ -223,7 +224,7 @@ const EDIT = ((): Draft['unit'] | null => {
   const du = [d, d?.unit].find(isUnit) // a Draft or a bare Unit, as init() accepts
   // a project drawing is kept in its project (FloorList): nothing to lose, nothing to ask
   if (du?.vertices.length && !d?.drawing && JSON.stringify(du) !== JSON.stringify(normalizeUnit(u)))
-    if (!window.confirm(`Replace your Studio draft (${du.name || 'untitled unit'}) with ${u.name} as the viewer shows it? Export the draft first if you need it.`)) return null
+    if (!(await ask(`Replace your Studio draft (${du.name || 'untitled unit'}) with ${u.name} as the viewer shows it? Export the draft first if you need it.`, 'Replace'))) return null
   history.replaceState(null, '', '/studio')
   return u
 })()
@@ -1057,11 +1058,11 @@ export default function StudioApp() {
   const onFiles = (list: FileList | null) => void onDropped([...(list ?? [])].map((f) => ({ path: f.name, data: f })))
   if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
 
-  const exportJson = useCallback(() => {
+  const exportJson = useCallback(async () => {
     const st = stateRef.current
     const traced = `Traced in ${formatTimer(st.timer.elapsedMs)}`
     const n = issues.filter((i) => i.level === 'error').length
-    if (n && !window.confirm(`This unit has ${n} error${n === 1 ? '' : 's'}. Export anyway?\n${traced}`)) return
+    if (n && !(await ask(`This unit has ${n} error${n === 1 ? '' : 's'}. Export anyway?\n${traced}`, 'Export anyway'))) return
     console.log(`[plotline] ${traced} (${st.timer.elapsedMs} ms)`)
     const name = st.unit.name.trim() || 'Untitled unit'
     // (s27 AI-prep: with this trace's Check-these rows — their sheet boxes and answers; Import leaves them out)
@@ -1249,8 +1250,8 @@ export default function StudioApp() {
   // ----- auto-trace: pick mode starts the worker reading the sheet at once (text, walls, the whole graph); a hover
   // previews the flat a click there picks; the click picks it on the same prepared sheet → the result replaces the unit
   // (one undo step)
-  const startAutoTrace = () => {
-    if (!img || (unit.walls.length && !window.confirm('Replace your current trace? Ctrl+Z brings it back.'))) return
+  const startAutoTrace = async () => {
+    if (!img || (unit.walls.length && !(await ask('Replace your current trace? Ctrl+Z brings it back.', 'Replace')))) return
     let aiKey: string | undefined
     let tracker: TraceJob['tracker']
     try {
@@ -1964,13 +1965,13 @@ export default function StudioApp() {
     return 0
   }, [s])
 
-  const confirmField = () => {
+  const confirmField = async () => {
     if (!field) return
     const m = parseLength(field.len)
     if (m == null) return setField({ ...field, error: 'Try 14\'-5", 14.4 or 4.4m' })
     if (m <= 0 || m > 100) return setField({ ...field, error: 'That length looks wrong' })
     if (field.purpose === 'scale' && field.pxLen) {
-      if (unit.walls.length && unit.planImage && !window.confirm('Changing scale after tracing moves the image under your walls. Continue?')) {
+      if (unit.walls.length && unit.planImage && !(await ask('Changing scale after tracing moves the image under your walls. Continue?', 'Continue'))) {
         return setField(null)
       }
       dispatch({ type: 'set-scale', pxPerM: field.pxLen / m })
@@ -2094,8 +2095,8 @@ export default function StudioApp() {
         const orphaned = st.unit.walls
           .filter((w) => sel.has(w.a) || sel.has(w.b) || sel.has(w.id))
           .reduce((n, w) => n + w.openings.filter((o) => !sel.has(o.id)).length, 0)
-        if (orphaned && !window.confirm(`This also removes ${orphaned} opening${orphaned === 1 ? '' : 's'}. Continue?`)) return
-        return dispatch({ type: 'delete' })
+        if (!orphaned) return dispatch({ type: 'delete' })
+        return void ask(`This also removes ${orphaned} opening${orphaned === 1 ? '' : 's'}. Continue?`, 'Delete', true).then((yes) => yes && dispatch({ type: 'delete' }))
       }
       if (st.tool === 'opening' && OPENING_KEYS[e.key]) return dispatch({ type: 'pick-opening', kind: OPENING_KEYS[e.key] })
       // the W tool's type (mid-chain a digit starts the typed length instead)

@@ -16,6 +16,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js'
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
 import { Building, type FlatRef } from './building'
@@ -83,8 +86,30 @@ export type OpeningEvent =
 type Handle = { axis: 'x' | 'y' | 'z'; sign: 1 | -1 }
 /** Without deleted pieces (tombstones: built hidden, so an undo shows them again; never lit, shadowed or picked). */
 const present = (u: Unit): Unit => (u.furniture.some((p) => p.removed) ? { ...u, furniture: u.furniture.filter((p) => !p.removed) } : u)
-const SEL = '#39a0ff'
-const REFUSED = '#ff4d4d'
+const SEL = '#2458a6' // --accent (src/index.css): the one blue, as everywhere else
+const REFUSED = '#b5432b' // --danger: terracotta, only for a refusal
+/**
+ * What a picked piece, opening or low wall is outlined with, seen through everything: its colour 2 px wide over a 4 px
+ * white halo, and dots of its colour on a white rim — the edge reads on a black TV and on a white wardrobe alike, whatever
+ * the hue (session 31: the old bright sky blue read on dark wood, the deep accent alone would not).
+ */
+const lineMat = (color: string): LineMaterial => new LineMaterial({ color, linewidth: 2, depthTest: false, transparent: true })
+const haloMat = (): LineMaterial => new LineMaterial({ color: '#ffffff', linewidth: 4, depthTest: false, transparent: true, opacity: 0.85 })
+const dotMat = (color: string): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true })
+/** the segments of `edges` as a halo and a line over it (never picked: a click goes to what is under them) */
+function outline(edges: THREE.BufferGeometry, line: LineMaterial, halo: LineMaterial): LineSegments2[] {
+  const geo = new LineSegmentsGeometry().setPositions(edges.getAttribute('position').array as Float32Array)
+  edges.dispose()
+  return [halo, line].map((m, i) => Object.assign(new LineSegments2(geo, m), { renderOrder: 10 + i, raycast: () => {} }))
+}
+/** a drag dot at `at`: the white rim is what a click finds, the coloured core is drawn over it */
+function dragDot(at: THREE.Vector3, core: THREE.Material, rim: THREE.Material): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 8), rim)
+  m.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.058, 16, 8), core), { renderOrder: 13, raycast: () => {} }))
+  m.position.copy(at)
+  m.renderOrder = 12
+  return m
+}
 /** what a built piece is built at: its own size, and a staff's own model's library size (changed there: built again) */
 const sizeKey = (p: FurniturePlacement): string => JSON.stringify([p.sizeM ?? null, kitAsset(p.assetId)?.own ? kitAsset(p.assetId)!.sizeM : null])
 
@@ -374,7 +399,10 @@ export class PlotlineScene {
   private aimedFrom = ''
   /** the selected piece's box and resize handles, parented to its pivot; its footprint on the floor */
   private readonly selBox = new THREE.Group()
-  private readonly selMat = new THREE.MeshBasicMaterial({ color: SEL, depthTest: false, transparent: true, opacity: 0.9 })
+  private readonly selMat = dotMat(SEL)
+  private readonly selRim = dotMat('#ffffff')
+  private readonly selLine = lineMat(SEL)
+  private readonly selHalo = haloMat()
   private readonly selFoot = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: SEL, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }))
   // Edit openings (staff): the mouse stays free as in Arrange; a grab slides the opening along its wall or moves one end
   private editingOpenings = false
@@ -732,17 +760,26 @@ export class PlotlineScene {
   /**
    * The flat as one binary glTF (session 31, staff → Edit → Download 3D model): its walls, floors, ceilings, doors, windows
    * and furniture with their pictures (at most 1024 px: a furnished flat stays near 20 MB), in metres, Y up — not the street, the sky, the sun or what only
-   * edits show. For a developer's render artist or another 3D program.
+   * edits show. For a developer's render artist or another 3D program. Each mesh once: the batches (batch.ts) are a second
+   * copy of the meshes they draw, and the exporter does not know the layer that hides the originals (session 31: 106 MB).
    */
   async exportGlb(): Promise<ArrayBuffer> {
     const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js')
     const ceilings = this.ceilingGroup.visible
     this.ceilingGroup.visible = true // the dollhouse hides them; the model has them
+    this.exporting = true // no batch comes back while the exporter walks the groups (settle)
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) unbatch(g)
     // pictures as JPEG where nothing shows through (PNG for the rest): 133 pictures of a furnished flat, 116 MB → ~20 MB
     const marked: THREE.Texture[] = []
+    // a roughness picture with no metalness one: the exporter bakes a new metal-rough picture for every material using it
+    // (six copies of one marble's, ~7 MB on type-a); with metalness 0 that picture's blue (metalness) is never read, so the
+    // roughness picture goes as it is, once — lent as the metalness map for the export only
+    const lent: THREE.MeshStandardMaterial[] = []
     for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
       g.traverse((o) => {
         for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
+          const st = m as THREE.MeshStandardMaterial
+          if (st.roughnessMap && !st.metalnessMap && st.metalness === 0) lent.push(Object.assign(st, { metalnessMap: st.roughnessMap }))
           if (m.transparent || m.alphaTest > 0) continue
           for (const v of Object.values(m)) if (v instanceof THREE.Texture && !v.userData.mimeType && v.image) (v.userData.mimeType = 'image/jpeg'), marked.push(v)
         }
@@ -754,8 +791,13 @@ export class PlotlineScene {
     } finally {
       this.ceilingGroup.visible = ceilings
       for (const t of marked) delete t.userData.mimeType
+      for (const m of lent) m.metalnessMap = null
+      this.exporting = false
+      this.rebatch('static')
+      this.rebatch('furniture')
     }
   }
+  private exporting = false
 
   currentRoomId(): Id | null {
     if (!this.ready || !this.unit) return null
@@ -829,7 +871,7 @@ export class PlotlineScene {
     }
     if (this.selBox.parent !== o || this.selBox.userData.axes !== s.axes.join()) this.fitSelection(o, s.axes)
     const color = s.refused ? REFUSED : SEL
-    for (const m of [this.selMat, this.selFoot.material, (this.selBox.userData.lines as THREE.LineSegments).material] as THREE.MeshBasicMaterial[]) m.color.set(color)
+    for (const m of [this.selMat, this.selFoot.material as THREE.MeshBasicMaterial, this.selLine]) m.color.set(color)
     const pos = this.selFoot.geometry.getAttribute('position') as THREE.BufferAttribute
     const floor = (o.userData.floorM as number | undefined) ?? 0
     s.quad.forEach((p, i) => pos.setXYZ(i, p.x, floor + 0.015, p.y)) // over the 14 mm contact shadows and 12 mm rugs
@@ -867,7 +909,7 @@ export class PlotlineScene {
       // a table lamp: on the top of what is under it now (a desk, a bedside), else on the floor
       o.position.y = kitAsset(p.assetId)?.onTop ? floor + bottomOf(this.layout, p) : kitY === undefined ? o.position.y + floor - (o.userData.floorM ?? 0) : floor + (p.mountY ?? kitY)
       o.userData.floorM = floor
-      o.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
+      o.rotation.set(0, -THREE.MathUtils.degToRad(p.rotationDeg), 0) // about the vertical only (fitSelection)
       o.userData.roomId = p.roomId
       o.visible = !p.removed
     }
@@ -907,24 +949,22 @@ export class PlotlineScene {
     this.selBox.removeFromParent()
     this.selBox.traverse((c) => (c as THREE.Mesh).geometry?.dispose())
     this.selBox.clear()
-    const [p, q, k] = [o.position.clone(), o.quaternion.clone(), o.scale.clone()]
+    // the Euler, not the quaternion: a half turn copied back as a quaternion reads as (180°, 0°, 180°), and the next
+    // placePieces set y alone on that — the piece stood backwards (the TV cabinet showed its plain back, session 31 QA V7)
+    const [p, r, k] = [o.position.clone(), o.rotation.clone(), o.scale.clone()]
     o.position.set(0, 0, 0)
-    o.quaternion.identity()
+    o.rotation.set(0, 0, 0)
     o.scale.set(1, 1, 1)
     o.updateMatrixWorld(true)
     const box = new THREE.Box3().setFromObject(o)
     o.position.copy(p)
-    o.quaternion.copy(q)
+    o.rotation.copy(r)
     o.scale.copy(k)
     o.updateMatrixWorld(true)
-    const lines = new THREE.Box3Helper(box, SEL)
-    const lm = lines.material as THREE.LineBasicMaterial
-    lm.depthTest = false // seen through the piece, the walls and the ceiling
-    lm.transparent = true
-    lines.renderOrder = 10
-    lines.raycast = () => {} // a Line's 1 m pick threshold would catch every click near it
-    this.selBox.add(lines)
     const c = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    // seen through the piece, the walls and the ceiling
+    this.selBox.add(...outline(new THREE.EdgesGeometry(new THREE.BoxGeometry(size.x, size.y, size.z).translate(c.x, c.y, c.z)), this.selLine, this.selHalo))
     const at: [Handle, THREE.Vector3][] = [
       [{ axis: 'x', sign: 1 }, new THREE.Vector3(box.max.x, c.y, c.z)],
       [{ axis: 'x', sign: -1 }, new THREE.Vector3(box.min.x, c.y, c.z)],
@@ -933,13 +973,11 @@ export class PlotlineScene {
       [{ axis: 'y', sign: 1 }, new THREE.Vector3(c.x, box.max.y, c.z)],
     ]
     for (const [h, v] of at.filter(([h]) => axes.includes(h.axis))) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), this.selMat)
-      m.position.copy(v)
-      m.renderOrder = 11
+      const m = dragDot(v, this.selMat, this.selRim)
       m.userData.handle = h
       this.selBox.add(m)
     }
-    this.selBox.userData = { axes: axes.join(), axesList: axes, box, lines }
+    this.selBox.userData = { axes: axes.join(), axesList: axes, box }
     o.add(this.selBox)
   }
 
@@ -1001,18 +1039,13 @@ export class PlotlineScene {
     const foot = Math.min(...(this.lifts.get(s.id)?.foot ?? [0])) // a wall's height is from its lower floor
     this.opBox.matrixAutoUpdate = false
     this.opBox.matrix.makeBasis(dir, UP, new THREE.Vector3(-dir.z, 0, dir.x)).setPosition(s.a.x, foot, s.a.y)
-    const mat = { color: SEL, depthTest: false, transparent: true }
-    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, s.heightM, s.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
-    box.position.set(L / 2, s.heightM / 2, 0)
-    box.raycast = () => {}
-    this.opBox.add(box)
+    this.opBox.add(...outline(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, s.heightM, s.thicknessM + 0.04).translate(L / 2, s.heightM / 2, 0)), lineMat(SEL), haloMat()))
+    const [core, rim] = [dotMat(SEL), dotMat('#ffffff')]
     for (const end of ['a', 'b'] as const) {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
-      dot.position.set(end === 'a' ? 0 : L, s.heightM, 0)
+      const dot = dragDot(new THREE.Vector3(end === 'a' ? 0 : L, s.heightM, 0), core, rim)
       dot.userData.end = end
       this.opBox.add(dot)
     }
-    for (const c of this.opBox.children) c.renderOrder = 11
   }
 
   /** Outlines opening `id` (u from its wall's corner A, heights in m) with a dot on each end and on its head (a dot drag resizes it; a window's sill has one too); red while refused. null clears. */
@@ -1027,21 +1060,20 @@ export class PlotlineScene {
     // …standing on the higher floor beside the wall, as the opening is built (liftedWall)
     const base = this.openingBase(s.wallId, s.offsetM + s.widthM / 2)
     this.opBox.matrix.makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(f.normal.x, 0, f.normal.y)).setPosition(f.origin.x, base, f.origin.y)
-    const mat = { color: s.refused ? REFUSED : SEL, depthTest: false, transparent: true }
-    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(s.widthM, s.heightM, w.thicknessM + 0.04)), new THREE.LineBasicMaterial(mat))
-    box.position.set(s.offsetM + s.widthM / 2, s.sillM + s.heightM / 2, 0)
-    box.raycast = () => {}
-    this.opBox.add(box)
+    const color = s.refused ? REFUSED : SEL
+    const mid = s.offsetM + s.widthM / 2
+    this.opBox.add(...outline(new THREE.EdgesGeometry(new THREE.BoxGeometry(s.widthM, s.heightM, w.thicknessM + 0.04).translate(mid, s.sillM + s.heightM / 2, 0)), lineMat(color), haloMat()))
+    const [core, rim] = [dotMat(color), dotMat('#ffffff')]
     const window = w.openings.find((o) => o.id === s.id)?.kind === 'window' // only a window's bottom is off the floor
     for (const end of ['a', 'b', 'top', ...(window ? (['sill'] as const) : [])] as const) {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 8), new THREE.MeshBasicMaterial({ ...mat, opacity: 0.9 }))
-      const mid = s.offsetM + s.widthM / 2
-      if (end === 'top' || end === 'sill') dot.position.set(mid, end === 'top' ? s.sillM + s.heightM : s.sillM, 0)
-      else dot.position.set(end === 'a' ? s.offsetM : s.offsetM + s.widthM, s.sillM + s.heightM / 2, 0)
+      const at =
+        end === 'top' || end === 'sill'
+          ? new THREE.Vector3(mid, end === 'top' ? s.sillM + s.heightM : s.sillM, 0)
+          : new THREE.Vector3(end === 'a' ? s.offsetM : s.offsetM + s.widthM, s.sillM + s.heightM / 2, 0)
+      const dot = dragDot(at, core, rim)
       dot.userData.end = end
       this.opBox.add(dot)
     }
-    for (const c of this.opBox.children) c.renderOrder = 11
   }
 
   /** The vertical plane through wall `wallId`'s centre line, and u along it where the ray at `ndc` meets it (null: it does not). */
@@ -1156,7 +1188,7 @@ export class PlotlineScene {
   }
 
   private settle = (): void => {
-    if (this.disposed || !this.ready) return
+    if (this.disposed || !this.ready || this.exporting) return // exportGlb batches them again when it is done
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
     for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
@@ -1202,7 +1234,7 @@ export class PlotlineScene {
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()
-    this.selMat.dispose()
+    for (const m of [this.selMat, this.selRim, this.selLine, this.selHalo]) m.dispose()
     this.look.dispose()
     // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
     // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.

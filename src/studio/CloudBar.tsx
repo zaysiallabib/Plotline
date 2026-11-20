@@ -12,6 +12,7 @@ import { autosaver, deleteProject, hashOf, itemKey, linkStore, listProjects, loa
 import type { Autosaver, CloudItem, CloudRow, Kind, SavedVersion, Status } from '../lib/cloud'
 import { configured } from '../lib/supabase'
 import { Links, Members } from './CloudPanes'
+import { ask } from '../lib/ask'
 
 interface Props {
   /** what is open, to save (null: nothing worth saving, e.g. an empty drawing); read when a save starts */
@@ -181,7 +182,7 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
       await saver?.flush()
       const left = saver?.status().kind
       const theirs = left === 'stale' && id === openId // "Open theirs": dropping mine is the point
-      if (bar.snapshot() && left !== 'saved' && !theirs && !window.confirm('What is open now is not saved in the cloud yet. Replace it anyway? (Export it first if you need it.)')) return
+      if (bar.snapshot() && left !== 'saved' && !theirs && !(await ask('What is open now is not saved in the cloud yet. Replace it anyway? (Export it first if you need it.)', 'Replace'))) return
       const row = await loadProject(id)
       const data = version === undefined ? row.data : await loadVersion(id, version)
       if (!bar.onOpen(row.kind, data)) return setError('That one could not be read: it may be from a newer Plotline')
@@ -206,7 +207,7 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
     }
   }
   const remove = async (r: CloudRow) => {
-    if (!window.confirm(`Delete "${r.name}" from the cloud for everyone in ${org?.name ?? 'your company'}? This browser keeps its own copy, and every save stays in the history.`)) return
+    if (!(await ask(`Delete "${r.name}" from the cloud for everyone in ${org?.name ?? 'your company'}? This browser keeps its own copy, and every save stays in the history.`, 'Delete', true))) return
     try {
       await deleteProject(r.id)
       refresh()

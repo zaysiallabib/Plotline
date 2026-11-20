@@ -11,6 +11,7 @@ import { drawingName, forkFloor, parseFloors, planOf, removeDrawing, setSlot, sl
 import { copyKept, floorAnswer, setFloorAnswer } from '../viewer/arrange'
 import { emptyUnit } from './model'
 import { copyPicture, deletePicture } from './pictures'
+import { ask } from '../lib/ask'
 
 const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
 /** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
@@ -133,7 +134,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     )
   }
   /** drawing `id` goes on the floors typed for it ("2, 4, 6-8"): one floor plan on many floors, any pattern (founder 2026-10-05, -19) */
-  const applyAlso = (id: Id) => {
+  const applyAlso = async (id: Id) => {
     const ks = parseFloors(also[id] ?? '')
     if (!ks) return onToast('Type floor numbers, like 2, 4, 6-8')
     const top = planOf(project).floors
@@ -142,7 +143,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     if (!ok.length) return
     // never a silent swap: a floor that carries another drawing is named first (user test, session 21)
     const taken = slotsOf(project).filter((r) => typeof r.slot === 'number' && ok.includes(r.slot) && r.unitIds.length && !r.unitIds.includes(id))
-    if (taken.length && !window.confirm(`${taken.map((r) => `${r.label} has "${named(r.unitIds[0])}"`).join(', ')}. Put "${named(id)}" there instead? (The other drawing is kept.)`)) return
+    if (taken.length && !(await ask(`${taken.map((r) => `${r.label} has "${named(r.unitIds[0])}"`).join(', ')}. Put "${named(id)}" there instead? (The other drawing is kept.)`, 'Put it there'))) return
     if (change((p) => ok.reduce((q, k) => setSlot(q, k, q.units[id] ?? null), p))) setAlso((a) => ({ ...a, [id]: '' }))
   }
   /** a copy of drawing `id` as a new floor plan (for the floor that differs a little), with its picture; on no floor yet */
@@ -175,8 +176,8 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     })
   }
   const said = floorAnswer(pid)
-  const deleteDrawing = () => {
-    if (!drawing || !window.confirm(`Delete the drawing "${nameOf(unit)}"? It leaves every floor it is on. This cannot be undone.`)) return
+  const deleteDrawing = async () => {
+    if (!drawing || !(await ask(`Delete the drawing "${nameOf(unit)}"? It leaves every floor it is on. This cannot be undone.`, 'Delete', true))) return
     void deletePicture(drawing).catch(() => {})
     onOpen(
       fresh().map((p) => (p.id === pid ? removeDrawing(p, drawing) : p)),
@@ -187,8 +188,8 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     const name = window.prompt('Project name', project.name)?.trim()
     if (name) change((p) => ({ ...p, name }))
   }
-  const remove = () => {
-    if (!window.confirm(`Delete the project "${project.name}" and all its drawings? This cannot be undone.`)) return
+  const remove = async () => {
+    if (!(await ask(`Delete the project "${project.name}" and all its drawings? This cannot be undone.`, 'Delete', true))) return
     for (const id of Object.keys(project.units)) void deletePicture(id).catch(() => {})
     if (onStore(fresh().filter((p) => p.id !== pid))) onActivate(null)
   }

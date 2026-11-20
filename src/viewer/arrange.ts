@@ -6,7 +6,7 @@
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
 import { PROJECTS_KEY, forkFloor, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
 import { kitAsset, objectKind, placementRange } from '../furnish/kit'
-import { deletePiece, hangOn, layerOf, movePiece, pieceAt, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
+import { baseOf, deletePiece, hangOn, movePiece, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
 import { snapMove } from '../studio/snap'
 import type { OpeningEvent } from '../three/PlotlineScene'
@@ -82,12 +82,8 @@ export interface DragTarget {
   hole?: WallFace | null
 }
 
-/** What a drag of piece `id` moves (3D and Studio tool F): a piece resting on another (a TV on its unit, cushions) → the floor piece under it. */
-export function baseOf(pieces: FurniturePlacement[], id: Id): FurniturePlacement | null {
-  const p = pieces.find((x) => x.id === id)
-  if (!p || surfaceOf(p) !== 'floor' || layerOf(p) !== 1) return p ?? null
-  return pieceAt(pieces.filter((o) => o.roomId === p.roomId && layerOf(o) === 0), p) ?? p
-}
+/** What a drag of piece `id` moves (3D and Studio tool F): studio/furniture.ts baseOf. */
+export { baseOf }
 
 /**
  * A TV standing on its unit, pointed up onto the wall above it (the wall under the pointer more than 10 cm over the TV's
