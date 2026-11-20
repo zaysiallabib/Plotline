@@ -42,6 +42,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Ctrl+O** | Import: opens a drawing file | any tool — **also inside a text box** | §5 Top bar |
 | Ctrl+A | Picks every wall | V | §5 — V |
 | **Arrow keys** | Nudge what is picked 1 inch | every tool but F | §5 Other keys |
+| **↑ / ↓** | Picks the row above / below in **Check these** (its mark on the plan turns blue); **Enter** goes to it on the plan and opens it. Works once you have clicked in the list (a row, a room's line); a click on the plan gives the arrow keys back to nudging | the Check these list | §5 Right-hand panel — Check these |
 | **Shift + arrow keys** | Nudge 1 foot | every tool but F | §5 Other keys |
 | **Arrow keys** | Move the picked piece one 3-inch square (Shift changes nothing; nothing while a piece is in your hand) | F | §5 — F |
 | **R** | Turn the picked piece 90° — or the piece in your hand | F | §5 — F |
@@ -309,7 +310,8 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Use it as a picture instead** / **Read its lines instead** (the message after a PDF page) | Takes the same page the other way |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
-| Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |
+| Marks on the plan: a numbered red badge (breaks the 3D), a small amber dot (worth a look — its number shows when the mouse comes near or its row is picked), an outlined badge with a count (several rows at one spot) | Click one: its problem box opens (a count: the first row; **Also here** in the box lists the others) |
+| Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **Also here** (the other rows at the same spot), **×** | Opens from a mark or a row; fixes it in one click |
 | **Start over** / **×** (on "Draft restored") | Empties the Studio / hides the message |
 | A link in a message (e.g. **Use its scale and position**) | Does what it says (15 seconds) |
 
@@ -337,7 +339,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Selection** — a room name | **Room name**, **Kind**, **Flat** (by its doors / a flat / Not in a flat / New flat / Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Change one room's name and details |
 | **Selection** — a piece (F) | **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)** (pieces that stretch; curtains: **W**), **Height from floor (m)** (a TV, picture, AC, clock or mirror: its bottom edge), **Reset to preset**, **Reset all** | Change one piece; put a room (or all) back to the automatic layout |
 | **Add a piece** (F) | The library: search, the groups, **+ Add your own…** (a 3D model of your own: see the 3D view's Edit furniture rows), **⋯** on your own pieces | A new piece; click the plan to put it there (curtains: beside an opening) |
-| **Check these** (after Auto-trace) | per row: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / low wall / zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right**, **Ask AI** (then **Apply** or **Undo**); beside the heading **Ask AI for all**; click a row = go to it | Answer what Auto-trace was unsure of |
+| **Check these** (after Auto-trace) | rows grouped by room: a room with two rows or more is one line (its name, how many, its first row) — click it to show or fold its rows; per row: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / low wall / zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right**, **Ask AI** (then **Apply** or **Undo**); beside the heading **Ask AI for all**; click a row = go to it; **↑ / ↓** and **Enter** in the list | Answer what Auto-trace was unsure of |
 | **Check these** — settings | **Wall tracks** (tick box: which tracing method — leave it on); **AI helper (optional)**: a Gemini key; **Local AI (this PC, free)**: **Server**, **Model**, **Use it anyway**, **Test** | How Auto-trace and Ask AI work |
 | **Issues** | **Join walls (overlaps and crossings)**; click an issue = its fixes (Close the gap, Join, Extend, Remove end, Keep — it stands alone, Remove, Merge corners, Remove the copy, Shrink, Move it inside, Trim, Join here, End it here, Type the name, Join with a zone line) | Problems in the drawing |
 

@@ -13,7 +13,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import { emptyUnit, initialState, reducer, studioIssues, type Draft, type StudioState } from './model'
 import { ANSWERS_KEY, LOOKS_RIGHT, applyAnswer, logAnswer, openReview, studioReducer } from './review'
-import { KEEP, around, closes, exportedReview, fixSig, fixesOf, issueKey, markIssues, rowAnswers, type Mark } from './issues'
+import { KEEP, SPOT_PX, around, closes, exportedReview, fixSig, fixesOf, groupRows, issueKey, markIssues, rowAnswers, spotsOf, type Mark } from './issues'
 
 const v = (id: string, x: number, y: number): Vertex => ({ id, x, y })
 const w = (id: string, a: string, b: string, openings: Opening[] = []): Wall => ({ id, a, b, thicknessM: 0.127, heightM: 3.048, openings })
@@ -466,3 +466,33 @@ describe('s27 rows: a whole floor of 1 000+ walls — each mark is checked on th
   })
 })
 
+describe('s31 calm: the plan reads as a drawing — one badge per spot, grey only in the list, rows grouped by room', () => {
+  const mk = (key: string, x: number, y: number, severity: Mark['severity'], extra: Partial<Mark> = {}): Mark => ({ key, n: 1, severity, at: { x, y }, message: key, ...extra })
+  const id = (p: { x: number; y: number }) => p // 1 m = 1 px: spots SPOT_PX apart
+
+  it('marks at one spot share a badge (red when any is); a grey mark and a twin row are not drawn; list order kept', () => {
+    const marks = [mk('a', 0, 0, 'amber'), mk('b', SPOT_PX - 1, 0, 'red'), mk('c', 100, 0, 'amber'), mk('g', 200, 0, 'grey'), mk('t', 100, 0, 'amber', { twinOf: 'c' }), mk('far', SPOT_PX + 1, 0, 'amber')]
+    const spots = spotsOf(marks, id)
+    expect(spots.map((s) => [s.key, s.marks.map((m) => m.key), s.severity])).toEqual([
+      ['a', ['a', 'b'], 'red'],
+      ['c', ['c'], 'amber'],
+      ['far', ['far'], 'amber'],
+    ])
+    // zoomed in (10 px a metre) the first two come apart
+    expect(spotsOf(marks, (p) => ({ x: p.x * 10, y: p.y * 10 })).filter((s) => s.marks.length > 1)).toEqual([])
+  })
+
+  it('rows grouped by the room their spot is in; a printed name in no room by that name; the rest "Elsewhere"; a name two flats share gets its flat', () => {
+    const u = splitBottom(box([v('p2', 2, 0)], [w('part', 'p1', 'p2')]))
+    const t = { ...u, walls: u.walls.filter((x) => x.id !== 'top').concat([w('t1', 'v1', 'p2', [door('d', 0.5)]), w('t2', 'p2', 'v2', [door('d2', 0.5)])]), roomLabels: [{ id: 'L', name: 'Bed', kind: 'bed' as const, x: 1, y: 1.5 }, { id: 'R', name: 'Bed', kind: 'bed' as const, x: 3, y: 1.5 }] }
+    const rooms = deriveRooms(t)
+    const row = (key: string, x: number, y: number, room?: string): Mark => mk(key, x, y, 'amber', { review: { id: key, at: { x, y }, kind: 'other', message: key, ...(room ? { room } : {}) } })
+    const groups = groupRows([row('1', 1, 1), row('2', 3, 1), row('3', 1, 2), row('4', 9, 9, 'Aod'), row('5', 9, 8)], t, rooms, (rid) => (rid === 'L' ? 'Flat 1' : 'Flat 2'))
+    expect(groups.map((g) => [g.name, g.rows.map((m) => m.key)])).toEqual([
+      ['Bed · Flat 1', ['1', '3']],
+      ['Bed · Flat 2', ['2']],
+      ['Aod', ['4']],
+      ['Elsewhere', ['5']],
+    ])
+  })
+})

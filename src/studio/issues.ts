@@ -248,6 +248,68 @@ export function markIssues(u: Unit, rooms: Room[], issues: StudioIssue[], review
   return marks.map((m) => (m.twinOf ? { ...m, n: nOf.get(m.twinOf) ?? null } : m))
 }
 
+// ── s31 calm: a sheet that reads as a drawing, not an error list ────────────────────────────────────────────────────
+
+/** marks whose spots fall this close on screen (px) share one badge */
+export const SPOT_PX = 14
+
+/** One badge on the plan: the marks at one spot (screen px), the first in list order leading; red when any of them is. */
+export interface Spot {
+  key: string
+  at: Pt
+  marks: Mark[]
+  severity: Severity
+}
+
+/**
+ * The badges the plan draws (s31 calm, founder's "the screen reads as an error list"): one per spot — marks within SPOT_PX
+ * of a badge's spot on screen join it (its count shows, not a number); grey ones (cosmetic) are not drawn at all, the
+ * list holds them; a "Check these" row on an issue's spot is that issue's badge already (twinOf). List order kept.
+ */
+export function spotsOf(marks: Mark[], toScreen: (p: Pt) => Pt, px = SPOT_PX): Spot[] {
+  const out: Spot[] = []
+  for (const m of marks) {
+    if (!m.at || m.twinOf || m.severity === 'grey') continue
+    const p = toScreen(m.at)
+    const s = out.find((x) => Math.hypot(x.at.x - p.x, x.at.y - p.y) <= px)
+    if (s) {
+      s.marks.push(m)
+      if (m.severity === 'red') s.severity = 'red'
+    } else out.push({ key: m.key, at: p, marks: [m], severity: m.severity })
+  }
+  return out
+}
+
+/** One group of the "Check these" list: the rows about one room (or one printed name with no room, or the rest). */
+export interface RowGroup {
+  key: string
+  name: string
+  rows: Mark[]
+}
+
+/**
+ * The "Check these" rows grouped by room (s31 calm): each row goes to the smallest closed room around its spot — a room row
+ * about a printed name in no closed room to that name — the rest to "Elsewhere". Groups in the order of their first row,
+ * rows in list order; `flatOf` (room id → flat name) adds the flat to a name two groups share ("Bed · Flat 2").
+ */
+export function groupRows(rows: Mark[], u: Unit, rooms: Room[], flatOf: (roomId: Id) => string | undefined = () => undefined): RowGroup[] {
+  const polys = outlinesOf(rooms, u)
+  const by = new Map<string, RowGroup>()
+  for (const m of rows) {
+    const k = m.at ? roomIndexAt(m.at, rooms, polys) : -1
+    const r = k >= 0 ? rooms[k] : undefined
+    const key = r ? `room:${r.id}` : m.review?.room ? `name:${m.review.room}` : 'elsewhere'
+    const g = by.get(key) ?? by.set(key, { key, name: r ? r.name : (m.review?.room ?? 'Elsewhere'), rows: [] }).get(key)!
+    g.rows.push(m)
+  }
+  const groups = [...by.values()]
+  const twice = new Set(groups.map((g) => g.name).filter((n, i, all) => all.indexOf(n) !== i))
+  return groups.map((g) => {
+    const flat = g.key.startsWith('room:') && twice.has(g.name) ? flatOf(g.key.slice(5)) : undefined
+    return flat ? { ...g, name: `${g.name} · ${flat}` } : g
+  })
+}
+
 /** what a room a fix closes brings with it, never a new problem: an unnamed space, the first room's "no entry door yet" */
 const CLOSED_A_ROOM = new Set<StudioIssue['code']>(['unlabelled-room', 'no-entry-door'])
 
