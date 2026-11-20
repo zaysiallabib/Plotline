@@ -569,7 +569,7 @@
 .hand-tag { position: absolute; z-index: 6; left: 0; top: 0; max-width: 340px; padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); line-height: var(--lh); pointer-events: none; }
 .hand-tag.at-dot { left: 50%; top: calc(50% + var(--s-5)); transform: translateX(-50%); }
 .dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--ink-2); pointer-events: none; }
-.library { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--arrange-h) + var(--s-2)); width: 380px; max-width: calc(100% - 2 * var(--edge)); max-height: calc(100% - var(--arrange-h) - var(--dock-top) - 2 * var(--edge)); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.library { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--arrange-h) + var(--s-2)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); max-height: calc(100% - var(--arrange-h) - var(--dock-top) - 2 * var(--edge)); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
 /* one floor or all (staff, a project floor whose drawing is on other floors too): top middle, under the bar's line */
 .ask-floor { position: absolute; z-index: 5; left: 50%; top: var(--dock-top); translate: -50% 0; width: max-content; max-width: min(440px, calc(100% - 2 * var(--edge))); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); line-height: var(--lh); animation: appear var(--dur) var(--ease) both; }
 .ask-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
