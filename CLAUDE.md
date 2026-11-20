@@ -144,6 +144,12 @@ Every key and button in one list: Docs/KEYS.md (same rule). Every outside source
   language is `Docs/DESIGN.md` (marble, ink, one Aegean blue; black-and-gold is dead). Everything Claude adds must be
   doable by a person in the product (a model dropped into the library, a finish option typed in, a plan traced) and
   written in MANUAL.
+- **Session 31 (founder, 2026-11-20, away 10 hours): "get it to production level … finish the whole website and the tool.
+  get the new format compatibility to the max … make sure that whatever changes you make and whatever models you make I can
+  make the same with least difficulty and maximum efficiency."** He first said "go international", then: "we are based on
+  dhaka. i guess you could skip going international for now" — Dhaka stays. The design language is `Docs/DESIGN.md`
+  (marble, ink, one Aegean blue; black-and-gold is dead). Everything Claude adds must be doable by a person in the product
+  (a model dropped into the library, a finish option typed in, a plan traced) and written in MANUAL.
 - **Claude is the long-term developer and CTO (founder, 2026-11-20 night):** "quality will only increase from here not
   decrease. functional ease should only increase not decrease." Add what makes the experience smoother without asking;
   never ship a change that makes any existing path slower, uglier or harder. Claude does the security checks itself
