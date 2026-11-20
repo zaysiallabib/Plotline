@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
+import { lean, lite, texture } from '../three/materials'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
@@ -28,23 +29,8 @@ type Size3 = { x: number; y: number; z: number }
 // ───────────────────────────── materials ─────────────────────────────
 
 const loader = new THREE.TextureLoader()
-const texCache = new Map<string, Promise<THREE.Texture>>()
-function tex(url: string, repeatM: number, srgb: boolean): Promise<THREE.Texture> {
-  const key = `${url}|${repeatM}`
-  let p = texCache.get(key)
-  if (!p) {
-    p = loader.loadAsync(url).then((t) => {
-      t.wrapS = t.wrapT = THREE.RepeatWrapping
-      t.repeat.set(1 / repeatM, 1 / repeatM)
-      t.anisotropy = 8 // WebGLTextures clamps to the GPU max
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace
-      return t
-    })
-    p.catch(() => console.warn(`[plotline] texture missing: ${url}`))
-    texCache.set(key, p)
-  }
-  return p
-}
+/** a picture at a tile size, shared with the rooms' (three/materials.ts texture: one download and upload per picture) */
+const tex = texture
 
 type PbrOpt = { tint?: string; roughness?: number; metalness?: number; scale?: number }
 const matCache = new Map<string, THREE.MeshStandardMaterial>()
@@ -67,9 +53,9 @@ function pbr(textureId: string, o: PbrOpt = {}): THREE.MeshStandardMaterial {
         })
         .catch(() => {})
     slot('map', set.albedo, true)
-    slot('normalMap', set.normal)
     slot('roughnessMap', set.roughness)
-    slot('aoMap', set.ao)
+    if (!lite.on) slot('normalMap', set.normal) // Lite: colour and roughness only (three/materials.ts lite)
+    if (!lite.on) slot('aoMap', set.ao)
   }
   matCache.set(key, m)
   return m
@@ -293,7 +279,8 @@ let reflecting = false
 /**
  * A w × h mirror facing +z at (x, y, z): a real reflection (three Reflector, 512² target) while the camera is
  * within 4 m in front of it, outside XR, and it is on screen (onBeforeRender only runs for drawn objects);
- * otherwise the flat `mirror` material. userData.mirror.forceOff switches it off (cost measurements).
+ * otherwise the flat `mirror` material. userData.mirror.forceOff switches it off (cost measurements; always on Lite and
+ * Low, three/materials.ts lean: a reflection pass draws the whole flat again).
  * ponytail: the render target is not disposed with the unit (one 512² target per vanity); dispose on unit swap if units start changing at runtime.
  */
 function mirror(w: number, h: number, x: number, y: number, z: number): THREE.Mesh {
@@ -305,7 +292,7 @@ function mirror(w: number, h: number, x: number, y: number, z: number): THREE.Me
   })
   r.position.set(x, y, z)
   r.userData.solo = true
-  const state = { forceOff: false }
+  const state = { forceOff: lean.on }
   r.userData.mirror = state
   const live = r.material
   const off = M().mirror
@@ -1391,7 +1378,7 @@ function planterBed(id: string): THREE.Object3D[] {
     im.visible = false // until the scan's blades are in
     return im
   })
-  if (browser() && !lite.on)
+  if (browser() && !lean.on)
     loadLeaves()
       .then((geos) =>
         ims.forEach((im, k) => {
@@ -1407,12 +1394,8 @@ function planterBed(id: string): THREE.Object3D[] {
 // ───────────────────────────── greenery (session 19) ─────────────────────────────
 
 const browser = () => typeof globalThis.document?.createElement === 'function'
-/**
- * Lite (three/render.ts Quality, set by PlotlineScene): the scanned plants (1.2–6.3 MB files each) are not loaded — a pot
- * keeps its soil, a planter bed its earth, a kit plant model is left out (three/furniture.ts) — and the models' pictures
- * are decoded at half size.
- */
-export const lite = { on: false }
+/** Lite, and Lite and Low: three/materials.ts holds the switches (what each leaves out is listed there). */
+export { lean, lite }
 
 /** An empty mesh with a bounding box: furniture.ts sizes and grounds a piece by its bbox, before its scans have loaded. */
 function layoutBox(min: [number, number, number], max: [number, number, number]): THREE.Mesh {
@@ -1452,7 +1435,7 @@ function plant(id: ScanId, at: [number, number, number], rotY = 0, k = 1): THREE
   g.rotation.y = rotY
   g.scale.setScalar(k)
   g.userData.solo = true
-  if (browser() && !lite.on)
+  if (browser() && !lean.on)
     scanFile(s)
       .then((scene) => {
         for (const name of s.nodes) {
@@ -1571,7 +1554,7 @@ function atlasLeafMat(dir: string, file: string, onReady: () => void): THREE.Mes
     const mat = (m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, emissive: '#3d4b2c', emissiveIntensity: leafGlow, roughness: 1, metalness: 0 }))
     const u = (map: string, ext = 'jpg') => `/assets/models/${dir}/${file}_leaves_${map}_1k.${ext}`
     mat.userData.ready = browser()
-      ? Promise.all([tex(u('diff'), 1, true), tex(u('alpha', 'png'), 1, false), tex(u('nor_gl'), 1, false), tex(u('arm'), 1, false)]).then(([map, alphaMap, normalMap, roughnessMap]) => {
+      ? Promise.all([tex(u('diff'), 1, true), tex(u('alpha', 'png'), 1, false), lite.on ? null : tex(u('nor_gl'), 1, false), tex(u('arm'), 1, false)]).then(([map, alphaMap, normalMap, roughnessMap]) => {
           Object.assign(mat, { map, emissiveMap: map, alphaMap, normalMap, roughnessMap, needsUpdate: true })
         })
       : new Promise(() => {})
@@ -1652,7 +1635,7 @@ const bark = () => {
     m.userData.ownUV = true
     const u = (map: string) => `/assets/models/tree_shade/jacaranda_tree_branches_${map}_1k.jpg`
     if (browser())
-      Promise.all([tex(u('diff'), BARK_M, true), tex(u('nor_gl'), BARK_M, false), tex(u('arm'), BARK_M, false)])
+      Promise.all([tex(u('diff'), BARK_M, true), lite.on ? null : tex(u('nor_gl'), BARK_M, false), tex(u('arm'), BARK_M, false)])
         .then(([map, normalMap, roughnessMap]) => Object.assign(m, { map, normalMap, roughnessMap, needsUpdate: true }))
         .catch(() => {})
   }

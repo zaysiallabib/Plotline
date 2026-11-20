@@ -1,8 +1,57 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
+import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
+
+describe('what each quality tier draws (session 31)', () => {
+  test('Lite: no shadow maps at all, two lamps in the pool, no corner shading', () =>
+    expect(TIERS.lite).toMatchObject({ sun: 0, lamps: 2, lampShadows: 0, ao: false }))
+  test('Low: the sun’s 1024 shadow map only (no lamp shadows), four lamps', () => expect(TIERS.low).toMatchObject({ sun: 1024, lamps: 4, lampShadows: 0, ao: false }))
+  test('High as before: 2048 sun, twelve lamps, three casting, corner shading', () => expect(TIERS.high).toMatchObject({ sun: 2048, lamps: 12, lampShadows: 3, ao: true }))
+  test('scanned plants and live mirrors on High only; pictures at most 512 px on Lite, 1024 on Low, the chip’s own on High', () => {
+    expect([TIERS.high.extras, TIERS.low.extras, TIERS.lite.extras]).toEqual([true, false, false])
+    expect([TIERS.high.maxTexture, TIERS.low.maxTexture, TIERS.lite.maxTexture]).toEqual([0, 1024, 512])
+  })
+  test('a lighter tier never draws more', () => {
+    for (const [a, b] of [['high', 'low'], ['low', 'lite']] as const) {
+      expect(TIERS[b].sun).toBeLessThanOrEqual(TIERS[a].sun)
+      expect(TIERS[b].lamps).toBeLessThanOrEqual(TIERS[a].lamps)
+      expect(TIERS[b].lampShadows).toBeLessThanOrEqual(TIERS[a].lampShadows)
+    }
+  })
+})
+
+describe('the sun without shadow maps (Lite: sunLit)', () => {
+  const lite = { shadows: false, under: true, outside: false, openSky: false }
+  test('inside the flat: off (it would light every floor through the slab)', () => expect(sunLit(lite)).toBe(false))
+  test('in the Dollhouse (camera above), the Building view, or standing on an open lawn / deck: on', () =>
+    expect([sunLit({ ...lite, under: false }), sunLit({ ...lite, outside: true }), sunLit({ ...lite, openSky: true })]).toEqual([true, true, true]))
+  test('with shadow maps (Low, High): always on', () => expect(sunLit({ ...lite, shadows: true })).toBe(true))
+})
+
+describe('the picture’s pixels per tier (pixelRatioFor)', () => {
+  test('High: the screen’s own up to 2×; Low: 1× (a retina screen draws a quarter of its pixels)', () => {
+    expect([pixelRatioFor('high', 1, 1600, 1000), pixelRatioFor('high', 3, 390, 844)]).toEqual([1, 2])
+    expect([pixelRatioFor('low', 2, 1600, 1000), pixelRatioFor('low', 1, 1600, 1000)]).toEqual([1, 1])
+  })
+  test('Lite: three quarters of a 1600 × 1000 window, whatever the screen’s density', () => {
+    expect(pixelRatioFor('lite', 1, 1600, 1000)).toBeCloseTo(0.75)
+    expect(pixelRatioFor('lite', 2, 1600, 1000)).toBeCloseTo(0.75)
+  })
+  test('Lite: a bigger window still draws about LITE_PIXELS; never under half; a phone draws its own CSS pixels', () => {
+    const r = pixelRatioFor('lite', 1, 1920, 1080)
+    expect(1920 * r * 1080 * r).toBeCloseTo(LITE_PIXELS, -3)
+    expect(pixelRatioFor('lite', 1, 5120, 2880)).toBe(0.5)
+    expect(pixelRatioFor('lite', 3, 390, 844)).toBe(1)
+  })
+  test('Lite still slow: half the budget', () => expect(pixelRatioFor('lite', 1, 1600, 1000, null, 0.5)).toBeCloseTo(0.75 / Math.SQRT2))
+  test('?scale= forces it: Lite’s own, a multiplier on Low and High', () => {
+    expect(pixelRatioFor('lite', 1, 1600, 1000, 1)).toBe(1)
+    expect(pixelRatioFor('high', 2, 1600, 1000, 0.5)).toBe(1)
+    expect(pixelRatioFor('low', 2, 1600, 1000, 0.5)).toBe(0.5)
+  })
+})
 
 describe('skyLight', () => {
   test('noon down to 10°: the day exposure, 20 % over the old 1 (founder 2026-11-20); the sky’s fill as seen the full day’s; no night', () => {

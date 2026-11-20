@@ -8,7 +8,9 @@ import { furnish } from '../furnish/presets'
 import sheltechA from '../data/units/sheltech-a.json'
 import typeB from '../data/units/type-b.json'
 import { streetOf, towerOf } from '../data/building'
-import { BAY, blockParts, contactShadows, neighbourBlocks, STOREY } from './context'
+import * as THREE from 'three'
+import { lite } from '../furnish/procedural'
+import { BAY, blockParts, buildStreet, contactShadows, madeUpStreet, neighbourBlocks, plainShade, STOREY } from './context'
 import { TEST_UNIT } from './testUnit'
 
 const base = typeA as unknown as Unit
@@ -181,5 +183,29 @@ describe('neighbourBlocks', () => {
         if (q.y0 < k.y0 - 1e-9) expect(at.y).toBeLessThan(k.y0)
       }
     }
+  })
+})
+
+describe('Lite’s street: plain boxes, one mesh', () => {
+  test('one draw call, no picture, vertex colours; each block a bare box (no parapets, tanks or AC units), each road a strip', () => {
+    const street = streetOf(towerOf(base)!, 'type-a')
+    const { blocks, roads } = madeUpStreet(base, street)
+    lite.on = true
+    try {
+      const plain = buildStreet(base, street, 0)
+      expect(plain.children).toHaveLength(1)
+      const mesh = plain.children[0] as THREE.Mesh
+      const m = mesh.material as THREE.MeshStandardMaterial
+      expect([m.map, m.vertexColors]).toEqual([null, true])
+      expect(mesh.geometry.attributes.position.count / 3).toBe(12 * blocks.length + 2 * ((street.roads ?? []).length + roads.length))
+    } finally {
+      lite.on = false
+    }
+  })
+  test('a face toward the afternoon light is lighter than one turned away; none darker than 0.7', () => {
+    const [sw, ne] = [plainShade(new THREE.Vector3(-1, 0, 0)), plainShade(new THREE.Vector3(1, 0, 0))]
+    expect(sw).toBeGreaterThan(ne)
+    expect(ne).toBe(0.7)
+    expect(plainShade(new THREE.Vector3(0, 1, 0))).toBeGreaterThan(sw)
   })
 })

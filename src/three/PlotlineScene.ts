@@ -25,7 +25,7 @@ import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pi
 import { faceWallId } from '../furnish/finishes'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
 import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
-import { lite } from '../furnish/procedural'
+import { lean, lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
 import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
@@ -33,7 +33,8 @@ import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, lightsOn, needsFrame, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { batch, CELL_M, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
 import type { Street } from '../data/building'
@@ -107,6 +108,12 @@ const CLICK_PX = 6
 /** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
 const WAKE = ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup'] as const
 const WAKE_MS = 1000
+/** the machine is judged (render.ts slowFrames) from this long after the furniture has loaded: its shaders and pictures settle first */
+const WARM_MS = 1000
+/** a frame longer than this is the page coming back (a tab switch, a sleeping laptop), not a slow machine */
+const LOST_FRAME_MS = 2000
+/** a group is batched again (batch.ts) once nothing in it has changed for this long */
+const BATCH_MS = 400
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000
@@ -143,6 +150,27 @@ export function evenBearings(t: THREE.DataTexture): void {
       }
     }
   }
+}
+
+/**
+ * Lite (session 31): the HDRI at 1/k of its width and height (a k × k box mean), so its PMREM is k× smaller — the 1k
+ * interior's 256 px cube (≈ 8 MB on the graphics chip) becomes a 64 px one: the room's light is the same, its reflections
+ * softer. Half-float RGBA equirect, replaced in place.
+ */
+export function shrinkHdr(t: THREE.DataTexture, k: number): void {
+  const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
+  const [W, H] = [Math.floor(w / k), Math.floor(h / k)]
+  const out = new Uint16Array(W * H * 4)
+  const { fromHalfFloat: f, toHalfFloat: t16 } = THREE.DataUtils
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      for (let c = 0; c < 4; c++) {
+        let s = 0
+        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) s += f(data[((y * k + j) * w + x * k + i) * 4 + c])
+        out[(y * W + x) * 4 + c] = t16(s / (k * k))
+      }
+  t.image = { data: out, width: W, height: H }
+  t.needsUpdate = true
 }
 
 /**
@@ -249,13 +277,21 @@ export class PlotlineScene {
 
   private disposed = false
   private readonly tier: Quality
-  /** Lite draws until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
+  /** Lite's share of its pixel budget (render.ts pixelRatioFor): halved when still slow (lighter) */
+  private budget = 1
+  /** what changed since the groups were last batched (rebatch), and the timer that batches them once it settles */
+  private readonly unsettled = new Set<'static' | 'furniture'>()
+  private batchTimer = 0
+  /** Lite / Low draw until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
   private wakeUntil = 0
+  /** Lite / Low with nothing to draw: the frame loop is off (no callback every frame at all) until wake() */
+  private sleeping = false
   private lastPose = NaN
   private drewLast = false
-  /** frame times (ms) taken while moving, from 2 s after the first (render.ts slowFrames); null once judged */
+  /** frame times (ms), from WARM_MS after the furniture loaded (render.ts slowFrames); null once judged */
   private frameMs: number[] | null = []
-  private sampleFrom = 0
+  /** when the unit's furniture finished loading (performance.now; 0: not yet) */
+  private loadedAt = 0
   private slowCb: (() => void) | null = null
   private failCb: ((why: GpuFailure) => void) | null = null
   private lostTimer = 0
@@ -347,19 +383,19 @@ export class PlotlineScene {
   ) {
     this.tier = opts.quality ?? 'high'
     const isLite = (lite.on = this.tier === 'lite')
+    lean.on = !TIERS[this.tier].extras
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
     this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
-    this.renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio, 2))
-    if (isLite) {
-      // ponytail: three's own upload path halves every 1k picture (WebGLTextures resizeImage, 2k ones to a quarter); real
-      // half-size files on disk if the decoded originals in memory ever matter
-      this.renderer.capabilities.maxTextureSize = 512
-      this.renderer.capabilities.getMaxAnisotropy = () => 1
-    }
+    // ponytail: three's own upload path halves a bigger picture (WebGLTextures resizeImage: Lite's 1k ones, Low's 2k ones);
+    // real smaller files on disk if the decoded originals in memory ever matter
+    const cap = TIERS[this.tier].maxTexture
+    if (cap) this.renderer.capabilities.maxTextureSize = Math.min(cap, this.renderer.capabilities.maxTextureSize)
+    if (isLite) this.renderer.capabilities.getMaxAnisotropy = () => 1
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
+    this.raycaster.layers.enable(HIDDEN) // batched meshes (batch.ts) are picked as before
     this.camera = new THREE.PerspectiveCamera(WALK_FOV, 1, 0.05, 300) // the scene opens walking
     this.camera.position.y = EYE
     this.rig.add(this.camera)
@@ -467,8 +503,10 @@ export class PlotlineScene {
     if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
     this.ready = true
+    this.rebatch('static')
     if (keepView) {
       for (const [g, o] of kept) g.add(o)
+      this.rebatch('furniture')
       return
     }
     const first = this.rooms[0]
@@ -484,6 +522,7 @@ export class PlotlineScene {
     this.wake()
     this.cfg = cfg
     this.applyMaterials()
+    this.rebatch('static')
   }
 
   /**
@@ -524,6 +563,7 @@ export class PlotlineScene {
     this.windSeason = season
     this.wind = month && this.unit ? new WindFlow(this.unit, this.rooms, month, SEASON_TINT[season], this.blocks) : null
     if (this.wind) this.scene.add(this.wind)
+    this.wake()
   }
 
   setMode(mode: SceneMode): void {
@@ -597,6 +637,7 @@ export class PlotlineScene {
       pivot.userData.ajar ??= pivot.rotation.y
       pivot.rotation.y = o.userData.id === `${openingId}/leaf` ? 0 : pivot.userData.ajar
     })
+    this.rebatch('static')
   }
 
   onPick(cb: (hit: PickHit | null) => void): void {
@@ -608,7 +649,7 @@ export class PlotlineScene {
     this.flatCb = cb
   }
 
-  /** Frames were slow while moving (render.ts slowFrames), judged once per scene. */
+  /** Frames were slow (render.ts slowFrames), judged once per scene, within ~3 s of the flat's furniture loading (or of the first move on Lite / Low). */
   onSlow(cb: () => void): void {
     this.slowCb = cb
   }
@@ -618,15 +659,19 @@ export class PlotlineScene {
     this.failCb = cb
   }
 
-  /** Lite and still slow: no sun shadow map (the sun keeps its direction and its lit patches), no lamp's either. */
-  shadowsOff(): void {
-    this.sun.castShadow = false
-    this.look.lampShadowsOff()
-    this.wake()
+  /** Lite and still slow: half the pixels (render.ts pixelRatioFor's budget). */
+  lighter(): void {
+    this.budget = 0.5
+    this.resize()
   }
 
-  /** Lite: draw for the next WAKE_MS (something changed that the camera does not show). */
-  wake = (): void => void (this.wakeUntil = performance.now() + WAKE_MS)
+  /** Lite / Low: draw for the next WAKE_MS (something changed that the camera does not show); a sleeping frame loop starts again. */
+  wake = (): void => {
+    this.wakeUntil = performance.now() + WAKE_MS
+    if (!this.sleeping || this.disposed) return
+    this.sleeping = false
+    this.renderer.setAnimationLoop(this.tick)
+  }
 
   /** Building view: highlight floor k (0 = ground, top + 1 = roof) and lift the orbit to it. */
   showFloor(k: number): void {
@@ -666,6 +711,7 @@ export class PlotlineScene {
       this.showSelection(null)
       this.hand = null
     }
+    this.rebatch('furniture') // the pieces one by one while they may move; batched again after
   }
 
   onArrange(cb: (e: ArrangeEvent) => void): void {
@@ -681,6 +727,7 @@ export class PlotlineScene {
   setHand(h: { id: Id; y: number; off?: Pt } | null): void {
     this.hand = h && { ...h, off: h.off ?? { x: 0, y: 0 } }
     this.aimedFrom = ''
+    this.rebatch('furniture')
     if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
     if (this.hand && this.mode !== 'building') this.aimHand()
   }
@@ -729,6 +776,7 @@ export class PlotlineScene {
    * yet (a chair a longer dining table gained) is built. `all`: ps is the whole layout, pieces left out of it are hidden.
    */
   placePieces(ps: FurniturePlacement[], all = false): void {
+    this.rebatch('furniture')
     if (all) {
       this.layout = ps
       const ids = new Set(ps.map((p) => p.id))
@@ -843,6 +891,7 @@ export class PlotlineScene {
     parent.add(obj)
     old.removeFromParent()
     this.wake()
+    this.rebatch('furniture')
     // procedural geometry is per build (glTF clones share theirs, and never resize)
     if (kitAsset(p.assetId)?.url.startsWith('procedural:')) old.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
     if (selected) this.fitSelection(obj, this.selBox.userData.axesList)
@@ -1027,11 +1076,35 @@ export class PlotlineScene {
     return this.xr
   }
 
+  /**
+   * The batches (batch.ts, every tier): `kind`'s groups — the walls, floors and openings, or the furniture — and the
+   * ceilings (room ceilings and the fixtures on them) are drawn mesh by mesh again at once, so the change shows on the next
+   * frame, and batched again once nothing has changed for BATCH_MS; the furniture and ceilings never while a piece is in
+   * hand or Arrange is on (pieces move under the pointer).
+   */
+  private rebatch(kind: 'static' | 'furniture'): void {
+    for (const g of kind === 'static' ? [this.staticGroup, this.ceilingGroup] : [this.furnitureGroup, this.ceilingGroup]) unbatch(g)
+    this.unsettled.add(kind)
+    clearTimeout(this.batchTimer)
+    this.batchTimer = window.setTimeout(this.settle, BATCH_MS)
+  }
+
+  private settle = (): void => {
+    if (this.disposed || !this.ready) return
+    const still = !this.arranging && !this.hand
+    const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
+    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
+    this.unsettled.clear()
+    this.wake()
+  }
+
   resize(): void {
     if (this.renderer.xr.isPresenting) return
     this.wake()
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
+    // the drawing buffer at the tier's pixels; the canvas keeps its CSS size (setSize's false): the browser scales it up
+    this.renderer.setPixelRatio(pixelRatioFor(this.tier, devicePixelRatio, w, h, forcedScale(), this.budget))
     this.renderer.setSize(w, h, false)
     this.look.setSize(w, h)
     this.camera.aspect = w / h
@@ -1040,6 +1113,7 @@ export class PlotlineScene {
 
   dispose(): void {
     this.disposed = true
+    clearTimeout(this.batchTimer)
     this.renderer.setAnimationLoop(null)
     this.ro.disconnect()
     window.removeEventListener('keydown', this.onKey)
@@ -1340,10 +1414,12 @@ export class PlotlineScene {
       this.mountPiece(obj, p)
       obj.visible = !p.removed
     }
+    this.loadedAt ||= performance.now()
   }
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
     this.wake()
+    this.rebatch('furniture')
     obj.userData.size = JSON.stringify(p.sizeM ?? null) // Arrange rebuilds a piece when this changes
     obj.userData.floorM = this.floorOf(p)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
@@ -1358,9 +1434,12 @@ export class PlotlineScene {
         console.warn(`[plotline] HDRI missing: ${url}`)
         return null
       })
-    const [hdr, sky] = await Promise.all([load(HDRI.interior), load(HDRI.sky)])
+    // Lite: no photo sky (the dome a plain colour, the panes mirror the room's light) and the room's light at a quarter size
+    const isLite = this.tier === 'lite'
+    const [hdr, sky] = await Promise.all([load(HDRI.interior), isLite ? null : load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
     const pmrem = new THREE.PMREMGenerator(this.renderer)
+    if (hdr && isLite) shrinkHdr(hdr, 4)
     if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
@@ -1760,8 +1839,16 @@ export class PlotlineScene {
     const moved = pose !== this.lastPose
     this.lastPose = pose
     const xr = this.renderer.xr.isPresenting
-    if (!needsFrame({ tier: this.tier, xr, moved, now, wakeUntil: this.wakeUntil })) return void (this.drewLast = false)
-    if (moved && this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
+    if (!needsFrame({ tier: this.tier, xr, moved, now, wakeUntil: this.wakeUntil, animating: !!this.wind })) {
+      this.drewLast = false
+      // asleep: no frame callback at all until wake() — not with VR switched on (three's loop hands over to the headset's)
+      if (!this.renderer.xr.enabled) {
+        this.sleeping = true
+        this.renderer.setAnimationLoop(null)
+      }
+      return
+    }
+    if (this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
     this.look.render()
     this.drewLast = true
     if (now > this.nextErrorCheck) {
@@ -1782,14 +1869,12 @@ export class PlotlineScene {
     return k
   }
 
-  /** one frame time while moving; 2 s after the first, 45 of them judge the machine once (render.ts slowFrames) */
+  /** one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded; judged once (render.ts slowFrames) */
   private sample(ms: number, now: number): void {
-    if (!this.frameMs) return
-    this.sampleFrom ||= now + 2000
-    if (now < this.sampleFrom) return
+    if (!this.frameMs || !this.loadedAt || now < this.loadedAt + WARM_MS || ms > LOST_FRAME_MS || document.visibilityState === 'hidden') return
     this.frameMs.push(ms)
-    if (this.frameMs.length < 45) return
     const slow = slowFrames(this.frameMs)
+    if (slow === null) return
     this.frameMs = null
     if (slow) this.slowCb?.()
   }

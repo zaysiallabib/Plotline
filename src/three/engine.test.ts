@@ -14,10 +14,10 @@ import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
-import { buildFurniture } from './furniture'
-import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
+import { buildFurniture, colourOnly } from './furniture'
+import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, evenBearings, pickedAt } from './PlotlineScene'
+import { clampSun, evenBearings, pickedAt, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -411,5 +411,77 @@ describe('clampSun', () => {
       const got = [0, 1, 2].map((c) => f(data[4 * (y * w + x) + c]))
       got.forEach((v, c) => expect(v, `${x},${y}`).toBeCloseTo(sky(y)[c], 2))
     }
+  })
+})
+
+describe('shrinkHdr (Lite: the room’s light at a quarter size)', () => {
+  test('each texel of the small one is the mean of its k × k block; alpha too', () => {
+    const { toHalfFloat: t16, fromHalfFloat: f } = THREE.DataUtils
+    const [w, h, k] = [8, 4, 4]
+    const src = Array.from({ length: w * h * 4 }, (_, i) => (i % 4 === 3 ? 1 : ((i * 7) % 5) / 2))
+    const tex = new THREE.DataTexture(new Uint16Array(src.map(t16)), w, h)
+    shrinkHdr(tex, k)
+    const img = tex.image as { data: Uint16Array; width: number; height: number }
+    expect([img.width, img.height, img.data.length]).toEqual([2, 1, 8])
+    for (let x = 0; x < 2; x++)
+      for (let c = 0; c < 4; c++) {
+        let s = 0
+        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) s += src[(j * w + x * k + i) * 4 + c]
+        expect(f(img.data[x * 4 + c])).toBeCloseTo(s / (k * k), 2)
+      }
+  })
+})
+
+describe('textures: one picture per url, Lite’s colour-only sets', () => {
+  test('two tile sizes of one picture: one download, one shared picture (one upload), each its own tiling', async () => {
+    const spy = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(async () => new THREE.Texture())
+    try {
+      const [a, b] = await Promise.all([texture('/t/shared.jpg', 1, true), texture('/t/shared.jpg', 2, true)])
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(a).not.toBe(b)
+      expect(a.source).toBe(b.source)
+      expect([a.repeat.x, b.repeat.x]).toEqual([1, 0.5])
+      expect(a.colorSpace).toBe(THREE.SRGBColorSpace)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+  test('Lite: a set gives its colour and roughness pictures only, no relief or ambient-occlusion map', () => {
+    const urls: string[] = []
+    const spy = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(async (u: string) => (urls.push(u), new THREE.Texture()))
+    lite.on = true
+    try {
+      materialFor({ kind: 'pbr', textureId: 'wood_floor_oak', tint: '#fefefe' })
+      expect(urls.some((u) => /albedo/.test(u))).toBe(true)
+      expect(urls.some((u) => /roughness/.test(u))).toBe(true)
+      expect(urls.filter((u) => /normal|ao\./.test(u))).toEqual([])
+    } finally {
+      lite.on = false
+      spy.mockRestore()
+    }
+  })
+  test('Lite: a scanned model loses its relief and ambient-occlusion maps, keeps colour and roughness', () => {
+    const map = new THREE.Texture()
+    const orm = new THREE.Texture()
+    const m = new THREE.MeshStandardMaterial({ map, normalMap: new THREE.Texture(), aoMap: orm, roughnessMap: orm })
+    const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m))
+    colourOnly(g)
+    expect([m.map, m.roughnessMap, m.normalMap, m.aoMap]).toEqual([map, orm, null, null])
+  })
+})
+
+describe('Lite and Low: no live mirror', () => {
+  test('a wall mirror on Lite and Low (materials.ts lean) never draws its reflection pass (the flat drawn again); on High it may', () => {
+    const state = (on: boolean) => {
+      lean.on = on
+      try {
+        let s: { forceOff: boolean } | undefined
+        buildProcedural('wall_mirror')!.traverse((o) => (s ??= o.userData.mirror))
+        return s?.forceOff
+      } finally {
+        lean.on = false
+      }
+    }
+    expect([state(true), state(false)]).toEqual([true, false])
   })
 })

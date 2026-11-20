@@ -30,18 +30,72 @@ import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
 
 /**
- * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map. low: no AO, 1024 shadow. lite (weak machines,
- * PlotlineScene): also 1× pixels, no MSAA, anisotropy 1, textures at half size, no scanned plants, no idle frames.
+ * high: GTAO + 4× MSAA buffer, up to 2× pixels, 2048 shadow map, 12 lamps (3 casting). low: 1× pixels with MSAA, no AO,
+ * 1024 sun shadow, 4 lamps, no scanned plants or live mirrors, pictures ≤ 1k, no idle frames. lite (weak machines, phones):
+ * a 900k-pixel picture stretched, no MSAA, no shadow maps, 2 lamps, anisotropy 1, colour + roughness pictures at half
+ * size, a plain street and sky, no idle frames. TIERS and pixelRatioFor below; PlotlineScene applies them.
  */
 export type Quality = 'high' | 'low' | 'lite'
 
-/** Lite draws a frame only when it can differ from the last one: the camera moved, input or a load within the wake window, VR. */
-export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number }): boolean =>
-  s.tier !== 'lite' || s.xr || s.moved || s.now < s.wakeUntil
+/**
+ * What each tier draws (session 31, measured on type-a's walk in Firefox: forward shading pays for every light in the
+ * pool on every pixel, at intensity 0 too — 12 → 3 lamps took 45 % off a pixel-bound frame; one more shadow map ≈ 3 %, but
+ * each redraw of it is 650–1 850 draw calls).
+ * `sun`: the sun's shadow map size; 0 = no shadow maps at all, and then the sun lights nothing while the camera is under the
+ * ceiling (it would pour through every ceiling onto every floor): the daylight atlas and the contact shadows carry the rooms,
+ * the street outside keeps the sun. `lamps`: lights in the lamps' pool (the camera's room first); `lampShadows`: of those,
+ * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer). (Every tier draws the flat's
+ * meshes as one mesh per material once they settle: batch.ts, the same picture.) `sleep`: no frame drawn while nothing can
+ * change it (needsFrame), and then no frame loop at all.
+ * `extras`: the scanned plants and live mirrors (materials.ts lean). `maxTexture`: the largest picture side sent to the
+ * graphics chip (0: the chip's own; three halves a bigger one on upload).
+ */
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0 },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024 },
+  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512 },
+}
 
-/** Frame times (ms) taken while moving are slow: the median of at least 45 is worse than 30 fps (35 ms: rAF steps by 16.7 ms). */
-export function slowFrames(ms: number[]): boolean {
-  if (ms.length < 45) return false
+/**
+ * Lite's pixel budget (session 31): 0.75 × 0.75 of a 1600 × 1000 window, the browser scaling the picture up — at 9× the
+ * pixels a frame is pixel-bound on any chip, and Lite at 0.75 took 14 → 8.5 ms there. A smaller window (a phone, a
+ * 1366 × 768 laptop) draws nearer its own size, never under half of it.
+ */
+export const LITE_PIXELS = 900_000
+/**
+ * Drawing-buffer pixels per CSS pixel for a w × h CSS-pixel canvas: High the screen's own up to 2×, Low 1× (its CSS pixels),
+ * Lite within LITE_PIXELS × `budget` (a Lite still slow halves it). `forced` (?scale=) multiplies High's and Low's, and is
+ * Lite's.
+ */
+export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, forced: number | null = null, budget = 1): number {
+  if (tier === 'lite') return forced ?? THREE.MathUtils.clamp(Math.sqrt((LITE_PIXELS * budget) / Math.max(1, w * h)), 0.5, 1)
+  return Math.min(dpr, tier === 'high' ? 2 : 1) * (forced ?? 1)
+}
+
+/**
+ * Whether the sun lights the picture: always with shadow maps; without them (Lite) not while the camera is under the
+ * ceiling (it would pour through the slab onto every floor and wall facing it) — but yes outside the flat (the Dollhouse,
+ * the Building view) and standing in an open zone (a lawn, a pool deck, a roof terrace: rooms seen from there through
+ * glass catch it too, the lesser wrong).
+ */
+export const sunLit = (s: { shadows: boolean; under: boolean; outside: boolean; openSky: boolean }): boolean => s.shadows || !s.under || s.outside || s.openSky
+
+/**
+ * Lite and Low (TIERS.sleep) draw a frame only when it can differ from the last one: the camera moved, input or a load
+ * within the wake window, VR, or something drifting on its own (`animating`: the wind's lines).
+ */
+export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number; animating?: boolean }): boolean =>
+  !TIERS[s.tier].sleep || s.xr || s.moved || !!s.animating || s.now < s.wakeUntil
+
+/** how much drawing (ms of frames, at least 5 of them) judges the machine: a slow start is caught within ~3 s */
+export const JUDGE_MS = 1500
+/**
+ * Frame times (ms), each drawn right after the one before: slow when their median is worse than 30 fps (35 ms: rAF steps
+ * by 16.7 ms) — a few long ones (shaders compiling, pictures uploading) are not; null until JUDGE_MS of frames (at least 5)
+ * are in. It used to wait for 45 frames taken while walking, from 2 s after the first: on a slow machine, minutes.
+ */
+export function slowFrames(ms: number[]): boolean | null {
+  if (ms.length < 5 || ms.reduce((a, b) => a + b, 0) < JUDGE_MS) return null
   const s = [...ms].sort((a, b) => a - b)
   return s[s.length >> 1] > 35
 }
@@ -63,6 +117,8 @@ const ENV = 1.1
 const HEMI_SKY = new THREE.Color('#e6e9ee') // barely cool: #dfe7f5 turned the warm-white walls grey
 /** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
 const HEMI_GROUND = new THREE.Color('#cfcbc4')
+/** the dome with no photo sky (Lite): a soft clear blue, tinted by the hour as the photo is */
+const PLAIN_SKY = new THREE.Color('#b4c8e0')
 /** sky light + sky dome at sunrise / sunset (low sun) */
 const GOLDEN = new THREE.Color('#ffd2a8')
 /** the flat's lamps: 3000 K LEDs as a camera white-balanced for the room sees them (the raw blackbody #ffb46b turned every room orange) */
@@ -82,11 +138,10 @@ const BOUNCE_DOWN = 0.08
 export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
 /**
  * The flat's lamps (kit.ts lightOf: ceiling fixtures, floor and table lamps) share a pool of spot lights, the nearest to
- * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most MAX_LAMPS. Forward
- * shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles every
- * material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
+ * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most the tier's (TIERS.lamps).
+ * Forward shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles
+ * every material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
  */
-const MAX_LAMPS = 12
 const SPARE = 4
 /** a ceiling diffuser's cone (Lambertian: see setUnit); a lamp's shade lets its light out over the whole lower half */
 const CEILING_CONE = THREE.MathUtils.degToRad(83)
@@ -105,8 +160,6 @@ interface Fixture {
   roomId: Id
   room: Pt[]
 }
-/** lamps casting shadows at once (the nearest to the camera; the count never changes: no recompile) */
-const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
 /** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
 const ON_GLOW = 4
 /** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
@@ -233,6 +286,11 @@ const BATTEN = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#f3
  */
 const SWITCHES = new URLSearchParams(globalThis.location?.search ?? '')
 export const switchedOff = (name: 'ao' | 'shadows'): boolean => SWITCHES.get(name) === '0'
+/** `?scale=0.5` … `?scale=2`: the picture's pixels forced (pixelRatioFor), to compare costs; null: the tier's own */
+export const forcedScale = (): number | null => {
+  const v = Number(SWITCHES.get('scale'))
+  return v >= 0.25 && v <= 2 ? v : null
+}
 
 export class Look {
   private readonly composer: EffectComposer | null = null
@@ -269,7 +327,16 @@ export class Look {
   /** the Building view: the camera is outside the tower, whose shells take no bounce from this flat's lamps */
   outside = false
   private alt = 45
+  /** lamps casting shadows at once (TIERS.lampShadows: the nearest to the camera; the count never changes: no recompile) */
   private casters: number
+  /** the pool's size cap (TIERS.lamps) */
+  private readonly maxLamps: number
+  /** the tier draws shadow maps; without them the sun is off while the camera is under the ceiling (render) */
+  private readonly shadows: boolean
+  /** the sun's intensity as PlotlineScene last set it (setAltitude): render() switches it off indoors when there are no shadows */
+  private sunI = 0
+  /** the open zones' outlines (setUnit): standing in one, Lite's sun stays on (sunLit) */
+  private openSky: Pt[][] = []
   /** where the shadow-casting lamps were last picked from */
   private readonly pickedAt = new THREE.Vector3(Infinity, 0, 0)
   /** the dome's twilight uniforms (setAltitude) */
@@ -282,6 +349,8 @@ export class Look {
   private topY = 3
   private readonly v = new THREE.Vector3()
   private readonly c = new THREE.Color()
+  /** the photo sky's tint by the hour (setAltitude), before Lite's plain dome colours it */
+  private readonly tint = new THREE.Color()
   /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
   private shadowKey = NaN
   private readonly onRestored = (): void => void (this.shadowKey = NaN)
@@ -293,15 +362,17 @@ export class Look {
     private readonly sun: THREE.DirectionalLight,
     quality: Quality,
   ) {
+    const tier = TIERS[quality]
     renderer.toneMapping = THREE.NeutralToneMapping
-    renderer.shadowMap.enabled = !switchedOff('shadows')
-    this.casters = CASTERS[quality]
+    this.shadows = renderer.shadowMap.enabled = tier.sun > 0 && !switchedOff('shadows')
+    this.casters = this.shadows ? tier.lampShadows : 0
+    this.maxLamps = tier.lamps
     sun.shadow.autoUpdate = false // render(): drawn again when what it sees changed (casterKey)
     renderer.shadowMap.autoUpdate = false // drawn when something it sees changes: render() / casterKey
     renderer.domElement.addEventListener('webglcontextrestored', this.onRestored)
     renderer.shadowMap.type = THREE.PCFShadowMap
-    sun.castShadow = true
-    sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
+    sun.castShadow = this.shadows
+    sun.shadow.mapSize.setScalar(tier.sun || 1024)
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 2
@@ -332,7 +403,7 @@ export class Look {
     this.sky.renderOrder = -1
     scene.add(this.hemi, this.sky, this.ground, this.catcher, this.unitGroup)
 
-    if (quality === 'high') {
+    if (tier.ao) {
       const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) })
       this.composer = new EffectComposer(renderer, rt)
       this.composer.addPass(new RenderPass(scene, camera))
@@ -370,6 +441,7 @@ export class Look {
     this.sky.material.map?.dispose() // context restore reloads it
     this.sky.material.map = tex
     this.sky.material.needsUpdate = true
+    this.setAltitude(this.alt) // the dome's colour: the photo's tint, no longer the plain sky's
   }
 
   /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
@@ -474,6 +546,7 @@ export class Look {
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
     ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
 
+    this.openSky = rooms.filter((r) => core.isOutdoor(r.kind) && !isCovered(r, cover)).map((r) => core.roomPolygon(r, unit))
     // the lamps' pool: sized here, and only here (its count recompiles every material); setFixtures says where they are
     this.rooms = rooms
     this.links = unit.walls.flatMap((w): [Id, Id, number][] => {
@@ -481,7 +554,7 @@ export class Look {
       return a && b && a !== b ? [[a.id, b.id, Math.max(...w.openings.map((o) => SPILL[o.kind] ?? SPILL_OTHER))]] : []
     })
     this.setFixtures(unit)
-    this.pool = Array.from({ length: Math.min(MAX_LAMPS, this.fixtures.length + SPARE) }, (_, i) => {
+    this.pool = Array.from({ length: Math.min(this.maxLamps, this.fixtures.length + SPARE) }, (_, i) => {
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
@@ -598,6 +671,8 @@ export class Look {
     // the dome: the photo sky, golden when low, dimming as it sets; then the twilight gradient (as seen ÷ exposure)
     const seen = Math.min(1, k.fill * k.exposure)
     const tint = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, k.golden).multiplyScalar(seen / k.exposure)
+    this.tint.copy(tint)
+    if (!this.sky.material.map) tint.multiply(PLAIN_SKY) // the haze and the glass below take the photo's tint: the horizon stays pale
     const tw = twilight(altDeg)
     this.dome.night.value = k.night
     this.dome.zenith.value.copy(tw.zenith).multiplyScalar(1 / k.exposure)
@@ -605,7 +680,7 @@ export class Look {
     this.dome.glow.value.copy(tw.glow).multiplyScalar(1 / k.exposure)
     const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position)
     this.dome.sunDir.value.set(toSun.x, 0, toSun.z).normalize()
-    setHaze(tint)
+    setHaze(this.tint)
     // the haze (and the dome under the horizon, which a dollhouse looks down on) at dusk / night: between the horizon and
     // the sky overhead, darker — the horizon's own pink alone filled the whole background at 17:45
     haze.value.lerp(this.c.copy(this.dome.horizon.value).lerp(this.dome.zenith.value, 0.7).multiplyScalar(0.7), k.night)
@@ -614,8 +689,9 @@ export class Look {
     const room = this.on && k.night > 0.5 && this.paneEnvs.room
     const env = (room ? this.paneEnvs.room : this.paneEnvs.sky) ?? null
     for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
-    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night))
+    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(this.tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
+    this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
     ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)
     this.fitShadow()
@@ -633,11 +709,6 @@ export class Look {
     this.setAltitude(this.alt)
   }
 
-  /** Lite and still slow (PlotlineScene.shadowsOff): no lamp casts a shadow, now or after the next setUnit. */
-  lampShadowsOff(): void {
-    this.casters = 0
-    for (const { light } of this.pool) light.castShadow = false
-  }
 
   /** A lamp's materials (a mounted piece that gives light): those that glow (emissive: a diffuser, a globe, a shade) follow the lamps. */
   addGlows(obj: THREE.Object3D): void {
@@ -688,6 +759,7 @@ export class Look {
   }
 
   setSize(w: number, h: number): void {
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio()) // the composer keeps the ratio it was made with
     this.composer?.setSize(w, h)
   }
 
@@ -695,8 +767,12 @@ export class Look {
     const under = this.camera.getWorldPosition(this.v).y < this.topY
     this.sky.position.copy(this.v)
     this.indoor.visible = under
-    this.catcher.visible = !under
-    const key = this.casterKey()
+    this.catcher.visible = !under && this.shadows
+    if (!this.shadows) {
+      const openSky = this.openSky.some((p) => core.pointInPolygon({ x: this.v.x, y: this.v.z }, p))
+      this.sun.intensity = sunLit({ shadows: false, under, outside: this.outside, openSky }) ? this.sunI : 0
+    }
+    const key = this.shadows ? this.casterKey() : this.shadowKey
     if (key !== this.shadowKey) {
       this.renderer.shadowMap.needsUpdate = true
       this.sun.shadow.needsUpdate = true
@@ -713,7 +789,7 @@ export class Look {
   }
 
   /**
-   * The pool to the fixtures nearest the camera (assignPool; its first CASTERS lights cast shadows), again once the camera
+   * The pool to the fixtures nearest the camera (assignPool; its first `casters` lights cast shadows), again once the camera
    * has moved 0.5 m or the layout changed (setFixtures); a light that takes another fixture has its map drawn on this
    * frame, the others keep theirs. Lamps off: nothing to do (setLights asks again when they go on).
    */

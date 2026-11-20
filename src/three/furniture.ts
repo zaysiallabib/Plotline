@@ -7,7 +7,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { FurniturePlacement } from '../core'
 import { kitAsset, objectKind, placementLabel, rebuildsAtSize } from '../furnish/kit'
-import { buildProcedural, lite } from '../furnish/procedural'
+import { buildProcedural, lean, lite } from '../furnish/procedural'
 
 const loader = new GLTFLoader()
 // Lite: the models' pictures decoded at half their 1k size (createImageBitmap's resize; where a browser ignores it, three
@@ -23,10 +23,22 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => g.scene)
+    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(g.scene) : g.scene))
     gltfCache.set(url, p)
   }
   return p
+}
+
+/** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
+export function colourOnly<T extends THREE.Object3D>(model: T): T {
+  model.traverse((o) => {
+    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshStandardMaterial[]) {
+      if (!m.normalMap && !m.aoMap) continue
+      m.normalMap = m.aoMap = null // never uploaded; the decoded pictures go with the garbage
+      m.needsUpdate = true
+    }
+  })
+  return model
 }
 
 /** Rotation about Y that turns the asset's declared front axis into +Z (see kit.ts frontAxis). */
@@ -61,8 +73,8 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
   const asset = kitAsset(p.assetId)
   pivot.userData = { kind: 'furniture', id: p.id, roomId: p.roomId, label: placementLabel(p), objectKind: asset ? objectKind(asset) : 'decor' }
 
-  // Lite: a scanned plant model (2–6 MB) is left out; the piece stays in the layout (Arrange, the load count), nothing drawn
-  if (lite.on && asset?.category === 'plant' && !asset.url.startsWith('procedural:')) return pivot
+  // Lite and Low: a scanned plant model (2–6 MB) is left out; the piece stays in the layout (Arrange, the load count), nothing drawn
+  if (lean.on && asset?.category === 'plant' && !asset.url.startsWith('procedural:')) return pivot
   let model: THREE.Object3D | null = null
   if (asset) {
     try {

@@ -571,11 +571,11 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
       setNo3d(true)
       return
     }
-    // frames too slow: down one tier once — only while the device chose (a pick is never overridden); Lite: shadows off
+    // frames too slow: down one tier once — only while the device chose (a pick is never overridden); Lite: a smaller picture
     s.onSlow(() => {
       if (TIER.tier === 'lite') {
-        s.shadowsOff()
-        setQNote('Shadows off: frames were still slow on this device.')
+        s.lighter()
+        setQNote('Smaller picture: frames were still slow on this device.')
       } else if (TIER.by === 'device') {
         write(local, KEYS.slow, lower(TIER.tier))
         write(tab, KEYS.note, `Switched to ${NAME[lower(TIER.tier)]}: frames were slow on this device.`)
