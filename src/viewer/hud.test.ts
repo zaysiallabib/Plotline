@@ -78,6 +78,9 @@ describe('hud', () => {
     expect(258 + phone.dx + 280).toBeLessThanOrEqual(390 - 8)
     expect(phone.dy).toBe(-166) // over the pin, away from the keyboard
     expect(noteAt(200, 100, 390, 844, 280, 150)).toEqual({ dx: -140, dy: 16 }) // near the top: under it, centred on it
+    // never over the room's name top left (its box ends at 91): above a phone's pin at 160 the note would start at 39
+    expect(noteAt(195, 160, 390, 844, 280, 105, 91)).toEqual({ dx: -140, dy: 16 })
+    expect(noteAt(600, 60, 1600, 1000, 280, 150, 100).dy).toBe(40) // a desktop pin up there: the note starts under the name
   })
 
   it('the Building rail says Roof and Ground in words', () => {

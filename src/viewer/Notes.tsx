@@ -14,13 +14,14 @@ export interface Draft {
 /**
  * Where the note being written opens, from its pin at (x, y) on a w × h screen, the note pw × ph: beside the pin where it
  * fits (its right, else its left; lifted off the bottom edge), else — a phone's narrow screen — over the pin (under it
- * when the pin is near the top: the keyboard rises from below), kept inside the screen's sides.
+ * when the pin is near the top: the keyboard rises from below), kept inside the screen's sides and under `top` (the
+ * room's name, top left: never covered).
  */
-export function noteAt(x: number, y: number, w: number, h: number, pw: number, ph: number): { dx: number; dy: number } {
+export function noteAt(x: number, y: number, w: number, h: number, pw: number, ph: number, top = 8): { dx: number; dy: number } {
   const M = 8
   const G = 16
-  if (x + G + pw <= w - M || x - G - pw >= M) return { dx: x + G + pw <= w - M ? G : -G - pw, dy: Math.min(-M, h - M - ph - y) }
-  return { dx: Math.min(Math.max(M - x, -pw / 2), w - M - pw - x), dy: y - G - ph >= M ? -G - ph : G }
+  if (x + G + pw <= w - M || x - G - pw >= M) return { dx: x + G + pw <= w - M ? G : -G - pw, dy: Math.max(top - y, Math.min(-M, h - M - ph - y)) }
+  return { dx: Math.min(Math.max(M - x, -pw / 2), w - M - pw - x), dy: y - G - ph >= top ? -G - ph : G }
 }
 
 /** "Door handle · Bed-1"; "Bed-1 floor" already names its room. */
@@ -48,6 +49,7 @@ export function PinLayer({ scene, pins, draft, onSave, onCancel }: LayerProps) {
     const tick = () => {
       const w = innerWidth
       const h = innerHeight
+      const top = (document.querySelector('.hud-tl')?.getBoundingClientRect().bottom ?? 0) + 8 // under the room's name
       const place = (id: string, p: { x: number; y: number; z: number }) => {
         const el = els.current.get(id)
         if (!el) return
@@ -59,7 +61,7 @@ export function PinLayer({ scene, pins, draft, onSave, onCancel }: LayerProps) {
         if (visible) el.style.transform = `translate(${x}px, ${y}px)`
         const note = el.querySelector<HTMLElement>('.popover')
         if (note) {
-          const { dx, dy } = noteAt(x, y, w, h, note.offsetWidth, note.offsetHeight) // never off the screen's edge
+          const { dx, dy } = noteAt(x, y, w, h, note.offsetWidth, note.offsetHeight, top) // never off the screen's edge, never over the room's name
           note.style.left = `${dx}px`
           note.style.top = `${dy}px`
         }

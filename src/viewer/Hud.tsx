@@ -485,7 +485,7 @@ export default function Hud(p: Props) {
             <Grip onClose={() => setOpen(null)} />
             <button className="menu-row" role="menuitem" title="Hide everything on screen; H, Esc or the dot top right brings it back" onClick={goClean}>
               <span>Clean view</span>
-              <kbd>H</kbd>
+              {!finger && <kbd>H</kbd>}
             </button>
             <div className="menu-rule" />
             <div className="menu-head label">Quality</div>
