@@ -489,7 +489,7 @@ What a developer or their architect asks for, from the ⋯ menu (top right):
   for its 90, 30 of its 33 openings, 21 of its 27 rooms; levels lose more, as their zone lines are not walls).
 - **Export 3D model** opens the 3D view in a new tab; once every room and picture has arrived it saves the furnished
   flat as one `.glb` file (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the
-  sky), and says "Saved …". A furnished flat is about 60 MB (Type A: 63 MB, a million triangles). Staff can also save it
+  sky), and says "Saved …". A furnished flat is about 55 MB (Type A: 54 MB — 31 MB of shapes, 23 MB of pictures at most 1024 px; it was 106 MB until 2026-11-20, when every piece went in twice). The browser cannot squeeze the shapes further (no Draco or meshopt in its exporter); a render artist who wants it smaller runs it once through gltf-transform or gltfpack on a computer. Staff can also save it
   from any flat in the 3D view: **Edit ▾ → Download 3D model**. Blender, 3ds Max, SketchUp and any glTF viewer open it.
 - **Print plan…** shows the plan as a sheet: the walls filled black, doors with their swings, windows, the names and
   printed sizes, and along the foot the project, the drawing and floor, the area, the scale, a scale bar and the north

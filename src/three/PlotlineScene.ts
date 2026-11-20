@@ -760,17 +760,26 @@ export class PlotlineScene {
   /**
    * The flat as one binary glTF (session 31, staff → Edit → Download 3D model): its walls, floors, ceilings, doors, windows
    * and furniture with their pictures (at most 1024 px: a furnished flat stays near 20 MB), in metres, Y up — not the street, the sky, the sun or what only
-   * edits show. For a developer's render artist or another 3D program.
+   * edits show. For a developer's render artist or another 3D program. Each mesh once: the batches (batch.ts) are a second
+   * copy of the meshes they draw, and the exporter does not know the layer that hides the originals (session 31: 106 MB).
    */
   async exportGlb(): Promise<ArrayBuffer> {
     const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js')
     const ceilings = this.ceilingGroup.visible
     this.ceilingGroup.visible = true // the dollhouse hides them; the model has them
+    this.exporting = true // no batch comes back while the exporter walks the groups (settle)
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) unbatch(g)
     // pictures as JPEG where nothing shows through (PNG for the rest): 133 pictures of a furnished flat, 116 MB → ~20 MB
     const marked: THREE.Texture[] = []
+    // a roughness picture with no metalness one: the exporter bakes a new metal-rough picture for every material using it
+    // (six copies of one marble's, ~7 MB on type-a); with metalness 0 that picture's blue (metalness) is never read, so the
+    // roughness picture goes as it is, once — lent as the metalness map for the export only
+    const lent: THREE.MeshStandardMaterial[] = []
     for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
       g.traverse((o) => {
         for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
+          const st = m as THREE.MeshStandardMaterial
+          if (st.roughnessMap && !st.metalnessMap && st.metalness === 0) lent.push(Object.assign(st, { metalnessMap: st.roughnessMap }))
           if (m.transparent || m.alphaTest > 0) continue
           for (const v of Object.values(m)) if (v instanceof THREE.Texture && !v.userData.mimeType && v.image) (v.userData.mimeType = 'image/jpeg'), marked.push(v)
         }
@@ -782,8 +791,13 @@ export class PlotlineScene {
     } finally {
       this.ceilingGroup.visible = ceilings
       for (const t of marked) delete t.userData.mimeType
+      for (const m of lent) m.metalnessMap = null
+      this.exporting = false
+      this.rebatch('static')
+      this.rebatch('furniture')
     }
   }
+  private exporting = false
 
   currentRoomId(): Id | null {
     if (!this.ready || !this.unit) return null
@@ -1174,7 +1188,7 @@ export class PlotlineScene {
   }
 
   private settle = (): void => {
-    if (this.disposed || !this.ready) return
+    if (this.disposed || !this.ready || this.exporting) return // exportGlb batches them again when it is done
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
     for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
