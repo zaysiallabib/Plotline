@@ -1,171 +1,110 @@
-# Turning on Share links and the Change list on the live site
+# Turning on buyer links and the Change list on the live site — one sitting
 
-Written 2026-10-04 for the founder. No earlier knowledge needed. About 10 minutes.
-
-(2026-11-20: after this, staff accounts and saving online are turned on with [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).)
+For the founder. No earlier knowledge needed. About 10 minutes, once. After this, staff accounts and saving online are
+turned on with [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).
 
 ## What this does
 
-The live site (https://plotline-flax.vercel.app) is built by **Vercel**. The buyer data
-(share links, comments, finish choices) lives in **Supabase**. The database is already set up
-and working. The only missing piece: Vercel does not yet know the address of the database, so
-the live site was built without the **Share link** and **Change list** buttons.
-
-You will give Vercel two values, then build the site again. That is all.
-
-When you are done:
-
-- `/studio` on the live site shows **Share link** and **Change list** in the top bar.
-- A buyer who opens a share link can comment and pick finishes, and you see them in the Change list.
+The live site (https://plotline-flax.vercel.app) is built by **Vercel**. The buyer data — share links, notes, finish
+choices — lives in **Supabase**, the online database. Vercel needs two values to reach it: the database's address and
+its **publishable** key. With them, the live Studio's **⋯** menu shows **Share link** and **Change list**, and a buyer
+who opens a share link can leave notes and pick finishes that you then see in the Change list.
 
 ## Words used here
 
 | Word | Meaning |
 |---|---|
-| Environment variable | A named value the site is given when it is built. Here there are two. |
+| Supabase / Vercel | Supabase keeps the data. Vercel runs the live website. Two separate online services, each with its own login. |
+| Environment variable | A named value (a name and a value) the site is given when it is built. Here there are two. |
 | Deploy | Build the site and put it live. One command. |
-| Terminal | A plain window where you type a command and press Enter. In VS Code: **Terminal → New Terminal**; it opens already pointing at the project folder. |
-| Supabase / Vercel | Supabase keeps the data (links, notes, choices). Vercel runs the live website. Two separate online services, each with its own login. |
+| Terminal | A plain window where you type a command and press Enter. In VS Code: **Terminal → New Terminal**; it opens in the project folder. |
 | Publishable key | The database key that is allowed to be public. It is safe inside the website. |
-| Staff key | Your own password for publishing links and reading the Change list. It is NOT one of the two values. Never put it on Vercel or in a file in the project. |
+| Staff key | Your own password for sharing links before accounts exist. It is NOT one of the two values: never put it on Vercel or in a project file. |
 
 ## Before you start
 
-You need three things.
+1. You can log in to https://vercel.com with the account that owns the project **plotline**.
+2. You can log in to https://supabase.com and open the **Plotline** project — its address contains `qhrtjf`. The other
+   project on the same account (`txbt…`) belongs to another app: never touch it.
 
-1. **You can log in to https://vercel.com** with the account that owns the project `plotline`.
-2. **The two values.** They are already on your computer in the file `E:\dev\Plotline\.env.local`.
-3. **Your staff key.** It was printed when you pasted the SQL into Supabase. If you did not keep
-   it, get it again:
-   1. Open https://supabase.com, open the Plotline project (its address contains `qhrtjf`).
-   2. Left side: **SQL Editor** → **New query**.
-   3. Paste this one line and press **Run**:
-      ```sql
-      select value as staff_key from private.config where key = 'staff_key';
-      ```
-   4. The result row is your staff key. Save it in a password manager.
+## Step 1 — Find the two values (2 minutes)
 
-## Step 1 — Find the two values
+1. Supabase → the Plotline project → **Project Settings** (the gear, bottom left) → **Data API**. Copy **Project URL**
+   (it starts with `https://qhrtjf` and ends with `.supabase.co`).
+2. Same settings → **API Keys**. Copy the **publishable** key (it starts with `sb_publishable_`). Never the **secret**
+   one (`sb_secret_…` or `service_role`).
 
-1. Open the folder `E:\dev\Plotline` in File Explorer.
-2. Open the file `.env.local` with Notepad (right-click → Open with → Notepad).
-   If you do not see the file: in File Explorer click **View → Show → Hidden items**.
-3. Find these two lines:
-   ```
-   VITE_SUPABASE_URL=https://qhrtjf…….supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_……
-   ```
-4. For each line, the **name** is the part before `=` and the **value** is everything after `=`.
-   Leave Notepad open; you will copy from it.
+You should now have two lines of text. They are also in `E:\dev\Plotline\.env.local` (open it with Notepad; File
+Explorer → **View → Show → Hidden items** if you do not see it) as `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_PUBLISHABLE_KEY` — if you copy them from there, ignore the other line (`VERCEL_OIDC_TOKEN`).
 
-Ignore the other line in that file (`VERCEL_OIDC_TOKEN`, a long private code Vercel put there). Do not copy it anywhere.
+## Step 2 — Give them to Vercel (3 minutes)
 
-If you changed the key in Supabase since 2026-10-03, the file is out of date. Get the current
-values from Supabase instead: open the project → **Project Settings** (the gear) → **API Keys**
-for the publishable key, and **Data API** for the project URL. Then also replace the two lines
-in `.env.local` so your own computer keeps working.
+1. https://vercel.com → the project **plotline** → **Settings** (top) → **Environment Variables** (left).
+2. **Already listed there: `SUPABASE_URL` and `SUPABASE_KEY`?** Then this step is done — go to Step 3.
+3. Otherwise add the first one: **Key** `SUPABASE_URL`, **Value** the Project URL (no spaces, no quotes), **Environments**
+   with **Production** ticked (Preview and Development may stay ticked) → **Save**.
+4. Add the second: **Key** `SUPABASE_KEY`, **Value** the publishable key, **Production** ticked → **Save**.
 
-## Step 2 — Give the two values to Vercel
+You should see both names in the list. They must be spelled exactly, capitals and underscores included: a name one
+letter off does nothing and gives no error. (The older names `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`
+work too; use one pair, not both. Only `SUPABASE_KEY` is checked: the build stops if it is a secret key.)
 
-1. Go to https://vercel.com and log in.
-2. Click the project named **plotline**.
-3. Click **Settings** (top of the page).
-4. In the left menu click **Environment Variables**.
-5. Add the first one:
-   - **Key**: type exactly `VITE_SUPABASE_URL`
-   - **Value**: paste the value from Notepad (starts with `https://`, ends with `.supabase.co`).
-     No spaces, no quotes, no `=` sign.
-   - **Environments**: make sure **Production** is ticked. Leaving Preview and Development
-     ticked too is fine.
-   - Click **Save**.
-6. Add the second one the same way:
-   - **Key**: `VITE_SUPABASE_PUBLISHABLE_KEY`
-   - **Value**: the value that starts with `sb_publishable_`
-   - **Production** ticked → **Save**.
-7. You should now see both names in the list on that page.
+The same from the terminal, if you prefer: `npx vercel env add SUPABASE_URL production`, then
+`npx vercel env add SUPABASE_KEY production` (each asks for the value: paste it, Enter).
 
-The names must be typed exactly, capital letters and underscores included. A name that is one
-letter off does nothing and gives no error.
+## Step 3 — Build the live site again (2 minutes)
 
-### The same thing from the terminal (only if you prefer it)
+Saving the values does not change the live site; it reads them only while being built.
 
-Open a terminal in `E:\dev\Plotline` and run these one at a time. Each asks for the value:
-paste it and press Enter.
+1. Open a terminal in `E:\dev\Plotline`.
+2. Run `npx vercel --prod --yes`.
+3. Wait about a minute. It is done when it prints a line with `https://plotline-flax.vercel.app` and returns to the
+   prompt.
 
-```
-npx vercel env add VITE_SUPABASE_URL production
-npx vercel env add VITE_SUPABASE_PUBLISHABLE_KEY production
-```
+If it asks you to log in: run `npx vercel login`, follow it, then run step 2 again.
 
-## Step 3 — Build the live site again
+## Step 4 — Check that it worked (3 minutes)
 
-Saving the values does not change the live site. The site only reads them while it is being
-built, so it must be built again.
+**A — the menu.** Open https://plotline-flax.vercel.app/studio, press **Ctrl+F5** (a full reload), click **⋯** (top
+right). Under **Buyers** you must see **Share link** and **Change list**.
 
-1. Open a terminal in `E:\dev\Plotline` (in VS Code: **Terminal → New Terminal**).
-2. Run:
-   ```
-   npx vercel --prod --yes
-   ```
-3. Wait about one minute. It is done when it prints a line with
-   `https://plotline-flax.vercel.app` and returns to the prompt.
+**B — the automatic check** (only if you know the staff key): in the terminal run
+`node scripts/verify-share.mjs YOUR_STAFF_KEY`. Every line must start with `PASS` and the last says
+`all checks passed`. It leaves one test link named "Verify script test — ignore" in the Change list for ever (the list
+never deletes anything); that is expected. Lost the staff key? Supabase → **SQL Editor** → **New query**, paste
+`select value as staff_key from private.config where key = 'staff_key';`, **Run**; keep it in a password manager.
 
-## Step 4 — Check that it worked
-
-Do all three. Each takes a minute.
-
-**Check A — the buttons are there.**
-Open https://plotline-flax.vercel.app/studio and press Ctrl+F5 (a full reload).
-The top bar must show **Share link** and **Change list**. If they are missing, go to
-"If something is wrong" below.
-
-**Check B — the automatic check.**
-In the terminal in `E:\dev\Plotline` run (put your staff key in place of `YOUR_STAFF_KEY`):
-```
-node scripts/verify-share.mjs YOUR_STAFF_KEY
-```
-Every line must start with `PASS` and the last line must say `all checks passed`.
-This creates one test link named "Verify script test — ignore" with three test rows. They stay
-in the Change list forever (the list never deletes anything). That is expected.
-
-**Check C — the real thing, as a buyer.**
-1. Open https://plotline-flax.vercel.app/studio with a flat open.
-2. Click **Share link**. The first time it asks for the staff key: paste it. It is asked once
-   per browser.
-3. Copy the link it gives you.
-4. Open a **private window** (Ctrl+Shift+N in Chrome or Edge, Ctrl+Shift+P in Firefox) and
-   paste the link. This is what a buyer sees.
-5. Click **Enter**. Press **C**, click a wall, type a note, **Save**. Open **Finishes** and
-   pick one option.
-6. Back in your normal window: `/studio` → **Change list**. You must see the note and the
-   finish choice under that link. **Export CSV** downloads them as a spreadsheet file.
+**C — the real thing, as a buyer.**
+1. In the live Studio, with a drawing open: **⋯ → Share link**. Signed in to your company nothing is asked; not signed
+   in, a small box asks once for the staff key. The message says "Link copied: …".
+2. Open a **private window** (Ctrl+Shift+N in Chrome or Edge, Ctrl+Shift+P in Firefox) and paste the link: this is what a
+   buyer sees.
+3. **Enter**, press **C**, click a wall, type a note, **Save**. Open **Finishes** and pick one option.
+4. Back in your normal window: **⋯ → Change list**. You must see the note and the choice under that link; **Export CSV**
+   downloads them as a spreadsheet.
 
 ## If something is wrong
 
 | What you see | Why | What to do |
 |---|---|---|
-| No **Share link** / **Change list** button on live `/studio` | The site was built without the values | Check both names are in Vercel → Settings → Environment Variables, spelled exactly, with **Production** ticked. Then run Step 3 again and reload with Ctrl+F5. |
-| Buttons still missing after Step 3 | The browser shows the old site | Ctrl+F5, or open the site in a private window. |
-| "Wrong staff key" | The key typed is not the one in the database | Get it again (see "Before you start", point 3) and click Share link / Change list again to retype it. |
-| The share link says "This link no longer opens a flat" | The link was copied incompletely, or it was turned off | Copy the whole link again, or make a new one. ("The flat could not be fetched" means no internet, or the database is not set up on this site.) |
-| `verify-share.mjs` shows a `FAIL` line | Something in the database setup is off | Copy the whole output and give it to Claude. Do not try to fix the database by hand. |
-| `npx vercel --prod --yes` asks you to log in | The terminal is not logged in to Vercel | Run `npx vercel login`, follow it, then run Step 3 again. |
-| The Change list is empty after a buyer commented | The buyer was on a normal `/u/...` page, not a share link | Only links that start with `/s/` are recorded. Use the link from **Share link**. |
+| No **Share link** / **Change list** under ⋯ | The site was built without the values | Check both names in Vercel → Settings → Environment Variables, spelled exactly, **Production** ticked; Step 3 again; Ctrl+F5 |
+| Still missing after Step 3 | The browser shows the old site | Ctrl+F5, or a private window |
+| The build stops with "SUPABASE_KEY is a SECRET key" | The secret key was pasted | Replace it with the publishable one (Step 1, point 2), Step 3 again |
+| "Wrong staff key — click Share again to retype it." | The key typed is not the one in the database | Get it again (Check B), click Share link again |
+| The link says "This link no longer opens a flat." | The link was copied incompletely, or turned off | Copy the whole link again, or make a new one |
+| "The flat could not be fetched." | No internet, or the database is not set up on this site | Check the connection; then the values above |
+| `verify-share.mjs` shows a `FAIL` line | Something in the database setup is off | Copy the whole output and give it to Claude; do not fix the database by hand |
+| The Change list is empty after a buyer wrote a note | The buyer was on a `/u/…` page, not a share link | Only links that start with `/s/` are recorded: use **Share link** |
 
 ## Rules that keep the data safe
 
-- Only ever put the **publishable** key on Vercel. Supabase also has a **secret** key (also
-  called `service_role`). Never copy that one anywhere: it bypasses all protection.
-- The **staff key** stays in your password manager. Not on Vercel, not in `.env.local`, not in
-  a chat, not in git (the program that keeps the project's history).
-- Never add `.env.local` to the project's history (a git "commit"). It is already set to be skipped; leave it that way.
-- Plotline's Supabase project is the one whose address contains `qhrtjf`. There is another
-  project on the same account (`txbt…`) that belongs to a different app: never run Plotline
-  SQL there.
+- Only ever put the **publishable** key on Vercel. The **secret** key (`sb_secret_…`, `service_role`) bypasses every
+  protection: never copy it anywhere.
+- The **staff key** stays in your password manager: not on Vercel, not in `.env.local`, not in a chat, not in git.
+- Never add `.env.local` to the project's history (a git commit). It is set to be skipped; leave it so.
 
 ## If you change the Supabase key later
 
-1. Put the new value in `E:\dev\Plotline\.env.local`.
-2. In Vercel → Settings → Environment Variables, open the three-dot menu on
-   `VITE_SUPABASE_PUBLISHABLE_KEY` → **Edit**, paste the new value, **Save**.
-3. Run Step 3, then Step 4.
+Put the new value in `.env.local` (for your own computer) and in Vercel (Settings → Environment Variables → the ⋯ beside
+`SUPABASE_KEY` → **Edit** → paste → **Save**), then Step 3 and Step 4.
