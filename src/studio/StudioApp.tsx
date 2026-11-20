@@ -981,6 +981,7 @@ export default function StudioApp() {
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
   const takeImport = async (r: ImportResult, fileName: string) => {
+    if (import.meta.env.DEV) Object.assign(window, { __plotlineLastImport: r }) // the formats scoreboard reads what the drop gave
     let shell: Shell | undefined
     if (r.shell) {
       const id = newId()
