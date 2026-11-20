@@ -31,7 +31,7 @@ import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
 import { lean, lite } from '../furnish/procedural'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
-import { bakeDaylight, isCovered, mapDaylight, setDaylight, type Daylight } from './daylight'
+import { bakeDaylight, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
@@ -547,6 +547,7 @@ export class PlotlineScene {
     const storey = this.top
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
     setDaylight(day)
+    this.day = day
     this.applyMaterials()
     this.look.setUnit(present(unit), this.rooms, this.cover, street) // fixtures, lights, slab, shadow fit box, the street
     this.setTimeOfDay(this.hour)
@@ -555,7 +556,10 @@ export class PlotlineScene {
     this.ready = true
     this.rebatch('static')
     if (keepView) {
-      for (const [g, o] of kept) g.add(o)
+      for (const [g, o] of kept) {
+        g.add(o)
+        this.readDaylight(o) // the new bake's atlas
+      }
       this.rebatch('furniture')
       return
     }
@@ -775,8 +779,13 @@ export class PlotlineScene {
     // (six copies of one marble's, ~7 MB on type-a); with metalness 0 that picture's blue (metalness) is never read, so the
     // roughness picture goes as it is, once — lent as the metalness map for the export only
     const lent: THREE.MeshStandardMaterial[] = []
+    // where each surface and piece reads the daylight atlas (dayUv) means nothing outside Plotline: left out of the file
+    const day: [THREE.BufferGeometry, THREE.BufferAttribute][] = []
     for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
       g.traverse((o) => {
+        const geo = (o as THREE.Mesh).geometry as THREE.BufferGeometry | undefined
+        const a = geo?.getAttribute?.('dayUv') as THREE.BufferAttribute | undefined
+        if (geo && a) (day.push([geo, a]), geo.deleteAttribute('dayUv'))
         for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
           const st = m as THREE.MeshStandardMaterial
           if (st.roughnessMap && !st.metalnessMap && st.metalness === 0) lent.push(Object.assign(st, { metalnessMap: st.roughnessMap }))
@@ -792,6 +801,7 @@ export class PlotlineScene {
       this.ceilingGroup.visible = ceilings
       for (const t of marked) delete t.userData.mimeType
       for (const m of lent) m.metalnessMap = null
+      for (const [geo, a] of day) geo.setAttribute('dayUv', a)
       this.exporting = false
       this.rebatch('static')
       this.rebatch('furniture')
@@ -911,8 +921,16 @@ export class PlotlineScene {
       o.userData.floorM = floor
       o.rotation.set(0, -THREE.MathUtils.degToRad(p.rotationDeg), 0) // about the vertical only (fitSelection)
       o.userData.roomId = p.roomId
+      this.readDaylight(o) // moved to a darker or a brighter spot, another room: lit as it, at once
       o.visible = !p.removed
     }
+  }
+
+  /** the unit's daylight bake (setUnit): the furniture reads it (readDaylight) */
+  private day: Daylight | null = null
+  /** A piece is lit as the room its middle stands in (daylight.ts pieceDayUv / lightPiece), wherever it is put. */
+  private readDaylight(o: THREE.Object3D): void {
+    if (this.day && this.unit) lightPiece(o, pieceDayUv(this.day, this.rooms, this.unit, { x: o.position.x, y: o.position.z }, o.userData.roomId))
   }
 
   /** the whole layout as last placed (placePieces `all`, loadFurniture): what a table lamp stands on */
@@ -990,6 +1008,7 @@ export class PlotlineScene {
     obj.userData.size = size
     obj.userData.floorM = this.floorOf(p)
     obj.visible = !p.removed
+    this.readDaylight(obj)
     const selected = this.selBox.parent === old
     if (selected) this.selBox.removeFromParent()
     parent.add(obj)
@@ -1522,6 +1541,7 @@ export class PlotlineScene {
     this.rebatch('furniture')
     obj.userData.size = sizeKey(p) // Arrange rebuilds a piece when this changes
     obj.userData.floorM = this.floorOf(p)
+    this.readDaylight(obj)
     // lights, fans and pendants hang from the ceiling: they go (hidden in the dollhouse) with it; a wall AC (mountY) stays
     const a = kitAsset(p.assetId)
     ;(a?.mount === 'ceiling' && a.mountY === undefined ? this.ceilingGroup : this.furnitureGroup).add(obj)

@@ -11,7 +11,8 @@
  * would break, and floors are single polygons. A per-unit R8 atlas (one region per floor / ceiling / wall face, 1 texel
  * gap, texel centres exactly on the region's ends so filtering never reads a neighbour) needs no new vertices, and a
  * `dayUv` attribute on the room surfaces points into it. Room surfaces use their own `daylit` material variant
- * (materials.ts), so furniture that shares a finish never sees the attribute.
+ * (materials.ts), so furniture that shares a finish never sees the attribute. Furniture (session 31) reads the atlas too,
+ * one point a piece: its room's floor under its middle (pieceDayUv, lightPiece).
  */
 import * as THREE from 'three'
 import * as core from '../core'
@@ -503,6 +504,23 @@ export function factorAt(d: Daylight, key: string, u: number, v: number): number
   return (RANGE * d.data[(r.y + y) * d.width + r.x + x]) / 255
 }
 
+/** `key`'s region at (u, v) as atlas texture coordinates, clamped to its texel grid (filtering never reads a neighbour); no such region: the neutral block. */
+function uvOf(d: Daylight, key: string | null, u: number, v: number): [number, number] {
+  const r = key ? d.regions.get(key) : undefined
+  if (!r) return [1 / d.width, 1 / d.height]
+  return [(r.x + 0.5 + THREE.MathUtils.clamp((u - r.u0) / r.du, 0, r.nu - 1)) / d.width, (r.y + 0.5 + THREE.MathUtils.clamp((v - r.v0) / r.dv, 0, r.nv - 1)) / d.height]
+}
+
+/**
+ * The atlas point a piece of furniture reads (session 31: "furniture in a windowless room is still lit as if it had a
+ * window"): one per piece — the floor of the room its middle `at` stands in, at that point (a rug across a doorway: the room
+ * its middle is in; its own `roomId` when the middle is in no room). A wardrobe in a windowless closet is as dim as the
+ * closet, a sofa by the window as bright as the floor there; an open zone (not baked) reads the neutral block, as its floor.
+ */
+export function pieceDayUv(d: Daylight, rooms: Room[], unit: Unit, at: Pt, roomId: Id): [number, number] {
+  return uvOf(d, `floor:${core.roomAt(at, rooms, unit)?.id ?? roomId}`, at.x, at.y)
+}
+
 // ───────────────────────────── GL glue ─────────────────────────────
 
 /**
@@ -596,12 +614,7 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
 export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, target: 'floor' | 'ceiling' | 'wall', id: Id): void {
   const p = geo.attributes.position
   const uv = new Float32Array(p.count * 2)
-  const put = (i: number, key: string | null, u: number, v: number) => {
-    const r = key ? d.regions.get(key) : undefined
-    if (!r) return uv.set([1 / d.width, 1 / d.height], i * 2) // neutral block
-    uv[i * 2] = (r.x + 0.5 + THREE.MathUtils.clamp((u - r.u0) / r.du, 0, r.nu - 1)) / d.width
-    uv[i * 2 + 1] = (r.y + 0.5 + THREE.MathUtils.clamp((v - r.v0) / r.dv, 0, r.nv - 1)) / d.height
-  }
+  const put = (i: number, key: string | null, u: number, v: number) => uv.set(uvOf(d, key, u, v), i * 2)
   if (target !== 'wall') {
     const key = `${target === 'floor' ? 'floor' : 'ceil'}:${id}`
     for (let i = 0; i < p.count; i++) put(i, key, p.getX(i), p.getZ(i))
@@ -634,6 +647,44 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
     }
   }
   geo.setAttribute('dayUv', new THREE.BufferAttribute(uv, 2))
+}
+
+/** a material furniture shares the room surfaces' patch with: a plain lit one (never one with a shader of its own, a mirror's or a line's) */
+const patchable = (m: THREE.Material): m is THREE.MeshStandardMaterial =>
+  !!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && (m.userData.dayPiece || m.onBeforeCompile === THREE.Material.prototype.onBeforeCompile)
+
+/** A geometry of mesh `id`'s own over `g`'s vertices (not copied: a model's clones share one geometry), with an empty `dayUv`. */
+function own(g: THREE.BufferGeometry, id: number): THREE.BufferGeometry {
+  const o = new THREE.BufferGeometry()
+  o.setIndex(g.index)
+  for (const k in g.attributes) if (k !== 'dayUv') o.setAttribute(k, g.attributes[k])
+  Object.assign(o, { morphAttributes: g.morphAttributes, morphTargetsRelative: g.morphTargetsRelative, boundingBox: g.boundingBox, boundingSphere: g.boundingSphere, userData: { dayOf: id } })
+  for (const x of g.groups) o.addGroup(x.start, x.count, x.materialIndex)
+  o.setDrawRange(g.drawRange.start, g.drawRange.count)
+  o.setAttribute('dayUv', new THREE.BufferAttribute(new Float32Array((g.attributes.position?.count ?? 0) * 2), 2))
+  return o
+}
+
+/**
+ * A piece of furniture lit as the room it stands in (`uv`: pieceDayUv): its meshes drawn in a plain lit material each get a
+ * geometry of their own over the model's vertices with every `dayUv` at `uv`, and those materials the room surfaces'
+ * patch (daylit) once — the programs are the rooms' where the maps match; no new material. Called again when the piece
+ * moves: only the numbers change. The batches (batch.ts) carry each piece's own numbers, one draw per material as before.
+ */
+export function lightPiece(obj: THREE.Object3D, uv: [number, number]): void {
+  const [u, v] = [Math.fround(uv[0]), Math.fround(uv[1])]
+  obj.traverse((o) => {
+    const m = o as THREE.Mesh
+    const mats = m.isMesh ? [m.material].flat().filter(patchable) : []
+    if (!mats.length) return
+    for (const x of mats) if (!x.userData.dayPiece) (daylit(x), (x.userData.dayPiece = true), (x.needsUpdate = true))
+    if (m.geometry.userData.dayOf !== m.id) m.geometry = own(m.geometry, m.id)
+    const a = m.geometry.getAttribute('dayUv') as THREE.BufferAttribute
+    const arr = a.array as Float32Array
+    if (!arr.length || (arr[0] === u && arr[1] === v)) return
+    for (let i = 0; i < arr.length; i += 2) (arr[i] = u), (arr[i + 1] = v)
+    a.needsUpdate = true
+  })
 }
 
 /** The unit's atlas for every daylit material (null: neutral); the previous one is freed. */

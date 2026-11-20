@@ -20,6 +20,7 @@ import { finishSlotsFor } from '../furnish/finishes'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
+import { lightPiece } from './daylight'
 import { buildFurniture } from './furniture'
 import { SITE_REACH_M } from './render'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
@@ -451,6 +452,7 @@ export class Building extends THREE.Group {
         const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
         if (this.disposed) return
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
+        lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
         group.add(obj)
       }
     }
