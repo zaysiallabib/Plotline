@@ -104,6 +104,13 @@ Tables (RLS — "row level security", the database's own rule about which rows e
 - `project_versions` — every save, written by a trigger (an automatic step inside the database), append-only: nobody can change or remove a row.
 - `units` + `share_links` — what a buyer link shows (a frozen copy of the flat) and its token (the long random code in the link that cannot be guessed). A link can be turned off. It counts its views (opens by anyone outside the company); `project_links` lists a project's links for the Studio's Links card.
 - Storage bucket `plans` — the plan pictures: private, one folder per company (`<company id>/<sha-256>.png|jpg|webp`, 10 MB each). A save (`projects.data.pictures`) names each drawing's picture by its path; the bytes live only in the bucket. Nothing in it is ever changed or deleted, so every saved version still finds the picture it was traced on.
+- `library_items` + Storage bucket `library` — the staff's own furniture models, finish options and texture pictures
+  (`src/furnish/own.ts` holds their rules, `src/lib/library.ts` where they are kept). A row per piece or option, its
+  record as JSON; the files in one folder per company (`<company id>/<sha-256>.glb|jpg|png`, 30 MB each). The bucket is
+  readable by exact name so a buyer link (no account) draws the pieces it was shared with; only members add, nobody
+  lists another company's folder, nobody changes or deletes a file or a row ("Remove" is a mark in the record). A share
+  link carries the records of the pieces and options it shows. In the browser: IndexedDB `plotline-library` (the
+  records and the files), whether signed in or not.
 - `events` — append-only buyer notes and finish choices on a link. This IS the change list.
 
 The browser side:
@@ -111,6 +118,8 @@ The browser side:
 - `src/lib/cloud.ts` — saves with the version it started from; lists, opens, renames and deletes; history; the 2-second autosaver and its status word. Each browser tab remembers the version IT opened or saved (a save in another tab never moves it), so two tabs cannot overwrite each other silently either.
 - `src/lib/members.ts` — the member rules (who may invite, remove, change roles) and their database calls.
 - `src/lib/pictures.ts` — plan pictures online: sent once per picture (named by its bytes), named in the save, fetched by a colleague when a drawing opens.
+- `src/lib/library.ts` — the staff's own library: kept in this browser, sent online once per file (named by its bytes),
+  the company's records fetched when a page opens (signed in), the records a share link carries.
 - `src/lib/events.ts` — the buyer outbox and the change list.
 - Not configured (no env, i.e. the two values are not set) = no client: every path stays in the browser, as before.
 
@@ -124,15 +133,20 @@ What this protects for you: a buyer sees only the flat you shared, a rival devel
 - **A buyer link opens one flat and nothing else.** It reaches only the flat it was made for, while the link is on
   (`unit_by_token`), and can add notes / finish choices to that link (`add_event`). Nothing else: no table,
   no other link, no project, no company, no plan picture (the `plans` bucket has no rule for buyers at all). A turned-off link opens nothing and takes nothing (`revoke_link`).
+  It can fetch the files of the staff's own pieces and finishes it shows (bucket `library`, readable by exact name only —
+  no rule lets a buyer list it, and a name is the company's random id plus the file's SHA-256). Those are the very models
+  and pictures a buyer is shown in the flat, nothing else; the company's library records stay members-only.
 - **The public key in every page cannot read your data.** It can do the same as a buyer link — those two calls — and ask
   Supabase for a sign-in email. It reads and writes no table (privileges revoked from `anon`, the name for an unsigned visitor, and RLS
   everywhere behind that).
 - **Company A can never touch company B.** Every row carries its company and the
   database answers only the signed-in person's company (RLS policies on every table). A cannot read, save
   over, add to, delete, share or turn off anything of B's, cannot add itself to B, and cannot make a
-  company. A cannot see B's people or plan pictures, invite into B, or put a picture in B's folder.
+  company. A cannot see B's people or plan pictures, invite into B, or put a picture in B's folder. A cannot read,
+  change or add to B's own library, list B's library files or put a file in B's folder.
   `supabase/tests/two_tenants.sql` checks each of these, and was itself checked by breaking each guard in turn (it
-  must then fail: 32 broken guards, each caught — PGlite run, session 31).
+  must then fail: 43 broken guards, each caught — PGlite run, session 31, library lane:
+  `E:/dev/tmp/s31/library/pg/run.mjs`).
 - **Your own staff can do their work, and no more.** Members read, create and save projects; read the history (never
   change it); make and turn off share links; read the change list; read and add their company's plan pictures (never
   change or delete one). Only an **owner** invites, removes people or changes roles — never removing themself, never

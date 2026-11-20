@@ -15,6 +15,9 @@ the new parts (members, plan pictures, the links list) and changes nothing you a
   you only make each new company's first owner (Step 6).
 - **Every buyer link of a project in one list** (account card → **Links**): who made it, when, how often buyers opened
   it, and **Turn off**.
+- **Your own furniture, finishes and textures for the whole company.** A model or a finish option a staff member adds
+  (Docs/MANUAL.md, "Your own furniture, finishes and textures") is there for every colleague, and the buyer links
+  that show it draw it.
 - **Each developer company sees only its own** projects, pictures, people, buyer links and buyer notes. The database
   itself refuses anything else, and a check you run (Step 2) proves it.
 - **Buyer links keep working with no account**, as before. Buyers never see a plan picture.
@@ -31,7 +34,7 @@ the new parts (members, plan pictures, the links list) and changes nothing you a
 | SQL editor | The page in Supabase where you paste database text and press **Run**. |
 | SQL | The short typed instructions the database understands. You never write any: you paste what is given here and press **Run**. |
 | Two-tenant check | A test that makes two pretend companies ("tenant" = company) and proves one cannot reach the other. It removes everything it made. |
-| Storage, bucket | Supabase's place for files. A bucket is one folder of it; Plotline's is called **plans** (the plan pictures). |
+| Storage, bucket | Supabase's place for files. A bucket is one folder of it; Plotline has two: **plans** (the plan pictures) and **library** (your staff's own furniture models and texture pictures). |
 | SMTP | The standard way a program sends email. An email service gives you its SMTP details to paste into Supabase. |
 | Key (publishable / secret) | A long code that lets a program talk to the database. The **publishable** one is safe in a website. The **secret** one is the master key and must never be shown to anyone. |
 
@@ -53,8 +56,8 @@ the new parts (members, plan pictures, the links list) and changes nothing you a
 4. Under the box you see a small table with one row: **Accounts are set up. Next: Docs/SETUP_ACCOUNTS.md step 2 (the
    security check).**
 
-The file holds every database part in order: share links, the change list, accounts, members and plan pictures. The
-parts that are already there are left as they are: your old staff key and old links keep working.
+The file holds every database part in order: share links, the change list, accounts, members and plan pictures, your
+own library. The parts that are already there are left as they are: your old staff key and old links keep working.
 
 ## Step 2 — Run the security check (2 minutes)
 
@@ -64,17 +67,22 @@ parts that are already there are left as they are: your old staff key and old li
 3. Under the box you must see one row: **All two-tenant checks passed**.
 
 It makes two pretend companies and checks — the same way the website reaches the database — that one cannot read,
-change or add to the other's projects, save history, plan pictures, people, links or buyer notes; that only an owner
+change or add to the other's projects, save history, plan pictures, own library, people, links or buyer notes; that only an owner
 invites or removes people, never themself, never the last owner; that an invite joins only its own email; that a buyer
 reads nothing; and that a turned-off link opens nothing. Then it undoes everything it made.
 
 If it shows a red message starting with **FAIL:**, stop here, copy the whole message and give it to Claude.
 
-## Step 3 — Look at the picture folder (1 minute, nothing to change)
+## Step 3 — Look at the two file folders (1 minute, nothing to change)
 
 Supabase → left side **Storage**. In the list of buckets you see **plans**, marked **Private**. That is where the
 Studio puts the plan pictures, one folder per company. Leave its settings as they are (private, 10 MB a picture, PNG,
 JPG and WEBP only). Do not make it public: the plan pictures are your customers' drawings.
+
+Next to it you see **library**, marked **Public**. That is where the Studio puts your staff's own furniture models and
+texture pictures, one folder per company. Leave it as it is (public, 30 MB a file, GLB models, JPG and PNG pictures):
+a buyer link has no account, and it must still draw the sofa or the tile it was shared with. Nobody can list what is
+in it; a file is fetched only by its exact name, which appears only in a link that shows it.
 
 ## Step 4 — Tell Supabase where sign-in links may go (2 minutes)
 
@@ -204,6 +212,10 @@ update public.projects set deleted_at = null where name = 'Banani tower';
   email.
 - The **plans** folder stays **Private**. Nothing in it can be changed or deleted from the website, so every old save
   still shows the picture it was traced on.
+- The **library** folder stays **Public**: a buyer link needs to draw your own sofa and your own tile. Public here means
+  "readable by its exact name" — the name is your company's random code plus the file's own fingerprint, so only
+  someone holding a link that shows that very piece can fetch it, and nobody outside your company can list the folder.
+  Nothing in it can be changed or deleted from the website.
 - Anyone can create an account by asking for a sign-in link; an account in no company reaches nothing. To stop even
   that: Authentication → **Sign In / Providers** → turn off **Allow new users to sign up**. Invited people then need an
   account first: Authentication → **Users** → **Invite user** with their email (the Studio's invite still decides the

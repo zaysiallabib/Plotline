@@ -9,6 +9,7 @@
  */
 import { newId, type FinishSlot, type Id } from '../core'
 import { FINISH_CATALOG } from '../furnish/finishes'
+import { optionOf, ownItem } from '../furnish/own'
 import { RpcError, rpc } from './supabase'
 
 export type EventKind = 'comment' | 'selection'
@@ -149,11 +150,16 @@ export const eventsForStaff = (staffKey: string): Promise<StaffData> => rpc<Staf
 export const eventsForOrg = (): Promise<StaffData> => rpc<StaffData>('events_for_org', {})
 
 const CATALOG = new Map(FINISH_CATALOG.flatMap((s) => s.options.map((o) => [o.id, o])))
+/** the catalog's option, else the staff's own as this browser knows it (furnish/own.ts) */
+const known = (id: string) => {
+  const own = ownItem(id)
+  return CATALOG.get(id) ?? (own?.type === 'finish' ? optionOf(own) : undefined)
+}
 /** A choice's BDT delta: the catalog's own price for a catalog option (a buyer's browser could send any number), else as sent. */
-export const deltaOf = (p: SelectionPayload): number => CATALOG.get(p.optionId)?.priceDeltaBdt ?? (Number.isInteger(p.priceDeltaBdt) ? p.priceDeltaBdt : 0)
+export const deltaOf = (p: SelectionPayload): number => known(p.optionId)?.priceDeltaBdt ?? (Number.isInteger(p.priceDeltaBdt) ? p.priceDeltaBdt : 0)
 /** a chosen option as the catalog has it (label, brand, sku, delta); one outside the catalog as the buyer's browser sent it */
 export const choiceOf = (p: SelectionPayload) => {
-  const o = CATALOG.get(p.optionId) ?? p
+  const o = known(p.optionId) ?? p
   return { label: o.label, brand: o.brand, sku: o.sku, deltaBdt: deltaOf(p) }
 }
 
