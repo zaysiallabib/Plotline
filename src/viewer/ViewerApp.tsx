@@ -64,8 +64,8 @@ const lightsSaved = (): LightsMode => {
 }
 const VR_FAILED = "Couldn't start VR. Is the headset connected?"
 const params = new URLSearchParams(location.search)
-/** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. */
-const STAFF = isStaff(location.search)
+/** Arrange is staff only (arrange.ts): `?staff=1` is remembered, then dropped from the address bar so a copied URL doesn't carry it. Never on `/s/`. */
+const STAFF = isStaff(location.search, location.pathname)
 /** a published link's token (`/s/<token>`): the unit comes from Supabase */
 const TOKEN = location.pathname.match(/^\/s\/([^/]+)/)?.[1]
 /** a buyer's link: no way into staff mode from it (no "Staff mode" / Studio link) */
@@ -1504,8 +1504,8 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
                 </div>
               ) : null
             }
-            onOpenings={STAFF && !TOKEN ? toggleOpenings : null}
-            onDownloadGlb={STAFF && !TOKEN && scene ? () => void downloadGlb(scene) : null}
+            onOpenings={STAFF ? toggleOpenings : null}
+            onDownloadGlb={STAFF && scene ? () => void downloadGlb(scene) : null}
             onEditPlan={
               STAFF
                 ? () => {
@@ -1566,7 +1566,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
               <div className="panel-body">
                 {TOKEN && <BuyerName />}
                 <FinishesPanel
-                  staff={STAFF && !TOKEN}
+                  staff={STAFF}
                   slots={unit.finishSlots}
                   cfg={cfg}
                   keys={keys}

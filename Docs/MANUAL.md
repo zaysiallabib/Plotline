@@ -25,12 +25,13 @@ What a developer does first:
 
 **Two kinds of people.** A **buyer** looks, chooses finishes and leaves notes — nothing else. **Staff** can also move
 furniture, change doors and windows, and use the Studio. A browser becomes staff the first time it opens the Studio, or
-when `?staff=1` is added to a 3D address (`?staff=0` turns it off). A buyer link never offers staff mode.
+when `?staff=1` is added to a 3D address (`?staff=0` turns it off). A buyer link never offers staff mode, and a buyer
+link (`/s/…`) shows a staff browser exactly what a buyer sees — to edit, open the flat's own address (`/u/…`).
 
 **When something asks first:** a white card opens in the middle of the screen and the page behind it goes pale.
 **Cancel** (or **Esc**) says no and nothing changes. The second button names what it does — **Delete**, **Replace**,
-**Continue**, **Turn off**, **Remove**, **Make it my draft** — and is red when something is taken away; **Enter** says
-yes too. When it needs a word — a new name (**Rename** of a project or a save) or the staff key (**Share link** while
+**Continue**, **Turn off**, **Remove**, **Start over**, **Make it my draft** — and is red when something is taken away;
+**Enter** says yes too. When it needs a word — a new name (**Rename** of a project or a save) or the staff key (**Share link** while
 not signed in) — the card has a line to type in, the old name already in it and selected, so you just type over it;
 **Enter** or the second button (**Rename**, **Share**) takes it. The browser's own grey box is never used.
 
@@ -130,8 +131,9 @@ A button that is on (a panel open, an editor on) has a light blue wash and blue 
 **Top left: the room.** Its floor in small capitals, its name in the serif, its printed size and area under it, on a
 soft frosted rectangle whose edges fade out, so the words read over any wall, by day and by night. **Click it** for the
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
-jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar (on the built-in flats 5
-jumps of 79 still show one so: a frame without it would cut the bed). In the Building view the same place names the
+jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
+the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
+picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 
@@ -364,7 +366,9 @@ finishes. Buyers never see any of it.
 One extra button sits in the bar: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit
 furniture), **Openings** (Edit openings), **Plan (Studio) ↗** (opens this flat or level in the Studio in a new tab) and
 **Download 3D model** (saves this flat as one `.glb` file once every room has arrived; §5, "Give the drawing back").
-The one that is on is the white row, marked "on". On a buyer link Openings and Download 3D model are left out.
+The one that is on is the white row, marked "on". On a buyer link (`/s/…`) none of this section shows, even in a
+browser that has opened the Studio: no **Edit ▾**, no **G**, no **+ Add option** — you see what the buyer sees. To edit
+that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 
 ### Edit furniture
 
@@ -519,6 +523,12 @@ draw stand out in dark ink. Doors are drawn with their swing, windows as three t
 an architect's sheet. What you picked is **blue**; what is under the mouse gets a light blue edge before you click. Room
 names are in small capitals with the printed size under them. Tools on the left, details of what you picked on the right,
 one thin line at the bottom saying what the tool does.
+
+**Draft restored.** The Studio opens on the drawing you left, with a message at the bottom: "Draft restored — its name",
+**Start over** and **×** (hides the message). **Start over** asks first: "Start over? The drawing, its picture and its
+furniture go. Undo cannot bring them back." — **Start over** (red) empties the Studio for good; **Cancel** or **Esc**
+keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list)
+and only the screen empties.
 
 ### Top bar
 
@@ -1159,8 +1169,7 @@ Things that are confusing or not finished. Each one is a job on the list.
   open foyer, add it with R.
 
 **The Studio**
-- **Start over** (on the "Draft restored" message) wipes the drawing without asking; the message shows at every opening.
-  In a project Start over only empties the screen (the drawing is kept).
+- The "Draft restored" message shows at every opening of the Studio, not only after a closed tab.
 - A wrong scale found after tracing cannot be put right in one step: S changes the scale, but the walls do not follow.
 - Once a plan picture is in there is no button to swap it (drop a new one); a drawing file opened again always asks for
   its picture. Lining a picture up needs zooming between the clicks when the two are far apart in size.
@@ -1196,8 +1205,6 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
-- A staff browser on a buyer link still sees **Edit ▾** with Furniture and Plan (Studio) (Openings, Download and **+ Add
-  option** are hidden there).
 - Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
   Studio (the real buyer link that feeds the change list). The same thing has two names in places: "Slider" (3D) /
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).

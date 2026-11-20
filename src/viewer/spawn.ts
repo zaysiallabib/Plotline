@@ -545,6 +545,17 @@ export const BAR_TOP = 0.88
  */
 export const AC_CUT = 4
 /**
+ * A Rooms jump whose chosen frame still cuts an AC (the five AC_CUT left: a frame clear of it lost the bed's foot or filled
+ * with a side wall) changes it the least that clears it (roomView unCut): looking down up to AC_DIP more (rad, 1° steps)
+ * puts the AC wholly above the frame — 0.3 m tall, 2.7–2.9 m off, it takes 5–6° (A and B Bed-2, Sheltech A Bed 4: the bed
+ * shows more, its foot included)…
+ */
+export const AC_DIP = (6 * Math.PI) / 180
+/** …else turned up to this either way (2° steps): an AC at a top corner leaves the side of the frame (Sheltech A Passage: 8°)… */
+export const AC_TURN = (10 * Math.PI) / 180
+/** …else looking up to this (1° steps): the AC whole under the top bar (Sheltech B Foyer: 3°, its top was cut by a hair). */
+export const AC_LIFT = (3 * Math.PI) / 180
+/**
  * A wall AC of any room in sight cut by the walk frame's top (polish, qa2 V4: a Rooms jump stood type-a's dining AC half
  * under the top bar): its box, projected with the walk camera, reaches above BAR_TOP while some of it shows below the
  * frame's top, across the frame. Wholly below the bar (a far wall's AC, in full) or wholly above the frame: not cut.
@@ -991,13 +1002,31 @@ export function roomView(room: Room, unit: Unit): View {
   // the leaf/slab rule, not the first (wave 14's SB kitchen veranda: 61 % plaster within 2 m)
   const walled = room.kind === 'balcony' ? good.slice(0, SIDE_TRIES).filter((v) => flat(v) <= 1).reduce<View | undefined>((m, v) => (!m || roomFlat(v) < roomFlat(m) ? v : m), undefined) : undefined
   const best = clear(good.slice(0, SIDE_TRIES), roomFlat) ?? walled ?? clear(views) ?? clear(views.slice(0, FLAT_TRIES).map(shut)) ?? leastFilled()
-  if (best) return done(best)
+  // still an AC cut by the frame's top (acCut): the same frame looking down up to AC_DIP more, turned up to AC_TURN either
+  // way, or looking up to AC_LIFT up — the smallest change first that no longer cuts it, is no less clear (roomFlat), shows
+  // its hero no less whole and brings nothing hanging into the frame; none: as it was
+  const unCut = (v: View): View => {
+    if (!acCut(unit, v)) return v
+    const pitch = v.pitch ?? 0
+    const deg = Math.PI / 180
+    const turned = (a: number): Pt => ({ x: v.face.x * Math.cos(a) - v.face.y * Math.sin(a), y: v.face.x * Math.sin(a) + v.face.y * Math.cos(a) })
+    const steps = (max: number, by: number) => Array.from({ length: Math.round(max / by) }, (_, i) => (i + 1) * by)
+    const tries: View[] = [
+      ...steps(AC_DIP, deg).map((d) => ({ ...v, pitch: pitch - d })),
+      ...steps(AC_TURN, 2 * deg).flatMap((a) => [a, -a]).map((a) => ({ ...v, face: turned(a) })),
+      ...steps(AC_LIFT, deg).map((d) => ({ ...v, pitch: pitch + d })),
+    ]
+    const ok = (w: View) =>
+      !acCut(unit, w) && roomFlat(w) <= Math.max(1, roomFlat(v)) && wholeIn(w.p, w.face, w.pitch ?? 0) >= wholeIn(v.p, v.face, pitch) - 1e-9 && (!hangs(unit, w.p, w.face) || hangs(unit, v.p, v.face))
+    return tries.find(ok) ?? v
+  }
+  if (best) return done(unCut(best))
 
   for (const { w, f, c } of doors) {
     for (const s of [1, -1]) {
       const p = add(c, f.normal, s * (w.thicknessM / 2 + 0.9))
-      if (core.pointInPolygon(p, inner)) return done(look(p, sight ? farthest(p) : target))
+      if (core.pointInPolygon(p, inner)) return done(unCut(look(p, sight ? farthest(p) : target)))
     }
   }
-  return done(look(room.centroid, target))
+  return done(unCut(look(room.centroid, target)))
 }

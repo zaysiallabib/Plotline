@@ -4,7 +4,7 @@ import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { bottomOf, library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
 import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
@@ -61,10 +61,20 @@ const at = (f: FurniturePlacement[], id: string) => f.find((p) => p.id === id)!
 describe('arrange: staff only, never on a buyer link', () => {
   it('staff = ?staff=1 (remembered) or the flag the Studio sets', () => {
     const s = memStore()
-    expect(isStaff('', s)).toBe(false)
-    expect(isStaff('?staff=0', s)).toBe(false)
-    expect(isStaff('?c=abc&staff=1', s)).toBe(true)
-    expect(isStaff('', s)).toBe(true) // remembered in this browser
+    expect(isStaff('', '/u/type-a', s)).toBe(false)
+    expect(isStaff('?staff=0', '/u/type-a', s)).toBe(false)
+    expect(isStaff('?c=abc&staff=1', '/u/type-a', s)).toBe(true)
+    expect(isStaff('', '/u/type-a', s)).toBe(true) // remembered in this browser
+  })
+
+  it('a published link (/s/<token>) is never staff, whatever the browser remembers; the flat’s own /u/ address still is', () => {
+    const s = memStore()
+    s.setItem(STAFF_KEY, '1') // this browser has opened the Studio
+    expect(isStaff('', '/s/7f3c9a2e-token', s)).toBe(false)
+    expect(isStaff('?staff=1', '/s/7f3c9a2e-token', s)).toBe(false) // nor can the address turn it on there
+    expect(s.getItem(STAFF_KEY)).toBe('1') // …and the flag is kept for the Studio and /u/ addresses
+    expect(isStaff('', '/u/type-a', s)).toBe(true)
+    expect(isStaff('', '/u/preview', s)).toBe(true)
   })
 
   it('the Share link keeps the route, the picked floor and the finishes only', () => {
@@ -77,13 +87,13 @@ describe('arrange: staff only, never on a buyer link', () => {
 
   it('a share link opened in a buyer’s browser: not staff, and no "Staff mode" offered; ?staff=0 forgets the flag', () => {
     const search = new URL(shareUrl({ origin: 'https://plotline.test', pathname: '/u/type-a', search: '?staff=1' }, undefined, { s1: 'o2' })).search
-    expect(isStaff(search, memStore())).toBe(false)
+    expect(isStaff(search, '/u/type-a', memStore())).toBe(false)
     expect(isShareLink(search)).toBe(true)
     expect(isShareLink('?floor=5')).toBe(false)
     const s = memStore()
-    expect(isStaff('?staff=1', s)).toBe(true)
-    expect(isStaff('?staff=0', s)).toBe(false)
-    expect(isStaff('', s)).toBe(false)
+    expect(isStaff('?staff=1', '/u/type-a', s)).toBe(true)
+    expect(isStaff('?staff=0', '/u/type-a', s)).toBe(false)
+    expect(isStaff('', '/u/type-a', s)).toBe(false)
   })
 })
 

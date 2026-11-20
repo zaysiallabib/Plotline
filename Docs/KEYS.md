@@ -3,7 +3,8 @@
 One table per screen. How each one works in detail: [MANUAL.md](MANUAL.md), the section in the last column.
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 **Who:** staff = the developer's team (a browser becomes staff the first time it opens the Studio, or with `?staff=1`);
-buyer = someone on a buyer link; everyone = both. Checked against the product on 2026-11-21.
+buyer = someone on a buyer link; everyone = both. On a buyer link (`/s/…`) nobody is staff, even in a staff browser:
+no staff row below shows there. Checked against the product on 2026-11-21.
 
 ## Everywhere
 
@@ -11,7 +12,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 |---|---|---|---|---|
 | Any key while the cursor is in a text box | Goes into the box (the letters are typed). **Enter** or a click on the plan / the 3D gives the keys back. Ctrl+S and Ctrl+O still work in the Studio | every screen | everyone | §10 |
 | **Cancel** (or **Esc**) on a question card | Says no: nothing changes | the white card in the middle of the screen | staff | Start here |
-| The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
+| The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Start over**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
 | The line to type in on a question card | Opens with the old name in it, selected: type over it; **Rename** / **Share** (or **Enter**) takes it | the card, when it asks for a new name or the staff key | staff | Start here |
 
 ## Front page (`/`)
@@ -49,9 +50,9 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
 | **Share** | Copies a link that opens with the finishes you chose | the bar | everyone | §2 The bar |
 | **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add | the bar | staff | §3 Edit furniture |
-| **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar, not on a `/s/` link | staff | §3 Edit openings |
+| **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
-| **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar, not on a `/s/` link | staff | §3, §5 Give the drawing back |
+| **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar | staff | §3, §5 Give the drawing back |
 | **⋯ → Quality: Lite · Low · High** | How heavy the 3D is; a blue dot marks the recommended one; a new choice reloads the page | the bar | everyone | §2 Choosing quality |
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
@@ -145,7 +146,7 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | A page in **Which page is the floor plan?** · **×** / Esc | Uses that page (a clean line drawing opens as the drawing, anything else becomes the plan picture) · closes the box | a PDF of several pages | §5 Bring in the architect's file |
 | **Use it as a picture instead** / **Read its lines instead** | Takes the same page the other way | the message after a PDF page | §5 Bring in the architect's file |
 | **Use its scale and position** | A picture the same size as one already scaled: no scale to set, the drawings sit over each other (15 seconds) | the message after loading a picture | §6 |
-| **Start over** · **×** | Empties the Studio (without asking) · hides the message | the "Draft restored" message | §10 |
+| **Start over** · **×** | Asks first ("The drawing, its picture and its furniture go. Undo cannot bring them back.": **Start over** in red empties the Studio for good, **Cancel** / **Esc** keeps it; a project's drawing is not asked about, it stays in the project) · hides the message | the "Draft restored" message | §5 |
 | **V** · **S** · **W** · **A** · **O** · **R** · **C** · **F** | Select · Scale · Wall · Arc · Opening · Room · Column · Furniture; all but V and S locked until the scale is set ("set the scale first (S)") | the tool strip on the left | §5 The tools |
 | Hold **W**, **O** or **R** | The tool works while held; let go and you are back on the tool you had (a quick tap just switches) | any tool | §5 The tools |
 | Shift + a tool letter | Does not switch the tool (Shift+H is the door swing) | — | — |
