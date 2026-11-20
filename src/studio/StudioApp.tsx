@@ -338,6 +338,7 @@ export default function StudioApp() {
   const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
   const fitOnLoad = useRef(false)
+  const fitOnUnit = useRef(false)
 
   const { unit, view, tool, chain } = state
   useEffect(() => setArc(null), [tool]) // another tool drops a half-placed arc
@@ -567,6 +568,12 @@ export default function StudioApp() {
       fitView()
     }
   }, [img, fitView])
+  // a drawing read from a file (no picture to fit on): fit it once the render holds it
+  useEffect(() => {
+    if (!fitOnUnit.current) return
+    fitOnUnit.current = false
+    fitView()
+  }, [state.unit.id, fitView])
   useEffect(() => {
     // first layout of a restored/empty studio: fit if the view is untouched
     if (size.w && view.zoom === 1 && view.panX === 0 && view.panY === 0) fitView()
@@ -826,10 +833,10 @@ export default function StudioApp() {
       }
       if (!isUnit(parsed)) return toast('That file is not a Plotline unit')
       const u = normalizeUnit({ ...parsed, review: undefined } as typeof parsed) // (an Export's Check-these rows stay out of the unit)
-      dispatch({ type: 'load-unit', unit: u })
       const src = u.planImage?.src
+      fitOnUnit.current = !src
+      dispatch({ type: 'load-unit', unit: u })
       if (src && src !== stateRef.current.planImage?.name) loadPlanSrc(src)
-      else if (!src) fitView()
     },
     [toast, fitView, loadPlanSrc],
   )
@@ -885,8 +892,8 @@ export default function StudioApp() {
     }
     if (r.storeys.length === 1) {
       const s = r.storeys[0]
+      fitOnUnit.current = true // (fitted once the render holds it: this runs after an await, React renders later)
       dispatch({ type: 'load-unit', unit: at(s.unit, s.elevationM) })
-      fitView()
       setImportNotes(r.notes)
       return
     }
@@ -2334,7 +2341,7 @@ export default function StudioApp() {
                   <button className="primary" onClick={() => fileRef.current?.click()}>
                     Choose plan image…
                   </button>
-                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / 3D model</p>}
+                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
                 </div>
                 {!project && !unit.vertices.length && !missingPlan && (
                   <>

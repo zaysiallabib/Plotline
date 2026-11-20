@@ -226,7 +226,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Preview 3D** (the blue button; plain while the Studio is empty, when **Choose plan image…** is the blue one) | Opens your drawing in the 3D view, in a new tab |
 | **Building** | Shows / hides the project's floor list (or starts a project) |
 | **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
-| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .ifczip, .dxf, .pdf, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip of any of them; several files can be picked together (a model with its pictures) — see MANUAL §5 "Bring in the architect's file" |
+| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .ifczip, .dxf, .pdf, .svg, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip of any of them; several files can be picked together (a model with its pictures) — see MANUAL §5 "Bring in the architect's file" |
 | ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
 | ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as a file named `plotline-answers.json` |
 | ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
@@ -264,7 +264,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 
 | Name | What it does |
 |---|---|
-| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / 3D model" (Import's list). Or starts a project |
+| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip" (Import's list). Or starts a project |
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
 | **Cancel** (the "Reading …" box at the top while an architect's file is read) | Stops reading the file; nothing changes in the Studio |

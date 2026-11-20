@@ -3,6 +3,7 @@
  *  .ifc / .ifczip                       → ifc.ts  (walls, openings, spaces, storeys, columns + the exact shell)
  *  .dxf                                 → dxf.ts  (2D lines on layers → walls, openings, texts)
  *  .pdf (vector drawing)                → pdf.ts  (path lines + text → the DXF engine)
+ *  .svg                                 → svg.ts  (lines / paths / texts, groups as layers → the DXF engine)
  *  .glb .gltf .obj .fbx .3dm .dae .stl .3ds .kmz .wrl .ply → mesh.ts (the exact shell only, no rooms)
  * The picture formats (png / jpg / webp) and Plotline's own .json stay with the Studio's loadImage / importJson.
  * Several files dropped together, a folder or a .zip: bundle.ts picks the one to open, the rest are its pictures / buffers.
@@ -18,6 +19,7 @@ export const IMPORT_EXTENSIONS: Record<string, ImportFormat> = {
   ifczip: 'ifc',
   dxf: 'dxf',
   pdf: 'pdf',
+  svg: 'svg',
   glb: 'mesh',
   gltf: 'mesh',
   obj: 'mesh',
@@ -100,6 +102,8 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
       return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name)
     case 'pdf':
       return (await import('./pdf')).importPdf(bytes, file.name)
+    case 'svg':
+      return (await import('./svg')).importSvg(new TextDecoder().decode(bytes), file.name)
     case 'mesh':
       return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings)
   }

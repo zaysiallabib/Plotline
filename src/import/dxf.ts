@@ -8,7 +8,7 @@ import DxfParser from 'dxf-parser'
 import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
-import { buildPlan, roleOf, type ArcPrim, type Drawing, type Loop, type Role, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
@@ -415,32 +415,6 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/**
- * A unitless file's unit, guessed: of millimetres / centimetres / inches / feet / metres, the ones that make the plan
- * 3–200 m across; among those, when the file prints room sizes ("12'0'' x 7'11''"), the one where the rooms' summed
- * area is the most plausible share (~ half) of the plan's box — else the usual one for that extent.
- */
-function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale: number; words: string } {
-  const C: [number, string][] = [
-    [0.001, 'millimetres'],
-    [0.01, 'centimetres'],
-    [0.0254, 'inches'],
-    [0.3048, 'feet'],
-    [1, 'metres'],
-  ]
-  const extent = Math.max(box.w, box.h)
-  const fits = C.filter(([k]) => extent * k >= 3 && extent * k <= 200)
-  if (!fits.length) return { scale: 1, words: 'unknown — taken as metres; set the scale in the Studio (S)' }
-  if (sizeAreaSqm > 0 && fits.length > 1) {
-    const best = fits.map(([k, w]) => ({ k, w, off: Math.abs(Math.log((sizeAreaSqm / (box.w * k * box.h * k)) / 0.5)) })).sort((p, q) => p.off - q.off)[0]
-    return { scale: best.k, words: `${best.w} (guessed: the printed room sizes fit the plan's size)` }
-  }
-  // without sizes: the usual unit for that extent (mm for thousands, inches for hundreds, feet for 15–150, metres under)
-  const usual = extent >= 5000 ? 0.001 : extent >= 500 ? 0.0254 : extent >= 150 ? 0.3048 : extent >= 15 ? 0.3048 : 1
-  const pick = fits.find(([k]) => k === usual) ?? fits[0]
-  return { scale: pick[0], words: `${pick[1]} (guessed from the extent)` }
-}
-
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
@@ -495,8 +469,7 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   // layers → meaning
   const layers = new Map<string, number>()
   for (const g of [...flat.segs, ...flat.texts]) layers.set(g.layer.replace(/^DIM:/, ''), (layers.get(g.layer.replace(/^DIM:/, '')) ?? 0) + 1)
-  const WORDS: Record<Role, string> = { wall: 'walls', door: 'doors', window: 'windows', column: 'columns', text: 'room names', dim: 'dimensions', ignore: 'ignored', unknown: 'unknown (parallel pairs count as walls)' }
-  for (const [l, n] of [...layers].sort((p, q) => q[1] - p[1])) notes.push(`Layer "${l}": ${WORDS[roleOf(l)]} (${n}).`)
+  for (const [l, n] of [...layers].sort((p, q) => q[1] - p[1])) notes.push(`Layer "${l}": ${ROLE_WORDS[roleOf(l)]} (${n}).`)
   const blocks = new Set(flat.segs.filter((g) => g.block && roleOf('', g.block) !== 'unknown').map((g) => g.block!))
   if (blocks.size) notes.push(`Door / window blocks: ${[...blocks].join(', ')}.`)
   if (frozen.size) notes.push(`Frozen / hidden layers left out: ${[...frozen].join(', ')}.`)
