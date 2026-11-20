@@ -35,6 +35,21 @@ import { meterUVs, PANES, setGlassSky } from './openings'
  */
 export type Quality = 'high' | 'low' | 'lite'
 
+/**
+ * What each tier draws (session 31, measured on type-a's walk in Firefox: forward shading pays for every light in the
+ * pool on every pixel, at intensity 0 too — 12 → 3 lamps took 45 % off a pixel-bound frame; one more shadow map ≈ 3 %, but
+ * each redraw of it is 650–1 850 draw calls).
+ * `sun`: the sun's shadow map size; 0 = no shadow maps at all, and then the sun lights nothing while the camera is under the
+ * ceiling (it would pour through every ceiling onto every floor): the daylight atlas and the contact shadows carry the rooms,
+ * the street outside keeps the sun. `lamps`: lights in the lamps' pool (the camera's room first); `lampShadows`: of those,
+ * how many cast shadows. `ao`: the corner shading pass (GTAO, with its 4× MSAA buffer).
+ */
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false },
+  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false },
+}
+
 /** Lite draws a frame only when it can differ from the last one: the camera moved, input or a load within the wake window, VR. */
 export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number }): boolean =>
   s.tier !== 'lite' || s.xr || s.moved || s.now < s.wakeUntil
@@ -82,11 +97,10 @@ const BOUNCE_DOWN = 0.08
 export const lampCandela = (areaSqm: number): number => Math.min(4500, Math.max(900, 150 * areaSqm)) / Math.PI / 100
 /**
  * The flat's lamps (kit.ts lightOf: ceiling fixtures, floor and table lamps) share a pool of spot lights, the nearest to
- * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most MAX_LAMPS. Forward
- * shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles every
- * material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
+ * the camera first (assignPool): as many as it had at load + SPARE (lamps Arrange adds), at most the tier's (TIERS.lamps).
+ * Forward shading pays for every light on every lit fragment — at intensity 0 too — and a change in their number recompiles
+ * every material: the pool never grows or shrinks while a flat is shown, an unused light burns at 0 (as the lamps off do).
  */
-const MAX_LAMPS = 12
 const SPARE = 4
 /** a ceiling diffuser's cone (Lambertian: see setUnit); a lamp's shade lets its light out over the whole lower half */
 const CEILING_CONE = THREE.MathUtils.degToRad(83)
@@ -105,8 +119,6 @@ interface Fixture {
   roomId: Id
   room: Pt[]
 }
-/** lamps casting shadows at once (the nearest to the camera; the count never changes: no recompile) */
-const CASTERS: Record<Quality, number> = { high: 3, low: 2, lite: 1 }
 /** the fixtures' diffusers, pendant globes and fan light kits: × their own emissive while the lamps are on, 0 when off */
 const ON_GLOW = 4
 /** a pane at night with the lamps on: how strongly it mirrors the room (the interior probe), a faint reflection on dark glass */
@@ -269,7 +281,14 @@ export class Look {
   /** the Building view: the camera is outside the tower, whose shells take no bounce from this flat's lamps */
   outside = false
   private alt = 45
+  /** lamps casting shadows at once (TIERS.lampShadows: the nearest to the camera; the count never changes: no recompile) */
   private casters: number
+  /** the pool's size cap (TIERS.lamps) */
+  private readonly maxLamps: number
+  /** the tier draws shadow maps; without them the sun is off while the camera is under the ceiling (render) */
+  private readonly shadows: boolean
+  /** the sun's intensity as PlotlineScene last set it (setAltitude): render() switches it off indoors when there are no shadows */
+  private sunI = 0
   /** where the shadow-casting lamps were last picked from */
   private readonly pickedAt = new THREE.Vector3(Infinity, 0, 0)
   /** the dome's twilight uniforms (setAltitude) */
@@ -293,15 +312,17 @@ export class Look {
     private readonly sun: THREE.DirectionalLight,
     quality: Quality,
   ) {
+    const tier = TIERS[quality]
     renderer.toneMapping = THREE.NeutralToneMapping
-    renderer.shadowMap.enabled = !switchedOff('shadows')
-    this.casters = CASTERS[quality]
+    this.shadows = renderer.shadowMap.enabled = tier.sun > 0 && !switchedOff('shadows')
+    this.casters = this.shadows ? tier.lampShadows : 0
+    this.maxLamps = tier.lamps
     sun.shadow.autoUpdate = false // render(): drawn again when what it sees changed (casterKey)
     renderer.shadowMap.autoUpdate = false // drawn when something it sees changes: render() / casterKey
     renderer.domElement.addEventListener('webglcontextrestored', this.onRestored)
     renderer.shadowMap.type = THREE.PCFShadowMap
-    sun.castShadow = true
-    sun.shadow.mapSize.setScalar(quality === 'high' ? 2048 : 1024)
+    sun.castShadow = this.shadows
+    sun.shadow.mapSize.setScalar(tier.sun || 1024)
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 2
@@ -332,7 +353,7 @@ export class Look {
     this.sky.renderOrder = -1
     scene.add(this.hemi, this.sky, this.ground, this.catcher, this.unitGroup)
 
-    if (quality === 'high') {
+    if (tier.ao) {
       const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) })
       this.composer = new EffectComposer(renderer, rt)
       this.composer.addPass(new RenderPass(scene, camera))
@@ -481,7 +502,7 @@ export class Look {
       return a && b && a !== b ? [[a.id, b.id, Math.max(...w.openings.map((o) => SPILL[o.kind] ?? SPILL_OTHER))]] : []
     })
     this.setFixtures(unit)
-    this.pool = Array.from({ length: Math.min(MAX_LAMPS, this.fixtures.length + SPARE) }, (_, i) => {
+    this.pool = Array.from({ length: Math.min(this.maxLamps, this.fixtures.length + SPARE) }, (_, i) => {
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
@@ -616,6 +637,7 @@ export class Look {
     for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
     setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
+    this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
     ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)
     this.fitShadow()
@@ -695,8 +717,10 @@ export class Look {
     const under = this.camera.getWorldPosition(this.v).y < this.topY
     this.sky.position.copy(this.v)
     this.indoor.visible = under
-    this.catcher.visible = !under
-    const key = this.casterKey()
+    this.catcher.visible = !under && this.shadows
+    // no shadow maps: under the ceiling the sun would light every floor and every wall facing it, through the slab above
+    if (!this.shadows) this.sun.intensity = under && !this.outside ? 0 : this.sunI
+    const key = this.shadows ? this.casterKey() : this.shadowKey
     if (key !== this.shadowKey) {
       this.renderer.shadowMap.needsUpdate = true
       this.sun.shadow.needsUpdate = true
@@ -713,7 +737,7 @@ export class Look {
   }
 
   /**
-   * The pool to the fixtures nearest the camera (assignPool; its first CASTERS lights cast shadows), again once the camera
+   * The pool to the fixtures nearest the camera (assignPool; its first `casters` lights cast shadows), again once the camera
    * has moved 0.5 m or the layout changed (setFixtures); a light that takes another fixture has its map drawn on this
    * frame, the others keep theirs. Lamps off: nothing to do (setLights asks again when they go on).
    */

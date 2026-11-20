@@ -1,8 +1,22 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, twilight } from './render'
+import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, NIGHT_EXPOSURE, pickCasters, skyLight, TIERS, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
+
+describe('what each quality tier draws (session 31)', () => {
+  test('Lite: no shadow maps at all, two lamps in the pool, no corner shading', () =>
+    expect(TIERS.lite).toMatchObject({ sun: 0, lamps: 2, lampShadows: 0, ao: false }))
+  test('Low: the sun’s 1024 shadow map only (no lamp shadows), four lamps', () => expect(TIERS.low).toMatchObject({ sun: 1024, lamps: 4, lampShadows: 0, ao: false }))
+  test('High as before: 2048 sun, twelve lamps, three casting, corner shading', () => expect(TIERS.high).toMatchObject({ sun: 2048, lamps: 12, lampShadows: 3, ao: true }))
+  test('a lighter tier never draws more', () => {
+    for (const [a, b] of [['high', 'low'], ['low', 'lite']] as const) {
+      expect(TIERS[b].sun).toBeLessThanOrEqual(TIERS[a].sun)
+      expect(TIERS[b].lamps).toBeLessThanOrEqual(TIERS[a].lamps)
+      expect(TIERS[b].lampShadows).toBeLessThanOrEqual(TIERS[a].lampShadows)
+    }
+  })
+})
 
 describe('skyLight', () => {
   test('noon down to 10°: the day exposure, 20 % over the old 1 (founder 2026-11-20); the sky’s fill as seen the full day’s; no night', () => {
