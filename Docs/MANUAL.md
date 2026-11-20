@@ -22,12 +22,15 @@ Two kinds of people:
 
 ## 0. The front page
 
-Open the site with nothing after its name (`/`) and you get the front page. It tells a developer who has never seen Plotline what it does, in a few words.
+Open the site with nothing after its name (`/`) and you get the front page. It tells a developer who has never seen Plotline what it does, as a short story you scroll through.
 
-- At the top: the name, one line, and two buttons. **See a flat** opens flat type A in 3D. **For developers** slides the page down to "How it works".
-- Below: "How it works" (bring the plan, walk the building, share), "What buyers do" and "What the developer gets". Each has real pictures taken from the 3D view. At the end, **See a flat** and **Open the Studio** appear again.
-- The thin bar on top stays while you scroll: **Plotline** (back to the top), **See a flat**, **Studio**.
-- Behind the page a faint floor plan drifts as you scroll. Its lines lean toward the mouse and turn gold under it, and the pictures tilt a little under the mouse. If the computer is set to "reduce motion", nothing moves.
+- At the top: the name, one line, the blue **See a flat** button (opens flat type A in 3D) and **Open the Studio**.
+- Beside them (under them on a phone) lies a real floor plan: flat type A on a sheet of paper, drawn the way the architect's sheet draws it, with its room names, sizes and north point.
+- Scroll down and the story plays with your scroll: the sheet straightens and tips back, the walls rise out of the plan with their doors and windows cut in, then the floor lifts onto a row of columns and more floors of the same plan stack up into a tower, each turned a little more than the one under it. The roof closes it and a June morning's sun casts the tower's shadow (true to the flat's north). Scroll back up and it plays backwards. Nothing moves unless you scroll.
+- **I · Plan, II · Walls, III · Building** at the bottom left show where the story is.
+- Below: "How it works" (bring the plan, walk the building, share), "What buyers do" and "What the developer gets", with six pictures taken from the 3D view (Plate I to VI). At the end, **See a flat** and **Open the Studio** appear again.
+- The thin bar on top stays while you scroll: **Plotline** (back to the top; it appears once the big name has scrolled away), **See a flat**, **Studio**.
+- If the computer is set to "reduce motion", the story does not play: the page shows the finished tower beside the first words.
 - The front page shows no prices and nothing a buyer could change.
 
 ---
