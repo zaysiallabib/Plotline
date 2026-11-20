@@ -11,7 +11,7 @@ import { drawingName, forkFloor, parseFloors, planOf, removeDrawing, setSlot, sl
 import { copyKept, floorAnswer, setFloorAnswer } from '../viewer/arrange'
 import { emptyUnit } from './model'
 import { copyPicture, deletePicture } from './pictures'
-import { ask } from '../lib/ask'
+import { ask, askText } from '../lib/ask'
 
 const nameOf = (u: Pick<Unit, 'name'> | undefined) => u?.name.trim() || 'Untitled drawing'
 /** a drawing's flats, "Type A, Type B" (derived, never stored); per unit object: the list re-renders every second */
@@ -184,8 +184,8 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
       null,
     )
   }
-  const rename = () => {
-    const name = window.prompt('Project name', project.name)?.trim()
+  const rename = async () => {
+    const name = (await askText('The project’s name', { value: project.name }, 'Rename'))?.trim()
     if (name) change((p) => ({ ...p, name }))
   }
   const remove = async () => {

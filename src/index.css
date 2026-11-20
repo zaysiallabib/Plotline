@@ -193,6 +193,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .ask::backdrop { background: color-mix(in srgb, var(--bg) 55%, transparent); }
 .ask p { margin: 0 0 var(--s-5); font-size: var(--fs-lg); line-height: var(--lh); white-space: pre-line; text-wrap: pretty; }
+.ask p:has(+ input) { margin-bottom: var(--s-3); }
+/* askText: the line to type */
+.ask input {
+  display: block; width: 100%; height: var(--control); margin: 0 0 var(--s-5); padding: 0 var(--s-3);
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--ink);
+  font-size: var(--fs-lg); transition: border-color var(--dur-fast) var(--ease);
+}
+.ask input::placeholder { color: var(--muted); }
+.ask input:focus { outline: none; border-color: var(--accent); }
 .ask-row { display: flex; justify-content: flex-end; gap: var(--s-2); }
 .ask button {
   height: var(--control); padding: 0 var(--s-4); border: 1px solid var(--line); border-radius: var(--r-sm); background: transparent;

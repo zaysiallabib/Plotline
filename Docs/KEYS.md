@@ -379,6 +379,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 |---|---|---|
 | **Cancel** (or **Esc**) | Says no: nothing changes | staff |
 | The second button — it names what happens: **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**… (or **Enter**) | Says yes. Red when something is deleted or taken away | staff |
+| The line to type in (a new name, the staff key) | Opens with the old name in it, selected: type over it. **Rename** / **Share** (or **Enter**) takes it | staff |
 
 ### Pages that say something went wrong (MANUAL §12)
 

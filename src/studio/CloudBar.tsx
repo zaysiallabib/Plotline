@@ -12,7 +12,7 @@ import { autosaver, deleteProject, hashOf, itemKey, linkStore, listProjects, loa
 import type { Autosaver, CloudItem, CloudRow, Kind, SavedVersion, Status } from '../lib/cloud'
 import { configured } from '../lib/supabase'
 import { Links, Members } from './CloudPanes'
-import { ask } from '../lib/ask'
+import { ask, askText } from '../lib/ask'
 
 interface Props {
   /** what is open, to save (null: nothing worth saving, e.g. an empty drawing); read when a save starts */
@@ -196,7 +196,7 @@ function SignedIn({ email, user, org, status, saver, bar }: { email: string; use
     }
   }
   const rename = async (r: CloudRow) => {
-    const name = window.prompt('New name', r.name)?.trim()
+    const name = (await askText(`A new name for "${r.name}"`, { value: r.name }, 'Rename'))?.trim()
     if (!name || name === r.name) return
     if (isOpen(r)) return bar.onRenameOpen(name)
     try {
