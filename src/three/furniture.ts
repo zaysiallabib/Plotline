@@ -89,7 +89,14 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       const size = box.getSize(new THREE.Vector3())
       const want = (rebuilt && p.sizeM) || asset.sizeM
       const ratio = Math.max(size.x, size.y, size.z) / Math.max(want.x, want.y, want.z)
-      if (Math.abs(ratio - 1) > 0.25 && size.y > 1e-6) {
+      const side = asset.frontAxis.endsWith('x') // FRONT_FIX turned it 90°: its own x is the piece's depth
+      if (asset.own && size.x > 1e-6 && size.y > 1e-6 && size.z > 1e-6) {
+        // the staff's own model (furnish/own.ts): fitted to the size they typed, whatever unit its file was drawn in
+        const f = { x: want.x / size.x, y: want.y / size.y, z: want.z / size.z }
+        model.scale.multiply(new THREE.Vector3(side ? f.z : f.x, f.y, side ? f.x : f.z))
+        model.updateMatrixWorld(true)
+        box.setFromObject(model)
+      } else if (Math.abs(ratio - 1) > 0.25 && size.y > 1e-6) {
         if (!warned.has(asset.id)) {
           warned.add(asset.id)
           console.warn(`[plotline] "${asset.id}" loads at ${ratio.toFixed(2)}× its kit size — rescaling to sizeM.y`)
@@ -101,7 +108,6 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       if (p.sizeM && !rebuilt) {
         // resized scan (or a builder that does not rebuild): the mesh scaled by sizeM / kit size in the piece's frame (kit.ts resizeLimits)
         const f = { x: p.sizeM.x / asset.sizeM.x, y: p.sizeM.y / asset.sizeM.y, z: p.sizeM.z / asset.sizeM.z }
-        const side = asset.frontAxis.endsWith('x') // FRONT_FIX turned it 90°: its own x is the piece's depth
         model.scale.multiply(new THREE.Vector3(side ? f.z : f.x, f.y, side ? f.x : f.z))
         model.updateMatrixWorld(true)
         box.setFromObject(model)

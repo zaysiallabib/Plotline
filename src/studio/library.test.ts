@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { deriveRooms, type Unit } from '../core'
+import { FINISH_CATALOG } from '../furnish/finishes'
+import { kitAsset, objectKind } from '../furnish/kit'
+import { furnish } from '../furnish/presets'
 import { library } from './furniture'
 import { entry, firstMatch, listing, pushRecent, RECENT_MAX, score } from './library'
 
@@ -49,5 +53,20 @@ describe('the library listing: search, groups, Recent', () => {
   it('every row has a footprint in feet and a mark: built in code or a scan', () => {
     expect(entry('sofa_3seat')).toMatchObject({ scan: false, feet: `7'-3" × 3'-0"` })
     expect(entry('sofa_02')!.scan).toBe(true)
+  })
+})
+
+describe('nothing only in a built-in file (CLAUDE.md "Nothing only Claude can do", workflow point 7)', () => {
+  it('every piece the built-in flats and levels show is in the library, but what the plan itself lays (planter beds, stairs)', () => {
+    const listed = new Set(library().flatMap((t) => t.items.map((i) => i.id)))
+    const units = Object.values(import.meta.glob<Unit>('../data/units/*.json', { eager: true, import: 'default' }))
+    expect(units.length).toBeGreaterThanOrEqual(20)
+    const shown = new Set(units.flatMap((u) => [...u.furniture, ...furnish(u, deriveRooms(u))].map((p) => p.assetId)))
+    // a planter bed fills a drawn planter zone by its own outline, a stair stands in a stair room: drawn in the Studio, not picked
+    const missing = [...shown].filter((id) => !listed.has(id) && !id.startsWith('planter_bed') && objectKind(kitAsset(id)!) !== 'stair')
+    expect(missing).toEqual([])
+    // their finishes are the catalog's (finishes.test.ts), and every texture of the list can be offered as one (Finishes → Add option)
+    const options = new Set(FINISH_CATALOG.flatMap((s) => s.options.map((o) => JSON.stringify(o))))
+    for (const u of units) for (const s of u.finishSlots) for (const o of s.options) expect(options.has(JSON.stringify(o))).toBe(true)
   })
 })

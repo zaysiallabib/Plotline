@@ -13,13 +13,16 @@ export interface TextureSet {
   ao?: string
   /** real-world size of one tile, meters (Poly Haven "dimensions" in mm / 1000) */
   repeatM: number
+  /** its height when it is no square (a staff's own 60 × 30 cm tile picture); absent = repeatM */
+  repeatYM?: number
   /** × the albedo map, under any MaterialRef tint: calibrates a scan whose white is hotter than the real surface */
   tint?: string
   /** grass / soil: its roughness map is left off (roughness 1) and its relief halved — in the sun the scan glittered white */
   matte?: true
   source: string
   author: string
-  license: 'CC0'
+  /** 'own': a picture the developer's staff added (furnish/own.ts), theirs */
+  license: 'CC0' | 'own'
 }
 
 /**
@@ -30,7 +33,13 @@ export interface TextureSet {
  *  soft:     fabric_curtain (curtains), fabric_upholstery, rug_wool
  *  joinery:  wood_veneer_light (door leaves, cabinets), metal_brushed
  */
-export { TEXTURES } from './textures.data'
+import { TEXTURES } from './textures.data'
+
+export { TEXTURES }
+/** The staff's own texture pictures, by their finish option's id (furnish/own.ts registerOwn). */
+export const OWN_TEXTURES: Record<string, TextureSet> = {}
+/** A texture set by id: the library's, else the staff's own. */
+export const textureSet = (id: string): TextureSet | undefined => TEXTURES[id] ?? OWN_TEXTURES[id]
 
 /** HDRI environment maps (public paths). */
 export const HDRI = {
