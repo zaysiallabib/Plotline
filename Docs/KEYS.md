@@ -1,402 +1,228 @@
 # Plotline — every key and every button
 
-All the keys, mouse moves and buttons a person can use, in one place. Checked against the program on 2026-10-19 (it already had the P key for the wind, curtains on any opening and Delete on the piece in your hand); the 3D view's buttons moved on 2026-11-20 (session 30: one bar top right, Sun & wind at the bottom middle, Quality under ⋯), and the Studio's the same night (Import, Export, Export answers, New project, Site, Share link, Change list and Sign in moved into the top bar's **⋯** menu; the timer moved to the status bar; a **Keys** button and the **?** key show every key). How each one works in detail is in [MANUAL.md](MANUAL.md): the last column says where.
-
+One table per screen. How each one works in detail: [MANUAL.md](MANUAL.md), the section in the last column.
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
+**Who:** staff = the developer's team (a browser becomes staff the first time it opens the Studio, or with `?staff=1`);
+buyer = someone on a buyer link; everyone = both. Checked against the product on 2026-11-21.
 
-Keys do nothing while the cursor is in a text box (the letters go into the box). Press **Enter** (or click the plan) to give the keys back. The few keys that work inside a box are marked.
+## Everywhere
 
-Who: **staff** = the developer's team (a browser becomes staff the first time it opens the Studio, or with `?staff=1`); **buyer** = someone on a buyer link; **everyone** = both.
-
----
-
-## 1. Studio keys (staff)
-
-| Key / mouse | What it does | Where (tool / mode) | MANUAL |
-|---|---|---|---|
-| **V** | Select tool | any time | §5 The tools — V |
-| **S** | Scale tool | any time | §5 — S |
-| **W** | Wall tool | after the scale is set (before: "Set the scale first (S)") | §5 — W |
-| **A** | Arc tool: a curved wall, laid as short straight pieces | after the scale | §5 — A |
-| **O** | Opening tool: doors, windows, sliders, passages, glass wall | after the scale | §5 — O |
-| **R** | Room tool: name a closed room | after the scale (in F, R turns a piece instead) | §5 — R |
-| **C** | Column tool | after the scale | §5 — C |
-| **F** | Furniture tool | after the scale | §5 — F |
-| Hold **W**, **O** or **R** | The tool works only while the key is held; let go and you are back on the tool you had (a quick tap just switches). Hold W and drag from corner to corner = one wall; hold O and click a wall; hold R and click a room | any tool | §5 "Hold instead of switch" |
-| Shift + a tool letter | Does not switch the tool (Shift+H is the door swing) | — | — |
-| **1 2 3 4** | Wall / Low wall / Kerb / Zone line — what W and A draw next | W, before the first corner | §5 — W |
-| **1 2 3 4** | Door / Window / Slider / Passage, at its usual width | O (also with O held) | §5 — O |
-| A digit or **.** | Opens the length box with it; **Enter** lays the wall at that length. **0** fits the view instead, so type `.5`, not `0.5` | W, while drawing (after the first corner) | §5 — W |
-| **Tab** | The length box switches between length and angle (0° = to the right) | the length box while drawing walls | §5 — W |
-| **Enter** | Confirms the box you are typing in: a wall's length, the scale's real length, the room box (= Save), a floor level, a wall width, a floor plan's floors box (= Apply), the New project name (= Create project), the Site address (= Find), the name box on the plan | text boxes | §5, §6 |
-| **Esc** | One step back, in this order: stops Auto-trace's "Point at a flat"; closes the problem box on the plan; lets go of the piece in your hand (F: a moved piece stays where it was, a new one is dropped); closes the room box; ends the wall you are drawing; else drops a half-done scale, line-up or arc and unpicks everything. In a length box: closes it | any tool | §5 Other keys |
-| **Backspace** | While drawing walls: takes back the last piece. Otherwise the same as Del | W; any tool | §5 — W |
-| **Del** | Deletes what is picked (asks first when doors or windows would go with the walls). In F: the picked piece and what rests on it — also the piece in your hand (a new one from the library is only let go) | any tool | §5 Other keys, — F |
-| **T** | Thin wall 5" ↔ thick wall 10": the walls being drawn, else the picked walls | W, A, V (not F) | §5 — W, A |
-| **H** | The picked door's hinge goes to the other side | a door picked, any tool but F | §5 — O |
-| **Shift+H** | The picked door swings the other way (in / out) | same | §5 — O |
-| **Ctrl+Z** | Undo | any tool (not in a text box) | §5 Top bar |
-| **Ctrl+Y** or **Ctrl+Shift+Z** | Redo | same | §5 Top bar |
-| **Ctrl+D** | Copies the picked walls and room names, set a little to one side | any tool | §5 Other keys |
-| **Ctrl+S** | Export: saves the drawing as a file | any tool — **also inside a text box** | §5 Top bar |
-| **Ctrl+O** | Import: opens a drawing file | any tool — **also inside a text box** | §5 Top bar |
-| Ctrl+A | Picks every wall | V | §5 — V |
-| **Arrow keys** | Nudge what is picked 1 inch | every tool but F | §5 Other keys |
-| **↑ / ↓** | Picks the row above / below in **Check these** (its mark on the plan turns blue); **Enter** goes to it on the plan and opens it. Works once you have clicked in the list (a row, a room's line); a click on the plan gives the arrow keys back to nudging | the Check these list | §5 Right-hand panel — Check these |
-| **Shift + arrow keys** | Nudge 1 foot | every tool but F | §5 Other keys |
-| **Arrow keys** | Move the picked piece one 3-inch square (Shift changes nothing; nothing while a piece is in your hand) | F | §5 — F |
-| **R** | Turn the picked piece 90° — or the piece in your hand; a TV on its unit or cushions turn their unit with them on it | F | §5 — F |
-| **0** | Fit the whole plan on screen | any tool | §5 Other keys |
-| **Space** held + drag | Slide the plan | any tool | §5 Other keys |
-| **Shift** held | No snapping or sticking while you point, draw or drag (corners, wall lines, wall faces, columns; a column corner's square-up stick); the status bar shows it at once | V, W, A, C | §5 — V, W, C |
-| **Shift + click** | Adds to what is picked (pick several); a Shift-click on empty plan keeps what is picked | V | §5 — V |
-| **Drag on empty plan** | A thin dashed box: picks every wall, opening and column it touches when you let go (Shift+drag adds); a plain click on empty plan unpicks | V | §5 — V |
-| **Alt** + drag an end of the picked wall | The walls joined at that corner move with it and stay straight. Without Alt the end leaves the corner and only this wall gets longer or shorter | V, one wall picked | §5 — V |
-| **Alt** + drag a corner of a wall that is not picked | Pulls that one wall free of the corner (the others stay) | V | §5 — V |
-| Mouse wheel | Zoom in / out at the pointer | any tool | §5 Other keys |
-| Left click, press-drag | The tool's own action (pick, draw, place, drag) | any tool | §5 The tools |
-| Right-drag or middle-drag | Slide the plan | any tool | §5 Other keys |
-| Double-click a wall | Type its length | every tool but W and A | §5 — V |
-| Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V). A column's side or corner dot: that side, or that corner alone (V or C). An opening's end dot: its width (V or O). Curtains' end dot: wider or narrower on that side (F). A ramp's arrow head: which way it runs (V). The Site's blue north arrow: true north; its round dot moves the arrow | V, C, O, F, Site open | §5 — V, C, F, Site |
-| Drop a picture or a file on the page | A plan picture (PNG, JPG, WEBP, up to 10 MB) goes under the drawing; a drawing file opens | any time | §5 "Loading the plan picture" |
-| **?** | Opens or closes the Keys sheet: every key in one list, the tool you are on explained in full at the top (the same as the **Keys** button, bottom right). **Esc** or a click elsewhere closes it | any time (not in a text box) | §5 "The status bar and the Keys sheet" |
-| **Esc** (a menu, the account card or the Keys sheet open) | Closes only that menu, card or sheet — nothing else is unpicked | ⋯ menu, account card, Keys sheet | §5 Top bar |
-
-## 2. 3D view keys
-
-| Key / mouse | What it does | Where (mode) | Who | MANUAL |
+| Key / button | What it does | Where | Who | MANUAL |
 |---|---|---|---|---|
-| **Enter** | Go in (the start screen's Enter button) | start screen | everyone | §2 |
-| **W** or **↑** | Walk forward | Walk | everyone | §2 Moving in Walk |
-| **S** or **↓** | Walk back | Walk | everyone | §2 |
-| **A** / **D** | Step left / right | Walk | everyone | §2 |
-| **←** / **→** | Turn left / right while the mouse is free; step left / right while the mouse turns your head | Walk | everyone | §2 |
-| **Shift** held | Walk faster (about 4 m/s instead of 1.8) | Walk | everyone | §2 |
-| Click a spot on the floor | Walk there (not while Comment or Finishes is open: the click is for the note or the finish, you stay) | Walk, mouse free | everyone | §2 |
-| Double-click | The mouse turns your head; **Esc** gives the mouse back | Walk (not in Edit furniture / Edit openings) | everyone | §2 |
-| **O** | Walk ↔ Dollhouse (from the Building view: back to Walk) | any | everyone | §2 Buttons |
-| **B** | The Building view | only when the flat is part of a tower | everyone | §2, §4 |
-| **F** | Opens / closes Finishes (closes Comment); in Clean view it also brings everything back | any | everyone | §2 Finishes panel |
-| **C** | Comment on / off (the Comment panel; closes Finishes); then click the thing. In Clean view it also brings everything back | any | everyone | §2 Notes |
-| **H** | **Clean view** on / off: everything on screen goes, only a faint dot top right stays (the same as the eye button, or ⋯ → Clean view); remembered for the browser tab | any (not in a text box) | everyone | §2 Clean view |
-| **P** | Wind on / off — the same as the Wind button on the Sun & wind card (the pill at the bottom middle) | Walk, Dollhouse, Building | everyone | §2 Always on screen |
-| **M** | Hides / shows the small map (the same as its × and the **Map** button) | Walk | everyone | §2 Always on screen |
-| **Esc** | Gives the mouse back, and one step back: in Clean view it only brings everything back (nothing else happens with that press); the "which floors?" box (Floor 2 only / All 4 floors) takes the change back — the piece goes back where it was, nothing saved; an open list or menu (Rooms, Edit, ⋯) closes first; a piece in your hand goes back where it was (a new one is dropped); in Edit furniture: closes the library and unpicks (one Esc, also while the cursor is in its search box); in Edit openings: unpicks; else drops a note you have not saved; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
-| Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back everything that faded while the mouse rested (3 s still in Walk: all but the room's name fades) | Walk | everyone | §2 Resting |
-| **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down where it fits | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
-| **R** | Turns the piece in your hand; in Edit furniture turns the picked piece 90° (a TV on its unit turns the unit, the TV on it) | Walk, Dollhouse | staff | §3 Edit furniture |
-| **Del** or **Backspace** | Deletes the piece in your hand (after G or a drag; a new one from the library is only let go); in Edit furniture: the picked piece. In Edit openings: removes the picked door, window, passage or low wall | Walk, Dollhouse | staff | §3 |
-| **Ctrl+Z** | Undo the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
-| Number keys | Nothing in the 3D view | — | — | — |
-| Drag / wheel / right-drag | Turn the view / zoom / slide it | Dollhouse, Building | everyone | §2, §4 |
+| Any key while the cursor is in a text box | Goes into the box (the letters are typed). **Enter** or a click on the plan / the 3D gives the keys back. Ctrl+S and Ctrl+O still work in the Studio | every screen | everyone | §10 |
+| **Cancel** (or **Esc**) on a question card | Says no: nothing changes | the white card in the middle of the screen | staff | Start here |
+| The second button on a question card (or **Enter**) | Says yes; it names what happens — **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**; red when something is taken away | the same card | staff | Start here |
+
+## Front page (`/`)
+
+| Key / button | What it does | Where | Who | MANUAL |
+|---|---|---|---|---|
+| Scrolling | Plays the story: the plan's walls rise, the floors stack into a tower; scrolling up plays it back | the page | everyone | §0 |
+| **See a flat** | Opens flat Type A in 3D (`/u/type-a`) | top bar, the blue button by the plan, end of the page, footer | everyone | §0 |
+| **Studio** / **Open the Studio** | Opens the Studio (like any visit to it, makes the browser staff) | top bar, by the plan, end of the page, footer | everyone | §0 |
+| **Plotline** | Back to the top | top left, once you have scrolled | everyone | §0 |
+
+## 3D view (`/u/…`, `/s/…`)
+
+| Key / button | What it does | Where | Who | MANUAL |
+|---|---|---|---|---|
+| **Enter** (button or key) | Goes in; you stand inside the front door. "or press Enter" under it (not under a finger) | start screen | everyone | §2 Start screen |
+| **Change** (in "High quality · …") | Shows **Lite · Low · High** right there (a blue dot marks the recommended one); a pick opens the page again with it | start screen | everyone | §2 Choosing quality |
+| The other flats and levels (quiet list at the bottom) | Opens another built-in flat or level | start screen, not on a buyer link | everyone | §2 Start screen |
+| **Studio** · **Staff mode** / **Leave staff mode** (small, top right) | Opens the Studio · turns staff mode on / off in this browser | start screen, not on a buyer link | everyone | §2 Start screen |
+| **W** or **↑** · **S** or **↓** | Walk forward · back | Walk | everyone | §2 Moving in Walk |
+| **A** / **D** | Step left / right | Walk | everyone | §2 Moving in Walk |
+| **←** / **→** | Turn left / right (step sideways while the mouse turns your head) | Walk | everyone | §2 Moving in Walk |
+| **Shift** held | Walk faster (about 4 m/s instead of 1.8) | Walk | everyone | §2 Moving in Walk |
+| Click a spot on the floor | Walk there (not while Comment or Finishes is open) | Walk, mouse free | everyone | §2 Moving in Walk |
+| Double-click | The mouse turns your head; **Esc** gives it back | Walk, not in an editor | everyone | §2 Moving in Walk |
+| **Up to …** / **Down to …** | Takes the stair: the floor above / below opens with you on its stair (walking up the second flight, or under it from the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
+| Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
-| Click a floor, a wall or a ceiling | Chooses the finish for that one room or wall | Finishes open, Walk or Dollhouse | everyone | §2 Finishes panel |
-| Click anything | Puts a note on it (clicking the floor no longer walks you there too) | Comment on | everyone | §2 Notes |
 | Click a flat | Opens it | Building | everyone | §4 |
-| Click / drag / drag a dot | Click a piece = pick it (also through glass); drag = move it — a TV, picture, AC, clock or mirror also up and down its wall (1-inch steps); drag a dot = bigger or smaller (curtains: wider or narrower on that side); drag the empty room = look around (Walk) | Edit furniture | staff | §3 Edit furniture |
-| Click / drag / drag a dot | Click = pick a door or window; drag = slide it along its wall; drag a dot = width, height, a window's sill; drag the empty room = look around (Walk) | Edit openings | staff | §3 Edit openings |
-| Click / drag / drag a dot (low wall) | Click = pick a low wall (under 1.2 m: railing, parapet, planter edge, kerb); drag an end dot = longer / shorter along its line (a joined end leaves its corner); drag the wall = move it across | Edit openings | staff | §3 Edit openings |
+| **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
+| **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
+| **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
+| **Finishes** / **F** | Opens / closes Finishes (closes Comment); in Clean view also brings everything back | the bar | everyone | §2 Finishes panel |
+| **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
+| **Share** | Copies a link that opens with the finishes you chose | the bar | everyone | §2 The bar |
+| **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add | the bar | staff | §3 Edit furniture |
+| **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar, not on a `/s/` link | staff | §3 Edit openings |
+| **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
+| **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar, not on a `/s/` link | staff | §3, §5 Give the drawing back |
+| **⋯ → Quality: Lite · Low · High** | How heavy the 3D is; a blue dot marks the recommended one; a new choice reloads the page | the bar | everyone | §2 Choosing quality |
+| **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
+| The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
+| **Enter VR** / **Exit VR** | Into / out of the headset | the bar, only with a headset connected | everyone | §2 In VR |
+| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there. In the Building view it names the picked floor | top left | everyone | §2 Top left |
+| Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back what faded while the mouse rested (3 s still: all but the room's name fades) | Walk | everyone | §2 Resting |
+| The hint | The keys for what you are doing; fades after a few seconds, back when it changes or when the mouse rests where it was | bottom middle | everyone | §2 The hint |
+| A short message | Answers what you just did ("Link copied …"); fades by itself | bottom middle, above the hint | everyone | §2 |
+| **Sun & wind** pill (sun, time, month, compass; "Wind" while on) | Opens the Sun & wind card | bottom middle | everyone | §2 Sun & wind |
+| **⌄** | Folds the card back into the pill (or Esc) | the card, top right | everyone | §2 Sun & wind |
+| The compass | True north as you look now (its top = straight ahead; N is blue); with Wind on it is the wind rose | the card, top left; small on the pill | everyone | §2 Sun & wind |
+| The date | The day the sun and the wind's month are shown for; starts on today | the card | everyone | §2 Sun & wind |
+| The time slider (0 to 24) | Moves the sun; coloured by the site's own day | the card | everyone | §2 Sun & wind |
+| **Jan … Dec** | Picks a month; the day moves to it | the card | everyone | §2 Sun & wind |
+| **Lights** | The flat's lamps on / off; automatic after sunset; a click again goes back to automatic | the card | everyone | §2 Sun & wind |
+| **Wind** / **P** | The wind through the flat this month, on / off | the card; P in Walk, Dollhouse, Building | everyone | §2 Sun & wind |
+| A month's line on the wind rose | Picks that month | the card, Wind on | everyone | §2 Sun & wind |
+| Small map: **×** / **M** / **Map** | Hides it (× shows when the mouse is over it) / brings it back | bottom right in Walk (top right on a phone) | everyone | §2 Small map |
+| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (white row; your flat's floor has a blue dot); a basement hides what is above | Building view, right | everyone | §4 |
+| **Walk this level** | Walks the picked ground floor, basement, rooftop or common floor | Building view, under the floors | everyone | §4 |
+| **×** (Finishes) · **×** (Comment) | Closes Finishes (or F, Esc) · stops Comment (or C, Esc) | the panel's top right | everyone | §2 |
+| **Your name** | So the developer knows who asked | Finishes and Comment, buyer links only | buyer | §2 |
+| Click a floor, a wall or a ceiling | Chooses the finish for that one room or wall | Finishes open, Walk or Dollhouse | everyone | §2 Finishes panel |
+| **This wall** · **The whole room** | A wall's choice for that wall only, or every wall of the room | Finishes, the clicked thing's block | everyone | §2 Finishes panel |
+| **Same as the group** / **Same as the room** · **Done** | Takes a one-room / one-wall choice back · closes the block | the same block | everyone | §2 Finishes panel |
+| An option (brand, price difference) | Chooses it (the chosen one is white) | Finishes | everyone | §2 Finishes panel |
+| **undo** | Takes one one-room / one-wall choice back | Finishes, "Chosen for one room or wall" | everyone | §2 Finishes panel |
+| **Options total** · **Reset to included** | The sum of the price differences (shows only) · every choice back to what the flat comes with | Finishes, bottom | everyone | §2 Finishes panel |
+| **+ Add option** | A finish option of your own in that group: **Name**, **Brand**, **Code**, **Price difference ৳**, **Offered in**, **Its look** (**Colour** · **Texture** with **Tinted** · **Picture**, JPG / PNG up to 4 MB, with **One picture covers**), **Add option**, **Cancel** | Finishes, under each group, not on buyer links | staff | §3 Your own furniture, finishes and textures |
+| **⋯** beside your own option | The same form: **Save**, **Remove**, **Cancel** | Finishes, not on buyer links | staff | §3 Your own … |
+| Click anything | Puts a note on it (you stay where you are) | Comment on | everyone | §2 Notes |
+| Note box: **Save** · **Cancel** | Pins the note; Comment stays on for the next | Comment on | everyone | §2 Notes |
+| A note in the list · **Remove** | Walks you to it · deletes it | Comment, "Your notes" | everyone | §2 Notes |
+| Click a piece · drag it · drag a dot | Picks it (also through glass) · moves it (a TV, picture, AC, clock or mirror also up and down its wall, 1-inch steps) · bigger or smaller (curtains: wider or narrower on that side); drag the empty room to look round | Edit furniture | staff | §3 Edit furniture |
+| **G** | Picks up the piece under the mouse (under the dot while the mouse turns your head), also through glass; **G** again puts it down | Walk or Dollhouse, not in Edit openings | staff | §3 Edit furniture |
+| **R** · **Turn 90° (R)** | Turns the piece picked or in your hand 90° (a TV on its unit turns the unit, the TV still on it) | Walk, Dollhouse | staff | §3 Edit furniture |
+| **Del** / **Backspace** · **Delete** | Deletes the picked piece, or the one in your hand, with what rests on it (a new one from the library is only let go) | Edit furniture, or a piece in your hand | staff | §3 Edit furniture |
+| **Ctrl+Z** · **Undo** | Takes back the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
+| **Reset layout** | Back to the flat's own layout (Undo brings yours back) | Edit furniture panel | staff | §3 Edit furniture |
+| **Add** | Opens the library: the search box (ready to type), **Recent**, the groups Living · Dining · Bedroom · Office · Kitchen · Bath · Lights & AC · Greenery · Outdoor · Lobby & gym · Decor (and **Your own**); click a piece, point at the floor, a wall, the ceiling or (curtains) an opening, click | Edit furniture panel | staff | §3 The library |
+| **Enter** · **Esc** in the library's search box | Takes the first piece listed · empties the box and closes the library | the library | staff | §3 The library |
+| **+ Add your own…** | A 3D model of your own: drop it or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB, 2 million triangles), **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (type one side), **It gives light**, **Add to the library** (it is in your hand), **Cancel** / **×** / Esc | the library, under the search box | staff | §3 Your own … |
+| **⋯** on a row marked **yours** | **Rename**, **Change size** (**Save**), **Remove…** (**Remove** / **Keep**; placed pieces stay) | the library | staff | §3 Your own … |
+| **Floor 2 only** · **All 4 floors** · **Esc** | Floor 2 gets its own copy and keeps your change (the page opens again on it) · the change goes to every floor with the drawing · the change is taken back, asked again next time | "Floor plan A is also on floors … Change:", at the first change on a shared project floor | staff | §6 One floor different |
+| Click · drag · drag a dot | Picks a door, window or passage · slides it along its wall · width, height, a window's sill; drag the empty room to look round | Edit openings | staff | §3 Edit openings |
+| **Door · Window · Slider · Passage** | Changes the picked opening's kind | Edit openings panel | staff | §3 Edit openings |
+| **Width**, **Height**, **Sill** | Type a size (`3'-6"`, `3.5`, `1.07m`), Enter | Edit openings panel | staff | §3 Edit openings |
+| Click a low wall · drag an end dot · drag the wall | Picks it (under 1.2 m: railing, parapet, planter edge, kerb) · longer / shorter along its line (a joined end leaves its corner) · moves it across | Edit openings | staff | §3 Edit openings |
 | **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
-| **One finger** drag | Look round: the room follows the finger (drag left = turn right, drag up = look down) | Walk, a finger | everyone | §2 On a phone or tablet |
-| **Tap** the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |
-| **Long press** (half a second or more, still) | Nothing | anywhere on the 3D, a finger | everyone | §2 On a phone or tablet |
-| **One finger** drag · **two fingers** pinch / drag | Turn · zoom · slide | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
-| **Tap** a room's floor · a flat | Drops you into that room (Dollhouse) · opens that flat (Building); never after a pinch | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
-| **Tap** anything | Puts a note on it (you stay where you are) | Comment on, a finger | everyone | §2 On a phone or tablet |
-| Pull a sheet's **grip** down | Closes that sheet (Finishes, Comment, Sun & wind, Rooms, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
-| **Tap** where the faded bar was | Only brings the bar back (presses nothing) | Walk resting, a phone | everyone | §2 On a phone or tablet |
-| VR trigger | Hold to aim at the floor, let go to jump there | in VR | everyone | §2 In VR |
-| VR thumbstick left / right | Turns you 45° | in VR | everyone | §2 In VR |
-| Keyboard while in VR | Ignored | in VR | — | — |
+| **Length**, **Height** (a low wall) | Type its length (end B moves) or height | Edit openings panel | staff | §3 Edit openings |
+| **Del** / **Backspace** · **Delete** | Removes the picked opening or low wall | Edit openings | staff | §3 Edit openings |
+| **Esc** | Gives the mouse back and goes one step back: in Clean view only brings everything back; the "which floors?" box takes the change back; an open list or menu (rooms, Edit, ⋯) closes first; a piece in your hand goes back (a new one is dropped); in Edit furniture closes the library and unpicks; in Edit openings unpicks; else drops an unsaved note; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| Number keys | Nothing | — | — | — |
+| One finger drag | Look round (the room follows the finger) | Walk, a finger | everyone | §2 On a phone or tablet |
+| Tap the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |
+| Long press (half a second, still) | Nothing | the 3D, a finger | everyone | §2 On a phone or tablet |
+| One finger · two fingers pinch / drag | Turn · zoom · slide | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
+| Tap a room's floor · a flat | Drops you into it · opens it (never after a pinch) | Dollhouse · Building, a finger | everyone | §2 On a phone or tablet |
+| Tap anything | Puts a note on it | Comment on, a finger | everyone | §2 On a phone or tablet |
+| Pull a sheet's **grip** down · **×** | Closes that sheet (Finishes, Comment, Sun & wind, the rooms list, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
+| Tap where the faded bar was | Only brings the bar back (presses nothing) | resting, a phone | everyone | §2 On a phone or tablet |
+| VR trigger · thumbstick left / right | Hold to aim at the floor, let go to jump · turns you 45° | in VR (the keyboard is ignored) | everyone | §2 In VR |
 
----
+## Studio (`/studio`, staff)
 
-## 3. Every button and field
+| Key / button | What it does | Where | MANUAL |
+|---|---|---|---|
+| **Plotline STUDIO** | Opens the front page (the mouse over STUDIO: this browser is in staff mode) | top bar, left | §5 Top bar |
+| **Unit name**, **Project**, **Floor**, **Area** (sft) | The drawing's fields; click and type (Floor: numbers only). Under about 1000 px wide Project and Area step aside | top bar | §5 Top bar |
+| Saving… · Saved · just now · Offline · will retry · Someone else saved · Not saved: … | Where your work stands online; click it for the account card | top bar, signed in | §5 Accounts |
+| **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo | top bar; any tool, not in a text box | §5 Top bar |
+| **Auto-trace** | Traces the flats: point at a flat and click it, or **Whole floor** | top bar, once a plan picture is in | §5 Auto-trace and Check these |
+| **Preview 3D** | Your drawing in the 3D view, in a new tab (the blue button; plain while the Studio is empty) | top bar | §5 Top bar |
+| **Building** | Shows / hides the project's floor list (or starts a project) | top bar | §6 |
+| **⋯** | The menu: Drawing · Building · Buyers · Account; Esc or a click elsewhere closes it | top bar, right | §5 Top bar |
+| **⋯ → Import…** · **Ctrl+O** | Opens a drawing file, or the architect's own (.ifc, .ifczip, .dxf, .dwg once turned on, .pdf, .svg, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip; several files at once (a model with its pictures). Ctrl+O works in a text box too | any time | §5 Bring in the architect's file |
+| **⋯ → Export** · **Ctrl+S** | Saves the drawing as a Plotline file (.json). Ctrl+S works in a text box too | any time | §5 Top bar |
+| **⋯ → Export as DXF** | The drawing for AutoCAD or any drawing program (.dxf, metres, layers WALLS · DOORS · WINDOWS · COLUMNS · TEXT · ZONES) | ⋯ | §5 Give the drawing back |
+| **⋯ → Export 3D model** | Opens the 3D view in a new tab, which saves the furnished flat as a .glb | ⋯ | §5 Give the drawing back |
+| **⋯ → Print plan…** · **Paper** (A4 · A3 · A2 · A1) · **Scale** (1 : 50 · 1 : 100 · 1 : 200) · **Print** · **Close** / × / Esc | The plan as a sheet; Print opens the browser's print window (Save as PDF there) | ⋯, the Print box | §5 Give the drawing back |
+| **⋯ → Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as `plotline-answers.json` | ⋯ | §5 Auto-trace and Check these |
+| **⋯ → New project** | The floor list with the New project card | ⋯ | §6 |
+| **⋯ → Site** | The Site panel (click again to close; "open" shows beside it) | ⋯ | §5 Site |
+| **⋯ → Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key) | ⋯, with the online database | §5 Top bar |
+| **⋯ → Change list ↗** | Opens `/changes` in a new tab | ⋯, with the online database | §1 |
+| **⋯ → Sign in** / your email | Opens the account card | ⋯, with the online database | §5 Accounts |
+| Drop a picture or a file on the page · **Choose plan image…** | A plan picture (PNG, JPG, WEBP or TIFF, up to 10 MB) goes under the drawing; a drawing or architect's file opens | any time; the "Start with a plan" box | §5 Top bar |
+| **New project** card: **Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project** (Enter) | Starts a project | beside the "Start with a plan" box, or the floor list | §6 |
+| **Whole floor** · **Cancel** | Traces every flat of the floor with the lobby, stair and lifts · stops Auto-trace | the Auto-trace box at the top of the plan | §5 Auto-trace and Check these |
+| **Cancel** | Stops reading an architect's file; nothing changes | the "Reading …" box at the top | §5 Bring in the architect's file |
+| A page in **Which page is the floor plan?** · **×** / Esc | Uses that page (a clean line drawing opens as the drawing, anything else becomes the plan picture) · closes the box | a PDF of several pages | §5 Bring in the architect's file |
+| **Use it as a picture instead** / **Read its lines instead** | Takes the same page the other way | the message after a PDF page | §5 Bring in the architect's file |
+| **Use its scale and position** | A picture the same size as one already scaled: no scale to set, the drawings sit over each other (15 seconds) | the message after loading a picture | §6 |
+| **Start over** · **×** | Empties the Studio (without asking) · hides the message | the "Draft restored" message | §10 |
+| **V** · **S** · **W** · **A** · **O** · **R** · **C** · **F** | Select · Scale · Wall · Arc · Opening · Room · Column · Furniture; all but V and S locked until the scale is set ("set the scale first (S)") | the tool strip on the left | §5 The tools |
+| Hold **W**, **O** or **R** | The tool works while held; let go and you are back on the tool you had (a quick tap just switches) | any tool | §5 The tools |
+| Shift + a tool letter | Does not switch the tool (Shift+H is the door swing) | — | — |
+| **1 2 3 4** | Wall · Low wall · Kerb · Zone line (what W and A draw next) | W, before the first corner | §5 W — Wall |
+| **1 2 3 4** | Door · Window · Slider · Passage, at its usual width | O (also with O held) | §5 O — Opening |
+| A digit or **.** · **Tab** · **Enter** | Opens the length box with it · switches length ↔ angle (0° = right) · lays the wall at that length. **0** fits the view instead, so type `.5` | W, while drawing | §5 W — Wall |
+| **Enter** | Confirms the box you are in: a wall's length, the scale's length, the room box (Save), a floor level, a wall width, a floor plan's floors (Apply), the New project name, the Site address (Find), a name typed on the plan | text boxes | §5, §6 |
+| **Esc** | One step back: stops "Point at a flat"; closes the problem box; lets go of the piece in your hand (a moved one stays, a new one is dropped); closes the room box; ends the wall being drawn; else drops a half-done scale, line-up or arc and unpicks. In a length box: closes it. With a menu, the account card or the Keys sheet open: closes only that | any tool | §5 |
+| **Backspace** | While drawing walls: takes back the last piece; otherwise as Del | W; any tool | §5 W — Wall |
+| **Del** | Deletes what is picked (asks first when doors or windows would go with walls); in F the picked piece with what rests on it, or the one in your hand | any tool | §5 |
+| **T** | Thin 5" ↔ thick 10": the walls being drawn, else the picked walls | W, A, V | §5 W — Wall |
+| **H** · **Shift+H** | The picked door's hinge to the other side · its swing in ↔ out | a door picked, any tool but F | §5 O — Opening |
+| **Ctrl+D** | Copies the picked walls and room names, a little to one side | any tool | §5 V — Select |
+| **Ctrl+A** | Picks every wall | V | §5 V — Select |
+| **Arrow keys** · **Shift + arrows** | Nudge what is picked 1 inch · 1 foot | every tool but F | §5 V — Select |
+| **Arrow keys** | Move the picked piece one 3-inch square | F | §5 F — Furniture |
+| **R** | Turns the picked piece, or the one in your hand, 90° (a TV on its unit and cushions turn their unit with them) | F | §5 F — Furniture |
+| **↑ / ↓** · **Enter** | Pick the row above / below (its mark turns blue) · go to it on the plan and open it — once you have clicked in the list | Check these | §5 Auto-trace and Check these |
+| **0** | Fits the whole plan on screen | any tool | §5 |
+| Mouse wheel · **Space** + drag, right-drag or middle-drag | Zoom at the pointer · slide the plan | any tool | §5 |
+| **Shift** held | No snapping or sticking while you point, draw or drag (the status bar shows it at once) | V, W, A, C | §5 The tools |
+| **Shift + click** · drag on empty plan | Adds to what is picked (or takes one out) · a dashed box picks every wall, opening and column it touches (Shift: adds); a plain click on empty plan unpicks | V | §5 V — Select |
+| **Alt** + drag an end of the picked wall · **Alt** + drag a corner of an unpicked wall | The walls joined at that corner follow · pulls that one wall free of the corner | V | §5 V — Select |
+| Double-click a wall | Type its length | every tool but W and A | §5 V — Select |
+| Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V) · a column's side or corner dot (V, C) · an opening's end dot: its width (V, O) · curtains' end dot: that side (F) · a ramp's arrow head: its direction (V) · the Site's north arrow (its round dot moves it) | V, C, O, F, Site open | §5 The tools, Site |
+| **Draw a** (W): **Wall**, **Low wall**, **Kerb**, **Zone line**, **Low wall height** | What the next wall is | right-hand panel | §5 W — Wall |
+| **Place an opening** (O): **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**, **Width** | What the next click on a wall puts in | right-hand panel | §5 O — Opening |
+| Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the direction arrows, **Save**, **Remove** | Names a room | R, click in a closed room | §5 R — Room |
+| **Steps** | The checklist; ticks itself, the next step marked with a blue dot | right-hand panel | §5 The right-hand panel |
+| **What was read from the file** · **Dismiss** | The file's unit, what was guessed, what it lacked | right-hand panel, after an architect's file | §5 Bring in the architect's file |
+| **Outside shape**: **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Lines the architect's model up with the plan; takes it away | right-hand panel, a drawing with a model | §5 Bring in the architect's file |
+| Selection — a corner: **X (m)**, **Y (m)** | Its exact place | right-hand panel | §5 The right-hand panel |
+| Selection — a wall: **Wall / Low wall / Kerb / Zone line**, **Width (inches)** with **Partition 5"** / **Exterior 10"**, **Height (0 = zone line)**, **Stands alone**, **Length (moves B)**, **Copy wall (Ctrl+D)**, **Delete wall (Del)** | Changes one wall | right-hand panel | §5 The right-hand panel |
+| Selection — several: the wall types, **Height (all of them)**, **Width**, **Stands alone**; the openings' kind, width, height, sill; **Delete them all** | Changes them all at once ("mixed" = they differ) | right-hand panel | §5 The right-hand panel |
+| Selection — an opening: **Door / Sliding door / Window / Passage**, **Width**, **Height**, **Sill**, **From corner A**, **From corner B**; for a door **Hinge**, **Swing** | Changes one opening | right-hand panel | §5 The right-hand panel |
+| Selection — a column: **Width (across)**, **Depth (up–down)**, **Delete** | Its size | right-hand panel | §5 C — Column |
+| Selection — a room name: **Room name**, **Kind**, **Flat** (by its doors · a flat · Not in a flat · New flat · Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Changes one room's name and details | right-hand panel | §5 Auto-trace and Check these |
+| Selection — a piece (F): **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)**, **Height from floor (m)**, **Reset to preset**, **Reset all** | Changes one piece; lays a room (or all) out automatically again | right-hand panel | §5 F — Furniture |
+| **Add a piece** (F): the library, **+ Add your own…**, **⋯** on your own pieces | A new piece; click the plan to put it there (curtains: beside an opening) | right-hand panel | §3 The library |
+| Check these: a room's line · a row | Shows / folds its rows · goes to it on the plan | right-hand panel, after Auto-trace | §5 Auto-trace and Check these |
+| Check these buttons: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / a low wall / a zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right** | Answers what Auto-trace was unsure of, in one click (one Ctrl+Z) | a row, or its box on the plan | §5 Auto-trace and Check these |
+| **Ask AI** · **Apply** · **Undo** · **Ask AI for all** | Asks the Local AI for this row · applies a fix it only suggested · takes its fix back · asks every row not asked yet | Check these | §5 Auto-trace and Check these |
+| **Wall tracks** · **AI helper (optional)** · **Local AI**: **Server**, **Model**, **Use it anyway**, **Test** | The tracing method (leave it on) · a Gemini key · the Local AI's settings | under Check these | §5 Auto-trace and Check these |
+| Marks on the plan: a red numbered badge · an amber dot · an outlined badge with a count | Click one: its problem box opens (a count: the first row, with **Also here** for the others) | the plan, V | §5 Auto-trace and Check these |
+| Problem box: its fix buttons, **Name this room** (Enter), **Also here**, **×** | Fixes it in one click | the plan | §5 Auto-trace and Check these |
+| **Issues**: **Join walls (overlaps and crossings)**; click an issue | Fixes every overlap and crossing · zooms to it with its fixes (Close the gap, Join, Extend, Remove end, Keep — it stands alone, Remove, Merge corners, Remove the copy, Shrink, Move it inside, Trim, Join here, End it here, Type the name, Join with a zone line) | right-hand panel | §5 The right-hand panel |
+| The status bar: the line on the left · the middle · the time, **1 px = … m**, the zoom | What the tool does · length, angle, what the point sticks to (red when a piece cannot go there) · how long you have traced, the scale, the zoom | bottom | §5 Top bar |
+| **Keys** · **?** | Opens / closes the Keys sheet (every key, the tool you are on explained in full); **×**, Esc or a click elsewhere closes it | bottom right; any time, not in a text box | §5 Top bar |
+| Account card: email, **Send me a link** (Enter), **Use another email** | Emails a sign-in link; open it in this same browser | ⋯ → Sign in | §5 Accounts |
+| Account card — **Projects**: **Open**, **Rename**, **Earlier saves** → **Open this save**, **Hide earlier saves**, **Delete** | Your company's projects online | ⋯ → your email | §5 Accounts |
+| **Open theirs** / **Keep mine** · **Save as new** | After "Someone else saved" · after "Deleted in the cloud" | the account card | §5 Accounts |
+| **Members**: their work email, **Staff** / **Owner**, **Invite**, **Copy this for them**, **Make owner** / **Make staff**, **Remove**, **Take back** | Invites, changes roles, removes people (only an owner sees the buttons) | the account card | §5 Accounts |
+| **Links**: **Copy link**, **Turn off**, **Change list** | Copies a buyer link · turns it off for good (asks first) · opens `/changes` | the account card | §5 Accounts |
+| **Sign out** · **Close** (or Esc) | Saves what is waiting, signs out · closes the card | the account card | §5 Accounts |
+| Site: address box, **Find** | Finds the place (an address, or "lat, lon") | ⋯ → Site | §5 Site |
+| Site: the map, **+ / −**, wheel, drag | Click your plot (neighbours, roads and wind come in); click a block or a road to pick it; zoom and slide | ⋯ → Site | §5 Site |
+| Site: **Height (m)**, **Delete block**, **Delete road**, **True north (°)**, **Fetch again**, **Remove site**, **×** | A neighbour's height or removal · a road's removal · typed north · ask the map again · take the site away · close | ⋯ → Site | §5 Site |
+| Floor list — the project: **Rename**, **Delete**, **Close**, **Show building**, **Ask again**, **Or open a project** | The project itself · the stacked building in a new tab · forget the "which floors?" answer · open another | Building | §6 |
+| Floor list — **Floor plans**: a plan's floors box (`2, 4, 6-8`), **Apply**, **Copy** | Puts the plan on those floors · a new plan from this one | Building | §6 |
+| Floor list — per floor: **Draw**, **Open**, **Use drawing…** (with **This floor only — its own copy**), **Clear** | Gives a floor a drawing, opens it, uses another (or its own copy), empties the floor | Building | §6 |
+| Floor list — **Open now** (name), **Delete this drawing** | Renames the open drawing · takes it off every floor and deletes it | Building | §6 |
+| The old way: **Put only this plan into a building…**, **Use this plan as** (A flat · Ground floor · Basement · Common floor · Rooftop), **Name**, **This flat on floors … to …**, **Next to it on each floor**, **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project | Building, no project open | §6 |
 
-### Front page (`/`)
+## Change list (`/changes`, staff)
 
-| Name | What it does | Who |
-|---|---|---|
-| **Plotline** (top left, once you scroll) | Back to the top of the front page | everyone |
-| **See a flat** (top bar, the blue button by the plan, end of the page, footer) | Opens flat type A in 3D (`/u/type-a`) | everyone |
-| **Studio** (top bar, footer), **Open the Studio** (by the plan, end of the page) | Opens the Studio | everyone (like any visit to the Studio, it makes the browser staff) |
-| Scrolling | Plays the story: the plan's walls rise, then the floors stack into a tower; scrolling up plays it back | everyone |
+| Key / button | What it does | Where | MANUAL |
+|---|---|---|---|
+| Staff key, **Open** | Not signed in: opens the list of links made before accounts. Signed in to a company: not asked — the list is your company's | top | §1 |
+| **Refresh** | Loads it again | top | §1 |
+| **Export CSV** | Saves every row as a spreadsheet file | top | §5 Give the drawing back |
+| **Open link** / **Copy link** | Opens or copies that buyer link | each link | §1 |
+| **Turn off** | Asks first, then the link stops for good ("This link no longer opens a flat."); what the buyer wrote stays; the row says "turned off" and the date | each link, signed in | §5 Accounts |
 
-### 3D view — start screen
+## Pages that say something went wrong
 
-| Name | What it does | Who |
-|---|---|---|
-| **Enter** | Goes in; you stand inside the front door. Under it "or press Enter" (not under a finger: a phone has no keys) | everyone |
-| **Change** (in the quality line under Enter: "High quality · …") | Shows **Lite · Low · High** right there (a blue dot marks the one recommended); a pick opens the page again with it | everyone |
-| The other flats and levels (a quiet list at the bottom: Flats, then each tower's levels) | Open another built-in flat or level | `/u/…` addresses (not on a buyer link: `/s/…` or a Share link) |
-| **Studio** (small, top right) | Opens the Studio | `/u/…` addresses |
-| **Staff mode** / **Leave staff mode** (small, top right) | Turns staff mode on / off in this browser | `/u/…` addresses |
-
-### 3D view — top
-
-| Name | What it does | Who |
-|---|---|---|
-| The room's name (top left, no box) | The room you stand in: floor, name, printed size; with Wind on, the wind in words. In the Building view: the floor you picked ("Floor 2 · Type A · 2703 sft", "Ground floor"). **Click it** for the list of rooms (it replaces the old Rooms button; your room is the white row); click a room to jump there | everyone |
-| **Walk** · **Dollhouse** · **Building** (the switch at the left of the bar, top right) | Walk inside at eye height (O) · the whole plan from above, roof off (O) · the whole tower (B — only when the flat belongs to one). The one you are in is white | everyone |
-| **Finishes** | Opens the finishes panel (F); closes Comment | everyone |
-| **Comment** | Opens the Comment panel: click anything to leave a note; your notes are listed there (C); closes Finishes | everyone |
-| **Share** | Copies a link that opens with the finishes you chose | everyone |
-| **Edit ▾** → **Furniture** | Edit furniture: move, turn, resize, delete or add furniture | staff |
-| **Edit ▾** → **Openings** | Edit openings: move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
-| **Edit ▾** → **Plan (Studio)** | Edit plan: opens this flat or level in the Studio, in a new tab | staff |
-| **Edit ▾** → **Download 3D model** | Saves this flat as one 3D model file (`.glb`) once every room has arrived | staff |
-| **⋯** → **Clean view** | The same as H or the eye | everyone |
-| **⋯** → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a blue dot marks the one recommended for this device; a new choice reloads the page | everyone |
-| The eye (the last button of the bar) | **Clean view**: hides everything on screen (H) | everyone |
-| The faint dot (top right, only in Clean view) | Brings everything back (or H, or Esc); a tap on a phone | everyone |
-| **Enter VR** / **Exit VR** | Into / out of the headset — only when one is connected | everyone |
-
-### 3D view — bottom
-
-| Name | What it does | Who |
-|---|---|---|
-| A short message (bottom middle, above the hint) | Answers what you just did ("Link copied …"); fades by itself | everyone |
-| The hint (bottom middle, above the pill) | The keys for what you are doing; it fades after a few seconds and comes back when it changes or when the mouse is over where it was. Under a finger it never names a key: "Drag to look · tap the floor to walk there" (Walk), "Drag to turn · pinch to zoom · tap a room’s floor to walk in it" (Dollhouse), "Tap a flat to open it · drag to turn · pinch to zoom" (Building) | everyone |
-| **Sun & wind** pill (bottom middle: a sun, the time, the month, a small compass; "Wind" while the wind is on) | Opens the Sun & wind card | everyone |
-| **⌄** (top right of the card) | Closes the card back to the pill (or Esc) | everyone |
-| Compass (top left of the card; small on the pill) | Where true north is as you look now — the top of the compass is straight ahead; it turns as you turn. N is blue | everyone |
-| Day (the date on the card) | The day the sun (and the wind's month) is shown for; starts on today | everyone |
-| Time of day (the slider, 0 to 24) | The sun moves with it; the slider is coloured by the site's own day (night, dawn, day, dusk) and the time shows large above it | everyone |
-| **Lights** (on the card) | The flat's lamps on / off (automatic after sunset) | everyone |
-| **Wind** (on the card) | The wind through the flat this month, on / off (P) | everyone |
-| Months **Jan … Dec** (on the card, always; six to a row) | Pick a month; the day moves to it (the sun and the wind follow) | everyone |
-| A month's line on the compass (Wind on) | With the wind on, the compass shows every month's wind as a line toward where it comes from; a click on one picks that month (this replaces the old Rose button) | everyone |
-| Small map (bottom right, Walk; top right on a phone) | Where you are, with a compass to true north on the plan in its corner; its **×** shows when the mouse is over it and hides it, **Map** brings it back (or M). It steps aside while Finishes or Comment is open | everyone |
-| Floors (Building view, right): **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (the picked one is the white row, your flat's floor has a blue dot); a basement hides what is above it | everyone |
-| **Walk this level** (Building view, the blue button under the floors) | Walks the picked ground floor, basement, rooftop or common floor | everyone |
-| **Up to …** / **Down to …** (bottom middle, just above the Sun & wind pill; Walk, standing in a stair room of a building) | Takes the stair: the floor above / below comes into the same 3D (no new page; "Floor 4 …" at the bottom while it gets ready), you stand at its stair on that floor. Walking up the stair's second flight (or down under it, from the floor) does the same. The browser's Back / Forward take the stair back again | everyone |
-
-### 3D view — Finishes panel and the Comment panel
-
-| Name | What it does | Who |
-|---|---|---|
-| The grip (a short grey bar at the top of a sheet; a phone only) | Pull it down to close the sheet: Finishes, Comment, Sun & wind, the Rooms list, Edit, ⋯ | everyone |
-| **×** (top right of the Rooms list; a phone only) | Closes the list | everyone |
-| **×** (top right of Finishes) | Closes the panel (or F, or Esc) | everyone |
-| **×** (top right of Comment) | Stops Comment (or C, or Esc) | everyone |
-| **Your name** (in both panels) | So the developer knows who asked | buyer links only |
-| A note in the list (Comment panel, "Your notes") | Walks you to it | everyone |
-| **Remove** (on a note) | Deletes that note | everyone |
-| The block for the clicked floor / wall / ceiling | Names it ("Bed-1 · floor") and shows its options | everyone |
-| **This wall** · **The whole room** (a switch) | A wall's choice for that wall only, or every wall of the room | everyone |
-| **Same as the group** / **Same as the room** | Takes a one-room / one-wall choice back | everyone |
-| An option (brand, price difference) | Chooses it | everyone |
-| **Done** | Closes the clicked thing's block | everyone |
-| **undo** (under "Chosen for one room or wall") | Takes that one choice back | everyone |
-| Options total | The sum of the price differences (shows only) | everyone |
-| **Reset to included** | Every choice back to what the flat comes with | everyone |
-| **+ Add option** (under each group) | A finish option of your own in that group: **Name**, **Brand**, **Code**, **Price difference ৳**, **Offered in**, **Its look** (**Colour** · **Texture** · **Picture**: a colour square; a texture of the list with **Tinted**; a dropped JPG / PNG up to 4 MB and **One picture covers** across × down), **Add option** (chosen at once), **Cancel** | staff, not on buyer links |
-| **⋯** (beside an option of your own) | The same form: **Save**, **Remove**, **Cancel** | staff, not on buyer links |
-| Note box: text, **Save**, **Cancel** | Writes the note and pins it to what you clicked; Comment stays on for the next one | everyone |
-
-### 3D view — Edit furniture panel (bottom left)
-
-| Name | What it does | Who |
-|---|---|---|
-| **Add** | Opens the library: groups Living, Dining, Bedroom, Office, Kitchen, Bath, Lights & AC, Greenery, Outdoor, Lobby & gym, Decor (and **Your own**); pick one, point at the floor, a wall, the ceiling or (curtains) an opening, click | staff |
-| **+ Add your own…** (the library, under the search box; the Studio's too) | Opens the box for a 3D model of your own: drop or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB and 2 million triangles), then **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (Width, Depth, Height: type one, the others follow), **It gives light**; **Add to the library** puts it in your hand; **Cancel**, **×** or Esc closes | staff |
-| **⋯** (on a row marked **yours**) | **Rename**, **Change size** (the same box, **Save**), **Remove…** (asks once: **Remove** / **Keep**; pieces already placed stay) | staff |
-| **Turn 90° (R)** (on a phone: **Turn 90°**) | Turns the picked piece (or the one in your hand) | staff |
-| **Delete** | Deletes the picked piece and what rests on it — also the one in your hand (Del) | staff |
-| **Undo** | Takes back the last change | staff |
-| **Reset layout** | Back to the flat's own layout (Undo brings yours back) | staff |
-
-### 3D view — "which floors?" box (a project floor whose drawing is on other floors too)
-
-Shows at the first furniture change, or at **Edit ▾ → Openings**, on a floor of a Studio project whose drawing is also on other floors: "Floor plan A is also on floors 1, 3, 4. Change:"
-
-| Name | What it does | Who |
-|---|---|---|
-| **Floor 2 only** | Floor 2 gets its own copy of the drawing; your change is kept on it and the page opens again on that copy (the other floors stay as they are) | staff |
-| **All 4 floors** | The change goes to every floor with the drawing | staff |
-| **Esc** | Takes the change back: the piece goes back where it was, nothing is saved; the box asks again at the next change | staff |
-
-### 3D view — Edit openings panel (bottom left)
-
-| Name | What it does | Who |
-|---|---|---|
-| **Door · Window · Slider · Passage** (a switch; the picked one is white) | Changes the picked opening's kind | staff |
-| **Width**, **Height**, **Sill** | Type a size (`3'-6"`, `3.5`, `1.07m`); Enter sets it | staff |
-| **Length**, **Height** (a low wall) | Type its length (the end B moves) or height | staff |
-| **Delete** | Removes the picked opening (Del) | staff |
-| **Undo** | Takes back the last change (Ctrl+Z) | staff |
-
-### Studio — top bar (all staff)
-
-| Name | What it does |
-|---|---|
-Left to right: the name and fields, then Undo / Redo, then the buttons, then **⋯** (everything else).
-
-| Name | What it does |
-|---|---|
-| **Plotline STUDIO** (top left) | Opens the front page; the mouse over **STUDIO** says this browser is in staff mode |
-| **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only). Under about 1000 px wide, Project and Area step aside |
-| Saved · just now · Saving… · Offline · will retry · Someone else saved · Not saved: … | After the fields, when signed in: where your work stands online. Click it to open the account card (MANUAL §5 "Accounts") |
-| ↶ / ↷ | Undo / Redo (Ctrl+Z / Ctrl+Y) |
-| **Auto-trace** (once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
-| **Preview 3D** (the blue button; plain while the Studio is empty, when **Choose plan image…** is the blue one) | Opens your drawing in the 3D view, in a new tab |
-| **Building** | Shows / hides the project's floor list (or starts a project) |
-| **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
-| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .ifczip, .dxf, .pdf, .svg, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip of any of them; several files can be picked together (a model with its pictures) — see MANUAL §5 "Bring in the architect's file" |
-| ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
-| ⋯ → **Export as DXF** | Saves the drawing for AutoCAD or any drawing program (`.dxf`, metres, layers WALLS / DOORS / WINDOWS / COLUMNS / TEXT / ZONES) |
-| ⋯ → **Export 3D model** | Opens the 3D view in a new tab, which saves the furnished flat as a `.glb` |
-| ⋯ → **Print plan…** | Opens the Print box: **Paper** (A4 · A3 · A2 · A1), **Scale** (1 : 50 · 1 : 100 · 1 : 200), **Print** (the browser's print window; Save as PDF there), **Close** / × / Esc |
-| ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as a file named `plotline-answers.json` |
-| ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
-| ⋯ → **Site** | Where the building stands: map, plot, neighbours, wind, true north (click again to close; "open" shows beside it) |
-| ⋯ → **Share link** | Makes a buyer link and copies it (signed in: for your company; not signed in: asks once for the staff key; only when the online database is set up) |
-| ⋯ → **Change list** ↗ | Opens `/changes` in a new tab (only when the online database is set up) |
-| ⋯ → **Sign in** / your email | Opens the account card below (only when the online database is set up) |
-
-### Studio — the status bar (bottom)
-
-| Name | What it does |
-|---|---|
-| The line on the left | What the tool you are on does, in one short line (the whole sentence shows when the mouse is over it) |
-| The middle | While you draw or drag: the length, the angle and what the point sticks to (red when a piece cannot go there) |
-| The time, **1 px = … m**, the zoom | How long you have been tracing; the plan's scale; how far in you are zoomed |
-| **Keys** | Opens the Keys sheet: every key in one list, the tool you are on explained in full at the top (or press **?**). **×**, Esc or a click elsewhere closes it |
-
-### Studio — the account card (top bar → ⋯ → Sign in, or your email)
-
-| Name | What it does |
-|---|---|
-| Email, **Send me a link** (Enter works too) | Emails you a sign-in link; open it in this same browser |
-| **Use another email** | Back to the email box |
-| **Open** (per project) | Puts that online project or drawing in the Studio in place of what is open |
-| **Rename** | Its name, for everyone in the company |
-| **Earlier saves** → **Open this save** | Every save of it; puts that older copy in the Studio (it becomes the newest when it saves) |
-| **Hide earlier saves** | Closes that list |
-| **Delete** | Takes it off the company's list (asks first; every save stays in the history) |
-| **Projects** · **Members** · **Links** | Signed in to a company: the three parts of the card (Projects is the list below) |
-| **Open theirs** / **Keep mine** | Only after "Someone else saved": take their copy, or save yours on top (theirs stays in Earlier saves) |
-| **Save as new** | Only after "it was deleted from the cloud": keeps your copy as a new one |
-| **Sign out** | Saves what is waiting, then signs out |
-| **Close** | Closes the card (or Esc) |
-
-**Members** (everyone in the company sees the list; only an owner sees the buttons):
-
-| Name | What it does |
-|---|---|
-| Their work email, **Staff** / **Owner**, **Invite** | Invites that email into your company with that role. They join the first time they sign in with it (Plotline sends no email of its own) |
-| **Copy this for them** | After Invite: copies a line telling them where to sign in |
-| **Make owner** / **Make staff** | Changes their role. Never shows when it would leave the company with no owner |
-| **Remove** | Takes them out of the company (asks first). Never on yourself; what they saved stays |
-| **Take back** | Cancels an invite not used yet |
-
-**Links** (every buyer link made from what is open):
-
-| Name | What it does |
-|---|---|
-| **Copy link** | Copies that buyer link |
-| **Turn off** | Turns the link off for good (asks first): whoever has it is told it no longer works; what they wrote stays in the Change list |
-| **Change list** | Opens `/changes` in a new tab |
-
-### Studio — the plan area
-
-| Name | What it does |
-|---|---|
-| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip" (Import's list). Or starts a project |
-| **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
-| **Cancel** (Auto-trace box) | Stops Auto-trace |
-| **Cancel** (the "Reading …" box at the top while an architect's file is read) | Stops reading the file; nothing changes in the Studio |
-| A page in **Which page is the floor plan?** (a PDF of several pages) | Uses that page: a clean line drawing opens as the drawing, anything else becomes the plan picture to trace; **×** or **Esc** closes the box |
-| **Use it as a picture instead** / **Read its lines instead** (the message after a PDF page) | Takes the same page the other way |
-| Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
-| Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
-| Marks on the plan: a numbered red badge (breaks the 3D), a small amber dot (worth a look — its number shows when the mouse comes near or its row is picked), an outlined badge with a count (several rows at one spot) | Click one: its problem box opens (a count: the first row; **Also here** in the box lists the others) |
-| Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **Also here** (the other rows at the same spot), **×** | Opens from a mark or a row; fixes it in one click |
-| **Start over** / **×** (on "Draft restored") | Empties the Studio / hides the message |
-| A link in a message (e.g. **Use its scale and position**) | Does what it says (15 seconds) |
-
-### Studio — the tools (the strip on the left; the letter is the key)
-
-| Name | What it does |
-|---|---|
-| **V Select**, **S Scale**, **W Wall**, **A Arc**, **O Opening**, **R Room**, **C Column**, **F Furniture** | Picks the tool (the one you are on is white). Each is a small drawing: an arrow, a measuring line, a wall corner, a curve, a door and its swing, a named room, a filled square, a sofa. Locked (faint) until the scale is set, except V and S. The mouse over one shows its name and its key ("set the scale first (S)" on a locked one) |
-
-### Studio — right-hand panel
-
-| Section | Buttons and fields | What they do |
-|---|---|---|
-| **Draw a** (W) | **Wall**, **Low wall**, **Kerb**, **Zone line**; **Low wall height** | What the next wall is (keys 1–4) |
-| **Place an opening** (O) | **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**; **Width** | What the next click on a wall puts in |
-| **Steps** | (none) | The checklist; ticks itself, the next step to do is marked with a blue dot |
-| **What was read from the file** (after an architect's file) | **Dismiss** | The file's unit, what was guessed, what it lacked |
-| **Outside shape** (the drawing has one) | **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Where the architect's model stands over the plan, how high this floor is inside it; take it away (deleted from this browser) |
-| **Selection** — a corner | **X (m)**, **Y (m)** | Its exact place |
-| **Selection** — a wall | **Wall / Low wall / Kerb / Zone line**, **Width (inches)** with **Partition 5"** / **Exterior 10"**, **Height (0 = zone line)**, **Stands alone**, **Length (moves B)**, **Copy wall (Ctrl+D)**, **Delete wall (Del)** | Change one wall |
-| **Selection** — several | the wall types, **Height (all of them)**, **Width**, **Stands alone** | Change them all at once |
-| **Selection** — while drawing | **Width** (5" / 10") | The walls being drawn |
-| **Selection** — an opening | **Door / Window / Slider / Passage**, **Width**, **Height**, **Sill**, **From corner A**, **From corner B**; for a door **Hinge** and **Swing** | Change one opening |
-| **Selection** — a column | **Width (across)**, **Depth (up–down)**, **Delete** | Its size |
-| **Selection** — a room name | **Room name**, **Kind**, **Flat** (by its doors / a flat / Not in a flat / New flat / Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Change one room's name and details |
-| **Selection** — a piece (F) | **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)** (pieces that stretch; curtains: **W**), **Height from floor (m)** (a TV, picture, AC, clock or mirror: its bottom edge), **Reset to preset**, **Reset all** | Change one piece; put a room (or all) back to the automatic layout |
-| **Add a piece** (F) | The library: search, the groups, **+ Add your own…** (a 3D model of your own: see the 3D view's Edit furniture rows), **⋯** on your own pieces | A new piece; click the plan to put it there (curtains: beside an opening) |
-| **Check these** (after Auto-trace) | rows grouped by room: a room with two rows or more is one line (its name, how many, its first row) — click it to show or fold its rows; per row: **Name it**, **Close it …**, **Show me**, **Join it to …**, **Make it a wall / low wall / zone line**, **Make it open (no door)** / **Make it a door**, **Take it out**, **Looks right**, **Ask AI** (then **Apply** or **Undo**); beside the heading **Ask AI for all**; click a row = go to it; **↑ / ↓** and **Enter** in the list | Answer what Auto-trace was unsure of |
-| **Check these** — settings | **Wall tracks** (tick box: which tracing method — leave it on); **AI helper (optional)**: a Gemini key; **Local AI (this PC, free)**: **Server**, **Model**, **Use it anyway**, **Test** | How Auto-trace and Ask AI work |
-| **Issues** | **Join walls (overlaps and crossings)**; click an issue = its fixes (Close the gap, Join, Extend, Remove end, Keep — it stands alone, Remove, Merge corners, Remove the copy, Shrink, Move it inside, Trim, Join here, End it here, Type the name, Join with a zone line) | Problems in the drawing |
-
-### Studio — Site panel (top bar → ⋯ → Site)
-
-| Name | What it does |
-|---|---|
-| Address box, **Find** | Finds the place (an address, or "lat, lon") |
-| The map | Click your plot: the neighbours, roads and wind come in; click a block or a road to pick it |
-| **Height (m)**, **Delete block** | A picked neighbour's height; or take it out |
-| **Delete road** | Takes a picked road out |
-| **True north (°)** | Typed north (or drag the blue arrow on the plan) |
-| **Fetch again** | Asks the map and the weather once more (your edits are lost) |
-| **Remove site** | Takes it all away |
-| **×** | Closes the panel |
-
-### Studio — Building (the project's floor list)
-
-| Name | What it does |
-|---|---|
-| New project: **Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project** | Starts a project |
-| **Or open a project** | Opens one you made |
-| **Put only this plan into a building…** | The old one-plan way (last row) |
-| **Rename**, **Delete**, **Close** | The project itself |
-| **Show building** | The stacked building in a new tab |
-| **Open now** (name) | Renames the drawing open now |
-| **Also on floors** + **Apply** | Puts the open drawing on more floors (`2, 4, 6-8`) |
-| **Delete this drawing** | Takes it off every floor and deletes it |
-| Per floor: **Draw**, **Open**, **Use drawing…**, **Clear** | Give a floor a drawing, open it, use another, or empty the floor |
-| Per floor, in the **Use drawing…** menu: **This floor only — its own copy** (only when that floor's drawing is on other floors too) | That floor gets its own copy of the drawing ("Floor plan A · floor 5") and it opens; changes to it stay on that floor |
-| **Ask again** (under **Show building**, after you answered the 3D view's "which floors?" box) | Forgets the answer: the 3D view asks again |
-| Old way: **Use this plan as** (A flat / Ground floor / Basement / Common floor / Rooftop), **Building**, **Name**, **This flat on floors … to …**, **Next to it on each floor** (None / Mirrored, left / Mirrored, right), **Basement number**, **On floor**, **Move it right**, **Move it down**, **Back to the automatic place**, **Show building**, **Take this flat out** / **Take this plan out** | One plan into a building, without a project |
-
-### The question box ("asks first", everywhere)
-
-| Name | What it does | Who |
-|---|---|---|
-| **Cancel** (or **Esc**) | Says no: nothing changes | staff |
-| The second button — it names what happens: **Delete**, **Replace**, **Continue**, **Turn off**, **Remove**, **Make it my draft**… (or **Enter**) | Says yes. Red when something is deleted or taken away | staff |
-| The line to type in (a new name, the staff key) | Opens with the old name in it, selected: type over it. **Rename** / **Share** (or **Enter**) takes it | staff |
-
-### Pages that say something went wrong (MANUAL §12)
-
-| Name | What it does | Who |
-|---|---|---|
-| **Plotline** (top left of each of these pages) | Opens the front page | everyone |
-| **Go to the front page** (not found, link turned off) | Opens the front page | everyone |
-| **Open the Studio** ("Nothing was sent from the Studio") | Opens the Studio | staff |
-| **Try again** (the flat could not be fetched; no 3D on this device) | Opens the page again | everyone |
-| **Reload** / **Go back** ("Something broke here.") | Opens the page again / goes back to the page before (the front page if there is none) | everyone |
-
-### Change list (`/changes`, staff)
-
-| Name | What it does |
-|---|---|
-| Staff key, **Open** | Not signed in: opens the list of links made before accounts (the key printed when the database was set up). Signed in to a company: not asked — the list is your company's |
-| **Refresh** | Loads it again |
-| **Export CSV** | Saves every row as a spreadsheet file |
-| **Open link** / **Copy link** (per buyer link) | Opens or copies that buyer link |
-| **Turn off** (per buyer link, signed in) | Asks first, then the link stops opening for good ("This link no longer opens a flat."); what the buyer wrote stays. A turned-off link shows "turned off" and the date |
+| Key / button | What it does | Where | Who | MANUAL |
+|---|---|---|---|---|
+| **Plotline** | Opens the front page | top left of each page | everyone | §12 |
+| **Go to the front page** | Opens the front page | not found, link turned off | everyone | §12 |
+| **Open the Studio** | Opens the Studio | "Nothing was sent from the Studio" | staff | §12 |
+| **Try again** | Opens the page again | the flat could not be fetched; no 3D on this device | everyone | §12 |
+| **Reload** / **Go back** | Opens the page again / the page before (the front page if none) | "Something broke here." | everyone | §12 |

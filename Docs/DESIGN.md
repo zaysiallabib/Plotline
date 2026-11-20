@@ -37,10 +37,18 @@ Five rules, in order of weight:
 | `--ink-2` | #4b4f55 | second text |
 | `--muted` | #62666d | labels, hints |
 | `--line` / `--hairline` | 14 % / 8 % ink | a drawn edge / a quiet edge |
-| `--accent` | #2458a6 | the one accent; white text on it |
-| `--accent-soft` | 10 % accent | an "on" toggle's wash (Finishes on, Wind on) |
-| `--danger` | #b5432b | terracotta: refused, broken, delete |
+| `--hover` / `--press` | 5 % / 9 % ink | a button under the mouse / pressed |
+| `--accent` | #2458a6 | the one accent; white text on it (`--accent-ink`) |
+| `--accent-soft` / `--accent-line` | 10 % / 40 % accent | an "on" toggle's wash (Finishes on, Wind on) / the Studio's hover edge |
+| `--danger` / `--danger-soft` | #b5432b / 10 % | terracotta: refused, broken, delete / its wash |
+| `--sev-red` / `--sev-amber` / `--sev-grey` | `--danger` / #b4791f / `--muted` | the Studio's three severities (Issues, Check these marks) |
+| `--ok` | #3a7d5c | a passed check |
+| `--wind` | #5b8db8 | the wind lines' base tint |
 | `--glass` / `--glass-strong` | marble 80 % / 94 % + `--blur` | floating panels over the 3D |
+
+The 3D scene cannot read CSS, so `src/three/PlotlineScene.ts` keeps two copies — `SEL` = `--accent` (a picked piece,
+opening or low wall: the accent 2 px wide over a 4 px white halo, so the edge reads on a black TV and a white wardrobe
+alike) and `REFUSED` = `--danger` (a piece that cannot go there). Change them with the tokens.
 
 Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts): ink on marble 15.9:1, ink-2 7.4:1, muted on marble 5.2:1 and 4.8:1 on `--surface-2`, white on accent 6.9:1, terracotta 5.0:1. Everything passes AA; body text passes AAA. On the glass over a dark night scene muted text falls under AA (about 3.3:1 over black): a label over the 3D that must be read uses `--ink-2`, or the panel uses `--glass-strong`.
 
@@ -77,8 +85,14 @@ Contrast (measured by `src/lib/contrast.test.ts`, which fails if a token drifts)
 - **Toast**: glass, bottom centre, fades in place (no slide).
 - **Hint line** (keys): one line, muted, 12 px, bottom centre, fades after 4 s and when the HUD rests.
 - **Room name** (walk, top left): inscription "FLOOR 2" over the room's name in the serif at `--fs-2xl`, then the size
-  in muted sans. No box behind it: a soft marble blur under the text only (`.glass` with no edge and `--radius` 0 is
-  fine), so the words read over any wall.
+  in muted sans. No box and no edge: a frosted marble rectangle under the words (70 % `--bg` + `--blur`) whose edges fade
+  out over 24 px (`--s-5`), so the words read over any wall, by day and by night. Never an oval: QA found it read as a
+  white smudge at night and over curtains.
+- **Question card** (`src/lib/ask.ts`, `.ask` in `index.css`): every "are you sure?" in the product. A white card in the
+  middle, the page behind washed with 55 % marble and taking no clicks; the question in `--fs-lg`; **Cancel** (Esc) and
+  one button that names the action (Enter), terracotta when something is taken away. The browser's grey `confirm()` box
+  is never used (a test keeps `confirm(` out of `src`); the one `prompt()` left is the staff key for Share link while not
+  signed in.
 
 ## The three screens
 
@@ -103,8 +117,9 @@ One accent on the page: the primary button. Everything else is ink on marble.
   attention while it is on (no toasts, no hints).
 - Enter screen: marble, the flat's name in the serif, the one blue button. The quality note (Lite / Low / High) is one
   muted line under it with "Change", not a toast.
-- Finishes, Comment, the change list, the Sun & wind card: glass panels, 320 px wide, docked to their button, inscription
-  titles, white picked rows.
+- Finishes, Comment, the rooms list, the Sun & wind card, the Edit furniture panel and the library: glass panels,
+  320 px wide (`--panel-w`), docked to their button, inscription titles, white picked rows.
+- A picked piece, opening or low wall: the accent line over a white halo (above, "Colour"); a refused spot: terracotta.
 
 ### Studio (`/studio`)
 - The sheet is marble with the grain; the plan picture sits on it like paper; walls are ink, the selected wall accent,
@@ -113,16 +128,23 @@ One accent on the page: the primary button. Everything else is ink on marble.
   the wordmark, the drawing's name and floor, Undo / Redo, Auto-trace, Preview 3D (the one primary button), Building, ⋯.
 - Right: the inspector (320 px, white, hairline left edge): Steps as a quiet list, Selection, Issues with the three
   severity dots (terracotta / amber / grey).
+- Marks on the plan, so the sheet reads as a drawing, not an error list: terracotta = a numbered badge (it breaks the
+  3D), amber = an 8 px dot whose number shows only when the mouse is near or its row is picked, grey = not drawn (the
+  row is in the list); several at one spot share one outlined badge with their count.
 - Empty state: "Start with a plan" in the serif at `--fs-3xl`, the drop zone a dashed hairline on marble, the New
   project card white.
 
-## Phones (coming: the viewer first)
+## Phones (the viewer; built in session 31, not yet tried on a real phone)
 
 - `viewport-fit=cover`; padding from `env(safe-area-inset-*)`.
-- Controls grow to 44 px under `pointer: coarse`; the top pill becomes a bottom bar; panels become bottom sheets
-  (`--r-lg` top edges, drag handle, 70 vh).
-- Walk: one finger drags to look, a tap on the floor walks there, two fingers pinch in the dollhouse. No keys shown in
-  hints under a finger.
+- Controls grow to 44 px (`--touch`) under `pointer: coarse`.
+- Narrower than 720 px: the top pill becomes a bottom bar in two rows (the view switch, then the buttons), the Sun & wind
+  pill above it, the room's name smaller, the minimap top right. Panels become bottom sheets (`--r-lg` top edges, a grip
+  to pull down): Finishes and Comment take half the height so the flat stays tappable above them, the rest up to 70 vh.
+- 721–1080 px (a tablet upright): the pill stays at the top, the room's name just under it.
+- Walk: one finger drags to look, a tap on the floor walks there, two fingers pinch in the Dollhouse and Building. No
+  keys named in hints under a finger.
+- The Studio is for a computer; it is not laid out for a phone.
 
 ## Banned (so no one drifts back)
 
