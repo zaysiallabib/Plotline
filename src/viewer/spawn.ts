@@ -151,8 +151,12 @@ function levelEntry(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
  * nothing is no entrance there (a whole floor's outer wall: a traced window or veranda door — session 31 QA stood the
  * Preview 3D nose-to-curtain), and the walk starts in the largest living room (then dining room), seen as the Rooms
  * list shows it (roomView) — as with no usable door at all.
+ * `portrait` (an upright phone, polish P1): its frame is a third as wide — only the middle of that view. When a door across
+ * the room shows in it, or its middle meets a wall nearer than PORTRAIT_SIGHT (`middle`; type-a and type-c: a wall and a
+ * door), the view looks down the room's length instead (`lengthwise`, pendants and ACs judged in the phone's narrow
+ * frame) when that frame is clear of both; else as before.
  */
-export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | null {
+export function entrySpawn(unit: Unit, rooms: Room[], portrait = false): { p: Pt; face: Pt } | null {
   const level = isLevel(rooms) && levelEntry(unit, rooms)
   if (level) return level
   // the entrance: the first door from outside the flat (or its common core) into it — a Studio draft lists its walls
@@ -186,8 +190,8 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
     const c = into ?? room.centroid
     const d = Math.hypot(c.x - p.x, c.y - p.y)
     const toC = { x: (c.x - p.x) / d, y: (c.y - p.y) / d }
-    const face = d > 1 && (into || toC.x * n.x + toC.y * n.y > 0) ? toC : n
     const inner = core.roomInnerPolygon(room, unit)
+    const wide = d > 1 && (into || toC.x * n.x + toC.y * n.y > 0) ? toC : n
     const standable = (q: Pt) =>
       core.pointInPolygon(q, inner) &&
       inner.every((a, j) => segDist(q, a, inner[(j + 1) % inner.length]) >= VIEW_INSET) &&
@@ -195,15 +199,29 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
         const k = pl.roomId === room.id && kitAsset(pl.assetId)
         return !k || k.mount === 'ceiling' || k.category === 'rug' || k.kind === 'curtain' || footprintDist(q, pl) >= 0.3
       })
-    const turn = (deg: number): Pt => {
-      const r = (deg * Math.PI) / 180
-      return { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
+    const clear = (face: Pt, narrow = false): { p: Pt; face: Pt } => {
+      const turn = (deg: number): Pt => {
+        const r = (deg * Math.PI) / 180
+        return { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
+      }
+      for (let s = 0; s < 12; s += 0.1)
+        for (const q of s ? [add(p, face, -s), add(p, face, s)] : [p])
+          for (let a = 0; a <= 25; a += 5)
+            for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t, true, narrow)) return { p: q, face: t }
+      return { p, face }
     }
-    for (let s = 0; s < 12; s += 0.1)
-      for (const q of s ? [add(p, face, -s), add(p, face, s)] : [p])
-        for (let a = 0; a <= 25; a += 5)
-          for (const t of a ? [turn(a), turn(-a)] : [face]) if ((!s || standable(q)) && !hangs(unit, q, t, true)) return { p: q, face: t }
-    return { p, face }
+    const first = clear(wide)
+    // a phone's frame, ±PORTRAIT_DEG: a swinging door anywhere across it (a ray every 2.5°), or a wall nearer than PORTRAIT_SIGHT in its middle
+    const blocked = (v: { p: Pt; face: Pt }) =>
+      middle(unit, v.p, v.face).t < PORTRAIT_SIGHT ||
+      Array.from({ length: 9 }, (_, i) => PORTRAIT_DEG * (i / 4 - 1)).some((a) => {
+        const r = (a * Math.PI) / 180
+        return middle(unit, v.p, { x: v.face.x * Math.cos(r) - v.face.y * Math.sin(r), y: v.face.x * Math.sin(r) + v.face.y * Math.cos(r) }).door
+      })
+    if (!portrait || !blocked(first)) return first
+    const long = lengthwise(inner, p)
+    const along = long && clear(long, true)
+    return along && !blocked(along) ? along : first
   }
   const largest = (kind: Room['kind']) => rooms.filter((r) => r.kind === kind).sort((a, b) => b.areaSqm - a.areaSqm)[0]
   const living = largest('living') ?? largest('dining') ?? rooms[0]
@@ -212,6 +230,52 @@ export function entrySpawn(unit: Unit, rooms: Room[]): { p: Pt; face: Pt } | nul
   // its middle facing plan-up, a wall filling the screen (bug hunt 2026-10-18)
   const { p, face } = roomView(living, unit)
   return { p, face }
+}
+
+/** An upright phone's first view sees this far (m) down its middle (`middle`), and no door within PORTRAIT_DEG (°) of it (its frame: ~12°). */
+export const PORTRAIT_SIGHT = 3
+export const PORTRAIT_DEG = 10
+/**
+ * Where the middle of a view from p lands at eye height: the first full-height wall it meets (t, m) and whether there it
+ * meets a swinging door; a passage, a slider or a window lets it on (as inSight). Nothing within 30 m: t 30.
+ */
+export function middle(unit: Unit, p: Pt, face: Pt): { t: number; door: boolean } {
+  let hit = { t: 30, door: false }
+  for (const w of unit.walls) {
+    if (w.heightM < EYE) continue
+    const { origin: o, dir: d, lengthM } = core.wallFrame(w, unit.vertices)
+    const den = face.x * d.y - face.y * d.x
+    if (Math.abs(den) < 1e-9) continue
+    const t = ((o.x - p.x) * d.y - (o.y - p.y) * d.x) / den
+    const u = ((o.x - p.x) * face.y - (o.y - p.y) * face.x) / den
+    if (t <= 0.05 || t >= hit.t || u < 0 || u > lengthM) continue
+    const at = w.openings.find((x) => u >= x.offsetM && u <= x.offsetM + x.widthM)
+    if (at && !swings(at)) continue
+    hit = { t, door: !!at }
+  }
+  return hit
+}
+
+/**
+ * Down a room's length from p: the direction of its longest inner edge (any angle), the way that sees farther from p
+ * inside the room; null when neither way sees past 1 m (p at the room's edge).
+ */
+export function lengthwise(inner: Pt[], p: Pt): Pt | null {
+  let axis: Pt = { x: 0, y: 0 }
+  let best = 0
+  inner.forEach((a, i) => {
+    const b = inner[(i + 1) % inner.length]
+    const L = Math.hypot(b.x - a.x, b.y - a.y)
+    if (L > best) (best = L), (axis = { x: (b.x - a.x) / L, y: (b.y - a.y) / L })
+  })
+  const reach = (t: Pt) => {
+    let s = 0
+    while (s < 30 && core.pointInPolygon(add(p, t, s + 0.05), inner)) s += 0.05
+    return s
+  }
+  const back = { x: -axis.x, y: -axis.y }
+  const [ra, rb] = [reach(axis), reach(back)]
+  return Math.max(ra, rb) < 1 ? null : ra >= rb ? axis : back
 }
 
 /**
@@ -293,6 +357,8 @@ const TINY_SIGHT = 2.2
 const DOOR_STEP = [0.5, 0.6, 0.4]
 /** A piece this far off the view axis is in frame with margin (the horizontal half-FOV is ~48° at 16:9). */
 const FRAME_DEG = 40
+/** An upright phone's frame reaches ~12° each side of the view (50° tall, 390 × 844): 20° off it, a piece is out. */
+const PORTRAIT_COS = Math.cos((20 * Math.PI) / 180)
 const inFrame = (p: Pt, face: Pt, q: Pt) => (q.x - p.x) * face.x + (q.y - p.y) * face.y > Math.cos((FRAME_DEG * Math.PI) / 180) * Math.hypot(q.x - p.x, q.y - p.y)
 /** Door views look down 20°: 1 m ahead the frame then reaches down to 0.3 m, so the vanity, WC or cot of a small room shows. */
 export const DOOR_PITCH = (-20 * Math.PI) / 180
@@ -403,14 +469,17 @@ type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }
  * the frame (within ~53° of the view); a fan within FAN_CLEAR / FAN_IN_VIEW; a wall AC ahead of the eye within AC_NEAR / AC_IN_VIEW;
  * a slab (wardrobe, shelf, tall piece) whose footprint is within TALL_IN_VIEW with a corner within ±FRAME_DEG.
  */
-const hangs = (unit: Unit, p: Pt, face: Pt, wholeAC = false): boolean =>
+const hangs = (unit: Unit, p: Pt, face: Pt, wholeAC = false, narrow = false): boolean =>
   unit.furniture.some((f) => {
     const k = kitAsset(f.assetId)
     if (!k) return false
     const d = Math.hypot(f.x - p.x, f.y - p.y)
     const ahead = (f.x - p.x) * face.x + (f.y - p.y) * face.y
+    // `narrow`: an upright phone's frame (PORTRAIT_COS) for both cones, the ~53° one and FRAME_DEG
+    const loom = narrow ? PORTRAIT_COS : 0.6
+    const framed = (q: Pt) => (narrow ? (q.x - p.x) * face.x + (q.y - p.y) * face.y > PORTRAIT_COS * Math.hypot(q.x - p.x, q.y - p.y) : inFrame(p, face, q))
     if (isSlab(f, k))
-      return footprintDist(p, f) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, placementSize(f))].some((q) => inFrame(p, face, q)) && inSight(unit, p, f)
+      return footprintDist(p, f) < TALL_IN_VIEW && [f, ...footprint(f, f.rotationDeg, placementSize(f))].some(framed) && inSight(unit, p, f)
     const kind = objectKind(k)
     // a wall AC behind the eye (its centre behind the eye's plane, its top ~1 m up) is out of any frame: the stand point may be
     // under it (the wave-14 C Bed-3's only spots past the bed's foot stand under its AC)
@@ -422,7 +491,7 @@ const hangs = (unit: Unit, p: Pt, face: Pt, wholeAC = false): boolean =>
     if (kind === 'ac' && wholeAC) {
       const looms = (q: Pt) => {
         const dq = Math.hypot(q.x - p.x, q.y - p.y)
-        return (dq < AC_IN_VIEW && (q.x - p.x) * face.x + (q.y - p.y) * face.y > 0.6 * dq) || (dq < AC_AHEAD && inFrame(p, face, q))
+        return (dq < AC_IN_VIEW && (q.x - p.x) * face.x + (q.y - p.y) * face.y > loom * dq) || (dq < AC_AHEAD && framed(q))
       }
       return (d < AC_NEAR || [f, ...footprint(f, f.rotationDeg, placementSize(f))].some(looms)) && inSight(unit, p, f)
     }
@@ -431,7 +500,7 @@ const hangs = (unit: Unit, p: Pt, face: Pt, wholeAC = false): boolean =>
       : kind === 'ceiling-fan' ? [FAN_CLEAR, FAN_IN_VIEW]
       : k.mount === 'ceiling' && k.mountY === undefined && k.sizeM.y > HANG_DROP ? [HANG_CLEAR, HANG_IN_VIEW]
       : [0, 0]
-    return (d < near || (d < inView && ahead > 0.6 * d)) && inSight(unit, p, f)
+    return (d < near || (d < inView && ahead > loom * d)) && inSight(unit, p, f)
   })
 
 /** Nothing at eye height between p and q: p→q crosses full-height walls only through a passage, window or slider (rails and curbs are lower). */
@@ -457,6 +526,34 @@ export const footprintDist = (p: Pt, f: FurniturePlacement, size: { x: number; z
   return Math.hypot(Math.max(u, 0), Math.max(v, 0))
 }
 
+/** frame.ts projects for a 65° camera; the walk's is 50° (PlotlineScene WALK_FOV): × this to its frame. */
+const WALK_ZOOM = Math.tan(HALF_VFOV) / Math.tan((25 * Math.PI) / 180)
+/** The top bar covers the walk frame's top 6 % (60 of 1000 px): above this (NDC) a piece is under it. */
+export const BAR_TOP = 0.88
+/**
+ * A room's frame cutting an AC (acCut) loses this much of its score — 40 % of a frame's floor (FLOOR_W), two thirds of its
+ * hero whole (WHOLE_W): the jumps cutting one on the five built-in flats went 17 → 5. More buys no more (8: the same 5; a
+ * pendant's HANG_PENALTY: 2, by cutting a bed's foot or filling a frame with a side wall).
+ */
+export const AC_CUT = 4
+/**
+ * A wall AC of any room in sight cut by the walk frame's top (polish, qa2 V4: a Rooms jump stood type-a's dining AC half
+ * under the top bar): its box, projected with the walk camera, reaches above BAR_TOP while some of it shows below the
+ * frame's top, across the frame. Wholly below the bar (a far wall's AC, in full) or wholly above the frame: not cut.
+ */
+export const acCut = (unit: Unit, v: View): boolean =>
+  unit.furniture.some((f) => {
+    const k = kitAsset(f.assetId)
+    if (!k || objectKind(k) !== 'ac' || !inSight(unit, v.p, f)) return false
+    const [h0, h1] = placementRange(f)
+    const qs = footprint(f, f.rotationDeg, placementSize(f))
+      .flatMap((q) => [h0, h1].map((h) => project(v.p, v.face, v.pitch ?? 0, q, h)))
+      .filter((q) => q.z > 0.05)
+    if (!qs.length) return false
+    const [xs, ys] = [qs.map((q) => q.x * WALK_ZOOM), qs.map((q) => q.y * WALK_ZOOM)]
+    return Math.max(...ys) > BAR_TOP && Math.min(...ys) < 1 && Math.min(...xs) < 1 && Math.max(...xs) > -1
+  })
+
 const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
   const d = Math.hypot(target.x - p.x, target.y - p.y) || 1
   return { p, face: { x: (target.x - p.x) / d, y: (target.y - p.y) / d } }
@@ -476,7 +573,7 @@ const look = (p: Pt, target: Pt): { p: Pt; face: Pt } => {
  * shown piece), − BEHIND when not past the hero's front (a bed's foot); a foyer looking on or a sightline room: farthest
  * from the target. Both minus SLAB_PENALTY when a wardrobe/shelf/tall
  * piece of any room in sight is within SLAB_NEAR, plus SLAB_NEAR − its distance when it is in the frame (a corner within ±FRAME_DEG),
- * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`) — and the best whose frame no door leaf or
+ * minus HANG_PENALTY when a pendant, fan, AC or slab spoils the frame (`hangs`) or the frame's top cuts an AC (`acCut`) — and the best whose frame no door leaf or
  * slab fills beyond FLAT_MAX nor near plaster beyond NEAR_WALL_MAX (`clear`; first one with no plaster beyond SIDE_WALL_MAX
  * within SIDE_WALL; a sightline room may turn TURN_MAX for it; none clears: the same frames with their largest leaf shut).
  * Every spot left stands on the hero (a bed filling its room): just inside its door. A veranda: every heading
@@ -827,7 +924,8 @@ export function roomView(room: Room, unit: Unit): View {
               })
               const pieces = shown.length ? shown.reduce((t, f) => t + pieceInFrame(f, p, face, pitch), 0) / shown.length : 0
               const shows = FLOOR_W * floorShare(inner, p, face, pitch) + WHOLE_W * pieces + (way ? WAY_W : 0)
-              return { p, face, pitch, score: shows - slab - hang - (pitch === ROOM_PITCH ? 0 : PITCH_COST) }
+              const cut = acCut(unit, { p, face, pitch }) ? AC_CUT : 0
+              return { p, face, pitch, score: shows - slab - hang - cut - (pitch === ROOM_PITCH ? 0 : PITCH_COST) }
             })
             .sort((a, b) => b.score - a.score)
             .slice(0, 1),
@@ -857,11 +955,11 @@ export function roomView(room: Room, unit: Unit): View {
         const r = (s * a * Math.PI) / 180
         const turned = { x: face.x * Math.cos(r) - face.y * Math.sin(r), y: face.x * Math.sin(r) + face.y * Math.cos(r) }
         const turnHang = a && !hang && hangs(unit, p, turned) ? HANG_PENALTY : 0
-        if (!photo) views.push({ p, face: turned, score: score - turnHang })
+        if (!photo) views.push({ p, face: turned, score: score - turnHang - (acCut(unit, { p, face: turned }) ? AC_CUT : 0) })
         else
           views.push(
             ...[0, ROOM_PITCH]
-              .map((pitch) => ({ p, face: turned, pitch, score: score - turnHang - (pitch ? PITCH_COST : 0) + FLOOR_W * floorShare(inner, p, turned, pitch) + WHOLE_W * wholeIn(p, turned, pitch) }))
+              .map((pitch) => ({ p, face: turned, pitch, score: score - turnHang - (acCut(unit, { p, face: turned, pitch }) ? AC_CUT : 0) - (pitch ? PITCH_COST : 0) + FLOOR_W * floorShare(inner, p, turned, pitch) + WHOLE_W * wholeIn(p, turned, pitch) }))
               .sort((a, b) => b.score - a.score)
               .slice(0, 1), // the better pitch only (see the veranda's)
           )

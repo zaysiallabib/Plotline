@@ -10,12 +10,12 @@ import { optionsTotal } from './FinishesPanel'
 import { compassPoint } from './Minimap'
 import { decodeConfig, encodeConfig, finishKeys, formatDelta, formatTaka } from './share'
 import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
-import { kitAsset, placementSize } from '../furnish/kit'
+import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_AHEAD, AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
-  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, entrySpawn, footprintDist, inSight, listedRooms, roomView, wetBand, yawFor,
+  VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, PORTRAIT_SIGHT, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, nearestSpoke, period } from './SunPill'
 import { EYE, boxInFrame, floorShare, frameShares, pieceInFrame, project, swings } from './frame'
@@ -176,6 +176,97 @@ describe('viewer', { timeout: 20_000 }, () => {
         }
       }
     }
+  })
+
+  /** A wall AC of any room in sight looming in v's frame by its whole width (the entry rule above); `narrow`: an upright phone's frame, 20° each side. */
+  const acLooms = (u: Unit, v: { p: Pt; face: Pt }, narrow = false) =>
+    u.furniture.some((ac) => {
+      if (ac.assetId !== 'ac_split' || (ac.x - v.p.x) * v.face.x + (ac.y - v.p.y) * v.face.y <= 0 || !inSight(u, v.p, ac)) return false
+      return [ac, ...footprint(ac, ac.rotationDeg, placementSize(ac))].some((q) => {
+        const d = Math.hypot(q.x - v.p.x, q.y - v.p.y)
+        const cos = ((q.x - v.p.x) * v.face.x + (q.y - v.p.y) * v.face.y) / d
+        const [loom, framed] = narrow ? [Math.cos((20 * Math.PI) / 180), Math.cos((20 * Math.PI) / 180)] : [0.6, Math.cos((40 * Math.PI) / 180)]
+        return d < AC_NEAR || (d < AC_IN_VIEW && cos > loom) || (d < AC_AHEAD && cos > framed)
+      })
+    })
+
+  it("no Rooms-list jump (furnished as shown) cuts a wall AC with the walk frame's top or hides it under the top bar (polish V4: type-a's dining stood its AC half under it)", { timeout: 90_000 }, () => {
+    // the walk camera (50° tall, 16:9) from p at eye height: where a point lands, y = 1 the frame's top
+    const ndc = (v: { p: Pt; face: Pt; pitch?: number }, q: Pt, h: number) => {
+      const t = Math.tan((25 * Math.PI) / 180)
+      const [cp, sp] = [Math.cos(v.pitch ?? 0), Math.sin(v.pitch ?? 0)]
+      const [ahead, side, up] = [(q.x - v.p.x) * v.face.x + (q.y - v.p.y) * v.face.y, (q.y - v.p.y) * v.face.x - (q.x - v.p.x) * v.face.y, h - EYE]
+      const z = ahead * cp + up * sp
+      return { x: side / (z * t * (16 / 9)), y: (up * cp - ahead * sp) / (z * t), z }
+    }
+    const cuts = (u: Unit, v: { p: Pt; face: Pt; pitch?: number }) =>
+      u.furniture.some((ac) => {
+        if (ac.assetId !== 'ac_split' || !inSight(u, v.p, ac)) return false
+        const [h0, h1] = placementRange(ac)
+        const qs = footprint(ac, ac.rotationDeg, placementSize(ac)).flatMap((q) => [ndc(v, q, h0), ndc(v, q, h1)]).filter((q) => q.z > 0.05)
+        return qs.length > 0 && Math.max(...qs.map((q) => q.y)) > BAR_TOP && Math.min(...qs.map((q) => q.y)) < 1 && qs.some((q) => Math.abs(q.x) < 1)
+      })
+    const cut: string[] = []
+    for (const u0 of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
+      const rs = core.deriveRooms(u0)
+      const u = { ...u0, furniture: furnish(u0, rs) }
+      for (const r of listedRooms(u, rs)) if (cuts(u, roomView(r, u))) cut.push(`${u.id} ${r.name}`)
+    }
+    // 17 before (both dining rooms, most bedrooms, the studies); left: a frame clear of the AC there loses the bed's foot, fills
+    // with a side wall or a wardrobe (the first-frame rules below), or (a passage, a foyer) it is the next room's AC seen through
+    expect(cut).toEqual(['unit_type_a_2703 Bed-2', 'unit_type_b_1747 Bed-2', 'unit_sheltech_a_2736 Bed 4', 'unit_sheltech_a_2736 Passage', 'unit_sheltech_b_2736 Foyer'])
+    // the frame qa2 reported (type-a's dining jump before): the AC's top under the bar
+    const rs = core.deriveRooms(unit)
+    const u = { ...unit, furniture: furnish(unit, rs) }
+    const before = { p: { x: 8.0065, y: 6.4415 }, face: { x: -0.505, y: 0.8631 }, pitch: ROOM_PITCH }
+    expect([cuts(u, before), acCut(u, before)]).toEqual([true, true])
+  })
+
+  it("an upright phone whose first frame would show a door across the room looks down the room's length instead (polish P1); otherwise, and on a wide screen, as before", () => {
+    /** where the middle of the frame lands (eye height): the first full-height wall, through passages, sliders and windows; in a swinging door? */
+    const centre = (u: Unit, p: Pt, face: Pt) => {
+      let hit = { t: 30, door: false }
+      for (const w of u.walls.filter((x) => x.heightM >= EYE)) {
+        const { origin: o, dir: d, lengthM } = core.wallFrame(w, u.vertices)
+        const den = face.x * d.y - face.y * d.x
+        if (Math.abs(den) < 1e-9) continue
+        const t = ((o.x - p.x) * d.y - (o.y - p.y) * d.x) / den
+        const s = ((o.x - p.x) * face.y - (o.y - p.y) * face.x) / den
+        const at = w.openings.find((x) => s >= x.offsetM && s <= x.offsetM + x.widthM)
+        if (t > 0.05 && s >= 0 && s <= lengthM && t < hit.t && !(at && !swings(at))) hit = { t, door: !!at }
+      }
+      return hit
+    }
+    const turned: string[] = []
+    const doorInFrame: string[] = []
+    for (const u0 of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
+      const rs = core.deriveRooms(u0)
+      const u = { ...u0, furniture: furnish(u0, rs) }
+      const wide = entrySpawn(u, rs)!
+      const tall = entrySpawn(u, rs, true)!
+      const room = core.roomAt(wide.p, rs, u)!
+      expect(core.roomAt(tall.p, rs, u)?.id, u.id).toBe(room.id) // the same room, the same door
+      // the phone's frame (±10°, a ray every 2.5°) shows no door; its middle sees PORTRAIT_SIGHT into the room
+      const doors = Array.from({ length: 9 }, (_, i) => (10 * (i / 4 - 1) * Math.PI) / 180).filter((r) => centre(u, tall.p, { x: tall.face.x * Math.cos(r) - tall.face.y * Math.sin(r), y: tall.face.x * Math.sin(r) + tall.face.y * Math.cos(r) }).door)
+      expect(centre(u, tall.p, tall.face).door, `${u.id}: no door in the middle`).toBe(false)
+      expect(centre(u, tall.p, tall.face).t, `${u.id}: the middle sees the room`).toBeGreaterThanOrEqual(PORTRAIT_SIGHT)
+      if (doors.length) doorInFrame.push(u.id)
+      expect(acLooms(u, tall, true), u.id).toBe(false)
+      if (JSON.stringify(tall) === JSON.stringify(wide)) continue
+      turned.push(u.id)
+      // along the length (the stand point may have slid down it past a pendant, then turned at most 25° off it or an AC)
+      const axis = lengthwise(core.roomInnerPolygon(room, u), tall.p)!
+      expect(Math.min(deg(tall.face, axis), 180 - deg(tall.face, axis)), `${u.id}: down the length`).toBeLessThanOrEqual(25 + 1e-6)
+    }
+    // type-a and type-c: the wide screen's middle shows the door across the dining room (qa2 2p-02); the phone looks 5 m down it
+    expect(turned).toEqual(['unit_type_a_2703', 'unit_type_c_2254'])
+    // Sheltech B's foyer: its length is a blank wall 2 m off, so it keeps the wide view — its dining table in the middle, a
+    // door at the frame's edge
+    expect(doorInFrame).toEqual(['unit_sheltech_b_2736'])
+    const rs = core.deriveRooms(unit)
+    const u = { ...unit, furniture: furnish(unit, rs) }
+    expect(centre(u, entrySpawn(u, rs)!.p, entrySpawn(u, rs)!.face).door).toBe(true)
+    expect(centre(u, entrySpawn(u, rs, true)!.p, entrySpawn(u, rs, true)!.face).t).toBeGreaterThan(5)
   })
 
   it('Type B: entry faces down the 36-ft living room, not into the hall across the door; a 2.6 m slider does not push the Bed-1 view to the headboard', () => {

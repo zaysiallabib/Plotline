@@ -555,14 +555,21 @@ export function setLampShare(shares: Map<Id, number>): void {
  */
 export const mottleMap = { value: null as THREE.Texture | null }
 
-/** Patch one material: its indirect diffuse + specular × the atlas at the fragment's `dayUv`. */
+/**
+ * Patch one material: its indirect diffuse + specular × the atlas at the fragment's `dayUv`; its colour map read
+ * `userData.mapBias` mip levels softer (materials.ts PORE_BLUR; 0: as is) — a uniform, so the room surfaces keep sharing
+ * their programs.
+ */
 export function daylit(m: THREE.MeshStandardMaterial): void {
   m.onBeforeCompile = (s) => {
     s.uniforms.dayMap = dayMap
     s.uniforms.dayMix = dayMix
     s.uniforms.mottleMap = mottleMap
+    s.uniforms.mapBias = { value: m.userData.mapBias ?? 0 }
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform sampler2D mottleMap;\nvarying vec2 vDayUv;\n${s.fragmentShader}`.replace(
+    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+      .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
+      .replace(
       '#include <aomap_fragment>',
       `#include <aomap_fragment>
       // the lamps' bounce (the rest of dayMix): its own room's lamps (the atlas's G, setLampShare); none on a face toward

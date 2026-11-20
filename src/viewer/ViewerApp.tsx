@@ -738,7 +738,7 @@ function Viewer({ unit: given, base }: { unit: Unit; base: FurniturePlacement[] 
   const enter = () => {
     if (!scene || !ready) return
     setEntered(true)
-    const e = entrySpawn(shown(), rooms)
+    const e = entrySpawn(shown(), rooms, innerWidth < innerHeight) // an upright phone looks down the room
     if (e) spawn(scene, e.p, e.face)
     // come by the stair from the floor below / above (takeStair): on this floor's stair
     const near = params.get('at')?.split(',').map(Number)
