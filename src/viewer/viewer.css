@@ -196,7 +196,7 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .progress .bar { height: 100%; background: var(--ink); transition: width var(--dur) var(--ease); }
 .load .enter { min-width: 168px; height: var(--touch); padding: 0 var(--s-6); font-size: var(--fs-lg); letter-spacing: 0.01em; }
 .load-key { margin-top: var(--s-3); min-height: 1lh; font-size: var(--fs-xs); color: var(--muted); }
-.load-q { margin-top: var(--s-6); max-width: 460px; font-size: var(--fs-sm); line-height: var(--lh); color: var(--muted); }
+.load-q { margin-top: var(--s-6); max-width: 460px; font-size: var(--fs-sm); line-height: var(--lh); color: var(--muted); text-wrap: balance; }
 .load-q.open { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .load-q .link { font-size: var(--fs-sm); }
 /* the other flats and levels: a quiet list at the bottom (not on a buyer's link) */
@@ -344,6 +344,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 /* it shows, stays about 4 s, then fades; the mouse over where it was brings it back (a new hint starts again: React key) */
 .dock .hint { animation: hint 5s var(--ease) forwards; }
 .dock .hint:hover { animation: none; opacity: 1; }
+/* the open Sun & wind card is what the person is reading: no key hint floating over it in mid-screen */
+.dock:has(.sun-card) > .hint { display: none; }
 @keyframes hint {
   0% { opacity: 0; }
   6%, 80% { opacity: 1; }
