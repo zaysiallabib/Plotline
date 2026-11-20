@@ -158,6 +158,18 @@ What this protects for you: a buyer sees only the flat you shared, a rival devel
   it to a company. To close even that: turn off sign-ups in Supabase and invite people instead.
 - **The old staff key stops working when you say so.** The Phase 0 staff key reaches only links made before accounts (no company) and stops working
   for good when the founder deletes it (`SETUP_ACCOUNTS.md`).
+- **The browser is told what the site may load (session 31, `vercel.json`).** A Content-Security-Policy lets pages run code
+  only from the site itself (plus jsDelivr, where Auto-trace's reading engine comes from), never a script written into a
+  page; data may go only to the site, Supabase, the map and weather services (Nominatim, Overpass, OpenStreetMap,
+  Open-Meteo), Google's AI (the optional helper, with the staff member's own key), jsDelivr and the Local AI on the same
+  computer; fonts only from Google Fonts. The Studio alone also allows `eval`, because the 3D-model reader for Rhino
+  files (rhino3dm) needs it; every other page refuses it. The Studio and the change list cannot be shown inside another
+  site's frame (`X-Frame-Options: DENY`, against click tricks); the 3D view and the front page can, so a developer may
+  put a flat on their own site. Browsers are also told not to guess file types (`nosniff`), to send other sites only our
+  address and never the page (`Referrer-Policy`), and that the site never uses the camera, microphone, location or
+  payments (`Permissions-Policy`; VR is allowed). `npm run preview` serves the same headers, and the session 31 check
+  ran every outside call in Firefox under them with no refusal. A new outside service = a new line in the CSP, in
+  `Docs/SOURCES.md` and here.
 
 ## Routes (the addresses)
 
@@ -167,7 +179,10 @@ One page (`index.html`), no router: `src/main.tsx` picks the app from the addres
   `?staff=` or `?view=` (an old share link or staff bookmark) opens the viewer instead — `landing/route.ts landingOrViewer`.
 - `/u/<stem>` — the viewer on a built-in flat or level; `/u/preview` — the Studio's draft; `/s/<token>` — a published buyer link.
 - `/studio` — the Studio. `/changes` — the staff change list.
-- Anything else opens the viewer, which sends it to the first built-in unit.
+- Anything else is the not-found page (`src/lib/route.ts routeOf`, tested; until session 31 it opened the first built-in unit).
+  An unknown flat, a turned-off link, no connection and no 3D each have their own plain page, and an error boundary round
+  every app shows "Something broke here" instead of a white screen (`src/lib/pages.tsx`, styles in `index.css` so they
+  work even when an app's code failed to download). The tab's title names the page (`pageTitle`).
 
 ## Repo layout
 

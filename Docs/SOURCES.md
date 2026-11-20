@@ -2,6 +2,8 @@
 
 Every outside thing Plotline uses, in one place: what it is, what we use it for, where it comes from, what it costs, the limits that matter, and whether it stays. Checked 2026-10-19 (the licence and limit pages of Open-Meteo, OpenStreetMap, Overpass, Vercel and Supabase were read that day; they can change).
 
+**The site only reaches what is listed here.** Since 2026-11-20 the browser is told which outside addresses Plotline may load from or send to (the Content-Security-Policy in `vercel.json`, explained in ARCHITECTURE.md "Security"). A new outside service needs a line there too, or browsers will refuse it on the live site.
+
 **Money: today Plotline pays for nothing.** Everything below is free. But several free tiers are only free for non-commercial use, and those have to change when the first developer pays — they are marked **TEMPORARY** with the reason.
 
 ## The short answer

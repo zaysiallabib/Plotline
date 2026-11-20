@@ -1,0 +1,9 @@
+# The front page is public; the Studio, buyer links and the Studio's preview are not for search engines.
+User-agent: *
+Allow: /
+Disallow: /studio
+Disallow: /s/
+Disallow: /u/preview
+Disallow: /changes
+
+Sitemap: https://plotline-flax.vercel.app/sitemap.xml

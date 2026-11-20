@@ -193,7 +193,7 @@ Bottom-right, 11 px, muted: `Powered by Plotline`. Always visible except in VR a
 | Comment | hint `Click anything to leave a note` · placeholder `What would you like to change here?` · `Save` `Cancel` · list `Notes (3)` · `Remove` · empty `No notes yet. Press C and click anything you'd change.` |
 | Share toast | `Link copied — it opens with exactly these finishes.` |
 | Pointer lock hint | `Click to look around · WASD to walk · Esc to release` |
-| Unit not found | `This unit isn't available. Ask your sales contact for a fresh link.` |
+| Unit not found | `This flat isn't here.` · a share link turned off: `This link no longer opens a flat.` (MANUAL §12) |
 | WebGL missing | `This browser can't show 3D. Try Chrome or Edge on a PC.` |
 | Footer | `Powered by Plotline` |
 

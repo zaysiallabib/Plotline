@@ -32,6 +32,7 @@ Open the site with nothing after its name (`/`) and you get the front page. It t
 - The thin bar on top stays while you scroll: **Plotline** (back to the top; it appears once the big name has scrolled away), **See a flat**, **Studio**.
 - If the computer is set to "reduce motion", the story does not play: the page shows the finished tower beside the first words.
 - The front page shows no prices and nothing a buyer could change.
+- A link to the site pasted into a chat, an email or a post shows a small card: the tower drawn in ink, **Plotline** and one line. The tab shows a marble square with a plan corner and a door swing; the same drawing is the icon when the site is saved to a phone's home screen.
 
 ---
 
@@ -45,6 +46,7 @@ Open the site with nothing after its name (`/`) and you get the front page. It t
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: it asks for the staff key (for links made before accounts existed). Needs the online database. |
 | `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
+| anything else | A page that says "Nothing stands at this address" with **Go to the front page** (§12). (Until 2026-11-20 any unknown address opened the first flat in the list.) |
 
 Extras you can add to the end of a 3D address:
 
@@ -955,3 +957,22 @@ The goal: **if you can see it, you can click it and change it.** This table is h
 One limit that applies to all of it:
 
 - **What staff change in 3D stays in that one browser.** A buyer on another computer still sees the original.
+
+---
+
+## 12. If something goes wrong
+
+Every one of these is a plain page on the marble background: a small heading, one sentence, and a button. **Plotline** at the top left always goes to the front page.
+
+| What you see | Why | What to do |
+|---|---|---|
+| **Nothing stands at this address.** | The address is mistyped, or the page has moved. | Click **Go to the front page**, or check the address. |
+| **This flat isn't here.** | A `/u/…` address names a flat that does not exist (an old or mistyped link). | Ask whoever sent it for a fresh link. Staff: check the name against §1. |
+| **Nothing was sent from the Studio.** | `/u/preview` was opened in a browser where the Studio never pressed **Preview 3D**. The preview lives in that one browser. | Click **Open the Studio**, then **Preview 3D**. |
+| **This link no longer opens a flat.** | A buyer link (`/s/…`) was turned off by staff, has expired, or never existed. | Buyer: ask your sales contact for a fresh link. Staff: make a new one with ⋯ → **Share link**. |
+| **The flat could not be fetched.** | A buyer link could not reach the online database: no internet, or the database is not set up on this site. | Check the connection and click **Try again**. If it keeps happening, the database needs a look (Docs/SETUP_SUPABASE_ON_VERCEL.md). |
+| **No 3D on this device**, with the flat's name and its plan | This browser or computer cannot draw 3D (it has no WebGL 2), or the 3D stopped twice even at Lite. | Try another browser (Firefox, Chrome or Edge) or another computer, then **Try again**. The plan beside it is the real plan. |
+| **Something broke here.** | A fault in the page itself. Plotline never leaves a blank white screen: this card replaces the page. It also shows when the site was updated while the page was open and a piece of it could not load. | Click **Reload** (most of the time that is all), or **Go back**. Staff: the details are in the browser's console (F12) — send them to the developer. |
+| **Switched to Lite: the 3D stopped on this device.** (one line on the start screen) | The graphics gave up once; Plotline opened again at Lite by itself. | Nothing — walk on. **Change** beside it picks another quality. |
+
+While a page is still arriving you see its outline in pale shapes (the Studio's bars, the start screen's column) — never a blank screen or a "Loading…" word in the corner.

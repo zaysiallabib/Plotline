@@ -17,6 +17,8 @@ import { placementLabel, placementSize } from '../furnish/kit'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { fetchSharedUnit } from '../lib/supabase'
+import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
+import { pageTitle } from '../lib/route'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
 import { lightsOn, type LightsMode } from '../three/render'
@@ -41,8 +43,7 @@ const files = import.meta.glob('../data/units/*.json', { eager: true, import: 'd
 const UNITS = Object.entries(files).map(([path, unit]) => ({ stem: path.split('/').pop()!.replace(/\.json$/, ''), unit }))
 if (!UNITS.length) UNITS.push({ stem: TEST_UNIT.id, unit: TEST_UNIT }) // dev only: no unit JSON on disk yet
 
-const NOT_FOUND = "This unit isn't available. Ask your sales contact for a fresh link."
-const NO_3D = 'This browser or machine cannot draw 3D. Try another browser, or open on a PC.'
+const NO_3D = 'This browser or computer cannot draw 3D, so here is the plan. Try another browser, or open the link on a computer.'
 const DEFAULT_HOUR = 15.5
 
 /** the ten full years before the site was fetched (SitePanel asks for those) */
@@ -201,19 +202,19 @@ const headingOf = (scene: PlotlineScene): Pt => {
 }
 
 export default function ViewerApp() {
-  // a published link: undefined while it loads, null when it fails (the load screen says so)
-  const [fetched, setFetched] = useState<Unit | null | undefined>(TOKEN ? undefined : null)
+  // a published link: undefined while it loads, null when the database has no such link (or it is off), 'offline' when
+  // the database could not be asked (no network, not set up) — each gets its own page
+  const [fetched, setFetched] = useState<Unit | null | undefined | 'offline'>(TOKEN ? undefined : null)
   useEffect(() => {
     if (TOKEN)
       fetchSharedUnit(TOKEN)
-        .then(asUnit)
-        .catch((e) => (console.warn('[plotline] share link', e), null))
+        .then(asUnit, (e) => (console.warn('[plotline] share link', e), 'offline' as const))
         .then(setFetched)
   }, [])
   // `base` = the unit's own layout (its JSON's, presets for rooms without pieces); a layout arranged in this browser
   // (Arrange, Studio F) wins; both through layoutFor, so a room added since gets its presets
   const [unit, base] = useMemo(() => {
-    const u = onFloor(TOKEN ? (fetched ?? null) : resolveUnit())
+    const u = onFloor(TOKEN ? (fetched === 'offline' ? null : (fetched ?? null)) : resolveUnit())
     if (!u) return [null, []]
     const rooms = core.deriveRooms(u)
     const base = layoutFor(u, rooms)
@@ -221,8 +222,12 @@ export default function ViewerApp() {
     // what a Studio draft / auto-trace / its share link lacks (finishes, area, name): defaults.ts
     return [{ ...withDefaults(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base]
   }, [fetched])
-  if (TOKEN && fetched === undefined) return <div className="boot">Loading…</div>
-  if (!unit) return <div className="boot">{NOT_FOUND}</div>
+  useEffect(() => {
+    document.title = unit ? pageTitle(unit.name) : fetched === undefined || fetched === 'offline' ? pageTitle() : pageTitle('Not found')
+  }, [unit, fetched])
+  if (TOKEN && fetched === undefined) return <Skeleton kind="viewer" />
+  if (fetched === 'offline') return <Offline />
+  if (!unit) return TOKEN ? <LinkOff /> : location.pathname === '/u/preview' ? <NoPreview /> : <NotFound what="flat" />
   if (!DEVICE.webgl2)
     return (
       <div className="viewer">
@@ -234,32 +239,52 @@ export default function ViewerApp() {
 
 const dims = (s: { x: number; y: number; z: number }) => `${s.x.toFixed(2)} × ${s.z.toFixed(2)} m, ${s.y.toFixed(2)} m high`
 
-/** No 3D here (no WebGL 2, the 3D could not start, or the graphics gave up): a plain message and the flat's plan. */
+/**
+ * No 3D here (no WebGL 2, the 3D could not start, or the graphics gave up): a page with the flat's name, what to do, and
+ * its plan. The `no3d` wrapper keeps it on screen in Clean view (viewer.css).
+ */
 function NoThreeD({ unit }: { unit: Unit }) {
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
   const map = useMemo(() => mapOf(unit, rooms), [unit, rooms])
+  // a room's name as large as fits across it (ponytail: a letter ≈ 0.55 of the size); smaller than ~11 px on a desktop → left off
+  const names = useMemo(
+    () =>
+      rooms.flatMap((r) => {
+        const xs = core.roomPolygon(r, unit).map((p) => p.x)
+        const size = Math.min(0.32, (0.8 * (Math.max(...xs) - Math.min(...xs))) / (r.name.length * 0.55))
+        return size >= 0.26 ? [{ r, size }] : []
+      }),
+    [rooms, unit],
+  )
   const { x, y, w, h } = map.box
   return (
     <div className="no3d">
-      <p>{NO_3D}</p>
-      <div className="muted">
-        {unit.projectName} · {unit.name}
-      </div>
-      <div className="minimap">
-        <svg viewBox={`${x} ${y} ${w} ${h}`} aria-label="floor plan">
-          {map.rooms.map((r) => (
-            <polygon key={r.id} className={r.zone ? `room zone z-${r.zone}` : 'room'} points={r.points} />
-          ))}
-          {map.walls.map((s, i) => (
-            <path key={i} className={s.low ? `wall ${s.low}` : 'wall'} d={s.d} strokeWidth={s.w} />
-          ))}
-          {rooms.map((r) => (
-            <text key={r.id} x={r.centroid.x} y={r.centroid.y} fontSize={0.32} textAnchor="middle">
-              {r.name}
-            </text>
-          ))}
-        </svg>
-      </div>
+      <Slate
+        eyebrow="No 3D on this device"
+        title={unit.name}
+        line={NO_3D}
+        figure={
+          <div className="minimap">
+            <svg viewBox={`${x} ${y} ${w} ${h}`} role="img" aria-label={`The plan of ${unit.name}`}>
+              {map.rooms.map((r) => (
+                <polygon key={r.id} className={r.zone ? `room zone z-${r.zone}` : 'room'} points={r.points} />
+              ))}
+              {map.walls.map((s, i) => (
+                <path key={i} className={s.low ? `wall ${s.low}` : 'wall'} d={s.d} strokeWidth={s.w} />
+              ))}
+              {names.map(({ r, size }) => (
+                <text key={r.id} x={r.centroid.x} y={r.centroid.y + size / 3} fontSize={size} textAnchor="middle">
+                  {r.name}
+                </text>
+              ))}
+            </svg>
+          </div>
+        }
+      >
+        <button className="btn primary" onClick={() => location.reload()}>
+          Try again
+        </button>
+      </Slate>
     </div>
   )
 }

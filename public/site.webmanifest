@@ -1,0 +1,13 @@
+{
+  "name": "Plotline",
+  "short_name": "Plotline",
+  "description": "The architect's plan becomes a furnished flat your buyers can walk, long before it is built.",
+  "start_url": "/",
+  "background_color": "#f5f3ef",
+  "theme_color": "#f5f3ef",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

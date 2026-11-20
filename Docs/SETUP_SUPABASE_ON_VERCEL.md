@@ -147,7 +147,7 @@ in the Change list forever (the list never deletes anything). That is expected.
 | No **Share link** / **Change list** button on live `/studio` | The site was built without the values | Check both names are in Vercel → Settings → Environment Variables, spelled exactly, with **Production** ticked. Then run Step 3 again and reload with Ctrl+F5. |
 | Buttons still missing after Step 3 | The browser shows the old site | Ctrl+F5, or open the site in a private window. |
 | "Wrong staff key" | The key typed is not the one in the database | Get it again (see "Before you start", point 3) and click Share link / Change list again to retype it. |
-| The share link says "This unit isn't available" | The link was copied incompletely, or the browser is offline | Copy the whole link again; check the internet connection. |
+| The share link says "This link no longer opens a flat" | The link was copied incompletely, or it was turned off | Copy the whole link again, or make a new one. ("The flat could not be fetched" means no internet, or the database is not set up on this site.) |
 | `verify-share.mjs` shows a `FAIL` line | Something in the database setup is off | Copy the whole output and give it to Claude. Do not try to fix the database by hand. |
 | `npx vercel --prod --yes` asks you to log in | The terminal is not logged in to Vercel | Run `npx vercel login`, follow it, then run Step 3 again. |
 | The Change list is empty after a buyer commented | The buyer was on a normal `/u/...` page, not a share link | Only links that start with `/s/` are recorded. Use the link from **Share link**. |
