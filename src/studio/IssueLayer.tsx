@@ -103,7 +103,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
         })}
       </svg>
       {open && at && (
-        <div className="issue-pop" style={{ left: Math.max(4, Math.min(at.x + 26, width - 264)), top: Math.max(4, Math.min(at.y - 8, height - 150)) }} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="issue-pop" style={{ left: Math.max(4, Math.min(at.x + 26, width - 264)), top: Math.max(4, Math.min(at.y - 8, height - 260)) }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="head">
             <span className={`num ${open.severity}`}>{open.n}</span>
             <span className="grow">{open.message}</span>
@@ -126,9 +126,9 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
             />
           )}
           {!!f?.fixes.length && (
-            <div className="seg">
-              {f.fixes.map((x) => (
-                <button key={x.label} className="primary" title={x.title} onClick={() => onFix(x)}>
+            <div className="fixes">
+              {f.fixes.map((x, i) => (
+                <button key={x.label} className={i ? '' : 'primary'} title={x.title} onClick={() => onFix(x)}>
                   {x.label}
                 </button>
               ))}

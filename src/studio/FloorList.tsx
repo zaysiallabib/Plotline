@@ -202,7 +202,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
           <button className="link" onClick={rename}>
             Rename
           </button>
-          <button className="link" onClick={remove}>
+          <button className="link danger" onClick={remove}>
             Delete
           </button>
           <button className="link" title="Close the project (nothing is lost; open it again from Building)" onClick={() => onActivate(null)}>
@@ -232,7 +232,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
           </label>
-          <button className="link" onClick={deleteDrawing}>
+          <button className="link danger" onClick={deleteDrawing}>
             Delete this drawing
           </button>
         </section>

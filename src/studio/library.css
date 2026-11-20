@@ -1,22 +1,48 @@
-/* the staff library (LibraryPanel.tsx): Studio tool F and the 3D view's Add — the tokens of src/index.css */
-.lib { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; font-size: var(--fs-sm); }
-.lib .lib-search { width: 100%; height: 30px; padding: 0 var(--s-2); border-radius: var(--r-sm); border: 1px solid var(--hairline); background: rgba(255, 255, 255, 0.05); color: var(--ink); font: inherit; }
-.lib .lib-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/*
+ * The staff library (LibraryPanel.tsx): the Studio's tool F (in the white inspector) and the 3D view's Add (on frosted
+ * marble). The marble language's tokens only (src/index.css): a search field, the rooms as quiet folding rows with
+ * their counts, the pieces as rows, the picked one sunken stone; "scan" / "built" as small tags.
+ */
+.lib { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; font-size: var(--fs-sm); color: var(--ink); }
+.lib .lib-search {
+  width: 100%; height: var(--control); padding: 0 10px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: inherit; font-size: var(--fs-md);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.lib .lib-search::placeholder { color: var(--muted); opacity: 1; }
+.lib .lib-search:focus { outline: none; border-color: var(--accent); }
 .lib-list { overflow: auto; min-height: 0; max-height: 52vh; display: flex; flex-direction: column; }
 .lib details { border-bottom: 1px solid var(--hairline); }
-.lib summary { padding: 7px var(--s-1); border-radius: var(--r-sm); color: var(--ink); cursor: pointer; user-select: none; transition: background var(--dur-fast) var(--ease); }
+.lib details:last-child { border-bottom: 0; }
+.lib summary {
+  display: flex; align-items: center; gap: var(--s-2);
+  height: 36px; padding: 0 var(--s-2);
+  list-style: none; border-radius: var(--r-sm); color: var(--ink); cursor: pointer; user-select: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.lib summary::-webkit-details-marker { display: none; }
+.lib summary::after {
+  content: ''; width: 6px; height: 6px; margin: 0 var(--s-1) 3px auto;
+  border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(45deg);
+  transition: transform var(--dur) var(--ease);
+}
+.lib details[open] > summary::after { margin-bottom: -3px; transform: rotate(-135deg); }
 .lib summary:hover { background: var(--hover); }
-.lib-kind { padding: var(--s-2) var(--s-1) 2px 14px; font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: var(--track); color: var(--muted); }
+.lib summary .muted, .lib-kind .muted { color: var(--muted); }
+.lib-kind { padding: var(--s-3) var(--s-2) var(--s-1) var(--s-4); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
 .lib .lib-row {
-  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--s-2);
-  width: 100%; min-height: 0; padding: 5px var(--s-1) 5px 14px;
-  background: none; border: 0; border-radius: var(--r-sm); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--s-3);
+  width: 100%; height: 32px; padding: 0 var(--s-2) 0 var(--s-4);
+  background: none; border: 0; border-radius: var(--r-sm); color: var(--ink); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
 .lib .lib-row:hover { background: var(--hover); }
-.lib .lib-row.on { background: rgba(255, 255, 255, 0.05); box-shadow: inset 2px 0 0 var(--accent); }
+.lib .lib-row.on { background: var(--surface-2); font-weight: 500; }
+.lib .lib-row:last-child { margin-bottom: var(--s-2); }
 .lib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-feet { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.lib-mark { padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--r-pill); font-size: var(--fs-2xs); color: var(--muted); }
-.lib-mark.scan { border-color: rgba(232, 193, 112, 0.5); color: var(--accent); }
-.lib p { margin: var(--s-2) var(--s-1); }
+.lib-feet { white-space: nowrap; color: var(--muted); }
+.lib-mark { padding: 1px 7px; border: 1px solid var(--hairline); border-radius: var(--r-pill); font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+.lib-mark.scan { border-color: var(--line); color: var(--ink-2); }
+.lib p { margin: var(--s-2) var(--s-1); color: var(--muted); }

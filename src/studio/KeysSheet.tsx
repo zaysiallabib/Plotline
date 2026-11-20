@@ -88,11 +88,12 @@ export default function KeysSheet({ now }: { now: string }) {
       {open && (
         <div className="keys-sheet" role="dialog" aria-label="Keys">
           <div className="keys-head">
-            <span className="keys-now">{now}</span>
+            <strong>Keys</strong>
             <button className="x" aria-label="Close" title="Close (Esc)" onClick={() => setOpen(false)}>
               ×
             </button>
           </div>
+          <p className="keys-now">{now}</p>
           <div className="keys-cols">
             {GROUPS.map(([title, rows]) => (
               <section key={title}>

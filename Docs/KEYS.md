@@ -211,13 +211,12 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 
 | Name | What it does |
 |---|---|
-| **Plotline Studio** (top left) | Opens the 3D viewer |
-| Staff mode (small gold badge) | Says this browser is in staff mode — not a button |
-| **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only) |
+| **Plotline STUDIO** (top left) | Opens the front page; the mouse over **STUDIO** says this browser is in staff mode |
+| **Unit name**, **Project**, **Floor**, **Area** (sft) | Plain fields saved with the drawing; they look like plain words until the mouse is over one — click to type (Floor takes numbers only). Under about 1000 px wide, Project and Area step aside |
 | Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands online — not a button (MANUAL §5 "Signing in and saving online") |
 | ↶ / ↷ | Undo / Redo (Ctrl+Z / Ctrl+Y) |
-| **Auto-trace** (gold outline, once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
-| **Preview 3D** (the gold button) | Opens your drawing in the 3D view, in a new tab |
+| **Auto-trace** (once a plan picture is in) | Traces the flats from the picture: point at a flat, click it — or **Whole floor** |
+| **Preview 3D** (the blue button; plain while the Studio is empty, when **Choose plan image…** is the blue one) | Opens your drawing in the 3D view, in a new tab |
 | **Building** | Shows / hides the project's floor list (or starts a project) |
 | **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
 | ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
@@ -263,15 +262,15 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
-| Problem box on the plan: its fix buttons, **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |
+| Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |
 | **Start over** / **×** (on "Draft restored") | Empties the Studio / hides the message |
 | A link in a message (e.g. **Use its scale and position**) | Does what it says (15 seconds) |
 
-### Studio — the tools (left, letters as keys)
+### Studio — the tools (the strip on the left; the letter is the key)
 
 | Name | What it does |
 |---|---|
-| **V Select**, **S Scale**, **W Wall**, **A Arc**, **O Opening**, **R Room**, **C Column**, **F Furniture** | Picks the tool (the one you are on is filled white); locked (faint) until the scale is set, except V and S. The tool's name shows beside its letter when the mouse is over it ("set the scale first" on a locked one) |
+| **V Select**, **S Scale**, **W Wall**, **A Arc**, **O Opening**, **R Room**, **C Column**, **F Furniture** | Picks the tool (the one you are on is white). Each is a small drawing: an arrow, a measuring line, a wall corner, a curve, a door and its swing, a named room, a filled square, a sofa. Locked (faint) until the scale is set, except V and S. The mouse over one shows its name and its key ("set the scale first (S)" on a locked one) |
 
 ### Studio — right-hand panel
 
@@ -279,7 +278,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 |---|---|---|
 | **Draw a** (W) | **Wall**, **Low wall**, **Kerb**, **Zone line**; **Low wall height** | What the next wall is (keys 1–4) |
 | **Place an opening** (O) | **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**; **Width** | What the next click on a wall puts in |
-| **Steps** | (none) | The checklist; ticks itself, the next step to do is marked with a gold dot |
+| **Steps** | (none) | The checklist; ticks itself, the next step to do is marked with a blue dot |
 | **What was read from the file** (after an architect's file) | **Dismiss** | The file's unit, what was guessed, what it lacked |
 | **Outside shape** (the drawing has one) | **Offset x (m)**, **Offset y (m)**, **Turn (deg)**, **Floor height (m)**, **Remove outside shape** | Where the architect's model stands over the plan, how high this floor is inside it; take it away (deleted from this browser) |
 | **Selection** — a corner | **X (m)**, **Y (m)** | Its exact place |
@@ -303,7 +302,7 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | The map | Click your plot: the neighbours, roads and wind come in; click a block or a road to pick it |
 | **Height (m)**, **Delete block** | A picked neighbour's height; or take it out |
 | **Delete road** | Takes a picked road out |
-| **True north (°)** | Typed north (or drag the gold arrow on the plan) |
+| **True north (°)** | Typed north (or drag the blue arrow on the plan) |
 | **Fetch again** | Asks the map and the weather once more (your edits are lost) |
 | **Remove site** | Takes it all away |
 | **×** | Closes the panel |

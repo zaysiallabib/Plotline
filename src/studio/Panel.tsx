@@ -294,7 +294,13 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
         <ol className="steps">
           {steps.map(([label, done], i) => (
             <li key={label} className={done ? 'done' : i === next ? 'now' : ''} aria-current={i === next ? 'step' : undefined}>
-              <span className="tick">{done ? '✓' : ''}</span>
+              <span className="tick">
+                {done && (
+                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path d="M2 5.3 4.2 7.4 8 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
               {label}
             </li>
           ))}
@@ -528,7 +534,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
           </>
         )}
         <p className="muted">Shift+click adds or takes one out; drag on empty plan for a box; Esc clears. Arrows nudge them all.</p>
-        <button className="link" onClick={() => dispatch({ type: 'delete' })}>
+        <button className="link danger" onClick={() => dispatch({ type: 'delete' })}>
           Delete them all (Del)
         </button>
       </div>
@@ -572,7 +578,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <button className="link" onClick={() => dispatch({ type: 'duplicate' })}>
           Copy wall (Ctrl+D)
         </button>
-        <button className="link" onClick={() => dispatch({ type: 'delete', ids: [w.id] })}>
+        <button className="link danger" onClick={() => dispatch({ type: 'delete', ids: [w.id] })}>
           Delete wall (Del)
         </button>
       </div>
@@ -652,7 +658,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
           <LenInput valueM={p.hM} onCommit={(m) => dispatch({ type: 'set-pillar', id: p.id, patch: { hM: m } })} />
         </Row>
         <p className="muted">Drag it to move it (it snaps to walls and corners). Drag a side to move that side alone; drag a corner dot to move that corner alone (a tapered column — its sides stick a little when they are nearly straight). Arrows nudge 1". A wall that touches it — middle, edge or corner — closes the room there.</p>
-        <button className="link" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
+        <button className="link danger" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
           Delete column (Del)
         </button>
       </div>
@@ -694,7 +700,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
       </Row>
       <LevelFields levelM={l.levelM} slope={l.slope} dirs={room ? rampDirs(room, unit) : [0, 90, 180, 270]} onChange={(patch) => dispatch({ type: 'update-label', id: l.id, patch })} />
       <p className="muted">{room ? formatArea(room.areaSqm) : typeLine(l, flats)}</p>
-      <button className="link" onClick={() => dispatch({ type: 'delete', ids: [l.id] })}>
+      <button className="link danger" onClick={() => dispatch({ type: 'delete', ids: [l.id] })}>
         Remove
       </button>
     </div>

@@ -254,13 +254,16 @@ Opens this flat or level in the Studio, in a new tab.
 
 You draw over a plan picture. The order is written on the right under **Steps**: load the plan → set the scale → trace walls → wall thickness → openings → rooms → check → export.
 
+**What you see** (since 2026-11-20, the "marble" look): a light stone-coloured page. The plan picture lies on it like a sheet of paper, a little faded, so the walls you draw stand out on it in dark ink. Doors are drawn with their swing (a thin arc), windows as three thin lines between two short ends, as on an architect's sheet. Whatever you have picked turns **blue**; the wall, corner or opening under the mouse gets a **light blue edge** before you click. Room names are written in small capitals, the printed size under them. The tools are on the left, the details of what you picked on the right (white), and one thin line at the bottom says what the tool does.
+
 ### Top bar
 
-One line, in three parts (since 2026-11-20).
+One line (since 2026-11-20).
 
-- **Left:** the drawing's own fields.
-- **Middle:** Undo and Redo (on a laptop screen they sit just left of the buttons).
-- **Right:** Auto-trace, Preview 3D (the gold button), Building, and **⋯** — a small menu with everything else: Import, Export, Export answers, New project, Site, Share link, Change list and Sign in.
+- **Left:** **Plotline** and the small word **STUDIO** (point at it: it says this browser is in staff mode; a click on either opens the front page), then the drawing's own fields.
+- **Right:** Undo and Redo, then Auto-trace, **Preview 3D** (the blue button), Building, and **⋯** — a small menu with everything else: Import, Export, Export answers, New project, Site, Share link, Change list and Sign in.
+- While the Studio is still empty, **Preview 3D** is a plain button and **Choose plan image…** in the middle is the blue one — there is only ever one blue button.
+- In a window narrower than about 1000 px, the **Project** and **Area** fields step aside (widen the window to type them; they stay in the drawing).
 
 Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. The keys still work without the menu: Ctrl+O imports, Ctrl+S exports.
 
@@ -283,11 +286,11 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 
 **Loading the plan picture:** with nothing drawn yet, the middle of the Studio says **Start with a plan**. It shows a dashed box (drop the picture on it — or anywhere on the page — or click **Choose plan image…**; PNG, JPG or WEBP, up to 10 MB; the architect's IFC, DXF, PDF or 3D model can be dropped there too) and, beside it, the **New project** card (section 6).
 
-**The tools** are the letters on the left. Point at a letter and its name shows beside it ("Wall (W)"). A faint letter is locked until the scale is set ("set the scale first").
+**The tools** are the small drawings in the strip on the left, top to bottom: Select (an arrow), Scale (a measuring line), Wall (a wall corner), Arc (a curve), Opening (a door and its swing), Room (a named room), Column (a filled square), Furniture (a sofa). The one you are on is white. Point at one and its name and key show beside it ("Wall  W") — press that letter to pick it. A faint one is locked until the scale is set ("set the scale first (S)").
 
 ### The status bar and the Keys sheet
 
-The thin bar at the bottom says, on the left, what the tool you are on does — one short line (the mouse over it shows the whole sentence). In the middle, while you draw or drag: the length, the angle and what the point sticks to. On the right: how long you have been tracing (it was the ⏱ in the top bar), the plan's scale (1 px = … m) and the zoom.
+The thin line at the bottom says, on the left, what the tool you are on does — one short line (the mouse over it shows the whole sentence). In the middle, while you draw or drag: the length, the angle and what the point sticks to. On the right: how long you have been tracing (it was the ⏱ in the top bar), the plan's scale (1 px = … m) and the zoom.
 
 **Keys** (bottom right) — or the **?** key — opens a sheet with every key in one list: the tools, drawing, picking and moving, the view and the file keys, with the tool you are on explained in full at the top. **×**, Esc or a click anywhere else closes it. The full list with every detail is [KEYS.md](KEYS.md).
 
@@ -316,7 +319,7 @@ Without signing in, your work is kept in this browser only (section 9). Signed i
 **Click ⋯ → your email** (top right) for the card:
 
 - Your email and your company (owner or staff).
-- **Projects in the cloud** — your company's projects and drawings, last saved first, with who saved last ("by a colleague") and when. The one open now is outlined.
+- **Projects in the cloud** — your company's projects and drawings, last saved first, with who saved last ("by a colleague") and when. The one open now sits on a grey row.
   - **Open** — puts it in the Studio in place of what is open (what is open is saved first; if it could not be, you are asked).
   - **Rename** — its name, for everyone.
   - **Earlier saves** — every save of it, newest first (version, when, you or a colleague). **Open this save** puts that older copy in the Studio; it becomes the newest when it saves. Nothing is ever lost: the later saves stay in the list.
@@ -327,14 +330,14 @@ Two people can work in the Studio at once on **different** projects without ever
 
 ### Site — where the building stands (top bar → ⋯ → Site)
 
-The panel opens top right, and a gold **north arrow** appears in the middle of the plan.
+The panel opens top right, and a blue **north arrow** appears in the middle of the plan.
 
 1. **Find the place:** type an address ("Banani, Dhaka", "Road 11, Banani") and press **Find** (or Enter) — or paste the plot's position as "23.7903, 90.4077" (in Google Maps: right-click the plot, click the numbers to copy them). A map picture shows round it.
 2. **Zoom and pan** if you need to: the mouse wheel over the map (it zooms where the pointer is) or **+ / −** in its top-right corner, five steps; drag the map to slide it. Nothing is fetched again, the blocks, roads and your drawing stay on it.
   - **Click your plot** on the map. The buildings and roads within 250 m and the wind of the last ten years come in (a few seconds; up to half a minute when the map server is busy). On the map: grey shapes = buildings (dashed outline = height guessed), dark lines = roads, gold = your drawing, the gold dot = the plot.
   - The middle of your drawing stands on the dot; a building the map has on that spot (within 1 m of your drawing — the old house, or this very building if it is already mapped) is left out of the 3D and drawn dotted on the map.
   - Clicking the map again moves the plot (it asks first: what you typed or deleted is lost).
-3. **Set true north:** drag the gold arrow on the plan (anywhere along it) until it points the same way as the north arrow printed on the sheet; drag its round dot to move it over that arrow first. Or type the degrees in **True north** (0 = up the page, 90 = to the right). The drawing on the map turns with it — check that it sits on the plot the right way round.
+3. **Set true north:** drag the blue arrow on the plan (anywhere along it) until it points the same way as the north arrow printed on the sheet; drag its round dot to move it over that arrow first. Or type the degrees in **True north** (0 = up the page, 90 = to the right). The drawing on the map turns with it — check that it sits on the plot the right way round.
 4. **Fix the neighbours:** click a building on the map: its height and where the height comes from show — type the right height (metres) in **Height**, or **Delete block**. Click a road: **Delete road**.
 
 **Where the heights come from:** the map's own height when it has one; else its number of floors × 3 m; else **a guess: 3 floors = 9 m** (most buildings in Dhaka have neither on the map — in Banani 396 of 407). A height that does not fit its floor count (60 m on 5 floors) is taken as a typo and the floors are used. **Fetch again** asks the map once more (your deletions and typed heights are lost). **Remove site** takes it all away: the 3D shows the made-up street again.
@@ -358,7 +361,7 @@ While it reads, the message says so ("Reading Tower.ifc…" — a big file takes
 
 The model is kept in this browser only (like the pictures); an exported drawing file names it but does not hold it. The Lite quality skips a shape over 500 000 triangles and says so.
 
-### The tools (letters on the left; press the letter to pick the tool)
+### The tools (the strip on the left; press the letter to pick the tool)
 
 Every tool except **V** and **S** stays locked until the scale is set. A drawing that already has walls (a built-in level, a drawing file you opened) is in real sizes already: its tools are open at once.
 
@@ -481,7 +484,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
 
 ### The right-hand panel
 
-- **Steps** — the checklist. It ticks itself (a gold tick); the next step to do is marked with a gold dot and written brighter; you cannot click it.
+- **Steps** — the checklist. It ticks itself (a small tick); the next step to do is marked with a blue dot and written darker; you cannot click it.
 - **Selection** — the details of what you picked, to type exact values:
   - *Corner* — position.
   - *Wall* — its type (Wall / Low wall / Kerb / Zone line), width, height, **Stands alone** (a screen or decoration wall that is not meant to close a room), length, copy, delete.
@@ -490,7 +493,7 @@ When a drawing has its rooms named, the Studio finds its flats by itself — not
   - *Room name* — name, kind, **Flat** (which flat of the drawing it is in — see "Flats in a whole-floor drawing"), printed size, floor level, ramp.
   - *Several things picked* — the top line says what ("3 walls, 2 windows selected"). For the walls: type (Wall / Low wall / Kerb / Zone line), height, width, **Stands alone**. For the openings: kind (Door / Sliding door / Window / Passage), width, height, sill. A box shows the value when they all have the same one; an empty box marked "mixed" means they differ — type a value and every picked wall (or opening) takes it, one Ctrl+Z for all. An opening the new size does not fit on its wall stays as it was, and a note says how many did not change. **Delete them all** removes everything picked.
 - **Check these** — after Auto-trace: the things it was unsure about. Each has fix buttons and **Looks right**.
-  - **The room count** (the orange line at the top): "5 of the 8 room names read on the sheet are closed and named — missing: Bed 4, Bed 2, Ver", then what the closed rooms add up to against the printed flat area. It counts the room names Auto-trace could READ inside the traced flat (not the next flat's); a name it missed is not in the count — its room shows as an "Unnamed space" row instead.
+  - **The room count** (the line with an amber dot at the top): "5 of the 8 room names read on the sheet are closed and named — missing: Bed 4, Bed 2, Ver", then what the closed rooms add up to against the printed flat area. It counts the room names Auto-trace could READ inside the traced flat (not the next flat's); a name it missed is not in the count — its room shows as an "Unnamed space" row instead.
     - Auto-trace reads every word it could not make out a second time on a closer view, and reads every closed room it found no name in as a whole, so far more names come through (Sheltech L2 Type A: 14 names read, was 8). A name printed on a room's edge or in its door nook names that room, and so does a name standing inside a room that only closed when the walls were joined — no row for those.
     - Guessed names ("Toilet 3" from a drawn WC) and "Space N" are numbered west to east, the same every time you trace the same sheet, and a guessed name never takes the number a printed room already carries. A guessed kind is given only where the room is big enough to be one (2026-10-18): a 3 m² toilet with the bedrooms' floor colour is no longer called "Bed 3" — it stays "Space N" with its Unnamed space row (type the name with Name it).
     - The flat's "TYPE-A ±2736 SFT", when it is printed inside a closed room of the flat, is put on the drawing as a label that names the flat (the tint then reads "Type A"); printed in an open foyer it is not — add it with R. The flat area is taken from a "TYPE-A ±2736 SFT" printed inside the flat, else from the sheet's title block (2026-10-14): one flat on the sheet — the one area figure printed beside or under it ("TYPE A 2279 SFT", "Unit A 1365 sft", "2023 SQT (Approx.)"); two or more flats — only when the sheet prints exactly one figure per flat, given west to east (or top to bottom); a title naming two figures ("2703 SFT & 674 SFT", BTI 2nd floor) goes to no flat.
@@ -653,7 +656,7 @@ You say what the building is first, then give each floor a drawing. A drawing is
 - **Use drawing…**: pick one of your drawings for this floor.
 - **Clear**: the floor is empty again; the drawing itself is kept.
 - **Use drawing… → This floor only — its own copy** (in the menu of a floor whose drawing is on other floors too): that floor gets its own copy of the drawing and the copy opens — see "One floor different from the others" below.
-- The floors of the drawing open now have a yellow outline.
+- The floors of the drawing open now are white (the list itself is stone-coloured).
 - Under a floor's drawing name, its flats: **Floor 2 — Level 2** with **— Flat 1, Flat 2** under it (or "Type A, Type B" when the drawing names them). They come from the drawing itself (section 5, "Flats in a whole-floor drawing"); nothing to type here. A ground floor, basement or rooftop shows none.
 
 **Under the list, for the drawing open now**

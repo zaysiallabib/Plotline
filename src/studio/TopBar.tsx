@@ -1,7 +1,7 @@
 /**
- * The Studio's top bar (session 30). Left: the wordmark, the staff pill and the drawing's own fields (quiet until the
- * mouse is over one) with the cloud's save word. Middle: Undo / Redo. Right: Auto-trace (with a plan picture), Preview
- * 3D (the one gold button), Building, and ⋯ — Import, Export, Export answers, New project, Site, Share link, Change list
+ * The Studio's top bar (session 31, marble): the wordmark (Plotline in the serif, STUDIO — staff mode — beside it), the
+ * drawing's own fields (quiet until the mouse is over one) with the cloud's save word; on the right Undo / Redo,
+ * Auto-trace (with a plan picture), Preview 3D (the one blue button; plain while the Studio is empty), Building, and ⋯ — Import, Export, Export answers, New project, Site, Share link, Change list
  * and the account. Esc or a click anywhere else closes ⋯; Esc closes the account card too. The keys (Ctrl+Z / Y / S /
  * O) are StudioApp's, unchanged.
  */
@@ -24,6 +24,8 @@ interface Props {
   autoTrace: { disabled: boolean; onClick: () => void } | null
   /** errors in Issues: Preview 3D says so on hover (it never locks) */
   errors: number
+  /** the Studio is empty: its own Choose plan image… is the one blue button, Preview 3D waits plain */
+  quiet: boolean
   onPreview: () => void
   building: boolean
   onBuilding: () => void
@@ -39,8 +41,8 @@ interface Props {
 }
 
 const Icon = ({ d }: { d: string }) => (
-  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-    <path d={d} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+    <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
 
@@ -79,45 +81,43 @@ export default function TopBar(p: Props) {
 
   return (
     <header className="topbar">
-      <div className="tb-left">
-        <a className="brand" href="/" title="Open the buyer viewer">
-          Plotline <span>Studio</span>
-        </a>
-        <span className="staff-badge" title="Staff mode is on in this browser: the 3D viewer (Preview 3D, or any unit) shows Edit furniture — move, turn, resize, delete, add — and Edit plan. Buyer links never do.">
-          Staff mode
+      <a className="brand" href="/" title="Plotline's front page">
+        <b>Plotline</b>
+        <span className="label" title="Staff mode is on in this browser: the 3D viewer (Preview 3D, or any unit) shows Edit furniture — move, turn, resize, delete, add — and Edit plan. Buyer links never do.">
+          Studio
         </span>
-        <span className="sep" />
+      </a>
+      <span className="sep" />
+      <div className="tb-fields">
         <input className="meta name" placeholder="Unit name" aria-label="Unit name" title="Unit name" value={unit.name} onChange={onMeta('name')} />
         <input className="meta project" placeholder="Project" aria-label="Project" title="Project" value={unit.projectName} onChange={onMeta('projectName')} />
         <label className="meta-num" title="The floor this drawing is on (numbers only)">
-          <span>Floor</span>
+          <span className="label">Floor</span>
           <input type="number" placeholder="–" value={unit.floor ?? ''} onChange={onMeta('floor')} />
         </label>
         <label className="meta-num area" title="The flat's area as the sheet prints it (sqft)">
-          <span>Area</span>
+          <span className="label">Area</span>
           <input type="number" placeholder="–" value={unit.areaSqft || ''} onChange={onMeta('areaSqft')} />
-          <span>sft</span>
+          <span className="unit">sft</span>
         </label>
         <CloudBar {...p.cloud} open={account} onClose={() => setAccount(false)} />
       </div>
 
-      <div className="tb-mid">
+      <div className="tb-right">
         <button className="icon" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!p.canUndo} onClick={p.onUndo}>
-          <Icon d="M5.5 3.5 2.5 6.5l3 3M2.5 6.5h7a3.5 3.5 0 0 1 0 7H7" />
+          <Icon d="M7.5 4.5 4 8l3.5 3.5M4 8h8.25a3.75 3.75 0 0 1 0 7.5H10" />
         </button>
         <button className="icon" aria-label="Redo" title="Redo (Ctrl+Y)" disabled={!p.canRedo} onClick={p.onRedo}>
-          <Icon d="M10.5 3.5l3 3-3 3M13.5 6.5h-7a3.5 3.5 0 0 0 0 7H9" />
+          <Icon d="M12.5 4.5 16 8l-3.5 3.5M16 8H7.75a3.75 3.75 0 0 0 0 7.5H10" />
         </button>
-      </div>
-
-      <div className="tb-right">
+        <span className="sep" />
         {p.autoTrace && (
-          <button className="accent" disabled={p.autoTrace.disabled} title="Trace the plan automatically: click inside a flat, then check what it lists on the right. Everything stays editable." onClick={p.autoTrace.onClick}>
+          <button disabled={p.autoTrace.disabled} title="Trace the plan automatically: click inside a flat, then check what it lists on the right. Everything stays editable." onClick={p.autoTrace.onClick}>
             Auto-trace
           </button>
         )}
         {/* never locked on a draft (founder, 2026-10-03): the 3D shows the plan as it is, open rooms have no floor yet */}
-        <button className="primary" title={p.errors ? `${p.errors} error${p.errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : 'Your drawing in the 3D view, in a new tab'} onClick={p.onPreview}>
+        <button className={p.quiet ? '' : 'primary'} title={p.errors ? `${p.errors} error${p.errors > 1 ? 's' : ''} in Issues — the 3D shows the plan as it is` : 'Your drawing in the 3D view, in a new tab'} onClick={p.onPreview}>
           Preview 3D
         </button>
         <button className={p.building ? 'on' : ''} aria-pressed={p.building} title="Your project's floors: make a project, draw each floor, then Show building" onClick={p.onBuilding}>
@@ -125,10 +125,10 @@ export default function TopBar(p: Props) {
         </button>
         <div className="more">
           <button className={`icon${menu ? ' on' : ''}`} aria-label="More" aria-expanded={menu} title="Import, export, new project, site, share, account" onClick={() => setMenu((v) => !v)}>
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="3" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-              <circle cx="13" cy="8" r="1.4" fill="currentColor" />
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="4.5" cy="10" r="1.25" fill="currentColor" />
+              <circle cx="10" cy="10" r="1.25" fill="currentColor" />
+              <circle cx="15.5" cy="10" r="1.25" fill="currentColor" />
             </svg>
           </button>
           {menu && (
