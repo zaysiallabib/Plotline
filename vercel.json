@@ -1,5 +1,9 @@
 {
-  "rewrites": [{ "source": "/((?!assets/|plans/|api/).*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/(u|s)/(.+)", "destination": "/index.html" },
+    { "source": "/studio(.*)", "destination": "/index.html" },
+    { "source": "/changes(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

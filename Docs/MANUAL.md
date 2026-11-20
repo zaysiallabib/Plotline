@@ -48,7 +48,7 @@ Open the site with nothing after its name (`/`) and you get the front page. It t
 | `/studio` | The Studio. |
 | `/changes` | The staff list of everything buyers chose and wrote. Signed in: your company's links. Not signed in: it asks for the staff key (for links made before accounts existed). Needs the online database. |
 | `/` | The front page (§0): what Plotline is, with **See a flat** and **Studio**. An old link that adds `?c=`, `?floor=`, `?staff=` or `?view=` to `/` still opens the 3D view, as before. |
-| anything else | A page that says "Nothing stands at this address" with **Go to the front page** (§12). (Until 2026-11-20 any unknown address opened the first flat in the list.) |
+| anything else | A page that says "Nothing stands at this address" with **Go to the front page** (§12). (Until 2026-11-20 any unknown address opened the first flat in the list.) On the live site it now also tells search engines the page does not exist (since 2026-11-21); it looks the same. |
 
 Extras you can add to the end of a 3D address:
 

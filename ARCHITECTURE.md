@@ -197,6 +197,10 @@ One page (`index.html`), no router: `src/main.tsx` picks the app from the addres
 - `/u/<stem>` — the viewer on a built-in flat or level; `/u/preview` — the Studio's draft; `/s/<token>` — a published buyer link.
 - `/studio` — the Studio. `/changes` — the staff change list.
 - Anything else is the not-found page (`src/lib/route.ts routeOf`, tested; until session 31 it opened the first built-in unit).
+  On Vercel only `/`, `/u/…`, `/s/…`, `/studio…` and `/changes…` reach the app (`vercel.json` rewrites); any other address
+  gets `public/404.html` — the same words and marble, no script — with a real 404 status, so search engines and link
+  checkers see a missing page as missing (since 2026-11-21; it answered 200 before). Its tokens are copies of
+  `index.css`'s, kept equal by `route.test.ts`. `npm run preview` still answers 200 everywhere (it has no rewrite rules).
   An unknown flat, a turned-off link, no connection and no 3D each have their own plain page, and an error boundary round
   every app shows "Something broke here" instead of a white screen (`src/lib/pages.tsx`, styles in `index.css` so they
   work even when an app's code failed to download). The tab's title names the page (`pageTitle`).
