@@ -53,7 +53,7 @@ export async function renderPage(doc: PdfDoc, pageNo: number, longPx: number): P
 }
 
 /** a page's lines (the clip paths left out) and texts, in PDF user space turned the way the page is shown */
-async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; pictures: number; pages: number }> {
+async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arcs: ArcPrim[]; texts: TextPrim[]; pictures: number; pages: number; fills: Fills }> {
   const pdfjs = await lib()
   const page = await doc.getPage(pageNo)
   const rot = ((page.rotate % 360) + 360) % 360
@@ -61,27 +61,59 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
   const ops = await page.getOperatorList()
   const segs: Seg[] = []
   const arcs: ArcPrim[] = []
-  let ctm: M = [1, 0, 0, 1, 0, 0]
-  const stack: M[] = []
+  // the pen: a PDF has no layers, but a CAD print draws each kind of line with its own weight and colour — every line
+  // keeps them as its "layer" (`pen`), sorted into walls and the rest by penRoles
+  let g = { ctm: [1, 0, 0, 1, 0, 0] as M, width: 1, stroke: '0', fill: '0' }
+  const stack: (typeof g)[] = []
   let pictures = 0
-  const line = (a: Pt, b: Pt) => segs.push({ a: turn(a), b: turn(b), layer: '' })
+  let pen = ''
+  const fills: Fills = new Map()
+  let shape: Pt[] = [] // the filled subpath being drawn: its area and outline length go to its pen
+  const closeShape = () => {
+    if (shape.length >= 3) {
+      let a = 0, l = 0
+      shape.forEach((q, i) => {
+        const r = shape[(i + 1) % shape.length]
+        a += q.x * r.y - r.x * q.y
+        l += Math.hypot(r.x - q.x, r.y - q.y)
+      })
+      const f = fills.get(pen) ?? fills.set(pen, { area: 0, outline: 0 }).get(pen)!
+      f.area += Math.abs(a) / 2
+      f.outline += l
+    }
+    shape = []
+  }
+  const line = (a: Pt, b: Pt) => {
+    segs.push({ a: turn(a), b: turn(b), layer: pen })
+    if (pen.startsWith('fill ')) shape.push(b)
+  }
+  const colour = (a: unknown[]) => (typeof a[0] === 'string' ? a[0] : a.map((x) => Math.round(Number(x) * 255)).join(','))
   for (let i = 0; i < ops.fnArray.length; i++) {
     const fn = ops.fnArray[i]
     const args = ops.argsArray[i] as unknown[]
-    if (fn === pdfjs.OPS.save) stack.push(ctm)
-    else if (fn === pdfjs.OPS.restore) ctm = stack.pop() ?? ctm
-    else if (fn === pdfjs.OPS.transform) ctm = mul(ctm, args as M)
+    if (fn === pdfjs.OPS.save) stack.push({ ...g })
+    else if (fn === pdfjs.OPS.restore) g = stack.pop() ?? g
+    else if (fn === pdfjs.OPS.transform) g = { ...g, ctm: mul(g.ctm, args as M) }
+    else if (fn === pdfjs.OPS.setLineWidth) g = { ...g, width: Number(args[0]) }
+    else if (fn === pdfjs.OPS.setStrokeRGBColor || fn === pdfjs.OPS.setStrokeGray || fn === pdfjs.OPS.setStrokeCMYKColor || fn === pdfjs.OPS.setStrokeColor) g = { ...g, stroke: colour(args) }
+    else if (fn === pdfjs.OPS.setFillRGBColor || fn === pdfjs.OPS.setFillGray || fn === pdfjs.OPS.setFillCMYKColor || fn === pdfjs.OPS.setFillColor) g = { ...g, fill: colour(args) }
     else if (fn === pdfjs.OPS.paintImageXObject || fn === pdfjs.OPS.paintInlineImageXObject || fn === pdfjs.OPS.paintImageMaskXObject) pictures++
     else if (fn === pdfjs.OPS.constructPath) {
       const [paint, paths] = args as [number, (Float32Array | number[])[]]
       if (paint === pdfjs.OPS.endPath) continue // a clip, not a drawing
+      const filled = paint === pdfjs.OPS.fill || paint === pdfjs.OPS.eoFill
+      const ctm = g.ctm
+      // (the weight in page points: a line 0.5 pt wide under a 2× transform is 1 pt)
+      pen = filled ? `fill ${g.fill}` : `pen ${(g.width * Math.hypot(ctm[0], ctm[1])).toFixed(2)} ${g.stroke}`
       for (const d of paths) {
         let cur: Pt | null = null
         let start: Pt | null = null
         for (let k = 0; k < d.length; ) {
           const op = d[k++]
           if (op === 0) {
+            closeShape()
             cur = start = ap(ctm, d[k], d[k + 1])
+            if (filled) shape.push(cur)
             k += 2
           } else if (op === 1) {
             const p = ap(ctm, d[k], d[k + 1])
@@ -111,8 +143,10 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
           } else if (op === 4) {
             if (cur && start) line(cur, start)
             cur = start
+            closeShape()
           } else break
         }
+        closeShape()
       }
     }
   }
@@ -136,7 +170,7 @@ async function readPage(doc: PdfDoc, pageNo: number): Promise<{ segs: Seg[]; arc
   // (fonts print the foot mark as a curly quote)
   const texts: TextPrim[] = merged.map((r) => ({ layer: '', at: turn({ x: (r.at.x + r.end.x) / 2, y: (r.at.y + r.end.y) / 2 }), text: r.str.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"'), height: r.h }))
   page.cleanup()
-  return { segs, arcs, texts, pictures, pages: doc.numPages }
+  return { segs, arcs, texts, pictures, pages: doc.numPages, fills }
 }
 
 /**
@@ -151,17 +185,57 @@ export const readsAsPlan = (r: ImportResult): boolean =>
     return rooms >= 2 && s.unit.walls.length <= 20 * rooms
   })
 
+/**
+ * Which pens draw the walls (session 31, formats2). A CAD print draws walls with its heaviest pen and often fills them grey
+ * or black: the stroked pens at least PEN_HEAVY times as wide as the plan's usual line (the length-weighted median) that
+ * draw at least PEN_SHARE of all its lines, and the fills of a grey (not white, not a colour) that do — when the page's
+ * scale is known and the filled shapes are wall-thin (on average under FILL_THIN_M across: a room shaded grey is no wall).
+ * None (one pen for everything, a coloured drawing): nothing is sorted, every line pair counts as before.
+ */
+const PEN_HEAVY = 2.5
+const PEN_SHARE = 0.03
+const FILL_THIN_M = 0.6
+/** per fill pen: the filled shapes' area and outline length, page points */
+type Fills = Map<string, { area: number; outline: number }>
+/** a grey or black, not white: '#c0c0c0', '64,64,64', a gray level */
+const grey = (c: string): boolean => {
+  const rgb = /^#?([0-9a-f]{6})$/i.test(c) ? [0, 2, 4].map((i) => parseInt(c.replace('#', '').slice(i, i + 2), 16)) : c.split(',').map(Number)
+  if (rgb.some((x) => !Number.isFinite(x))) return false
+  const [r, g, b] = rgb.length === 1 ? [rgb[0], rgb[0], rgb[0]] : rgb
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) < 240
+}
+export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | null = null): { walls: Set<string>; words: string } {
+  const length = new Map<string, number>()
+  for (const g of segs) length.set(g.layer, (length.get(g.layer) ?? 0) + Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y))
+  const total = [...length.values()].reduce((a, b) => a + b, 0)
+  const strokes = [...length].filter(([p]) => p.startsWith('pen ')).map(([p, L]) => ({ p, L, w: Number(p.split(' ')[1]) })).sort((a, b) => a.w - b.w)
+  const strokeTotal = strokes.reduce((a, x) => a + x.L, 0)
+  let acc = 0
+  const median = strokes.find((x) => (acc += x.L) >= strokeTotal / 2)?.w ?? 0
+  const walls = new Set<string>()
+  for (const x of strokes) if (median > 0 && x.w >= PEN_HEAVY * median && x.L >= PEN_SHARE * total) walls.add(x.p)
+  // (a long thin shape's mean width is twice its area over its outline)
+  const thin = (p: string) => {
+    const f = fills.get(p)
+    return !!scale && !!f && f.outline > 0 && ((2 * f.area) / f.outline) * scale <= FILL_THIN_M
+  }
+  for (const [p, L] of length) if (p.startsWith('fill ') && grey(p.slice(5)) && L >= PEN_SHARE * total && thin(p)) walls.add(p)
+  const words = [...walls].map((p) => (p.startsWith('fill') ? `filled ${p.split(' ')[1]}` : `${p.split(' ')[1]} pt ${p.split(' ')[2]}`)).join(', ')
+  return { walls, words }
+}
+
 /** One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. */
 export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1): Promise<ImportResult> {
   const doc = src instanceof ArrayBuffer ? await openPdf(src) : src
-  const { segs, arcs, texts, pictures, pages } = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
+  const { segs, arcs, texts, pictures, pages, fills } = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
   const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`)
   notes.push(note)
-  const drawing: Drawing = { segs, arcs, texts, loops: [], scale }
+  const pens = penRoles(segs, fills, /not set/.test(note) ? null : scale)
+  const drawing: Drawing = { segs: segs.map((g) => ({ ...g, layer: pens.walls.has(g.layer) ? 'WALL' : '' })), arcs, texts, loops: [], scale }
   const plan = buildPlan(drawing, name.replace(/\.pdf$/i, ''))
-  notes.push('Layers: a PDF has none — walls are any parallel line pair 5–60 cm apart; a door is a quarter-circle swing drawn as a curve.')
+  notes.push(pens.walls.size ? `Layers: a PDF has none — its lines were sorted by pen: the heaviest (${pens.words}) taken as walls, the rest as doors, windows and the like.` : 'Layers: a PDF has none and its lines are all one pen — walls are any parallel line pair 5–60 cm apart; a door is a quarter-circle swing drawn as a curve.')
   notes.push(...plan.notes)
   return { format: 'pdf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin }
 }

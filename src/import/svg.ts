@@ -10,7 +10,7 @@
  * sizes, else "set it with S". A pure reader — a small XML tokenizer, no DOM — so it runs in the tests and anywhere.
  */
 import type { Pt } from '../core'
-import { ROLE_WORDS, buildPlan, guessScale, quarterArc, roleOf, sheetScale, type ArcPrim, type Drawing, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, buildPlan, guessScale, quarterArc, roleOf, sheetScale, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
 // ---------- XML ----------
@@ -381,13 +381,15 @@ function path(d: string, m: M, poly: (pts: Pt[], closed: boolean) => void, arc: 
   flush(false)
 }
 
-export async function importSvg(src: string, name: string): Promise<ImportResult> {
+/** `mine`: the person's corrections of what a layer (a named group) holds */
+export async function importSvg(src: string, name: string, mine?: LayerRoles): Promise<ImportResult> {
   const r = readSvg(src)
   if (!r.segs.length) throw new Error(r.pictures ? 'This SVG holds only a picture, no lines: drop the picture itself and trace it' : 'This SVG has no lines to read')
   const notes: string[] = [`SVG: ${r.segs.length} lines, ${r.texts.length} texts${r.pictures ? `, ${r.pictures} picture(s) ignored` : ''}.`]
   const named = [...r.layers].filter(([l]) => l)
-  if (named.length) for (const [l, n] of named.sort((p, q) => q[1] - p[1]).slice(0, 12)) notes.push(`Layer "${l}": ${ROLE_WORDS[roleOf(l)]} (${n}).`)
-  else notes.push('Layers: none named — walls are any parallel line pair 5–60 cm apart.')
+  const list = named.sort((p, q) => q[1] - p[1]).map(([l, n]) => ({ name: l, role: roleOf(l, undefined, mine), count: n, yours: !!mine?.[l.toUpperCase()] }))
+  for (const l of list.slice(0, 12)) notes.push(`Layer "${l.name}": ${ROLE_WORDS[l.role]}${l.yours ? ' (as you set it)' : ''} (${l.count}).`)
+  if (!named.length) notes.push('Layers: none named — walls are any parallel line pair 5–60 cm apart.')
   let { scale, note } = sheetScale(r.segs, r.texts)
   if (/not set/.test(note)) {
     // no printed size at all: a CAD export keeps the drawing's own units — the size says which (a plan is 3–200 m wide)
@@ -398,8 +400,8 @@ export async function importSvg(src: string, name: string): Promise<ImportResult
     note = `Scale: no printed dimensions or room sizes — the drawing's units read as ${g.words}; check it with the Studio's S tool.`
   }
   notes.push(note)
-  const drawing: Drawing = { segs: r.segs, arcs: r.arcs, texts: r.texts, loops: r.loops, scale }
+  const drawing: Drawing = { segs: r.segs, arcs: r.arcs, texts: r.texts, loops: r.loops, scale, layerRoles: mine }
   const plan = buildPlan(drawing, name.replace(/\.svg$/i, ''))
   notes.push(...plan.notes)
-  return { format: 'svg', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin }
+  return { format: 'svg', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, ...(list.length ? { layers: list } : {}) }
 }

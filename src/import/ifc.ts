@@ -12,8 +12,9 @@
 import type { ImportResult, ImportedStorey } from './types'
 import { deriveRooms, newId, pointInPolygon, roomPolygon, validate } from '../core'
 import type { Id, Opening, OpeningKind, Pillar, Pt, RoomLabel, Unit, Vertex, Wall } from '../core'
-import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, reducer } from '../studio/model'
+import { PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, studioIssues } from '../studio/model'
 import { writeGlb, type GlbGroup } from './glb'
+import { settleImport } from './plan2d'
 import { unzipSync } from 'three/examples/jsm/libs/fflate.module.js'
 
 type WebIfc = typeof import('web-ifc')
@@ -441,9 +442,12 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let streamed = 0
   let said = -1
   progress('building the 3D', 0.1)
-  api.StreamAllMeshes(model, (mesh) => {
+  const seen = new Set<number>()
+  let broken = 0
+  const onMesh = (mesh: { expressID: number; geometries: { size(): number; get(i: number): { geometryExpressID: number; flatTransformation: number[]; color: { x: number; y: number; z: number; w: number } } } }) => {
+    seen.add(mesh.expressID)
     const f = Math.min(1, ++streamed / products)
-    if (f - said >= 0.02) (said = f), progress(`building the 3D (${Math.round(f * 100)} %)`, 0.1 + 0.65 * f)
+    if (f - said >= 0.02) (said = f), progress(`building the 3D (${Math.round(f * 100)} %)`, 0.1 + 0.5 * f)
     const tn = typeName(mesh.expressID)
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
@@ -469,7 +473,21 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       grp.n += wm.P.length / 3
       triangles += wm.I.length / 3
     }
-  })
+  }
+  try {
+    api.StreamAllMeshes(model, onMesh)
+  } catch {
+    // web-ifc stopped inside one element's geometry (measured: a services model, 22 of 16 544 products): the rest one by
+    // one, the broken ones left out of the outside shape (said in the notes)
+    for (const id of idsOf(W.IFCPRODUCT)) {
+      if (seen.has(id)) continue
+      try {
+        api.StreamMeshes(model, [id], onMesh)
+      } catch {
+        broken++
+      }
+    }
+  }
   const concat = <T extends Float32Array | Uint32Array>(parts: T[], make: (n: number) => T): T => {
     const out = make(parts.reduce((s, p) => s + p.length, 0))
     let at = 0
@@ -499,7 +517,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- walls ----------
-  progress('walls, doors and windows', 0.78)
+  progress('walls, doors and windows', 0.62)
   const voidsOf = new Map<number, number[]>() // wall → openings
   for (const r of idsOf(W.IFCRELVOIDSELEMENT)) {
     const rel = line(r)
@@ -806,9 +824,11 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   }
 
   // ---------- spaces ----------
-  progress('rooms', 0.86)
+  progress('rooms', 0.66)
   let outsideLabels = 0
   const outlineOf = new Map<Id, [Pt, Pt][]>() // label → the space's exact floor outline (edges)
+  const floorOf = new Map<Id, [Pt, Pt, Pt][]>() // label → the space's floor triangles
+  const areaNames: string[] = []
   for (const id of idsOf(W.IFCSPACE)) {
     const s = storeyOf(id)
     if (!s) continue
@@ -822,7 +842,11 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const label: RoomLabel = { id: newId(), name, kind: guessKind(name), x: at.x, y: at.y, ...(Math.abs(lvl) > 0.05 && Math.abs(lvl) < 3 ? { levelM: lvl } : {}) }
     draftOf(s).labels.push(label)
     draftOf(s).noSpace = false
-    if (body.floorTris) outlineOf.set(label.id, boundaryEdges(body.floorTris.filter((t) => t.y <= body.minY + 0.02).map((t) => t.pts)))
+    if (body.floorTris) {
+      const floor = body.floorTris.filter((t) => t.y <= body.minY + 0.02).map((t) => t.pts)
+      outlineOf.set(label.id, boundaryEdges(floor))
+      floorOf.set(label.id, floor)
+    }
   }
 
   // ---------- the units ----------
@@ -832,11 +856,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let nibs = 0
   let openPlan = 0
   let zoneLines = 0
+  let touches = 0
   for (const [k, s] of storeys.entries()) {
-    progress(`floor ${k + 1} of ${storeys.length}`, 0.9 + (0.1 * k) / storeys.length)
+    progress(`floor ${k + 1} of ${storeys.length}`, 0.7 + (0.3 * k) / storeys.length) // (each floor is joined and checked: on a big building the longest part)
     const d = draftsByStorey.get(s.id) ?? { walls: [], pillars: [], labels: [], noSpace: true }
     if (!draftsByStorey.has(s.id)) counts.push(`${s.name} (floor at ${fmt(s.z - baseY)} m): nothing on it.`)
     let last = { snapped: 0, dropped: 0 }
+    const joinedBy = new Map<Unit, number>()
     const build = (drafts: WallDraft[]): Unit => {
       // Revit axes end 2–5 cm short of / past the wall they meet: ends land on the centre line here, before the Studio joins
       const e = (last = snapEnds(drafts))
@@ -890,32 +916,58 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       }
       unit = { ...unit, vertices, walls, pillars: d.pillars, roomLabels: d.labels }
       // the Studio's own load path: corners within 1 cm merge, ends inside a wall join it (T-splits, crossings), stubs go
-      return reducer(initialState(), { type: 'load-unit', unit }).unit
+      const n = settleImport(unit)
+      joinedBy.set(n.unit, n.joined)
+      return n.unit
+    }
+    // a space that holds two or more of the others (a gross area, a fire zone, a flat's whole floor) is an area, not a room
+    const areas = d.labels.filter((l) => d.labels.filter((m) => m !== l && (floorOf.get(l.id) ?? []).some((t) => inTriangle(m, t))).length >= 2)
+    if (areas.length) {
+      d.labels = d.labels.filter((l) => !areas.includes(l))
+      areaNames.push(...areas.map((l) => l.name))
     }
     let unit = build(d.walls)
     // open plan: two or more of the file's rooms in one closed face (Revit's room-separation lines are not in the IFC) —
-    // the rooms' own outlines, where they are not a wall already, become zone lines so each room gets its own face
+    // zone lines (flush, drawn as nothing), so each room gets its own face: first where two of the rooms' own outlines run
+    // together (the separation the architect drew between them) and no wall stands; then, for rooms still sharing a face,
+    // the outlines of all but the biggest of them (an outline's other edges follow walls, columns and voids and can cut
+    // slivers). Each step is kept only when it leaves fewer rows to check (studioIssues): never more work for a person.
     const lines: WallDraft[] = []
     const seen = new Set<string>()
-    for (const r of deriveRooms(unit)) {
-      const poly = roomPolygon(r, unit)
-      const inside = unit.roomLabels.filter((l) => pointInPolygon(l, poly))
-      if (inside.length < 2) continue
-      openPlan++
-      for (const l of inside) {
-        for (const [a, b] of outlineOf.get(l.id) ?? []) {
-          if (onWall(unit, a, b)) continue
-          const key = [a, b].map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).sort().join('|')
-          if (seen.has(key)) continue
-          seen.add(key)
-          lines.push({ pts: [a, b], thicknessM: ZONE_LINE_M, heightM: 0, openings: [] })
-        }
-      }
+    const add = (a: Pt, b: Pt) => {
+      const key = [a, b].map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).sort().join('|')
+      if (onWall(unit, a, b) || seen.has(key)) return
+      seen.add(key)
+      lines.push({ pts: [a, b], thicknessM: ZONE_LINE_M, heightM: 0, openings: [] })
     }
-    if (lines.length && NODE && process.env.IFC_ZONES) {
-      zoneLines += lines.length
-      unit = build([...d.walls, ...lines])
+    const sharing = () =>
+      deriveRooms(unit).flatMap((r) => {
+        const poly = roomPolygon(r, unit)
+        const inside = unit.roomLabels.filter((l) => pointInPolygon(l, poly))
+        return inside.length >= 2 ? [inside] : []
+      })
+    const rows = (u: Unit) => studioIssues(u, deriveRooms(u)).length
+    const tryLines = (more: () => void) => {
+      const kept = lines.length
+      more()
+      if (lines.length === kept) return
+      const next = build([...d.walls, ...lines])
+      if (rows(next) < rows(unit)) unit = next
+      else lines.length = kept
     }
+    const open = sharing()
+    openPlan += open.length
+    const area = (l: RoomLabel) => (floorOf.get(l.id) ?? []).reduce((s, [a, b, c]) => s + Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2, 0)
+    if (open.length) {
+      tryLines(() => {
+        for (const inside of open) for (const [i, l] of inside.entries()) for (const m of inside.slice(i + 1)) for (const [a, b] of sharedEdges(outlineOf.get(l.id) ?? [], outlineOf.get(m.id) ?? [])) add(a, b)
+      })
+      tryLines(() => {
+        for (const inside of sharing()) for (const l of [...inside].sort((p, q) => area(q) - area(p)).slice(1)) for (const [a, b] of outlineOf.get(l.id) ?? []) add(a, b)
+      })
+    }
+    zoneLines += lines.length
+    touches += joinedBy.get(unit) ?? 0 // (the floor kept, not the zone lines tried and dropped)
     snapped += last.snapped
     nibs += last.dropped
     const rooms = deriveRooms(unit)
@@ -939,11 +991,14 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
   if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
   if (snapped) notes.push(`${snapped} wall ends stopped a few centimetres short of (or ran past) the wall they meet: each was moved onto that wall's centre line${nibs ? `; ${nibs} pieces shorter than ${MIN_PIECE_M * 100} cm left by that were removed` : ''}.`)
-  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines} zone lines (flush, drawn as nothing) were added along the file's own room outlines so each name has its own room.`)
+  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines ? `${zoneLines} zone lines (flush, drawn as nothing) were added where the file draws their boundary, so each name has its own room` : 'no zone line along the file\'s own room outlines left fewer things to check, so none was added (the Issues list says where)'}.`)
+  if (areaNames.length) notes.push(`${areaNames.length} of the file's spaces hold other rooms (a gross area, a zone) and were left out as room names: ${[...new Set(areaNames)].slice(0, 4).join(', ')}${areaNames.length > 4 ? ', …' : ''}.`)
+  if (touches) notes.push(`${touches} wall ends that touched another wall without a shared corner were joined to it.`)
   if (hung) notes.push(`${hung} doors / windows had no opening cut in a wall (the file lacks IfcRelVoidsElement): each was hung on the nearest wall by its own body.`)
   if (unplaced) notes.push(`${unplaced} walls belong to no storey in the file and were left out of the plans (they are still in the outside shape).`)
   if (dropped.length) notes.push(`${dropped.length} openings did not fit their wall and were left out: ${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''}.`)
   if (outsideLabels) notes.push(`${outsideLabels} room names landed outside any closed room (walls there do not close).`)
+  if (broken) notes.push(`${broken} pieces have a shape the IFC reader could not build: they are left out of the outside shape (the plans do not need them).`)
   if (furnitureSkipped) notes.push(`${furnitureSkipped} furniture pieces were skipped (the Studio furnishes rooms itself).`)
   if (shell) notes.push(`Outside shape: ${shell.triangles.toLocaleString()} triangles in ${glbGroups.length} colours${capped ? ` — capped at ${TRIANGLE_CAP.toLocaleString()}, the rest was left out` : ''}.`)
   else notes.push('The file has no solid geometry: no outside shape.')
@@ -1103,6 +1158,35 @@ function onWall(unit: Unit, a: Pt, b: Pt): boolean {
     if (near(a) && near(b)) return true
   }
   return false
+}
+
+/** two outlines run together: parallel within 2°, this far apart at most, this long at least */
+const SHARED_GAP_M = 0.05
+const SHARED_MIN_M = 0.1
+
+/** Where two rooms' outlines run together (their common boundary, a separation line): the overlap of each pair of edges, on the first's line. */
+export function sharedEdges(A: [Pt, Pt][], B: [Pt, Pt][]): [Pt, Pt][] {
+  const out: [Pt, Pt][] = []
+  for (const [a, b] of A) {
+    const L = Math.hypot(b.x - a.x, b.y - a.y)
+    if (L < SHARED_MIN_M) continue
+    const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+    for (const [p, q] of B) {
+      const M = Math.hypot(q.x - p.x, q.y - p.y)
+      if (M < SHARED_MIN_M || Math.abs(d.x * (q.y - p.y) - d.y * (q.x - p.x)) / M > 0.035) continue
+      if (Math.abs((p.y - a.y) * d.x - (p.x - a.x) * d.y) > SHARED_GAP_M || Math.abs((q.y - a.y) * d.x - (q.x - a.x) * d.y) > SHARED_GAP_M) continue
+      const t = [(p.x - a.x) * d.x + (p.y - a.y) * d.y, (q.x - a.x) * d.x + (q.y - a.y) * d.y].sort((m, n) => m - n)
+      const t0 = Math.max(0, t[0]), t1 = Math.min(L, t[1])
+      if (t1 - t0 >= SHARED_MIN_M) out.push([{ x: a.x + d.x * t0, y: a.y + d.y * t0 }, { x: a.x + d.x * t1, y: a.y + d.y * t1 }])
+    }
+  }
+  return out
+}
+
+const inTriangle = (p: Pt, [a, b, c]: [Pt, Pt, Pt]): boolean => {
+  const s = (u: Pt, v: Pt) => (v.x - u.x) * (p.y - u.y) - (v.y - u.y) * (p.x - u.x)
+  const d1 = s(a, b), d2 = s(b, c), d3 = s(c, a)
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
 }
 
 /** the outline of a triangulated floor: the edges used by one triangle only, straight runs joined into one edge */

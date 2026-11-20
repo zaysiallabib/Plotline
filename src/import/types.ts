@@ -18,6 +18,7 @@
  * file's walls are the draft; the shell is only what is seen from outside.
  */
 import type { Pt, Unit } from '../core'
+import type { Role } from './plan2d'
 
 export type ImportFormat = 'ifc' | 'dxf' | 'pdf' | 'svg' | 'mesh'
 
@@ -49,4 +50,6 @@ export interface ImportResult {
   unitScale: number
   /** the plan frame's origin in the file's own x / y, so a second file of the same building lands on the first */
   origin: Pt
+  /** a DXF's / SVG's layers, most used first: what each was taken as (`yours`: the person set it), for the Studio's layer list */
+  layers?: { name: string; role: Role; count: number; yours: boolean }[]
 }

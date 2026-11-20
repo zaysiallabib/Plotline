@@ -6,7 +6,8 @@
  *            that meets another wall reaches into it by that wall's half thickness (`joinEnds`), so filled walls close
  *            their corners. Zone lines (height 0) are drawn as nothing, as in the 3D.
  *  openings  per opening: a door's leaf and quarter swing (hinge and side as the Studio draws them), a window's three glass
- *            lines and two jambs, a slider's two panes, a passage nothing (its gap says it).
+ *            lines and two jambs, a slider's two panes; each with the jambs at its two ends (so an opening says how
+ *            thick its wall is even where nothing else of the wall is drawn: a wall that is all glass, all passage).
  *  columns   each pillar's outline. texts: each room name at its label, its printed size under it.
  */
 import { pillarCorners, wallFrame } from '../core'
@@ -14,19 +15,25 @@ import type { OpeningKind, Pt, Unit } from '../core'
 
 export interface SheetOpening {
   kind: OpeningKind
-  /** straight lines (the leaf, glass lines, jambs, panes' edges) */
+  /** straight lines (the leaf, glass lines, panes' edges) */
   lines: [Pt, Pt][]
+  /** the two jambs, across the wall at the opening's ends: how thick and (heightM) how high its wall is */
+  jambs: [[Pt, Pt], [Pt, Pt]]
+  heightM: number
   /** a door's swing: centre on the hinge, radius = the door's width, from angle a0 to a1 going the short way (plan frame) */
   arc?: { c: Pt; r: number; a0: number; a1: number }
 }
 
 export interface Sheet {
   walls: Pt[][]
+  /** each wall piece's height, m, in the order of `walls` (a low wall, a parapet, a kerb) */
+  wallHeights: number[]
   /** zone lines (a wall of height 0: parking bays, lawn edges): a single thin line */
   zones: [Pt, Pt][]
   openings: SheetOpening[]
   columns: Pt[][]
-  texts: { at: Pt; text: string; size: 'name' | 'note' }[]
+  /** levelM: a name's floor level when it is not the storey's (a raised terrace, a pool's water surface) */
+  texts: { at: Pt; text: string; size: 'name' | 'note'; levelM?: number }[]
   /** the box round everything, metres */
   box: { x0: number; y0: number; x1: number; y1: number }
 }
@@ -53,7 +60,7 @@ export function sheetOf(unit: Unit, { joinEnds = true }: { joinEnds?: boolean } 
     reach.set(`${p.id}|${v.id}`, q.thicknessM / 2)
     reach.set(`${q.id}|${v.id}`, p.thicknessM / 2)
   }
-  const out: Sheet = { walls: [], zones: [], openings: [], columns: [], texts: [], box: { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity } }
+  const out: Sheet = { walls: [], wallHeights: [], zones: [], openings: [], columns: [], texts: [], box: { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity } }
   for (const w of walls) {
     const f = wallFrame(w, unit.vertices)
     const L = f.lengthM
@@ -67,6 +74,7 @@ export function sheetOf(unit: Unit, { joinEnds = true }: { joinEnds?: boolean } 
       const e1 = joinEnds && u1 > L - 1e-6 ? (reach.get(`${w.id}|${w.b}`) ?? 0) : 0
       const s = add(f.origin, f.dir, u0 - e0), t = add(f.origin, f.dir, u1 + e1)
       out.walls.push([add(s, f.normal, -h), add(t, f.normal, -h), add(t, f.normal, h), add(s, f.normal, h)])
+      out.wallHeights.push(w.heightM)
     }
     for (const [a, b] of gaps) {
       piece(u, a)
@@ -77,6 +85,8 @@ export function sheetOf(unit: Unit, { joinEnds = true }: { joinEnds?: boolean } 
     const at = (uu: number, vv: number): Pt => add(add(f.origin, f.dir, uu), f.normal, vv)
     for (const o of w.openings) {
       const u0 = Math.max(0, o.offsetM), u1 = Math.min(L, o.offsetM + o.widthM)
+      const jambs: SheetOpening['jambs'] = [[at(u0, -h), at(u0, h)], [at(u1, -h), at(u1, h)]]
+      const heightM = w.heightM
       if (o.kind === 'door') {
         const hu = o.hinge === 'b' ? u1 : u0
         const sign = o.swing === 'in' ? -1 : 1
@@ -84,14 +94,14 @@ export function sheetOf(unit: Unit, { joinEnds = true }: { joinEnds?: boolean } 
         const leafEnd = at(hu, sign * (h + o.widthM))
         const jamb = at(o.hinge === 'b' ? u0 : u1, sign * h)
         const a0 = Math.atan2(leafEnd.y - c.y, leafEnd.x - c.x), a1 = Math.atan2(jamb.y - c.y, jamb.x - c.x)
-        out.openings.push({ kind: 'door', lines: [[c, leafEnd]], arc: { c, r: o.widthM, a0, a1 } })
+        out.openings.push({ kind: 'door', lines: [[c, leafEnd]], jambs, heightM, arc: { c, r: o.widthM, a0, a1 } })
       } else if (o.kind === 'window') {
-        out.openings.push({ kind: 'window', lines: [[at(u0, -h), at(u1, -h)], [at(u0, 0), at(u1, 0)], [at(u0, h), at(u1, h)], [at(u0, -h), at(u0, h)], [at(u1, -h), at(u1, h)]] })
+        out.openings.push({ kind: 'window', lines: [[at(u0, -h), at(u1, -h)], [at(u0, 0), at(u1, 0)], [at(u0, h), at(u1, h)]], jambs, heightM })
       } else if (o.kind === 'slider') {
         const m = (u1 - u0) * 0.55
         const pane = (p0: number, p1: number, v0: number, v1: number): [Pt, Pt][] => [[at(p0, v0), at(p1, v0)], [at(p1, v0), at(p1, v1)], [at(p1, v1), at(p0, v1)], [at(p0, v1), at(p0, v0)]]
-        out.openings.push({ kind: 'slider', lines: [...pane(u0, u0 + m, -h * 0.6, -h * 0.1), ...pane(u1 - m, u1, h * 0.1, h * 0.6), [at(u0, -h), at(u0, h)], [at(u1, -h), at(u1, h)]] })
-      }
+        out.openings.push({ kind: 'slider', lines: [...pane(u0, u0 + m, -h * 0.6, -h * 0.1), ...pane(u1 - m, u1, h * 0.1, h * 0.6)], jambs, heightM })
+      } else out.openings.push({ kind: 'passage', lines: [], jambs, heightM })
     }
   }
   for (const w of unit.walls) {
@@ -101,12 +111,12 @@ export function sheetOf(unit: Unit, { joinEnds = true }: { joinEnds?: boolean } 
   }
   for (const p of unit.pillars ?? []) out.columns.push(pillarCorners(p))
   for (const l of unit.roomLabels) {
-    out.texts.push({ at: { x: l.x, y: l.y }, text: l.name, size: 'name' })
+    out.texts.push({ at: { x: l.x, y: l.y }, text: l.name, size: 'name', ...(l.levelM ? { levelM: l.levelM } : {}) })
     if (l.printedSize) out.texts.push({ at: { x: l.x, y: l.y + 0.35 }, text: l.printedSize, size: 'note' })
   }
   const grow = (p: Pt) => ((out.box.x0 = Math.min(out.box.x0, p.x)), (out.box.y0 = Math.min(out.box.y0, p.y)), (out.box.x1 = Math.max(out.box.x1, p.x)), (out.box.y1 = Math.max(out.box.y1, p.y)))
   for (const poly of [...out.walls, ...out.columns, ...out.zones]) poly.forEach(grow)
-  for (const o of out.openings) o.lines.flat().forEach(grow)
+  for (const o of out.openings) [...o.lines, ...o.jambs].flat().forEach(grow)
   if (!Number.isFinite(out.box.x0)) out.box = { x0: 0, y0: 0, x1: 1, y1: 1 }
   return out
 }
@@ -170,7 +180,7 @@ export function sheetSvg(sheet: Sheet, paper: Paper, scale: number, info: PrintI
   out.push(`<g class="ps-columns">${sheet.columns.map((p) => `<polygon points="${pts(p)}"/>`).join('')}</g>`)
   const lines: string[] = [], swings: string[] = []
   for (const o of sheet.openings) {
-    for (const [a, b] of o.lines) lines.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}"/>`)
+    for (const [a, b] of [...o.lines, ...o.jambs]) lines.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}"/>`)
     if (o.arc) {
       const { c, r, a0, a1 } = o.arc
       let d = a1 - a0

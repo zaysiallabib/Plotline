@@ -10,8 +10,10 @@
  */
 import type { ImportFormat, ImportResult } from './types'
 import { DWG_CONVERTER, convertDwg } from './dwg'
+import type { LayerRoles } from './plan2d'
 
 export type * from './types'
+export type { LayerRoles, Role as LayerRole } from './plan2d'
 export { expandZips, mainFile, siblingsOf, type DropFile } from './bundle'
 export { filesOfDrop } from './drop'
 
@@ -69,6 +71,8 @@ export interface ReadOptions {
   signal?: AbortSignal
   /** the other files dropped with it (bundle.ts siblingsOf): a model's buffers, pictures, .mtl */
   siblings?: Map<string, Blob>
+  /** the person's corrections of what a DXF / SVG layer holds */
+  layerRoles?: LayerRoles
 }
 
 /**
@@ -102,16 +106,16 @@ export async function importFile(file: File, opts: ReadOptions = {}): Promise<Im
       if (typeof Worker !== 'undefined' && typeof window !== 'undefined') return ifcInWorker(bytes, file.name, opts)
       return (await import('./ifc')).importIfc(bytes, file.name, opts.progress)
     case 'dxf': {
-      if (extOf(file.name) !== 'dwg') return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name)
+      if (extOf(file.name) !== 'dwg') return (await import('./dxf')).importDxf(new TextDecoder().decode(bytes), file.name, opts.layerRoles)
       opts.progress?.('converting the DWG to DXF', null)
       const dxf = await convertDwg(bytes, file.name, DWG_CONVERTER!, opts.signal)
-      const r = await (await import('./dxf')).importDxf(dxf, file.name.replace(/\.dwg$/i, '.dxf'))
+      const r = await (await import('./dxf')).importDxf(dxf, file.name.replace(/\.dwg$/i, '.dxf'), opts.layerRoles)
       return { ...r, notes: ['Converted from DWG to DXF by the converter set up for this site (Docs/SETUP_FORMATS.md).', ...r.notes] }
     }
     case 'pdf':
       return (await import('./pdf')).importPdf(bytes, file.name)
     case 'svg':
-      return (await import('./svg')).importSvg(new TextDecoder().decode(bytes), file.name)
+      return (await import('./svg')).importSvg(new TextDecoder().decode(bytes), file.name, opts.layerRoles)
     case 'mesh':
       return (await import('./mesh')).importMesh(bytes, file.name, opts.siblings)
   }

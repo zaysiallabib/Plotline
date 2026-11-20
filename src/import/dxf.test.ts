@@ -10,6 +10,7 @@ import { deriveRooms, validate } from '../core'
 import { EXTERIOR_M, PARTITION_M } from '../studio/model'
 import { importDxf } from './dxf'
 import { splinePoints, stripMtext } from './dxf'
+import { roleOf } from './plan2d'
 
 /** a DXF from group code / value pairs */
 const dxfOf = (header: (string | number)[], entities: (string | number)[]) =>
@@ -131,5 +132,35 @@ describe.skipIf(!existsSync(SAMPLES))('real DXF samples', () => {
     const table = ['| file | DXF | units | lines | walls | openings | columns | labels | closed rooms | validate errors | time |', '|---|---|---|---|---|---|---|---|---|---|---|', ...rows].join('\n')
     console.log(table)
     if (existsSync('E:/dev/tmp')) writeFileSync(TABLE, table)
+  })
+})
+
+describe('layer names', () => {
+  test('the names CAD templates use, in any case and several languages; a wall structure is no door', () => {
+    const cases: [string, string][] = [
+      ['A-WALL', 'wall'], ['a-wall-full', 'wall'], ['WALLS', 'wall'], ['Wände', 'wall'], ['MURS_EXT', 'wall'], ['MUROS', 'wall'], ['S-STRUCTURE', 'wall'],
+      ['A-WALL-PATT', 'wall'], ['A-DOOR', 'door'], ['PORTES', 'door'], ['Türen', 'door'], ['A-GLAZ', 'window'], ['FENSTER', 'window'], ['VENTANAS', 'window'],
+      ['S-COLS', 'column'], ['Stützen', 'column'], ['A-ANNO-TEXT', 'text'], ['A-AREA-IDEN', 'text'], ['A-ANNO-DIMS', 'dim'], ['COTATION', 'dim'],
+      ['A-FURN', 'ignore'], ['Möbel', 'ignore'], ['Q-CASE', 'ignore'], ['S-STRS', 'ignore'], ['A-FLOR-PATT', 'ignore'],
+      ['PLOTLINE_ZONES', 'zone'], ['PLOTLINE_KERBS', 'kerb'], ['Layer 7', 'unknown'],
+    ]
+    for (const [name, role] of cases) expect([name, roleOf(name)]).toEqual([name, role])
+  })
+
+  test("a person's correction wins over the table (a block still wins over both), and changes what is read", async () => {
+    expect(roleOf('Layer 7', undefined, { 'LAYER 7': 'wall' })).toBe('wall')
+    expect(roleOf('A-WALL', undefined, { 'A-WALL': 'ignore' })).toBe('ignore')
+    expect(roleOf('Layer 7', 'DOOR-1', { 'LAYER 7': 'wall' })).toBe('door')
+    // a 4 x 3 m room drawn as two outlines (faces 20 cm apart) on "Layer 7", and a 60 cm deep cupboard on "Layer 8"
+    const rect = (layer: string, x0: number, y0: number, x1: number, y1: number) => ['0', 'LWPOLYLINE', '8', layer, '90', 4, '70', 1, '10', x0, '20', y0, '10', x1, '20', y0, '10', x1, '20', y1, '10', x0, '20', y1]
+    const text = dxfOf(['9', '$INSUNITS', '70', 6], [...rect('Layer 7', 0, 0, 4.4, 3.4), ...rect('Layer 7', 0.2, 0.2, 4.2, 3.2), ...rect('Layer 8', 0.4, 0.4, 2.4, 0.85)])
+    const plain = await importDxf(text, 'a.dxf')
+    expect(plain.layers!.map((l) => [l.name, l.role])).toEqual([['Layer 7', 'unknown'], ['Layer 8', 'unknown']])
+    expect(plain.notes.some((n) => /could not place: "Layer 7", "Layer 8"/.test(n))).toBe(true)
+    const mine = await importDxf(text, 'a.dxf', { 'LAYER 7': 'wall', 'LAYER 8': 'ignore' })
+    expect(mine.layers!.map((l) => [l.name, l.role, l.yours])).toEqual([['Layer 7', 'wall', true], ['Layer 8', 'ignore', true]])
+    expect(mine.notes.some((n) => /could not place/.test(n))).toBe(false)
+    expect(deriveRooms(mine.storeys[0].unit)).toHaveLength(1)
+    expect(mine.storeys[0].unit.walls.every((w) => Math.abs(w.thicknessM - 0.2) < 0.01)).toBe(true)
   })
 })

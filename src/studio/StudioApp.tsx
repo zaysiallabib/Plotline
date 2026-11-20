@@ -50,7 +50,7 @@ import PdfPages from './PdfPages'
 import PrintBox from './PrintBox'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
-import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
+import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
 import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -68,6 +68,16 @@ import './studio.css'
 import { ask, askText } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
+/** a person's corrections of what a DXF / SVG layer holds, by layer name: kept for every next file (src/import plan2d roleOf) */
+const LAYER_ROLES_KEY = 'plotline.layerRoles'
+const readLayerRoles = (): LayerRoles => {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAYER_ROLES_KEY) ?? '{}') as unknown
+    return v && typeof v === 'object' ? (v as LayerRoles) : {}
+  } catch {
+    return {}
+  }
+}
 const PREVIEW_KEY = 'plotline.preview'
 /**
  * The project open in the Studio (its id: `plotline.studio.project`) and which of its drawings the Studio holds, whatever
@@ -307,6 +317,9 @@ export default function StudioApp() {
   const [note, setNote] = useState<Note | null>(null)
   /** what an architect's file gave (src/import), listed in the panel until dismissed */
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
+  // a DXF's / SVG's layers (the notes' layer list) and the file they came from, read again when a person corrects one
+  const [importLayers, setImportLayers] = useState<ImportResult['layers'] | null>(null)
+  const lastRead = useRef<{ file: File; siblings?: Map<string, Blob> } | null>(null)
   /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
   const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
   /** a PDF of several pages waiting for "which page is the plan?" (PdfPages), and the page being read after a click */
@@ -913,14 +926,27 @@ export default function StudioApp() {
     setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file, { siblings, signal: stop.signal, progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
+      r = await importFile(file, { siblings, signal: stop.signal, layerRoles: readLayerRoles(), progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
     } catch (e) {
       setReading(null)
       if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
       return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
     setReading(null)
+    lastRead.current = { file, siblings }
     await takeImport(r, file.name)
+  }
+  /** a person says what a layer holds ('auto': Plotline decides): kept in this browser for every next file, this one read again */
+  const onLayerRole = (layer: string, role: LayerRole | 'auto') => {
+    const mine = readLayerRoles()
+    if (role === 'auto') delete mine[layer.toUpperCase()]
+    else mine[layer.toUpperCase()] = role
+    try {
+      localStorage.setItem(LAYER_ROLES_KEY, JSON.stringify(mine))
+    } catch {
+      /* no storage: this read only */
+    }
+    if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings)
   }
   /**
    * A PDF: one page is read at once; several ask which page is the plan (PdfPages). A page whose lines make a plan (two or
@@ -981,6 +1007,8 @@ export default function StudioApp() {
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
   const takeImport = async (r: ImportResult, fileName: string) => {
+    if (import.meta.env.DEV) Object.assign(window, { __plotlineLastImport: r }) // the formats scoreboard reads what the drop gave
+    setImportLayers(r.layers ?? null)
     let shell: Shell | undefined
     if (r.shell) {
       const id = newId()
@@ -1116,7 +1144,7 @@ export default function StudioApp() {
     const { writeDxf } = await import('../import/dxfWrite')
     const name = u.name.trim() || 'Untitled unit'
     download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
-    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, ZONES`)
+    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
   const exportGlb = () => (stateRef.current.unit.walls.length ? previewWith('?export=glb') : toast('Nothing drawn yet to export'))
   const [printOpen, setPrintOpen] = useState(false)
@@ -2665,7 +2693,9 @@ export default function StudioApp() {
           placing={placing?.assetId ?? null}
           onPlace={(assetId) => hold(assetId ? { id: newId(), assetId, rot: 0 } : null)}
           notes={importNotes}
-          onDismissNotes={() => setImportNotes(null)}
+          onDismissNotes={() => (setImportNotes(null), setImportLayers(null))}
+          layers={importLayers}
+          onLayerRole={onLayerRole}
         />
       </div>
 

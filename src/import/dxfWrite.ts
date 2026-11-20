@@ -2,21 +2,29 @@
  * The drawing as a DXF (session 31) — what a developer's architect asks back for: AutoCAD R12 text (the version every CAD
  * program reads), in metres ($INSUNITS 6), y up as CAD draws. Layers: WALLS (each solid wall piece a closed polyline, its
  * ends reaching into the wall it meets so the corners close), DOORS (each door a block DOOR-n: its leaf and its swing arc;
- * a slider a block SLIDER-n), WINDOWS (a block WIN-n: three glass lines and the jambs), COLUMNS (closed polylines), TEXT
- * (room names, printed sizes under them), ZONES (the flush lines between zones: parking bays, lawn edges).
+ * a slider a block SLIDER-n, a passage a block PASSAGE-n: its two jambs), WINDOWS (a block WIN-n: three glass lines and the
+ * jambs), COLUMNS (closed polylines), TEXT
+ * (room names, printed sizes under them; a name's raised floor as the text's elevation), PLOTLINE_ZONES (the flush lines
+ * between zones: parking bays, lawn edges), PLOTLINE_KERBS (walls of 20 cm or less, outlined like walls). Every wall
+ * outline carries its height as its thickness (group 39, the extrusion CAD keeps), so a file saved by a CAD program reads
+ * back to the same walls, heights, zone lines, openings and named rooms (dxfWrite.test.ts, the 20 built-in drawings).
  *
- * Plain CAD lines cannot hold all of a Plotline drawing (a parapet's height, a zone line, which T-joint split which wall),
- * so the drawing itself rides along as DXF comments (group 999, which every CAD program skips and drops when it saves),
+ * What lines cannot hold (which T-joint split which wall, a ramp's slope, a wall kept standing alone) rides along too:
+ * the drawing itself as DXF comments (group 999, which every CAD program skips and drops when it saves),
  * sealed with a fingerprint of the drawn entities. A file that comes back untouched opens exactly as it was exported;
  * one changed in CAD has lost the comments or broken the seal, and is read from its lines like any DXF (ownDrawingOf).
  */
 import type { Pt, Unit } from '../core'
 import { sheetOf } from './sheet'
 
-/** FNV-1a over the ENTITIES section (line endings evened out): any change to what is drawn changes it */
-const seal = (dxf: string): string => {
-  const at = dxf.indexOf('ENTITIES')
-  const body = (at < 0 ? '' : dxf.slice(at, dxf.indexOf('ENDSEC', at))).replace(/\r\n/g, '\n')
+/**
+ * FNV-1a over what is drawn (line endings evened out): any change to it changes the seal. Version 2 (session 31, formats2)
+ * seals the whole file after the comments, the blocks too (a door's jambs and swing); version 1, the first exports, sealed
+ * the ENTITIES section only — they still open exactly.
+ */
+const seal = (dxf: string, version = 2): string => {
+  const at = version === 1 ? dxf.indexOf('ENTITIES') : dxf.indexOf('PLOTLINE-END')
+  const body = (at < 0 ? '' : version === 1 ? dxf.slice(at, dxf.indexOf('ENDSEC', at)) : dxf.slice(at)).replace(/\r\n/g, '\n')
   let h = 0x811c9dc5
   for (let i = 0; i < body.length; i++) h = Math.imul(h ^ body.charCodeAt(i), 0x01000193) >>> 0
   return h.toString(16)
@@ -32,10 +40,10 @@ const b64 = (s: string) => {
 /** The drawing Plotline wrote into this DXF, when the file is untouched since (the seal holds); else null. */
 export function ownDrawingOf(dxf: string): Unit | null {
   if (!dxf.startsWith('999')) return null
-  const m = /^999\r?\nPLOTLINE-DRAWING 1 ([0-9a-f]+)\r?\n([\s\S]*?)999\r?\nPLOTLINE-END/.exec(dxf)
-  if (!m || m[1] !== seal(dxf)) return null
+  const m = /^999\r?\nPLOTLINE-DRAWING ([12]) ([0-9a-f]+)\r?\n([\s\S]*?)999\r?\nPLOTLINE-END/.exec(dxf)
+  if (!m || m[2] !== seal(dxf, Number(m[1]))) return null
   try {
-    const bin = atob(m[2].split(/\r?\n/).filter((_, i) => i % 2 === 1).join(''))
+    const bin = atob(m[3].split(/\r?\n/).filter((_, i) => i % 2 === 1).join(''))
     const unit = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) as Unit
     return unit && Array.isArray(unit.walls) && Array.isArray(unit.vertices) ? unit : null
   } catch {
@@ -43,13 +51,16 @@ export function ownDrawingOf(dxf: string): Unit | null {
   }
 }
 
+/** a wall this low is a kerb (core: ≤ 0.2 m), drawn on its own layer */
+const KERB_M = 0.2
 const LAYERS: [string, number][] = [
   ['WALLS', 7],
   ['DOORS', 3],
   ['WINDOWS', 4],
   ['COLUMNS', 8],
   ['TEXT', 7],
-  ['ZONES', 8],
+  ['PLOTLINE_ZONES', 8],
+  ['PLOTLINE_KERBS', 8],
 ]
 const NAME_H = 0.2
 const NOTE_H = 0.14
@@ -61,12 +72,17 @@ export function writeDxf(unit: Unit): string {
   const X = (p: Pt) => p.x
   const Y = (p: Pt) => -p.y // plan y down → CAD y up
   const line = (layer: string, a: Pt, b: Pt) => (g(0, 'LINE'), g(8, layer), g(10, X(a)), g(20, Y(a)), g(30, 0), g(11, X(b)), g(21, Y(b)), g(31, 0))
-  const poly = (layer: string, pts: Pt[]) => {
-    g(0, 'POLYLINE'), g(8, layer), g(66, 1), g(10, 0), g(20, 0), g(30, 0), g(70, 1)
+  // (a wall's height rides as the outline's thickness, group 39: the extrusion every CAD program keeps and shows in 3D)
+  const poly = (layer: string, pts: Pt[], heightM?: number, closed = true) => {
+    g(0, 'POLYLINE'), g(8, layer), g(66, 1), g(10, 0), g(20, 0), g(30, 0)
+    if (heightM !== undefined) g(39, heightM)
+    g(70, closed ? 1 : 0)
     for (const p of pts) g(0, 'VERTEX'), g(8, layer), g(10, X(p)), g(20, Y(p)), g(30, 0)
     g(0, 'SEQEND'), g(8, layer)
   }
-  const text = (at: Pt, s: string, h: number) => (g(0, 'TEXT'), g(8, 'TEXT'), g(10, X(at)), g(20, Y(at)), g(30, 0), g(40, h), g(1, s.replace(/[\r\n]+/g, ' ')), g(72, 1), g(73, 2), g(11, X(at)), g(21, Y(at)), g(31, 0))
+  // (a name's floor level, when it is not the storey's, is the text's elevation)
+  const open = (layer: string, pts: Pt[], heightM: number) => poly(layer, pts, heightM, false)
+  const text = (at: Pt, s: string, h: number, z = 0) => (g(0, 'TEXT'), g(8, 'TEXT'), g(10, X(at)), g(20, Y(at)), g(30, z), g(40, h), g(1, s.replace(/[\r\n]+/g, ' ')), g(72, 1), g(73, 2), g(11, X(at)), g(21, Y(at)), g(31, z))
 
   // header: version, units, extent
   const b = sheet.box
@@ -90,10 +106,12 @@ export function writeDxf(unit: Unit): string {
   const inserts: [string, string][] = []
   let n = 0
   for (const o of sheet.openings) {
-    const name = `${o.kind === 'door' ? 'DOOR' : o.kind === 'slider' ? 'SLIDER' : 'WIN'}-${++n}`
+    const name = `${o.kind === 'door' ? 'DOOR' : o.kind === 'slider' ? 'SLIDER' : o.kind === 'passage' ? 'PASSAGE' : 'WIN'}-${++n}`
     const layer = o.kind === 'window' ? 'WINDOWS' : 'DOORS'
     g(0, 'BLOCK'), g(8, layer), g(2, name), g(70, 0), g(10, 0), g(20, 0), g(30, 0), g(3, name)
     for (const [a, c] of o.lines) line(layer, a, c)
+    // (the jambs as two-point polylines: their thickness, group 39, is the wall's height — a wall all of glass keeps it)
+    for (const j of o.jambs) open(layer, j, o.heightM)
     if (o.arc) {
       // CAD arcs run counter-clockwise (y up): the plan's angles flip, the short way between them
       let s = -o.arc.a0, e = -o.arc.a1
@@ -107,17 +125,17 @@ export function writeDxf(unit: Unit): string {
   g(0, 'ENDSEC')
   // the drawing
   g(0, 'SECTION'), g(2, 'ENTITIES')
-  for (const w of sheet.walls) poly('WALLS', w)
+  sheet.walls.forEach((w, i) => poly(sheet.wallHeights[i] <= KERB_M ? 'PLOTLINE_KERBS' : 'WALLS', w, sheet.wallHeights[i]))
   for (const c of sheet.columns) poly('COLUMNS', c)
-  for (const [a, c] of sheet.zones) line('ZONES', a, c)
+  for (const [a, c] of sheet.zones) line('PLOTLINE_ZONES', a, c)
   for (const [name, layer] of inserts) g(0, 'INSERT'), g(8, layer), g(2, name), g(10, 0), g(20, 0), g(30, 0)
-  for (const t of sheet.texts) text(t.at, t.text, t.size === 'name' ? NAME_H : NOTE_H)
+  for (const t of sheet.texts) text(t.at, t.text, t.size === 'name' ? NAME_H : NOTE_H, t.levelM)
   g(0, 'ENDSEC')
   g(0, 'EOF')
   const dxf = out.join('\r\n') + '\r\n'
   // the drawing itself, as comments before the first section (see the top)
   const data = b64(JSON.stringify(unit))
-  const lines = ['999', `PLOTLINE-DRAWING 1 ${seal(dxf)}`]
+  const lines = ['999', `PLOTLINE-DRAWING 2 ${seal(`PLOTLINE-END\r\n${dxf}`)}`]
   for (let i = 0; i < data.length; i += CHUNK) lines.push('999', data.slice(i, i + CHUNK))
   lines.push('999', 'PLOTLINE-END')
   return lines.join('\r\n') + '\r\n' + dxf

@@ -904,17 +904,24 @@ picture can still be dropped later to see the sheet behind. Every format and how
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens. Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
 | **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"). An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with "Save as DXF" |
-| **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
+| **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
 | **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now: the Building view shows it round your flat and the walk sees its facade through the windows. A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
 | **Locked files** `.rvt` `.pln` `.skp` `.max` `.blend` `.dwf` (and `.dwg` while off) | Refused, with the one-click export to ask for: Revit / ArchiCAD → IFC; SketchUp / 3ds Max / Blender → glTF, OBJ or FBX; AutoCAD → DXF |
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. A zip of pictures opens its first picture |
 
 While it reads, a box at the top says what it is doing with a bar for how far ("building the 3D (53 %)", "floor 3 of
 7"); the Studio keeps working (a 64 MB building takes about half a minute), and **Cancel** stops it. Afterwards the panel
-lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**.
+lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
+an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
+could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
+**Doors**, **Windows**, **Columns**, **Room names**, **Dimensions** or **Leave out** — and the file is read again at once;
+the choice is kept in this browser for every next file with that layer name (an architect's template uses the same
+names every time). **Plotline decides** gives the layer back to Plotline. Layer names it knows by itself: the US / AIA
+ones (A-WALL, A-DOOR, A-GLAZ, S-COLS, A-ANNO-TEXT…), plain English, and the German, French, Spanish, Italian and Dutch
+words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 
 **Outside shape** (in the panel while the drawing has one): its name and triangle count, **Offset x / y (m)** (slide it
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
@@ -927,10 +934,14 @@ says so.
 From the ⋯ menu, what a developer or their architect asks for:
 
 - **Export as DXF** — a `.dxf` in metres that AutoCAD and every drawing program opens, each part on its own layer:
-  **WALLS** (closed outlines), **DOORS** (leaf and swing), **WINDOWS**, **COLUMNS**, **TEXT** (names and sizes), **ZONES**
-  (a level's flush lines). Dropped back untouched it opens exactly as it was ("Written by Plotline and not changed
-  since"); once changed in a CAD program it is read from its lines — close, not exact (Type A: 103 walls back for its 90,
-  30 of 33 openings, 21 of 27 rooms).
+  **WALLS** (closed outlines; each wall's height rides along as its thickness, so a CAD program shows the walls in 3D),
+  **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
+  **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
+  lines) and **PLOTLINE_KERBS** (walls of 20 cm or less). Dropped back untouched it opens exactly as it was ("Written by
+  Plotline and not changed since"). Saved again by a CAD program it is read from its lines and layers ("Exported by
+  Plotline … read to the letter"): 10 of the 20 built-in flats and levels come back exactly the same, Type A among them;
+  the rest within a few lines — curved ramp walls, parking bays, a door right at a corner
+  ([FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md)).
 - **Export 3D model** — the 3D view opens in a new tab and, once every room has arrived, saves the furnished flat as one
   `.glb` (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the sky): about 55 MB
   (Type A 54 MB). Blender, 3ds Max, SketchUp and any glTF viewer open it; a render artist who wants it smaller runs it

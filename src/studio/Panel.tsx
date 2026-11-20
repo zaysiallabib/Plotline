@@ -10,6 +10,7 @@ import { EXTERIOR_M, PARTITION_M, WALL_TYPES, findEntity, formatLevel, openingDe
 import { AI_KEY, LOOKS_RIGHT, SHOW_ME, TRACKER_KEY, answerId, fewRooms, roomCount, type StudioAction as Action } from './review'
 import { groupRows, REVIEW_KIND, type Fix, type Mark, type MarkFixes, type Severity } from './issues'
 import type { AutoTraceStats } from '../trace/types'
+import type { ImportResult, LayerRole } from '../import'
 
 const SEVERITY: Record<Severity, string> = { red: 'Breaks the 3D', amber: 'Worth a look', grey: 'Cosmetic' }
 
@@ -191,9 +192,12 @@ interface Props {
   /** what an architect's file gave (src/import notes), shown until dismissed */
   notes?: string[] | null
   onDismissNotes?: () => void
+  /** a DXF's / SVG's layers and what each was taken as; a change ('auto': Plotline decides) reads the file again */
+  layers?: ImportResult['layers'] | null
+  onLayerRole?: (layer: string, role: LayerRole | 'auto') => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -365,6 +369,25 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
               <li key={i}>{n}</li>
             ))}
           </ul>
+          {!!layers?.length && onLayerRole && (
+            <>
+              <p className="muted">Layers — what each holds. A change reads the file again, and is kept for the next file.</p>
+              <div className="props layers">
+                {layers.slice(0, 24).map((l) => (
+                  <Row key={l.name} label={l.name}>
+                    <select value={l.yours ? l.role : 'auto'} aria-label={`What layer ${l.name} holds`} onChange={(e) => onLayerRole(l.name, e.target.value as LayerRole | 'auto')}>
+                      <option value="auto">{l.yours ? 'Plotline decides' : `Plotline decides: ${LAYER_WORDS[l.role]}`}</option>
+                      {LAYER_PICKS.map(([r, w]) => (
+                        <option key={r} value={r}>
+                          {w}
+                        </option>
+                      ))}
+                    </select>
+                  </Row>
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
       {unit.shell && <OutsideShape shell={unit.shell} dispatch={dispatch} />}
@@ -1000,6 +1023,20 @@ function OutsideShape({ shell, dispatch }: { shell: Shell; dispatch: (a: Action)
     </section>
   )
 }
+
+/** what a person can say a layer holds, in plain words */
+const LAYER_PICKS: [LayerRole, string][] = [
+  ['wall', 'Walls'],
+  ['kerb', 'Kerbs (walls 20 cm or less)'],
+  ['zone', 'Zone lines (drawn as nothing)'],
+  ['door', 'Doors'],
+  ['window', 'Windows'],
+  ['column', 'Columns'],
+  ['text', 'Room names'],
+  ['dim', 'Dimensions'],
+  ['ignore', 'Leave out'],
+]
+const LAYER_WORDS: Record<LayerRole, string> = { ...Object.fromEntries(LAYER_PICKS), unknown: 'not placed (line pairs may be walls)' } as Record<LayerRole, string>
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
