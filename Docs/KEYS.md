@@ -3,7 +3,8 @@
 One table per screen. How each one works in detail: [MANUAL.md](MANUAL.md), the section in the last column.
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 **Who:** staff = the developer's team (a browser becomes staff the first time it opens the Studio, or with `?staff=1`);
-buyer = someone on a buyer link; everyone = both. Checked against the product on 2026-11-21.
+buyer = someone on a buyer link; everyone = both. On a buyer link (`/s/…`) nobody is staff, even in a staff browser:
+no staff row below shows there. Checked against the product on 2026-11-21.
 
 ## Everywhere
 
@@ -49,9 +50,9 @@ buyer = someone on a buyer link; everyone = both. Checked against the product on
 | **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
 | **Share** | Copies a link that opens with the finishes you chose | the bar | everyone | §2 The bar |
 | **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add | the bar | staff | §3 Edit furniture |
-| **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar, not on a `/s/` link | staff | §3 Edit openings |
+| **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
-| **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar, not on a `/s/` link | staff | §3, §5 Give the drawing back |
+| **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar | staff | §3, §5 Give the drawing back |
 | **⋯ → Quality: Lite · Low · High** | How heavy the 3D is; a blue dot marks the recommended one; a new choice reloads the page | the bar | everyone | §2 Choosing quality |
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |

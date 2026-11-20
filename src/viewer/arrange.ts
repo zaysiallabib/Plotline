@@ -19,8 +19,11 @@ export const STAFF_KEY = 'plotline.staff'
 /**
  * Staff = the Studio has run in this browser (it sets the flag), or `?staff=1` (the load screen's "Staff mode" link),
  * which sets it too; `?staff=0` forgets it (see what a buyer sees). Share links never carry it (share.ts shareUrl).
+ * A published link (`/s/<token>`; `path` = the route) is never staff, whatever this browser remembers: staff edit a flat
+ * on its own `/u/` address (CLAUDE.md: nothing staff-only on a buyer link).
  */
-export function isStaff(search: string, store?: Store): boolean {
+export function isStaff(search: string, path: string, store?: Store): boolean {
+  if (path.startsWith('/s/')) return false
   try {
     const s = store ?? localStorage
     const q = new URLSearchParams(search).get('staff')

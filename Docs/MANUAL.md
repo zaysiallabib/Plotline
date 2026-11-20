@@ -25,7 +25,8 @@ What a developer does first:
 
 **Two kinds of people.** A **buyer** looks, chooses finishes and leaves notes — nothing else. **Staff** can also move
 furniture, change doors and windows, and use the Studio. A browser becomes staff the first time it opens the Studio, or
-when `?staff=1` is added to a 3D address (`?staff=0` turns it off). A buyer link never offers staff mode.
+when `?staff=1` is added to a 3D address (`?staff=0` turns it off). A buyer link never offers staff mode, and a buyer
+link (`/s/…`) shows a staff browser exactly what a buyer sees — to edit, open the flat's own address (`/u/…`).
 
 **When something asks first:** a white card opens in the middle of the screen and the page behind it goes pale.
 **Cancel** (or **Esc**) says no and nothing changes. The second button names what it does — **Delete**, **Replace**,
@@ -364,7 +365,9 @@ finishes. Buyers never see any of it.
 One extra button sits in the bar: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit
 furniture), **Openings** (Edit openings), **Plan (Studio) ↗** (opens this flat or level in the Studio in a new tab) and
 **Download 3D model** (saves this flat as one `.glb` file once every room has arrived; §5, "Give the drawing back").
-The one that is on is the white row, marked "on". On a buyer link Openings and Download 3D model are left out.
+The one that is on is the white row, marked "on". On a buyer link (`/s/…`) none of this section shows, even in a
+browser that has opened the Studio: no **Edit ▾**, no **G**, no **+ Add option** — you see what the buyer sees. To edit
+that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
 
 ### Edit furniture
 
@@ -1196,8 +1199,6 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
-- A staff browser on a buyer link still sees **Edit ▾** with Furniture and Plan (Studio) (Openings, Download and **+ Add
-  option** are hidden there).
 - Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
   Studio (the real buyer link that feeds the change list). The same thing has two names in places: "Slider" (3D) /
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
