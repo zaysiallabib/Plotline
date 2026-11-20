@@ -279,7 +279,7 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 | Control | What it does |
 |---|---|
 | Unit name, Project, Floor, Area (sft) | Plain fields saved with the drawing. They look like plain words; the mouse over one shows its box — click and type |
-| Saved · Saving… · Offline, will retry · Not saved: … | After the fields, when signed in: where your work stands online (see below). A problem shows in red |
+| Saved · just now · Saving… · Offline · will retry · Someone else saved · Not saved: … | After the fields, when signed in: where your work stands online (see "Accounts" below). A problem shows in red; a click opens the account card |
 | ↶ Undo / ↷ Redo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
 | Auto-trace | Tries to draw the flats for you from the picture. While it shows "Point at a flat": move the pointer over the plan, and the flat a click there would take glows (all of it, open floor too). Then click inside ONE flat to trace that flat, or press **Whole floor** (in the same box) to trace every flat of the floor and the lobby, stair and lifts between them in one go. It does not understand ground floors, basements or rooftops. |
 | Preview 3D | Opens your drawing in the 3D view, in a new tab |
@@ -291,7 +291,7 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 | ⋯ → Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below. "open" shows beside it while the panel is open; click it again (or the panel's ×) to close |
 | ⋯ → Share link | Makes a buyer link and copies it. Signed in: made for your company, nothing asked. Not signed in: asks once for the staff key. Needs the online database. |
 | ⋯ → Change list ↗ | Opens `/changes` in a new tab. Needs the online database. |
-| ⋯ → Sign in / your email | Your account and your company's work online — see "Signing in and saving online" below. Needs the online database. |
+| ⋯ → Sign in / your email | Your account, your company's projects online, its members and the buyer links — see "Accounts" below. Needs the online database. |
 
 **Loading the plan picture:** with nothing drawn yet, the middle of the Studio says **Start with a plan**. It shows a dashed box (drop the picture on it — or anywhere on the page — or click **Choose plan image…**; PNG, JPG or WEBP, up to 10 MB; the architect's IFC, DXF, PDF or 3D model can be dropped there too) and, beside it, the **New project** card (section 6).
 
@@ -303,39 +303,49 @@ The thin line at the bottom says, on the left, what the tool you are on does —
 
 **Keys** (bottom right) — or the **?** key — opens a sheet with every key in one list: the tools, drawing, picking and moving, the view and the file keys, with the tool you are on explained in full at the top. **×**, Esc or a click anywhere else closes it. The full list with every detail is [KEYS.md](KEYS.md).
 
-### Signing in and saving online (top bar → ⋯ → Sign in)
+### Accounts — signing in, saving online, members, links (top bar → ⋯ → Sign in)
 
-Without signing in, your work is kept in this browser only (section 9). Signed in, it is **also** kept online, in the database, for your company, by itself, as you work. Setting it up (once, by the founder): [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).
+Without signing in, your work is kept in this browser only (section 9). Signed in, it is **also** kept online, in the database, for your company, by itself, as you work — the plan pictures too. Setting it up (once, by the founder): [SETUP_ACCOUNTS.md](SETUP_ACCOUNTS.md).
 
 **Signing in** (no password):
 
 1. Top bar, right: **⋯** → **Sign in**. A card opens (its **Close**, or **Esc**, closes it).
 2. Type your email, click **Send me a link**. The card says **Check your email**.
 3. Open that email **on the same computer, in the same browser**, and click the link. The Studio opens with your email in the **⋯** menu instead of **Sign in**.
-4. The first time, it says **Not saved: not in a company yet** until the owner adds you (SETUP_ACCOUNTS.md, "Adding a staff member"). Then press F5.
+4. If an owner of your company invited your email (Members, below), you are in the company at once. If not, the word says **Not saved: not in a company yet**: ask an owner to invite you, then press F5.
 
-**Saving** happens by itself 2 seconds after you stop changing things. What is saved: the project open in the Studio (all its floors and drawings), or — with no project open — the drawing you are on. The plan picture is not saved online: keep the picture file (or drop it again on another computer). The word next to your email:
+**Saving** happens by itself 2 seconds after you stop changing things. What is saved: the project open in the Studio (all its floors and drawings), or — with no project open — the drawing you are on. **The plan pictures go with it**: each drawing's picture is sent once to your company's private folder online, and a colleague who opens the project gets the picture under the walls, without dropping it again. Buyers never get the plan picture. The word next to the drawing's name (click it to open the card):
 
 | Word | Means |
 |---|---|
 | **Saving…** | Your latest change is on its way |
-| **Saved** | The online copy has exactly what you see (and this browser has it too) |
-| **Offline, will retry** | No internet. Keep working: it is in this browser, and it saves by itself when the internet is back |
-| **Not saved: someone saved a newer version — reload** | A colleague saved the same project after you opened it. Click **⋯** → your email: **Open theirs** (their copy replaces yours here) or **Keep mine** (yours becomes the newest; theirs stays under **Earlier saves**). Nothing is lost either way |
-| **Not saved: it was deleted from the cloud** | Someone deleted it meanwhile. Click **⋯** → your email → **Save as new** keeps your copy as a new one |
-| **Not saved: …** (anything else) | The reason in words (for example too big: the most is 5 MB). Your work is still in this browser |
+| **Saved · just now** (or **· 4 min ago**) | The online copy has exactly what you see (and this browser has it too) |
+| **Offline · will retry** | No internet. Keep working: it is in this browser, and it saves by itself when the internet is back |
+| **Someone else saved** (red) | A colleague — or you, in another tab — saved the same project after you opened it, and yours was **not** saved over theirs. Click the word: **Open theirs** (their copy replaces yours here) or **Keep mine** (yours becomes the newest; theirs stays under **Earlier saves**). Nothing is lost either way |
+| **Deleted in the cloud** (red) | Someone deleted it meanwhile. Click the word → **Save as new** keeps your copy as a new one |
+| **Not saved: …** (red, anything else) | The reason in words (for example too big: the most is 5 MB). Your work is still in this browser |
 
-**Click ⋯ → your email** (top right) for the card:
+**The card** (click the word, or **⋯** → your email): your email and your company (owner or staff), then three parts — **Projects**, **Members**, **Links** — and **Sign out** (saves what is waiting, then signs out; your work stays in this browser).
 
-- Your email and your company (owner or staff).
-- **Projects in the cloud** — your company's projects and drawings, last saved first, with who saved last ("by a colleague") and when. The one open now sits on a grey row.
-  - **Open** — puts it in the Studio in place of what is open (what is open is saved first; if it could not be, you are asked).
-  - **Rename** — its name, for everyone.
-  - **Earlier saves** — every save of it, newest first (version, when, you or a colleague). **Open this save** puts that older copy in the Studio; it becomes the newest when it saves. Nothing is ever lost: the later saves stay in the list.
-  - **Delete** (with a question first) — takes it off the list for everyone in the company. This browser keeps its own copy, and every save stays in the history (the founder can bring it back).
-- **Sign out** — saves what is waiting, then signs out. Your work stays in this browser.
+**Projects** — your company's projects and drawings, last saved first, with who saved last ("by a colleague") and when. The one open now sits on a grey row.
 
-Two people can work in the Studio at once on **different** projects without ever noticing each other. On the **same** project, the second save is the one that asks (see "someone saved a newer version" above).
+- **Open** — puts it in the Studio in place of what is open (what is open is saved first; if it could not be, you are asked). Its plan pictures come down as each drawing opens.
+- **Rename** — its name, for everyone.
+- **Earlier saves** — every save of it, newest first (version, when, you or a colleague). **Open this save** puts that older copy in the Studio — with the plan picture it had then; it becomes the newest when it saves. Nothing is ever lost: the later saves stay in the list.
+- **Delete** (with a question first) — takes it off the list for everyone in the company. This browser keeps its own copy, and every save stays in the history (the founder can bring it back).
+
+**Members** — everyone in your company, owner or staff, and the people invited who have not signed in yet. Everyone sees the list; only an **owner** sees the buttons:
+
+- **Invite**: type their work email, pick **Staff** (does the work: tracing, saving, sharing) or **Owner** (can also invite and remove people), click **Invite**. Plotline sends no email of its own: tell them to open the Studio, click ⋯ → **Sign in** and use that email — **Copy this for them** copies that line. They join the moment they sign in. **Take back** cancels an invite not used yet.
+- **Make owner** / **Make staff** — changes someone's role. A company always keeps at least one owner, so the only owner never sees **Make staff** on themself.
+- **Remove** (asks first) — takes someone out of the company. They keep their account but reach nothing of the company's; everything they saved stays. Nobody can remove themself (another owner can).
+
+**Links** — every buyer link made from what is open (with **⋯** → **Share link**): which flat and floor, when, by whom, how often buyers opened it (your own company's opens are not counted), how many notes and choices came back, and whether it was turned off.
+
+- **Copy link** — copies it again.
+- **Turn off** (asks first) — the link stops working for good: whoever has it is told the flat is not available; what they wrote stays in the **Change list**. To share again, make a new link.
+
+Two people can work in the Studio at once on **different** projects without ever noticing each other. On the **same** project, the second save is the one that asks ("Someone else saved" above) — also between two tabs of one browser.
 
 ### Site — where the building stands (top bar → ⋯ → Site)
 
@@ -827,7 +837,7 @@ The **Site** (place, north, blocks, roads, wind) is part of the drawing: kept wh
 - The built-in flats and levels
 - Anything exported as a file (the file does not contain the plan picture — keep the picture too)
 - Buyer links made with **Share link** and what buyers do on them (in the database)
-- Signed in to a company: the open project or drawing and **every save of it** (in the database, for your company only). The plan picture is not in it
+- Signed in to a company: the open project or drawing and **every save of it** (in the database, for your company only), with each drawing's plan picture (in your company's private folder online; a save names the picture it was traced on)
 
 **Never saved:** the finishes you clicked, unless you press **Share** (they go into the link).
 

@@ -30,7 +30,7 @@ const ITEM: CloudItem = { key: 'project:p-local', kind: 'project', name: ' Banan
 describe('the cloud save rule (optimistic concurrency)', () => {
   it('a save that changed no row: newer version → stale, deleted / missing → gone', async () => {
     const { whyNoRow } = await import('./cloud')
-    expect(whyNoRow({ version: 7, deleted_at: null }, 5)).toMatchObject({ why: 'stale', message: expect.stringContaining('newer version (7)') })
+    expect(whyNoRow({ version: 7, deleted_at: null }, 5)).toMatchObject({ why: 'stale', message: 'someone else saved it after you opened it (their version 7)' })
     expect(whyNoRow({ version: 5, deleted_at: '2026-11-20T00:00:00Z' }, 5).why).toBe('gone')
     expect(whyNoRow(null, 5).why).toBe('gone')
   })
@@ -110,7 +110,7 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     expect(save).not.toHaveBeenCalled() // still typing
     await vi.advanceTimersByTimeAsync(600)
     expect(save).toHaveBeenCalledTimes(1)
-    expect(words()).toEqual(['Saving…', 'Saved'])
+    expect(words()).toEqual(['Saving…', 'Saved · just now'])
     expect(links.get(ITEM.key)).toMatchObject({ id: 'c1', version: 1 })
     s.touch()
     await vi.advanceTimersByTimeAsync(2100)
@@ -118,29 +118,29 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     s.stop()
   })
 
-  it('offline: "Offline, will retry", tried again by itself, then Saved', async () => {
+  it('offline: "Offline · will retry", tried again by itself, then Saved', async () => {
     vi.useFakeTimers()
     const { CloudError } = await import('./cloud')
     const save = vi.fn().mockRejectedValueOnce(new CloudError('offline', 'no connection')).mockResolvedValue({ id: 'c1', version: 2 })
     const { s, words } = await setup(save)
     s.touch()
     await vi.advanceTimersByTimeAsync(2000)
-    expect(words().at(-1)).toBe('Offline, will retry')
+    expect(words().at(-1)).toBe('Offline · will retry')
     await vi.advanceTimersByTimeAsync(15000)
     expect(save).toHaveBeenCalledTimes(2)
-    expect(words().at(-1)).toBe('Saved')
+    expect(words().at(-1)).toBe('Saved · just now')
     s.stop()
   })
 
-  it('stale: "Not saved: someone saved a newer version", no more saves of it until Keep mine', async () => {
+  it('stale: "Someone else saved", no more saves of it until Keep mine', async () => {
     vi.useFakeTimers()
     const { CloudError } = await import('./cloud')
     let data = 1
-    const save = vi.fn().mockRejectedValueOnce(new CloudError('stale', 'someone saved a newer version (5) — reload')).mockResolvedValue({ id: 'c1', version: 6 })
+    const save = vi.fn().mockRejectedValueOnce(new CloudError('stale', 'someone else saved it after you opened it (their version 5)')).mockResolvedValue({ id: 'c1', version: 6 })
     const { s, words } = await setup(save, () => ({ ...ITEM, data: { n: data } }))
     s.touch()
     await vi.advanceTimersByTimeAsync(2000)
-    expect(words().at(-1)).toBe('Not saved: someone saved a newer version (5) — reload')
+    expect(words().at(-1)).toBe('Someone else saved')
     data = 2
     s.touch()
     await vi.advanceTimersByTimeAsync(5000)
@@ -148,7 +148,7 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     await s.keepMine()
     expect(save).toHaveBeenCalledTimes(2)
     expect(save.mock.calls[1][2]).toBe(true) // over the cloud's copy
-    expect(words().at(-1)).toBe('Saved')
+    expect(words().at(-1)).toBe('Saved · just now')
     s.stop()
   })
 
@@ -156,12 +156,12 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     vi.useFakeTimers()
     const { CloudError } = await import('./cloud')
     let data = 1
-    const save = vi.fn().mockRejectedValueOnce(new CloudError('stale', 'someone saved a newer version (5) — reload')).mockResolvedValue({ id: 'c1', version: 6 })
+    const save = vi.fn().mockRejectedValueOnce(new CloudError('stale', 'someone else saved it after you opened it (their version 5)')).mockResolvedValue({ id: 'c1', version: 6 })
     const { s, links, words } = await setup(save, () => ({ ...ITEM, data: { n: data } }))
     links.set(ITEM.key, { id: 'c1', version: 3, hash: '' })
     s.touch()
     await vi.advanceTimersByTimeAsync(2000)
-    expect(words().at(-1)).toMatch(/^Not saved: someone saved/)
+    expect(words().at(-1)).toBe('Someone else saved')
     links.set(ITEM.key, { id: 'c1', version: 5, hash: 'theirs' }) // what Open theirs does
     data = 2
     s.touch()
@@ -169,7 +169,7 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     expect(save).toHaveBeenCalledTimes(2)
     expect(save.mock.calls[1][1]).toMatchObject({ version: 5 })
     expect(save.mock.calls[1][2]).toBe(false)
-    expect(words().at(-1)).toBe('Saved')
+    expect(words().at(-1)).toBe('Saved · just now')
     s.stop()
   })
 
@@ -195,7 +195,43 @@ describe('autosave: 2 s after the last change, with a status word', () => {
     await vi.advanceTimersByTimeAsync(2000)
     expect(empty.words()).toEqual([''])
     empty.s.stop()
-    expect(words().at(-1)).toBe('Saved')
+    expect(words().at(-1)).toBe('Saved · just now')
+  })
+})
+
+describe('the word in the top bar, and two tabs of one browser', () => {
+  it('Saved says how long ago; the other states say what happened in a few words', async () => {
+    const { statusWord } = await import('./cloud')
+    const at = Date.parse('2026-11-20T14:05:00Z')
+    expect(statusWord({ kind: 'saved', at }, at + 30_000)).toBe('Saved · just now')
+    expect(statusWord({ kind: 'saved', at }, at + 4 * 60_000 + 5_000)).toBe('Saved · 4 min ago')
+    expect(statusWord({ kind: 'saved', at }, at + 3 * 3600_000)).toMatch(/^Saved · \d\d:\d\d$/)
+    expect(statusWord({ kind: 'saved' })).toBe('Saved') // already in the cloud when it was opened: no time to say
+    expect(statusWord({ kind: 'offline' })).toBe('Offline · will retry')
+    expect(statusWord({ kind: 'stale', reason: 'x' })).toBe('Someone else saved')
+    expect(statusWord({ kind: 'gone', reason: 'x' })).toBe('Deleted in the cloud')
+    expect(statusWord({ kind: 'refused', reason: 'too big for the cloud' })).toBe('Not saved: too big for the cloud')
+  })
+
+  it("another tab's save never moves this tab's version (its next save is refused as stale, not saved over theirs)", async () => {
+    const { linkStore } = await import('./cloud')
+    const shared = (() => {
+      const m = new Map<string, string>()
+      return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
+    })()
+    shared.setItem('plotline.cloud.u1', JSON.stringify({ 'unit:a': { id: 'c1', version: 3, hash: 'h3' } }))
+    // two tabs = two page loads of one browser: each reads the browser's memory once (the module, per page)
+    const tab1 = linkStore('u1', shared)
+    vi.resetModules()
+    const tab2 = (await import('./cloud')).linkStore('u1', shared)
+    expect(tab1.get('unit:a')?.version).toBe(3)
+    expect(tab2.get('unit:a')?.version).toBe(3)
+    tab1.set('unit:a', { id: 'c1', version: 4, hash: 'h4' }) // tab 1 saved
+    expect(tab2.get('unit:a')?.version).toBe(3) // tab 2 still names the version IT opened
+    tab2.set('unit:b', { id: 'c2', version: 1, hash: 'hb' })
+    expect(JSON.parse(shared.getItem('plotline.cloud.u1')!)).toEqual({ 'unit:a': { id: 'c1', version: 4, hash: 'h4' }, 'unit:b': { id: 'c2', version: 1, hash: 'hb' } }) // both kept for the next load
+    vi.resetModules()
+    expect((await import('./cloud')).linkStore('u1', shared).get('unit:a')?.version).toBe(4) // a reload starts from the newest
   })
 })
 

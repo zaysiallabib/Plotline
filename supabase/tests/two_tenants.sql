@@ -1,10 +1,12 @@
--- Two-tenant test (session 30): the security check of supabase/migrations/20261120120000_accounts.sql.
--- Paste this whole file into the Supabase SQL editor AFTER the accounts SQL and press Run.
+-- Two-tenant test (sessions 30 + 31): the security check of supabase/migrations/20261120120000_accounts.sql and
+-- 20261120180000_members_pictures.sql. Paste this whole file into the Supabase SQL editor AFTER the setup SQL and Run.
 --
 -- It makes two companies (A and B), one person in each, a project, a share link and a buyer's note in B, then acts
 -- as A - through the same database roles the website uses (`authenticated` with A's sign-in, `anon` for a buyer) -
 -- and checks that A cannot read, change or add to anything of B's; that a buyer reads no table; that a save from an
--- old version is refused; and that a turned-off link opens nothing and takes no note.
+-- old version is refused; and that a turned-off link opens nothing and takes no note. Session 31 adds: plan pictures
+-- (one private folder per company), the links list and its view count, and the member rules (only an owner invites,
+-- removes or changes roles; never themself out, never the last owner; an invite joins only its own confirmed email).
 -- It all runs in one transaction that is rolled back at the end: nothing it made is left behind.
 --
 -- Result: one row, "All two-tenant checks passed". Anything else stops at once with "FAIL: <what went wrong>".
@@ -16,6 +18,8 @@ do $$
 declare
   ua constant uuid := 'aaaaaaaa-0000-4000-8000-00000000000a'; -- the person in company A
   ub constant uuid := 'bbbbbbbb-0000-4000-8000-00000000000b'; -- the person in company B
+  uc constant uuid := 'cccccccc-0000-4000-8000-00000000000c'; -- invited into A, signs in (email confirmed)
+  ud constant uuid := 'dddddddd-0000-4000-8000-00000000000d'; -- invited into A, email never confirmed
   oa uuid;
   ob uuid;
   pa uuid;
@@ -28,9 +32,11 @@ declare
 begin
   -- fixtures, as the SQL editor's own role
   insert into auth.users (id, email) values (ua, 'two-tenant-a@plotline.invalid'), (ub, 'two-tenant-b@plotline.invalid');
+  insert into auth.users (id, email, email_confirmed_at) values (uc, 'two-tenant-c@plotline.invalid', now()), (ud, 'two-tenant-d@plotline.invalid', null);
   insert into public.orgs (name) values ('Two-tenant test A') returning id into oa;
   insert into public.orgs (name) values ('Two-tenant test B') returning id into ob;
   insert into public.org_members (org_id, user_id, role) values (oa, ua, 'owner'), (ob, ub, 'staff');
+  insert into public.org_invites (org_id, email, role) values (ob, 'two-tenant-e@plotline.invalid', 'owner'); -- someone else's invite, in B
 
   -- as B: a project saved twice, a share link, a buyer's note
   perform set_config('role', 'authenticated', true);
@@ -151,6 +157,11 @@ begin
   exception when insufficient_privilege then null;
   end;
   if public.revoke_link(tb) then raise exception 'FAIL: A turned off B''s link'; end if;
+  begin
+    perform public.project_links(pb);
+    raise exception 'FAIL: A reads the links list of B''s project';
+  exception when insufficient_privilege then null;
+  end;
 
   -- A's own work still works (the checks above are not passing because everything is refused)
   insert into public.projects (org_id, name, kind, data) values (oa, 'A flat', 'unit', '{"name":"A flat"}') returning id into pa;
@@ -189,10 +200,25 @@ begin
   end;
   if public.unit_by_token(tb) ->> 'name' is distinct from 'B flat' then raise exception 'FAIL: the buyer link does not open its unit'; end if;
   if public.unit_by_token(gen_random_uuid()) is not null then raise exception 'FAIL: a made-up token opened something'; end if;
+  begin
+    perform public.org_people(ob);
+    raise exception 'FAIL: a buyer can list a company''s people';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.project_links(pb);
+    raise exception 'FAIL: a buyer can read a project''s links';
+  exception when insufficient_privilege then null;
+  end;
 
   -- B turns the link off: it opens nothing and takes no note; what was said stays
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
+  perform public.unit_by_token(tb); -- B opening its own link is not a view
+  j := public.project_links(pb);
+  if jsonb_array_length(j) <> 1 or (j -> 0 ->> 'views')::int <> 1 or (j -> 0 ->> 'events')::int <> 1 or j -> 0 ->> 'by_email' is distinct from 'two-tenant-b@plotline.invalid' then
+    raise exception 'FAIL: B''s links list should show its link, opened once by a buyer, with 1 note, made by B: %', j;
+  end if;
   if not public.revoke_link(tb) then raise exception 'FAIL: B could not turn its link off'; end if;
   if public.revoke_link(tb) then raise exception 'FAIL: a link was turned off twice'; end if;
 
@@ -228,6 +254,154 @@ begin
     j := public.events_for_staff(k);
     if j::text like '%' || tb::text || '%' then raise exception 'FAIL: the old staff key reads a company''s link'; end if;
   end if;
+
+  -- plan pictures: a private bucket, one folder per company; members read and add their own, nobody changes one
+  select count(*) into n from storage.buckets b where b.id = 'plans' and b.public = false and b.file_size_limit = 10485760;
+  if n <> 1 then raise exception 'FAIL: the plans bucket is missing, public, or not capped at 10 MB'; end if;
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
+  insert into storage.objects (bucket_id, name) values ('plans', ob::text || '/b-sheet.webp');
+  select count(*) into n from storage.objects o where o.bucket_id = 'plans' and o.name = ob::text || '/b-sheet.webp';
+  if n <> 1 then raise exception 'FAIL: B cannot read the plan picture it added'; end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+  select count(*) into n from storage.objects o where o.bucket_id = 'plans' and o.name like ob::text || '/%';
+  if n <> 0 then raise exception 'FAIL: A reads B''s plan pictures'; end if;
+  begin
+    insert into storage.objects (bucket_id, name) values ('plans', ob::text || '/planted-by-a.webp');
+    raise exception 'FAIL: A added a plan picture to B''s folder';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into storage.objects (bucket_id, name) values ('plans', 'no-folder.webp');
+    raise exception 'FAIL: a plan picture outside any company''s folder was taken';
+  exception when insufficient_privilege then null;
+  end;
+  insert into storage.objects (bucket_id, name) values ('plans', oa::text || '/a-sheet.webp');
+  update storage.objects o set name = oa::text || '/renamed.webp' where o.bucket_id = 'plans' and o.name = oa::text || '/a-sheet.webp';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: a member changed a plan picture (a saved version points at it)'; end if;
+  begin
+    delete from storage.objects o where o.bucket_id = 'plans' and o.name = oa::text || '/a-sheet.webp';
+    get diagnostics n = row_count;
+  exception when others then n := 0; -- Supabase refuses direct deletes in its storage schema outright: also no delete
+  end;
+  if n <> 0 then raise exception 'FAIL: a member deleted a plan picture (a saved version points at it)'; end if;
+
+  perform set_config('role', 'anon', true);
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  begin
+    select count(*) into n from storage.objects o where o.bucket_id = 'plans';
+  exception when insufficient_privilege then n := 0;
+  end;
+  if n <> 0 then raise exception 'FAIL: a buyer can see plan pictures'; end if;
+
+  -- members: only an owner invites, removes or changes roles; an invite joins only its own confirmed email; never the
+  -- owner themself out, never a company with no owner
+  perform set_config('role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+  j := public.org_people(oa);
+  if jsonb_array_length(j -> 'members') <> 1 or j -> 'members' -> 0 ->> 'email' is distinct from 'two-tenant-a@plotline.invalid' or j -> 'members' -> 0 ->> 'role' is distinct from 'owner' then
+    raise exception 'FAIL: A''s owner does not see A''s people: %', j;
+  end if;
+  begin
+    perform public.org_people(ob);
+    raise exception 'FAIL: A lists the people of company B';
+  exception when insufficient_privilege then null;
+  end;
+  if public.invite_member(oa, ' Two-Tenant-C@plotline.invalid ', 'staff') is distinct from 'two-tenant-c@plotline.invalid' then raise exception 'FAIL: an owner could not invite'; end if;
+  perform public.invite_member(oa, 'two-tenant-d@plotline.invalid', 'staff');
+  begin
+    perform public.invite_member(ob, 'planted@plotline.invalid', 'owner');
+    raise exception 'FAIL: A invited someone into company B';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.invite_member(oa, 'two-tenant-a@plotline.invalid', 'staff');
+    raise exception 'FAIL: a member could be invited again';
+  exception when unique_violation then null;
+  end;
+  begin
+    perform public.invite_member(oa, 'not an email', 'staff');
+    raise exception 'FAIL: an invite took something that is not an email';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    select count(*) into n from public.org_invites;
+    raise exception 'FAIL: the invites can be read without the owner''s functions';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.org_invites (org_id, email, role) values (ob, 'two-tenant-a@plotline.invalid', 'owner');
+    raise exception 'FAIL: A wrote an invite into company B directly';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
+  begin
+    perform public.invite_member(ob, 'friend@plotline.invalid', 'staff');
+    raise exception 'FAIL: staff could invite';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.set_member_role(ob, ub, 'owner');
+    raise exception 'FAIL: staff made themself owner';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ud, 'role', 'authenticated')::text, true);
+  if public.accept_invites() <> 0 then raise exception 'FAIL: an account whose email was never confirmed took an invite'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', uc, 'role', 'authenticated')::text, true);
+  if public.accept_invites() <> 1 then raise exception 'FAIL: the invited person''s first sign-in did not join them'; end if;
+  select count(*) into n from public.org_members where org_id <> oa;
+  if n <> 0 then raise exception 'FAIL: an invite for another email joined someone to another company'; end if;
+  select count(*) into n from public.projects where org_id = oa;
+  if n <> 1 then raise exception 'FAIL: the person who joined by invite does not see the company''s project'; end if;
+  begin
+    perform public.remove_member(oa, ua);
+    raise exception 'FAIL: staff removed an owner';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+  j := public.org_people(oa);
+  if jsonb_array_length(j -> 'members') <> 2 or jsonb_array_length(j -> 'invites') <> 1 or j -> 'invites' -> 0 ->> 'email' is distinct from 'two-tenant-d@plotline.invalid' then
+    raise exception 'FAIL: after the invite A should have 2 people and D still pending: %', j;
+  end if;
+  begin
+    perform public.set_member_role(oa, ua, 'staff');
+    raise exception 'FAIL: the last owner stepped down';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.remove_member(oa, ua);
+    raise exception 'FAIL: an owner removed themself';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.remove_member(ob, ub);
+    raise exception 'FAIL: A removed someone from company B';
+  exception when insufficient_privilege then null;
+  end;
+  if not public.set_member_role(oa, uc, 'owner') then raise exception 'FAIL: an owner could not make a member owner'; end if;
+  begin
+    perform public.remove_member(oa, ua);
+    raise exception 'FAIL: an owner removed themself (with another owner there)';
+  exception when insufficient_privilege then null;
+  end;
+  if not public.set_member_role(oa, ua, 'staff') then raise exception 'FAIL: with a second owner, an owner could not step down'; end if;
+  begin
+    perform public.remove_member(oa, uc);
+    raise exception 'FAIL: staff removed the owner';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', uc, 'role', 'authenticated')::text, true);
+  if not public.cancel_invite(oa, 'two-tenant-d@plotline.invalid') then raise exception 'FAIL: an owner could not take an invite back'; end if;
+  if not public.remove_member(oa, ua) then raise exception 'FAIL: an owner could not remove a member'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+  select (select count(*) from public.projects) + (select count(*) from storage.objects o where o.bucket_id = 'plans') into n;
+  if n <> 0 then raise exception 'FAIL: a removed member still reads the company''s projects or pictures'; end if;
 end
 $$;
 
