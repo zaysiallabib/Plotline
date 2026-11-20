@@ -9,7 +9,7 @@ import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
 import { ownDrawingOf } from './dxfWrite'
-import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
@@ -234,7 +234,7 @@ function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   return Array.from({ length: n + 1 }, (_, i) => ({ x: c.x + r * Math.cos(a0 + (sweep * i) / n), y: c.y + r * Math.sin(a0 + (sweep * i) / n) }))
 }
 
-function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>): void {
+function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: string | undefined, inst: number | undefined, depth: number, frozen: Set<string>, mine?: LayerRoles): void {
   const det = xf.m[0] * xf.m[3] - xf.m[1] * xf.m[2]
   const rscale = Math.sqrt(Math.abs(det))
   const skip = (what: string) => out.skipped.set(what, (out.skipped.get(what) ?? 0) + 1)
@@ -354,7 +354,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'HATCH': {
         const h = e as IHatchEntity
-        const r = roleOf(e.layer ?? '0', block)
+        const r = roleOf(e.layer ?? '0', block, mine)
         if (r !== 'wall' && r !== 'column') {
           skip('hatches off the wall / column layers')
           break
@@ -388,7 +388,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
         const text = d.text && d.text !== '<>' ? d.text : d.actualMeasurement != null ? String(Math.round(d.actualMeasurement * 100) / 100) : ''
         if (text) out.texts.push({ layer: `DIM:${e.layer ?? '0'}`, at: apply(xf, d.middleOfText ?? d.anchorPoint ?? { x: 0, y: 0, z: 0 }), text, height: 1 })
         // its block holds the drawn lines (extension lines, arrows): read as 'dim' layer lines
-        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen)
+        if (d.block && dxf.blocks?.[d.block] && depth < 8) flatten(dxf, dxf.blocks[d.block].entities ?? [], xf, { ...out, texts: [] }, undefined, undefined, depth + 1, frozen, mine)
         break
       }
       case 'INSERT': {
@@ -410,7 +410,7 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
           for (let c = 0; c < cols; c++) {
             const cell: Xf = { ...local, o: { x: local.o.x + c * (ins.columnSpacing ?? 0), y: local.o.y + r * (ins.rowSpacing ?? 0) } }
             out.inserts++
-            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen)
+            flatten(dxf, b.entities ?? [], compose(xf, cell), out, block ?? ins.name, inst ?? out.inserts, depth + 1, frozen, mine)
           }
         break
       }
@@ -424,7 +424,8 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-export async function importDxf(text: string, name: string): Promise<ImportResult> {
+/** `mine`: the person's corrections of what a layer holds (the Studio keeps them for the next file) */
+export async function importDxf(text: string, name: string, mine?: LayerRoles): Promise<ImportResult> {
   // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
   const own = ownDrawingOf(text)
   if (own) {
@@ -448,11 +449,11 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
       .map((l) => l.name),
   )
   const flat: Flat = { segs: [], arcs: [], texts: [], loops: [], skipped: new Map(), inserts: 0 }
-  flatten(dxf, dxf.entities ?? [], IDENT, flat, undefined, undefined, 0, frozen)
+  flatten(dxf, dxf.entities ?? [], IDENT, flat, undefined, undefined, 0, frozen, mine)
 
   // units
   const ins = Number(h['$INSUNITS'] ?? 0)
-  const wallish = flat.segs.filter((g) => roleOf(g.layer, g.block) === 'wall')
+  const wallish = flat.segs.filter((g) => roleOf(g.layer, g.block, mine) === 'wall')
   const ext = (gs: Seg[]) => {
     if (!gs.length) return { w: 0, h: 0 }
     const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
@@ -484,15 +485,18 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   // layers → meaning
   const layers = new Map<string, number>()
   for (const g of [...flat.segs, ...flat.texts]) layers.set(g.layer.replace(/^DIM:/, ''), (layers.get(g.layer.replace(/^DIM:/, '')) ?? 0) + 1)
-  for (const [l, n] of [...layers].sort((p, q) => q[1] - p[1])) notes.push(`Layer "${l}": ${ROLE_WORDS[roleOf(l)]} (${n}).`)
+  const list = [...layers].sort((p, q) => q[1] - p[1]).map(([l, n]) => ({ name: l, role: roleOf(l, undefined, mine), count: n, yours: !!mine?.[l.toUpperCase()] }))
+  for (const l of list) notes.push(`Layer "${l.name}": ${ROLE_WORDS[l.role]}${l.yours ? ' (as you set it)' : ''} (${l.count}).`)
+  const unplaced = list.filter((l) => l.role === 'unknown')
+  if (unplaced.length) notes.push(`Layers Plotline could not place: ${unplaced.map((l) => `"${l.name}"`).join(', ')} — say what each holds in the layer list below.`)
   const blocks = new Set(flat.segs.filter((g) => g.block && roleOf('', g.block) !== 'unknown').map((g) => g.block!))
   if (blocks.size) notes.push(`Door / window blocks: ${[...blocks].join(', ')}.`)
   if (frozen.size) notes.push(`Frozen / hidden layers left out: ${[...frozen].join(', ')}.`)
 
-  const columnLayer = Object.values(dxf.tables?.layer?.layers ?? {}).some((l) => roleOf(l.name) === 'column')
+  const columnLayer = Object.values(dxf.tables?.layer?.layers ?? {}).some((l) => roleOf(l.name, undefined, mine) === 'column')
   const ownLayers = Object.keys(dxf.tables?.layer?.layers ?? {}).some((l) => /^PLOTLINE_(ZONES|KERBS)$/.test(l))
   if (ownLayers) notes.push('Exported by Plotline (its own layers are in the file): read to the letter — each wall piece its outline, each opening its block.')
-  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer, own: ownLayers }
+  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer, own: ownLayers, layerRoles: mine }
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0
@@ -501,5 +505,5 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   notes.push(...plan.notes)
   for (const [what, n] of flat.skipped) notes.push(`Skipped ${n} ${what}.`)
   if (plan.issues.some((i) => i.level === 'error')) notes.push(`${plan.issues.filter((i) => i.level === 'error').length} thing(s) to check in the Studio (loose wall ends, labels outside rooms).`)
-  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin }
+  return { format: 'dxf', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, layers: list }
 }

@@ -904,7 +904,14 @@ picture can still be dropped later to see the sheet behind. Every format and how
 
 While it reads, a box at the top says what it is doing with a bar for how far ("building the 3D (53 %)", "floor 3 of
 7"); the Studio keeps working (a 64 MB building takes about half a minute), and **Cancel** stops it. Afterwards the panel
-lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**.
+lists **What was read from the file** — its unit, what was guessed, what it lacked — until **Dismiss**. After a DXF or
+an SVG the list ends with its **layers**, each with what Plotline took it as ("Plotline decides: Walls"); a layer it
+could not place is named in the notes. Pick another meaning in a layer's box — **Walls**, **Kerbs**, **Zone lines**,
+**Doors**, **Windows**, **Columns**, **Room names**, **Dimensions** or **Leave out** — and the file is read again at once;
+the choice is kept in this browser for every next file with that layer name (an architect's template uses the same
+names every time). **Plotline decides** gives the layer back to Plotline. Layer names it knows by itself: the US / AIA
+ones (A-WALL, A-DOOR, A-GLAZ, S-COLS, A-ANNO-TEXT…), plain English, and the German, French, Spanish, Italian and Dutch
+words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 
 **Outside shape** (in the panel while the drawing has one): its name and triangle count, **Offset x / y (m)** (slide it
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one

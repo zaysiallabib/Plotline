@@ -59,8 +59,13 @@ a drawing; an architectural IFC before a structural or services one) and the oth
   (a door with its swing arc), texts and dimensions, each on a named layer (`A-WALL`, `A-DOOR`, `A-GLAZ`, `TEXT`…).
 - Walls come from pairs of parallel lines on the wall layers (the gap is the thickness, exact), doors from their swing
   arcs, windows from the glass lines in a wall gap, columns from small closed shapes, names and sizes from the texts.
-- Layer names are a habit, not a rule: Plotline shows what it took each layer as. Units come from the file's header,
-  else from the drawing's size (a flat is 5–150 m wide, not 5 000–150 000).
+- Layer names are a habit, not a rule: Plotline reads the names CAD templates use (the US / AIA names A-WALL, A-DOOR,
+  A-GLAZ, S-COLS, A-ANNO-TEXT, A-ANNO-DIMS, A-FURN…, plain English, and German, French, Spanish, Italian and Dutch
+  words — `plan2d.ts` LAYER_TABLE), shows what it took each layer as, names the ones it could not place, and a person
+  corrects any layer in one click in the Studio's layer list — kept for the next file with that name. Units come from
+  the file's header, else from the drawing's size (a flat is 5–150 m wide, not 5 000–150 000).
+- A Plotline export (its PLOTLINE_ZONES / PLOTLINE_KERBS layers in the file) is read to the letter, even after a CAD
+  program saved it: each wall piece is its outline, its height the outline's thickness, each opening its block.
 
 **DWG.**
 - AutoCAD's own locked file, the one most architects actually send. Its format is not published. The only free reader,

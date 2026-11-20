@@ -22,26 +22,37 @@ import { parseArea, parseDims, parseSide } from '../trace/text'
 
 export type Role = 'wall' | 'kerb' | 'zone' | 'door' | 'window' | 'column' | 'text' | 'dim' | 'ignore' | 'unknown'
 
-/** What a layer name means. The block a primitive came from (door / window blocks) wins over its layer. */
-export function roleOf(layer: string, block?: string): Role {
+/**
+ * The names CAD templates give their layers → what they hold: the US National CAD Standard / AIA names (A-WALL, A-DOOR,
+ * A-GLAZ, S-COLS, A-ANNO-TEXT, A-ANNO-DIMS, A-FURN, A-FLOR-STRS…), the plain English ones, the German, French, Spanish,
+ * Italian and Dutch words of architects' templates, and Plotline's own export. Read case-insensitively anywhere in the
+ * name; the first row that matches wins (a wall's hatch before any hatch, furniture before a door word inside it).
+ */
+const LAYER_TABLE: [RegExp, Role][] = [
+  [/ZONES?$|ZONE[-_ ]?LINE/, 'zone'], // Plotline's PLOTLINE_ZONES: flush lines between zones
+  [/KERB|CURB/, 'kerb'], // Plotline's PLOTLINE_KERBS
+  [/(WALL|WAND|MUR|PARED|MUUR).*(HATCH|PATT|POCHE|SCHRAFF)|(HATCH|PATT|POCHE|SCHRAFF).*(WALL|WAND|MUR)/, 'wall'], // the walls' hatching: its edges are the faces
+  [/HATCH|SCHRAFF|FURN|M(OE|Ö)BEL|MOBILIER|MUEBLE|ARRED|MEUBILAIR|FIX|EQPM|EQUIP|SANIT|PLUMB|ELEC|LIGHT|GRID|AXIS|ACHSE|TITLE|BORDER|SHEET|VIEWPORT|DEFPOINT|STAIR|STRS|TREPPE|ESCALIER|ESCALERA|SCALA|TRAP\b|RAIL|NPLT|CASE|CABINET|DETL|DETAIL|FLOR/, 'ignore'],
+  [/DIM|BEMA(SS|ß)|COTE|COTA|QUOT|MAATV/, 'dim'],
+  [/COL|PILLAR|ST(UE|Ü)TZ|POTEAU|PILAR|PILASTR|KOLOM/, 'column'],
+  [/DOOR|PORTE|PORTA\b|PUERTA|T(Ü|UE)R|DEUR|\bDR\b|^DR$|[-_]DR$/, 'door'],
+  [/WIND|GLAZ|GLAS|FENSTER|FEN(E|Ê)TRE|VENTANA|FINESTR|RAAM|WIN/, 'window'],
+  [/WALL|W(Ä|AE)NDE|WAND|MAUER|MUR|PARED|PARETE|MUUR|BRICK|CONC|BETON|STRUCT|PARTITION|CLOISON|TABIQUE/, 'wall'],
+  [/TEXT|TXT|TEKST|ROOM|RAUM|NAME|LABEL|ANNO|BESCHRIFT|AREA/, 'text'],
+]
+
+/** a person's correction: a layer's name (in capitals) → what it holds, kept for the next file (the Studio's layer list) */
+export type LayerRoles = Record<string, Role>
+
+/** What a layer name means. The block a primitive came from (door / window blocks) wins, then the person's correction, then the table. */
+export function roleOf(layer: string, block?: string, mine?: LayerRoles): Role {
   if (block) {
     if (/SLID|DOOR|^D[-_]?\d|^DR\b/i.test(block)) return 'door'
     if (/WIN|GLAZ|^W[-_]?\d/i.test(block)) return 'window'
     if (/COL|PILLAR/i.test(block)) return 'column'
   }
   const L = layer.toUpperCase()
-  // Plotline's own export (dxfWrite.ts): the flush zone lines and the kerbs, back as what they are
-  if (/ZONES?$|ZONE[-_ ]?LINE/.test(L)) return 'zone'
-  if (/KERB|CURB/.test(L)) return 'kerb'
-  if (/WALL/.test(L) && /HATCH|PATT|POCHE/.test(L)) return 'wall' // the walls' hatching: its edges are the faces
-  if (/HATCH|FURN|FIX|SANIT|ELEC|GRID|AXIS|TITLE|BORDER|SHEET|VIEWPORT|DEFPOINTS|DEFPOINT|PLUMB|LIGHT|STAIR|RAIL/.test(L)) return 'ignore'
-  if (/DIM/.test(L)) return 'dim'
-  if (/COL|PILLAR|STRUCT-COL|A-COLS/.test(L)) return 'column'
-  if (/DOOR|A-DOOR|PORTE|TUR|\bDR\b|^DR$|[-_]DR$/.test(L)) return 'door'
-  if (/WIND|GLAZ|A-GLAZ|FEN|FENSTER|WIN/.test(L)) return 'window'
-  if (/WALL|A-WALL|MUR|PARED|WAND|BRICK|CONC|STRUCT/.test(L)) return 'wall'
-  if (/TEXT|ROOM|NAME|LABEL|ANNO/.test(L)) return 'text'
-  return 'unknown'
+  return mine?.[L] ?? LAYER_TABLE.find(([re]) => re.test(L))?.[1] ?? 'unknown'
 }
 
 /** What each meaning is called in the notes staff read */
@@ -91,6 +102,8 @@ export interface Drawing {
   loops: Loop[]
   /** file units → metres */
   scale: number
+  /** a person's corrections of what a layer holds (roleOf) */
+  layerRoles?: LayerRoles
   /** the file has a column layer (a DXF's layer table names one): then only its shapes are columns */
   columnLayer?: boolean
   /**
@@ -500,7 +513,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const s = d.scale
   // the plan frame: x right, y DOWN; the origin is set once the walls are known (everything shifts together)
   const P = (p: Pt): Pt => ({ x: p.x * s, y: -p.y * s })
-  const role = (x: { layer: string; block?: string }): Role => roleOf(x.layer, x.block)
+  const role = (x: { layer: string; block?: string }): Role => roleOf(x.layer, x.block, d.layerRoles)
 
   // columns first: their outlines are no walls. A file with a column layer draws its columns there: then a small closed
   // shape on the wall layer is a short wall piece (Plotline's own DXF export draws every wall piece closed)
