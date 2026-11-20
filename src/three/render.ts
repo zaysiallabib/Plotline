@@ -94,6 +94,8 @@ const ENV = 1.1
 const HEMI_SKY = new THREE.Color('#e6e9ee') // barely cool: #dfe7f5 turned the warm-white walls grey
 /** near-neutral: the old #d8cab6 ground tinted every ceiling peach */
 const HEMI_GROUND = new THREE.Color('#cfcbc4')
+/** the dome with no photo sky (Lite): a soft clear blue, tinted by the hour as the photo is */
+const PLAIN_SKY = new THREE.Color('#b4c8e0')
 /** sky light + sky dome at sunrise / sunset (low sun) */
 const GOLDEN = new THREE.Color('#ffd2a8')
 /** the flat's lamps: 3000 K LEDs as a camera white-balanced for the room sees them (the raw blackbody #ffb46b turned every room orange) */
@@ -322,6 +324,8 @@ export class Look {
   private topY = 3
   private readonly v = new THREE.Vector3()
   private readonly c = new THREE.Color()
+  /** the photo sky's tint by the hour (setAltitude), before Lite's plain dome colours it */
+  private readonly tint = new THREE.Color()
   /** casterKey of the last shadow map drawn; NaN: draw it on the next frame (a context loss emptied it) */
   private shadowKey = NaN
   private readonly onRestored = (): void => void (this.shadowKey = NaN)
@@ -412,6 +416,7 @@ export class Look {
     this.sky.material.map?.dispose() // context restore reloads it
     this.sky.material.map = tex
     this.sky.material.needsUpdate = true
+    this.setAltitude(this.alt) // the dome's colour: the photo's tint, no longer the plain sky's
   }
 
   /** Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. */
@@ -640,6 +645,8 @@ export class Look {
     // the dome: the photo sky, golden when low, dimming as it sets; then the twilight gradient (as seen ÷ exposure)
     const seen = Math.min(1, k.fill * k.exposure)
     const tint = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, k.golden).multiplyScalar(seen / k.exposure)
+    this.tint.copy(tint)
+    if (!this.sky.material.map) tint.multiply(PLAIN_SKY) // the haze and the glass below take the photo's tint: the horizon stays pale
     const tw = twilight(altDeg)
     this.dome.night.value = k.night
     this.dome.zenith.value.copy(tw.zenith).multiplyScalar(1 / k.exposure)
@@ -647,7 +654,7 @@ export class Look {
     this.dome.glow.value.copy(tw.glow).multiplyScalar(1 / k.exposure)
     const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position)
     this.dome.sunDir.value.set(toSun.x, 0, toSun.z).normalize()
-    setHaze(tint)
+    setHaze(this.tint)
     // the haze (and the dome under the horizon, which a dollhouse looks down on) at dusk / night: between the horizon and
     // the sky overhead, darker — the horizon's own pink alone filled the whole background at 17:45
     haze.value.lerp(this.c.copy(this.dome.horizon.value).lerp(this.dome.zenith.value, 0.7).multiplyScalar(0.7), k.night)
@@ -656,7 +663,7 @@ export class Look {
     const room = this.on && k.night > 0.5 && this.paneEnvs.room
     const env = (room ? this.paneEnvs.room : this.paneEnvs.sky) ?? null
     for (const m of PANES) if (m.envMap !== env && env) (m.envMap = env), (m.needsUpdate = true)
-    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(tint), lum(this.dome.horizon.value), k.night))
+    setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(this.tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
     this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)

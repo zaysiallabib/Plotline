@@ -146,6 +146,27 @@ export function evenBearings(t: THREE.DataTexture): void {
 }
 
 /**
+ * Lite (session 31): the HDRI at 1/k of its width and height (a k × k box mean), so its PMREM is k× smaller — the 1k
+ * interior's 256 px cube (≈ 8 MB on the graphics chip) becomes a 64 px one: the room's light is the same, its reflections
+ * softer. Half-float RGBA equirect, replaced in place.
+ */
+export function shrinkHdr(t: THREE.DataTexture, k: number): void {
+  const { data, width: w, height: h } = t.image as { data: Uint16Array; width: number; height: number }
+  const [W, H] = [Math.floor(w / k), Math.floor(h / k)]
+  const out = new Uint16Array(W * H * 4)
+  const { fromHalfFloat: f, toHalfFloat: t16 } = THREE.DataUtils
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      for (let c = 0; c < 4; c++) {
+        let s = 0
+        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) s += f(data[((y * k + j) * w + x * k + i) * 4 + c])
+        out[(y * W + x) * 4 + c] = t16(s / (k * k))
+      }
+  t.image = { data: out, width: W, height: H }
+  t.needsUpdate = true
+}
+
+/**
  * sky.hdr has the sun baked in: a 2 × 2-texel disc at ~7·10⁴ (half-float stops at 65504) inside a diffraction star
  * whose rays reach ~8°. The dome showed it at one fixed spot whatever the hour, and the window glass (the sky's PMREM)
  * would mirror it as a hot spot. Within 9° of the brightest texel each channel gets a grey-scale opening by a 21-texel
@@ -1360,9 +1381,12 @@ export class PlotlineScene {
         console.warn(`[plotline] HDRI missing: ${url}`)
         return null
       })
-    const [hdr, sky] = await Promise.all([load(HDRI.interior), load(HDRI.sky)])
+    // Lite: no photo sky (the dome a plain colour, the panes mirror the room's light) and the room's light at a quarter size
+    const isLite = this.tier === 'lite'
+    const [hdr, sky] = await Promise.all([load(HDRI.interior), isLite ? null : load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
     const pmrem = new THREE.PMREMGenerator(this.renderer)
+    if (hdr && isLite) shrinkHdr(hdr, 4)
     if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()

@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture } from './furniture'
 import { EDGE_PLASTER, materialFor, resolveFinishRef } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, evenBearings, pickedAt } from './PlotlineScene'
+import { clampSun, evenBearings, pickedAt, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -411,5 +411,23 @@ describe('clampSun', () => {
       const got = [0, 1, 2].map((c) => f(data[4 * (y * w + x) + c]))
       got.forEach((v, c) => expect(v, `${x},${y}`).toBeCloseTo(sky(y)[c], 2))
     }
+  })
+})
+
+describe('shrinkHdr (Lite: the room’s light at a quarter size)', () => {
+  test('each texel of the small one is the mean of its k × k block; alpha too', () => {
+    const { toHalfFloat: t16, fromHalfFloat: f } = THREE.DataUtils
+    const [w, h, k] = [8, 4, 4]
+    const src = Array.from({ length: w * h * 4 }, (_, i) => (i % 4 === 3 ? 1 : ((i * 7) % 5) / 2))
+    const tex = new THREE.DataTexture(new Uint16Array(src.map(t16)), w, h)
+    shrinkHdr(tex, k)
+    const img = tex.image as { data: Uint16Array; width: number; height: number }
+    expect([img.width, img.height, img.data.length]).toEqual([2, 1, 8])
+    for (let x = 0; x < 2; x++)
+      for (let c = 0; c < 4; c++) {
+        let s = 0
+        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) s += src[(j * w + x * k + i) * 4 + c]
+        expect(f(img.data[x * 4 + c])).toBeCloseTo(s / (k * k), 2)
+      }
   })
 })

@@ -11,6 +11,7 @@ import type { Pt, Unit } from '../core'
 import type { Street } from '../data/building'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
+import { lite } from '../furnish/procedural'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
 
@@ -413,6 +414,7 @@ const roadStrips = (roads: Bounds[], y: number) =>
 export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.Group {
   if (unit.site) return buildSite(unit, groundY)
   const { blocks, roads } = madeUpStreet(unit, street)
+  if (lite.on) return plainStreet(blocks, [...(street.roads ?? []), ...roads], groundY)
   const seed = [...(street.seed ?? unit.id)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7)
   const w = street.walls
   const at = { x: (w.minX + w.maxX) / 2, y: (w.minY + w.maxY) / 2 }
@@ -461,6 +463,44 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
     group.add(mesh)
   }
   return group
+}
+
+/** Lite's street faces: shaded by a fixed afternoon light from the south-west, as Lite's sun is off indoors (render.ts TIERS) */
+const PLAIN_LIGHT = new THREE.Vector3(-0.5, 0.8, 0.35).normalize()
+/** a face's shade under PLAIN_LIGHT: 0.7 turned away … 1 facing it */
+export const plainShade = (n: THREE.Vector3): number => 0.7 + 0.3 * Math.max(0, n.dot(PLAIN_LIGHT))
+
+/**
+ * Lite (session 31): the made-up street as plain boxes — no facade pictures, parapets, water tanks or AC units (≈ 65 k
+ * triangles on type-a's street) — and its roads, all one mesh in vertex colours (one draw call, no texture); the blocks
+ * keep their tints and hazed's cut. The roads carry a box nothing is ever near, so the cut never takes them.
+ */
+function plainStreet(blocks: Block[], roads: Bounds[], groundY: number): THREE.Group {
+  const n = new THREE.Vector3()
+  const paint = (geo: THREE.BufferGeometry, c: THREE.Color, min: THREE.Vector3, max: THREE.Vector3) => {
+    const g = geo.toNonIndexed()
+    geo.dispose()
+    const nrm = g.attributes.normal
+    const col = new Float32Array(nrm.count * 3)
+    for (let i = 0; i < nrm.count; i++) col.set(c.clone().multiplyScalar(plainShade(n.fromBufferAttribute(nrm, i))).toArray(), i * 3)
+    return boxed(g.setAttribute('color', new THREE.BufferAttribute(col, 3)), min, max)
+  }
+  const tints = TINTS.map((t) => new THREE.Color(t).multiplyScalar(0.72)) // the facade texture's plaster (#b9b5ae) under the tint
+  const far = new THREE.Vector3(1e6, 1e6, 1e6)
+  const geos = [
+    ...blocks.map((k) => {
+      const [W, H, D] = [k.x1 - k.x0, k.storeys * STOREY, k.y1 - k.y0]
+      const g = new THREE.BoxGeometry(W, H, D).translate(k.x0 + W / 2, groundY + H / 2, k.y0 + D / 2)
+      return paint(g, tints[k.tint], new THREE.Vector3(k.x0, groundY, k.y0), new THREE.Vector3(k.x1, groundY + H, k.y1))
+    }),
+    ...roadStrips(roads, groundY + 0.05).map((g) => paint(g, new THREE.Color('#5b5955'), far, far)),
+  ]
+  const group = new THREE.Group()
+  if (!geos.length) return group
+  const mesh = new THREE.Mesh(mergeGeometries(geos)!, hazed(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), true))
+  mesh.castShadow = mesh.receiveShadow = true
+  geos.forEach((g) => g.dispose())
+  return group.add(mesh)
 }
 
 /** what the map's neighbours are drawn in: plain, no facade (they are measured blocks, not a picture of them) */
