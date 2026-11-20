@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
-import { importIfc } from './ifc'
+import { importIfc, sharedEdges } from './ifc'
 import { readGlbJson } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
@@ -33,6 +33,22 @@ function zipOf(name: string, data: Buffer): ArrayBuffer {
   const all = Buffer.concat([local, central, eocd])
   return all.buffer.slice(all.byteOffset, all.byteOffset + all.byteLength)
 }
+
+describe('two rooms of one open plan', () => {
+  it("their common boundary is where their outlines run together, on the first one's line; 10 cm apart is no boundary", () => {
+    const sq = (x0: number, y0: number, x1: number, y1: number): [{ x: number; y: number }, { x: number; y: number }][] => [
+      [{ x: x0, y: y0 }, { x: x1, y: y0 }],
+      [{ x: x1, y: y0 }, { x: x1, y: y1 }],
+      [{ x: x1, y: y1 }, { x: x0, y: y1 }],
+      [{ x: x0, y: y1 }, { x: x0, y: y0 }],
+    ]
+    const s = sharedEdges(sq(0, 0, 4, 3), sq(4.02, 1, 7, 5))
+    expect(s).toHaveLength(1)
+    expect(s[0][0].x).toBe(4)
+    expect([s[0][0].y, s[0][1].y].sort()).toEqual([1, 3])
+    expect(sharedEdges(sq(0, 0, 4, 3), sq(4.1, 0, 7, 3))).toEqual([])
+  })
+})
 
 describe('ifc import', () => {
   it.skipIf(!present(WALL_FILE))('wall-with-opening-and-window: one wall, one window 1 m wide', async () => {

@@ -16,8 +16,8 @@
  * The layer → meaning table (roleOf) is what the notes show staff.
  */
 import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue } from '../core'
-import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, joinOverlaps, normalizeUnit, openingDefaults } from '../studio/model'
+import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Wall } from '../core'
+import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, initialState, joinOverlaps, normalizeUnit, openingDefaults, reducer } from '../studio/model'
 import { parseArea, parseDims, parseSide } from '../trace/text'
 
 export type Role = 'wall' | 'door' | 'window' | 'column' | 'text' | 'dim' | 'ignore' | 'unknown'
@@ -686,6 +686,164 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
 }
 
 type Id = string
+
+/** a corner this close to another wall's centre line lies on it (MERGE_M: the Studio's "one corner") */
+const ON_LINE_M = 0.01
+
+/**
+ * The last pass over an imported floor (session 31): a corner left lying on another wall's centre line — the joining rules
+ * keep a corner one short step from a junction as "joined already", and a file's wall drawn into another's body leaves its
+ * end on a third wall — splits that wall there (a T); a corner within ON_LINE_M of a wall's end becomes that end; two
+ * walls then between the same corners are one (the thicker, the taller, the openings of the one that has them); a wall of
+ * no length goes. After it no wall end touches another wall mid-way (core validate's walls-intersect). The Studio's own
+ * load path leaves the result as it is (tested). `joined` = how many touches were joined.
+ * ponytail: O(walls × corners in their box) per pass, corners in a 1 m grid; a sweep line if a 10 000-wall floor shows up.
+ */
+export function nodeGraph(unit: Unit): { unit: Unit; joined: number } {
+  let u = unit
+  let joined = 0
+  for (let pass = 0; pass < 6; pass++) {
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    const used = new Set(u.walls.flatMap((w) => [w.a, w.b]))
+    const grid = new Map<string, Id[]>()
+    const cell = (x: number, y: number) => `${Math.floor(x)},${Math.floor(y)}`
+    for (const id of used) {
+      const v = V.get(id)
+      if (v) (grid.get(cell(v.x, v.y)) ?? grid.set(cell(v.x, v.y), []).get(cell(v.x, v.y))!).push(id)
+    }
+    const alias = new Map<Id, Id>()
+    const root = (id: Id): Id => (alias.has(id) ? root(alias.get(id)!) : id)
+    const walls: Wall[] = []
+    let changed = false
+    for (const w of u.walls) {
+      const a = V.get(w.a), b = V.get(w.b)
+      if (!a || !b) continue
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L < 1e-9) {
+        walls.push(w)
+        continue
+      }
+      const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }
+      const cuts: { s: number; id: Id }[] = []
+      for (let gx = Math.floor(Math.min(a.x, b.x) - ON_LINE_M); gx <= Math.floor(Math.max(a.x, b.x) + ON_LINE_M); gx++)
+        for (let gy = Math.floor(Math.min(a.y, b.y) - ON_LINE_M); gy <= Math.floor(Math.max(a.y, b.y) + ON_LINE_M); gy++)
+          for (const id of grid.get(`${gx},${gy}`) ?? []) {
+            if (id === w.a || id === w.b) continue
+            const v = V.get(id)!
+            const s = (v.x - a.x) * d.x + (v.y - a.y) * d.y
+            if (s < -ON_LINE_M || s > L + ON_LINE_M || Math.abs((v.y - a.y) * d.x - (v.x - a.x) * d.y) > ON_LINE_M) continue
+            if (s <= ON_LINE_M || s >= L - ON_LINE_M) {
+              const end = s <= ON_LINE_M ? w.a : w.b
+              if (root(id) !== root(end) && Math.hypot(v.x - V.get(end)!.x, v.y - V.get(end)!.y) <= 2 * ON_LINE_M) alias.set(root(id), root(end))
+            } else cuts.push({ s, id })
+          }
+      if (!cuts.length) {
+        walls.push(w)
+        continue
+      }
+      changed = true
+      joined += cuts.length
+      cuts.sort((p, q) => p.s - q.s)
+      const stops = [{ s: 0, id: w.a }, ...cuts, { s: L, id: w.b }]
+      const pieces: Wall[] = stops.slice(1).map((t, i) => ({ ...w, id: i === 0 ? w.id : newId(), a: stops[i].id, b: t.id, openings: [] }))
+      // an opening across a cut stays on the piece holding most of it, cut back to the corner (gone when under 30 cm)
+      for (const o of w.openings) {
+        const part = (i: number) => Math.min(o.offsetM + o.widthM, stops[i + 1].s) - Math.max(o.offsetM, stops[i].s)
+        const i = pieces.reduce((best, _, k) => (part(k) > part(best) ? k : best), 0)
+        const o0 = Math.max(o.offsetM, stops[i].s), o1 = Math.min(o.offsetM + o.widthM, stops[i + 1].s)
+        if (o1 - o0 >= Math.min(0.3, o.widthM) - 1e-9) pieces[i].openings.push({ ...o, offsetM: o0 - stops[i].s, widthM: o1 - o0 })
+      }
+      walls.push(...pieces)
+    }
+    if (alias.size) changed = true
+    joined += alias.size
+    // corners merged; a wall of no length goes; two walls between the same corners are one
+    const byKey = new Map<string, Wall>()
+    for (const w0 of walls) {
+      const w = { ...w0, a: root(w0.a), b: root(w0.b) }
+      if (w.a === w.b) continue
+      const k = w.a < w.b ? `${w.a}|${w.b}` : `${w.b}|${w.a}`
+      const twin = byKey.get(k)
+      if (!twin) {
+        byKey.set(k, w)
+        continue
+      }
+      changed = true
+      const keep = twin.openings.length >= w.openings.length ? twin : w
+      byKey.set(k, { ...keep, thicknessM: Math.max(twin.thicknessM, w.thicknessM), heightM: Math.max(twin.heightM, w.heightM) })
+    }
+    if (!changed) break
+    const live = new Set([...byKey.values()].flatMap((w) => [w.a, w.b]))
+    u = { ...u, walls: [...byKey.values()], vertices: u.vertices.filter((v) => live.has(v.id) || !used.has(v.id)) }
+  }
+  return { unit: u, joined }
+}
+
+const shape = (u: Unit) => `${u.walls.length}/${u.vertices.length}/${u.vertices.reduce((a, v) => a + v.x * 3.1 + v.y * 1.7, 0).toFixed(4)}`
+
+/** a zone line's corner this close to a wall is ON it (a room outline runs along a wall's face: half a thickness, a lining) */
+const ZONE_REACH_M = 0.3
+
+/**
+ * Zone lines (height 0, drawn as nothing: a file's room outlines where no wall stands) end on the inner FACE of the wall
+ * they meet, up to half a thickness (and a lining) off its centre line, where nothing joins them: a corner of zone lines
+ * only within ZONE_REACH_M of a wall is moved onto it — its nearest corner or the nearest point of its
+ * centre line — within ZONE_REACH_M (nodeGraph then makes the T). Only the invisible lines move: no wall moves or tilts.
+ */
+export function zonesOntoWalls(unit: Unit): Unit {
+  const V = new Map(unit.vertices.map((v) => [v.id, v]))
+  const real = unit.walls.filter((w) => w.heightM > 0)
+  const onReal = new Set(real.flatMap((w) => [w.a, w.b]))
+  const zoneOnly = new Set(unit.walls.filter((w) => w.heightM <= 0).flatMap((w) => [w.a, w.b]).filter((id) => !onReal.has(id)))
+  if (!zoneOnly.size || !real.length) return unit
+  const moved = new Map<Id, Pt>()
+  const merge = new Map<Id, Id>()
+  for (const id of zoneOnly) {
+    const z = V.get(id)!
+    let best: { d: number; p: Pt; to?: Id } | null = null
+    for (const w of real) {
+      const a = V.get(w.a), b = V.get(w.b)
+      if (!a || !b) continue
+      const L = Math.hypot(b.x - a.x, b.y - a.y)
+      if (L < 1e-9) continue
+      const s = Math.max(0, Math.min(L, ((z.x - a.x) * (b.x - a.x) + (z.y - a.y) * (b.y - a.y)) / L))
+      const p = { x: a.x + ((b.x - a.x) * s) / L, y: a.y + ((b.y - a.y) * s) / L }
+      const d = Math.hypot(p.x - z.x, p.y - z.y)
+      if (d > ZONE_REACH_M || (best && d >= best.d)) continue
+      best = { d, p, ...(s <= ON_LINE_M ? { to: w.a } : s >= L - ON_LINE_M ? { to: w.b } : {}) }
+    }
+    if (!best || best.d <= 1e-6) continue
+    if (best.to) merge.set(id, best.to)
+    else moved.set(id, best.p)
+  }
+  if (!moved.size && !merge.size) return unit
+  const end = (x: Id) => merge.get(x) ?? x
+  return {
+    ...unit,
+    vertices: unit.vertices.filter((v) => !merge.has(v.id)).map((v) => (moved.has(v.id) ? { ...v, ...moved.get(v.id)! } : v)),
+    walls: unit.walls.map((w) => (merge.has(w.a) || merge.has(w.b) ? { ...w, a: end(w.a), b: end(w.b) } : w)).filter((w) => w.a !== w.b),
+  }
+}
+
+/**
+ * An imported floor as the Studio opens it — its own load path (join walls, drop stubs, heal straight runs) — and as it
+ * stays when opened again: the load and nodeGraph by turns until a load changes nothing (at most four rounds; a file's
+ * junction of three thick walls at odd angles can take two). `joined`: the touches nodeGraph joined.
+ */
+export function settleImport(unit: Unit): { unit: Unit; joined: number } {
+  const load = (u: Unit) => reducer(initialState(), { type: 'load-unit', unit: u }).unit
+  let u = load(unit)
+  let joined = 0
+  for (let round = 0; round < 4; round++) {
+    const n = nodeGraph(zonesOntoWalls(u))
+    joined += n.joined
+    const again = load(n.unit)
+    if (shape(again) === shape(n.unit)) return { unit: n.unit, joined }
+    u = again
+  }
+  const n = nodeGraph(u)
+  return { unit: n.unit, joined: joined + n.joined }
+}
 
 // ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------
 
