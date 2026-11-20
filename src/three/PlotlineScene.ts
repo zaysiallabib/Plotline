@@ -112,7 +112,7 @@ const WAKE_MS = 1000
 const WARM_MS = 1000
 /** a frame longer than this is the page coming back (a tab switch, a sleeping laptop), not a slow machine */
 const LOST_FRAME_MS = 2000
-/** Lite / Low (render.ts TIERS.batch): a group is batched again once nothing in it has changed for this long */
+/** a group is batched again (batch.ts) once nothing in it has changed for this long */
 const BATCH_MS = 400
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
@@ -279,7 +279,7 @@ export class PlotlineScene {
   private readonly tier: Quality
   /** Lite's share of its pixel budget (render.ts pixelRatioFor): halved when still slow (lighter) */
   private budget = 1
-  /** Lite / Low: what changed since the groups were last batched (rebatch), and the timer that batches them once it settles */
+  /** what changed since the groups were last batched (rebatch), and the timer that batches them once it settles */
   private readonly unsettled = new Set<'static' | 'furniture'>()
   private batchTimer = 0
   /** Lite / Low draw until then (performance.now) or while the camera moves; input, a load or a change pushes it on */
@@ -1077,13 +1077,12 @@ export class PlotlineScene {
   }
 
   /**
-   * Lite / Low (TIERS.batch, batch.ts): `kind`'s groups — the walls, floors and openings, or the furniture — and the
+   * The batches (batch.ts, every tier): `kind`'s groups — the walls, floors and openings, or the furniture — and the
    * ceilings (room ceilings and the fixtures on them) are drawn mesh by mesh again at once, so the change shows on the next
    * frame, and batched again once nothing has changed for BATCH_MS; the furniture and ceilings never while a piece is in
    * hand or Arrange is on (pieces move under the pointer).
    */
   private rebatch(kind: 'static' | 'furniture'): void {
-    if (!TIERS[this.tier].batch) return
     for (const g of kind === 'static' ? [this.staticGroup, this.ceilingGroup] : [this.furnitureGroup, this.ceilingGroup]) unbatch(g)
     this.unsettled.add(kind)
     clearTimeout(this.batchTimer)

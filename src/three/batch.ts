@@ -1,7 +1,9 @@
 /**
- * Lite and Low (render.ts TIERS.batch): a group's meshes drawn as one mesh per material. Type-a's walls, floors, ceilings,
- * skirtings, door frames and furniture are ~600 meshes in ~80 materials — ~310 draw calls a frame, each paid for on the
- * CPU (Firefox sends every one to its graphics process). The meshes themselves stay where they are, moved to the HIDDEN
+ * Every tier (session 31): a group's meshes drawn as one mesh per material. Type-a's walls, floors, ceilings, skirtings,
+ * door frames and furniture are ~600 meshes in ~80 materials — ~310 draw calls a frame, each paid for on the CPU (Firefox
+ * sends every one to its graphics process), and a shadow redraw drew them all again (High at night: 1 854 calls). Measured
+ * on type-a: Lite 312 → 102 calls a frame, Low's sun-shadow redraw 616 → 136, High 330 → 115 a frame and 1 854 → 474 a
+ * night redraw; the same picture. The meshes themselves stay where they are, moved to the HIDDEN
  * layer: the camera never draws it, the raycasters pick it — so picking, finishes, comments and Arrange see the same
  * objects as before. PlotlineScene drops a group's batches the moment anything in it changes and batches it again once
  * it has settled.
