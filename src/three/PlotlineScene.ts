@@ -408,7 +408,7 @@ export class PlotlineScene {
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
     canvas.addEventListener('webglcontextlost', this.onContextLost)
     for (const e of WAKE) window.addEventListener(e, this.wake, { passive: true })
-    THREE.DefaultLoadingManager.onProgress = this.wake // a texture, model or sky arrived (every loader here uses the default manager)
+    THREE.DefaultLoadingManager.onProgress = this.loaded // a texture, model or sky arrived (every loader here uses the default manager)
     this.wake()
 
     // no domElement: the orbit listeners are attached only while in orbit mode (setMode), so a click that
@@ -689,6 +689,47 @@ export class PlotlineScene {
   private cutAbove(on: boolean, street = on): void {
     this.staticGroup.visible = this.furnitureGroup.visible = !on
     this.look.showGround(!street, !on)
+  }
+
+  /** when a texture, model or the sky last arrived */
+  private lastLoad = 0
+  private loaded = () => {
+    this.lastLoad = performance.now()
+    this.wake()
+  }
+
+  /** The flat built and nothing arrived for `quietMs` (its furniture and pictures are in), or `maxMs` passed. */
+  async settled(quietMs = 1500, maxMs = 60_000): Promise<void> {
+    const t0 = performance.now()
+    while (performance.now() - t0 < maxMs && !(this.ready && performance.now() - this.lastLoad > quietMs)) await new Promise((r) => setTimeout(r, 250))
+  }
+
+  /**
+   * The flat as one binary glTF (session 31, staff → Edit → Download 3D model): its walls, floors, ceilings, doors, windows
+   * and furniture with their pictures (at most 1024 px: a furnished flat stays near 20 MB), in metres, Y up — not the street, the sky, the sun or what only
+   * edits show. For a developer's render artist or another 3D program.
+   */
+  async exportGlb(): Promise<ArrayBuffer> {
+    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js')
+    const ceilings = this.ceilingGroup.visible
+    this.ceilingGroup.visible = true // the dollhouse hides them; the model has them
+    // pictures as JPEG where nothing shows through (PNG for the rest): 133 pictures of a furnished flat, 116 MB → ~20 MB
+    const marked: THREE.Texture[] = []
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
+      g.traverse((o) => {
+        for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
+          if (m.transparent || m.alphaTest > 0) continue
+          for (const v of Object.values(m)) if (v instanceof THREE.Texture && !v.userData.mimeType && v.image) (v.userData.mimeType = 'image/jpeg'), marked.push(v)
+        }
+      })
+    try {
+      const out = await new GLTFExporter().parseAsync([this.staticGroup, this.ceilingGroup, this.furnitureGroup], { binary: true, onlyVisible: true, maxTextureSize: 1024 })
+      if (!(out instanceof ArrayBuffer)) throw new Error('the 3D model could not be written')
+      return out
+    } finally {
+      this.ceilingGroup.visible = ceilings
+      for (const t of marked) delete t.userData.mimeType
+    }
   }
 
   currentRoomId(): Id | null {
@@ -1125,7 +1166,7 @@ export class PlotlineScene {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost)
     for (const e of WAKE) window.removeEventListener(e, this.wake)
-    if (THREE.DefaultLoadingManager.onProgress === this.wake) THREE.DefaultLoadingManager.onProgress = () => {}
+    if (THREE.DefaultLoadingManager.onProgress === this.loaded) THREE.DefaultLoadingManager.onProgress = () => {}
     clearTimeout(this.lostTimer)
     if (this.orbit.domElement) this.orbit.dispose()
     this.plc.dispose()

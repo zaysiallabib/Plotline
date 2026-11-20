@@ -46,7 +46,11 @@ import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
 import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
-import { IMPORT_ACCEPT, importFile, importFormatOf, lockedFormatOf, type ImportResult, type ImportedStorey } from '../import'
+import PdfPages from './PdfPages'
+import PrintBox from './PrintBox'
+import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
+import type { PdfDoc } from '../import/pdf'
+import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey } from '../import'
 import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -75,6 +79,8 @@ const SNAP_PX = 7 // was 10: founder 2026-10-06, "30 % less magnetic"
 /** a press on a piece that drifts at most this far is a click (tool F): it selects, never moves; the 3D view uses the same (PlotlineScene) */
 const CLICK_PX = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+/** a file out of a .zip has no type: the picture check reads it from the name */
+const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', json: 'application/json' }
 const TOOLS: [Tool, string, string][] = [
   ['select', 'V', 'Select'],
   ['scale', 'S', 'Scale'],
@@ -270,9 +276,9 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
   return { gray: { width: c.width, height: c.height, data }, rgb: { width: c.width, height: c.height, data: rgba } }
 }
 
-const download = (name: string, text: string) => {
+const download = (name: string, text: string, type = 'application/json') => {
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+  a.href = URL.createObjectURL(new Blob([text], { type }))
   a.download = name
   a.click()
   URL.revokeObjectURL(a.href)
@@ -298,6 +304,11 @@ export default function StudioApp() {
   const [note, setNote] = useState<Note | null>(null)
   /** what an architect's file gave (src/import), listed in the panel until dismissed */
   const [importNotes, setImportNotes] = useState<string[] | null>(null)
+  /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
+  const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
+  /** a PDF of several pages waiting for "which page is the plan?" (PdfPages), and the page being read after a click */
+  const [pdfPick, setPdfPick] = useState<{ name: string; doc: PdfDoc; busy: number | null } | null>(null)
+  const openPdfDoc = useRef<PdfDoc | null>(null)
   const [missingPlan, setMissingPlan] = useState<string | null>(null)
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
@@ -336,6 +347,9 @@ export default function StudioApp() {
   const [held, setHeld] = useState<{ key: string; back: Tool } | null>(null)
   const lastPointer = useRef<{ sx: number; sy: number } | null>(null)
   const fitOnLoad = useRef(false)
+  const fitOnUnit = useRef(false)
+  /** a message for once the imported drawing is in (after the cleanup message the load itself gives) */
+  const afterLoad = useRef<(() => void) | null>(null)
 
   const { unit, view, tool, chain } = state
   useEffect(() => setArc(null), [tool]) // another tool drops a half-placed arc
@@ -565,6 +579,14 @@ export default function StudioApp() {
       fitView()
     }
   }, [img, fitView])
+  // a drawing read from a file (no picture to fit on): fit it once the render holds it
+  useEffect(() => {
+    if (!fitOnUnit.current) return
+    fitOnUnit.current = false
+    fitView()
+    afterLoad.current?.()
+    afterLoad.current = null
+  }, [state.unit.id, fitView])
   useEffect(() => {
     // first layout of a restored/empty studio: fit if the view is untouched
     if (size.w && view.zoom === 1 && view.panX === 0 && view.panY === 0) fitView()
@@ -799,7 +821,13 @@ export default function StudioApp() {
   // ----- files
   const loadImage = useCallback(
     (file: File) => {
-      const fail = () => toast("Couldn't open that image. Use PNG, JPG or WEBP under 10 MB.")
+      // a TIFF (scanner, plotter) or an iPhone's HEIC: turned into a WEBP first (src/import/picture.ts)
+      if (CONVERTED_PICTURE.test(file.name))
+        return void toPlanPicture(file).then(
+          (f) => loadImage(f),
+          (e: unknown) => toast(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`),
+        )
+      const fail = () => toast("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
       if (file.size > MAX_IMAGE_BYTES || !/^image\/(png|jpeg|webp)$/.test(file.type)) return fail()
       const reader = new FileReader()
       reader.onerror = fail
@@ -851,10 +879,10 @@ export default function StudioApp() {
       }
       if (!isUnit(parsed)) return toast('That file is not a Plotline unit')
       const u = normalizeUnit({ ...parsed, review: undefined } as typeof parsed) // (an Export's Check-these rows stay out of the unit)
-      dispatch({ type: 'load-unit', unit: u })
       const src = u.planImage?.src
+      fitOnUnit.current = !src
+      dispatch({ type: 'load-unit', unit: u })
       if (src && src !== stateRef.current.planImage?.name) loadPlanSrc(src)
-      else if (!src) fitView()
     },
     [toast, fitView, loadPlanSrc],
   )
@@ -871,15 +899,78 @@ export default function StudioApp() {
    * basements (below 0 or named so) under the ground floor, floors 1..n, the top one the rooftop when its name says so or
    * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
    */
-  const importArchitect = async (file: File) => {
-    setNote({ text: `Reading ${file.name}…` })
+  const importArchitect = async (file: File, siblings?: Map<string, Blob>) => {
+    if (/\.pdf$/i.test(file.name)) return openPdfFile(file)
+    const stop = new AbortController()
+    setNote(null)
+    setReading({ name: file.name, stage: 'starting', fraction: null, stop })
     let r: ImportResult
     try {
-      r = await importFile(file)
+      r = await importFile(file, { siblings, signal: stop.signal, progress: (stage, fraction) => setReading((x) => x && x.stop === stop ? { ...x, stage, fraction } : x) })
+    } catch (e) {
+      setReading(null)
+      if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
+      return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    setReading(null)
+    await takeImport(r, file.name)
+  }
+  /**
+   * A PDF: one page is read at once; several ask which page is the plan (PdfPages). A page whose lines make a plan (two or
+   * more closed rooms) opens as the drawing; else the page becomes the plan picture to trace (a brochure page is a photo,
+   * or a picture with its words turned into outlines). Either way the message offers the other.
+   */
+  const openPdfFile = async (file: File) => {
+    let doc: PdfDoc
+    try {
+      doc = await (await import('../import/pdf')).openPdf(await file.arrayBuffer())
     } catch (e) {
       return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
-    await takeImport(r, file.name)
+    // (the last PDF stays open while its message offers "as a picture" / "its lines": the next one closes it)
+    void openPdfDoc.current?.loadingTask.destroy()
+    openPdfDoc.current = doc
+    if (doc.numPages === 1) return readPdfPage(file.name, doc, 1).catch((e) => toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+    setNote(null)
+    setPdfPick({ name: file.name, doc, busy: null })
+  }
+  const closePdf = () => setPdfPick(null)
+  const pdfThumb = useCallback(async (page: number, px: number) => (await (await import('../import/pdf')).renderPage(pdfPick!.doc, page, px)).toDataURL('image/jpeg', 0.85), [pdfPick?.doc]) // eslint-disable-line react-hooks/exhaustive-deps
+  const readPdfPage = async (name: string, doc: PdfDoc, page: number) => {
+    const stop = new AbortController()
+    setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
+    try {
+      await readPdfPageNow(name, doc, page, stop.signal)
+    } finally {
+      setReading((x) => (x?.stop === stop ? null : x))
+    }
+  }
+  const readPdfPageNow = async (name: string, doc: PdfDoc, page: number, stopped: AbortSignal) => {
+    const pdf = await import('../import/pdf')
+    const r = await pdf.importPdf(doc, name, page).catch(() => null)
+    if (stopped.aborted) return
+    // the page as the plan picture: its longer side 4000 px (a plan picture's usual size), WEBP to stay under the 10 MB limit
+    const asPicture = async () => {
+      const canvas = await pdf.renderPage(doc, page, 4000)
+      const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/webp', 0.92))
+      if (stopped.aborted) return
+      if (!blob) return toast('This browser could not turn the page into a picture')
+      loadImage(new File([blob], `${name.replace(/\.pdf$/i, '')} p${page}.webp`, { type: 'image/webp' }))
+    }
+    const where = doc.numPages > 1 ? `Page ${page}` : name
+    if (r && pdf.readsAsPlan(r)) {
+      afterLoad.current = () => toast(`${where} read as a drawing (its own lines)`, { label: 'Use it as a picture instead', onClick: () => void asPicture() })
+      await takeImport(r, name)
+    } else {
+      await asPicture()
+      if (r) toast(`${where} is now the plan picture (its lines did not make a clean plan) — set the scale (S), then Auto-trace`, { label: 'Read its lines instead', onClick: () => void takeImport(r, name) })
+    }
+  }
+  const pickPdfPage = async (page: number) => {
+    if (!pdfPick) return
+    setPdfPick({ ...pdfPick, busy: page })
+    await readPdfPage(pdfPick.name, pdfPick.doc, page).catch((e) => toast(`Could not read page ${page}: ${e instanceof Error ? e.message : String(e)}`))
+    closePdf()
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
   const takeImport = async (r: ImportResult, fileName: string) => {
@@ -905,8 +996,8 @@ export default function StudioApp() {
     }
     if (r.storeys.length === 1) {
       const s = r.storeys[0]
+      fitOnUnit.current = true // (fitted once the render holds it: this runs after an await, React renders later)
       dispatch({ type: 'load-unit', unit: at(s.unit, s.elevationM) })
-      fitView()
       setImportNotes(r.notes)
       return
     }
@@ -937,10 +1028,8 @@ export default function StudioApp() {
     toast(`${name}: ${r.storeys.length} floors made — the list on the right`)
   }
 
-  const onFiles = useCallback(
-    (files: FileList | null) => {
-      const f = files?.[0]
-      if (!f) return
+  const onFile = useCallback(
+    (f: File) => {
       const locked = lockedFormatOf(f.name)
       if (locked) toast(locked)
       else if (importFormatOf(f.name)) void importArchitect(f)
@@ -949,6 +1038,22 @@ export default function StudioApp() {
     },
     [importJson, loadImage], // eslint-disable-line react-hooks/exhaustive-deps
   )
+  /**
+   * One drop or pick. Several files, a folder or a .zip: the architect's file among them opens (bundle.ts mainFile) with the
+   * rest beside it — a .gltf's .bin and pictures, an .obj's .mtl; else the first picture / saved drawing, as one file is.
+   */
+  const onDropped = async (dropped: DropFile[]) => {
+    const files = dropped.length > 1 || dropped.some((f) => /\.zip$/i.test(f.path)) ? await expandZips(dropped).catch(() => null) : dropped
+    if (!files) return toast("That .zip could not be opened")
+    if (!files.length) return
+    const name = (p: string) => p.split('/').pop() ?? p
+    const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
+    const main = mainFile(files.map((f) => f.path))
+    if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
+    const usable = files.find((f) => /\.(png|jpe?g|webp|tiff?|heic|heif|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
+    onFile(asFile(usable))
+  }
+  const onFiles = (list: FileList | null) => void onDropped([...(list ?? [])].map((f) => ({ path: f.name, data: f })))
   if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
 
   const exportJson = useCallback(() => {
@@ -982,15 +1087,32 @@ export default function StudioApp() {
   }
 
   // never locked by errors (founder 2026-10-03, 310fe76 unlocked the button but left this early return: a click did nothing)
-  const preview = useCallback(() => {
-    try {
-      localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
-    } catch {
-      return toast('Draft too large to autosave — export your JSON often.')
-    }
-    const w = window.open('/u/preview', '_blank')
-    if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open('/u/preview', '_blank') })
-  }, [toast])
+  /** the draft in the 3D view, new tab; `query`: what that tab should do (`?export=glb`: save the 3D model, then stay) */
+  const previewWith = useCallback(
+    (query: string) => {
+      try {
+        localStorage.setItem(PREVIEW_KEY, JSON.stringify(stateRef.current.unit))
+      } catch {
+        return toast('Draft too large to autosave — export your JSON often.')
+      }
+      const url = `/u/preview${query}`
+      const w = window.open(url, '_blank')
+      if (!w) toast('Preview blocked by the browser.', { label: 'Open preview', onClick: () => window.open(url, '_blank') })
+    },
+    [toast],
+  )
+  const preview = useCallback(() => previewWith(''), [previewWith])
+  // ⋯ → Export as DXF (import/dxfWrite.ts) / Export 3D model (the 3D view makes it: PlotlineScene.exportGlb) / Print plan…
+  const exportDxf = async () => {
+    const u = stateRef.current.unit
+    if (!u.walls.length) return toast('Nothing drawn yet to export')
+    const { writeDxf } = await import('../import/dxfWrite')
+    const name = u.name.trim() || 'Untitled unit'
+    download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
+    toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, ZONES`)
+  }
+  const exportGlb = () => (stateRef.current.unit.walls.length ? previewWith('?export=glb') : toast('Nothing drawn yet to export'))
+  const [printOpen, setPrintOpen] = useState(false)
   // Building (ask 2): the draft's building in the viewer's Building view, the draft standing on one of its floors
   const [buildingOpen, setBuildingOpen] = useState(false)
   // Site (s27): where the building stands — one site for the whole building, so every drawing of the open project gets it
@@ -2212,7 +2334,7 @@ export default function StudioApp() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
-        onFiles(e.dataTransfer.files)
+        void filesOfDrop(e.dataTransfer).then(onDropped)
       }}
     >
       <TopBar
@@ -2243,12 +2365,15 @@ export default function StudioApp() {
         }}
         onImport={() => jsonRef.current?.click()}
         onExport={exportJson}
+        onExportDxf={() => void exportDxf()}
+        onExportGlb={exportGlb}
+        onPrint={() => (unit.walls.length ? setPrintOpen(true) : toast('Nothing drawn yet to print'))}
         onExportAnswers={exportAnswers}
         share={sharingConfigured ? { busy: sharing, onShare: () => void share() } : null}
         cloud={{ snapshot: cloudItem, changed: cloudChanged, onOpen: openFromCloud, onRenameOpen: renameOpen, toast }}
       />
-      <input ref={jsonRef} type="file" accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
-      <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
+      <input ref={jsonRef} type="file" multiple accept={`.json,application/json,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
+      <input ref={fileRef} type="file" multiple accept={`image/png,image/jpeg,image/webp,.tif,.tiff,.heic,.heif,${IMPORT_ACCEPT}`} hidden onChange={(e) => (onFiles(e.target.files), (e.target.value = ''))} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
         <nav className="tools" aria-label="Tools">
@@ -2344,11 +2469,11 @@ export default function StudioApp() {
                         ? `Drop the plan picture of ${openSlot.label.toLowerCase()} here`
                         : 'Drop the floor plan here'}
                   </p>
-                  <p className="small muted">PNG, JPG or WEBP, up to 10 MB</p>
+                  <p className="small muted">PNG, JPG, WEBP or TIFF, up to 10 MB — or the brochure PDF</p>
                   <button className="primary" onClick={() => fileRef.current?.click()}>
                     Choose plan image…
                   </button>
-                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / 3D model</p>}
+                  {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
                 </div>
                 {!project && !unit.vertices.length && !missingPlan && (
                   <>
@@ -2378,6 +2503,17 @@ export default function StudioApp() {
                 </>
               )}
               <button onClick={() => cancelTrace.current()}>Cancel</button>
+            </div>
+          )}
+          {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
+          {pdfPick && <PdfPages name={pdfPick.name} count={pdfPick.doc.numPages} thumb={pdfThumb} busy={pdfPick.busy} onPick={(p) => void pickPdfPage(p)} onClose={closePdf} />}
+          {reading && (
+            <div className="trace-card" role="status">
+              <span>
+                Reading {reading.name} · {reading.stage}
+              </span>
+              <progress value={reading.fraction ?? undefined} />
+              <button onClick={() => reading.stop.abort()}>Cancel</button>
             </div>
           )}
           {field && (

@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
-import { importPdf } from './pdf'
+import { importPdf, readsAsPlan } from './pdf'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)
@@ -31,6 +31,11 @@ describe('pdf fixture', () => {
     ])
     expect(deriveRooms(u)).toHaveLength(2)
     expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+    expect(readsAsPlan(r)).toBe(true) // two closed rooms: opened as a drawing, not as a picture
+    expect(readsAsPlan({ ...r, storeys: [{ ...r.storeys[0], unit: { ...u, walls: u.walls.slice(0, 2) } }] })).toBe(false)
+    // 2 rooms but 60 walls (a hatched print: a wall per hatch line): traced better as a picture
+    const many = Array.from({ length: 60 }, (_, i) => ({ ...u.walls[i % u.walls.length], id: `w${i}` }))
+    expect(readsAsPlan({ ...r, storeys: [{ ...r.storeys[0], unit: { ...u, walls: [...u.walls, ...many] } }] })).toBe(false)
   })
 
   test('a PDF with no drawn lines is refused as a picture', async () => {

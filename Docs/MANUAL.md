@@ -78,7 +78,7 @@ Extras you can add to the end of a 3D address:
 | Comment | C | Opens the Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns: opening one closes the other |
 | Share | — | Copies a link that opens with the finishes you chose |
 | Enter VR | — | Only shows when a VR headset is connected |
-| Edit ▾ (staff only) | — | Furniture, Openings, Plan (Studio) — see §3 |
+| Edit ▾ (staff only) | — | Furniture, Openings, Plan (Studio), Download 3D model — see §3 |
 | ⋯ | — | **Clean view** (H) and **Quality**: Lite · Low · High (see **Choosing quality** below) |
 | The eye (last button) | H | **Clean view**: hides everything on screen so you see only the flat (below) |
 
@@ -178,7 +178,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
 
 ## 3. The 3D view — staff only
 
-One extra button appears in the bar, top right: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings) and **Plan (Studio) ↗** (Edit plan). The one that is on is the white row and says "on" beside it.
+One extra button appears in the bar, top right: **Edit ▾** (washed blue while an editor is on). It holds **Furniture** (Edit furniture below), **Openings** (Edit openings), **Plan (Studio) ↗** (Edit plan) and **Download 3D model** (saves this flat as one `.glb` file once every room has arrived — Studio §5 "Give the drawing back"). The one that is on is the white row and says "on" beside it.
 
 ### Edit furniture
 
@@ -289,6 +289,9 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 | Building | Shows / hides the list of your project's floors on the right. With no project open: start one (section 6) |
 | ⋯ → Import… | Opens a saved drawing file (Ctrl+O) — or the architect's own file: see "Bring in the architect's file" below. In a project it goes into the drawing open now. |
 | ⋯ → Export | Saves the drawing as a file (Ctrl+S). After an Auto-trace the file also holds the Check these rows, each with its picture box and its answers (see "Check these") |
+| ⋯ → Export as DXF | Saves the drawing for AutoCAD or any drawing program (`.dxf`, in metres) — see "Give the drawing back" below |
+| ⋯ → Export 3D model | Opens the 3D view in a new tab, which saves the furnished flat as one 3D model file (`.glb`) — see "Give the drawing back" |
+| ⋯ → Print plan… | The plan as an architect's sheet, to print or save as a PDF — see "Give the drawing back" |
 | ⋯ → Export answers | Saves, as a file (`plotline-answers.json`), every Check these answer you clicked in this browser: which sheet, which row, which button, when. It is the record an AI helper will later be tested against. The answers the Local AI gave (Ask AI) are in it too, each marked `"by": "ai"` with its model and reason; yours carry no mark |
 | ⋯ → New project | Opens the floor list with the New project card (section 6) |
 | ⋯ → Site | Where the building stands: find it on the map, click the plot (the buildings, roads and wind round it come in), set true north — see "Site" below. "open" shows beside it while the panel is open; click it again (or the panel's ×) to close |
@@ -296,7 +299,7 @@ Click **⋯**, then the item. **Esc** or a click anywhere else closes the menu. 
 | ⋯ → Change list ↗ | Opens `/changes` in a new tab. Needs the online database. |
 | ⋯ → Sign in / your email | Your account, your company's projects online, its members and the buyer links — see "Accounts" below. Needs the online database. |
 
-**Loading the plan picture:** with nothing drawn yet, the middle of the Studio says **Start with a plan**. It shows a dashed box (drop the picture on it — or anywhere on the page — or click **Choose plan image…**; PNG, JPG or WEBP, up to 10 MB; the architect's IFC, DXF, PDF or 3D model can be dropped there too) and, beside it, the **New project** card (section 6).
+**Loading the plan picture:** with nothing drawn yet, the middle of the Studio says **Start with a plan**. It shows a dashed box (drop the picture on it — or anywhere on the page — or click **Choose plan image…**; PNG, JPG, WEBP or TIFF, up to 10 MB — an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says how to get a JPEG; the developer's brochure PDF (see "A PDF" below); the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them — can be dropped there too) and, beside it, the **New project** card (section 6).
 
 **The tools** are the small drawings in the strip on the left, top to bottom: Select (an arrow), Scale (a measuring line), Wall (a wall corner), Arc (a curve), Opening (a door and its swing), Room (a named room), Column (a filled square), Furniture (a sofa). The one you are on is white. Point at one and its name and key show beside it ("Wall  W") — press that letter to pick it. A faint one is locked until the scale is set ("set the scale first (S)").
 
@@ -372,16 +375,41 @@ Instead of a picture to trace, the architect's own file can be dropped on the St
 
 | File | What it holds | What happens |
 |---|---|---|
-| `.glb`, `.gltf`, `.obj`, `.fbx`, `.dae`, `.stl`, `.3dm` (Rhino) | A 3D model of the building: the **outside shape** only (facade, balconies, roof) — no rooms | The shape is attached to the drawing open now, centred on it. Preview 3D → the Building view shows that shape standing round your flat instead of the plain boxes, and in the walk you see its facade through the windows. |
+| `.glb`, `.gltf`, `.obj`, `.fbx`, `.dae`, `.stl`, `.3dm` (Rhino), `.3ds` (3ds Max, ArchiCAD, SketchUp), `.kmz` (SketchUp's Google Earth file), `.wrl` (VRML), `.ply` | A 3D model of the building: the **outside shape** only (facade, balconies, roof) — no rooms | The shape is attached to the drawing open now, centred on it. Preview 3D → the Building view shows that shape standing round your flat instead of the plain boxes, and in the walk you see its facade through the windows. A model that keeps its pictures (or, for a `.gltf`, its 3D data in a `.bin`) in other files: **drop the whole folder, or a `.zip` of it**, or pick all its files together with Import… — dropped alone, the shape comes without those pictures and the list says which ones were missing. Compressed models (Draco, meshopt) are unpacked. |
 | `.ifc` (a BIM model: a building model that holds its walls, doors and rooms) | The storeys with their walls, doors, windows, rooms and columns — and the outside shape | One storey: it opens as the drawing (like Import). Several: a whole **project** is made in one go — basements, ground floor, floors 1…n and the rooftop (the top storey when it is named Roof / Terrace or holds no room) each with its storey as its drawing, the outside shape saved once for the building; the first floor above ground opens. Every wall and room is yours to change, as a traced plan is. |
-| `.dxf`, `.pdf` (a vector drawing: made of lines, not a photo) | One floor's lines and texts | It opens as the drawing: walls, openings and room names read from the file, to check and finish as usual. |
-| `.dwg`, `.rvt`, `.pln`, `.skp`, `.3ds`, `.max`, `.blend`, `.dwf` (locked files) | — | Refused, with the one-click export to ask for instead: AutoCAD → Save as DXF; Revit / ArchiCAD → export IFC; SketchUp / 3ds Max / Blender → export as glTF, OBJ or FBX (common 3D model files), or IFC. Why: Docs/FORMATS.md §3. |
+| **A PDF** (`.pdf`): a brochure, or a drawing printed from the architect's program | Its pages | A PDF of several pages first shows **Which page is the floor plan?** — its pages as small pictures; click the plan's page (× or Esc closes it). One page is used at once. A page drawn in lines that make a clean plan opens as the drawing (its own walls, doors and names); otherwise — a page that is a photo, or whose lines do not make a clean plan — the page becomes the **plan picture**, ready for the scale (S) and **Auto-trace**. The message at the bottom offers the other way: **Use it as a picture instead** / **Read its lines instead**. |
+| `.dxf`, `.svg` (a vector drawing: made of lines, not a photo) | One floor's lines and texts | It opens as the drawing: walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be pairs of lines, polylines, hatches or AutoCAD multilines (MLINE); curves (arcs, splines) follow their real shape. An SVG's groups are read as its layers (a group called "Walls" or "A-WALL" holds walls); a PDF page or an SVG has no scale of its own, so the printed dimensions give it (else the printed room sizes, else the drawing's own units are guessed from its size) — check it with S. |
+| `.dwg` (AutoCAD's own file) **once DWG is turned on** (Docs/SETUP_FORMATS.md, 10 minutes, free) | One floor's lines and texts | It is sent to an online converter (CloudConvert), comes back as a DXF and opens like one; the box at the top says "converting the DWG to DXF". 10 drawings a day on the free plan. Not turned on: refused as below. |
+| `.dwg`, `.rvt`, `.pln`, `.skp`, `.max`, `.blend`, `.dwf` (locked files) | — | Refused, with the one-click export to ask for instead: AutoCAD → Save as DXF; Revit / ArchiCAD → export IFC; SketchUp / 3ds Max / Blender → export as glTF, OBJ or FBX (common 3D model files), or IFC. Why: Docs/FORMATS.md §3. |
+| A **folder**, a **`.zip`**, or several files at once | Whatever is inside | The best file in it is opened (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one), the rest are its pictures and data. A zip of plan pictures opens its first picture. |
 
-While it reads, the message says so ("Reading Tower.ifc…" — a big file takes a while). Afterwards the panel on the right lists **What was read from the file** in plain words — the file's unit, what was guessed (a `.obj` or `.stl` names no unit or up axis: the size says millimetres or metres, up is taken as Y), what the file lacked — until you click **Dismiss**.
+While it reads, a box at the top of the sheet says what it is doing, with a thin bar for how far it is — for an IFC: "opening the file (64 MB)", "building the 3D (53 %)", "walls, doors and windows", "rooms", "floor 3 of 7". The rest of the Studio keeps working meanwhile (a 64 MB building takes about half a minute). **Cancel** in that box stops the reading and leaves the Studio as it was. Afterwards the panel on the right lists **What was read from the file** in plain words — the file's unit, what was guessed (a `.obj` or `.stl` names no unit or up axis: the size says millimetres or metres, up is taken as Y), what the file lacked — until you click **Dismiss**.
 
 **Outside shape** (in the panel while the drawing has one): its name and triangle count (how many small flat faces make up the model), then **Offset x / y (m)** — slide the shape over the plan until its walls sit on yours; **Turn (deg)** — turn it (clockwise on the plan); **Floor height (m)** — how high this drawing's floor is inside the shape (an imported storey has it from the file; a plain model starts at 0 = the model's lowest point). Each is one step for Ctrl+Z. **Remove outside shape** deletes the model from this browser and from the drawing. In a project every drawing shares the building's shape (each at its own floor height); a drawing with its own keeps it.
 
 The model is kept in this browser only (like the pictures); an exported drawing file names it but does not hold it. The Lite quality skips a shape over 500 000 triangles and says so.
+
+### Give the drawing back: DXF, 3D model, printed plan
+
+What a developer or their architect asks for, from the ⋯ menu (top right):
+
+- **Export as DXF** saves the drawing as a `.dxf` file that AutoCAD and every drawing program opens, in metres. Each part
+  is on its own layer: **WALLS** (each piece of wall between openings as a closed outline, corners filled), **DOORS**
+  (each door with its leaf and its swing; a sliding door), **WINDOWS**, **COLUMNS**, **TEXT** (room names and their
+  printed sizes) and **ZONES** (the flush lines of a level: parking bays, lawn edges). Dropped back on the Studio
+  untouched, it opens exactly as it was ("Written by Plotline and not changed since"). Once someone changes it in a
+  drawing program, it is read from its lines like any architect's DXF — close, not exact (for Type A: 103 walls back
+  for its 90, 30 of its 33 openings, 21 of its 27 rooms; levels lose more, as their zone lines are not walls).
+- **Export 3D model** opens the 3D view in a new tab; once every room and picture has arrived it saves the furnished
+  flat as one `.glb` file (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the
+  sky), and says "Saved …". A furnished flat is about 60 MB (Type A: 63 MB, a million triangles). Staff can also save it
+  from any flat in the 3D view: **Edit ▾ → Download 3D model**. Blender, 3ds Max, SketchUp and any glTF viewer open it.
+- **Print plan…** shows the plan as a sheet: the walls filled black, doors with their swings, windows, the names and
+  printed sizes, and along the foot the project, the drawing and floor, the area, the scale, a scale bar and the north
+  arrow. Pick the **Paper** (A4, A3, A2, A1) and the **Scale** (1 : 50, 1 : 100, 1 : 200 — a scale the plan does not fit
+  on that paper is greyed); **Print** opens the browser's print window, where **Save as PDF** makes the PDF. Esc, × or
+  **Close** shuts the box.
+- The buyers' notes and choices: ⋯ → **Change list** → **Export CSV** (a spreadsheet file).
 
 ### The tools (the strip on the left; press the letter to pick the tool)
 

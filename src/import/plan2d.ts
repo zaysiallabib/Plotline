@@ -18,7 +18,7 @@
 import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
 import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, emptyUnit, guessKind, joinOverlaps, normalizeUnit, openingDefaults } from '../studio/model'
-import { parseArea, parseDims } from '../trace/text'
+import { parseArea, parseDims, parseSide } from '../trace/text'
 
 export type Role = 'wall' | 'door' | 'window' | 'column' | 'text' | 'dim' | 'ignore' | 'unknown'
 
@@ -40,6 +40,9 @@ export function roleOf(layer: string, block?: string): Role {
   if (/TEXT|ROOM|NAME|LABEL|ANNO/.test(L)) return 'text'
   return 'unknown'
 }
+
+/** What each meaning is called in the notes staff read */
+export const ROLE_WORDS: Record<Role, string> = { wall: 'walls', door: 'doors', window: 'windows', column: 'columns', text: 'room names', dim: 'dimensions', ignore: 'ignored', unknown: 'unknown (parallel pairs count as walls)' }
 
 /** A line of the file (file frame, file units); `block` / `inst` = the block it came from and which insert of it. */
 export interface Seg {
@@ -78,6 +81,8 @@ export interface Drawing {
   loops: Loop[]
   /** file units → metres */
   scale: number
+  /** the file has a column layer (a DXF's layer table names one): then only its shapes are columns */
+  columnLayer?: boolean
 }
 
 export interface Counts {
@@ -451,12 +456,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const P = (p: Pt): Pt => ({ x: p.x * s, y: -p.y * s })
   const role = (x: { layer: string; block?: string }): Role => roleOf(x.layer, x.block)
 
-  // columns first: their outlines are no walls
+  // columns first: their outlines are no walls. A file with a column layer draws its columns there: then a small closed
+  // shape on the wall layer is a short wall piece (Plotline's own DXF export draws every wall piece closed)
   const pillars: Pillar[] = []
   const columnBoxes: { x0: number; y0: number; x1: number; y1: number }[] = []
+  const columnsKnown = d.columnLayer || d.loops.some((l) => role(l) === 'column')
   for (const l of d.loops) {
     const r = role(l)
-    if (r !== 'column' && r !== 'wall' && r !== 'unknown') continue
+    if (r !== 'column' && (columnsKnown || (r !== 'wall' && r !== 'unknown'))) continue
     const pts = l.pts.map(P)
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
     const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys)
@@ -679,3 +686,98 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
 }
 
 type Id = string
+
+// ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------
+
+/**
+ * A drawing without a scale (a PDF, an SVG): the printed dimensions measured against their lines when three agree; else
+ * the printed room sizes against the drawing's box (rooms take about half a plan); else 1 with a "set it with S" note.
+ * `sheet`: what the found ratio means on paper, for the note (a PDF knows its points).
+ */
+export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: number) => string = () => ''): { scale: number; note: string } {
+  const dims = scaleFromDimensions(segs, texts)
+  if (dims) return { scale: 1 / dims.ptPerM, note: `Scale: from ${dims.agreed} printed dimensions that agree${sheet(dims.ptPerM)}.` }
+  const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
+  for (const g of segs) for (const p of [g.a, g.b]) (box.x0 = Math.min(box.x0, p.x)), (box.y0 = Math.min(box.y0, p.y)), (box.x1 = Math.max(box.x1, p.x)), (box.y1 = Math.max(box.y1, p.y))
+  const sizeArea = texts.reduce((acc, t) => {
+    const d = parseDims(t.text)
+    return acc + (d ? d.aM * d.bM : 0)
+  }, 0)
+  if (sizeArea > 0) return { scale: Math.sqrt((0.5 * sizeArea) / ((box.x1 - box.x0) * (box.y1 - box.y0))), note: "Scale: no three printed dimensions agree — guessed from the printed room sizes; check it with the Studio's S tool." }
+  return { scale: 1, note: "Scale not set: no printed dimensions or room sizes to measure against — set it with the Studio's S tool." }
+}
+
+/**
+ * A cubic bezier that is a quarter circle (a door swing drawn as a curve, as PDF and SVG writers do): its centre is the far
+ * corner of the tangents' box. The arc counter-clockwise from a0 to a1, or null.
+ */
+export function quarterArc(p0: Pt, p1: Pt, p2: Pt, p3: Pt): { c: Pt; r: number; a0: number; a1: number } | null {
+  const corner = { x: p0.x + (p1.x - p0.x) / 0.5523, y: p0.y + (p1.y - p0.y) / 0.5523 }
+  const c = { x: p0.x + p3.x - corner.x, y: p0.y + p3.y - corner.y }
+  const r0 = Math.hypot(p0.x - c.x, p0.y - c.y), r3 = Math.hypot(p3.x - c.x, p3.y - c.y)
+  const t3 = { x: p3.x + (p2.x - p3.x) / 0.5523, y: p3.y + (p2.y - p3.y) / 0.5523 }
+  const dotT = (p0.x - c.x) * (p3.x - c.x) + (p0.y - c.y) * (p3.y - c.y)
+  if (!(r0 > 0 && Math.abs(r3 - r0) < 0.03 * r0 && Math.hypot(t3.x - corner.x, t3.y - corner.y) < 0.05 * r0 && Math.abs(dotT) < 0.1 * r0 * r0)) return null
+  const b0 = Math.atan2(p0.y - c.y, p0.x - c.x), b3 = Math.atan2(p3.y - c.y, p3.x - c.x)
+  const ccw = (p0.x - c.x) * (p3.y - c.y) - (p0.y - c.y) * (p3.x - c.x) > 0
+  return { c, r: r0, a0: ccw ? b0 : b3, a1: ccw ? b3 : b0 }
+}
+
+/**
+ * Points per metre from the printed dimensions: each dimension text ("14'-0\"", "10'-8 1/2\"") against the line it sits on
+ * (parallel to the text, passing under its middle); the median ratio when ≥ 3 agree within 2 %, else null.
+ */
+function scaleFromDimensions(segs: Seg[], texts: TextPrim[]): { ptPerM: number; agreed: number } | null {
+  const ratios: number[] = []
+  for (const t of texts) {
+    if (!/['"]|\bmm\b|\bm\b/.test(t.text) || parseDims(t.text)) continue
+    const m = parseSide(t.text)
+    if (!m) continue
+    for (const g of segs) {
+      const L = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y)
+      if (L < 4 * t.height) continue
+      const dir = { x: (g.b.x - g.a.x) / L, y: (g.b.y - g.a.y) / L }
+      const d = { x: t.at.x - g.a.x, y: t.at.y - g.a.y }
+      const s = d.x * dir.x + d.y * dir.y
+      const perp = Math.abs(d.x * dir.y - d.y * dir.x)
+      if (perp > 2.5 * t.height || s < -t.height || s > L + t.height) continue
+      ratios.push(L / m)
+    }
+  }
+  if (ratios.length < 3) return null
+  ratios.sort((p, q) => p - q)
+  let best: { r: number; n: number } = { r: 0, n: 0 }
+  for (const r of ratios) {
+    const n = ratios.filter((x) => Math.abs(x - r) <= 0.02 * r).length
+    if (n > best.n) best = { r, n }
+  }
+  if (best.n < 3) return null
+  const agree = ratios.filter((x) => Math.abs(x - best.r) <= 0.02 * best.r)
+  return { ptPerM: agree[Math.floor(agree.length / 2)], agreed: agree.length }
+}
+
+/**
+ * A unitless file's unit, guessed: of millimetres / centimetres / inches / feet / metres, the ones that make the plan
+ * 3–200 m across; among those, when the file prints room sizes ("12'0'' x 7'11''"), the one where the rooms' summed
+ * area is the most plausible share (~ half) of the plan's box — else the usual one for that extent.
+ */
+export function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale: number; words: string } {
+  const C: [number, string][] = [
+    [0.001, 'millimetres'],
+    [0.01, 'centimetres'],
+    [0.0254, 'inches'],
+    [0.3048, 'feet'],
+    [1, 'metres'],
+  ]
+  const extent = Math.max(box.w, box.h)
+  const fits = C.filter(([k]) => extent * k >= 3 && extent * k <= 200)
+  if (!fits.length) return { scale: 1, words: 'unknown — taken as metres; set the scale in the Studio (S)' }
+  if (sizeAreaSqm > 0 && fits.length > 1) {
+    const best = fits.map(([k, w]) => ({ k, w, off: Math.abs(Math.log((sizeAreaSqm / (box.w * k * box.h * k)) / 0.5)) })).sort((p, q) => p.off - q.off)[0]
+    return { scale: best.k, words: `${best.w} (guessed: the printed room sizes fit the plan's size)` }
+  }
+  // without sizes: the usual unit for that extent (mm for thousands, inches for hundreds, feet for 15–150, metres under)
+  const usual = extent >= 5000 ? 0.001 : extent >= 500 ? 0.0254 : extent >= 150 ? 0.3048 : extent >= 15 ? 0.3048 : 1
+  const pick = fits.find(([k]) => k === usual) ?? fits[0]
+  return { scale: pick[0], words: `${pick[1]} (guessed from the extent)` }
+}

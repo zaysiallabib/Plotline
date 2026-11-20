@@ -135,6 +135,7 @@ Who: **staff** = the developer's team (a browser becomes staff the first time it
 | **Edit ▾** → **Furniture** | Edit furniture: move, turn, resize, delete or add furniture | staff |
 | **Edit ▾** → **Openings** | Edit openings: move, resize, change or remove doors, windows, sliders, passages, low walls | staff, not on a buyer link |
 | **Edit ▾** → **Plan (Studio)** | Edit plan: opens this flat or level in the Studio, in a new tab | staff |
+| **Edit ▾** → **Download 3D model** | Saves this flat as one 3D model file (`.glb`) once every room has arrived | staff |
 | **⋯** → **Clean view** | The same as H or the eye | everyone |
 | **⋯** → **Quality**: **Lite** · **Low** · **High** | How heavy the 3D is for this computer; a blue dot marks the one recommended for this device; a new choice reloads the page | everyone |
 | The eye (the last button of the bar) | **Clean view**: hides everything on screen (H) | everyone |
@@ -226,8 +227,11 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 | **Preview 3D** (the blue button; plain while the Studio is empty, when **Choose plan image…** is the blue one) | Opens your drawing in the 3D view, in a new tab |
 | **Building** | Shows / hides the project's floor list (or starts a project) |
 | **⋯** | Opens the menu below; Esc or a click elsewhere closes it |
-| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .dxf, .pdf, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm) — see MANUAL §5 "Bring in the architect's file" |
+| ⋯ → **Import…** | Opens a drawing file (Ctrl+O), or the architect's own file (.ifc, .ifczip, .dxf, .pdf, .svg, or a 3D model file: .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip of any of them; several files can be picked together (a model with its pictures) — see MANUAL §5 "Bring in the architect's file" |
 | ⋯ → **Export** | Saves the drawing as a file (Ctrl+S) |
+| ⋯ → **Export as DXF** | Saves the drawing for AutoCAD or any drawing program (`.dxf`, metres, layers WALLS / DOORS / WINDOWS / COLUMNS / TEXT / ZONES) |
+| ⋯ → **Export 3D model** | Opens the 3D view in a new tab, which saves the furnished flat as a `.glb` |
+| ⋯ → **Print plan…** | Opens the Print box: **Paper** (A4 · A3 · A2 · A1), **Scale** (1 : 50 · 1 : 100 · 1 : 200), **Print** (the browser's print window; Save as PDF there), **Close** / × / Esc |
 | ⋯ → **Export answers** | Saves every Check these answer clicked in this browser (and the Local AI's) as a file named `plotline-answers.json` |
 | ⋯ → **New project** | Starts a new project: the floor list opens with the New project card |
 | ⋯ → **Site** | Where the building stands: map, plot, neighbours, wind, true north (click again to close; "open" shows beside it) |
@@ -283,9 +287,12 @@ Left to right: the name and fields, then Undo / Redo, then the buttons, then **�
 
 | Name | What it does |
 |---|---|
-| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / 3D model" (Import's list). Or starts a project |
+| **Start with a plan** (nothing drawn yet): the dashed box with **Choose plan image…**, and beside it the **New project** card (**Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project**) | Picks the plan picture (or drop it anywhere on the page) — the architect's file too: "or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip" (Import's list). Or starts a project |
 | **Whole floor** (Auto-trace box) | Traces every flat of the floor and the lobby, stair and lifts in one go |
 | **Cancel** (Auto-trace box) | Stops Auto-trace |
+| **Cancel** (the "Reading …" box at the top while an architect's file is read) | Stops reading the file; nothing changes in the Studio |
+| A page in **Which page is the floor plan?** (a PDF of several pages) | Uses that page: a clean line drawing opens as the drawing, anything else becomes the plan picture to trace; **×** or **Esc** closes the box |
+| **Use it as a picture instead** / **Read its lines instead** (the message after a PDF page) | Takes the same page the other way |
 | Length box | A wall's length or the scale's real length (Enter; Tab = angle while drawing) |
 | Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the ramp's direction arrows, **Save**, **Remove** | Names a room (R) |
 | Problem box on the plan: its fix buttons (the first, the usual fix, a little firmer), **Name this room** (Enter), **×** | Opens from a numbered mark or a row; fixes it in one click |

@@ -19,7 +19,7 @@
  */
 import type { Pt, Unit } from '../core'
 
-export type ImportFormat = 'ifc' | 'dxf' | 'pdf' | 'mesh'
+export type ImportFormat = 'ifc' | 'dxf' | 'pdf' | 'svg' | 'mesh'
 
 /** One storey of the file as a Studio draft. `elevationM`: its floor above the lowest storey's (plan datum). */
 export interface ImportedStorey {

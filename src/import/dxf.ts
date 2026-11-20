@@ -8,7 +8,8 @@ import DxfParser from 'dxf-parser'
 import type IGeometry from 'dxf-parser/dist/entities/geomtry'
 import type { IArcEntity, ICircleEntity, IDimensionEntity, IDxf, IEllipseEntity, IEntity, IInsertEntity, ILineEntity, ILwpolylineEntity, IMtextEntity, IPolylineEntity, ISolidEntity, ISplineEntity, ITextEntity } from 'dxf-parser'
 import type { Pt } from '../core'
-import { buildPlan, roleOf, type ArcPrim, type Drawing, type Loop, type Role, type Seg, type TextPrim } from './plan2d'
+import { ownDrawingOf } from './dxfWrite'
+import { ROLE_WORDS, buildPlan, guessScale, roleOf, type ArcPrim, type Drawing, type Loop, type Seg, type TextPrim } from './plan2d'
 import { parseDims } from '../trace/text'
 import type { ImportResult } from './types'
 
@@ -159,6 +160,73 @@ class Hatch {
   }
 }
 
+/**
+ * MLINE (AutoCAD's multiline: a wall drawn as two or more parallel lines at once), which dxf-parser leaves out. Each vertex
+ * carries its miter direction and, per element, the element's distance along that miter (scale and justification already
+ * in), so each element's own polyline is vertex + miter × distance — the walls' two faces, without the style table.
+ */
+interface IMlineEntity extends IEntity {
+  type: 'MLINE'
+  elements: Pt[][]
+  closed: boolean
+}
+class Mline {
+  ForEntityName = 'MLINE' as const
+  parseEntity(scanner: { next(): { code: number; value: unknown }; isEOF(): boolean }, curr: { code: number; value: unknown }): IMlineEntity {
+    const e = { type: 'MLINE', elements: [], closed: false, layer: '0' } as unknown as IMlineEntity
+    let vertex: Pt | null = null
+    let miter: Pt = { x: 0, y: 1 }
+    let element = -1
+    let firstParam = false
+    curr = scanner.next()
+    while (!scanner.isEOF() && curr.code !== 0) {
+      const v = Number(curr.value)
+      switch (curr.code) {
+        case 8: e.layer = String(curr.value); break
+        case 67: e.inPaperSpace = v === 1; break
+        case 71: e.closed = (v & 2) !== 0; break
+        case 11: vertex = { x: v, y: 0 }; element = -1; break
+        case 21: if (vertex) vertex.y = v; break
+        case 13: miter = { x: v, y: 0 }; break
+        case 23: miter.y = v; break
+        case 74: element++; firstParam = true; break
+        case 41:
+          if (firstParam && vertex && element >= 0) (e.elements[element] ??= []).push({ x: vertex.x + miter.x * v, y: vertex.y + miter.y * v })
+          firstParam = false
+          break
+      }
+      curr = scanner.next()
+    }
+    return e
+  }
+}
+
+/**
+ * A SPLINE's curve (non-rational B-spline by de Boor, 8 points per span); its fit points, else its control polygon, when
+ * the knots do not match. ponytail: weights (group 41) are not read by dxf-parser — a rational spline (rare in plans: a
+ * true circle drawn as a spline) comes out slightly off; read them in a handler like Mline's if one ever matters.
+ */
+export function splinePoints(ctrl: Pt[], knots: number[] | undefined, degree: number | undefined, fit?: Pt[]): Pt[] {
+  const p = degree ?? 3
+  if (!knots || ctrl.length <= p || knots.length !== ctrl.length + p + 1) return fit && fit.length >= 2 ? fit : ctrl
+  const at = (t: number): Pt => {
+    let k = p
+    while (k < ctrl.length - 1 && t >= knots[k + 1]) k++
+    const d = Array.from({ length: p + 1 }, (_, j) => ({ ...ctrl[k - p + j] }))
+    for (let r = 1; r <= p; r++)
+      for (let j = p; j >= r; j--) {
+        const i = k - p + j
+        const den = knots[i + p - r + 1] - knots[i]
+        const a = den ? (t - knots[i]) / den : 0
+        d[j] = { x: (1 - a) * d[j - 1].x + a * d[j].x, y: (1 - a) * d[j - 1].y + a * d[j].y }
+      }
+    return d[p]
+  }
+  const t0 = knots[p], t1 = knots[ctrl.length]
+  const n = Math.max(2, (ctrl.length - p) * 8)
+  return Array.from({ length: n + 1 }, (_, i) => at(t0 + ((t1 - t0) * i) / n))
+}
+
 function arcChords(c: Pt, r: number, a0: number, a1: number): Pt[] {
   let sweep = a1 - a0
   while (sweep <= 0) sweep += 2 * Math.PI
@@ -288,9 +356,13 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
       }
       case 'SPLINE': {
         const s = e as ISplineEntity
-        const pts = s.fitPoints?.length ? s.fitPoints : (s.controlPoints ?? [])
+        const pts = splinePoints(s.controlPoints ?? [], s.knotValues, s.degreeOfSplineCurve, s.fitPoints)
         if (pts.length >= 2) poly(e, pts, !!s.closed)
-        skip('splines (drawn as their control polygon)')
+        break
+      }
+      case 'MLINE': {
+        const m = e as IMlineEntity
+        for (const el of m.elements) if (el.length >= 2) poly(e, el, m.closed)
         break
       }
       case 'TEXT': {
@@ -344,35 +416,16 @@ function flatten(dxf: IDxf, entities: IEntity[], xf: Xf, out: Flat, block: strin
   }
 }
 
-/**
- * A unitless file's unit, guessed: of millimetres / centimetres / inches / feet / metres, the ones that make the plan
- * 3–200 m across; among those, when the file prints room sizes ("12'0'' x 7'11''"), the one where the rooms' summed
- * area is the most plausible share (~ half) of the plan's box — else the usual one for that extent.
- */
-function guessScale(box: { w: number; h: number }, sizeAreaSqm: number): { scale: number; words: string } {
-  const C: [number, string][] = [
-    [0.001, 'millimetres'],
-    [0.01, 'centimetres'],
-    [0.0254, 'inches'],
-    [0.3048, 'feet'],
-    [1, 'metres'],
-  ]
-  const extent = Math.max(box.w, box.h)
-  const fits = C.filter(([k]) => extent * k >= 3 && extent * k <= 200)
-  if (!fits.length) return { scale: 1, words: 'unknown — taken as metres; set the scale in the Studio (S)' }
-  if (sizeAreaSqm > 0 && fits.length > 1) {
-    const best = fits.map(([k, w]) => ({ k, w, off: Math.abs(Math.log((sizeAreaSqm / (box.w * k * box.h * k)) / 0.5)) })).sort((p, q) => p.off - q.off)[0]
-    return { scale: best.k, words: `${best.w} (guessed: the printed room sizes fit the plan's size)` }
-  }
-  // without sizes: the usual unit for that extent (mm for thousands, inches for hundreds, feet for 15–150, metres under)
-  const usual = extent >= 5000 ? 0.001 : extent >= 500 ? 0.0254 : extent >= 150 ? 0.3048 : extent >= 15 ? 0.3048 : 1
-  const pick = fits.find(([k]) => k === usual) ?? fits[0]
-  return { scale: pick[0], words: `${pick[1]} (guessed from the extent)` }
-}
-
 export async function importDxf(text: string, name: string): Promise<ImportResult> {
+  // a DXF Plotline wrote, untouched since: the drawing itself (dxfWrite.ts); a changed one is read from its lines below
+  const own = ownDrawingOf(text)
+  if (own) {
+    const notes = [`Written by Plotline and not changed since: opened exactly as it was exported (${own.walls.length} walls, ${own.walls.reduce((a, w) => a + w.openings.length, 0)} openings, ${own.roomLabels.length} names). Changed in a CAD program, it would be read from its lines.`]
+    return { format: 'dxf', storeys: [{ name: own.name || 'Floor', elevationM: 0, unit: own }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
+  }
   const parser = new DxfParser()
   parser.registerEntityHandler(Hatch as unknown as new () => IGeometry)
+  parser.registerEntityHandler(Mline as unknown as new () => IGeometry)
   const dxf = parser.parseSync(text)
   if (!dxf) throw new Error('This file is not a DXF Plotline can read')
   const notes: string[] = []
@@ -423,13 +476,13 @@ export async function importDxf(text: string, name: string): Promise<ImportResul
   // layers → meaning
   const layers = new Map<string, number>()
   for (const g of [...flat.segs, ...flat.texts]) layers.set(g.layer.replace(/^DIM:/, ''), (layers.get(g.layer.replace(/^DIM:/, '')) ?? 0) + 1)
-  const WORDS: Record<Role, string> = { wall: 'walls', door: 'doors', window: 'windows', column: 'columns', text: 'room names', dim: 'dimensions', ignore: 'ignored', unknown: 'unknown (parallel pairs count as walls)' }
-  for (const [l, n] of [...layers].sort((p, q) => q[1] - p[1])) notes.push(`Layer "${l}": ${WORDS[roleOf(l)]} (${n}).`)
+  for (const [l, n] of [...layers].sort((p, q) => q[1] - p[1])) notes.push(`Layer "${l}": ${ROLE_WORDS[roleOf(l)]} (${n}).`)
   const blocks = new Set(flat.segs.filter((g) => g.block && roleOf('', g.block) !== 'unknown').map((g) => g.block!))
   if (blocks.size) notes.push(`Door / window blocks: ${[...blocks].join(', ')}.`)
   if (frozen.size) notes.push(`Frozen / hidden layers left out: ${[...frozen].join(', ')}.`)
 
-  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale }
+  const columnLayer = Object.values(dxf.tables?.layer?.layers ?? {}).some((l) => roleOf(l.name) === 'column')
+  const drawing: Drawing = { segs: flat.segs, arcs: flat.arcs, texts: flat.texts, loops: flat.loops, scale, columnLayer }
   const plan = buildPlan(drawing, name.replace(/\.dxf$/i, ''))
   const north = Number(h['$NORTHDIRECTION'] ?? 0)
   plan.unit.northDeg = Number.isFinite(north) ? ((north % 360) + 360) % 360 : 0

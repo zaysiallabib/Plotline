@@ -104,6 +104,8 @@ interface Props {
   staff: boolean
   /** the unit has a site with the map's blocks or roads in the 3D: their credit in the footer */
   osm?: boolean
+  /** staff only: saves the flat as a 3D model file (.glb); null hides it */
+  onDownloadGlb?: (() => void) | null
   /** staff only: toggles Edit openings (doors, windows, sliders, passages in 3D); null hides the button */
   onOpenings: (() => void) | null
   editingOpenings: boolean
@@ -390,6 +392,12 @@ export default function Hud(p: Props) {
               <button className="menu-row" role="menuitem" title="This plan in the Studio (new tab)" onClick={p.onEditPlan}>
                 <span>Plan (Studio)</span>
                 <span className="muted">↗</span>
+              </button>
+            )}
+            {p.onDownloadGlb && (
+              <button className="menu-row" role="menuitem" title="The flat as one 3D model file (.glb): walls, floors, doors, windows and furniture with their pictures, for a render artist or another 3D program" onClick={p.onDownloadGlb}>
+                <span>Download 3D model</span>
+                <span className="muted">.glb</span>
               </button>
             )}
           </div>

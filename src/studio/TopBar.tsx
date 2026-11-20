@@ -34,6 +34,9 @@ interface Props {
   onSite: () => void
   onImport: () => void
   onExport: () => void
+  onExportDxf: () => void
+  onExportGlb: () => void
+  onPrint: () => void
   onExportAnswers: () => void
   /** the database is set up: Share link (busy while it publishes) and Change list; null: neither shows */
   share: { busy: boolean; onShare: () => void } | null
@@ -135,7 +138,10 @@ export default function TopBar(p: Props) {
             <div className="menu" role="menu" onClick={() => setMenu(false)}>
               <div className="menu-title">Drawing</div>
               <Item label="Import…" keys="Ctrl+O" title="Open a drawing file, or the architect's own (IFC, DXF, PDF, a 3D model)" onClick={p.onImport} />
-              <Item label="Export" keys="Ctrl+S" title="Save the drawing as a file" onClick={p.onExport} />
+              <Item label="Export" keys="Ctrl+S" title="Save the drawing as a Plotline file (.json): opens again with Import, exactly as it is" onClick={p.onExport} />
+              <Item label="Export as DXF" title="The drawing for AutoCAD or any drawing program (.dxf, metres): walls, doors, windows, columns, names on their own layers" onClick={p.onExportDxf} />
+              <Item label="Export 3D model" title="The furnished flat as one 3D model file (.glb) for a render artist or another 3D program: the 3D view opens, makes it and saves it" onClick={p.onExportGlb} />
+              <Item label="Print plan…" title="The plan as an architect's sheet at 1 : 50, 1 : 100 or 1 : 200, with its title block — print it or save it as a PDF" onClick={p.onPrint} />
               <Item label="Export answers" title="Download every Check-these answer clicked in this browser (row, answer, sheet, time) — the test set for an AI helper later" onClick={p.onExportAnswers} />
               <div className="menu-title">Building</div>
               <Item label="New project" title="Start a new project: its name, basements, floors, rooftop" onClick={p.onNewProject} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { framing, guessUnit, inFrame, isGlb, isGltfJson, rhinoUnitScale } from './mesh'
+import { framing, guessUnit, inFrame, isGlb, isGltfJson, missingBuffers, rhinoUnitScale } from './mesh'
 
 describe('mesh import: the pure parts', () => {
   it('guesses the unit from the extent: metres for a building, millimetres for a big number', () => {
@@ -9,6 +9,13 @@ describe('mesh import: the pure parts', () => {
     expect(guessUnit(450).scale).toBe(0.001)
     expect(guessUnit(42000).scale).toBe(0.001)
     expect(guessUnit(0).scale).toBe(1)
+  })
+
+  it('a .gltf dropped without its .bin is refused with what is missing; embedded buffers need nothing', () => {
+    const gltf = { buffers: [{ uri: 'house.bin' }, { uri: 'data:application/octet-stream;base64,AAAA' }, {}] }
+    expect(missingBuffers(gltf, () => false)).toEqual(['house.bin'])
+    expect(missingBuffers(gltf, (u) => u === 'house.bin')).toEqual([])
+    expect(missingBuffers({}, () => false)).toEqual([])
   })
 
   it('reads Rhino unit systems', () => {
