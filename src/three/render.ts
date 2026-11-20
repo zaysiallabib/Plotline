@@ -75,9 +75,15 @@ export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, 
 export const needsFrame = (s: { tier: Quality; xr: boolean; moved: boolean; now: number; wakeUntil: number; animating?: boolean }): boolean =>
   !TIERS[s.tier].sleep || s.xr || s.moved || !!s.animating || s.now < s.wakeUntil
 
-/** Frame times (ms) taken while moving are slow: the median of at least 45 is worse than 30 fps (35 ms: rAF steps by 16.7 ms). */
-export function slowFrames(ms: number[]): boolean {
-  if (ms.length < 45) return false
+/** how much drawing (ms of frames, at least 5 of them) judges the machine: a slow start is caught within ~3 s */
+export const JUDGE_MS = 1500
+/**
+ * Frame times (ms), each drawn right after the one before: slow when their median is worse than 30 fps (35 ms: rAF steps
+ * by 16.7 ms) — a few long ones (shaders compiling, pictures uploading) are not; null until JUDGE_MS of frames (at least 5)
+ * are in. It used to wait for 45 frames taken while walking, from 2 s after the first: on a slow machine, minutes.
+ */
+export function slowFrames(ms: number[]): boolean | null {
+  if (ms.length < 5 || ms.reduce((a, b) => a + b, 0) < JUDGE_MS) return null
   const s = [...ms].sort((a, b) => a - b)
   return s[s.length >> 1] > 35
 }

@@ -31,7 +31,8 @@ export function recommend(d: Device, slow: string | null = null): { tier: Qualit
   const lite = (why: string) => ({ tier: 'lite' as const, why })
   if (!d.webgl2) return lite('no WebGL 2 in this browser')
   if (SOFTWARE.test(d.gpu)) return lite('no graphics chip in use (software drawing)')
-  if ((INTEGRATED.test(d.gpu) && !/\barc\b/i.test(d.gpu)) || (d.phone && /apple/i.test(d.gpu))) return lite('integrated graphics')
+  if (d.phone) return lite('a phone or tablet') // every one: a small battery-run chip, whatever its name (session 31)
+  if (INTEGRATED.test(d.gpu) && !/\barc\b/i.test(d.gpu)) return lite('integrated graphics')
   if (d.memoryGb !== undefined && d.memoryGb <= 4) return lite(`${d.memoryGb} GB memory`)
   if (d.cores !== undefined && d.cores <= 4) return lite(`${d.cores} processor threads`)
   if (isQuality(slow)) return { tier: slow, why: 'slow frames' }

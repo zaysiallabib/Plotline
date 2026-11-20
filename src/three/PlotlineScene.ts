@@ -108,6 +108,10 @@ const CLICK_PX = 6
 /** what wakes Lite's drawing for WAKE_MS (render.ts needsFrame): any input on the page — a button, the sun slider, a key */
 const WAKE = ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup'] as const
 const WAKE_MS = 1000
+/** the machine is judged (render.ts slowFrames) from this long after the furniture has loaded: its shaders and pictures settle first */
+const WARM_MS = 1000
+/** a frame longer than this is the page coming back (a tab switch, a sleeping laptop), not a slow machine */
+const LOST_FRAME_MS = 2000
 /** Lite / Low (render.ts TIERS.batch): a group is batched again once nothing in it has changed for this long */
 const BATCH_MS = 400
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
@@ -284,9 +288,10 @@ export class PlotlineScene {
   private sleeping = false
   private lastPose = NaN
   private drewLast = false
-  /** frame times (ms) taken while moving, from 2 s after the first (render.ts slowFrames); null once judged */
+  /** frame times (ms), from WARM_MS after the furniture loaded (render.ts slowFrames); null once judged */
   private frameMs: number[] | null = []
-  private sampleFrom = 0
+  /** when the unit's furniture finished loading (performance.now; 0: not yet) */
+  private loadedAt = 0
   private slowCb: (() => void) | null = null
   private failCb: ((why: GpuFailure) => void) | null = null
   private lostTimer = 0
@@ -644,7 +649,7 @@ export class PlotlineScene {
     this.flatCb = cb
   }
 
-  /** Frames were slow while moving (render.ts slowFrames), judged once per scene. */
+  /** Frames were slow (render.ts slowFrames), judged once per scene, within ~3 s of the flat's furniture loading (or of the first move on Lite / Low). */
   onSlow(cb: () => void): void {
     this.slowCb = cb
   }
@@ -1410,6 +1415,7 @@ export class PlotlineScene {
       this.mountPiece(obj, p)
       obj.visible = !p.removed
     }
+    this.loadedAt ||= performance.now()
   }
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
@@ -1843,7 +1849,7 @@ export class PlotlineScene {
       }
       return
     }
-    if (moved && this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
+    if (this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
     this.look.render()
     this.drewLast = true
     if (now > this.nextErrorCheck) {
@@ -1864,14 +1870,12 @@ export class PlotlineScene {
     return k
   }
 
-  /** one frame time while moving; 2 s after the first, 45 of them judge the machine once (render.ts slowFrames) */
+  /** one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded; judged once (render.ts slowFrames) */
   private sample(ms: number, now: number): void {
-    if (!this.frameMs) return
-    this.sampleFrom ||= now + 2000
-    if (now < this.sampleFrom) return
+    if (!this.frameMs || !this.loadedAt || now < this.loadedAt + WARM_MS || ms > LOST_FRAME_MS || document.visibilityState === 'hidden') return
     this.frameMs.push(ms)
-    if (this.frameMs.length < 45) return
     const slow = slowFrames(this.frameMs)
+    if (slow === null) return
     this.frameMs = null
     if (slow) this.slowCb?.()
   }
