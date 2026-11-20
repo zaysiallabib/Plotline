@@ -13,7 +13,7 @@ import { finishSlotsFor, roomKey, wallKey } from '../furnish/finishes'
 import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
-  AC_AHEAD, AC_IN_VIEW, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
+  AC_AHEAD, AC_DIP, AC_IN_VIEW, AC_LIFT, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
   LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, PORTRAIT_SIGHT, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
@@ -207,14 +207,27 @@ describe('viewer', { timeout: 20_000 }, () => {
         return qs.length > 0 && Math.max(...qs.map((q) => q.y)) > BAR_TOP && Math.min(...qs.map((q) => q.y)) < 1 && qs.some((q) => Math.abs(q.x) < 1)
       })
     const cut: string[] = []
+    const up: string[] = []
     for (const u0 of [typeA, typeB, typeC, sheltechA, sheltechB] as unknown as Unit[]) {
       const rs = core.deriveRooms(u0)
       const u = { ...u0, furniture: furnish(u0, rs) }
-      for (const r of listedRooms(u, rs)) if (cuts(u, roomView(r, u))) cut.push(`${u.id} ${r.name}`)
+      for (const r of listedRooms(u, rs)) {
+        const v = roomView(r, u)
+        if (cuts(u, v)) cut.push(`${u.id} ${r.name}`)
+        // a jump looks up only to show an AC whole under the bar, AC_LIFT at most, and no more than that takes
+        if ((v.pitch ?? 0) > 0) {
+          up.push(`${u.id} ${r.name}`)
+          expect(v.pitch!, r.name).toBeLessThanOrEqual(AC_LIFT + 1e-9)
+          expect(acCut(u, { ...v, pitch: v.pitch! - Math.PI / 180 }), `${r.name}: 1° less up cuts it`).toBe(true)
+        }
+      }
     }
-    // 17 before (both dining rooms, most bedrooms, the studies); left: a frame clear of the AC there loses the bed's foot, fills
-    // with a side wall or a wardrobe (the first-frame rules below), or (a passage, a foyer) it is the next room's AC seen through
-    expect(cut).toEqual(['unit_type_a_2703 Bed-2', 'unit_type_b_1747 Bed-2', 'unit_sheltech_a_2736 Bed 4', 'unit_sheltech_a_2736 Passage', 'unit_sheltech_b_2736 Foyer'])
+    // 17 before (both dining rooms, most bedrooms, the studies); AC_CUT left five whose clear frames lose the bed's foot or
+    // fill with a side wall; those change the least that clears them (spawn.ts unCut): A and B Bed-2 and Sheltech A Bed 4
+    // look down 5–6° more (the bed whole: the pieceInFrame test below), Sheltech A's Passage turns 8° (still into the dining
+    // room), Sheltech B's Foyer looks 3° up (the dining's AC whole under the bar)
+    expect(cut).toEqual([])
+    expect(up).toEqual(['unit_sheltech_b_2736 Foyer'])
     // the frame qa2 reported (type-a's dining jump before): the AC's top under the bar
     const rs = core.deriveRooms(unit)
     const u = { ...unit, furniture: furnish(unit, rs) }
@@ -826,7 +839,7 @@ describe('viewer', { timeout: 20_000 }, () => {
     expect(floorShare(L, from, toSE) * 12).toBeLessThan(floorShare(sq, from, toSE) * 16) // the L's hidden cells are the square's seen ones
   })
 
-  it('pieceInFrame: a queen bed is whole (foot at its mattress, headboard top) 3.5 m in front of it, not 1.5 m off its foot; every bedroom and room jump is level or ROOM_PITCH down and shows ≥ 20 % of its floor with the bed ≥ 4 of 6 corners in (A, B, C, Sheltech A + B)', WHOLE, () => {
+  it('pieceInFrame: a queen bed is whole (foot at its mattress, headboard top) 3.5 m in front of it, not 1.5 m off its foot; every bedroom and room jump is level or ROOM_PITCH down (further only to clear an AC, the least that does, AC_DIP at most) and shows ≥ 20 % of its floor with the bed ≥ 4 of 6 corners in (A, B, C, Sheltech A + B)', WHOLE, () => {
     const bed = { id: 'b', assetId: 'bed_queen', roomId: 'r', x: 0, y: 0, rotationDeg: 0 } // faces +y, headboard at −y
     expect(pieceInFrame(bed, { x: 0, y: 3.5 }, { x: 0, y: -1 }, ROOM_PITCH)).toBe(1)
     expect(pieceInFrame(bed, { x: 0, y: 2.6 }, { x: 0, y: -1 })).toBeLessThan(1)
@@ -839,7 +852,11 @@ describe('viewer', { timeout: 20_000 }, () => {
       for (const r of listedRooms(u, rs).filter((x) => ['bed', 'living', 'dining', 'kitchen', 'study'].includes(x.kind))) {
         const name = `${u.id} ${r.name}`.replace(/unit_(type_)?/, '')
         const v = view(r, u)
-        expect([0, ROOM_PITCH], `${name}: level or 5° down`).toContain(v.pitch)
+        if (![0, ROOM_PITCH].includes(v.pitch!)) {
+          // A and B Bed-2, Sheltech A Bed 4: an AC cut at 5° down (spawn.ts unCut)
+          expect(v.pitch!, `${name}: AC_DIP at most`).toBeGreaterThanOrEqual(ROOM_PITCH - AC_DIP - 1e-9)
+          expect(acCut(u, { ...v, pitch: v.pitch! + Math.PI / 180 }), `${name}: 1° less down cuts an AC`).toBe(true)
+        }
         if (r.kind !== 'bed') continue
         const fs = floorShare(core.roomInnerPolygon(r, u), v.p, v.face, v.pitch)
         const b = u.furniture.find((f) => f.roomId === r.id && f.assetId.startsWith('bed_'))!

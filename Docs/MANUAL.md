@@ -131,8 +131,9 @@ A button that is on (a panel open, an editor on) has a light blue wash and blue 
 **Top left: the room.** Its floor in small capitals, its name in the serif, its printed size and area under it, on a
 soft frosted rectangle whose edges fade out, so the words read over any wall, by day and by night. **Click it** for the
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
-jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar (on the built-in flats 5
-jumps of 79 still show one so: a frame without it would cut the bed). In the Building view the same place names the
+jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
+the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
+picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 
