@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Shell, Site, Slope, Unit } from '../core'
 import { draw, wallFaceDots, type Hit, type Hover } from './draw'
@@ -83,6 +83,29 @@ const TOOLS: [Tool, string, string][] = [
   ['pillar', 'C', 'Column'],
   ['furniture', 'F', 'Furniture'],
 ]
+/** the tool rail's line icons (20 px, 1.5 px stroke, drawn as a plan draws: a pointer, a dimension, a wall, an arc, a
+ *  door's swing, a named room, a column, a sofa) */
+const TOOL_ICON: Record<Tool, ReactNode> = {
+  select: <path d="M5.5 3.5 15 9.6l-4.4 1.1-2.1 4.3z" />,
+  scale: <path d="M3 7v6M17 7v6M3.5 10h13M6 8l-2.5 2L6 12M14 8l2.5 2L14 12" />,
+  wall: <path d="M3.5 16.5v-13h13M7 16.5V7h9.5" />,
+  arc: (
+    <>
+      <path d="M4.5 15.5a11 11 0 0 1 11-11" />
+      <circle cx="4.5" cy="15.5" r="1.25" fill="currentColor" />
+      <circle cx="15.5" cy="4.5" r="1.25" fill="currentColor" />
+    </>
+  ),
+  opening: <path d="M2.5 16h3.5M14 16h3.5M6 16V8M6 8a8 8 0 0 1 8 8" />,
+  room: <path d="M3.5 3.5h13v13h-13zM7 9h6M8.5 12h3" />,
+  pillar: (
+    <>
+      <path d="M2.5 10h4.5M13 10h4.5" />
+      <rect x="7" y="7" width="6" height="6" fill="currentColor" />
+    </>
+  ),
+  furniture: <path d="M5 8.5V6.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v2M3.5 8.5h13v5.5h-13zM6.5 8.5v5.5M13.5 8.5v5.5" />,
+}
 const HINTS: Record<Tool, string> = {
   pillar: `Column · click = a 12" × 20" column (snaps to walls and corners), drag = its size · drag a column to move it, a side dot to move that side, a corner dot to move that corner alone (a tapered column)`,
   arc: 'Arc · click where the curved wall starts',
@@ -2133,6 +2156,8 @@ export default function StudioApp() {
     centre = selectionText(unit, state.selection)
   } else if (hover?.hit) centre = hover.hit.kind === 'pillar' ? 'column' : hover.hit.kind
   const scaleText = unit.planImage ? `1 px = ${(1 / unit.planImage.pxPerM).toFixed(4)} m` : unit.walls.length ? 'Real sizes · no picture lined up' : 'Scale not set'
+  /** nothing to draw on: the sheet shows Start with a plan (or asks for a draft's missing picture) */
+  const empty = !state.planImage && (!unit.vertices.length || !!missingPlan)
   /** the first floor of the project the open drawing is on (the drop prompt names it) */
   const openSlot = project && active?.drawing ? slotsOf(project).find((r) => r.unitIds.includes(active.drawing!)) : undefined
 
@@ -2162,6 +2187,7 @@ export default function StudioApp() {
         onRedo={() => dispatch({ type: 'redo' })}
         autoTrace={state.planImage ? { disabled: !img || !!trace, onClick: startAutoTrace } : null}
         errors={errors}
+        quiet={empty}
         onPreview={preview}
         building={listOpen}
         onBuilding={() => {
@@ -2188,7 +2214,36 @@ export default function StudioApp() {
       <input ref={fileRef} type="file" accept={`image/png,image/jpeg,image/webp,${IMPORT_ACCEPT}`} hidden onChange={(e) => onFiles(e.target.files)} />
 
       <div className={listOpen ? 'main with-floors' : 'main'}>
-        <div className="canvas-wrap" ref={wrapRef}>
+        <nav className="tools" aria-label="Tools">
+          {TOOLS.map(([t, k, label], i) => {
+            const locked = t !== 'select' && t !== 'scale' && !scaleSet
+            return (
+              <Fragment key={t}>
+                {(i === 2 || t === 'furniture') && <span className="rule" />}
+                <button
+                  className={tool === t ? 'on' : ''}
+                  disabled={locked}
+                  aria-label={label}
+                  aria-pressed={tool === t}
+                  onClick={() => {
+                    setScaleStart(null)
+                    setAlign(null)
+                    dispatch({ type: 'set-tool', tool: t })
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    {TOOL_ICON[t]}
+                  </svg>
+                  <span className="tip">
+                    {label}
+                    {locked ? <em>set the scale first (S)</em> : <kbd>{k}</kbd>}
+                  </span>
+                </button>
+              </Fragment>
+            )
+          })}
+        </nav>
+        <div className="canvas-wrap grain" ref={wrapRef}>
           <canvas
             ref={canvasRef}
             tabIndex={-1}
@@ -2231,35 +2286,19 @@ export default function StudioApp() {
               clickable={tool === 'select'}
             />
           )}
-          <div className="tools">
-            {TOOLS.map(([t, k, label]) => {
-              const locked = t !== 'select' && t !== 'scale' && !scaleSet
-              return (
-                <button
-                  key={t}
-                  className={tool === t ? 'on' : ''}
-                  disabled={locked}
-                  aria-label={label}
-                  aria-pressed={tool === t}
-                  data-tip={locked ? `${label} — set the scale first (S)` : `${label} (${k})`}
-                  onClick={() => {
-                    setScaleStart(null)
-                    setAlign(null)
-                    dispatch({ type: 'set-tool', tool: t })
-                  }}
-                >
-                  {k}
-                </button>
-              )
-            })}
-          </div>
-          {!state.planImage && (!unit.vertices.length || missingPlan) && (
+          {empty && (
             <div className="empty">
-              {!missingPlan && <h2>Start with a plan</h2>}
+              {!missingPlan && (
+                <>
+                  <h2>Start with a plan</h2>
+                  <p>Drop the floor plan from the brochure, trace its walls, then walk the flat in 3D.</p>
+                </>
+              )}
               <div className="start">
                 <div className="drop">
-                  <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                    <path d="M14 18V5m-5 5 5-5 5 5M5 17v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 4.5h12l6 6v17H7z" />
+                    <path d="M19 4.5v6h6M11 15.5h4v7h6M15 15.5h6v4" />
                   </svg>
                   <p>
                     {missingPlan

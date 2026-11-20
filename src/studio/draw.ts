@@ -6,22 +6,42 @@ import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
 import { mToScreen, pxToScreen, screenToM, type Frame } from './transform'
 
-const C = { bg: '#0f0f10', ink: '#f2f2f0', muted: '#9a9a94', accent: '#e8c170', line: '#2a2b2f', red: '#e5534b' }
+/**
+ * The marble language's colours and font (src/index.css tokens), read from the page once: a canvas cannot read a CSS
+ * variable. Ink walls on paper, the picked thing in the accent, a refusal in terracotta.
+ */
+let C = { paper: '', ink: '', ink2: '', muted: '', accent: '', red: '', font: '' }
+function tokens(): typeof C {
+  if (C.ink) return C
+  const css = getComputedStyle(document.documentElement)
+  const v = (n: string, or: string) => css.getPropertyValue(n).trim() || or
+  C = { paper: v('--surface', '#ffffff'), ink: v('--ink', '#17191c'), ink2: v('--ink-2', '#4b4f55'), muted: v('--muted', '#6b7077'), accent: v('--accent', '#2458a6'), red: v('--danger', '#b5432b'), font: v('--font', 'system-ui, sans-serif') }
+  return C
+}
+/** a token's colour at alpha `a` (the tokens are #rrggbb) */
+const fade = (hex: string, a: number) => {
+  const n = parseInt(hex.slice(1, 7), 16)
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`
+}
+/** how strongly the plan picture shows on its paper: enough to read its print, faint enough for the ink walls on it */
+const PICTURE_ALPHA = 0.5
 /** Wall length labels only when the wall is at least this long on screen. */
 export const MIN_LABEL_PX = 40
-/** zones tinted by kind so a ground floor reads at a glance (rooms keep the faint accent wash) */
+/** zones tinted by kind so a ground floor reads at a glance, as a landscape plan colours them (data colours, not the
+ *  interface's: grass, water, stone, timber); rooms keep a faint stone wash */
 const ZONE_TINT: Partial<Record<RoomKind, string>> = {
-  lawn: 'rgba(96,170,80,0.30)',
-  planter: 'rgba(60,128,58,0.45)',
-  pool: 'rgba(64,140,220,0.40)',
-  driveway: 'rgba(150,150,150,0.28)',
-  parking: 'rgba(110,130,175,0.26)',
-  paving: 'rgba(200,184,150,0.24)',
-  deck: 'rgba(176,122,70,0.34)',
-  play: 'rgba(228,140,80,0.26)',
+  lawn: 'rgba(104,148,84,0.22)',
+  planter: 'rgba(74,120,70,0.32)',
+  pool: 'rgba(86,140,186,0.28)',
+  driveway: 'rgba(120,120,116,0.16)',
+  parking: 'rgba(98,112,140,0.16)',
+  paving: 'rgba(176,160,128,0.20)',
+  deck: 'rgba(150,108,70,0.24)',
+  play: 'rgba(196,128,84,0.20)',
 }
-/** one colour per flat of a whole-floor drawing (core.deriveFlats), in its order; the core and loose rooms keep the wash */
-const FLAT_RGB = ['86,156,230', '232,132,86', '140,200,90', '196,120,214', '226,196,72', '80,196,186']
+/** one colour per flat of a whole-floor drawing (core.deriveFlats), in its order — earth tones that never read as the
+ *  accent (the picked thing); the core and loose rooms keep the wash */
+const FLAT_RGB = ['176,132,52', '92,136,96', '170,96,80', '96,112,140', '128,94,138', '62,126,126']
 const flatRgb = (i: number) => FLAT_RGB[i % FLAT_RGB.length]
 
 export type Hit = { kind: 'vertex' | 'wall' | 'opening' | 'label' | 'furniture' | 'pillar'; id: Id }
@@ -62,14 +82,16 @@ function slab(ctx: CanvasRenderingContext2D, { origin: o, dir: d, normal: n, len
 }
 
 /** One opening in wall-local (u along, v across) coordinates: door leaf + swing arc, slider two offset panes, window triple line, passage dashed gap. */
-function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op: Opening, color: string, lineWidth: number, px: (n: number) => number): void {
+function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op: Opening, color: string, lineWidth: number, px: (n: number) => number, paper: boolean): void {
   const { origin: o, dir: d, normal: n } = f
   ctx.save()
   ctx.transform(d.x, d.y, n.x, n.y, o.x, o.y)
   const u0 = op.offsetM
   const u1 = op.offsetM + op.widthM
-  ctx.fillStyle = C.bg
-  ctx.fillRect(u0, -h - px(0.5), op.widthM, 2 * h + px(1))
+  // the wall stops at the opening: paper under it on a picture, else the bare sheet
+  ctx.fillStyle = C.paper
+  if (paper) ctx.fillRect(u0, -h - px(0.5), op.widthM, 2 * h + px(1))
+  else ctx.clearRect(u0, -h - px(0.5), op.widthM, 2 * h + px(1))
   ctx.strokeStyle = color
   ctx.lineWidth = lineWidth
   ctx.setLineDash([])
@@ -85,12 +107,14 @@ function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op:
     ctx.beginPath()
     const ccw = ((jambAng - leafAng + 2 * Math.PI) % (2 * Math.PI)) > Math.PI
     ctx.arc(hu, sign * h, op.widthM, leafAng, jambAng, ccw)
+    ctx.lineWidth = lineWidth * 0.6 // the swing is drawn lighter than the leaf, as on a sheet
     ctx.stroke()
   } else if (op.kind === 'slider') {
     // the plan symbol: two panes, each a little over half the span, offset across the wall and overlapping mid-span
     const m = op.widthM * 0.55
     ctx.strokeRect(u0, -h * 0.6, m, h * 0.5)
     ctx.strokeRect(u1 - m, h * 0.1, m, h * 0.5)
+    jambs(ctx, u0, u1, h)
   } else if (op.kind === 'window') {
     ctx.beginPath()
     for (const v of [-h, 0, h]) {
@@ -98,6 +122,7 @@ function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op:
       ctx.lineTo(u1, v)
     }
     ctx.stroke()
+    jambs(ctx, u0, u1, h)
   } else {
     ctx.setLineDash([px(4), px(3)])
     ctx.beginPath()
@@ -109,6 +134,15 @@ function drawOpening(ctx: CanvasRenderingContext2D, f: WallFrame, h: number, op:
     ctx.setLineDash([])
   }
   ctx.restore()
+}
+/** a window's or slider's two jambs: the wall's ends across its thickness */
+function jambs(ctx: CanvasRenderingContext2D, u0: number, u1: number, h: number): void {
+  ctx.beginPath()
+  ctx.moveTo(u0, -h)
+  ctx.lineTo(u0, h)
+  ctx.moveTo(u1, -h)
+  ctx.lineTo(u1, h)
+  ctx.stroke()
 }
 export interface DrawArgs {
   ctx: CanvasRenderingContext2D
@@ -151,7 +185,7 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
       ctx.moveTo(b.minX, y)
       ctx.lineTo(b.maxX, y)
     }
-    ctx.strokeStyle = 'rgba(242,242,240,0.08)'
+    ctx.strokeStyle = fade(C.ink, 0.07)
     ctx.lineWidth = px(1)
     ctx.stroke()
   }
@@ -168,11 +202,11 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
     ctx.closePath()
     if (on || layer < 2) {
       // opaque enough to hide the plan's own printed furniture under a piece
-      ctx.fillStyle = on ? (hot === C.red ? 'rgba(229,83,75,0.45)' : 'rgba(232,193,112,0.4)') : 'rgba(23,24,26,0.7)'
+      ctx.fillStyle = on ? fade(hot, 0.22) : fade(C.paper, 0.88)
       ctx.fill()
     }
     ctx.setLineDash(layer >= 2 ? [px(3), px(3)] : [])
-    ctx.strokeStyle = on ? hot : layer >= 2 ? 'rgba(242,242,240,0.55)' : 'rgba(242,242,240,0.85)'
+    ctx.strokeStyle = on ? hot : layer >= 2 ? fade(C.ink, 0.4) : C.ink2
     ctx.lineWidth = px(1)
     ctx.stroke()
     ctx.setLineDash([])
@@ -181,7 +215,7 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
     ctx.moveTo(q[2].x, q[2].y)
     ctx.lineTo(q[3].x, q[3].y)
     ctx.strokeStyle = on ? hot : C.ink
-    ctx.lineWidth = px(2.5)
+    ctx.lineWidth = px(2)
     ctx.stroke()
   }
 }
@@ -189,7 +223,7 @@ function drawFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>,
 /** Floor pieces' short labels where they fit (the selected one always). Screen space. */
 function labelFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>, toScreen: (m: Pt) => Pt): void {
   const { pieces, drag } = a.furniture!
-  ctx.font = '300 11px Inter, system-ui, sans-serif'
+  ctx.font = `400 11px ${C.font}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   for (const p of drag?.furniture ?? pieces) {
@@ -201,7 +235,7 @@ function labelFurniture(ctx: CanvasRenderingContext2D, a: DrawArgs, sel: Set<Id>
     const h = Math.max(...q.map((v) => v.y)) - Math.min(...q.map((v) => v.y))
     if (!on && (ctx.measureText(name).width > w - 6 || h < 14)) continue
     const c = toScreen(p)
-    ctx.fillStyle = on ? (drag?.error ? C.red : C.accent) : C.ink
+    ctx.fillStyle = on ? (drag?.error ? C.red : C.accent) : C.ink2
     ctx.fillText(name, c.x, c.y)
   }
   ctx.textBaseline = 'alphabetic'
@@ -217,13 +251,22 @@ export function draw(a: DrawArgs): void {
   const chainIds = new Set(state.chain?.ids ?? [])
   const vs = state.unit.vertices
 
+  tokens()
+  // the sheet itself is the page's marble with its grain (studio.css); the canvas draws only what lies on it
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.fillStyle = C.bg
-  ctx.fillRect(0, 0, width, height)
+  ctx.clearRect(0, 0, width, height)
 
   if (a.img) {
+    // the plan picture as paper on the marble: a white sheet with the raised card's shadow, the print on it faded
     ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * panX, dpr * panY)
-    ctx.globalAlpha = 0.55
+    ctx.save()
+    ctx.shadowColor = fade(C.ink, 0.1)
+    ctx.shadowBlur = 3 * dpr
+    ctx.shadowOffsetY = dpr
+    ctx.fillStyle = C.paper
+    ctx.fillRect(0, 0, a.img.naturalWidth, a.img.naturalHeight)
+    ctx.restore()
+    ctx.globalAlpha = PICTURE_ALPHA
     ctx.drawImage(a.img, 0, 0)
     ctx.globalAlpha = 1
   }
@@ -243,11 +286,11 @@ export function draw(a: DrawArgs): void {
     poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
     ctx.closePath()
     const fi = flatOf.get(r.id)
-    ctx.fillStyle = fi !== undefined ? `rgba(${flatRgb(fi)},0.2)` : (ZONE_TINT[r.kind] ?? 'rgba(232,193,112,0.05)')
+    ctx.fillStyle = fi !== undefined ? `rgba(${flatRgb(fi)},0.14)` : (ZONE_TINT[r.kind] ?? fade(C.ink, 0.035))
     ctx.fill()
     if (fi !== undefined) for (const p of poly) Object.assign(flatBox[fi], { x0: Math.min(flatBox[fi].x0, p.x), x1: Math.max(flatBox[fi].x1, p.x), y0: Math.min(flatBox[fi].y0, p.y) })
     if (r === hotRoom) {
-      ctx.fillStyle = 'rgba(232,193,112,0.16)'
+      ctx.fillStyle = fade(C.accent, 0.1)
       ctx.fill()
     }
   }
@@ -256,7 +299,7 @@ export function draw(a: DrawArgs): void {
   const guides = a.hover?.snap?.guides ?? []
   if (guides.length) {
     ctx.setLineDash([px(4), px(4)])
-    ctx.strokeStyle = C.muted
+    ctx.strokeStyle = fade(C.accent, 0.45)
     ctx.lineWidth = px(1)
     const { x: x0, y: y0 } = screenToM(frame, { x: 0, y: 0 })
     for (const g of guides) {
@@ -283,7 +326,7 @@ export function draw(a: DrawArgs): void {
   // C tool drag: the new column's box
   const box = a.hover?.box
   if (box) {
-    ctx.fillStyle = 'rgba(232,193,112,0.45)'
+    ctx.fillStyle = fade(C.accent, 0.3)
     ctx.fillRect(Math.min(box.a.x, box.b.x), Math.min(box.a.y, box.b.y), Math.abs(box.b.x - box.a.x), Math.abs(box.b.y - box.a.y))
   }
   // A tool: the chain of straight walls the click lays, 5" wide
@@ -291,13 +334,14 @@ export function draw(a: DrawArgs): void {
   if (arc && arc.length > 1) {
     ctx.beginPath()
     arc.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
-    ctx.strokeStyle = 'rgba(232,193,112,0.6)'
+    ctx.strokeStyle = fade(C.accent, 0.45)
     ctx.lineWidth = 0.127
     ctx.stroke()
   }
 
   // walls, by type (model.wallTypeOf): a zone line dashed on its centre line (nothing in 3D), a kerb a thin solid line, a
-  // low wall lighter than a full one
+  // low wall hollow, a full wall solid ink (a partition a shade lighter); the one under the mouse ringed in the accent
+  const hot = a.hover?.hit
   for (const w of state.unit.walls) {
     const f = wallFrame(w, vs)
     const h = w.thicknessM / 2
@@ -308,23 +352,49 @@ export function draw(a: DrawArgs): void {
       ctx.moveTo(f.origin.x, f.origin.y)
       ctx.lineTo(f.origin.x + f.dir.x * f.lengthM, f.origin.y + f.dir.y * f.lengthM)
       ctx.setLineDash(type === 'zone' ? [px(6), px(4)] : [])
-      ctx.strokeStyle = selected ? C.accent : type === 'zone' ? 'rgba(242,242,240,0.7)' : C.ink
-      ctx.lineWidth = px(selected ? 3 : type === 'zone' ? 1.5 : 2)
+      if (!selected && hot?.kind === 'wall' && hot.id === w.id) {
+        ctx.strokeStyle = fade(C.accent, 0.4)
+        ctx.lineWidth = px(6)
+        ctx.stroke()
+      }
+      ctx.strokeStyle = selected ? C.accent : type === 'zone' ? fade(C.ink, 0.55) : C.ink
+      ctx.lineWidth = px(selected ? 2.5 : type === 'zone' ? 1.25 : 1.5)
       ctx.stroke()
       ctx.setLineDash([])
       continue // (never an opening: the O tool refuses them)
     }
     slab(ctx, f, h)
     const exterior = w.thicknessM >= 0.2
-    ctx.fillStyle = selected ? 'rgba(232,193,112,0.35)' : type === 'low' ? 'rgba(242,242,240,0.08)' : exterior ? C.ink : 'rgba(242,242,240,0.22)'
+    ctx.fillStyle = selected ? C.accent : type === 'low' ? fade(C.ink, 0.06) : exterior ? C.ink : C.ink2
     ctx.fill()
-    ctx.strokeStyle = selected ? C.accent : type === 'low' ? 'rgba(242,242,240,0.6)' : C.ink
-    ctx.lineWidth = px(selected ? 2 : 1)
+    ctx.strokeStyle = selected ? C.accent : type === 'low' ? C.ink2 : exterior ? C.ink : C.ink2
+    ctx.lineWidth = px(1)
     ctx.stroke()
+    if (!selected && hot?.kind === 'wall' && hot.id === w.id) {
+      ctx.strokeStyle = fade(C.accent, 0.4)
+      ctx.lineWidth = px(4)
+      ctx.stroke()
+    }
 
     for (const op of w.openings) {
       const osel = sel.has(op.id)
-      drawOpening(ctx, f, h, op, osel && state.dragBlocked ? C.red : osel ? C.accent : C.ink, px(osel ? 1.5 : 1), px)
+      if (!osel && hot?.kind === 'opening' && hot.id === op.id) {
+        // the opening under the mouse: its footprint washed in the accent's line colour
+        ctx.save()
+        ctx.transform(f.dir.x, f.dir.y, f.normal.x, f.normal.y, f.origin.x, f.origin.y)
+        ctx.fillStyle = fade(C.accent, 0.4)
+        ctx.fillRect(op.offsetM, -h - px(2), op.widthM, 2 * h + px(4))
+        ctx.restore()
+      }
+      drawOpening(ctx, f, h, op, osel && state.dragBlocked ? C.red : osel ? C.accent : C.ink, px(osel ? 1.75 : 1), px, !!a.img)
+      if (osel) {
+        // the picked opening: its footprint in the accent's wash, so a window's thin lines read as picked too
+        ctx.save()
+        ctx.transform(f.dir.x, f.dir.y, f.normal.x, f.normal.y, f.origin.x, f.origin.y)
+        ctx.fillStyle = fade(state.dragBlocked ? C.red : C.accent, 0.16)
+        ctx.fillRect(op.offsetM, -h, op.widthM, 2 * h)
+        ctx.restore()
+      }
     }
   }
 
@@ -336,7 +406,7 @@ export function draw(a: DrawArgs): void {
     const h = ogWall.thicknessM / 2
     const color = og.error ? C.red : C.accent
     ctx.globalAlpha = 0.6
-    drawOpening(ctx, f, h, og.opening, color, px(2), px)
+    drawOpening(ctx, f, h, og.opening, color, px(2), px, !!a.img)
     // tint the footprint too: a window's triple line alone vanishes in a 5" wall at fit zoom
     ctx.globalAlpha = 0.35
     ctx.save()
@@ -369,7 +439,7 @@ export function draw(a: DrawArgs): void {
         ctx.setLineDash([])
       } else {
         slab(ctx, ghostWall, chain.thicknessM / 2)
-        ctx.fillStyle = 'rgba(232,193,112,0.45)'
+        ctx.fillStyle = fade(C.accent, 0.35)
         ctx.fill()
         ctx.strokeStyle = C.accent
         ctx.lineWidth = px(1)
@@ -384,16 +454,24 @@ export function draw(a: DrawArgs): void {
   const ends = new Set(state.unit.walls.filter((w) => sel.has(w.id)).flatMap((w) => [w.a, w.b]))
   const dot = (p: Pt, active: boolean, ring: boolean) => {
     ctx.beginPath()
-    ctx.arc(p.x, p.y, px(active ? 4 : 2.5), 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, px(active ? 4 : 2), 0, Math.PI * 2)
     ctx.fillStyle = active ? C.accent : C.ink
     ctx.fill()
     if (ring) {
-      ctx.strokeStyle = C.bg
+      ctx.strokeStyle = C.paper
       ctx.lineWidth = px(1.5)
       ctx.stroke()
     }
   }
-  for (const v of vs) dot(v, sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id), ends.has(v.id))
+  for (const v of vs) {
+    if (hot?.kind === 'vertex' && hot.id === v.id && !sel.has(v.id)) {
+      ctx.beginPath()
+      ctx.arc(v.x, v.y, px(7), 0, Math.PI * 2)
+      ctx.fillStyle = fade(C.accent, 0.4)
+      ctx.fill()
+    }
+    dot(v, sel.has(v.id) || chainIds.has(v.id) || ends.has(v.id), ends.has(v.id))
+  }
   // a selected opening's two ends (on its wall's centre line) are its resize handles, ringed the same
   for (const w of state.unit.walls) {
     for (const op of w.openings.filter((o) => sel.has(o.id))) {
@@ -450,6 +528,8 @@ export function draw(a: DrawArgs): void {
   // V box select: a thin dashed rectangle
   const mq = a.hover?.marquee
   if (mq) {
+    ctx.fillStyle = fade(C.accent, 0.06)
+    ctx.fillRect(Math.min(mq.a.x, mq.b.x), Math.min(mq.a.y, mq.b.y), Math.abs(mq.b.x - mq.a.x), Math.abs(mq.b.y - mq.a.y))
     ctx.strokeStyle = C.accent
     ctx.lineWidth = px(1)
     ctx.setLineDash([px(5), px(4)])
@@ -468,7 +548,7 @@ export function draw(a: DrawArgs): void {
     ctx.textBaseline = Math.abs(ny) < 0.3 ? 'middle' : ny > 0 ? 'top' : 'bottom'
     ctx.fillText(formatFeetInches(f.lengthM), mid.x + nx * off, mid.y + ny * off)
   }
-  ctx.font = '300 10px Inter, system-ui, sans-serif'
+  ctx.font = `400 11px ${C.font}`
   ctx.fillStyle = C.muted
   const moving = new Set(a.hover?.moving)
   const live = (w: { a: Id; b: Id }) => moving.has(w.a) || moving.has(w.b)
@@ -479,42 +559,52 @@ export function draw(a: DrawArgs): void {
     if (f.lengthM * s >= MIN_LABEL_PX) lengthLabel(f, side, w.thicknessM)
   }
   // dragging: every wall at a moving corner, however short, in the ghost wall's style
-  ctx.font = '400 12px Inter, system-ui, sans-serif'
+  ctx.font = `500 12px ${C.font}`
   ctx.fillStyle = C.accent
   for (const w of moving.size ? state.unit.walls : []) if (live(w)) lengthLabel(wallFrame(w, vs), a.labelSides.get(w.id) ?? 1, w.thicknessM)
   if (ghostWall && chain) {
-    ctx.font = '400 12px Inter, system-ui, sans-serif'
+    ctx.font = `500 12px ${C.font}`
     ctx.fillStyle = C.accent
     lengthLabel(ghostWall, 1, chain.thicknessM)
   }
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'center'
+  // room names as inscriptions (tracked capitals), the printed size under them; a paper edge so they read over the print
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = 3
+  ctx.strokeStyle = fade(C.paper, 0.85)
+  const inscribe = (text: string, x: number, y: number) => {
+    ctx.strokeText(text, x, y)
+    ctx.fillText(text, x, y)
+  }
   for (const l of state.unit.roomLabels) {
     const p = toScreen(l)
     const active = sel.has(l.id)
-    ctx.font = '300 13px Inter, system-ui, sans-serif'
+    ctx.font = `500 10px ${C.font}`
+    ctx.letterSpacing = '0.1em'
     ctx.fillStyle = active ? C.accent : C.ink
     // a floor level beside the name, as the sheets print it (a ramp's two levels sit at its arrow's ends instead)
-    ctx.fillText(`${l.name || 'Room'}${l.levelM !== undefined && !l.slope ? `  ${formatLevel(l.levelM)}` : ''}`, p.x, p.y)
+    inscribe(`${(l.name || 'Room').toUpperCase()}${l.levelM !== undefined && !l.slope ? `  ${formatLevel(l.levelM)}` : ''}`, p.x, p.y)
+    ctx.letterSpacing = '0px'
     if (l.printedSize) {
-      ctx.font = '300 11px Inter, system-ui, sans-serif'
-      ctx.fillStyle = active ? C.accent : C.muted
-      ctx.fillText(l.printedSize, p.x, p.y + 14)
+      ctx.font = `400 11px ${C.font}`
+      ctx.fillStyle = active ? C.accent : C.ink2
+      inscribe(l.printedSize, p.x, p.y + 14)
     }
   }
-  // each flat's name once, above its top edge, in its colour on a dark edge (it sits over the sheet)
-  ctx.font = '600 15px Inter, system-ui, sans-serif'
+  // each flat's name once, above its top edge, in its colour on a paper edge (it sits over the sheet)
+  ctx.font = `500 12px ${C.font}`
+  ctx.letterSpacing = '0.12em'
   ctx.lineWidth = 4
-  ctx.strokeStyle = C.bg
   ;(a.flats ?? []).forEach((f, i) => {
     const b = flatBox[i]
     if (!Number.isFinite(b.x0)) return
     const p = toScreen({ x: (b.x0 + b.x1) / 2, y: b.y0 })
-    ctx.strokeText(f.name, p.x, p.y - 10)
     ctx.fillStyle = `rgb(${flatRgb(i)})`
-    ctx.fillText(f.name, p.x, p.y - 10)
+    inscribe(f.name.toUpperCase(), p.x, p.y - 12)
   })
-  ctx.font = '400 11px Inter, system-ui, sans-serif'
+  ctx.letterSpacing = '0px'
+  ctx.font = `400 11px ${C.font}`
   for (const { l, from, to } of ramps) {
     ctx.fillStyle = sel.has(l.id) ? C.accent : C.ink
     for (const [at, m] of [[from, l.levelM ?? 0], [to, l.slope!.toLevelM]] as const) {
@@ -552,13 +642,13 @@ export function draw(a: DrawArgs): void {
       const p = pxToScreen(frame, { x: r.x, y: r.y }), q = pxToScreen(frame, { x: r.x + r.w, y: r.y + r.h })
       area.rect(p.x, p.y, q.x - p.x, q.y - p.y)
     }
-    ctx.fillStyle = 'rgba(232,193,112,0.18)'
+    ctx.fillStyle = fade(C.accent, 0.12)
     ctx.fill(area)
     ctx.strokeStyle = C.accent
     ctx.lineWidth = 1.5
     ctx.stroke(rooms)
-    ctx.font = '300 12px Inter, system-ui, sans-serif'
-    ctx.fillStyle = 'rgba(242,242,240,0.6)'
+    ctx.font = `500 11px ${C.font}`
+    ctx.fillStyle = C.accent
     for (const n of a.preview.names) {
       const q = pxToScreen(frame, n.at)
       ctx.fillText(n.text, q.x, q.y)
