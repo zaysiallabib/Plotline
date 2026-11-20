@@ -184,6 +184,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
 - **Clean view:** the eye hides everything; a tap on the faint dot top right brings it back.
 - **A phone on its side, a tablet:** on a short screen the start screen scrolls, with the list of flats under the Enter button. On a screen 721 to 1080 px wide (a tablet upright) the bar stays at the top and the room's name sits just under it, so the two never overlap.
 - A computer with a touch screen works both ways: the mouse as always, a finger as above (the hint follows whichever you used last).
+- **Staff on a phone** (Edit → Furniture works, but a computer is still the tool for it): drag a piece with a finger to move it, drag the empty room to look; the piece's tag says "Tap puts it down · the panel turns or removes it" — no keys.
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. Thumbstick left/right turns you 45° at a time.
 

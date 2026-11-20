@@ -687,8 +687,9 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .panel { max-height: 50dvh; }
   .viewer:has(.popover) .panel { visibility: hidden; }
   /* the grip: a short bar at the top of every sheet; pull it down to close the sheet */
-  .grip { display: block; position: sticky; z-index: 1; top: 0; flex: none; height: var(--s-6); background: var(--glass-strong); touch-action: none; cursor: grab; }
+  .grip { display: block; position: relative; flex: none; height: var(--s-6); touch-action: none; cursor: grab; }
   .grip::before { content: ''; position: absolute; left: 50%; top: var(--s-3); width: var(--s-6); height: var(--s-1); translate: -50% 0; border-radius: var(--s-1); background: var(--line); }
+  .menu > .grip { margin-top: calc(-1 * var(--s-2)); }
   .menu-head:has(.x) { display: flex; align-items: center; justify-content: space-between; }
   .menu-head .x { display: inline-grid; }
   /* at rest the faded bar still takes a tap: it brings the chrome back and presses nothing (Hud) — never the 3D behind it */

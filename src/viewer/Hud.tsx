@@ -74,7 +74,7 @@ const pointer = { x: globalThis.innerWidth / 2 || 0, y: globalThis.innerHeight /
 globalThis.addEventListener?.('pointermove', (e) => Object.assign(pointer, { x: e.clientX, y: e.clientY }))
 
 /** The piece in hand, said where it is: under the dot while the mouse is locked, else beside the pointer. */
-function HandTag({ hand, locked }: { hand: HandInfo; locked: boolean }) {
+function HandTag({ hand, locked, finger }: { hand: HandInfo; locked: boolean; finger: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const place = () => ref.current && (ref.current.style.transform = locked ? '' : `translate(${pointer.x + 18}px, ${pointer.y + 18}px)`)
@@ -87,9 +87,15 @@ function HandTag({ hand, locked }: { hand: HandInfo; locked: boolean }) {
       <div>
         {hand.adding ? 'Placing' : 'Moving'}: {hand.label}
       </div>
-      {hand.error && <div className="refused">{hand.error} — move it on, or R to turn it</div>}
+      {hand.error && <div className="refused">{hand.error} — move it on, or {finger ? 'turn it in the panel' : 'R to turn it'}</div>}
       <div className="muted small">
-        {hand.ready ? `${locked ? 'Click or G' : 'Click'} puts it down · R turns · Esc ${hand.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling'}
+        {finger
+          ? hand.ready
+            ? 'Tap puts it down · the panel turns or removes it'
+            : 'Drag it to the floor, a wall or the ceiling'
+          : hand.ready
+            ? `${locked ? 'Click or G' : 'Click'} puts it down · R turns · Esc ${hand.adding ? 'cancels' : 'puts it back'}`
+            : 'Point at the floor, a wall or the ceiling'}
       </div>
     </div>
   )
@@ -487,7 +493,7 @@ export default function Hud(p: Props) {
         )}
       </div>
 
-      {p.hand && p.mode !== 'building' && <HandTag hand={p.hand} locked={p.locked} />}
+      {p.hand && p.mode !== 'building' && <HandTag hand={p.hand} locked={p.locked} finger={finger} />}
       {p.staff && p.locked && p.mode === 'walk' && <div className="dot" />}
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">
