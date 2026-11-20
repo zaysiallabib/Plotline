@@ -145,7 +145,7 @@ The button that is on (Finishes open, Comment on, an Edit mode on) has a light b
   - How it is decided: an outside window or door (onto the open air or a balcony) facing within 60° of where the wind comes from lets it in. Of those facing away from it (90° or more), the one farthest downwind lets it out. A door into the next room does not count.
   - **Fainter lines:** a neighbour block within 30 m upwind of that window, taller than your floor (floor × 3.2 m above the street), takes the wind.
   - With the wind on, **the compass becomes the wind rose** (larger). It shows every month at once, one slim line each toward where the wind comes FROM (longer = stronger, rings 1 m/s apart; the picked month blue and thick), turned like the compass. Click a line to pick its month. (The old **Rose** button is gone: the rose is the compass now, so it never covers anything.) Under the month's words: where the wind table comes from, and "A guide, not a wind simulation."
-- **What the surfaces look like** (session 31). Painted walls and ceilings have a faint, soft cloudiness, as a hand-plastered wall has — never one flat colour; the paint colour you chose stays exactly that colour (Low and High; Lite shows the plain colour). Window glass has the faint green-grey of real float glass and mirrors the sky; the neighbours' windows look like glass catching the sky, not dark holes, and in the Building view the tower's windows mirror the sky by day (they used to look near black).
+- **What the surfaces look like** (session 31). Where a wall meets the floor or the ceiling, and where a window's frame sits on its stone sill, the corner is softly shaded, as a photo of a room shows it (every quality, Lite too). Painted walls and ceilings have a faint, soft cloudiness, as a hand-plastered wall has — never one flat colour; the paint colour you chose stays exactly that colour (Low and High; Lite shows the plain colour). Window glass has the faint green-grey of real float glass and mirrors the sky; the neighbours' windows look like glass catching the sky, not dark holes, and in the Building view the tower's windows mirror the sky by day (they used to look near black).
 - **Around the flat** — the neighbouring buildings and roads, grey blocks at their height with dark roads, seen in Walk, Dollhouse and Building. They throw the sun's shadow onto the flat, and while they show, "© OpenStreetMap contributors" (the map's credit) sits bottom right. In Dollhouse and Building, a block standing between you and the flat (or the tower) is left out while you look from there, so a neighbour's roof never hides the floor you are looking at (2026-10-18). Its shadow stays.
   - **With a site set in the Studio** (§5, Site): the real buildings and roads from the map.
   - **No site: a made-up street, built like a real Dhaka street** (2026-11-20; before, the neighbours stood 8–25 m away with wide gaps and roads on every side). On the sides with no road, the next building stands **2–4 m from the flat's walls** (never nearer than 1.25–1.5 m past the plot's edge, as the building rules ask the neighbour too). The buildings along a side stand in one row with gaps of 1.5 m at most, about as tall as this building (two floors more or less). **One side has the road** (6–9 m wide; on some buildings two sides, a corner plot), with the buildings across it right at its edge. For a built-in building, the road is its drawing's own road.
@@ -863,9 +863,9 @@ Projects, their drawings and their pictures are kept in this browser only.
 
 ## 8. Room kinds and what each gets
 
-**Rooms in a flat**
-
 **Where the AC goes** (since session 31): on a wall with no window when there is one (an AC beside a window sits in the view out), never over the bed's headboard, and slid along the wall until it is clear of the sofa (the wall the pictures go on). Of the walls left, the one facing the room's biggest window — behind you as you look out — then the longest.
+
+**Rooms in a flat**
 
 | Kind | Gets |
 |---|---|
