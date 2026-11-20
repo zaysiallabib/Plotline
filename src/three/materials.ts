@@ -11,6 +11,7 @@ import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { TEXTURES } from '../furnish/textures'
 import { daylit as daylitPatch } from './daylight'
 
+const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
 const matCache = new Map<string, THREE.MeshStandardMaterial>()
 let maxAnisotropy = 1
@@ -19,18 +20,41 @@ export function setMaxAnisotropy(n: number): void {
   maxAnisotropy = n
 }
 
-function loadTex(url: string, repeatM: number, srgb: boolean): Promise<THREE.Texture> {
+/**
+ * Lite (render.ts Quality, set by PlotlineScene; procedural.ts re-exports it): the scanned plants (1.2–6.3 MB files each)
+ * are not loaded — a pot keeps its soil, a planter bed its earth, a kit plant model is left out (furniture.ts) — the
+ * models' pictures are decoded at half size, the street is plain boxes (context.ts), and (session 31) a texture set gives
+ * its colour and roughness only — no relief (normal) or ambient-occlusion maps: 28 of Lite's 96 textures on type-a, for a
+ * few % of a pixel-bound frame (procedural.ts pbr and furniture.ts's models follow it).
+ */
+export const lite = { on: false }
+
+/**
+ * One texture per (url, tile size), every one of a url sharing its picture: one download, one decode and one upload to
+ * the graphics chip (three shares a Source across textures with the same sampling), whatever the tile size — the rooms
+ * and the code-built furniture (procedural.ts) used to load the same picture once each, per tile size.
+ */
+export function texture(url: string, repeatM: number, srgb: boolean): Promise<THREE.Texture> {
   const key = `${url}|${repeatM}`
   let p = texCache.get(key)
   if (!p) {
-    p = new THREE.TextureLoader().loadAsync(url).then((tex) => {
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    let base = images.get(url)
+    if (!base) {
+      base = new THREE.TextureLoader().loadAsync(url).then((tex) => {
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+        tex.anisotropy = maxAnisotropy
+        if (srgb) tex.colorSpace = THREE.SRGBColorSpace
+        return tex
+      })
+      base.catch(() => console.warn(`[plotline] texture missing: ${url}`))
+      images.set(url, base)
+    }
+    p = base.then((b) => {
+      const tex = b.clone() // the same picture (Source); its own tiling
       tex.repeat.set(1 / repeatM, 1 / repeatM)
-      tex.anisotropy = maxAnisotropy
-      if (srgb) tex.colorSpace = THREE.SRGBColorSpace
       return tex
     })
-    p.catch(() => console.warn(`[plotline] texture missing: ${url}`))
+    p.catch(() => {})
     texCache.set(key, p)
   }
   return p
@@ -73,8 +97,8 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
     } else {
       const mat = m
       const apply = (slot: 'map' | 'normalMap' | 'roughnessMap' | 'aoMap', url: string | undefined, srgb = false) => {
-        if (!url) return
-        loadTex(url, set.repeatM, srgb)
+        if (!url || (lite.on && (slot === 'normalMap' || slot === 'aoMap'))) return
+        texture(url, set.repeatM, srgb)
           .then((t) => {
             mat[slot] = t
             if (slot === 'map') mat.color.set(ref.tint ?? '#ffffff').multiply(new THREE.Color(set.tint ?? '#ffffff'))

@@ -23,10 +23,22 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => g.scene)
+    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(g.scene) : g.scene))
     gltfCache.set(url, p)
   }
   return p
+}
+
+/** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
+export function colourOnly<T extends THREE.Object3D>(model: T): T {
+  model.traverse((o) => {
+    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshStandardMaterial[]) {
+      if (!m.normalMap && !m.aoMap) continue
+      m.normalMap = m.aoMap = null // never uploaded; the decoded pictures go with the garbage
+      m.needsUpdate = true
+    }
+  })
+  return model
 }
 
 /** Rotation about Y that turns the asset's declared front axis into +Z (see kit.ts frontAxis). */
