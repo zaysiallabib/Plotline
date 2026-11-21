@@ -38,6 +38,7 @@ const LOOK_SLAB = 0.15
  */
 export const UNDER_LEVEL_M = 0.05
 const UP = new THREE.Vector3(0, 1, 0)
+const HIT = new THREE.Vector3()
 /** --accent and --bg (src/index.css): the picked floor's bands, the hover's wash */
 const ACCENT = new THREE.Color('#2458a6')
 const MARBLE = new THREE.Color('#f5f3ef')
@@ -290,6 +291,8 @@ export class Building extends THREE.Group {
   private picked: number
   /** every floor from the lowest basement to the roof with its finished floor's y (pickAt's floorAtY) */
   private readonly levels: [number, number][] = []
+  /** each piece's box (pickAt), once: the tower does not move */
+  private readonly boxes = new Map<THREE.Object3D, THREE.Box3>()
   /** the haze in the panes by day, the rooms' light at night (setSun) */
   private readonly paneSky = { value: PANE_HAZE }
   private readonly paneNight = { value: 0 }
@@ -679,7 +682,24 @@ export class Building extends THREE.Group {
    * plane is in front of it) unless a basement is picked. null: nothing of the tower.
    */
   pickAt(ray: THREE.Raycaster): TowerHit | null {
-    const hit = ray.intersectObjects(this.children.filter((o) => o !== this.street && o !== this.mark && o !== this.wash && (o.visible || !o.userData.cut)), true)[0]
+    // nearest box first, and no further once a hit is nearer than the next box: the same hit, a few meshes tested instead of
+    // every flat of the column (a mouse over the tower picks once a frame: ≈ 2.5 ms → a fraction)
+    const r = ray.ray
+    const near = this.children
+      .filter((o) => o !== this.street && o !== this.mark && o !== this.wash && (o.visible || !o.userData.cut))
+      .map((o) => {
+        let b = this.boxes.get(o)
+        if (!b) this.boxes.set(o, (b = new THREE.Box3().setFromObject(o)))
+        return { o, d: b.containsPoint(r.origin) ? 0 : (r.intersectBox(b, HIT)?.distanceTo(r.origin) ?? Infinity) }
+      })
+      .filter((x) => x.d < Infinity)
+      .sort((a, b) => a.d - b.d)
+    let hit: THREE.Intersection | undefined
+    for (const { o, d } of near) {
+      if (hit && hit.distance < d) break
+      const h = ray.intersectObject(o, true)[0]
+      if (h && (!hit || h.distance < hit.distance)) hit = h
+    }
     if (!hit || (hit.point.y < this.streetY - 0.02 && this.picked >= 0)) return null
     let o: THREE.Object3D | null = hit.object
     while (o && o !== this && typeof o.userData.level !== 'number') o = o.parent
