@@ -139,7 +139,10 @@ soft frosted rectangle whose edges fade out, so the words read over any wall, by
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
-picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). In the Building view the same place names the
+picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
+shown from its door through a narrower lens, looking down at the WC as one does from a WC's door, the basin beside the door
+at the edge of the picture; walk out of it and the lens widens back to the usual one in about a third of a second (on a
+phone held upright the picture is narrow already and stays as it is). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 

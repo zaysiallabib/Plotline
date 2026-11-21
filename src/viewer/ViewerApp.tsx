@@ -233,7 +233,7 @@ function resolveUnit(): Unit | null {
   return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? projectUnit(id) // a flat of a building made in the Studio (this browser)
 }
 
-const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0): void => scene.spawnAt(p, yawFor(face), pitch)
+const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0, hfov?: number): void => scene.spawnAt(p, yawFor(face), pitch, hfov)
 /** Plan-space eye position (rig + camera): the walker in walk mode, the orbit camera in dollhouse. */
 const eyeOf = (scene: PlotlineScene): Pt => {
   const w = scene.camera.getWorldPosition(new THREE.Vector3())
@@ -1567,7 +1567,7 @@ function Viewer({ first }: { first: Shown }) {
               // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
               scene.shutLeaf(v.closeLeaf ?? null)
               if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene.shutLeaf(null), { once: true })
-              spawn(scene, v.p, v.face, v.pitch)
+              spawn(scene, v.p, v.face, v.pitch, v.hfov) // (a WC under 2 m²: a narrower lens, eased back as he walks out)
               setMode('walk')
             }}
             onMode={go}

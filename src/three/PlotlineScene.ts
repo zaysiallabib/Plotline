@@ -1016,6 +1016,7 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.lens = null
     this.camera.fov = mode === 'walk' ? WALK_FOV : VIEW_FOV
     this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
@@ -1072,14 +1073,23 @@ export class PlotlineScene {
   }
 
   /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left), pitchRad down when < 0. Switches to walk mode. */
-  spawnAt(p: Pt, yawRad: number, pitchRad = 0): void {
+  spawnAt(p: Pt, yawRad: number, pitchRad = 0, hfovDeg?: number): void {
     this.walker = { ...p }
     this.floorY = this.walkLevel(p)
     this.yaw = yawRad
     this.moveTarget = null
     this.setMode('walk')
     this.camera.quaternion.setFromEuler(new THREE.Euler(pitchRad, yawRad, 0, 'YXZ'))
+    // a narrower lens for this view (a WC under 2 m², spawn.ts TINY_HFOV): that many degrees across a wide screen, never wider
+    // than the walk's; eased back to the walk's as he leaves the room (tick)
+    const fov = hfovDeg ? Math.min(WALK_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hfovDeg) / 2) / this.camera.aspect))) : WALK_FOV
+    this.lens = fov < WALK_FOV && this.unit ? { roomId: core.roomAt(p, this.rooms, this.unit)?.id ?? null } : null
+    this.camera.fov = fov
+    this.camera.updateProjectionMatrix()
   }
+
+  /** a view's narrower lens (spawnAt) and the room it is for: walking out of it eases the walk's back */
+  private lens: { roomId: Id | null } | null = null
 
   /** Shuts the leaf of door `openingId` (a first frame's `closeLeaf`) and reopens the one shut before; null reopens only. */
   shutLeaf(openingId: Id | null): void {
@@ -2589,6 +2599,14 @@ export class PlotlineScene {
       // the eye follows the floor: eased (≈ 0.1 s), so a step is climbed like a stair and a ramp is walked, never a jump
       this.floorY += (this.walkLevel(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
+      // out of the room a narrower lens was for (spawnAt): the walk's again, eased over ~0.3 s
+      if (this.lens && this.unit && core.roomAt(this.walker, this.rooms, this.unit)?.id !== this.lens.roomId) {
+        const c = this.camera
+        c.fov += (WALK_FOV - c.fov) * (1 - Math.exp(-dt / 0.1))
+        if (WALK_FOV - c.fov < 0.05) (c.fov = WALK_FOV), (this.lens = null)
+        c.updateProjectionMatrix()
+        this.wake()
+      }
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
     this.wind?.update(dt)
