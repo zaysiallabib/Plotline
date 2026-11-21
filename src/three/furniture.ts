@@ -59,7 +59,8 @@ export async function simplified<T extends THREE.Object3D>(g: T, tris: number): 
   const meshes: THREE.Mesh[] = []
   g.traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh)))
   const n = meshes.reduce((a, m) => a + triangles(m.geometry), 0)
-  if (n <= tris) return g
+  // within the budget, or a piece with a part that draws itself (a live mirror: cloning it would make a second mirror): as it is
+  if (n <= tris || meshes.some((m) => m.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender)) return g
   const c = g.clone()
   const parts: THREE.Mesh[] = []
   c.traverse((o) => void ((o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh)))
