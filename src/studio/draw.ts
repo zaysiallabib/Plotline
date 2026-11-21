@@ -1,7 +1,7 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
 import type { Flat, FurniturePlacement, Graph, Id, Opening, Pt, Room, RoomKind, RoomLabel, Vertex, Wall } from '../core'
-import { NAME_LOOKS, nameLooks, overlaps, type Rect } from './crowd'
+import { NAME_LOOKS, nameLooks, overlaps, placeBadges, type Rect } from './crowd'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, sideDots, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
@@ -223,18 +223,27 @@ export function roomNames(labels: RoomLabel[], rooms: Room[], toScreen: (m: Pt) 
   return new Map(labels.map((l, i) => [l.id, { look: looks[i], rect: looks[i] < 0 ? null : boxes[i].rects[looks[i]] }]))
 }
 
-/** each flat's name (core.deriveFlats), 12 px above the top edge of its rooms, in its colour; badges and lengths keep off it */
-export function flatNames(flats: Flat[], rooms: Room[], g: Graph, toScreen: (m: Pt) => Pt): FlatName[] {
+/**
+ * Each flat's name (core.deriveFlats), 12 px above the top edge of its rooms, in its colour — stepped off the room names
+ * shown (`names`, roomNames' rectangles) as an issue badge is (crowd.placeBadges; qa3 P3: "FLAT 1" sat on "AOD (NORTH)"); badges
+ * and lengths keep off it.
+ */
+export function flatNames(flats: Flat[], rooms: Room[], g: Graph, toScreen: (m: Pt) => Pt, names: Rect[] = []): FlatName[] {
   const font = tokens().font
-  return flats.flatMap((f, i) => {
+  const tags = flats.flatMap((f, i) => {
     const ps = rooms.filter((r) => f.roomIds.includes(r.id)).flatMap((r) => roomPolygon(r, g))
     if (!ps.length) return []
     const xs = ps.map((p) => p.x)
     const top = toScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ps.map((p) => p.y)) })
-    const at = { x: top.x, y: top.y - 12 }
     const text = f.name.toUpperCase()
     const hw = (textWidth(text, `500 12px ${font}`) + 0.12 * 12 * text.length) / 2 + 2
-    return [{ text, at, rgb: flatRgb(i), rect: { x0: at.x - hw, y0: at.y - 11, x1: at.x + hw, y1: at.y + 2 } }]
+    return [{ text, at: { x: top.x, y: top.y - 12 }, rgb: flatRgb(i), hw }]
+  })
+  // the text's box is at.y − 11 … at.y + 2: its middle 4.5 px over the baseline
+  const moved = placeBadges(tags.map((t) => ({ at: { x: t.at.x, y: t.at.y - 4.5 }, hw: t.hw, hh: 6.5, dot: true })), names)
+  return tags.map(({ text, at: a, rgb, hw }, i) => {
+    const at = { x: a.x + moved[i].x, y: a.y + moved[i].y }
+    return { text, at, rgb, rect: { x0: at.x - hw, y0: at.y - 11, x1: at.x + hw, y1: at.y + 2 } }
   })
 }
 
