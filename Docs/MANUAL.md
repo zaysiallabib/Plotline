@@ -456,8 +456,13 @@ exactly like the built-in ones.
    or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
-4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click to place it
-   (the line goes as soon as the piece is down).
+   An **OBJ or STL names no unit**. When its numbers cannot be metres (bigger than 12 m or smaller than 5 cm), Plotline
+   does not fill in a size it would have to guess: it says "This file names no unit. It looks like:" with the units that
+   make it a piece of furniture, each with the width it gives — **Inches · 7'-0"**, **Centimetres · 2'-9"** for a sofa
+   drawn 84 across. The size boxes show the first in grey; pick one, or type the real size of one side, and **Add to the
+   library** can be pressed. When only one unit fits (an 1800-wide cabinet: millimetres) it is picked already, as before.
+4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click (on a phone,
+   tap) to place it (the line goes as soon as the piece is down).
 
 It is listed on top of the library under **Your own** (and in its group), marked **yours**, with **⋯**: **Rename**;
 **Change size** (pieces already placed take the new size at once); **Remove…** (asks once; pieces already placed stay —

@@ -127,3 +127,9 @@ dialog.own::backdrop { background: var(--glass); backdrop-filter: var(--blur); }
   background: none; border: 0; border-radius: var(--r-sm); color: var(--muted); font: inherit; font-size: var(--fs-lg); line-height: 1; cursor: pointer;
 }
 .chip-own .chip-edit:hover { background: var(--hover); color: var(--ink); }
+
+/* a finger: the four front arrows a fingertip each (the rest already follow --control) */
+@media (pointer: coarse) {
+  .own-fronts { grid-template: repeat(3, var(--touch)) / repeat(3, var(--touch)); }
+  .own .own-front { width: var(--touch); height: var(--touch); }
+}
