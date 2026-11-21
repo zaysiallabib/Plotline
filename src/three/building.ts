@@ -30,7 +30,7 @@ import { lightPiece } from './daylight'
 import { buildFurniture } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { SITE_REACH_M, type Quality } from './render'
-import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
+import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
@@ -89,6 +89,8 @@ function paneMaterial(sky: { value: number }): THREE.MeshStandardMaterial {
     s.fragmentShader = `uniform vec3 hazeColor;\nuniform float paneSky;\nvarying vec4 vPane;\n${s.fragmentShader}`
       .replace('#include <color_fragment>', `#include <color_fragment>\n${PANE_FRAME}`)
       .replace('#include <opaque_fragment>', `${PANE_GLASS}\n#include <opaque_fragment>`)
+    s.vertexShader = noSpots(s.vertexShader) // the walked flat's lamps are not the tower's (materials.ts noSpots)
+    s.fragmentShader = noSpots(s.fragmentShader)
   }
   m.customProgramCacheKey = () => 'tower-pane'
   return m
@@ -362,7 +364,7 @@ export class Building extends THREE.Group {
         // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
         const slab = k === 0 || hasShell ? [] : plate(u, rooms, mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M).map(at)
         if (mine) put(EXTERIOR_PLASTER, ...slab)
-        const mesh = new THREE.Mesh(merge(mine ? walls : [...walls, ...slab]), materialFor(EXTERIOR_PLASTER))
+        const mesh = new THREE.Mesh(merge(mine ? walls : [...walls, ...slab]), materialFor(EXTERIOR_PLASTER, false, false, true))
         mesh.castShadow = mesh.receiveShadow = true
         mesh.visible = !mine && !hasShell // the furnished flat is drawn by the scene; this one is only its pick proxy (every flat's, under the architect's shape)
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
@@ -420,7 +422,7 @@ export class Building extends THREE.Group {
 
     for (const [m, geos] of lists) {
       const pane = m === 'glass'
-      const mesh = new THREE.Mesh(merge(geos), m === 'glass' ? this.panes : materialFor(m))
+      const mesh = new THREE.Mesh(merge(geos), m === 'glass' ? this.panes : materialFor(m, false, false, true))
       mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT
       mesh.receiveShadow = true // a pane too: its frame in the facade's shade
       if (pane) this.paneMesh = mesh // picked: a ray through a window names the flat behind it (paneOwner)
@@ -549,7 +551,7 @@ export class Building extends THREE.Group {
     group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
     group.userData.level = k // a cut at a lower floor hides it (highlight)
     for (const [m, geos] of lists) {
-      const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m))
+      const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m, false, false, true))
       const flatOnly = m === BAY_PAINT || m === WATER || m === this.panes
       mesh.castShadow = !flatOnly
       mesh.receiveShadow = true

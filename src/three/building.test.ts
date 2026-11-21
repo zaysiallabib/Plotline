@@ -642,3 +642,57 @@ describe('one draw of the scene a frame (session 31 glow)', () => {
     expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
   })
 })
+
+describe('stand-ins: a scanned piece with hundreds of triangles where thousands are not seen (session 31 perf)', () => {
+  test('simplified: about the budget, every part cut by the same share, small parts whole, the materials shared, the model itself untouched', async () => {
+    const THREE = await import('three')
+    const { simplified } = await import('./furniture')
+    const wood = new THREE.MeshStandardMaterial()
+    const seat = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), wood) // 12 k triangles
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8, 1), wood) // 32: a small part
+    const model = new THREE.Group().add(seat, leg)
+    const tris = (g: import('three').BufferGeometry) => (g.index ?? g.attributes.position).count / 3
+    const before = tris(seat.geometry)
+    const s = await simplified(model, 1200)
+    const [sSeat, sLeg] = s.children as import('three').Mesh[]
+    expect(tris(sSeat.geometry)).toBeLessThan(before / 8)
+    expect(tris(sSeat.geometry)).toBeGreaterThan(400)
+    expect(tris(sLeg.geometry)).toBe(tris(leg.geometry))
+    expect(sSeat.material).toBe(wood)
+    expect(tris(seat.geometry)).toBe(before) // the model the walk draws is not touched
+    sSeat.geometry.computeBoundingBox()
+    expect(sSeat.geometry.boundingBox!.max.y).toBeGreaterThan(0.9) // still the same shape's size
+    expect(await simplified(model, 1e6)).toBe(model) // within the budget: the model itself
+  })
+})
+
+describe('the rooms behind the glass take none of the walked flat’s lamps (session 31 perf)', () => {
+  test('noSpots: every chunk that names spot lights written out with none; the sun, the sky and the rest untouched', async () => {
+    const THREE = await import('three')
+    const { noSpots } = await import('./materials')
+    for (const sh of [THREE.ShaderLib.standard.vertexShader, THREE.ShaderLib.standard.fragmentShader]) {
+      const out = noSpots(sh)
+      expect(out).not.toMatch(/NUM_SPOT_LIGHT/)
+      expect(out).not.toMatch(/#include <(lights_fragment_begin|lights_pars_begin|shadowmap_pars_vertex|shadowmap_vertex)>/)
+    }
+    const f = noSpots(THREE.ShaderLib.standard.fragmentShader)
+    expect(f).toMatch(/NUM_DIR_LIGHTS/) // the sun stays
+    expect(f).toMatch(/#include <map_fragment>/) // chunks with no spot light left to three
+  })
+  test('the tower: its shells, plates and levels in the outside variant of their finish (none of the walked flat’s lamps); the walk keeps its own', async () => {
+    const { materialFor, EXTERIOR_PLASTER } = await import('./materials')
+    const { Building } = await import('./building')
+    const out = materialFor(EXTERIOR_PLASTER, false, false, true)
+    expect(out).not.toBe(materialFor(EXTERIOR_PLASTER)) // the walk's slab keeps its lamps
+    expect(out.customProgramCacheKey()).toBe('outside')
+    const b = Building.for(bti.FLATS['type-a'].unit)!
+    const keys = new Set<string>()
+    b.traverse((o) => {
+      const m = (o as unknown as { material?: { customProgramCacheKey?: () => string } }).material
+      if (m && (o as unknown as { isMesh?: boolean }).isMesh && o.parent === b) keys.add(m.customProgramCacheKey?.() ?? '')
+    })
+    expect([...keys].filter((k) => !['outside', 'tower-pane', 'tower-room', 'tower-lift', ''].includes(k))).toEqual([])
+    expect(keys.has('outside')).toBe(true)
+    b.dispose()
+  })
+})

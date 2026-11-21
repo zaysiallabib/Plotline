@@ -137,9 +137,10 @@ export function fallbackColor(textureId: string): string {
  * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
  * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
  * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
+ * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots).
  */
-export function materialFor(ref: MaterialRef, edge = false, daylit = false): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '')
+export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial
@@ -178,6 +179,10 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
   if (daylit) daylitPatch(m)
+  if (outside) {
+    m.onBeforeCompile = (s) => void ((s.vertexShader = noSpots(s.vertexShader)), (s.fragmentShader = noSpots(s.fragmentShader)))
+    m.customProgramCacheKey = () => 'outside'
+  }
   matCache.set(key, m)
   return m
 }

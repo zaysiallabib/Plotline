@@ -23,7 +23,7 @@ import { textureSet } from '../furnish/textures'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { KERB_M, floorGeometry, liftWall, liftedWall, roomCeiling, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
-import { fallbackColor, resolveFinishRef, texture } from './materials'
+import { fallbackColor, noSpots, resolveFinishRef, texture } from './materials'
 
 /** the sky's light inside a room as seen from the street, × the street's (the eye outside is adapted to the street) */
 export const DAY_INSIDE = 0.35
@@ -39,6 +39,8 @@ const GAP_M = 0.04
 /** pieces smaller than this every way are left out (a vase, a book, a cushion's bolster): not seen from the street; and a rug or a mat (FLAT_M high): it would flicker against its floor from afar */
 const SMALL_M = 0.25 // ponytail: a size cut, not a view-dependent level of detail; per-piece LOD if close orbits show the gap
 const FLAT_M = 0.05
+/** a scanned piece behind a window: its stand-in at about this many triangles (furniture.ts standIn; session 31 perf — the scans themselves were 2 of a High tower's 4.7 M triangles) */
+export const INSIDE_TRIS = 500
 /** a scanned plant (furnish/kit.ts category 'plant', not code-built): ~70k triangles a pot — 9 in 10 of a flat's — for a few leaves seen through a window (Low and Lite never load it anyway) */
 const scannedPlant = (assetId: string) => {
   const a = kitAsset(assetId)
@@ -271,7 +273,7 @@ function bake(m: THREE.Mesh, room: number, out: THREE.BufferGeometry[]): void {
 
 /**
  * A drawing's furniture (its own frame) by the walk's presets, indoor rooms only (a level's outdoor pieces are its own:
- * building.ts furnish), pieces under SMALL_M, rugs and scanned plants left out, baked as interior parts — a piece at a time, `pause` between them (the
+ * building.ts furnish), pieces under SMALL_M, rugs and scanned plants left out, the scans as their stand-ins (INSIDE_TRIS), baked as interior parts — a piece at a time, `pause` between them (the
  * caller's frame budget; true: stop, the tower is gone). null: nothing to show.
  */
 export async function furnitureGeometry(u: Unit, rooms: Room[], pause: () => Promise<boolean>): Promise<THREE.BufferGeometry | null> {
@@ -283,7 +285,7 @@ export async function furnitureGeometry(u: Unit, rooms: Room[], pause: () => Pro
     const r = i === undefined ? undefined : rooms[i]
     const size = placementSize(p)
     if (p.removed || !indoor(r) || Math.max(size.x, size.y, size.z) < SMALL_M || size.y < FLAT_M || scannedPlant(p.assetId)) continue
-    const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
+    const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p), INSIDE_TRIS)
     obj.updateMatrixWorld(true)
     obj.traverseVisible((o) => void ((o as THREE.Mesh).isMesh && bake(o as THREE.Mesh, i!, out)))
     if (await pause()) return merge(out)
@@ -341,6 +343,8 @@ export function interiorMaterial(lamps: THREE.DataTexture, scale: { value: numbe
         reflectedLight.directDiffuse *= towerSun;
         reflectedLight.directSpecular *= towerSun;`,
       )
+    s.vertexShader = noSpots(s.vertexShader)
+    s.fragmentShader = noSpots(s.fragmentShader)
   }
   m.customProgramCacheKey = () => 'tower-room'
   return m

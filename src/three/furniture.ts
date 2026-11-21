@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { FurniturePlacement } from '../core'
 import { kitAsset, objectKind, placementLabel, rebuildsAtSize } from '../furnish/kit'
 import { buildProcedural, lean, lite } from '../furnish/procedural'
@@ -27,6 +29,48 @@ function loadModel(url: string): Promise<THREE.Group> {
     gltfCache.set(url, p)
   }
   return p
+}
+
+const triangles = (g: THREE.BufferGeometry): number => (g.index ?? g.attributes.position).count / 3
+const standIns = new Map<string, Promise<THREE.Group>>()
+const simplifier = new SimplifyModifier()
+/** a part this small keeps its own triangles: a knob, a leg's foot (cutting it would only make holes) */
+const SMALL_PART = 64
+
+/**
+ * A model with about `tris` triangles at most (session 31 perf: a scanned sofa is 20–60 thousand; where it is seen from a
+ * street or on Lite, hundreds read the same): meshoptimizer through three's SimplifyModifier collapses the edges where the
+ * shape, its normals and its picture's seams move least; every part cut by the same share, a small part kept whole. Made once
+ * per model and budget when the model first loads, kept beside it in this page (every piece of that model shares it). A model
+ * already within the budget is the model.
+ */
+export function standIn(url: string, tris: number): Promise<THREE.Group> {
+  const key = `${url}|${tris}`
+  let p = standIns.get(key)
+  if (!p) {
+    p = loadModel(url).then((g) => simplified(g, tris))
+    standIns.set(key, p)
+  }
+  return p
+}
+
+/** standIn's work on a loaded model: a clone with its parts simplified (their materials shared), or the model itself if within `tris`. */
+export async function simplified<T extends THREE.Object3D>(g: T, tris: number): Promise<T> {
+  const meshes: THREE.Mesh[] = []
+  g.traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh)))
+  const n = meshes.reduce((a, m) => a + triangles(m.geometry), 0)
+  if (n <= tris) return g
+  const c = g.clone()
+  const parts: THREE.Mesh[] = []
+  c.traverse((o) => void ((o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh)))
+  for (const m of parts) {
+    const t = triangles(m.geometry)
+    if (t < SMALL_PART || m.geometry.groups.length) continue
+    const geo = m.geometry.index ? m.geometry : mergeVertices(m.geometry)
+    const keep = Math.max(SMALL_PART / 4, Math.round((t * tris) / n))
+    m.geometry = await simplifier.modify(geo, Math.round(geo.attributes.position.count * (1 - keep / t)))
+  }
+  return c
 }
 
 /**
@@ -94,9 +138,10 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * (TV on its unit, pillows on the sofa), and the placement's own `mountY` (a wall piece staff moved up or down) wins over
  * both — an `onTop` piece (a table lamp) at `restM`, the top it stands on (studio/furniture.ts bottomOf);
  * 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
- * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute.
+ * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute. `tris`: a scanned model's stand-in at about that many
+ * triangles (standIn), not the scan itself.
  */
-export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0, restM?: number): Promise<THREE.Group> {
+export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0, restM?: number, tris?: number): Promise<THREE.Group> {
   const pivot = new THREE.Group()
   pivot.position.set(p.x, floorM, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
@@ -109,7 +154,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
   if (asset) {
     try {
       const rebuilt = rebuildsAtSize(asset.id)
-      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await loadModel(asset.url)).clone()
+      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await (tris ? standIn(asset.url, tris) : loadModel(asset.url))).clone()
       if (!model) throw new Error('no procedural builder')
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
