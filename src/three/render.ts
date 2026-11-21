@@ -976,6 +976,7 @@ export class Look {
   /** The wide map's frustum (TIERS.wide): the site WIDE_M each way from the flat's middle, from the street (the ground plane, where it stands now) up WIDE_UP_M. */
   private fitWide(): void {
     if (!this.wide) return
+    this.wideWaited ||= 1 // drawn again on the next frame at rest, whether or not its frustum moved (shown again after a stair)
     const mid = this.fitBox.getCenter(new THREE.Vector3())
     const y = this.ground.position.y
     const w = this.aim(this.wide.shadow.camera)
@@ -1021,7 +1022,8 @@ export class Look {
       for (const { light } of this.pool) if (light.castShadow) light.shadow.needsUpdate = true
       this.shadowKey = key
     }
-    if (this.wide && (moved || this.wideWaited > 0) && drawWide(moved, ++this.wideWaited)) {
+    // (hidden, three draws no map for it: it stays out of date until it shows again)
+    if (this.wide?.visible && (moved || this.wideWaited > 0) && drawWide(moved, ++this.wideWaited)) {
       this.wide.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true
       this.wideWaited = 0
     }
