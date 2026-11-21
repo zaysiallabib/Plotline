@@ -104,8 +104,8 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   presets' furniture with their colours baked into the vertices — one program, one geometry per drawing shared by every floor,
   a lamp table per flat for the night pattern `roomLight`; round the flat only the rooms, the furniture once the Building
   view has opened; a drawing's rooms are kept for the page, so a stair's next tower has them at once). Round the flat the
-  tower is drawn as one mesh per material once it settles (`batchAround`), each flat's rooms its own mesh, every tree's leaves of one card one
-  instanced mesh (`leavesTogether`; the card geometry is shared, `procedural.ts` `cardGeo`); the Building view takes it back one by one; the Building view lifts the picked flat by light (a depth-matched skin that multiplies what is behind
+  tower is drawn as one mesh per material once it settles (`batchAround`), each flat's rooms its own mesh, in the Dollhouse every tree's leaves of one card
+  in an 8 m square one instanced mesh (`leavesTogether`; the card geometry is shared, `procedural.ts` `cardGeo`); the Building view takes it back one by one; the Building view lifts the picked flat by light (a depth-matched skin that multiplies what is behind
   it), and picks the floor under the pointer (`pickAt`, `floorAtY`; a window names its flat); the
   architect's outside shape is `shell.ts`; the wind lines `wind.ts`.
 - Nothing in `src/three` or `src/furnish` may name a unit, project or room (`greenery.test.ts` enforces it): the look

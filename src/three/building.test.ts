@@ -818,7 +818,7 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     b.dispose()
   })
 
-  test("every tree's leaves of one card and atlas are one instanced mesh round the flat, the trees' own back in the Building view", async () => {
+  test("in the Dollhouse every tree's leaves of one card and atlas in an 8 m square are one instanced mesh, the trees' own back in Walk and the Building view", async () => {
     const g = globalThis as unknown as Record<string, unknown>
     g.requestAnimationFrame ??= () => 0
     const THREE = await import('three')
@@ -840,9 +840,13 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     }
     const a1 = tree(0, 3), a2 = tree(5, 2), far = tree(20, 1) // (another 8 m square: its own, so out of sight it is not drawn)
     expect(a1.geometry).not.toBe(a2.geometry)
+    const mergedNow = () => b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
     b.frame('walk', 'low')
     await new Promise((r) => setTimeout(r, 450))
-    const merged = b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
+    expect(mergedNow().length).toBe(0) // from inside the flat each tree is culled on its own
+    b.frame('orbit', 'low')
+    await new Promise((r) => setTimeout(r, 450))
+    const merged = mergedNow()
     expect(merged.length).toBe(1)
     expect(merged[0].count).toBe(5)
     expect([a1.layers.mask, a2.layers.mask, far.layers.mask]).toEqual([1 << HIDDEN, 1 << HIDDEN, 1])

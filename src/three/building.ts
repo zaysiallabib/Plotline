@@ -613,6 +613,9 @@ export class Building extends THREE.Group {
     const around = mode !== 'building'
     this.unbatchAround()
     this.around = around
+    // the trees' leaves merged per 8 m square in the Dollhouse only (leavesTogether): from inside the flat each tree is culled
+    // on its own and few are in sight — merged, Walk / High on Sheltech A drew 1.2 → 1.8 M triangles for no fewer draws
+    this.leavesMerged = mode === 'orbit'
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
     // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
@@ -641,6 +644,7 @@ export class Building extends THREE.Group {
 
   /** round the flat (walk, Dollhouse): the tower is drawn as one mesh per material (batchAround) */
   private around = false
+  private leavesMerged = false
   private batched: { batches: THREE.Mesh[]; leaves: THREE.InstancedMesh[]; moved: THREE.Object3D[] } | null = null
   private batchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -659,7 +663,7 @@ export class Building extends THREE.Group {
       this.unbatchAround()
       const before: THREE.Object3D[] = []
       this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
-      const leaves = this.leavesTogether()
+      const leaves = this.leavesMerged ? this.leavesTogether() : []
       const batches = batch(this, Infinity)
       this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
       this.onChange()
@@ -678,7 +682,7 @@ export class Building extends THREE.Group {
   }
 
   /**
-   * Round the flat: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's
+   * In the Dollhouse: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's
    * in one 8 m square (as the pieces' batches: a square out of sight is not drawn — the whole ground's leaves in one mesh
    * took Walk / High on Sheltech from 1.2 to 3.2 M triangles), as ONE instanced mesh (the originals hidden) — Sheltech's
    * ground was ~150 draws of leaves. Only matrices are copied (a few ms), not leaves laid out as plain geometry: that froze
