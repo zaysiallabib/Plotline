@@ -54,6 +54,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
 | **Edit ▾ → Download 3D model** | Saves this flat as one `.glb` once every room has arrived | the bar | staff | §3, §5 Give the drawing back |
+| **⋯ → How fast is it here?** · `?stats=1` · **Copy** · × / Esc | A card with the graphics chip, the quality, a frame's time and what a frame draws; Copy puts it on the clipboard as plain text to send | the bar, not on a buyer link | everyone | §2 Choosing quality |
 | **⋯ → Quality: Lite · Low · High** | How heavy the 3D is; a blue dot marks the recommended one; a new choice reloads the page | the bar | everyone | §2 Choosing quality |
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
@@ -105,7 +106,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
 | **Length**, **Height** (a low wall) | Type its length (end B moves) or height | Edit openings panel | staff | §3 Edit openings |
 | **Del** / **Backspace** · **Delete** | Removes the picked opening or low wall | Edit openings | staff | §3 Edit openings |
-| **Esc** | Gives the mouse back and goes one step back: in Clean view only brings everything back; the "which floors?" box closes; an open list or menu (rooms, Edit, ⋯) closes first; a piece in your hand goes back (a new one is dropped); in Edit furniture closes the library and unpicks; in Edit openings unpicks; else drops an unsaved note; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| **Esc** | Gives the mouse back and goes one step back: in Clean view only brings everything back; the "which floors?" box closes; an open list or menu (rooms, Edit, ⋯) closes first; a piece in your hand goes back (a new one is dropped); in Edit furniture closes the library and unpicks; in Edit openings unpicks; else drops an unsaved note; else stops Comment; else closes Finishes, the Sun & wind card and the How fast card | any | everyone | §2, §3 |
 | Number keys | Nothing | — | — | — |
 | One finger drag | Look round (the room follows the finger) | Walk, a finger | everyone | §2 On a phone or tablet |
 | Tap the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |

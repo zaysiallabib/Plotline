@@ -119,7 +119,8 @@ One accent on the page: the primary button. Everything else is ink on marble.
   attention while it is on (no toasts, no hints).
 - Enter screen: marble, the flat's name in the serif, the one blue button. The quality note (Lite / Low / High) is one
   muted line under it with "Change", not a toast.
-- Finishes, Comment, the rooms list, the Sun & wind card, the Edit furniture panel and the library: glass panels,
+- Finishes, Comment, the rooms list, the Sun & wind card, the Edit furniture panel, the library and the How fast card
+  (⋯ → How fast is it here?: each number an inscription over its value, one ordinary Copy button): glass panels,
   320 px wide (`--panel-w`), docked to their button, inscription titles, white picked rows.
 - A picked piece, opening or low wall: the accent line over a white halo (above, "Colour"); a refused spot: terracotta.
 - Building view: the floor rail (glass, right) has the floor numbers in the serif at `--fs-xl` and Roof / Ground / B1 as
