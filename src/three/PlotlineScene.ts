@@ -659,11 +659,11 @@ export class PlotlineScene {
     const steps = this.build(unit, false)
     steps.next()
     const built = this.buildToken
-    // the rest ~12 ms a frame (the daylight bake pauses after each surface it lights)
+    // the rest ~30 ms a frame (the daylight bake pauses after each surface it lights)
     for (let done = false; !done && built === this.buildToken; ) {
       await frame()
       const t = performance.now()
-      while (!(done = !!steps.next().done) && performance.now() - t < 12);
+      while (!(done = !!steps.next().done) && performance.now() - t < 30);
     }
     await this.furnished
     // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
@@ -710,7 +710,7 @@ export class PlotlineScene {
     const sent = new Set<THREE.Texture>()
     for (let i = 0; i < todo.length; ) {
       const [t0, n0] = [performance.now(), programs.length]
-      while (i < todo.length && programs.length === n0 && performance.now() - t0 < 8) {
+      while (i < todo.length && programs.length === n0 && performance.now() - t0 < 30) {
         const { o, side } = todo[i++]
         const flip = side === undefined ? [] : [o.material].flat().filter(twoPass)
         for (const m of flip) (m.side = side!), (m.needsUpdate = true)
@@ -1384,6 +1384,7 @@ export class PlotlineScene {
 
   private settle = (): void => {
     if (this.disposed || !this.ready || this.exporting) return // exportGlb batches them again when it is done
+    if (this.holding) return void (this.batchTimer = window.setTimeout(this.settle, BATCH_MS)) // a stair's floor, hidden: batched as it shows
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
     for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
@@ -1759,8 +1760,8 @@ export class PlotlineScene {
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed
-      // a stair's floor (arrive): a frame every ~12 ms of building, the floor he leaves drawn in between
-      if (this.holding && performance.now() - t > 12) {
+      // a stair's floor (arrive): a frame every ~30 ms of building, the floor he leaves drawn in between
+      if (this.holding && performance.now() - t > 30) {
         await new Promise((r) => requestAnimationFrame(r))
         if (token !== this.buildToken) return
         t = performance.now()
