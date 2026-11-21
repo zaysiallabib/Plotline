@@ -281,6 +281,10 @@ export class Building extends THREE.Group {
   onChange: () => void = () => {}
   /** when the tower was made, its rooms all in, its furniture all in (performance.now; measured in the browser) */
   readonly progress = { start: performance.now(), rooms: 0, furnished: 0 }
+  /** still filling in its rooms and furniture: the scene does not judge the machine's speed meanwhile (PlotlineScene.sample) */
+  get busy(): boolean {
+    return !this.progress.furnished && !this.disposed
+  }
 
   /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
   static for(unit: Unit, tier: Quality = 'high'): Building | null {
@@ -443,7 +447,7 @@ export class Building extends THREE.Group {
     this.hoverLift.show(false)
     this.eye.copy(this.view(floor).eye)
     this.highlight(floor)
-    void this.furnish()
+    void this.furnish().finally(() => (this.progress.furnished ||= performance.now())) // (a failed piece: the tower is no longer busy)
   }
 
   /** Flat s on floor k's middle, 1.5 m over its floor, in the scene: which flats are nearest the camera (insideOrder). */

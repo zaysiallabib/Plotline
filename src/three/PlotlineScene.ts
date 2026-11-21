@@ -2360,9 +2360,13 @@ export class PlotlineScene {
     return k
   }
 
-  /** one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded; judged once (render.ts slowFrames) */
+  /**
+   * one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded, not while the
+   * Building view's tower is still filling in its rooms (loading work, not drawing); judged once (render.ts slowFrames)
+   */
   private sample(ms: number, now: number): void {
     if (!this.frameMs || !this.loadedAt || now < this.loadedAt + WARM_MS || ms > LOST_FRAME_MS || document.visibilityState === 'hidden') return
+    if (this.mode === 'building' && this.building?.busy) return
     this.frameMs.push(ms)
     const slow = slowFrames(this.frameMs)
     if (slow === null) return
