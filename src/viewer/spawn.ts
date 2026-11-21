@@ -452,6 +452,8 @@ const DOORWAY_SQM = 15
  * basin (founder 2026-09-27); larger baths no more than BATH_PITCH.
  */
 export const SMALL_WET = 3
+/** …and one whose floor (inside its walls) is under this (m²) is seen from its doorway only (roomView): inside, the eye stands over its basin. */
+export const TINY_WET_SQM = 2
 export const WET_PITCH = (-25 * Math.PI) / 180
 const THRESHOLD = 0.15
 /** A door view (a help room, a closet, a tiny room) fails when a leaf fills more than this (it is exempt from FLAT_MAX). */
@@ -785,14 +787,24 @@ export function roomView(room: Room, unit: Unit): View {
       inner.every((a, j) => segDist(p, a, inner[(j + 1) % n]) >= inset - 0.02) &&
       pieces.every(({ f }) => footprintDist(p, f) >= 0.2) &&
       doors.every((d) => d === but || !swings(d.o) || segDist(p, d.a, d.b) >= DOOR_STEP[2])
+    const doorways = (room.kind === 'bath' ? doors : []).flatMap((d) => {
+      // a leaf swinging in is shut behind the eye; one swinging away (or none) leaves the doorway itself free
+      const shut = swings(d.o) && (d.o.swing === 'in' ? -1 : 1) === inSide(d)
+      const p = stepIn(d, shut ? THRESHOLD : 0.02)
+      return clearOf(p, 0, d) ? [{ p, d, ...(shut && { closeLeaf: d.o.id }) }] : []
+    })
+    // a WC whose floor is under TINY_WET_SQM (a servant's toilet, 3'-9" × 4'-5"): ranked by its fittings, the eye stood over the
+    // basin beside the door with the WC under its chin (qa3 P2). From its doorway, looking in to its farthest corner (the
+    // fittings stand along the walls between), down WET_PITCH, as one looks into a WC
+    const way = Math.abs(core.signedArea(inner)) < TINY_WET_SQM ? doorways[0] : undefined
+    if (way) {
+      const q = farthest(way.p)
+      const L = Math.hypot(q.x - way.p.x, q.y - way.p.y) || 1
+      return done({ p: way.p, face: { x: (q.x - way.p.x) / L, y: (q.y - way.p.y) / L }, pitch: WET_PITCH, closeLeaf: way.closeLeaf })
+    }
     const spots: { p: Pt; closeLeaf?: string }[] = [
       ...[...candidates, ...grid(BATH_INSET), ...doors.flatMap((d) => DOOR_STEP.map((m) => stepIn(d, m)))].filter((p) => clearOf(p, BATH_INSET)).map((p) => ({ p })),
-      ...(room.kind === 'bath' ? doors : []).flatMap((d) => {
-        // a leaf swinging in is shut behind the eye; one swinging away (or none) leaves the doorway itself free
-        const shut = swings(d.o) && (d.o.swing === 'in' ? -1 : 1) === inSide(d)
-        const p = stepIn(d, shut ? THRESHOLD : 0.02)
-        return clearOf(p, 0, d) ? [{ p, ...(shut && { closeLeaf: d.o.id }) }] : []
-      }),
+      ...doorways.map(({ p, closeLeaf }) => ({ p, ...(closeLeaf && { closeLeaf }) })),
     ]
     const dir = (deg: number) => ({ x: Math.cos((deg * Math.PI) / 180), y: Math.sin((deg * Math.PI) / 180) })
     // A bath (or tiny room) with a vanity/basin: every spot × heading (5°) × pitch (level to BATH_PITCH; a small wet room to
