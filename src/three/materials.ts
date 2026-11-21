@@ -241,13 +241,16 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
       s.fragmentShader = noSpots(s.fragmentShader)
     }
     m.customProgramCacheKey = () => 'outside'
-  } else if (lite.on && !daylit) {
-    const on = { value: outside ? 1 : 0 }
-    m.onBeforeCompile = (s) => nightPatch(s, on)
-    m.customProgramCacheKey = () => 'plain-night'
-  }
+  } else if (lite.on && !daylit) litePlain(m, outside)
   matCache.set(key, m)
   return m
+}
+
+/** Lite: a plain surface's one program, the city's night light on (the tower's: `outside`) or off (the flat's own) — materialFor's and the bay paint's. */
+export function litePlain(m: THREE.MeshStandardMaterial, outside: boolean): void {
+  const on = { value: outside ? 1 : 0 }
+  m.onBeforeCompile = (s) => nightPatch(s, on)
+  m.customProgramCacheKey = () => 'plain-night'
 }
 
 /** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the

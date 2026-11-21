@@ -35,7 +35,7 @@ import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, close
 import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
@@ -534,6 +534,7 @@ export class PlotlineScene {
     const isLite = (lite.on = this.tier === 'lite')
     lean.on = !TIERS[this.tier].extras
     for (const m of [...PANES, PAINT]) samePictures(m) // the glass, the water and the bay paint (made before the tier is known) drawn as every surface is
+    if (isLite) litePlain(PAINT, false) // (Lite: the bay paint the flat's plain surfaces' program)
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
     this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
