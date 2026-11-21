@@ -197,6 +197,27 @@ export function wideOnly(o: THREE.Object3D, on: boolean): void {
   })
 }
 
+/**
+ * With the sun's one map only (Low; High round a flat on its own, no wide map) its shadow fades into "lit" over its box's last
+ * EDGE_FADE across (and EDGE_FADE_Z of its depth): past the box the ground and the walls are lit, and the edge between a
+ * neighbour's shadow and that light stood on the street as a hard bright patch. The box is first widened by as much
+ * (widenEdge), so the fade lies outside the flat: ~1–2 m across, ~2.5 m deep (the depth runs SITE_REACH_M toward the sun).
+ * The same reads as before: no cost a frame.
+ */
+export const EDGE_FADE = 0.045
+export const EDGE_FADE_Z = 0.008
+/** A sun shadow camera fitted round the flat (fitSunBox) widened so that what it covered keeps clear of its last `k` across and `kz` of its depth on the far side. */
+export function widenEdge(cam: THREE.OrthographicCamera, k = EDGE_FADE, kz = EDGE_FADE_Z): void {
+  const [w, h] = [cam.right - cam.left, cam.top - cam.bottom]
+  const [dx, dy] = [(k * w) / (1 - 2 * k), (k * h) / (1 - 2 * k)]
+  cam.left -= dx
+  cam.right += dx
+  cam.bottom -= dy
+  cam.top += dy
+  cam.far += (kz * (cam.far - cam.near)) / (1 - kz)
+  cam.updateProjectionMatrix()
+}
+
 /** how far into the sharp map (a share of its width) the wide one fades into it: no seam where one shadow ends and the other starts */
 const SHARP_FADE = 0.01
 /**
@@ -236,6 +257,15 @@ float wideShadow() {
 	return getShadow( directionalShadowMap[ 1 ], w.shadowMapSize, w.shadowIntensity, w.shadowBias, w.shadowRadius, vDirectionalShadowCoord[ 1 ] );
 	#endif
 }
+#endif
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 1
+float sharpOrLit( float sharp, vec4 at ) {
+	vec3 c = at.xyz / at.w;
+	float e = min( min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) ), ( 1.0 - c.z ) * ${(EDGE_FADE / EDGE_FADE_Z).toFixed(4)} );
+	return mix( 1.0, sharp, smoothstep( 0.0, ${EDGE_FADE}, e ) );
+}
+#endif
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 1
 float sharpOrWide( DirectionalLightShadow s, vec4 at ) {
 	vec3 c = at.xyz / at.w;
 	float inSharp = c.z > 1.0 ? -1.0 : min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) );
@@ -253,6 +283,8 @@ $1
       sun,
       `#if ${wide} == 0
 		directLight.color *= ( directLight.visible && receiveShadow && dot( geometryNormal, directLight.direction ) > 0.0 ) ? sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] ) : 1.0;
+		#elif NUM_DIR_LIGHT_SHADOWS == 1 && UNROLLED_LOOP_INDEX == 0
+		${sun.replace(/\? getShadow\((.*)\) : 1\.0;$/, '? sharpOrLit( getShadow($1), vDirectionalShadowCoord[ i ] ) : 1.0;')}
 		#else
 		${sun}
 		#endif`,
@@ -626,7 +658,7 @@ export class Look {
     // the wide map only round a flat in its building: a flat on its own (a Studio draft) floats a storey or more over the
     // street, its catcher shadows it at its own floor, and the street under it took a second shadow of it
     if (this.wide) this.wide.visible = y !== null
-    this.fitWide()
+    this.fitShadow() // (the sharp map's edge fades only without the wide map: widenEdge)
     this.towerStreet = y !== null
     if (this.street) this.street.visible = !this.towerStreet
   }
@@ -996,6 +1028,7 @@ export class Look {
   private fitShadow(): void {
     const cam = this.aim(this.sun.shadow.camera)
     fitSunBox(cam, this.fitBox, this.toSun(), SITE_REACH_M, this.wells.flatMap((w) => w.poly.map((c) => new THREE.Vector3(c.x, w.bottom, c.y))))
+    if (!this.wide?.visible) widenEdge(cam) // its edge fades into lit, outside the flat (EDGE_FADE)
     // the bias is in the shadow map's depth units: keep it ≈ 2 cm in the room whatever the depth range (a site's reach made
     // the range 10× deeper, and −0.0005 of it 17 cm: walls and sills shadowed late)
     this.sun.shadow.bias = -SHADOW_BIAS_M / (cam.far - cam.near)

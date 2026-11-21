@@ -328,7 +328,8 @@ The grounds' trees, benches and play things throw theirs too (on the ground and 
 flat: a tree's shadow falls outside it).
 The narrow gap to the next building is in its shade most of the day, as on a real Dhaka street. On **Low** only your
 flat and what stands right round it take the sun's shadow, and on **Lite** nothing does; further out the ground and the
-road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building).
+road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building). Where
+that shadow ends, it fades into the sunlit ground over a metre or two, so no hard bright patch shows on the street.
 
 The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
