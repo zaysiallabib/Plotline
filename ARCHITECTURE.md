@@ -85,7 +85,7 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   Lite's lamps are no lights at all: `daylight.ts` `setLampDirect` bakes each lamp's light (three's spot light, worked
   out per atlas texel) into a second atlas the room surfaces and pieces read; Edit furniture bakes it again. Stand-ins:
   `furniture.ts` `standIn` (meshoptimizer through three's SimplifyModifier, once per model in the page; a code-built piece
-  each time it is built; a curtain walked past keeps its pleats). Lite's models keep their colour picture only and a scan's physical material becomes a standard
+  each time it is built). Lite's models keep their colour picture only and a scan's physical material becomes a standard
   one (`colourOnly`); every flat's window panes are one batch (`batch.ts`, `userData.merge`). The Building
   view's rooms behind the glass use stand-ins of ≈ 500 triangles on every tier and take none of the walked flat's lamp
   lights (`interiors.ts` `noSpots`). `?stats=1` / ⋯ → How fast is it here? reads `PlotlineScene.stats`.

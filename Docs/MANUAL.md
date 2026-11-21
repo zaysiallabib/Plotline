@@ -352,8 +352,8 @@ steps aside while Finishes or Comment is open.
   pixels, lamp shadows.
 - **Low** — the screen's own pixels, no corner shading, a smaller sun-shadow picture, 4 lamps lit at night (no lamp
   shadows), the wall tile's extra-sharp picture at half size, no potted-plant models, bathroom mirrors as plain silvery
-  glass, your building round the flat without its sun-shadow, each heavy piece (a scanned sofa, a bed; curtains
-  keep their pleats) a lighter copy of itself — the same shape and pictures, at most about 4 000 triangles instead of tens of
+  glass, your building round the flat without its sun-shadow, each heavy piece (a scanned sofa, a bed, a pleated
+  curtain) a lighter copy of itself — the same shape and pictures, at most about 4 000 triangles instead of tens of
   thousands. Nothing is drawn while nothing changes.
 - **Lite** — for weak laptops and phones: a smaller picture stretched to the window, no edge smoothing, no corner
   shading, **no shadows and no sun patches inside the flat** (rooms are still brighter by their windows; the sun still
@@ -361,7 +361,7 @@ steps aside while Finishes or Comment is open.
   lamp lit at night** — their light is worked out once when the flat opens and painted onto the rooms (a lamp moved or
   deleted in Edit furniture is worked out again), so no lamp costs anything while you walk; the street as plain blocks
   under a plain blue sky, pictures at half size and the colour picture only (no relief, no shine pictures), each piece a
-  light copy of itself (at most about 1 500 triangles; curtains keep their pleats), no potted-plant models, plain mirrors, and of your building only
+  light copy of itself (at most about 1 500 triangles), no potted-plant models, plain mirrors, and of your building only
   the ground (no trees or play things) and the floors just above and below yours. Nothing is drawn while
   nothing changes (with Wind on its lines keep drifting). Same walls, furniture and finishes.
 

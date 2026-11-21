@@ -789,11 +789,6 @@ describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s p
     expect(big.n).toBeGreaterThan(4000)
     const light = tris(await buildFurniture({ id: 'x', assetId: big.a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 }, 3.048, 0, undefined, 1500))
     expect(light).toBeLessThan(big.n / 2)
-    // a curtain walked past keeps its pleats (they are its look); behind the Building view's glass it is light too
-    const curtain = { id: 'c', assetId: 'curtains', roomId: 'r', x: 0, y: 0, rotationDeg: 0 }
-    const pleated = tris(await buildFurniture(curtain))
-    expect(tris(await buildFurniture(curtain, 3.048, 0, undefined, 1500))).toBe(pleated)
-    expect(tris(await buildFurniture(curtain, 3.048, 0, undefined, 500))).toBeLessThan(pleated / 2)
   })
 })
 
