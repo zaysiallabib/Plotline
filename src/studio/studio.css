@@ -380,6 +380,7 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .issues li .num { margin-top: 1px; }
 .issues li.find { cursor: pointer; }
 .issues li.find:hover { background: var(--hover); }
+.issues li.lit { background: var(--accent-soft); color: var(--ink); } /* the rows of the "×7" badge under the mouse on the plan */
 .issues li.on { background: var(--surface-2); color: var(--ink); }
 .issues li.grey { color: var(--muted); }
 .issues .grow { flex: 1; min-width: 0; }
@@ -432,17 +433,18 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 @keyframes issue-pulse { from { opacity: 0.9; transform: scale(1); } to { opacity: 0; transform: scale(3); } }
 .issue-layer .badge { pointer-events: auto; cursor: pointer; }
 .issue-layer.passive .badge { pointer-events: none; } /* a drawing tool picked: the click is the tool's (IssueLayer clickable) */
-.issue-layer .badge circle { fill: var(--c); stroke: var(--surface); stroke-width: 1.5; }
+.issue-layer .badge :is(circle, rect) { fill: var(--c); stroke: var(--surface); stroke-width: 1.5; }
 .issue-layer .badge text { fill: var(--surface); font-family: var(--font); font-size: var(--fs-xs); font-weight: 500; text-anchor: middle; dominant-baseline: central; }
-.issue-layer .mark.on .badge circle, .issue-layer .mark.hot .badge circle { stroke: var(--ink); }
-/* s31 calm: rows at one spot share a badge with their count (outlined: a count, not a number); amber waits as a small dot */
-.issue-layer .mark.many .badge circle { fill: var(--surface); stroke: var(--c); }
+.issue-layer .mark:is(.on, .hot) .badge :is(circle, rect) { stroke: var(--ink); }
+/* s31 calm: rows at one spot share a badge with their count (outlined: a count, not a number); amber waits as a small dot;
+   s31 crowd: zoomed out, rows close on screen are one "×7" badge, as wide as its count */
+.issue-layer .mark.many .badge rect { fill: var(--surface); stroke: var(--c); }
 .issue-layer .mark.many .badge text { fill: var(--c); }
 .issue-layer .mark.dot .badge circle { stroke: var(--surface); stroke-width: 1; }
 .issue-layer .mark.dot .badge .hit { fill: transparent; stroke: none; }
 /* the row picked in the list: its badge is the accent */
 .issue-layer .mark.picked { --c: var(--accent); }
-.issue-layer .mark.picked .badge circle { fill: var(--accent); stroke: var(--surface); }
+.issue-layer .mark.picked .badge :is(circle, rect) { fill: var(--accent); stroke: var(--surface); }
 .issue-layer .mark.picked .badge text { fill: var(--accent-ink); }
 .issue-layer .ghost { opacity: 0.45; }
 .issue-layer .ghost.on { opacity: 1; }

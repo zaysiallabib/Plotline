@@ -521,7 +521,10 @@ rooms → check → export.
 **What you see.** A light stone page; the plan picture lies on it like a sheet of paper, a little faded, so the walls you
 draw stand out in dark ink. Doors are drawn with their swing, windows as three thin lines between two short ends, as on
 an architect's sheet. What you picked is **blue**; what is under the mouse gets a light blue edge before you click. Room
-names are in small capitals with the printed size under them. Tools on the left, details of what you picked on the right,
+names are in small capitals with the printed size under them. **Zoomed out** (a whole floor at 30 %), names never sit on
+top of each other: a crowded name first loses the space between its letters, then gets a little smaller without its
+printed size, and where two still would not fit the bigger room keeps its name — the other shows when the mouse is over
+its room (its neighbours make room for it). Wall lengths are written only where they cover no name. Tools on the left, details of what you picked on the right,
 one thin line at the bottom saying what the tool does.
 
 **Draft restored.** The Studio opens on the drawing you left, with a message at the bottom: "Draft restored — its name",
@@ -637,6 +640,7 @@ had.
 - Click inside a closed room. A box opens: **Room name**, **Kind** (guessed from the name, §8), **Printed size** (what
   the sheet prints, e.g. `12'-0" × 14'-2"`; leave it empty if none — the tool never fills it for you), **Floor level**,
   **Ramp** (tick it, type the far end's level, pick the direction). **Save**, or **Remove** to take the name off.
+  **Esc** closes the box without saving, wherever you are in it (the name, a level, the Ramp tick box, the Kind list).
 - **Clicked where no closed room is?** R looks at the walls round your click. If one wall end there stops a little short,
   R joins it (one Ctrl+Z) and opens the box. Otherwise it says which end keeps the room open, how far short and where,
   and rings it ("Not closed yet: the wall end 2'-3" up-left of your click (ringed) stops 0'-7" short of the wall ahead —
@@ -728,8 +732,11 @@ more room. Each flat is tinted with its name written once above it.
 - **Red** (breaks the 3D: a room left open, a loose wall end, a gap) — a numbered badge.
 - **Amber** (worth a look) — a small dot; its number shows when the mouse is near or its row is picked. Click to open it.
 - **Grey** (cosmetic) — not drawn; the row is in the list.
-- Several rows at one spot share one outlined badge with their count; click it and **Also here** in its box lists the
-  others. The row picked in the list has its badge in blue.
+- Rows close together on the screen share one outlined badge with their count, **×7** (zoomed out a whole floor has a
+  few of these instead of dozens; zoom in and they come apart). The mouse on it lights its rows in the list (pale blue,
+  the first scrolled into view); click it and they stay lit until Esc, its first row opens and **Also here** in its box lists the
+  others. The row picked in the list has its badge in blue. A badge or dot never sits on a room name or a flat's name: it
+  goes just beside it.
 
 **The list.** Rows are grouped by room: a room with two rows or more is one line (its name, the count, its first row in
 grey) — click it to show or fold its rows; rows in no closed room go under the printed name they are about, the rest
@@ -1195,9 +1202,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   the nearest open spot, which can be outside that room. "Join with a zone line" can draw a long diagonal across a lawn.
 - On the plan (F) a piece wholly under another (a hob under its hood, a light over a bed) cannot be clicked: pick it in
   the 3D view.
-- Room names overlap on crowded plans (and in capitals at 30 % zoom); coloured areas (lawn, driveway) cover much of the
+- Zoomed out, a small room's name can be hidden until the mouse is over it; coloured areas (lawn, driveway) cover much of the
   picture under them; checks written for flats show on levels ("No entry door on an outer wall", the Area number).
-- Esc with the Ramp tick box focused does not close the room box.
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
 - Renaming a project does not change the Project box of drawings made before.
 
