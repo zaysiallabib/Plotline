@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
+import type { BufferGeometry, Group, Mesh } from 'three'
 import { floorIn, towerOf, type Tower } from '../data/building'
 import { frameOf, onFlat, plate, sharedWith } from './building'
 import * as bti from '../data/building/demo-tower'
@@ -557,6 +558,30 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     return b as unknown as Pick<typeof b, 'setSun' | 'highlight' | 'dispose' | 'floor'> & Seen
   }
   const shut = (r: Room) => r.kind === 'shaft' || r.kind === 'balcony'
+
+  test("a stair's next floor makes its tower from what the last one made: the same shells, levels and street, never freed with it", async () => {
+    const a = sheltech.FLATS['sheltech-a'].unit
+    const geos = (b: unknown) => {
+      const out = new Map<BufferGeometry, number>() // each geometry and the y it is drawn at
+      ;(b as Group).updateMatrixWorld(true)
+      ;(b as Group).traverse((o) => void ((o as Mesh).geometry && out.set((o as Mesh).geometry, o.matrixWorld.elements[13])))
+      return out
+    }
+    const t3 = await tower({ ...a, floor: 3 })
+    const t4 = await tower({ ...a, floor: 4 })
+    const [g3, g4] = [geos(t3), geos(t4)]
+    const shared = [...g4.keys()].filter((g) => g3.has(g))
+    expect(shared.length).toBeGreaterThan(5) // the ground, level 1, the basements, the rooftop, the flats' shells, the street
+    // each placed one storey lower round floor 4's flat (the walked flat stays at 0: the tower moves); the street with the street level
+    const T = (t: unknown) => t as { levelOf(k: number): number; streetY: number }
+    const [lv, st] = [T(t4).levelOf(0) - T(t3).levelOf(0), T(t4).streetY - T(t3).streetY]
+    expect(lv).toBeLessThan(-2.5)
+    for (const g of shared) expect([lv, st].some((d) => Math.abs(g4.get(g)! - g3.get(g)! - d) < 1e-6)).toBe(true)
+    let freed = 0
+    for (const g of shared) g.addEventListener('dispose', () => freed++)
+    t3.dispose()
+    expect(freed).toBe(0)
+  })
 
   test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
     const THREE = await import('three')

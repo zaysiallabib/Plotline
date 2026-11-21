@@ -419,3 +419,34 @@ kinds of surface (the scanned plants and the ceiling fan keep programs of their 
 founder's 12). Lite is under 3 s on a second visit (2.7–3.3 s) but 3.5–4.4 s on the first (the models' download and
 decoding). A stair's floors (1.8–1.9 s) are not back to 1.5 s: no program is made there any more; the time is building the
 floor (its rooms, daylight and the tower round it, ~1 s) and batching it.
+
+## 8. A stair between floors of one drawing (session 31, polish2 lane)
+
+Of a stair's 1.8–2.0 s on High (Sheltech A, floor 3 → 4), about 1 s was the floor's own build — its walls and rooms
+(~0.15 s), its furniture put in (~0.2 s), the two grouped for drawing (~0.3 s), its daylight (~0.3 s) — and ~0.35 s the
+tower round it. Floors 2 to 6 are one drawing: the same walls, rooms and furniture, only higher.
+
+What changed: a stair (or a pick on the tower) to another floor of the drawing on screen, furnished alike, keeps the flat as
+it is — its walls, rooms, furniture, lamps and their grouping — and makes only what differs: its daylight (each floor its
+own: the neighbours shade a lower floor more; half of it, the light as if no neighbour stood round, is the same on every
+floor and is kept; a floor visited again bakes nothing) and the tower round it, which now takes its traced levels (ground,
+Level 1, basements, rooftop), each flat's plain shell and the street from the one made before (they only move a storey).
+The top floor under the rooftop is the same drawing too: its one wall that is not under the roof stops at the storey's top
+anyway, so it counts as built alike (only its roof and soffits are made new). A floor whose staff kept other furniture,
+its own walls (an opening kept for that floor only) or the architect's outside shape is built in full, as before.
+
+The trip, click to the new floor's name (`E:/dev/tmp/s31/polish2/trips.mjs`, Sheltech route, this PC, dev server):
+
+| trip | High before → after (s) | Low after | Lite after |
+|---|---|---|---|
+| Floor 2 → 3 | 1.9–2.3 → 0.91–0.97 | 0.85 | 0.53 |
+| Floor 3 → 4 | 2.0–2.3 → 1.01–1.05 | 0.71 | 0.52 |
+| Floor 4 → 5 | 1.95–2.0 → 0.89–0.95 | 0.81 | 0.58 |
+| Floor 5 → 6 (under the rooftop) | 1.8–1.96 → 1.21 | 0.80 | 0.83 |
+| Rooftop → Floor 6 (another drawing before it) | 1.8–2.3 → 1.4–1.9 | 1.61 | 1.20 |
+
+The same picture: floor 4 and floor 6 reached by the stair against the same floors opened by their address, four
+directions each at 15:30 — mean difference 0.1–0.6 of 255, at most 0.9 % of pixels off by more than 8 (two runs of one
+build differ as much). Shots `E:/dev/plotline-shots/s31/polish2/same-high-*.png`. Left: coming back into the typical
+floors from another drawing (the rooftop, Level 1) still builds the flat in full (~1.4–1.9 s); keeping the last drawing's
+flat built while another is shown would take that to ~1 s, at the cost of holding two flats in memory.

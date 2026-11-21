@@ -218,6 +218,23 @@ describe('neighbours in the bake (founder 2026-11-20: "with space there is much 
     expect(facing(c, out, 1.6, [south(3, 12), rect(-10, -40, 20, -20, 60)], 6.6)).toEqual({ D: 20, H: 60 - 6.6 })
   })
 
+  test('another floor of the drawing reuses the open-view half of its bake (BakeKeep): the same atlas as a bake of its own, in fewer steps', () => {
+    const blocks = [south(3)]
+    const keep = {}
+    const steps = (u: Unit, k = {}) => {
+      const g = bakeSteps(u, rooms, [], blocks, k)
+      let [n, r] = [0, g.next()]
+      for (; !r.done; r = g.next()) n++
+      return { n, d: r.value! }
+    }
+    const first = steps({ ...TEST_UNIT, floor: 3 }, keep)
+    const fresh = steps({ ...TEST_UNIT, floor: 4 })
+    const kept = steps({ ...TEST_UNIT, floor: 4 }, keep)
+    expect(kept.d.data).toEqual(fresh.d.data)
+    expect(kept.n).toBeLessThan(fresh.n)
+    expect(first.d.data).not.toEqual(fresh.d.data) // a floor higher: the block's shade is less (the half that is kept is not the whole)
+  })
+
   test("zRaise: a neighbour's roof line in the window plane, seen from inside", () => {
     expect(zRaise(1, 0, 3, 20)).toBe(1) // at the window: its own horizon
     expect(zRaise(1, 3, 3, 20)).toBeCloseTo(1 + 19 / 2, 9) // as far in as the block is out: halfway up
