@@ -228,8 +228,9 @@ export class Building extends THREE.Group {
   private furnishing: { s: string; group: THREE.Group; pieces?: THREE.Group }[] = []
   private disposed = false
   private readonly stem: string
-  private readonly street: THREE.Group
-  private readonly mark: THREE.Mesh
+  /** make(): the street round the tower, the accent bands */
+  private street = new THREE.Group()
+  private mark = new THREE.Mesh()
   /** the haze's share in the panes (setSun) */
   private readonly paneSky = { value: PANE_HAZE }
   /** haze-mirroring panes (hazePane): the empty shells behind them stay unseen (the unit's own GLASS is 70 % clear) */
@@ -251,7 +252,7 @@ export class Building extends THREE.Group {
   private piecesShown = true
   private furnished = false
 
-  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
+  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. Not built yet: run make(). */
   static for(unit: Unit): Building | null {
     const t = towerOf(unit)
     const stem = t && stemIn(t, unit)
@@ -268,6 +269,18 @@ export class Building extends THREE.Group {
     const walkedRooms = core.deriveRooms(unit)
     this.walked = { unit, rooms: walkedRooms }
     this.lidY = storeyTop(unit, walkedRooms) + ROOF_M
+    const groundLevel = t.FLOORS.find((f) => f.floor === 0)?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
+    const groundLow = groundLevel ? lowestFloor(t.FLATS[groundLevel].unit, this.roomsOf(groundLevel)) : 0
+    this.streetY = Math.min(-floor * 3.2 - 0.2, groundLevel ? this.levelOf(0) + groundLow - 0.05 : Infinity)
+  }
+
+  /**
+   * The tower itself, a floor (a basement, the street) a step: a stair's floor takes them a slice a frame (PlotlineScene
+   * arrive; ~300 ms of building in one go froze the floor still shown), everything else runs it to the end at once.
+   */
+  *make(): Generator<void> {
+    const { unit, rooms: walkedRooms } = this.walked
+    const { t, stem, floor } = this
     const { FLATS, FLOORS, CORE, GROUND, ROOF, FLOOR_M } = t
     const PLATE_M = FLOOR_M - WALL_M
     // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
@@ -286,7 +299,6 @@ export class Building extends THREE.Group {
     const R = this.levelOf(top + 1)
     const groundLevel = FLOORS.find((f) => f.floor === 0)?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
     const groundLow = groundLevel ? lowestFloor(FLATS[groundLevel].unit, this.roomsOf(groundLevel)) : 0
-    this.streetY = Math.min(-floor * 3.2 - 0.2, groundLevel ? G + groundLow - 0.05 : Infinity)
     /** his traced rooftop (a Studio project): its own walls stand on the roof slab instead of the automatic parapet */
     const roofLevel = FLOORS.find((f) => f.floor === top + 1)?.standIns ?? []
     /** a shell's walls with its openings cut, and its columns, storey high; not what the walked flat shares (sharedWith) */
@@ -295,12 +307,18 @@ export class Building extends THREE.Group {
       ...u.walls.filter((w) => !skip.walls.has(w.id)).map((w) => wallGeometry(w, u)).filter((x) => !!x),
       ...(u.pillars ?? []).filter((p) => !skip.pillars.has(p.id)).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M)),
     ]
+    /**
+     * A flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each
+     * floor it stands on (one geometry, sent to the graphics chip once).
+     */
+    const ordinary = new Map<string, THREE.BufferGeometry>()
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
     // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
     const topF = FLOORS.find((f) => f.floor === top)
     const roofOn = topF ? [...topF.flats, ...(topF.standIns ?? []).filter((s) => t.LEVELS?.[s] === undefined)] : []
     for (const { floor: k, flats, standIns = [] } of [...FLOORS.filter((f) => f.floor >= 0 && f.floor <= top), { floor: top + 1, flats: [], standIns: roofOn }]) {
+      yield
       const y = this.levelOf(k)
       const roof = k === top + 1
       for (const s of [...flats, ...standIns]) {
@@ -326,15 +344,23 @@ export class Building extends THREE.Group {
         }
         // a neighbour on the walked floor: not what the walked flat draws itself (a shared lobby: sharedWith)
         const skip = k === floor && !mine ? sharedWith(unit, walkedRooms, u, rooms, this.shift(s)) : none
-        const walls = shellWalls(u, skip).map(at)
-        // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
-        // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
         const plateWalls = u.walls.filter((w) => !skip.walls.has(w.id))
-        const slab = k === 0 || hasShell ? [] : plate(u, rooms.filter((r) => !skip.rooms.has(r.id)), mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M, plateWalls, this.lid(s, k)).map(at)
-        if (mine) put(k, EXTERIOR_PLASTER, ...slab)
-        const shell = mine ? walls : [...walls, ...slab]
-        if (!shell.length) continue // all of it the walked flat's
-        const mesh = new THREE.Mesh(merge(shell), materialFor(EXTERIOR_PLASTER))
+        const lid = this.lid(s, k)
+        let geo: THREE.BufferGeometry
+        if (!mine && !lid && k !== 0 && !hasShell && !skip.walls.size && !skip.rooms.size && !skip.pillars.size) {
+          geo = ordinary.get(s) ?? ordinary.set(s, merge([...shellWalls(u), ...plate(u, rooms, 0, PLATE_M)])).get(s)!
+        } else {
+          const walls = shellWalls(u, skip).map(at)
+          // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
+          // shell (a Studio building whose flat has no column drawn) stands on the plinth: its top is the plate (no z-fight)
+          const slab = k === 0 || hasShell ? [] : plate(u, rooms.filter((r) => !skip.rooms.has(r.id)), mine ? -LOOK_SLAB : 0, mine ? PLATE_M - LOOK_SLAB : PLATE_M, plateWalls, lid).map(at)
+          if (mine) put(k, EXTERIOR_PLASTER, ...slab)
+          const shell = mine ? walls : [...walls, ...slab]
+          if (!shell.length) continue // all of it the walked flat's
+          geo = merge(shell)
+        }
+        const mesh = new THREE.Mesh(geo, materialFor(EXTERIOR_PLASTER))
+        if (geo === ordinary.get(s)) mesh.position.set(this.shift(s).x, y, this.shift(s).y)
         mesh.castShadow = mesh.receiveShadow = true
         mesh.visible = !mine && !hasShell // the furnished flat is drawn by the scene; this one is only its pick proxy (every flat's, under the architect's shape)
         mesh.userData.proxy = !mesh.visible // (frame keeps it so)
@@ -403,7 +429,8 @@ export class Building extends THREE.Group {
     // one in the floor picker can hide everything that stands above it (cut); under the street: a basement reaching past
     // the plinth must not show its wall tops on the road
     for (const { floor: k, standIns = [] } of FLOORS.filter((f) => f.floor < 0))
-      for (const s of standIns) if (!(k === floor && s === stem)) this.addLevel(s, k, this.streetY - this.levelOf(k) - 0.01)
+      for (const s of standIns) if (!(k === floor && s === stem)) yield this.addLevel(s, k, this.streetY - this.levelOf(k) - 0.01)
+    yield
 
     // the street (context.ts, the same as the walk's): the drawing's roads and the neighbours round the plot, a few metres
     // off; a unit with a site (Studio → Site): the map's own roads and blocks instead
@@ -583,9 +610,13 @@ export class Building extends THREE.Group {
       const rooms = this.roomsOf(s)
       const byId = new Map(rooms.map((r) => [r.id, r]))
       const ps = layoutFor(u, rooms)
+      let t0 = performance.now()
       for (const p of ps) {
         const r = byId.get(p.roomId)
         if (p.removed || !r || !core.isOutdoor(r.kind)) continue
+        // a frame between slices: models already loaded build at once (a stair's second visit: ~200 pieces in one 0.5–1 s frame)
+        if (performance.now() - t0 > 12) (await new Promise((ok) => requestAnimationFrame(ok)), (t0 = performance.now()))
+        if (this.disposed) return
         const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
         if (this.disposed) return
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through

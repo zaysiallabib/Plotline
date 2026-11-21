@@ -486,9 +486,10 @@ export class Look {
   /**
    * Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. `wells`: the holes in the floor
    * at the stairs that lead down (PlotlineScene builds the flight and the core under them): the slab, the street plane and
-   * the contact shadows leave them open, the sun's shadow box reaches down to their floor.
+   * the contact shadows leave them open, the sun's shadow box reaches down to their floor. `street` null: the flat's tower
+   * draws the street round itself (building.ts), this flat none of its own.
    */
-  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street | null = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
     this.drop() // a floor a stair left, still shown: gone now
     if (hold) {
       // a stair taken (PlotlineScene.arrive): the floor shown until now stays on screen as it is, this one is built hidden
@@ -611,10 +612,10 @@ export class Look {
     const shade = junctionShade(unit, rooms, wells.map((w) => w.poly))
     if (shade.floor) this.unitGroup.add(new THREE.Mesh(shade.floor, SHADE))
     if (shade.ceiling) this.indoor.add(new THREE.Mesh(shade.ceiling, SHADE))
-    this.street = buildStreet(unit, street, this.groundY)
+    this.street = street && buildStreet(unit, street, this.groundY)
     // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view. Both throw
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
-    ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
+    if (this.street) (this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
 
     this.openSky = rooms.filter((r) => core.isOutdoor(r.kind) && !isCovered(r, cover)).map((r) => core.roomPolygon(r, unit))
     // the lamps' pool (kit.ts lightOf: ceiling fixtures, floor and table lamps), the nearest to the camera first (assignPool;

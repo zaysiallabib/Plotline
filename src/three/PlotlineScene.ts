@@ -553,6 +553,8 @@ export class PlotlineScene {
     this.ready = false
     const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
     for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
+    const tower = keepView ? this.building : null // an opening edited: the same building round it (out of clearStatic's reach)
+    this.building = null
     this.clearStatic()
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
@@ -614,14 +616,15 @@ export class PlotlineScene {
     for (const w of this.wells) this.buildFlightBelow(w.stair, w.bottom)
     this.applyMaterials()
     yield
-    this.look.setUnit(present(unit), this.rooms, this.cover, street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
-    yield
-    // the rest of the building round it, its street the street (a stair's floor: shown with it, arrive)
-    this.building = Building.for(unit)
-    if (this.building) {
-      this.building.visible = !this.holding
+    // the rest of the building round it, a floor a step, its street the street (a stair's floor: shown with it, arrive)
+    this.building = tower ?? Building.for(unit)
+    if (this.building && !tower) {
+      this.building.visible = false
       this.scene.add(this.building)
+      yield* this.building.make()
     }
+    yield
+    this.look.setUnit(present(unit), this.rooms, this.cover, this.building ? null : street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
     if (!this.holding) this.aroundFlat() // (a stair's floor: as it shows, spawnAt)
     this.setTimeOfDay(this.hour)
     if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
@@ -714,7 +717,7 @@ export class PlotlineScene {
   private async warm(token: number): Promise<void> {
     const twoPass = (m: THREE.Material) => m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass
     const todo: { o: THREE.Mesh; side?: THREE.Side }[] = []
-    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup])
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup, ...(this.building ? [this.building] : [])]) // (the tower: its street's facades too)
       g.traverse((o) => {
         const m = (o as THREE.Mesh).material
         if (!m || !o.layers.test(this.camera.layers)) return
@@ -737,7 +740,29 @@ export class PlotlineScene {
       await new Promise((r) => requestAnimationFrame(r))
       if (token !== this.buildToken) return
     }
+    // the tower's buffers too: a first draw sent a traced level's whole geometry at once (Sheltech, High: a 0.7–1.3 s swap
+    // frame). Each part drawn once, plain, into one pixel, a slice a frame
+    const b = this.building
+    if (!b) return
+    const one = (this.onePixel ??= { rt: new THREE.WebGLRenderTarget(1, 1), scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1e4, 1e4, 1e4, -1e4, -1e4, 1e4) })
+    one.scene.overrideMaterial ??= new THREE.MeshBasicMaterial()
+    const rt = this.renderer.getRenderTarget()
+    for (const parts = [...b.children]; parts.length; ) {
+      const t0 = performance.now()
+      while (parts.length && performance.now() - t0 < 30) {
+        const c = parts.pop()!
+        one.scene.add(c)
+        this.renderer.setRenderTarget(one.rt)
+        this.renderer.render(one.scene, one.cam)
+        b.add(c)
+      }
+      this.renderer.setRenderTarget(rt)
+      await new Promise((r) => requestAnimationFrame(r))
+      if (token !== this.buildToken) return
+    }
   }
+  /** warm's one-pixel target: what draws a part once so its buffers are on the graphics chip before it shows */
+  private onePixel: { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; cam: THREE.OrthographicCamera } | null = null
 
   /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
   private drop(): void {
@@ -1457,6 +1482,8 @@ export class PlotlineScene {
     ;(this.selFoot.material as THREE.Material).dispose()
     for (const m of [this.selMat, this.selRim, this.selLine, this.selHalo]) m.dispose()
     this.look.dispose()
+    this.onePixel?.rt.dispose()
+    ;(this.onePixel?.scene.overrideMaterial as THREE.Material | undefined)?.dispose()
     // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
     // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.
     this.renderer.state.reset()
