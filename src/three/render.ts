@@ -168,13 +168,24 @@ export function fitSunBox(cam: THREE.OrthographicCamera, box: THREE.Box3, toSun:
   cam.updateProjectionMatrix()
 }
 
+/**
+ * While what the sun's maps see keeps changing (the hour dragged: a new casterKey every frame) the wide map is drawn again
+ * on every WIDE_EVERY-th frame only, and on the first frame at rest: it is the dearer redraw (the Building view: +530 draw
+ * calls each time on Sheltech). `waited`: the frames it has been out of date, this one counted. True: draw it on this frame.
+ */
+export const WIDE_EVERY = 4
+export const drawWide = (moved: boolean, waited: number): boolean => !moved || waited >= WIDE_EVERY
+
 /** how far into the sharp map (a share of its width) the wide one fades into it: no seam where one shadow ends and the other starts */
 const SHARP_FADE = 0.01
 /**
  * three's light chunks taught the wide map (TIERS.wide): with two directional shadows, shadow 1 is the sun's wide map (its
  * light, Look.wide, a child of the sun so three lists it second, lights nothing) — every lit material reads the sun's sharp
  * map where it reaches and the wide one past it, fading over the sharp one's last SHARP_FADE (sharpOrWide); the shadow
- * catcher (ShadowMaterial) keeps the sharp one only. With one directional shadow (Low) the chunks compile as three wrote them.
+ * catcher (ShadowMaterial) keeps the sharp one only. The wide map is read four times a pixel half a texel apart, each read
+ * comparing the 4 texels round it (an even edge ~1.5 texels soft, about a real sun's 20 m from what throws it; three's own
+ * five reads at random turns left grain on the street, one read stair-stepped edges), and a face turned from the sun reads
+ * no map (its sun light is 0 anyway). With one directional shadow (Low) the chunks compile as three wrote them.
  * Patched once, before anything compiles; render.test.ts checks that each patch took.
  */
 export function wideChunks(c: { shadowmap_pars_fragment: string; lights_fragment_begin: string; shadowmask_pars_fragment: string }): typeof c {
@@ -190,11 +201,24 @@ export function wideChunks(c: { shadowmap_pars_fragment: string; lights_fragment
   return {
     shadowmap_pars_fragment: `${c.shadowmap_pars_fragment}
 #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 1
+float wideShadow() {
+	DirectionalLightShadow w = directionalLightShadows[ 1 ];
+	#if defined( SHADOWMAP_TYPE_PCF )
+	vec3 c = vDirectionalShadowCoord[ 1 ].xyz / vDirectionalShadowCoord[ 1 ].w;
+	c.z += w.shadowBias;
+	if ( c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0 ) return 1.0;
+	vec2 d = 0.5 / w.shadowMapSize;
+	float lit = texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( -d.x, -d.y ), c.z ) ) + texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( d.x, -d.y ), c.z ) )
+		+ texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( -d.x, d.y ), c.z ) ) + texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( d.x, d.y ), c.z ) );
+	return mix( 1.0, 0.25 * lit, w.shadowIntensity );
+	#else
+	return getShadow( directionalShadowMap[ 1 ], w.shadowMapSize, w.shadowIntensity, w.shadowBias, w.shadowRadius, vDirectionalShadowCoord[ 1 ] );
+	#endif
+}
 float sharpOrWide( DirectionalLightShadow s, vec4 at ) {
 	vec3 c = at.xyz / at.w;
 	float inSharp = c.z > 1.0 ? -1.0 : min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) );
-	DirectionalLightShadow w = directionalLightShadows[ 1 ];
-	float wide = inSharp >= ${SHARP_FADE} ? 1.0 : getShadow( directionalShadowMap[ 1 ], w.shadowMapSize, w.shadowIntensity, w.shadowBias, w.shadowRadius, vDirectionalShadowCoord[ 1 ] );
+	float wide = inSharp >= ${SHARP_FADE} ? 1.0 : wideShadow();
 	if ( inSharp <= 0.0 ) return wide;
 	float sharp = getShadow( directionalShadowMap[ 0 ], s.shadowMapSize, s.shadowIntensity, s.shadowBias, s.shadowRadius, at );
 	return mix( wide, sharp, smoothstep( 0.0, ${SHARP_FADE}, inSharp ) );
@@ -207,7 +231,7 @@ $1
 #endif`),
       sun,
       `#if ${wide} == 0
-		directLight.color *= ( directLight.visible && receiveShadow ) ? sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] ) : 1.0;
+		directLight.color *= ( directLight.visible && receiveShadow && dot( geometryNormal, directLight.direction ) > 0.0 ) ? sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] ) : 1.0;
 		#else
 		${sun}
 		#endif`,
@@ -468,6 +492,8 @@ export class Look {
   private readonly shadows: boolean
   /** the sun's wide shadow map over the site (TIERS.wide, wideChunks): a light of no strength that only carries it; null: none */
   private readonly wide: THREE.DirectionalLight | null = null
+  /** the frames the wide map has been out of date (drawWide); 0: up to date */
+  private wideWaited = 0
   /** the sun's intensity as PlotlineScene last set it (setAltitude): render() switches it off indoors when there are no shadows */
   private sunI = 0
   /** the open zones' outlines (setUnit): standing in one, Lite's sun stays on (sunLit) */
@@ -985,12 +1011,16 @@ export class Look {
       this.sun.intensity = sunLit({ shadows: false, under, outside: this.outside, openSky }) ? this.sunI : 0
     }
     const key = this.shadows ? this.casterKey() : this.shadowKey
-    if (key !== this.shadowKey) {
+    const moved = key !== this.shadowKey
+    if (moved) {
       this.renderer.shadowMap.needsUpdate = true
       this.sun.shadow.needsUpdate = true
-      if (this.wide) this.wide.shadow.needsUpdate = true
       for (const { light } of this.pool) if (light.castShadow) light.shadow.needsUpdate = true
       this.shadowKey = key
+    }
+    if (this.wide && (moved || this.wideWaited > 0) && drawWide(moved, ++this.wideWaited)) {
+      this.wide.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true
+      this.wideWaited = 0
     }
     this.assignLamps()
     if (this.composer && !this.renderer.xr.isPresenting) {

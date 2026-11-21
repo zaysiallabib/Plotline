@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_M, WIDE_UP_M } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -244,6 +244,17 @@ describe('the sun’s two shadow maps (session 31 shade: the grounds and the roa
       const { cam } = fitted(box, 270, 8)
       expect(cam.near).toBeLessThan(cam.far - SITE_REACH_M)
     }
+  })
+  test('the hour dragged: the wide map drawn again every WIDE_EVERY-th frame, and at once when the hour rests', () => {
+    const drawn = (changes: boolean[]) => {
+      let waited = 0
+      return changes.flatMap((moved, f) => ((moved || waited > 0) && drawWide(moved, ++waited) ? ((waited = 0), [f]) : []))
+    }
+    expect(WIDE_EVERY).toBe(4)
+    expect(drawn([...Array(12).fill(true), false, false])).toEqual([3, 7, 11]) // drawn on the 12th: nothing left at rest
+    expect(drawn([...Array(10).fill(true), false, false])).toEqual([3, 7, 10]) // two frames out of date, then at rest at once
+    expect(drawn([true, false, false])).toEqual([1]) // one change (an hour picked): one frame later
+    expect(drawn([false, false])).toEqual([])
   })
   test('three’s light chunks read the wide map past the sharp one, and light 1 lights nothing (wideChunks)', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('float sharpOrWide(')
