@@ -11,6 +11,20 @@ import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
 import { daylit as daylitPatch, mottleMap } from './daylight'
 
+/**
+ * The flat's lamps (render.ts's pool of spot lights) light its own rooms only. What is outside them — the street and its
+ * blocks and ground (context.ts hazed), and in the Building view the tower: the other flats' shells, their rooms behind the
+ * glass (interiors.ts), the panes (building.ts) — takes none of them: they lit the block across the lane and a neighbour's
+ * rooms through the walls, and every such pixel paid for all of them (session 31 perf: 12 lamps on High). three writes the
+ * scene's spot-light count into a shader's light chunks when it builds the program; the chunks that name spot lights are
+ * written out here with none, before it does.
+ */
+export const noSpots = (src: string): string =>
+  src.replace(/#include <(\w+)>/g, (inc, k: string) => {
+    const c = (THREE.ShaderChunk as Record<string, string>)[k]
+    return c && /NUM_SPOT_LIGHT/.test(c) ? c.replace(/NUM_SPOT_LIGHT\w*/g, '0') : inc
+  })
+
 const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
 

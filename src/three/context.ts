@@ -12,6 +12,7 @@ import type { Street } from '../data/building'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { lean, lite } from '../furnish/procedural'
+import { noSpots } from './materials'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
 
@@ -269,7 +270,8 @@ export const siteCut = { value: 0 }
 /**
  * Distance haze on one material (the street context, the ground), before tone mapping. `cut`: siteCut applies, by the
  * geometry's `bmin` / `bmax` attributes (each block's box on all its vertices; the mesh only moved, never turned) —
- * never a block sliced in two.
+ * never a block sliced in two. None of the flat's lamp lights (materials.ts noSpots): they are indoors — they lit the
+ * block across the lane through the flat's walls, and every street pixel seen through a window paid for each of them.
  */
 export function hazed<M extends THREE.Material>(m: M, cut = false): M {
   m.onBeforeCompile = (s) => {
@@ -294,6 +296,8 @@ export function hazed<M extends THREE.Material>(m: M, cut = false): M {
       gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, max(1.0 - exp(-${HAZE_BETA} * hazeD), smoothstep(${FADE_M[0]}.0, ${FADE_M[1]}.0, hazeD)));
       #include <tonemapping_fragment>`,
     )
+    s.vertexShader = noSpots(s.vertexShader)
+    s.fragmentShader = noSpots(s.fragmentShader)
   }
   if (cut) m.customProgramCacheKey = () => 'hazed-cut' // the same onBeforeCompile source: three would share the program
   return m
