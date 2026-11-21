@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { deriveFlats, deriveRooms, formatFeetInches, nearestWall, newId, parseLength, pillarCorners, roomAt, unitBounds, vertexById, wallFrame } from '../core'
 import type { Id, OpeningKind, Pt, RoomKind, Shell, Site, Slope, Unit } from '../core'
-import { draw, wallFaceDots, type Hit, type Hover } from './draw'
+import { draw, flatNames, roomNames, wallFaceDots, type Hit, type Hover } from './draw'
 import { GRID_M, movePiece, pieceAt, pieceLabel, placePiece, layoutFor, refurnish, resizePiece, sideDots, type Move } from './furniture'
 import { placementSize } from '../furnish/kit'
 import {
@@ -467,6 +467,10 @@ export default function StudioApp() {
   activeRef.current = activeKey
   // (a mark opened while the list is still being worked out: its fixes next)
   useEffect(() => void (activeKey && fixWorker.current?.postMessage({ type: 'first', key: activeKey } satisfies FixesIn)), [activeKey])
+  /** s31 crowd: a "×7" badge's rows, lit in the list while the mouse is on it — clicked, kept while one of them is open */
+  const [lit, setLit] = useState<{ keys: ReadonlySet<string>; pinned: boolean } | null>(null)
+  const light = (keys: string[] | null, pin: boolean) => setLit((l) => (pin && keys ? { keys: new Set(keys), pinned: true } : l?.pinned ? l : keys && { keys: new Set(keys), pinned: false }))
+  useEffect(() => setLit((l) => (l?.pinned && !(activeKey && l.keys.has(activeKey)) ? null : l)), [activeKey])
   // furniture layer (tool F): the unit's pieces, else the preset layout; a drag's candidate layout lives here until the drop
   const pieces = useMemo(() => (tool === 'furniture' ? layoutFor(unit, rooms).filter((p) => !p.removed) : null), [tool, unit, rooms])
   const piecesRef = useRef(pieces)
@@ -521,6 +525,15 @@ export default function StudioApp() {
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
   const toScreen = useCallback((m: Pt): Pt => mToScreen(frame, m), [frame])
+  // room names zoomed out (crowd.ts): a crowded one drops its tracking, then a size, then shows only under the mouse — the
+  // room under the mouse (else the picked name), when its name is hidden, shows it in full and its neighbours make room
+  const baseNames = useMemo(() => roomNames(unit.roomLabels, rooms, toScreen), [unit.roomLabels, rooms, toScreen])
+  const pointed = hover && (hover.hit?.kind === 'label' ? hover.hit.id : roomAt(hover.m, rooms, unit)?.id)
+  const pin = [pointed, state.selection.length === 1 ? state.selection[0] : null].find((id) => !!id && baseNames.get(id)?.look === -1)
+  const names = useMemo(() => (pin ? roomNames(unit.roomLabels, rooms, toScreen, pin) : baseNames), [baseNames, pin]) // eslint-disable-line react-hooks/exhaustive-deps
+  const flatTags = useMemo(() => flatNames(flats, rooms, unit, toScreen), [flats, rooms, unit, toScreen])
+  /** what no badge may cover: the room names shown and the flats' names */
+  const nameRects = useMemo(() => [...names.values()].flatMap((n) => (n.rect ? [n.rect] : [])).concat(flatTags.map((f) => f.rect)), [names, flatTags])
   const now = () => Date.now()
   // a new pick or R: the ghost where the pointer is; leaving tool F drops it
   useEffect(() => {
@@ -623,10 +636,10 @@ export default function StudioApp() {
     const id = requestAnimationFrame(() => {
       const ctx = canvas.getContext('2d')
       const furniture = pieces ? { pieces, drag: furnDrag } : undefined
-      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark, preview: flatPreview, flats })
+      if (ctx) draw({ ctx, width: size.w, height: size.h, dpr, state, img, rooms, labelSides, hover, scaleStart, frame, furniture, mark, preview: flatPreview, flats, names, flatNames: flatTags })
     })
     return () => cancelAnimationFrame(id)
-  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview, flats])
+  }, [state, img, rooms, labelSides, hover, scaleStart, size, frame, pieces, furnDrag, mark, flatPreview, flats, names, flatTags])
 
   // ----- project first (FloorList): the open project, the drawing of it the Studio holds
   const [projects, setProjects] = useState(readProjects)
@@ -2491,6 +2504,8 @@ export default function StudioApp() {
               onFix={applyFix}
               onName={nameRoom}
               clickable={tool === 'select'}
+              names={nameRects}
+              onLight={light}
             />
           )}
           {empty && (
@@ -2680,6 +2695,7 @@ export default function StudioApp() {
           fixes={fixes}
           active={activeKey}
           picked={pickedKey}
+          lit={lit?.keys ?? null}
           onPick={setPickedKey}
           onHot={setHotKey}
           onOpen={openMark}

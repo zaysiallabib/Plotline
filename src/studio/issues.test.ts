@@ -478,8 +478,8 @@ describe('s31 calm: the plan reads as a drawing — one badge per spot, grey onl
       ['c', ['c'], 'amber'],
       ['far', ['far'], 'amber'],
     ])
-    // zoomed in (10 px a metre) the first two come apart
-    expect(spotsOf(marks, (p) => ({ x: p.x * 10, y: p.y * 10 })).filter((s) => s.marks.length > 1)).toEqual([])
+    // zoomed in (20 px a metre) they come apart again
+    expect(spotsOf(marks, (p) => ({ x: p.x * 20, y: p.y * 20 })).filter((s) => s.marks.length > 1)).toEqual([])
   })
 
   it('rows grouped by the room their spot is in; a printed name in no room by that name; the rest "Elsewhere"; a name two flats share gets its flat', () => {

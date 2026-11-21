@@ -1,6 +1,7 @@
 /** Imperative canvas rendering. Transform: metres → plan px (originPx + m·pxPerM) → screen (·zoom + pan); see transform.ts. */
 import { formatFeetInches, pillarCorners, roomAt, roomPolygon, signedArea, unitBounds, wallFrame } from '../core'
-import type { Flat, FurniturePlacement, Id, Opening, Pt, Room, RoomKind, Vertex, Wall } from '../core'
+import type { Flat, FurniturePlacement, Graph, Id, Opening, Pt, Room, RoomKind, RoomLabel, Vertex, Wall } from '../core'
+import { NAME_LOOKS, nameLooks, overlaps, type Rect } from './crowd'
 import { GRID_M, layerOf, pieceLabel, pieceQuad, sideDots, type Move } from './furniture'
 import { formatLevel, rampArrow, wallTypeOf, type StudioState } from './model'
 import { HARD, type OpeningSnap, type Snap } from './snap'
@@ -166,6 +167,75 @@ export interface DrawArgs {
   preview?: { polys: Pt[][]; names: { at: Pt; text: string }[]; region?: { x: number; y: number; w: number; h: number }[] } | null
   /** the drawing's flats: each tinted in its colour, its name once above it */
   flats?: Flat[]
+  /** the room names' looks on screen (roomNames); absent = every name in its full look */
+  names?: Map<Id, NamePlace>
+  /** each flat's name on screen (flatNames) */
+  flatNames?: FlatName[]
+}
+
+/** a flat's name, once above the top edge of its rooms: where it is written (screen px), its colour, its rectangle */
+export interface FlatName {
+  text: string
+  at: Pt
+  rgb: string
+  rect: Rect
+}
+
+/** a room name on screen: its look (crowd.NAME_LOOKS; -1 = only under the mouse) and, shown, its rectangle */
+export interface NamePlace {
+  look: number
+  rect: Rect | null
+}
+/** the paper edge round a name (its stroke is 3 px wide) */
+const HALO = 1.5
+/** a word space each side of a name: two names never read as one */
+const PAD = 4
+let measurer: CanvasRenderingContext2D | null = null
+const textWidth = (text: string, font: string) => {
+  measurer ??= document.createElement('canvas').getContext('2d')!
+  measurer.font = font
+  return measurer.measureText(text).width
+}
+/** a label's name as the plan writes it: capitals, a floor level beside it (a ramp's two levels sit at its arrow's ends) */
+const nameText = (l: RoomLabel) => `${(l.name || 'Room').toUpperCase()}${l.levelM !== undefined && !l.slope ? `  ${formatLevel(l.levelM)}` : ''}`
+
+/**
+ * The room names' looks on a plan zoomed this way (crowd.nameLooks over their measured rectangles): a crowded name drops
+ * its tracking, then a size, then shows only under the mouse; the bigger room keeps its name. `first`: the room under the
+ * mouse (or picked), in its full look.
+ */
+export function roomNames(labels: RoomLabel[], rooms: Room[], toScreen: (m: Pt) => Pt, first?: Id): Map<Id, NamePlace> {
+  const font = tokens().font
+  const area = new Map(rooms.map((r) => [r.id, r.areaSqm]))
+  const boxes = labels.map((l) => {
+    const p = toScreen(l)
+    const text = nameText(l)
+    const rects = NAME_LOOKS.map(({ px, track, size }) => {
+      const hw = (textWidth(text, `500 ${px}px ${font}`) + track * px * text.length) / 2 + HALO + PAD
+      const r = { x0: p.x - hw, y0: p.y - px * 0.75 - HALO, x1: p.x + hw, y1: p.y + HALO }
+      if (!size || !l.printedSize) return r
+      const sw = textWidth(l.printedSize, `400 11px ${font}`) / 2 + HALO + PAD
+      return { x0: Math.min(r.x0, p.x - sw), y0: r.y0, x1: Math.max(r.x1, p.x + sw), y1: p.y + 14 + 2 + HALO }
+    })
+    return { rects, rank: area.get(l.id) ?? 0 }
+  })
+  const looks = nameLooks(boxes, first ? labels.findIndex((l) => l.id === first) : -1)
+  return new Map(labels.map((l, i) => [l.id, { look: looks[i], rect: looks[i] < 0 ? null : boxes[i].rects[looks[i]] }]))
+}
+
+/** each flat's name (core.deriveFlats), 12 px above the top edge of its rooms, in its colour; badges and lengths keep off it */
+export function flatNames(flats: Flat[], rooms: Room[], g: Graph, toScreen: (m: Pt) => Pt): FlatName[] {
+  const font = tokens().font
+  return flats.flatMap((f, i) => {
+    const ps = rooms.filter((r) => f.roomIds.includes(r.id)).flatMap((r) => roomPolygon(r, g))
+    if (!ps.length) return []
+    const xs = ps.map((p) => p.x)
+    const top = toScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ps.map((p) => p.y)) })
+    const at = { x: top.x, y: top.y - 12 }
+    const text = f.name.toUpperCase()
+    const hw = (textWidth(text, `500 12px ${font}`) + 0.12 * 12 * text.length) / 2 + 2
+    return [{ text, at, rgb: flatRgb(i), rect: { x0: at.x - hw, y0: at.y - 11, x1: at.x + hw, y1: at.y + 2 } }]
+  })
 }
 
 /** Draw order: rugs, floor pieces, what rests on them, ceiling fixtures (layerOf 3, 0, 1, 2); the smaller over the bigger — what pieceAt picks is on top. */
@@ -278,8 +348,6 @@ export function draw(a: DrawArgs): void {
 
   const hotRoom = state.tool === 'room' && a.hover ? roomAt(a.hover.m, a.rooms, state.unit) : null
   const flatOf = new Map((a.flats ?? []).flatMap((f, i) => f.roomIds.map((id) => [id, i] as const)))
-  /** each flat's extent (m), for its name */
-  const flatBox = (a.flats ?? []).map(() => ({ x0: Infinity, x1: -Infinity, y0: Infinity }))
   for (const r of a.rooms) {
     const poly = roomPolygon(r, state.unit)
     ctx.beginPath()
@@ -288,7 +356,6 @@ export function draw(a: DrawArgs): void {
     const fi = flatOf.get(r.id)
     ctx.fillStyle = fi !== undefined ? `rgba(${flatRgb(fi)},0.14)` : (ZONE_TINT[r.kind] ?? fade(C.ink, 0.035))
     ctx.fill()
-    if (fi !== undefined) for (const p of poly) Object.assign(flatBox[fi], { x0: Math.min(flatBox[fi].x0, p.x), x1: Math.max(flatBox[fi].x1, p.x), y0: Math.min(flatBox[fi].y0, p.y) })
     if (r === hotRoom) {
       ctx.fillStyle = fade(C.accent, 0.1)
       ctx.fill()
@@ -539,24 +606,35 @@ export function draw(a: DrawArgs): void {
 
   // screen space: wall lengths, labels, scale line
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  const lengthLabel = (f: WallFrame, side: number, thicknessM: number) => {
+  /** `taken` (a still plan): the length goes only where it covers no room name and no length already written */
+  const lengthLabel = (f: WallFrame, side: number, thicknessM: number, taken?: Rect[]) => {
     const mid = toScreen({ x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 })
     const nx = f.normal.x * side
     const ny = f.normal.y * side
     const off = thicknessM * s * 0.5 + 5
+    const [x, y, text] = [mid.x + nx * off, mid.y + ny * off, formatFeetInches(f.lengthM)]
     ctx.textAlign = Math.abs(nx) < 0.3 ? 'center' : nx > 0 ? 'left' : 'right'
     ctx.textBaseline = Math.abs(ny) < 0.3 ? 'middle' : ny > 0 ? 'top' : 'bottom'
-    ctx.fillText(formatFeetInches(f.lengthM), mid.x + nx * off, mid.y + ny * off)
+    if (taken) {
+      const w = ctx.measureText(text).width
+      const x0 = ctx.textAlign === 'center' ? x - w / 2 : ctx.textAlign === 'left' ? x : x - w
+      const y0 = ctx.textBaseline === 'middle' ? y - 6 : ctx.textBaseline === 'top' ? y : y - 12
+      const r = { x0, y0, x1: x0 + w, y1: y0 + 12 }
+      if (taken.some((t) => overlaps(t, r))) return
+      taken.push(r)
+    }
+    ctx.fillText(text, x, y)
   }
   ctx.font = `400 11px ${C.font}`
   ctx.fillStyle = C.muted
   const moving = new Set(a.hover?.moving)
   const live = (w: { a: Id; b: Id }) => moving.has(w.a) || moving.has(w.b)
+  const taken = [...(a.names?.values() ?? [])].flatMap((n) => (n.rect ? [n.rect] : [])).concat((a.flatNames ?? []).map((f) => f.rect))
   for (const [id, side] of a.labelSides) {
     const w = state.unit.walls.find((x) => x.id === id)
     if (!w || live(w)) continue
     const f = wallFrame(w, vs)
-    if (f.lengthM * s >= MIN_LABEL_PX) lengthLabel(f, side, w.thicknessM)
+    if (f.lengthM * s >= MIN_LABEL_PX) lengthLabel(f, side, w.thicknessM, taken)
   }
   // dragging: every wall at a moving corner, however short, in the ghost wall's style
   ctx.font = `500 12px ${C.font}`
@@ -569,7 +647,8 @@ export function draw(a: DrawArgs): void {
   }
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'center'
-  // room names as inscriptions (tracked capitals), the printed size under them; a paper edge so they read over the print
+  // room names as inscriptions (tracked capitals), the printed size under them; a paper edge so they read over the print;
+  // zoomed out, each in the look roomNames gave it (a crowded one smaller, or only under the mouse)
   ctx.lineJoin = 'round'
   ctx.lineWidth = 3
   ctx.strokeStyle = fade(C.paper, 0.85)
@@ -578,15 +657,16 @@ export function draw(a: DrawArgs): void {
     ctx.fillText(text, x, y)
   }
   for (const l of state.unit.roomLabels) {
+    const look = NAME_LOOKS[a.names?.get(l.id)?.look ?? 0]
+    if (!look) continue
     const p = toScreen(l)
     const active = sel.has(l.id)
-    ctx.font = `500 10px ${C.font}`
-    ctx.letterSpacing = '0.1em'
+    ctx.font = `500 ${look.px}px ${C.font}`
+    ctx.letterSpacing = `${look.track}em`
     ctx.fillStyle = active ? C.accent : C.ink
-    // a floor level beside the name, as the sheets print it (a ramp's two levels sit at its arrow's ends instead)
-    inscribe(`${(l.name || 'Room').toUpperCase()}${l.levelM !== undefined && !l.slope ? `  ${formatLevel(l.levelM)}` : ''}`, p.x, p.y)
+    inscribe(nameText(l), p.x, p.y)
     ctx.letterSpacing = '0px'
-    if (l.printedSize) {
+    if (look.size && l.printedSize) {
       ctx.font = `400 11px ${C.font}`
       ctx.fillStyle = active ? C.accent : C.ink2
       inscribe(l.printedSize, p.x, p.y + 14)
@@ -596,13 +676,10 @@ export function draw(a: DrawArgs): void {
   ctx.font = `500 12px ${C.font}`
   ctx.letterSpacing = '0.12em'
   ctx.lineWidth = 4
-  ;(a.flats ?? []).forEach((f, i) => {
-    const b = flatBox[i]
-    if (!Number.isFinite(b.x0)) return
-    const p = toScreen({ x: (b.x0 + b.x1) / 2, y: b.y0 })
-    ctx.fillStyle = `rgb(${flatRgb(i)})`
-    inscribe(f.name.toUpperCase(), p.x, p.y - 12)
-  })
+  for (const f of a.flatNames ?? []) {
+    ctx.fillStyle = `rgb(${f.rgb})`
+    inscribe(f.text, f.at.x, f.at.y)
+  }
   ctx.letterSpacing = '0px'
   ctx.font = `400 11px ${C.font}`
   for (const { l, from, to } of ramps) {

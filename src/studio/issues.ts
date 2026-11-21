@@ -250,8 +250,8 @@ export function markIssues(u: Unit, rooms: Room[], issues: StudioIssue[], review
 
 // ── s31 calm: a sheet that reads as a drawing, not an error list ────────────────────────────────────────────────────
 
-/** marks whose spots fall this close on screen (px) share one badge */
-export const SPOT_PX = 14
+/** marks whose spots fall this close on screen (px) share one badge (s31 crowd: 14 → 24, a zoomed-out whole floor read as a crowd) */
+export const SPOT_PX = 24
 
 /** One badge on the plan: the marks at one spot (screen px), the first in list order leading; red when any of them is. */
 export interface Spot {

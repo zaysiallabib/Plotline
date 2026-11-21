@@ -174,6 +174,8 @@ interface Props {
   active: string | null
   /** s31 calm: the row picked in the Check these list (↑ / ↓ there; Enter goes to it) */
   picked?: string | null
+  /** s31 crowd: the rows of the "×7" badge under the mouse (or clicked) on the plan: lit, their groups open, the first in view */
+  lit?: ReadonlySet<string> | null
   onPick?: (key: string | null) => void
   /** a row hovered: its mark pulses (null: none) */
   onHot: (key: string | null) => void
@@ -197,7 +199,7 @@ interface Props {
   onLayerRole?: (layer: string, role: LayerRole | 'auto') => void
 }
 
-export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole }: Props) {
+export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, active, picked = null, lit = null, onPick, onHot, onOpen, onFix, onAnswer, ai, pieces, placing, onPlace, notes, onDismissNotes, layers, onLayerRole }: Props) {
   const piece = pieces?.find((p) => state.selection.length === 1 && p.id === state.selection[0])
   const { unit } = state
   const review = marks.filter((m) => m.review)
@@ -209,12 +211,16 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
   useEffect(() => {
     if (active || picked) document.querySelector('.panel .issues li.on')?.scrollIntoView({ block: 'nearest' })
   }, [active, picked])
+  useEffect(() => {
+    if (lit) document.querySelector('.panel .issues li.lit')?.scrollIntoView({ block: 'nearest' })
+  }, [lit])
   // s31 calm: the Check these rows grouped by room (issues.ts groupRows) — a group opens on a click, or by itself while it
   // holds the picked / open row; ↑ / ↓ walk the rows in that order (the list has the keys while it has the focus)
   const groups = useMemo(() => groupRows(marks.filter((m) => m.review), unit, rooms, (id) => flats.find((f) => f.roomIds.includes(id))?.name), [marks, unit, rooms, flats])
   const order = groups.flatMap((g) => g.rows)
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
   const isOn = (m: Mark) => (m.twinOf ?? m.key) === active || m.key === picked
+  const isLit = (m: Mark) => !!lit?.has(m.twinOf ?? m.key)
   const onListKey = (e: React.KeyboardEvent) => {
     const i = order.findIndex((m) => m.key === picked)
     if (e.key === 'Enter') {
@@ -241,7 +247,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
     return (
       <li
         key={m.key}
-        className={`${m.at ? 'find' : ''}${isOn(m) ? ' on' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
+        className={`${m.at ? 'find' : ''}${isOn(m) ? ' on' : ''}${isLit(m) ? ' lit' : ''}${m.severity === 'grey' ? ' grey' : ''}`}
         title={m.at ? 'Click to go to it on the plan' : undefined}
         onMouseEnter={() => m.at && onHot(key)}
         onMouseLeave={() => onHot(null)}
@@ -434,7 +440,7 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
             <ul className="issues" tabIndex={0} aria-label="Check these: ↑ ↓ pick a row, Enter goes to it" onKeyDown={onListKey}>
               {groups.map((g) => {
                 if (g.rows.length === 1) return row(g.rows[0], reviewActs(g.rows[0]))
-                const open = opened.has(g.key) || g.rows.some(isOn)
+                const open = opened.has(g.key) || g.rows.some((m) => isOn(m) || isLit(m))
                 const sev: Severity = g.rows.some((m) => m.severity === 'red') ? 'red' : g.rows.some((m) => m.severity === 'amber') ? 'amber' : 'grey'
                 return (
                   <li key={g.key} className={`group${open ? ' open' : ''}`}>

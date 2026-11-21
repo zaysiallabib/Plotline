@@ -6,9 +6,12 @@
  * s31 calm (founder: "the screen reads as an error list, not a drawing"): red (breaks the 3D) is a numbered badge; amber a
  * small dot with no number until the mouse comes near or its row is picked; grey is not drawn (the list holds it); rows
  * at one spot share one badge with their count (issues.ts spotsOf); the picked row's badge is the accent.
+ * s31 crowd: zoomed out, the rows within SPOT_PX of each other on screen are one "×7" badge — the mouse on it (or a click,
+ * kept until Esc) lights its rows in the list (`onLight`); no badge or dot covers a room name (crowd.ts placeBadges).
  */
 import { useEffect, useRef, useState } from 'react'
 import type { Pt } from '../core'
+import { placeBadges, type Rect } from './crowd'
 import { spotsOf, type Fix, type Ghost, type Mark, type MarkFixes, type Spot } from './issues'
 
 /** a fixless mark: what to do by hand */
@@ -38,12 +41,17 @@ interface Props {
   onName: (at: Pt, name: string) => void
   /** the badges take clicks (V); false while a drawing tool is picked */
   clickable: boolean
+  /** the room names shown on the plan (screen px): no badge covers one */
+  names: Rect[]
+  /** a "×7" badge's rows: lit in the list while the mouse is on it (`pin`: clicked, kept); null: the mouse left */
+  onLight: (keys: string[] | null, pin: boolean) => void
 }
 
-/** where a mark's numbered badge goes, from its spot: up-right, else the first other corner no earlier badge sits on */
-const OFFSETS: Pt[] = [{ x: 12, y: -12 }, { x: 12, y: 12 }, { x: -12, y: -12 }, { x: -12, y: 12 }, { x: 0, y: -26 }, { x: 0, y: 26 }, { x: 26, y: 0 }, { x: -26, y: 0 }]
+/** a badge's radius (px); a "×7" badge is as wide as its count */
+const R = 9
+const countText = (s: Spot) => `×${s.marks.length}`
 
-export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, picked, onActivate, onFix, onName, clickable }: Props) {
+export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot, picked, onActivate, onFix, onName, clickable, names, onLight }: Props) {
   const pts = (ps: Pt[]) => ps.map((p) => toScreen(p)).map((p) => `${p.x},${p.y}`).join(' ')
   const spots = spotsOf(marks, toScreen)
   /** a spot holding the open / hovered / picked row (a twin row: its issue's) */
@@ -74,15 +82,10 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
   const nearSet = new Set(near.split(','))
   /** an amber spot stays a dot unless the mouse is near or one of its rows is open / hovered / picked */
   const dot = (s: Spot) => s.severity === 'amber' && !lit(s) && !nearSet.has(s.key)
-  // badges never cover each other (two issues a few cm apart, e.g. a loose end inside an unnamed space)
-  const placed: Pt[] = []
-  const badgeAt = new Map<string, Pt>()
-  for (const s of spots) {
-    if (dot(s)) continue
-    const o = OFFSETS.find((d) => placed.every((q) => Math.hypot(s.at.x + d.x - q.x, s.at.y + d.y - q.y) >= 18)) ?? OFFSETS[0]
-    placed.push({ x: s.at.x + o.x, y: s.at.y + o.y })
-    badgeAt.set(s.key, o)
-  }
+  // badges never cover each other (two issues a few cm apart, e.g. a loose end inside an unnamed space) nor a room name
+  const halfW = (s: Spot) => (s.marks.length > 1 ? 4 + 3.25 * countText(s).length : R) + 1
+  const offsets = placeBadges(spots.map((s) => (dot(s) ? { at: s.at, hw: 5, hh: 5, dot: true } : { at: s.at, hw: halfW(s), hh: R + 1, dot: false })), names)
+  const badgeAt = new Map(spots.map((s, i) => [s.key, offsets[i]]))
   const ghost = (g: Ghost, k: number) => {
     if (g.kind === 'area') return <polygon key={k} className="g-area" points={pts(g.pts)} />
     if (g.kind === 'ring') {
@@ -120,31 +123,37 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
         })()}
         {spots.map((s) => {
           const m = lead(s)
+          const many = s.marks.length > 1
+          const keys = s.marks.map((x) => x.key)
           const pick = (e: React.PointerEvent) => {
             e.stopPropagation()
             onActivate(m.key === active ? null : m.key)
+            if (many) onLight(keys, true)
           }
+          // a "×7" badge: the mouse on it lights its rows in the list
+          const hover = many ? { onPointerEnter: () => onLight(keys, false), onPointerLeave: () => onLight(null, false) } : {}
           const title = s.marks.map((x) => (x.n ? `${x.n}. ${x.message}` : x.message)).join('\n')
           const cls = `mark ${s.severity}${has(s, active) ? ' on' : ''}${has(s, hot) ? ' hot' : ''}${has(s, picked) ? ' picked' : ''}`
+          const o = badgeAt.get(s.key)!
           if (dot(s))
             return (
-              <g key={s.key} className={`${cls} dot`} transform={`translate(${s.at.x} ${s.at.y})`}>
-                <g className="badge" onPointerDown={pick}>
+              <g key={s.key} className={`${cls} dot`} transform={`translate(${s.at.x + o.x} ${s.at.y + o.y})`}>
+                <g className="badge" onPointerDown={pick} {...hover}>
                   <title>{title}</title>
                   <circle className="hit" r={8} />
                   <circle r={4} />
                 </g>
               </g>
             )
-          const o = badgeAt.get(s.key)!
+          const hw = halfW(s) - 1
           return (
-            <g key={s.key} className={`${cls}${s.marks.length > 1 ? ' many' : ''}`} transform={`translate(${s.at.x} ${s.at.y})`}>
-              <circle className="ring" r={9} />
-              <circle className="pulse" r={9} />
-              <g className="badge" transform={`translate(${o.x} ${o.y})`} onPointerDown={pick}>
+            <g key={s.key} className={`${cls}${many ? ' many' : ''}`} transform={`translate(${s.at.x} ${s.at.y})`}>
+              <circle className="ring" r={R} />
+              <circle className="pulse" r={R} />
+              <g className="badge" transform={`translate(${o.x} ${o.y})`} onPointerDown={pick} {...hover}>
                 <title>{title}</title>
-                <circle r={9} />
-                <text>{s.marks.length > 1 ? s.marks.length : m.n}</text>
+                {many ? <rect x={-hw} y={-R} width={2 * hw} height={2 * R} rx={R} /> : <circle r={R} />}
+                <text>{many ? countText(s) : m.n}</text>
               </g>
             </g>
           )
