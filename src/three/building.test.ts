@@ -864,6 +864,11 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     await new Promise((r) => setTimeout(r, 450))
     const batched = drawn()
     expect(batched).toBeLessThan(one / 3)
+    // (session 31 start lane) placed again in the same view (Enter, a Rooms jump): the batches stand, nothing is made again
+    const kept = b.children.filter((o) => o.userData.batch)
+    b.frame('walk', 'low')
+    expect(b.children.filter((o) => o.userData.batch)).toEqual(kept)
+    expect(drawn()).toBe(batched)
     b.frame('building', 'low')
     let hidden = 0
     b.traverse((o) => void (o.layers.mask === 1 << HIDDEN && hidden++))

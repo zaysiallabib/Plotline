@@ -383,6 +383,17 @@ export type LightsMode = 'auto' | 'on' | 'off'
 export const lightsOn = (mode: LightsMode, altDeg: number): boolean => (mode === 'auto' ? altDeg < 5 : mode === 'on')
 
 /**
+ * three's ambient-occlusion smoothing shader (PoissonDenoiseShader) with its sample loop counted by a uniform `pdSamples`, not
+ * the SAMPLES define: the compiler keeps it a loop instead of copying its body out per sample (Look). Throws if three's
+ * text changed (render.test.ts): a silent miss would bring the 0.6 s back.
+ */
+export function keptLoop(fs: string): string {
+  const loop = 'for (int i = 0; i < SAMPLES; i++) {'
+  if (!fs.includes(loop) || !fs.includes('uniform int index;')) throw new Error('three’s smoothing shader changed: keptLoop needs a look')
+  return fs.replace('uniform int index;', 'uniform int index;\nuniform int pdSamples;').replace(loop, 'for (int i = 0; i < pdSamples; i++) {')
+}
+
+/**
  * The lamps that cast shadows: those in the camera's room first, then the nearest to the camera; `k` of them (fewer only
  * if there are fewer lamps). Indices into `lamps`.
  */
@@ -588,6 +599,11 @@ export class Look {
       )
       ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1, thickness: 0.5, scale: 1, samples: 16 })
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
+      // its 16 samples kept a loop (session 31 start lane): written with a fixed count the compiler copied the loop out 16
+      // times, normals rebuilt from depth in each — Firefox took 0.6–0.7 s to make that one program; with the count a number
+      // it takes 0.06 s, and draws the same bytes (measured: the two outputs equal, pixel for pixel)
+      ao.pdMaterial.fragmentShader = keptLoop(ao.pdMaterial.fragmentShader)
+      ao.pdMaterial.uniforms.pdSamples = { value: 16 }
       ao.blendIntensity = 0.9
       ao.enabled = !switchedOff('ao')
       this.composer.addPass(ao)

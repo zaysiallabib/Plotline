@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, keptLoop, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -261,5 +261,17 @@ describe('the sun’s two shadow maps (session 31 shade: the grounds and the roa
     expect(THREE.ShaderChunk.lights_fragment_begin).toContain('sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] )')
     expect(THREE.ShaderChunk.lights_fragment_begin).toContain('#if !( NUM_DIR_LIGHT_SHADOWS > 1 && UNROLLED_LOOP_INDEX == 1 )')
     expect(THREE.ShaderChunk.shadowmask_pars_fragment).toContain('#if !( NUM_DIR_LIGHT_SHADOWS > 1 && UNROLLED_LOOP_INDEX == 1 )')
+  })
+})
+
+describe('the ambient occlusion’s smoothing pass made in 0.06 s, not 0.6 (session 31 start lane)', () => {
+  test('three’s shader with its 16 samples counted by a uniform: the loop kept, everything else as three wrote it', async () => {
+    const { PoissonDenoiseShader } = await import('three/addons/shaders/PoissonDenoiseShader.js')
+    const fs = PoissonDenoiseShader.fragmentShader
+    const out = keptLoop(fs)
+    expect(out).toContain('for (int i = 0; i < pdSamples; i++) {')
+    expect(out).toContain('uniform int pdSamples;')
+    expect(out.replace('\nuniform int pdSamples;', '').replace('i < pdSamples;', 'i < SAMPLES;')).toBe(fs)
+    expect(() => keptLoop('void main() {}')).toThrow() // three changed it: said at once, not a silent 0.6 s
   })
 })

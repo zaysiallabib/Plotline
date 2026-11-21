@@ -613,6 +613,10 @@ export class Building extends THREE.Group {
    * been opened (the walk starts as fast as before). The Building view: all of it, casting as built (highlight cuts).
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
+    // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
+    // stand. Unmade and made again they held the page 150–190 ms, 0.4 s after Enter (session 31 start lane)
+    if (this.batched && this.framed === `${mode}|${tier}`) return
+    this.framed = `${mode}|${tier}`
     const around = mode !== 'building'
     this.unbatchAround()
     this.around = around
@@ -650,6 +654,8 @@ export class Building extends THREE.Group {
   private leavesMerged = false
   private batched: { batches: THREE.Mesh[]; leaves: THREE.InstancedMesh[]; moved: THREE.Object3D[] } | null = null
   private batchTimer: ReturnType<typeof setTimeout> | undefined
+  /** the view and tier frame() last set */
+  private framed = ''
 
   /**
    * Round the flat the tower does not change while it is looked at (the Building view's cut, lift and picking need its pieces

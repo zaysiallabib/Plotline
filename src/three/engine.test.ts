@@ -15,7 +15,7 @@ import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits 
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
-import { EDGE_PLASTER, PICTURES, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
+import { EDGE_PLASTER, MORE_PICTURES, PICTURES, PICTURE_ROOM, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
 import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
@@ -576,6 +576,12 @@ describe('one program for every lit surface (session 31 ready lane: the first fr
     for (const m of [fan, scan]) samePictures(m)
     expect([fan.alphaTest, isBlank(fan.alphaMap), isBlank(fan.emissiveMap), isBlank(fan.specularIntensityMap)]).toEqual([SOLID_CUT, true, true, true])
     expect([scan.alphaTest, isBlank(scan.alphaMap), isBlank(scan.specularIntensityMap), scan.specularIntensity]).toEqual([0.5, true, true, 0.71])
+    expect([fan.aoMap, scan.aoMap]).toEqual([null, null]) // (7 pictures: a program of 8 would not build on High)
+    // one with more pictures of its own: its blanks give way, never past 7
+    const t = () => new THREE.Texture()
+    const busy = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, map: t(), normalMap: t(), roughnessMap: t(), metalnessMap: t(), aoMap: t(), emissiveMap: t() })
+    samePictures(busy)
+    expect([...PICTURES, ...MORE_PICTURES].filter((k) => busy[k]).length).toBe(PICTURE_ROOM)
   })
   test('High: the plaster’s cloudiness is a number, not a define — the painted walls draw with the rooms’ program', () => {
     const wall = materialFor({ kind: 'pbr', textureId: 'plaster_white', tint: '#eeeeee' }, false, true)
