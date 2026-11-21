@@ -361,7 +361,7 @@ steps aside while Finishes or Comment is open.
   lamp lit at night** — their light is worked out once when the flat opens and painted onto the rooms (a lamp moved or
   deleted in Edit furniture is worked out again), so no lamp costs anything while you walk; the street as plain blocks
   under a plain blue sky, pictures at half size and the colour picture only (no relief, no shine pictures), each piece a
-  light copy of itself (at most about 1 500 triangles), no potted-plant models, plain mirrors, and of your building only
+  light copy of itself (at most about 1 500 triangles; curtains keep their pleats), no potted-plant models, plain mirrors, and of your building only
   the ground (no trees or play things) and the floors just above and below yours. Nothing is drawn while
   nothing changes (with Wind on its lines keep drifting). Same walls, furniture and finishes.
 
