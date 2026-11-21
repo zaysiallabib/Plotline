@@ -43,7 +43,11 @@ What someone who has never seen Plotline sees first: the product told as a short
 
 - At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**.
 - Beside them (under them on a phone) lies a real floor plan: flat Type A on a sheet of paper, drawn as the architect's
-  sheet draws it, with its room names, sizes and north point.
+  sheet draws it, with its room names, sizes and north point. Names read as a sheet prints them ("Veranda", not
+  "Veranda (living)"); a room the sheet gives no size (a shaft, the lift core) shows its name alone. A name too big for
+  its room goes on two lines, then in smaller letters twice, and only then is left out (on a phone the smallest baths
+  and verandas still are). On a phone the drawing hangs right under the words of each part of the story, so no empty
+  band opens between them as the words get shorter.
 - Scroll down and the story plays with your scroll: the sheet tips back, the walls rise out of the plan with their doors
   and windows cut in, the floor lifts onto a row of columns and more floors stack into a tower, each turned a little more
   than the one under it. The roof closes it and a June morning's sun casts its shadow (true to the flat's north). Scroll
