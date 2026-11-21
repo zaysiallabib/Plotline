@@ -772,7 +772,12 @@ export class Look {
       return a && b && a !== b ? [[a.id, b.id, Math.max(...w.openings.map((o) => SPILL[o.kind] ?? SPILL_OTHER))]] : []
     })
     this.setFixtures(unit)
-    this.pool = Array.from({ length: this.maxLamps }, (_, i) => {
+    // a covered level's downlights (coverLights) take lamps' places, the count of lights stays the tier's (session 31 ready lane:
+    // the ground floor with its parking had 16 on High, every program of the flat's 12 made again — most of a 12 s trip to it
+    // from the Building view); Low (4 lamps, 4 downlights) keeps its lamps and adds them, as before
+    const covered = this.coverLights(unit, rooms, cover)
+    const lamps = this.maxLamps > 2 * COVER_LIGHTS ? this.maxLamps - covered : this.maxLamps
+    this.pool = Array.from({ length: lamps }, (_, i) => {
       // a point light 5 cm under the ceiling burns a hotspot into it; a downward spot is a real diffuser/pendant
       // with an opaque top — and its falloff leaves a pool on the floor, darker corners. Same per-fragment cost.
       // an opal diffuser / globe gives off light like a Lambertian disc, I0·cos θ: an 83° cone with a full penumbra is
@@ -791,16 +796,15 @@ export class Look {
       this.unitGroup.add(light, light.target)
       return { light, at: null }
     })
-    this.coverLights(unit, rooms, cover)
     this.unitGroup.add(slab, this.indoor)
   }
 
   /**
    * Under the slab above (`cover`: a basement, the parking under a tower) a zone gets no sky: LED battens hang on a world
    * 3.6 m grid from its soffit (one emissive mesh), and the battens farthest apart carry a real downlight each — up to
-   * COVER_LIGHTS, within the light budget beside the rooms' lamps. Always on, whatever the hour.
+   * COVER_LIGHTS, within the light budget beside the rooms' lamps. Always on, whatever the hour. Returns how many.
    */
-  private coverLights(unit: Unit, rooms: Room[], cover: Pt[][]): void {
+  private coverLights(unit: Unit, rooms: Room[], cover: Pt[][]): number {
     const spots: { x: number; y: number; floor: number }[] = []
     for (const r of rooms.filter((x) => isCovered(x, cover))) {
       const poly = core.roomInnerPolygon(r, unit)
@@ -812,7 +816,7 @@ export class Look {
           if (core.pointInPolygon(p, poly) && cover.some((c) => core.pointInPolygon(p, c))) spots.push({ ...p, floor: core.roomLevelAt(r, unit, p.x, p.y) })
         }
     }
-    if (!spots.length) return
+    if (!spots.length) return 0
     const y = this.topY - 0.03
     const battens = mergeGeometries(spots.map((p) => new THREE.BoxGeometry(1.2, 0.04, 0.08).translate(p.x, y, p.y)))!
     this.indoor.add(new THREE.Mesh(battens, BATTEN))
@@ -826,6 +830,7 @@ export class Look {
       light.target.position.set(p.x, p.floor, p.y)
       this.unitGroup.add(light, light.target) // not in `indoor`: a light count that changes with the camera recompiles every material
     }
+    return picked.length
   }
 
   /**

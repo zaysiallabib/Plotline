@@ -359,3 +359,7 @@ What changed:
     the next visit reads a piece's simplified shape instead of making it again — Lite's start screen spent ~0.4 s making
     them, the Building view's other flats' furniture ~1.7 s. Kept per model (or code-built piece and size) and its shape in
     numbers: a model file or builder that changes is simplified afresh.
+11. **A covered level keeps High's 12 lights**: its parking downlights (up to 4) take lamps' places instead of adding to them,
+    so walking from a flat to the ground floor or a basement makes no lit program again (16 lights there made every one of the
+    flat's new). On such a level at night the 8 lamps nearest you are lit, not 12. Low keeps its 4 lamps and adds the
+    downlights, as before.
