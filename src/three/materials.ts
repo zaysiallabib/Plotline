@@ -25,33 +25,6 @@ export const noSpots = (src: string): string =>
     return c && /NUM_SPOT_LIGHT/.test(c) ? c.replace(/NUM_SPOT_LIGHT\w*/g, '0') : inc
   })
 
-/**
- * The flat's lamps (render.ts's pool: 12 on High) in every lit shader: three writes one copy of a lamp's light per lamp, and
- * that is most of what Firefox spends making a lit program (0.3 s, 0.1 s with no lamps: session 31 ready lane, GTX 980) —
- * and the first frame waits for every program. The lamps without a shadow map are lit in one loop instead, its end a
- * uniform the compiler cannot know (spotLoop, far over any count: min() keeps the scene's own), so it stays a loop: a fifth
- * less to make, the same light. The shadowed ones keep their copies (their shadow maps must be named one by one). Plotline
- * gives no lamp a projected picture (a spot light map), which the loop leaves out.
- */
-export const SPOT_LOOP = /* glsl */ `
-	for ( int i = NUM_SPOT_LIGHT_SHADOWS; i < min( spotLoop, NUM_SPOT_LIGHTS ); i ++ ) {
-		getSpotLightInfo( spotLights[ i ], geometryPosition, directLight );
-		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
-	}`
-{
-  const C = THREE.ShaderChunk as Record<string, string>
-  const chunk = C.lights_fragment_begin
-  const at = chunk.indexOf('#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )')
-  const end = chunk.indexOf('#pragma unroll_loop_end', at) + '#pragma unroll_loop_end'.length
-  const loop = 'for ( int i = 0; i < NUM_SPOT_LIGHTS; i ++ ) {'
-  // (three changed its chunk: left as it is — every lamp a copy, as before)
-  if (at >= 0 && chunk.slice(at, end).includes(loop) && !chunk.includes('spotLoop')) {
-    C.lights_fragment_begin = chunk.slice(0, at) + chunk.slice(at, end).replace(loop, 'for ( int i = 0; i < NUM_SPOT_LIGHT_SHADOWS; i ++ ) {') + SPOT_LOOP + chunk.slice(end)
-    C.lights_pars_begin = C.lights_pars_begin.replace('uniform SpotLight spotLights[ NUM_SPOT_LIGHTS ];', 'uniform SpotLight spotLights[ NUM_SPOT_LIGHTS ];\n\tuniform int spotLoop;')
-    for (const k of ['lambert', 'phong', 'physical', 'toon'] as const) THREE.ShaderLib[k].uniforms.spotLoop = { value: 64 }
-  }
-}
-
 const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
 
