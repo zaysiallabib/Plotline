@@ -37,56 +37,13 @@ import { lightPiece } from './daylight'
 import { buildFurniture } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
-import { batch, CELL_M, HIDDEN, unbatch } from './batch'
+import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
 
 /** every drawing's rooms (interiors.ts roomsGeometry) per tower and key, for the page: built once, whichever floor is walked */
 const ROOMS = new WeakMap<Tower, Map<string, Promise<THREE.BufferGeometry | null>>>()
 const KEPT = new WeakSet<THREE.BufferGeometry>()
-/** the same material drawing vertex colours (an instanced mesh's tints as its vertices' colours), once per material */
-const tinted = new WeakMap<THREE.Material, THREE.Material>()
-/**
- * An instanced mesh (a tree's or a planter's leaves, each instance a card with its own tint) as one plain mesh in `inv`'s
- * frame: every instance's copy of its geometry, its tint as the vertices' colours, its material's copy that draws them; no
- * shadow (round the flat the grounds' pieces cast none). null: nothing to lay out (no instance, a geometry with colours).
- */
-export function unrolled(im: THREE.InstancedMesh, inv: THREE.Matrix4): THREE.Mesh | null {
-  const g = im.geometry
-  const mat = im.material as THREE.Material
-  if (!im.count || !g.attributes.position?.count || g.attributes.color || Array.isArray(im.material)) return null
-  const m = new THREE.Matrix4()
-  const w = new THREE.Matrix4().multiplyMatrices(inv, im.matrixWorld)
-  const c = new THREE.Color(1, 1, 1)
-  const parts: THREE.BufferGeometry[] = []
-  for (let i = 0; i < im.count; i++) {
-    im.getMatrixAt(i, m)
-    const one = g.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(w, m))
-    if (im.instanceColor) im.getColorAt(i, c)
-    const n = one.attributes.position.count
-    const col = new Float32Array(n * 3)
-    for (let k = 0; k < n; k++) col.set([c.r, c.g, c.b], k * 3)
-    one.setAttribute('color', new THREE.BufferAttribute(col, 3))
-    parts.push(one)
-  }
-  const merged = mergeGeometries(parts)
-  parts.forEach((x) => x.dispose())
-  if (!merged) return null
-  let t = tinted.get(mat)
-  if (!t) {
-    t = mat.clone()
-    ;(t as THREE.MeshStandardMaterial).vertexColors = true
-    t.onBeforeCompile = mat.onBeforeCompile
-    t.customProgramCacheKey = mat.customProgramCacheKey
-    // the leaves' glow follows the hour (procedural.ts setLeafGlow sets the originals): read through to them
-    Object.defineProperty(t, 'emissiveIntensity', { get: () => (mat as THREE.MeshStandardMaterial).emissiveIntensity, set: () => {} })
-    tinted.set(mat, t)
-  }
-  const out = new THREE.Mesh(merged, t)
-  out.raycast = () => {}
-  return out
-}
-
 /** round the flat the tower is batched this long after the last thing came in (batchAround) */
 const AROUND_MS = 400
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
@@ -700,35 +657,12 @@ export class Building extends THREE.Group {
     this.batchTimer = setTimeout(() => {
       if (!this.around || this.disposed) return
       this.unbatchAround()
-      // the grounds' pieces: their own squares' batches undone (one for the whole tower now), each tree's instanced leaves
-      // laid out as plain leaves (unrolled) so they join it too — Sheltech's ground was ~150 draws of leaves alone
-      for (const { pieces } of this.furnishing) if (pieces) unbatch(pieces)
-      const leaves: THREE.Mesh[] = []
-      const inv = this.matrixWorld.clone().invert()
-      this.updateMatrixWorld(true)
-      this.traverseVisible((o) => {
-        const im = o as THREE.InstancedMesh
-        if (!im.isInstancedMesh || im.layers.mask !== 1) return
-        const plainLeaves = unrolled(im, inv)
-        if (!plainLeaves) return
-        im.layers.set(HIDDEN)
-        leaves.push(plainLeaves)
-      })
-      if (leaves.length) this.add(...leaves)
       const before: THREE.Object3D[] = []
-      this.traverse((o) => void (o.layers.mask === 1 && !leaves.includes(o as THREE.Mesh) && before.push(o)))
+      this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
       const batches = batch(this, Infinity)
-      for (const l of leaves) (l.removeFromParent(), l.geometry.dispose()) // (merged into the batches)
-      this.batched = { batches, moved: [...before.filter((o) => o.layers.mask === 1 << HIDDEN), ...this.instancedHidden()] }
+      this.batched = { batches, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
       this.onChange()
     }, AROUND_MS)
-  }
-
-  /** the instanced meshes batchAround hid (their leaves are in its batches) */
-  private instancedHidden(): THREE.Object3D[] {
-    const out: THREE.Object3D[] = []
-    this.traverse((o) => void ((o as THREE.InstancedMesh).isInstancedMesh && o.layers.mask === 1 << HIDDEN && out.push(o)))
-    return out
   }
 
   /** the tower one by one again (frame, a flat's rooms or pieces coming in, the Building view) */
@@ -739,7 +673,6 @@ export class Building extends THREE.Group {
     this.batched = null
     for (const m of b.batches) (m.removeFromParent(), m.geometry.dispose())
     for (const o of b.moved) o.layers.set(0)
-    for (const { pieces } of this.furnishing) if (pieces) batch(pieces, CELL_M) // as furnishPieces left them
   }
 
   /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
