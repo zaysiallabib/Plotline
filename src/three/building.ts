@@ -683,18 +683,27 @@ export class Building extends THREE.Group {
    * few ms), not leaves laid out as plain geometry: that froze the page for 2–3 s after a stair.
    */
   private leavesTogether(): THREE.InstancedMesh[] {
-    const groups = new Map<string, THREE.InstancedMesh[]>()
+    // one card = the same vertices: each tree's geometry is its own only for its daylight corner (daylight.ts own), over the
+    // card's shared attributes
+    const same = (p: THREE.InstancedMesh, q: THREE.InstancedMesh) => {
+      const [g, h] = [p.geometry, q.geometry]
+      const [du, dv] = [g.getAttribute('dayUv'), h.getAttribute('dayUv')]
+      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow &&
+        !p.instanceColor === !q.instanceColor && du?.getX(0) === dv?.getX(0) && du?.getY(0) === dv?.getY(0)
+    }
+    const groups: THREE.InstancedMesh[][] = []
     this.updateMatrixWorld(true)
     this.traverseVisible((o) => {
       const im = o as THREE.InstancedMesh
       if (!im.isInstancedMesh || im.layers.mask !== 1 || !im.count || Array.isArray(im.material)) return
-      const key = `${im.geometry.uuid}|${im.material.uuid}|${im.castShadow}|${!!im.instanceColor}`
-      groups.set(key, [...(groups.get(key) ?? []), im])
+      const list = groups.find((l) => same(l[0], im))
+      if (list) list.push(im)
+      else groups.push([im])
     })
     const inv = this.matrixWorld.clone().invert()
     const w = new THREE.Matrix4(), m = new THREE.Matrix4(), c = new THREE.Color()
     const out: THREE.InstancedMesh[] = []
-    for (const list of groups.values()) {
+    for (const list of groups) {
       if (list.length < 2) continue
       const all = new THREE.InstancedMesh(list[0].geometry, list[0].material, list.reduce((n, im) => n + im.count, 0))
       let j = 0

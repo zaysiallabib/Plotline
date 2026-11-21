@@ -829,6 +829,7 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     const THREE = await import('three')
     const { Building } = await import('./building')
     const { HIDDEN } = await import('./batch')
+    const { lightPiece } = await import('./daylight')
     const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
     for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
     const card = new THREE.PlaneGeometry(0.1, 0.2), atlas = new THREE.MeshStandardMaterial()
@@ -838,10 +839,12 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
       const im = new THREE.InstancedMesh(card, atlas, n)
       for (let i = 0; i < n; i++) im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, 1 + i, 0))
       t.add(im)
+      lightPiece(t, [0, 0]) // as the tower's pieces: each tree's leaves get a geometry of their own over the card's vertices
       b.add(t)
       return im
     }
     const a1 = tree(0, 3), a2 = tree(5, 2)
+    expect(a1.geometry).not.toBe(a2.geometry)
     b.frame('walk', 'low')
     await new Promise((r) => setTimeout(r, 450))
     const merged = b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
