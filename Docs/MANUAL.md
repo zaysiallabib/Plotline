@@ -324,6 +324,8 @@ trees, benches and play things) and the floors just above and below yours are dr
 **The sun's shadow outside (High).** In a flat that stands in its building, look out of a window, open the Dollhouse
 or the Building view: the shadows of your building and of the neighbours lie across the lawn, the play area, the pool
 deck, the driveway and the road, and on the neighbours' walls, as far as the haze — and they move as you drag the hour.
+The grounds' trees, benches and play things throw theirs too (on the ground and the deck round them, never into your
+flat: a tree's shadow falls outside it).
 The narrow gap to the next building is in its shade most of the day, as on a real Dhaka street. On **Low** only your
 flat and what stands right round it take the sun's shadow, and on **Lite** nothing does; further out the ground and the
 road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building).

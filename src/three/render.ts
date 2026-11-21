@@ -176,6 +176,27 @@ export function fitSunBox(cam: THREE.OrthographicCamera, box: THREE.Box3, toSun:
 export const WIDE_EVERY = 4
 export const drawWide = (moved: boolean, waited: number): boolean => !moved || waited >= WIDE_EVERY
 
+/** the frusta of the flat's own shadow maps — the sun's sharp one and each lamp's (Look, markSharp) — wideOnly's meshes are never drawn into */
+const flatMaps = new WeakSet<THREE.Frustum>()
+export const markSharp = (light: THREE.DirectionalLight | THREE.SpotLight): void => void flatMaps.add(light.shadow.getFrustum())
+/** a wideOnly mesh's culling test: never in the flat's maps, otherwise as three tests it (the view, the sun's wide map) */
+function exceptSharp(this: THREE.Mesh, f: THREE.Frustum): boolean {
+  return !flatMaps.has(f) && f.intersectsObject(this)
+}
+/**
+ * `o`'s meshes cast the sun's shadow into its wide map (TIERS.wide) and no longer into the flat's sharp one nor a lamp's
+ * (`on`; off: as three does): the grounds' trees and benches round the walked flat shade the lawn, the play area and the
+ * road, never the flat — three takes a map's casters by the view camera's layers, not per light, so those maps' culling
+ * leaves them out (nothing drawn, nothing to pay). Session 31 polish2: the context lane had cut their shadows round the flat.
+ */
+export function wideOnly(o: THREE.Object3D, on: boolean): void {
+  o.traverse((m) => {
+    if (!(m as THREE.Mesh).isMesh) return
+    if (on) m.intersectsFrustum = exceptSharp
+    else if (Object.hasOwn(m, 'intersectsFrustum')) delete (m as Partial<THREE.Mesh>).intersectsFrustum
+  })
+}
+
 /** how far into the sharp map (a share of its width) the wide one fades into it: no seam where one shadow ends and the other starts */
 const SHARP_FADE = 0.01
 /**
@@ -538,6 +559,7 @@ export class Look {
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 2
+    markSharp(sun) // (wideOnly)
     if (this.shadows && tier.wide) {
       // a child of the sun: three lists it right after the sun, as wideChunks reads them (directional shadow 0 sharp, 1 wide)
       const wide = (this.wide = new THREE.DirectionalLight('#ffffff', 0))
@@ -793,6 +815,7 @@ export class Look {
       sh.radius = 3
       // the same number of shadow-casting lamps whatever the camera does (a count change recompiles every material)
       light.castShadow = i < this.casters
+      markSharp(light) // (the grounds' trees: never in a lamp's map, wideOnly)
       this.unitGroup.add(light, light.target)
       return { light, at: null }
     })

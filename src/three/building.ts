@@ -36,7 +36,7 @@ import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWa
 import { lightPiece } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
-import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
+import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, wideOnly, type Quality } from './render'
 import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
@@ -639,8 +639,11 @@ export class Building extends THREE.Group {
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
     // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
-    // the flat's shadow box): round the flat they cast none — High's sun-shadow redraw round Sheltech A on floor 2: 875 → 474 calls
-    this.pieceShadows = !around
+    // the flat's shadow box): round the flat they cast into the sun's wide map only (High: the lawn, the play area and the road
+    // in their shade, render.ts wideOnly), none without one (Low, Lite) — High's sun-shadow redraw round Sheltech A on floor 2
+    // was 875 calls with them in both maps, 474 with none
+    this.pieceShadows = !around || TIERS[tier].wide > 0
+    this.piecesWide = around
     // the levels' pieces (trees, benches, play things): not round the flat on Lite, its zones only — they were ~1.5 ms of a
     // Lite frame at 9× pixels round a Sheltech flat (Firefox pays per draw call: ~150 leaf clusters); the Building view has them
     this.piecesShown = !(around && tier === 'lite')
@@ -714,7 +717,7 @@ export class Building extends THREE.Group {
     const same = (p: THREE.InstancedMesh, q: THREE.InstancedMesh) => {
       const [g, h] = [p.geometry, q.geometry]
       const [du, dv] = [g.getAttribute('dayUv'), h.getAttribute('dayUv')]
-      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow &&
+      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow && p.intersectsFrustum === q.intersectsFrustum &&
         !p.instanceColor === !q.instanceColor && du?.getX(0) === dv?.getX(0) && du?.getY(0) === dv?.getY(0)
     }
     const groups: { cell: string; list: THREE.InstancedMesh[] }[] = []
@@ -747,6 +750,7 @@ export class Building extends THREE.Group {
       }
       all.castShadow = list[0].castShadow
       all.receiveShadow = list[0].receiveShadow
+      if (Object.hasOwn(list[0], 'intersectsFrustum')) all.intersectsFrustum = list[0].intersectsFrustum // (a tree's: the wide map only)
       all.computeBoundingSphere()
       this.add(all)
       out.push(all)
@@ -762,7 +766,10 @@ export class Building extends THREE.Group {
       m.userData.casts ??= m.castShadow
       m.castShadow = on && m.userData.casts
     })
+    if (pieces) wideOnly(o, this.piecesWide)
   }
+  /** frame(): the levels' pieces cast into the sun's wide map only (round the flat) */
+  private piecesWide = false
 
 
   /** building-frame offset of a flat relative to the current one (plan x, y); no stem = the building frame's origin (frameOf) */

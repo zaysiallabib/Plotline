@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -255,6 +255,33 @@ describe('the sun’s two shadow maps (session 31 shade: the grounds and the roa
     expect(drawn([...Array(10).fill(true), false, false])).toEqual([3, 7, 10]) // two frames out of date, then at rest at once
     expect(drawn([true, false, false])).toEqual([1]) // one change (an hour picked): one frame later
     expect(drawn([false, false])).toEqual([])
+  })
+  test('the grounds’ trees and benches round the flat cast into the wide map only, never the sharp one nor a lamp’s (wideOnly, polish2)', () => {
+    const lit = () => {
+      const l = new THREE.DirectionalLight()
+      l.position.set(0, 10, 0)
+      l.updateMatrixWorld()
+      l.shadow.updateMatrices(l) // (three's own, before it draws a map: its frustum over the origin)
+      return l.shadow.getFrustum()
+    }
+    const sun = new THREE.DirectionalLight()
+    markSharp(sun)
+    sun.position.set(0, 10, 0)
+    sun.updateMatrixWorld()
+    sun.shadow.updateMatrices(sun)
+    const [sharp, wide] = [sun.shadow.getFrustum(), lit()]
+    const lamp = new THREE.SpotLight()
+    lamp.position.set(0, 10, 0)
+    lamp.updateMatrixWorld()
+    lamp.shadow.updateMatrices(lamp)
+    markSharp(lamp)
+    const tree = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(1, 4, 1)), new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), undefined, 3))
+    const meshes = tree.children as THREE.Mesh[]
+    for (const m of meshes) (m.updateMatrixWorld(), expect([m.intersectsFrustum(sharp), m.intersectsFrustum(wide)]).toEqual([true, true]))
+    wideOnly(tree, true)
+    for (const m of meshes) expect([m.intersectsFrustum(sharp), m.intersectsFrustum(lamp.shadow.getFrustum()), m.intersectsFrustum(wide)]).toEqual([false, false, true])
+    wideOnly(tree, false) // (the Building view: as built)
+    for (const m of meshes) expect([m.intersectsFrustum(sharp), m.intersectsFrustum(wide)]).toEqual([true, true])
   })
   test('three’s light chunks read the wide map past the sharp one, and light 1 lights nothing (wideChunks)', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('float sharpOrWide(')
