@@ -180,7 +180,8 @@ remembers it: the next flat opened in the same tab starts clean too.
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
   - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are and can still look
     round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
-    the new one is complete — its furniture, its plants and its pictures all in — then the picture changes in one go. The
+    the new one is complete — its furniture, its plants, its pictures and the other flats' rooms round it all in — then
+    the picture changes in one go; the grounds' trees and play things seen from its windows come in just after. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
     while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. The time of day, the wind, Clean view and the quality stay, and so do a buyer's
     finishes; staff see the new floor's flat with its own finishes, as they were last left there (below, "Every flat keeps
