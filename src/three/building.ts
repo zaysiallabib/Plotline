@@ -34,7 +34,7 @@ import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { lightPiece } from './daylight'
-import { buildFurniture } from './furniture'
+import { buildFurniture, preloadModels } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
 import { batch, CELL_M, HIDDEN } from './batch'
@@ -864,6 +864,10 @@ export class Building extends THREE.Group {
     if (this.seen) this.work = this.work.catch((e: unknown) => console.warn('[plotline] tower', e)).finally(() => void (this.progress.furnished ||= performance.now())) // (a failed piece: the tower is no longer busy)
   }
   private work: Promise<void> = Promise.resolve()
+  /** the rooms, pieces and furniture start once `p` settles (PlotlineScene: a page's flat's own furniture in first) */
+  after(p: Promise<unknown>): void {
+    this.work = Promise.all([this.work, p.catch(() => {})]).then(() => {})
+  }
   /**
    * Every other flat's rooms and (not on Lite) the levels' pieces in now: a stair's floor getting ready shows them with it,
    * made ready to draw (PlotlineScene.arrive warm), not in a hitch after — a first visit's trees compiling took 0.4–0.9 s.
@@ -876,9 +880,11 @@ export class Building extends THREE.Group {
   /** the other flats' rooms in (want): what a stair's floor waits for — its grounds' pieces come in after it shows (their programs were compiled for the floor before: the same pieces, the same tier) */
   private roomsWork: Promise<void> | null = null
   private t0 = performance.now()
+  /** ms of a frame the tower's filling in may take (pause): 8 while the 3D is drawn; more under the start screen, nothing drawn then (PlotlineScene) */
+  budgetMs = 8
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
-    if (performance.now() - this.t0 > 8) {
+    if (performance.now() - this.t0 > this.budgetMs) {
       await new Promise<void>((ok) => requestAnimationFrame(() => ok()))
       this.t0 = performance.now()
     }
@@ -895,7 +901,20 @@ export class Building extends THREE.Group {
     this.progress.rooms = performance.now()
   }
 
+  /** the levels' outdoor pieces all in (or none to show here): the start screen waits for them (PlotlineScene.drawable) */
+  get piecesIn(): boolean {
+    return !this.piecesShown || this.piecesDone
+  }
+  private piecesDone = false
+
   private async furnishPieces(): Promise<void> {
+    // every level's pieces' models on their way at once (each piece still goes in in order)
+    void preloadModels(
+      this.furnishing.flatMap(({ s }) => {
+        const rooms = this.roomsOf(s)
+        return layoutFor(this.t.FLATS[s].unit, rooms).filter((p) => core.isOutdoor(rooms.find((r) => r.id === p.roomId)?.kind ?? 'shaft'))
+      }),
+    )
     for (const f of this.furnishing) {
       const { s, group } = f
       const pieces = (f.pieces = new THREE.Group())
@@ -924,6 +943,7 @@ export class Building extends THREE.Group {
       this.casts(pieces, true)
       this.batchAround()
     }
+    this.piecesDone = true
   }
 
   private async furnishThings(): Promise<void> {

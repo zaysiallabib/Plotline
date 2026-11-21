@@ -10,6 +10,7 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { FurniturePlacement } from '../core'
 import { kitAsset, objectKind, placementLabel, rebuildsAtSize } from '../furnish/kit'
 import { buildProcedural, lean, lite } from '../furnish/procedural'
+import { samePictures } from './materials'
 
 const loader = new GLTFLoader()
 // Lite: the models' pictures decoded at half their 1k size (createImageBitmap's resize; where a browser ignores it, three
@@ -25,7 +26,7 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(plainGlass(g.scene)) : plainGlass(g.scene)))
+    p = loader.loadAsync(url).then((g) => pictured(lite.on ? colourOnly(plainGlass(g.scene)) : plainGlass(g.scene)))
     gltfCache.set(url, p)
   }
   return p
@@ -42,18 +43,84 @@ const SMALL_PART = 64
  * A model with about `tris` triangles at most (session 31 perf: a scanned sofa is 20–60 thousand; where it is seen from a
  * street or on Lite, hundreds read the same): meshoptimizer through three's SimplifyModifier collapses the edges where the
  * shape, its normals and its picture's seams move least; every part cut by the same share, a small part kept whole. Made once
- * per model and budget when the model first loads, kept beside it in this page (every piece of that model shares it). A model
- * already within the budget is the model.
+ * per model and budget when the model first loads, kept beside it in this page (every piece of that model shares it) and in
+ * this browser (keptParts: the next visit reads it instead of making it — Lite's start screen spent ~0.4 s making them). A
+ * model already within the budget is the model.
  */
 export function standIn(url: string, tris: number): Promise<THREE.Group> {
   const key = `${url}|${tris}`
   let p = standIns.get(key)
   if (!p) {
-    p = loadModel(url).then((g) => simplified(g, tris))
+    p = loadModel(url).then((g) => keptSimplified(g, key, tris))
     standIns.set(key, p)
   }
   return p
 }
+
+/** simplified(g, tris), read from this browser where it was kept for this model (`key`) and shape, else made and kept */
+async function keptSimplified<T extends THREE.Object3D>(g: T, key: string, tris: number): Promise<T> {
+  const at = `${key}|${shapeOf(g)}` // (a model file or builder changed: its counts change, the old copy is not used)
+  const kept = await keptParts<Kept | undefined>('readonly', (s) => s.get(at)).catch(() => undefined)
+  const read = kept && fromKept(g, kept)
+  if (read) return read
+  const out = await simplified(g, tris)
+  if (out !== g) void keptParts('readwrite', (s) => s.put(toKept(g, out), at)).catch(() => {})
+  return out
+}
+
+/** A model's shape in numbers: its parts, vertices and triangles (a stand-in kept for it is used only while they match). */
+const shapeOf = (g: THREE.Object3D): string => {
+  let [n, v, t] = [0, 0, 0]
+  g.traverse((o) => void ((o as THREE.Mesh).isMesh && (n++, (v += (o as THREE.Mesh).geometry.attributes.position?.count ?? 0), (t += triangles((o as THREE.Mesh).geometry)))))
+  return `${n}.${v}.${t}`
+}
+/** a stand-in kept in this browser: per part of the model (in its order) its simplified shape, or null where it kept its own */
+export type Kept = (null | { index: Uint16Array | Uint32Array; attrs: [string, Float32Array | Int16Array | Uint16Array | Int8Array | Uint8Array, number, boolean][] })[]
+const meshesOf = (g: THREE.Object3D) => {
+  const out: THREE.Mesh[] = []
+  g.traverse((o) => void ((o as THREE.Mesh).isMesh && out.push(o as THREE.Mesh)))
+  return out
+}
+/** model `g` and its stand-in `out` (a clone, some parts simplified) as Kept */
+export function toKept(g: THREE.Object3D, out: THREE.Object3D): Kept {
+  const [a, b] = [meshesOf(g), meshesOf(out)]
+  return b.map((m, i) =>
+    m.geometry === a[i]?.geometry
+      ? null
+      : { index: m.geometry.index!.array as Uint16Array | Uint32Array, attrs: Object.entries(m.geometry.attributes).map(([k, x]) => [k, (x as THREE.BufferAttribute).array as Float32Array, x.itemSize, x.normalized]) },
+  )
+}
+/** Kept back on model `g`: a clone with those parts' shapes; null if it does not fit the model's parts. */
+export function fromKept<T extends THREE.Object3D>(g: T, kept: Kept): T | null {
+  const c = g.clone()
+  const parts = meshesOf(c)
+  if (parts.length !== kept.length) return null
+  parts.forEach((m, i) => {
+    const k = kept[i]
+    if (!k) return
+    const geo = new THREE.BufferGeometry().setIndex(new THREE.BufferAttribute(k.index, 1))
+    for (const [name, array, size, normalized] of k.attrs) geo.setAttribute(name, new THREE.BufferAttribute(array, size, normalized))
+    m.geometry = geo
+  })
+  return c
+}
+let partsDb: Promise<IDBDatabase> | null = null
+/** IndexedDB `plotline-standins` (its own, as studio/shells.ts: the library's database keeps its version); none here (the tests): rejects */
+const keptParts = <T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest): Promise<T> =>
+  (partsDb ??= new Promise<IDBDatabase>((ok, no) => {
+    if (typeof indexedDB === 'undefined') return no(new Error('no IndexedDB'))
+    const r = indexedDB.open('plotline-standins', 1)
+    r.onupgradeneeded = () => r.result.createObjectStore('parts')
+    r.onsuccess = () => ok(r.result)
+    r.onerror = () => no(r.error)
+  })).then(
+    (d) =>
+      new Promise<T>((ok, no) => {
+        const q = f(d.transaction('parts', mode).objectStore('parts'))
+        q.onsuccess = () => ok(q.result as T)
+        q.onerror = () => no(q.error)
+      }),
+  )
 
 /** standIn's work on a loaded model: a clone with its parts simplified (their materials shared), or the model itself if within `tris`. */
 export async function simplified<T extends THREE.Object3D>(g: T, tris: number): Promise<T> {
@@ -138,6 +205,12 @@ export function colourOnly<T extends THREE.Object3D>(model: T): T {
   return model
 }
 
+/** Every material of a model with the same set of pictures (materials.ts samePictures): once per model (its clones share them). */
+function pictured<T extends THREE.Object3D>(model: T): T {
+  model.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach((m) => samePictures(m)))
+  return model
+}
+
 /** Rotation about Y that turns the asset's declared front axis into +Z (see kit.ts frontAxis). */
 export const FRONT_FIX: Record<string, number> = { '+z': 0, '-z': Math.PI, '+x': -Math.PI / 2, '-x': Math.PI / 2 }
 
@@ -182,7 +255,7 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       if (!model) throw new Error('no procedural builder')
       // a code-built piece is made for each placement (a 3.9 m curtain's pleats, a bed's quilting: 4–11 thousand triangles):
       // its stand-in made here, the same way
-      if (tris && asset.url.startsWith('procedural:')) model = await simplified(model, tris)
+      if (tris && asset.url.startsWith('procedural:')) model = await keptSimplified(model, `${asset.url}|${JSON.stringify(rebuilt ? (p.sizeM ?? null) : null)}|${tris}`, tris)
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)

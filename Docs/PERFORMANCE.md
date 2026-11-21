@@ -311,3 +311,111 @@ Shots, before | after side by side: `E:/dev/plotline-shots/s31/shade/final/pairs
 windows at 09:00, 12:00, 15:30 and 17:00, its Dollhouse and Building view at 15:30, Type A floor 2's Dollhouse at 09:00
 and 15:30, a flat on its own. The old single picture also showed its own edge: past it the ground and the walls were
 lit, so a lit polygon of street sat in the middle of a shaded one (Bed 2's window, 15:30 and 17:00); that edge is gone.
+
+## 7. The first visit: the wait at the start screen, a stair's first floor (session 31, ready lane)
+
+The founder's wait was the start screen: on High the Building view of Sheltech A showed up 13–18 s after the address was
+opened — and a second visit was no faster — Lite 5 s. Timed in the page (`performance.measure`), on High it split as:
+
+- **Firefox making shader programs: about 12 of the 18 s.** Firefox makes each new program on its graphics process, one
+  after another — about 0.3 s for a surface lit by the flat's 12 lamps (0.1 s with no lamps: the lamps are two thirds of
+  it), 0.1 s for the tower's — and a frame that draws one waits for it, and for every one asked for before it. The 3D was
+  drawn behind the start screen as it came in, so every program was waited for the moment it first appeared, and many were
+  made twice: a surface whose pictures (colour, relief, roughness, shading) came in one by one was a new program at each
+  step, everything drawn before the sky's light came in was made again after it, and the light map's own programs waited
+  behind all of them (2–3 s). Sheltech's Building view held 74–79 programs, 24 of them lit by the lamps.
+- **The tower's other flats' rooms built alongside the flat's own furniture** (8 ms of every frame for ~8 s on Sheltech):
+  the flat's models waited behind it — one potted plant's file took 7.5 s to start reading — and they were asked for one
+  after another.
+- **The first frames after the screen went** made the Building view's own programs (the corner shading, the shadows of the
+  grounds' trees, the plant scans still coming): a 0.3–6 s stall right after the screen went.
+- The rest is small: the flat built 0.5 s, the tower 0.4 s, Lite's light copies of the furniture 0.4 s.
+
+What changed:
+
+1. **Nothing is drawn under the start screen until it can be drawn without waiting.** Every quarter second the programs of
+   everything built so far are asked for (none waited on: the graphics process makes them while the page reads its
+   models); once the flat's furniture, its pictures and plant scans and the grounds' trees and benches are in and a round
+   of asking found nothing new, the frame is drawn once behind the screen. Then the room fades in faintly behind the words
+   and Enter turns blue. Opened straight into the Building view or the Dollhouse, the 3D gets ready as that view; walking
+   in, looking where Enter will put you.
+2. **One program for every lit surface**: a surface without a colour, relief, roughness, metal or shading picture of its
+   own gets a blank one (white, or a flat relief) that changes nothing on screen, so surfaces no longer split into a program
+   per mix of pictures and a picture arriving later changes no program (scans, code-built pieces, the rooms' finishes, the
+   glass, the pool water, the parking paint; a plant's leaves keep a place for their glow and cut-out pictures). Lite keeps
+   its colour picture only; a .glb download leaves the blanks out.
+3. **The sky's light has a stand-in** of its exact kind and size until the HDRI is in (`lightMapHeight`; a test reads the
+   HDRI's width from the file), and the light map's own programs are made first, while nothing else waits.
+4. **The flat's own furniture comes first** (the tower's rooms and the grounds' pieces start once it is in), and all of its
+   models — and the grounds' — are asked for at once.
+5. **A covered level keeps High's 12 lights**: its parking downlights (up to 4) take lamps' places instead of adding to
+   them, so a stair or a click from the Building view to the ground floor or a basement makes no lit program again. On such
+   a level at night the 8 lamps nearest you are lit, not 12. Low keeps its 4 lamps and adds the downlights, as before.
+6. **The light copies are kept in this browser** (IndexedDB `plotline-standins`): a second visit reads each piece's
+   simplified shape instead of making it — per model (or code-built piece and size) and its shape in numbers, so a changed
+   model file or builder is simplified afresh.
+7. On Lite the tower's walls and the flat's own plain ones are one program (Lite's shader has no lamp to leave out; the
+   city's night light is switched on for the tower's only — Sheltech's Building view at 21:00 on Lite is pixel for pixel
+   what it was), and so is the parking paint.
+
+Tried and taken back: the lamps without a shadow map lit in one loop instead of a copy each made a lit program a fifth
+quicker to make (~1 s of a High first visit) but cost ~2 ms of every High frame (19.7 → 21.9 ms, turn about in one page).
+
+**Same look:** the same views shot before and after (Walk on High by day and at night on Type A and Sheltech A, the Building
+view, Lite by day) differ by no more than two runs of the same build do (mean 0.2–0.4 of 255, ≤ 0.5 % of pixels by more than
+8; Lite: identical). Shots `E:/dev/plotline-shots/s31/ready/look-*.png`, `night-*.png`.
+
+**The waits, before → after** — from opening the address until the Building view shows (it opens by itself) or until
+Enter can be pressed (Walk), this PC (GTX 980) with other lanes' browsers on the same card; "cold": a new browser profile,
+"warm": the same address opened again. The built site as Vercel serves it (`vite preview`, one round each):
+
+| flat | tier | view | cold: before → after (s) | warm: before → after (s) |
+|---|---|---|---|---|
+| Sheltech A | High | Building | 18.6 → 8.4 | 16.1 → 7.8 |
+| Type A | High | Building | 19.0 → 7.4 | 13.2 → 6.9 |
+| Sheltech A | Lite | Building | 5.5 → 4.4 | 5.0 → 3.3 |
+| Type A | Lite | Building | 5.0 → 3.5 | 4.4 → 2.7 |
+| Sheltech A | High | Walk | 16.3 → 8.1 | 14.1 → 7.5 |
+| Type A | High | Walk | 13.5 → 7.4 | 12.5 → 6.8 |
+| Sheltech A | Lite | Walk | 6.9 → 3.6 | 4.6 → 2.8 |
+| Type A | Lite | Walk | 6.5 → 3.6 | 4.4 → 2.8 |
+
+("Before" is the session branch before the Building-view click landed; "after" this lane's final tree. The dev server, two
+rounds each, gave the same picture ~1 s slower on both sides.) The longest frame in the 8 s after the screen went: before
+0.05–1.8 s, after under 0.08 s in the Building view; Walk on High after Enter (Type A) 1.3–1.6 s → 0.15 s.
+
+**A stair's first floor (High, the Sheltech route from Basement 2 to the roof, before → after on the tree with the
+Building-view click):** Level 1 7.9 → 1.8 s; Floor 2 (the flat's furniture's first visit) 3.6 → 2.9 s; Floors 3–6 1.8–1.9 →
+1.8–1.9 s (no new programs there either way: the floor's own build, ~1 s, and its batching); the rooftop 1.3 → 1.0 s; the
+longest frame on the way 0.72 → 0.40 s; programs after the whole route 110 → 51. **A click on the ground floor in the
+Building view** (walking it, the same 3D): 10.1–10.2 → 3.6 s, 40 → 7 programs made, the longest frame 0.65 → 0.34 s.
+
+**Programs:** Sheltech A's Building view on High 74–79 → 42 (24 → 11 lit by the lamps). Lite in Walk on the five built-ins:
+30–32 → 17–20 (Type A 19, B 17, C 18, Sheltech A 19, B 20).
+
+**Nothing slower once it shows** — the 3D's own draw (synced), median of 3 turns, 1440 × 900, two runs of the tree before
+(the session branch with the Building-view click) and this lane's final tree, run one after the other on the same card:
+
+| flat | tier | view | before (two runs, ms) | after (ms) |
+|---|---|---|---|---|
+| Type A 2 | High | Walk 15:30 / 21:00 | 12.3–12.6 / 12.4–12.9 | 12.3 / 12.5 |
+| Type A 2 | High | Dollhouse / Building | 11.4–11.5 / 13.4–13.6 | 11.3 / 13.5 |
+| Sheltech A 3 | High | Walk 15:30 / 21:00 | 12.8–13.1 / 13.1–13.2 | 12.8 / 12.9 |
+| Sheltech A 3 | High | Dollhouse / Building | 15.8 / 18.3–18.5 | 15.8 / 18.7 |
+| Type A 2 | Low | Walk 15:30 / 21:00 | 7.5–7.6 / 7.2–7.4 | 7.5 / 7.4 |
+| Type A 2 | Low | Dollhouse / Building | 6.2–7.4 / 6.8–7.6 | 7.1 / 7.9 |
+| Sheltech A 3 | Low | Walk 15:30 / 21:00 | 7.7–8.0 / 7.2–8.0 | 7.6 / 6.7 |
+| Sheltech A 3 | Low | Dollhouse / Building | 9.0–10.1 / 10.7–11.7 | 9.1 / 10.2 |
+| Type A 2 | Lite | Walk 15:30 / 21:00 · Dollhouse · Building | 5.5 / 5.5 · 5.0 · 6.9 | 5.1 / 5.0 · 4.6 · 6.4 |
+| Sheltech A 3 | Lite | Walk 15:30 / 21:00 · Dollhouse · Building | 5.0 / 5.2 · 5.1 · 8.0 | 4.9 / 5.0 · 4.8 · 7.9 |
+
+The same draw calls and triangles a frame (the blank pictures add none, and cost nothing a frame: switched off and on
+again turn about in one page, 21.6–21.9 ms either way).
+
+**Still slower than asked:** on High the Building view is 6.9–8.4 s (asked: 6) and Walk 6.8–8.1 s. What is left is Firefox
+making ~30 programs one after another (0.1–0.3 s each, 4–5 s in all on High: most of it the flat's 12 lamps in every lit
+shader — the one-loop lamps took ~1 s off but cost 2 ms a frame, see above) and the page's own start; fewer would need fewer
+kinds of surface (the scanned plants and the ceiling fan keep programs of their own) or fewer lamps in the shader (the
+founder's 12). Lite is under 3 s on a second visit (2.7–3.3 s) but 3.5–4.4 s on the first (the models' download and
+decoding). A stair's floors (1.8–1.9 s) are not back to 1.5 s: no program is made there any more; the time is building the
+floor (its rooms, daylight and the tower round it, ~1 s) and batching it.

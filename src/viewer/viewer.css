@@ -35,8 +35,10 @@
 html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .viewer.commenting canvas { cursor: crosshair; }
 /* every finger on the 3D is the scene's (PlotlineScene: look, tap, pinch): the browser neither scrolls, zooms nor offers a menu */
-.scene { display: block; width: 100%; height: 100%; touch-action: none; -webkit-touch-callout: none; transition: filter var(--dur-slow) var(--ease); }
+.scene { display: block; width: 100%; height: 100%; touch-action: none; -webkit-touch-callout: none; transition: filter var(--dur-slow) var(--ease), opacity var(--dur-slow) var(--ease); }
 .scene.blurred { filter: blur(var(--s-5)); }
+/* nothing drawn yet (PlotlineScene.drawable): the start screen is plain marble until the room fades in behind it */
+.scene.waiting { opacity: 0; }
 
 @keyframes appear { from { opacity: 0; } }
 

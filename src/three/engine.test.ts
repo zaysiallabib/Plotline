@@ -14,10 +14,11 @@ import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
-import { buildFurniture, colourOnly } from './furniture'
-import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
+import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
+import { EDGE_PLASTER, PICTURES, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, isClick, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
+import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -485,6 +486,91 @@ describe('textures: one picture per url, Lite’s colour-only sets', () => {
     const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m))
     colourOnly(g)
     expect([m.map, m.roughnessMap, m.normalMap, m.aoMap]).toEqual([map, null, null, null])
+  })
+})
+
+describe('one program for every lit surface (session 31 ready lane: the first frame waits for each program Firefox makes)', () => {
+  // what three keys a standard material's program by, of the pictures: which of them it has
+  const has = (m: THREE.MeshStandardMaterial) => PICTURES.map((k) => !!m[k])
+  test('a flat colour, a textured finish and a scan with its own pictures all have the five: one program, not one per mix', () => {
+    const plain = materialFor({ kind: 'color', color: '#c0ffee' })
+    const scan = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), roughnessMap: new THREE.Texture() })
+    samePictures(scan)
+    for (const m of [plain, scan]) expect(has(m)).toEqual([true, true, true, true, true])
+    expect(PICTURES.filter((k) => isBlank(plain[k]))).toEqual(PICTURES) // nothing of its own: every one blank
+    expect(PICTURES.filter((k) => isBlank(scan[k]))).toEqual(['normalMap', 'metalnessMap', 'aoMap']) // its own two kept
+  })
+  test('the blanks change nothing: white multiplies by 1, the flat relief is (0, 0, 1) exactly', () => {
+    const m = materialFor({ kind: 'color', color: '#123456' })
+    const px = (t: THREE.Texture | null) => Array.from((t!.image as { data: Float32Array }).data)
+    expect(px(m.map)).toEqual([1, 1, 1, 1])
+    expect(px(m.normalMap).slice(0, 3).map((v) => v * 2 - 1)).toEqual([0, 0, 1])
+    expect([m.color.getHexString(), m.roughness, m.metalness]).toEqual(['123456', 0.85, 0])
+  })
+  test('a code-built piece (procedural): the same five from the start — a picture that comes later changes no program', () => {
+    const mats = new Set<THREE.MeshStandardMaterial>()
+    for (const id of ['sofa_3seat', 'dining_table', 'kitchen_counter_styled', 'wardrobe_2door', 'bench_timber']) buildProcedural(id)?.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach((m) => (m as THREE.MeshStandardMaterial).isMeshStandardMaterial && mats.add(m as THREE.MeshStandardMaterial)))
+    expect(mats.size).toBeGreaterThan(3)
+    for (const m of mats) expect(has(m)).toEqual([true, true, true, true, true])
+  })
+  test("Lite: the tower’s walls and the flat’s own plain ones one program, the city’s night light on the tower’s only", () => {
+    lite.on = true
+    try {
+      const ref = { kind: 'color', color: '#a1b2c3' } as const
+      const [flat, tower] = [materialFor(ref), materialFor(ref, false, false, true)]
+      expect(flat).not.toBe(tower)
+      expect(flat.customProgramCacheKey()).toBe(tower.customProgramCacheKey())
+      const on = (m: THREE.MeshStandardMaterial) => {
+        const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <project_vertex>', fragmentShader: '#include <lights_physical_fragment>' }
+        m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+        return [s.uniforms.nightOn.value, s.vertexShader.includes('vNightY')]
+      }
+      expect([on(flat), on(tower)]).toEqual([[0, true], [1, true]]) // (the same shader source: one program)
+    } finally {
+      lite.on = false
+    }
+  })
+  test('Lite: the colour picture only (its only kind)', () => {
+    lite.on = true
+    try {
+      const m = new THREE.MeshStandardMaterial()
+      samePictures(m)
+      expect(has(m)).toEqual([true, false, false, false, false])
+    } finally {
+      lite.on = false
+    }
+  })
+})
+
+describe('a stand-in kept in this browser (the next visit reads it, not makes it)', () => {
+  test('its simplified parts go back on the model, the parts it kept as they were (the same shape, shared)', () => {
+    const model = new THREE.Group().add(new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16)), new THREE.Mesh(new THREE.BoxGeometry()))
+    const out = model.clone()
+    ;(out.children[0] as THREE.Mesh).geometry = new THREE.SphereGeometry(1, 8, 4) // as simplified() leaves a cut part
+    const kept = toKept(model, out)
+    expect(kept[1]).toBeNull()
+    const back = fromKept(model, structuredClone(kept))!
+    const [a, b] = back.children as THREE.Mesh[]
+    expect(Array.from(a.geometry.attributes.position.array)).toEqual(Array.from((out.children[0] as THREE.Mesh).geometry.attributes.position.array))
+    expect(Array.from(a.geometry.index!.array)).toEqual(Array.from((out.children[0] as THREE.Mesh).geometry.index!.array))
+    expect(b.geometry).toBe((model.children[1] as THREE.Mesh).geometry)
+    expect((model.children[0] as THREE.Mesh).geometry.attributes.position.count).toBeGreaterThan(a.geometry.attributes.position.count) // the model itself untouched
+  })
+  test('a model with other parts than it was kept for: not used (made again)', () => {
+    const model = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry()))
+    expect(fromKept(model, [null, null])).toBeNull()
+  })
+})
+
+describe('the light map stand-in under the load screen', () => {
+  test('three makes a cube 2^⌊log2(width / 4)⌋ a side, four high: 1024 for the 1k HDRI, 256 for Lite’s quarter', () => {
+    expect([lightMapHeight(1024), lightMapHeight(256), lightMapHeight(2048), lightMapHeight(1500)]).toEqual([1024, 256, 2048, 1024])
+  })
+  test('the HDRIs on disk are the width the stand-in is made for (a new file: change HDRI_WIDTH, or the programs are made twice)', () => {
+    for (const f of ['interior', 'sky']) {
+      const head = readFileSync(`public/assets/hdri/${f}.hdr`).subarray(0, 300).toString('latin1')
+      expect(Number(/\+X (\d+)/.exec(head)?.[1])).toBe(HDRI_WIDTH)
+    }
   })
 })
 

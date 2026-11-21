@@ -594,6 +594,8 @@ function Viewer({ first }: { first: Shown }) {
   /** an automatic quality step (QualityChip): after a reload, or Lite's shadows going off */
   const [qNote, setQNote] = useState(SWITCHED)
   const [loaded, setLoaded] = useState(0)
+  /** the 3D can show its first frame with nothing left to make (PlotlineScene.drawable) */
+  const [drawable, setDrawable] = useState(false)
   const [entered, setEntered] = useState(false)
   /** a finger in use: no "press Enter", "tap" for "click" (Hud useFinger) */
   const finger = useFinger()
@@ -719,6 +721,11 @@ function Viewer({ first }: { first: Shown }) {
     })
     s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
+    // opened straight into the Building view or the Dollhouse: the 3D gets ready under the start screen as that view, its own
+    // programs made before it shows (PlotlineScene.prepare)
+    const view = params.get('view')
+    if (view === 'building' && stem) s.setMode('building')
+    else if (view === 'building' || view === 'dollhouse') s.setMode('orbit')
     let alive = true // StrictMode/HMR dispose this scene before the promise settles
     void Promise.resolve(xrEmulation)
       .then(() => navigator.xr?.isSessionSupported('immersive-vr'))
@@ -747,7 +754,7 @@ function Viewer({ first }: { first: Shown }) {
     scene.down = tower && stem ? stairsDown(tower, stem, given.floor ?? floorIn(tower, stem), given.furniture.filter(isStair)) : [] // the hole and the flight below
     const a = arrival.current
     arrival.current = null
-    const shown = () => {
+    const arrived = () => {
       if (!going.current) return
       going.current = null // "Floor 3 …" and the room's name he left stood there until now: the floor is ready, its first frame comes next
       if (a && a.view !== modeRef.current) setMode(a.view) // (the scene is in it already: arrive)
@@ -755,10 +762,14 @@ function Viewer({ first }: { first: Shown }) {
       redraw()
     }
     // a floor a trip reaches: made ready while the one he leaves stays on screen (no freeze), then shown in one frame
-    if (a) void scene.arrive(given, a.at, yawFor(a.face), a.view).then(shown)
+    if (a) void scene.arrive(given, a.at, yawFor(a.face), a.view).then(arrived)
     else {
       scene.setUnit(given)
-      shown()
+      // under the start screen, walking in: the 3D gets ready looking where Enter will put him (the first frame then sends
+      // nothing new: what that view sees is what was drawn behind the screen — PlotlineScene.prepare)
+      const e = !entered && !params.has('view') && !params.has('edit') && entrySpawn(shown(), rooms, innerWidth < innerHeight)
+      if (e) spawn(scene, e.p, e.face)
+      arrived()
     }
   }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
   // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)
@@ -832,9 +843,10 @@ function Viewer({ first }: { first: Shown }) {
       })
       const k = rooms.filter((r) => (need.get(r.id) ?? []).every((id) => seen.has(id))).length
       setLoaded(k)
-      if (k === rooms.length) clearInterval(poll)
+      setDrawable(scene.drawable)
+      if (k === rooms.length && scene.drawable) clearInterval(poll)
     }, 150)
-    const cap = setTimeout(() => setLoaded(rooms.length), 20000) // a stuck download must not block Enter
+    const cap = setTimeout(() => (setLoaded(rooms.length), setDrawable(true)), 20000) // a stuck download must not block Enter
     return () => {
       clearInterval(poll)
       clearTimeout(cap)
@@ -856,13 +868,14 @@ function Viewer({ first }: { first: Shown }) {
     }
   }, [scene, rooms])
 
-  const ready = loaded >= rooms.length
+  const ready = loaded >= rooms.length && drawable
   const readyRef = useRef(ready)
   readyRef.current = ready
 
   const enter = () => {
     if (!scene || !ready) return
     setEntered(true)
+    scene.unveil()
     const e = entrySpawn(shown(), rooms, innerWidth < innerHeight) // an upright phone looks down the room
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
@@ -1443,7 +1456,7 @@ function Viewer({ first }: { first: Shown }) {
   }
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
-      <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
+      <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}${drawable ? '' : ' waiting'}`} />
 
       {!entered && (
         <div className="load">
