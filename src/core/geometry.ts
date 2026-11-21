@@ -181,9 +181,15 @@ export function wallFrame(
   wall: Wall,
   vertices: Vertex[],
 ): { origin: Pt; dir: Pt; normal: Pt; lengthM: number } {
-  const vs = vertexMap(vertices)
-  const a = vs.get(wall.a)
-  const b = vs.get(wall.b)
+  // the two corners by a scan from the end (the last of a repeated id, as a Map built from the list would give): no Map
+  // per call — the Studio's join of a 700-wall floor calls this a million times (session 31 speed)
+  let a: Vertex | undefined
+  let b: Vertex | undefined
+  for (let i = vertices.length - 1; i >= 0 && !(a && b); i--) {
+    const v = vertices[i]
+    if (!a && v.id === wall.a) a = v
+    if (!b && v.id === wall.b) b = v
+  }
   if (!a || !b) throw new Error(`wall ${wall.id}: vertex not found`)
   const dx = b.x - a.x
   const dy = b.y - a.y

@@ -610,7 +610,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         )}
         <p className="muted">Shift+click adds or takes one out; drag on empty plan for a box; Esc clears. Arrows nudge them all.</p>
         <button className="link danger" onClick={() => dispatch({ type: 'delete' })}>
-          Delete them all (Del)
+          Delete them all<span className="key"> (Del)</span>
         </button>
       </div>
     )
@@ -651,10 +651,10 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         </Row>
         <p className="muted">Typed length: walls at B stay straight. Drag an end handle to extend this wall alone until it meets a wall (Alt: neighbours follow). Drag the dot on the middle of a face to make the wall thicker or thinner on that side — the other face stays.</p>
         <button className="link" onClick={() => dispatch({ type: 'duplicate' })}>
-          Copy wall (Ctrl+D)
+          Copy wall<span className="key"> (Ctrl+D)</span>
         </button>
         <button className="link danger" onClick={() => dispatch({ type: 'delete', ids: [w.id] })}>
-          Delete wall (Del)
+          Delete wall<span className="key"> (Del)</span>
         </button>
       </div>
     )
@@ -734,7 +734,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         </Row>
         <p className="muted">Drag it to move it (it snaps to walls and corners). Drag a side to move that side alone; drag a corner dot to move that corner alone (a tapered column — its sides stick a little when they are nearly straight). Arrows nudge 1". A wall that touches it — middle, edge or corner — closes the room there.</p>
         <button className="link danger" onClick={() => dispatch({ type: 'delete', ids: [p.id] })}>
-          Delete column (Del)
+          Delete column<span className="key"> (Del)</span>
         </button>
       </div>
     )
@@ -810,7 +810,9 @@ function PieceProps({ p, rooms, dispatch, edited }: { p: FurniturePlacement; roo
       </Row>
       <Row label="Rotation">
         <div className="seg">
-          <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>Turn 90° (R)</button>
+          <button onClick={() => dispatch({ type: 'rotate-piece', id: p.id })}>
+            Turn 90°<span className="key"> (R)</span>
+          </button>
           <button title="Delete this piece (and what rests on it); Undo or Reset to preset brings it back" onClick={() => dispatch({ type: 'delete-piece', id: p.id })}>
             Delete
           </button>

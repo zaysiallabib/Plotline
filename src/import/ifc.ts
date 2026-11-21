@@ -946,7 +946,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         const inside = unit.roomLabels.filter((l) => pointInPolygon(l, poly))
         return inside.length >= 2 ? [inside] : []
       })
-    const rows = (u: Unit) => studioIssues(u, deriveRooms(u)).length
+    const counted = new Map<Unit, number>() // (each floor tried is counted once: the kept one is asked again by the next try)
+    const rows = (u: Unit) => counted.get(u) ?? counted.set(u, studioIssues(u, deriveRooms(u)).length).get(u)!
     const tryLines = (more: () => void) => {
       const kept = lines.length
       more()
@@ -1068,6 +1069,8 @@ function snapEnds(drafts: WallDraft[]): { walls: WallDraft[]; snapped: number; d
         const tol = Math.max(END_SNAP_M, o.thicknessM / 2 + 0.01)
         for (let i = 0; i + 1 < o.pts.length; i++) {
           const a = o.pts[i], b = o.pts[i + 1]
+          // (an end outside the segment's box grown by the reach is neither on nor beside it: most pairs stop here)
+          if (e.x < Math.min(a.x, b.x) - 2 * tol || e.x > Math.max(a.x, b.x) + 2 * tol || e.y < Math.min(a.y, b.y) - 2 * tol || e.y > Math.max(a.y, b.y) + 2 * tol) continue
           const L = Math.hypot(b.x - a.x, b.y - a.y)
           if (L < 1e-6) continue
           // a wall that already ends at this corner is a neighbour, not a target
@@ -1101,6 +1104,7 @@ function snapEnds(drafts: WallDraft[]): { walls: WallDraft[]; snapped: number; d
       if (o === end.wall) continue
       for (let i = 0; i + 1 < o.pts.length; i++) {
         const a = o.pts[i], b = o.pts[i + 1]
+        if (e.x < Math.min(a.x, b.x) - 2 * SNAP_M || e.x > Math.max(a.x, b.x) + 2 * SNAP_M || e.y < Math.min(a.y, b.y) - 2 * SNAP_M || e.y > Math.max(a.y, b.y) + 2 * SNAP_M) continue
         const L = Math.hypot(b.x - a.x, b.y - a.y)
         if (L < 1e-6) continue
         const d = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }

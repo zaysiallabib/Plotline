@@ -49,6 +49,14 @@ All lengths in metres (floats), money in integer taka, ids from `newId()` (crypt
 - **Project** (`src/data/building/projects.ts`) — the building: its plan (basements, floors, rooftop), its drawings
   (`units`), which drawing stands on which floor, and own copies for floors that differ. Built-in towers and Studio towers
   share one shape (`LEVELS`).
+- **Apartment** `{ finishes?: Configuration, furniture?: FurniturePlacement[] }` — what one flat keeps (founder
+  2026-11-21): one drawing in one place of its building (a floor of flats or a level; the mirrored neighbour is its own
+  drawing, `<id>-m`). Key (`src/data/building/apartments.ts apartmentKey`): the drawing's id while it stands in one place
+  (the key arranged layouts always had, so the Studio's F, Preview 3D and the 3D view share it), `<id>:<floor>` once it
+  stands on several — a floor never changed takes the drawing's record. In the browser: `plotline.layout.<key>` and
+  `plotline.finishes.<key>`; in the saved project / drawing JSON: `apartments: { <key>: Apartment }` beside
+  `pictures`. Staff write it (Finishes, Edit furniture, F); a buyer link never reads or writes it — it carries the
+  drawing's finishes (`finishes`) beside its baked furniture, and the address's `?c=` wins when it has a choice.
 
 Pure functions in `src/core/` (tested): `deriveRooms` (planar faces), `deriveFlats` (rooms joined by doors, passages,
 zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate`, `mainRectangle` / `printedSizeCheck`
@@ -63,6 +71,9 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   textures are in metres (`materials.ts`). Settled meshes are drawn as one mesh per material (`batch.ts`; the furniture
   in squares of the plan so pieces behind the camera are left out): on Type A 312 → 102 draw calls a frame on Lite,
   330 → 115 on High. The originals stay, hidden, for picking.
+- No glass uses three's transmission: one transmissive surface in view makes three draw everything opaque a second time
+  each frame (a scanned wall clock's face did: every view drew the flat twice). Windows are a plain dimming (`openings.ts`),
+  a scan's glass is made plain glass at load (`furniture.ts plainGlass`).
 - **Quality tiers** (`render.ts` `TIERS`, picked in `src/viewer/quality.ts`):
 
   | | sun shadow | lamps lit | lamp shadows | corner shading | rests when still | pictures |
@@ -77,9 +88,14 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   (`pieceDayUv`, `lightPiece`), and is relit when it moves; outdoor pieces keep a neutral light. Lamps are the
   furniture's own (a lamp deleted takes its light). The street is the site's real
   blocks or a rule-made Dhaka street (`context.ts`); the flat's tower (`building.ts`: other flats as shells, the traced
-  levels in full, one mesh per material per floor) stands round it in every mode — the floors `render.ts towerLevel`
-  picks per tier in Walk / Dollhouse, all of them in the Building view; what the flat draws itself (a shared lobby, the
-  slab over it) the tower leaves out (`sharedWith`, the lid), so no two surfaces share a place; the
+  levels in full, one mesh per material per floor, built a floor at a time) stands round it in every mode — the floors
+  `render.ts towerLevel` picks per tier in Walk / Dollhouse, all of them in the Building view; what the flat draws itself
+  (a shared lobby, the slab over it) the tower leaves out (`sharedWith`, the lid), so no two surfaces share a place. Its
+  windows are real glass with each flat's rooms behind them (`interiors.ts`: floors, ceilings, painted walls and the
+  presets' furniture with their colours baked into the vertices — one program, one geometry per drawing shared by every floor,
+  a lamp table per flat for the night pattern `roomLight`; round the flat only the rooms, the furniture once the Building
+  view has opened); the Building view lifts the picked flat by light (a depth-matched skin that multiplies what is behind
+  it), and picks the floor under the pointer (`pickAt`, `floorAtY`; a window names its flat); the
   architect's outside shape is `shell.ts`; the wind lines `wind.ts`.
 - Nothing in `src/three` or `src/furnish` may name a unit, project or room (`greenery.test.ts` enforces it): the look
   comes from rules by kind and geometry, so a traced plan gets everything a built-in one has.
@@ -142,13 +158,14 @@ Tables (RLS — "row level security", the database's own rule about which rows e
   `set_member_role`.
 - `org_invites` (company, email, role) — an owner's invitation. The invited person's first sign-in with that email turns
   it into a membership (`accept_invites`). No browser can read or write this table directly.
-- `projects` — a Studio `Project` or one loose `Unit`, as JSON. `version` stops two people overwriting each other
+- `projects` — a Studio `Project` or one loose `Unit`, as JSON, with each flat's own furniture and finishes in
+  `apartments` (no table of their own: a few KB each inside the 5 MB row). `version` stops two people overwriting each other
   unnoticed (a save says which version it started from and is refused if someone saved in between). Never deleted:
   Delete hides it (`deleted_at`).
 - `project_versions` — every save, written by a trigger inside the database, append-only: nobody can change or remove a
   row.
-- `units` + `share_links` — what a buyer link shows (a frozen copy of the flat, with its arranged furniture and the
-  records of the own pieces it shows) and its token. A link can be turned off; it counts opens by anyone outside the
+- `units` + `share_links` — what a buyer link shows (a frozen copy of the flat, with its arranged furniture, the
+  finishes it was made with and the records of the own pieces it shows) and its token. A link can be turned off; it counts opens by anyone outside the
   company; `project_links` lists a project's links for the Links card.
 - `events` — append-only buyer notes and finish choices on a link. This IS the change list.
 - `library_items` — the staff's own furniture models, finish options and texture pictures, one record per piece or

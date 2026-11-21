@@ -21,7 +21,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js'
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { XRControls } from './xr'
-import { Building, type FlatRef } from './building'
+import { Building, type TowerHit } from './building'
 import { LITE_MAX_TRIANGLES, loadShell } from './shell'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
@@ -182,6 +182,19 @@ const LOST_MS = 5000
 export function isClick(p: { dx: number; dy: number; ms: number; finger: boolean; multi: boolean }): boolean {
   const d = Math.hypot(p.dx, p.dy)
   return p.finger ? !p.multi && p.ms < LONG_PRESS_MS && d <= TAP_PX : d <= CLICK_PX
+}
+
+/** how far from a drag dot's centre a finger still takes it, CSS px: half a fingertip (the --touch size, 44) — the dot is drawn smaller */
+export const FINGER_REACH_PX = 22
+/** Of the screen points `at` (CSS px; null = behind the camera), the index of the nearest within `reachPx` of `p`, else -1. */
+export function nearestWithin(at: ({ x: number; y: number } | null)[], p: { x: number; y: number }, reachPx: number): number {
+  let best = -1
+  let bd = reachPx
+  at.forEach((q, i) => {
+    const d = q ? Math.hypot(q.x - p.x, q.y - p.y) : Infinity
+    if (d <= bd) (bd = d), (best = i)
+  })
+  return best
 }
 
 /**
@@ -413,7 +426,15 @@ export class PlotlineScene {
   /** the architect's outside shape round the flat (three/shell.ts), in every mode; the dollhouse cuts it at the storey's top */
   private shell: THREE.Group | null = null
   private readonly shellClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6)
-  private flatCb: ((flat: FlatRef | null) => void) | null = null
+  private flatCb: ((hit: TowerHit | null) => void) | null = null
+  /**
+   * Building view: what the mouse is over (the storey washed, the card beside it: onTowerHover), worked out once a frame at
+   * the latest pointer spot; a finger's first tap names what it touched (armed), a second tap on the same opens it.
+   */
+  private towerHover: TowerHit | null = null
+  private hoverCb: ((h: (TowerHit & { x: number; y: number }) | null) => void) | null = null
+  private hoverAt: { x: number; y: number } | null = null
+  private armed: TowerHit | null = null
   // Arrange: the mouse stays free; a grab holds the piece (or handle) under the pointer, a look-drag turns the walker
   private arranging = false
   private arrangeCb: ((e: ArrangeEvent) => void) | null = null
@@ -524,6 +545,7 @@ export class PlotlineScene {
     canvas.addEventListener('pointermove', this.onPointerMove)
     canvas.addEventListener('pointerup', this.onPointerUp)
     canvas.addEventListener('pointercancel', this.onPointerCancel)
+    canvas.addEventListener('pointerleave', this.onPointerLeave)
     canvas.addEventListener('dblclick', this.onDblClick)
     this.ro = new ResizeObserver(() => this.resize())
     this.ro.observe(canvas)
@@ -617,8 +639,9 @@ export class PlotlineScene {
     this.applyMaterials()
     yield
     // the rest of the building round it, a floor a step, its street the street (a stair's floor: shown with it, arrive)
-    this.building = tower ?? Building.for(unit)
+    this.building = tower ?? Building.for(unit, this.tier)
     if (this.building && !tower) {
+      this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
       this.building.visible = false
       this.scene.add(this.building)
       yield* this.building.make()
@@ -813,9 +836,10 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
-    const night = skyLight(altDeg).night
-    if (this.mode === 'building') this.building?.setSun(this.sun, night)
-    else this.building?.setNight(night)
+    const sky = skyLight(altDeg)
+    const how = [sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled] as const
+    if (this.mode === 'building') this.building?.setSun(this.sun, ...how)
+    else this.building?.setNight(...how) // round the flat: its panes, rooms and lamps by the hour (Look fits the shadow)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -845,6 +869,8 @@ export class PlotlineScene {
     this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
+    this.armed = null
+    this.setTowerHover(null)
     this.ceilingGroup.visible = mode === 'walk'
     this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
     this.orbit.enabled = mode !== 'walk'
@@ -920,9 +946,56 @@ export class PlotlineScene {
     this.pickCb = cb
   }
 
-  /** Building view: a click on a flat (null: anything else). Replaces onPick there. */
-  onFlat(cb: (flat: FlatRef | null) => void): void {
+  /** Building view: a click (a finger's second tap) on the tower — the floor, and the flat if it is one; null: anything else. Replaces onPick there. */
+  onFlat(cb: (hit: TowerHit | null) => void): void {
     this.flatCb = cb
+  }
+
+  /** Building view: the floor (and flat) under the pointer changed, with where the pointer is (client px); null: none. */
+  onTowerHover(cb: (h: (TowerHit & { x: number; y: number }) | null) => void): void {
+    this.hoverCb = cb
+  }
+
+  /** Building view: the floor list's row under the mouse washes its storey on the tower too (null: back to what the mouse is over there, if anything). */
+  hoverFloor(k: number | null): void {
+    this.building?.hover(k ?? this.towerHover?.k ?? null)
+    this.wake()
+  }
+
+  /** What the tower has under client point (x, y), or null. */
+  private towerAt(x: number, y: number): TowerHit | null {
+    const r = this.canvas.getBoundingClientRect()
+    this.raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), this.camera)
+    return this.building?.pickAt(this.raycaster) ?? null
+  }
+
+  /** The hover's wash and card follow h; the card hears every change of floor or flat (with the pointer's spot), nothing else. */
+  private setTowerHover(h: TowerHit | null, at?: { x: number; y: number }): void {
+    const was = this.towerHover
+    this.towerHover = h
+    if (h?.k === was?.k && h?.flat?.stem === was?.flat?.stem) return
+    this.building?.hover(h?.k ?? null)
+    this.wake()
+    this.hoverCb?.(h && at ? { ...h, ...at } : null)
+  }
+
+  /** a mouse over the tower: one pick a frame, at the latest spot */
+  private queueHover(x: number, y: number): void {
+    const queued = this.hoverAt
+    this.hoverAt = { x, y }
+    if (queued) return
+    requestAnimationFrame(() => {
+      const p = this.hoverAt
+      this.hoverAt = null
+      if (p && this.mode === 'building' && !this.disposed) this.setTowerHover(this.towerAt(p.x, p.y), p)
+    })
+  }
+
+  private onPointerLeave = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' && this.mode === 'building') {
+      this.hoverAt = null
+      this.setTowerHover(null)
+    }
   }
 
   /** Frames were slow (render.ts slowFrames), judged once per scene, within ~3 s of the flat's furniture loading (or of the first move on Lite / Low). */
@@ -1064,6 +1137,7 @@ export class PlotlineScene {
   setHand(h: { id: Id; y: number; off?: Pt } | null): void {
     this.hand = h && { ...h, off: h.off ?? { x: 0, y: 0 } }
     this.aimedFrom = ''
+    if (h && this.finger && !this.plc.isLocked) this.pointerNdc = new THREE.Vector2(0, 0) // a finger has no pointer to follow: a new piece starts mid-view
     this.rebatch('furniture')
     if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
     if (this.hand && this.mode !== 'building') this.aimHand()
@@ -1369,7 +1443,8 @@ export class PlotlineScene {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
     const sel = this.opBox.userData as { id?: Id; wallId?: Id; wall?: boolean }
-    const dot = sel.id && this.opBox.children.length ? this.raycaster.intersectObjects(this.opBox.children.filter((c) => c.userData.end), false)[0] : undefined
+    const ends = this.opBox.children.filter((c) => c.userData.end)
+    const dot = sel.id && ends.length ? (this.raycaster.intersectObjects(ends, false)[0] ?? this.dotInReach(e, ends)) : undefined
     if (dot && sel.id && sel.wallId) {
       this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false, rigid: e.altKey }
       // a low wall's end moves along the wall's own line (as the plan has it now), at the dot's height
@@ -1465,6 +1540,7 @@ export class PlotlineScene {
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel)
+    this.canvas.removeEventListener('pointerleave', this.onPointerLeave)
     this.canvas.removeEventListener('dblclick', this.onDblClick)
     window.removeEventListener('pointerdown', this.notePointer, true)
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
@@ -1896,6 +1972,7 @@ export class PlotlineScene {
       }
     }
     this.pointerDown = { x: e.clientX, y: e.clientY, t: e.timeStamp }
+    if (!this.plc.isLocked) this.pointerNdc = this.ndcOf(e) // a tap has no move before it: the piece in hand aims where the finger lands
     if (this.editingOpenings && this.mode !== 'building') return this.openingDown(e)
     if (this.arranging && this.mode !== 'building') {
       if (!this.hand) this.arrangeDown(e)
@@ -1910,6 +1987,18 @@ export class PlotlineScene {
     if (!this.arranging && !this.editingOpenings) this.pointerDown = this.look2 = null
   }
 
+  /** A finger's press that missed the drawn drag dots: the one within FINGER_REACH_PX of it (a mouse aims at the dot itself). */
+  private dotInReach(e: PointerEvent, dots: THREE.Object3D[]): { object: THREE.Object3D; point: THREE.Vector3 } | undefined {
+    if (e.pointerType === 'mouse') return undefined
+    const r = this.canvas.getBoundingClientRect()
+    const at = dots.map((d) => {
+      const p = d.getWorldPosition(new THREE.Vector3()).project(this.camera)
+      return p.z > 1 ? null : { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height }
+    })
+    const i = nearestWithin(at, { x: e.clientX, y: e.clientY }, FINGER_REACH_PX)
+    return i < 0 ? undefined : { object: dots[i], point: dots[i].getWorldPosition(new THREE.Vector3()) }
+  }
+
   private ndcOf(e: PointerEvent): THREE.Vector2 {
     const r = this.canvas.getBoundingClientRect()
     return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
@@ -1920,7 +2009,8 @@ export class PlotlineScene {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
     const pivot = this.selBox.parent
-    const h = pivot && this.raycaster.intersectObjects(this.selBox.children.filter((c) => c.userData.handle), false)[0]
+    const dots = this.selBox.children.filter((c) => c.userData.handle)
+    const h = pivot && (this.raycaster.intersectObjects(dots, false)[0] ?? this.dotInReach(e, dots))
     if (pivot && h) {
       const handle = h.object.userData.handle as Handle
       const box = this.selBox.userData.box as THREE.Box3
@@ -1954,6 +2044,10 @@ export class PlotlineScene {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.plc.isLocked) this.pointerNdc = this.ndcOf(e) // locked: the client position is frozen, the crosshair aims
+    if (this.mode === 'building' && e.pointerType === 'mouse') {
+      if (e.buttons) this.setTowerHover(null) // turning or sliding the tower: no card
+      else this.queueHover(e.clientX, e.clientY)
+    }
     if (this.look2) {
       // grab-the-room look (no pointer lock while arranging)
       const eu = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ')
@@ -2094,8 +2188,16 @@ export class PlotlineScene {
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
     }
     if (this.mode === 'building') {
-      this.raycaster.setFromCamera(ndc, this.camera)
-      this.flatCb?.(this.building?.flatAt(this.raycaster) ?? null)
+      const at = { x: e.clientX, y: e.clientY }
+      const hit = this.towerAt(at.x, at.y)
+      // a finger: the first tap shows the card (and the wash), a second on the same floor and flat opens it
+      if (e.pointerType !== 'mouse' && !(hit && hit.k === this.armed?.k && hit.flat?.stem === this.armed.flat?.stem)) {
+        this.armed = hit
+        this.setTowerHover(hit, at)
+        return
+      }
+      this.armed = null
+      this.flatCb?.(hit)
       return
     }
     const hit = this.pick(ndc)
@@ -2222,7 +2324,10 @@ export class PlotlineScene {
     const dt = Math.min(raw, 0.1)
     if (this.mode !== 'walk') {
       this.orbit.update()
-      if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+      if (this.mode === 'building' && this.building) {
+        this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+        this.building.update(this.camera.position) // the nearest flats first; Low's furnished storeys
+      }
       // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
       const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
       siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)
@@ -2304,9 +2409,13 @@ export class PlotlineScene {
     return k
   }
 
-  /** one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded; judged once (render.ts slowFrames) */
+  /**
+   * one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded, not while the
+   * Building view's tower is still filling in its rooms (loading work, not drawing); judged once (render.ts slowFrames)
+   */
   private sample(ms: number, now: number): void {
     if (!this.frameMs || !this.loadedAt || now < this.loadedAt + WARM_MS || ms > LOST_FRAME_MS || document.visibilityState === 'hidden') return
+    if (this.mode === 'building' && this.building?.busy) return
     this.frameMs.push(ms)
     const slow = slowFrames(this.frameMs)
     if (slow === null) return

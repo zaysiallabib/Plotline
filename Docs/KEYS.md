@@ -42,7 +42,8 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
-| Click a flat | Opens it | Building | everyone | §4 |
+| Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
+| Click a floor on the tower | Opens the flat there (yours: its Dollhouse), walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
 | **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
@@ -67,11 +68,11 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | The date | The day the sun and the wind's month are shown for; starts on today | the card | everyone | §2 Sun & wind |
 | The time slider (0 to 24) | Moves the sun; coloured by the site's own day | the card | everyone | §2 Sun & wind |
 | **Jan … Dec** | Picks a month; the day moves to it | the card | everyone | §2 Sun & wind |
-| **Lights** | The flat's lamps on / off; automatic after sunset; a click again goes back to automatic | the card | everyone | §2 Sun & wind |
+| **Lights** | The flat's lamps on / off; automatic after sunset; a click again goes back to automatic. In the Building view it lights / darkens your flat's windows (and the picked flat's) | the card | everyone | §2 Sun & wind, §4 |
 | **Wind** / **P** | The wind through the flat this month, on / off | the card; P in Walk, Dollhouse, Building | everyone | §2 Sun & wind |
 | A month's line on the wind rose | Picks that month | the card, Wind on | everyone | §2 Sun & wind |
 | Small map: **×** / **M** / **Map** | Hides it (× shows when the mouse is over it) / brings it back | bottom right in Walk (top right on a phone) | everyone | §2 Small map |
-| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (white row; your flat's floor has a blue dot); a basement hides what is above | Building view, right | everyone | §4 |
+| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (a thin blue line in the list; your flat's floor has a blue dot); on the tower the picked flat is shown brighter, its lamps on at night; a basement hides what is above. The row under the mouse is white and its storey a little brighter on the tower | Building view, right | everyone | §4 |
 | **Walk this level** | Walks the picked ground floor, basement, rooftop or common floor | Building view, under the floors | everyone | §4 |
 | **×** (Finishes) · **×** (Comment) | Closes Finishes (or F, Esc) · stops Comment (or C, Esc) | the panel's top right | everyone | §2 |
 | **Your name** | So the developer knows who asked | Finishes and Comment, buyer links only | buyer | §2 |
@@ -80,7 +81,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Same as the group** / **Same as the room** · **Done** | Takes a one-room / one-wall choice back · closes the block | the same block | everyone | §2 Finishes panel |
 | An option (brand, price difference) | Chooses it (the chosen one is white) | Finishes | everyone | §2 Finishes panel |
 | **undo** | Takes one one-room / one-wall choice back | Finishes, "Chosen for one room or wall" | everyone | §2 Finishes panel |
-| **Options total** · **Reset to included** | The sum of the price differences (shows only) · every choice back to what the flat comes with | Finishes, bottom | everyone | §2 Finishes panel |
+| **Options total** · **Reset to included** | The sum of the price differences (shows only) · every choice back to what the flat comes with (staff: kept for this flat, "Kept for floor 3 only …" under it) | Finishes, bottom | everyone | §2 Finishes panel, Every flat keeps its own |
 | **+ Add option** | A finish option of your own in that group: **Name**, **Brand**, **Code**, **Price difference ৳**, **Offered in**, **Its look** (**Colour** · **Texture** with **Tinted** · **Picture**, JPG / PNG up to 4 MB, with **One picture covers**), **Add option**, **Cancel** | Finishes, under each group, not on buyer links | staff | §3 Your own furniture, finishes and textures |
 | **⋯** beside your own option | The same form: **Save**, **Remove**, **Cancel** | Finishes, not on buyer links | staff | §3 Your own … |
 | Click anything | Puts a note on it (you stay where you are) | Comment on | everyone | §2 Notes |
@@ -91,12 +92,12 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **R** · **Turn 90° (R)** (on a phone: **Turn 90°**) | Turns the piece picked or in your hand 90° (a TV on its unit turns the unit, the TV still on it) | Walk, Dollhouse | staff | §3 Edit furniture |
 | **Del** / **Backspace** · **Delete** | Deletes the picked piece, or the one in your hand, with what rests on it (a new one from the library is only let go) | Edit furniture, or a piece in your hand | staff | §3 Edit furniture |
 | **Ctrl+Z** · **Undo** | Takes back the last furniture or opening change | Edit furniture, Edit openings | staff | §3 |
-| **Reset layout** | Back to the flat's own layout (Undo brings yours back) | Edit furniture panel | staff | §3 Edit furniture |
-| **Add** | Opens the library: the search box (ready to type), **Recent**, the groups Living · Dining · Bedroom · Office · Kitchen · Bath · Lights & AC · Greenery · Outdoor · Lobby & gym · Decor (and **Your own**); click a piece, point at the floor, a wall, the ceiling or (curtains) an opening, click | Edit furniture panel | staff | §3 The library |
+| **Reset layout** | Back to the floor plan's own layout, as the Studio's F arranged it (Undo brings yours back); every change is kept for this flat (the panel's last line says where) | Edit furniture panel | staff | §3 Edit furniture |
+| **Add** · the library's **×** | Opens the library (titled LIBRARY, its **×** closes it; on a phone a sheet from the bottom with a grip): the search box (ready to type; on a phone tap it first), **Recent**, the groups Living · Dining · Bedroom · Office · Kitchen · Bath · Lights & AC · Greenery · Outdoor · Lobby & gym · Decor (and **Your own**); click a piece, point at the floor, a wall, the ceiling or (curtains) an opening, click (a finger: tap the piece, then tap where it goes) | Edit furniture panel | staff | §3 The library |
 | **Enter** · **Esc** in the library's search box | Takes the first piece listed · empties the box and closes the library | the library | staff | §3 The library |
-| **+ Add your own…** | A 3D model of your own: drop it or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB, 2 million triangles; a model in several files: its folder, a .zip, or all its files together), **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (type one side), **It gives light**, **Add to the library** (it is in your hand), **Cancel** / **×** / Esc | the library, under the search box | staff | §3 Your own … |
+| **+ Add your own…** | A 3D model of your own: drop it or **Choose a file…** (GLB, glTF, OBJ, FBX, DAE, STL; up to 30 MB, 2 million triangles; a model in several files: its folder, a .zip, or all its files together), **Name**, **Kind**, **Which side is the front** (four arrows), **Where it sits** (Floor · Wall · Ceiling · On a table), **Real size** (type one side; an OBJ / STL that names no unit and cannot be metres first offers **Inches** · **Centimetres** · **Millimetres** with the width each gives), **It gives light**, **Add to the library** (it is in your hand), **Cancel** / **×** / Esc | the library, under the search box | staff | §3 Your own … |
 | **⋯** on a row marked **yours** | **Rename**, **Change size** (**Save**), **Remove…** (**Remove** / **Keep**; placed pieces stay) | the library | staff | §3 Your own … |
-| **Floor 2 only** · **All 4 floors** · **Esc** | Floor 2 gets its own copy and keeps your change (the page opens again on it) · the change goes to every floor with the drawing · the change is taken back, asked again next time | "Floor plan A is also on floors … Change:", at the first change on a shared project floor | staff | §6 One floor different |
+| **Floor 2 only** · **All 4 floors** · **Esc** | Floor 2 gets its own copy of the drawing, with its furniture and finishes (the page opens again on it, Edit openings on) · the doors and windows change on every floor with the drawing · the box closes, asked again next time | "Floor plan A is also on floors … Change its doors and windows on:", at Edit openings on a shared project floor (furniture never asks) | staff | §6 One floor different |
 | Click · drag · drag a dot | Picks a door, window or passage · slides it along its wall · width, height, a window's sill; drag the empty room to look round | Edit openings | staff | §3 Edit openings |
 | **Door · Window · Slider · Passage** | Changes the picked opening's kind | Edit openings panel | staff | §3 Edit openings |
 | **Width**, **Height**, **Sill** | Type a size (`3'-6"`, `3.5`, `1.07m`), Enter | Edit openings panel | staff | §3 Edit openings |
@@ -104,16 +105,19 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Alt** + drag a low wall's end dot | Keeps its corner joined: the wall it meets moves with it | Edit openings | staff | §3 Edit openings |
 | **Length**, **Height** (a low wall) | Type its length (end B moves) or height | Edit openings panel | staff | §3 Edit openings |
 | **Del** / **Backspace** · **Delete** | Removes the picked opening or low wall | Edit openings | staff | §3 Edit openings |
-| **Esc** | Gives the mouse back and goes one step back: in Clean view only brings everything back; the "which floors?" box takes the change back; an open list or menu (rooms, Edit, ⋯) closes first; a piece in your hand goes back (a new one is dropped); in Edit furniture closes the library and unpicks; in Edit openings unpicks; else drops an unsaved note; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
+| **Esc** | Gives the mouse back and goes one step back: in Clean view only brings everything back; the "which floors?" box closes; an open list or menu (rooms, Edit, ⋯) closes first; a piece in your hand goes back (a new one is dropped); in Edit furniture closes the library and unpicks; in Edit openings unpicks; else drops an unsaved note; else stops Comment; else closes Finishes and the Sun & wind card | any | everyone | §2, §3 |
 | Number keys | Nothing | — | — | — |
 | One finger drag | Look round (the room follows the finger) | Walk, a finger | everyone | §2 On a phone or tablet |
 | Tap the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |
 | Long press (half a second, still) | Nothing | the 3D, a finger | everyone | §2 On a phone or tablet |
 | One finger · two fingers pinch / drag | Turn · zoom · slide | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
-| Tap a room's floor · a flat | Drops you into it · opens it (never after a pinch) | Dollhouse · Building, a finger | everyone | §2 On a phone or tablet |
+| Tap a room's floor | Drops you into it (never after a pinch) | Dollhouse, a finger | everyone | §2 On a phone or tablet |
+| Tap a floor on the tower · tap it again | Shows its card (floor, flat, size) · opens it, as a click does (never after a pinch) | Building, a finger | everyone | §4 |
 | Tap anything | Puts a note on it | Comment on, a finger | everyone | §2 On a phone or tablet |
 | Pull a sheet's **grip** down · **×** | Closes that sheet (Finishes, Comment, Sun & wind, the rooms list, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
 | Tap where the faded bar was | Only brings the bar back (presses nothing) | resting, a phone | everyone | §2 On a phone or tablet |
+| Tap a piece · drag it · drag near a dot | Picks it · moves it · resizes it (a thumb within half a fingertip of a dot takes the dot) | Edit furniture, a finger | staff | §2 On a phone or tablet |
+| Tap where it goes | Puts the piece in your hand there (a new one from the library, or one a drag could not leave) | Edit furniture, a piece in hand, a finger | staff | §2 On a phone or tablet |
 | VR trigger · thumbstick left / right | Hold to aim at the floor, let go to jump · turns you 45° | in VR (the keyboard is ignored) | everyone | §2 In VR |
 
 ## Studio (`/studio`, staff)

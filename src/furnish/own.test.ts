@@ -21,6 +21,7 @@ import {
   refreshOwnOptions,
   registerOwn,
   scaledTo,
+  unitReadings,
   withOwnOptions,
   type OwnFinish,
   type OwnModel,
@@ -72,6 +73,20 @@ describe('a model of the staff own: what is refused, the size it reads, one side
     expect(furnitureScale(2.1)).toBe(1)
     expect(furnitureScale(210)).toBe(0.01) // a 210 cm sofa read as 210 m
     expect(furnitureScale(2100)).toBe(0.001) // millimetres
+  })
+
+  it('an OBJ / STL whose size cannot be metres offers the units it could be in, never a silent wrong number', () => {
+    const units = (n: number) => unitReadings(n)?.map((r) => r.unit)
+    expect(unitReadings(2.1)).toBeNull() // metres, as before
+    expect(unitReadings(0.3)).toBeNull()
+    expect(units(84)).toEqual(['Inches', 'Centimetres']) // an 84" sofa (2.13 m) or an 84 cm chair
+    expect(units(18)).toEqual(['Inches', 'Centimetres']) // an 18" stool: was read as 18 cm
+    expect(units(210)).toEqual(['Centimetres', 'Millimetres']) // 2.1 m in cm, 21 cm in mm; 5.3 m in inches is no piece
+    expect(units(2100)).toEqual(['Millimetres'])
+    expect(units(0.02)).toEqual([]) // 2 cm across: no unit makes it furniture — the person types it
+    expect(units(90000)).toEqual([])
+    const inch = unitReadings(84)![0]
+    expect(84 * inch.m).toBeCloseTo(2.1336, 4)
   })
 
   it('turns the measured box to the piece facing its front, and typing one side scales the rest', () => {

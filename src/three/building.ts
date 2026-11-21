@@ -1,9 +1,10 @@
 /**
  * Building view: the whole tower around the current flat (data/building: towerOf picks BTI's or Sheltech's). Every
  * other flat is a SHELL — its traced walls (wallGeometry: openings cut) and a floor plate, merged into one mesh per flat
- * per floor; windows and sliders are plain dark panes (one merged mesh, no shadows), doors stay as voids. No furniture,
- * lights or ceilings. The ground floor and rooftop are boxes and planes (data/building/*-tower.ts); the lift/stair core
- * walls run through both.
+ * per floor; windows and sliders are real glass (paneMaterial: frames, sashes, the haze mirrored — one merged mesh) with
+ * the flat's rooms behind them (interiors.ts: floors, ceilings, painted walls and the presets' furniture, built a flat at
+ * a time after the tower shows, by tier); doors stay as voids. The ground floor and rooftop are boxes and planes
+ * (data/building/*-tower.ts); the lift/stair core walls run through both.
  *
  * Frame: the current flat stays where it is (its floor at y = 0, plan = world X/Z), the tower is placed around it:
  * a flat's plan point p lands at p + offset(flat) − offset(current), floor k at (k − current floor) · FLOOR_M.
@@ -12,29 +13,38 @@
  *
  * Round the flat (session 31, founder: "i went to the 1st floor and i couldn't see the playground on the ground floor"):
  * the same tower stands round it in the walk and the Dollhouse too (frame: which floors by tier, render.ts towerLevel; no
- * shadows from it on Low), and its street is the walk's. What the flat draws itself the tower leaves out — a neighbour's
- * shared lobby walls and floor (sharedWith), and over the flat the floor above starts on top of Look's roof (lid) — so no
- * two surfaces ever lie in one place.
+ * shadows from it on Low; the other flats' rooms behind their glass, their furniture once the Building view has been
+ * opened), and its street is the walk's. What the flat draws itself the tower leaves out — a neighbour's shared lobby
+ * walls, floor and rooms (sharedWith), and over the flat the floor above starts on top of Look's roof (lid) — so no two
+ * surfaces ever lie in one place. Built a floor at a time (make), a flat's ordinary shell once for every floor.
+ *
+ * The picked flat is told by light, not lines (founder 2026-11-21: "the walls and everything should be a bit bright upon
+ * selection"): everything of it seen from outside — walls, balcony fronts, frames, the rooms through its glass — a fifth
+ * brighter (the lift), its lamps on at night; the storey under the pointer a little brighter (the hover).
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
-import type { Id, MaterialRef, Pt, Room, Unit, Wall } from '../core'
+import type { Id, MaterialRef, Opening, Pt, Room, Unit, Wall } from '../core'
 import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
+import { keptAt } from '../data/building/apartments'
 import type { Rect } from '../data/building/demo-tower'
 import { finishSlotsFor } from '../furnish/finishes'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { lightPiece } from './daylight'
-import { batch, CELL_M } from './batch'
 import { buildFurniture } from './furniture'
+import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
+import { batch, CELL_M } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
+/** the roof's parapet over the top floor's outer walls (no traced rooftop) */
+const PARAPET_M = 1.1
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
 /**
@@ -43,53 +53,122 @@ const LOOK_SLAB = 0.15
  */
 export const UNDER_LEVEL_M = 0.05
 const UP = new THREE.Vector3(0, 1, 0)
+const HIT = new THREE.Vector3()
 const PAVING: MaterialRef = { kind: 'color', color: '#9d988f', roughness: 0.9 }
 /** lawn strips on the ground floor and the roof: the turf scan (furnish, wave 11), metre UVs so it tiles at its real size */
 const GREEN: MaterialRef = { kind: 'pbr', textureId: 'turf' }
 const ASPHALT: MaterialRef = { kind: 'color', color: '#5b5955', roughness: 0.95 }
 const PAINT: MaterialRef = { kind: 'color', color: '#e8e6e0', roughness: 0.8 }
 const TANK: MaterialRef = { kind: 'color', color: '#2a2b2c', roughness: 0.6 }
-/**
- * The tower's panes (session 31 polish, qa2 V1): mirrors of the haze the tower stands in — context.ts `haze`, the colour the
- * screen shows round it by day and at dusk — as the neighbours' painted panes read, never the photo sky's blue (a navy
- * beside the picked flat's blue outline). A metal-like mirror (no light of its own, Fresnel brighter at a slant) whose
- * reflection is the haze × PANE_HAZE × the day's share (setSun): PANE its own darkness, the glass's grey, paler toward each
- * pane's head (paneBox: the upper glass mirrors the haze over the street, the lower the street) as the neighbours' are; a lit
- * one's glow too (its ceiling light bright, the room's foot in shade: no flat card).
- */
-const PANE = '#8a8e93'
+/** the haze the glass mirrors by day (setSun: × the day's share), mostly at a slant (Fresnel) */
 const PANE_HAZE = 2
-function hazePane(sky: { value: number }, emissive?: string): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ color: PANE, roughness: 0.08, metalness: 1, vertexColors: true, ...(emissive && { emissive, emissiveIntensity: 0 }) })
+/** how much of the room behind the glass shows through: Dhaka's grey-tinted float glass, as the walk's panes (openings.ts) */
+const PANE_THROUGH = 0.7
+/** a room lit at night whatever the pattern says: a common level's (a lobby, a gym, the stair head) and the picked flat's while its lamps are on — a little under a home's brightest */
+const ALWAYS_LIT = 0.85
+/**
+ * The picked flat's lift: everything of it seen from outside × (1 + PICK_LIFT) — an exposure lift, by day and by night (about
+ * a fifth brighter on screen once tone-mapped) — and at night, when its walls are near black, a faint light added
+ * (PICK_NIGHT, as seen on screen) so they still read. The storey under the pointer: HOVER_LIFT / HOVER_NIGHT, quieter. Never
+ * a wash of colour: every face keeps its own colour and contrast.
+ */
+export const PICK_LIFT = 0.25
+export const PICK_NIGHT = 0.1
+export const HOVER_LIFT = 0.1
+export const HOVER_NIGHT = 0.04
+/** the storeys nearest the camera that show their furniture on Low (High: every storey, Lite: none) */
+export const LOW_STOREYS = 3
+
+/**
+ * The tower's panes: real glass (session 31 glow; founder 2026-11-21: "all of them should show, not all of them should
+ * hide") — the room behind it shows through (interiors.ts), dimmed as Dhaka's grey-tinted float glass dims it (PANE_THROUGH),
+ * less at a slant where the glass mirrors more; by day it mirrors the haze (context.ts `haze`), mostly at a slant (Fresnel).
+ * The aluminium frame and its sashes' meeting stiles are drawn on the pane from its own data (paneGeo), solid, lit as any
+ * surface; edges fade under a pixel (fwidth): no shimmer as the tower turns. Blending: what the pane draws + what is behind ×
+ * its alpha (a frame: 0, it covers). No texture, no extra draw: one program for every pane of the tower, on every tier.
+ */
+function paneMaterial(sky: { value: number }): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, transparent: true, depthWrite: false })
+  Object.assign(m, { blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.SrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor })
   m.onBeforeCompile = (s) => {
     s.uniforms.hazeColor = haze
     s.uniforms.paneSky = sky
-    s.fragmentShader = `uniform vec3 hazeColor;\nuniform float paneSky;\n${s.fragmentShader}`.replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\nradiance = hazeColor * paneSky;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vColor.r;')
+    s.vertexShader = `attribute vec4 pane;\nvarying vec4 vPane;\n${s.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvPane = pane;')
+    s.fragmentShader = `uniform vec3 hazeColor;\nuniform float paneSky;\nvarying vec4 vPane;\n${s.fragmentShader}`
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${PANE_FRAME}`)
+      .replace('#include <opaque_fragment>', `${PANE_GLASS}\n#include <opaque_fragment>`)
   }
-  m.customProgramCacheKey = () => 'haze-pane'
+  m.customProgramCacheKey = () => 'tower-pane'
   return m
 }
-/** A pane's box (alongWall) shaded from 0.55 at its foot to 1 at its head, in vertex colours. */
-function paneBox(g: THREE.BufferGeometry): THREE.BufferGeometry {
-  const p = g.attributes.position
-  g.computeBoundingBox()
-  const { min, max } = g.boundingBox!
-  const c = new Float32Array(p.count * 3)
-  for (let i = 0; i < p.count; i++) c.fill(0.55 + (0.45 * (p.getY(i) - min.y)) / (max.y - min.y || 1), i * 3, i * 3 + 3)
-  return g.setAttribute('color', new THREE.BufferAttribute(c, 3))
-}
+/** vPane: across / up the pane 0–1, its width and height (m). The frame round it and the stile between its sashes: solid aluminium. */
+const PANE_FRAME = /* glsl */ `
+vec2 pm = vPane.xy * vPane.zw;
+vec2 paneAa = fwidth(pm) + 1e-4;
+float paneN = vPane.z > 1.8 ? 3.0 : 2.0;
+vec2 paneEdge = min(pm, vPane.zw - pm);
+float paneFrame = max(1.0 - smoothstep(0.05 - paneAa.x, 0.05 + paneAa.x, paneEdge.x), 1.0 - smoothstep(0.05 - paneAa.y, 0.05 + paneAa.y, paneEdge.y));
+paneFrame = max(paneFrame, 1.0 - smoothstep(0.02 - paneAa.x, 0.02 + paneAa.x, abs(fract(vPane.x * paneN + 0.5) - 0.5) * vPane.z / paneN));
+diffuseColor.rgb = vec3(0.5, 0.51, 0.52) * paneFrame;
+`
+/** The glass: the haze it mirrors added; what is behind it × PANE_THROUGH less what the mirror takes; a frame covers it. */
+const PANE_GLASS = /* glsl */ `
+float paneFr = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 5.0);
+outgoingLight += (1.0 - paneFrame) * hazeColor * paneSky * (0.05 + 0.95 * paneFr) * (0.55 + 0.45 * vPane.y);
+diffuseColor.a = (1.0 - paneFrame) * ${PANE_THROUGH.toFixed(2)} * (1.0 - paneFr);
+`
 
-/** About 45 % of the other flats' windows are lit at night: a fixed hash of the flat, floor and opening. */
-export function litWindow(key: string): boolean {
+/** FNV-1a of a key, 0–1: the same key, the same number, on every visit. */
+const hash01 = (key: string): number => {
   let h = 2166136261
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619)
-  return (h >>> 0) % 100 < 45
+  return (h >>> 0) / 4294967296
+}
+
+/**
+ * How lit room `room` of flat `flat` (its stem and floor) is at night, the same on every visit (no flicker, no re-roll):
+ * about one flat in eight has nobody home; in the others about six rooms in ten have a light on, at 55–100 % of a lit
+ * room's brightness; 0: dark. Every window of a room shares it, as a lit room lights all of its windows.
+ */
+export function roomLight(flat: string, room: string): number {
+  if (hash01(`${flat}|home`) < 0.12) return 0
+  return hash01(`${flat}|${room}`) < 0.6 ? 0.55 + 0.45 * hash01(`${room}|${flat}|b`) : 0
+}
+
+/** A wall's frame as a matrix: x along a→b from vertex a, y up, z along the normal. */
+function wallMatrix(w: Wall, unit: Unit): THREE.Matrix4 {
+  const f = core.wallFrame(w, unit.vertices)
+  return new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(-f.dir.y, 0, f.dir.x)).setPosition(f.origin.x, 0, f.origin.y)
+}
+
+/** Opening o's pane (2 cm thick at the wall's middle) with its frame's data on every vertex (paneMaterial): across / up it, its size. Glass only: the room behind is the room's own (interiors.ts). */
+function paneGeo(w: Wall, unit: Unit, o: Opening): THREE.BufferGeometry {
+  const g = box(o.offsetM, -0.01, o.offsetM + o.widthM, 0.01, o.sillM, o.sillM + o.heightM)
+  const p = g.attributes.position
+  const a = new Float32Array(p.count * 4)
+  for (let i = 0; i < p.count; i++) a.set([(p.getX(i) - o.offsetM) / o.widthM, (p.getY(i) - o.sillM) / o.heightM, o.widthM, o.heightM], i * 4)
+  return g.setAttribute('pane', new THREE.BufferAttribute(a, 4)).applyMatrix4(wallMatrix(w, unit))
+}
+
+/**
+ * The floor under height y (scene metres, the tower's frame): of `levels` ([floor, its finished floor's y]), the highest one
+ * at or under y (+1 cm: a floor's own top face counts as its own); under them all, the lowest. null: no levels.
+ */
+export function floorAtY(y: number, levels: [number, number][]): number | null {
+  const under = levels.filter((l) => l[1] <= y + 0.01)
+  const pick = under.length ? under.reduce((a, b) => (b[1] > a[1] ? b : a)) : levels.reduce<[number, number] | null>((a, b) => (!a || b[1] < a[1] ? b : a), null)
+  return pick?.[0] ?? null
 }
 
 export interface FlatRef {
   stem: string
   floor: number
+}
+
+/** What the pointer is over on the tower (pickAt): floor k (0 = ground, top + 1 = roof, < 0 a basement) and the flat there, if it is one. */
+export interface TowerHit {
+  k: number
+  flat: FlatRef | null
 }
 
 /** Axis-aligned box, plan x/z and height y ranges (any order), non-indexed so it merges with wallGeometry. */
@@ -100,12 +179,8 @@ function box(x0: number, z0: number, x1: number, z1: number, y0: number, y1: num
 const rectBox = ([x0, y0, x1, y1]: Rect, h0: number, h1: number) => box(x0, y0, x1, y1, h0, h1)
 
 /** Box in a wall's frame: u along a→b from vertex a, v up, w along the normal (any order). */
-function alongWall(w: Wall, unit: Unit, u0: number, u1: number, v0: number, v1: number, w0: number, w1: number): THREE.BufferGeometry {
-  const f = core.wallFrame(w, unit.vertices)
-  const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(f.dir.x, 0, f.dir.y), UP, new THREE.Vector3(-f.dir.y, 0, f.dir.x))
-  m.setPosition(f.origin.x, 0, f.origin.y)
-  return box(u0, w0, u1, w1, v0, v1).applyMatrix4(m)
-}
+const alongWall = (w: Wall, unit: Unit, u0: number, u1: number, v0: number, v1: number, w0: number, w1: number): THREE.BufferGeometry =>
+  box(u0, w0, u1, w1, v0, v1).applyMatrix4(wallMatrix(w, unit))
 
 /** Over the walked flat (its plan point `over`, the unit's own frame) a plate of the floor above stops at `y` (its own frame): Look's roof is there. */
 export type Lid = { over: (p: Pt) => boolean; y: number }
@@ -181,11 +256,12 @@ const merge = (geos: THREE.BufferGeometry[]) => {
   return g
 }
 
-/** A geometry as a merge takes it: non-indexed, position + normal + uv (none: zeros) + a pane's colour, no groups. */
+const KEEP = new Set(['position', 'normal', 'uv', 'pane'])
+/** A geometry as a merge takes it: non-indexed, position + normal + uv (none: zeros) + a pane's card (paneGeo), no groups. */
 function plain(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const n = g.index ? g.toNonIndexed() : g
   if (n !== g) g.dispose()
-  for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv' && k !== 'color') n.deleteAttribute(k)
+  for (const k of Object.keys(n.attributes)) if (!KEEP.has(k)) n.deleteAttribute(k)
   if (!n.attributes.normal) n.computeVertexNormals()
   if (!n.attributes.uv) n.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n.attributes.position.count * 2), 2))
   n.clearGroups()
@@ -228,16 +304,29 @@ export class Building extends THREE.Group {
   private furnishing: { s: string; group: THREE.Group; pieces?: THREE.Group }[] = []
   private disposed = false
   private readonly stem: string
-  /** make(): the street round the tower, the accent bands */
+  /** make(): the street round the tower */
   private street = new THREE.Group()
-  private mark = new THREE.Mesh()
-  /** the haze's share in the panes (setSun) */
+  /** the picked flat's lift and the hover's (liftMeshes): everything of it seen from outside brighter, their skins per floor once made */
+  private readonly lift = liftMeshes(1000)
+  private readonly hoverLift = liftMeshes(1000)
+  /** both lifts: drawn over the tower, never cut, never picked */
+  private readonly overlay = new THREE.Group()
+  private readonly washes = new Map<number, THREE.BufferGeometry>()
+  private washed: number | null = null
+  /** the floor picked (highlight) and its flats (their lamps are on); under the street only a picked basement is seen (the street plane hides the rest) */
+  private picked: number
+  private pickedStems: string[] = []
+  /** every floor from the lowest basement to the roof with its finished floor's y (pickAt's floorAtY) */
+  private readonly levels: [number, number][] = []
+  /** each piece's box (pickAt), once: the tower does not move */
+  private readonly boxes = new Map<THREE.Object3D, THREE.Box3>()
+  /** the haze in the panes by day (setSun) */
   private readonly paneSky = { value: PANE_HAZE }
-  /** haze-mirroring panes (hazePane): the empty shells behind them stay unseen (the unit's own GLASS is 70 % clear) */
-  private readonly glass = hazePane(this.paneSky)
-  /** the panes of the windows lit at night (litWindow: about 45 %, the same ones every time), warm behind the curtains */
-  private readonly lit = hazePane(this.paneSky, '#ffc27e')
-  private readonly own: THREE.Material[] = [this.glass, this.lit]
+  /** every pane of the tower: real glass with the room behind it (paneMaterial) */
+  private readonly panes = paneMaterial(this.paneSky)
+  /** each floor's merged panes (pickAt: a ray through a window names the flat behind it) and what each of its triangles belongs to */
+  private readonly paneOwners = new Map<THREE.Object3D, TowerHit[]>()
+  private readonly own: THREE.Material[] = [this.panes, ...this.lift.materials, ...this.hoverLift.materials]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
   private readonly place: ReturnType<typeof frameOf>
@@ -245,25 +334,47 @@ export class Building extends THREE.Group {
   private readonly walked: { unit: Unit; rooms: Room[] }
   /** Look's roof over the walked flat reaches this high (y, scene): the floor above starts on it (lid) */
   private readonly lidY: number
-  /** frame(): the tower casts the sun's shadow (furniture loaded later follows) */
+  /** frame(): the tower and its levels' pieces cast the sun's shadow; the floors shown (frame's rule; the Building view: all) */
   private shadows = true
   private pieceShadows = true
-  /** frame(): the levels' outdoor pieces are shown; furnish() has started */
+  private shows: (k: number) => boolean = () => true
+  /** frame(): the levels' outdoor pieces shown; the Building view opened (the flats' furniture comes then); what has started */
   private piecesShown = true
-  private furnished = false
-
-  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. Not built yet: run make(). */
-  static for(unit: Unit): Building | null {
-    const t = towerOf(unit)
-    const stem = t && stemIn(t, unit)
-    return t && stem ? new Building(unit, t, stem, floorIn(t, stem, unit.floor)) : null
+  private seen = false
+  private readonly started = { rooms: false, pieces: false, things: false }
+  /** what the tier draws inside (furnishes): rooms everywhere; furniture on every storey (High), the nearest (Low), none (Lite) */
+  private readonly tier: Quality
+  /** the flats with rooms behind their windows (every one but the walked flat), each with its meshes once built */
+  private readonly flats: Inside[] = []
+  /** a drawing's rooms and furniture, once (interiors.ts), shared by every floor it stands on */
+  private readonly drawn = new Map<string, { rooms?: Promise<THREE.BufferGeometry | null>; things?: Promise<THREE.BufferGeometry | null> }>()
+  /** where the camera is (update): the nearest flats are built first, and on Low furnished */
+  private readonly eye = new THREE.Vector3()
+  private furnishedFloors: Set<number> | null = null
+  private lampsOn = false
+  private night = 0
+  /** something new to draw (a flat built): the scene wakes its sleeping frame loop (Low, Lite) */
+  onChange: () => void = () => {}
+  /** when the tower was made, its rooms all in, its furniture all in (performance.now; measured in the browser) */
+  readonly progress = { start: performance.now(), rooms: 0, furnished: 0 }
+  /** still filling in its rooms and furniture: the scene does not judge the machine's speed meanwhile (PlotlineScene.sample) */
+  get busy(): boolean {
+    return !this.progress.furnished && !this.disposed
   }
 
-  private constructor(unit: Unit, t: Tower, stem: string, floor: number) {
+  /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
+  static for(unit: Unit, tier: Quality = 'high'): Building | null {
+    const t = towerOf(unit)
+    const stem = t && stemIn(t, unit)
+    return t && stem ? new Building(unit, t, stem, floorIn(t, stem, unit.floor), tier) : null
+  }
+
+  private constructor(unit: Unit, t: Tower, stem: string, floor: number, tier: Quality) {
     super()
     this.t = t
     this.stem = stem
-    this.floor = floor
+    this.tier = tier
+    this.floor = this.picked = floor
     this.place = frameOf(t, stem, floor)
     this.minCameraY = Math.max(...unit.walls.map((w) => w.heightM)) + 0.3
     const walkedRooms = core.deriveRooms(unit)
@@ -288,13 +399,16 @@ export class Building extends THREE.Group {
     // twice; the flats keep their invisible pick proxies, traced levels still draw in full
     const hasShell = !!unit.shell
     /** per floor (one mesh per material per floor: frame shows floors by tier), per material */
-    const lists = new Map<number, Map<MaterialRef | 'glass' | 'lit', THREE.BufferGeometry[]>>()
-    const put = (k: number, m: MaterialRef | 'glass' | 'lit', ...g: THREE.BufferGeometry[]) => {
+    const lists = new Map<number, Map<MaterialRef | 'glass', THREE.BufferGeometry[]>>()
+    const put = (k: number, m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
       if (!g.length) return // an empty list (no tanks, no bays) must not reach merge
       const l = lists.get(k) ?? lists.set(k, new Map()).get(k)!
       l.set(m, [...(l.get(m) ?? []), ...g])
     }
+    /** each floor's panes' owners, a triangle each (pickAt) */
+    const owners = new Map<number, TowerHit[]>()
     const top = topFloor(t) // a Studio project's traced rooftop is listed one floor above it
+    for (let k = Math.min(0, ...FLOORS.map((f) => f.floor)); k <= top + 1; k++) this.levels.push([k, this.levelOf(k)])
     const G = this.levelOf(0)
     const R = this.levelOf(top + 1)
     const groundLevel = FLOORS.find((f) => f.floor === 0)?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
@@ -307,10 +421,7 @@ export class Building extends THREE.Group {
       ...u.walls.filter((w) => !skip.walls.has(w.id)).map((w) => wallGeometry(w, u)).filter((x) => !!x),
       ...(u.pillars ?? []).filter((p) => !skip.pillars.has(p.id)).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M)),
     ]
-    /**
-     * A flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each
-     * floor it stands on (one geometry, sent to the graphics chip once).
-     */
+    /** a flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each floor it stands on */
     const ordinary = new Map<string, THREE.BufferGeometry>()
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
@@ -332,18 +443,20 @@ export class Building extends THREE.Group {
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m, no openings
           const others = standIns.filter((o) => o !== s)
           const outside = (p: Pt) => !core.roomAt(p, rooms, u) && !others.some((o) => this.inFlat(o, { x: p.x + this.shift(s).x - this.shift(o).x, y: p.y + this.shift(s).y - this.shift(o).y }))
-          const walls = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0).map((w) => ({ ...w, heightM: 1.1, openings: [] }))
+          const walls = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0).map((w) => ({ ...w, heightM: PARAPET_M, openings: [] }))
           const graph = { vertices: u.vertices, walls }
           put(k, EXTERIOR_PLASTER, ...walls.map((w) => wallGeometry(w, graph)).filter((g) => !!g).map(at))
           continue
         }
         const mine = k === floor && s === stem
-        if (t.LEVELS?.[s] !== undefined) {
+        const level = t.LEVELS?.[s] !== undefined
+        // a neighbour on the walked floor: not what the walked flat draws itself (a shared lobby: sharedWith)
+        const skip = k === floor && !mine && !level ? sharedWith(unit, walkedRooms, u, rooms, this.shift(s)) : none
+        if (!mine) this.flats.push({ s, k, home: `${s}|${k}`, level, at: this.middleOf(s, k), lamps: lampTable(rooms.length), scale: { value: 0 }, material: null, rooms: null, things: null, skip: skip.rooms })
+        if (level) {
           if (!mine) this.addLevel(s, k) // a traced level (ground, a common floor) in full; the one walked: the scene draws it
           continue
         }
-        // a neighbour on the walked floor: not what the walked flat draws itself (a shared lobby: sharedWith)
-        const skip = k === floor && !mine ? sharedWith(unit, walkedRooms, u, rooms, this.shift(s)) : none
         const plateWalls = u.walls.filter((w) => !skip.walls.has(w.id))
         const lid = this.lid(s, k)
         let geo: THREE.BufferGeometry
@@ -367,14 +480,18 @@ export class Building extends THREE.Group {
         if (flats.includes(s)) mesh.userData.flat = { stem: s, floor: k } satisfies FlatRef
         mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
+        // every window real glass with its flat's rooms behind it (the walked flat: its own glass, drawn by the scene); the
+        // architect's shape has its own windows
         if (mine || hasShell) continue
-        for (const w of plateWalls) {
+        const owner: TowerHit = { k, flat: flats.includes(s) ? { stem: s, floor: k } : null }
+        const own = owners.get(k) ?? owners.set(k, []).get(k)!
+        for (const w of plateWalls)
           for (const o of w.openings) {
-            if (o.kind === 'window' || o.kind === 'slider') {
-              put(k, litWindow(`${s}|${k}|${o.id}`) ? 'lit' : 'glass', paneBox(at(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01))))
-            }
+            if (o.kind !== 'window' && o.kind !== 'slider') continue
+            const g = at(paneGeo(w, u, o))
+            for (let i = g.attributes.position.count / 3; i > 0; i--) own.push(owner)
+            put(k, 'glass', g)
           }
-        }
       }
     }
 
@@ -391,7 +508,11 @@ export class Building extends THREE.Group {
     }
 
     // his traced rooftop on the roof slab, in full (the one walked: the scene draws it)
-    for (const s of roofLevel) if (!(s === stem && floor === top + 1)) this.addLevel(s, top + 1)
+    for (const s of roofLevel) {
+      if (s === stem && floor === top + 1) continue
+      this.addLevel(s, top + 1)
+      this.flats.push({ s, k: top + 1, home: `${s}|${top + 1}`, level: true, at: this.middleOf(s, top + 1), lamps: lampTable(this.roomsOf(s).length), scale: { value: 0 }, material: null, rooms: null, things: null, skip: none.rooms })
+    }
 
     // ground floor: plinth, gardens, ramp, bays, blocks, columns; roads at street level. Under a traced ground floor the
     // plinth sits just under its lowest floor (a sunken lawn, the car ramp's foot), as the street does
@@ -415,11 +536,11 @@ export class Building extends THREE.Group {
 
     for (const [k, byMaterial] of lists)
       for (const [m, geos] of byMaterial) {
-        const pane = m === 'glass' || m === 'lit'
-        const mesh = new THREE.Mesh(merge(geos), m === 'glass' ? this.glass : m === 'lit' ? this.lit : materialFor(m))
+        const pane = m === 'glass'
+        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : materialFor(m))
         mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT
-        mesh.receiveShadow = !pane
-        if (pane) mesh.raycast = () => {}
+        mesh.receiveShadow = true // a pane too: its frame in the facade's shade
+        if (pane) this.paneOwners.set(mesh, owners.get(k) ?? []) // picked: a ray through a window names the flat behind it
         mesh.userData.level = k // its floor: a cut under it hides it (highlight; the plinth: his traced ground floor stands on it), the walk shows floors by tier (frame)
         this.add(mesh)
       }
@@ -437,12 +558,20 @@ export class Building extends THREE.Group {
     this.street = buildStreet(unit, streetOf(t, stem), this.streetY)
     this.add(this.street)
 
-    const markMat = new THREE.MeshBasicMaterial({ color: '#2458a6' }) // --accent (src/index.css)
-    this.own.push(markMat)
-    this.mark = new THREE.Mesh(new THREE.BufferGeometry(), markMat)
-    this.mark.raycast = () => {}
-    this.add(this.mark)
+    // the picked flat's lift and the hover's: drawn last, over everything of theirs that is seen (liftMeshes)
+    this.overlay.add(...this.lift.meshes, ...this.hoverLift.meshes)
+    this.overlay.userData.overlay = true
+    this.add(this.overlay)
+    this.hoverLift.show(false)
+    this.eye.copy(this.view(floor).eye)
     this.highlight(floor)
+  }
+
+  /** Flat s on floor k's middle, 1.5 m over its floor, in the scene: which flats are nearest the camera (insideOrder). */
+  private middleOf(s: string, k: number): THREE.Vector3 {
+    const b = core.unitBounds(this.t.FLATS[s].unit)
+    const d = this.shift(s)
+    return new THREE.Vector3((b.minX + b.maxX) / 2 + d.x, this.levelOf(k) + 1.5, (b.minY + b.maxY) / 2 + d.y)
   }
 
   /** y of floor k's finished floor (0 = ground, top + 1 = roof): frameOf. */
@@ -463,29 +592,34 @@ export class Building extends THREE.Group {
 
   /**
    * Round the walked flat (walk, Dollhouse): the floors render.ts towerLevel picks for the tier, the sun's shadow from them as
-   * TIERS.towerShadows says, no accent bands. The Building view: all of it, casting as built (highlight cuts).
+   * TIERS.towerShadows says, no lifts; the other flats' rooms behind their glass, their furniture once the Building view has
+   * been opened (the walk starts as fast as before). The Building view: all of it, casting as built (highlight cuts).
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     const around = mode !== 'building'
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
     // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
-    // the flat's shadow box): round the flat they cast none — High's sun-shadow redraw round a Sheltech flat 271 → 899 → ?
+    // the flat's shadow box): round the flat they cast none — High's sun-shadow redraw round Sheltech A on floor 2: 875 → 474 calls
     this.pieceShadows = !around
     // the levels' pieces (trees, benches, play things): not round the flat on Lite, its zones only — they were ~1.5 ms of a
     // Lite frame at 9× pixels round a Sheltech flat (Firefox pays per draw call: ~150 leaf clusters); the Building view has them
     this.piecesShown = !(around && tier === 'lite')
-    if (this.piecesShown && !this.furnished) void this.furnish()
+    this.seen ||= !around
+    this.shows = around ? (k) => towerLevel(k, { tier, floor: this.floor, dollhouse: mode === 'orbit' }) : () => true
     for (const { pieces } of this.furnishing) if (pieces) pieces.visible = this.piecesShown
     // the made-up street round Lite's Dollhouse: none, as before (~2 ms of a frame at 9× pixels); the site's real one stays
     this.street.visible = !(mode === 'orbit' && tier === 'lite') || !!this.street.userData.site
     for (const o of this.children) {
       if (o === this.street) continue
       delete o.userData.cut
-      o.visible = o === this.mark ? !around : !o.userData.proxy && (!around || towerLevel(o.userData.level, { tier, floor: this.floor, dollhouse: mode === 'orbit' }))
+      o.visible = o.userData.overlay ? !around : !o.userData.proxy && this.shows(o.userData.level)
       this.casts(o)
       for (const f of this.furnishing) if (f.group === o && f.pieces) this.casts(f.pieces, true)
     }
+    if (around) this.eye.set(0, 1.5, 0) // the walked flat's neighbours first
+    this.placeInside()
+    this.want()
   }
 
   /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
@@ -497,6 +631,7 @@ export class Building extends THREE.Group {
       m.castShadow = on && m.userData.casts
     })
   }
+
 
   /** building-frame offset of a flat relative to the current one (plan x, y); no stem = the building frame's origin (frameOf) */
   private shift(stem?: string): Pt {
@@ -563,7 +698,7 @@ export class Building extends THREE.Group {
       built.openings.forEach((o) => {
         if (o.kind !== 'window' && o.kind !== 'slider') return
         const t = (o.offsetM + o.widthM / 2) / L
-        put(this.glass, paneBox(alongWall(w, u, o.offsetM, o.offsetM + o.widthM, o.sillM, o.sillM + o.heightM, -0.01, 0.01).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0)))
+        put(this.panes, paneGeo(w, u, o).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0)) // bare glass: its rooms lit at night (interiors)
       })
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
@@ -581,9 +716,9 @@ export class Building extends THREE.Group {
     group.userData.level = k // a cut at a lower floor hides it (highlight)
     for (const [m, geos] of lists) {
       const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m))
-      const flatOnly = m === BAY_PAINT || m === WATER || m === this.glass
+      const flatOnly = m === BAY_PAINT || m === WATER || m === this.panes
       mesh.castShadow = !flatOnly
-      mesh.receiveShadow = m !== this.glass
+      mesh.receiveShadow = true
       if (flatOnly) mesh.raycast = () => {}
       group.add(mesh)
     }
@@ -593,14 +728,46 @@ export class Building extends THREE.Group {
   }
 
   /**
-   * The outdoor pieces of the levels drawn in full (their own layout by kind: furnish presets, studio/furniture.ts
-   * layoutFor) through the walk view's furniture loader, one at a time after the tower is shown: it opens as fast as the
-   * shells did and fills in. Interiors stay empty (not seen from outside). A level's pieces, all in, are drawn as one mesh
-   * per material per 8 m square (batch.ts, as the flat's furniture): Sheltech's ground floor's trees, benches and planters
-   * are ~220 meshes, ~55 batches (their leaf clusters stay their own draws).
+   * After the tower is shown, a little a frame (it opens as fast as the shells did and fills in), each part once, when first
+   * wanted (frame), one after another: every flat's rooms behind its windows, nearest the camera first (a drawing's geometry
+   * made once for every floor it is on: interiors.ts); the levels' outdoor pieces (their own layout by kind: furnish presets,
+   * studio/furniture.ts layoutFor) through the walk view's furniture loader, batched once all in — round the flat not on
+   * Lite; every flat's furniture by the walk's presets, nearest first (on Low shown on the storeys nearest the camera only:
+   * update) — not on Lite, and only once the Building view has been opened: the walk starts as fast as before.
    */
-  private async furnish(): Promise<void> {
-    this.furnished = true
+  private want(): void {
+    const need = (k: keyof Building['started'], ok: boolean, run: () => Promise<void>) => {
+      if (!ok || this.started[k]) return
+      this.started[k] = true
+      this.work = this.work.then(run)
+    }
+    need('rooms', true, () => this.furnishRooms())
+    need('pieces', this.piecesShown, () => this.furnishPieces())
+    need('things', this.seen && this.tier !== 'lite', () => this.furnishThings())
+    if (this.seen) this.work = this.work.catch((e: unknown) => console.warn('[plotline] tower', e)).finally(() => void (this.progress.furnished ||= performance.now())) // (a failed piece: the tower is no longer busy)
+  }
+  private work: Promise<void> = Promise.resolve()
+  private t0 = performance.now()
+  /** a frame's share of the work done: wait for the next one; true: the tower is gone */
+  private pause = async (): Promise<boolean> => {
+    if (performance.now() - this.t0 > 8) {
+      await new Promise<void>((ok) => requestAnimationFrame(() => ok()))
+      this.t0 = performance.now()
+    }
+    return this.disposed
+  }
+
+  private async furnishRooms(): Promise<void> {
+    for (const f of insideOrder(this.flats, this.eye)) {
+      const g = await this.drawing(f).rooms
+      if (this.disposed) return
+      if (g) this.show(f, 'rooms', g)
+      if (await this.pause()) return
+    }
+    this.progress.rooms = performance.now()
+  }
+
+  private async furnishPieces(): Promise<void> {
     for (const f of this.furnishing) {
       const { s, group } = f
       const pieces = (f.pieces = new THREE.Group())
@@ -610,60 +777,177 @@ export class Building extends THREE.Group {
       const rooms = this.roomsOf(s)
       const byId = new Map(rooms.map((r) => [r.id, r]))
       const ps = layoutFor(u, rooms)
-      let t0 = performance.now()
       for (const p of ps) {
         const r = byId.get(p.roomId)
         if (p.removed || !r || !core.isOutdoor(r.kind)) continue
-        // a frame between slices: models already loaded build at once (a stair's second visit: ~200 pieces in one 0.5–1 s frame)
-        if (performance.now() - t0 > 12) (await new Promise((ok) => requestAnimationFrame(ok)), (t0 = performance.now()))
-        if (this.disposed) return
         const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
         if (this.disposed) return
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
         lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
         pieces.add(obj)
         this.casts(obj, true)
+        this.onChange()
+        if (await this.pause()) return
       }
-      // batched with the shadow flags they were built with; frame's rule on top (casts)
+      // one mesh per material per 8 m square (batch.ts, as the flat's furniture; Sheltech's ground: ~220 meshes → ~55, the
+      // leaf clusters stay their own), with the shadow flags they were built with; frame's rule on top (casts)
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
       batch(pieces, CELL_M)
       this.casts(pieces, true)
     }
   }
 
+  private async furnishThings(): Promise<void> {
+    for (const f of insideOrder(this.flats, this.eye)) {
+      const g = await this.drawing(f, this.pause).things
+      if (this.disposed) return
+      if (g) this.show(f, 'things', g)
+      if (await this.pause()) return
+    }
+  }
+
+  /** Flat f's rooms (and, given `pause`, its furniture), made once for every floor that keeps the same; a level draws its own floors. */
+  private drawing(f: Inside, pause?: () => Promise<boolean>): { rooms?: Promise<THREE.BufferGeometry | null>; things?: Promise<THREE.BufferGeometry | null> } {
+    const { unit: u } = this.t.FLATS[f.s]
+    // as the walk opens that floor (ViewerApp prepare): its own furniture and finishes staff left there, else the drawing's,
+    // else the plan's — floors that keep the same share one geometry
+    const k = keptAt(u, f.k, this.t)
+    const key = `${f.s}|${JSON.stringify([k.layout, k.finishes])}|${[...f.skip].join()}`
+    let d = this.drawn.get(key)
+    if (!d) this.drawn.set(key, (d = {}))
+    const rooms = f.skip.size ? this.roomsOf(f.s).map((r) => (f.skip.has(r.id) ? { ...r, kind: 'shaft' as const } : r)) : this.roomsOf(f.s)
+    d.rooms ??= roomsGeometry(u, rooms, WALL_M, this.t.LEVELS?.[f.s] === undefined, k.finishes)
+    if (pause) d.things ??= furnitureGeometry(k.layout ? { ...u, furniture: k.layout } : u, rooms, pause)
+    return d
+  }
+
+  /** Flat f's rooms or furniture on screen at its place, in its own material (its lamps), cut and tiered as the rest. */
+  private show(f: Inside, which: 'rooms' | 'things', g: THREE.BufferGeometry): void {
+    if (!f.material) this.own.push((f.material = interiorMaterial(f.lamps, f.scale)))
+    const mesh = new THREE.Mesh(g, f.material)
+    const d = this.shift(f.s)
+    mesh.position.set(d.x, this.levelOf(f.k), d.y)
+    mesh.receiveShadow = true // a sun patch on its floor; the shells and slabs cast
+    mesh.raycast = () => {} // a ray through a window is the pane's (pickAt)
+    mesh.userData = { level: f.k, inside: true }
+    if (this.cuts(this.picked) && f.k > this.picked) (mesh.visible = false), (mesh.userData.cut = true)
+    else mesh.visible = this.shows(f.k) // round the flat: the floors the tier shows
+    f[which] = mesh
+    this.add(mesh)
+    this.lightFlat(f)
+    this.placeInside()
+    this.onChange()
+  }
+
+  /** Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor. */
+  private placeInside(): void {
+    for (const f of this.flats) if (f.things) f.things.visible = !f.things.userData.cut && this.shows(f.k) && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
+  }
+
+  /** Flat f's lamps (flatLamps): the picked flat's while the Lights are on, a common level's at night, the others the night pattern. */
+  private lightFlat(f: Inside): void {
+    const how = f.k === this.picked && this.pickedStems.includes(f.s) ? 'picked' : f.level ? 'level' : 'home'
+    const rooms = this.roomsOf(f.s)
+    flatLamps(f.home, rooms, how).forEach((v, i) => setLamp(f.lamps, i, v, hash01(`${f.home}|${rooms[i].id}|tint`)))
+    f.scale.value = how === 'picked' ? (this.lampsOn ? 1 : 0) : this.night
+  }
+
+  /** The camera moved (PlotlineScene, every frame in this view): the nearest flats are built first; on Low the storeys nearest it show their furniture. */
+  update(eye: THREE.Vector3): void {
+    this.eye.copy(eye)
+    if (this.tier !== 'low') return
+    const near = nearestStoreys(this.flats.map((f) => ({ k: f.k, d: f.at.distanceTo(eye) })), LOW_STOREYS)
+    if (this.furnishedFloors && near.size === this.furnishedFloors.size && [...near].every((k) => this.furnishedFloors!.has(k))) return
+    this.furnishedFloors = near
+    this.placeInside()
+    this.onChange()
+  }
+
   /**
-   * Accent bands on the slab edges above and below floor k's flat(s): the current type if it is on that floor, else all of
-   * them; on a floor without flats its stand-ins' outline (a traced level: ground, basement, rooftop; massing). A cut floor (cuts(k)): everything
-   * standing above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground) —
-   * but the street, its roads and the neighbour blocks stay: they stand round the plot, not over the floor looked at.
+   * Thin skins just outside the outer walls of what stands on floor k (stems; outer to all of them), in the tower's frame:
+   * the whole storey from the slab under it to the one over it — over a balcony's parapet too, so a balcony front lifts as a
+   * wall does (and the balcony seen through it); a level's walls to their own height (a rooftop's parapet), its kerbs and zone
+   * lines have no face. `off`: how far out (m) past the wall's face, so the picked flat's lift lies over the hover's.
+   */
+  private skins(k: number, stems: string[], off: number): THREE.BufferGeometry[] {
+    const PLATE_M = this.t.FLOOR_M - WALL_M
+    const y = this.levelOf(k)
+    const roof = k > topFloor(this.t) // the top floor's flats standing in for the roof: the slab and its parapet
+    const geos: THREE.BufferGeometry[] = []
+    for (const s of stems) {
+      const { unit: u } = this.t.FLATS[s]
+      const rooms = this.roomsOf(s)
+      const level = this.t.LEVELS?.[s] !== undefined
+      const sh = this.shift(s)
+      // outside means outside all of them: no skin along the wall two flats share (it would cross the roof)
+      const inside = (p: Pt) => !!core.roomAt(p, rooms, u) || stems.some((o) => o !== s && this.inFlat(o, { x: p.x + sh.x - this.shift(o).x, y: p.y + sh.y - this.shift(o).y }))
+      for (const w of u.walls) {
+        if (!(w.heightM >= (level ? 0.9 : 0.01))) continue // a zone line; on a level a kerb too
+        const side = outerSide(w, u, inside)
+        if (!side) continue
+        const L = core.wallFrame(w, u.vertices).lengthM
+        const t = w.thicknessM / 2
+        geos.push(alongWall(w, u, -t, L + t, level ? -UNDER_LEVEL_M : -PLATE_M, level ? Math.min(w.heightM, this.t.FLOOR_M) : roof ? PARAPET_M : WALL_M, side * (t + off), side * (t + off + 0.005)).translate(sh.x, y, sh.y))
+      }
+    }
+    return geos
+  }
+
+  /** What stands on floor k: its flats and stand-ins (a traced level, massing); the roof without a traced rooftop: the top floor's, with their parapets. */
+  private onFloor(k: number): string[] {
+    const { FLOORS, LEVELS } = this.t
+    const entry = FLOORS.find((f) => f.floor === k)
+    if (entry) return [...entry.flats, ...(entry.standIns ?? [])]
+    const top = topFloor(this.t)
+    const under = k === top + 1 && FLOORS.find((f) => f.floor === top)
+    return under ? [...under.flats, ...(under.standIns ?? []).filter((s) => LEVELS?.[s] === undefined)] : []
+  }
+
+  /** What is picked on floor k: the current type if it is on that floor, else all its flats; on a floor without flats its stand-ins (a traced level: ground, basement, rooftop; massing). */
+  private pickedOn(k: number): string[] {
+    const entry = this.t.FLOORS.find((f) => f.floor === k)
+    return !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : (entry.standIns ?? [])
+  }
+
+  /**
+   * Floor k picked: its flat(s) (pickedOn) lifted — everything of theirs seen from outside brighter (the lift) and their
+   * lamps on while the Lights are — and the lift taken off the flat picked before. A cut floor (cuts(k)): everything standing
+   * above it is hidden so it can be seen (the scene hides the furnished flat, and the street plane under ground) — but the
+   * street, its roads and the neighbour blocks stay: they stand round the plot, not over the floor looked at.
    */
   highlight(k: number): void {
-    const { FLATS, FLOORS, FLOOR_M } = this.t
-    const PLATE_M = FLOOR_M - WALL_M
-    const entry = FLOORS.find((f) => f.floor === k)
-    const stems = !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : (entry.standIns ?? [])
+    this.picked = k
+    this.pickedStems = this.pickedOn(k)
     const cut = this.cuts(k)
     for (const o of this.children) {
-      if (o === this.mark || o === this.street) continue
+      if (o === this.street || o.userData.overlay) continue
       const hide = cut && !(typeof o.userData.level === 'number' && o.userData.level <= k)
       if (hide && o.visible) (o.visible = false), (o.userData.cut = true)
       else if (!hide && o.userData.cut) (o.visible = true), delete o.userData.cut
     }
-    const y = this.levelOf(k)
-    const geos: THREE.BufferGeometry[] = []
-    for (const s of stems) {
-      const { unit: u } = FLATS[s]
-      const rooms = this.roomsOf(s)
-      for (const w of u.walls) {
-        const side = outerSide(w, u, (p) => !!core.roomAt(p, rooms, u))
-        if (!side) continue
-        const L = core.wallFrame(w, u.vertices).lengthM
-        const t = w.thicknessM / 2
-        for (const v of [-PLATE_M, WALL_M]) geos.push(alongWall(w, u, -t, L + t, v, v + PLATE_M, side * t, side * (t + 0.03)).translate(this.shift(s).x, y, this.shift(s).y))
-      }
+    this.placeInside()
+    const geos = this.skins(k, this.pickedStems, 0.03)
+    this.lift.meshes[0].geometry.dispose()
+    this.lift.shape(geos.length ? merge(geos) : new THREE.BufferGeometry())
+    for (const f of this.flats) this.lightFlat(f)
+    if (this.washed !== null) this.hover(this.washed) // a cut may hide the floor hovered
+  }
+
+  /**
+   * The storey under the pointer (or the floor list's row under it) a little brighter: everything on it, its walls to their
+   * own height — quieter than the picked flat's lift; null takes it away. A floor the cut hides is not lifted.
+   */
+  hover(k: number | null): void {
+    this.washed = k
+    const hidden = k === null || (this.cuts(this.picked) && k > this.picked) || (k < 0 && this.picked >= 0)
+    this.hoverLift.show(!hidden)
+    if (hidden) return
+    let g = this.washes.get(k)
+    if (!g) {
+      const geos = this.skins(k, this.onFloor(k), 0.02)
+      this.washes.set(k, (g = geos.length ? merge(geos) : new THREE.BufferGeometry()))
     }
-    this.mark.geometry.dispose()
-    this.mark.geometry = geos.length ? merge(geos) : new THREE.BufferGeometry()
+    this.hoverLift.shape(g)
   }
 
   /** Picking floor k hides what stands above it: a basement, or the ground floor he traced (the built-in towers: never). */
@@ -671,21 +955,68 @@ export class Building extends THREE.Group {
     return k < 0 || (k === 0 && Object.values(this.t.LEVELS ?? {}).includes(0))
   }
 
-  /** The flat under a ray (walls, plates and proxies occlude; stand-ins, the core, ground and roof give null; what a basement's cut hides is not there). */
-  flatAt(ray: THREE.Raycaster): FlatRef | null {
-    const hit = ray.intersectObjects(this.children.filter((o) => o !== this.street && (o.visible || !o.userData.cut)), false)[0]
-    return (hit?.object.userData.flat as FlatRef | undefined) ?? null
+  /**
+   * What a ray points at on the tower: the floor (a shell's or a level's own, else the height of the hit: the core, the roof,
+   * the ground's pieces) and the flat, if it is one (a stand-in, a level, the core: none). Walls, plates, proxies and the
+   * flats' panes occlude (a window names the flat behind it); the rooms behind the glass and the furniture let it through;
+   * what a cut hides is not there, nor what lies under the street (the street plane is in front of it) unless a basement is
+   * picked. null: nothing of the tower.
+   */
+  pickAt(ray: THREE.Raycaster): TowerHit | null {
+    // nearest box first, and no further once a hit is nearer than the next box: the same hit, a few meshes tested instead of
+    // every flat of the column (a mouse over the tower picks once a frame: ≈ 2.5 ms → a fraction)
+    const r = ray.ray
+    const near = this.children
+      .filter((o) => o !== this.street && !o.userData.overlay && !o.userData.inside && (o.visible || !o.userData.cut))
+      .map((o) => {
+        let b = this.boxes.get(o)
+        if (!b) this.boxes.set(o, (b = new THREE.Box3().setFromObject(o)))
+        return { o, d: b.containsPoint(r.origin) ? 0 : (r.intersectBox(b, HIT)?.distanceTo(r.origin) ?? Infinity) }
+      })
+      .filter((x) => x.d < Infinity)
+      .sort((a, b) => a.d - b.d)
+    let hit: THREE.Intersection | undefined
+    for (const { o, d } of near) {
+      if (hit && hit.distance < d) break
+      const h = ray.intersectObject(o, true)[0]
+      if (h && (!hit || h.distance < hit.distance)) hit = h
+    }
+    if (!hit || (hit.point.y < this.streetY - 0.02 && this.picked >= 0)) return null
+    const owners = this.paneOwners.get(hit.object)
+    if (owners) return owners[hit.faceIndex ?? -1] ?? null
+    let o: THREE.Object3D | null = hit.object
+    while (o && o !== this && typeof o.userData.level !== 'number') o = o.parent
+    const k = o && o !== this ? (o.userData.level as number) : floorAtY(hit.point.y, this.levels)
+    return k === null ? null : { k, flat: (hit.object.userData.flat as FlatRef | undefined) ?? null }
   }
 
-  /** The panes dim with the haze at dusk and the lit ones come on (every mode; Look.setAltitude's night). */
-  setNight(night: number): void {
+  /**
+   * After Look.setHour: the sun's shadow frustum around the whole tower (Look's covers the flat only), reaching the street
+   * behind it; the panes dim with the haze at dusk; the rooms' lamps come on as the sky goes (the picked flat's: `lamps`, the
+   * Lights button's state — render.ts lightsOn); no shadow maps (`shadows` false, Lite): no sun inside, it would pour through
+   * the ceilings. The lifts' night light is set as seen on screen: `linear` (High draws into a linear target, exposed after)
+   * takes the exposure and the screen's curve back out of it.
+   */
+  setSun(sun: THREE.DirectionalLight, night = 0, exposure = 1, lamps = false, linear = false, shadows = true): void {
+    this.setNight(night, exposure, lamps, linear, shadows)
+    this.fitSun(sun)
+  }
+
+  /** The panes, the rooms' lamps and the lifts by the hour (every mode; setSun's words). */
+  setNight(night: number, exposure = 1, lamps = false, linear = false, shadows = true): void {
     this.paneSky.value = PANE_HAZE * (1 - night) // the haze they mirror goes with the light
-    this.lit.emissiveIntensity = 0.18 * night // the neighbours' lights come on as the sky goes
+    this.night = night
+    this.lampsOn = lamps
+    inside.sun.value = shadows ? 1 : 0
+    for (const f of this.flats) this.lightFlat(f)
+    const seen = (v: number) => (linear ? new THREE.Color().setRGB(v, v, v, THREE.SRGBColorSpace).r / exposure : v)
+    const times = (v: number) => (linear ? v : Math.pow(1 + v, 1 / 2.2) - 1) // on screen: the same lift as High's once its picture is encoded
+    this.lift.strength(times(PICK_LIFT), seen(PICK_NIGHT * night))
+    this.hoverLift.strength(times(HOVER_LIFT), seen(HOVER_NIGHT * night))
   }
 
-  /** After Look.setHour, the Building view: the sun's shadow frustum around the whole tower (Look's covers the flat only), reaching the street behind it; the panes (setNight). */
-  setSun(sun: THREE.DirectionalLight, night = 0): void {
-    this.setNight(night)
+  /** The Building view: the sun's shadow frustum round the whole tower and the street behind it (Look fits the flat's). */
+  private fitSun(sun: THREE.DirectionalLight): void {
     const cam = sun.shadow.camera
     cam.position.copy(sun.position)
     cam.lookAt(sun.target.position)
@@ -716,8 +1047,97 @@ export class Building extends THREE.Group {
     // the furniture shares its models' geometry with the loader's cache (and the walk view): not ours to free
     for (const { pieces } of this.furnishing) pieces?.children.filter((o) => o.userData.kind === 'furniture').forEach((o) => o.removeFromParent())
     this.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
+    this.washes.forEach((g) => g.dispose())
     this.street.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
     this.own.forEach((m) => m.dispose())
+    for (const f of this.flats) f.lamps.dispose()
     this.removeFromParent()
+  }
+}
+
+/** A flat with rooms behind its windows: its drawing and floor, its key (roomLight), a common level (lit at night), its middle, its lamps' table and their strength, its material and meshes once built. */
+interface Inside {
+  s: string
+  k: number
+  home: string
+  level: boolean
+  at: THREE.Vector3
+  lamps: THREE.DataTexture
+  scale: { value: number }
+  material: THREE.MeshStandardMaterial | null
+  rooms: THREE.Mesh | null
+  things: THREE.Mesh | null
+  /** on the walked floor: its rooms the walked flat has too (sharedWith: a shared lobby), drawn by the flat, not here */
+  skip: Set<Id>
+}
+
+/** The flats nearest `eye` first (by their middles; ties keep the list's order). */
+export function insideOrder<T extends { at: THREE.Vector3 }>(flats: T[], eye: THREE.Vector3): T[] {
+  return flats.map((f, i) => ({ f, i, d: f.at.distanceTo(eye) })).sort((a, b) => a.d - b.d || a.i - b.i).map((x) => x.f)
+}
+
+/** The `n` storeys whose nearest flat (`d`: its distance to the camera) is nearest: Low's furnished storeys. */
+export function nearestStoreys(flats: { k: number; d: number }[], n: number): Set<number> {
+  const best = new Map<number, number>()
+  for (const f of flats) best.set(f.k, Math.min(best.get(f.k) ?? Infinity, f.d))
+  return new Set([...best].sort((a, b) => a[1] - b[1] || a[0] - b[0]).slice(0, n).map((x) => x[0]))
+}
+
+/** Does a flat on floor k show its furniture: High every one, Low the storeys nearest the camera (`near`; not yet known: none) and the picked floor, Lite none. */
+export const furnishes = (tier: Quality, k: number, near: Set<number> | null, picked?: number): boolean => tier === 'high' || (tier === 'low' && (k === picked || !!near?.has(k)))
+
+/**
+ * Each room's lamp (0–1) in flat `home` (its stem and floor): the picked flat's indoor rooms all lit (its lamps on, as the
+ * walked flat's are at night in the walk), a common level's indoor rooms lit (a lobby, a gym, the stair head), any other
+ * flat's by the night pattern (roomLight, the same on every visit); a balcony, a shaft, an open zone: none.
+ */
+export function flatLamps(home: string, rooms: Room[], how: 'picked' | 'level' | 'home'): number[] {
+  return rooms.map((r) => (!indoor(r) ? 0 : how === 'home' ? roomLight(home, r.id) : ALWAYS_LIT))
+}
+
+/**
+ * A lift (the picked flat's, the hover's): its skins drawn three times after everything else — their depth (nothing drawn),
+ * then where that depth is theirs what is already on screen × (1 + mul), and a faint warm light (at night). Each pixel once,
+ * the nearest skin's (two skins meeting at a corner are not lifted twice; over the picked flat the hover gives way to its
+ * lift); what is behind the skin is what is lifted — the wall, the frame, the room through the glass — never a tree or a
+ * neighbour in front of it (the depth test). Three tiny draws; no material of the tower changes, no program per flat.
+ */
+function liftMeshes(order: number) {
+  const pass = (kind: 0 | 1 | 2) => {
+    // (all three pulled the same way toward the eye: the skin wins the wall it lies 2 cm off from the street too, and the
+    // colour passes still meet the depth pass exactly)
+    const m = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, toneMapped: false, depthWrite: kind === 0, colorWrite: kind !== 0, depthFunc: kind === 0 ? THREE.LessEqualDepth : THREE.EqualDepth, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 })
+    if (kind) {
+      Object.assign(m, { blending: THREE.CustomBlending, blendSrc: kind === 1 ? THREE.DstColorFactor : THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor })
+      m.onBeforeCompile = (s) => void (s.fragmentShader = s.fragmentShader.replace('#include <colorspace_fragment>', '')) // its colour is a factor, not a colour to show
+      m.customProgramCacheKey = () => 'tower-lift'
+    }
+    return m
+  }
+  const materials = [pass(0), pass(1), pass(2)]
+  const geo = new THREE.BufferGeometry()
+  const meshes = materials.map((m, i) => {
+    const x = new THREE.Mesh(geo, m)
+    x.renderOrder = order + i // both lifts' depths before either's colour
+    x.raycast = () => {}
+    return x
+  })
+  let on = true
+  let add = 0
+  const show = (v: boolean) => {
+    on = v
+    meshes.forEach((x, i) => (x.visible = v && (i < 2 || add > 0)))
+  }
+  return {
+    meshes,
+    materials,
+    shape: (g: THREE.BufferGeometry) => meshes.forEach((x) => (x.geometry = g)),
+    show,
+    strength: (mul: number, light: number) => {
+      materials[1].color.setScalar(mul)
+      materials[2].color.setRGB(light, light * 0.86, light * 0.7) // warm: the flat's own lamplight on its walls, not a grey veil
+      add = light
+      show(on)
+    },
   }
 }

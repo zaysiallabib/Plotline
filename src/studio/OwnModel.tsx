@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { formatFeetInches, newId, parseLength } from '../core'
-import { CATEGORIES, facing, furnitureScale, MAX_MODEL_BYTES, modelRefusal, nameOf, scaledTo, type Front, type OwnModel, type Sits } from '../furnish/own'
+import { CATEGORIES, facing, furnitureScale, MAX_MODEL_BYTES, modelRefusal, nameOf, scaledTo, unitReadings, type Front, type OwnModel, type Sits, type UnitReading } from '../furnish/own'
 import type { DropFile } from '../import/bundle'
 import { filesOfDrop } from '../import/drop'
 import { fileOf, hashOf, saveOwn } from '../lib/library'
@@ -62,7 +62,13 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
   const [sits, setSits] = useState<Sits>(edit?.sits ?? 'floor')
   const [light, setLight] = useState(edit?.light ?? false)
   const [typed, setTyped] = useState<Partial<Record<keyof Size3, string>>>({})
+  /** an OBJ / STL whose size cannot be metres (unitReadings): its box in the file's own numbers, the units it may be in, the one picked */
+  const [guess, setGuess] = useState<{ box: Size3; readings: UnitReading[]; on: number | null } | null>(null)
+  const unsure = !!guess && guess.on === null
   const size = box && facing(box, front)
+  const times = (b: Size3, k: number): Size3 => ({ x: b.x * k, y: b.y * k, z: b.z * k })
+  /** what the first unit it may be in would make it: shown greyed in the size fields until the person picks or types */
+  const hint = guess?.readings[0] ? facing(times(guess.box, guess.readings[0].m), front) : null
 
   useEffect(() => {
     dlg.current?.showModal()
@@ -80,8 +86,11 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** the turntable of `glb`; its measured box (as metres, a centimetre file read as such) unless editing */
-  async function show(glb: ArrayBuffer, triangles: number, name: string, f: Front) {
+  /**
+   * The turntable of `glb`; its measured box (as metres, a centimetre file read as such) unless editing. `fileUnit`: a file
+   * that names no unit (OBJ, STL), the metres per unit the reader took — when that cannot be furniture, the person picks.
+   */
+  async function show(glb: ArrayBuffer, triangles: number, name: string, f: Front, fileUnit?: number) {
     view.current?.dispose()
     view.current = null
     setRead({ glb, triangles, name })
@@ -90,8 +99,15 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
     const { turntable } = await import('./turntable')
     const t = await turntable(canvas.current, glb, f)
     view.current = t.view
+    if (edit) return
+    const raw = fileUnit ? times(t.box, 1 / fileUnit) : null
+    const readings = raw && unitReadings(Math.max(raw.x, raw.y, raw.z))
+    // one unit that makes it furniture: taken (as before), its button shown picked; several: the person picks or types
+    const one = readings?.length === 1
+    setGuess(raw && readings ? { box: raw, readings, on: one ? 0 : null } : null)
+    if (raw && readings) return setBox(one ? times(raw, readings[0].m) : raw) // unpicked: its proportions, so one side typed sizes it
     const k = furnitureScale(Math.max(t.box.x, t.box.y, t.box.z))
-    if (!edit) setBox({ x: t.box.x * k, y: t.box.y * k, z: t.box.z * k })
+    setBox(times(t.box, k))
   }
 
   /** one drop or pick: a model alone, or a folder, a .zip or several files — the model among them opens with the rest beside it */
@@ -115,7 +131,7 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
       setBusy(null)
       if (no) return setRefused(no)
       setLabel((l) => l || nameOf(file.name))
-      await show(sh.glb, sh.triangles, file.name, front)
+      await show(sh.glb, sh.triangles, file.name, front, /\.(obj|stl)$/i.test(file.name) ? r.unitScale : undefined)
       setTimeout(() => nameBox.current?.select())
     } catch (e) {
       setBusy(null)
@@ -134,6 +150,12 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
     const m = v === undefined ? null : parseLength(v)
     if (!size || !m || m <= 0) return
     setBox(facing(scaledTo(size, k, m), front))
+    setGuess(null) // the real size is typed: no unit to pick any more
+  }
+  const pickUnit = (i: number) => {
+    if (!guess) return
+    setGuess({ ...guess, on: i })
+    setBox(times(guess.box, guess.readings[i].m))
   }
   const pickCategory = (c: OwnModel['category']) => {
     if (c === 'lamp' && category !== 'lamp') setLight(true)
@@ -198,12 +220,14 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
           <figure className="own-view">
             <canvas ref={canvas} aria-label="The model, turning" />
             <figcaption className="muted small">
-              {size ? (
+              {size && !unsure ? (
                 <>
                   {ft(size.x)} wide · {ft(size.z)} deep · {ft(size.y)} high
                   <br />
                   {m2(size.x)} × {m2(size.z)} × {m2(size.y)} m{read ? ` · ${read.triangles.toLocaleString()} triangles` : ''}
                 </>
+              ) : unsure ? (
+                'This file names no unit: its real size is below'
               ) : (
                 (busy ?? 'Measuring…')
               )}
@@ -249,13 +273,30 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
             </div>
             <div className="own-field">
               <span className="label">Real size</span>
+              {guess && (
+                <>
+                  <span className="muted small">
+                    {guess.readings.length ? 'This file names no unit. It looks like:' : 'This file names no unit, and no unit makes it a piece of furniture: type its real size.'}
+                  </span>
+                  {guess.readings.length > 0 && (
+                    <div className="own-seg" role="group" aria-label="The unit it was drawn in">
+                      {guess.readings.map((r, i) => (
+                        <button key={r.unit} className={guess.on === i ? 'on' : ''} aria-pressed={guess.on === i} onClick={() => pickUnit(i)}>
+                          {r.unit} · {ft(Math.max(guess.box.x, guess.box.z) * r.m)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
               <div className="own-sizes">
                 {AXES.map(({ k, label: l }) => (
                   <label key={k}>
                     <span className="muted small">{l}</span>
                     <input
                       ref={k === 'x' ? widthBox : undefined}
-                      value={typed[k] ?? (size ? ft(size[k]) : '')}
+                      value={typed[k] ?? (size && !unsure ? ft(size[k]) : '')}
+                      placeholder={unsure && hint ? ft(hint[k]) : undefined}
                       disabled={!size}
                       onChange={(e) => setTyped((t) => ({ ...t, [k]: e.target.value }))}
                       onBlur={() => typeSide(k)}
@@ -278,7 +319,7 @@ export function OwnModelDialog({ edit, focus, onClose, onSaved }: { edit?: OwnMo
         <button className="own-button" onClick={() => dlg.current?.close()}>
           Cancel
         </button>
-        <button className="own-button primary" disabled={!size || !!busy} onClick={() => void save()}>
+        <button className="own-button primary" disabled={!size || !!busy || unsure} title={unsure ? 'Pick its unit or type its real size first' : undefined} onClick={() => void save()}>
           {edit ? 'Save' : 'Add to the library'}
         </button>
       </footer>

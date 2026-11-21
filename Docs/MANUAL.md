@@ -43,7 +43,11 @@ What someone who has never seen Plotline sees first: the product told as a short
 
 - At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**.
 - Beside them (under them on a phone) lies a real floor plan: flat Type A on a sheet of paper, drawn as the architect's
-  sheet draws it, with its room names, sizes and north point.
+  sheet draws it, with its room names, sizes and north point. Names read as a sheet prints them ("Veranda", not
+  "Veranda (living)"); a room the sheet gives no size (a shaft, the lift core) shows its name alone. A name too big for
+  its room goes on two lines, then in smaller letters twice, and only then is left out (on a phone the smallest baths
+  and verandas still are). On a phone the drawing hangs right under the words of each part of the story, so no empty
+  band opens between them as the words get shorter.
 - Scroll down and the story plays with your scroll: the sheet tips back, the walls rise out of the plan with their doors
   and windows cut in, the floor lifts onto a row of columns and more floors stack into a tower, each turned a little more
   than the one under it. The roof closes it and a June morning's sun casts its shadow (true to the flat's north). Scroll
@@ -177,8 +181,9 @@ remembers it: the next flat opened in the same tab starts clean too.
     round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
     the new one is complete — its furniture, its plants and its pictures all in — then the picture changes in one go. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
-    while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. Your finishes, the time of day, the wind, Clean view and the quality stay;
-    anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
+    while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. The time of day, the wind, Clean view and the quality stay, and so do a buyer's
+    finishes; staff see the new floor's flat with its own finishes, as they were last left there (below, "Every flat keeps
+    its own"). Anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
   - The address changes to that floor (`/u/<flat or level>?floor=4`), so a reload opens it, and the browser's **Back** and **Forward** take
     the stair down or up again, also without a new page.
 - Walk sees about as much as a 22 mm camera lens (a little under 80° across a wide screen) from 1.45 m eye height. The
@@ -205,6 +210,22 @@ while Finishes is open: then the click picks that floor's finish).
   under its room's name ("Bed-1 · floor: White marble"), and taking one back is a row too.
 - On a buyer link, **Your name** sits at the top (the same field as in Comment).
 - Staff add their own options here (**+ Add option**, §3).
+
+**Every flat keeps its own** (staff, founder 2026-11-21). A flat is one floor plan in one place of the building: floor 3's
+Type A, floor 4's Type A and the mirrored flat next door on floor 3 are three flats. What staff pick in Finishes — a whole
+group, one room, one wall — is kept for that flat the moment they click, and the flat opens like that next time, by any
+way in (the Building view, a stair, its address) and on another computer once the Studio has saved the project online.
+Floor 3's beige wall never touches floor 4. Furniture works the same way (§3, Edit furniture). Under **Reset to
+included** the panel says where the picks are kept:
+- "Kept for floor 3 only: it opens like this next time" — a floor plan that is on several floors;
+- "Kept for this flat" (a level: "this level") — a floor plan on one floor only, a level, a flat of no building;
+- "Kept for the drawing: every floor not changed on its own starts from this" — the Studio's **Preview 3D** of a floor
+  plan that is on several floors: every floor of it that you never changed on its own starts from these picks.
+
+**Reset to included** on a floor shows what the flat comes with, and keeps that. An address that carries a choice (a link
+copied with **Share**, ending in `?c=…`) opens with that choice and keeps nothing: open the flat without it to keep your
+picks. Buyers keep nothing: a buyer link (`/s/…`) opens with the finishes it was made with, the buyer's picks go to the
+change list as before, and nothing a buyer does changes the flat staff see.
 
 **Notes (Comment panel).** Press **C** or click **Comment**: the panel opens on the right (Finishes closes) — "Click
 anything in the flat … and write what you would change" — with **Your notes** and how many. Click the thing, type,
@@ -239,8 +260,10 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
   - **Automatic** at first: on while the sun is under 5° (dusk to dawn), off by day; the button is lit while they are
     on. A click turns them the other way; a click again goes back to automatic. This browser remembers it.
   - At night glass faintly mirrors the lit room, the Dollhouse rooms glow inside dark walls, about half the tower's
-    other flats have lit windows in the Building view, and the neighbours light about four windows in ten (Low and
+    rooms have a lamp on in the Building view (§4), and the neighbours light about four windows in ten (Low and
     High) — each seen from your window as a room in a warm, neutral or cool light.
+  - In the Building view the button does the same from outside: your flat's rooms glow through its windows with the
+    lamps on and go dark with them off (and the picked flat's, when you picked another floor).
 - **Wind** (on the card, or **P** in any view): the wind through the flat this month, as thin lines drifting from where
   it comes in to where it goes out. Again to hide it.
   - The lines fill the opening the wind comes in by: 3 to 5 rows one above the other, about one every 60 cm across it.
@@ -262,7 +285,7 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
 the corner is softly shaded (every quality). Painted walls have a faint hand-plastered cloudiness and keep exactly the
 colour you chose (Low and High; Lite shows the plain colour); up close at night they are smooth, with no specks. Window
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
-Building view the tower's windows mirror the pale haze it stands in.
+Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4).
 
 **Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
 middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
@@ -345,8 +368,9 @@ steps aside while Finishes or Comment is open.
 - **Walk:** drag one finger on the room to look round (the room follows your finger, like pushing a photo); tap the floor
   to walk there. A long press does nothing, so a resting thumb never moves you; two fingers do nothing in Walk.
 - **Dollhouse and Building:** one finger turns, two fingers pinch to zoom and slide. Tap a room's floor to drop into it
-  (Dollhouse), a flat to open it, or a floor in the list on the right (Building; a tall tower's list scrolls and opens at
-  the picked floor, **Walk this level** under it). Lifting fingers after a pinch never drops you in. Upright, both views
+  (Dollhouse), or a floor in the list on the right (Building; a tall tower's list scrolls and opens at the picked floor,
+  **Walk this level** under it). In the Building view a tap on the tower shows the floor's card; a second tap on it opens
+  it (§4). Lifting fingers after a pinch never drops you in. Upright, both views
   start farther back so the flat or tower fits.
 - **The bar** (screens narrower than 720 px) sits at the bottom in two rows: Walk · Dollhouse · Building, then Finishes,
   Comment, Share, (staff) Edit, ⋯ and the eye, each big enough for a finger, with the Sun & wind pill above it. The
@@ -363,11 +387,16 @@ steps aside while Finishes or Comment is open.
 - **On its side, or a tablet:** a short screen lets the start screen scroll. From 721 to 1080 px wide the bar stays at
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
-- **Staff on a phone:** Edit → Furniture works (drag a piece with a finger to move it, drag the empty room to look; the
-  piece's tag says "Tap puts it down · the panel turns or removes it"), but a computer is still the tool for it. The
-  panel speaks of fingers — **Turn 90°** (no "(R)"), "Tap a piece…", "Tap to put it here" — and a picked piece's resize
-  dots are never bigger than a fingertip (7 % of the screen's short side, at most 44 px), so they no longer cover a
-  picture on the wall up close.
+- **Staff on a phone:** Edit → Furniture and Edit → Openings work with a thumb, though a computer is still the
+  better tool. Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
+  (7 % of the screen's short side, at most 44 px, so they never cover a picture on the wall up close) but a thumb takes a
+  dot anywhere within half a fingertip of it. **Add** opens the library as a sheet from the bottom, with **×** and a grip
+  to close it; the search box waits for your tap (so the keyboard does not jump up over the list) and every row is a
+  fingertip tall. Tap a piece in it, then tap the floor, a wall or the ceiling where it goes: the Edit panel says so
+  ("Tap the floor, a wall or the ceiling where it goes", or in red why not there); it lands where your finger did.
+  Finishes, Comment and the menus cover the Edit panel while they are up. The panels speak of fingers — **Turn 90°** (no
+  "(R)"), "Tap a piece…", "Tap a door, window…" — and no button anywhere names a key under a finger (the Studio's
+  **Delete wall**, **Copy wall**, **Turn 90°** drop their "(Del)", "(Ctrl+D)", "(R)" on a touch screen).
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. The thumbstick left / right turns you 45°.
 
@@ -406,15 +435,20 @@ that flat, open its own address (`/u/…`, or **Preview 3D** in the Studio).
   window, sliding door, door or passage (also through the doorway) and click; they hang centred on it, up to 15 cm past
   each side, floor to ceiling, drawn open. Pointing at no opening says "Point at an opening". Curtains in a doorway do
   not stop you walking through.
-- The small panel, bottom left: **Add**, **Turn 90° (R)**, **Delete**, **Undo**, **Reset layout** (back to the flat's
-  own layout; Undo brings yours back).
+- The small panel, bottom left: **Add**, **Turn 90° (R)**, **Delete**, **Undo**, **Reset layout** (back to the floor
+  plan's own layout, as the Studio's F tool arranged it; Undo brings yours back).
 - Keys: **R** turns · **Del** (or Backspace) deletes · **Ctrl+Z** undoes · **Esc** lets go.
 - **G** picks up the piece under the mouse (also through glass) without opening Edit furniture; **G** again puts it
   down. **Del** deletes the piece in your hand, with what rests on it; Undo brings it back. A new piece from the library
   still in your hand is just let go.
-- Saved in this browser; the Studio's F tool shows the same layout and follows the same rules.
-- On a floor of a Studio project whose drawing is on other floors too, the first change asks "Floor 2 only" or "All 4
-  floors" (§6, "One floor different from the others").
+- **Every flat keeps its own furniture** (founder 2026-11-21): each piece moved, added, removed, turned or resized is
+  kept for this flat at once — floor 3's Type A, not every floor of that plan — and the flat opens like that next time,
+  by any way in, and on another computer once the Studio has saved the project online (§2, "Every flat keeps its own").
+  Nothing is asked: the "which floors?" box is for doors and windows only now. The panel's last line says where it is
+  kept ("Kept for floor 3 only: it opens like this next time").
+- **The Studio's F tool arranges the floor plan itself:** a plan on one floor (and any level) is one flat, so F and the
+  3D view show the same layout, as before. A plan on several floors: F arranges what every floor starts with; a floor
+  you changed in the 3D view keeps its own (**Reset layout** there brings it back to F's).
 
 ### The library
 
@@ -423,7 +457,7 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
 - **A search box on top**, ready to type into in the 3D view (in the Studio click it first: there the letters pick
   tools). Any word shrinks the list as you type: a name (*sofa*, *lamp*), an everyday word (*almirah*, *chula*,
   *jaynamaz*, *geyser*), or a room (*balcony*, *kitchen*, *office*); plurals work. **Enter** takes the first piece. One
-  **Esc** empties the box and leaves it (in the 3D view it also closes the library).
+  **Esc** empties the box and leaves it (in the 3D view it also closes the library, as its **×** does).
 - **Without a search:** **Recent** (your last six), then the groups with how many pieces each holds — **Living** 28,
   **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 17,
   **Outdoor** 11, **Lobby & gym** 6, **Decor** 28 — 154 pieces in all (some are in two groups: the hand-wash basin under
@@ -462,8 +496,13 @@ exactly like the built-in ones.
    or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
-4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click to place it
-   (the line goes as soon as the piece is down).
+   An **OBJ or STL names no unit**. When its numbers cannot be metres (bigger than 12 m or smaller than 5 cm), Plotline
+   does not fill in a size it would have to guess: it says "This file names no unit. It looks like:" with the units that
+   make it a piece of furniture, each with the width it gives — **Inches · 7'-0"**, **Centimetres · 2'-9"** for a sofa
+   drawn 84 across. The size boxes show the first in grey; pick one, or type the real size of one side, and **Add to the
+   library** can be pressed. When only one unit fits (an 1800-wide cabinet: millimetres) it is picked already, as before.
+4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click (on a phone,
+   tap) to place it (the line goes as soon as the piece is down).
 
 It is listed on top of the library under **Your own** (and in its group), marked **yours**, with **⋯**: **Rename**;
 **Change size** (pieces already placed take the new size at once); **Remove…** (asks once; pieces already placed stay —
@@ -512,16 +551,41 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
 
 ## 4. The Building view
 
-The whole tower, floor by floor: pick a floor, open a flat, or walk a common level.
+The whole tower, floor by floor: point at a floor to see which it is, open a flat, or walk a common level.
 
+- **Point at the tower.** The storey under the mouse turns a little brighter, and a small card beside the mouse names it: the
+  floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
+  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat (your own flat: its
+  Dollhouse), walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that
+  floor as the list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **On a phone:** tap a floor and the card shows beside your finger (the storey brighter); tap the same floor again to open
+  it. A tap somewhere else names that instead.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,
-  **B2**. The picked floor is the white row and your own flat's floor has a small blue dot; thin blue bands run round
-  the picked floor's flat on the tower.
+  **B2** — the numbers in the large serif letters, Roof / Ground / B1 in small capitals. The floor under the mouse, in the
+  list or on the tower, is the white row and is a little brighter on the tower: point at a row and you see that storey on
+  the building. The picked floor has a thin blue line running to the list's edge, your own flat's floor a small blue dot.
+  A tall tower's list scrolls to keep the picked floor — and the floor under the mouse — in view.
+- **The picked flat is lit.** On the tower the picked flat — everything of it you see from outside: its walls, its
+  balcony fronts, its window frames and the rooms through its glass — is shown about a fifth brighter than the rest, by
+  day and by night, from every side; at night its lamps are on too (the **Lights** button turns them off). No lines, no
+  colour: the floor under the mouse turns brighter too, but less. Pick another floor and the light moves to it.
+- **Every window is a home.** Behind every window of every flat are its real rooms: the floors, the ceilings and the
+  walls in their paint, and the furniture the walk lays out (beds, sofas, tables, wardrobes, curtains) — each floor as
+  staff left it: floor 5's blue bedroom is blue from the street, floor 4's next to it white. The glass is real
+  glass in an aluminium frame, mirroring the sky's haze at a slant; your own flat's furnished rooms show through its
+  glass too. By day the rooms read a little darker than the street, with sun patches on the floors; at night about half
+  the rooms have a lamp on — warm, neutral or cool, some flats all dark — the same ones every time you look. The ground
+  floor's lobby and the common floors have their rooms and furniture too, lit at night.
+  - The tower shows first; the rooms fill in within a moment, the nearest flats first, then the furniture flat by flat.
+  - By quality: **High** furnishes every flat; **Low** shows every flat's rooms and furnishes the three storeys
+    nearest you (it follows you as you turn the tower) and the floor you picked; **Lite** shows every flat's rooms without furniture.
+  - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
+    seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
-- **Click a flat** to open it. Drag to turn, scroll to zoom.
+- Drag to turn, scroll to zoom.
 - **Round the tower:** the made-up street (§2, "Around the flat") or, with a site set, the map's blocks and roads; both
   cast shadows on the tower. A block between you and the tower is left out while you look.
 
@@ -1010,16 +1074,21 @@ it again with **Building** → **Or open a project**). **Show building** opens t
 with no drawing yet is filled with the one below it.
 
 **One floor different from the others**
-- A drawing on several floors is ONE drawing: change it in the Studio and every floor with it changes.
+- A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it
+  changes.
+- **Furniture and finishes are every flat's own, always** (founder 2026-11-21): floor 3's flat keeps what you picked and
+  arranged there in the 3D view, floor 4's keeps its own, the mirrored flat next door its own (§2 and §3, "Every flat
+  keeps its own"). The Studio's F tool and Preview 3D set where every floor of the plan starts.
 - **Use drawing… → This floor only — its own copy:** that floor gets its own copy ("Floor plan A · floor 5") with the
-  picture, furniture and notes, and the copy opens. From then on its changes stay on that floor.
-- **In the 3D view** (staff): the first furniture change on such a floor, or **Edit ▾ → Openings** there, asks "Floor plan
-  A is also on floors 1, 3, 4. Change: **Floor 2 only** / **All 4 floors**". Floor 2 only gives floor 2 its own copy, keeps
-  your change on it and opens the page again on the copy ("Floor 2 has its own drawing now"); All 4 floors changes every
-  floor; **Esc** takes the change back (it asks again next time). The answer is remembered for the project in this
-  browser; **Ask again** under Show building forgets it.
-- **Finishes never spread:** what you or a buyer pick in Finishes lives in that page and its Share link only, never in
-  the drawing.
+  picture, that floor's furniture and finishes, and the notes, and the copy opens. From then on its walls, doors and
+  windows stay on that floor.
+- **In the 3D view** (staff): **Edit ▾ → Openings** on such a floor asks "Floor plan A is also on floors 1, 3, 4. Change
+  its doors and windows on: **Floor 2 only** / **All 4 floors**". Floor 2 only gives floor 2 its own copy (with floor 2's
+  furniture and finishes) and opens the page again on the copy, Edit openings on ("Floor 2 has its own drawing now"); All
+  4 floors changes every floor; **Esc** closes the box (it asks again next time). The answer is remembered for the project
+  in this browser; **Ask again** under Show building forgets it. Furniture changes never ask.
+- When a floor plan is left on one floor only (you cleared or gave away its other floors), that floor keeps what it had:
+  its furniture and finishes become the plan's own, which F then shows.
 - **A building from an IFC** has one drawing per storey from the start: nothing repeats, nothing to answer.
 
 Whatever was open before you started the project becomes one of its drawings when you open a floor (Use drawing… puts it
@@ -1160,7 +1229,7 @@ otherwise):
 |---|---|
 | The Studio drawing you are working on, with its plan picture | Yes, signed in to a company |
 | Projects, every drawing of a project and its plan picture | Yes, signed in |
-| Furniture staff arranged (3D view or F) | Goes online with the drawing when the Studio saves it, and into a buyer link when you make one |
+| Every flat's own furniture and finishes, as staff left them (3D view, F, Preview 3D) | Yes, inside the project (or drawing) the next time the Studio saves it signed in — at once while the Studio is open in another tab, else when you next open the Studio; the floor plan's own goes into a buyer link when you make one. A built-in flat's: this browser only |
 | Your own furniture, finishes and texture pictures | Yes, signed in — for every colleague and in the buyer links that show them |
 | The last Preview 3D | No |
 | Notes on ordinary (non-buyer) links | No |
@@ -1175,7 +1244,8 @@ The **Site** (place, north, blocks, roads, wind) is part of the drawing: kept wh
 picture too); buyer links and what buyers do on them (in the database); signed in, the open project or drawing with
 **every save of it** and each drawing's plan picture (your company only).
 
-**Never saved:** the finishes you clicked, unless you press **Share** (they go into the link).
+**Never saved:** what a buyer (or anyone not in staff mode) clicks in Finishes, unless they press **Share** (it goes
+into the link; on a buyer link each pick also goes to the change list).
 
 ---
 
@@ -1234,7 +1304,13 @@ Things that are confusing or not finished. Each one is a job on the list.
   then needs typed "move it" numbers.
 - "Walk this level" from Show building first shows an Enter screen. An area added to a level ("Sand pit") may be missing
   from the room list; jumping to a lawn can leave you in a corner facing a wall.
-- Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio.
+- Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio (on a floor plan that is
+  on one floor only: there F and the 3D view share one layout).
+- In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
+  floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
+  things (a vase, a book) are left out of the other flats.
+- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
+  buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
 - Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
@@ -1267,14 +1343,14 @@ is a job (hand-tested 2026-10-05, updated since).
 | Door, double door, gate, window, passage | Yes — kind, width, height, sill, slide, delete | Yes — plus hinge side and swing | Door material. Cannot be *added* in 3D |
 | Column | No | Yes — each corner and side by mouse (or typed), move, delete, add | — |
 | Ceiling, slab, ceiling height, ceiling lights | One room's ceiling can be clicked in Finishes, but only one ceiling colour exists | No | Everything else |
-| Floor of ONE room | Yes — Finishes open, click the floor | No | — |
+| Floor of ONE room | Yes — Finishes open, click the floor; kept for that flat (§2, "Every flat keeps its own") | No | — |
 | Lawn, paving, driveway, deck surface | No | No | No finish choices exist for outdoor areas |
 | Shape, kind or floor level of an area | No | Yes | — |
 | Ramp | No | Yes — far-end level, direction, length | Steepness as a number (1:8) |
 | Steps | No | No | They are not their own thing yet |
 | Pool | not tested | not tested | not tested |
 | Parking bay | No | Yes — size, number, add, delete | The painted lines |
-| Wall paint of one room / one wall | Yes — Finishes open, click the wall | No | The outside and the boundary (no paint choice) |
+| Wall paint of one room / one wall | Yes — Finishes open, click the wall; kept for that flat | No | The outside and the boundary (no paint choice) |
 | Tree, shrub, plant, furniture, loungers, pergola | Yes — move, turn, resize, delete, add from the library | Yes (F) | Swap a plant for another in one step |
 | Your own furniture model | Yes — Add → + Add your own…, then like any piece; ⋯ renames, resizes, removes | Yes (F) | — |
 | A finish option of your own | Yes — Finishes → + Add option (staff); ⋯ changes or removes it | No | — |

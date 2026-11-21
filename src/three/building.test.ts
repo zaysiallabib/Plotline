@@ -499,3 +499,197 @@ describe('the tower round a walked flat (three/building.ts, session 31)', () => 
     expect(plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.3 })).toHaveLength(0)
   })
 })
+
+describe('the Building view: which floor, and the windows lit (session 31 pick)', () => {
+  test('the floor under a height: the highest floor at or under it, a floor’s own top face its own, under them all the lowest', async () => {
+    const { floorAtY } = await import('./building')
+    // the BTI frame seen from floor 2 (FLOOR_M 3.198): basement none, ground −6.396, floor 2 at 0, roof (9) at 22.386
+    const levels: [number, number][] = Array.from({ length: 10 }, (_, k) => [k, (k - 2) * 3.198])
+    expect(floorAtY(0, levels)).toBe(2) // floor 2's own floor
+    expect(floorAtY(-0.005, levels)).toBe(2) // its top face, a hair under
+    expect(floorAtY(-0.1, levels)).toBe(1) // the slab's edge under it: the storey below
+    expect(floorAtY(1.5, levels)).toBe(2)
+    expect(floorAtY(3.198 * 6 + 0.5, levels)).toBe(8)
+    expect(floorAtY(3.198 * 7 + 1.2, levels)).toBe(9) // a tank on the roof
+    expect(floorAtY(-20, levels)).toBe(0) // under the ground floor: the lowest there is
+    // an imported building's own storey heights (ELEVATIONS) and a basement, in any order
+    expect(floorAtY(-2, [[1, 4.2], [-1, -3.1], [0, 0]])).toBe(-1)
+    expect(floorAtY(4.19, [[1, 4.2], [-1, -3.1], [0, 0]])).toBe(1)
+    expect(floorAtY(1, [])).toBeNull()
+  })
+
+  test('lit at night: about half the rooms, some flats all dark, the same every visit, every window of a room alike', async () => {
+    const { roomLight } = await import('./building')
+    const flats = Array.from({ length: 400 }, (_, i) => `type-${i % 5}|${i}`)
+    const rooms = ['bed-1', 'bed-2', 'living', 'kitchen', 'dining', 'bath']
+    const all = flats.flatMap((f) => rooms.map((r) => roomLight(f, r)))
+    const lit = all.filter((v) => v > 0)
+    expect(lit.length / all.length).toBeGreaterThan(0.45) // people live there
+    expect(lit.length / all.length).toBeLessThan(0.6) // and some are out, or asleep
+    expect(Math.min(...lit)).toBeGreaterThanOrEqual(0.55) // a lit room is never a faint smear
+    expect(Math.max(...lit)).toBeLessThanOrEqual(1)
+    expect(new Set(lit.map((v) => v.toFixed(2))).size).toBeGreaterThan(20) // varied, not one brightness
+    const dark = flats.filter((f) => rooms.every((r) => roomLight(f, r) === 0)).length / flats.length
+    expect(dark).toBeGreaterThan(0.06) // nobody home
+    expect(dark).toBeLessThan(0.25)
+    // deterministic: no flicker between frames or visits
+    expect(flats.flatMap((f) => rooms.map((r) => roomLight(f, r)))).toEqual(all)
+  })
+})
+
+describe('the Building view: rooms behind every window, the picked flat lit (session 31 glow)', () => {
+  // the tower built in node as in the page: a canvas that draws nothing, pictures that never arrive (the rooms wait for them,
+  // so only what is made at once is checked here), no frames
+  const stop = { addColorStop: () => {} }
+  const draw = new Proxy({}, { get: (_, k) => (k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'measureText' ? () => ({ width: 1 }) : () => stop), set: () => true })
+  const g = globalThis as unknown as Record<string, unknown>
+  g.document ??= { createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => draw }), createElementNS: () => ({ addEventListener() {}, removeEventListener() {}, style: {} }) }
+  g.requestAnimationFrame ??= () => 0
+  type Seen = {
+    flats: { s: string; k: number; home: string; level: boolean; lamps: { image: { data: Uint8Array } }; scale: { value: number } }[]
+    paneOwners: Map<{ geometry: { attributes: Record<string, unknown> }; material: { transparent: boolean; blending: number } }, unknown>
+    lift: { meshes: { geometry: { boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null; computeBoundingBox(): void } }[] }
+  }
+  const tower = async (unit: Unit, tier: 'high' | 'low' | 'lite' = 'high') => {
+    const { Building } = await import('./building')
+    const b = Building.for(unit, tier)!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    return b as unknown as Pick<typeof b, 'setSun' | 'highlight' | 'dispose' | 'floor'> & Seen
+  }
+  const shut = (r: Room) => r.kind === 'shaft' || r.kind === 'balcony'
+
+  test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
+    const THREE = await import('three')
+    const b = await tower(bti.FLATS['type-a'].unit)
+    const paneMesh = [...b.paneOwners.keys()][0] // (one merged pane mesh a floor)
+    // BTI: floor 1 the typical plate (B + C), floor 2 Type A (walked) + B, floors 3–8 B + C
+    expect(b.flats.map((f) => `${f.s}@${f.k}`).sort()).toEqual(['type-b@1', 'type-c@1', 'type-b@2', ...[3, 4, 5, 6, 7, 8].flatMap((k) => [`type-b@${k}`, `type-c@${k}`])].sort())
+    expect(Object.keys(paneMesh.geometry.attributes).sort()).toEqual(['normal', 'pane', 'position', 'uv']) // the frame's data only: no curtain, blind or room drawn on it
+    expect(paneMesh.material.transparent).toBe(true)
+    expect(paneMesh.material.blending).toBe(THREE.CustomBlending) // what is behind it shows through
+    // Sheltech from A on floor 3: every other A and B, and the common levels one sees from the street (ground, level 1, rooftop)
+    const s = await tower(sheltech.FLATS['sheltech-a'].unit)
+    const names = s.flats.map((f) => `${f.s}@${f.k}`)
+    expect(names).toHaveLength(9 + 3)
+    expect(names).not.toContain(`sheltech-a@${s.floor}`)
+    expect(s.flats.filter((f) => f.level).map((f) => f.s).sort()).toEqual(['sheltech-ground', 'sheltech-l1', 'sheltech-roof'])
+    b.dispose()
+    s.dispose()
+  })
+
+  test('the picked flat lifted and its lamps on; another picked: the lift and the lamps move to it', async () => {
+    const THREE = await import('three')
+    const b = await tower(bti.FLATS['type-a'].unit)
+    const sun = new THREE.DirectionalLight()
+    b.setSun(sun, 1, 4, true) // night, the Lights on
+    const lit = Math.round(255 * 0.85)
+    const lamps = (f: Seen['flats'][number]) => Array.from({ length: f.lamps.image.data.length / 4 }, (_, i) => f.lamps.image.data[i * 4])
+    const span = () => {
+      const geo = b.lift.meshes[0].geometry
+      geo.computeBoundingBox()
+      return [geo.boundingBox!.min.y, geo.boundingBox!.max.y].map((y) => +y.toFixed(2))
+    }
+    const F = bti.FLOOR_M
+    const rooms = (s: string) => core.deriveRooms(bti.FLATS[s].unit)
+    const allLit = (s: string) => rooms(s).map((r) => (shut(r) ? 0 : lit))
+    // floor 2 picked (the walked Type A: its own lamps are the scene's): the lift over its storey, slab edge to ceiling
+    expect(span()).toEqual([+(3 - F).toFixed(2), 3])
+    for (const f of b.flats) expect(f.scale.value, f.home).toBe(1) // the night: every other flat's pattern shows
+    b.highlight(5)
+    expect(span()).toEqual([+(3 * F + 3 - F).toFixed(2), +(3 * F + 3).toFixed(2)]) // floor 5's storey, floor 2's gone
+    const on5 = b.flats.filter((f) => f.k === 5)
+    expect(on5.map((f) => f.s).sort()).toEqual(['type-b', 'type-c']) // Type A is not on floor 5: both its flats are picked
+    // every side of them: the lift reaches past each outer edge of their plans (their walls' outer faces)
+    const lb = b.lift.meshes[0].geometry.boundingBox!
+    const a = bti.FLATS['type-a'].offset
+    const xs = ['type-b', 'type-c'].map((s) => ({ b: core.unitBounds(bti.FLATS[s].unit), o: bti.FLATS[s].offset }))
+    expect(lb.min.x).toBeLessThan(Math.min(...xs.map(({ b: u, o }) => u.minX + o.x - a.x)))
+    expect(lb.max.x).toBeGreaterThan(Math.max(...xs.map(({ b: u, o }) => u.maxX + o.x - a.x)))
+    expect(lb.min.z).toBeLessThan(Math.min(...xs.map(({ b: u, o }) => u.minY + o.y - a.y)))
+    expect(lb.max.z).toBeGreaterThan(Math.max(...xs.map(({ b: u, o }) => u.maxY + o.y - a.y)))
+    for (const f of on5) expect(lamps(f), f.home).toEqual(allLit(f.s))
+    const f3 = b.flats.find((f) => f.s === 'type-b' && f.k === 3)!
+    expect(lamps(f3)).not.toEqual(allLit('type-b')) // a home's own pattern, not all lit
+    b.setSun(sun, 1, 4, false) // the Lights button off: the picked flats go dark, the others keep their pattern
+    for (const f of on5) expect(f.scale.value).toBe(0)
+    expect(f3.scale.value).toBe(1)
+    b.setSun(sun, 1, 4, true)
+    b.highlight(3) // another floor: floor 5 back to its own pattern, floor 3 lit
+    expect(lamps(f3)).toEqual(allLit('type-b'))
+    for (const f of on5) expect(lamps(f), f.home).not.toEqual(allLit(f.s))
+    b.setSun(sun, 0, 1.2, false) // by day with the Lights off: no lamp anywhere
+    expect(b.flats.every((f) => f.scale.value === 0)).toBe(true)
+    b.dispose()
+  })
+
+  test('which flats are furnished per tier and in what order: the nearest first; High all, Low the 3 storeys nearest the camera and the picked one, Lite none', async () => {
+    const THREE = await import('three')
+    const { furnishes, insideOrder, nearestStoreys, LOW_STOREYS, PICK_LIFT, HOVER_LIFT, PICK_NIGHT, HOVER_NIGHT } = await import('./building')
+    const at = (x: number, y: number) => ({ at: new THREE.Vector3(x, y, 0), name: `${x},${y}` })
+    const flats = [at(0, 30), at(0, 3), at(10, 3), at(0, 12)]
+    expect(insideOrder(flats, new THREE.Vector3(0, 0, 0)).map((f) => f.name)).toEqual(['0,3', '10,3', '0,12', '0,30'])
+    expect(insideOrder(flats, new THREE.Vector3(0, 40, 0)).map((f) => f.name)).toEqual(['0,30', '0,12', '0,3', '10,3'])
+    const near = nearestStoreys([{ k: 8, d: 40 }, { k: 2, d: 5 }, { k: 2, d: 9 }, { k: 3, d: 8 }, { k: 5, d: 20 }, { k: 4, d: 12 }], LOW_STOREYS)
+    expect([...near].sort()).toEqual([2, 3, 4])
+    expect([2, 5, 8].map((k) => furnishes('high', k, near))).toEqual([true, true, true])
+    expect([2, 5, 8].map((k) => furnishes('low', k, near))).toEqual([true, false, false])
+    expect([2, 5, 8].map((k) => furnishes('lite', k, near))).toEqual([false, false, false])
+    expect(furnishes('low', 2, null)).toBe(false) // before the camera is known
+    expect([5, 8].map((k) => furnishes('low', k, near, 5))).toEqual([true, false]) // the picked floor too, wherever the camera is
+    expect(furnishes('lite', 5, near, 5)).toBe(false)
+    // the hover is quieter than the picked flat's lift, by day and by night
+    expect(HOVER_LIFT).toBeLessThan(PICK_LIFT)
+    expect(HOVER_NIGHT).toBeLessThan(PICK_NIGHT)
+  })
+
+  test('the lamps: the picked flat and a common level all lit, a home by its night pattern; never a balcony or a shaft', async () => {
+    const { flatLamps, roomLight } = await import('./building')
+    const rooms = core.deriveRooms(bti.FLATS['type-b'].unit)
+    expect(flatLamps('type-b|4', rooms, 'picked')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
+    expect(flatLamps('type-b|4', rooms, 'level')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
+    expect(flatLamps('type-b|4', rooms, 'home')).toEqual(rooms.map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
+  })
+})
+
+describe('the Building view: each floor as staff left it (session 31 glow, with the kept records)', () => {
+  test('a floor whose finishes or furniture staff changed has rooms of its own behind its windows; the others share the plan’s', async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    const store = new Map<string, string>()
+    const had = g.localStorage
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) }
+    try {
+      const b = bti.FLATS['type-b'].unit
+      // floor 5's Type B painted Slate Blue (Finishes → Wall paint, kept for floor 5 only); floor 6's bed moved
+      store.set(`plotline.finishes.${b.id}:5`, JSON.stringify({ s_wall_paint: 'fo_paint_slate_blue' }))
+      const { layoutFor } = await import('../studio/furniture')
+      const moved = layoutFor(b, core.deriveRooms(b)).map((p, i) => (i === 0 ? { ...p, x: p.x + 0.3 } : p))
+      store.set(`plotline.layout.${b.id}:6`, JSON.stringify(moved))
+      const { Building } = await import('./building')
+      const made = Building.for(bti.FLATS['type-a'].unit)!
+      for (const _ of made.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+      const t = made as unknown as { flats: { s: string; k: number }[]; drawing(f: unknown): unknown; drawn: Map<string, unknown>; dispose(): void }
+      const of = (s: string, k: number) => t.drawing(t.flats.find((f) => f.s === s && f.k === k))
+      expect(of('type-b', 4)).toBe(of('type-b', 7)) // the plan's: one geometry for both floors
+      expect(of('type-b', 5)).not.toBe(of('type-b', 4)) // the slate blue walls: its own
+      expect(of('type-b', 6)).not.toBe(of('type-b', 4)) // the moved bed: its own
+      expect(of('type-b', 6)).not.toBe(of('type-b', 5))
+      expect(of('type-c', 5)).toBe(of('type-c', 4)) // its neighbour on floor 5 is untouched
+      t.dispose()
+    } finally {
+      g.localStorage = had
+    }
+  })
+})
+
+describe('one draw of the scene a frame (session 31 glow)', () => {
+  test('a scanned model’s see-through glass (the wall clock’s face) is plain glass: nothing makes three draw everything twice', async () => {
+    const THREE = await import('three')
+    const { plainGlass } = await import('./furniture')
+    const glass = new THREE.MeshPhysicalMaterial({ transmission: 1, opacity: 1 })
+    const wood = new THREE.MeshPhysicalMaterial({ color: '#8a6a4a' })
+    const clock = new THREE.Group().add(new THREE.Mesh(new THREE.PlaneGeometry(), glass), new THREE.Mesh(new THREE.BoxGeometry(), wood))
+    plainGlass(clock)
+    expect([glass.transmission, glass.transparent, glass.opacity <= 0.15, glass.depthWrite]).toEqual([0, true, true, false])
+    expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
+  })
+})

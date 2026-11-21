@@ -561,6 +561,13 @@ NEUTRAL.needsUpdate = true
 export const dayMap = { value: NEUTRAL as THREE.Texture }
 /** the sky's share of the indirect light (render.ts setAltitude): 1 by day → ≈ 0 at night with the lamps on */
 export const dayMix = { value: 1 }
+/**
+ * The lamps' bounce seen from OUTSIDE the flat (the Building view with the lamps on: render.ts setAltitude): what the walk's
+ * hemisphere carries — down onto the floors (sky), up onto the ceilings (ground) — on the room surfaces and pieces alone,
+ * × each room's own lamp share (the atlas's G), so its rooms glow through its glass as the walk shows them; the tower and
+ * the street outside take none. Black otherwise.
+ */
+export const lampOut = { sky: { value: new THREE.Color(0, 0, 0) }, ground: { value: new THREE.Color(0, 0, 0) } }
 /** the atlas shown (setDaylight) and its texture's bytes: setLampShare rewrites their lamp channel */
 let shown: { d: Daylight; rg: Uint8Array; tex: THREE.DataTexture } | null = null
 
@@ -607,10 +614,12 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
   m.onBeforeCompile = (s) => {
     s.uniforms.dayMap = dayMap
     s.uniforms.dayMix = dayMix
+    s.uniforms.lampOutSky = lampOut.sky
+    s.uniforms.lampOutGround = lampOut.ground
     s.uniforms.mottleMap = mottleMap
     s.uniforms.mapBias = { value: m.userData.mapBias ?? 0 }
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
       .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
       .replace(
       '#include <aomap_fragment>',
@@ -621,6 +630,9 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
       float dayK = mix(${LAMP_RANGE.toFixed(1)} * dayRg.g, ${RANGE.toFixed(1)} * dayRg.r, dayMix);
       reflectedLight.indirectDiffuse *= dayK;
       reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out
+      // seen from outside with the lamps on (lampOut): their bounce as the walk's hemisphere gives it, × this room's lamps
+      float dayUp = 0.5 + 0.5 * dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
+      reflectedLight.indirectDiffuse += mix(lampOutGround, lampOutSky, dayUp) * BRDF_Lambert(material.diffuseColor) * ${LAMP_RANGE.toFixed(1)} * dayRg.g;
       #if defined(MOTTLE) && defined(USE_MAP)
       reflectedLight.indirectDiffuse *= 1.0 + MOTTLE * (texture2D(mottleMap, vMapUv * MOTTLE_UV, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
       #endif`,

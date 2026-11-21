@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as bti from '../data/building/demo-tower'
 import * as banani from '../data/building/banani-tower'
 import * as sheltech from '../data/building/sheltech-tower'
-import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, wakes } from './Hud'
+import { chromeOf, cleanKey, floorTitle, floorWord, hintOf, railWord, towerCard, wakes } from './Hud'
 import { noteAt } from './Notes'
 import { dayGradient, roseTurn, skyColor } from './SunPill'
 
@@ -50,19 +50,19 @@ describe('hud', () => {
     expect(hintOf({ ...base, staff: true })).toMatch(/G picks up the piece under the mouse$/)
     expect(hintOf({ ...base, locked: true })).toMatch(/Esc frees the mouse$/)
     expect(hintOf({ ...base, mode: 'orbit' })).toMatch(/^Drag to turn/)
-    expect(hintOf({ ...base, mode: 'building' })).toMatch(/^Click a flat to open it/)
+    expect(hintOf({ ...base, mode: 'building' })).toMatch(/^Point at a floor to name it · click to open it/)
     expect(hintOf({ ...base, arranging: true })).toMatch(/^Drag a piece.*WASD to walk$/)
     expect(hintOf({ ...base, arranging: true, mode: 'orbit' })).not.toMatch(/WASD/)
     expect(hintOf({ ...base, editingOpenings: true, arranging: true })).toMatch(/^Click a door/) // openings win
     expect(hintOf({ ...base, holding: true })).toBeNull() // the piece's own tag says it
-    expect(hintOf({ ...base, holding: true, mode: 'building' })).toMatch(/^Click a flat/)
+    expect(hintOf({ ...base, holding: true, mode: 'building' })).toMatch(/^Point at a floor/)
   })
 
   it('under a finger the hint says what a finger does and never names a key', () => {
     const f = { ...base, finger: true }
     expect(hintOf(f)).toBe('Drag to look · tap the floor to walk there')
     expect(hintOf({ ...f, mode: 'orbit' })).toBe('Drag to turn · pinch to zoom · tap a room’s floor to walk in it')
-    expect(hintOf({ ...f, mode: 'building' })).toBe('Tap a flat to open it · drag to turn · pinch to zoom')
+    expect(hintOf({ ...f, mode: 'building' })).toBe('Tap a floor to name it, again to open it · drag to turn · pinch to zoom')
     expect(hintOf({ ...f, holding: true })).toBeNull()
     const keys = /WASD|Esc|Ctrl|Del\b|\bG\b|\bR\b|\bO\b|Double-click|scroll|mouse/
     for (const mode of ['walk', 'orbit', 'building'] as const)
@@ -83,8 +83,30 @@ describe('hud', () => {
     expect(noteAt(600, 60, 1600, 1000, 280, 150, 100).dy).toBe(40) // a desktop pin up there: the note starts under the name
   })
 
-  it('the Building rail says Roof and Ground in words', () => {
+  it('the Building rail says Roof and Ground in words; a number in the serif, the words as inscriptions', () => {
     expect(['R', '8', 'G', 'B1'].map(floorWord)).toEqual(['Roof', '8', 'Ground', 'B1'])
+    expect(['R', '8', 'G', 'B1', '12'].map(railWord)).toEqual([
+      { text: 'Roof', serif: false },
+      { text: '8', serif: true },
+      { text: 'Ground', serif: false },
+      { text: 'B1', serif: false },
+      { text: '12', serif: true },
+    ])
+  })
+
+  it('the card beside the pointer on the tower: the floor as its title, the flat under it with its size, what a click does', () => {
+    const flat = (stem: string, floor: number) => ({ stem, floor })
+    expect(towerCard(bti, { k: 4, flat: flat('type-b', 4) }, false)).toEqual({ title: 'Floor 4', line: 'Type B · 1747 sft', act: 'Click to open it' })
+    expect(towerCard(bti, { k: 4, flat: flat('type-b', 4) }, true).act).toBe('Tap again to open it') // a finger: the first tap named it
+    expect(towerCard(bti, { k: 1, flat: null }, false)).toEqual({ title: 'Floor 1', act: 'Click to pick this floor' }) // massing: no flat to open
+    expect(towerCard(bti, { k: 6, flat: null }, false)).toEqual({ title: 'Floor 6', act: 'Click to pick this floor' }) // the core between the flats
+    expect(towerCard(bti, { k: 9, flat: null }, false).title).toBe('Rooftop')
+    expect(towerCard(bti, { k: 0, flat: null }, false).title).toBe('Ground floor')
+    expect(towerCard(sheltech, { k: 0, flat: null }, false)).toEqual({ title: 'Ground floor', act: 'Click to walk it' }) // a level: walked; its name says no more
+    expect(towerCard(sheltech, { k: -1, flat: null }, true)).toEqual({ title: 'Basement 1', act: 'Tap again to walk it' })
+    expect(towerCard(banani, { k: 0, flat: null }, false)).toEqual({ title: 'Ground floor', line: 'Ground level', act: 'Click to walk it' })
+    const own = { ...bti, FLATS: { ...bti.FLATS, 'type-a': { ...bti.FLATS['type-a'], unit: { ...bti.FLATS['type-a'].unit, name: 'Type A' } } } }
+    expect(towerCard(own, { k: 2, flat: flat('type-a', 2) }, false).line).toBe('Type A · 2703 sft') // a Studio flat's bare name: its size from the plan
   })
 
   it('the compass: true north as you look now, clockwise from straight ahead', () => {

@@ -558,29 +558,61 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .menu-head .x { display: none; }
 
 /* ── Building view: the floors, a quiet list on the right; Walk this level under it ──────────────────────────────── */
+/* A floor's number in the serif, the roof / ground / basements in inscription capitals. The floor under the mouse — in the
+   list or on the tower — is washed white in both; the picked one is a hairline of the accent running to the edge, like a
+   level line on a section drawing; your own flat's floor keeps its dot. */
 .floor-rail { position: absolute; z-index: 2; right: calc(var(--safe-r) + var(--edge)); top: 50%; translate: 0 -50%; display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); max-height: calc(100% - 2 * var(--dock-top)); }
-.rail { display: flex; flex-direction: column; gap: 2px; min-width: 128px; min-height: 0; padding: var(--s-2); overflow: auto; }
+.rail { display: flex; flex-direction: column; gap: 2px; min-width: 136px; min-height: 0; padding: var(--s-2); overflow: auto; }
 /* a long list of floors scrolls; Walk this level under it keeps its full height (it was squeezed on a phone) */
 .floor-rail > .btn { flex: none; }
 .rail-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
+  gap: var(--s-3);
   min-height: calc(var(--control) - var(--s-1));
   padding: 0 var(--s-3);
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   color: var(--ink-2);
-  font-size: var(--fs-md);
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.rail-item:hover { background: var(--hover); color: var(--ink); }
-.rail-item.on { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: var(--shadow-sm); }
+.rail-n { min-width: 2ch; font-size: var(--fs-xl); }
+.rail-w { font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; }
+.rail-line { flex: 1; height: 1px; transition: background var(--dur) var(--ease); }
+.rail-item:hover,
+.rail-item.hover { background: var(--surface); color: var(--ink); }
+.rail-item.on { color: var(--ink); }
+.rail-item.on .rail-line { background: var(--accent); }
 .rail-item .own { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* the card beside the pointer on the tower: the floor in the serif, the flat under it, what a click does */
+@keyframes card-in { from { opacity: 0; } }
+.tower-card {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 168px;
+  max-width: 300px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  pointer-events: none;
+  animation: card-in var(--dur) var(--ease) both;
+}
+.tower-card-title { font-size: var(--fs-2xl); }
+.tower-card .label { color: var(--ink-2); }
+.tower-card-act { margin-top: var(--s-1); font-size: var(--fs-sm); color: var(--muted); }
 
 /* ── staff: Edit furniture / Edit openings (bottom left), the library, the piece in hand, which floors ───────────── */
 .arrange { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
@@ -677,7 +709,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .menu,
   .rooms-list,
   .sun-card,
-  .ask-floor {
+  .ask-floor,
+  .library {
     position: fixed;
     z-index: 10;
     left: 0;
@@ -709,13 +742,16 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .hud.rest > .hud-tr { pointer-events: auto; }
   .sun-card { gap: var(--s-3); }
   /* while a sheet is up the bar and the dock step away, so nothing shows through it (its × or ⌄ closes it; a tap outside closes a menu) */
-  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor)) .toolbar,
+  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor, .library)) :is(.toolbar, .arrange),
   .viewer:has(:is(.panel, .menu, .ask-floor)) .dock,
   .dock:has(.sun-card) > :not(.sun-card) { visibility: hidden; }
-  /* staff's editors (a phone is not their tool yet): full width over the bar, the library at the top */
+  /* staff's editors: full width over the bar; the library a sheet like the others (Edit furniture steps away under it) */
   .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; }
-  .library { left: var(--edge); right: var(--edge); width: auto; top: calc(var(--safe-t) + var(--edge)); bottom: auto; max-height: 40vh; }
+  .library { padding: 0 var(--s-3) calc(var(--s-3) + var(--safe-b)); }
+  .library > .panel-head { margin: 0; padding-left: var(--s-1); }
   .viewer:has(.arrange) .dock { visibility: hidden; }
+  /* the piece in hand: the Edit panel says what and where; a tag beside the finger would only run off the screen's edge */
+  .viewer:has(.arrange) .hand-tag { display: none; }
   .load-mark { left: calc(var(--safe-l) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); }
   .load-corner { right: calc(var(--safe-r) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); gap: var(--s-4); }
   .unit-name { font-size: var(--fs-3xl); }

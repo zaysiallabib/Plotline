@@ -153,17 +153,6 @@ describe('lamps', () => {
   })
 })
 
-describe('the tower at night', () => {
-  test('about 45 % of the other flats’ windows lit, the same ones every time', async () => {
-    const { litWindow } = await import('./building')
-    const keys = Array.from({ length: 2000 }, (_, i) => `flat-${i % 7}|${i % 9}|o${i}`)
-    const lit = keys.filter(litWindow).length / keys.length
-    expect(lit).toBeGreaterThan(0.4)
-    expect(lit).toBeLessThan(0.5)
-    expect(keys.map(litWindow)).toEqual(keys.map(litWindow))
-  })
-})
-
 describe('the tower round the flat (towerLevel, session 31: "i couldn’t see the playground on the ground floor")', () => {
   const floors = [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7]
   const drawn = (tier: 'high' | 'low' | 'lite', floor: number, dollhouse = false) => floors.filter((k) => towerLevel(k, { tier, floor, dollhouse }))
