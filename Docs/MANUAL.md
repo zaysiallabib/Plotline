@@ -298,7 +298,9 @@ a pool deck, a play area) look as they always did, by day and at night.
 **Around the flat.** Your own building first, then the neighbourhood. A flat that is part of a building (every built-in
 flat, and a flat of a project you made in the Studio, §6) stands in that building in Walk and Dollhouse, as in the
 Building view: look out of a window and you see the floors above and below with their windows and slab edges, and down
-on the building's own ground — its lawns, driveway, parking, pool or play area — then the street. A ground floor,
+on the building's own ground — its lawns, driveway, parking, pool or play area — then the street. Behind the other
+flats' glass are their rooms (floors, ceilings, painted walls; lit at night as in the Building view); their furniture
+fills in once you have opened the Building view, so the walk starts as fast as before. A ground floor,
 basement or rooftop you walk has the building above or below it too. In the Dollhouse the floors above yours are left
 out, so you still look in from above (on Lite the Dollhouse shows only the ground and your own floor, and no made-up
 street). On **Lite** only the ground (its lawns, paving, pool and play area, without the
