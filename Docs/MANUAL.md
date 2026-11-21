@@ -126,7 +126,7 @@ Everything else opens from these and closes again with **Esc**.
 | Walk · Dollhouse · Building (one switch; the view you are in is white) | O: Walk ↔ Dollhouse; B: Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to one) |
 | Finishes | F | The panel on the right: floor, wall and ceiling options. While it is open, a click on a floor, wall or ceiling chooses for that one room or wall. **×**, F or Esc closes it |
 | Comment | C | The Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns |
-| Share | — | Copies a link that opens with the finishes you chose |
+| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
 | ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
@@ -1365,12 +1365,14 @@ Things that are confusing or not finished. Each one is a job on the list.
 - In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
   floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
   things (a vase, a book) are left out of the other flats.
-- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
-  buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
+- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). The
+  Studio's buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's); for one
+  floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
-- Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
-  Studio (the real buyer link that feeds the change list). The same thing has two names in places: "Slider" (3D) /
+- Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
+  flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
+  plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.
