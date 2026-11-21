@@ -601,6 +601,9 @@ export class Look {
    */
   setStreetY(y: number | null): void {
     this.ground.position.y = y ?? this.groundY
+    // the wide map only round a flat in its building: a flat on its own (a Studio draft) floats a storey or more over the
+    // street, its catcher shadows it at its own floor, and the street under it took a second shadow of it
+    if (this.wide) this.wide.visible = y !== null
     this.fitWide()
     this.towerStreet = y !== null
     if (this.street) this.street.visible = !this.towerStreet
