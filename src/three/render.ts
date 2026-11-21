@@ -54,11 +54,14 @@ export type Quality = 'high' | 'low' | 'lite'
  * `standIn`: a scanned piece as its stand-in of about this many triangles (furniture.ts standIn; 0: the scan itself).
  * `cell`: the furniture's batches, one per material per cell this many metres square (batch.ts; Infinity: one for the flat —
  * fewest draw calls, every piece drawn every frame: right once the pieces are stand-ins).
+ * `tower`: what of the flat's own building stands round it in the walk and the Dollhouse (towerLevel): every floor, or only
+ * the ground with its zones and the storeys next to the flat's — what a window sees. `towerShadows`: the building round the
+ * flat throws the sun's shadow (the street's neighbours always do where there are shadow maps).
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number; bake: boolean; standIn: number; cell: number }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0, bake: false, standIn: 0, cell: CELL_M },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024, bake: false, standIn: 4000, cell: Infinity },
-  lite: { sun: 0, lamps: 0, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512, bake: true, standIn: 1500, cell: Infinity },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number; bake: boolean; standIn: number; cell: number; tower: 'all' | 'near'; towerShadows: boolean }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0, bake: false, standIn: 0, cell: CELL_M, tower: 'all', towerShadows: true },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024, bake: false, standIn: 4000, cell: Infinity, tower: 'all', towerShadows: false },
+  lite: { sun: 0, lamps: 0, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512, bake: true, standIn: 1500, cell: Infinity, tower: 'near', towerShadows: false },
 }
 
 /**
@@ -75,6 +78,20 @@ export const LITE_PIXELS = 900_000
 export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, forced: number | null = null, budget = 1): number {
   if (tier === 'lite') return forced ?? THREE.MathUtils.clamp(Math.sqrt((LITE_PIXELS * budget) / Math.max(1, w * h)), 0.5, 1)
   return Math.min(dpr, tier === 'high' ? 2 : 1) * (forced ?? 1)
+}
+
+/**
+ * Floor k of the flat's tower round the flat on `floor` (founder 2026-11-21: "i went to the 1st floor and i couldn't see the
+ * playground on the ground floor"): drawn in the walk on every tier as TIERS.tower says — all, or (Lite) the ground and the
+ * storeys within one of the flat's; under the ground only from the ground or a basement (nothing else sees one); in the
+ * Dollhouse nothing over the flat's own floor (it looks in from above), and on Lite only the ground and the flat's own floor
+ * (the storey under it filled the view: ~2.3 ms of a Lite Dollhouse frame at 9× pixels). The Building view draws them all
+ * (building.ts highlight).
+ */
+export function towerLevel(k: number, s: { tier: Quality; floor: number; dollhouse: boolean }): boolean {
+  if ((s.dollhouse && k > s.floor) || (k < 0 && s.floor > 0)) return false
+  if (TIERS[s.tier].tower === 'all' || k === 0) return true
+  return s.dollhouse ? k === s.floor : Math.abs(k - s.floor) <= 1
 }
 
 /**
@@ -112,6 +129,8 @@ export const SITE_REACH_M = 300
 const SHADOW_BIAS_M = 0.02
 const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
+/** how far over the storey's top the slab above (Look's roof, walk) reaches: the tower's floor above starts no lower over the flat (building.ts) */
+export const ROOF_M = SLAB_M + 0.005
 
 /** The hole in the floor at a stair that leads down (furnish/stairs.ts stairHole): the stair's id, its room, the hole in plan, the floor below's level. */
 export interface Well {
@@ -447,14 +466,19 @@ export class Look {
     }
   }
 
-  /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
-  /** The Building view's street (building.ts streetY: under a traced ground floor's lowest floor) for the ground plane; null: the unit's own again. */
+  /**
+   * The flat's tower stands round it (building.ts, every mode): the ground plane at its street (streetY: under a traced
+   * ground floor's lowest floor), and its street — the same blocks and roads — instead of this flat's own. null: the unit's own again.
+   */
   setStreetY(y: number | null): void {
     this.ground.position.y = y ?? this.groundY
-    if (this.street?.userData.site) this.street.visible = y === null // the Building view draws the site round the tower itself
+    this.towerStreet = y !== null
+    if (this.street) this.street.visible = !this.towerStreet
   }
+  private towerStreet = false
   private groundY = 0
 
+  /** The street plane, and this flat's own slab / lights / street: hidden while the Building view shows a level below them. */
   showGround(plane: boolean, flat = plane): void {
     this.ground.visible = plane
     this.unitGroup.visible = flat && !this.leaving // a floor built for a stair stays hidden until swap()
@@ -471,9 +495,10 @@ export class Look {
   /**
    * Per-unit: slab + roof, catcher, ground level, a light at each ceiling fixture placement. `wells`: the holes in the floor
    * at the stairs that lead down (PlotlineScene builds the flight and the core under them): the slab, the street plane and
-   * the contact shadows leave them open, the sun's shadow box reaches down to their floor.
+   * the contact shadows leave them open, the sun's shadow box reaches down to their floor. `street` null: the flat's tower
+   * draws the street round itself (building.ts), this flat none of its own.
    */
-  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
+  setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street | null = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
     this.drop() // a floor a stair left, still shown: gone now
     if (hold) {
       // a stair taken (PlotlineScene.arrive): the floor shown until now stays on screen as it is, this one is built hidden
@@ -568,7 +593,7 @@ export class Look {
     slab.castShadow = slab.receiveShadow = true
     // the storey above: ceilings don't cast, so without it the sun pours in through every ceiling
     const roof = new THREE.Mesh(roofGeo, slab.material)
-    roof.position.y = this.topY + SLAB_M + 0.005 // underside 5 mm above the ceiling plane: no z-fight
+    roof.position.y = this.topY + ROOF_M // underside 5 mm above the ceiling plane: no z-fight
     roof.castShadow = true
     this.indoor.add(roof)
 
@@ -596,10 +621,10 @@ export class Look {
     const shade = junctionShade(unit, rooms, wells.map((w) => w.poly))
     if (shade.floor) this.unitGroup.add(new THREE.Mesh(shade.floor, SHADE))
     if (shade.ceiling) this.indoor.add(new THREE.Mesh(shade.ceiling, SHADE))
-    this.street = buildStreet(unit, street, this.groundY)
+    this.street = street && buildStreet(unit, street, this.groundY)
     // the made-up street only from inside (none round the dollhouse); the site's real neighbours in every view. Both throw
     // their shadows on the flat: the shadow box reaches back toward the sun to them (fitShadow)
-    ;(this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
+    if (this.street) (this.street.userData.site ? this.unitGroup : this.indoor).add(this.street)
 
     this.openSky = rooms.filter((r) => core.isOutdoor(r.kind) && !isCovered(r, cover)).map((r) => core.roomPolygon(r, unit))
     // the lamps' pool (kit.ts lightOf: ceiling fixtures, floor and table lamps), the nearest to the camera first (assignPool;

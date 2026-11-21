@@ -2,7 +2,8 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
-import { floorIn, towerOf } from '../data/building'
+import { floorIn, towerOf, type Tower } from '../data/building'
+import { frameOf, onFlat, plate, sharedWith } from './building'
 import * as bti from '../data/building/demo-tower'
 import { CORE, FLATS, FLOORS } from '../data/building/demo-tower'
 import { alignColumns, flatBounds, levelOf, makeProject, parseProjects, placeFlat, placeLevel, placeOfLevel, placementOf, projectTower, removeFlat, removeLevel, sheetOffset, syncUnit } from '../data/building/projects'
@@ -453,6 +454,52 @@ describe('towers of common levels (session 19): Banani and dmd registered, level
   })
 })
 
+describe('the tower round a walked flat (three/building.ts, session 31)', () => {
+  test('frame: a flat’s plan point lands at p + its offset − the walked flat’s, floor k at (k − floor) storeys, an imported building at its own heights', () => {
+    const f = frameOf(bti as Tower, 'type-c', 6)
+    expect(f.shift('type-b')).toEqual({ x: 0, y: -9.212 })
+    expect(f.shift()).toEqual({ x: 0, y: -9.212 }) // the building frame's origin is Type B's
+    expect(f.shift('type-c')).toEqual({ x: 0, y: 0 })
+    expect([f.levelOf(6), f.levelOf(0), f.levelOf(9)].map((y) => +y.toFixed(3))).toEqual([0, +(-6 * bti.FLOOR_M).toFixed(3), +(3 * bti.FLOOR_M).toFixed(3)])
+    const ifc = { ...bti, ELEVATIONS: { 0: 0, 1: 4.5, 2: 7.6 } } as Tower
+    expect(frameOf(ifc, 'type-c', 2).levelOf(1)).toBeCloseTo(-3.1)
+  })
+
+  const A = sheltech.FLATS['sheltech-a'].unit
+  const B = sheltech.FLATS['sheltech-b'].unit
+  const [ra, rb] = [roomsOf(A), roomsOf(B)]
+  test('sharedWith: the lobby Sheltech A and B both trace is left to the walked flat; the neighbour’s own rooms and walls stay', () => {
+    const s = sharedWith(A, ra, B, rb, { x: 0, y: 0 })
+    expect([...s.rooms].map((id) => rb.find((r) => r.id === id)!.name)).toEqual(['Lobby'])
+    expect(s.walls.size).toBeGreaterThan(0)
+    expect(s.walls.size).toBeLessThan(B.walls.length / 4)
+    // each one lies in one of A's walls: its middle within that wall's body
+    for (const id of s.walls) {
+      const w = B.walls.find((x) => x.id === id)!
+      const f = core.wallFrame(w, B.vertices)
+      expect(onFlat({ x: f.origin.x + (f.dir.x * f.lengthM) / 2, y: f.origin.y + (f.dir.y * f.lengthM) / 2 }, A, ra)).toBe(true)
+    }
+    // a flat against itself shares everything; moved away, nothing
+    const self = sharedWith(A, ra, A, ra, { x: 0, y: 0 })
+    expect([self.walls.size, self.rooms.size]).toEqual([A.walls.length, ra.length])
+    const far = sharedWith(A, ra, B, rb, { x: 100, y: 0 })
+    expect([far.walls.size, far.rooms.size, far.pillars.size]).toEqual([0, 0, 0])
+  })
+
+  test('lid: over the walked flat the floor above starts on its roof; beside it the full plate', () => {
+    const lid = { over: (p: Pt) => onFlat(p, A, ra), y: 0.1 }
+    const bottoms = (u: Unit, rooms: Room[]) => plate(u, rooms, 0.2, 0.2, u.walls, lid).map((g) => (g.computeBoundingBox(), g.boundingBox!.min.y))
+    // the same flat right above: every piece starts at the lid
+    expect(Math.min(...bottoms(A, ra))).toBeCloseTo(0.1)
+    // the neighbour above: its rooms beside A keep the whole plate, its lobby (over A's) starts at the lid
+    const b = bottoms(B, rb)
+    expect(b.filter((y) => Math.abs(y) < 1e-6).length).toBeGreaterThan(b.length / 2)
+    expect(b.some((y) => Math.abs(y - 0.1) < 1e-6)).toBe(true)
+    // a lid over the plate's top: nothing over the flat
+    expect(plate(A, ra, 0.2, 0.2, A.walls, { ...lid, y: 0.3 })).toHaveLength(0)
+  })
+})
+
 describe('the Building view: which floor, and the windows lit (session 31 pick)', () => {
   test('the floor under a height: the highest floor at or under it, a floor’s own top face its own, under them all the lowest', async () => {
     const { floorAtY } = await import('./building')
@@ -500,12 +547,13 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
   g.requestAnimationFrame ??= () => 0
   type Seen = {
     flats: { s: string; k: number; home: string; level: boolean; lamps: { image: { data: Uint8Array } }; scale: { value: number } }[]
-    paneMesh: { geometry: { attributes: Record<string, unknown> }; material: { transparent: boolean; blending: number } }
+    paneOwners: Map<{ geometry: { attributes: Record<string, unknown> }; material: { transparent: boolean; blending: number } }, unknown>
     lift: { meshes: { geometry: { boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null; computeBoundingBox(): void } }[] }
   }
   const tower = async (unit: Unit, tier: 'high' | 'low' | 'lite' = 'high') => {
     const { Building } = await import('./building')
     const b = Building.for(unit, tier)!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
     return b as unknown as Pick<typeof b, 'setSun' | 'highlight' | 'dispose' | 'floor'> & Seen
   }
   const shut = (r: Room) => r.kind === 'shaft' || r.kind === 'balcony'
@@ -513,11 +561,12 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
   test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
     const THREE = await import('three')
     const b = await tower(bti.FLATS['type-a'].unit)
+    const paneMesh = [...b.paneOwners.keys()][0] // (one merged pane mesh a floor)
     // BTI: floor 1 the typical plate (B + C), floor 2 Type A (walked) + B, floors 3–8 B + C
     expect(b.flats.map((f) => `${f.s}@${f.k}`).sort()).toEqual(['type-b@1', 'type-c@1', 'type-b@2', ...[3, 4, 5, 6, 7, 8].flatMap((k) => [`type-b@${k}`, `type-c@${k}`])].sort())
-    expect(Object.keys(b.paneMesh.geometry.attributes).sort()).toEqual(['normal', 'pane', 'position', 'uv']) // the frame's data only: no curtain, blind or room drawn on it
-    expect(b.paneMesh.material.transparent).toBe(true)
-    expect(b.paneMesh.material.blending).toBe(THREE.CustomBlending) // what is behind it shows through
+    expect(Object.keys(paneMesh.geometry.attributes).sort()).toEqual(['normal', 'pane', 'position', 'uv']) // the frame's data only: no curtain, blind or room drawn on it
+    expect(paneMesh.material.transparent).toBe(true)
+    expect(paneMesh.material.blending).toBe(THREE.CustomBlending) // what is behind it shows through
     // Sheltech from A on floor 3: every other A and B, and the common levels one sees from the street (ground, level 1, rooftop)
     const s = await tower(sheltech.FLATS['sheltech-a'].unit)
     const names = s.flats.map((f) => `${f.s}@${f.k}`)
@@ -616,7 +665,9 @@ describe('the Building view: each floor as staff left it (session 31 glow, with 
       const moved = layoutFor(b, core.deriveRooms(b)).map((p, i) => (i === 0 ? { ...p, x: p.x + 0.3 } : p))
       store.set(`plotline.layout.${b.id}:6`, JSON.stringify(moved))
       const { Building } = await import('./building')
-      const t = Building.for(bti.FLATS['type-a'].unit)! as unknown as { flats: { s: string; k: number }[]; drawing(f: unknown): unknown; drawn: Map<string, unknown>; dispose(): void }
+      const made = Building.for(bti.FLATS['type-a'].unit)!
+      for (const _ of made.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+      const t = made as unknown as { flats: { s: string; k: number }[]; drawing(f: unknown): unknown; drawn: Map<string, unknown>; dispose(): void }
       const of = (s: string, k: number) => t.drawing(t.flats.find((f) => f.s === s && f.k === k))
       expect(of('type-b', 4)).toBe(of('type-b', 7)) // the plan's: one geometry for both floors
       expect(of('type-b', 5)).not.toBe(of('type-b', 4)) // the slate blue walls: its own
@@ -712,13 +763,11 @@ describe('the rooms behind the glass take none of the walked flat’s lamps (ses
     expect(out).not.toBe(materialFor(EXTERIOR_PLASTER)) // the walk's slab keeps its lamps
     expect(out.customProgramCacheKey()).toBe('outside')
     const b = Building.for(bti.FLATS['type-a'].unit)!
-    const keys = new Set<string>()
-    b.traverse((o) => {
-      const m = (o as unknown as { material?: { customProgramCacheKey?: () => string } }).material
-      if (m && (o as unknown as { isMesh?: boolean }).isMesh && o.parent === b) keys.add(m.customProgramCacheKey?.() ?? '')
-    })
-    expect([...keys].filter((k) => !['outside', 'tower-pane', 'tower-room', 'tower-lift', ''].includes(k))).toEqual([])
-    expect(keys.has('outside')).toBe(true)
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const used = new Set<unknown>()
+    b.traverse((o) => void used.add((o as unknown as { material?: unknown }).material))
+    expect(used.has(out)).toBe(true) // the shells and plates
+    expect(used.has(materialFor(EXTERIOR_PLASTER))).toBe(false) // never the walk's own
     b.dispose()
   })
 })
