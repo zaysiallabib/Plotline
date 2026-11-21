@@ -7,7 +7,7 @@ import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
 import { importIfc, sharedEdges } from './ifc'
-import { readGlbJson } from './glb'
+import { readGlbJson, WINDOW } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
 const BENCH = 'E:/dev/ALTERNATIVE FORMAT TEST/ifc-bench/projects'
@@ -66,6 +66,15 @@ describe('ifc import', () => {
     expect(w.openings[0].heightM).toBeCloseTo(1, 2)
     expect(w.openings[0].sillM).toBeCloseTo(0.5, 1)
     expect(r.shell?.triangles).toBeGreaterThan(0)
+  })
+  it.skipIf(!present(WALL_FILE) || !present(`${BENCH}/fzk_house/arc.ifc`))('a window drawn with solid glass: its parts named in the shape and the shell says so; see-through glass: nothing said (polish2)', async () => {
+    const mats = (r: Awaited<ReturnType<typeof load>>) => (readGlbJson(r.shell!.glb).json.materials as { name?: string; pbrMetallicRoughness: { baseColorFactor: number[] } }[])
+    const solid = await load(WALL_FILE) // its window: plain white, solid
+    expect(solid.shell?.glass).toBe('opaque')
+    expect(mats(solid).filter((m) => m.name === WINDOW)).toHaveLength(1)
+    const clear = await load(`${BENCH}/fzk_house/arc.ifc`) // its glass a see-through green
+    expect(clear.shell?.glass).toBeUndefined()
+    expect(mats(clear).filter((m) => m.name === WINDOW).some((m) => m.pbrMetallicRoughness.baseColorFactor[3] < 0.99)).toBe(true)
   })
 
   it.skipIf(!present(WALL_FILE))('says how far it is: stages in plain words, fractions that only grow, to the last floor', async () => {

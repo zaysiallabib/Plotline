@@ -1034,7 +1034,7 @@ export default function StudioApp() {
       const id = newId()
       try {
         await putShell(id, r.shell.glb)
-        shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles }
+        shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles, ...(r.shell.glass && { glass: r.shell.glass }) } // (solid window glass: the 3D draws its own)
       } catch {
         toast('This browser would not keep the outside shape (storage full?)')
       }

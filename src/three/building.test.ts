@@ -607,7 +607,24 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(projectTower(placeLevel(p, { ...u, id: 'roof' }, 'rooftop', undefined, { x: 0, y: 0 }, 'drawing')).CORE).toEqual([])
   })
 
+  test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {
+    const THREE = await import('three')
+    const { solidWindowsOut } = await import('./shell')
+    const { WINDOW } = await import('../import/glb')
+    const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), Object.assign(new THREE.MeshStandardMaterial(), { name: WINDOW })), new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()))
+    expect(solidWindowsOut(g)).toBe(1)
+    expect(g.children.map((m) => m.visible)).toEqual([false, true])
+    // the tower round a flat inside such a shape: every other flat's windows get panes (rooms behind them, lit at night);
+    // a shape with see-through windows keeps its own, as before
+    const a = bti.FLATS['type-a'].unit
+    const shell = { id: 's', name: 'shape', baseY: 0 }
+    const panes = async (u: Unit) => [...(await tower(u)).paneOwners.values()].reduce((n: number, o) => n + (o as unknown[]).length, 0)
+    expect(await panes({ ...a, shell: { ...shell, glass: 'opaque' } })).toBeGreaterThan(100)
+    expect(await panes({ ...a, shell })).toBe(0)
+  })
+
   test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
+
     const THREE = await import('three')
     const b = await tower(bti.FLATS['type-a'].unit)
     const paneMesh = [...b.paneOwners.keys()][0] // (one merged pane mesh a floor)

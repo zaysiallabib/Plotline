@@ -1070,7 +1070,10 @@ words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
 Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. The model is kept in this
 browser only (an exported drawing file names it but does not hold it); Lite skips a shape over 500 000 triangles and
-says so.
+says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
+windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
+window openings instead, with the rooms behind it and their lights at night. Windows with see-through glass stay as
+the file drew them. A shape read before this change keeps its windows: drop the file again.
 
 ### Give the drawing back: DXF, 3D model, printed plan
 

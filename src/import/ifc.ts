@@ -382,6 +382,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // ---------- meshes: the shell + each wall / column / space body ----------
   const bodies = new Map<number, Body>()
   const groups = new Map<string, GlbGroup & { pos: Float32Array[]; nor: Float32Array[]; idx: Uint32Array[]; n: number }>()
+  /** the windows' colours: any see-through one, and how many in all (ImportedShell.glass) */
+  const windows = { clear: false, n: 0 }
   let triangles = 0
   let capped = false
   const skipShell = new Set<string>(['IfcSpace', 'IfcOpeningElement', 'IfcSpatialZone', 'IfcAnnotation', 'IfcGrid', 'IfcOpeningStandardCase', 'IfcVirtualElement'])
@@ -452,6 +454,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
     const shell = !skipShell.has(tn) && !furniture.has(mesh.expressID)
+    const win = isA(mesh.expressID, W.IFCWINDOW) || isA(owner, W.IFCWINDOW)
     if (!shell && furniture.has(mesh.expressID)) furnitureSkipped++
     if (!shell && !wantBody) return
     for (let i = 0; i < mesh.geometries.size(); i++) {
@@ -465,9 +468,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         continue
       }
       const c = g.color
-      const key = `${c.x.toFixed(3)},${c.y.toFixed(3)},${c.z.toFixed(3)},${c.w.toFixed(3)}`
+      if (win) (windows.n++, (windows.clear ||= c.w < 0.99))
+      const key = `${win ? 'w|' : ''}${c.x.toFixed(3)},${c.y.toFixed(3)},${c.z.toFixed(3)},${c.w.toFixed(3)}`
       let grp = groups.get(key)
-      if (!grp) groups.set(key, (grp = { color: [c.x, c.y, c.z, c.w], positions: new Float32Array(0), normals: new Float32Array(0), indices: new Uint32Array(0), pos: [], nor: [], idx: [], n: 0 }))
+      if (!grp) groups.set(key, (grp = { color: [c.x, c.y, c.z, c.w], positions: new Float32Array(0), normals: new Float32Array(0), indices: new Uint32Array(0), pos: [], nor: [], idx: [], n: 0, ...(win ? { window: true } : {}) }))
       for (let k = 0; k < wm.I.length; k++) wm.I[k] += grp.n
       grp.pos.push(wm.P), grp.nor.push(wm.N), grp.idx.push(wm.I)
       grp.n += wm.P.length / 3
@@ -495,13 +499,14 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return out
   }
   const glbGroups: GlbGroup[] = [...groups.values()].map((g) => ({
+    ...(g.window ? { window: true } : {}),
     color: g.color,
     positions: concat(g.pos, (n) => new Float32Array(n)),
     normals: concat(g.nor, (n) => new Float32Array(n)),
     indices: concat(g.idx, (n) => new Uint32Array(n)),
   }))
   const shellName = fileName.replace(/\.[^.]+$/, '')
-  const shell = glbGroups.length ? { ...writeGlb(glbGroups, shellName), name: shellName } : undefined
+  const shell = glbGroups.length ? { ...writeGlb(glbGroups, shellName), name: shellName, ...(windows.n && !windows.clear ? { glass: 'opaque' as const } : {}) } : undefined
   const bodyMesh = (id: number, wantInside: boolean): Body | null => {
     try {
       const fm = api.GetFlatMesh(model, id)

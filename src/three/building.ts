@@ -421,8 +421,11 @@ export class Building extends THREE.Group {
     const PLATE_M = FLOOR_M - WALL_M
     // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
     // massing — the other flats' shells, plates, panes, the roof, plinth and ground pieces are left out so nothing draws
-    // twice; the flats keep their invisible pick proxies, traced levels still draw in full
+    // twice; the flats keep their invisible pick proxies, traced levels still draw in full. Its windows' glass solid in the
+    // file (glass 'opaque': the shape leaves them out, three/shell.ts): the tower's own panes in the flats' window openings,
+    // the rooms behind them and their lights at night, as round any tower
     const hasShell = !!unit.shell
+    const ownPanes = !hasShell || unit.shell!.glass === 'opaque'
     /** per floor (one mesh per material per floor: frame shows floors by tier), per material */
     const lists = new Map<number, Map<MaterialRef | 'glass', THREE.BufferGeometry[]>>()
     const put = (k: number, m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
@@ -507,8 +510,8 @@ export class Building extends THREE.Group {
         mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
         // every window real glass with its flat's rooms behind it (the walked flat: its own glass, drawn by the scene); the
-        // architect's shape has its own windows
-        if (mine || hasShell) continue
+        // architect's shape has its own windows (unless their glass came solid: ownPanes)
+        if (mine || !ownPanes) continue
         const owner: TowerHit = { k, flat: flats.includes(s) ? { stem: s, floor: k } : null }
         const own = owners.get(k) ?? owners.set(k, []).get(k)!
         for (const w of plateWalls)
