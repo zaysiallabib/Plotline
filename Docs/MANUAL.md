@@ -179,7 +179,8 @@ remembers it: the next flat opened in the same tab starts clean too.
     small for a drawn stair (the Sheltech ground floor): you then stand in the middle of that floor's stair room. The
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
   - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are and can still look
-    round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
+    round, the line at the bottom says where you are going ("Floor 4 …"), the room's name top left still names where you
+    are (it changes with the picture), and the floor you leave stays on screen until
     the new one is complete — its furniture, its plants, its pictures and the other flats' rooms round it all in — then
     the picture changes in one go; the grounds' trees and play things seen from its windows come in just after. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
@@ -570,9 +571,14 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 
 - **Point at the tower.** The storey under the mouse turns a little brighter, and a small card beside the mouse names it: the
   floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
-  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat (your own flat: its
-  Dollhouse), walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that
-  floor as the list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
+  walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
+  list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **No new page:** the flat or level you click comes into the same 3D, as a stair brings a floor (§2): the tower stays on
+  screen, the line at the bottom says where you are going ("Floor 8 …"), and the picture changes in one go — about 2–3
+  seconds for a flat, longer the first time you open a ground floor with trees and play things (5 s on Lite, about 10 s
+  on High, while the graphics card learns them). The address changes to it, so a reload opens it; the browser's **Back**
+  brings you back to the tower, also without a new page. **Walk this level** under the floor list goes the same way.
 - **On a phone:** tap a floor and the card shows beside your finger (the storey brighter); tap the same floor again to open
   it. A tap somewhere else names that instead.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,

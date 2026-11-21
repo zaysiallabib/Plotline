@@ -891,6 +891,8 @@ describe('the stair\'s address (session 31: a floor reached by the stair is this
     expect(stairUrl('?floor=3&edit=furniture&own=1&export=glb', 'type-b', 2, false)).toBe('/u/type-b?floor=2')
     expect(stairUrl('?floor=3&c=abc', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=abc') // a buyer's finishes ride along
     expect(stairUrl('', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=') // from a published link: still a buyer's link
+    // a flat picked in the Building view: its Dollhouse again on a reload; the tower's own view and pick dropped
+    expect(stairUrl('?floor=2&view=building&pick=2&quality=lite', 'type-c', 8, false, true)).toBe('/u/type-c?floor=8&quality=lite&view=dollhouse')
   })
 })
 

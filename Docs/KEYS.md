@@ -43,7 +43,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
 | Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
-| Click a floor on the tower | Opens the flat there (yours: its Dollhouse), walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open | Building | everyone | §4 |
+| Click a floor on the tower | Opens the flat there in its Dollhouse, walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open — in the same 3D, no new page; Back returns to the tower | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
 | **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
