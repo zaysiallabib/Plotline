@@ -876,7 +876,7 @@ export function flatLamps(home: string, rooms: Room[], how: 'picked' | 'level' |
 
 /**
  * A lift (the picked flat's, the hover's): its skins drawn three times after everything else — their depth (nothing drawn),
- * then where that depth is theirs what is already on screen × (1 + mul), and a faint light `add` (at night). Each pixel once,
+ * then where that depth is theirs what is already on screen × (1 + mul), and a faint warm light (at night). Each pixel once,
  * the nearest skin's (two skins meeting at a corner are not lifted twice; over the picked flat the hover gives way to its
  * lift); what is behind the skin is what is lifted — the wall, the frame, the room through the glass — never a tree or a
  * neighbour in front of it (the depth test). Three tiny draws; no material of the tower changes, no program per flat.
@@ -915,7 +915,7 @@ function liftMeshes(order: number) {
     show,
     strength: (mul: number, light: number) => {
       materials[1].color.setScalar(mul)
-      materials[2].color.setScalar(light)
+      materials[2].color.setRGB(light, light * 0.86, light * 0.7) // warm: the flat's own lamplight on its walls, not a grey veil
       add = light
       show(on)
     },
