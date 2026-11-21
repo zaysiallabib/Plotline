@@ -181,8 +181,9 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       if (!model) throw new Error('no procedural builder')
       // a code-built piece is made for each placement (a 3.9 m curtain's pleats, a bed's quilting: 4–11 thousand triangles):
       // its stand-in made here, the same way
-      // (not a curtain: its pleats are its look — a light copy hung flat as a sheet)
-      if (tris && asset.url.startsWith('procedural:') && asset.kind !== 'curtain') model = await simplified(model, tris)
+      // (not a curtain walked past: its pleats are its look — a light copy hung flat as a sheet; a curtain in the Building
+      // view's rooms behind the glass, interiors.ts INSIDE_TRIS = 500, still is)
+      if (tris && asset.url.startsWith('procedural:') && (asset.kind !== 'curtain' || tris <= 500)) model = await simplified(model, tris)
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)
