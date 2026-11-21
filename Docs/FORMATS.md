@@ -53,6 +53,10 @@ a drawing; an architectural IFC before a structural or services one) and the oth
   `IfcBuildingStorey`, `IfcColumn`, `IfcSlab`, `IfcCurtainWall`).
 - Read in the browser with **web-ifc** (the reader That Open Company's viewers use). Out come one Studio drawing per
   floor, all on one frame, stacked into a whole project in one drop, and the exact outside shape as one 3D piece.
+- A room the file outlines but its walls leave open — a balcony edged only by a railing, a roof terrace, a stair open to
+  the floor above, a room whose wall the file put on another storey — is closed by flush zone lines (drawn as nothing)
+  along the file's own outline of it, where no wall stands; the railing or parapet itself is in the outside shape. Kept
+  only when it leaves fewer things to check (or as many, with fewer names outside a room).
 
 **DXF (Drawing Exchange Format).**
 - AutoCAD's open version of DWG; any drawing program writes it. A plan in DXF is lines, polylines, arcs, repeated symbols
@@ -96,8 +100,11 @@ a drawing; an architectural IFC before a structural or services one) and the oth
 - So Plotline asks which page is the plan, then decides: a page whose lines make a clean plan (two or more closed rooms,
   at most 20 walls a room — real plans have 3–9) opens as the drawing; any other page is drawn as a picture (4000 px)
   for Auto-trace. The message offers the other way in one click.
-- A PDF has no scale: Plotline reads the printed dimensions against their lines, else the printed room sizes, else asks
-  for the scale (S).
+- A PDF has no scale of its own: Plotline takes the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`, `SCALE 1 : 50`;
+  a sheet that prints two different scales says nothing), else the printed dimensions measured against their lines, else
+  the printed room sizes, else asks for the scale (S). (A page's tables can fool the dimensions: twindo's room pages
+  measured 1 : 31–64 for their printed 1 : 16 / 1 : 24.)
+- A room's name is a text in it; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18", "W3") are not.
 
 **SVG.**
 - The web's drawing format (Illustrator, Inkscape, LibreCAD, QCAD; a CAD drawing often reaches a marketing team as SVG

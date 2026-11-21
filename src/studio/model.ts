@@ -993,6 +993,21 @@ function settle(unit: Unit, ids?: Id[], reach = !ids): { unit: Unit; merged: Map
   ]
   return { unit: fullHeightIfOpenings(t.unit), merged: j.merged, joined: j.joined, trimmed: j.trimmed, notes }
 }
+/** what a person sees of the walls, whatever their ids: each wall's two corners, thickness, height and openings */
+export function wallsLook(u: Unit): string {
+  const V = new Map(u.vertices.map((v) => [v.id, v]))
+  const xy = (id: Id) => `${V.get(id)?.x.toFixed(4)},${V.get(id)?.y.toFixed(4)}`
+  return u.walls
+    .map((w) => {
+      const [a, b] = [xy(w.a), xy(w.b)]
+      const L = wallLen(u, w)
+      // (an opening measured from the wall's first corner in that order, so a wall drawn the other way looks the same)
+      const ops = w.openings.map((o) => `${o.kind} ${(a <= b ? o.offsetM : L - o.offsetM - o.widthM).toFixed(4)} ${o.widthM.toFixed(4)} ${o.heightM.toFixed(3)} ${o.sillM.toFixed(3)}`).sort()
+      return `${[a, b].sort().join(' ')} ${w.thicknessM.toFixed(4)} ${w.heightM.toFixed(3)} ${ops.join(';')}`
+    })
+    .sort()
+    .join('|')
+}
 const wallLen = (u: Unit, w: Wall): number => wallFrame(w, u.vertices).lengthM
 const degree = (u: Unit, id: Id): number => u.walls.filter((w) => w.a === id || w.b === id).length
 
@@ -1591,6 +1606,9 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const r = settle(s.unit)
       const notes = [...(r.joined ? [joinedToast(r.joined, r.trimmed)] : []), ...r.notes]
       if (r.unit === s.unit) return noted(s, notes)
+      // a drop and a join that put the same wall back (a short piece of a thick wall along another: an imported floor) change
+      // nothing a person sees — no message, nothing to undo
+      if (wallsLook(r.unit) === wallsLook(s.unit)) return s
       return noted(commit(s, r.unit, { selection: stillThere(r.unit, s.selection.map((id) => r.merged.get(id) ?? id)), chain: null }), notes)
     }
 
