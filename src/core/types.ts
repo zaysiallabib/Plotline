@@ -327,6 +327,17 @@ export interface WindMonth {
  */
 export type Configuration = Record<Id /* slotId, or a room / wall-face key */, Id /* optionId */>
 
+/**
+ * One apartment's own record (founder 2026-11-21: "if the same room on a different floor gets a different colour that is a
+ * different apartment"): one drawing in one place of its building — the mirrored neighbour is its own drawing (`-m`). What
+ * staff chose in Finishes (slots and one-room / one-wall keys) and how they arranged its furniture; a part it lacks follows
+ * the drawing. Keyed by src/data/building/apartments.ts apartmentKey.
+ */
+export interface Apartment {
+  finishes?: Configuration
+  furniture?: FurniturePlacement[]
+}
+
 export interface ValidationIssue {
   level: 'error' | 'warning'
   code:

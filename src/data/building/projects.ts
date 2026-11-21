@@ -13,6 +13,7 @@ import { deriveRooms, mirrorUnit, roomPolygon, unitBounds } from '../../core'
 import type { Id, Pillar, Pt, Shell, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
+import { placesIn, settleOn } from './apartments'
 
 export const PROJECTS_KEY = 'plotline.projects'
 
@@ -518,5 +519,24 @@ export function saveProjects(ps: Project[]): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Floors changed (the Studio's floor list, the old way, "Floor 3 only"): a drawing left standing in one place keeps what
+ * that floor had — its floor's own record becomes the drawing's (apartments.ts: the key is the drawing's id again).
+ * From one place to several nothing moves: the other floors start from the drawing's record. `before` / `after`: the
+ * stored projects either side of the change.
+ */
+export function keepApartments(before: Project[], after: Project[], store?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>): void {
+  const shape = (p: Project) => JSON.stringify([p.floors, p.flats, p.levels, p.plan])
+  for (const p of after) {
+    const b = before.find((x) => x.id === p.id)
+    if (!b || shape(b) === shape(p)) continue
+    const [tb, ta] = [projectTower(b), projectTower(p)]
+    for (const id of new Set(Object.values(ta.FLATS).map((f) => f.unit.id))) {
+      const now = placesIn(ta, id)
+      if (now.length === 1 && placesIn(tb, id).length > 1) settleOn(id, now[0], store)
+    }
   }
 }

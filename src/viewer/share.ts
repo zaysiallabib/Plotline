@@ -76,16 +76,30 @@ export function finishKeys(unit: Unit, rooms: Room[]): FinishKeys {
 export function decodeConfig(s: string | null, slots: FinishSlot[], keys?: FinishKeys): Configuration {
   if (!s) return {}
   try {
-    const raw = JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))))) as Record<string, unknown>
-    const cfg: Configuration = {}
-    for (const [key, opt] of Object.entries(raw)) {
-      const slot = slots.find((x) => x.id === key) ?? keys?.get(key)?.slot
-      if (slot && typeof opt === 'string' && slot.options.some((o) => o.id === opt)) cfg[key] = opt
-    }
-    return cfg
+    return keepConfig(JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))))), slots, keys)
   } catch {
     return {}
   }
+}
+
+/** A configuration from elsewhere (the address, an apartment's record, a share link's), with only what this unit offers (decodeConfig's rule). */
+export function keepConfig(raw: unknown, slots: FinishSlot[], keys?: FinishKeys): Configuration {
+  const cfg: Configuration = {}
+  for (const [key, opt] of Object.entries(raw && typeof raw === 'object' ? raw : {})) {
+    const slot = slots.find((x) => x.id === key) ?? keys?.get(key)?.slot
+    if (slot && typeof opt === 'string' && slot.options.some((o) => o.id === opt)) cfg[key] = opt
+  }
+  return cfg
+}
+
+/**
+ * The finishes a page opens with (founder 2026-11-21: "they'll see the changes … as they were last selected, not starting
+ * from the basic colour every time"): the address's `?c=` when it carries one (a buyer's link, a shared choice), else
+ * `kept` — the apartment's record, or a share link's.
+ */
+export const startFinishes = (search: string, kept: Configuration, slots: FinishSlot[], keys?: FinishKeys): Configuration => {
+  const c = new URLSearchParams(search).get('c')
+  return c ? decodeConfig(c, slots, keys) : kept
 }
 
 /** Bangladeshi digit grouping: 185000 → "1,85,000", 12500000 → "1,25,00,000". */

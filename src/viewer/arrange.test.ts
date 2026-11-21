@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deriveRooms } from '../core'
-import type { FurniturePlacement, Opening, Unit, Wall } from '../core'
+import type { FinishSlot, FurniturePlacement, Opening, Unit, Wall } from '../core'
 import { bottomOf, library, liftPiece, movePiece, pieceQuad, placePiece, resizePiece } from '../studio/furniture'
 import { placementLabel } from '../furnish/kit'
 import { initialState, reducer, type StudioState } from '../studio/model'
-import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, layoutKey, makeDraft, pickUp, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
+import { DRAFT_KEY, PREVIEW_KEY, STAFF_KEY, TV_STANDS, baseOf, dragTo, draftState, dropHeld, finishesKey, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, layoutKey, makeDraft, pickUp, pushStep, readFinishes, readLayout, saveLayout, saveOpenings, setFloorAnswer, surfaceOf, turnHeld, undoStep, wallDrag, type Held, type Steps } from './arrange'
 import { PROJECTS_KEY, makeProject, newProject, parseProjects, setSlot, slotsOf } from '../data/building/projects'
 import { pinsKey } from './storage'
 import { findOpening } from '../studio/model'
-import { shareUrl } from './share'
+import { encodeConfig, shareUrl, startFinishes } from './share'
 import typeA from '../data/units/type-a.json'
 import sheltechA from '../data/units/sheltech-a.json'
 import { chairSpots, furnish } from '../furnish/presets'
@@ -94,6 +94,23 @@ describe('arrange: staff only, never on a buyer link', () => {
     expect(isStaff('?staff=1', '/u/type-a', s)).toBe(true)
     expect(isStaff('?staff=0', '/u/type-a', s)).toBe(false)
     expect(isStaff('', '/u/type-a', s)).toBe(false)
+  })
+
+  it('every apartment keeps its finishes (founder 2026-11-21): staff on its own page write them; a buyer, a /s/ link, a ?c= address never do', () => {
+    expect(keepsFinishes(true, '', '/u/sheltech-a')).toBe(true)
+    expect(keepsFinishes(true, '?floor=3', '/u/preview')).toBe(true)
+    expect(keepsFinishes(false, '?floor=3', '/u/sheltech-a')).toBe(false) // a buyer (or Leave staff mode) only looks
+    expect(keepsFinishes(true, '', '/s/7f3c9a2e-token')).toBe(false) // a published link: the change list has the picks
+    expect(keepsFinishes(true, `?c=${encodeConfig({ s1: 'o2' })}`, '/u/sheltech-a')).toBe(false) // a shared choice rides in the address
+    expect(keepsFinishes(true, '?c=', '/u/sheltech-ground')).toBe(false) // a buyer's link walked to a level
+  })
+
+  it('the address’s ?c= wins when it carries a choice; else the apartment opens as it was kept', () => {
+    const slots = [{ id: 's1', label: 'Bedroom walls', target: 'wall', roomIds: [], defaultOptionId: 'o1', options: ['o1', 'o2', 'o3'].map((id) => ({ id, brand: 'B', sku: id, label: id, priceDeltaBdt: 0, material: { kind: 'color', color: '#fff' } })) }] as FinishSlot[]
+    const kept = { s1: 'o3' }
+    expect(startFinishes('?floor=3', kept, slots)).toBe(kept)
+    expect(startFinishes('?c=', kept, slots)).toBe(kept) // an empty one carries none
+    expect(startFinishes(`?floor=3&c=${encodeConfig({ s1: 'o2', gone: 'x' })}`, kept, slots)).toEqual({ s1: 'o2' })
   })
 })
 
@@ -594,6 +611,20 @@ describe('one floor or all (founder 2026-11-20): a floor whose drawing is on oth
     expect(s.getItem(layoutKey('a'))).toBe(laid) // floors 1, 3, 4 keep the sofa where it was
     expect(forkHere(f.stem, 2, s)).toBeNull() // on its own now: nothing to ask
     expect(forkHere('a', 2, s)).toBeNull() // not on floor 2 any more
+  })
+
+  it('the copy takes that floor’s own furniture and finishes (each apartment keeps its own); a drawing left on one floor keeps that floor’s', () => {
+    const s = memStore()
+    const p = [1, 2].reduce((q, k) => setSlot(q, k, box('a')), newProject('p', 'Tower', { basements: 0, floors: 2, rooftop: false }))
+    s.setItem(PROJECTS_KEY, JSON.stringify([p]))
+    const [studio, mine, theirs] = [4, 6, 8].map((x) => JSON.stringify([piece('sofa', 'sofa_3seat', 'l', x, 2)]))
+    s.setItem(layoutKey('a'), studio)
+    s.setItem(layoutKey('a:2'), mine)
+    s.setItem(finishesKey('a:2'), '{"s1":"beige"}')
+    s.setItem(layoutKey('a:1'), theirs)
+    const f = forkHere('a', 2, s)!
+    expect([s.getItem(layoutKey(f.stem)), readFinishes(f.stem, s), s.getItem(layoutKey('a:2'))]).toEqual([mine, { s1: 'beige' }, null])
+    expect([s.getItem(layoutKey('a')), s.getItem(layoutKey('a:1'))]).toEqual([theirs, null]) // floor 1 alone now: the drawing is its apartment
   })
 
   it('a mirrored neighbour forks with its own stem; the answer is kept per project until "Ask again"', () => {

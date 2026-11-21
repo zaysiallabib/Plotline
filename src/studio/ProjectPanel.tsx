@@ -21,6 +21,7 @@ import {
   removeFlat,
   removeLevel,
   saveProjects,
+  keepApartments,
   sheetOffset,
   type LevelKind,
   type Neighbour,
@@ -97,10 +98,12 @@ export function ProjectPanel({ unit, roomCount, onShow, onOpen, onClose, onToast
   const by: Placement = typed || !auto ? 'typed' : auto.by
 
   const store = (ps: Project[]): boolean => {
+    const before = readProjects()
     if (!saveProjects(ps)) {
       onToast('This browser refused to save the building (storage full?)')
       return false
     }
+    keepApartments(before, ps) // a plan left on one floor keeps what that floor had
     setProjects(ps)
     return true
   }
