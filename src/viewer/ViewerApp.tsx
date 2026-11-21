@@ -1690,7 +1690,11 @@ function Viewer({ first }: { first: Shown }) {
                   surface={surface}
                   onSelect={choose}
                   onCloseSurface={() => setSurface(null)}
-                  onReset={() => {
+                  onReset={async () => {
+                    // staff's picks are kept for this flat the moment they click, and the panel has no Undo: say so before they go (qa3 P4)
+                    const n = Object.keys(cfg).length
+                    const what = n === 1 ? 'The choice kept for this flat goes, and Undo cannot bring it back.' : `The ${n} choices kept for this flat go, and Undo cannot bring them back.`
+                    if (KEEP && apt && n && !(await ask(`Back to the included finishes? ${what}`, 'Reset', true))) return
                     for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
                     for (const k of Object.keys(cfg)) if (keys.has(k)) choose(k, null)
                     setCfg({})

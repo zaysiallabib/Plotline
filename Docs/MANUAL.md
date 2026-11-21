@@ -226,7 +226,9 @@ included** the panel says where the picks are kept:
 - "Kept for the drawing: every floor not changed on its own starts from this" — the Studio's **Preview 3D** of a floor
   plan that is on several floors: every floor of it that you never changed on its own starts from these picks.
 
-**Reset to included** on a floor shows what the flat comes with, and keeps that. An address that carries a choice (a link
+**Reset to included** on a floor shows what the flat comes with, and keeps that — staff are asked first when it would wipe
+picks kept for the flat ("Back to the included finishes? The 3 choices kept for this flat go, and Undo cannot bring them
+back.", **Cancel** or **Reset**). An address that carries a choice (a link
 copied with **Share**, ending in `?c=…`) opens with that choice and keeps nothing: open the flat without it to keep your
 picks. Buyers keep nothing: a buyer link (`/s/…`) opens with the finishes it was made with, the buyer's picks go to the
 change list as before, and nothing a buyer does changes the flat staff see.
