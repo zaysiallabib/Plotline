@@ -309,6 +309,13 @@ street). On **Lite** only the ground (its lawns, paving, pool and play area, wit
 trees, benches and play things) and the floors just above and below yours are drawn (what a window shows most); on
 **Low** your building throws no sun-shadow (the neighbours still do); **High** draws all of it with its shadows.
 
+**The sun's shadow outside (High).** In a flat that stands in its building, look out of a window, open the Dollhouse
+or the Building view: the shadows of your building and of the neighbours lie across the lawn, the play area, the pool
+deck, the driveway and the road, and on the neighbours' walls, as far as the haze — and they move as you drag the hour.
+The narrow gap to the next building is in its shade most of the day, as on a real Dhaka street. On **Low** only your
+flat and what stands right round it take the sun's shadow, and on **Lite** nothing does; further out the ground and the
+road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building).
+
 The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
 facing the road, a low floor more than a high one. In the Dollhouse and Building view a block between you and the flat
@@ -349,12 +356,13 @@ steps aside while Finishes or Comment is open.
   within about 3 seconds of the furniture loading, opens again and says "Switched to …: frames were slow on this
   device". If Lite is still slow its picture gets smaller ("Smaller picture: frames were still slow on this device").
 - **High** — the full look: soft shading in corners, smooth edges, the sharpest pictures, up to twice the screen's
-  pixels, lamp shadows.
-- **Low** — the screen's own pixels, no corner shading, a smaller sun-shadow picture, 4 lamps lit at night (no lamp
-  shadows), the wall tile's extra-sharp picture at half size, no potted-plant models, bathroom mirrors as plain silvery
-  glass, your building round the flat without its sun-shadow, each heavy piece (a scanned sofa, a bed, a pleated
-  curtain) a lighter copy of itself — the same shape and pictures, at most about 4 000 triangles instead of tens of
-  thousands. Nothing is drawn while nothing changes.
+  pixels, lamp shadows, and the sun's shadow over the whole neighbourhood (the grounds, the road, the next buildings),
+  not only round your flat.
+- **Low** — the screen's own pixels, no corner shading, a smaller sun-shadow picture that covers your flat only (the
+  grounds and the road beyond it evenly sunlit), 4 lamps lit at night (no lamp shadows), the wall tile's extra-sharp
+  picture at half size, no potted-plant models, bathroom mirrors as plain silvery glass, your building round the flat
+  without its sun-shadow, each heavy piece (a scanned sofa, a bed, a pleated curtain) a lighter copy of itself — the
+  same shape and pictures, at most about 4 000 triangles instead of tens of thousands. Nothing is drawn while nothing changes.
 - **Lite** — for weak laptops and phones: a smaller picture stretched to the window, no edge smoothing, no corner
   shading, **no shadows and no sun patches inside the flat** (rooms are still brighter by their windows; the sun still
   lights the street, the Dollhouse and Building views, and an open lawn, pool deck or roof terrace you stand on), **every
@@ -602,7 +610,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
 - Drag to turn, scroll to zoom.
 - **Round the tower:** the made-up street (§2, "Around the flat") or, with a site set, the map's blocks and roads; both
-  cast shadows on the tower. A block between you and the tower is left out while you look.
+  cast shadows on the tower. On High the tower's and the neighbours' shadows also lie on the road, the grounds and the
+  next buildings' walls as far as the haze, moving with the hour. A block between you and the tower is left out while
+  you look.
 
 ---
 

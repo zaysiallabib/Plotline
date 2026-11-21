@@ -56,12 +56,14 @@ export type Quality = 'high' | 'low' | 'lite'
  * fewest draw calls, every piece drawn every frame: right once the pieces are stand-ins).
  * `tower`: what of the flat's own building stands round it in the walk and the Dollhouse (towerLevel): every floor, or only
  * the ground with its zones and the storeys next to the flat's — what a window sees. `towerShadows`: the building round the
- * flat throws the sun's shadow (the street's neighbours always do where there are shadow maps).
+ * flat throws the sun's shadow (the street's neighbours always do where there are shadow maps). `wide`: the size of the sun's
+ * second shadow map, over the site round the flat (WIDE_M; 0: none) — the grounds, the road, the neighbours and the rest of the
+ * tower out of reach of the flat's own sharp map take the sun's shadow from it instead of standing evenly sunlit.
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number; bake: boolean; standIn: number; cell: number; tower: 'all' | 'near'; towerShadows: boolean }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0, bake: false, standIn: 0, cell: CELL_M, tower: 'all', towerShadows: true },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024, bake: false, standIn: 4000, cell: Infinity, tower: 'all', towerShadows: false },
-  lite: { sun: 0, lamps: 0, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512, bake: true, standIn: 1500, cell: Infinity, tower: 'near', towerShadows: false },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number; bake: boolean; standIn: number; cell: number; tower: 'all' | 'near'; towerShadows: boolean; wide: number }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0, bake: false, standIn: 0, cell: CELL_M, tower: 'all', towerShadows: true, wide: 2048 },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024, bake: false, standIn: 4000, cell: Infinity, tower: 'all', towerShadows: false, wide: 0 },
+  lite: { sun: 0, lamps: 0, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512, bake: true, standIn: 1500, cell: Infinity, tower: 'near', towerShadows: false, wide: 0 },
 }
 
 /**
@@ -127,6 +129,119 @@ const STOREY_M = 3.2
 export const SITE_REACH_M = 300
 /** the sun's shadow bias in metres (−0.0005 of a flat's own ≈ 40 m depth range, as tuned before the site) */
 const SHADOW_BIAS_M = 0.02
+/**
+ * The wide map (TIERS.wide) covers the site this far round the flat each way, from the street up WIDE_UP_M: the made-up
+ * street runs 60 m past the building's ends, two plots deep (context.ts), and the haze takes everything past ~120 m.
+ * 2048 texels over it: ≈ 14 cm each, about a real sun's soft edge 20 m from what throws it.
+ */
+export const WIDE_M = 100
+export const WIDE_UP_M = 100
+/** its bias in metres; its normal bias is one of its texels (fitWide): no speckle on a lawn under a low sun */
+const WIDE_BIAS_M = 0.05
+
+/**
+ * A sun's shadow camera (at the sun, looking at its target) fitted round `box` in light space: its corners, the shadows of its
+ * top corners on its floor, `more` points (a well's floor), reaching `reach` m toward the sun for what shades it. The flat's
+ * own sharp map and the wide one over the site are fitted the same way (Look.fitShadow).
+ */
+export function fitSunBox(cam: THREE.OrthographicCamera, box: THREE.Box3, toSun: THREE.Vector3, reach: number, more: THREE.Vector3[] = []): void {
+  const drop = (box.max.y - box.min.y) / Math.max(toSun.y, 0.05) // top corner → its shadow on the box's floor
+  const lo = new THREE.Vector3(Infinity, Infinity, Infinity)
+  const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+  const add = (q: THREE.Vector3) => {
+    q.applyMatrix4(cam.matrixWorldInverse)
+    lo.min(q)
+    hi.max(q)
+  }
+  for (let i = 0; i < 8; i++) {
+    const p = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z)
+    if (i & 2) add(p.clone().addScaledVector(toSun, -drop))
+    add(p)
+  }
+  for (const q of more) add(q.clone())
+  cam.left = lo.x
+  cam.right = hi.x
+  cam.bottom = lo.y
+  cam.top = hi.y
+  cam.near = Math.max(0.1, -hi.z - reach)
+  cam.far = -lo.z + 1
+  cam.updateProjectionMatrix()
+}
+
+/**
+ * While what the sun's maps see keeps changing (the hour dragged: a new casterKey every frame) the wide map is drawn again
+ * on every WIDE_EVERY-th frame only, and on the first frame at rest: it is the dearer redraw (the Building view: +530 draw
+ * calls each time on Sheltech). `waited`: the frames it has been out of date, this one counted. True: draw it on this frame.
+ */
+export const WIDE_EVERY = 4
+export const drawWide = (moved: boolean, waited: number): boolean => !moved || waited >= WIDE_EVERY
+
+/** how far into the sharp map (a share of its width) the wide one fades into it: no seam where one shadow ends and the other starts */
+const SHARP_FADE = 0.01
+/**
+ * three's light chunks taught the wide map (TIERS.wide): with two directional shadows, shadow 1 is the sun's wide map (its
+ * light, Look.wide, a child of the sun so three lists it second, lights nothing) — every lit material reads the sun's sharp
+ * map where it reaches and the wide one past it, fading over the sharp one's last SHARP_FADE (sharpOrWide); the shadow
+ * catcher (ShadowMaterial) keeps the sharp one only. The wide map is read four times a pixel half a texel apart, each read
+ * comparing the 4 texels round it (an even edge ~1.5 texels soft, about a real sun's 20 m from what throws it; three's own
+ * five reads at random turns left grain on the street, one read stair-stepped edges), and a face turned from the sun reads
+ * no map (its sun light is 0 anyway). With one directional shadow (Low) the chunks compile as three wrote them.
+ * Patched once, before anything compiles; render.test.ts checks that each patch took.
+ */
+export function wideChunks(c: { shadowmap_pars_fragment: string; lights_fragment_begin: string; shadowmask_pars_fragment: string }): typeof c {
+  const one = (src: string, a: string, b: string) => {
+    if (src.split(a).length !== 2) throw new Error(`three's shader chunk changed: ${a.slice(0, 60)}`)
+    return src.replace(a, b)
+  }
+  const wide = 'NUM_DIR_LIGHT_SHADOWS > 1 && UNROLLED_LOOP_INDEX'
+  const sun = 'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowIntensity, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;'
+  const lit = /([ \t]*directionalLight = directionalLights\[ i \];[\s\S]*?RE_Direct\([^;]*\);)/
+  if (!lit.test(c.lights_fragment_begin)) throw new Error("three's shader chunk changed: the directional lights' loop")
+  const mask = 'shadow *= receiveShadow ? getShadow( directionalShadowMap[ i ], directionalLight.shadowMapSize, directionalLight.shadowIntensity, directionalLight.shadowBias, directionalLight.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;'
+  return {
+    shadowmap_pars_fragment: `${c.shadowmap_pars_fragment}
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 1
+float wideShadow() {
+	DirectionalLightShadow w = directionalLightShadows[ 1 ];
+	#if defined( SHADOWMAP_TYPE_PCF )
+	vec3 c = vDirectionalShadowCoord[ 1 ].xyz / vDirectionalShadowCoord[ 1 ].w;
+	c.z += w.shadowBias;
+	if ( c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0 ) return 1.0;
+	vec2 d = 0.5 / w.shadowMapSize;
+	float lit = texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( -d.x, -d.y ), c.z ) ) + texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( d.x, -d.y ), c.z ) )
+		+ texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( -d.x, d.y ), c.z ) ) + texture( directionalShadowMap[ 1 ], vec3( c.xy + vec2( d.x, d.y ), c.z ) );
+	return mix( 1.0, 0.25 * lit, w.shadowIntensity );
+	#else
+	return getShadow( directionalShadowMap[ 1 ], w.shadowMapSize, w.shadowIntensity, w.shadowBias, w.shadowRadius, vDirectionalShadowCoord[ 1 ] );
+	#endif
+}
+float sharpOrWide( DirectionalLightShadow s, vec4 at ) {
+	vec3 c = at.xyz / at.w;
+	float inSharp = c.z > 1.0 ? -1.0 : min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) );
+	float wide = inSharp >= ${SHARP_FADE} ? 1.0 : wideShadow();
+	if ( inSharp <= 0.0 ) return wide;
+	float sharp = getShadow( directionalShadowMap[ 0 ], s.shadowMapSize, s.shadowIntensity, s.shadowBias, s.shadowRadius, at );
+	return mix( wide, sharp, smoothstep( 0.0, ${SHARP_FADE}, inSharp ) );
+}
+#endif
+`,
+    lights_fragment_begin: one(
+      c.lights_fragment_begin.replace(lit, `#if !( ${wide} == 1 )
+$1
+#endif`),
+      sun,
+      `#if ${wide} == 0
+		directLight.color *= ( directLight.visible && receiveShadow && dot( geometryNormal, directLight.direction ) > 0.0 ) ? sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] ) : 1.0;
+		#else
+		${sun}
+		#endif`,
+    ),
+    shadowmask_pars_fragment: one(c.shadowmask_pars_fragment, mask, `#if !( ${wide} == 1 )
+		${mask}
+		#endif`),
+  }
+}
+if (!THREE.ShaderChunk.shadowmap_pars_fragment.includes('sharpOrWide')) Object.assign(THREE.ShaderChunk, wideChunks(THREE.ShaderChunk))
 const SLAB_M = 0.15
 const ROOF_LIFT = 0.04
 /** how far over the storey's top the slab above (Look's roof, walk) reaches: the tower's floor above starts no lower over the flat (building.ts) */
@@ -375,6 +490,10 @@ export class Look {
   private readonly maxLamps: number
   /** the tier draws shadow maps; without them the sun is off while the camera is under the ceiling (render) */
   private readonly shadows: boolean
+  /** the sun's wide shadow map over the site (TIERS.wide, wideChunks): a light of no strength that only carries it; null: none */
+  private readonly wide: THREE.DirectionalLight | null = null
+  /** the frames the wide map has been out of date (drawWide); 0: up to date */
+  private wideWaited = 0
   /** the sun's intensity as PlotlineScene last set it (setAltitude): render() switches it off indoors when there are no shadows */
   private sunI = 0
   /** the open zones' outlines (setUnit): standing in one, Lite's sun stays on (sunLit) */
@@ -419,6 +538,16 @@ export class Look {
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 2
+    if (this.shadows && tier.wide) {
+      // a child of the sun: three lists it right after the sun, as wideChunks reads them (directional shadow 0 sharp, 1 wide)
+      const wide = (this.wide = new THREE.DirectionalLight('#ffffff', 0))
+      wide.target = sun.target
+      wide.castShadow = true
+      wide.shadow.autoUpdate = false // drawn with the sun's (render: casterKey)
+      wide.shadow.mapSize.setScalar(tier.wide)
+      wide.shadow.radius = 2
+      sun.add(wide)
+    }
     scene.environmentIntensity = ENV
 
     this.ground.receiveShadow = true
@@ -472,6 +601,10 @@ export class Look {
    */
   setStreetY(y: number | null): void {
     this.ground.position.y = y ?? this.groundY
+    // the wide map only round a flat in its building: a flat on its own (a Studio draft) floats a storey or more over the
+    // street, its catcher shadows it at its own floor, and the street under it took a second shadow of it
+    if (this.wide) this.wide.visible = y !== null
+    this.fitWide()
     this.towerStreet = y !== null
     if (this.street) this.street.visible = !this.towerStreet
   }
@@ -826,46 +959,40 @@ export class Look {
     })
   }
 
-  /** Orthographic shadow frustum fitted to the unit box (and its shadow on the catcher) in light space. */
+  /**
+   * The sun's shadow frusta in light space (fitSunBox): the sharp one round the flat's box (and its shadow on the catcher, a
+   * well's floor too: the slab's shadow keeps the sun off the flight below but where it comes through the hole), then the
+   * wide one (fitWide).
+   */
   private fitShadow(): void {
-    const cam = this.sun.shadow.camera
-    cam.position.copy(this.sun.position)
-    cam.lookAt(this.sun.target.position) // same orientation DirectionalLightShadow.updateMatrices uses
-    cam.updateMatrixWorld()
-    const toSun = this.v.copy(this.sun.position).sub(this.sun.target.position).normalize()
-    const drop = (this.fitBox.max.y - this.fitBox.min.y) / Math.max(toSun.y, 0.05) // top corner → its shadow on the catcher
-    const lo = new THREE.Vector3(Infinity, Infinity, Infinity)
-    const hi = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
-    const p = new THREE.Vector3()
-    for (let i = 0; i < 8; i++) {
-      p.set(i & 1 ? this.fitBox.max.x : this.fitBox.min.x, i & 2 ? this.fitBox.max.y : this.fitBox.min.y, i & 4 ? this.fitBox.max.z : this.fitBox.min.z)
-      if (i & 2) {
-        const q = p.clone().addScaledVector(toSun, -drop).applyMatrix4(cam.matrixWorldInverse)
-        lo.min(q)
-        hi.max(q)
-      }
-      p.applyMatrix4(cam.matrixWorldInverse)
-      lo.min(p)
-      hi.max(p)
-    }
-    // a well's floor too: the slab's shadow keeps the sun off the flight below but where it comes through the hole
-    for (const w of this.wells)
-      for (const c of w.poly) {
-        p.set(c.x, w.bottom, c.y).applyMatrix4(cam.matrixWorldInverse)
-        lo.min(p)
-        hi.max(p)
-      }
-    cam.left = lo.x
-    cam.right = hi.x
-    cam.bottom = lo.y
-    cam.top = hi.y
-    cam.near = Math.max(0.1, -hi.z - SITE_REACH_M)
-    cam.far = -lo.z + 1
+    const cam = this.aim(this.sun.shadow.camera)
+    fitSunBox(cam, this.fitBox, this.toSun(), SITE_REACH_M, this.wells.flatMap((w) => w.poly.map((c) => new THREE.Vector3(c.x, w.bottom, c.y))))
     // the bias is in the shadow map's depth units: keep it ≈ 2 cm in the room whatever the depth range (a site's reach made
     // the range 10× deeper, and −0.0005 of it 17 cm: walls and sills shadowed late)
     this.sun.shadow.bias = -SHADOW_BIAS_M / (cam.far - cam.near)
-    cam.updateProjectionMatrix()
+    this.fitWide()
   }
+
+  /** The wide map's frustum (TIERS.wide): the site WIDE_M each way from the flat's middle, from the street (the ground plane, where it stands now) up WIDE_UP_M. */
+  private fitWide(): void {
+    if (!this.wide) return
+    this.wideWaited ||= 1 // drawn again on the next frame at rest, whether or not its frustum moved (shown again after a stair)
+    const mid = this.fitBox.getCenter(new THREE.Vector3())
+    const y = this.ground.position.y
+    const w = this.aim(this.wide.shadow.camera)
+    fitSunBox(w, new THREE.Box3(new THREE.Vector3(mid.x - WIDE_M, y, mid.z - WIDE_M), new THREE.Vector3(mid.x + WIDE_M, y + WIDE_UP_M, mid.z + WIDE_M)), this.toSun(), SITE_REACH_M)
+    this.wide.shadow.bias = -WIDE_BIAS_M / (w.far - w.near)
+    this.wide.shadow.normalBias = Math.max(w.right - w.left, w.top - w.bottom) / this.wide.shadow.mapSize.x
+  }
+
+  /** a sun shadow camera at the sun, looking at its target: the orientation DirectionalLightShadow.updateMatrices gives it */
+  private aim(cam: THREE.OrthographicCamera): THREE.OrthographicCamera {
+    cam.position.copy(this.sun.position)
+    cam.lookAt(this.sun.target.position)
+    cam.updateMatrixWorld()
+    return cam
+  }
+  private toSun = (): THREE.Vector3 => this.v.copy(this.sun.position).sub(this.sun.target.position).normalize()
 
   /**
    * The picture's size in CSS pixels. The corner shading (GTAO) is worked out at the CSS pixels, never more (session 31 perf:
@@ -888,11 +1015,17 @@ export class Look {
       this.sun.intensity = sunLit({ shadows: false, under, outside: this.outside, openSky }) ? this.sunI : 0
     }
     const key = this.shadows ? this.casterKey() : this.shadowKey
-    if (key !== this.shadowKey) {
+    const moved = key !== this.shadowKey
+    if (moved) {
       this.renderer.shadowMap.needsUpdate = true
       this.sun.shadow.needsUpdate = true
       for (const { light } of this.pool) if (light.castShadow) light.shadow.needsUpdate = true
       this.shadowKey = key
+    }
+    // (hidden, three draws no map for it: it stays out of date until it shows again)
+    if (this.wide?.visible && (moved || this.wideWaited > 0) && drawWide(moved, ++this.wideWaited)) {
+      this.wide.shadow.needsUpdate = this.renderer.shadowMap.needsUpdate = true
+      this.wideWaited = 0
     }
     this.assignLamps()
     if (this.composer && !this.renderer.xr.isPresenting) {
@@ -940,6 +1073,8 @@ export class Look {
     const c = this.sun.shadow.camera
     // the map size too: VR swaps it (xr.ts setShadow) and three allocates the new map only when it draws
     let k = this.sun.position.x + 3 * this.sun.position.y + 7 * this.sun.position.z + c.left + 3 * c.right + 7 * c.top + 13 * c.bottom + 17 * c.near + 19 * c.far + 23 * this.sun.shadow.mapSize.x
+    const w = this.wide?.shadow.camera
+    if (w) k += 29 * w.left + 31 * w.right + 37 * w.top + 41 * w.bottom + 43 * w.near + 47 * w.far
     let n = 0
     this.scene.traverseVisible((o) => {
       if (!o.castShadow || !(o as THREE.Mesh).isMesh) return
@@ -967,6 +1102,7 @@ export class Look {
     this.drop()
     this.unitGroup.visible = true
     this.ground.position.y = this.groundY
+    this.fitWide()
     this.shareLamps()
   }
 
@@ -1000,6 +1136,8 @@ export class Look {
   dispose(): void {
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onRestored)
     this.drop()
+    this.wide?.removeFromParent()
+    this.wide?.dispose() // its shadow map
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     for (const m of [this.ground, this.catcher, this.sky]) {

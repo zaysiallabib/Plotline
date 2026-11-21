@@ -1,6 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
+import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, towerLevel, twilight } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -25,6 +26,7 @@ describe('what each quality tier draws (session 31)', () => {
       expect(TIERS[b].sun).toBeLessThanOrEqual(TIERS[a].sun)
       expect(TIERS[b].lamps).toBeLessThanOrEqual(TIERS[a].lamps)
       expect(TIERS[b].lampShadows).toBeLessThanOrEqual(TIERS[a].lampShadows)
+      expect(TIERS[b].wide).toBeLessThanOrEqual(TIERS[a].wide)
     }
   })
 })
@@ -192,4 +194,72 @@ describe('the tower round the flat (towerLevel, session 31: "i couldn’t see th
   })
   test('the tower throws the sun’s shadow on High only (Low: the street’s still does; Lite has none)', () =>
     expect([TIERS.high.towerShadows, TIERS.low.towerShadows, TIERS.lite.towerShadows]).toEqual([true, false, false]))
+})
+
+describe('the sun’s two shadow maps (session 31 shade: the grounds and the road in the sun’s shadow)', () => {
+  test('the wide map over the site on High only: Low and Lite keep today’s look and pay nothing', () =>
+    expect([TIERS.high.wide, TIERS.low.wide, TIERS.lite.wide]).toEqual([2048, 0, 0]))
+
+  // a 20 × 15 m flat on floor 2 (its floor at y 0, the street 6.6 m under it), the sun by azimuth (from +x) and altitude
+  const flat = new THREE.Box3(new THREE.Vector3(-0.5, -0.2, -0.5), new THREE.Vector3(20.5, 3.2, 15.5))
+  const street = -6.6
+  const site = new THREE.Box3(new THREE.Vector3(10 - WIDE_M, street, 7.5 - WIDE_M), new THREE.Vector3(10 + WIDE_M, street + WIDE_UP_M, 7.5 + WIDE_M))
+  const fitted = (box: THREE.Box3, azDeg: number, altDeg: number) => {
+    const [az, alt] = [THREE.MathUtils.degToRad(azDeg), THREE.MathUtils.degToRad(altDeg)]
+    const toSun = new THREE.Vector3(Math.cos(az) * Math.cos(alt), Math.sin(alt), Math.sin(az) * Math.cos(alt))
+    const cam = new THREE.OrthographicCamera()
+    cam.position.set(10, 1.5, 7.5).addScaledVector(toSun, 60 + SITE_REACH_M) // as PlotlineScene places the sun
+    cam.lookAt(10, 1.5, 7.5)
+    cam.updateMatrixWorld()
+    fitSunBox(cam, box, toSun, SITE_REACH_M)
+    /** p inside the map: what the shader reads it from (three's frustum test) */
+    const covers = (x: number, y: number, z: number) => {
+      const c = new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse).applyMatrix4(cam.projectionMatrix)
+      return Math.abs(c.x) <= 1 && Math.abs(c.y) <= 1 && c.z <= 1
+    }
+    return { cam, covers, texel: Math.max(cam.right - cam.left, cam.top - cam.bottom) / 2048 }
+  }
+  const hours: [number, number][] = [[100, 20], [160, 45], [200, 70], [250, 30], [270, 8]]
+
+  test('the flat’s own map stays round the flat: under 3 cm a texel at every hour, the flat’s rooms all in it', () => {
+    for (const [az, alt] of hours) {
+      const sharp = fitted(flat, az, alt)
+      expect(sharp.texel).toBeLessThan(alt < 10 ? 0.06 : 0.03)
+      for (const [x, z] of [[0, 0], [20, 0], [0, 15], [20, 15], [10, 7.5]]) for (const y of [0, 3]) expect(sharp.covers(x, y, z)).toBe(true)
+    }
+  })
+  test('which map covers what: the lawn under the tower, the road 40 m off and a neighbour’s wall are the wide map’s; the flat is the sharp one’s', () => {
+    for (const [az, alt] of hours) {
+      const [sharp, wide] = [fitted(flat, az, alt), fitted(site, az, alt)]
+      for (const [x, y, z] of [[-15, street, 7.5], [10, street, 55], [-40, street + 12, -20], [70, street + 30, 40]]) {
+        expect(sharp.covers(x, y, z)).toBe(false)
+        expect(wide.covers(x, y, z)).toBe(true)
+      }
+      expect(wide.covers(10, 1.5, 7.5)).toBe(true) // (the shader takes the sharp one there)
+      expect(wide.texel).toBeLessThan(0.2) // about a real sun's soft edge 20 m from what throws it
+    }
+  })
+  test('both reach toward the sun for what shades them: a block 250 m off toward a low sun still throws its shadow', () => {
+    for (const box of [flat, site]) {
+      const { cam } = fitted(box, 270, 8)
+      expect(cam.near).toBeLessThan(cam.far - SITE_REACH_M)
+    }
+  })
+  test('the hour dragged: the wide map drawn again every WIDE_EVERY-th frame, and at once when the hour rests', () => {
+    const drawn = (changes: boolean[]) => {
+      let waited = 0
+      return changes.flatMap((moved, f) => ((moved || waited > 0) && drawWide(moved, ++waited) ? ((waited = 0), [f]) : []))
+    }
+    expect(WIDE_EVERY).toBe(4)
+    expect(drawn([...Array(12).fill(true), false, false])).toEqual([3, 7, 11]) // drawn on the 12th: nothing left at rest
+    expect(drawn([...Array(10).fill(true), false, false])).toEqual([3, 7, 10]) // two frames out of date, then at rest at once
+    expect(drawn([true, false, false])).toEqual([1]) // one change (an hour picked): one frame later
+    expect(drawn([false, false])).toEqual([])
+  })
+  test('three’s light chunks read the wide map past the sharp one, and light 1 lights nothing (wideChunks)', () => {
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('float sharpOrWide(')
+    expect(THREE.ShaderChunk.lights_fragment_begin).toContain('sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] )')
+    expect(THREE.ShaderChunk.lights_fragment_begin).toContain('#if !( NUM_DIR_LIGHT_SHADOWS > 1 && UNROLLED_LOOP_INDEX == 1 )')
+    expect(THREE.ShaderChunk.shadowmask_pars_fragment).toContain('#if !( NUM_DIR_LIGHT_SHADOWS > 1 && UNROLLED_LOOP_INDEX == 1 )')
+  })
 })
