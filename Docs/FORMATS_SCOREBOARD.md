@@ -29,6 +29,12 @@ services or structural model, a test file of single shapes). *refused*: the Stud
 
 Left out: 69 git-lfs pointers (130-byte stand-ins for files not downloaded in this copy of the corpus).
 
+## Session 31, formats3 — the rest of the way
+
+**Before** (`s31/redesign` 734c599, scored again on the whole corpus in Firefox, run `E:/dev/tmp/s31/formats3/runs/before.json`):
+all 134 files read exactly as formats2 left them — every count of every file the same as the "Per file — after" tables below
+(clean 40, rooms open 19, no walls 16, refused 12, picture 9, shape 38). The speed lane changed no number.
+
 ## Before and after (session 31, formats2)
 
 Before: `s31/formats2` at 7ec8a3b (= `s31/redesign` 104fd03 + the scoreboard's dev hook). After: 0c93c3f for the IFC,
