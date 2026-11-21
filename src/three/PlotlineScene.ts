@@ -27,16 +27,17 @@ import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, MaterialRef, Pillar, Pt, Room, Shell, Unit, Wall } from '../core'
 import { faceWallId } from '../furnish/finishes'
 import { kitAsset, lightOf, type ObjectKind } from '../furnish/kit'
-import { LANDING_M, isStair, stairSpot } from '../furnish/stairs'
-import { lean, lite } from '../furnish/procedural'
+import { LANDING_M, isStair, stairHole, stairSpot, treadBelow } from '../furnish/stairs'
+import { buildProcedural, lean, lite } from '../furnish/procedural'
+import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, type WallLift } from './details'
-import { bakeDaylight, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
+import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
+import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
 import { buildFurniture } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, PAINT, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, PAINT, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality } from './render'
+import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, CELL_M, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
@@ -448,6 +449,18 @@ export class PlotlineScene {
    * made-up street round it. Set BEFORE setUnit. Null: a flat of no tower — the street goes round its own walls.
    */
   street: Street | null = null
+  /**
+   * The stairs of this unit that lead down (data/building stairsDown): each gets a hole in its floor with the flight below
+   * and the stair core under it drawn, and walking down that flight is the way down. Set BEFORE setUnit. Empty: none.
+   */
+  down: Id[] = []
+  /** a stair being taken (arrive): the next floor builds hidden while the one he leaves (`leaving`) stays drawn; he looks, not walks */
+  private holding = false
+  private leaving: THREE.Group | null = null
+  /** the furniture of the unit last built, all mounted (loadFurniture) */
+  private furnished: Promise<void> = Promise.resolve()
+  /** the holes setUnit opened (down, where the hole lies inside its room's floor), with the stair as it stood then */
+  private wells: (Well & { stair: FurniturePlacement })[] = []
   /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
   private blocks: { plan: Pt[]; heightM: number }[] = []
 
@@ -521,6 +534,14 @@ export class PlotlineScene {
    * out for ~150 ms on top of the 190–300 ms rebuild, measured 2026-10-04 on type-a and the founder's draft).
    */
   setUnit(unit: Unit, keepView = false): void {
+    this.holding = false // a stair's floor not shown yet: this unit came first
+    this.drop()
+    const steps = this.build(unit, keepView)
+    while (!steps.next().done); // all at once (a floor reached by the stair: a step a frame, arrive)
+  }
+
+  /** setUnit's work in steps a stair's floor takes a frame apart (arrive): walls and rooms · the daylight bake · its maps and finishes · the slab, lights and street · the furniture. */
+  private *build(unit: Unit, keepView: boolean): Generator<void> {
     this.wake()
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
@@ -531,6 +552,14 @@ export class PlotlineScene {
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
     this.stairs = unit.furniture.filter(isStair)
+    // a stair that leads down: a hole in its room's floor, the stair's footprint out to the walls beside it (inside the
+    // room's floor, else no hole: the step under flight B takes him down as before)
+    this.wells = this.stairs.flatMap((s) => {
+      const room = this.rooms.find((r) => r.id === s.roomId)
+      const poly = room && stairHole(s, core.roomInnerPolygon(room, unit))
+      if (!room || !poly || !this.down.includes(s.id) || !poly.every((p) => core.pointInPolygon(p, core.roomPolygon(room, unit)))) return []
+      return [{ id: s.id, roomId: room.id, poly, bottom: this.floorOf(s) - STAIR_RISE, stair: s }]
+    })
     const b = core.unitBounds(unit)
     this.center.set((b.minX + b.maxX) / 2, 0, (b.minY + b.maxY) / 2)
     this.radius = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2 + 1
@@ -545,7 +574,7 @@ export class PlotlineScene {
     for (const room of this.rooms) this.buildRoom(room, unit)
     this.buildMarkings(unit)
     // skirting follows the built wall feet (details.ts skirtingRuns), one mesh per room in its floor finish, on its floor
-    for (const [roomId, mesh] of buildSkirtings(unit, this.rooms)) {
+    for (const [roomId, mesh] of buildSkirtings(unit, this.rooms, this.wells.map((w) => w.poly))) {
       const r = this.rooms.find((x) => x.id === roomId)!
       mesh.position.y = core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y)
       this.staticGroup.add(mesh)
@@ -558,8 +587,10 @@ export class PlotlineScene {
       this.staticGroup.add(mesh)
       this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: 'floor', ...(core.isOutdoor(room.kind) ? { ref: CONCRETE } : {}) }] }) // a zone's edge: concrete
     }
+    yield
     // indirect light × where the sky reaches (daylight.ts)
-    const day = bakeDaylight(unit, this.rooms, this.cover, this.blocks)
+    const day = yield* bakeSteps(unit, this.rooms, this.cover, this.blocks)
+    yield
     for (const s of this.surfaces) {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
       mapDaylight(day, s.mesh.geometry, unit, kind ?? 'floor', kind ? s.mesh.userData.id : s.sides[0]!.roomId!)
@@ -572,12 +603,15 @@ export class PlotlineScene {
     }
     const storey = this.top
     for (const p of unit.pillars ?? []) this.buildPillar(p, unit, day, storey) // after the loop: each part maps its own daylight
-    setDaylight(day)
+    for (const w of this.wells) this.buildWell(w, unit, day) // the same
+    if (!this.holding) setDaylight(day) // (a stair's floor: shown with it — the floor still on screen keeps its own)
     this.day = day
+    for (const w of this.wells) this.buildFlightBelow(w.stair, w.bottom)
     this.applyMaterials()
-    this.look.setUnit(present(unit), this.rooms, this.cover, street) // fixtures, lights, slab, shadow fit box, the street
+    yield
+    this.look.setUnit(present(unit), this.rooms, this.cover, street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
     this.setTimeOfDay(this.hour)
-    if (this.windMonth) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
+    if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
     this.ready = true
     this.rebatch('static')
@@ -589,13 +623,122 @@ export class PlotlineScene {
       this.rebatch('furniture')
       return
     }
+    if (this.holding) {
+      this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false // until arrive shows them
+      this.furnished = this.loadFurniture(unit)
+      return
+    }
     const first = this.rooms[0]
     this.walker = first ? { ...first.centroid } : { x: this.center.x, y: this.center.z }
     this.floorY = this.walkLevel(this.walker)
     this.moveTarget = null
     this.stairAsked = 0 // a floor reached by the stair (the same scene): its own stair can be taken again
     this.setMode(this.mode)
-    void this.loadFurniture(unit)
+    this.furnished = this.loadFurniture(unit)
+  }
+
+  /**
+   * A floor reached by the stair (ViewerApp takeStair) with no freeze on a first visit (session 31): built hidden while the
+   * floor he leaves stays on screen and he can look round, its furniture mounted and batched, then made ready to draw a
+   * little a frame (warm), then shown in one frame with him at `at`, facing `yaw`. Resolves once shown, or once another
+   * unit came first.
+   */
+  async arrive(unit: Unit, at: Pt, yaw: number): Promise<void> {
+    this.drop()
+    const g = (this.leaving = new THREE.Group())
+    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
+    if (this.shell) g.add(this.shell)
+    this.shell = null
+    this.scene.add(g)
+    this.holding = true
+    this.walker = { ...at } // the furniture nearest him first; his eye stays where it is until the floor shows (tick)
+    const frame = () => new Promise((r) => requestAnimationFrame(r))
+    const token = ++this.buildToken // (a unit given meanwhile wins: clearStatic counts on)
+    await frame() // the page's own work for the new floor (its rooms, its HUD) in a frame of its own
+    if (token !== this.buildToken) return
+    const steps = this.build(unit, false)
+    steps.next()
+    const built = this.buildToken
+    // the rest ~30 ms a frame (the daylight bake pauses after each surface it lights)
+    for (let done = false; !done && built === this.buildToken; ) {
+      await frame()
+      const t = performance.now()
+      while (!(done = !!steps.next().done) && performance.now() - t < 30);
+    }
+    await this.furnished
+    // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
+    await Promise.race([Promise.allSettled([...loading]), new Promise((r) => setTimeout(r, 15_000))])
+    // batched now as it will be drawn, a group a frame (batch.ts reads only what is visible)
+    clearTimeout(this.batchTimer)
+    for (const x of [this.staticGroup, this.furnitureGroup, this.ceilingGroup]) {
+      if (built !== this.buildToken) return
+      x.visible = true
+      batch(x, x === this.staticGroup ? Infinity : CELL_M)
+      x.visible = false
+      await frame()
+    }
+    this.unsettled.clear()
+    await this.warm(built)
+    if (built !== this.buildToken) return
+    this.holding = false
+    this.drop()
+    setDaylight(this.day)
+    this.look.swap()
+    if (this.windMonth) this.setWind(this.windMonth)
+    this.stairAsked = 0 // its own stair can be taken again
+    this.spawnAt(at, yaw)
+  }
+
+  /**
+   * The floor arrive() built, ready to draw before it shows: every program its meshes need (its lights, the target it is
+   * drawn into) compiled and linked, its pictures uploaded — a little a frame, the floor he leaves drawn in between.
+   * Firefox has no parallel shader compiling: a program is 0.2–0.5 s of the graphics process (GTX 980), so one a frame at
+   * most — the 15–27 new ones all in the first frame were the 3–6 s freeze. A see-through two-sided material is two programs
+   * (three draws its back faces, then its front): one side a frame. Nothing new (a floor like the last): one frame.
+   */
+  private async warm(token: number): Promise<void> {
+    const twoPass = (m: THREE.Material) => m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass
+    const todo: { o: THREE.Mesh; side?: THREE.Side }[] = []
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup])
+      g.traverse((o) => {
+        const m = (o as THREE.Mesh).material
+        if (!m || !o.layers.test(this.camera.layers)) return
+        if ([m].flat().some(twoPass)) todo.push({ o: o as THREE.Mesh, side: THREE.BackSide }, { o: o as THREE.Mesh, side: THREE.FrontSide })
+        else todo.push({ o: o as THREE.Mesh })
+      })
+    const programs = this.renderer.info.programs ?? []
+    const sent = new Set<THREE.Texture>()
+    for (let i = 0; i < todo.length; ) {
+      const [t0, n0] = [performance.now(), programs.length]
+      while (i < todo.length && programs.length === n0 && performance.now() - t0 < 30) {
+        const { o, side } = todo[i++]
+        const flip = side === undefined ? [] : [o.material].flat().filter(twoPass)
+        for (const m of flip) (m.side = side!), (m.needsUpdate = true)
+        this.look.compile(o)
+        for (const m of flip) (m.side = THREE.DoubleSide), (m.needsUpdate = true)
+        for (const m of [o.material].flat()) for (const v of Object.values(m)) if (v instanceof THREE.Texture && !sent.has(v)) (sent.add(v), this.renderer.initTexture(v))
+      }
+      for (const p of programs.slice(n0)) p.getUniforms() // linked in this frame, never in the first one it is drawn in
+      await new Promise((r) => requestAnimationFrame(r))
+      if (token !== this.buildToken) return
+    }
+  }
+
+  /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
+  private drop(): void {
+    const g = this.leaving
+    if (!g) return
+    this.leaving = null
+    g.removeFromParent()
+    const kept = new Set<THREE.BufferGeometry>()
+    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) x.traverse((o) => void ((o as THREE.Mesh).geometry && kept.add((o as THREE.Mesh).geometry)))
+    g.traverse((o) => {
+      const geo = (o as THREE.Mesh).geometry
+      if (geo && !kept.has(geo)) geo.dispose()
+    })
+    this.staticGroup.visible = this.furnitureGroup.visible = true
+    this.ceilingGroup.visible = this.mode === 'walk'
+    if (this.shell) this.shell.visible = true
   }
 
   /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
@@ -980,6 +1123,12 @@ export class PlotlineScene {
 
   /** A committed layout (drop, turn, delete, undo, reset): every piece where it says, and the contact shadows and room lights follow. */
   setLayout(all: FurniturePlacement[]): void {
+    // a stair over a hole moved, turned or deleted (Arrange): the floor is built again, the hole where the stair now stands
+    const moved = this.wells.some(({ stair: w }) => {
+      const s = all.find((p) => p.id === w.id)
+      return !s || s.removed || s.x !== w.x || s.y !== w.y || s.rotationDeg !== w.rotationDeg
+    })
+    if (moved && this.unit) this.setUnit({ ...this.unit, furniture: all }, true)
     this.placePieces(all, true)
     this.stairs = all.filter(isStair) // a stair moved or deleted in Arrange: the walker climbs it where it now stands
     if (this.unit) this.look.setFurniture(present({ ...this.unit, furniture: all }))
@@ -1235,6 +1384,7 @@ export class PlotlineScene {
 
   private settle = (): void => {
     if (this.disposed || !this.ready || this.exporting) return // exportGlb batches them again when it is done
+    if (this.holding) return void (this.batchTimer = window.setTimeout(this.settle, BATCH_MS)) // a stair's floor, hidden: batched as it shows
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
     for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
@@ -1277,6 +1427,7 @@ export class PlotlineScene {
     this.plc.dispose()
     this.showOpening(null)
     this.wind?.dispose()
+    this.drop()
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()
@@ -1311,6 +1462,7 @@ export class PlotlineScene {
     const g = await loadShell(s, this.shellClip).catch((e: unknown) => (console.warn('[plotline] outside shape', e), null))
     if (!g || token !== this.buildToken || this.disposed) return
     this.shell = g
+    g.visible = !this.holding // a stair's floor: shown with it (arrive)
     this.scene.add(g)
     this.wake()
   }
@@ -1410,7 +1562,8 @@ export class PlotlineScene {
 
   private buildRoom(room: Room, unit: Unit): void {
     const floorGeo = floorGeometry(room, unit) // its level; a ramp's vertices on its plane (details.ts)
-    const floor = new THREE.Mesh(stepGeometry(room, unit) ?? floorGeo) // a steep slope: a flight of steps (details.ts)
+    const holes = this.wells.filter((w) => w.roomId === room.id).map((w) => w.poly) // a stair that leads down (its ceiling stays whole)
+    const floor = new THREE.Mesh(stepGeometry(room, unit) ?? (holes.length ? floorGeometry(room, unit, holes) : floorGeo)) // a steep slope: a flight of steps (details.ts)
     floor.receiveShadow = true
     floor.userData = { kind: 'floor', id: room.id, roomId: room.id, label: `${room.name} floor`, objectKind: 'floor' }
     this.staticGroup.add(floor)
@@ -1440,6 +1593,50 @@ export class PlotlineScene {
     ceiling.userData = { kind: 'ceiling', id: room.id, roomId: room.id, label: `${room.name} ceiling`, objectKind: 'ceiling' }
     this.ceilingGroup.add(ceiling)
     this.surfaces.push({ mesh: ceiling, sides: [{ roomId: room.id, target: 'ceiling' }] })
+  }
+
+  /**
+   * The stair core under a hole (details.ts wellParts), down to the floor below: a side along a wall of its room goes on
+   * down that wall — its finish, its daylight — the others and its floor are the room's. Not picked: decoration of the hole.
+   */
+  private buildWell(w: Well, unit: Unit, day: Daylight): void {
+    const room = this.rooms.find((r) => r.id === w.roomId)!
+    for (const { edge, geo } of wellParts(w.poly, w.bottom + STAIR_RISE, w.bottom)) {
+      const m = edge && { x: (edge[0].x + edge[1].x) / 2, y: (edge[0].y + edge[1].y) / 2 }
+      const along =
+        m &&
+        unit.walls.find((x) => {
+          if (!room.wallIds.includes(x.id)) return false
+          const f = core.wallFrame(x, unit.vertices)
+          const [u, n] = [(m.x - f.origin.x) * f.dir.x + (m.y - f.origin.y) * f.dir.y, (m.x - f.origin.x) * f.normal.x + (m.y - f.origin.y) * f.normal.y]
+          return u > 0 && u < f.lengthM && Math.abs(Math.abs(n) - x.thicknessM / 2) < 0.03
+        })
+      mapDaylight(day, geo, unit, along ? 'wall' : 'floor', along ? along.id : room.id)
+      const mesh = new THREE.Mesh(geo)
+      mesh.receiveShadow = true
+      this.staticGroup.add(mesh)
+      this.surfaces.push({ mesh, sides: [{ roomId: room.id, target: edge ? 'wall' : 'floor', ...(along ? { wallId: along.id } : {}) }] })
+    }
+  }
+
+  /**
+   * The flight below a hole (stairHole): stair `s` itself one storey down, its floor at `floorM` — seen and walked down
+   * (walkLevel, treadBelow), never picked or arranged. Its middle reads its room's daylight, as the stair above does.
+   */
+  private buildFlightBelow(s: FurniturePlacement, floorM: number): void {
+    const model = buildProcedural(s.assetId)
+    if (!model) return
+    const box = new THREE.Box3().setFromObject(model)
+    const c = box.getCenter(new THREE.Vector3())
+    model.position.set(-c.x, -box.min.y, -c.z) // grounded and centred as buildFurniture places the stair above
+    model.traverse((o) => ((o.castShadow = false), (o.receiveShadow = true))) // under the slab: nothing there to shade
+    const pivot = new THREE.Group()
+    pivot.position.set(s.x, floorM, s.y)
+    pivot.rotation.y = -THREE.MathUtils.degToRad(s.rotationDeg)
+    pivot.userData.roomId = s.roomId
+    pivot.add(model)
+    this.staticGroup.add(pivot)
+    this.readDaylight(pivot)
   }
 
   /** A parking level's paint (details.ts bayMarkings): the bay lines (one mesh) and each bay's number, flat on its floor. */
@@ -1537,7 +1734,10 @@ export class PlotlineScene {
   /** What the walker stands on at p: the floor (levelAt), or a stair's tread or half landing over its floor. */
   private walkLevel(p: Pt): number {
     const s = this.stairAt(p)
-    return s && s.spot.part !== 'between' ? this.floorOf(s.stair) + s.spot.h : this.levelAt(p)
+    if (!s) return this.levelAt(p)
+    if (s.spot.part !== 'between') return this.floorOf(s.stair) + s.spot.h
+    // flight B's side: over a hole, the flight below's treads (walked down); else this floor, under flight B
+    return this.wells.some((w) => w.id === s.stair.id) ? this.floorOf(s.stair) + treadBelow(s.stair, p) : this.levelAt(p)
   }
 
   /**
@@ -1554,11 +1754,18 @@ export class PlotlineScene {
     const byDistance = [...unit.furniture].sort(
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
+    let t = performance.now()
     for (const p of byDistance) {
       const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p))
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed
+      // a stair's floor (arrive): a frame every ~30 ms of building, the floor he leaves drawn in between
+      if (this.holding && performance.now() - t > 30) {
+        await new Promise((r) => requestAnimationFrame(r))
+        if (token !== this.buildToken) return
+        t = performance.now()
+      }
     }
     this.loadedAt ||= performance.now()
   }
@@ -1919,17 +2126,24 @@ export class PlotlineScene {
   /**
    * A step onto a stair's flight B (stairs.ts 'between'): from its half landing he goes up, from its floor down — the next
    * floor loads (stairCb). With no floor that way, or over the rail from mid-flight, the step is refused. True: handled.
+   * Over a hole (wells) the way down is walked: onto the flight below from this floor, down it tread by tread (canStep), and
+   * the step off its foot toward its half landing takes him to the floor below.
    */
   private toNextFloor(next: Pt): boolean {
     const to = this.stairAt(next)
-    if (to?.spot.part !== 'between' || this.stairAt(this.walker)?.spot.part === 'between') return false
-    const h = this.walkLevel(this.walker) - this.floorOf(to.stair)
+    const from = this.stairAt(this.walker)
+    const well = (s: FurniturePlacement) => this.wells.some((w) => w.id === s.id)
+    const below = from?.spot.part === 'between' && well(from.stair)
+    if (below ? to?.stair !== from.stair || to.spot.part !== 'landing' : to?.spot.part !== 'between' || from?.spot.part === 'between') return false
+    const stair = to!.stair
+    const h = this.walkLevel(this.walker) - this.floorOf(stair)
+    if (!below && h < 0.05 && well(stair)) return false // from this floor onto the flight below: walked
     // the way the flight runs: up toward its front from the landing, down toward its back from the floor (not a step in from its side)
-    const t = (to.stair.rotationDeg * Math.PI) / 180
+    const t = (stair.rotationDeg * Math.PI) / 180
     const ahead = ((next.x - this.walker.x) * -Math.sin(t) + (next.y - this.walker.y) * Math.cos(t)) / (Math.hypot(next.x - this.walker.x, next.y - this.walker.y) || 1)
-    const dir = h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
+    const dir = below ? (ahead < -0.3 ? 'down' : null) : h > LANDING_M - 0.05 && ahead > 0.3 ? 'up' : h < 0.05 && ahead < -0.3 ? 'down' : null
     const now = performance.now()
-    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, to.stair) ? Infinity : now // going: not asked again until that floor is in (setUnit)
+    if (dir && now - this.stairAsked > 1000) this.stairAsked = this.stairCb?.(dir, stair) ? Infinity : now // going: not asked again until that floor is in (setUnit)
     return true
   }
 
@@ -1961,7 +2175,7 @@ export class PlotlineScene {
       // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
       const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
       siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)
-    } else if (this.ready) {
+    } else if (this.ready && !this.holding) {
       const k = this.keys
       if (!this.plc.isLocked) {
         // arrows turn when the mouse isn't captured (tablet keyboards / no-lock use)
@@ -2018,7 +2232,7 @@ export class PlotlineScene {
       }
       return
     }
-    if (this.drewLast && !xr && this.ready) this.sample(raw * 1000, now)
+    if (this.drewLast && !xr && this.ready && !this.holding) this.sample(raw * 1000, now) // (a stair's floor getting ready: frames slow on purpose)
     this.look.render()
     this.drewLast = true
     if (now > this.nextErrorCheck) {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Unit } from '../core'
 import * as THREE from 'three'
-import { bakeDaylight, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
+import { bakeDaylight, bakeSteps, dayMap, daylightTexture, facing, factorAt, formFactor, HI, isCovered, LAMP_RANGE, lightPiece, LO, mapDaylight, openToSky, pieceDayUv, RANGE, setDaylight, setLampShare, SHORT_WALL_M, zRaise } from './daylight'
 import { batch } from './batch'
 import { GROUND_SAMPLE } from '../data/fixtures/ground-sample'
 import { wallGeometry } from './details'
@@ -30,6 +30,16 @@ describe('formFactor', () => {
 })
 
 describe('bakeDaylight', () => {
+  test('in steps (a floor reached by the stair bakes a little a frame): a pause after each surface it lights, the same atlas', () => {
+    const u = typeA as unknown as Unit
+    const rooms = core.deriveRooms(u)
+    const steps = bakeSteps(u, rooms)
+    let [n, r] = [0, steps.next()]
+    for (; !r.done; r = steps.next()) n++
+    const whole = bakeDaylight(u, rooms)
+    expect(n).toBeGreaterThan(2 * whole.regions.size - 10) // twice round the surfaces (the sky, then through the doors)
+    expect(r.value!.data).toEqual(whole.data)
+  })
   test('the window zone is brighter than the back of the room', () => {
     const d = bake(TEST_UNIT) // living: window win1 in the y = 0 wall, x 2.2–3.8
     expect(factorAt(d, 'floor:living', 3, 0.6)).toBeGreaterThan(factorAt(d, 'floor:living', 3, 3.6))

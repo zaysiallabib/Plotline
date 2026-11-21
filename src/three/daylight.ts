@@ -264,6 +264,15 @@ function blur(F: Float32Array, nu: number, nv: number): Float32Array {
  * height over the street): a window facing one sees its wall where it would see sky.
  */
 export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = []): Daylight {
+  const steps = bakeSteps(unit, rooms, cover, blocks)
+  for (;;) {
+    const s = steps.next()
+    if (s.done) return s.value
+  }
+}
+
+/** bakeDaylight's work, pausing after each region it lights: a floor reached by the stair bakes a little a frame (PlotlineScene.arrive). */
+export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = []): Generator<void, Daylight> {
   const t0 = performance.now()
   const floorM = (unit.floor ?? 2) * 3.2 + 0.2 // over the street, as core.sheltered and the 3D
   const frames = new Map(unit.walls.map((w) => [w.id, core.wallFrame(w, unit.vertices)]))
@@ -404,13 +413,19 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], bloc
     return new Map([...sum].map(([id, [t, n]]) => [id, n ? t / n : 0]))
   }
   /** `open`: as if no neighbour stood round the building */
-  const irradiance = (open: boolean) => {
+  const irradiance = function* (open: boolean) {
     const E = jobs.map((j) => new Float32Array(j.nu * j.nv).fill(NaN))
     const none = new Map<Id, number>()
-    jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] = light(j, p, 1, none, open))))
+    for (const [k, j] of jobs.entries()) {
+      pts[k].forEach((p, i) => p && (E[k][i] = light(j, p, 1, none, open)))
+      yield
+    }
     // a room's light as seen through its door: direct + its own bounce
     const m1 = new Map([...roomMean(E)].map(([id, v]) => [id, v / (1 - RHO)]))
-    jobs.forEach((j, k) => pts[k].forEach((p, i) => p && (E[k][i] += light(j, p, 2, m1, open))))
+    for (const [k, j] of jobs.entries()) {
+      pts[k].forEach((p, i) => p && (E[k][i] += light(j, p, 2, m1, open)))
+      yield
+    }
     const m2 = roomMean(E)
     jobs.forEach((j, k) => {
       const b = (RHO / (1 - RHO)) * (m2.get(j.room.id) ?? 0)
@@ -418,11 +433,11 @@ export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], bloc
     })
     return { E, m2 }
   }
-  const { E, m2 } = irradiance(false)
+  const { E, m2 } = yield* irradiance(false)
   // each room's share of the light it would have with an open view (SHADE_*): baked again without them, if any is in view
   const dim = new Map<Id, number>()
   if ([...apertures.values()].some((l) => l.some((a) => a.obs))) {
-    for (const [id, v] of irradiance(true).m2) if (v > 0) dim.set(id, THREE.MathUtils.clamp(((m2.get(id) ?? 0) / v) ** SHADE_GAMMA, SHADE_LO, 1))
+    for (const [id, v] of (yield* irradiance(true)).m2) if (v > 0) dim.set(id, THREE.MathUtils.clamp(((m2.get(id) ?? 0) / v) ** SHADE_GAMMA, SHADE_LO, 1))
   }
 
   // floor / ceiling texels outside the room (under its walls): the nearest inside value, so filtering at the edge never reads garbage

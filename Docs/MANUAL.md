@@ -165,15 +165,19 @@ remembers it: the next flat opened in the same tab starts clean too.
   rooftop and back):
   - **Up:** walk the first flight to the half landing and on up the second; you stand at the top of the next floor's
     stair, facing the stair room's door.
-  - **Down:** walk from the stair room's floor under the second flight, toward the back; you stand on the floor below at
-    the foot of its stair, facing the stair room's door. Where that door is only a step away (Type B) you face along the
-    stair instead.
+  - **Down:** where there is a floor below, the stair room's floor is open round the stair, as in a real stair core: you
+    see the flight coming up from the floor below and its half landing. Walk onto that flight from the floor and on down
+    it; at its foot, one more step toward the half landing and you stand on the floor below at the foot of its stair,
+    facing the stair room's door. Where that door is only a step away (Type B) you face along the stair instead. The
+    lowest floor (a bottom basement, BTI's first floor) has no opening: there is nothing below.
   - **Up to …** and **Down to …** (bottom middle, in a stair room) do the same in one click, also where the room is too
     small for a drawn stair (the Sheltech ground floor): you then stand in the middle of that floor's stair room. The
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
-  - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are, the line at the
-    bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until the new one is complete
-    — then the picture changes in one go. Your finishes, the time of day, the wind, Clean view and the quality stay;
+  - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are and can still look
+    round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
+    the new one is complete — its furniture, its plants and its pictures all in — then the picture changes in one go. The
+    first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
+    while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. Your finishes, the time of day, the wind, Clean view and the quality stay;
     anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
   - The address changes to that floor (`/u/<flat or level>?floor=4`), so a reload opens it, and the browser's **Back** and **Forward** take
     the stair down or up again, also without a new page.

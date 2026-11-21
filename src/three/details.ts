@@ -39,9 +39,10 @@ const ROOM_PROBE_M = 0.05
  * wall's end, as no jamb of this wall stands there (the next wall's face carries it). Runs are
  * extended past the face ends by the skirting depth (hidden in the wall at inside corners, closing outside ones), then
  * unioned per room and plane; where two rooms' runs overlap on one plane the longer room keeps the overlap. None in
- * bath / balcony / shaft. Low walls (below skirting height) and walls in no room get none.
+ * bath / balcony / shaft. Low walls (below skirting height) and walls in no room get none. Nor over a hole in the floor
+ * (`holes`: a stair that leads down, stairHole): no floor there, the wall goes on down.
  */
-export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
+export function skirtingRuns(unit: Unit, rooms: Room[], holes: Pt[][] = []): SkirtingRun[] {
   const raw: SkirtingRun[] = []
   const roomOf = (p: Pt) => {
     const r = core.roomAt(p, rooms, unit)
@@ -122,7 +123,8 @@ export function skirtingRuns(unit: Unit, rooms: Room[]): SkirtingRun[] {
       }
     }
   }
-  return unionRuns(raw)
+  const runs = unionRuns(raw)
+  return holes.length ? runs.flatMap((r) => offHoles(r, holes)) : runs
 }
 
 /** Same plane (normal + offset, to the mm) and canonical direction: runs there are intervals on one line. */
@@ -172,14 +174,28 @@ function unionRuns(raw: SkirtingRun[]): SkirtingRun[] {
   return out
 }
 
+/** The parts of run r with floor in front of them: its 2 cm steps whose point just past the strip lies in no hole. */
+function offHoles(r: SkirtingRun, holes: Pt[][]): SkirtingRun[] {
+  const k = Math.max(1, Math.ceil((r.s1 - r.s0) / 0.02))
+  const s = (i: number) => r.s0 + ((r.s1 - r.s0) * i) / k
+  const keep: SkirtingRun[] = []
+  for (let i = 0, from = -1; i <= k; i++) {
+    const mid = i < k ? add(add(r.p, r.d, (s(i) + s(i + 1)) / 2), r.n, SKIRTING_T + 0.02) : null
+    const open = !mid || holes.some((h) => core.pointInPolygon(mid, h))
+    if (!open && from < 0) from = i
+    if (open && from >= 0) (keep.push({ ...r, s0: s(from), s1: s(i) }), (from = -1))
+  }
+  return keep
+}
+
 /**
  * 90 × 12 mm skirting, one merged mesh per room (non-pickable decoration), in metre UVs. No material: the caller gives it
  * the room's floor finish, as a Dhaka flat's skirting is a strip of its floor tile / stone / laminate. The white painted
  * trim it had vanished against white walls on a marble floor, so the wall–floor junction did not read.
  */
-export function buildSkirtings(unit: Unit, rooms: Room[]): Map<Id, THREE.Mesh> {
+export function buildSkirtings(unit: Unit, rooms: Room[], holes: Pt[][] = []): Map<Id, THREE.Mesh> {
   const byRoom = new Map<Id, THREE.BufferGeometry[]>()
-  for (const r of skirtingRuns(unit, rooms)) {
+  for (const r of skirtingRuns(unit, rooms, holes)) {
     const len = r.s1 - r.s0
     const g = new THREE.BoxGeometry(len, SKIRTING_H, SKIRTING_T)
     // x = up × n, so the basis is right-handed whichever way the run points (the box is symmetric along it): a mirrored
@@ -214,7 +230,7 @@ export const SHADE_A = 0.3
  * with them); null where there is none. No post pass: every tier draws it, two draw calls.
  */
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
-export function junctionShade(unit: Unit, rooms: Room[]): { floor: THREE.BufferGeometry | null; ceiling: THREE.BufferGeometry | null } {
+export function junctionShade(unit: Unit, rooms: Room[], holes: Pt[][] = []): { floor: THREE.BufferGeometry | null; ceiling: THREE.BufferGeometry | null } {
   const lists: [number[], number[]][] = [[[], []], [[], []]] // floor, ceiling: positions, colours (rgba)
   /**
    * a strip: edge a–b at the corner (alpha `k` × SHADE_A), edge d–c away from it (alpha 0), a third of the way out a third
@@ -236,7 +252,7 @@ export function junctionShade(unit: Unit, rooms: Room[]): { floor: THREE.BufferG
   const at = (p: Pt, y: number): V3 => [p.x, y, p.y]
   const level = (r: Room) => core.roomLevelAt(r, unit, r.centroid.x, r.centroid.y)
   // the floor's corners: on each skirting run, up the wall from the skirting's top and out from its face
-  for (const r of skirtingRuns(unit, rooms)) {
+  for (const r of skirtingRuns(unit, rooms, holes)) {
     const y = level(r.room)
     const p0 = add(r.p, r.d, r.s0)
     const p1 = add(r.p, r.d, r.s1)
@@ -958,11 +974,14 @@ export function bayLineGeometry(lines: { a: V3; b: V3 }[]): THREE.BufferGeometry
 
 /**
  * A face's floor: its plan polygon at its level (a ramp's vertices on its plane, core.roomLevelAt), facing up, plan-metre
- * UVs (the walk view and the Building view).
+ * UVs (the walk view and the Building view). `holes` (plan polygons inside it: a stair that leads down, stairHole) are
+ * left open.
  */
-export function floorGeometry(room: Room, unit: Unit): THREE.BufferGeometry {
-  const poly = core.roomPolygon(room, unit)
-  const tri = core.triangulate(poly)
+export function floorGeometry(room: Room, unit: Unit, holes: Pt[][] = []): THREE.BufferGeometry {
+  const outline = core.roomPolygon(room, unit)
+  const poly = [outline, ...holes].flat()
+  const v2 = (ps: Pt[]) => ps.map((p) => new THREE.Vector2(p.x, p.y))
+  const tri = holes.length ? THREE.ShapeUtils.triangulateShape(v2(outline), holes.map(v2)).flat() : core.triangulate(poly)
   const pos = new Float32Array(poly.length * 3)
   const uv = new Float32Array(poly.length * 2)
   poly.forEach((p, i) => {
@@ -983,6 +1002,42 @@ export function floorGeometry(room: Room, unit: Unit): THREE.BufferGeometry {
   g.computeVertexNormals()
   return g
 }
+
+/**
+ * The stair core under a hole in the floor (stairHole), from this floor (`top`) down to the floor below (`bottom`): a wall
+ * facing in along each edge (`edge`: its plan ends) and the floor facing up (`edge` null), metre UVs — what is seen past
+ * the flight below, never the sky under the slab. Set WELL_INSET in from the hole, in front of the slab's cut edge.
+ */
+export function wellParts(hole: Pt[], top: number, bottom: number): { edge: [Pt, Pt] | null; geo: THREE.BufferGeometry }[] {
+  const c = core.polygonCentroid(hole)
+  const ring = hole.map((p) => {
+    const l = Math.hypot(c.x - p.x, c.y - p.y) || 1
+    return { x: p.x + ((c.x - p.x) / l) * WELL_INSET, y: p.y + ((c.y - p.y) / l) * WELL_INSET }
+  })
+  const geo = (pos: number[]) => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2))
+    g.computeVertexNormals()
+    return meterUVs(g)
+  }
+  const out = ring.map((a, i) => {
+    const b = ring[(i + 1) % ring.length]
+    // the quad p → q faces (q − p) turned to (dz, −dx) in plan: wound so that points at the centroid
+    const [p, q] = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0 ? [b, a] : [a, b]
+    return { edge: [a, b] as [Pt, Pt], geo: geo([p.x, bottom, p.y, q.x, top, q.y, q.x, bottom, q.y, p.x, bottom, p.y, p.x, top, p.y, q.x, top, q.y]) }
+  })
+  const t = core.triangulate(ring)
+  const floor: number[] = []
+  for (let i = 0; i < t.length; i += 3) {
+    const [a, b, d] = [ring[t[i]], ring[t[i + 1]], ring[t[i + 2]]]
+    const up = (b.x - a.x) * (d.y - a.y) - (b.y - a.y) * (d.x - a.x) < 0 // world normal Y = −cross (floorGeometry)
+    for (const p of up ? [a, b, d] : [a, d, b]) floor.push(p.x, bottom, p.y)
+  }
+  return [...out, { edge: null, geo: geo(floor) }]
+}
+/** how far a well's walls stand in from its hole (wellParts): in front of the slab's and the walls' faces there, never in a tie */
+export const WELL_INSET = 0.003
 
 /** A sloped face steeper than this (rise / run) is a flight of steps, not a ramp: stepGeometry. */
 export const STEPS_GRADE = 1 / 3

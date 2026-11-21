@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, bayMarkings, junctionShade, carriesRoof, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, type SkirtingRun } from './details'
+import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, WELL_INSET, bayMarkings, junctionShade, carriesRoof, floorGeometry, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, wellParts, type SkirtingRun } from './details'
 import sheltechRoof from '../data/units/sheltech-roof.json'
 import bananiRoof from '../data/units/banani-roof.json'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
@@ -749,5 +749,64 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect([zoneFinishRef('parking', 'wall', true), zoneFinishRef('driveway', 'wall', true)]).toEqual([DECK_PAINT, DECK_PAINT])
     expect([zoneFinishRef('parking', 'wall'), zoneFinishRef('parking', 'floor', true)]).toEqual([EXTERIOR_PLASTER, CONCRETE])
     for (const k of ['lawn', 'paving', 'driveway', 'parking', 'deck', 'pool', 'planter', 'play'] as const) expect(ZONE_FLOOR[k], k).toBeDefined()
+  })
+})
+
+describe('a hole in the floor at a stair that leads down (session 31)', () => {
+  const unit = TEST_UNIT
+  const rooms = core.deriveRooms(unit)
+  const living = rooms.find((r) => core.pointInPolygon({ x: 2.5, y: 2 }, core.roomPolygon(r, unit)))!
+  // a 1.5 × 1.2 hole against the room's south wall (w5, inner face at y = 4 − 0.125)
+  const hole = [{ x: 1.5, y: 2.675 }, { x: 3, y: 2.675 }, { x: 3, y: 3.875 }, { x: 1.5, y: 3.875 }]
+  const triangles = (g: THREE.BufferGeometry) => {
+    const p = g.attributes.position
+    const idx = g.index ? [...g.index.array] : [...Array(p.count).keys()]
+    const out: THREE.Vector3[][] = []
+    for (let i = 0; i < idx.length; i += 3) out.push([0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(p, idx[i + k])))
+    return out
+  }
+  const area = (ts: THREE.Vector3[][]) => ts.reduce((s, [a, b, c]) => s + new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).length() / 2, 0)
+
+  test('the floor leaves the hole open, faces up everywhere; its ceiling stays whole', () => {
+    const whole = triangles(floorGeometry(living, unit))
+    const holed = triangles(floorGeometry(living, unit, [hole]))
+    expect(area(whole) - area(holed)).toBeCloseTo(1.5 * 1.2, 6)
+    for (const [a, b, c] of holed) {
+      const m = { x: (a.x + b.x + c.x) / 3, y: (a.z + b.z + c.z) / 3 }
+      expect(core.pointInPolygon(m, hole)).toBe(false)
+      expect(new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)).y).toBeGreaterThan(0)
+    }
+  })
+
+  test('the core under it: a wall facing in along each edge, a floor facing up, all a hair inside the hole', () => {
+    const parts = wellParts(hole, 0, -3)
+    expect(parts.map((p) => !!p.edge)).toEqual([true, true, true, true, false])
+    const c = new THREE.Vector3(2.25, -1.5, 3.275)
+    for (const { edge, geo } of parts) {
+      const ts = triangles(geo)
+      for (const [a, b, d] of ts) {
+        const n = new THREE.Vector3().crossVectors(b.clone().sub(a), d.clone().sub(a)).normalize()
+        if (edge) expect(n.dot(c.clone().sub(a)), 'a wall faces the middle').toBeGreaterThan(0)
+        else expect(n.y).toBeCloseTo(1, 6)
+        for (const v of [a, b, d]) expect(core.pointInPolygon({ x: v.x, y: v.z }, hole)).toBe(true)
+      }
+      expect(area(ts)).toBeCloseTo(edge ? Math.hypot(edge[1].x - edge[0].x, edge[1].y - edge[0].y) * 3 : 1.5 * 1.2, 1)
+      // a hair in from the hole's edge: in front of the slab's and the walls' faces there
+      if (edge) expect(Math.min(...[edge[0], edge[1]].map((p) => Math.min(Math.abs(p.x - 1.5), Math.abs(p.x - 3), Math.abs(p.y - 2.675), Math.abs(p.y - 3.875))))).toBeCloseTo(WELL_INSET * 0.62, 4)
+    }
+  })
+
+  test('no skirting (nor its corner shade) along a wall where the floor in front of it is the hole', () => {
+    const along = (runs: SkirtingRun[]) => runs.filter((r) => r.room.id === living.id && Math.abs(r.n.y + 1) < 1e-6 && Math.abs(r.p.y - 3.875) < 0.01) // on w5's face, facing north into the room
+    const span = (runs: SkirtingRun[]) => runs.flatMap((r) => [r.p.x + r.d.x * r.s0, r.p.x + r.d.x * r.s1].sort((a, b) => a - b))
+    const before = along(skirtingRuns(unit, rooms))
+    const after = along(skirtingRuns(unit, rooms, [hole]))
+    expect(before).toHaveLength(1)
+    expect(after).toHaveLength(2) // either side of the hole
+    const [x0, x1, x2, x3] = span(after).sort((a, b) => a - b)
+    expect([x1, x2].map((x) => +x.toFixed(2))).toEqual([1.5, 3])
+    expect([x0, x3]).toEqual(span(before).sort((a, b) => a - b))
+    const strips = (h: Pt[][]) => junctionShade(unit, rooms, h).floor!.attributes.position.count
+    expect(strips([hole])).toBeGreaterThan(strips([])) // the run split in two: one more pair of strips, none over the hole
   })
 })

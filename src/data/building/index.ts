@@ -1,6 +1,6 @@
 /** The towers the Building view knows: the ones built in, and the projects made in the Studio (this browser). */
 import * as core from '../../core'
-import type { Pt, Room, Unit } from '../../core'
+import type { FurniturePlacement, Id, Pt, Room, Unit } from '../../core'
 import { isStairRoom } from '../../furnish/stairs'
 import * as banani from './banani-tower'
 import * as bti from './demo-tower'
@@ -216,3 +216,10 @@ export function stairTo(t: Tower, stem: string, k: number, at: Pt, dir: 1 | -1):
   }
   return best && { stem: best.stem, floor: k + dir, at: best.at }
 }
+
+/**
+ * The stairs of unit `stem` on floor k that lead down (stairTo −1 finds a stair room on the floor below): each one's floor
+ * has the hole and the flight below drawn (PlotlineScene `down`, session 31). The lowest floor's: none.
+ */
+export const stairsDown = (t: Tower, stem: string, k: number, stairs: Pick<FurniturePlacement, 'id' | 'x' | 'y'>[]): Id[] =>
+  stairs.filter((s) => stairTo(t, stem, k, s, -1)).map((s) => s.id)

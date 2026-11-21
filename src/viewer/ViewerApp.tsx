@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore 
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, floorIn, levelName, projectUnit, roleIn, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, floorIn, levelName, projectUnit, roleIn, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
@@ -664,13 +664,19 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
     if (!scene) return
     scene.cover = tower && stem ? coverOf(tower, stem, given.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
     scene.street = tower && stem ? streetOf(tower, stem) : null // the made-up street round the whole tower, as the Building view's
-    scene.setUnit(given)
+    scene.down = tower && stem ? stairsDown(tower, stem, given.floor ?? floorIn(tower, stem), given.furniture.filter(isStair)) : [] // the hole and the flight below
     const a = arrival.current
     arrival.current = null
-    if (a) spawn(scene, a.at, a.face)
-    if (going.current) {
-      going.current = null // "Floor 3 …" stood there until now: the floor is built, its first frame comes next
+    const shown = () => {
+      if (!going.current) return
+      going.current = null // "Floor 3 …" stood there until now: the floor is ready, its first frame comes next
       redraw()
+    }
+    // a floor reached by the stair: made ready while the one he leaves stays on screen (no freeze), then he stands at its stair
+    if (a) void scene.arrive(given, a.at, yawFor(a.face)).then(shown)
+    else {
+      scene.setUnit(given)
+      shown()
     }
   }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
   // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)

@@ -58,6 +58,53 @@ export function stairArrival(p: FurniturePlacement, from: 'below' | 'above'): { 
   return { at: plan(p, (from === 'below' ? 1 : -1) * flightX(p), STAIR_D / 2 + 0.45), face: front }
 }
 
+/**
+ * The hole in this floor at a stair that leads down (session 31: the way down drawn, no longer a step into the floor): the
+ * stair's whole footprint, as a real stair core is open from floor to floor — the flight coming up from the floor below
+ * shows under flight B, its half landing under this one's; flight A's solid steps cover the rest. Its back and sides reach
+ * the room's walls (`inner`: its inner outline) where they stand within HOLE_REACH all along — no ledge of floor round the
+ * core that nobody can stand on (the walker keeps 0.3 m off a wall); the front, where he steps on, stays. Plan corners.
+ */
+export function stairHole(p: FurniturePlacement, inner: Pt[] = []): Pt[] {
+  const [x, z] = [width(p) / 2, STAIR_D / 2]
+  /** how far the edge through local points `at` may move along local direction (dx, dz) to meet the wall */
+  const reach = (at: [number, number][], dx: number, dz: number) => {
+    const d = { x: plan(p, dx, dz).x - p.x, y: plan(p, dx, dz).y - p.y }
+    const hits = at.map(([a, b]) => rayHit(plan(p, a, b), d, inner))
+    return Math.max(...hits) <= HOLE_REACH ? Math.min(...hits) : 0
+  }
+  const back = reach([[-0.9 * x, -z], [0, -z], [0.9 * x, -z]], 0, -1)
+  const right = reach([[x, -0.9 * z], [x, 0], [x, 0.9 * z]], 1, 0)
+  const left = reach([[-x, -0.9 * z], [-x, 0], [-x, 0.9 * z]], -1, 0)
+  return [plan(p, -x - left, -z - back), plan(p, x + right, -z - back), plan(p, x + right, z), plan(p, -x - left, z)]
+}
+/** a wall this near a stair's back or side closes its hole (stairHole): under the walker's 0.3 m reach */
+export const HOLE_REACH = 0.25
+
+/** The distance from `o` along unit direction `d` to the nearest edge of `poly` (Infinity: none that way). */
+function rayHit(o: Pt, d: Pt, poly: Pt[]): number {
+  let best = Infinity
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length]
+    const e = { x: b.x - a.x, y: b.y - a.y }
+    const den = d.x * e.y - d.y * e.x
+    if (Math.abs(den) < 1e-12) return
+    const t = ((a.x - o.x) * e.y - (a.y - o.y) * e.x) / den
+    const s = ((a.x - o.x) * d.y - (a.y - o.y) * d.x) / den
+    if (t >= -1e-6 && s >= 0 && s <= 1) best = Math.min(best, Math.max(0, t))
+  })
+  return best
+}
+
+/**
+ * Over the hole on flight B's side ('between'): the tread of the flight below under plan point `at`, in metres from this
+ * floor — −1.33 at its foot (the half landing below is one riser lower) up to −0.17 at its top, one riser under this floor.
+ * That flight is this stair one storey (STAIR_RISE) down.
+ */
+export function treadBelow(p: FurniturePlacement, at: Pt): number {
+  return LANDING_M - STAIR_RISE + Math.min(8, Math.max(1, Math.ceil((local(p, at).z - ZL) / TREAD))) * RISER
+}
+
 /** A stair room (a stair core, a fire stair, a flat's own stair): named so, as presets.ts furnishes it. */
 export const isStairRoom = (r: Pick<Room, 'name'>): boolean => /\bstair/i.test(r.name)
 
