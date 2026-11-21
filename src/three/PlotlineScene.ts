@@ -416,8 +416,13 @@ export class PlotlineScene {
   /** the fingers on the canvas now; `multi`: this gesture has had two (a pinch, a two-finger drag): no look, no tap */
   private fingers = new Set<number>()
   private multi = false
-  /** built on the first switch to the Building view; hidden in walk / dollhouse */
+  /**
+   * The flat's own tower round it (building.ts) with its street, built with the unit: in the walk and the Dollhouse the floors
+   * its tier draws (frame), in the Building view all of it. Null: a flat of no tower.
+   */
   private building: Building | null = null
+  /** the tower round the floor a stair left (arrive), shown until the new floor is */
+  private leavingTower: Building | null = null
   /** the architect's outside shape round the flat (three/shell.ts), in every mode; the dollhouse cuts it at the storey's top */
   private shell: THREE.Group | null = null
   private readonly shellClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6)
@@ -570,6 +575,8 @@ export class PlotlineScene {
     this.ready = false
     const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
     for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
+    const tower = keepView ? this.building : null // an opening edited: the same building round it (out of clearStatic's reach)
+    this.building = null
     this.clearStatic()
     this.unit = unit
     this.rooms = core.deriveRooms(unit)
@@ -631,7 +638,17 @@ export class PlotlineScene {
     for (const w of this.wells) this.buildFlightBelow(w.stair, w.bottom)
     this.applyMaterials()
     yield
-    this.look.setUnit(present(unit), this.rooms, this.cover, street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
+    // the rest of the building round it, a floor a step, its street the street (a stair's floor: shown with it, arrive)
+    this.building = tower ?? Building.for(unit, this.tier)
+    if (this.building && !tower) {
+      this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
+      this.building.visible = false
+      this.scene.add(this.building)
+      yield* this.building.make()
+    }
+    yield
+    this.look.setUnit(present(unit), this.rooms, this.cover, this.building ? null : street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
+    if (!this.holding) this.aroundFlat() // (a stair's floor: as it shows, spawnAt)
     this.setTimeOfDay(this.hour)
     if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
@@ -671,6 +688,9 @@ export class PlotlineScene {
     for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
     if (this.shell) g.add(this.shell)
     this.shell = null
+    this.leavingTower = this.building // stays round the floor he leaves until the new one shows, as it is
+    this.leavingTower?.halt()
+    this.building = null
     this.scene.add(g)
     this.holding = true
     this.walker = { ...at } // the furniture nearest him first; his eye stays where it is until the floor shows (tick)
@@ -700,6 +720,8 @@ export class PlotlineScene {
       await frame()
     }
     this.unsettled.clear()
+    await (this.building as Building | null)?.ready() // its other flats' rooms and its grounds' pieces in before it shows (warm sends them too)
+    if (built !== this.buildToken) return
     await this.warm(built)
     if (built !== this.buildToken) return
     this.holding = false
@@ -721,7 +743,7 @@ export class PlotlineScene {
   private async warm(token: number): Promise<void> {
     const twoPass = (m: THREE.Material) => m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass
     const todo: { o: THREE.Mesh; side?: THREE.Side }[] = []
-    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup])
+    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup, ...(this.building ? [this.building] : [])]) // (the tower: its street's facades too)
       g.traverse((o) => {
         const m = (o as THREE.Mesh).material
         if (!m || !o.layers.test(this.camera.layers)) return
@@ -744,10 +766,34 @@ export class PlotlineScene {
       await new Promise((r) => requestAnimationFrame(r))
       if (token !== this.buildToken) return
     }
+    // the tower's buffers too: a first draw sent a traced level's whole geometry at once (Sheltech, High: a 0.7–1.3 s swap
+    // frame). Each part drawn once, plain, into one pixel, a slice a frame
+    const b = this.building
+    if (!b) return
+    const one = (this.onePixel ??= { rt: new THREE.WebGLRenderTarget(1, 1), scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1e4, 1e4, 1e4, -1e4, -1e4, 1e4) })
+    one.scene.overrideMaterial ??= new THREE.MeshBasicMaterial()
+    const rt = this.renderer.getRenderTarget()
+    for (const parts = [...b.children]; parts.length; ) {
+      const t0 = performance.now()
+      while (parts.length && performance.now() - t0 < 30) {
+        const c = parts.pop()!
+        one.scene.add(c)
+        this.renderer.setRenderTarget(one.rt)
+        this.renderer.render(one.scene, one.cam)
+        b.add(c)
+      }
+      this.renderer.setRenderTarget(rt)
+      await new Promise((r) => requestAnimationFrame(r))
+      if (token !== this.buildToken) return
+    }
   }
+  /** warm's one-pixel target: what draws a part once so its buffers are on the graphics chip before it shows */
+  private onePixel: { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; cam: THREE.OrthographicCamera } | null = null
 
   /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
   private drop(): void {
+    this.leavingTower?.dispose()
+    this.leavingTower = null
     const g = this.leaving
     if (!g) return
     this.leaving = null
@@ -794,7 +840,9 @@ export class PlotlineScene {
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
     const sky = skyLight(altDeg)
-    if (this.mode === 'building') this.building?.setSun(this.sun, sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled)
+    const how = [sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled] as const
+    if (this.mode === 'building') this.building?.setSun(this.sun, ...how)
+    else this.building?.setNight(...how) // round the flat: its panes, rooms and lamps by the hour (Look fits the shadow)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -831,18 +879,7 @@ export class PlotlineScene {
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
-    if (mode === 'building' && this.unit && !this.building) {
-      this.building = Building.for(this.unit, this.tier)
-      if (this.building) {
-        this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
-        this.scene.add(this.building)
-      }
-    }
-    if (this.building) this.building.visible = mode === 'building'
-    this.look.setStreetY(mode === 'building' ? (this.building?.streetY ?? null) : null) // the tower's street (a traced ground floor's)
-    // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
-    const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
-    if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
+    this.aroundFlat()
     this.look.outside = mode === 'building'
     if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's; the lamps' bounce
     if (mode !== 'walk') {
@@ -861,6 +898,19 @@ export class PlotlineScene {
       this.camera.position.set(0, EYE, 0)
       this.camera.quaternion.setFromEuler(new THREE.Euler(0, this.yaw, 0, 'YXZ'))
     }
+  }
+
+  /**
+   * The tower round the flat in every mode (building.ts frame): the floors the tier draws in the walk and the Dollhouse, all of
+   * it in the Building view; its street (a traced ground floor's) in place of the flat's own; Look's shadow catcher, at this
+   * flat's slab, would hang in mid-air in it (the floor below takes the shadow).
+   */
+  private aroundFlat(): void {
+    const b = this.holding ? this.leavingTower : this.building // (a stair's floor getting ready: the one still shown)
+    b?.frame(this.mode, this.tier)
+    this.look.setStreetY(b?.streetY ?? null)
+    const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
+    if (catcher) (catcher.material as THREE.Material).visible = !b
   }
 
   /** Walker to the room centroid (eye height EYE). Switches to walk mode. */
@@ -1511,6 +1561,8 @@ export class PlotlineScene {
     ;(this.selFoot.material as THREE.Material).dispose()
     for (const m of [this.selMat, this.selRim, this.selLine, this.selHalo]) m.dispose()
     this.look.dispose()
+    this.onePixel?.rt.dispose()
+    ;(this.onePixel?.scene.overrideMaterial as THREE.Material | undefined)?.dispose()
     // A canvas keeps its GL context across renderers (React StrictMode / HMR re-create us on the same canvas).
     // Leave unpack state at defaults so the next WebGLState's 3D/array empty textures don't upload with FLIP_Y set.
     this.renderer.state.reset()
