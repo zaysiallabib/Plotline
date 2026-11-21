@@ -11,7 +11,7 @@ reading them robustly. This page is how we know: every fix is measured on the wh
 the page itself); a 3D model is dropped with the files beside it in its folder; a PDF of several pages is read page by
 page through the "Which page is the floor plan?" picker, and a page that became the plan picture is counted through its
 "Read its lines instead" button. Then what the drop gave is counted in the page with the Studio's own code: each floor as
-the Studio opens it (its load path), its closed rooms, its Issues list. Harness: `E:/dev/tmp/s31/formats2/score.mjs`
+the Studio opens it (its load path), its closed rooms, its Issues list. Harness: `E:/dev/tmp/s31/formats2/score.mjs` (since formats3 its copy `E:/dev/tmp/s31/formats3/score.mjs`, runs and shots under `formats3/`, scored from a frozen `git archive` of the commit)
 (`node score.mjs <tag>`, 12–25 minutes for all 134 files: the 342 MB Sixty5 tower alone takes about a minute) and `table.mjs <tag> [<tag before>]` for these tables; raw
 results `E:/dev/tmp/s31/formats2/runs/<tag>.json`; shots `E:/dev/plotline-shots/s31/formats2/<tag>/`.
 
@@ -31,9 +31,153 @@ Left out: 69 git-lfs pointers (130-byte stand-ins for files not downloaded in th
 
 ## Session 31, formats3 — the rest of the way
 
-**Before** (`s31/redesign` 734c599, scored again on the whole corpus in Firefox, run `E:/dev/tmp/s31/formats3/runs/before.json`):
-all 134 files read exactly as formats2 left them — every count of every file the same as the "Per file — after" tables below
-(clean 40, rooms open 19, no walls 16, refused 12, picture 9, shape 38). The speed lane changed no number.
+Before: `s31/redesign` 734c599 (run `before`: every file read exactly as formats2 left it — the speed lane changed no
+number). After: `s31/formats3` 4bd824b (with `s31/redesign` merged), run `final` — its PDF pages scored on 4bd824b, every other
+file on 328d0d8 (the last commit changed only PDF pages with no scale). Both scored on the whole corpus in
+Firefox from a frozen copy of the commit (`git archive`), so code edited during a run cannot mix two versions.
+
+**Before**
+
+| format | files | clean | rooms open | no walls | refused | picture | shape only |
+|---|---|---|---|---|---|---|---|
+| IFC (ifc-bench) | 28 | 14 | 9 | 4 | 0 | 0 | 1 |
+| IFC (buildingSMART) | 35 | 0 | 7 | 3 | 0 | 0 | 25 |
+| DXF | 11 | 6 | 3 | 2 | 0 | 0 | 0 |
+| DXF (from DWG) | 11 | 4 | 0 | 7 | 0 | 0 | 0 |
+| PDF | 25 | 16 | 0 | 0 | 0 | 9 | 0 |
+| DWG | 11 | 0 | 0 | 0 | 11 | 0 | 0 |
+| 3D model | 13 | 0 | 0 | 0 | 1 | 0 | 12 |
+| **all** | 134 | 40 | 19 | 16 | 12 | 9 | 38 |
+
+On the files with floors: 2296 names, 1427 named closed rooms, 869 names outside a room, 2 crossings, 2283 loose ends, 5013 review rows.
+
+**After**
+
+| format | files | clean | rooms open | no walls | refused | picture | shape only |
+|---|---|---|---|---|---|---|---|
+| IFC (ifc-bench) | 28 | 19 | 4 | 4 | 0 | 0 | 1 |
+| IFC (buildingSMART) | 35 | 3 | 4 | 3 | 0 | 0 | 25 |
+| DXF | 11 | 6 | 3 | 2 | 0 | 0 | 0 |
+| DXF (from DWG) | 11 | 4 | 0 | 7 | 0 | 0 | 0 |
+| PDF | 25 | 6 | 0 | 0 | 0 | 19 | 0 |
+| DWG | 11 | 0 | 0 | 0 | 11 | 0 | 0 |
+| 3D model | 13 | 0 | 0 | 0 | 1 | 0 | 12 |
+| **all** | 134 | 38 | 11 | 16 | 12 | 19 | 38 |
+
+On the files with floors: 2262 names, 1864 named closed rooms, 398 names outside a room, 2 crossings, 2190 loose ends, 4509 review rows.
+
+**The IFC buildings (ifc-bench, the architects' own models): names outside a room 97 → 9 (without the Sixty5 tower
+47 → 9), clean 14 → 19 of 28 files; the buildingSMART sample buildings 0 → 3 clean.** The rows to check fall on every
+IFC file that changed; five PDF / DXF pages gain one row each (the stair hall that "UP" used to name now asks for its
+name). PDF clean 16 → 6: twelve room pages of the twindo measurement report were read at a scale measured off their
+tables (1 : 31–64, every length 1.3 to 2.7 times too long); now at the scale printed on them (1 : 16 / 1 : 24), where
+each is one room and a thumbnail, not a floor plan — they open as the plan picture, as the page picker always offered. The plan pages (the 2D plan's 1 and 2, the report's 3, 4, 12 and 13) open as drawings.
+
+### What changed, file by file (before → after; every file that changed at all)
+
+- cert 2.3.0.1/Simple-Scene/Building-Architecture.ifc: **rooms open → clean**, walls 4 → 8, rooms 0 → 3, named 0 → 2, loose 8 → 2, outside 2 → 0, rows 12 → 4
+- cert 4.0.2.1/Simple-Scene/Building-Architecture.ifc: **rooms open → clean**, walls 4 → 8, rooms 0 → 3, named 0 → 2, loose 8 → 2, outside 2 → 0, rows 12 → 4
+- cert 4.3.2.0/Simple-Scene/Building-Architecture.ifc: **rooms open → clean**, walls 4 → 8, rooms 0 → 3, named 0 → 2, loose 8 → 2, outside 2 → 0, rows 12 → 4
+- city_house_munich/arc.ifc: **rooms open → clean**, walls 137 → 142, rooms 37 → 42, named 16 → 19, loose 15 → 9, outside 3 → 0, rows 42 → 34
+- dental_clinic/arc.ifc: **rooms open → clean**, walls 2031 → 2037, openings 375 → 374, rooms 528 → 533, named 265 → 269, loose 17 → 11, outside 4 → 0, rows 147 → 138
+- dental_clinic/mep.ifc: rooms 0 → 262, named 0 → 258, loose 0 → 9, outside 526 → 268, rows 530 → 286
+- duplex/mep.ifc: rooms 0 → 20, named 0 → 20, outside 42 → 22, rows 45 → 27
+- fantasy_hotel_1/arc.ifc: **rooms open → clean**, walls 200 → 204, rooms 46 → 49, named 23 → 26, outside 3 → 0, rows 12 → 9
+- fantasy_residential_building_1/arc.ifc: **rooms open → clean**, walls 351 → 360, rooms 81 → 89, named 49 → 57, outside 8 → 0, rows 54 → 46
+- hitos/arc.ifc: walls 1780 → 1828, openings 438 → 436, rooms 453 → 506, named 221 → 238, loose 82 → 62, outside 17 → 0, rows 179 → 159
+- molio/arc.ifc: walls 360 → 364, rooms 114 → 117, named 99 → 102, loose 3 → 6, outside 4 → 1
+- sixty5/arc.ifc: **rooms open → clean**, rooms 2097 → 2147, named 60 → 110, outside 50 → 0
+- wbdg_office/mep.ifc: rooms 0 → 112, named 0 → 99, outside 198 → 99, rows 201 → 142
+- twindo_Backcountry_2nd_Floor_Plan: labels 1 → 0, named 1 → 0, rows 24 → 25
+- qcad_flange.pdf: walls 1 → 0, loose 2 → 0, rows 4 → 0
+- twindo_Backcountry_2D_Plan.pdf p1: labels 1 → 0, named 1 → 0, rows 30 → 31
+- twindo_Backcountry_2D_Plan.pdf p2: walls 393 → 392, labels 1 → 0, rooms 111 → 110, named 1 → 0, rows 59 → 60
+- twindo_Backcountry_Measurement_Report.pdf p1: rows 1 → 0
+- twindo_Backcountry_Measurement_Report.pdf p10: walls 140 → 111, openings 2 → 1, labels 2 → 0, rooms 36 → 31, named 2 → 0, loose 16 → 12, rows 25 → 18
+- twindo_Backcountry_Measurement_Report.pdf p11: **clean → picture**, walls 117 → 89, openings 2 → 1, labels 2 → 0, rooms 29 → 25, named 2 → 0, loose 13 → 10, rows 20 → 18
+- twindo_Backcountry_Measurement_Report.pdf p12: walls 139 → 141, labels 1 → 0, rooms 36 → 37, named 1 → 0, rows 27 → 28
+- twindo_Backcountry_Measurement_Report.pdf p13: **picture → clean**, walls 16 → 126, openings 0 → 6, labels 0 → 9, rooms 0 → 33, named 0 → 9, loose 32 → 1, rows 34 → 20
+- twindo_Backcountry_Measurement_Report.pdf p14: walls 281 → 191, openings 14 → 10, labels 2 → 1, rooms 89 → 56, named 2 → 1, loose 16 → 12, rows 31 → 23
+- twindo_Backcountry_Measurement_Report.pdf p15: **clean → picture**, walls 298 → 205, openings 13 → 9, labels 3 → 1, rooms 93 → 61, named 3 → 1, loose 16 → 13, rows 33 → 30
+- twindo_Backcountry_Measurement_Report.pdf p16: **clean → picture**, walls 344 → 246, openings 15 → 10, labels 8 → 4, rooms 103 → 74, named 8 → 4, loose 19 → 14, rows 39 → 30
+- twindo_Backcountry_Measurement_Report.pdf p17: **clean → picture**, walls 323 → 223, openings 12 → 5, labels 7 → 2, rooms 95 → 66, named 7 → 2, rows 38 → 34
+- twindo_Backcountry_Measurement_Report.pdf p18: walls 267 → 117, openings 11 → 4, labels 3 → 0, rooms 87 → 31, named 3 → 0, loose 16 → 18, rows 31 → 22
+- twindo_Backcountry_Measurement_Report.pdf p19: **clean → picture**, walls 315 → 153, openings 13 → 6, labels 4 → 0, rooms 102 → 44, named 4 → 0, loose 17 → 21, rows 37 → 25
+- twindo_Backcountry_Measurement_Report.pdf p2: rows 1 → 0
+- twindo_Backcountry_Measurement_Report.pdf p20: **clean → picture**, walls 305 → 217, openings 12 → 7, labels 7 → 3, rooms 93 → 62, named 7 → 3, loose 18 → 19, rows 36 → 34
+- twindo_Backcountry_Measurement_Report.pdf p21: **clean → picture**, walls 340 → 162, openings 13 → 4, labels 5 → 2, rooms 105 → 46, named 5 → 2, loose 21 → 18, rows 42 → 26
+- twindo_Backcountry_Measurement_Report.pdf p22: **clean → picture**, walls 352 → 155, openings 13 → 5, labels 6 → 1, rooms 108 → 41, named 6 → 1, loose 18 → 21, rows 38 → 30
+- twindo_Backcountry_Measurement_Report.pdf p3: labels 1 → 0, named 1 → 0, rows 33 → 34
+- twindo_Backcountry_Measurement_Report.pdf p4: **picture → clean**, walls 6 → 81, openings 0 → 1, labels 0 → 6, rooms 0 → 16, named 0 → 6, loose 12 → 4, rows 14 → 12
+- twindo_Backcountry_Measurement_Report.pdf p5: **clean → picture**, walls 141 → 76, openings 4 → 1, labels 2 → 0, rooms 37 → 17, named 2 → 0, rows 26 → 20
+- twindo_Backcountry_Measurement_Report.pdf p6: **clean → picture**, walls 128 → 87, openings 3 → 0, labels 5 → 1, rooms 34 → 21, named 5 → 1, rows 27 → 26
+- twindo_Backcountry_Measurement_Report.pdf p7: **clean → picture**, walls 109 → 60, openings 2 → 0, labels 1 → 0, rooms 28 → 12, named 1 → 0, rows 19 → 17
+- twindo_Backcountry_Measurement_Report.pdf p8: **clean → picture**, walls 119 → 70, openings 2 → 0, labels 1 → 0, rooms 30 → 14, named 1 → 0, rows 22 → 20
+- twindo_Backcountry_Measurement_Report.pdf p9: walls 187 → 163, openings 9 → 5, labels 1 → 0, rooms 50 → 48, named 1 → 0, loose 14 → 12, rows 30 → 27
+
+### The fixes, each measured on the whole corpus
+
+1. **A PDF is read at the scale printed on its sheet** (`1/4" = 1'-0"`, `1:100`, `SCALE 1 : 50`; two different
+   ones say nothing), then its printed dimensions, then its room sizes. twindo's Room Layout pages print their room names
+   as text but no dimension lines: without a scale their grey wall fills were not walls and the pages fell back to
+   pictures. Page 13 now opens as a drawing with all nine rooms named; page 4 with six of seven (Room-1 shares one open
+   space with the living room — no wall between them on the sheet). A stair's "UP" / "DN" and a door or window tag
+   ("D-16", "Win-18", "W3") no longer name a room (on page 13 "Win-18" had taken Room-4's place; on the plan pages "UP"
+   named the stair hall — that room now asks for its name, one row more on five pages).
+2. **IFC: a room its walls leave open closes along the file's own outline of it** — a balcony edged only by a railing
+   (the fantasy residential building's eight), a roof terrace (the dental clinic's roof), a stair open to the floor above
+   (the fantasy hotel's), a room whose wall the file put on another storey (Hitos, Sixty5): flush zone lines, drawn as
+   nothing, where no wall stands; the railing or parapet itself is in the outside shape. Kept only when it leaves fewer
+   rows to check (or as many, with fewer names outside a room). ifc-bench names outside a room 97 → 9: Hitos 17 → 0,
+   Sixty5 50 → 0, fantasy residential 8 → 0, dental 4 → 0, city house 3 → 0, fantasy hotel 3 → 0, Molio 4 → 1. The
+   services models (no walls at all) get their spaces outlined too: dental services 526 → 268 names outside a room.
+   Tried and dropped: wall ends reaching up to a wall thickness further (Hitos' 9–27 cm gaps) — once rooms close along
+   their outlines it changed nothing, so it is not in the code.
+3. **Opening a floor whose joining only puts the same wall back says nothing.** A short piece of a thick wall beside its
+   finish wall was dropped as "drawn over another" and joined back by the next rule — the same wall, a message and an
+   undo step every time the floor opened (the dental clinic's first floor, 4351, Schependomlaan). The Studio's load now
+   compares what a person sees (each wall's corners, thickness, height, openings) and keeps the floor as it was.
+4. **Plotline's own DXF, saved by a CAD program, comes back exactly: 20 of 20 built-in flats and levels** (was 10, then
+   11 with fix 5). Each wall's centre line rides along (layer `PLOTLINE_AXES_<thickness in 0.1 mm>`, a two-point polyline,
+   its height as its thickness); read back, while every centre line and every outline agree, the walls are those lines —
+   a curved ramp's chords stay chords and share their corners — and every opening its block at its own width (a curved
+   glass wall's 6–18 cm panes). A wall moved, lengthened or shortened in CAD breaks the agreement: the walls are read from
+   their outlines as before. Measured in node (`src/import/dxfWrite.test.ts`, every built-in), not on the corpus: no
+   corpus file is a Plotline export.
+5. **A DXF door 1–3 cm from a corner** (the wall's last piece too short to draw) keeps its own width and its wall
+   instead of growing to the corner or being moved off a wall split at its jamb (Type B, Sheltech ground).
+6. **SVG: a sheet whose groups name no layers is sorted by pen with the PDF's own rule** (one rule, `plan2d.ts`
+   penRoles): the heavy strokes and wall-thin grey fills are the walls; thin floor tiles, a wardrobe, dimension lines no
+   longer pair into walls (`svg.test.ts`). The corpus has no SVG.
+7. **A page with no scale printed as words is not read as lines** (a Dhaka brochure's plan page whose words are all
+   outlines: Akter Anandita page 9, 232 412 lines, no text). Read as metres its lines make no walls, and pairing them
+   took minutes with the Studio standing still; now the page is the plan picture in 0.35 s and Auto-trace reads its names.
+   On the corpus only three picture pages change (their unread lines no longer counted).
+
+**Read times** (drop → floors on screen, Firefox, the file already in the page, the speed lane's `stages.mjs`, before
+and now alternated twice; the machine was shared with other lanes, so a few tenths are noise): dental clinic 4.3 → 5.1 s, Hitos 3.8 → 3.9 s, Schependomlaan 2.9 → 2.5 s, the 342 MB Sixty5 tower 18.4 → 20.9 s
+(averages of the two passes). The extra is the floors that now close a room along its outline: each such floor is joined
+once more (dental's first floor and roof, Sixty5's floors with a name in no room); a floor with every name in a room
+reads exactly as before. That cost buys every name its room — the founder's call against "never slower", as for formats2.
+
+### Not 100 % yet, and why (plain words)
+
+- **IFC, 9 names outside a room on the 28 ifc-bench files:** Smiley West's first floor gives the bath and the hall of
+  each of its seven flats the very same outline (the file's own mistake: two names, one room) — the row stays so a person
+  splits them; Molio's auditorium and depot, and two lounges of the digital hub, share one open space whose separation
+  the file does not draw (a zone line along their outlines left more to check, so none was added). 2 crossings remain on
+  one Hitos floor. Services models have spaces but no walls: half their spaces still stand in no room.
+- **PDF room names drawn as outlines:** none of the corpus PDFs has them — the twindo 2D plan's pages 1 and 2 print no
+  room names at all (only ceiling heights, "8'-5\" CLG"), so their rooms stay "Space N"; the room names are on the
+  measurement report's Room Layout pages, which now read. Where a real plan page has its words as outlines — Akter
+  Anandita's brochure page 9, a CAD print with no text at all — there is no scale either, so its lines make no walls; it
+  opens as the plan picture (fix 7) and Auto-trace's reader (tesseract) reads the names off the picture, as for every
+  brochure. Across the 45 Dhaka brochures in `Demo drawings/` (node, page by page): 391 pages carry lines; ten pages of the Rangs
+brochures read as line drawings with their names printed as words (4–35 names a page, read as names), every other page
+opens as the plan picture, and the slowest page now takes 4.4 s (Anandita's page 9 took minutes before fix 7). So no second reader of outlined words was built into the line path.
+- **PDF room pages** (the report's 15 per-room pages) open as pictures at their true scale (see above).
+- **DXF / SVG test files** that are not plans (ezdxf's, the multiline sample) stay "rooms open"; DWG stays refused until
+  the online converter is set up (Docs/SETUP_FORMATS.md); 3D models give the outside shape only, by design.
 
 ## Before and after (session 31, formats2)
 
@@ -178,6 +322,177 @@ IFC that used to stop with an error now opens: its 526 room names have no walls 
 - **Not plans:** the buildingSMART Simple-Scene buildings have only four walls (no front or back) — nothing can close;
   LibreDWG's example drawings and ezdxf's test files are not floor plans; DWG stays refused until the online converter
   is set up (Docs/SETUP_FORMATS.md); 3D models give the outside shape only, by design.
+
+## Per file — now (formats3, 4bd824b)
+
+#### IFC (ifc-bench)
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4351/arc.ifc | IFC2X3 | 5 | 152 | 30 | 0 | 6 | 39 | 6 | 7 | 0 | 0 | 32 | 1 | clean |
+| ac20/arc.ifc | IFC4 | 5 | 257 | 283 | 2 | 82 | 82 | 82 | 0 | 0 | 0 | 6 | 1.3 | clean |
+| city_house_munich/arc.ifc | IFC4X3_ADD2 | 5 | 142 | 27 | 0 | 19 | 42 | 19 | 9 | 0 | 0 | 34 | 2 | clean |
+| dental_clinic/arc.ifc | IFC2X3 | 4 | 2037 | 374 | 0 | 269 | 533 | 269 | 11 | 0 | 0 | 138 | 5.4 | clean |
+| dental_clinic/mep.ifc | IFC2X3 | 4 | 0 | 0 | 0 | 526 | 262 | 258 | 9 | 0 | 268 | 286 | 7.3 | no walls |
+| dental_clinic/str.ifc | IFC2X3 | 4 | 33 | 1 | 270 | 0 | 4 | 0 | 4 | 0 | 0 | 15 | 1.6 | clean |
+| digital_hub/arc.ifc | IFC4 | 3 | 381 | 214 | 62 | 64 | 111 | 63 | 9 | 0 | 1 | 55 | 2.1 | rooms open |
+| duplex/arc.ifc | IFC2X3 | 4 | 104 | 28 | 0 | 21 | 31 | 21 | 0 | 0 | 0 | 18 | 0.7 | clean |
+| duplex/mep.ifc | IFC2X3 | 3 | 0 | 0 | 0 | 42 | 20 | 20 | 0 | 0 | 22 | 27 | 1 | no walls |
+| ettenheim_gis/city.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2.3 | shape |
+| fantasy_hotel_1/arc.ifc | IFC4 | 4 | 204 | 144 | 39 | 26 | 49 | 26 | 4 | 0 | 0 | 9 | 1.6 | clean |
+| fantasy_hotel_2/arc.ifc | IFC4 | 6 | 218 | 258 | 86 | 20 | 64 | 20 | 6 | 0 | 0 | 56 | 1.9 | clean |
+| fantasy_office_building_1/arc.ifc | IFC4 | 5 | 293 | 118 | 40 | 44 | 56 | 44 | 0 | 0 | 0 | 17 | 1.3 | clean |
+| fantasy_office_building_2/arc.ifc | IFC4 | 3 | 100 | 40 | 44 | 5 | 29 | 5 | 0 | 0 | 0 | 27 | 1.3 | clean |
+| fantasy_office_building_3/arc.ifc | IFC4 | 6 | 436 | 297 | 20 | 87 | 142 | 87 | 0 | 0 | 0 | 61 | 1.6 | clean |
+| fantasy_residential_building_1/arc.ifc | IFC4 | 4 | 360 | 134 | 30 | 57 | 89 | 57 | 0 | 0 | 0 | 46 | 1.7 | clean |
+| fzk_house/arc.ifc | IFC4 | 2 | 21 | 16 | 0 | 7 | 7 | 7 | 0 | 0 | 0 | 3 | 1 | clean |
+| hitos/arc.ifc | IFC2X3 | 7 | 1828 | 436 | 225 | 238 | 506 | 238 | 62 | 2 | 0 | 159 | 4.4 | rooms open |
+| molio/arc.ifc | IFC2X3 | 10 | 364 | 241 | 14 | 103 | 117 | 102 | 6 | 0 | 1 | 40 | 2.7 | rooms open |
+| samuel_macalister_sample_house/arc.ifc | IFC4 | 6 | 172 | 52 | 5 | 14 | 33 | 14 | 38 | 0 | 0 | 58 | 1.3 | clean |
+| samuel_macalister_sample_house/mep.ifc | IFC4 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | 2.6 | no walls |
+| schependomlaan/arc.ifc | IFC2X3 | 1 | 991 | 77 | 23 | 0 | 315 | 0 | 32 | 0 | 0 | 92 | 2.7 | clean |
+| sixty5/arc.ifc | IFC2X3 | 19 | 12345 | 572 | 0 | 110 | 2147 | 110 | 1254 | 0 | 0 | 1895 | 21.2 | clean |
+| sixty5/str.ifc | IFC2X3 | 19 | 412 | 329 | 393 | 0 | 40 | 0 | 289 | 0 | 0 | 359 | 1.6 | clean |
+| smiley_west/arc.ifc | IFC4 | 5 | 430 | 250 | 20 | 140 | 140 | 133 | 21 | 0 | 7 | 40 | 1.3 | rooms open |
+| wbdg_office/arc.ifc | IFC2X3 | 3 | 837 | 175 | 0 | 99 | 206 | 99 | 10 | 0 | 0 | 72 | 1.4 | clean |
+| wbdg_office/mep.ifc | IFC2X3 | 3 | 0 | 0 | 0 | 198 | 112 | 99 | 0 | 0 | 99 | 142 | 2.3 | no walls |
+| wbdg_office/str.ifc | IFC2X3 | 4 | 8 | 0 | 120 | 0 | 2 | 0 | 0 | 0 | 0 | 8 | 1 | clean |
+
+#### IFC (buildingSMART)
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cert 2.3.0.1/Simple-Scene/Building-Architecture.ifc | IFC2X3 | 1 | 8 | 0 | 0 | 2 | 3 | 2 | 2 | 0 | 0 | 4 | 1.5 | clean |
+| cert 2.3.0.1/Simple-Scene/Building-Hvac.ifc | IFC2X3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.6 | no walls |
+| cert 2.3.0.1/Simple-Scene/Building-Landscaping.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Building-Structural.ifc | IFC2X3 | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 8 | 0.6 | rooms open |
+| cert 2.3.0.1/Simple-Scene/Infra-Bridge.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Infra-Electrical.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Infra-Landscaping.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Infra-Plumbing.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Infra-Rail.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 2.3.0.1/Simple-Scene/Infra-Road.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/ISO Spec - ReferenceView_V1.2/basin-tessellation.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.7 | shape |
+| cert 4.0.2.1/ISO Spec - ReferenceView_V1.2/column-straight-rectangle-tessellation.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/ISO Spec - ReferenceView_V1.2/tessellated-item.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/ISO Spec - ReferenceView_V1.2/tessellation-with-individual-colors.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/ISO Spec - ReferenceView_V1.2/wall-with-opening-and-window.ifc | IFC4 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 | 0.6 | rooms open |
+| cert 4.0.2.1/Simple-Scene/Building-Architecture.ifc | IFC4 | 1 | 8 | 0 | 0 | 2 | 3 | 2 | 2 | 0 | 0 | 4 | 0.6 | clean |
+| cert 4.0.2.1/Simple-Scene/Building-Hvac.ifc | IFC4 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.6 | no walls |
+| cert 4.0.2.1/Simple-Scene/Building-Landscaping.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/Simple-Scene/Building-Structural.ifc | IFC4 | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 8 | 1 | rooms open |
+| cert 4.0.2.1/Simple-Scene/Infra-Bridge.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/Simple-Scene/Infra-Electrical.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/Simple-Scene/Infra-Landscaping.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/Simple-Scene/Infra-Plumbing.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.0.2.1/Simple-Scene/Infra-Rail.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.7 | shape |
+| cert 4.0.2.1/Simple-Scene/Infra-Road.ifc | IFC4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Building-Architecture.ifc | IFC4X3_ADD2 | 1 | 8 | 0 | 0 | 2 | 3 | 2 | 2 | 0 | 0 | 4 | 0.6 | clean |
+| cert 4.3.2.0/Simple-Scene/Building-Hvac.ifc | IFC4X3_ADD2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.6 | no walls |
+| cert 4.3.2.0/Simple-Scene/Building-Landscaping.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Building-Structural.ifc | IFC4X3_ADD2 | 1 | 4 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 0 | 8 | 0.6 | rooms open |
+| cert 4.3.2.0/Simple-Scene/Infra-Bridge.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.7 | shape |
+| cert 4.3.2.0/Simple-Scene/Infra-Electrical.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Infra-Landscaping.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Infra-Plumbing.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Infra-Rail.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.6 | shape |
+| cert 4.3.2.0/Simple-Scene/Infra-Road.ifc | IFC4X3_ADD2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.9 | shape |
+
+#### DXF
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ccwi_simple_floorplan.dxf | DXF 2000 | 1 | 54 | 0 | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 17 | 0.3 | clean |
+| drafted_ai_example.dxf | DXF 2018 | 1 | 74 | 34 | 1 | 19 | 24 | 19 | 1 | 0 | 0 | 8 | 0.3 | clean |
+| ezdxf_dimension_in_nested_blocks.dxf | DXF 2013 | 1 | 0 | 0 | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.3 | no walls |
+| ezdxf_Minimal_DXF_AC1009.dxf | DXF unknown. | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.3 | no walls |
+| ezdxf_uncommon.dxf | DXF 2018 | 1 | 17 | 3 | 0 | 0 | 0 | 0 | 12 | 0 | 0 | 14 | 0.3 | rooms open |
+| giraffe360_demo_commercial_1.dxf | DXF 2007 | 1 | 18 | 3 | 2 | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0.3 | clean |
+| giraffe360_demo_commercial_2.dxf | DXF 2007 | 1 | 63 | 33 | 2 | 0 | 3 | 0 | 32 | 0 | 0 | 35 | 0.3 | clean |
+| giraffe360_demo_residential.dxf | DXF 2007 | 1 | 63 | 10 | 0 | 2 | 9 | 2 | 0 | 0 | 0 | 7 | 0.3 | clean |
+| jscad_autocad2017_2Dmlines.dxf | DXF 2013 | 1 | 5 | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 6 | 0.3 | rooms open |
+| jscad_dxfparser_floorplan.dxf | DXF 2004 | 1 | 127 | 30 | 0 | 13 | 37 | 13 | 8 | 0 | 0 | 15 | 0.3 | clean |
+| jscad_ezdxf_small_r13.dxf | DXF R13 | 1 | 2 | 0 | 1 | 0 | 0 | 0 | 4 | 0 | 0 | 6 | 0.3 | rooms open |
+
+#### DXF (from DWG)
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| autodesk_blocks_and_tables_-_imperial | DXF 2007 | 1 | 99 | 21 | 27 | 11 | 19 | 11 | 5 | 0 | 0 | 12 | 0.3 | clean |
+| draftsperson_house_floor_plan_tutorial | DXF 2013 | 1 | 92 | 31 | 4 | 3 | 32 | 3 | 1 | 0 | 0 | 7 | 0.3 | clean |
+| libredwg_example_2000 | DXF 2000 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.8 | no walls |
+| libredwg_example_2007 | DXF 2007 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.9 | no walls |
+| libredwg_example_2013 | DXF 2013 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.9 | no walls |
+| libredwg_example_2018 | DXF 2018 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.8 | no walls |
+| libredwg_example_r14 | DXF R14 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.8 | no walls |
+| libredwg_sample_2000 | DXF 2000 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.3 | no walls |
+| libredwg_sample_2018 | DXF 2018 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0.3 | no walls |
+| twindo_Backcountry_1st_Floor_Plan | DXF 2013 | 1 | 86 | 15 | 1 | 0 | 14 | 0 | 9 | 0 | 0 | 19 | 0.3 | clean |
+| twindo_Backcountry_2nd_Floor_Plan | DXF 2013 | 1 | 98 | 28 | 11 | 0 | 14 | 0 | 14 | 0 | 0 | 25 | 0.3 | clean |
+
+#### PDF
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| qcad_flange.pdf | PDF | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1.3 | picture |
+| twindo_Backcountry_2D_Plan.pdf p1 | PDF p1 | 1 | 171 | 5 | 0 | 0 | 43 | 0 | 14 | 0 | 0 | 31 | 0.7 | clean |
+| twindo_Backcountry_2D_Plan.pdf p2 | PDF p2 | 1 | 392 | 16 | 0 | 0 | 110 | 0 | 22 | 0 | 0 | 60 | 1.3 | clean |
+| twindo_Backcountry_Measurement_Report.pdf p1 | PDF | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p10 | PDF p10 | 1 | 111 | 1 | 0 | 0 | 31 | 0 | 12 | 0 | 0 | 18 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p11 | PDF p11 | 1 | 89 | 1 | 0 | 0 | 25 | 0 | 10 | 0 | 0 | 18 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p12 | PDF p12 | 1 | 141 | 6 | 0 | 0 | 37 | 0 | 1 | 0 | 0 | 28 | 0.7 | clean |
+| twindo_Backcountry_Measurement_Report.pdf p13 | PDF p13 | 1 | 126 | 6 | 0 | 9 | 33 | 9 | 1 | 0 | 0 | 20 | 0.6 | clean |
+| twindo_Backcountry_Measurement_Report.pdf p14 | PDF p14 | 1 | 191 | 10 | 0 | 1 | 56 | 1 | 12 | 0 | 0 | 23 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p15 | PDF p15 | 1 | 205 | 9 | 0 | 1 | 61 | 1 | 13 | 0 | 0 | 30 | 1.6 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p16 | PDF p16 | 1 | 246 | 10 | 0 | 4 | 74 | 4 | 14 | 0 | 0 | 30 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p17 | PDF p17 | 1 | 223 | 5 | 0 | 2 | 66 | 2 | 18 | 0 | 0 | 34 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p18 | PDF p18 | 1 | 117 | 4 | 0 | 0 | 31 | 0 | 18 | 0 | 0 | 22 | 1 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p19 | PDF p19 | 1 | 153 | 6 | 0 | 0 | 44 | 0 | 21 | 0 | 0 | 25 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p2 | PDF | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1.6 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p20 | PDF p20 | 1 | 217 | 7 | 0 | 3 | 62 | 3 | 19 | 0 | 0 | 34 | 1.8 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p21 | PDF p21 | 1 | 162 | 4 | 0 | 2 | 46 | 2 | 18 | 0 | 0 | 26 | 1.4 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p22 | PDF p22 | 1 | 155 | 5 | 0 | 1 | 41 | 1 | 21 | 0 | 0 | 30 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p3 | PDF p3 | 1 | 152 | 3 | 0 | 0 | 34 | 0 | 15 | 0 | 0 | 34 | 0.7 | clean |
+| twindo_Backcountry_Measurement_Report.pdf p4 | PDF p4 | 1 | 81 | 1 | 0 | 6 | 16 | 6 | 4 | 0 | 0 | 12 | 0.7 | clean |
+| twindo_Backcountry_Measurement_Report.pdf p5 | PDF p5 | 1 | 76 | 1 | 0 | 0 | 17 | 0 | 13 | 0 | 0 | 20 | 0.9 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p6 | PDF p6 | 1 | 87 | 0 | 0 | 1 | 21 | 1 | 18 | 0 | 0 | 26 | 1.4 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p7 | PDF p7 | 1 | 60 | 0 | 0 | 0 | 12 | 0 | 12 | 0 | 0 | 17 | 1.4 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p8 | PDF p8 | 1 | 70 | 0 | 0 | 0 | 14 | 0 | 15 | 0 | 0 | 20 | 1.3 | picture |
+| twindo_Backcountry_Measurement_Report.pdf p9 | PDF p9 | 1 | 163 | 5 | 0 | 0 | 48 | 0 | 12 | 0 | 0 | 27 | 1.3 | picture |
+
+#### DWG
+
+| file | version | storeys | walls | openings | columns | names | closed rooms | named rooms | loose ends | crossings | names outside a room | review rows | read s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| autodesk_blocks_and_tables_-_imperial.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| draftsperson_house_floor_plan_tutorial.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_example_2000.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_example_2007.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.5 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_example_2013.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_example_2018.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_example_r14.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_sample_2000.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.4 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| libredwg_sample_2018.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| twindo_Backcountry_1st_Floor_Plan.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.3 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+| twindo_Backcountry_2nd_Floor_Plan.dwg | DWG | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.4 | refused: AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Sav |
+
+#### 3D model
+
+| file | triangles | read s | verdict |
+|---|---|---|---|
+| threejs_Rhino_Logo.3dm | 131,948 | 1 | shape |
+| threejs_Cobra_s350.dae | 9,598 | 0.3 | shape |
+| kenney_suburban_building-type-a.fbx | 1,174 | 0.3 | shape |
+| threejs_exampleWindow.fbx | 44 | 0.3 | shape |
+| threejs_monkey.fbx | 970 | 0.3 | shape |
+| threejs_nurbs.fbx | — | 0.3 | refused: Could not read threejs_nurbs.fbx: threejs_nurbs.fbx holds no surfaces (lines or curves onl |
+| babylon_village.glb | 458 | 0.7 | shape |
+| kenney_suburban_building-type-a.glb | 1,174 | 0.3 | shape |
+| kenney_suburban_building-type-k.glb | 1,024 | 0.3 | shape |
+| threejs_LittlestTokyo.glb | 141,802 | 0.6 | shape |
+| kenney_suburban_building-type-a.obj | 2,348 | 0.3 | shape |
+| threejs_colored_binary.stl | 2,156 | 0.3 | shape |
+| threejs_slotted_disk_ascii.stl | 288 | 0.3 | shape |
 
 ## Per file — baseline (7ec8a3b)
 
