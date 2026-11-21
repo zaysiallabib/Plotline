@@ -759,7 +759,7 @@ export class PlotlineScene {
       if (geo && !kept.has(geo)) geo.dispose()
     })
     this.staticGroup.visible = this.furnitureGroup.visible = true
-    this.ceilingGroup.visible = this.mode === 'walk'
+    this.ceilingGroup.visible = this.mode !== 'orbit'
     if (this.shell) this.shell.visible = true
   }
 
@@ -793,7 +793,8 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
-    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night, skyLight(altDeg).exposure)
+    const sky = skyLight(altDeg)
+    if (this.mode === 'building') this.building?.setSun(this.sun, sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -825,14 +826,17 @@ export class PlotlineScene {
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.armed = null
     this.setTowerHover(null)
-    this.ceilingGroup.visible = mode === 'walk'
+    this.ceilingGroup.visible = mode !== 'orbit' // the Dollhouse looks in from above; the Building view sees the fixtures through the glass
     this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
     if (mode === 'building' && this.unit && !this.building) {
-      this.building = Building.for(this.unit)
-      if (this.building) this.scene.add(this.building)
+      this.building = Building.for(this.unit, this.tier)
+      if (this.building) {
+        this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
+        this.scene.add(this.building)
+      }
     }
     if (this.building) this.building.visible = mode === 'building'
     this.look.setStreetY(mode === 'building' ? (this.building?.streetY ?? null) : null) // the tower's street (a traced ground floor's)
@@ -986,6 +990,7 @@ export class PlotlineScene {
   /** A basement / his traced ground floor picked in the Building view: the furnished flat above it hidden, and under ground the street plane (building.ts hides its own floors above it). */
   private cutAbove(on: boolean, street = on): void {
     this.staticGroup.visible = this.furnitureGroup.visible = !on
+    this.ceilingGroup.visible = !on && this.mode !== 'orbit'
     this.look.showGround(!street, !on)
   }
 
@@ -2271,7 +2276,10 @@ export class PlotlineScene {
     const dt = Math.min(raw, 0.1)
     if (this.mode !== 'walk') {
       this.orbit.update()
-      if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+      if (this.mode === 'building' && this.building) {
+        this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+        this.building.update(this.camera.position) // the nearest flats first; Low's furnished storeys
+      }
       // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
       const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
       siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)

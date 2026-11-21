@@ -42,7 +42,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
-| Point at the tower | Washes the storey under the mouse and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
+| Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
 | Click a floor on the tower | Opens the flat there (yours: its Dollhouse), walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
 | **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
@@ -68,11 +68,11 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | The date | The day the sun and the wind's month are shown for; starts on today | the card | everyone | §2 Sun & wind |
 | The time slider (0 to 24) | Moves the sun; coloured by the site's own day | the card | everyone | §2 Sun & wind |
 | **Jan … Dec** | Picks a month; the day moves to it | the card | everyone | §2 Sun & wind |
-| **Lights** | The flat's lamps on / off; automatic after sunset; a click again goes back to automatic | the card | everyone | §2 Sun & wind |
+| **Lights** | The flat's lamps on / off; automatic after sunset; a click again goes back to automatic. In the Building view it lights / darkens your flat's windows (and the picked flat's) | the card | everyone | §2 Sun & wind, §4 |
 | **Wind** / **P** | The wind through the flat this month, on / off | the card; P in Walk, Dollhouse, Building | everyone | §2 Sun & wind |
 | A month's line on the wind rose | Picks that month | the card, Wind on | everyone | §2 Sun & wind |
 | Small map: **×** / **M** / **Map** | Hides it (× shows when the mouse is over it) / brings it back | bottom right in Walk (top right on a phone) | everyone | §2 Small map |
-| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (a thin blue line; your flat's floor has a blue dot); a basement hides what is above. The row under the mouse is white and its storey washed on the tower | Building view, right | everyone | §4 |
+| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (a thin blue line in the list; your flat's floor has a blue dot); on the tower the picked flat is shown brighter, its lamps on at night; a basement hides what is above. The row under the mouse is white and its storey a little brighter on the tower | Building view, right | everyone | §4 |
 | **Walk this level** | Walks the picked ground floor, basement, rooftop or common floor | Building view, under the floors | everyone | §4 |
 | **×** (Finishes) · **×** (Comment) | Closes Finishes (or F, Esc) · stops Comment (or C, Esc) | the panel's top right | everyone | §2 |
 | **Your name** | So the developer knows who asked | Finishes and Comment, buyer links only | buyer | §2 |

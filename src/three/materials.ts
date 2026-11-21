@@ -107,7 +107,7 @@ function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
 const PORE_BLUR = 5
 
 /** Flat colour that stands in for a texture set that is not on disk yet. */
-function fallbackColor(textureId: string): string {
+export function fallbackColor(textureId: string): string {
   if (/wood|oak|teak|deck/.test(textureId)) return '#8a6a4a'
   if (/turf|grass/.test(textureId)) return '#5d7040'
   if (/asphalt|rubber/.test(textureId)) return '#3c3c3c'

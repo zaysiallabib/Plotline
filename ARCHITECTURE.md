@@ -85,8 +85,10 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   (`pieceDayUv`, `lightPiece`), and is relit when it moves; outdoor pieces keep a neutral light. Lamps are the
   furniture's own (a lamp deleted takes its light). The street is the site's real
   blocks or a rule-made Dhaka street (`context.ts`); the Building view draws other flats as shells (`building.ts`) whose
-  windows are drawn cards (curtains, blinds, a room, a light at night by a fixed per-room pattern: `roomLight`), and picks
-  the floor under the pointer (`pickAt`, `floorAtY`); the
+  windows are real glass with each flat's rooms behind them (`interiors.ts`: floors, ceilings, painted walls and the
+  presets' furniture with their colours baked into the vertices — one program, one geometry per drawing shared by every floor,
+  a lamp table per flat for the night pattern `roomLight`), lifts the picked flat by light (a depth-matched skin that
+  multiplies what is behind it), and picks the floor under the pointer (`pickAt`, `floorAtY`; a window names its flat); the
   architect's outside shape is `shell.ts`; the wind lines `wind.ts`.
 - Nothing in `src/three` or `src/furnish` may name a unit, project or room (`greenery.test.ts` enforces it): the look
   comes from rules by kind and geometry, so a traced plan gets everything a built-in one has.

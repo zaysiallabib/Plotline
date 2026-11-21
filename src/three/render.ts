@@ -24,7 +24,7 @@ import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
-import { dayMix, isCovered, LAMP_RANGE, openToSky, setLampShare } from './daylight'
+import { dayMix, isCovered, LAMP_RANGE, lampOut, openToSky, setLampShare } from './daylight'
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
@@ -723,6 +723,11 @@ export class Look {
     const sky = k.fill * (ENV + HEMI)
     dayMix.value = sky / (sky + lamp * (BOUNCE_UP + BOUNCE_DOWN) + 1e-6)
     outdoorFill.value = (HEMI * k.fill) / (HEMI * k.fill + lamp * (BOUNCE_UP + BOUNCE_DOWN) / 2 + 1e-6) // the street gets no lamp bounce
+    // seen from outside (the Building view), the lamps on: their bounce on the flat's own rooms only (daylight.ts lampOut) —
+    // its windows glow as the walk shows the rooms; the Lights button off: dark
+    const out = this.on && this.outside ? 1 : 0
+    lampOut.sky.value.copy(WARM).multiplyScalar(BOUNCE_DOWN * out)
+    lampOut.ground.value.copy(WARM).multiplyScalar(BOUNCE_UP * out)
     // the dome: the photo sky, golden when low, dimming as it sets; then the twilight gradient (as seen ÷ exposure)
     const seen = Math.min(1, k.fill * k.exposure)
     const tint = this.sky.material.color.setRGB(1, 1, 1).lerp(GOLDEN, k.golden).multiplyScalar(seen / k.exposure)
