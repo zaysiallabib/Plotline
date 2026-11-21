@@ -260,7 +260,7 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
   - **Automatic** at first: on while the sun is under 5° (dusk to dawn), off by day; the button is lit while they are
     on. A click turns them the other way; a click again goes back to automatic. This browser remembers it.
   - At night glass faintly mirrors the lit room, the Dollhouse rooms glow inside dark walls, about half the tower's
-    other flats have lit windows in the Building view, and the neighbours light about four windows in ten (Low and
+    rooms have lit windows in the Building view (§4), and the neighbours light about four windows in ten (Low and
     High) — each seen from your window as a room in a warm, neutral or cool light.
 - **Wind** (on the card, or **P** in any view): the wind through the flat this month, as thin lines drifting from where
   it comes in to where it goes out. Again to hide it.
@@ -283,7 +283,7 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
 the corner is softly shaded (every quality). Painted walls have a faint hand-plastered cloudiness and keep exactly the
 colour you chose (Low and High; Lite shows the plain colour); up close at night they are smooth, with no specks. Window
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
-Building view the tower's windows mirror the pale haze it stands in.
+Building view the tower's windows show curtains, blinds or a dim room behind glass that mirrors the pale haze (§4).
 
 **Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
 middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
@@ -355,8 +355,9 @@ steps aside while Finishes or Comment is open.
 - **Walk:** drag one finger on the room to look round (the room follows your finger, like pushing a photo); tap the floor
   to walk there. A long press does nothing, so a resting thumb never moves you; two fingers do nothing in Walk.
 - **Dollhouse and Building:** one finger turns, two fingers pinch to zoom and slide. Tap a room's floor to drop into it
-  (Dollhouse), a flat to open it, or a floor in the list on the right (Building; a tall tower's list scrolls and opens at
-  the picked floor, **Walk this level** under it). Lifting fingers after a pinch never drops you in. Upright, both views
+  (Dollhouse), or a floor in the list on the right (Building; a tall tower's list scrolls and opens at the picked floor,
+  **Walk this level** under it). In the Building view a tap on the tower shows the floor's card; a second tap on it opens
+  it (§4). Lifting fingers after a pinch never drops you in. Upright, both views
   start farther back so the flat or tower fits.
 - **The bar** (screens narrower than 720 px) sits at the bottom in two rows: Walk · Dollhouse · Building, then Finishes,
   Comment, Share, (staff) Edit, ⋯ and the eye, each big enough for a finger, with the Sun & wind pill above it. The
@@ -537,16 +538,31 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
 
 ## 4. The Building view
 
-The whole tower, floor by floor: pick a floor, open a flat, or walk a common level.
+The whole tower, floor by floor: point at a floor to see which it is, open a flat, or walk a common level.
 
+- **Point at the tower.** The storey under the mouse is washed pale, and a small card beside the mouse names it: the
+  floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
+  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat (your own flat: its
+  Dollhouse), walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that
+  floor as the list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **On a phone:** tap a floor and the card shows beside your finger (the storey washed); tap the same floor again to open
+  it. A tap somewhere else names that instead.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,
-  **B2**. The picked floor is the white row and your own flat's floor has a small blue dot; thin blue bands run round
-  the picked floor's flat on the tower.
+  **B2** — the numbers in the large serif letters, Roof / Ground / B1 in small capitals. The floor under the mouse, in the
+  list or on the tower, is the white row and is washed on the tower: point at a row and you see that storey on the
+  building. The picked floor has a thin blue line running to the list's edge, your own flat's floor a small blue dot;
+  thin blue bands run round the picked floor's flat on the tower. A tall tower's list scrolls to keep the picked floor —
+  and the floor under the mouse — in view.
+- **Every window is a home.** By day each window shows what is behind real glass: curtains drawn to the sides or across,
+  a blind part way down, or a dim room, in an aluminium frame, the sky's haze in the glass. At night about half the rooms
+  have a light on — warm, neutral or cool, some flats all dark — and the same ones every time you look. Your own flat's
+  rooms are all lit at night, as its lamps are in the walk: the picked flat is told by its blue bands, never by being
+  darker. The ground floor's lobby and the common floors are lit at night, with bare glass.
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
-- **Click a flat** to open it. Drag to turn, scroll to zoom.
+- Drag to turn, scroll to zoom.
 - **Round the tower:** the made-up street (§2, "Around the flat") or, with a site set, the map's blocks and roads; both
   cast shadows on the tower. A block between you and the tower is left out while you look.
 

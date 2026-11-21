@@ -122,6 +122,13 @@ One accent on the page: the primary button. Everything else is ink on marble.
 - Finishes, Comment, the rooms list, the Sun & wind card, the Edit furniture panel and the library: glass panels,
   320 px wide (`--panel-w`), docked to their button, inscription titles, white picked rows.
 - A picked piece, opening or low wall: the accent line over a white halo (above, "Colour"); a refused spot: terracotta.
+- Building view: the floor rail (glass, right) has the floor numbers in the serif at `--fs-xl` and Roof / Ground / B1 as
+  inscriptions; the floor under the mouse, in the rail or on the tower, is a white row and a frosted-marble wash over that
+  storey on the tower (`building.ts` keeps --bg and --accent as `MARBLE` / `ACCENT`, the night exposure taken out so both
+  look as by day); the picked floor is an accent hairline running to the rail's edge and accent bands on the tower — never a
+  filled block, never darkness. The card beside the pointer (`.tower-card`): `--glass-strong`, the floor in the serif at
+  `--fs-2xl`, the flat and its size as an inscription in `--ink-2`, what a click does in muted 12 px; kept on the screen
+  as a note by its pin is (`noteAt`).
 
 ### Studio (`/studio`)
 - The sheet is marble with the grain; the plan picture sits on it like paper; walls are ink, the selected wall accent,

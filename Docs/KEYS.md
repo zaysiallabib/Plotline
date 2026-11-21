@@ -42,7 +42,8 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
 | Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
-| Click a flat | Opens it | Building | everyone | §4 |
+| Point at the tower | Washes the storey under the mouse and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
+| Click a floor on the tower | Opens the flat there (yours: its Dollhouse), walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
 | **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
@@ -71,7 +72,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Wind** / **P** | The wind through the flat this month, on / off | the card; P in Walk, Dollhouse, Building | everyone | §2 Sun & wind |
 | A month's line on the wind rose | Picks that month | the card, Wind on | everyone | §2 Sun & wind |
 | Small map: **×** / **M** / **Map** | Hides it (× shows when the mouse is over it) / brings it back | bottom right in Walk (top right on a phone) | everyone | §2 Small map |
-| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (white row; your flat's floor has a blue dot); a basement hides what is above | Building view, right | everyone | §4 |
+| Floors: **Roof**, the flat floors, **Ground**, **B1**, **B2** | Picks a floor (a thin blue line; your flat's floor has a blue dot); a basement hides what is above. The row under the mouse is white and its storey washed on the tower | Building view, right | everyone | §4 |
 | **Walk this level** | Walks the picked ground floor, basement, rooftop or common floor | Building view, under the floors | everyone | §4 |
 | **×** (Finishes) · **×** (Comment) | Closes Finishes (or F, Esc) · stops Comment (or C, Esc) | the panel's top right | everyone | §2 |
 | **Your name** | So the developer knows who asked | Finishes and Comment, buyer links only | buyer | §2 |
@@ -110,7 +111,8 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | Tap the floor | Walk there (not while Comment or Finishes is open) | Walk, a finger | everyone | §2 On a phone or tablet |
 | Long press (half a second, still) | Nothing | the 3D, a finger | everyone | §2 On a phone or tablet |
 | One finger · two fingers pinch / drag | Turn · zoom · slide | Dollhouse, Building, a finger | everyone | §2 On a phone or tablet |
-| Tap a room's floor · a flat | Drops you into it · opens it (never after a pinch) | Dollhouse · Building, a finger | everyone | §2 On a phone or tablet |
+| Tap a room's floor | Drops you into it (never after a pinch) | Dollhouse, a finger | everyone | §2 On a phone or tablet |
+| Tap a floor on the tower · tap it again | Shows its card (floor, flat, size) · opens it, as a click does (never after a pinch) | Building, a finger | everyone | §4 |
 | Tap anything | Puts a note on it | Comment on, a finger | everyone | §2 On a phone or tablet |
 | Pull a sheet's **grip** down · **×** | Closes that sheet (Finishes, Comment, Sun & wind, the rooms list, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
 | Tap where the faded bar was | Only brings the bar back (presses nothing) | resting, a phone | everyone | §2 On a phone or tablet |

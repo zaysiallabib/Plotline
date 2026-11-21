@@ -3,16 +3,19 @@
  * Top left: the room you stand in — its floor in small capitals over its name in the serif and its size, no box; click
  * it for the Rooms list (Building view: the floor picked, floorTitle). Top right: one pill — the view switch, Finishes ·
  * Comment · Share, staff's Edit ▾, ⋯ (Clean view, Quality) and the eye (Clean view). Bottom centre: a toast, the hint
- * (fades after a few seconds), a stair's Up / Down, the Sun & wind pill. Building: the floor rail on the right.
+ * (fades after a few seconds), a stair's Up / Down, the Sun & wind pill. Building: the floor rail on the right, and the card
+ * beside the pointer naming the floor (and flat) under it on the tower (TowerCard).
  * Rest: 3 s without the mouse in Walk and everything but the room's name fades (chromeOf). Clean view (H, the eye, ⋯):
  * nothing but a faint dot top right — H, Esc or the dot brings it all back; remembered for the tab. Esc closes an open
  * list or menu. Staff: the dot and the piece in hand. Phones (under 720 px): the pill is a bottom bar, the lists and panels
  * bottom sheets with a grip to pull them down (Grip); under a finger the hint says finger words, never keys (useFinger).
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { sqmToSqft, type Room } from '../core'
 import { levelName, topFloor, type Tower } from '../data/building'
+import type { TowerHit } from '../three/building'
 import type { SceneMode } from '../three/PlotlineScene'
+import { noteAt } from './Notes'
 import { NAME, QUALITIES, read, tab, write, type Quality } from './quality'
 
 /** The piece in hand (ViewerApp, arrange.ts Held): its name, why it may not stay here (null: it may), whether it is anywhere yet, new from the library or not. */
@@ -133,6 +136,13 @@ interface Props {
   onPickFloor: (k: number) => void
   /** Building view: the picked floor is a level (ground, basement, rooftop): walk it; null: no button */
   onWalkLevel: (() => void) | null
+  /** the flat's tower (the card's words); null: none */
+  tower?: Tower | null
+  /** Building view: what the pointer is over on the tower and where (client px): the card beside it; null: none */
+  hover?: (TowerHit & { x: number; y: number }) | null
+  /** Building view: the floor under the mouse — on the tower or in the floor list — washed in both */
+  hovered?: number | null
+  onHoverFloor?: (k: number | null) => void
   finishesOpen: boolean
   commenting: boolean
   /** the Sun & wind card open (not just its pill): a panel, so the chrome does not rest */
@@ -174,6 +184,50 @@ interface Props {
 const sqft = (sqm: number) => Math.round(sqmToSqft(sqm))
 /** the Building rail's words: R → Roof, G → Ground; floors and basements as they are (8, B1) */
 export const floorWord = (label: string): string => (label === 'R' ? 'Roof' : label === 'G' ? 'Ground' : label)
+/** A row of the floor rail: a floor's number in the serif ("8"); the roof, the ground and a basement as an inscription (ROOF, GROUND, B1). */
+export const railWord = (label: string): { text: string; serif: boolean } => ({ text: floorWord(label), serif: /^\d+$/.test(label) })
+
+/**
+ * The card beside the pointer on the tower: the floor's word as its title (Floor 4, Ground floor, Basement 1, Rooftop) and,
+ * over a flat, the flat's name and its size from the plan ("Type B · 2736 sft"); over a level, its name when that says more
+ * than the word. `act`: what a click (a finger: a second tap) does there — open the flat, walk the level, or pick the floor.
+ */
+export function towerCard(t: Tower, h: TowerHit, finger: boolean): { title: string; line?: string; act: string } {
+  const title = h.k <= 0 || h.k > topFloor(t) ? levelName(t, h.k) : `Floor ${h.k}`
+  const f = t.FLOORS.find((x) => x.floor === h.k)
+  const level = f?.standIns?.find((s) => t.LEVELS?.[s] !== undefined)
+  const u = h.flat ? t.FLATS[h.flat.stem]?.unit : level ? t.FLATS[level].unit : null
+  const line = !u || u.name === title ? undefined : /sft/i.test(u.name) || !(u.areaSqft > 0) ? u.name : `${u.name} · ${u.areaSqft} sft`
+  const tap = finger ? 'Tap again' : 'Click'
+  return { title, line, act: h.flat ? `${tap} to open it` : level ? `${tap} to walk it` : `${tap} to pick this floor` }
+}
+
+/** The card beside the pointer on the tower (towerCard): it follows the mouse while it shows; a tap puts it by the finger, beside it where it fits, else over it. */
+function TowerCard({ t, hover, finger }: { t: Tower; hover: TowerHit & { x: number; y: number }; finger: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const c = towerCard(t, hover, finger)
+  useLayoutEffect(() => {
+    const place = (x: number, y: number) => {
+      const el = ref.current
+      if (!el) return
+      // beside it, kept on the screen as a note by its pin is — and off the floor list: left of it, the list's edge is the screen's
+      const rail = document.querySelector('.floor-rail')?.getBoundingClientRect()
+      const { dx, dy } = noteAt(x, y, rail && x < rail.left ? rail.left : innerWidth, innerHeight, el.offsetWidth, el.offsetHeight)
+      el.style.transform = `translate(${x + dx}px, ${y + dy}px)`
+    }
+    place(hover.x, hover.y)
+    const move = (e: PointerEvent) => e.pointerType === 'mouse' && place(e.clientX, e.clientY)
+    addEventListener('pointermove', move)
+    return () => removeEventListener('pointermove', move)
+  }, [hover, c.title, c.line, c.act])
+  return (
+    <div ref={ref} className="tower-card" role="status">
+      <div className="tower-card-title display">{c.title}</div>
+      {c.line && <div className="label">{c.line}</div>}
+      <div className="tower-card-act">{c.act}</div>
+    </div>
+  )
+}
 
 export interface FloorTitle {
   /** over the name: the floor ("Floor 2", "Ground floor"); none when the name says it already */
@@ -204,14 +258,14 @@ export function floorTitle(t: Tower, k: number, stem: string): FloorTitle {
 export function hintOf(p: { mode: SceneMode; locked: boolean; staff: boolean; arranging: boolean; editingOpenings: boolean; holding: boolean; finger?: boolean }): string | null {
   const walk = p.mode === 'walk'
   if (p.finger) {
-    if (p.mode === 'building') return 'Tap a flat to open it · drag to turn · pinch to zoom'
+    if (p.mode === 'building') return 'Tap a floor to name it, again to open it · drag to turn · pinch to zoom'
     if (p.holding) return null
     if (p.editingOpenings) return `Tap a door, window, passage or low wall · drag it · drag a dot to resize${walk ? ' · drag the room to look' : ''}`
     if (p.arranging) return `Drag a piece to move it · the panel turns, removes and undoes${walk ? ' · drag the room to look' : ''}`
     if (!walk) return 'Drag to turn · pinch to zoom · tap a room’s floor to walk in it'
     return 'Drag to look · tap the floor to walk there'
   }
-  if (p.mode === 'building') return 'Click a flat to open it · drag to turn · scroll to zoom · O back to Walk'
+  if (p.mode === 'building') return 'Point at a floor to name it · click to open it · drag to turn · scroll to zoom · O back to Walk'
   if (p.holding) return null
   if (p.editingOpenings) return `Click a door, window, passage or low wall · drag it · drag a dot to resize · Del removes · Ctrl+Z undoes${walk ? ' · drag the room to look' : ''}`
   if (p.arranging) return `Drag a piece, or G on it · R turns · Ctrl+Z undoes · Esc lets go${walk ? ' · drag the room to look, WASD to walk' : ''}`
@@ -346,6 +400,10 @@ export default function Hud(p: Props) {
   // the floors list: the picked floor scrolled into sight (a phone shows only part of a tall tower's list)
   const rail = useRef<HTMLDivElement>(null)
   useEffect(() => rail.current?.querySelector('.rail-item.on')?.scrollIntoView({ block: 'nearest' }), [p.picked, p.mode])
+  // and the floor under the mouse on the tower (not while the mouse is in the list itself: it would scroll under it)
+  useEffect(() => {
+    if (p.hover && !rail.current?.matches(':hover')) rail.current?.querySelector('.rail-item.hover')?.scrollIntoView({ block: 'nearest' })
+  }, [p.hover, p.hovered])
   const finger = useFinger()
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
   const hint = p.going ?? hintOf({ ...p, holding: !!p.hand, finger })
@@ -507,17 +565,30 @@ export default function Hud(p: Props) {
       </div>
 
       {p.hand && p.mode !== 'building' && <HandTag hand={p.hand} locked={p.locked} finger={finger} />}
+      {p.mode === 'building' && p.tower && p.hover && <TowerCard t={p.tower} hover={p.hover} finger={finger} />}
       {p.staff && p.locked && p.mode === 'walk' && <div className="dot" />}
       {p.mode === 'building' && p.floors && (
         <div className="floor-rail">
           <div ref={rail} className="glass rail" role="group" aria-label="Floors">
             <div className="menu-head label">Floors</div>
-            {p.floors.map(({ k, label }) => (
-              <button key={k} className={`rail-item${p.picked === k ? ' on' : ''}`} aria-pressed={p.picked === k} title={p.floor === k ? 'Your flat’s floor' : undefined} onClick={() => p.onPickFloor(k)}>
-                {floorWord(label)}
-                {p.floor === k && <span className="own" aria-label="your flat" />}
-              </button>
-            ))}
+            {p.floors.map(({ k, label }) => {
+              const w = railWord(label)
+              return (
+                <button
+                  key={k}
+                  className={`rail-item${p.picked === k ? ' on' : ''}${p.hovered === k ? ' hover' : ''}`}
+                  aria-pressed={p.picked === k}
+                  title={p.floor === k ? 'Your flat’s floor' : undefined}
+                  onClick={() => p.onPickFloor(k)}
+                  onPointerEnter={(e) => e.pointerType === 'mouse' && p.onHoverFloor?.(k)}
+                  onPointerLeave={(e) => e.pointerType === 'mouse' && p.onHoverFloor?.(null)}
+                >
+                  <span className={w.serif ? 'rail-n display' : 'rail-w'}>{w.text}</span>
+                  <span className="rail-line" aria-hidden="true" />
+                  {p.floor === k && <span className="own" aria-label="your flat" />}
+                </button>
+              )
+            })}
           </div>
           {p.onWalkLevel && (
             <button className="btn primary" onClick={p.onWalkLevel}>
