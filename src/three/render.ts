@@ -300,6 +300,9 @@ const BATTEN = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#f3
  */
 const SWITCHES = new URLSearchParams(globalThis.location?.search ?? '')
 export const switchedOff = (name: 'ao' | 'shadows'): boolean => SWITCHES.get(name) === '0'
+/** The corner shading's buffer for a w × h CSS-pixel picture drawn at `ratio` (Look.setSize): the CSS pixels, never more than the picture's own. */
+export const aoSize = (w: number, h: number, ratio: number): [number, number] => [Math.round(w * Math.min(1, ratio)), Math.round(h * Math.min(1, ratio))]
+
 /** `?scale=0.5` … `?scale=2`: the picture's pixels forced (pixelRatioFor), to compare costs; null: the tier's own */
 export const forcedScale = (): number | null => {
   const v = Number(SWITCHES.get('scale'))
@@ -826,9 +829,15 @@ export class Look {
     cam.updateProjectionMatrix()
   }
 
+  /**
+   * The picture's size in CSS pixels. The corner shading (GTAO) is worked out at the CSS pixels, never more (session 31 perf:
+   * on a sharp screen High draws twice the pixels each way, and the shading was 27 of a 44 ms frame there; it is soft by
+   * nature — one sample a CSS pixel reads the same, and a screen at 1× is drawn exactly as before).
+   */
   setSize(w: number, h: number): void {
     this.composer?.setPixelRatio(this.renderer.getPixelRatio()) // the composer keeps the ratio it was made with
     this.composer?.setSize(w, h)
+    this.ao?.setSize(...aoSize(w, h, this.renderer.getPixelRatio()))
   }
 
   render(): void {

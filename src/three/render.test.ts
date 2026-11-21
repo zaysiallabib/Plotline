@@ -1,6 +1,6 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, twilight } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -150,5 +150,14 @@ describe('lamps', () => {
     // a lamp never in a caster's place, even with no ceiling light left for it
     expect(assignPool([fx[2]], { x: 1, z: 0 }, 4, 3)).toEqual([-1, -1, -1, 0])
     expect(assignPool([], { x: 1, z: 0 }, 4, 3)).toEqual([-1, -1, -1, -1])
+  })
+})
+
+describe('the corner shading on a sharp screen (session 31 perf)', () => {
+  test('worked out at the CSS pixels, never more: a 2× screen shades a quarter of the pixels it draws, a 1× screen as before', () => {
+    expect(aoSize(1440, 900, 2)).toEqual([1440, 900])
+    expect(aoSize(1440, 900, 1.5)).toEqual([1440, 900])
+    expect(aoSize(1440, 900, 1)).toEqual([1440, 900])
+    expect(aoSize(1440, 900, 0.75)).toEqual([1080, 675]) // a smaller picture: its own pixels
   })
 })
