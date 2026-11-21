@@ -260,3 +260,54 @@ corner shading), so they stay light copies too.
   here, less in Chrome.
 - **None of this was measured on the founder's laptop.** Every number is this PC's card with other runs sharing it. The
   stats card (⋯ → How fast is it here?) is how we get his.
+
+## 6. The sun's shadow over the grounds and the road (session 31, shade lane)
+
+**What changed.** Until now only the flat's own surroundings were in the sun's shadow picture: out of a window, in the
+Dollhouse or the Building view, the lawn, the play area, the pool deck, the driveway, the road and the neighbours' walls
+stood evenly sunlit at every hour. On High, round a flat that stands in its building, there is now a second, wide
+shadow picture over the whole site — 100 m round the flat each way, from the street up 100 m, 2048 × 2048 (about 14 cm a
+point) — beside the flat's own sharp one: every surface reads the sharp picture where it reaches (the flat stays
+exactly as sharp as before) and the wide one past it, the two fading into each other over a hand's width so no seam
+shows. Low and Lite have no second picture: they draw and cost exactly what they did, and so does a flat on its own (a
+Studio draft that is not part of a building: the street under it would have taken a second shadow of it).
+
+**Why a second picture and not a painted-in ground.** Painting the ground's shadow in per hour (the way the daylight is
+painted into the rooms) is also one picture read per pixel, so a frame costs the same either way — but the wide picture
+is drawn by the graphics chip in one go whenever the hour changes (no wait, nothing to work out on the processor), it
+shades the neighbours' walls and the tower's own front as well as the ground, and it follows anything that moves.
+
+**How it was kept cheap.** The wide picture is read four times a pixel half a point apart (three's own way is five reads at
+random turns, which left a fine grain on the facades; one read showed stair-steps), a face turned away from the sun
+reads no shadow picture at all (its sunlight is 0 anyway), and while the hour is dragged the wide picture is drawn again
+on every fourth frame only, and on the first frame the hour rests (it is the dearer redraw). Both pictures are still
+drawn only when what they see changes, never while you just look or walk. It holds about 32 MB of graphics memory.
+
+The wide picture on and off inside one page, turn about (on = this lane, off = exactly the tree before it), High, 1440 × 900,
+15:30, the median of 6 rounds; "the 3D's draw" waited for until the card finished; "difference" = each round's on minus
+the off just before it, their median (a card shared with other runs moved both):
+
+| view | flat (floor 2) | the 3D's draw, off → on (ms) | difference (ms) | draw calls a frame | shadow redraw when the hour changes (calls) |
+|---|---|---|---|---|---|
+| Walk, living-room window, looking across | Sheltech A | 12.24 → 11.54 | −0.30 | 53 → 53 | 320 → 478 |
+| Walk, Bed 2's window, looking down | Sheltech A | 14.42 → 14.22 | −0.18 | 127 → 127 | 320 → 478 |
+| Walk, a window | Type A | 12.16 → 12.70 | +0.32 | 50 → 50 | 236 → 392 |
+| Dollhouse, a full turn | Sheltech A | 16.26 → 16.42 | +0.36 | 330 → 330 | 315 → 471 |
+| Dollhouse, a full turn | Type A | 13.46 → 15.46 | +1.56 | 196 → 196 | 232 → 386 |
+| Walk, the hour dragged (a new hour every frame) | Sheltech A | 16.28 → 15.68 | +0.10 | 377 → 377 (median frame) | — |
+| Walk, the hour dragged | Type A | 14.68 → 20.38 | +1.58 | 289 → 289 (median frame) | — |
+| Building view, a full turn (its furniture all in) | Sheltech A | 19.76 → 19.90 | −0.24 | 627 → 627 | 1194 → 1743 |
+| Building view, a full turn | Type A | 18.84 → 20.46 | +0.06 | 251 → 251 | 277 → 449 |
+
+Within the budget the founder's brief set (≤ +1.5 ms a frame in Walk at a window, ≤ +2 ms in the Dollhouse): Walk
+−0.3 to +0.3 ms, the Dollhouse +0.4 to +1.6 ms, the Building view within ±0.3 ms (8 rounds; single rounds of either
+jump by up to 10 ms when another run takes the card). Measured again on the tree merged with the session branch, with
+another lane's browsers on the same card: Walk −0.8 to +1.1 ms, the Dollhouse +0.6 / +1.7 ms, the Building view −1.8 /
+−0.1 ms — the same within that noise. The draw calls of a frame are the same (the wide picture is not drawn while you
+look); what grows is the redraw when the hour changes (+150 to +530 calls, once). Low and Lite: no change (their
+window pictures came out identical to the last byte).
+
+Shots, before | after side by side: `E:/dev/plotline-shots/s31/shade/final/pairs-*.png` — Sheltech A floor 2 at two
+windows at 09:00, 12:00, 15:30 and 17:00, its Dollhouse and Building view at 15:30, Type A floor 2's Dollhouse at 09:00
+and 15:30, a flat on its own. The old single picture also showed its own edge: past it the ground and the walls were
+lit, so a lit polygon of street sat in the middle of a shaded one (Bed 2's window, 15:30 and 17:00); that edge is gone.
