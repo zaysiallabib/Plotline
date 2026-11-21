@@ -673,9 +673,14 @@ export class Building extends THREE.Group {
   }
   /** a batchAround waiting for its AROUND_MS */
   private pending = false
+  /** furnishPieces is adding a level's pieces (batchNow waits) */
+  private addingPieces = false
   private batchNow = (): void => {
     this.pending = false
     if (!this.around || this.disposed) return
+    // a level's pieces still coming in: merged into the whole tower now, they missed their own 8 m batches (batched away from
+    // them) and ended in the tower's one uncullable mesh — Sheltech's Walk drew 29 k triangles more (session 31 start lane)
+    if (this.addingPieces) return this.batchAround()
     this.unbatchAround()
     const before: THREE.Object3D[] = []
     this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
@@ -934,6 +939,7 @@ export class Building extends THREE.Group {
     )
     for (const f of this.furnishing) {
       const { s, group } = f
+      this.addingPieces = true
       const pieces = (f.pieces = new THREE.Group())
       pieces.visible = this.piecesShown
       group.add(pieces)
@@ -958,6 +964,7 @@ export class Building extends THREE.Group {
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
       batch(pieces, CELL_M)
       this.casts(pieces, true)
+      this.addingPieces = false
       this.batchAround()
     }
     this.piecesDone = true

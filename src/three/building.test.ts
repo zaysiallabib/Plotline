@@ -868,6 +868,11 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     b.frame('building', 'low')
     b.frame('walk', 'low')
     expect(drawn()).toBe(one)
+    const adding = b as unknown as { addingPieces: boolean }
+    adding.addingPieces = true // a level's pieces still coming in (furnishPieces): the tower waits, so they get their own 8 m batches
+    b.settleNow()
+    expect(drawn()).toBe(one)
+    adding.addingPieces = false
     b.settleNow()
     expect(drawn()).toBe(batched)
     // (session 31 start lane) placed again in the same view (Enter, a Rooms jump): the batches stand, nothing is made again
