@@ -244,6 +244,8 @@ export class Building extends THREE.Group {
   /** the picked flat's lift and the hover's (liftMeshes): everything of it seen from outside brighter, their skins per floor once made */
   private readonly lift = liftMeshes(1000)
   private readonly hoverLift = liftMeshes(1000)
+  /** both lifts: drawn over the tower, never cut, never picked */
+  private readonly overlay = new THREE.Group()
   private readonly washes = new Map<number, THREE.BufferGeometry>()
   private washed: number | null = null
   /** the floor picked (highlight) and its flats (their lamps are on); under the street only a picked basement is seen (the street plane hides the rest) */
@@ -434,7 +436,9 @@ export class Building extends THREE.Group {
     this.add(this.street)
 
     // the picked flat's lift and the hover's: drawn last, over everything of theirs that is seen (liftMeshes)
-    for (const m of [...this.lift.meshes, ...this.hoverLift.meshes]) this.add(m)
+    this.overlay.add(...this.lift.meshes, ...this.hoverLift.meshes)
+    this.overlay.userData.overlay = true
+    this.add(this.overlay)
     this.hoverLift.show(false)
     this.eye.copy(this.view(floor).eye)
     this.highlight(floor)
@@ -899,7 +903,6 @@ function liftMeshes(order: number) {
     const x = new THREE.Mesh(geo, m)
     x.renderOrder = order + i // both lifts' depths before either's colour
     x.raycast = () => {}
-    x.userData.overlay = true
     return x
   })
   let on = true
