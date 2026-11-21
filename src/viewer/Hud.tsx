@@ -210,7 +210,9 @@ function TowerCard({ t, hover, finger }: { t: Tower; hover: TowerHit & { x: numb
     const place = (x: number, y: number) => {
       const el = ref.current
       if (!el) return
-      const { dx, dy } = noteAt(x, y, innerWidth, innerHeight, el.offsetWidth, el.offsetHeight) // beside it, kept on the screen (as a note by its pin)
+      // beside it, kept on the screen as a note by its pin is — and off the floor list: left of it, the list's edge is the screen's
+      const rail = document.querySelector('.floor-rail')?.getBoundingClientRect()
+      const { dx, dy } = noteAt(x, y, rail && x < rail.left ? rail.left : innerWidth, innerHeight, el.offsetWidth, el.offsetHeight)
       el.style.transform = `translate(${x + dx}px, ${y + dy}px)`
     }
     place(hover.x, hover.y)
