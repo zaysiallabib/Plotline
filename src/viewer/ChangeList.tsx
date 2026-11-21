@@ -40,7 +40,7 @@ export default function ChangeList() {
       .then((o) => live && setOrg(o))
       .catch(() => live && setOrg(null))
     return () => void (live = false)
-  }, [session?.user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session === undefined, session?.user.id]) // eslint-disable-line react-hooks/exhaustive-deps -- not checked yet → signed out is a change too (the id is undefined both times): else the staff-key form never shows
 
   /** the company's list when signed in to one, else the old staff key's */
   const load = useCallback(async (k: string, member: boolean) => {
