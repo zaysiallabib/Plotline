@@ -23,7 +23,7 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(g.scene) : g.scene))
+    p = loader.loadAsync(url).then((g) => plainGlass(lite.on ? colourOnly(g.scene) : g.scene))
     gltfCache.set(url, p)
   }
   return p
@@ -40,6 +40,23 @@ export const preloadModels = (ps: FurniturePlacement[]): Promise<unknown> =>
       loadModel(a.url).catch(() => null),
     ),
   )
+
+/**
+ * A scan's see-through glass (KHR_materials_transmission: the wall clock's face) as plain glass, once per model: while one
+ * transmissive surface is in view three draws everything opaque a second time each frame for its refraction picture — the
+ * whole flat, and the tower round it in the Building view, twice for a clock face (session 31 glow: 2 draws of every
+ * mesh on every tier). The walk's panes made the same choice (openings.ts GLASS).
+ */
+export function plainGlass<T extends THREE.Object3D>(model: T): T {
+  model.traverse((o) => {
+    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshPhysicalMaterial[]) {
+      if (!(m.transmission > 0)) continue
+      Object.assign(m, { transmission: 0, transparent: true, opacity: Math.min(m.opacity, 0.15), depthWrite: false })
+      m.needsUpdate = true
+    }
+  })
+  return model
+}
 
 /** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
 export function colourOnly<T extends THREE.Object3D>(model: T): T {

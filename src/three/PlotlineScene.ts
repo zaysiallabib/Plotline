@@ -793,7 +793,8 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
-    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night, skyLight(altDeg).exposure)
+    const sky = skyLight(altDeg)
+    if (this.mode === 'building') this.building?.setSun(this.sun, sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -831,8 +832,11 @@ export class PlotlineScene {
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
     if (mode === 'building' && this.unit && !this.building) {
-      this.building = Building.for(this.unit)
-      if (this.building) this.scene.add(this.building)
+      this.building = Building.for(this.unit, this.tier)
+      if (this.building) {
+        this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
+        this.scene.add(this.building)
+      }
     }
     if (this.building) this.building.visible = mode === 'building'
     this.look.setStreetY(mode === 'building' ? (this.building?.streetY ?? null) : null) // the tower's street (a traced ground floor's)
@@ -2271,7 +2275,10 @@ export class PlotlineScene {
     const dt = Math.min(raw, 0.1)
     if (this.mode !== 'walk') {
       this.orbit.update()
-      if (this.mode === 'building' && this.building) this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+      if (this.mode === 'building' && this.building) {
+        this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
+        this.building.update(this.camera.position) // the nearest flats first; Low's furnished storeys
+      }
       // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
       const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
       siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)
@@ -2353,9 +2360,13 @@ export class PlotlineScene {
     return k
   }
 
-  /** one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded; judged once (render.ts slowFrames) */
+  /**
+   * one frame time (drawn right after another, the page in view), from WARM_MS after the furniture loaded, not while the
+   * Building view's tower is still filling in its rooms (loading work, not drawing); judged once (render.ts slowFrames)
+   */
   private sample(ms: number, now: number): void {
     if (!this.frameMs || !this.loadedAt || now < this.loadedAt + WARM_MS || ms > LOST_FRAME_MS || document.visibilityState === 'hidden') return
+    if (this.mode === 'building' && this.building?.busy) return
     this.frameMs.push(ms)
     const slow = slowFrames(this.frameMs)
     if (slow === null) return

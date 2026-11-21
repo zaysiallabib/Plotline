@@ -260,8 +260,10 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
   - **Automatic** at first: on while the sun is under 5° (dusk to dawn), off by day; the button is lit while they are
     on. A click turns them the other way; a click again goes back to automatic. This browser remembers it.
   - At night glass faintly mirrors the lit room, the Dollhouse rooms glow inside dark walls, about half the tower's
-    rooms have lit windows in the Building view (§4), and the neighbours light about four windows in ten (Low and
+    rooms have a lamp on in the Building view (§4), and the neighbours light about four windows in ten (Low and
     High) — each seen from your window as a room in a warm, neutral or cool light.
+  - In the Building view the button does the same from outside: your flat's rooms glow through its windows with the
+    lamps on and go dark with them off (and the picked flat's, when you picked another floor).
 - **Wind** (on the card, or **P** in any view): the wind through the flat this month, as thin lines drifting from where
   it comes in to where it goes out. Again to hide it.
   - The lines fill the opening the wind comes in by: 3 to 5 rows one above the other, about one every 60 cm across it.
@@ -283,7 +285,7 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
 the corner is softly shaded (every quality). Painted walls have a faint hand-plastered cloudiness and keep exactly the
 colour you chose (Low and High; Lite shows the plain colour); up close at night they are smooth, with no specks. Window
 glass has the faint green-grey of real glass and mirrors the sky; the neighbours' windows read as glass, and in the
-Building view the tower's windows show curtains, blinds or a dim room behind glass that mirrors the pale haze (§4).
+Building view every window of the tower is real glass with that flat's own rooms and furniture behind it (§4).
 
 **Furniture is as bright as the room it stands in** (every quality). A piece takes the light of the floor under its
 middle: a wardrobe in a windowless closet or the basin in a windowless toilet is as dim as the walls round it, a sofa by
@@ -540,24 +542,34 @@ Works in Walk and Dollhouse; the mouse stays free, so drag empty space to look r
 
 The whole tower, floor by floor: point at a floor to see which it is, open a flat, or walk a common level.
 
-- **Point at the tower.** The storey under the mouse is washed pale, and a small card beside the mouse names it: the
+- **Point at the tower.** The storey under the mouse turns a little brighter, and a small card beside the mouse names it: the
   floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
   size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat (your own flat: its
   Dollhouse), walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that
   floor as the list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
-- **On a phone:** tap a floor and the card shows beside your finger (the storey washed); tap the same floor again to open
+- **On a phone:** tap a floor and the card shows beside your finger (the storey brighter); tap the same floor again to open
   it. A tap somewhere else names that instead.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,
   **B2** — the numbers in the large serif letters, Roof / Ground / B1 in small capitals. The floor under the mouse, in the
-  list or on the tower, is the white row and is washed on the tower: point at a row and you see that storey on the
-  building. The picked floor has a thin blue line running to the list's edge, your own flat's floor a small blue dot;
-  thin blue bands run round the picked floor's flat on the tower. A tall tower's list scrolls to keep the picked floor —
-  and the floor under the mouse — in view.
-- **Every window is a home.** By day each window shows what is behind real glass: curtains drawn to the sides or across,
-  a blind part way down, or a dim room, in an aluminium frame, the sky's haze in the glass. At night about half the rooms
-  have a light on — warm, neutral or cool, some flats all dark — and the same ones every time you look. Your own flat's
-  rooms are all lit at night, as its lamps are in the walk: the picked flat is told by its blue bands, never by being
-  darker. The ground floor's lobby and the common floors are lit at night, with bare glass.
+  list or on the tower, is the white row and is a little brighter on the tower: point at a row and you see that storey on
+  the building. The picked floor has a thin blue line running to the list's edge, your own flat's floor a small blue dot.
+  A tall tower's list scrolls to keep the picked floor — and the floor under the mouse — in view.
+- **The picked flat is lit.** On the tower the picked flat — everything of it you see from outside: its walls, its
+  balcony fronts, its window frames and the rooms through its glass — is shown about a fifth brighter than the rest, by
+  day and by night, from every side; at night its lamps are on too (the **Lights** button turns them off). No lines, no
+  colour: the floor under the mouse turns brighter too, but less. Pick another floor and the light moves to it.
+- **Every window is a home.** Behind every window of every flat are its real rooms: the floors, the ceilings and the
+  walls in their paint, and the furniture the walk lays out (beds, sofas, tables, wardrobes, curtains) — each floor as
+  staff left it: floor 5's blue bedroom is blue from the street, floor 4's next to it white. The glass is real
+  glass in an aluminium frame, mirroring the sky's haze at a slant; your own flat's furnished rooms show through its
+  glass too. By day the rooms read a little darker than the street, with sun patches on the floors; at night about half
+  the rooms have a lamp on — warm, neutral or cool, some flats all dark — the same ones every time you look. The ground
+  floor's lobby and the common floors have their rooms and furniture too, lit at night.
+  - The tower shows first; the rooms fill in within a moment, the nearest flats first, then the furniture flat by flat.
+  - By quality: **High** furnishes every flat; **Low** shows every flat's rooms and furnishes the three storeys
+    nearest you (it follows you as you turn the tower) and the floor you picked; **Lite** shows every flat's rooms without furniture.
+  - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
+    seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
@@ -1283,6 +1295,9 @@ Things that are confusing or not finished. Each one is a job on the list.
   from the room list; jumping to a lawn can leave you in a corner facing a wall.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio (on a floor plan that is
   on one floor only: there F and the 3D view share one layout).
+- In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
+  floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
+  things (a vase, a book) are left out of the other flats.
 - A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
   buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
