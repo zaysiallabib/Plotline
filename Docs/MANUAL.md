@@ -567,7 +567,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   - The tower shows first; the rooms fill in within a moment, the nearest flats first, then the furniture flat by flat.
   - By quality: **High** furnishes every flat; **Low** shows every flat's rooms and furnishes the three storeys
     nearest you (it follows you as you turn the tower); **Lite** shows every flat's rooms without furniture.
-  - Small things (a vase, a book) are left out of the other flats: from the street they are not seen.
+  - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
+    seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
@@ -1293,6 +1294,9 @@ Things that are confusing or not finished. Each one is a job on the list.
   from the room list; jumping to a lawn can leave you in a corner facing a wall.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio (on a floor plan that is
   on one floor only: there F and the 3D view share one layout).
+- In the Building view the other flats show their rooms and furniture as the floor plan lays them out: a flat whose
+  finishes or furniture were changed for that floor alone shows the change only once opened. Rugs, potted plants and
+  small things (a vase, a book) are left out of the other flats.
 - A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
   buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides

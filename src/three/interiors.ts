@@ -18,7 +18,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Room, Unit } from '../core'
 import { finishSlotsFor } from '../furnish/finishes'
-import { placementSize } from '../furnish/kit'
+import { kitAsset, placementSize } from '../furnish/kit'
 import { textureSet } from '../furnish/textures'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { KERB_M, floorGeometry, liftWall, liftedWall, roomCeiling, wallGeometry, wallLift } from './details'
@@ -29,10 +29,21 @@ import { fallbackColor, resolveFinishRef, texture } from './materials'
 export const DAY_INSIDE = 0.35
 /** a lit room's lamp (scene units, × its surfaces' colour): the pick lane's lit windows' strength (building.ts) */
 export const LAMP_GLOW = 0.2
-/** the lining in front of each wall face (m): the shell's own face behind it is never seen, no two faces in one plane */
-const LINING_M = 0.01
-/** pieces smaller than this every way are left out (a vase, a book, a cushion's bolster): not seen from the street */
+/**
+ * The lining in front of each wall face (m): the shell's own face behind it is never seen, no two faces in one plane. Seen
+ * from the street 100 m off one depth step is ≈ 1 cm: 2 cm, and the ceiling GAP_M under the slab, keep them apart; the
+ * floors, in the plate's own top, win by the material's depth offset (interiorMaterial).
+ */
+const LINING_M = 0.02
+const GAP_M = 0.04
+/** pieces smaller than this every way are left out (a vase, a book, a cushion's bolster): not seen from the street; and a rug or a mat (FLAT_M high): it would flicker against its floor from afar */
 const SMALL_M = 0.25 // ponytail: a size cut, not a view-dependent level of detail; per-piece LOD if close orbits show the gap
+const FLAT_M = 0.05
+/** a scanned plant (furnish/kit.ts category 'plant', not code-built): ~70k triangles a pot — 9 in 10 of a flat's — for a few leaves seen through a window (Low and Lite never load it anyway) */
+const scannedPlant = (assetId: string) => {
+  const a = kitAsset(assetId)
+  return !!a && a.category === 'plant' && !a.url.startsWith('procedural:')
+}
 
 /** every flat's sky share and sun inside (building.ts setSun): the sun 0 without shadow maps (Lite: it would pour through every ceiling) */
 export const inside = { day: { value: DAY_INSIDE }, sun: { value: 1 } }
@@ -169,7 +180,7 @@ export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floor
     if (floors) out.push(plainPart(floorGeometry(r, u), i, cols[i][0]))
     const c = floorGeometry(r, u)
     const p = c.attributes.position
-    const y = Math.min(roomCeiling(r, u, rooms), wallM) - LINING_M
+    const y = Math.min(roomCeiling(r, u, rooms), wallM) - GAP_M
     for (let k = 0; k < p.count; k++) p.setY(k, y)
     const idx = Array.from(c.index!.array)
     for (let k = 0; k + 2 < idx.length; k += 3) [idx[k + 1], idx[k + 2]] = [idx[k + 2], idx[k + 1]] // facing down
@@ -258,7 +269,7 @@ function bake(m: THREE.Mesh, room: number, out: THREE.BufferGeometry[]): void {
 
 /**
  * A drawing's furniture (its own frame) by the walk's presets, indoor rooms only (a level's outdoor pieces are its own:
- * building.ts furnish), pieces under SMALL_M left out, baked as interior parts — a piece at a time, `pause` between them (the
+ * building.ts furnish), pieces under SMALL_M, rugs and scanned plants left out, baked as interior parts — a piece at a time, `pause` between them (the
  * caller's frame budget; true: stop, the tower is gone). null: nothing to show.
  */
 export async function furnitureGeometry(u: Unit, rooms: Room[], pause: () => Promise<boolean>): Promise<THREE.BufferGeometry | null> {
@@ -269,7 +280,7 @@ export async function furnitureGeometry(u: Unit, rooms: Room[], pause: () => Pro
     const i = index.get(p.roomId)
     const r = i === undefined ? undefined : rooms[i]
     const size = placementSize(p)
-    if (p.removed || !indoor(r) || Math.max(size.x, size.y, size.z) < SMALL_M) continue
+    if (p.removed || !indoor(r) || Math.max(size.x, size.y, size.z) < SMALL_M || size.y < FLAT_M || scannedPlant(p.assetId)) continue
     const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
     obj.updateMatrixWorld(true)
     obj.traverseVisible((o) => void ((o as THREE.Mesh).isMesh && bake(o as THREE.Mesh, i!, out)))
@@ -303,7 +314,8 @@ export function setLamp(t: THREE.DataTexture, i: number, level: number, tint: nu
  * less on the walls, least on the ceiling. Both faces (a curtain's back). Every flat's is the same program.
  */
 export function interiorMaterial(lamps: THREE.DataTexture, scale: { value: number }): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide })
+  // pulled a little toward the eye: a floor lies in its plate's top, and must win it from the street too
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, { towerLamps: { value: lamps }, towerLampScale: scale, towerDay: inside.day, towerSun: inside.sun })
     s.vertexShader = `attribute float towerRoom;\nuniform sampler2D towerLamps;\nuniform float towerLampScale;\nvarying vec3 vTowerLamp;\n${s.vertexShader}`.replace(

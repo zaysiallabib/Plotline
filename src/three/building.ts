@@ -883,7 +883,9 @@ export function flatLamps(home: string, rooms: Room[], how: 'picked' | 'level' |
  */
 function liftMeshes(order: number) {
   const pass = (kind: 0 | 1 | 2) => {
-    const m = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, toneMapped: false, depthWrite: kind === 0, colorWrite: kind !== 0, depthFunc: kind === 0 ? THREE.LessEqualDepth : THREE.EqualDepth })
+    // (all three pulled the same way toward the eye: the skin wins the wall it lies 2 cm off from the street too, and the
+    // colour passes still meet the depth pass exactly)
+    const m = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, toneMapped: false, depthWrite: kind === 0, colorWrite: kind !== 0, depthFunc: kind === 0 ? THREE.LessEqualDepth : THREE.EqualDepth, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 })
     if (kind) {
       Object.assign(m, { blending: THREE.CustomBlending, blendSrc: kind === 1 ? THREE.DstColorFactor : THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor })
       m.onBeforeCompile = (s) => void (s.fragmentShader = s.fragmentShader.replace('#include <colorspace_fragment>', '')) // its colour is a factor, not a colour to show
