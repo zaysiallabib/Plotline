@@ -261,7 +261,8 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
   white, as bright as a real 10–45 W LED for the room's size) and each floor and table lamp (a warm pool on the desk or
   bedside table and the wall behind).
   - Up to 12 shine at once on High (4 on Low, 2 on Lite): those in your room and nearest you. A farther room still
-    glows softly with its lamps' light off the walls. On High the 3 ceiling lights nearest you cast real shadows.
+    glows softly with its lamps' light off the walls. On High the 3 ceiling lights nearest you cast real shadows. On a
+    level with parking under a slab (a basement, a ground floor) on High, its 4 parking downlights are 4 of the 12.
   - The light follows the pieces: move a lamp in Edit furniture and its light moves; **Delete** it and its light goes;
     **Undo** brings it back lit; a lamp added from the library shines as soon as it is placed.
   - **Automatic** at first: on while the sun is under 5° (dusk to dawn), off by day; the button is lit while they are
