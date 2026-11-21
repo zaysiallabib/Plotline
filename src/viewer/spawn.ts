@@ -455,6 +455,13 @@ export const SMALL_WET = 3
 /** …and one whose floor (inside its walls) is under this (m²) is seen from its doorway only (roomView): inside, the eye stands over its basin. */
 export const TINY_WET_SQM = 2
 export const WET_PITCH = (-25 * Math.PI) / 180
+/**
+ * …and seen through a narrower lens: this many degrees across (the walk's is ~73° on a wide screen; a phone held upright is
+ * narrower already), aimed at the WC just over its lid (TINY_AIM_M) — the basin beside the door at the frame's edge, not
+ * filling its lower half (qa3 P2)
+ */
+export const TINY_HFOV = 60
+export const TINY_AIM_M = 0.6
 const THRESHOLD = 0.15
 /** A door view (a help room, a closet, a tiny room) fails when a leaf fills more than this (it is exempt from FLAT_MAX). */
 export const DOOR_LEAF_MAX = 0.25
@@ -471,7 +478,8 @@ export const arrivalFace = (unit: Unit, a: { at: Pt; face: Pt; door?: Id; aside?
  * leaf standing into the view goes flat; a door seen along its own wall fills the same, shut or ajar, and stays ajar.
  */
 export const LEAF_GAIN = 0.02
-type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string }
+/** `hfov`: a narrower lens for this view (degrees across a wide screen; PlotlineScene.spawnAt), eased back as he leaves the room */
+type View = { p: Pt; face: Pt; pitch?: number; closeLeaf?: string; hfov?: number }
 
 /**
  * Something spoils the frame from p looking along face — a piece of ANY room in sight (`inSight`), by plan distance to
@@ -721,7 +729,7 @@ export function roomView(room: Room, unit: Unit): View {
   /** The view to return (one shut leaf at most). */
   const done = (v: View): View => {
     const closeLeaf = v.closeLeaf ?? shut(v).closeLeaf
-    return { p: v.p, face: v.face, ...(v.pitch !== undefined && { pitch: v.pitch }), ...(closeLeaf && { closeLeaf }) }
+    return { p: v.p, face: v.face, ...(v.pitch !== undefined && { pitch: v.pitch }), ...(closeLeaf && { closeLeaf }), ...(v.hfov && { hfov: v.hfov }) }
   }
 
   // inward normal of edge a→b (loops are positive: n = (−d.y, d.x))
@@ -794,13 +802,16 @@ export function roomView(room: Room, unit: Unit): View {
       return clearOf(p, 0, d) ? [{ p, d, ...(shut && { closeLeaf: d.o.id }) }] : []
     })
     // a WC whose floor is under TINY_WET_SQM (a servant's toilet, 3'-9" × 4'-5"): ranked by its fittings, the eye stood over the
-    // basin beside the door with the WC under its chin (qa3 P2). From its doorway, looking in to its farthest corner (the
-    // fittings stand along the walls between), down WET_PITCH, as one looks into a WC
+    // basin beside the door with the WC under its chin (qa3 P2). From its doorway through a narrower lens (TINY_HFOV), looking at
+    // its WC just over the lid, as one looks at a WC from its door (steeper than WET_PITCH: ~40° down; at WET_PITCH the WC
+    // sat cut off under the frame) — none: in to its farthest corner (the fittings stand along the walls between), WET_PITCH down
     const way = Math.abs(core.signedArea(inner)) < TINY_WET_SQM ? doorways[0] : undefined
     if (way) {
-      const q = farthest(way.p)
+      const wc = items.find((f) => f.assetId === 'toilet')
+      const q = wc ?? farthest(way.p)
       const L = Math.hypot(q.x - way.p.x, q.y - way.p.y) || 1
-      return done({ p: way.p, face: { x: (q.x - way.p.x) / L, y: (q.y - way.p.y) / L }, pitch: WET_PITCH, closeLeaf: way.closeLeaf })
+      const pitch = wc ? Math.atan2(TINY_AIM_M - EYE, L) : WET_PITCH
+      return done({ p: way.p, face: { x: (q.x - way.p.x) / L, y: (q.y - way.p.y) / L }, pitch, closeLeaf: way.closeLeaf, hfov: TINY_HFOV })
     }
     const spots: { p: Pt; closeLeaf?: string }[] = [
       ...[...candidates, ...grid(BATH_INSET), ...doors.flatMap((d) => DOOR_STEP.map((m) => stepIn(d, m)))].filter((p) => clearOf(p, BATH_INSET)).map((p) => ({ p })),

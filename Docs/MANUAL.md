@@ -126,7 +126,7 @@ Everything else opens from these and closes again with **Esc**.
 | Walk · Dollhouse · Building (one switch; the view you are in is white) | O: Walk ↔ Dollhouse; B: Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to one) |
 | Finishes | F | The panel on the right: floor, wall and ceiling options. While it is open, a click on a floor, wall or ceiling chooses for that one room or wall. **×**, F or Esc closes it |
 | Comment | C | The Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns |
-| Share | — | Copies a link that opens with the finishes you chose |
+| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
 | ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
@@ -139,7 +139,10 @@ soft frosted rectangle whose edges fade out, so the words read over any wall, by
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
-picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). In the Building view the same place names the
+picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
+shown from its door through a narrower lens, looking down at the WC as one does from a WC's door, the basin beside the door
+at the edge of the picture; walk out of it and the lens widens back to the usual one in about a third of a second (on a
+phone held upright the picture is narrow already and stays as it is). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 
@@ -321,9 +324,12 @@ trees, benches and play things) and the floors just above and below yours are dr
 **The sun's shadow outside (High).** In a flat that stands in its building, look out of a window, open the Dollhouse
 or the Building view: the shadows of your building and of the neighbours lie across the lawn, the play area, the pool
 deck, the driveway and the road, and on the neighbours' walls, as far as the haze — and they move as you drag the hour.
+The grounds' trees, benches and play things throw theirs too (on the ground and the deck round them, never into your
+flat: a tree's shadow falls outside it).
 The narrow gap to the next building is in its shade most of the day, as on a real Dhaka street. On **Low** only your
 flat and what stands right round it take the sun's shadow, and on **Lite** nothing does; further out the ground and the
-road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building).
+road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building). Where
+that shadow ends, it fades into the sunlit ground over a metre or two, so no hard bright patch shows on the street.
 
 The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
@@ -625,7 +631,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **The roof:** a building whose rooftop was not traced still has one — the top floor's slab, a parapet along its outer
   edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
-  traced rooftop (Sheltech) shows as drawn.
+  building made in the Studio gets the head room over the rooms its top floor's drawing names a stair or a lift ("Stair",
+  "Lift", "Lift lobby") — name them so on the plan. A traced rooftop (Sheltech) shows as drawn.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
@@ -1063,7 +1070,10 @@ words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
 Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. The model is kept in this
 browser only (an exported drawing file names it but does not hold it); Lite skips a shape over 500 000 triangles and
-says so.
+says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
+windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
+window openings instead, with the rooms behind it and their lights at night. Windows with see-through glass stay as
+the file drew them. A shape read before this change keeps its windows: drop the file again.
 
 ### Give the drawing back: DXF, 3D model, printed plan
 
@@ -1360,12 +1370,14 @@ Things that are confusing or not finished. Each one is a job on the list.
 - In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
   floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
   things (a vase, a book) are left out of the other flats.
-- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
-  buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
+- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). The
+  Studio's buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's); for one
+  floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
-- Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
-  Studio (the real buyer link that feeds the change list). The same thing has two names in places: "Slider" (3D) /
+- Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
+  flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
+  plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.

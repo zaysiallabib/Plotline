@@ -271,6 +271,11 @@ export interface Shell {
   offset?: { x: number; y: number }
   rotDeg?: number
   triangles?: number
+  /**
+   * The file's windows came with solid glass ('opaque'): the 3D leaves the shape's windows out and draws the tower's own glass
+   * in the flats' window openings, with the rooms behind it and their lights at night (three/building.ts). Absent: as drawn.
+   */
+  glass?: 'opaque'
 }
 
 /**

@@ -57,8 +57,8 @@ import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
 import { titleOf } from '../viewer/defaults'
-import { forShare } from '../lib/library'
-import { RpcError, configured as sharingConfigured, publishUnit, shareUnit } from '../lib/supabase'
+import { configured as sharingConfigured } from '../lib/supabase'
+import { publishLink, WrongKey } from '../lib/publish'
 import { myOrg, session, useSession } from '../lib/auth'
 import { itemKey, linkStore, type CloudItem, type Kind } from '../lib/cloud'
 import { adoptPictures, pictureFromCloud, putOnline, withPictures } from '../lib/pictures'
@@ -66,7 +66,7 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
-import { ask, askText } from '../lib/ask'
+import { ask } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 /** a person's corrections of what a DXF / SVG layer holds, by layer name: kept for every next file (src/import plan2d roleOf) */
@@ -88,7 +88,6 @@ const PREVIEW_KEY = 'plotline.preview'
 const ACTIVE_KEY = 'plotline.studio.project'
 type Active = { id: Id; drawing?: Id }
 /** the staff key that lets this browser publish share links (from the migration's output); asked for once */
-const PUBLISH_KEY = 'plotline.staffKey'
 const SNAP_PX = 7 // was 10: founder 2026-10-06, "30 % less magnetic"
 /** a press on a piece that drifts at most this far is a click (tool F): it selects, never moves; the 3D view uses the same (PlotlineScene) */
 const CLICK_PX = 6
@@ -1036,7 +1035,7 @@ export default function StudioApp() {
       const id = newId()
       try {
         await putShell(id, r.shell.glb)
-        shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles }
+        shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles, ...(r.shell.glass && { glass: r.shell.glass }) } // (solid window glass: the 3D draws its own)
       } catch {
         toast('This browser would not keep the outside shape (storage full?)')
       }
@@ -1211,40 +1210,24 @@ export default function StudioApp() {
     openBuilding(`/u/${encodeURIComponent(stem)}?floor=${floorIn(t, stem)}&view=building${k !== undefined ? `&pick=${k}` : ''}`)
   }
 
-  // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard. Every share is a new
-  // link (append-only): a client keeps seeing what he was sent. Signed in to a company: made as its member (lib/auth);
-  // else the old staff key, asked for once per browser (until the founder deletes it: Docs/SETUP_ACCOUNTS.md).
+  // Share: the draft as it is goes to Supabase, the link (`/s/<token>`) lands on the clipboard (lib/publish.ts)
   const [sharing, setSharing] = useState(false)
   const share = useCallback(async () => {
-    const org = await myOrg().catch(() => null)
-    let key = ''
-    if (!org) {
-      key = localStorage.getItem(PUBLISH_KEY) ?? ''
-      if (!key) {
-        key = (await askText('Type the staff key (printed when the online database was set up). Or Cancel, then Sign in at the top right to share as your company.', { placeholder: 'Staff key' }, 'Share'))?.trim() ?? ''
-        if (!key) return
-        localStorage.setItem(PUBLISH_KEY, key)
-      }
-    }
     setSharing(true)
     try {
       const st = stateRef.current
       const laid = withLayout({ ...st.unit, name: nameOf(st.unit) }) // the buyer's browser has no arranged layout: bake it in
-      // and none of the staff's own pieces / finishes: their records go with it (their files online first: lib/library.ts)
-      const library = await forShare(laid)
-      const finishes = readFinishes(laid.id) // the drawing's picks (Preview 3D): the buyer opens with them (?c= still wins)
-      const unit = { ...laid, ...(library.length ? { library } : {}), ...(finishes ? { finishes } : {}) }
-      const me = org && (await session())
-      const saved = me ? linkStore(me.user.id).get(cloudItem()?.key ?? '') : undefined // the cloud row it was made from, for the change list
-      const token = org ? await shareUnit(org.id, unit, { project: saved?.id, stem: st.unit.id, floor: st.unit.floor }) : await publishUnit(unit, key)
-      const url = `${location.origin}/s/${token}`
+      // the drawing's picks (Preview 3D): the buyer opens with them (?c= still wins); a floor's own: Share in its 3D view
+      const url = await publishLink(laid, readFinishes(laid.id), async () => {
+        const me = await session()
+        const saved = me ? linkStore(me.user.id).get(cloudItem()?.key ?? '') : undefined // the cloud row it was made from, for the change list
+        return { project: saved?.id, stem: st.unit.id, floor: st.unit.floor }
+      })
+      if (!url) return
       await navigator.clipboard.writeText(url).catch(() => {})
       toast(`Link copied: ${url}`, { label: 'Open', onClick: () => window.open(url, '_blank') })
     } catch (e) {
-      if (!org && e instanceof RpcError && (e.status === 401 || e.status === 403)) {
-        localStorage.removeItem(PUBLISH_KEY)
-        toast('Wrong staff key — click Share again to retype it.')
-      } else toast(`Could not share: ${e instanceof Error ? e.message : String(e)}`)
+      toast(e instanceof WrongKey ? e.message : `Could not share: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setSharing(false)
     }

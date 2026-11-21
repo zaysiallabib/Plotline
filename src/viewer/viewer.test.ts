@@ -14,7 +14,7 @@ import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_AHEAD, AC_DIP, AC_IN_VIEW, AC_LIFT, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
-  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, TINY_WET_SQM, VIEW_INSET, WET_PITCH,
+  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, TINY_AIM_M, TINY_HFOV, TINY_WET_SQM, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, PORTRAIT_SIGHT, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, nearestSpoke, period } from './SunPill'
@@ -537,7 +537,7 @@ describe('viewer', { timeout: 20_000 }, () => {
           if (!inDoorway) expect(share(v.closeLeaf), `${name}: shutting takes back LEAF_GAIN`).toBeLessThanOrEqual(share() - LEAF_GAIN + 1e-9)
         }
         // steeper than WET_PITCH: only a door view looks down that far (at a cot)
-        if ((v.pitch ?? 0) < WET_PITCH - 1e-9 || r.kind === 'closet') {
+        if (((v.pitch ?? 0) < WET_PITCH - 1e-9 && !v.hfov) || r.kind === 'closet') {
           door.push(name.replace(/unit_(type_)?/, ''))
           expect(f.leaf, `${name}: a leaf in a door view`).toBeLessThanOrEqual(DOOR_LEAF_MAX)
           continue
@@ -577,7 +577,8 @@ describe('viewer', { timeout: 20_000 }, () => {
         const name = `${u.id} ${r.name}`.replace(/unit_(type_)?/, '')
         const v = view(r, u)
         expect(core.pointInPolygon(v.p, core.roomInnerPolygon(r, u)), `${name} inside`).toBe(true)
-        expect(v.pitch! >= (r.areaSqm < SMALL_WET ? WET_PITCH : BATH_PITCH) - 1e-9 && v.pitch! <= 1e-9, `${name}: pitch`).toBe(true)
+        // (a WC under TINY_WET_SQM looks at its WC from its door through a narrower lens: steeper, checked below)
+        expect(v.pitch! >= (v.hfov ? -Math.PI / 4 : r.areaSqm < SMALL_WET ? WET_PITCH : BATH_PITCH) - 1e-9 && v.pitch! <= 1e-9, `${name}: pitch`).toBe(true)
         const shares = u.furniture.flatMap((f) => {
           const b = f.roomId === r.id && wetBand(kitAsset(f.assetId)!, placementSize(f))
           return b ? [{ f, s: boxInFrame(f, placementSize(f), b.h0, b.h1, v.p, v.face, v.pitch!) }] : []
@@ -606,7 +607,15 @@ describe('viewer', { timeout: 20_000 }, () => {
         }),
       )
       expect(gap, `${u.id} ${r.name}: in its doorway`).toBeLessThan(0.2)
+      // through a narrower lens, looking at its WC just over the lid: the basin beside the door at the frame's edge (polish2)
+      expect(v.hfov, `${u.id} ${r.name}: a narrower lens`).toBe(TINY_HFOV)
+      const wc = u.furniture.find((f) => f.roomId === r.id && f.assetId === 'toilet')!
+      const d = { x: wc.x - v.p.x, y: wc.y - v.p.y }
+      expect(Math.abs(Math.atan2(d.y, d.x) - Math.atan2(v.face.y, v.face.x))).toBeLessThan(1e-6)
+      expect(v.pitch).toBeCloseTo(Math.atan2(TINY_AIM_M - EYE, Math.hypot(d.x, d.y)), 6)
     }
+    // every other room keeps the walk's lens
+    for (const { u, rs } of [...both, ...sh]) for (const r of listedRooms(u, rs)) if (!tiny.some((t) => t.r === r)) expect(view(r, u).hfov, `${u.id} ${r.name}`).toBeUndefined()
     // the director's worst: Sheltech B's PDR shows its basin AND its WC whole (was a top-down basin and a WC edge)
     const pdr = sh[1].rs.find((r) => r.name === 'PDR')!
     const v = view(pdr, sh[1].u)

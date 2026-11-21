@@ -19,7 +19,7 @@ import { onOwnChange, ownVersion, refreshOwnOptions } from '../furnish/own'
 import { deletePiece, layoutFor, movePiece, pieceQuad, refurnish, resizeAxes, resizePiece, surfaceOf, type Move } from '../studio/furniture'
 import { buyer, flushOutbox, selectionPayload, sendEvent, setBuyerName } from '../lib/events'
 import { learnCarried } from '../lib/library'
-import { fetchSharedUnit } from '../lib/supabase'
+import { configured as sharingConfigured, fetchSharedUnit } from '../lib/supabase'
 import { LinkOff, NoPreview, NotFound, Offline, Skeleton, Slate } from '../lib/pages'
 import { pageTitle } from '../lib/route'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
@@ -233,7 +233,7 @@ function resolveUnit(): Unit | null {
   return UNITS.find((u) => u.stem === id || u.unit.id === id)?.unit ?? projectUnit(id) // a flat of a building made in the Studio (this browser)
 }
 
-const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0): void => scene.spawnAt(p, yawFor(face), pitch)
+const spawn = (scene: PlotlineScene, p: Pt, face: Pt, pitch = 0, hfov?: number): void => scene.spawnAt(p, yawFor(face), pitch, hfov)
 /** Plan-space eye position (rig + camera): the walker in walk mode, the orbit camera in dollhouse. */
 const eyeOf = (scene: PlotlineScene): Pt => {
   const w = scene.camera.getWorldPosition(new THREE.Vector3())
@@ -936,7 +936,22 @@ function Viewer({ first }: { first: Shown }) {
     void downloadGlb(scene)
   }, [scene]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const share = () => {
+  const share = async () => {
+    // staff, the online database set up: a buyer link (/s/…) of this flat as it stands — on its floor, its furniture as laid
+    // out, the finishes kept for it (floor 3's beige, not the floor plan's: the Studio's ⋯ → Share link carries those), its
+    // buyers' picks and notes in the change list. Else (a buyer, no database) this address with these finishes, as before
+    if (STAFF && !SHARED && sharingConfigured) {
+      const { publishLink, WrongKey } = await import('../lib/publish') // (the walk never loads it)
+      try {
+        const url = await publishLink({ ...shown(), name: unit.name }, fullCfg, async () => ({ stem: unit.id, floor: unit.floor }))
+        if (!url) return
+        await navigator.clipboard?.writeText(url).catch(() => {})
+        showToast(`Buyer link copied: ${stem && unit.floor !== undefined ? floorWord({ stem, floor: unit.floor }) : 'this flat'} with exactly these finishes and furniture.`, 6000)
+      } catch (e) {
+        showToast(e instanceof WrongKey ? e.message : `Could not share: ${e instanceof Error ? e.message : String(e)}`, 6000)
+      }
+      return
+    }
     const url = shareUrl(location, unit.floor, fullCfg) // the flat picked in the Building view stays on its floor; never `staff`
     history.replaceState(null, '', url)
     void navigator.clipboard?.writeText(url).then(() => showToast('Link copied — it opens with exactly these finishes.'))
@@ -1567,13 +1582,13 @@ function Viewer({ first }: { first: Shown }) {
               // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
               scene.shutLeaf(v.closeLeaf ?? null)
               if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene.shutLeaf(null), { once: true })
-              spawn(scene, v.p, v.face, v.pitch)
+              spawn(scene, v.p, v.face, v.pitch, v.hfov) // (a WC under 2 m²: a narrower lens, eased back as he walks out)
               setMode('walk')
             }}
             onMode={go}
             onToggleFinishes={toggleFinishes}
             onToggleComment={toggleComment}
-            onShare={share}
+            onShare={() => void share()}
             arranging={arranging}
             hand={handInfo}
             staff={STAFF}

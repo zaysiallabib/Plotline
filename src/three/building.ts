@@ -36,7 +36,7 @@ import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWa
 import { lightPiece } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
-import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
+import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, wideOnly, type Quality } from './render'
 import { batch, CELL_M, HIDDEN } from './batch'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
@@ -44,6 +44,17 @@ import { WATER, meterUVs } from './openings'
 /** every drawing's rooms (interiors.ts roomsGeometry) per tower and key, for the page: built once, whichever floor is walked */
 const ROOMS = new WeakMap<Tower, Map<string, Promise<THREE.BufferGeometry | null>>>()
 const KEPT = new WeakSet<THREE.BufferGeometry>()
+/**
+ * Per tower, for the page, what every tower a stair builds for its next floor has alike (the walked floor only moves the
+ * tower round the flat): a flat's ordinary shell, each traced level's meshes (addLevel; not the one right over the walked
+ * floor, whose plate starts on its roof) and the street, as built at its first street level. Session 31: a stair's floor
+ * built them again each time, ~150 of its ~350 ms of tower.
+ */
+const SHELLS = new WeakMap<Tower, Map<string, THREE.BufferGeometry>>()
+const LEVELS = new WeakMap<Tower, Map<string, [MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry][]>>()
+const STREETS = new WeakMap<Tower, Map<string, { group: THREE.Group; y: number }>>()
+const keptIn = <T>(m: WeakMap<Tower, Map<string, T>>, t: Tower): Map<string, T> => m.get(t) ?? m.set(t, new Map()).get(t)!
+const keep = (o: THREE.Object3D) => o.traverse((x) => void ((x as THREE.Mesh).geometry && KEPT.add((x as THREE.Mesh).geometry)))
 /** round the flat the tower is batched this long after the last thing came in (batchAround) */
 const AROUND_MS = 400
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
@@ -410,8 +421,11 @@ export class Building extends THREE.Group {
     const PLATE_M = FLOOR_M - WALL_M
     // the architect's outside shape (core Shell: the scene draws it round the flat in every mode) stands in for the box
     // massing — the other flats' shells, plates, panes, the roof, plinth and ground pieces are left out so nothing draws
-    // twice; the flats keep their invisible pick proxies, traced levels still draw in full
+    // twice; the flats keep their invisible pick proxies, traced levels still draw in full. Its windows' glass solid in the
+    // file (glass 'opaque': the shape leaves them out, three/shell.ts): the tower's own panes in the flats' window openings,
+    // the rooms behind them and their lights at night, as round any tower
     const hasShell = !!unit.shell
+    const ownPanes = !hasShell || unit.shell!.glass === 'opaque'
     /** per floor (one mesh per material per floor: frame shows floors by tier), per material */
     const lists = new Map<number, Map<MaterialRef | 'glass', THREE.BufferGeometry[]>>()
     const put = (k: number, m: MaterialRef | 'glass', ...g: THREE.BufferGeometry[]) => {
@@ -435,8 +449,8 @@ export class Building extends THREE.Group {
       ...u.walls.filter((w) => !skip.walls.has(w.id)).map((w) => wallGeometry(w, u)).filter((x) => !!x),
       ...(u.pillars ?? []).filter((p) => !skip.pillars.has(p.id)).map((p) => box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, 0, WALL_M)),
     ]
-    /** a flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each floor it stands on */
-    const ordinary = new Map<string, THREE.BufferGeometry>()
+    /** a flat's ordinary shell (walls, columns, plate; nothing left out, no lid), its own frame: built once and placed on each floor it stands on (SHELLS) */
+    const ordinary = keptIn(SHELLS, t)
 
     // floors 0..top: a shell per flat (and his traced ground floor); the roof (top + 1): the top floor's plates and parapet
     // (its flats, or the massing standing in for them: a tower of levels and typical shells has no flats)
@@ -476,6 +490,7 @@ export class Building extends THREE.Group {
         let geo: THREE.BufferGeometry
         if (!mine && !lid && k !== 0 && !hasShell && !skip.walls.size && !skip.rooms.size && !skip.pillars.size) {
           geo = ordinary.get(s) ?? ordinary.set(s, merge([...shellWalls(u), ...plate(u, rooms, 0, PLATE_M)])).get(s)!
+          KEPT.add(geo)
         } else {
           const walls = shellWalls(u, skip).map(at)
           // the current flat: Look's 0.15 m slab is there already, the plate only closes the gap under it; a ground-floor
@@ -495,8 +510,8 @@ export class Building extends THREE.Group {
         mesh.userData.level = k // a cut at a lower floor hides it (highlight)
         this.add(mesh)
         // every window real glass with its flat's rooms behind it (the walked flat: its own glass, drawn by the scene); the
-        // architect's shape has its own windows
-        if (mine || hasShell) continue
+        // architect's shape has its own windows (unless their glass came solid: ownPanes)
+        if (mine || !ownPanes) continue
         const owner: TowerHit = { k, flat: flats.includes(s) ? { stem: s, floor: k } : null }
         const own = owners.get(k) ?? owners.set(k, []).get(k)!
         for (const w of plateWalls)
@@ -515,6 +530,7 @@ export class Building extends THREE.Group {
       const room = this.roomsOf(s).find((r) => r.name === name)
       if (!room) continue
       for (const [k, y] of [[0, G], [top + 1, R]]) {
+        if (k === 0 && FLOORS.some((f) => f.floor === 0)) continue // a traced ground floor or the flats' shells stand there: they draw their own stair
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         put(k, EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }
@@ -572,7 +588,12 @@ export class Building extends THREE.Group {
 
     // the street (context.ts, the same as the walk's): the drawing's roads and the neighbours round the plot, a few metres
     // off; a unit with a site (Studio → Site): the map's own roads and blocks instead
-    this.street = buildStreet(unit, streetOf(t, stem), this.streetY)
+    const streets = keptIn(STREETS, t)
+    const key = `${stem}|${unit.id}|${this.tier}`
+    let st = streets.get(key)
+    if (!st) streets.set(key, (st = { group: buildStreet(unit, streetOf(t, stem), this.streetY), y: this.streetY })), keep(st.group)
+    this.street = st.group.clone() // (its geometry and materials shared: the floor he leaves still draws its own copy)
+    this.street.position.y = this.streetY - st.y
     this.add(this.street)
 
     // the picked flat's lift and the hover's: drawn last, over everything of theirs that is seen (liftMeshes)
@@ -622,8 +643,11 @@ export class Building extends THREE.Group {
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
     // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
-    // the flat's shadow box): round the flat they cast none — High's sun-shadow redraw round Sheltech A on floor 2: 875 → 474 calls
-    this.pieceShadows = !around
+    // the flat's shadow box): round the flat they cast into the sun's wide map only (High: the lawn, the play area and the road
+    // in their shade, render.ts wideOnly), none without one (Low, Lite) — High's sun-shadow redraw round Sheltech A on floor 2
+    // was 875 calls with them in both maps, 474 with none
+    this.pieceShadows = !around || TIERS[tier].wide > 0
+    this.piecesWide = around
     // the levels' pieces (trees, benches, play things): not round the flat on Lite, its zones only — they were ~1.5 ms of a
     // Lite frame at 9× pixels round a Sheltech flat (Firefox pays per draw call: ~150 leaf clusters); the Building view has them
     this.piecesShown = !(around && tier === 'lite')
@@ -697,7 +721,7 @@ export class Building extends THREE.Group {
     const same = (p: THREE.InstancedMesh, q: THREE.InstancedMesh) => {
       const [g, h] = [p.geometry, q.geometry]
       const [du, dv] = [g.getAttribute('dayUv'), h.getAttribute('dayUv')]
-      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow &&
+      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow && p.intersectsFrustum === q.intersectsFrustum &&
         !p.instanceColor === !q.instanceColor && du?.getX(0) === dv?.getX(0) && du?.getY(0) === dv?.getY(0)
     }
     const groups: { cell: string; list: THREE.InstancedMesh[] }[] = []
@@ -730,6 +754,7 @@ export class Building extends THREE.Group {
       }
       all.castShadow = list[0].castShadow
       all.receiveShadow = list[0].receiveShadow
+      if (Object.hasOwn(list[0], 'intersectsFrustum')) all.intersectsFrustum = list[0].intersectsFrustum // (a tree's: the wide map only)
       all.computeBoundingSphere()
       this.add(all)
       out.push(all)
@@ -745,7 +770,10 @@ export class Building extends THREE.Group {
       m.userData.casts ??= m.castShadow
       m.castShadow = on && m.userData.casts
     })
+    if (pieces) wideOnly(o, this.piecesWide)
   }
+  /** frame(): the levels' pieces cast into the sun's wide map only (round the flat) */
+  private piecesWide = false
 
 
   /** building-frame offset of a flat relative to the current one (plan x, y); no stem = the building frame's origin (frameOf) */
@@ -774,13 +802,40 @@ export class Building extends THREE.Group {
    * (furnish). `cap`: no wall above it (a basement under the street).
    */
   private addLevel(s: string, k: number, cap = Infinity): void {
+    const top = topFloor(this.t)
+    const lid = this.lid(s, k)
+    const levels = keptIn(LEVELS, this.t)
+    const key = lid ? null : `${s}|${k}|${Number.isFinite(cap) ? cap.toFixed(3) : ''}`
+    let parts = key ? levels.get(key) : undefined
+    if (!parts) {
+      parts = this.levelParts(s, k, cap, lid)
+      if (key) levels.set(key, parts), parts.forEach(([, g]) => KEPT.add(g))
+    }
+    const group = new THREE.Group()
+    group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
+    group.userData.level = k // a cut at a lower floor hides it (highlight)
+    for (const [m, geo] of parts) {
+      const mesh = new THREE.Mesh(geo, m === 'panes' ? this.panes : m instanceof THREE.Material ? m : materialFor(m, false, false, true))
+      const flatOnly = m === BAY_PAINT || m === WATER || m === 'panes'
+      mesh.castShadow = !flatOnly
+      mesh.receiveShadow = true
+      if (flatOnly) mesh.raycast = () => {}
+      group.add(mesh)
+    }
+    this.add(group)
+    // what a buyer sees of it from outside: a ground floor's and a rooftop's outdoor pieces (trees, planters, deck furniture)
+    if (k === 0 || k > top) this.furnishing.push({ s, group })
+  }
+
+  /** addLevel's meshes' geometry, in the level's own frame, one per material ('panes': the tower's glass) */
+  private levelParts(s: string, k: number, cap: number, lid: Lid | undefined): [MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry][] {
     const { unit: u } = this.t.FLATS[s]
     const rooms = this.roomsOf(s)
     const top = topFloor(this.t)
     const PLATE_M = this.t.FLOOR_M - WALL_M
     const slots = finishSlotsFor(u, rooms)
-    const lists = new Map<MaterialRef | THREE.Material, THREE.BufferGeometry[]>()
-    const put = (m: MaterialRef | THREE.Material, ...gs: (THREE.BufferGeometry | null)[]) => {
+    const lists = new Map<MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry[]>()
+    const put = (m: MaterialRef | THREE.Material | 'panes', ...gs: (THREE.BufferGeometry | null)[]) => {
       for (const g of gs) if (g) lists.set(m, [...(lists.get(m) ?? []), g])
     }
     const off = this.t.FLATS[s].offset
@@ -813,12 +868,12 @@ export class Building extends THREE.Group {
       built.openings.forEach((o) => {
         if (o.kind !== 'window' && o.kind !== 'slider') return
         const t = (o.offsetM + o.widthM / 2) / L
-        put(this.panes, paneGeo(w, u, o).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0)) // bare glass: its rooms lit at night (interiors)
+        put('panes', paneGeo(w, u, o).translate(0, l.foot[0] + t * (l.foot[1] - l.foot[0]), 0)) // bare glass: its rooms lit at night (interiors)
       })
     }
     const storey = Math.min(storeyTop(u, rooms) || WALL_M, cap)
     for (const p of u.pillars ?? []) put(EXTERIOR_PLASTER, box(p.x - p.wM / 2, p.y - p.hM / 2, p.x + p.wM / 2, p.y + p.hM / 2, core.floorLevelAt(u, p.x, p.y, rooms), storey))
-    if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, -UNDER_LEVEL_M, PLATE_M, u.walls, this.lid(s, k)))
+    if (k >= 1 && k <= top) put(EXTERIOR_PLASTER, ...plate(u, rooms, -UNDER_LEVEL_M, PLATE_M, u.walls, lid))
     if (k > top) {
       const full = new Set(u.walls.filter((w) => w.heightM >= 2).map((w) => w.id))
       const ids = new Set(u.walls.map((w) => w.id)) // (a room going round a column has edges that are no wall)
@@ -826,20 +881,7 @@ export class Building extends THREE.Group {
       const capWalls = new Set(caps.flatMap((r) => r.wallIds))
       put(EXTERIOR_PLASTER, ...plate(u, caps, WALL_M + PLATE_M, PLATE_M, u.walls.filter((w) => capWalls.has(w.id))))
     }
-    const group = new THREE.Group()
-    group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
-    group.userData.level = k // a cut at a lower floor hides it (highlight)
-    for (const [m, geos] of lists) {
-      const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m, false, false, true))
-      const flatOnly = m === BAY_PAINT || m === WATER || m === this.panes
-      mesh.castShadow = !flatOnly
-      mesh.receiveShadow = true
-      if (flatOnly) mesh.raycast = () => {}
-      group.add(mesh)
-    }
-    this.add(group)
-    // what a buyer sees of it from outside: a ground floor's and a rooftop's outdoor pieces (trees, planters, deck furniture)
-    if (k === 0 || k > top) this.furnishing.push({ s, group })
+    return [...lists].map(([m, geos]) => [m, merge(geos.map(plain))])
   }
 
   /**
@@ -1211,8 +1253,7 @@ export class Building extends THREE.Group {
       const g = (o as THREE.Mesh).geometry
       if (g && !KEPT.has(g)) g.dispose() // (a kept drawing's rooms: the next tower shows them; three uploads them again if it was freed)
     })
-    this.washes.forEach((g) => g.dispose())
-    this.street.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
+    this.washes.forEach((g) => g.dispose()) // (the street's materials: kept with it for the page, STREETS)
     this.own.forEach((m) => m.dispose())
     for (const f of this.flats) f.lamps.dispose()
     this.removeFromParent()

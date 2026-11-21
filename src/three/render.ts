@@ -176,6 +176,48 @@ export function fitSunBox(cam: THREE.OrthographicCamera, box: THREE.Box3, toSun:
 export const WIDE_EVERY = 4
 export const drawWide = (moved: boolean, waited: number): boolean => !moved || waited >= WIDE_EVERY
 
+/** the frusta of the flat's own shadow maps — the sun's sharp one and each lamp's (Look, markSharp) — wideOnly's meshes are never drawn into */
+const flatMaps = new WeakSet<THREE.Frustum>()
+export const markSharp = (light: THREE.DirectionalLight | THREE.SpotLight): void => void flatMaps.add(light.shadow.getFrustum())
+/** a wideOnly mesh's culling test: never in the flat's maps, otherwise as three tests it (the view, the sun's wide map) */
+function exceptSharp(this: THREE.Mesh, f: THREE.Frustum): boolean {
+  return !flatMaps.has(f) && f.intersectsObject(this)
+}
+/**
+ * `o`'s meshes cast the sun's shadow into its wide map (TIERS.wide) and no longer into the flat's sharp one nor a lamp's
+ * (`on`; off: as three does): the grounds' trees and benches round the walked flat shade the lawn, the play area and the
+ * road, never the flat — three takes a map's casters by the view camera's layers, not per light, so those maps' culling
+ * leaves them out (nothing drawn, nothing to pay). Session 31 polish2: the context lane had cut their shadows round the flat.
+ */
+export function wideOnly(o: THREE.Object3D, on: boolean): void {
+  o.traverse((m) => {
+    if (!(m as THREE.Mesh).isMesh) return
+    if (on) m.intersectsFrustum = exceptSharp
+    else if (Object.hasOwn(m, 'intersectsFrustum')) delete (m as Partial<THREE.Mesh>).intersectsFrustum
+  })
+}
+
+/**
+ * With the sun's one map only (Low; High round a flat on its own, no wide map) its shadow fades into "lit" over its box's last
+ * EDGE_FADE across (and EDGE_FADE_Z of its depth): past the box the ground and the walls are lit, and the edge between a
+ * neighbour's shadow and that light stood on the street as a hard bright patch. The box is first widened by as much
+ * (widenEdge), so the fade lies outside the flat: ~1–2 m across, ~2.5 m deep (the depth runs SITE_REACH_M toward the sun).
+ * The same reads as before: no cost a frame.
+ */
+export const EDGE_FADE = 0.045
+export const EDGE_FADE_Z = 0.008
+/** A sun shadow camera fitted round the flat (fitSunBox) widened so that what it covered keeps clear of its last `k` across and `kz` of its depth on the far side. */
+export function widenEdge(cam: THREE.OrthographicCamera, k = EDGE_FADE, kz = EDGE_FADE_Z): void {
+  const [w, h] = [cam.right - cam.left, cam.top - cam.bottom]
+  const [dx, dy] = [(k * w) / (1 - 2 * k), (k * h) / (1 - 2 * k)]
+  cam.left -= dx
+  cam.right += dx
+  cam.bottom -= dy
+  cam.top += dy
+  cam.far += (kz * (cam.far - cam.near)) / (1 - kz)
+  cam.updateProjectionMatrix()
+}
+
 /** how far into the sharp map (a share of its width) the wide one fades into it: no seam where one shadow ends and the other starts */
 const SHARP_FADE = 0.01
 /**
@@ -215,6 +257,15 @@ float wideShadow() {
 	return getShadow( directionalShadowMap[ 1 ], w.shadowMapSize, w.shadowIntensity, w.shadowBias, w.shadowRadius, vDirectionalShadowCoord[ 1 ] );
 	#endif
 }
+#endif
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS == 1
+float sharpOrLit( float sharp, vec4 at ) {
+	vec3 c = at.xyz / at.w;
+	float e = min( min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) ), ( 1.0 - c.z ) * ${(EDGE_FADE / EDGE_FADE_Z).toFixed(4)} );
+	return mix( 1.0, sharp, smoothstep( 0.0, ${EDGE_FADE}, e ) );
+}
+#endif
+#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 1
 float sharpOrWide( DirectionalLightShadow s, vec4 at ) {
 	vec3 c = at.xyz / at.w;
 	float inSharp = c.z > 1.0 ? -1.0 : min( min( c.x, 1.0 - c.x ), min( c.y, 1.0 - c.y ) );
@@ -232,6 +283,8 @@ $1
       sun,
       `#if ${wide} == 0
 		directLight.color *= ( directLight.visible && receiveShadow && dot( geometryNormal, directLight.direction ) > 0.0 ) ? sharpOrWide( directionalLightShadow, vDirectionalShadowCoord[ i ] ) : 1.0;
+		#elif NUM_DIR_LIGHT_SHADOWS == 1 && UNROLLED_LOOP_INDEX == 0
+		${sun.replace(/\? getShadow\((.*)\) : 1\.0;$/, '? sharpOrLit( getShadow($1), vDirectionalShadowCoord[ i ] ) : 1.0;')}
 		#else
 		${sun}
 		#endif`,
@@ -538,6 +591,7 @@ export class Look {
     sun.shadow.bias = -0.0005
     sun.shadow.normalBias = 0.02
     sun.shadow.radius = 2
+    markSharp(sun) // (wideOnly)
     if (this.shadows && tier.wide) {
       // a child of the sun: three lists it right after the sun, as wideChunks reads them (directional shadow 0 sharp, 1 wide)
       const wide = (this.wide = new THREE.DirectionalLight('#ffffff', 0))
@@ -604,7 +658,7 @@ export class Look {
     // the wide map only round a flat in its building: a flat on its own (a Studio draft) floats a storey or more over the
     // street, its catcher shadows it at its own floor, and the street under it took a second shadow of it
     if (this.wide) this.wide.visible = y !== null
-    this.fitWide()
+    this.fitShadow() // (the sharp map's edge fades only without the wide map: widenEdge)
     this.towerStreet = y !== null
     if (this.street) this.street.visible = !this.towerStreet
   }
@@ -793,6 +847,7 @@ export class Look {
       sh.radius = 3
       // the same number of shadow-casting lamps whatever the camera does (a count change recompiles every material)
       light.castShadow = i < this.casters
+      markSharp(light) // (the grounds' trees: never in a lamp's map, wideOnly)
       this.unitGroup.add(light, light.target)
       return { light, at: null }
     })
@@ -973,6 +1028,7 @@ export class Look {
   private fitShadow(): void {
     const cam = this.aim(this.sun.shadow.camera)
     fitSunBox(cam, this.fitBox, this.toSun(), SITE_REACH_M, this.wells.flatMap((w) => w.poly.map((c) => new THREE.Vector3(c.x, w.bottom, c.y))))
+    if (!this.wide?.visible) widenEdge(cam) // its edge fades into lit, outside the flat (EDGE_FADE)
     // the bias is in the shadow map's depth units: keep it ≈ 2 cm in the room whatever the depth range (a site's reach made
     // the range 10× deeper, and −0.0005 of it 17 cm: walls and sills shadowed late)
     this.sun.shadow.bias = -SHADOW_BIAS_M / (cam.far - cam.near)

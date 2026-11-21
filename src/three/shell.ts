@@ -8,6 +8,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { Shell } from '../core'
+import { WINDOW } from '../import/glb'
 import { getShell } from '../studio/shells'
 
 /** more triangles than this and the lite tier leaves the shape out */
@@ -58,8 +59,22 @@ export async function loadShell(shell: Shell, clip?: THREE.Plane): Promise<THREE
   const g = new THREE.Group()
   g.name = 'shell'
   g.add(cached.group.clone())
+  if (shell.glass === 'opaque') solidWindowsOut(g)
   place(g, shell)
   return g
+}
+
+/**
+ * The file's windows (their GLB material named WINDOW) left out of the shape: their glass came solid, so the tower draws its
+ * own glass in the flats' window openings, the rooms behind it (three/building.ts, core Shell.glass). Returns how many.
+ */
+export function solidWindowsOut(g: THREE.Object3D): number {
+  let n = 0
+  g.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (m.isMesh && [m.material].flat().some((x) => x.name === WINDOW)) (m.visible = false), n++
+  })
+  return n
 }
 
 /** Where the shell stands: by its offset, turn and floor height (also after the Studio changes one). */

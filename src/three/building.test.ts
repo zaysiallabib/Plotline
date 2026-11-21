@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import * as core from '../core'
 import type { Pt, Room, Unit } from '../core'
+import type { BufferGeometry, Group, Mesh } from 'three'
 import { floorIn, towerOf, type Tower } from '../data/building'
 import { frameOf, onFlat, plate, sharedWith } from './building'
 import * as bti from '../data/building/demo-tower'
@@ -558,7 +559,72 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
   }
   const shut = (r: Room) => r.kind === 'shaft' || r.kind === 'balcony'
 
+  test("a stair's next floor makes its tower from what the last one made: the same shells, levels and street, never freed with it", async () => {
+    const a = sheltech.FLATS['sheltech-a'].unit
+    const geos = (b: unknown) => {
+      const out = new Map<BufferGeometry, number>() // each geometry and the y it is drawn at
+      ;(b as Group).updateMatrixWorld(true)
+      ;(b as Group).traverse((o) => void ((o as Mesh).geometry && out.set((o as Mesh).geometry, o.matrixWorld.elements[13])))
+      return out
+    }
+    const t3 = await tower({ ...a, floor: 3 })
+    const t4 = await tower({ ...a, floor: 4 })
+    const [g3, g4] = [geos(t3), geos(t4)]
+    const shared = [...g4.keys()].filter((g) => g3.has(g))
+    expect(shared.length).toBeGreaterThan(5) // the ground, level 1, the basements, the rooftop, the flats' shells, the street
+    // each placed one storey lower round floor 4's flat (the walked flat stays at 0: the tower moves); the street with the street level
+    const T = (t: unknown) => t as { levelOf(k: number): number; streetY: number }
+    const [lv, st] = [T(t4).levelOf(0) - T(t3).levelOf(0), T(t4).streetY - T(t3).streetY]
+    expect(lv).toBeLessThan(-2.5)
+    for (const g of shared) expect([lv, st].some((d) => Math.abs(g4.get(g)! - g3.get(g)! - d) < 1e-6)).toBe(true)
+    let freed = 0
+    for (const g of shared) g.addEventListener('dispose', () => freed++)
+    t3.dispose()
+    expect(freed).toBe(0)
+  })
+
+  test('a Studio tower with no traced rooftop: its top floor’s stair and lift run up into a head room on the roof (polish2)', async () => {
+    const { default: bti } = await import('../data/fixtures/autotrace-bti-floor-2026-11-20.json')
+    const u = { ...(bti as unknown as Unit), id: 'bti-floor' }
+    const p = makeProject('p', u, 2, 6, 'none')
+    const t = projectTower(p)
+    expect(t.CORE).toEqual([['bti-floor', 'Stair'], ['bti-floor', 'Lift']]) // (its "Stretcher Uft" is no lift: misread)
+    // the roof: the head room's walls and lid over the stair and the lift — more of it than a roof with no core listed
+    const tower3 = async (tower: Tower, unit: Unit) => {
+      const { Building } = await import('./building')
+      const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void> })(unit, tower, 'bti-floor', 3, 'high')
+      for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+      return b
+    }
+    const roofOf = async (tower: Tower) => {
+      const b = await tower3(tower, { ...u, floor: 3 })
+      let n = 0
+      ;(b as unknown as Group).traverse((o) => void ((o as Mesh).geometry && o.userData.level === 7 && (n += (o as Mesh).geometry.attributes.position.count)))
+      return n
+    }
+    expect(await roofOf(t)).toBeGreaterThan((await roofOf({ ...t, CORE: [] })) + 100)
+    // his own rooftop traced: it draws its own head room, none added
+    expect(projectTower(placeLevel(p, { ...u, id: 'roof' }, 'rooftop', undefined, { x: 0, y: 0 }, 'drawing')).CORE).toEqual([])
+  })
+
+  test('an architect’s shape whose windows came with solid glass: they leave the shape, the tower’s own panes take their place (polish2)', async () => {
+    const THREE = await import('three')
+    const { solidWindowsOut } = await import('./shell')
+    const { WINDOW } = await import('../import/glb')
+    const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), Object.assign(new THREE.MeshStandardMaterial(), { name: WINDOW })), new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()))
+    expect(solidWindowsOut(g)).toBe(1)
+    expect(g.children.map((m) => m.visible)).toEqual([false, true])
+    // the tower round a flat inside such a shape: every other flat's windows get panes (rooms behind them, lit at night);
+    // a shape with see-through windows keeps its own, as before
+    const a = bti.FLATS['type-a'].unit
+    const shell = { id: 's', name: 'shape', baseY: 0 }
+    const panes = async (u: Unit) => [...(await tower(u)).paneOwners.values()].reduce((n: number, o) => n + (o as unknown[]).length, 0)
+    expect(await panes({ ...a, shell: { ...shell, glass: 'opaque' } })).toBeGreaterThan(100)
+    expect(await panes({ ...a, shell })).toBe(0)
+  })
+
   test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
+
     const THREE = await import('three')
     const b = await tower(bti.FLATS['type-a'].unit)
     const paneMesh = [...b.paneOwners.keys()][0] // (one merged pane mesh a floor)

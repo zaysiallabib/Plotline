@@ -10,7 +10,12 @@ export interface GlbGroup {
   positions: Float32Array
   normals: Float32Array
   indices: Uint32Array
+  /** an IfcWindow's (its frame and its glass): its material named WINDOW, so the viewer can find it (three/shell.ts) */
+  window?: boolean
 }
+
+/** the material name a window's parts carry in the GLB */
+export const WINDOW = 'window'
 
 export interface GlbOut {
   glb: ArrayBuffer
@@ -55,6 +60,7 @@ export function writeGlb(groups: GlbGroup[], name: string): GlbOut {
     const [r, b_, bl, a] = g.color
     const mat =
       materials.push({
+        ...(g.window ? { name: WINDOW } : {}),
         pbrMetallicRoughness: { baseColorFactor: [r, b_, bl, a], metallicFactor: 0, roughnessFactor: 0.8 },
         doubleSided: true,
         ...(a < 0.999 ? { alphaMode: 'BLEND' } : {}),

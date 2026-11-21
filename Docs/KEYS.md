@@ -49,7 +49,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
 | **Finishes** / **F** | Opens / closes Finishes (closes Comment); in Clean view also brings everything back | the bar | everyone | §2 Finishes panel |
 | **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
-| **Share** | Copies a link that opens with the finishes you chose | the bar | everyone | §2 The bar |
+| **Share** | Copies a link that opens with the finishes you chose; staff with the online database: a buyer link (`/s/…`) of this flat on its floor, with its own finishes and furniture (asks once for the staff key when not signed in) | the bar | everyone | §2 The bar |
 | **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add | the bar | staff | §3 Edit furniture |
 | **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
