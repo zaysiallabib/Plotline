@@ -8,7 +8,7 @@
  * plain words.
  */
 import { deriveRooms, type Pt } from '../core'
-import { buildPlan, quarterArc, sheetScale, type ArcPrim, type Drawing, type Seg, type TextPrim } from './plan2d'
+import { buildPlan, penRoles, quarterArc, sheetScale, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
 const CHORDS = 8
@@ -184,45 +184,6 @@ export const readsAsPlan = (r: ImportResult): boolean =>
     const rooms = deriveRooms(s.unit).filter((x) => x.areaSqm >= 1).length
     return rooms >= 2 && s.unit.walls.length <= 20 * rooms
   })
-
-/**
- * Which pens draw the walls (session 31, formats2). A CAD print draws walls with its heaviest pen and often fills them grey
- * or black: the stroked pens at least PEN_HEAVY times as wide as the plan's usual line (the length-weighted median) that
- * draw at least PEN_SHARE of all its lines, and the fills of a grey (not white, not a colour) that do — when the page's
- * scale is known and the filled shapes are wall-thin (on average under FILL_THIN_M across: a room shaded grey is no wall).
- * None (one pen for everything, a coloured drawing): nothing is sorted, every line pair counts as before.
- */
-const PEN_HEAVY = 2.5
-const PEN_SHARE = 0.03
-const FILL_THIN_M = 0.6
-/** per fill pen: the filled shapes' area and outline length, page points */
-type Fills = Map<string, { area: number; outline: number }>
-/** a grey or black, not white: '#c0c0c0', '64,64,64', a gray level */
-const grey = (c: string): boolean => {
-  const rgb = /^#?([0-9a-f]{6})$/i.test(c) ? [0, 2, 4].map((i) => parseInt(c.replace('#', '').slice(i, i + 2), 16)) : c.split(',').map(Number)
-  if (rgb.some((x) => !Number.isFinite(x))) return false
-  const [r, g, b] = rgb.length === 1 ? [rgb[0], rgb[0], rgb[0]] : rgb
-  return Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) < 240
-}
-export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | null = null): { walls: Set<string>; words: string } {
-  const length = new Map<string, number>()
-  for (const g of segs) length.set(g.layer, (length.get(g.layer) ?? 0) + Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y))
-  const total = [...length.values()].reduce((a, b) => a + b, 0)
-  const strokes = [...length].filter(([p]) => p.startsWith('pen ')).map(([p, L]) => ({ p, L, w: Number(p.split(' ')[1]) })).sort((a, b) => a.w - b.w)
-  const strokeTotal = strokes.reduce((a, x) => a + x.L, 0)
-  let acc = 0
-  const median = strokes.find((x) => (acc += x.L) >= strokeTotal / 2)?.w ?? 0
-  const walls = new Set<string>()
-  for (const x of strokes) if (median > 0 && x.w >= PEN_HEAVY * median && x.L >= PEN_SHARE * total) walls.add(x.p)
-  // (a long thin shape's mean width is twice its area over its outline)
-  const thin = (p: string) => {
-    const f = fills.get(p)
-    return !!scale && !!f && f.outline > 0 && ((2 * f.area) / f.outline) * scale <= FILL_THIN_M
-  }
-  for (const [p, L] of length) if (p.startsWith('fill ') && grey(p.slice(5)) && L >= PEN_SHARE * total && thin(p)) walls.add(p)
-  const words = [...walls].map((p) => (p.startsWith('fill') ? `filled ${p.split(' ')[1]}` : `${p.split(' ')[1]} pt ${p.split(' ')[2]}`)).join(', ')
-  return { walls, words }
-}
 
 /** One page of a PDF (the file's bytes, or a PDF already open) read as a drawing; a page with no lines is refused. */
 export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo = 1): Promise<ImportResult> {

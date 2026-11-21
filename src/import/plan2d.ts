@@ -383,13 +383,17 @@ function wallAt(walls: WallDraft[], p: Pt, slack = 0.05): WallDraft | null {
   return best?.w ?? null
 }
 
-/** An opening put on `w` over [t0, t1]: joins an existing one there (keeps the surer kind) or adds; clamped inside the wall. */
-function putOpening(w: WallDraft, o: WallDraft['openings'][number]): boolean {
+/**
+ * An opening put on `w` over [t0, t1]: joins an existing one there (keeps the surer kind) or adds; clamped inside the wall.
+ * `exact` (a block with its jambs, in Plotline's own export): it keeps its own extent — the gap it fills may run on to a
+ * corner where the wall's last piece was too short to draw (a door 1–3 cm from a corner), and that stays wall.
+ */
+function putOpening(w: WallDraft, o: WallDraft['openings'][number], exact = false): boolean {
   const t0 = Math.max(w.t0, o.t0), t1 = Math.min(w.t1, o.t1)
   if (t1 - t0 < MIN_GAP) return false
   const hit = w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
   if (hit) {
-    if (hit.kind === 'passage' || (hit.kind === 'window' && o.kind !== 'passage')) Object.assign(hit, { ...o, gap: false, t0: Math.min(hit.t0, t0), t1: Math.max(hit.t1, t1) })
+    if (hit.kind === 'passage' || (hit.kind === 'window' && o.kind !== 'passage')) Object.assign(hit, { ...o, gap: false, t0: exact ? t0 : Math.min(hit.t0, t0), t1: exact ? t1 : Math.max(hit.t1, t1) })
     return true
   }
   w.openings.push({ ...o, t0, t1 })
@@ -691,9 +695,21 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     let w = jambs ? wallAt(kept, at, 0.05) : wallAt(kept, at, 0.3)
     if (w && jambs && Math.abs(crossZ(w.dir, sub(jambs[1], jambs[0]))) > 0.05 * len(sub(jambs[1], jambs[0]))) w = null // (a wall across it, not along)
     if (!w && jambs && d.own) {
-      w = { ...piece(jambs[0], jambs[1], snapThick(jambs[2]), b.h), openings: [] }
-      kept.push(w)
-      glassWalls++
+      // a wall on the block's line that ends at one of its jambs runs on through it (a door right at a corner: the wall's
+      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage)
+      const J = [jambs[0], jambs[1]]
+      const on = kept.find((v) => Math.abs(snapThick(jambs[2]) - v.thick) <= SNAP_THICK && Math.abs((v.h ?? -1) - (b.h ?? -1)) <= 0.01 && J.every((p) => Math.abs(dot(sub(p, v.a), v.n)) <= 0.01) && J.some((p) => [v.a, v.b].some((E) => len(sub(E, p)) <= 0.05)))
+      if (on) {
+        const ts = [on.t0, on.t1, ...J.map((p) => dot(p, on.dir))]
+        const at = (t: number): Pt => ({ x: on.a.x + on.dir.x * (t - on.t0), y: on.a.y + on.dir.y * (t - on.t0) })
+        const [a, c] = [at(Math.min(...ts)), at(Math.max(...ts))]
+        Object.assign(on, { a, b: c, t0: dot(a, on.dir), t1: dot(c, on.dir) })
+        w = on
+      } else {
+        w = { ...piece(jambs[0], jambs[1], snapThick(jambs[2]), b.h), openings: [] }
+        kept.push(w)
+        glassWalls++
+      }
     }
     if (!w) continue
     const ts = (jambs ? [jambs[0], jambs[1]] : b.pts).map((p) => dot(p, w.dir))
@@ -702,7 +718,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     if ((kind === 'door' && t1 - t0 > 4) || t1 - t0 < MIN_GAP) continue
     const swing = kind === 'door' && b.arc ? swingOn(b.arc, w) : null
     if (swing) placed.add(b.arc!)
-    if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) })) blockOpenings++
+    if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) }, !!jambs && !!d.own)) blockOpenings++
   }
   // door swings drawn on their own (not in a block that placed them): a quarter arc hinged on a wall
   let doorArcs = 0
@@ -988,6 +1004,45 @@ export function settleImport(unit: Unit): { unit: Unit; joined: number } {
   }
   const n = nodeGraph(u)
   return { unit: n.unit, joined: joined + n.joined }
+}
+
+/**
+ * Which pens draw the walls (session 31, formats2; SVG too since formats3). A layerless CAD print (a PDF, a flat SVG) draws walls with its heaviest pen and often fills them grey
+ * or black: the stroked pens at least PEN_HEAVY times as wide as the plan's usual line (the length-weighted median) that
+ * draw at least PEN_SHARE of all its lines, and the fills of a grey (not white, not a colour) that do — when the page's
+ * scale is known and the filled shapes are wall-thin (on average under FILL_THIN_M across: a room shaded grey is no wall).
+ * None (one pen for everything, a coloured drawing): nothing is sorted, every line pair counts as before.
+ */
+const PEN_HEAVY = 2.5
+const PEN_SHARE = 0.03
+const FILL_THIN_M = 0.6
+/** per fill pen: the filled shapes' area and outline length, page points */
+export type Fills = Map<string, { area: number; outline: number }>
+/** a grey or black, not white: '#c0c0c0', '64,64,64', a gray level */
+const grey = (c: string): boolean => {
+  const rgb = /^#?([0-9a-f]{6})$/i.test(c) ? [0, 2, 4].map((i) => parseInt(c.replace('#', '').slice(i, i + 2), 16)) : c.split(',').map(Number)
+  if (rgb.some((x) => !Number.isFinite(x))) return false
+  const [r, g, b] = rgb.length === 1 ? [rgb[0], rgb[0], rgb[0]] : rgb
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) < 240
+}
+export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | null = null, unit = 'pt'): { walls: Set<string>; words: string } {
+  const length = new Map<string, number>()
+  for (const g of segs) length.set(g.layer, (length.get(g.layer) ?? 0) + Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y))
+  const total = [...length.values()].reduce((a, b) => a + b, 0)
+  const strokes = [...length].filter(([p]) => p.startsWith('pen ')).map(([p, L]) => ({ p, L, w: Number(p.split(' ')[1]) })).sort((a, b) => a.w - b.w)
+  const strokeTotal = strokes.reduce((a, x) => a + x.L, 0)
+  let acc = 0
+  const median = strokes.find((x) => (acc += x.L) >= strokeTotal / 2)?.w ?? 0
+  const walls = new Set<string>()
+  for (const x of strokes) if (median > 0 && x.w >= PEN_HEAVY * median && x.L >= PEN_SHARE * total) walls.add(x.p)
+  // (a long thin shape's mean width is twice its area over its outline)
+  const thin = (p: string) => {
+    const f = fills.get(p)
+    return !!scale && !!f && f.outline > 0 && ((2 * f.area) / f.outline) * scale <= FILL_THIN_M
+  }
+  for (const [p, L] of length) if (p.startsWith('fill ') && grey(p.slice(5)) && L >= PEN_SHARE * total && thin(p)) walls.add(p)
+  const words = [...walls].map((p) => (p.startsWith('fill') ? `filled ${p.split(' ')[1]}` : `${p.split(' ')[1]} ${unit} ${p.split(' ')[2]}`)).join(', ')
+  return { walls, words }
 }
 
 // ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------

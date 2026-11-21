@@ -6,8 +6,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
-import { importPdf, penRoles, readsAsPlan } from './pdf'
-import { buildPlan, printedScale, sheetScale } from './plan2d'
+import { importPdf, readsAsPlan } from './pdf'
+import { buildPlan, penRoles, printedScale, sheetScale } from './plan2d'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)

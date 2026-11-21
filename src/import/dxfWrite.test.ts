@@ -43,10 +43,10 @@ function differences(a: Unit, b: Unit): string[] {
 }
 /**
  * Not yet the same from their lines alone (session 31, formats2): how many differences each still has — the test fails
- * when one grows. Curved ramp walls (short chords at odd angles), the
- * parking levels' bays and a few doors right at a corner are what is left; every other drawing reads back the same.
+ * when one grows. Curved ramp walls (short chords at odd angles), the parking levels' bays and a short wall at a T are
+ * what is left; every other drawing reads back the same (formats3: a door 1–3 cm from a corner now comes back — Type B).
  */
-const STILL: Record<string, number> = { 'banani-b1': 3, 'banani-b2': 3, 'banani-ground': 13, 'banani-roof': 2, 'dmd-b2': 2, 'dmd-typical': 2, 'sheltech-a': 4, 'sheltech-ground': 9, 'type-b': 1, 'type-c': 1 }
+const STILL: Record<string, number> = { 'banani-b1': 3, 'banani-b2': 3, 'banani-ground': 10, 'banani-roof': 2, 'dmd-b2': 2, 'dmd-typical': 2, 'sheltech-a': 3, 'sheltech-ground': 4, 'type-c': 1 }
 /** the file as a CAD program saves it: the comment copy dropped */
 const linesOnly = (dxf: string) => dxf.slice(dxf.indexOf('PLOTLINE-END') + 'PLOTLINE-END'.length).trimStart()
 

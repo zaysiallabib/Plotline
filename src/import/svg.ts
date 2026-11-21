@@ -10,7 +10,7 @@
  * sizes, else "set it with S". A pure reader — a small XML tokenizer, no DOM — so it runs in the tests and anywhere.
  */
 import type { Pt } from '../core'
-import { ROLE_WORDS, buildPlan, guessScale, quarterArc, roleOf, sheetScale, type ArcPrim, type Drawing, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, buildPlan, guessScale, penRoles, quarterArc, roleOf, sheetScale, type ArcPrim, type Drawing, type Fills, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
 // ---------- XML ----------
@@ -112,6 +112,24 @@ interface Out {
   texts: TextPrim[]
   loops: Loop[]
   pictures: number
+  /** each line's pen (penRoles): "pen <width> <colour>" stroked, "fill <colour>" filled, "" none — beside segs */
+  pens: string[]
+  fills: Fills
+}
+
+/** an SVG paint → the colour words penRoles reads: '#rrggbb', 'r,g,b', or as written */
+const NAMED: Record<string, string> = { black: '#000000', white: '#ffffff', gray: '#808080', grey: '#808080', silver: '#c0c0c0', darkgray: '#a9a9a9', darkgrey: '#a9a9a9', dimgray: '#696969', dimgrey: '#696969', lightgray: '#d3d3d3', lightgrey: '#d3d3d3', gainsboro: '#dcdcdc' }
+const colourOf = (c: string): string => {
+  const t = c.trim().toLowerCase()
+  if (/^#[0-9a-f]{3}$/.test(t)) return '#' + [...t.slice(1)].map((x) => x + x).join('')
+  const rgb = /^rgb\(([^)]*)\)$/.exec(t)
+  if (rgb) return rgb[1].split(',').map((x) => Math.round(x.trim().endsWith('%') ? parseFloat(x) * 2.55 : parseFloat(x))).join(',')
+  return NAMED[t] ?? t
+}
+interface Paint {
+  stroke: string
+  width: number
+  fill: string
 }
 
 /** an SVG document → its lines, door arcs, closed shapes and texts in the file frame (y up, user units) */
@@ -125,25 +143,44 @@ export function readSvg(src: string): Out & { layers: Map<string, number> } {
     e.children.forEach(index)
   }
   index(svg)
-  const out: Out = { segs: [], arcs: [], texts: [], loops: [], pictures: 0 }
+  const out: Out = { segs: [], arcs: [], texts: [], loops: [], pictures: 0, pens: [], fills: new Map() }
+  let pen = '' // the pen of the shape being drawn
   const layers = new Map<string, number>()
   // y up: the whole drawing flipped once
   const FLIP: M = [1, 0, 0, -1, 0, 0]
 
-  const walk = (el: El, m: M, layer: string, fontSize: number, depth: number) => {
+  const walk = (el: El, m: M, layer: string, fontSize: number, depth: number, inherited: Paint) => {
     if (depth > 32 || NOT_DRAWN.has(el.name)) return
     if (prop(el, 'display') === 'none' || prop(el, 'visibility') === 'hidden') return
     const here = mul(m, parseTransform(el.attrs.transform))
     const fs = nums(prop(el, 'font-size'))[0] ?? fontSize
     const name = el.name.replace(/^svg:/, '')
+    // the pen, as a PDF has it (penRoles): stroke, width and fill passed down the groups; the width as drawn on the sheet
+    const paint: Paint = { stroke: prop(el, 'stroke') ?? inherited.stroke, width: nums(prop(el, 'stroke-width'))[0] ?? inherited.width, fill: prop(el, 'fill') ?? inherited.fill }
+    const stroked = paint.stroke.trim() !== '' && paint.stroke.trim() !== 'none'
+    const strokePen = stroked ? `pen ${(paint.width * Math.sqrt(Math.abs(here[0] * here[3] - here[1] * here[2]))).toFixed(2)} ${colourOf(paint.stroke)}` : ''
     const seg = (a: Pt, b: Pt) => {
       if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) return
       out.segs.push({ a, b, layer })
+      out.pens.push(pen)
       layers.set(layer, (layers.get(layer) ?? 0) + 1)
     }
     const poly = (pts: Pt[], closed: boolean) => {
+      // a closed shape filled and not stroked draws with its fill (its area and outline go to that pen)
+      pen = closed && !stroked && paint.fill.trim() !== 'none' ? `fill ${colourOf(paint.fill)}` : strokePen
       for (let i = 0; i + 1 < pts.length; i++) seg(pts[i], pts[i + 1])
       if (closed && pts.length > 2) seg(pts[pts.length - 1], pts[0]), out.loops.push({ pts, layer })
+      if (pen.startsWith('fill ') && pts.length > 2) {
+        let a = 0, l = 0
+        pts.forEach((q, i) => {
+          const r = pts[(i + 1) % pts.length]
+          a += q.x * r.y - r.x * q.y
+          l += Math.hypot(r.x - q.x, r.y - q.y)
+        })
+        const f = out.fills.get(pen) ?? out.fills.set(pen, { area: 0, outline: 0 }).get(pen)!
+        f.area += Math.abs(a) / 2
+        f.outline += l
+      }
     }
     const P = (x: number, y: number) => ap(here, x, y)
     const a = (k: string) => Number(el.attrs[k] ?? 0) || 0
@@ -154,7 +191,7 @@ export function readSvg(src: string): Out & { layers: Map<string, number> } {
       case 'switch': {
         const own = name === 'g' ? layerName(el) : null
         const inner = name === 'svg' && depth > 0 ? mul(here, [1, 0, 0, 1, a('x'), a('y')]) : here
-        for (const c of el.children) walk(c, inner, own ?? layer, fs, depth + 1)
+        for (const c of el.children) walk(c, inner, own ?? layer, fs, depth + 1, paint)
         return
       }
       case 'use': {
@@ -163,11 +200,11 @@ export function readSvg(src: string): Out & { layers: Map<string, number> } {
         const at = mul(here, [1, 0, 0, 1, a('x'), a('y')])
         const kids = ref.name === 'symbol' ? ref.children : [ref]
         const own = layerName(ref) ?? layer
-        for (const c of kids) walk(c, at, own, fs, depth + 1)
+        for (const c of kids) walk(c, at, own, fs, depth + 1, paint)
         return
       }
       case 'line':
-        return seg(P(a('x1'), a('y1')), P(a('x2'), a('y2')))
+        return poly([P(a('x1'), a('y1')), P(a('x2'), a('y2'))], false)
       case 'polyline':
       case 'polygon': {
         const v = nums(el.attrs.points)
@@ -233,7 +270,8 @@ export function readSvg(src: string): Out & { layers: Map<string, number> } {
     }
   }
 
-  walk(svg, FLIP, '', 16, 0)
+  // (SVG's own defaults: no stroke, a black fill, 1 unit wide)
+  walk(svg, FLIP, '', 16, 0, { stroke: 'none', width: 1, fill: 'black' })
   return { ...out, layers }
 }
 
@@ -389,7 +427,6 @@ export async function importSvg(src: string, name: string, mine?: LayerRoles): P
   const named = [...r.layers].filter(([l]) => l)
   const list = named.sort((p, q) => q[1] - p[1]).map(([l, n]) => ({ name: l, role: roleOf(l, undefined, mine), count: n, yours: !!mine?.[l.toUpperCase()] }))
   for (const l of list.slice(0, 12)) notes.push(`Layer "${l.name}": ${ROLE_WORDS[l.role]}${l.yours ? ' (as you set it)' : ''} (${l.count}).`)
-  if (!named.length) notes.push('Layers: none named — walls are any parallel line pair 5–60 cm apart.')
   let { scale, note } = sheetScale(r.segs, r.texts)
   if (/not set/.test(note)) {
     // no printed size at all: a CAD export keeps the drawing's own units — the size says which (a plan is 3–200 m wide)
@@ -400,7 +437,11 @@ export async function importSvg(src: string, name: string, mine?: LayerRoles): P
     note = `Scale: no printed dimensions or room sizes — the drawing's units read as ${g.words}; check it with the Studio's S tool.`
   }
   notes.push(note)
-  const drawing: Drawing = { segs: r.segs, arcs: r.arcs, texts: r.texts, loops: r.loops, scale, layerRoles: mine }
+  // no layer named: its lines sorted by pen, the same rule as a PDF's (the heaviest pen and wall-thin grey fills are walls)
+  const pens = named.length ? null : penRoles(r.segs.map((g, i) => ({ ...g, layer: r.pens[i] })), r.fills, scale, 'units wide,')
+  const segs = pens?.walls.size ? r.segs.map((g, i) => ({ ...g, layer: pens.walls.has(r.pens[i]) ? 'WALL' : '' })) : r.segs
+  if (pens) notes.push(pens.walls.size ? `Layers: none named — its lines were sorted by pen: the heaviest (${pens.words}) taken as walls, the rest as doors, windows and the like.` : 'Layers: none named and its lines are all one pen — walls are any parallel line pair 5–60 cm apart.')
+  const drawing: Drawing = { segs, arcs: r.arcs, texts: r.texts, loops: r.loops, scale, layerRoles: mine }
   const plan = buildPlan(drawing, name.replace(/\.svg$/i, ''))
   notes.push(...plan.notes)
   return { format: 'svg', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, ...(list.length ? { layers: list } : {}) }
