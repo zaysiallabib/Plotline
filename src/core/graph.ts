@@ -501,11 +501,14 @@ export function validate(unit: Unit): ValidationIssue[] {
   }
 
   const rooms = deriveRooms(unit)
+  // each room's outline once (labels × rooms asked it again for every pair: a 500-room floor spent most of validate here)
+  const outline = new Map<Room, Pt[]>()
+  const polyOf = (r: Room): Pt[] => outline.get(r) ?? outline.set(r, roomPolygon(r, unit)).get(r)!
   const labelIds = new Set(unit.roomLabels.map((l) => l.id))
   for (const label of unit.roomLabels) {
     const owner = rooms.find((r) => r.id === label.id)
     if (owner) continue
-    const inside = rooms.find((r) => pointInPolygon(label, roomPolygon(r, unit)))
+    const inside = rooms.find((r) => pointInPolygon(label, polyOf(r)))
     if (inside && flatTypeOf(label)) continue // a flat's "Type A" label, standing in one of its rooms
     err(
       'label-outside-any-room',
@@ -535,10 +538,10 @@ export function validate(unit: Unit): ValidationIssue[] {
     const c = find(r.loop[0])
     if (done.has(c)) continue
     done.add(c)
-    const p = roomPolygon(r, unit)[0]
+    const p = polyOf(r)[0]
     let outer: Room | null = null
     for (const o of rooms) {
-      if (find(o.loop[0]) !== c && (!outer || o.areaSqm < outer.areaSqm) && pointInPolygon(p, roomPolygon(o, unit))) outer = o
+      if (find(o.loop[0]) !== c && (!outer || o.areaSqm < outer.areaSqm) && pointInPolygon(p, polyOf(o))) outer = o
     }
     if (outer) {
       warn('island-in-room', `walls around "${r.name}" stand inside "${outer.name}" joined to nothing: join them to it with a flush line (height 0)`, [

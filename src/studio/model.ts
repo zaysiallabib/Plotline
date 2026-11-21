@@ -291,6 +291,16 @@ export function initialState(): StudioState {
 
 const wallKey = (a: Id, b: Id): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
 
+/**
+ * Each corner's walls in wall order — what filtering u.walls for the corner gives (a wall from a corner to itself once),
+ * built once per version of the unit instead of once per corner (session 31 speed: a 700-wall floor's load).
+ */
+function wallsByCorner(u: Unit): Map<Id, Wall[]> {
+  const at = new Map<Id, Wall[]>()
+  for (const w of u.walls) for (const e of w.a === w.b ? [w.a] : [w.a, w.b]) (at.get(e) ?? at.set(e, []).get(e)!).push(w)
+  return at
+}
+
 /** Two corners closer than this after a move are one corner (under half an inch). */
 export const MERGE_M = 0.01
 
@@ -298,14 +308,15 @@ export const MERGE_M = 0.01
 function rewire(u: Unit, id: Id, to: Id): Unit {
   const end = (x: Id) => (x === id ? to : x)
   const seen = new Map<string, Wall>()
-  for (const w0 of u.walls) {
+  const keys = u.walls.map((w0) => {
     const w = w0.a === id || w0.b === id ? { ...w0, a: end(w0.a), b: end(w0.b) } : w0
-    if (w.a === w.b) continue
+    if (w.a === w.b) return ''
     const key = wallKey(w.a, w.b)
     const dup = seen.get(key)
     if (!dup || w.openings.length > dup.openings.length) seen.set(key, w)
-  }
-  return { ...u, walls: u.walls.flatMap((w0) => { const w = seen.get(wallKey(end(w0.a), end(w0.b))); return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
+    return key
+  })
+  return { ...u, walls: u.walls.flatMap((w0, i) => { const w = keys[i] ? seen.get(keys[i]) : undefined; return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
 }
 
 /** Wall `w`'s end `end` moved to `to` along its own line: openings keep their place on the plan. */
@@ -364,16 +375,29 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     return splitWall(t.unit, t.wall, s / wallFrame(t.wall, t.unit.vertices).lengthM) as { unit: Unit; vertexId: Id } // (nothing straddles s now)
   }
   // the moved corners first (they join onto what stands still), then the corners inside a moved wall's body
+  // per version of the unit (rebuilt only once it changed — s27 rows): its corners, the walls at each corner (in wall
+  // order, as a filter of u.walls gives them) and each wall's two ends — a 700-wall floor asks them a million times
   let V = new Map<Id, Vertex>()
+  let wallsAt = new Map<Id, Wall[]>()
+  let ends = new Float64Array(0)
   let mapped: Unit | null = null
   for (const id of new Set([...(ids ?? []), ...u.vertices.map((v) => v.id)])) {
-    if (mapped !== u) (V = new Map(u.vertices.map((v) => [v.id, v]))), (mapped = u) // (again only once the unit changed — s27 rows)
+    if (mapped !== u) {
+      V = new Map(u.vertices.map((v) => [v.id, v]))
+      wallsAt = wallsByCorner(u)
+      ends = new Float64Array(4 * u.walls.length)
+      u.walls.forEach((w, i) => {
+        const a = V.get(w.a), b = V.get(w.b) // (a missing corner: NaN, never skipped below — the maths there fails as before)
+        ends.set([a?.x ?? NaN, a?.y ?? NaN, b?.x ?? NaN, b?.y ?? NaN], 4 * i)
+      })
+      mapped = u
+    }
     const v = V.get(id)
     if (!v) continue
     const mine = !scope || scope.has(id)
     // (the whole unit: a tiny wall between two corners — a traced jog a hair long — is geometry, not a corner to merge)
     const linked = (x: Id) => !!scope || !u.walls.some((w) => wallKey(w.a, w.b) === wallKey(id, x))
-    const other = mine && u.vertices.find((x) => x.id !== id && Math.hypot(x.x - v.x, x.y - v.y) <= MERGE_M && linked(x.id))
+    const other = mine && u.vertices.find((x) => x.id !== id && Math.abs(x.x - v.x) <= MERGE_M && Math.abs(x.y - v.y) <= MERGE_M && Math.hypot(x.x - v.x, x.y - v.y) <= MERGE_M && linked(x.id))
     if (other) {
       u = rewire(u, id, other.id)
       merged.set(id, other.id)
@@ -381,7 +405,7 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
       joined++
       continue
     }
-    const mineWalls = u.walls.filter((w) => w.a === id || w.b === id)
+    const mineWalls = wallsAt.get(id) ?? []
     if (!mineWalls.length) continue // a corner of no wall ends nothing
     const near = new Set(mineWalls.map((w) => (w.a === id ? w.b : w.a)))
     // corners this one already reaches along its own short walls (≤ 0.3 m of path): a wall at one of them is joined
@@ -389,16 +413,19 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
     const hops = new Map<Id, number>([[id, 0]])
     for (const q = [id]; q.length; ) {
       const x = q.shift()!
-      for (const w of u.walls) {
-        if (w.a !== x && w.b !== x) continue
+      for (const w of wallsAt.get(x) ?? []) {
         const y = w.a === x ? w.b : w.a
         const h = hops.get(x)! + Math.hypot(V.get(y)!.x - V.get(x)!.x, V.get(y)!.y - V.get(x)!.y)
         if (h <= 0.3 && h < (hops.get(y) ?? Infinity)) hops.set(y, h), q.push(y)
       }
     }
     let best: { w: Wall; s: number; d: number; L: number; dir: Pt; end: Id; toEnd: number; free: boolean } | null = null
-    for (const w of u.walls) {
+    for (let i = 0; i < u.walls.length; i++) {
+      const w = u.walls[i]
       if (w.a === id || w.b === id || (!mine && !touches(w))) continue
+      // (a corner off the wall's box grown by its thickness and 2 cm can be neither in its body nor in its end blocks)
+      const m = w.thicknessM + 2 * MERGE_M
+      if (v.x < Math.min(ends[4 * i], ends[4 * i + 2]) - m || v.x > Math.max(ends[4 * i], ends[4 * i + 2]) + m || v.y < Math.min(ends[4 * i + 1], ends[4 * i + 3]) - m || v.y > Math.max(ends[4 * i + 1], ends[4 * i + 3]) + m) continue
       const a = V.get(w.a)!, b = V.get(w.b)!
       const L = Math.hypot(b.x - a.x, b.y - a.y)
       if (L <= EPS) continue
@@ -410,10 +437,10 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
       const end = s < L / 2 ? w.a : w.b
       const toEnd = s < L / 2 ? s : L - s
       if (step && toEnd <= Math.max(MERGE_M, w.thicknessM / 2)) continue // joined already: only a wall folded back over its middle
-      const free = !step && degree(u, end) === 1
+      const freeEnd = () => !step && (wallsAt.get(end)?.length ?? 0) === 1 // (asked only when it decides: counting is the slow part)
       // past W's end only by a hair — or within its end block when that end is free to come over
-      if (toEnd < -MERGE_M && !(free && toEnd >= -w.thicknessM / 2)) continue
-      best = { w, s, d, L, dir, end, toEnd, free }
+      if (toEnd < -MERGE_M && !(toEnd >= -w.thicknessM / 2 && freeEnd())) continue
+      best = { w, s, d, L, dir, end, toEnd, free: freeEnd() }
     }
     if (!best) continue
     const { w, s, dir, end, toEnd, free } = best
@@ -460,16 +487,22 @@ export function joinOverlaps(unit: Unit, ids?: Id[]): { unit: Unit; merged: Map<
   // crossings: both walls split at the crossing (an opening there trimmed to the other's face), one shared corner
   for (let guard = 0; guard < 1000; guard++) {
     const V = new Map(u.vertices.map((v) => [v.id, v]))
+    // each wall's ends, length, box and scope once per scan (a pair whose boxes are apart cannot cross: skipped first)
+    const W = u.walls.map((w) => {
+      const a = V.get(w.a)!, b = V.get(w.b)!
+      return { a, b, L: Math.hypot(b.x - a.x, b.y - a.y), x0: Math.min(a.x, b.x) - 1e-6, x1: Math.max(a.x, b.x) + 1e-6, y0: Math.min(a.y, b.y) - 1e-6, y1: Math.max(a.y, b.y) + 1e-6, in: touches(w) }
+    })
     let hit: { P: Wall; Q: Wall; t: number; s: number; Lp: number; Lq: number; sin: number } | null = null
     for (let i = 0; i < u.walls.length && !hit; i++) {
       const P = u.walls[i]
-      const a = V.get(P.a)!, b = V.get(P.b)!
-      const Lp = Math.hypot(b.x - a.x, b.y - a.y)
+      const { a, b, L: Lp, x0, x1, y0, y1 } = W[i]
       for (let j = i + 1; j < u.walls.length && !hit; j++) {
         const Q = u.walls[j]
-        if ((!touches(P) && !touches(Q)) || [Q.a, Q.b].some((x) => x === P.a || x === P.b)) continue
-        const c = V.get(Q.a)!, e = V.get(Q.b)!
-        const Lq = Math.hypot(e.x - c.x, e.y - c.y)
+        const q = W[j]
+        if (q.x0 > x1 || q.x1 < x0 || q.y0 > y1 || q.y1 < y0) continue
+        if ((!W[i].in && !q.in) || Q.a === P.a || Q.a === P.b || Q.b === P.a || Q.b === P.b) continue
+        const c = q.a, e = q.b
+        const Lq = q.L
         const den = (b.x - a.x) * (e.y - c.y) - (b.y - a.y) * (e.x - c.x)
         if (Math.abs(den) <= EPS * Lp * Lq) continue // parallel
         const t = ((c.x - a.x) * (e.y - c.y) - (c.y - a.y) * (e.x - c.x)) / den
@@ -639,8 +672,11 @@ const NEAR = 0.0262
  */
 function healStraight(unit: Unit, ids: Iterable<Id>, bentOnly = false): Unit {
   let u = unit
+  let byCorner = new Map<Id, Wall[]>()
+  let mapped: Unit | null = null
   for (const id of ids) {
-    const at = u.walls.filter((w) => w.a === id || w.b === id)
+    if (mapped !== u) (byCorner = wallsByCorner(u)), (mapped = u)
+    const at = byCorner.get(id) ?? []
     if (at.length !== 2) continue
     const [w1, w2] = at
     const d1 = dirFrom(u, w1, id)
@@ -685,12 +721,36 @@ function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; co
     again = false
     // (each frame from its own two corners: core's wallFrame maps every vertex on each call — s27 rows)
     const V = new Map(u.vertices.map((v) => [v.id, v]))
-    const F = new Map(u.walls.map((w) => [w.id, wallFrame(w, [V.get(w.a), V.get(w.b)].filter((x): x is Vertex => !!x))]))
-    pairs: for (const [i, K] of u.walls.entries()) {
-      for (const [j, S] of u.walls.entries()) {
+    const F = u.walls.map((w) => wallFrame(w, [V.get(w.a), V.get(w.b)].filter((x): x is Vertex => !!x)))
+    // each wall's box: the shorter's two ends lie within the longer's box grown by its thickness and 1 cm, or it is no
+    // duplicate (a 700-wall floor has half a million pairs — this skips nearly all of them before any maths)
+    const box = F.map(({ origin: o, dir, lengthM: L }) => {
+      const e = { x: o.x + dir.x * L, y: o.y + dir.y * L }
+      return { x0: Math.min(o.x, e.x), x1: Math.max(o.x, e.x), y0: Math.min(o.y, e.y), y1: Math.max(o.y, e.y) }
+    })
+    // the walls by their box's left edge: the shorter of a pair starts within the longer's box, so only that slice is
+    // looked at — in wall order, as the whole list was
+    const byX = box.map((_, j) => j).sort((p, q) => box[p].x0 - box[q].x0)
+    const firstFrom = (x: number) => {
+      let lo = 0, hi = byX.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (box[byX[mid]].x0 < x) lo = mid + 1
+        else hi = mid
+      }
+      return lo
+    }
+    pairs: for (let i = 0; i < u.walls.length; i++) {
+      const K = u.walls[i]
+      const m = K.thicknessM + MERGE_M + 1e-6
+      const bk = box[i]
+      for (const j of byX.slice(firstFrom(bk.x0 - m), firstFrom(bk.x1 + m + 1e-9)).sort((p, q) => p - q)) {
+        const S = u.walls[j]
         if (i === j || (ids && !at(K) && !at(S)) || Math.abs(K.heightM - S.heightM) > 0.01) continue
-        const fk = F.get(K.id)!
-        const fs = F.get(S.id)!
+        const bs = box[j]
+        if (bs.x0 < bk.x0 - m || bs.x1 > bk.x1 + m || bs.y0 < bk.y0 - m || bs.y1 > bk.y1 + m) continue
+        const fk = F[i]
+        const fs = F[j]
         const tie = at(S) === at(K) ? i < j : at(S)
         if (fs.lengthM > fk.lengthM || (fs.lengthM === fk.lengthM && !tie) || Math.abs(fk.dir.x * fs.dir.y - fk.dir.y * fs.dir.x) > 0.087) continue
         const ends = [fs.origin, { x: fs.origin.x + fs.dir.x * fs.lengthM, y: fs.origin.y + fs.dir.y * fs.lengthM }]
@@ -782,6 +842,14 @@ const SIN10 = 0.1736
 const cross = (p: Pt, q: Pt) => p.x * q.y - p.y * q.x
 /** how far a loose end of `w` looks ahead for a wall to join */
 const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
+/** how many wall ends sit on each corner (a wall from a corner to itself twice) */
+function endsAt(u: Unit): Map<Id, number> {
+  const deg = new Map<Id, number>()
+  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
+  return deg
+}
+/** what ahead() would work out from the unit itself: a caller asking for many ends of one version passes them once */
+type Known = { V: Map<Id, Vertex>; deg: Map<Id, number> }
 
 /**
  * What the loose end `id` of wall `w` reaches ahead (founder 2026-10-03: an unjoined wall leaves its room open — no
@@ -794,19 +862,22 @@ const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
  * `reach`: how far to look instead (the Issues list's "Extend" fix looks further: the founder sees its ghost first).
  * `gap` = how far short the end stops (of the face, the end, the column).
  */
-export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number; to: Pt; gap: number; also?: { w: Wall; end: Id }; inside?: boolean } | null {
-  const V = new Map(u.vertices.map((v) => [v.id, v]))
+export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w), known?: Known): { r: number; to: Pt; gap: number; also?: { w: Wall; end: Id }; inside?: boolean } | null {
+  const V = known?.V ?? new Map(u.vertices.map((v) => [v.id, v]))
   const v = V.get(id)!
   const far = w.a === id ? w.b : w.a
   const d = dirFrom(u, w, far, V) // ahead: away from its own wall
   let best: ReturnType<typeof ahead> = null
   // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2, Sheltech
   // Windflower's Whole floor: 1 400 walls, the import spent 100 s here; the corners' degrees counted once — s27 rows)
-  const deg = new Map<Id, number>()
-  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
+  const deg = known?.deg ?? endsAt(u)
   for (const x of u.walls) {
     if (x === w) continue
-    const f = wallFrame(x, [V.get(x.a)!, V.get(x.b)!])
+    const A = V.get(x.a)!, B = V.get(x.b)!
+    // (a wall whose box lies farther than this from the end can neither stop it nor lend it an end: most walls stop here)
+    const R = Math.max(Math.max(reach, x.thicknessM) + x.thicknessM / 2 / SIN10, reach + reachOf(x), reach + MERGE_M) + 1e-6
+    if (v.x < Math.min(A.x, B.x) - R || v.x > Math.max(A.x, B.x) + R || v.y < Math.min(A.y, B.y) - R || v.y > Math.max(A.y, B.y) + R) continue
+    const f = wallFrame(x, [A, B])
     const den = cross(d, f.dir)
     const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
     const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
@@ -821,8 +892,8 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
       const free = deg.get(end) === 1 && r > EPS
       // a free end comes to where the lines cross (beyond it, within its own reach); any other only when on this line
       const to = free ? { x: v.x + d.x * r, y: v.y + d.y * r } : q
-      const out = dirFrom(u, x, end === x.a ? x.b : x.a, V)
-      if (free ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
+      const out = free ? dirFrom(u, x, end === x.a ? x.b : x.a, V) : null // (only a free end needs its way out)
+      if (out ? (to.x - q.x) * out.x + (to.y - q.y) * out.y <= EPS || Math.hypot(to.x - q.x, to.y - q.y) > reachOf(x) : Math.abs(cross({ x: q.x - v.x, y: q.y - v.y }, d)) > MERGE_M) continue
       const rq = (to.x - v.x) * d.x + (to.y - v.y) * d.y
       if (rq > EPS && rq <= reach && (!best || rq < best.r)) best = { r: rq, to, gap: rq, ...(free ? { also: { w: x, end } } : {}) }
     }
@@ -851,10 +922,14 @@ export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number
 function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[] } {
   let u = unit
   const moved: Id[] = []
+  let byCorner = new Map<Id, Wall[]>()
+  let known: Known = { V: new Map(), deg: new Map() }
+  let mapped: Unit | null = null
   for (const id of ids ?? unit.vertices.map((v) => v.id)) {
-    const mine = u.walls.filter((w) => w.a === id || w.b === id)
+    if (mapped !== u) (byCorner = wallsByCorner(u)), (known = { V: new Map(u.vertices.map((v) => [v.id, v])), deg: endsAt(u) }), (mapped = u)
+    const mine = byCorner.get(id) ?? []
     // a kept free end (standsAlone) stays put on a whole-unit pass (load / Join walls); dragged, it still joins
-    const best = mine.length === 1 && !(mine[0].standsAlone && !ids) ? ahead(u, id, mine[0]) : null
+    const best = mine.length === 1 && !(mine[0].standsAlone && !ids) ? ahead(u, id, mine[0], undefined, known) : null
     if (!best || best.inside) continue
     u = moveEnd(u, mine[0], id, best.to)
     moved.push(id)
@@ -874,10 +949,14 @@ const STUB_M = 0.35
 function dropStubs(unit: Unit): { unit: Unit; dropped: number } {
   let u = unit
   let dropped = 0
+  let byCorner = new Map<Id, Wall[]>()
+  let mapped: Unit | null = null
+  const deg = (v: Id) => byCorner.get(v)?.length ?? 0
   for (const { id } of unit.walls) {
+    if (mapped !== u) (byCorner = wallsByCorner(u)), (mapped = u)
     const w = u.walls.find((x) => x.id === id)!
-    const free = [w.a, w.b].filter((v) => degree(u, v) === 1)
-    if (w.standsAlone || w.openings.length || free.length !== 1 || degree(u, free[0] === w.a ? w.b : w.a) < 3) continue
+    const free = [w.a, w.b].filter((v) => deg(v) === 1)
+    if (w.standsAlone || w.openings.length || free.length !== 1 || deg(free[0] === w.a ? w.b : w.a) < 3) continue
     const L = wallLen(u, w)
     const ends = [vertexById(u.vertices, w.a), vertexById(u.vertices, w.b)]
     const inPillar = (u.pillars ?? []).some((p) => ends.every((q) => Math.abs(q.x - p.x) <= p.wM / 2 + MERGE_M && Math.abs(q.y - p.y) <= p.hM / 2 + MERGE_M))

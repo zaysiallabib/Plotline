@@ -157,9 +157,13 @@ IFC that used to stop with an error now opens: its 526 room names have no walls 
   residential building: railings are not read as walls), bath and hall pairs whose dividing door wall leaks elsewhere
   (Smiley West). 2 crossings left on one Hitos floor. The rows to check include every closed space the file leaves
   unnamed (shafts, voids) as "Room has no name" — honest, not hidden.
-- **IFC speed:** joining and checking each floor costs time on big buildings: the dental clinic 6.7 → 11 s, Hitos
-  3.6 → 5.8 s, Schependomlaan 3.2 → 4.6 s, the 342 MB Sixty5 tower 18 → 57 s (the page keeps answering; the bar now gives the floors their
-  share). Small buildings read as fast as before.
+- **IFC speed:** joining and checking each floor made big buildings slower with formats2; the speed lane (session 31)
+  made the joining itself several times faster with the same result to the corner (`src/studio/joinPinned.test.ts`;
+  the 28 ifc-bench files re-scored with every floor's numbers identical, run `speed-ifc`). Seconds from the drop to the
+  floors on screen, Firefox, the file already in the page, two runs averaged — before formats2 → after formats2 →
+  now: dental clinic 3.6 → 8.4 → 2.9, Hitos 2.6 → 5.1 → 2.8, Schependomlaan 3.0 → 3.6 → 2.4, the 342 MB Sixty5 tower
+  15.8 → 51.8 → 15.4 (`E:/dev/tmp/s31/speed/stages.mjs`; the scoreboard's own clock, which also counts fetching the file: 6.7 → 11.2 → 4.1,
+  3.6 → 5.8 → 3.3, 3.2 → 4.6 → 3.8, 17.9 → 57.3 → 17.0). Small buildings read as fast as before.
 - **DXF round trip:** 10 of 20 built-ins exact from their lines alone; Banani's basements and ground (curved ramp walls
   drawn as short chords, parking bays) and Sheltech ground / Sheltech A / Type B / Type C (a door right at a corner, one
   short wall at a T) still differ by 1–13 things. Untouched exports still open exactly (the comment copy).
