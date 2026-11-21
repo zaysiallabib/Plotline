@@ -41,7 +41,8 @@ not signed in) — the card has a line to type in, the old name already in it an
 
 What someone who has never seen Plotline sees first: the product told as a short story you scroll through.
 
-- At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**.
+- At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**
+  (on a phone, a small line under it says "The Studio is for a computer").
 - Beside them (under them on a phone) lies a real floor plan: flat Type A on a sheet of paper, drawn as the architect's
   sheet draws it, with its room names, sizes and north point. Names read as a sheet prints them ("Veranda", not
   "Veranda (living)"); a room the sheet gives no size (a shaft, the lift core) shows its name alone. A name too big for
@@ -627,6 +628,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 Where staff draw the plan over the plan picture — or bring in the architect's own file — check it, and send it to 3D.
 The order is on the right under **Steps**: load the plan → set the scale → trace walls → wall thickness → openings →
 rooms → check → export.
+
+**On a phone** (a screen under 720 px wide) the Studio opens as one card instead: "The Studio is for a computer", with
+**See a flat** and **Open it anyway** (that opens the Studio, squeezed, for the rest of that tab).
 
 **What you see.** A light stone page; the plan picture lies on it like a sheet of paper, a little faded, so the walls you
 draw stand out in dark ink. Doors are drawn with their swing, windows as three thin lines between two short ends, as on
