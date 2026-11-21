@@ -131,9 +131,10 @@ const towerStem = (u: Unit) => {
 }
 /**
  * Floor `n` (`?floor=N`: a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON
- * keeps its own. A level (ground, basement, rooftop) stands on its tower's floor for it.
+ * keeps its own (no `?floor=` is no floor: never the ground, where a flat with no columns stands in as the tower's base). A level (ground,
+ * basement, rooftop) stands on its tower's floor for it.
  */
-function onFloor(u: Unit | null, n = Number(params.get('floor'))): Unit | null {
+function onFloor(u: Unit | null, n = params.has('floor') ? Number(params.get('floor')) : NaN): Unit | null {
   const t = u && towerOf(u)
   const stem = t && stemIn(t, u)
   if (!u || !t || !stem) return u
