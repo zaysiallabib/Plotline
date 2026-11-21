@@ -272,7 +272,16 @@ Edit furniture (or carry it with **G**) and it takes the light of where you put 
 the furniture as they light the walls: a room whose lamps you deleted goes dim, pieces and all. Pieces outdoors (a lawn,
 a pool deck, a play area) look as they always did, by day and at night.
 
-**Around the flat.** The neighbouring buildings and roads, seen in Walk, Dollhouse and Building. They throw the sun's
+**Around the flat.** Your own building first, then the neighbourhood. A flat that is part of a building (every built-in
+flat, and a flat of a project you made in the Studio, §6) stands in that building in Walk and Dollhouse, as in the
+Building view: look out of a window and you see the floors above and below with their windows and slab edges, and down
+on the building's own ground — its lawns, driveway, parking, pool or play area — then the street. A ground floor,
+basement or rooftop you walk has the building above or below it too. In the Dollhouse the floors above yours are left
+out, so you still look in from above. On **Lite** only the ground and the floors just above and below yours are drawn
+(what a window shows most); on **Low** your building throws no sun-shadow (the neighbours still do); **High** draws all
+of it with its shadows.
+
+The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
 facing the road, a low floor more than a high one. In the Dollhouse and Building view a block between you and the flat
 is left out while you look from there (its shadow stays), so it never hides what you look at.
@@ -284,7 +293,7 @@ is left out while you look from there (its shadow stays), so it never hides what
   two) has the road, 6–9 m wide, with buildings right at its far edge; a built-in building uses its drawing's own road.
   Each building gets its own street, the same every time and for every flat of it. The buildings are off-white, sand or
   pale grey; on High each floor's slab edge runs across their fronts as a line. The made-up street shows in Walk and the
-  Building view, not round the Dollhouse.
+  Building view, and round the Dollhouse of a flat that is part of a building (a flat on its own: not round its Dollhouse).
 
 **Small map** (bottom right, Walk only): white rooms, dark walls, your room washed light blue, you as a blue dot with a
 cone, and a tiny compass to true north in its top left corner. It is drawn the plan's way up, so it stays put as you
@@ -308,13 +317,13 @@ steps aside while Finishes or Comment is open.
   pixels, lamp shadows.
 - **Low** — the screen's own pixels, no corner shading, a smaller sun-shadow picture, 4 lamps lit at night (no lamp
   shadows), the wall tile's extra-sharp picture at half size, no potted-plant models, bathroom mirrors as plain silvery
-  glass. Nothing is drawn while nothing changes.
+  glass, your building round the flat without its sun-shadow. Nothing is drawn while nothing changes.
 - **Lite** — for weak laptops and phones: a smaller picture stretched to the window, no edge smoothing, no corner
   shading, **no shadows and no sun patches inside the flat** (rooms are still brighter by their windows; the sun still
   lights the street, the Dollhouse and Building views, and an open lawn, pool deck or roof terrace you stand on), 2
   lamps lit at night, the street as plain blocks under a plain blue sky, pictures at half size, no potted-plant models,
-  plain mirrors. Nothing is drawn while nothing changes (with Wind on its lines keep drifting). Same walls, furniture and
-  finishes.
+  plain mirrors, and of your building only the ground and the floors just above and below yours. Nothing is drawn while
+  nothing changes (with Wind on its lines keep drifting). Same walls, furniture and finishes.
 
 **When the 3D cannot run**
 

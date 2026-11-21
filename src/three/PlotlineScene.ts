@@ -403,8 +403,13 @@ export class PlotlineScene {
   /** the fingers on the canvas now; `multi`: this gesture has had two (a pinch, a two-finger drag): no look, no tap */
   private fingers = new Set<number>()
   private multi = false
-  /** built on the first switch to the Building view; hidden in walk / dollhouse */
+  /**
+   * The flat's own tower round it (building.ts) with its street, built with the unit: in the walk and the Dollhouse the floors
+   * its tier draws (frame), in the Building view all of it. Null: a flat of no tower.
+   */
   private building: Building | null = null
+  /** the tower round the floor a stair left (arrive), shown until the new floor is */
+  private leavingTower: Building | null = null
   /** the architect's outside shape round the flat (three/shell.ts), in every mode; the dollhouse cuts it at the storey's top */
   private shell: THREE.Group | null = null
   private readonly shellClip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6)
@@ -610,6 +615,14 @@ export class PlotlineScene {
     this.applyMaterials()
     yield
     this.look.setUnit(present(unit), this.rooms, this.cover, street, this.wells, this.holding) // fixtures, lights, slab, shadow fit box, the street
+    yield
+    // the rest of the building round it, its street the street (a stair's floor: shown with it, arrive)
+    this.building = Building.for(unit)
+    if (this.building) {
+      this.building.visible = !this.holding
+      this.scene.add(this.building)
+    }
+    if (!this.holding) this.aroundFlat() // (a stair's floor: as it shows, spawnAt)
     this.setTimeOfDay(this.hour)
     if (this.windMonth && !this.holding) this.setWind(this.windMonth) // an opening edited: the arrows go through it as it is now
 
@@ -649,6 +662,8 @@ export class PlotlineScene {
     for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
     if (this.shell) g.add(this.shell)
     this.shell = null
+    this.leavingTower = this.building // stays round the floor he leaves until the new one shows
+    this.building = null
     this.scene.add(g)
     this.holding = true
     this.walker = { ...at } // the furniture nearest him first; his eye stays where it is until the floor shows (tick)
@@ -726,6 +741,8 @@ export class PlotlineScene {
 
   /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
   private drop(): void {
+    this.leavingTower?.dispose()
+    this.leavingTower = null
     const g = this.leaving
     if (!g) return
     this.leaving = null
@@ -771,7 +788,9 @@ export class PlotlineScene {
     this.sun.color.set('#ff9a4a').lerp(new THREE.Color('#fff7ec'), Math.min(1, alt * 2.5))
     this.look.setAltitude(altDeg)
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
-    if (this.mode === 'building') this.building?.setSun(this.sun, skyLight(altDeg).night)
+    const night = skyLight(altDeg).night
+    if (this.mode === 'building') this.building?.setSun(this.sun, night)
+    else this.building?.setNight(night)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -806,15 +825,7 @@ export class PlotlineScene {
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()
-    if (mode === 'building' && this.unit && !this.building) {
-      this.building = Building.for(this.unit)
-      if (this.building) this.scene.add(this.building)
-    }
-    if (this.building) this.building.visible = mode === 'building'
-    this.look.setStreetY(mode === 'building' ? (this.building?.streetY ?? null) : null) // the tower's street (a traced ground floor's)
-    // Look's shadow catcher lies at this flat's slab: around the tower it would hang in mid-air
-    const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
-    if (catcher) (catcher.material as THREE.Material).visible = mode !== 'building'
+    this.aroundFlat()
     this.look.outside = mode === 'building'
     if (tower) this.setTimeOfDay(this.hour) // shadow box: the tower's, or back to the flat's; the lamps' bounce
     if (mode !== 'walk') {
@@ -833,6 +844,19 @@ export class PlotlineScene {
       this.camera.position.set(0, EYE, 0)
       this.camera.quaternion.setFromEuler(new THREE.Euler(0, this.yaw, 0, 'YXZ'))
     }
+  }
+
+  /**
+   * The tower round the flat in every mode (building.ts frame): the floors the tier draws in the walk and the Dollhouse, all of
+   * it in the Building view; its street (a traced ground floor's) in place of the flat's own; Look's shadow catcher, at this
+   * flat's slab, would hang in mid-air in it (the floor below takes the shadow).
+   */
+  private aroundFlat(): void {
+    const b = this.holding ? this.leavingTower : this.building // (a stair's floor getting ready: the one still shown)
+    b?.frame(this.mode, this.tier)
+    this.look.setStreetY(b?.streetY ?? null)
+    const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
+    if (catcher) (catcher.material as THREE.Material).visible = !b
   }
 
   /** Walker to the room centroid (eye height EYE). Switches to walk mode. */

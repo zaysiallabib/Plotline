@@ -1,6 +1,6 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import { describe, expect, test } from 'vitest'
-import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, twilight } from './render'
+import { assignPool, DAY_EXPOSURE, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, skyLight, sunLit, TIERS, towerLevel, twilight } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -162,4 +162,28 @@ describe('the tower at night', () => {
     expect(lit).toBeLessThan(0.5)
     expect(keys.map(litWindow)).toEqual(keys.map(litWindow))
   })
+})
+
+describe('the tower round the flat (towerLevel, session 31: "i couldn’t see the playground on the ground floor")', () => {
+  const floors = [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7]
+  const drawn = (tier: 'high' | 'low' | 'lite', floor: number, dollhouse = false) => floors.filter((k) => towerLevel(k, { tier, floor, dollhouse }))
+  test('High and Low: every floor round a flat, but no basement (nothing on a flat sees one)', () => {
+    expect(drawn('high', 2)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(drawn('low', 6)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+  })
+  test('Lite: the ground with its zones and the storeys next to the flat’s, no further', () => {
+    expect(drawn('lite', 2)).toEqual([0, 1, 2, 3])
+    expect(drawn('lite', 6)).toEqual([0, 5, 6, 7])
+  })
+  test('the Dollhouse looks in from above: nothing over the flat’s own floor', () => {
+    expect(drawn('high', 2, true)).toEqual([0, 1, 2])
+    expect(drawn('lite', 6, true)).toEqual([0, 5, 6])
+  })
+  test('the ground floor or a basement walked: the basements too (a ramp goes down to them)', () => {
+    expect(drawn('high', 0)).toEqual(floors)
+    expect(drawn('lite', 0)).toEqual([-1, 0, 1])
+    expect(drawn('lite', -1)).toEqual([-2, -1, 0])
+  })
+  test('the tower throws the sun’s shadow on High only (Low: the street’s still does; Lite has none)', () =>
+    expect([TIERS.high.towerShadows, TIERS.low.towerShadows, TIERS.lite.towerShadows]).toEqual([true, false, false]))
 })
