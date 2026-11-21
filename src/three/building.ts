@@ -246,6 +246,7 @@ export class Building extends THREE.Group {
   private readonly lidY: number
   /** frame(): the tower casts the sun's shadow (furniture loaded later follows) */
   private shadows = true
+  private pieceShadows = true
   /** frame(): the levels' outdoor pieces are shown; furnish() has started */
   private piecesShown = true
   private furnished = false
@@ -441,29 +442,34 @@ export class Building extends THREE.Group {
     const around = mode !== 'building'
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
+    // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
+    // the flat's shadow box): round the flat they cast none — High's sun-shadow redraw round a Sheltech flat 271 → 899 → ?
+    this.pieceShadows = !around
     // the levels' pieces (trees, benches, play things): not round the flat on Lite, its zones only — they were ~1.5 ms of a
     // Lite frame at 9× pixels round a Sheltech flat (Firefox pays per draw call: ~150 leaf clusters); the Building view has them
     this.piecesShown = !(around && tier === 'lite')
     if (this.piecesShown && !this.furnished) void this.furnish()
     for (const { pieces } of this.furnishing) if (pieces) pieces.visible = this.piecesShown
+    // the made-up street round Lite's Dollhouse: none, as before (~2 ms of a frame at 9× pixels); the site's real one stays
+    this.street.visible = !(mode === 'orbit' && tier === 'lite') || !!this.street.userData.site
     for (const o of this.children) {
       if (o === this.street) continue
       delete o.userData.cut
       o.visible = o === this.mark ? !around : !o.userData.proxy && (!around || towerLevel(o.userData.level, { tier, floor: this.floor, dollhouse: mode === 'orbit' }))
       this.casts(o)
+      for (const f of this.furnishing) if (f.group === o && f.pieces) this.casts(f.pieces, true)
     }
   }
 
-
-  /** The tower's meshes in `o` cast the sun's shadow as built, or none (frame). */
-  private casts(o: THREE.Object3D): void {
+  /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
+  private casts(o: THREE.Object3D, pieces = false): void {
+    const on = pieces ? this.pieceShadows : this.shadows
     o.traverse((m) => {
       if (!(m as THREE.Mesh).isMesh) return
       m.userData.casts ??= m.castShadow
-      m.castShadow = this.shadows && m.userData.casts
+      m.castShadow = on && m.userData.casts
     })
   }
-
 
   /** building-frame offset of a flat relative to the current one (plan x, y); no stem = the building frame's origin (frameOf) */
   private shift(stem?: string): Pt {
@@ -563,8 +569,8 @@ export class Building extends THREE.Group {
    * The outdoor pieces of the levels drawn in full (their own layout by kind: furnish presets, studio/furniture.ts
    * layoutFor) through the walk view's furniture loader, one at a time after the tower is shown: it opens as fast as the
    * shells did and fills in. Interiors stay empty (not seen from outside). A level's pieces, all in, are drawn as one mesh
-   * per material per 8 m square (batch.ts, as the flat's furniture): a ground floor's trees, benches and planters are
-   * ~200 meshes (session 31: Lite 101 → 169 draw calls a frame round a Sheltech flat before they were batched).
+   * per material per 8 m square (batch.ts, as the flat's furniture): Sheltech's ground floor's trees, benches and planters
+   * are ~220 meshes, ~55 batches (their leaf clusters stay their own draws).
    */
   private async furnish(): Promise<void> {
     this.furnished = true
@@ -585,12 +591,12 @@ export class Building extends THREE.Group {
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
         lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
         pieces.add(obj)
-        this.casts(obj)
+        this.casts(obj, true)
       }
       // batched with the shadow flags they were built with; frame's rule on top (casts)
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
       batch(pieces, CELL_M)
-      this.casts(pieces)
+      this.casts(pieces, true)
     }
   }
 

@@ -277,7 +277,8 @@ flat, and a flat of a project you made in the Studio, §6) stands in that buildi
 Building view: look out of a window and you see the floors above and below with their windows and slab edges, and down
 on the building's own ground — its lawns, driveway, parking, pool or play area — then the street. A ground floor,
 basement or rooftop you walk has the building above or below it too. In the Dollhouse the floors above yours are left
-out, so you still look in from above. On **Lite** only the ground (its lawns, paving, pool and play area, without the
+out, so you still look in from above (on Lite the Dollhouse shows only the ground and your own floor, and no made-up
+street). On **Lite** only the ground (its lawns, paving, pool and play area, without the
 trees, benches and play things) and the floors just above and below yours are drawn (what a window shows most); on
 **Low** your building throws no sun-shadow (the neighbours still do); **High** draws all of it with its shadows.
 
@@ -293,7 +294,8 @@ is left out while you look from there (its shadow stays), so it never hides what
   two) has the road, 6–9 m wide, with buildings right at its far edge; a built-in building uses its drawing's own road.
   Each building gets its own street, the same every time and for every flat of it. The buildings are off-white, sand or
   pale grey; on High each floor's slab edge runs across their fronts as a line. The made-up street shows in Walk and the
-  Building view, and round the Dollhouse of a flat that is part of a building (a flat on its own: not round its Dollhouse).
+  Building view, and round the Dollhouse of a flat that is part of a building on Low and High (on Lite, and round a flat
+  on its own: not round the Dollhouse).
 
 **Small map** (bottom right, Walk only): white rooms, dark walls, your room washed light blue, you as a blue dot with a
 cone, and a tiny compass to true north in its top left corner. It is drawn the plan's way up, so it stays put as you

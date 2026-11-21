@@ -79,11 +79,14 @@ export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, 
  * Floor k of the flat's tower round the flat on `floor` (founder 2026-11-21: "i went to the 1st floor and i couldn't see the
  * playground on the ground floor"): drawn in the walk on every tier as TIERS.tower says — all, or (Lite) the ground and the
  * storeys within one of the flat's; under the ground only from the ground or a basement (nothing else sees one); in the
- * Dollhouse nothing over the flat's own floor (it looks in from above). The Building view draws them all (building.ts highlight).
+ * Dollhouse nothing over the flat's own floor (it looks in from above), and on Lite only the ground and the flat's own floor
+ * (the storey under it filled the view: ~2.3 ms of a Lite Dollhouse frame at 9× pixels). The Building view draws them all
+ * (building.ts highlight).
  */
 export function towerLevel(k: number, s: { tier: Quality; floor: number; dollhouse: boolean }): boolean {
   if ((s.dollhouse && k > s.floor) || (k < 0 && s.floor > 0)) return false
-  return TIERS[s.tier].tower === 'all' || k === 0 || Math.abs(k - s.floor) <= 1
+  if (TIERS[s.tier].tower === 'all' || k === 0) return true
+  return s.dollhouse ? k === s.floor : Math.abs(k - s.floor) <= 1
 }
 
 /**

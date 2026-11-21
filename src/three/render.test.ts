@@ -175,9 +175,10 @@ describe('the tower round the flat (towerLevel, session 31: "i couldn’t see th
     expect(drawn('lite', 2)).toEqual([0, 1, 2, 3])
     expect(drawn('lite', 6)).toEqual([0, 5, 6, 7])
   })
-  test('the Dollhouse looks in from above: nothing over the flat’s own floor', () => {
+  test('the Dollhouse looks in from above: nothing over the flat’s own floor; on Lite the ground and the flat’s floor only', () => {
     expect(drawn('high', 2, true)).toEqual([0, 1, 2])
-    expect(drawn('lite', 6, true)).toEqual([0, 5, 6])
+    expect(drawn('low', 6, true)).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(drawn('lite', 6, true)).toEqual([0, 6])
   })
   test('the ground floor or a basement walked: the basements too (a ramp goes down to them)', () => {
     expect(drawn('high', 0)).toEqual(floors)
