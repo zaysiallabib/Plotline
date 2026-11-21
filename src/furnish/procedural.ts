@@ -150,12 +150,14 @@ function makeMats() {
 /** Curtain fabric: both faces drawn, UVs along the fabric's own width (curtains). */
 function drape(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   m.side = THREE.DoubleSide
+  samePictures(m) // two-sided now: the leaves' program (three/materials.ts)
   m.userData.ownUV = true
   return m
 }
 /** Lamp-shade cloth: both faces drawn (an open drum); lit from inside it glows warm (render.ts addGlows: only while the lamps are on). */
 function shadeCloth(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   m.side = THREE.DoubleSide
+  samePictures(m)
   m.emissive.set('#ffc890')
   m.emissiveIntensity = 0.07
   return m
@@ -1410,6 +1412,7 @@ function layoutBox(min: [number, number, number], max: [number, number, number])
   g.boundingBox = new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max))
   const o = new THREE.Mesh(g)
   o.userData.solo = true
+  o.visible = false // (its box sizes the piece; drawn, its empty shape made a program of its own: 0.12 s)
   return o
 }
 
@@ -1427,6 +1430,8 @@ function scanFile(s: Scan): Promise<THREE.Object3D> {
           if (m?.alphaTest) Object.assign(m, { alphaMap: a, needsUpdate: true })
         })
       }
+      // the pictures every lit piece carries (three/materials.ts): the leaves' program, not one per scan
+      g.scene.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach((m) => samePictures(m)))
       return g.scene
     })
     scanFiles.set(s.url, track(p))

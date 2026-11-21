@@ -699,8 +699,12 @@ describe('one draw of the scene a frame (session 31 glow)', () => {
     const wood = new THREE.MeshPhysicalMaterial({ color: '#8a6a4a' })
     const clock = new THREE.Group().add(new THREE.Mesh(new THREE.PlaneGeometry(), glass), new THREE.Mesh(new THREE.BoxGeometry(), wood))
     plainGlass(clock)
-    expect([glass.transmission, glass.transparent, glass.opacity <= 0.15, glass.depthWrite]).toEqual([0, true, true, false])
-    expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
+    const [face, frame] = clock.children as InstanceType<typeof THREE.Mesh>[]
+    const pane = face.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    // (session 31 start lane) a standard pane seen from the front, as the windows' glass: one program with them, not two of its own
+    expect([pane.type, (pane as InstanceType<typeof THREE.MeshPhysicalMaterial>).transmission, pane.transparent, pane.opacity <= 0.15, pane.depthWrite, pane.side]).toEqual(['MeshStandardMaterial', undefined, true, true, false, THREE.FrontSide])
+    expect(frame.material).toBe(wood) // the rest as it was
+    expect([wood.transmission, wood.transparent]).toEqual([0, false])
   })
 })
 

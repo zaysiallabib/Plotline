@@ -704,10 +704,16 @@ export const mottleMap = { value: null as THREE.Texture | null }
 /**
  * Patch one material: its indirect diffuse + specular × the atlas at the fragment's `dayUv`; its colour map read
  * `userData.mapBias` mip levels softer (materials.ts PORE_BLUR; 0: as is) — a uniform, so the room surfaces keep sharing
- * their programs.
+ * their programs. The plaster's cloudiness (`userData.mottle`, materials.ts) is a uniform too: the painted walls were a
+ * program of their own. `on` false (session 31 start lane): the same program with the atlas left out — its light × 1, no
+ * lamp bounce from outside — so a plain lit surface (a door frame, a scan's leaves, the glass) draws exactly as it did
+ * unpatched and shares the rooms' program instead of making one of its own (Firefox: 0.3 s each on High, one after another).
+ * A two-sided solid piece's alpha test (materials.ts samePictures `solid`) never cuts: it shares the leaves' program.
  */
-export function daylit(m: THREE.MeshStandardMaterial): void {
-  m.onBeforeCompile = (s) => {
+export function daylit(m: THREE.MeshStandardMaterial, on = true): void {
+  if (on && !m.userData.dayOn) (m.userData.dayOn = true), (m.needsUpdate = true)
+  if (m.onBeforeCompile === m.userData.dayFn) return
+  m.userData.dayFn = m.onBeforeCompile = (s) => {
     s.uniforms.dayMap = dayMap
     s.uniforms.dayMix = dayMix
     s.uniforms.lampOutSky = lampOut.sky
@@ -717,30 +723,36 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.uniforms.lampMap = lampMap
     s.uniforms.lampColor = lampBake.color
     s.uniforms.dayPiece = { value: m.userData.dayPiece ? 1 : 0 } // lightPiece marks a piece's materials; a uniform: one program with the rooms
+    s.uniforms.dayOn = { value: m.userData.dayOn ? 1 : 0 }
+    s.uniforms.mottleK = { value: m.userData.mottle?.k ?? 0 }
+    s.uniforms.mottleUv = { value: m.userData.mottle?.uv ?? 1 }
+    s.uniforms.dayCut = { get value() { return m.userData.solid ? -1 : m.alphaTest } } // (read each frame, as three's own alphaTest)
     nightPatch(s, { value: m.userData.nightOut ? 1 : 0 }) // an outer face (materials.ts EXTERIOR_PLASTER): the city's night light; a room's: none
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nuniform sampler2D lampMap;\nuniform vec3 lampColor;\nuniform float dayPiece;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+    // (the baked lamps' picture declared only where it is read: Firefox counts every declared picture against the 16 a program may)
+    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\n${lampBake.on ? 'uniform sampler2D lampMap;\n' : ''}uniform vec3 lampColor;\nuniform float dayPiece;\nuniform float dayOn;\nuniform float mottleK;\nuniform float mottleUv;\nuniform float dayCut;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
       .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
+      .replace('#include <alphatest_fragment>', THREE.ShaderChunk.alphatest_fragment.replaceAll('alphaTest', 'dayCut'))
       .replace(
       '#include <aomap_fragment>',
       `#include <aomap_fragment>
       // the lamps' bounce (the rest of dayMix): its own room's lamps (the atlas's G, setLampShare); none on a face toward
       // the outside or an open zone: at night they stay dark
       vec2 dayRg = texture2D(dayMap, vDayUv).rg;
-      float dayK = mix(${LAMP_RANGE.toFixed(1)} * dayRg.g, ${RANGE.toFixed(1)} * dayRg.r, dayMix);
+      float dayK = mix(1.0, mix(${LAMP_RANGE.toFixed(1)} * dayRg.g, ${RANGE.toFixed(1)} * dayRg.r, dayMix), dayOn);
       reflectedLight.indirectDiffuse *= dayK;
       reflectedLight.indirectSpecular *= min(dayK, 1.0); // darker in the back, but the HDRI studio mirrored brighter near a window blew the marble out
       // seen from outside with the lamps on (lampOut): their bounce as the walk's hemisphere gives it, × this room's lamps
       float dayUp = 0.5 + 0.5 * dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
-      reflectedLight.indirectDiffuse += mix(lampOutGround, lampOutSky, dayUp) * BRDF_Lambert(material.diffuseColor) * ${LAMP_RANGE.toFixed(1)} * dayRg.g;
+      reflectedLight.indirectDiffuse += mix(lampOutGround, lampOutSky, dayUp) * BRDF_Lambert(material.diffuseColor) * ${LAMP_RANGE.toFixed(1)} * dayRg.g * dayOn;
       #ifdef LAMP_BAKE
-      float lampE = texture2D(lampMap, vDayUv).r;
+      float lampE = texture2D(lampMap, vDayUv).r * dayOn;
       // a piece reads the floor under it: its top takes that light, its sides and underside less (the lamp is overhead)
       float lampK = mix(1.0, 0.2 + 0.8 * max(2.0 * dayUp - 1.0, 0.0), dayPiece);
       reflectedLight.directDiffuse += BRDF_Lambert(material.diffuseColor) * lampColor * (lampE * lampE * ${LAMP_DIRECT.toFixed(1)} * lampK);
       #endif
-      #if defined(MOTTLE) && defined(USE_MAP)
-      reflectedLight.indirectDiffuse *= 1.0 + MOTTLE * (texture2D(mottleMap, vMapUv * MOTTLE_UV, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
+      #ifdef USE_MAP
+      if (mottleK > 0.0) reflectedLight.indirectDiffuse *= 1.0 + mottleK * (texture2D(mottleMap, vMapUv * mottleUv, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
       #endif`,
     )
   }
@@ -797,7 +809,7 @@ export function mapDaylight(d: Daylight, geo: THREE.BufferGeometry, unit: Unit, 
  * mirror's, a line's), never glass: it is seen through, and patched it left the windows' glass program (Lite +2 programs).
  */
 const patchable = (m: THREE.Material): m is THREE.MeshStandardMaterial =>
-  !!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !m.transparent && (m.userData.dayPiece || m.onBeforeCompile === THREE.Material.prototype.onBeforeCompile)
+  !!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial && !m.transparent && (m.userData.dayPiece || m.onBeforeCompile === m.userData.dayFn || m.onBeforeCompile === THREE.Material.prototype.onBeforeCompile)
 
 /** A geometry of mesh `id`'s own over `g`'s vertices (not copied: a model's clones share one geometry), with an empty `dayUv`. */
 function own(g: THREE.BufferGeometry, id: number): THREE.BufferGeometry {
