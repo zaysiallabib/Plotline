@@ -119,7 +119,8 @@ describe('the load and the import settle give what they gave before the speed-up
     })
 })
 
-/** three small buildings of the IFC corpus (skipped where the corpus is not on the machine): every floor as the import gives it */
+/** three small buildings of the IFC corpus (skipped where the corpus is not on the machine): every floor as the import gives it
+ * (city house re-pinned by formats3: the rooms its attic's walls leave open close along their own outlines) */
 const BENCH = 'E:/dev/ALTERNATIVE FORMAT TEST/ifc-bench/projects'
 const IFCS = ['duplex/arc.ifc', 'fzk_house/arc.ifc', 'city_house_munich/arc.ifc']
 describe('an IFC reads as it read before the speed-up', () => {
@@ -136,7 +137,7 @@ describe('an IFC reads as it read before the speed-up', () => {
 const PINNED: Record<string, [string, string]> = {
   'duplex/arc.ifc': ['28f757ae961bf761', '28f757ae961bf761'],
   'fzk_house/arc.ifc': ['d7b9a2a932441f5c', 'd7b9a2a932441f5c'],
-  'city_house_munich/arc.ifc': ['593755dff5e48b67', '593755dff5e48b67'],
+  'city_house_munich/arc.ifc': ['09f1e40ef1bc26f9', '09f1e40ef1bc26f9'],
   'fixtures/autotrace-bti-floor-2026-11-20.json': ['dae0408aebf3902c', 'b8df5c02ace179c7'],
   'fixtures/founder-autotrace-type-a-2026-10-06.json': ['f1dc554e237be1da', 'a05cc86392ce384b'],
   'fixtures/founder-banani-unit-a-2026-10-09.json': ['1d6f3042c3bf9c8f', '1d6f3042c3bf9c8f'],
