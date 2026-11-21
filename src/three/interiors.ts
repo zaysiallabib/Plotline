@@ -167,7 +167,7 @@ const merge = (gs: THREE.BufferGeometry[]): THREE.BufferGeometry | null => {
 
 /**
  * A drawing's rooms (its own frame, floor at 0): each indoor room's floor (`floors`: a level draws its own, building.ts
- * addLevel), its ceiling a centimetre under the slab above (`wallM`: where the shell's plate starts) and the room side of
+ * addLevel), its ceiling GAP_M under the slab above (`wallM`: where the shell's plate starts) and the room side of
  * every wall — each a lining LINING_M in front of the wall's face, its openings cut, standing on its floors as the level's
  * walls do — in the finishes `cfg` picks (a floor's own record: data/building/apartments.ts; none: the plan's defaults), a wall
  * face by its own pick; the room's number (its index in `rooms`) on every vertex. null: no indoor room.

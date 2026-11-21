@@ -134,7 +134,7 @@ function wallMatrix(w: Wall, unit: Unit): THREE.Matrix4 {
 }
 
 /** Opening o's pane (2 cm thick at the wall's middle) with its frame's data on every vertex (paneMaterial): across / up it, its size. Glass only: the room behind is the room's own (interiors.ts). */
-export function paneGeo(w: Wall, unit: Unit, o: Opening): THREE.BufferGeometry {
+function paneGeo(w: Wall, unit: Unit, o: Opening): THREE.BufferGeometry {
   const g = box(o.offsetM, -0.01, o.offsetM + o.widthM, 0.01, o.sillM, o.sillM + o.heightM)
   const p = g.attributes.position
   const a = new Float32Array(p.count * 4)
@@ -266,7 +266,7 @@ export class Building extends THREE.Group {
   private readonly own: THREE.Material[] = [this.panes, ...this.lift.materials, ...this.hoverLift.materials]
   private readonly rooms = new Map<string, Room[]>()
   private readonly t: Tower
-  /** what the tier draws inside (insideOf): rooms everywhere; furniture on every storey (High), the nearest (Low), none (Lite) */
+  /** what the tier draws inside (furnishes): rooms everywhere; furniture on every storey (High), the nearest (Low), none (Lite) */
   private readonly tier: Quality
   /** the flats with rooms behind their windows (every one but the walked flat), each with its meshes once built */
   private readonly flats: Inside[] = []
@@ -705,7 +705,7 @@ export class Building extends THREE.Group {
   }
 
   /** What is picked on floor k: the current type if it is on that floor, else all its flats; on a floor without flats its stand-ins (a traced level: ground, basement, rooftop; massing). */
-  pickedOn(k: number): string[] {
+  private pickedOn(k: number): string[] {
     const entry = this.t.FLOORS.find((f) => f.floor === k)
     return !entry ? [] : entry.flats.includes(this.stem) ? [this.stem] : entry.flats.length ? entry.flats : (entry.standIns ?? [])
   }
