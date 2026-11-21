@@ -239,3 +239,19 @@ describe('Lite’s street: plain boxes, one mesh', () => {
     expect(plainShade(new THREE.Vector3(0, 1, 0))).toBeGreaterThan(sw)
   })
 })
+
+describe('the street takes none of the flat’s lamp lights (session 31 perf)', () => {
+  test('a hazed material (street, blocks, ground) compiles with no spot light at all: it paid for every lamp on every pixel seen through a window', async () => {
+    const THREE = await import('three')
+    const { hazed } = await import('./context')
+    for (const cut of [false, true]) {
+      const m = hazed(new THREE.MeshStandardMaterial(), cut)
+      const s = { uniforms: {}, vertexShader: THREE.ShaderLib.standard.vertexShader, fragmentShader: THREE.ShaderLib.standard.fragmentShader } as unknown as THREE.WebGLProgramParametersWithUniforms
+      m.onBeforeCompile(s, null as unknown as THREE.WebGLRenderer)
+      expect(s.fragmentShader).not.toMatch(/NUM_SPOT_LIGHT/)
+      expect(s.vertexShader).not.toMatch(/NUM_SPOT_LIGHT/)
+      expect(s.fragmentShader).toMatch(/hazeColor/) // its own patch still there
+      expect(s.fragmentShader).toMatch(/NUM_DIR_LIGHTS/) // the sun lights it as before
+    }
+  })
+})

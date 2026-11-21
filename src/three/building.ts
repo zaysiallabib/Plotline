@@ -37,10 +37,15 @@ import { lightPiece } from './daylight'
 import { buildFurniture } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
-import { batch, CELL_M } from './batch'
-import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
+import { batch, CELL_M, HIDDEN } from './batch'
+import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, noSpots, resolveFinishRef, zoneFinishRef } from './materials'
 import { WATER, meterUVs } from './openings'
 
+/** every drawing's rooms (interiors.ts roomsGeometry) per tower and key, for the page: built once, whichever floor is walked */
+const ROOMS = new WeakMap<Tower, Map<string, Promise<THREE.BufferGeometry | null>>>()
+const KEPT = new WeakSet<THREE.BufferGeometry>()
+/** round the flat the tower is batched this long after the last thing came in (batchAround) */
+const AROUND_MS = 400
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
 /** the roof's parapet over the top floor's outer walls (no traced rooftop) */
@@ -97,8 +102,11 @@ function paneMaterial(sky: { value: number }): THREE.MeshStandardMaterial {
     s.fragmentShader = `uniform vec3 hazeColor;\nuniform float paneSky;\nvarying vec4 vPane;\n${s.fragmentShader}`
       .replace('#include <color_fragment>', `#include <color_fragment>\n${PANE_FRAME}`)
       .replace('#include <opaque_fragment>', `${PANE_GLASS}\n#include <opaque_fragment>`)
+    s.vertexShader = noSpots(s.vertexShader) // the walked flat's lamps are not the tower's (materials.ts noSpots)
+    s.fragmentShader = noSpots(s.fragmentShader)
   }
   m.customProgramCacheKey = () => 'tower-pane'
+  m.userData.merge = true // round the flat its panes are one batch (batchAround): each adds the haze it mirrors over what is behind
   return m
 }
 /** vPane: across / up the pane 0–1, its width and height (m). The frame round it and the stile between its sashes: solid aluminium. */
@@ -348,6 +356,12 @@ export class Building extends THREE.Group {
   private readonly flats: Inside[] = []
   /** a drawing's rooms and furniture, once (interiors.ts), shared by every floor it stands on */
   private readonly drawn = new Map<string, { rooms?: Promise<THREE.BufferGeometry | null>; things?: Promise<THREE.BufferGeometry | null> }>()
+  /** this tower's drawings' rooms, kept for the page (ROOMS): the tower a stair builds for the next floor has them at once */
+  private get roomsKept(): Map<string, Promise<THREE.BufferGeometry | null>> {
+    let m = ROOMS.get(this.t)
+    if (!m) ROOMS.set(this.t, (m = new Map()))
+    return m
+  }
   /** where the camera is (update): the nearest flats are built first, and on Low furnished */
   private readonly eye = new THREE.Vector3()
   private furnishedFloors: Set<number> | null = null
@@ -472,7 +486,7 @@ export class Building extends THREE.Group {
           if (!shell.length) continue // all of it the walked flat's
           geo = merge(shell)
         }
-        const mesh = new THREE.Mesh(geo, materialFor(EXTERIOR_PLASTER))
+        const mesh = new THREE.Mesh(geo, materialFor(EXTERIOR_PLASTER, false, false, true))
         if (geo === ordinary.get(s)) mesh.position.set(this.shift(s).x, y, this.shift(s).y)
         mesh.castShadow = mesh.receiveShadow = true
         mesh.visible = !mine && !hasShell // the furnished flat is drawn by the scene; this one is only its pick proxy (every flat's, under the architect's shape)
@@ -537,7 +551,7 @@ export class Building extends THREE.Group {
     for (const [k, byMaterial] of lists)
       for (const [m, geos] of byMaterial) {
         const pane = m === 'glass'
-        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : materialFor(m))
+        const mesh = new THREE.Mesh(merge(geos), pane ? this.panes : materialFor(m, false, false, true))
         mesh.castShadow = !pane && m !== GREEN && m !== PAINT && m !== ASPHALT
         mesh.receiveShadow = true // a pane too: its frame in the facade's shade
         if (pane) this.paneOwners.set(mesh, owners.get(k) ?? []) // picked: a ray through a window names the flat behind it
@@ -597,6 +611,11 @@ export class Building extends THREE.Group {
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     const around = mode !== 'building'
+    this.unbatchAround()
+    this.around = around
+    // the trees' leaves merged per 8 m square in the Dollhouse only (leavesTogether): from inside the flat each tree is culled
+    // on its own and few are in sight — merged, Walk / High on Sheltech A drew 1.2 → 1.8 M triangles for no fewer draws
+    this.leavesMerged = mode === 'orbit'
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
     // its trees and deck pieces never shade the flat (the roof's are over its slab; a tree's shadow falls on the ground, outside
@@ -620,6 +639,99 @@ export class Building extends THREE.Group {
     if (around) this.eye.set(0, 1.5, 0) // the walked flat's neighbours first
     this.placeInside()
     this.want()
+    this.batchAround()
+  }
+
+  /** round the flat (walk, Dollhouse): the tower is drawn as one mesh per material (batchAround) */
+  private around = false
+  private leavesMerged = false
+  private batched: { batches: THREE.Mesh[]; leaves: THREE.InstancedMesh[]; moved: THREE.Object3D[] } | null = null
+  private batchTimer: ReturnType<typeof setTimeout> | undefined
+
+  /**
+   * Round the flat the tower does not change while it is looked at (the Building view's cut, lift and picking need its pieces
+   * one by one; round the flat nothing picks it): once it has settled (AROUND_MS after the last flat's rooms or pieces came
+   * in), everything of it that shows is drawn as one mesh per material (batch.ts) — its shells, plates, panes, levels and
+   * street in a handful of draws instead of one per flat and floor; each flat's rooms stay its own (their lamps). Session 31
+   * perf: the context lane's tower round the flat took Walk / High from 94 to 127 draws (Type A), 90 to 168 (Sheltech A).
+   */
+  private batchAround(): void {
+    clearTimeout(this.batchTimer)
+    if (!this.around || this.disposed) return
+    this.batchTimer = setTimeout(() => {
+      if (!this.around || this.disposed) return
+      this.unbatchAround()
+      const before: THREE.Object3D[] = []
+      this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
+      const leaves = this.leavesMerged ? this.leavesTogether() : []
+      const batches = batch(this, Infinity)
+      this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
+      this.onChange()
+    }, AROUND_MS)
+  }
+
+  /** the tower one by one again (frame, a flat's rooms or pieces coming in, the Building view) */
+  private unbatchAround(): void {
+    clearTimeout(this.batchTimer)
+    const b = this.batched
+    if (!b) return
+    this.batched = null
+    for (const m of b.batches) (m.removeFromParent(), m.geometry.dispose())
+    for (const m of b.leaves) (m.removeFromParent(), m.dispose()) // (their card geometry is the trees' own)
+    for (const o of b.moved) o.layers.set(0)
+  }
+
+  /**
+   * In the Dollhouse: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's
+   * in one 8 m square (as the pieces' batches: a square out of sight is not drawn — the whole ground's leaves in one mesh
+   * took Walk / High on Sheltech from 1.2 to 3.2 M triangles), as ONE instanced mesh (the originals hidden) — Sheltech's
+   * ground was ~150 draws of leaves. Only matrices are copied (a few ms), not leaves laid out as plain geometry: that froze
+   * the page for 2–3 s after a stair.
+   */
+  private leavesTogether(): THREE.InstancedMesh[] {
+    // one card = the same vertices: each tree's geometry is its own only for its daylight corner (daylight.ts own), over the
+    // card's shared attributes
+    const same = (p: THREE.InstancedMesh, q: THREE.InstancedMesh) => {
+      const [g, h] = [p.geometry, q.geometry]
+      const [du, dv] = [g.getAttribute('dayUv'), h.getAttribute('dayUv')]
+      return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow &&
+        !p.instanceColor === !q.instanceColor && du?.getX(0) === dv?.getX(0) && du?.getY(0) === dv?.getY(0)
+    }
+    const groups: { cell: string; list: THREE.InstancedMesh[] }[] = []
+    this.updateMatrixWorld(true)
+    const inv = this.matrixWorld.clone().invert()
+    this.traverseVisible((o) => {
+      const im = o as THREE.InstancedMesh
+      if (!im.isInstancedMesh || im.layers.mask !== 1 || !im.count || Array.isArray(im.material)) return
+      if (!im.boundingSphere) im.computeBoundingSphere()
+      const at = im.boundingSphere!.center.clone().applyMatrix4(im.matrixWorld).applyMatrix4(inv)
+      const cell = `${Math.floor(at.x / CELL_M)},${Math.floor(at.z / CELL_M)}`
+      const g = groups.find((x) => x.cell === cell && same(x.list[0], im))
+      if (g) g.list.push(im)
+      else groups.push({ cell, list: [im] })
+    })
+    const w = new THREE.Matrix4(), m = new THREE.Matrix4(), c = new THREE.Color()
+    const out: THREE.InstancedMesh[] = []
+    for (const { list } of groups) {
+      if (list.length < 2) continue
+      const all = new THREE.InstancedMesh(list[0].geometry, list[0].material, list.reduce((n, im) => n + im.count, 0))
+      let j = 0
+      for (const im of list) {
+        w.multiplyMatrices(inv, im.matrixWorld)
+        for (let i = 0; i < im.count; i++, j++) {
+          im.getMatrixAt(i, m)
+          all.setMatrixAt(j, m.premultiply(w))
+          if (im.instanceColor) (im.getColorAt(i, c), all.setColorAt(j, c))
+        }
+        im.layers.set(HIDDEN)
+      }
+      all.castShadow = list[0].castShadow
+      all.receiveShadow = list[0].receiveShadow
+      all.computeBoundingSphere()
+      this.add(all)
+      out.push(all)
+    }
+    return out
   }
 
   /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
@@ -715,7 +827,7 @@ export class Building extends THREE.Group {
     group.position.set(this.shift(s).x, this.levelOf(k), this.shift(s).y)
     group.userData.level = k // a cut at a lower floor hides it (highlight)
     for (const [m, geos] of lists) {
-      const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m))
+      const mesh = new THREE.Mesh(merge(geos.map(plain)), m instanceof THREE.Material ? m : materialFor(m, false, false, true))
       const flatOnly = m === BAY_PAINT || m === WATER || m === this.panes
       mesh.castShadow = !flatOnly
       mesh.receiveShadow = true
@@ -742,6 +854,7 @@ export class Building extends THREE.Group {
       this.work = this.work.then(run)
     }
     need('rooms', true, () => this.furnishRooms())
+    this.roomsWork ??= this.work
     need('pieces', this.piecesShown, () => this.furnishPieces())
     if (!all) return
     need('things', this.seen && this.tier !== 'lite', () => this.furnishThings())
@@ -755,8 +868,10 @@ export class Building extends THREE.Group {
   ready(): Promise<void> {
     this.piecesShown = this.tier !== 'lite'
     this.want(false)
-    return this.work.catch((e: unknown) => console.warn('[plotline] tower', e))
+    return (this.roomsWork ?? this.work).catch((e: unknown) => console.warn('[plotline] tower', e))
   }
+  /** the other flats' rooms in (want): what a stair's floor waits for — its grounds' pieces come in after it shows (their programs were compiled for the floor before: the same pieces, the same tier) */
+  private roomsWork: Promise<void> | null = null
   private t0 = performance.now()
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
@@ -804,6 +919,7 @@ export class Building extends THREE.Group {
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
       batch(pieces, CELL_M)
       this.casts(pieces, true)
+      this.batchAround()
     }
   }
 
@@ -826,7 +942,11 @@ export class Building extends THREE.Group {
     let d = this.drawn.get(key)
     if (!d) this.drawn.set(key, (d = {}))
     const rooms = f.skip.size ? this.roomsOf(f.s).map((r) => (f.skip.has(r.id) ? { ...r, kind: 'shaft' as const } : r)) : this.roomsOf(f.s)
-    d.rooms ??= roomsGeometry(u, rooms, WALL_M, this.t.LEVELS?.[f.s] === undefined, k.finishes)
+    if (!d.rooms) {
+      const kept = this.roomsKept
+      d.rooms = kept.get(key) ?? kept.set(key, roomsGeometry(u, rooms, WALL_M, this.t.LEVELS?.[f.s] === undefined, k.finishes)).get(key)!
+      void d.rooms.then((g) => g && KEPT.add(g))
+    }
     if (pause) d.things ??= furnitureGeometry(k.layout ? { ...u, furniture: k.layout } : u, rooms, pause)
     return d
   }
@@ -839,14 +959,17 @@ export class Building extends THREE.Group {
     mesh.position.set(d.x, this.levelOf(f.k), d.y)
     mesh.receiveShadow = true // a sun patch on its floor; the shells and slabs cast
     mesh.raycast = () => {} // a ray through a window is the pane's (pickAt)
+    mesh.renderOrder = 1 // after the shells, whose faces hide most of it; and left out of batchAround (one mesh a flat already)
     mesh.userData = { level: f.k, inside: true }
     if (this.cuts(this.picked) && f.k > this.picked) (mesh.visible = false), (mesh.userData.cut = true)
     else mesh.visible = this.shows(f.k) // round the flat: the floors the tier shows
     f[which] = mesh
+    this.unbatchAround()
     this.add(mesh)
     this.lightFlat(f)
     this.placeInside()
     this.onChange()
+    this.batchAround()
   }
 
   /** Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor. */
@@ -1061,7 +1184,10 @@ export class Building extends THREE.Group {
     this.disposed = true
     // the furniture shares its models' geometry with the loader's cache (and the walk view): not ours to free
     for (const { pieces } of this.furnishing) pieces?.children.filter((o) => o.userData.kind === 'furniture').forEach((o) => o.removeFromParent())
-    this.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
+    this.traverse((o) => {
+      const g = (o as THREE.Mesh).geometry
+      if (g && !KEPT.has(g)) g.dispose() // (a kept drawing's rooms: the next tower shows them; three uploads them again if it was freed)
+    })
     this.washes.forEach((g) => g.dispose())
     this.street.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
     this.own.forEach((m) => m.dispose())

@@ -11,6 +11,20 @@ import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
 import { daylit as daylitPatch, mottleMap } from './daylight'
 
+/**
+ * The flat's lamps (render.ts's pool of spot lights) light its own rooms only. What is outside them — the street and its
+ * blocks and ground (context.ts hazed), and in the Building view the tower: the other flats' shells, their rooms behind the
+ * glass (interiors.ts), the panes (building.ts) — takes none of them: they lit the block across the lane and a neighbour's
+ * rooms through the walls, and every such pixel paid for all of them (session 31 perf: 12 lamps on High). three writes the
+ * scene's spot-light count into a shader's light chunks when it builds the program; the chunks that name spot lights are
+ * written out here with none, before it does.
+ */
+export const noSpots = (src: string): string =>
+  src.replace(/#include <(\w+)>/g, (inc, k: string) => {
+    const c = (THREE.ShaderChunk as Record<string, string>)[k]
+    return c && /NUM_SPOT_LIGHT/.test(c) ? c.replace(/NUM_SPOT_LIGHT\w*/g, '0') : inc
+  })
+
 const images = new Map<string, Promise<THREE.Texture>>()
 const texCache = new Map<string, Promise<THREE.Texture>>()
 
@@ -34,9 +48,9 @@ export function setMaxAnisotropy(n: number): void {
 
 /**
  * Lite (render.ts Quality, set by PlotlineScene; procedural.ts re-exports it): the models' pictures are decoded at half
- * size, the street is plain boxes (context.ts), and (session 31) a texture set gives its colour and roughness only — no
- * relief (normal) or ambient-occlusion maps: 28 of Lite's 96 textures on type-a, for a few % of a pixel-bound frame
- * (procedural.ts pbr and furniture.ts's models follow it).
+ * size, the street is plain boxes (context.ts), and (session 31) a texture set gives its colour picture only — no relief
+ * (normal), ambient-occlusion or roughness / metal pictures, their numbers instead: fewer pictures and one material program
+ * where there were four (procedural.ts pbr and furniture.ts's models follow it).
  */
 export const lite = { on: false }
 /**
@@ -123,9 +137,10 @@ export function fallbackColor(textureId: string): string {
  * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
  * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
  * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
+ * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots).
  */
-export function materialFor(ref: MaterialRef, edge = false, daylit = false): THREE.MeshStandardMaterial {
-  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '')
+export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false): THREE.MeshStandardMaterial {
+  const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '')
   const cached = matCache.get(key)
   if (cached) return cached
   let m: THREE.MeshStandardMaterial
@@ -143,7 +158,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
     } else {
       const mat = m
       const apply = (slot: 'map' | 'normalMap' | 'roughnessMap' | 'aoMap', url: string | undefined, srgb = false) => {
-        if (!url || (lite.on && (slot === 'normalMap' || slot === 'aoMap'))) return
+        if (!url || (lite.on && slot !== 'map')) return
         texture(url, set.repeatM, srgb, set.repeatYM)
           .then((t) => {
             mat[slot] = t
@@ -164,6 +179,10 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false): THR
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
   if (daylit) daylitPatch(m)
+  if (outside) {
+    m.onBeforeCompile = (s) => void ((s.vertexShader = noSpots(s.vertexShader)), (s.fragmentShader = noSpots(s.fragmentShader)))
+    m.customProgramCacheKey = () => 'outside'
+  }
   matCache.set(key, m)
   return m
 }

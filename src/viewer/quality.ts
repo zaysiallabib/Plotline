@@ -92,3 +92,41 @@ export function probeDevice(): Device {
   }
   return { gpu, webgl2: !!gl, memoryGb: nav.deviceMemory, cores: nav.hardwareConcurrency || undefined, phone }
 }
+
+/**
+ * The stats card (`?stats=1`, ⋯ → How fast is it here?; never on a buyer's link): what this device does with the 3D, in
+ * words a person can send — the chip's name as the browser tells it, the tier, the median of the last 60 frames drawn back to
+ * back (PlotlineScene.stats), what one frame draws, what sits in the graphics memory, the pixels drawn.
+ */
+export interface Readout {
+  gpu: string
+  tier: Quality
+  /** ms; null: not two frames drawn yet (nothing moved) */
+  ms: number | null
+  calls: number
+  triangles: number
+  programs: number
+  textureMB: number
+  width: number
+  height: number
+}
+
+const n = (x: number) => Math.round(x).toLocaleString('en-US')
+
+/** The card's rows: [label, value]. */
+export function readout(r: Readout): [string, string][] {
+  return [
+    ['Graphics chip', r.gpu || 'not told by this browser'],
+    ['Quality', NAME[r.tier]],
+    ['A frame', r.ms === null ? 'move to measure' : `${r.ms.toFixed(1)} ms · ${n(Math.min(1000 / r.ms, 999))} a second`],
+    ['Draw calls', n(r.calls)],
+    ['Triangles', n(r.triangles)],
+    ['Shader programs', n(r.programs)],
+    ['Pictures in graphics memory', `about ${n(r.textureMB)} MB`],
+    ['Pixels drawn', `${n(r.width)} × ${n(r.height)} (${(r.width * r.height / 1e6).toFixed(1)} million)`],
+  ]
+}
+
+/** The same as plain text for the clipboard (Copy), with where it was taken: the page, the window, the browser. */
+export const readoutText = (r: Readout, where: { page: string; view: string; screen: string; browser: string }): string =>
+  ['Plotline — how fast it is here', ...readout(r).map(([k, v]) => `${k}: ${v}`), `View: ${where.view}`, `Page: ${where.page}`, `Window: ${where.screen}`, `Browser: ${where.browser}`].join('\n')

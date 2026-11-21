@@ -14,9 +14,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { sqmToSqft, type Room } from '../core'
 import { levelName, topFloor, type Tower } from '../data/building'
 import type { TowerHit } from '../three/building'
-import type { SceneMode } from '../three/PlotlineScene'
+import type { PlotlineScene, SceneMode } from '../three/PlotlineScene'
 import { noteAt } from './Notes'
-import { NAME, QUALITIES, read, tab, write, type Quality } from './quality'
+import { NAME, QUALITIES, read, readout, readoutText, tab, write, type Quality } from './quality'
 
 /** The piece in hand (ViewerApp, arrange.ts Held): its name, why it may not stay here (null: it may), whether it is anywhere yet, new from the library or not. */
 export interface HandInfo {
@@ -175,6 +175,8 @@ interface Props {
   onOpenings: (() => void) | null
   editingOpenings: boolean
   quality: QualityInfo
+  /** ⋯ → How fast is it here? (the stats card); null hides it (every buyer link) */
+  onStats?: (() => void) | null
   /** the Sun & wind pill / card (SunPill), docked bottom centre under the hint */
   sun: ReactNode
   /** a stair room's Up to … / Down to … (ViewerApp stairWays), docked over the pill; null: none */
@@ -560,6 +562,12 @@ export default function Hud(p: Props) {
             <p className="menu-note">
               {p.quality.note ?? p.quality.why} The dot marks the one recommended for this device. Lite is lighter on the computer: fewer pixels, simpler pictures, no potted plants. A new choice reloads the page.
             </p>
+            {p.onStats && <div className="menu-rule" />}
+            {p.onStats && (
+              <button className="menu-row" role="menuitem" title="What this computer does with the 3D, with a Copy button to send it" onClick={p.onStats}>
+                <span>How fast is it here?</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -631,5 +639,54 @@ export default function Hud(p: Props) {
       )}
       {chrome === 'none' && <button className="clean-dot" aria-label="Show the controls" title="Show the controls (H or Esc)" onClick={() => setClean(false)} />}
     </div>
+  )
+}
+
+/**
+ * The stats card (`?stats=1`, ⋯ → How fast is it here?; never on a buyer's link): what this device does with the 3D, read
+ * twice a second (PlotlineScene.stats) — the chip, the tier, a frame, what it draws, the graphics memory, the pixels — and
+ * Copy, which puts the same as plain text on the clipboard for the person to send.
+ */
+export function StatsPanel({ scene, gpu, tier, view, onClose }: { scene: PlotlineScene; gpu: string; tier: Quality; view: string; onClose: () => void }) {
+  const [s, setS] = useState(() => scene.stats())
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    const t = setInterval(() => setS(scene.stats()), 500)
+    return () => clearInterval(t)
+  }, [scene])
+  const r = { ...s, gpu, tier }
+  const copy = () => {
+    const text = readoutText(r, { page: location.pathname + location.search, view, screen: `${innerWidth} × ${innerHeight}, ${devicePixelRatio}× pixels`, browser: navigator.userAgent })
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <aside className="glass panel stats" aria-label="How fast it is here">
+      <Grip onClose={onClose} />
+      <header className="panel-head">
+        <span className="label">How fast it is here</span>
+        <button className="x" aria-label="Close" title="Close (Esc)" onClick={onClose}>
+          ×
+        </button>
+      </header>
+      <div className="panel-body">
+        <dl className="stats-rows">
+          {readout(r).map(([k, v]) => (
+            <div key={k}>
+              <dt className="label">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="row">
+          <button className="btn" onClick={copy}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <p className="panel-lead">Walk round for a few seconds, then Copy and send it to us: it says what this computer does with the 3D.</p>
+      </div>
+    </aside>
   )
 }

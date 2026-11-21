@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { FurniturePlacement } from '../core'
 import { kitAsset, objectKind, placementLabel, rebuildsAtSize } from '../furnish/kit'
 import { buildProcedural, lean, lite } from '../furnish/procedural'
@@ -23,10 +25,53 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => plainGlass(lite.on ? colourOnly(g.scene) : g.scene))
+    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(plainGlass(g.scene)) : plainGlass(g.scene)))
     gltfCache.set(url, p)
   }
   return p
+}
+
+const triangles = (g: THREE.BufferGeometry): number => (g.index ?? g.attributes.position).count / 3
+const standIns = new Map<string, Promise<THREE.Group>>()
+const simplifier = new SimplifyModifier()
+/** a part this small keeps its own triangles: a knob, a leg's foot (cutting it would only make holes) */
+const SMALL_PART = 64
+
+/**
+ * A model with about `tris` triangles at most (session 31 perf: a scanned sofa is 20–60 thousand; where it is seen from a
+ * street or on Lite, hundreds read the same): meshoptimizer through three's SimplifyModifier collapses the edges where the
+ * shape, its normals and its picture's seams move least; every part cut by the same share, a small part kept whole. Made once
+ * per model and budget when the model first loads, kept beside it in this page (every piece of that model shares it). A model
+ * already within the budget is the model.
+ */
+export function standIn(url: string, tris: number): Promise<THREE.Group> {
+  const key = `${url}|${tris}`
+  let p = standIns.get(key)
+  if (!p) {
+    p = loadModel(url).then((g) => simplified(g, tris))
+    standIns.set(key, p)
+  }
+  return p
+}
+
+/** standIn's work on a loaded model: a clone with its parts simplified (their materials shared), or the model itself if within `tris`. */
+export async function simplified<T extends THREE.Object3D>(g: T, tris: number): Promise<T> {
+  const meshes: THREE.Mesh[] = []
+  g.traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh)))
+  const n = meshes.reduce((a, m) => a + triangles(m.geometry), 0)
+  // within the budget, or a piece with a part that draws itself (a live mirror: cloning it would make a second mirror): as it is
+  if (n <= tris || meshes.some((m) => m.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender)) return g
+  const c = g.clone()
+  const parts: THREE.Mesh[] = []
+  c.traverse((o) => void ((o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh)))
+  for (const m of parts) {
+    const t = triangles(m.geometry)
+    if (t < SMALL_PART || m.geometry.groups.length) continue
+    const geo = m.geometry.index ? m.geometry : mergeVertices(m.geometry)
+    const keep = Math.max(SMALL_PART / 4, Math.round((t * tris) / n))
+    m.geometry = await simplifier.modify(geo, Math.round(geo.attributes.position.count * (1 - keep / t)))
+  }
+  return c
 }
 
 /**
@@ -58,12 +103,34 @@ export function plainGlass<T extends THREE.Object3D>(model: T): T {
   return model
 }
 
-/** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
+/**
+ * Lite (three/materials.ts lite): a model's colour picture only, once per model (its clones share its materials) — its relief,
+ * ambient-occlusion, roughness and metal pictures left off (never uploaded; the decoded pictures go with the garbage): its
+ * roughness the material's own number, no metal (a scan's metal picture marks a chrome foot or a handle: a dull grey on Lite).
+ * A scan's "physical" material (sheen, clearcoat: its own shader program) becomes a standard one with the same colour and
+ * picture, and its see-through glass is drawn from the front only (two-sided glass is two programs and two draws): Lite's
+ * furniture shares the rooms' few programs.
+ */
 export function colourOnly<T extends THREE.Object3D>(model: T): T {
+  const plain = new Map<THREE.Material, THREE.MeshStandardMaterial>()
+  const standard = (m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial => {
+    if (!(m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial) return m
+    let s = plain.get(m)
+    if (!s) {
+      s = new THREE.MeshStandardMaterial().copy(m) // the standard half of it: colour, pictures, roughness, see-through, sides
+      plain.set(m, s)
+    }
+    return s
+  }
   model.traverse((o) => {
-    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshStandardMaterial[]) {
-      if (!m.normalMap && !m.aoMap) continue
-      m.normalMap = m.aoMap = null // never uploaded; the decoded pictures go with the garbage
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh) return
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((x) => standard(x as THREE.MeshStandardMaterial)) : standard(mesh.material as THREE.MeshStandardMaterial)
+    for (const m of [mesh.material].flat() as THREE.MeshStandardMaterial[]) {
+      if (m.transparent && m.side === THREE.DoubleSide) (m.side = THREE.FrontSide), (m.needsUpdate = true)
+      if (!m.normalMap && !m.aoMap && !m.roughnessMap && !m.metalnessMap) continue
+      if (m.metalnessMap) m.metalness = 0
+      m.normalMap = m.aoMap = m.roughnessMap = m.metalnessMap = null
       m.needsUpdate = true
     }
   })
@@ -94,9 +161,10 @@ function placeholder(size: { x: number; y: number; z: number }): THREE.Object3D 
  * (TV on its unit, pillows on the sofa), and the placement's own `mountY` (a wall piece staff moved up or down) wins over
  * both — an `onTop` piece (a table lamp) at `restM`, the top it stands on (studio/furniture.ts bottomOf);
  * 'procedural:<id>' urls come from buildProcedural. `floorM`: the floor level it
- * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute.
+ * stands on (a raised lobby, a sunken lawn); `ceilingM` is absolute. `tris`: a scanned model's stand-in at about that many
+ * triangles (standIn), not the scan itself.
  */
-export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0, restM?: number): Promise<THREE.Group> {
+export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, floorM = 0, restM?: number, tris?: number): Promise<THREE.Group> {
   const pivot = new THREE.Group()
   pivot.position.set(p.x, floorM, p.y)
   pivot.rotation.y = -THREE.MathUtils.degToRad(p.rotationDeg)
@@ -109,8 +177,11 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
   if (asset) {
     try {
       const rebuilt = rebuildsAtSize(asset.id)
-      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await loadModel(asset.url)).clone()
+      model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await (tris ? standIn(asset.url, tris) : loadModel(asset.url))).clone()
       if (!model) throw new Error('no procedural builder')
+      // a code-built piece is made for each placement (a 3.9 m curtain's pleats, a bed's quilting: 4–11 thousand triangles):
+      // its stand-in made here, the same way
+      if (tris && asset.url.startsWith('procedural:')) model = await simplified(model, tris)
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)

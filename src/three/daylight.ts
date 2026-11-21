@@ -124,6 +124,9 @@ export interface Region {
   /** raw irradiance (sky-radiance units) per texel, row-major; tests read it */
   E: Float32Array
   roomId: Id
+  /** where texel (u, v) of the surface is (plan x, plan y, height over the room's floor) and which way it faces: the lamps' bake (setLampDirect) */
+  at?: (u: number, v: number) => V3
+  n?: V3
 }
 
 export interface Daylight {
@@ -333,7 +336,7 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
   }
 
   // ── sample grids ──
-  type Job = { key: string; room: Room; nu: number; nv: number; u0: number; v0: number; du: number; dv: number; point: (u: number, v: number) => V3 | null; n: V3; own: Id | null; cls: 0 | 1 | 2 }
+  type Job = { key: string; room: Room; nu: number; nv: number; u0: number; v0: number; du: number; dv: number; point: (u: number, v: number) => V3 | null; at: (u: number, v: number) => V3; n: V3; own: Id | null; cls: 0 | 1 | 2 }
   const jobs: Job[] = []
   const grid = (lo: number, hi: number) => {
     const n = Math.max(2, Math.ceil((hi - lo) / TEXEL) + 1)
@@ -349,8 +352,8 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
     const h = heightOf(r)
     const at = (z: number) => (u: number, v: number): V3 | null => (core.pointInPolygon({ x: u, y: v }, inner) ? [u, v, z] : null)
     const base = { room: r, nu: gx.n, nv: gy.n, u0: Math.min(...xs), v0: Math.min(...ys), du: gx.d, dv: gy.d, own: null }
-    jobs.push({ ...base, key: `floor:${r.id}`, point: at(0), n: [0, 0, 1], cls: 0 })
-    jobs.push({ ...base, key: `ceil:${r.id}`, point: at(h), n: [0, 0, -1], cls: 2 })
+    jobs.push({ ...base, key: `floor:${r.id}`, point: at(0), at: (u, v) => [u, v, 0], n: [0, 0, 1], cls: 0 })
+    jobs.push({ ...base, key: `ceil:${r.id}`, point: at(h), at: (u, v) => [u, v, h], n: [0, 0, -1], cls: 2 })
   }
   const inners = new Map(rooms.map((r) => [r.id, core.roomInnerPolygon(r, unit)]))
   for (const w of unit.walls) {
@@ -377,6 +380,7 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
           const probe = { x: x + s * f.normal.x * 0.01, y: y + s * f.normal.y * 0.01 }
           return core.pointInPolygon(probe, inners.get(room.id)!) ? [x, y, v] : null
         },
+        at: (u, v) => [f.origin.x + f.dir.x * u + f.normal.x * off, f.origin.y + f.dir.y * u + f.normal.y * off, v],
         n: [s * f.normal.x, s * f.normal.y, 0],
         own: w.id,
         cls: 1,
@@ -507,7 +511,7 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
     for (let y = 0; y < j.nv; y++) {
       for (let x = 0; x < j.nu; x++) data[(y0 + y) * width + x0 + x] = Math.round((255 * F[y * j.nu + x]) / RANGE)
     }
-    regions.set(j.key, { x: x0, y: y0, nu: j.nu, nv: j.nv, u0: j.u0, v0: j.v0, du: j.du, dv: j.dv, E: E[k], roomId: j.room.id })
+    regions.set(j.key, { x: x0, y: y0, nu: j.nu, nv: j.nv, u0: j.u0, v0: j.v0, du: j.du, dv: j.dv, E: E[k], roomId: j.room.id, at: j.at, n: j.n })
   })
   return { width, height, data, regions, sides, ms: performance.now() - t0 }
 }
@@ -571,6 +575,68 @@ export const lampOut = { sky: { value: new THREE.Color(0, 0, 0) }, ground: { val
 /** the atlas shown (setDaylight) and its texture's bytes: setLampShare rewrites their lamp channel */
 let shown: { d: Daylight; rg: Uint8Array; tex: THREE.DataTexture } | null = null
 
+/**
+ * The lamps' own light baked (Lite, session 31 perf: a weak chip pays for every lamp light on every pixel, lit or not):
+ * where `lampBake.on`, the room surfaces and the pieces take each lamp's direct light from a second atlas of the same layout
+ * (setLampDirect: every lamp of a room on that room's surfaces, as a spot light gives it — candela × its cone × cos ÷ d², its
+ * reach's fade), × `lampBake.color` (the lamps' white while they are on, black off) — no light in the shader at all, every
+ * lamp of the flat lit, not only the nearest. LAMP_DIRECT is the brightest kept (a texel right under a lamp; brighter is
+ * cut), stored as its square root: the dim corners keep their steps.
+ */
+export const lampBake = { on: false, color: { value: new THREE.Color(0, 0, 0) } }
+export const LAMP_DIRECT = 8
+const DARK = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat)
+DARK.needsUpdate = true
+/** the lamps' direct light (lampBake): one byte a texel, the daylight atlas's layout */
+export const lampMap = { value: DARK as THREE.Texture }
+
+/** A lamp as the bake sees it (render.ts setFixtures): its room, plan point, height over the room's floor, peak candela, its cone's cos (from straight down), its reach (m). */
+export interface BakedLamp {
+  roomId: Id
+  x: number
+  y: number
+  h: number
+  cd: number
+  cosCone: number
+  distance: number
+}
+
+/** One lamp's light on a surface point p (plan x, y, height) facing n: three's spot light (penumbra 1, decay 2) as the shader would sum it. */
+export function lampLight(l: BakedLamp, p: V3, n: V3): number {
+  const L: V3 = [l.x - p[0], l.y - p[1], l.h - p[2]]
+  const d = Math.hypot(L[0], L[1], L[2])
+  if (d < 1e-4 || d >= l.distance) return 0
+  const cos = (L[0] * n[0] + L[1] * n[1] + L[2] * n[2]) / d
+  if (cos <= 0) return 0
+  const spot = THREE.MathUtils.smoothstep(L[2] / d, l.cosCone, 1) // the angle from straight down
+  const fade = Math.max(0, 1 - (d / l.distance) ** 4) ** 2
+  return (l.cd * spot * fade * cos) / Math.max(d * d, 0.01)
+}
+
+/** The lamps' direct light into the shown atlas's layout (lampMap): each room's lamps on its own surfaces; none elsewhere. */
+export function setLampDirect(lamps: BakedLamp[]): void {
+  if (!shown) return
+  const { d } = shown
+  const data = new Uint8Array(d.width * d.height)
+  const byRoom = new Map<Id, BakedLamp[]>()
+  for (const l of lamps) byRoom.set(l.roomId, [...(byRoom.get(l.roomId) ?? []), l])
+  for (const r of d.regions.values()) {
+    const ls = byRoom.get(r.roomId)
+    if (!ls || !r.at || !r.n) continue
+    for (let y = 0; y < r.nv; y++)
+      for (let x = 0; x < r.nu; x++) {
+        const p = r.at(r.u0 + x * r.du, r.v0 + y * r.dv)
+        const e = ls.reduce((a, l) => a + lampLight(l, p, r.n!), 0)
+        data[(r.y + y) * d.width + r.x + x] = Math.round(255 * Math.sqrt(Math.min(1, e / LAMP_DIRECT)))
+      }
+  }
+  if (lampMap.value !== DARK) lampMap.value.dispose()
+  const t = new THREE.DataTexture(data, d.width, d.height, THREE.RedFormat)
+  t.magFilter = t.minFilter = THREE.LinearFilter
+  t.needsUpdate = true
+  lampMap.value = t
+}
+
 /** Day factors (R) and every room at a lit room's lamp bounce (G) until setLampShare says otherwise; the neutral block 0. */
 export function daylightTexture(d: Daylight): THREE.DataTexture {
   const rg = new Uint8Array(d.width * d.height * 2)
@@ -618,8 +684,11 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.uniforms.lampOutGround = lampOut.ground
     s.uniforms.mottleMap = mottleMap
     s.uniforms.mapBias = { value: m.userData.mapBias ?? 0 }
+    s.uniforms.lampMap = lampMap
+    s.uniforms.lampColor = lampBake.color
+    s.uniforms.dayPiece = { value: m.userData.dayPiece ? 1 : 0 } // lightPiece marks a piece's materials; a uniform: one program with the rooms
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nuniform sampler2D lampMap;\nuniform vec3 lampColor;\nuniform float dayPiece;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
       .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
       .replace(
       '#include <aomap_fragment>',
@@ -633,12 +702,18 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
       // seen from outside with the lamps on (lampOut): their bounce as the walk's hemisphere gives it, × this room's lamps
       float dayUp = 0.5 + 0.5 * dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz));
       reflectedLight.indirectDiffuse += mix(lampOutGround, lampOutSky, dayUp) * BRDF_Lambert(material.diffuseColor) * ${LAMP_RANGE.toFixed(1)} * dayRg.g;
+      #ifdef LAMP_BAKE
+      float lampE = texture2D(lampMap, vDayUv).r;
+      // a piece reads the floor under it: its top takes that light, its sides and underside less (the lamp is overhead)
+      float lampK = mix(1.0, 0.2 + 0.8 * max(2.0 * dayUp - 1.0, 0.0), dayPiece);
+      reflectedLight.directDiffuse += BRDF_Lambert(material.diffuseColor) * lampColor * (lampE * lampE * ${LAMP_DIRECT.toFixed(1)} * lampK);
+      #endif
       #if defined(MOTTLE) && defined(USE_MAP)
       reflectedLight.indirectDiffuse *= 1.0 + MOTTLE * (texture2D(mottleMap, vMapUv * MOTTLE_UV, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
       #endif`,
     )
   }
-  m.customProgramCacheKey = () => 'daylit'
+  m.customProgramCacheKey = () => (lampBake.on ? 'daylit-lamps' : 'daylit')
 }
 
 /**
@@ -732,6 +807,7 @@ export function lightPiece(obj: THREE.Object3D, uv: [number, number]): void {
 /** The unit's atlas for every daylit material (null: neutral); the previous one is freed. */
 export function setDaylight(d: Daylight | null): void {
   if (dayMap.value !== NEUTRAL) dayMap.value.dispose()
+  if (lampMap.value !== DARK) (lampMap.value.dispose(), (lampMap.value = DARK)) // its lamps are baked again (setLampDirect)
   const tex = d && daylightTexture(d)
   shown = d && tex && { d, rg: tex.image.data as Uint8Array, tex }
   dayMap.value = tex ?? NEUTRAL

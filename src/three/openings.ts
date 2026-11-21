@@ -111,6 +111,8 @@ export const WATER = new THREE.MeshStandardMaterial({ color: '#2a7d86', roughnes
 }
 /** Every pane material: PlotlineScene gives them the sky's PMREM, Look.setHour their reflection strength. */
 export const PANES = [GLASS, CLEAR_GLASS, GLAZING_GLASS, WATER]
+// the panes of a flat join one batch each (batch.ts): a flat's 20 windows were 20 draws a frame (session 31 perf)
+for (const m of [GLASS, CLEAR_GLASS, GLAZING_GLASS]) m.userData.merge = true
 /** Sky luminance (1 by day) → each pane's reflection at full strength, whatever its opacity. */
 export function setGlassSky(sky: number): void {
   for (const m of PANES) m.envMapIntensity = sky / m.opacity

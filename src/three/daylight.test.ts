@@ -356,3 +356,39 @@ describe('furniture reads the daylight of its room (session 31: "furniture in a 
     expect(uvs(out[0])).toEqual(['0:0.5', '1:0.5', '0:0.75', '1:0.125'])
   })
 })
+
+describe('the lamps baked for Lite (session 31 perf: no lamp light in the shader)', () => {
+  test('lampLight is three’s spot light: candela × cone × cos ÷ d², faded at its reach; nothing above it, behind a face or past its reach', async () => {
+    const { lampLight } = await import('./daylight')
+    const l = { roomId: 'living', x: 0, y: 0, h: 2.8, cd: 7, cosCone: Math.cos(THREE.MathUtils.degToRad(83)), distance: 8 }
+    const fade = (d: number) => (1 - (d / 8) ** 4) ** 2
+    expect(lampLight(l, [0, 0, 0], [0, 0, 1])).toBeCloseTo((7 * fade(2.8)) / 2.8 ** 2, 6) // straight under it
+    const side = lampLight(l, [2, 0, 0], [0, 0, 1])
+    expect(side).toBeGreaterThan(0)
+    expect(side).toBeLessThan(lampLight(l, [0, 0, 0], [0, 0, 1])) // the pool falls off toward the walls
+    expect(lampLight(l, [0, 0, 0], [0, 0, -1])).toBe(0) // a face turned away
+    expect(lampLight(l, [0, 0, 3], [0, 0, 1])).toBe(0) // above it: outside its cone
+    expect(lampLight(l, [9, 0, 0], [0, 0, 1])).toBe(0) // past its reach
+  })
+
+  test('setLampDirect: each room’s lamps on its own surfaces only, brightest under the lamp; the neutral block and other rooms dark', async () => {
+    const { lampMap, setLampDirect, LAMP_DIRECT } = await import('./daylight')
+    const d = bakeDaylight(TEST_UNIT, core.deriveRooms(TEST_UNIT))
+    setDaylight(d)
+    setLampDirect([{ roomId: 'living', x: 2.5, y: 2, h: 2.8, cd: 7, cosCone: Math.cos(THREE.MathUtils.degToRad(83)), distance: 6 }])
+    const t = lampMap.value as THREE.DataTexture
+    const data = t.image.data as Uint8Array
+    const at = (key: string, u: number, v: number) => {
+      const r = d.regions.get(key)!
+      const x = Math.round((u - r.u0) / r.du)
+      const y = Math.round((v - r.v0) / r.dv)
+      return LAMP_DIRECT * (data[(r.y + y) * d.width + r.x + x] / 255) ** 2
+    }
+    expect(at('floor:living', 2.5, 2)).toBeGreaterThan(0.5) // the pool under it
+    expect(at('floor:living', 2.5, 2)).toBeGreaterThan(at('floor:living', 0.4, 0.4)) // brighter than the corner
+    expect(at('floor:bed', 7, 2)).toBe(0) // another room: its own lamps only
+    expect(data[0]).toBe(0) // the neutral block: faces toward the outside stay dark
+    setDaylight(null)
+    expect(lampMap.value).not.toBe(t) // a new atlas: baked again for it
+  })
+})

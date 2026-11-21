@@ -31,7 +31,7 @@ import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
 import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, makeDraft, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
-import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
+import Hud, { floorTitle, Grip, StatsPanel, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
 import { arrivalFace, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
@@ -617,6 +617,8 @@ function Viewer({ first }: { first: Shown }) {
   const [room, setRoom] = useState<Room | null>(null)
   const [finishesOpen, setFinishesOpen] = useState(false)
   const [commenting, setCommenting] = useState(false)
+  /** the stats card (`?stats=1`, ⋯ → How fast is it here?): never on a buyer's link */
+  const [statsOpen, setStatsOpen] = useState(() => !SHARED && params.get('stats') === '1')
   const [locked, setLocked] = useState(false)
   const [xr, setXr] = useState<XRControls | null>(null)
   const [inVR, setInVR] = useState(false)
@@ -1314,6 +1316,7 @@ function Viewer({ first }: { first: Shown }) {
         else {
           setFinishesOpen(false)
           setSimOpen(false)
+          setStatsOpen(false)
         }
       }
     }
@@ -1533,6 +1536,7 @@ function Viewer({ first }: { first: Shown }) {
               gpu: DEVICE.gpu,
               onPick: pickQuality,
             }}
+            onStats={SHARED ? null : () => setStatsOpen(true)}
             sun={
               <SunPill
                 scene={scene}
@@ -1600,6 +1604,9 @@ function Viewer({ first }: { first: Shown }) {
                 Floor {askFloor.k} only: it gets its own copy of the drawing (walls, doors and windows); the other floors stay as they are. Furniture and finishes are always each floor's own. Asked once for this project (Studio → Building: Ask again).
               </div>
             </div>
+          )}
+          {statsOpen && !commenting && !finishesOpen && (
+            <StatsPanel scene={scene} gpu={DEVICE.gpu} tier={TIER.tier} view={{ walk: 'Walk', orbit: 'Dollhouse', building: 'Building' }[mode]} onClose={() => setStatsOpen(false)} />
           )}
           {commenting && (
             <aside className="glass panel" aria-label="Comment" onKeyDown={(e) => (e.target as HTMLElement).tagName === 'INPUT' && e.stopPropagation() /* typing a name */}>

@@ -38,7 +38,7 @@ import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
-import { batch, CELL_M, HIDDEN, unbatch } from './batch'
+import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
 import type { Street } from '../data/building'
@@ -506,6 +506,7 @@ export class PlotlineScene {
     if (cap) this.renderer.capabilities.maxTextureSize = Math.min(cap, this.renderer.capabilities.maxTextureSize)
     if (isLite) this.renderer.capabilities.getMaxAnisotropy = () => 1
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.info.autoReset = false // counted a whole frame at a time (tick): the stats card
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy())
 
     this.raycaster.layers.enable(HIDDEN) // batched meshes (batch.ts) are picked as before
@@ -715,7 +716,7 @@ export class PlotlineScene {
     for (const x of [this.staticGroup, this.furnitureGroup, this.ceilingGroup]) {
       if (built !== this.buildToken) return
       x.visible = true
-      batch(x, x === this.staticGroup ? Infinity : CELL_M)
+      batch(x, x === this.staticGroup ? Infinity : TIERS[this.tier].cell)
       x.visible = false
       await frame()
     }
@@ -1238,7 +1239,7 @@ export class PlotlineScene {
     this.adding.set(p.id, p)
     if (building) return
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p), TIERS[this.tier].standIn)
     const now = this.adding.get(p.id)
     this.adding.delete(p.id)
     if (token !== this.buildToken || this.pieceObject(p.id)) return
@@ -1304,7 +1305,7 @@ export class PlotlineScene {
   private async rebuildPiece(old: THREE.Object3D, p: FurniturePlacement, size: string): Promise<void> {
     old.userData.size = size // a newer size supersedes this build
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p), TIERS[this.tier].standIn)
     const parent = old.parent
     if (token !== this.buildToken || !parent || old.userData.size !== size) return
     obj.userData.size = size
@@ -1514,7 +1515,7 @@ export class PlotlineScene {
     if (this.holding) return void (this.batchTimer = window.setTimeout(this.settle, BATCH_MS)) // a stair's floor, hidden: batched as it shows
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
-    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
+    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : TIERS[this.tier].cell)
     this.unsettled.clear()
     this.wake()
   }
@@ -1886,7 +1887,7 @@ export class PlotlineScene {
     )
     let t = performance.now()
     for (const p of byDistance) {
-      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p))
+      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p), TIERS[this.tier].standIn)
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed
@@ -2392,6 +2393,8 @@ export class PlotlineScene {
       return
     }
     if (this.drewLast && !xr && this.ready && !this.holding) this.sample(raw * 1000, now) // (a stair's floor getting ready: frames slow on purpose)
+    if (this.drewLast) this.recent.push(raw * 1000) > 60 && this.recent.shift() // the stats card: frames drawn back to back
+    this.renderer.info.reset() // a frame's whole count (High's composer draws in several passes; the shadow maps' too)
     this.look.render()
     this.drewLast = true
     if (now > this.nextErrorCheck) {
@@ -2400,6 +2403,37 @@ export class PlotlineScene {
       const gl = this.renderer.getContext()
       if (gl.getError() === gl.OUT_OF_MEMORY) this.failCb?.('memory')
     }
+  }
+
+  /** the last 60 frame times (ms) drawn back to back: the stats card's median */
+  private readonly recent: number[] = []
+
+  /**
+   * What the stats card (`?stats=1`, ⋯ → How fast is it here?) shows: the median of the last 60 frames drawn back to back
+   * (ms; null before two), and the last frame's draw calls and triangles (shadow maps included), the shader programs, the
+   * pictures on the graphics chip (MB, about: each one's pixels × 4 bytes, + a third for its smaller copies; the lighting's
+   * at 8 bytes a pixel), the pixels drawn.
+   */
+  stats(): { ms: number | null; calls: number; triangles: number; programs: number; textureMB: number; width: number; height: number } {
+    const r = this.renderer
+    const v = [...this.recent].sort((a, b) => a - b)
+    const seen = new Set<THREE.Texture>()
+    const add = (t: unknown) => t instanceof THREE.Texture && seen.add(t)
+    this.scene.traverse((o) => {
+      for (const m of [(o as THREE.Mesh).material ?? []].flat()) for (const x of Object.values(m)) add(x)
+    })
+    add(this.scene.environment)
+    let bytes = 0
+    const cap = r.capabilities.maxTextureSize
+    for (const t of seen) {
+      const img = t.image as { width?: number; height?: number } | null
+      if (!img?.width || !img.height) continue
+      const k = Math.min(1, cap / Math.max(img.width, img.height))
+      const px = img.width * k * img.height * k * ((t as THREE.CubeTexture).isCubeTexture ? 6 : 1)
+      bytes += px * (t.type === THREE.HalfFloatType || t.type === THREE.FloatType ? 8 : 4) * (t.generateMipmaps || t.mipmaps?.length ? 4 / 3 : 1)
+    }
+    const size = r.getDrawingBufferSize(new THREE.Vector2())
+    return { ms: v.length > 1 ? v[v.length >> 1] : null, calls: r.info.render.calls, triangles: r.info.render.triangles, programs: r.info.programs?.length ?? 0, textureMB: bytes / 1048576, width: size.x, height: size.y }
   }
 
   /** The camera's world pose and lens, rounded (0.1 mm, 1e-4): an eased step or orbit damping settles instead of drawing on. */

@@ -53,8 +53,8 @@ function pbr(textureId: string, o: PbrOpt = {}): THREE.MeshStandardMaterial {
         })
         .catch(() => {})
     slot('map', set.albedo, true)
-    slot('roughnessMap', set.roughness)
-    if (!lite.on) slot('normalMap', set.normal) // Lite: colour and roughness only (three/materials.ts lite)
+    if (!lite.on) slot('roughnessMap', set.roughness) // Lite: the colour picture only (three/materials.ts lite)
+    if (!lite.on) slot('normalMap', set.normal)
     if (!lite.on) slot('aoMap', set.ao)
   }
   matCache.set(key, m)
@@ -1520,7 +1520,15 @@ const SIMPLE: Card[] = [
 ]
 
 /** Card `c` as geometry: base at the origin, tip up +y at `len`, its width across x, face +z; `segs` steps along it, the tip curling back `droop`·len along −z. */
+const cardGeos = new Map<string, THREE.BufferGeometry>()
+/** (one geometry per card and shape, shared by every tree: round the flat the tower draws all the trees' leaves of one card as one instanced mesh — building.ts batchAround) */
 function cardGeo(c: Card, len: number, segs: number, droop: number): THREE.BufferGeometry {
+  const key = `${c.b}|${len}|${segs}|${droop}`
+  let g = cardGeos.get(key)
+  if (!g) cardGeos.set(key, (g = makeCardGeo(c, len, segs, droop)))
+  return g
+}
+function makeCardGeo(c: Card, len: number, segs: number, droop: number): THREE.BufferGeometry {
   const k = len / c.L
   const P: number[] = []
   const UV: number[] = []

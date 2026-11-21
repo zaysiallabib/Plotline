@@ -78,3 +78,41 @@ describe('Lite and Low leave the scanned plant models out', () => {
     }
   })
 })
+
+describe('the stats card says what this device does, in words a person can send (session 31 perf)', () => {
+  const r = { gpu: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0)', tier: 'lite' as const, ms: 41.66, calls: 102, triangles: 162345, programs: 18, textureMB: 73.6, width: 1200, height: 750 }
+  test('its rows: the chip, the tier, a frame in ms and per second, the counts, the memory, the pixels', async () => {
+    const { readout } = await import('./quality')
+    expect(readout(r)).toEqual([
+      ['Graphics chip', r.gpu],
+      ['Quality', 'Lite'],
+      ['A frame', '41.7 ms · 24 a second'],
+      ['Draw calls', '102'],
+      ['Triangles', '162,345'],
+      ['Shader programs', '18'],
+      ['Pictures in graphics memory', 'about 74 MB'],
+      ['Pixels drawn', '1,200 × 750 (0.9 million)'],
+    ])
+    expect(readout({ ...r, gpu: '', ms: null })[0][1]).toBe('not told by this browser')
+    expect(readout({ ...r, ms: null })[2][1]).toBe('move to measure') // nothing drawn twice yet: no number made up
+  })
+  test('Copy: the same lines as plain text, with the page, the window and the browser', async () => {
+    const { readoutText } = await import('./quality')
+    const t = readoutText(r, { page: '/u/type-a?quality=lite', view: 'Walk', screen: '1600 × 1000, 1× pixels', browser: 'Firefox 140' })
+    expect(t.split('\n')).toEqual([
+      'Plotline — how fast it is here',
+      `Graphics chip: ${r.gpu}`,
+      'Quality: Lite',
+      'A frame: 41.7 ms · 24 a second',
+      'Draw calls: 102',
+      'Triangles: 162,345',
+      'Shader programs: 18',
+      'Pictures in graphics memory: about 74 MB',
+      'Pixels drawn: 1,200 × 750 (0.9 million)',
+      'View: Walk',
+      'Page: /u/type-a?quality=lite',
+      'Window: 1600 × 1000, 1× pixels',
+      'Browser: Firefox 140',
+    ])
+  })
+})

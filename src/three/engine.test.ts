@@ -446,27 +446,26 @@ describe('textures: one picture per url, Lite’s colour-only sets', () => {
       spy.mockRestore()
     }
   })
-  test('Lite: a set gives its colour and roughness pictures only, no relief or ambient-occlusion map', () => {
+  test('Lite: a set gives its colour picture only, no relief, ambient-occlusion or roughness map (session 31 perf: one program, not four)', () => {
     const urls: string[] = []
     const spy = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(async (u: string) => (urls.push(u), new THREE.Texture()))
     lite.on = true
     try {
       materialFor({ kind: 'pbr', textureId: 'wood_floor_oak', tint: '#fefefe' })
       expect(urls.some((u) => /albedo/.test(u))).toBe(true)
-      expect(urls.some((u) => /roughness/.test(u))).toBe(true)
-      expect(urls.filter((u) => /normal|ao\./.test(u))).toEqual([])
+      expect(urls.filter((u) => /normal|ao\.|roughness/.test(u))).toEqual([])
     } finally {
       lite.on = false
       spy.mockRestore()
     }
   })
-  test('Lite: a scanned model loses its relief and ambient-occlusion maps, keeps colour and roughness', () => {
+  test('Lite: a scanned model keeps its colour picture only (relief, ambient-occlusion and roughness pictures left off)', () => {
     const map = new THREE.Texture()
     const orm = new THREE.Texture()
     const m = new THREE.MeshStandardMaterial({ map, normalMap: new THREE.Texture(), aoMap: orm, roughnessMap: orm })
     const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m))
     colourOnly(g)
-    expect([m.map, m.roughnessMap, m.normalMap, m.aoMap]).toEqual([map, orm, null, null])
+    expect([m.map, m.roughnessMap, m.normalMap, m.aoMap]).toEqual([map, null, null, null])
   })
 })
 

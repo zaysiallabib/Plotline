@@ -24,7 +24,11 @@ export const CELL_M = 8
 const noop = (): void => {}
 const centre = new THREE.Vector3()
 
-/** a mesh that may join a batch: plain, opaque, drawn as it is (no mirror pass, no skinning, no morphs, no own layer or depth material) */
+/**
+ * a mesh that may join a batch: plain, opaque — or see-through glass marked `userData.merge` (openings.ts: every pane the
+ * same tint, so the order they are drawn in never shows) — drawn as it is (no mirror pass, no skinning, no morphs, no own
+ * layer or depth material)
+ */
 function plain(m: THREE.Mesh): boolean {
   const g = m.geometry
   const mats = [m.material].flat()
@@ -41,7 +45,7 @@ function plain(m: THREE.Mesh): boolean {
     !Object.keys(g.morphAttributes).length &&
     g.drawRange.start === 0 &&
     g.drawRange.count === Infinity &&
-    mats.every((x) => x && x.visible && !x.transparent)
+    mats.every((x) => x && x.visible && (!x.transparent || x.userData.merge === true))
   )
 }
 

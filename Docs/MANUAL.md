@@ -86,6 +86,7 @@ Extras for the end of a 3D address:
 | `?view=dollhouse` / `?view=building` | Opens straight into the Dollhouse or the Building view |
 | `?floor=5` | Shows the flat on floor 5 |
 | `?quality=lite` / `low` / `high` | Opens at that quality, whatever this computer would pick (§2, "Choosing quality"). Picking another in the Quality menu drops it from the address. |
+| `?stats=1` | Opens with the **How fast it is here** card (below, "Choosing quality"). Not on a buyer link. |
 | `?scale=0.5` (0.25 to 2) | For speed tests: draws the 3D picture at that size (0.5 = half the width and height, stretched to the window). On Lite it replaces Lite's own size; on Low and High it multiplies theirs. |
 
 ---
@@ -127,7 +128,7 @@ Everything else opens from these and closes again with **Esc**.
 | Share | — | Copies a link that opens with the finishes you chose |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
-| ⋯ | — | **Clean view** (H) and **Quality**: Lite · Low · High |
+| ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
 | The eye (last) | H | **Clean view**: everything on screen goes (below) |
 
 A button that is on (a panel open, an editor on) has a light blue wash and blue words.
@@ -179,7 +180,8 @@ remembers it: the next flat opened in the same tab starts clean too.
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
   - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are and can still look
     round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
-    the new one is complete — its furniture, its plants and its pictures all in — then the picture changes in one go. The
+    the new one is complete — its furniture, its plants, its pictures and the other flats' rooms round it all in — then
+    the picture changes in one go; the grounds' trees and play things seen from its windows come in just after. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
     while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. The time of day, the wind, Clean view and the quality stay, and so do a buyer's
     finishes; staff see the new floor's flat with its own finishes, as they were last left there (below, "Every flat keeps
@@ -331,6 +333,12 @@ steps aside while Finishes or Comment is open.
 
 - **⋯ → Quality: Lite · Low · High.** The one in use is white; a small blue dot marks the one this computer should
   use, and a line under them says why (hover the menu to see the graphics chip's name).
+- **⋯ → How fast is it here?** (or `?stats=1` in the address; never on a buyer link) opens a card on the right: the
+  graphics chip's name as the browser tells it, the quality in use, how long a frame takes (the middle of the last 60
+  frames drawn one after another, and how many that makes a second), and what one frame draws — draw calls, triangles,
+  shader programs, the pictures in graphics memory, the pixels drawn. It updates twice a second. Walk round for a few
+  seconds, press **Copy**, and paste it into a message: the same lines as plain text, with the page, the window size and
+  the browser. A frame at 16.7 ms is the screen's own 60 a second: smooth. × or Esc closes it.
 - **The start screen says it too:** under Enter, "High quality · This device can show the full look. **Change**".
   When another quality is advised the line says why: a phone or tablet (they all start on Lite), integrated graphics
   (the graphics built into the processor), no graphics chip in use, 4 GB memory, 4 processor threads, no WebGL 2 (the
@@ -344,12 +352,17 @@ steps aside while Finishes or Comment is open.
   pixels, lamp shadows.
 - **Low** — the screen's own pixels, no corner shading, a smaller sun-shadow picture, 4 lamps lit at night (no lamp
   shadows), the wall tile's extra-sharp picture at half size, no potted-plant models, bathroom mirrors as plain silvery
-  glass, your building round the flat without its sun-shadow. Nothing is drawn while nothing changes.
+  glass, your building round the flat without its sun-shadow, each heavy piece (a scanned sofa, a bed, a pleated
+  curtain) a lighter copy of itself — the same shape and pictures, at most about 4 000 triangles instead of tens of
+  thousands. Nothing is drawn while nothing changes.
 - **Lite** — for weak laptops and phones: a smaller picture stretched to the window, no edge smoothing, no corner
   shading, **no shadows and no sun patches inside the flat** (rooms are still brighter by their windows; the sun still
-  lights the street, the Dollhouse and Building views, and an open lawn, pool deck or roof terrace you stand on), 2
-  lamps lit at night, the street as plain blocks under a plain blue sky, pictures at half size, no potted-plant models,
-  plain mirrors, and of your building only the ground (no trees or play things) and the floors just above and below yours. Nothing is drawn while
+  lights the street, the Dollhouse and Building views, and an open lawn, pool deck or roof terrace you stand on), **every
+  lamp lit at night** — their light is worked out once when the flat opens and painted onto the rooms (a lamp moved or
+  deleted in Edit furniture is worked out again), so no lamp costs anything while you walk; the street as plain blocks
+  under a plain blue sky, pictures at half size and the colour picture only (no relief, no shine pictures), each piece a
+  light copy of itself (at most about 1 500 triangles), no potted-plant models, plain mirrors, and of your building only
+  the ground (no trees or play things) and the floors just above and below yours. Nothing is drawn while
   nothing changes (with Wind on its lines keep drifting). Same walls, furniture and finishes.
 
 **When the 3D cannot run**

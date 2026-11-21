@@ -693,3 +693,170 @@ describe('one draw of the scene a frame (session 31 glow)', () => {
     expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
   })
 })
+
+describe('stand-ins: a scanned piece with hundreds of triangles where thousands are not seen (session 31 perf)', () => {
+  test('simplified: about the budget, every part cut by the same share, small parts whole, the materials shared, the model itself untouched', async () => {
+    const THREE = await import('three')
+    const { simplified } = await import('./furniture')
+    const wood = new THREE.MeshStandardMaterial()
+    const seat = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), wood) // 12 k triangles
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8, 1), wood) // 32: a small part
+    const model = new THREE.Group().add(seat, leg)
+    const tris = (g: import('three').BufferGeometry) => (g.index ?? g.attributes.position).count / 3
+    const before = tris(seat.geometry)
+    const s = await simplified(model, 1200)
+    const [sSeat, sLeg] = s.children as import('three').Mesh[]
+    expect(tris(sSeat.geometry)).toBeLessThan(before / 8)
+    expect(tris(sSeat.geometry)).toBeGreaterThan(400)
+    expect(tris(sLeg.geometry)).toBe(tris(leg.geometry))
+    expect(sSeat.material).toBe(wood)
+    expect(tris(seat.geometry)).toBe(before) // the model the walk draws is not touched
+    sSeat.geometry.computeBoundingBox()
+    expect(sSeat.geometry.boundingBox!.max.y).toBeGreaterThan(0.9) // still the same shape's size
+    expect(await simplified(model, 1e6)).toBe(model) // within the budget: the model itself
+  })
+})
+
+describe('Lite: a model’s colour picture only (session 31 perf: one material program where there were four)', () => {
+  test('colourOnly leaves the colour picture, drops relief, shading, roughness and metal pictures; a metal-mapped part goes dull, not chrome', async () => {
+    const THREE = await import('three')
+    const { colourOnly } = await import('./furniture')
+    const t = () => new THREE.Texture()
+    const m = new THREE.MeshStandardMaterial({ map: t(), normalMap: t(), aoMap: t(), roughnessMap: t(), metalnessMap: t(), metalness: 1, roughness: 1 })
+    const plain = new THREE.MeshStandardMaterial({ color: '#888888', metalness: 1 }) // a metal with no picture keeps its metal
+    colourOnly(new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m), new THREE.Mesh(new THREE.BoxGeometry(), plain)))
+    expect([!!m.map, m.normalMap, m.aoMap, m.roughnessMap, m.metalnessMap, m.metalness]).toEqual([true, null, null, null, null, 0])
+    expect(plain.metalness).toBe(1)
+  })
+  test('a scan’s physical material becomes a standard one (one program fewer), its see-through glass drawn from the front only', async () => {
+    const THREE = await import('three')
+    const { colourOnly, plainGlass } = await import('./furniture')
+    const map = new THREE.Texture()
+    const fabric = new THREE.MeshPhysicalMaterial({ map, sheen: 1, color: '#806040', side: THREE.DoubleSide })
+    const glass = new THREE.MeshPhysicalMaterial({ transmission: 1, side: THREE.DoubleSide })
+    const [a, b] = [new THREE.Mesh(new THREE.BoxGeometry(), fabric), new THREE.Mesh(new THREE.BoxGeometry(), glass)]
+    colourOnly(plainGlass(new THREE.Group().add(a, b)))
+    const fa = a.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    const gl = b.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    expect([fa.type, fa.map === map, fa.color.getHexString(), fa.side]).toEqual(['MeshStandardMaterial', true, '806040', THREE.DoubleSide]) // an opaque two-sided cloth keeps its sides
+    expect([gl.type, gl.transparent, gl.opacity <= 0.15, gl.side]).toEqual(['MeshStandardMaterial', true, true, THREE.FrontSide])
+  })
+})
+
+describe('the rooms behind the glass take none of the walked flat’s lamps (session 31 perf)', () => {
+  test('noSpots: every chunk that names spot lights written out with none; the sun, the sky and the rest untouched', async () => {
+    const THREE = await import('three')
+    const { noSpots } = await import('./materials')
+    for (const sh of [THREE.ShaderLib.standard.vertexShader, THREE.ShaderLib.standard.fragmentShader]) {
+      const out = noSpots(sh)
+      expect(out).not.toMatch(/NUM_SPOT_LIGHT/)
+      expect(out).not.toMatch(/#include <(lights_fragment_begin|lights_pars_begin|shadowmap_pars_vertex|shadowmap_vertex)>/)
+    }
+    const f = noSpots(THREE.ShaderLib.standard.fragmentShader)
+    expect(f).toMatch(/NUM_DIR_LIGHTS/) // the sun stays
+    expect(f).toMatch(/#include <map_fragment>/) // chunks with no spot light left to three
+  })
+  test('the tower: its shells, plates and levels in the outside variant of their finish (none of the walked flat’s lamps); the walk keeps its own', async () => {
+    const { materialFor, EXTERIOR_PLASTER } = await import('./materials')
+    const { Building } = await import('./building')
+    const out = materialFor(EXTERIOR_PLASTER, false, false, true)
+    expect(out).not.toBe(materialFor(EXTERIOR_PLASTER)) // the walk's slab keeps its lamps
+    expect(out.customProgramCacheKey()).toBe('outside')
+    const b = Building.for(bti.FLATS['type-a'].unit)!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const used = new Set<unknown>()
+    b.traverse((o) => void used.add((o as unknown as { material?: unknown }).material))
+    expect(used.has(out)).toBe(true) // the shells and plates
+    expect(used.has(materialFor(EXTERIOR_PLASTER))).toBe(false) // never the walk's own
+    b.dispose()
+  })
+})
+
+describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s pleats, a bed’s quilting were 4–11 thousand triangles on Lite)', () => {
+  test('buildFurniture with a budget: a heavy code-built piece comes back near it; without one, as built', async () => {
+    const { buildFurniture } = await import('./furniture')
+    const { PROCEDURAL: KIT } = await import('../furnish/procedural.meta')
+    const tris = (o: import('three').Object3D) => {
+      let n = 0
+      o.traverse((m) => {
+        const g = (m as import('three').Mesh).isMesh ? (m as import('three').Mesh).geometry : null
+        if (g?.attributes.position) n += (g.index ?? g.attributes.position).count / 3
+      })
+      return n
+    }
+    const heavy = await Promise.all(Object.values(KIT).filter((a) => a.url.startsWith('procedural:')).map(async (a) => ({ a, n: tris(await buildFurniture({ id: 'x', assetId: a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 })) })))
+    const big = heavy.sort((p, q) => q.n - p.n)[0]
+    expect(big.n).toBeGreaterThan(4000)
+    const light = tris(await buildFurniture({ id: 'x', assetId: big.a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 }, 3.048, 0, undefined, 1500))
+    expect(light).toBeLessThan(big.n / 2)
+  })
+})
+
+describe('round the flat the tower is a handful of draws (session 31 perf: the context lane took Walk / High 94 → 127 draws on Type A)', () => {
+  test('once settled the tower shows as one mesh per material; the Building view gets it back one by one (its cut, lift and picking)', async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.requestAnimationFrame ??= () => 0
+    const { Building } = await import('./building')
+    const { HIDDEN } = await import('./batch')
+    const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const drawn = () => {
+      let n = 0
+      b.traverseVisible((o) => void ((o as import('three').Mesh).isMesh && o.layers.mask === 1 && n++))
+      return n
+    }
+    b.frame('walk', 'low')
+    const one = drawn()
+    await new Promise((r) => setTimeout(r, 450))
+    const batched = drawn()
+    expect(batched).toBeLessThan(one / 3)
+    b.frame('building', 'low')
+    let hidden = 0
+    b.traverse((o) => void (o.layers.mask === 1 << HIDDEN && hidden++))
+    expect(hidden).toBe(0) // every piece back on its own
+    expect(b.children.some((o) => o.userData.batch)).toBe(false)
+    b.dispose()
+  })
+
+  test("in the Dollhouse every tree's leaves of one card and atlas in an 8 m square are one instanced mesh, the trees' own back in Walk and the Building view", async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.requestAnimationFrame ??= () => 0
+    const THREE = await import('three')
+    const { Building } = await import('./building')
+    const { HIDDEN } = await import('./batch')
+    const { lightPiece } = await import('./daylight')
+    const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const card = new THREE.PlaneGeometry(0.1, 0.2), atlas = new THREE.MeshStandardMaterial()
+    const tree = (x: number, n: number) => {
+      const t = new THREE.Group()
+      t.position.set(x, 0, 0)
+      const im = new THREE.InstancedMesh(card, atlas, n)
+      for (let i = 0; i < n; i++) im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, 1 + i, 0))
+      t.add(im)
+      lightPiece(t, [0, 0]) // as the tower's pieces: each tree's leaves get a geometry of their own over the card's vertices
+      b.add(t)
+      return im
+    }
+    const a1 = tree(0, 3), a2 = tree(5, 2), far = tree(20, 1) // (another 8 m square: its own, so out of sight it is not drawn)
+    expect(a1.geometry).not.toBe(a2.geometry)
+    const mergedNow = () => b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
+    b.frame('walk', 'low')
+    await new Promise((r) => setTimeout(r, 450))
+    expect(mergedNow().length).toBe(0) // from inside the flat each tree is culled on its own
+    b.frame('orbit', 'low')
+    await new Promise((r) => setTimeout(r, 450))
+    const merged = mergedNow()
+    expect(merged.length).toBe(1)
+    expect(merged[0].count).toBe(5)
+    expect([a1.layers.mask, a2.layers.mask, far.layers.mask]).toEqual([1 << HIDDEN, 1 << HIDDEN, 1])
+    const m = new THREE.Matrix4()
+    merged[0].getMatrixAt(3, m) // the second tree's first leaf, where it stood
+    expect(new THREE.Vector3().setFromMatrixPosition(m).toArray()).toEqual([5, 1, 0])
+    b.frame('building', 'low')
+    expect([a1.layers.mask, a2.layers.mask]).toEqual([1, 1])
+    expect(merged[0].parent).toBe(null)
+    expect(card.attributes.position).toBeTruthy() // the trees' card kept
+    b.dispose()
+  })
+})
