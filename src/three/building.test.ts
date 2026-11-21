@@ -573,7 +573,7 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     b.dispose()
   })
 
-  test('which flats are furnished per tier and in what order: the nearest first; High all, Low the 3 storeys nearest the camera, Lite none', async () => {
+  test('which flats are furnished per tier and in what order: the nearest first; High all, Low the 3 storeys nearest the camera and the picked one, Lite none', async () => {
     const THREE = await import('three')
     const { furnishes, insideOrder, nearestStoreys, LOW_STOREYS, PICK_LIFT, HOVER_LIFT, PICK_NIGHT, HOVER_NIGHT } = await import('./building')
     const at = (x: number, y: number) => ({ at: new THREE.Vector3(x, y, 0), name: `${x},${y}` })
@@ -586,6 +586,8 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect([2, 5, 8].map((k) => furnishes('low', k, near))).toEqual([true, false, false])
     expect([2, 5, 8].map((k) => furnishes('lite', k, near))).toEqual([false, false, false])
     expect(furnishes('low', 2, null)).toBe(false) // before the camera is known
+    expect([5, 8].map((k) => furnishes('low', k, near, 5))).toEqual([true, false]) // the picked floor too, wherever the camera is
+    expect(furnishes('lite', 5, near, 5)).toBe(false)
     // the hover is quieter than the picked flat's lift, by day and by night
     expect(HOVER_LIFT).toBeLessThan(PICK_LIFT)
     expect(HOVER_NIGHT).toBeLessThan(PICK_NIGHT)

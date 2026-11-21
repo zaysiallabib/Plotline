@@ -644,9 +644,9 @@ export class Building extends THREE.Group {
     this.onChange()
   }
 
-  /** Every flat's furniture shown as the tier says (furnishes), unless a cut hides its floor. */
+  /** Every flat's furniture shown as the tier says (furnishes; on Low the picked floor too), unless a cut hides its floor. */
   private placeInside(): void {
-    for (const f of this.flats) if (f.things) f.things.visible = !f.things.userData.cut && furnishes(this.tier, f.k, this.furnishedFloors)
+    for (const f of this.flats) if (f.things) f.things.visible = !f.things.userData.cut && furnishes(this.tier, f.k, this.furnishedFloors, this.picked)
   }
 
   /** Flat f's lamps (flatLamps): the picked flat's while the Lights are on, a common level's at night, the others the night pattern. */
@@ -875,8 +875,8 @@ export function nearestStoreys(flats: { k: number; d: number }[], n: number): Se
   return new Set([...best].sort((a, b) => a[1] - b[1] || a[0] - b[0]).slice(0, n).map((x) => x[0]))
 }
 
-/** Does a flat on floor k show its furniture: High every one, Low the storeys nearest the camera (`near`; not yet known: none), Lite none. */
-export const furnishes = (tier: Quality, k: number, near: Set<number> | null): boolean => tier === 'high' || (tier === 'low' && !!near?.has(k))
+/** Does a flat on floor k show its furniture: High every one, Low the storeys nearest the camera (`near`; not yet known: none) and the picked floor, Lite none. */
+export const furnishes = (tier: Quality, k: number, near: Set<number> | null, picked?: number): boolean => tier === 'high' || (tier === 'low' && (k === picked || !!near?.has(k)))
 
 /**
  * Each room's lamp (0–1) in flat `home` (its stem and floor): the picked flat's indoor rooms all lit (its lamps on, as the

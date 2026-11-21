@@ -567,7 +567,7 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   floor's lobby and the common floors have their rooms and furniture too, lit at night.
   - The tower shows first; the rooms fill in within a moment, the nearest flats first, then the furniture flat by flat.
   - By quality: **High** furnishes every flat; **Low** shows every flat's rooms and furnishes the three storeys
-    nearest you (it follows you as you turn the tower); **Lite** shows every flat's rooms without furniture.
+    nearest you (it follows you as you turn the tower) and the floor you picked; **Lite** shows every flat's rooms without furniture.
   - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
     seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
