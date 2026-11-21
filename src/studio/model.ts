@@ -728,11 +728,23 @@ function dropOverlaid(unit: Unit, ids?: Id[]): { unit: Unit; dropped: number; co
       const e = { x: o.x + dir.x * L, y: o.y + dir.y * L }
       return { x0: Math.min(o.x, e.x), x1: Math.max(o.x, e.x), y0: Math.min(o.y, e.y), y1: Math.max(o.y, e.y) }
     })
+    // the walls by their box's left edge: the shorter of a pair starts within the longer's box, so only that slice is
+    // looked at — in wall order, as the whole list was
+    const byX = box.map((_, j) => j).sort((p, q) => box[p].x0 - box[q].x0)
+    const firstFrom = (x: number) => {
+      let lo = 0, hi = byX.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (box[byX[mid]].x0 < x) lo = mid + 1
+        else hi = mid
+      }
+      return lo
+    }
     pairs: for (let i = 0; i < u.walls.length; i++) {
       const K = u.walls[i]
       const m = K.thicknessM + MERGE_M + 1e-6
       const bk = box[i]
-      for (let j = 0; j < u.walls.length; j++) {
+      for (const j of byX.slice(firstFrom(bk.x0 - m), firstFrom(bk.x1 + m + 1e-9)).sort((p, q) => p - q)) {
         const S = u.walls[j]
         if (i === j || (ids && !at(K) && !at(S)) || Math.abs(K.heightM - S.heightM) > 0.01) continue
         const bs = box[j]
