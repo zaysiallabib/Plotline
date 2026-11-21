@@ -56,6 +56,8 @@ export interface PickHit {
   point: { x: number; y: number; z: number }
   /** wall/opening: (u along wall from vertex a, v height); floor/ceiling: plan (x, y); furniture: local (x, z) */
   localOffset?: { u: number; v: number }
+  /** a piece: the room's floor the same ray reaches behind it (floorBehind) — a Dollhouse click on a bed or a rug drops you there */
+  under?: { x: number; y: number; z: number }
 }
 /** orbit = the dollhouse; building = the whole tower from outside (building.ts) */
 export type SceneMode = 'walk' | 'orbit' | 'building'
@@ -214,6 +216,12 @@ export function pickedAt(h: THREE.Intersection, piece = false): THREE.Object3D |
   while (o && !o.userData.kind) o = o.parent
   if (piece && o?.userData.kind !== 'furniture' && PANES.includes((h.object as THREE.Mesh).material as THREE.MeshStandardMaterial)) return null
   return o
+}
+
+/** Behind the piece hits[i] (a bed, a rug): the first room floor further along the same ray, or null (qa3 P16: a Dollhouse click there did nothing). */
+export function floorBehind(hits: THREE.Intersection[], i: number, piece = false): THREE.Vector3 | null {
+  for (let j = i + 1; j < hits.length; j++) if (pickedAt(hits[j], piece)?.userData.kind === 'floor') return hits[j].point
+  return null
 }
 
 export function evenBearings(t: THREE.DataTexture): void {
@@ -2230,7 +2238,7 @@ export class PlotlineScene {
     // three's raycaster ignores `visible`: skip the hidden ceilings (and what hangs from them) in the dollhouse
     const targets = [this.staticGroup, this.ceilingGroup, this.furnitureGroup].filter((g) => g.visible)
     const hits = this.raycaster.intersectObjects(targets, true)
-    for (const h of hits) {
+    for (const [i, h] of hits.entries()) {
       const o = pickedAt(h, piece)
       if (!o) continue
       let { kind, id, wallId, objectKind } = o.userData as { kind: PickKind; id: Id; wallId?: Id; objectKind: ObjectKind }
@@ -2254,6 +2262,8 @@ export class PlotlineScene {
       } else if (kind === 'furniture') {
         const l = o.worldToLocal(P.clone())
         hit.localOffset = { u: l.x, v: l.z }
+        const f = floorBehind(hits, i, piece)
+        if (f) hit.under = { x: f.x, y: f.y, z: f.z }
       } else {
         hit.localOffset = { u: P.x, v: P.z }
       }

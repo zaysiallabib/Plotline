@@ -193,8 +193,9 @@ remembers it: the next flat opened in the same tab starts clean too.
 - Walk sees about as much as a 22 mm camera lens (a little under 80° across a wide screen) from 1.45 m eye height. The
   Dollhouse and the Building view see wider.
 
-**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it (not
-while Finishes is open: then the click picks that floor's finish).
+**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it — a
+bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece (not while
+Finishes is open: then the click picks that floor's finish).
 
 **Finishes panel**
 

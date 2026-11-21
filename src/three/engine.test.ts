@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
 import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, isClick, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, isClick, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -343,6 +343,25 @@ describe('pickedAt: Edit furniture and G see a piece through the glass', () => {
     scene.children.at(-1)!.visible = false
     bed.visible = false
     expect(first(true)).toBeUndefined()
+  })
+
+  test('floorBehind: a Dollhouse click on a rug or a bed reaches the room’s floor behind it (qa3 P16)', () => {
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2))
+    floor.userData = { kind: 'floor', id: 'f' }
+    const rug = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, 2)))
+    rug.userData = { kind: 'furniture', id: 'rug' }
+    rug.position.set(0, 0.011, 0)
+    const scene = new THREE.Scene().add(floor, rug)
+    scene.updateMatrixWorld(true)
+    // from above and to the side, as the Dollhouse looks: the rug first, then its floor
+    const hits = new THREE.Raycaster(new THREE.Vector3(0, 8, 4), new THREE.Vector3(0, -8, -4).normalize()).intersectObjects(scene.children, true)
+    const i = hits.findIndex((h) => pickedAt(h)?.userData.id === 'rug')
+    expect(i).toBe(0)
+    const p = floorBehind(hits, i)!
+    expect(p.y).toBeCloseTo(0)
+    expect(Math.hypot(p.x, p.z)).toBeLessThan(0.1) // where the ray meets the floor under the rug
+    // nothing but the piece on the ray: no floor
+    expect(floorBehind(hits.slice(0, 1), 0)).toBeNull()
   })
 })
 

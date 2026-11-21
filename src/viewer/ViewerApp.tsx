@@ -779,9 +779,11 @@ function Viewer({ first }: { first: Shown }) {
       } else if (room && keys.has(room)) {
         setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
         return true
-      } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
-        // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
-        s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
+      } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.under)) {
+        // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2); a bed or a rug:
+        // the floor the click reaches behind it
+        const at = hit.kind === 'floor' ? hit.point : hit.under!
+        s.spawnAt({ x: at.x, y: at.z }, yawFor(headingOf(s)))
         setMode('walk')
       }
     })
