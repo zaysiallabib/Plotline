@@ -394,7 +394,11 @@ function AddPanel({ onPick, onEsc, onNote }: { onPick: (assetId: string) => void
   )
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand: what and why not. */
+/**
+ * Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand:
+ * what and why not. A phone (viewer.css, qa3 P15: the panel and the bar hid the lower 42 % of the room, where the furniture
+ * is): one row — the piece and Done (in hand: why not, and Cancel), or "Tap a piece" and Add — the rest behind the grip.
+ */
 function ArrangePanel(p: {
   /** where the layout is kept, in words */
   kept: string | null
@@ -407,52 +411,71 @@ function ArrangePanel(p: {
   onUndo: () => void
   onReset: () => void
   onAdd: () => void
+  /** the piece picked: let go of it; the piece in hand: back where it was */
+  onDone: () => void
 }) {
   const s = p.piece && placementSize(p.piece)
   const finger = useFinger() // a finger has no R or Esc: the words say what it can do
+  const [open, setOpen] = useState(false)
+  const head = p.held ? (p.held.error ?? `${p.held.adding ? 'Placing' : 'Moving'}: ${p.held.label}`) : p.piece ? placementLabel(p.piece) : `${finger ? 'Tap' : 'Click'} a piece to move it`
   return (
-    <aside className="glass arrange">
-      {p.held ? (
-        <>
-          <div className="arrange-name">
-            {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
-          </div>
-          <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
-            {p.held.error ?? (finger ? 'Tap the floor, a wall or the ceiling where it goes' : p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
-          </div>
-        </>
-      ) : p.piece && s ? (
-        <>
-          <div className="arrange-name">{placementLabel(p.piece)}</div>
-          <div className="muted small">
-            {p.piece.openingId
-              ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
-              : resizeAxes(p.piece.assetId).length
-                ? `${dims(s)} · drag a dot to resize`
-                : 'This piece can be moved and turned'}
-          </div>
-        </>
-      ) : (
-        <div className="muted small">{finger ? 'Tap' : 'Click'} a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
-      )}
-      <div className="arrange-row">
-        <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
-          Add
-        </button>
-        <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
-          {finger ? 'Turn 90°' : 'Turn 90° (R)'}
-        </button>
-        <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
-          Delete
-        </button>
-        <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
-          Undo
-        </button>
-        <button className="btn" title="Back to the drawing’s own layout, as the Studio arranged it (undo brings yours back)" onClick={p.onReset}>
-          Reset layout
-        </button>
+    <aside className={`glass arrange${open ? ' open' : ''}`}>
+      <button className="arrange-grip" aria-expanded={open} aria-label={open ? 'Fewer buttons' : 'More buttons: turn, delete, undo, reset'} onClick={() => setOpen(!open)} />
+      <div className="arrange-head">
+        <span className={`arrange-what${p.held?.error ? ' refused' : ''}`}>{head}</span>
+        {p.held || p.piece ? (
+          <button className="btn" onClick={p.onDone}>
+            {p.held ? 'Cancel' : 'Done'}
+          </button>
+        ) : (
+          <button className={`btn${p.adding ? ' active' : ''}`} onClick={p.onAdd}>
+            Add
+          </button>
+        )}
       </div>
-      {p.kept && <div className="muted small">{p.kept}</div>}
+      <div className="arrange-body">
+        {p.held ? (
+          <>
+            <div className="arrange-name">
+              {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
+            </div>
+            <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
+              {p.held.error ?? (finger ? 'Tap the floor, a wall or the ceiling where it goes' : p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
+            </div>
+          </>
+        ) : p.piece && s ? (
+          <>
+            <div className="arrange-name">{placementLabel(p.piece)}</div>
+            <div className="muted small">
+              {p.piece.openingId
+                ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
+                : resizeAxes(p.piece.assetId).length
+                  ? `${dims(s)} · drag a dot to resize`
+                  : 'This piece can be moved and turned'}
+            </div>
+          </>
+        ) : (
+          <div className="muted small">{finger ? 'Tap' : 'Click'} a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        )}
+        <div className="arrange-row">
+          <button className={`btn arrange-add${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
+            Add
+          </button>
+          <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
+            {finger ? 'Turn 90°' : 'Turn 90° (R)'}
+          </button>
+          <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
+            Delete
+          </button>
+          <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
+            Undo
+          </button>
+          <button className="btn" title="Back to the drawing’s own layout, as the Studio arranged it (undo brings yours back)" onClick={p.onReset}>
+            Reset layout
+          </button>
+        </div>
+        {p.kept && <div className="muted small">{p.kept}</div>}
+      </div>
     </aside>
   )
 }
@@ -1718,6 +1741,7 @@ function Viewer({ first }: { first: Shown }) {
                 letGo()
                 setAdding((v) => !v)
               }}
+              onDone={() => (held.current ? letGo() : escArrange())}
             />
           )}
           {windOn && mode === 'walk' && room && (

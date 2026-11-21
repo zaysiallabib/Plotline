@@ -118,6 +118,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | Pull a sheet's **grip** down · **×** | Closes that sheet (Finishes, Comment, Sun & wind, the rooms list, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
 | Tap where the faded bar was | Only brings the bar back (presses nothing) | resting, a phone | everyone | §2 On a phone or tablet |
 | Tap a piece · drag it · drag near a dot | Picks it · moves it · resizes it (a thumb within half a fingertip of a dot takes the dot) | Edit furniture, a finger | staff | §2 On a phone or tablet |
+| **Done** · **Cancel** · the panel's grip | Lets go of the piece picked · puts the one in your hand back · shows or folds away Turn 90°, Delete, Undo, Reset layout | Edit furniture, a phone (under 720 px wide) | staff | §2 On a phone or tablet |
 | Tap where it goes | Puts the piece in your hand there (a new one from the library, or one a drag could not leave) | Edit furniture, a piece in hand, a finger | staff | §2 On a phone or tablet |
 | VR trigger · thumbstick left / right | Hold to aim at the floor, let go to jump · turns you 45° | in VR (the keyboard is ignored) | everyone | §2 In VR |
 

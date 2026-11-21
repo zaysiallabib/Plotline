@@ -407,7 +407,11 @@ steps aside while Finishes or Comment is open.
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
 - **Staff on a phone:** Edit → Furniture and Edit → Openings work with a thumb, though a computer is still the
-  better tool. Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
+  better tool. The Edit furniture panel is one row over the bar, so the room and its furniture stay free for your thumb:
+  "Tap a piece to move it" and **Add**; with a piece picked its name and **Done** (lets go of it); with one in your hand
+  what you are placing (or in red why not there) and **Cancel** (back where it was). Tap the short bar (the grip) on top
+  of the row for the rest — Turn 90°, Delete, Undo, Reset layout and its size; tap it again to fold them away.
+  Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
   (7 % of the screen's short side, at most 44 px, so they never cover a picture on the wall up close) but a thumb takes a
   dot anywhere within half a fingertip of it. **Add** opens the library as a sheet from the bottom, with **×** and a grip
   to close it; the search box waits for your tap (so the keyboard does not jump up over the list) and every row is a
