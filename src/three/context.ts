@@ -12,6 +12,7 @@ import type { Street } from '../data/building'
 import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { lean, lite } from '../furnish/procedural'
+import { nightPatch } from './daylight'
 import { noSpots } from './materials'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
@@ -275,6 +276,7 @@ export const siteCut = { value: 0 }
  */
 export function hazed<M extends THREE.Material>(m: M, cut = false): M {
   m.onBeforeCompile = (s) => {
+    nightPatch(s) // at night the sky's glow and the street's lamps on the blocks and roads (qa3 P10: black shapes)
     s.uniforms.hazeColor = haze
     s.uniforms.outdoorFill = outdoorFill
     s.uniforms.streetNight = streetNight
@@ -288,7 +290,9 @@ export function hazed<M extends THREE.Material>(m: M, cut = false): M {
     // before tone mapping: linear in both paths (composer target, and XR where the shader tone maps)
     s.fragmentShader = `uniform vec3 hazeColor;\nuniform float outdoorFill;\nuniform float streetNight;\n${cut ? 'uniform float siteCut;\nvarying vec3 vMin;\nvarying vec3 vMax;\n' : ''}${s.fragmentShader}`
       .replace('#include <lights_fragment_end>', 'irradiance *= outdoorFill;\n#include <lights_fragment_end>')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= streetNight;')
+      // a lit window is set back in its wall: seen at a slant its reveal hides the glass (qa3 P11: a block's side face seen
+      // edge-on showed its whole column of lit windows as a thin bright streak down its corner)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= streetNight * smoothstep(0.12, 0.4, abs(dot(normal, normalize(vViewPosition))));')
       .replace(
       '#include <tonemapping_fragment>',
       `float hazeD = length(vViewPosition);
@@ -483,6 +487,51 @@ function boxed(g: THREE.BufferGeometry, min: THREE.Vector3, max: THREE.Vector3):
 const roadStrips = (roads: Bounds[], y: number) =>
   roads.map((q) => new THREE.PlaneGeometry(q.maxX - q.minX, q.maxY - q.minY).rotateX(-Math.PI / 2).translate((q.minX + q.maxX) / 2, y, (q.minY + q.maxY) / 2))
 
+/** street lamps along a road: this far apart (m), standing this far in from one kerb (m), their pool this wide (m, to half its light) */
+export const LAMP_SPACING_M = 24
+const LAMP_IN_M = 1
+const POOL_M = 4.5
+/**
+ * Each road vertex's place for its street lamps' pools (roadLamps): metres along the road (from `origin`, along `dir`), across
+ * it from its centre line, and its half width. A made-up road's `along` is the world's own x or z, so the lamps of two
+ * roads keep one rhythm.
+ */
+function lampPlaces(g: THREE.BufferGeometry, origin: Pt, dir: Pt, half: number): THREE.BufferGeometry {
+  const p = g.attributes.position
+  const a = new Float32Array(p.count * 3)
+  for (let i = 0; i < p.count; i++) {
+    const [x, z] = [p.getX(i) - origin.x, p.getZ(i) - origin.y]
+    a.set([x * dir.x + z * dir.y, -x * dir.y + z * dir.x, half], i * 3)
+  }
+  return g.setAttribute('roadLamp', new THREE.BufferAttribute(a, 3))
+}
+/** a made-up road strip's lamp places: along its long side */
+const rectLamps = (g: THREE.BufferGeometry, q: Bounds) =>
+  q.maxX - q.minX >= q.maxY - q.minY
+    ? lampPlaces(g, { x: 0, y: (q.minY + q.maxY) / 2 }, { x: 1, y: 0 }, (q.maxY - q.minY) / 2)
+    : lampPlaces(g, { x: (q.minX + q.maxX) / 2, y: 0 }, { x: 0, y: 1 }, (q.maxX - q.minX) / 2)
+
+/**
+ * A road at night (qa3 P10): its street lamps' pools, warm, every LAMP_SPACING_M along one kerb — a few sums on the road's
+ * own pixels (its `roadLamp` places), × daylight.ts nightOut's glow: no light, 0 by day. On top of hazed (its haze, its
+ * night term).
+ */
+function roadLamps(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  const base = m.onBeforeCompile
+  m.onBeforeCompile = (s, r) => {
+    base.call(m, s, r)
+    s.vertexShader = `attribute vec3 roadLamp;\nvarying vec3 vRoadLamp;\n${s.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRoadLamp = roadLamp;')
+    s.fragmentShader = `varying vec3 vRoadLamp;\n${s.fragmentShader}`.replace(
+      '#include <lights_physical_fragment>',
+      `vec2 roadPool = vec2(mod(vRoadLamp.x, ${LAMP_SPACING_M.toFixed(1)}) - ${(LAMP_SPACING_M / 2).toFixed(1)}, vRoadLamp.y - (vRoadLamp.z - ${LAMP_IN_M.toFixed(1)}));
+      totalEmissiveRadiance += diffuseColor.rgb * nightGlow * vec3(2.4, 1.8, 1.05) * exp(-dot(roadPool, roadPool) / ${(POOL_M * POOL_M).toFixed(1)});
+      #include <lights_physical_fragment>`,
+    )
+  }
+  m.customProgramCacheKey = () => 'road-lamps'
+  return m
+}
+
 /**
  * The made-up street in world space (madeUpStreet round `street`): blocks (one merged mesh per facade variant, a tint per
  * block in vertex colours, the facade in metre UVs, roofs and parts on the plain plaster texel) and the roads (the
@@ -535,9 +584,10 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
     group.add(mesh)
     list.forEach((g) => g.dispose())
   })
-  const strips = roadStrips([...(street.roads ?? []), ...roads], groundY + 0.05)
+  const all = [...(street.roads ?? []), ...roads]
+  const strips = roadStrips(all, groundY + 0.05).map((g, i) => rectLamps(g, all[i]))
   if (strips.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(strips)!, hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 })))
+    const mesh = new THREE.Mesh(mergeGeometries(strips)!, roadLamps(hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 }))))
     mesh.receiveShadow = true
     strips.forEach((g) => g.dispose())
     group.add(mesh)
@@ -614,14 +664,15 @@ export function buildSite(unit: Unit, groundY: number): THREE.Group {
     r.plan.slice(1).map((q, i) => {
       const p = r.plan[i]
       const len = Math.hypot(q.x - p.x, q.y - p.y)
-      return new THREE.PlaneGeometry(len + r.widthM, r.widthM)
+      const g = new THREE.PlaneGeometry(len + r.widthM, r.widthM)
         .rotateX(-Math.PI / 2)
         .rotateY(-Math.atan2(q.y - p.y, q.x - p.x))
         .translate((p.x + q.x) / 2, groundY + 0.04, (p.y + q.y) / 2)
+      return lampPlaces(g, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, { x: (q.x - p.x) / (len || 1), y: (q.y - p.y) / (len || 1) }, r.widthM / 2)
     }),
   )
   if (strips.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(strips)!, hazed(new THREE.MeshStandardMaterial({ color: ROAD, roughness: 0.95 })))
+    const mesh = new THREE.Mesh(mergeGeometries(strips)!, roadLamps(hazed(new THREE.MeshStandardMaterial({ color: ROAD, roughness: 0.95 }))))
     mesh.receiveShadow = true
     strips.forEach((g) => g.dispose())
     group.add(mesh)

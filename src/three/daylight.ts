@@ -572,6 +572,36 @@ export const dayMix = { value: 1 }
  * the street outside take none. Black otherwise.
  */
 export const lampOut = { sky: { value: new THREE.Color(0, 0, 0) }, ground: { value: new THREE.Color(0, 0, 0) } }
+
+/**
+ * The city at night on what stands outside (qa3 P10: at 21:00 the towers were black shapes, only their lit windows read):
+ * the sky's glow, a low cool light on every outside face, and the street's lamps, warm, brightest on the storeys nearest
+ * the street and gone some NIGHT_REACH_M up — × the face's own colour. No light of any kind: one term in the shader
+ * (nightPatch), 0 by day. `glow`: as seen ÷ the exposure (render.ts setAltitude); `streetY`: the street's level (Look's
+ * ground plane, every frame). On the tower's shells and levels (materials.ts `outside`), the walked flat's outer faces
+ * (EXTERIOR_PLASTER) and the street's blocks, roads and ground (context.ts hazed).
+ */
+export const nightOut = { glow: { value: 0 }, streetY: { value: 0 } }
+/** the night's light on an outside face, as seen (× its colour): the sky's glow (cool) and, at the street, its lamps (warm) */
+export const NIGHT_SKY = [0.085, 0.085, 0.1] as const
+export const NIGHT_STREET = [0.2, 0.15, 0.09] as const
+/** how far up the street lamps' light reaches on a facade (m over the street): the ground floor and the first four storeys */
+export const NIGHT_REACH_M = 16
+const ON = { value: 1 }
+/** nightOut's term into a material's shaders (`on`: a per-material switch, 0 = none — the daylit program is the rooms' too; `weight`: a per-pixel one, GLSL). */
+export function nightPatch(s: { uniforms: Record<string, THREE.IUniform>; vertexShader: string; fragmentShader: string }, on: { value: number } = ON, weight = '1.0'): void {
+  Object.assign(s.uniforms, { nightGlow: nightOut.glow, nightStreetY: nightOut.streetY, nightOn: on })
+  const v3 = (c: readonly number[]) => `vec3(${c.map((x) => x.toFixed(3)).join(', ')})`
+  s.vertexShader = `varying float vNightY;\n${s.vertexShader}`.replace(
+    '#include <project_vertex>',
+    '#include <project_vertex>\nvNightY = (transpose(mat3(viewMatrix)) * (mvPosition.xyz - viewMatrix[3].xyz)).y;', // its height in the world, whatever its matrices
+  )
+  s.fragmentShader = `uniform float nightGlow;\nuniform float nightStreetY;\nuniform float nightOn;\nvarying float vNightY;\n${s.fragmentShader}`.replace(
+    '#include <lights_physical_fragment>',
+    `totalEmissiveRadiance += diffuseColor.rgb * (nightGlow * nightOn * ${weight}) * (${v3(NIGHT_SKY)} + ${v3(NIGHT_STREET)} * (1.0 - smoothstep(0.0, ${NIGHT_REACH_M.toFixed(1)}, vNightY - nightStreetY)));
+    #include <lights_physical_fragment>`,
+  )
+}
 /** the atlas shown (setDaylight) and its texture's bytes: setLampShare rewrites their lamp channel */
 let shown: { d: Daylight; rg: Uint8Array; tex: THREE.DataTexture } | null = null
 
@@ -687,6 +717,7 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.uniforms.lampMap = lampMap
     s.uniforms.lampColor = lampBake.color
     s.uniforms.dayPiece = { value: m.userData.dayPiece ? 1 : 0 } // lightPiece marks a piece's materials; a uniform: one program with the rooms
+    nightPatch(s, { value: m.userData.nightOut ? 1 : 0 }) // an outer face (materials.ts EXTERIOR_PLASTER): the city's night light; a room's: none
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
     s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nuniform sampler2D lampMap;\nuniform vec3 lampColor;\nuniform float dayPiece;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
       .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))

@@ -264,7 +264,10 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
     on. A click turns them the other way; a click again goes back to automatic. This browser remembers it.
   - At night glass faintly mirrors the lit room, the Dollhouse rooms glow inside dark walls, about half the tower's
     rooms have a lamp on in the Building view (§4), and the neighbours light about four windows in ten (Low and
-    High) — each seen from your window as a room in a warm, neutral or cool light.
+    High) — each seen from your window as a room in a warm, neutral or cool light. The buildings themselves never go
+    black: the city's glow lights every outside wall a little, the street lamps light the lower floors warmer, a pool of
+    light lies under each street lamp along the roads (Low and High), and a balcony catches a little of the light of the
+    lit room it opens from. A lit window seen at a slant fades, as its frame would hide it.
   - In the Building view the button does the same from outside: your flat's rooms glow through its windows with the
     lamps on and go dark with them off (and the picked flat's, when you picked another floor).
 - **Wind** (on the card, or **P** in any view): the wind through the flat this month, as thin lines drifting from where

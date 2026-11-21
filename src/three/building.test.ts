@@ -591,7 +591,9 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     }
     const F = bti.FLOOR_M
     const rooms = (s: string) => core.deriveRooms(bti.FLATS[s].unit)
-    const allLit = (s: string) => rooms(s).map((r) => (shut(r) ? 0 : lit))
+    const { SPILL } = await import('./building')
+    // every room lit; a balcony SPILL of the brightest lit room beside it (none beside it: dark)
+    const allLit = (s: string) => rooms(s).map((r, _, all) => (r.kind === 'balcony' ? Math.round(255 * SPILL * (all.some((o) => !shut(o) && o.wallIds.some((id) => r.wallIds.includes(id))) ? 0.85 : 0)) : shut(r) ? 0 : lit))
     // floor 2 picked (the walked Type A: its own lamps are the scene's): the lift over its storey, slab edge to ceiling
     expect(span()).toEqual([+(3 - F).toFixed(2), 3])
     for (const f of b.flats) expect(f.scale.value, f.home).toBe(1) // the night: every other flat's pattern shows
@@ -642,12 +644,20 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(HOVER_NIGHT).toBeLessThan(PICK_NIGHT)
   })
 
-  test('the lamps: the picked flat and a common level all lit, a home by its night pattern; never a balcony or a shaft', async () => {
-    const { flatLamps, roomLight } = await import('./building')
+  test('the lamps: the picked flat and a common level all lit, a home by its night pattern; never a shaft; a balcony a little of the room it opens from', async () => {
+    const { flatLamps, roomLight, SPILL } = await import('./building')
     const rooms = core.deriveRooms(bti.FLATS['type-b'].unit)
-    expect(flatLamps('type-b|4', rooms, 'picked')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
-    expect(flatLamps('type-b|4', rooms, 'level')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
-    expect(flatLamps('type-b|4', rooms, 'home')).toEqual(rooms.map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
+    const out = (r: Room) => r.kind === 'balcony'
+    expect(flatLamps('type-b|4', rooms, 'picked').filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : 0.85)))
+    expect(flatLamps('type-b|4', rooms, 'level').filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : 0.85)))
+    const home = flatLamps('type-b|4', rooms, 'home')
+    expect(home.filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
+    // a balcony: SPILL of the brightest room sharing a wall with it (qa3 P10), never more than a lit room
+    const i = rooms.findIndex((r) => r.name === 'Veranda (living)')
+    const next = rooms.flatMap((o, j) => (o !== rooms[i] && o.wallIds.some((id) => rooms[i].wallIds.includes(id)) ? [home[j]] : []))
+    expect(home[i]).toBeCloseTo(SPILL * Math.max(...next))
+    expect(flatLamps('type-b|4', rooms, 'picked')[i]).toBeCloseTo(SPILL * 0.85)
+    for (const [j, r] of rooms.entries()) if (out(r)) expect(home[j]).toBeLessThan(0.5)
   })
 })
 
