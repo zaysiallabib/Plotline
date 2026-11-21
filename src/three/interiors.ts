@@ -128,14 +128,14 @@ export function refColour(ref: MaterialRef): Promise<THREE.Color> {
 
 const q16 = (x: number) => Math.round(THREE.MathUtils.clamp(x, 0, 1) * 65535)
 
-/** An interior part: positions, normals, colours (linear, 16 bits), its room's number, indexed — what every part merges as. */
+/** An interior part: positions, normals (16 bits each), colours (linear, 16 bits), its room's number (16 bits), indexed — what every part merges as: 26 bytes a vertex. */
 function part(P: Float32Array, N: Float32Array, C: Uint16Array, room: number, index: ArrayLike<number> | null): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry()
   const n = P.length / 3
   g.setAttribute('position', new THREE.BufferAttribute(P, 3))
-  g.setAttribute('normal', new THREE.BufferAttribute(N, 3))
+  g.setAttribute('normal', new THREE.BufferAttribute(Int16Array.from(N, (v) => Math.round(THREE.MathUtils.clamp(v, -1, 1) * 32767)), 3, true))
   g.setAttribute('color', new THREE.BufferAttribute(C, 3, true))
-  g.setAttribute('towerRoom', new THREE.BufferAttribute(new Float32Array(n).fill(room), 1))
+  g.setAttribute('towerRoom', new THREE.BufferAttribute(new Uint16Array(n).fill(room), 1))
   g.setIndex(index ? Array.from(index) : Array.from({ length: n }, (_, i) => i))
   return g
 }
