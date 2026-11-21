@@ -591,7 +591,9 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     }
     const F = bti.FLOOR_M
     const rooms = (s: string) => core.deriveRooms(bti.FLATS[s].unit)
-    const allLit = (s: string) => rooms(s).map((r) => (shut(r) ? 0 : lit))
+    const { SPILL } = await import('./building')
+    // every room lit; a balcony SPILL of the brightest lit room beside it (none beside it: dark)
+    const allLit = (s: string) => rooms(s).map((r, _, all) => (r.kind === 'balcony' ? Math.round(255 * SPILL * (all.some((o) => !shut(o) && o.wallIds.some((id) => r.wallIds.includes(id))) ? 0.85 : 0)) : shut(r) ? 0 : lit))
     // floor 2 picked (the walked Type A: its own lamps are the scene's): the lift over its storey, slab edge to ceiling
     expect(span()).toEqual([+(3 - F).toFixed(2), 3])
     for (const f of b.flats) expect(f.scale.value, f.home).toBe(1) // the night: every other flat's pattern shows
@@ -642,12 +644,20 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(HOVER_NIGHT).toBeLessThan(PICK_NIGHT)
   })
 
-  test('the lamps: the picked flat and a common level all lit, a home by its night pattern; never a balcony or a shaft', async () => {
-    const { flatLamps, roomLight } = await import('./building')
+  test('the lamps: the picked flat and a common level all lit, a home by its night pattern; never a shaft; a balcony a little of the room it opens from', async () => {
+    const { flatLamps, roomLight, SPILL } = await import('./building')
     const rooms = core.deriveRooms(bti.FLATS['type-b'].unit)
-    expect(flatLamps('type-b|4', rooms, 'picked')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
-    expect(flatLamps('type-b|4', rooms, 'level')).toEqual(rooms.map((r) => (shut(r) ? 0 : 0.85)))
-    expect(flatLamps('type-b|4', rooms, 'home')).toEqual(rooms.map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
+    const out = (r: Room) => r.kind === 'balcony'
+    expect(flatLamps('type-b|4', rooms, 'picked').filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : 0.85)))
+    expect(flatLamps('type-b|4', rooms, 'level').filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : 0.85)))
+    const home = flatLamps('type-b|4', rooms, 'home')
+    expect(home.filter((_, i) => !out(rooms[i]))).toEqual(rooms.filter((r) => !out(r)).map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
+    // a balcony: SPILL of the brightest room sharing a wall with it (qa3 P10), never more than a lit room
+    const i = rooms.findIndex((r) => r.name === 'Veranda (living)')
+    const next = rooms.flatMap((o, j) => (o !== rooms[i] && o.wallIds.some((id) => rooms[i].wallIds.includes(id)) ? [home[j]] : []))
+    expect(home[i]).toBeCloseTo(SPILL * Math.max(...next))
+    expect(flatLamps('type-b|4', rooms, 'picked')[i]).toBeCloseTo(SPILL * 0.85)
+    for (const [j, r] of rooms.entries()) if (out(r)) expect(home[j]).toBeLessThan(0.5)
   })
 })
 
@@ -789,6 +799,46 @@ describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s p
     expect(big.n).toBeGreaterThan(4000)
     const light = tris(await buildFurniture({ id: 'x', assetId: big.a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 }, 3.048, 0, undefined, 1500))
     expect(light).toBeLessThan(big.n / 2)
+  })
+})
+
+describe('the demo tower’s roof (qa3 P9: from outside the top floor read as a cut-away)', () => {
+  test('over the roof slab and its parapet only the stair / lift head room stands: its lid lays no beam over the rest of the roof', async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.requestAnimationFrame ??= () => 0
+    const THREE = await import('three')
+    const { Building } = await import('./building')
+    const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const R = b.levelOf(topFloor(bti as Tower) + 1)
+    // the head room's footprint (the core rooms of the drawings, where the tower puts them) and the tanks on it, 0.4 m slack
+    const f = frameOf(bti as Tower, 'type-a', 2)
+    const pts = [
+      ...CORE.flatMap(([s, name]) => {
+        const u = FLATS[s].unit
+        const r = roomsOf(u).find((x) => x.name === name)!
+        return core.roomPolygon(r, u).map((p) => ({ x: p.x + f.shift(s).x, y: p.y + f.shift(s).y }))
+      }),
+      ...bti.ROOF.tanks.flatMap(([x0, y0, x1, y1]) => [{ x: x0, y: y0 }, { x: x1, y: y1 }].map((p) => ({ x: p.x + f.shift().x, y: p.y + f.shift().y }))),
+    ]
+    const box = { x0: Math.min(...pts.map((p) => p.x)) - 0.4, x1: Math.max(...pts.map((p) => p.x)) + 0.4, z0: Math.min(...pts.map((p) => p.y)) - 0.4, z1: Math.max(...pts.map((p) => p.y)) + 0.4 }
+    let high = 0, stray = 0
+    const v = new THREE.Vector3()
+    b.updateMatrixWorld(true)
+    b.traverse((o) => {
+      const m = o as import('three').Mesh
+      if (!m.isMesh || o.userData.level !== topFloor(bti as Tower) + 1) return
+      const p = m.geometry.attributes.position
+      for (let i = 0; i < p.count; i++) {
+        v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld)
+        if (v.y < R + 1.2) continue // the slab and the parapet (1.1 m)
+        high++
+        if (v.x < box.x0 || v.x > box.x1 || v.z < box.z0 || v.z > box.z1) stray++
+      }
+    })
+    expect(high).toBeGreaterThan(0) // the head room is there
+    expect(stray).toBe(0)
+    b.dispose()
   })
 })
 

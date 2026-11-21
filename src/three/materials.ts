@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
-import { daylit as daylitPatch, mottleMap } from './daylight'
+import { daylit as daylitPatch, mottleMap, nightPatch } from './daylight'
 
 /**
  * The flat's lamps (render.ts's pool of spot lights) light its own rooms only. What is outside them — the street and its
@@ -188,11 +188,11 @@ export function fallbackColor(textureId: string): string {
  * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
  * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
  * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
- * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots) — on Lite, whose shader has no lamp
- * at all, the plain material itself (one program for the flat's render and the tower's, not two).
+ * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots) and the city's night light. On Lite,
+ * whose shader has no lamp at all, the tower's and the flat's own plain ones are one program, the night light switched on
+ * for the tower's only (one program, not two).
  */
 export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false): THREE.MeshStandardMaterial {
-  outside &&= !lite.on
   const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '')
   const cached = matCache.get(key)
   if (cached) return cached
@@ -232,10 +232,19 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
   }
   samePictures(m)
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+  m.userData.nightOut = key.startsWith(OUTER) // the walked flat's outer faces take the city's night light, as the tower's (daylight.ts nightOut)
   if (daylit) daylitPatch(m)
-  if (outside) {
-    m.onBeforeCompile = (s) => void ((s.vertexShader = noSpots(s.vertexShader)), (s.fragmentShader = noSpots(s.fragmentShader)))
+  if (outside && !lite.on) {
+    m.onBeforeCompile = (s) => {
+      nightPatch(s) // the tower at night: the sky's glow and the street's lamps (qa3 P10)
+      s.vertexShader = noSpots(s.vertexShader)
+      s.fragmentShader = noSpots(s.fragmentShader)
+    }
     m.customProgramCacheKey = () => 'outside'
+  } else if (lite.on && !daylit) {
+    const on = { value: outside ? 1 : 0 }
+    m.onBeforeCompile = (s) => nightPatch(s, on)
+    m.customProgramCacheKey = () => 'plain-night'
   }
   matCache.set(key, m)
   return m
@@ -244,6 +253,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
 /** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the
  * outside face reads as a different, weathered surface through a window. Flat #d9d4cb read as a cream sheet in every pane (wave 10). */
 export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
+const OUTER = JSON.stringify(EXTERIOR_PLASTER)
 /** Wall ends and tops (edge variant): the warm-white paint. A thick outer wall's end cap shows inside the room it stops at
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }

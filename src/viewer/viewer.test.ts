@@ -14,7 +14,7 @@ import { kitAsset, placementRange, placementSize } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import {
   AC_AHEAD, AC_DIP, AC_IN_VIEW, AC_LIFT, AC_NEAR, BATH_PITCH, CLOSET_PITCH, DOOR_CLEAR, DOOR_LEAF_MAX, FAN_CLEAR, FAN_IN_VIEW, FLAT_MAX, GALLEY_DOOR_CLEAR, HANG_CLEAR, HANG_IN_VIEW, HELP_PITCH,
-  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, VIEW_INSET, WET_PITCH,
+  LEAF_GAIN, NEAR_WALL, NEAR_WALL_MAX, PHOTO_TURN, ROOM_PITCH, SIDE_WALL, SIDE_WALL_MAX, SMALL_WET, TALL_IN_VIEW, TINY_WET_SQM, VIEW_INSET, WET_PITCH,
   VERANDA_PITCH, VERANDA_WALL, VERANDA_WALL_MAX, BAR_TOP, PORTRAIT_SIGHT, acCut, entrySpawn, footprintDist, inSight, lengthwise, listedRooms, roomView, wetBand, yawFor,
 } from './spawn'
 import { hhmm, nearestSpoke, period } from './SunPill'
@@ -593,6 +593,20 @@ describe('viewer', { timeout: 20_000 }, () => {
     // vanity and WC/shower at opposite ends of a 1.5 m-wide bath, or a WC under 3 m²: the vanity/basin whole only from inside the
     // shower or from a spot whose frame a leaf or near tile fills (B Bath-3 23 %)
     expect(half).toEqual(['a_2703 Bath-3', 'a_2703 H. toilet', 'b_1747 Bath-3', 'b_1747 Powder room', 'c_2254 Bath-3', 'sheltech_a_2736 PDR', 'sheltech_a_2736 Toilet', 'sheltech_b_2736 Toilet'])
+    // a WC under TINY_WET_SQM (A's servant's toilet, 1.5 m²): seen from its doorway, never from over its basin (qa3 P2)
+    const tiny = [...both, ...sh].flatMap(({ u, rs }) => listedRooms(u, rs).filter((r) => r.kind === 'bath' && Math.abs(core.signedArea(core.roomInnerPolygon(r, u))) < TINY_WET_SQM).map((r) => ({ u, r })))
+    expect(tiny.map(({ u, r }) => `${u.id} ${r.name}`.replace(/unit_(type_)?/, ''))).toEqual(['a_2703 H. toilet', 'sheltech_b_2736 Toilet']) // (B's and C's are under 2 m² on the plan's lines too: not in the Rooms list)
+    for (const { u, r } of tiny) {
+      const v = view(r, u)
+      const gap = Math.min(
+        ...r.wallIds.flatMap((id) => {
+          const w = u.walls.find((x) => x.id === id)!
+          const f = core.wallFrame(w, u.vertices)
+          return w.openings.filter((o) => o.kind !== 'window').map((o) => Math.hypot(v.p.x - (f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2)), v.p.y - (f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2))) - w.thicknessM / 2)
+        }),
+      )
+      expect(gap, `${u.id} ${r.name}: in its doorway`).toBeLessThan(0.2)
+    }
     // the director's worst: Sheltech B's PDR shows its basin AND its WC whole (was a top-down basin and a WC edge)
     const pdr = sh[1].rs.find((r) => r.name === 'PDR')!
     const v = view(pdr, sh[1].u)
@@ -891,6 +905,8 @@ describe('the stair\'s address (session 31: a floor reached by the stair is this
     expect(stairUrl('?floor=3&edit=furniture&own=1&export=glb', 'type-b', 2, false)).toBe('/u/type-b?floor=2')
     expect(stairUrl('?floor=3&c=abc', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=abc') // a buyer's finishes ride along
     expect(stairUrl('', 'type-b', 4, true)).toBe('/u/type-b?floor=4&c=') // from a published link: still a buyer's link
+    // a flat picked in the Building view: its Dollhouse again on a reload; the tower's own view and pick dropped
+    expect(stairUrl('?floor=2&view=building&pick=2&quality=lite', 'type-c', 8, false, true)).toBe('/u/type-c?floor=8&quality=lite&view=dollhouse')
   })
 })
 

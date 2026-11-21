@@ -145,6 +145,8 @@ function onFloor(u: Unit | null, n = params.has('floor') ? Number(params.get('fl
 }
 /** the Studio's Preview 3D: without `?floor=` it is the drawing the Studio has open (its own furniture and finishes), not a floor of it */
 const PREVIEW_DRAWING = location.pathname === '/u/preview' && !params.has('floor')
+/** A trip to floor `floor` of the tower (ViewerApp travel): its unit, the stair point he arrives by (none: its entry), the view it opens in. */
+type Trip = { stem: string; floor: number; at?: Pt; view: SceneMode }
 /** A unit as the viewer shows it: the apartment it is (data/building/apartments.ts), with what it keeps. */
 interface Shown {
   unit: Unit
@@ -392,7 +394,11 @@ function AddPanel({ onPick, onEsc, onNote }: { onPick: (assetId: string) => void
   )
 }
 
-/** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand: what and why not. */
+/**
+ * Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand:
+ * what and why not. A phone (viewer.css, qa3 P15: the panel and the bar hid the lower 42 % of the room, where the furniture
+ * is): one row — the piece and Done (in hand: why not, and Cancel), or "Tap a piece" and Add — the rest behind the grip.
+ */
 function ArrangePanel(p: {
   /** where the layout is kept, in words */
   kept: string | null
@@ -405,52 +411,71 @@ function ArrangePanel(p: {
   onUndo: () => void
   onReset: () => void
   onAdd: () => void
+  /** the piece picked: let go of it; the piece in hand: back where it was */
+  onDone: () => void
 }) {
   const s = p.piece && placementSize(p.piece)
   const finger = useFinger() // a finger has no R or Esc: the words say what it can do
+  const [open, setOpen] = useState(false)
+  const head = p.held ? (p.held.error ?? `${p.held.adding ? 'Placing' : 'Moving'}: ${p.held.label}`) : p.piece ? placementLabel(p.piece) : `${finger ? 'Tap' : 'Click'} a piece to move it`
   return (
-    <aside className="glass arrange">
-      {p.held ? (
-        <>
-          <div className="arrange-name">
-            {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
-          </div>
-          <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
-            {p.held.error ?? (finger ? 'Tap the floor, a wall or the ceiling where it goes' : p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
-          </div>
-        </>
-      ) : p.piece && s ? (
-        <>
-          <div className="arrange-name">{placementLabel(p.piece)}</div>
-          <div className="muted small">
-            {p.piece.openingId
-              ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
-              : resizeAxes(p.piece.assetId).length
-                ? `${dims(s)} · drag a dot to resize`
-                : 'This piece can be moved and turned'}
-          </div>
-        </>
-      ) : (
-        <div className="muted small">{finger ? 'Tap' : 'Click'} a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
-      )}
-      <div className="arrange-row">
-        <button className={`btn${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
-          Add
-        </button>
-        <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
-          {finger ? 'Turn 90°' : 'Turn 90° (R)'}
-        </button>
-        <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
-          Delete
-        </button>
-        <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
-          Undo
-        </button>
-        <button className="btn" title="Back to the drawing’s own layout, as the Studio arranged it (undo brings yours back)" onClick={p.onReset}>
-          Reset layout
-        </button>
+    <aside className={`glass arrange${open ? ' open' : ''}`}>
+      <button className="arrange-grip" aria-expanded={open} aria-label={open ? 'Fewer buttons' : 'More buttons: turn, delete, undo, reset'} onClick={() => setOpen(!open)} />
+      <div className="arrange-head">
+        <span className={`arrange-what${p.held?.error ? ' refused' : ''}`}>{head}</span>
+        {p.held || p.piece ? (
+          <button className="btn" onClick={p.onDone}>
+            {p.held ? 'Cancel' : 'Done'}
+          </button>
+        ) : (
+          <button className={`btn${p.adding ? ' active' : ''}`} onClick={p.onAdd}>
+            Add
+          </button>
+        )}
       </div>
-      {p.kept && <div className="muted small">{p.kept}</div>}
+      <div className="arrange-body">
+        {p.held ? (
+          <>
+            <div className="arrange-name">
+              {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
+            </div>
+            <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
+              {p.held.error ?? (finger ? 'Tap the floor, a wall or the ceiling where it goes' : p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
+            </div>
+          </>
+        ) : p.piece && s ? (
+          <>
+            <div className="arrange-name">{placementLabel(p.piece)}</div>
+            <div className="muted small">
+              {p.piece.openingId
+                ? 'Hangs on its opening and follows it: drag it along the wall, drag a side dot to make it wider or narrower, or Delete it'
+                : resizeAxes(p.piece.assetId).length
+                  ? `${dims(s)} · drag a dot to resize`
+                  : 'This piece can be moved and turned'}
+            </div>
+          </>
+        ) : (
+          <div className="muted small">{finger ? 'Tap' : 'Click'} a piece, then drag it. The TV, art and AC slide along the walls and up and down them, curtains along their opening's wall, lights and fans on the ceiling. Add puts a new one in.</div>
+        )}
+        <div className="arrange-row">
+          <button className={`btn arrange-add${p.adding ? ' active' : ''}`} title="Add a piece from the library" onClick={p.onAdd}>
+            Add
+          </button>
+          <button className="btn" disabled={!p.piece && !p.held} onClick={p.onTurn}>
+            {finger ? 'Turn 90°' : 'Turn 90° (R)'}
+          </button>
+          <button className="btn" disabled={!p.piece && !p.held} title="Delete this piece (and what rests on it) — also the one in your hand (Del)" onClick={p.onDelete}>
+            Delete
+          </button>
+          <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
+            Undo
+          </button>
+          <button className="btn" title="Back to the drawing’s own layout, as the Studio arranged it (undo brings yours back)" onClick={p.onReset}>
+            Reset layout
+          </button>
+        </div>
+        {p.kept && <div className="muted small">{p.kept}</div>}
+      </div>
     </aside>
   )
 }
@@ -663,8 +688,8 @@ function Viewer({ first }: { first: Shown }) {
     [unit.finishSlots, cfg],
   )
 
-  /** where the unit being built puts the walker (a floor reached by the stair: at its stair), read once by the unit effect */
-  const arrival = useRef<{ at: Pt; face: Pt } | null>(null)
+  /** where the unit being built puts the walker and the view it opens in (travel: at its stair, or at its entry), read once by the unit effect */
+  const arrival = useRef<{ at: Pt; face: Pt; view: SceneMode } | null>(null)
   // engine: made once for the page — the renderer, the sky, the sun and the quality stay for every unit it is given
   useEffect(() => {
     let s: PlotlineScene
@@ -720,8 +745,8 @@ function Viewer({ first }: { first: Shown }) {
       s.dispose()
     }
   }, [])
-  // the unit into the engine: the page's, then each floor the stair reaches, standing where it arrives (an opening edit
-  // rebuilds in place instead: commitPlan)
+  // the unit into the engine: the page's, then each floor a trip reaches (travel), standing where it arrives (an opening
+  // edit rebuilds in place instead: commitPlan)
   useEffect(() => {
     if (!scene) return
     scene.cover = tower && stem ? coverOf(tower, stem, given.floor ?? floorIn(tower, stem)) : [] // the slab of the floors above it (a level, a flat in its tower)
@@ -731,11 +756,13 @@ function Viewer({ first }: { first: Shown }) {
     arrival.current = null
     const arrived = () => {
       if (!going.current) return
-      going.current = null // "Floor 3 …" stood there until now: the floor is ready, its first frame comes next
+      going.current = null // "Floor 3 …" and the room's name he left stood there until now: the floor is ready, its first frame comes next
+      if (a && a.view !== modeRef.current) setMode(a.view) // (the scene is in it already: arrive)
+      setPicked(given.floor ?? 0)
       redraw()
     }
-    // a floor reached by the stair: made ready while the one he leaves stays on screen (no freeze), then he stands at its stair
-    if (a) void scene.arrive(given, a.at, yawFor(a.face)).then(arrived)
+    // a floor a trip reaches: made ready while the one he leaves stays on screen (no freeze), then shown in one frame
+    if (a) void scene.arrive(given, a.at, yawFor(a.face), a.view).then(arrived)
     else {
       scene.setUnit(given)
       // under the start screen, walking in: the 3D gets ready looking where Enter will put him (the first frame then sends
@@ -763,19 +790,25 @@ function Viewer({ first }: { first: Shown }) {
       } else if (room && keys.has(room)) {
         setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
         return true
-      } else if (modeRef.current === 'orbit' && hit.kind === 'floor') {
-        // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2)
-        s.spawnAt({ x: hit.point.x, y: hit.point.z }, yawFor(headingOf(s)))
+      } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.under)) {
+        // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2); a bed or a rug:
+        // the floor the click reaches behind it
+        const at = hit.kind === 'floor' ? hit.point : hit.under!
+        s.spawnAt({ x: at.x, y: at.z }, yawFor(headingOf(s)))
         setMode('walk')
       }
     })
-    // Building view: a click on this flat opens its dollhouse, on another flat loads that one on its floor; on a level it
-    // walks it; on a floor of massing (or the roof) it picks that floor, as the floor list does
+    // Building view: a click on this flat opens its dollhouse, on another flat brings that one in on its floor (travel: the
+    // tower stays on screen meanwhile, no new page); on a level it walks it; on a floor of massing (or the roof) it picks
+    // that floor, as the floor list does
     s.onFlat((h) => {
       const f = h?.flat
-      if (!h) return
+      if (!h || going.current) return
       if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
-      if (f.stem !== stem || f.floor !== unit.floor) return location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
+      if (f.stem !== stem || f.floor !== unit.floor) {
+        if (!travel({ stem: f.stem, floor: f.floor, view: 'orbit' }, here())) location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
+        return
+      }
       setMode('orbit')
       s.setMode('orbit')
     })
@@ -1079,35 +1112,43 @@ function Viewer({ first }: { first: Shown }) {
 
   // ── the stairs (founder 2026-11-20: "if i climb a stair i cannot reach the upper floor"): walked up a stair's flight to
   // the floor above (or down to the one below; PlotlineScene.toNextFloor), or the Up / Down button in a stair room. Session
-  // 31: that floor loads into this same 3D (no new page) and he stands at its stair, the walk going on
+  // 31: that floor loads into this same 3D (no new page) and he stands at its stair, the walk going on — and a flat or a
+  // level picked in the Building view comes in the same way (qa3 P12: a new page took 13–19 s before its Dollhouse showed)
   const myFloor = tower && stem ? (unit.floor ?? floorIn(tower, stem)) : 0
+  const floorLabel = level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined
+  /** where he is now, as a trip's way back */
+  const here = (): Trip => ({ stem: stem!, floor: myFloor, view: modeRef.current })
   /** the floor a stair reaches, as the buttons and the loading line say it */
   const floorWord = (to: { stem: string; floor: number }) => (tower?.LEVELS?.[to.stem] !== undefined ? levelName(tower, to.floor) : `Floor ${to.floor}`)
-  /** a stair being taken: "Floor 3 …" in the hint's place while that floor loads; null: none */
-  const going = useRef<string | null>(null)
+  /** a trip under way: "Floor 3 …" in the hint's place, and the room's name and floor he left, while that floor loads (qa3 P7: the name switched at once); null: none */
+  const going = useRef<{ line: string; room: Room | null; floorLabel: string | undefined } | null>(null)
   /**
-   * Takes the stair to `to` (stairTo: that floor's unit and this stair's point in its plan). That floor's models load while
-   * he stays where he is, the floor he leaves still drawn and "Floor 3 …" where the hint is; then the floor is swapped in
-   * one frame and he stands at its stair (arriveBy), facing into it. `from` (this floor's stair point) goes into the
-   * browser's history with the address (stairUrl), so Back takes the same stair back; `from` null: Back / Forward brought
-   * him here, the history is already right. False: a stair is already being taken.
+   * Goes to floor `to` of this tower (stairTo, a flat or a level picked in the Building view, Back / Forward): its unit, the
+   * stair point he arrives by (`at`: arriveBy, facing into the flight; none: the flat's entry, as Enter puts him) and the view
+   * it opens in. That floor's models load while he stays where he is, the view he leaves still drawn and "Floor 3 …" where
+   * the hint is; then it is swapped in in one frame. `from` (where he is) goes into the browser's history with the new
+   * address (stairUrl; a flat's Dollhouse: `view=dollhouse`), so Back makes the same trip back; `from` null: Back / Forward
+   * brought him here, the history is already right. False: a trip is already under way, or that floor is not in the tower.
    */
-  const takeStair = (to: { stem: string; floor: number; at: Pt }, from: Pt | null): boolean => {
+  const travel = (to: Trip, from: Trip | null): boolean => {
     const next = tower ? prepare(tower.FLATS[to.stem]?.unit ?? null, to.floor) : null
     if (going.current || !next) return false
-    going.current = `${floorWord(to)} …`
+    going.current = { line: `${floorWord(to)} …`, room, floorLabel }
     redraw()
     // ponytail: 15 s cap — a model still downloading after that streams in on the new floor (as on a page load). Then two
     // frames, so the line is on screen before the floor is built (a moment the 3D stands still, even with every model at hand)
     const frame = () => new Promise((r) => requestAnimationFrame(r))
     void Promise.race([preloadModels(next.unit.furniture), new Promise((r) => setTimeout(r, 15_000))]).then(frame).then(frame).then(() => {
-      if (from && stem) {
-        history.replaceState({ ...history.state, stair: { stem, floor: myFloor, at: from } }, '') // where Back arrives
-        history.pushState({ stair: to }, '', stairUrl(location.search, to.stem, to.floor, SHARED))
+      if (from) {
+        history.replaceState({ ...history.state, trip: from }, '') // where Back arrives
+        history.pushState({ trip: to }, '', stairUrl(location.search, to.stem, to.floor, SHARED, to.view === 'orbit'))
       }
       const rs = core.deriveRooms(next.unit)
-      const by = arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
-      arrival.current = by && { at: by.at, face: arrivalFace(next.unit, by) }
+      const by = to.at && arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
+      const e = by ? null : entrySpawn(next.unit, rs, innerWidth < innerHeight) // (an upright phone looks down the room, as on Enter)
+      const a = (arrival.current = by
+        ? { at: by.at, face: arrivalFace(next.unit, by), view: to.view }
+        : { at: e?.p ?? rs[0]?.centroid ?? { x: 0, y: 0 }, face: e?.face ?? { x: 0, y: -1 }, view: to.view })
       // the floor he leaves: what was open on it closes; the sun, the wind and Clean view stay, and a buyer's finishes (staff
       // see that floor's apartment as it was kept)
       letGo()
@@ -1129,26 +1170,24 @@ function Viewer({ first }: { first: Shown }) {
       plan.current = { ...initialState(), unit: next.unit }
       gesture.current = null
       setPins(readPins(next.unit.id))
-      setPicked(next.unit.floor ?? 0)
-      setRoom((by && core.roomAt(by.at, rs, next.unit)) || null)
-      setMode('walk')
-      document.title = pageTitle(next.unit.name) // (the line goes once the floor is built: the unit effect)
+      setRoom(core.roomAt(a.at, rs, next.unit) || null)
+      document.title = pageTitle(next.unit.name) // (the line, the room's name and the view go once the floor is built: the unit effect)
     })
     return true
   }
   useEffect(() =>
     scene?.onStair((dir, stair) => {
       const to = tower && stem ? stairTo(tower, stem, myFloor, stair, dir === 'up' ? 1 : -1) : null
-      if (to) takeStair(to, stair)
+      if (to) travel({ ...to, view: 'walk' }, { ...here(), at: stair, view: 'walk' })
       else showToast(dir === 'up' ? 'This stair goes no higher' : 'This stair goes no lower')
       return !!to
     }),
   )
-  // Back / Forward between floors the stair reached: the same stair, no new page; an address the stair did not make opens as a page
+  // Back / Forward between floors a trip reached: the same trip back, no new page; an address no trip made opens as a page
   useEffect(() => {
     const pop = (e: PopStateEvent) => {
-      const to = (e.state as { stair?: { stem: string; floor: number; at: Pt } } | null)?.stair
-      if (!to || !takeStair(to, null)) location.reload()
+      const to = (e.state as { trip?: Trip } | null)?.trip
+      if (!to || !travel(to, null)) location.reload()
     }
     addEventListener('popstate', pop)
     return () => removeEventListener('popstate', pop)
@@ -1409,11 +1448,11 @@ function Viewer({ first }: { first: Shown }) {
       : tower && placesIn(tower, unit.id).length > 1
         ? 'Kept for the drawing: every floor not changed on its own starts from this.'
         : `Kept for this ${level !== undefined ? 'level' : 'flat'}: it opens like this next time.`
-  /** walks the level on floor k (this one: Walk; another: its page — a share link's level stays a buyer's link) */
+  /** walks the level on floor k (this one: Walk; another: brought in as a stair brings a floor — a share link's level stays a buyer's link) */
   const walkLevel = (k: number) => {
     const s = levelAt(k)
     if (s === stem) go('walk')
-    else if (s) location.assign(`/u/${encodeURIComponent(s)}${SHARED ? '?c=' : ''}`)
+    else if (s && !going.current && !travel({ stem: s, floor: k, view: 'walk' }, here())) location.assign(`/u/${encodeURIComponent(s)}${SHARED ? '?c=' : ''}`)
   }
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
@@ -1495,18 +1534,18 @@ function Viewer({ first }: { first: Shown }) {
       {entered && scene && !inVR && (
         <>
           <Hud
-            room={room}
+            room={going.current ? going.current.room : room}
             rooms={listed}
             mode={mode}
             floor={unit.floor}
-            floorLabel={level !== undefined ? levelName(tower!, level) : unit.floor !== undefined ? `Floor ${unit.floor}` : undefined}
+            floorLabel={going.current ? going.current.floorLabel : floorLabel}
             roomNote={windOn && room ? core.windSentence(windRooms.find((w) => w.roomId === room.id), unit.northDeg) : null}
             pickedFloor={tower && stem ? floorTitle(tower, picked, stem) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
             onWalkLevel={walkStem ? () => walkLevel(picked) : null}
             tower={tower}
-            hover={mode === 'building' ? towerHover : null}
+            hover={mode === 'building' && !going.current ? towerHover : null}
             hovered={mode === 'building' ? (railHover ?? towerHover?.k ?? null) : null}
             onHoverFloor={(k) => {
               setRailHover(k)
@@ -1522,7 +1561,7 @@ function Viewer({ first }: { first: Shown }) {
             locked={locked}
             onEnterVR={xr ? toggleVR : null}
             toast={toast}
-            going={going.current}
+            going={going.current?.line ?? null}
             onJump={(r) => {
               const v = roomView(r, shown()) // the arranged layout, deleted pieces out
               // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
@@ -1584,7 +1623,7 @@ function Viewer({ first }: { first: Shown }) {
               stairWays.length > 0 && !arranging && !editingOpenings && !going.current ? (
                 <div className="glass walk-level" role="group" aria-label="Take the stair">
                   {stairWays.map((w) => (
-                    <button key={w.d} className="btn" title="Take the stair: that floor opens here, you stand at its stair" onClick={() => takeStair(w.to, w.at)}>
+                    <button key={w.d} className="btn" title="Take the stair: that floor opens here, you stand at its stair" onClick={() => travel({ ...w.to, view: 'walk' }, { ...here(), at: w.at, view: 'walk' })}>
                       {w.label}
                     </button>
                   ))}
@@ -1666,7 +1705,11 @@ function Viewer({ first }: { first: Shown }) {
                   surface={surface}
                   onSelect={choose}
                   onCloseSurface={() => setSurface(null)}
-                  onReset={() => {
+                  onReset={async () => {
+                    // staff's picks are kept for this flat the moment they click, and the panel has no Undo: say so before they go (qa3 P4)
+                    const n = Object.keys(cfg).length
+                    const what = n === 1 ? 'The choice kept for this flat goes, and Undo cannot bring it back.' : `The ${n} choices kept for this flat go, and Undo cannot bring them back.`
+                    if (KEEP && apt && n && !(await ask(`Back to the included finishes? ${what}`, 'Reset', true))) return
                     for (const s of unit.finishSlots) choose(s.id, s.defaultOptionId)
                     for (const k of Object.keys(cfg)) if (keys.has(k)) choose(k, null)
                     setCfg({})
@@ -1717,6 +1760,7 @@ function Viewer({ first }: { first: Shown }) {
                 letGo()
                 setAdding((v) => !v)
               }}
+              onDone={() => (held.current ? letGo() : escArrange())}
             />
           )}
           {windOn && mode === 'walk' && room && (

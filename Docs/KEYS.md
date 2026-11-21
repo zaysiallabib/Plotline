@@ -41,9 +41,9 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or down the flight you see through the opening in the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
-| Click a room's floor | Drops you into that room (not while Finishes is open) | Dollhouse | everyone | §2 |
+| Click a room's floor | Drops you into that room — a click on a bed, a rug or another piece too (not while Finishes is open) | Dollhouse | everyone | §2 |
 | Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
-| Click a floor on the tower | Opens the flat there (yours: its Dollhouse), walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open | Building | everyone | §4 |
+| Click a floor on the tower | Opens the flat there in its Dollhouse, walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open — in the same 3D, no new page; Back returns to the tower | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
 | **B** | The Building view | a flat that belongs to a tower | everyone | §2, §4 |
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
@@ -118,6 +118,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | Pull a sheet's **grip** down · **×** | Closes that sheet (Finishes, Comment, Sun & wind, the rooms list, Edit, ⋯) | a phone (under 720 px wide) | everyone | §2 On a phone or tablet |
 | Tap where the faded bar was | Only brings the bar back (presses nothing) | resting, a phone | everyone | §2 On a phone or tablet |
 | Tap a piece · drag it · drag near a dot | Picks it · moves it · resizes it (a thumb within half a fingertip of a dot takes the dot) | Edit furniture, a finger | staff | §2 On a phone or tablet |
+| **Done** · **Cancel** · the panel's grip | Lets go of the piece picked · puts the one in your hand back · shows or folds away Turn 90°, Delete, Undo, Reset layout | Edit furniture, a phone (under 720 px wide) | staff | §2 On a phone or tablet |
 | Tap where it goes | Puts the piece in your hand there (a new one from the library, or one a drag could not leave) | Edit furniture, a piece in hand, a finger | staff | §2 On a phone or tablet |
 | VR trigger · thumbstick left / right | Hold to aim at the floor, let go to jump · turns you 45° | in VR (the keyboard is ignored) | everyone | §2 In VR |
 

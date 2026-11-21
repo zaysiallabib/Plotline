@@ -11,6 +11,17 @@ import './landing.css'
 
 const FLAT = '/u/type-a'
 
+/** "Open the Studio", and under it on a phone that it is for a computer (qa3 P14: it opened squeezed, nothing said so) */
+const StudioLink = () => (
+  <span className="studio-link">
+    <a className="quiet" href="/studio">
+      <span className="u">Open the Studio</span>
+      <span aria-hidden="true">→</span>
+    </a>
+    <span className="phone-note">The Studio is for a computer</span>
+  </span>
+)
+
 /** The story's three acts, as the scroll passes them (the canvas and the words read the same position). */
 const actAt = (p: number) => (p < 0.14 ? 1 : p < 0.47 ? 2 : 3)
 
@@ -126,10 +137,7 @@ export default function Landing() {
               <a className="btn primary" href={FLAT}>
                 See a flat
               </a>
-              <a className="quiet" href="/studio">
-                <span className="u">Open the Studio</span>
-                <span aria-hidden="true">→</span>
-              </a>
+              <StudioLink />
             </div>
           </div>
           <div className="act cap" style={span(0.15, 0.47)} aria-hidden="true">
@@ -233,10 +241,7 @@ export default function Landing() {
             <a className="btn primary" href={FLAT}>
               See a flat
             </a>
-            <a className="quiet" href="/studio">
-              <span className="u">Open the Studio</span>
-                <span aria-hidden="true">→</span>
-            </a>
+            <StudioLink />
           </div>
         </section>
       </main>

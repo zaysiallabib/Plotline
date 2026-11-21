@@ -41,7 +41,8 @@ not signed in) — the card has a line to type in, the old name already in it an
 
 What someone who has never seen Plotline sees first: the product told as a short story you scroll through.
 
-- At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**.
+- At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**
+  (on a phone, a small line under it says "The Studio is for a computer").
 - Beside them (under them on a phone) lies a real floor plan: flat Type A on a sheet of paper, drawn as the architect's
   sheet draws it, with its room names, sizes and north point. Names read as a sheet prints them ("Veranda", not
   "Veranda (living)"); a room the sheet gives no size (a shaft, the lift core) shows its name alone. A name too big for
@@ -179,7 +180,8 @@ remembers it: the next flat opened in the same tab starts clean too.
     small for a drawn stair (the Sheltech ground floor): you then stand in the middle of that floor's stair room. The
     rooftop's stair says "This stair goes no higher" (the lowest: "no lower").
   - **No new page:** the next floor comes into the same 3D. While it gets ready you stay where you are and can still look
-    round, the line at the bottom says where you are going ("Floor 4 …"), and the floor you leave stays on screen until
+    round, the line at the bottom says where you are going ("Floor 4 …"), the room's name top left still names where you
+    are (it changes with the picture), and the floor you leave stays on screen until
     the new one is complete — its furniture, its plants, its pictures and the other flats' rooms round it all in — then
     the picture changes in one go; the grounds' trees and play things seen from its windows come in just after. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
@@ -191,8 +193,9 @@ remembers it: the next flat opened in the same tab starts clean too.
 - Walk sees about as much as a 22 mm camera lens (a little under 80° across a wide screen) from 1.45 m eye height. The
   Dollhouse and the Building view see wider.
 
-**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it (not
-while Finishes is open: then the click picks that floor's finish).
+**Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it — a
+bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece (not while
+Finishes is open: then the click picks that floor's finish).
 
 **Finishes panel**
 
@@ -224,7 +227,9 @@ included** the panel says where the picks are kept:
 - "Kept for the drawing: every floor not changed on its own starts from this" — the Studio's **Preview 3D** of a floor
   plan that is on several floors: every floor of it that you never changed on its own starts from these picks.
 
-**Reset to included** on a floor shows what the flat comes with, and keeps that. An address that carries a choice (a link
+**Reset to included** on a floor shows what the flat comes with, and keeps that — staff are asked first when it would wipe
+picks kept for the flat ("Back to the included finishes? The 3 choices kept for this flat go, and Undo cannot bring them
+back.", **Cancel** or **Reset**). An address that carries a choice (a link
 copied with **Share**, ending in `?c=…`) opens with that choice and keeps nothing: open the flat without it to keep your
 picks. Buyers keep nothing: a buyer link (`/s/…`) opens with the finishes it was made with, the buyer's picks go to the
 change list as before, and nothing a buyer does changes the flat staff see.
@@ -263,7 +268,10 @@ the panel's **×**) stops Comment. On a buyer link **Your name** is here too.
     on. A click turns them the other way; a click again goes back to automatic. This browser remembers it.
   - At night glass faintly mirrors the lit room, the Dollhouse rooms glow inside dark walls, about half the tower's
     rooms have a lamp on in the Building view (§4), and the neighbours light about four windows in ten (Low and
-    High) — each seen from your window as a room in a warm, neutral or cool light.
+    High) — each seen from your window as a room in a warm, neutral or cool light. The buildings themselves never go
+    black: the city's glow lights every outside wall a little, the street lamps light the lower floors warmer, a pool of
+    light lies under each street lamp along the roads (Low and High), and a balcony catches a little of the light of the
+    lit room it opens from. A lit window seen at a slant fades, as its frame would hide it.
   - In the Building view the button does the same from outside: your flat's rooms glow through its windows with the
     lamps on and go dark with them off (and the picked flat's, when you picked another floor).
 - **Wind** (on the card, or **P** in any view): the wind through the flat this month, as thin lines drifting from where
@@ -411,7 +419,11 @@ steps aside while Finishes or Comment is open.
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
 - **Staff on a phone:** Edit → Furniture and Edit → Openings work with a thumb, though a computer is still the
-  better tool. Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
+  better tool. The Edit furniture panel is one row over the bar, so the room and its furniture stay free for your thumb:
+  "Tap a piece to move it" and **Add**; with a piece picked its name and **Done** (lets go of it); with one in your hand
+  what you are placing (or in red why not there) and **Cancel** (back where it was). Tap the short bar (the grip) on top
+  of the row for the rest — Turn 90°, Delete, Undo, Reset layout and its size; tap it again to fold them away.
+  Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
   (7 % of the screen's short side, at most 44 px, so they never cover a picture on the wall up close) but a thumb takes a
   dot anywhere within half a fingertip of it. **Add** opens the library as a sheet from the bottom, with **×** and a grip
   to close it; the search box waits for your tap (so the keyboard does not jump up over the list) and every row is a
@@ -578,9 +590,14 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 
 - **Point at the tower.** The storey under the mouse turns a little brighter, and a small card beside the mouse names it: the
   floor in large letters ("Floor 4", "Ground floor", "Basement 1", "Rooftop") and, over a flat, the flat's name and its
-  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat (your own flat: its
-  Dollhouse), walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that
-  floor as the list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+  size from the plan ("Type B · 1747 sft"), then what a click does there. **Click** opens that flat in its Dollhouse,
+  walks a ground floor, basement, rooftop or common floor, or — on a floor with nothing to open — picks that floor as the
+  list does. The card keeps to the screen at its edges; it goes while you drag the tower round.
+- **No new page:** the flat or level you click comes into the same 3D, as a stair brings a floor (§2): the tower stays on
+  screen, the line at the bottom says where you are going ("Floor 8 …"), and the picture changes in one go — about 2–3
+  seconds for a flat, longer the first time you open a ground floor with trees and play things (5 s on Lite, about 10 s
+  on High, while the graphics card learns them). The address changes to it, so a reload opens it; the browser's **Back**
+  brings you back to the tower, also without a new page. **Walk this level** under the floor list goes the same way.
 - **On a phone:** tap a floor and the card shows beside your finger (the storey brighter); tap the same floor again to open
   it. A tap somewhere else names that instead.
 - **Floors on the right** (headed "Floors"), top to bottom: **Roof**, the flat floors by number, **Ground**, **B1**,
@@ -605,6 +622,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
     seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
+- **The roof:** a building whose rooftop was not traced still has one — the top floor's slab, a parapet along its outer
+  edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
+  traced rooftop (Sheltech) shows as drawn.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
@@ -621,6 +641,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 Where staff draw the plan over the plan picture — or bring in the architect's own file — check it, and send it to 3D.
 The order is on the right under **Steps**: load the plan → set the scale → trace walls → wall thickness → openings →
 rooms → check → export.
+
+**On a phone** (a screen under 720 px wide) the Studio opens as one card instead: "The Studio is for a computer", with
+**See a flat** and **Open it anyway** (that opens the Studio, squeezed, for the rest of that tab).
 
 **What you see.** A light stone page; the plan picture lies on it like a sheet of paper, a little faded, so the walls you
 draw stand out in dark ink. Doors are drawn with their swing, windows as three thin lines between two short ends, as on

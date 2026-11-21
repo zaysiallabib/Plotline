@@ -407,6 +407,18 @@ export default function Hud(p: Props) {
     if (p.hover && !rail.current?.matches(':hover')) rail.current?.querySelector('.rail-item.hover')?.scrollIntoView({ block: 'nearest' })
   }, [p.hover, p.hovered])
   const finger = useFinger()
+  // where the room's name card ends (--name-bottom on the viewer): a panel on the left starts under it at every width (qa3 P5)
+  const tl = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = tl.current
+    const v = el?.closest<HTMLElement>('.viewer')
+    if (!el || !v) return
+    const put = () => v.style.setProperty('--name-bottom', `${Math.round(el.getBoundingClientRect().bottom)}px`)
+    const ro = new ResizeObserver(put)
+    ro.observe(el)
+    addEventListener('resize', put)
+    return () => (ro.disconnect(), removeEventListener('resize', put))
+  }, [])
   const staffEdit = p.onArrange || p.onOpenings || p.onEditPlan
   const hint = p.going ?? hintOf({ ...p, holding: !!p.hand, finger })
   const r = p.room
@@ -424,7 +436,7 @@ export default function Hud(p: Props) {
       onPointerDownCapture={() => (resting.current = chrome === 'room')}
       onClickCapture={(e) => resting.current && !(e.target as Element).closest('.hud-tl') && e.stopPropagation()}
     >
-      <div className="hud-tl">
+      <div ref={tl} className="hud-tl">
         <button className={`room-title${open === 'rooms' ? ' on' : ''}`} aria-expanded={open === 'rooms'} title="Rooms: jump to another room" onClick={() => toggle('rooms')}>
           {eyebrow && <span className="label">{eyebrow}</span>}
           <span className="room-name display">

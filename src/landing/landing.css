@@ -61,6 +61,12 @@ body:has(.landing) { overflow: auto; } /* the rest of the app never scrolls the 
   transition: text-decoration-color var(--dur) var(--ease);
 }
 .landing .quiet:hover .u { text-decoration-color: var(--ink); }
+/* under "Open the Studio" on a phone: that it is for a computer */
+.landing .studio-link { display: inline-flex; flex-direction: column; }
+.landing .phone-note { display: none; }
+@media (max-width: 720px) {
+  .landing .phone-note { display: block; margin-top: calc(-1 * var(--s-2)); font-size: var(--fs-sm); color: var(--muted); }
+}
 
 /* ── the story: a tall section, a stage that stays while it scrolls past ─────────────────────────────────────── */
 .landing .story { position: relative; height: 480svh; }

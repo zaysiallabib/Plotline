@@ -18,7 +18,7 @@ import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
 import { EDGE_PLASTER, PICTURES, SPOT_LOOP, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { TIERS } from './render'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
@@ -346,6 +346,25 @@ describe('pickedAt: Edit furniture and G see a piece through the glass', () => {
     bed.visible = false
     expect(first(true)).toBeUndefined()
   })
+
+  test('floorBehind: a Dollhouse click on a rug or a bed reaches the room’s floor behind it (qa3 P16)', () => {
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2))
+    floor.userData = { kind: 'floor', id: 'f' }
+    const rug = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(2, 0.02, 2)))
+    rug.userData = { kind: 'furniture', id: 'rug' }
+    rug.position.set(0, 0.011, 0)
+    const scene = new THREE.Scene().add(floor, rug)
+    scene.updateMatrixWorld(true)
+    // from above and to the side, as the Dollhouse looks: the rug first, then its floor
+    const hits = new THREE.Raycaster(new THREE.Vector3(0, 8, 4), new THREE.Vector3(0, -8, -4).normalize()).intersectObjects(scene.children, true)
+    const i = hits.findIndex((h) => pickedAt(h)?.userData.id === 'rug')
+    expect(i).toBe(0)
+    const p = floorBehind(hits, i)!
+    expect(p.y).toBeCloseTo(0)
+    expect(Math.hypot(p.x, p.z)).toBeLessThan(0.1) // where the ray meets the floor under the rug
+    // nothing but the piece on the ray: no floor
+    expect(floorBehind(hits.slice(0, 1), 0)).toBeNull()
+  })
 })
 
 describe('planter beds: every leaf a number (a NaN leaf scrambles every 3D pick)', () => {
@@ -503,6 +522,23 @@ describe('one program for every lit surface (session 31 ready lane: the first fr
     expect(THREE.ShaderChunk.lights_pars_begin).toContain('uniform int spotLoop;')
     // min(spotLoop, the scene's count) is the scene's own count: spotLoop must be over any pool (lamps + a parking level's downlights)
     expect(THREE.ShaderLib.physical.uniforms.spotLoop.value).toBeGreaterThan(2 * TIERS.high.lamps + 8)
+  })
+  test("Lite: the tower’s walls and the flat’s own plain ones one program, the city’s night light on the tower’s only", () => {
+    lite.on = true
+    try {
+      const ref = { kind: 'color', color: '#a1b2c3' } as const
+      const [flat, tower] = [materialFor(ref), materialFor(ref, false, false, true)]
+      expect(flat).not.toBe(tower)
+      expect(flat.customProgramCacheKey()).toBe(tower.customProgramCacheKey())
+      const on = (m: THREE.MeshStandardMaterial) => {
+        const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <project_vertex>', fragmentShader: '#include <lights_physical_fragment>' }
+        m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+        return [s.uniforms.nightOn.value, s.vertexShader.includes('vNightY')]
+      }
+      expect([on(flat), on(tower)]).toEqual([[0, true], [1, true]]) // (the same shader source: one program)
+    } finally {
+      lite.on = false
+    }
   })
   test('Lite: the colour picture only (its only kind)', () => {
     lite.on = true
