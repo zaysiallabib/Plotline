@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { importPdf, penRoles, readsAsPlan } from './pdf'
+import { buildPlan, printedScale, sheetScale } from './plan2d'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)
@@ -86,5 +87,40 @@ describe('a PDF has no layers: its pens', () => {
   })
   test('one pen for everything: nothing is sorted (every line pair counts, as before)', () => {
     expect(penRoles([seg('pen 0.24 0,0,0', 500)]).walls.size).toBe(0)
+  })
+})
+
+describe('a scale printed on the sheet', () => {
+  test('reads the usual ways of printing it; anything else is no scale', () => {
+    expect(printedScale(`1/4" = 1'-0"`)).toBe(48)
+    expect(printedScale(`Scale: 1/8"=1'-0"`)).toBe(96)
+    expect(printedScale(`1 1/2" = 1'-0"`)).toBe(8)
+    expect(printedScale(`1" = 10'`)).toBe(120)
+    expect(printedScale('1:100')).toBe(100)
+    expect(printedScale('SCALE 1 : 50')).toBe(50)
+    for (const t of [`10'-8 1/2"`, '12:30', 'Room-1', `1/4"`, '1:1']) expect(printedScale(t)).toBeNull()
+  })
+  test('a sheet that prints one scale is read at it, before its dimensions; two different scales say nothing', () => {
+    const pt = 0.0254 / 72
+    const seg = (x0: number, x1: number, y: number) => ({ a: { x: x0, y }, b: { x: x1, y }, layer: '' })
+    // three dimensions that say a unit is 2.54 cm (10'-0" on 120 units), and the sheet's note that says 1 : 48
+    const segs = [seg(0, 120, 0), seg(0, 60, 50), seg(0, 30, 100)]
+    const dims = [`10'-0"`, `5'-0"`, `2'-6"`].map((text, i) => ({ at: { x: [60, 30, 15][i], y: i * 50 + 3 }, text, layer: '', height: 6 }))
+    const note = { at: { x: 0, y: -50 }, text: `1/4" = 1'-0"`, layer: '', height: 6 }
+    expect(sheetScale(segs, [...dims, note], () => '', pt).scale).toBeCloseTo(48 * pt, 9)
+    expect(sheetScale(segs, dims, () => '', pt).scale).toBeCloseTo(0.0254, 6)
+    expect(sheetScale(segs, [...dims, note, { ...note, text: '1:100' }], () => '', pt).scale).toBeCloseTo(0.0254, 6)
+    // no paper unit (an SVG): the note is not read
+    expect(sheetScale(segs, [...dims, note]).scale).toBeCloseTo(0.0254, 6)
+  })
+})
+
+describe('texts that name no room', () => {
+  test("a stair's UP and a door or window tag in a room do not take its name", () => {
+    // one 4 × 3 m room, walls 20 cm thick (each wall its two faces), the names in it biggest first
+    const box = (d: number) => [[d, d, 4 - d, d], [4 - d, d, 4 - d, 3 - d], [4 - d, 3 - d, d, 3 - d], [d, 3 - d, d, d]].map(([x0, y0, x1, y1]) => ({ a: { x: x0, y: y0 }, b: { x: x1, y: y1 }, layer: 'WALL' }))
+    const text = (t: string, height: number) => ({ at: { x: 2, y: 1.5 }, text: t, layer: 'TEXT', height })
+    const r = buildPlan({ segs: [...box(-0.1), ...box(0.1)], arcs: [], loops: [], scale: 1, texts: [text('UP', 0.3), text('Win-18', 0.2), text('D-3', 0.2), text('Room-4', 0.1)] }, 'tags')
+    expect(r.unit.roomLabels.map((l) => l.name)).toEqual(['Room-4'])
   })
 })

@@ -230,7 +230,7 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   const { segs, arcs, texts, pictures, pages, fills } = await readPage(doc, pageNo).finally(() => src instanceof ArrayBuffer && doc.loadingTask.destroy())
   if (!segs.length) throw new Error('This PDF is a picture, not a drawing — use the picture itself')
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
-  const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`)
+  const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
   const pens = penRoles(segs, fills, /not set/.test(note) ? null : scale)
   const drawing: Drawing = { segs: segs.map((g) => ({ ...g, layer: pens.walls.has(g.layer) ? 'WALL' : '' })), arcs, texts, loops: [], scale }

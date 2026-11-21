@@ -507,6 +507,8 @@ function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
 }
 
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
+/** texts in a room that are no room's name: a stair's arrow, a door / window tag */
+const NOT_A_NAME = /^(UP|DN|DOWN)$|^(D|W|WIN|WN)\s*[-_]?\s*\d{1,3}[A-Z]?$/i
 
 export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const notes: string[] = []
@@ -780,6 +782,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     // number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
     const number = /^\s*([A-Z]-?)?\d{1,4}\s*$/i.test(t.text)
     if ((!/[A-Za-z]{2}/.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
+    // a stair's arrow ("UP", "DN") and a door / window tag ("D-16", "Win-18", "W3") name no room
+    if (NOT_A_NAME.test(t.text)) continue
     if (!room) {
       outside++
       continue
@@ -989,11 +993,28 @@ export function settleImport(unit: Unit): { unit: Unit; joined: number } {
 // ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------
 
 /**
- * A drawing without a scale (a PDF, an SVG): the printed dimensions measured against their lines when three agree; else
- * the printed room sizes against the drawing's box (rooms take about half a plan); else 1 with a "set it with S" note.
- * `sheet`: what the found ratio means on paper, for the note (a PDF knows its points).
+ * A scale printed on the sheet — `1/4" = 1'-0"`, `1" = 10'`, `1:100`, `SCALE 1 : 50` — as how many times smaller the
+ * paper draws it (48, 120, 100, 50); else null.
  */
-export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: number) => string = () => ''): { scale: number; note: string } {
+export function printedScale(text: string): number | null {
+  const t = text.replace(/^\s*scale\s*:?\s*/i, '').trim()
+  const metric = /^1\s*:\s*(\d{1,4})$/.exec(t)
+  const imperial = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*"\s*=\s*(\d+)\s*'(?:\s*-?\s*0\s*")?$/.exec(t)
+  const inches = (s: string) => s.split(/\s+/).reduce((a, p) => a + (p.includes('/') ? +p.split('/')[0] / +p.split('/')[1] : +p), 0)
+  const n = metric ? +metric[1] : imperial ? (+imperial[2] * 12) / inches(imperial[1]) : null
+  return n !== null && Number.isFinite(n) && n >= 2 ? n : null
+}
+
+/**
+ * A drawing without a scale (a PDF, an SVG): the scale printed on the sheet, when the file's unit on paper is known
+ * (`paperM`: a PDF point is 1/72 inch) and the sheet prints one value (a sheet of several scales says nothing; a page's
+ * tables can fool the dimensions — twindo's room pages measured 1 : 31–64 for their printed 1 : 16 / 1 : 24); else the
+ * printed dimensions measured against their lines when three agree; else the printed room sizes against the drawing's
+ * box (rooms take about half a plan); else 1 with a "set it with S" note. `sheet`: what the found ratio means on paper.
+ */
+export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: number) => string = () => '', paperM = 0): { scale: number; note: string } {
+  const printed = paperM ? [...new Set(texts.map((t) => printedScale(t.text)).filter((n) => n !== null))] : []
+  if (printed.length === 1) return { scale: printed[0] * paperM, note: `Scale: as printed on the sheet, 1 : ${+printed[0].toFixed(1)}.` }
   const dims = scaleFromDimensions(segs, texts)
   if (dims) return { scale: 1 / dims.ptPerM, note: `Scale: from ${dims.agreed} printed dimensions that agree${sheet(dims.ptPerM)}.` }
   const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
