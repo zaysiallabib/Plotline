@@ -452,3 +452,40 @@ describe('towers of common levels (session 19): Banani and dmd registered, level
     expect(coverOf(t, u.id)).toEqual([])
   })
 })
+
+describe('the Building view: which floor, and the windows lit (session 31 pick)', () => {
+  test('the floor under a height: the highest floor at or under it, a floor’s own top face its own, under them all the lowest', async () => {
+    const { floorAtY } = await import('./building')
+    // the BTI frame seen from floor 2 (FLOOR_M 3.198): basement none, ground −6.396, floor 2 at 0, roof (9) at 22.386
+    const levels: [number, number][] = Array.from({ length: 10 }, (_, k) => [k, (k - 2) * 3.198])
+    expect(floorAtY(0, levels)).toBe(2) // floor 2's own floor
+    expect(floorAtY(-0.005, levels)).toBe(2) // its top face, a hair under
+    expect(floorAtY(-0.1, levels)).toBe(1) // the slab's edge under it: the storey below
+    expect(floorAtY(1.5, levels)).toBe(2)
+    expect(floorAtY(3.198 * 6 + 0.5, levels)).toBe(8)
+    expect(floorAtY(3.198 * 7 + 1.2, levels)).toBe(9) // a tank on the roof
+    expect(floorAtY(-20, levels)).toBe(0) // under the ground floor: the lowest there is
+    // an imported building's own storey heights (ELEVATIONS) and a basement, in any order
+    expect(floorAtY(-2, [[1, 4.2], [-1, -3.1], [0, 0]])).toBe(-1)
+    expect(floorAtY(4.19, [[1, 4.2], [-1, -3.1], [0, 0]])).toBe(1)
+    expect(floorAtY(1, [])).toBeNull()
+  })
+
+  test('lit at night: about half the rooms, some flats all dark, the same every visit, every window of a room alike', async () => {
+    const { roomLight } = await import('./building')
+    const flats = Array.from({ length: 400 }, (_, i) => `type-${i % 5}|${i}`)
+    const rooms = ['bed-1', 'bed-2', 'living', 'kitchen', 'dining', 'bath']
+    const all = flats.flatMap((f) => rooms.map((r) => roomLight(f, r)))
+    const lit = all.filter((v) => v > 0)
+    expect(lit.length / all.length).toBeGreaterThan(0.45) // people live there
+    expect(lit.length / all.length).toBeLessThan(0.6) // and some are out, or asleep
+    expect(Math.min(...lit)).toBeGreaterThanOrEqual(0.55) // a lit room is never a faint smear
+    expect(Math.max(...lit)).toBeLessThanOrEqual(1)
+    expect(new Set(lit.map((v) => v.toFixed(2))).size).toBeGreaterThan(20) // varied, not one brightness
+    const dark = flats.filter((f) => rooms.every((r) => roomLight(f, r) === 0)).length / flats.length
+    expect(dark).toBeGreaterThan(0.06) // nobody home
+    expect(dark).toBeLessThan(0.25)
+    // deterministic: no flicker between frames or visits
+    expect(flats.flatMap((f) => rooms.map((r) => roomLight(f, r)))).toEqual(all)
+  })
+})

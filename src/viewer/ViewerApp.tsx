@@ -24,6 +24,7 @@ import { pageTitle } from '../lib/route'
 import { WALL_TYPES, findOpening, initialState, isUnit, normalizeUnit, reducer, wallTypeOf, type Action, type StudioState } from '../studio/model'
 import { preloadModels } from '../three/furniture'
 import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type SceneMode } from '../three/PlotlineScene'
+import type { TowerHit } from '../three/building'
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
@@ -574,6 +575,9 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
   const [pins, setPins] = useState<Pin[]>(() => readPins(unit.id))
   const [draft, setDraft] = useState<(Draft & { hit: PickHit }) | null>(null)
   const [picked, setPicked] = useState(unit.floor ?? 0)
+  /** Building view: what the mouse is over on the tower (the card beside it), and the floor list's row under the mouse */
+  const [towerHover, setTowerHover] = useState<(TowerHit & { x: number; y: number }) | null>(null)
+  const [railHover, setRailHover] = useState<number | null>(null)
   // Arrange (staff): the committed layout and its undo steps; a resize's candidate lives in `live` until the drop
   const [arranging, setArranging] = useState(false)
   const [sel, setSel] = useState<Id | null>(null)
@@ -703,13 +707,17 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
         setMode('walk')
       }
     })
-    // Building view: a click on this flat opens its dollhouse, on another flat loads that one on its floor
-    s.onFlat((f) => {
-      if (!f) return
+    // Building view: a click on this flat opens its dollhouse, on another flat loads that one on its floor; on a level it
+    // walks it; on a floor of massing (or the roof) it picks that floor, as the floor list does
+    s.onFlat((h) => {
+      const f = h?.flat
+      if (!h) return
+      if (!f) return levelAt(h.k) ? walkLevel(h.k) : (setPicked(h.k), s.showFloor(h.k))
       if (f.stem !== stem || f.floor !== unit.floor) return location.assign(`/u/${f.stem}?floor=${f.floor}&view=dollhouse`)
       setMode('orbit')
       s.setMode('orbit')
     })
+    s.onTowerHover(setTowerHover)
   })
 
   // Wind on: the month's arrows through the flat (three/wind.ts)
@@ -1342,6 +1350,12 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
   const opWall = opW ? { w: opW, lengthM: core.wallFrame(opW, plan.current.unit.vertices).lengthM } : null
   // the level on the floor picked in the Building view (buyers too: a share link's level stays a buyer's link)
   const walkStem = levelAt(picked)
+  /** walks the level on floor k (this one: Walk; another: its page — a share link's level stays a buyer's link) */
+  const walkLevel = (k: number) => {
+    const s = levelAt(k)
+    if (s === stem) go('walk')
+    else if (s) location.assign(`/u/${encodeURIComponent(s)}${SHARED ? '?c=' : ''}`)
+  }
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -1431,7 +1445,14 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
             pickedFloor={tower && stem ? floorTitle(tower, picked, stem) : null}
             floors={stem ? PICKER(unit) : null}
             picked={picked}
-            onWalkLevel={walkStem ? () => (walkStem === stem ? go('walk') : location.assign(`/u/${encodeURIComponent(walkStem)}${SHARED ? '?c=' : ''}`)) : null}
+            onWalkLevel={walkStem ? () => walkLevel(picked) : null}
+            tower={tower}
+            hover={mode === 'building' ? towerHover : null}
+            hovered={mode === 'building' ? (railHover ?? towerHover?.k ?? null) : null}
+            onHoverFloor={(k) => {
+              setRailHover(k)
+              scene?.hoverFloor(k)
+            }}
             onPickFloor={(k) => {
               setPicked(k)
               scene.showFloor(k)
