@@ -843,14 +843,14 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
       b.add(t)
       return im
     }
-    const a1 = tree(0, 3), a2 = tree(5, 2)
+    const a1 = tree(0, 3), a2 = tree(5, 2), far = tree(20, 1) // (another 8 m square: its own, so out of sight it is not drawn)
     expect(a1.geometry).not.toBe(a2.geometry)
     b.frame('walk', 'low')
     await new Promise((r) => setTimeout(r, 450))
     const merged = b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
     expect(merged.length).toBe(1)
     expect(merged[0].count).toBe(5)
-    expect([a1.layers.mask, a2.layers.mask]).toEqual([1 << HIDDEN, 1 << HIDDEN])
+    expect([a1.layers.mask, a2.layers.mask, far.layers.mask]).toEqual([1 << HIDDEN, 1 << HIDDEN, 1])
     const m = new THREE.Matrix4()
     merged[0].getMatrixAt(3, m) // the second tree's first leaf, where it stood
     expect(new THREE.Vector3().setFromMatrixPosition(m).toArray()).toEqual([5, 1, 0])

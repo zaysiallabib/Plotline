@@ -678,9 +678,11 @@ export class Building extends THREE.Group {
   }
 
   /**
-   * Round the flat: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's,
-   * as ONE instanced mesh (the originals hidden) — Sheltech's ground was ~150 draws of leaves. Only matrices are copied (a
-   * few ms), not leaves laid out as plain geometry: that froze the page for 2–3 s after a stair.
+   * Round the flat: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's
+   * in one 8 m square (as the pieces' batches: a square out of sight is not drawn — the whole ground's leaves in one mesh
+   * took Walk / High on Sheltech from 1.2 to 3.2 M triangles), as ONE instanced mesh (the originals hidden) — Sheltech's
+   * ground was ~150 draws of leaves. Only matrices are copied (a few ms), not leaves laid out as plain geometry: that froze
+   * the page for 2–3 s after a stair.
    */
   private leavesTogether(): THREE.InstancedMesh[] {
     // one card = the same vertices: each tree's geometry is its own only for its daylight corner (daylight.ts own), over the
@@ -691,19 +693,22 @@ export class Building extends THREE.Group {
       return g.attributes.position === h.attributes.position && g.index === h.index && p.material === q.material && p.castShadow === q.castShadow &&
         !p.instanceColor === !q.instanceColor && du?.getX(0) === dv?.getX(0) && du?.getY(0) === dv?.getY(0)
     }
-    const groups: THREE.InstancedMesh[][] = []
+    const groups: { cell: string; list: THREE.InstancedMesh[] }[] = []
     this.updateMatrixWorld(true)
+    const inv = this.matrixWorld.clone().invert()
     this.traverseVisible((o) => {
       const im = o as THREE.InstancedMesh
       if (!im.isInstancedMesh || im.layers.mask !== 1 || !im.count || Array.isArray(im.material)) return
-      const list = groups.find((l) => same(l[0], im))
-      if (list) list.push(im)
-      else groups.push([im])
+      if (!im.boundingSphere) im.computeBoundingSphere()
+      const at = im.boundingSphere!.center.clone().applyMatrix4(im.matrixWorld).applyMatrix4(inv)
+      const cell = `${Math.floor(at.x / CELL_M)},${Math.floor(at.z / CELL_M)}`
+      const g = groups.find((x) => x.cell === cell && same(x.list[0], im))
+      if (g) g.list.push(im)
+      else groups.push({ cell, list: [im] })
     })
-    const inv = this.matrixWorld.clone().invert()
     const w = new THREE.Matrix4(), m = new THREE.Matrix4(), c = new THREE.Color()
     const out: THREE.InstancedMesh[] = []
-    for (const list of groups) {
+    for (const { list } of groups) {
       if (list.length < 2) continue
       const all = new THREE.InstancedMesh(list[0].geometry, list[0].material, list.reduce((n, im) => n + im.count, 0))
       let j = 0
