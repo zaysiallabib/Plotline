@@ -348,11 +348,16 @@ steps aside while Finishes or Comment is open.
 - **On its side, or a tablet:** a short screen lets the start screen scroll. From 721 to 1080 px wide the bar stays at
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
-- **Staff on a phone:** Edit → Furniture works (drag a piece with a finger to move it, drag the empty room to look; the
-  piece's tag says "Tap puts it down · the panel turns or removes it"), but a computer is still the tool for it. The
-  panel speaks of fingers — **Turn 90°** (no "(R)"), "Tap a piece…", "Tap to put it here" — and a picked piece's resize
-  dots are never bigger than a fingertip (7 % of the screen's short side, at most 44 px), so they no longer cover a
-  picture on the wall up close.
+- **Staff on a phone:** Edit → Furniture and Edit → Openings work with a thumb, though a computer is still the
+  better tool. Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
+  (7 % of the screen's short side, at most 44 px, so they never cover a picture on the wall up close) but a thumb takes a
+  dot anywhere within half a fingertip of it. **Add** opens the library as a sheet from the bottom, with **×** and a grip
+  to close it; the search box waits for your tap (so the keyboard does not jump up over the list) and every row is a
+  fingertip tall. Tap a piece in it, then tap the floor, a wall or the ceiling where it goes: the Edit panel says so
+  ("Tap the floor, a wall or the ceiling where it goes", or in red why not there); it lands where your finger did.
+  Finishes, Comment and the menus cover the Edit panel while they are up. The panels speak of fingers — **Turn 90°** (no
+  "(R)"), "Tap a piece…", "Tap a door, window…" — and no button anywhere names a key under a finger (the Studio's
+  **Delete wall**, **Copy wall**, **Turn 90°** drop their "(Del)", "(Ctrl+D)", "(R)" on a touch screen).
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. The thumbstick left / right turns you 45°.
 
@@ -408,7 +413,7 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
 - **A search box on top**, ready to type into in the 3D view (in the Studio click it first: there the letters pick
   tools). Any word shrinks the list as you type: a name (*sofa*, *lamp*), an everyday word (*almirah*, *chula*,
   *jaynamaz*, *geyser*), or a room (*balcony*, *kitchen*, *office*); plurals work. **Enter** takes the first piece. One
-  **Esc** empties the box and leaves it (in the 3D view it also closes the library).
+  **Esc** empties the box and leaves it (in the 3D view it also closes the library, as its **×** does).
 - **Without a search:** **Recent** (your last six), then the groups with how many pieces each holds — **Living** 28,
   **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 17,
   **Outdoor** 11, **Lobby & gym** 6, **Decor** 28 — 154 pieces in all (some are in two groups: the hand-wash basin under

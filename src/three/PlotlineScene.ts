@@ -183,6 +183,19 @@ export function isClick(p: { dx: number; dy: number; ms: number; finger: boolean
   return p.finger ? !p.multi && p.ms < LONG_PRESS_MS && d <= TAP_PX : d <= CLICK_PX
 }
 
+/** how far from a drag dot's centre a finger still takes it, CSS px: half a fingertip (the --touch size, 44) — the dot is drawn smaller */
+export const FINGER_REACH_PX = 22
+/** Of the screen points `at` (CSS px; null = behind the camera), the index of the nearest within `reachPx` of `p`, else -1. */
+export function nearestWithin(at: ({ x: number; y: number } | null)[], p: { x: number; y: number }, reachPx: number): number {
+  let best = -1
+  let bd = reachPx
+  at.forEach((q, i) => {
+    const d = q ? Math.hypot(q.x - p.x, q.y - p.y) : Infinity
+    if (d <= bd) (bd = d), (best = i)
+  })
+  return best
+}
+
 /**
  * The interior HDRI is a photo studio lit from one side: a wall facing world +X got irradiance 1.29, −X 0.78,
  * +Z 0.81, −Z 1.03, so a room's walls went light or dark with their compass bearing, not with their windows
@@ -872,6 +885,7 @@ export class PlotlineScene {
   setHand(h: { id: Id; y: number; off?: Pt } | null): void {
     this.hand = h && { ...h, off: h.off ?? { x: 0, y: 0 } }
     this.aimedFrom = ''
+    if (h && this.finger && !this.plc.isLocked) this.pointerNdc = new THREE.Vector2(0, 0) // a finger has no pointer to follow: a new piece starts mid-view
     this.rebatch('furniture')
     if (!h && this.grab && !this.grab.handle) this.grab = null // Esc mid-drag: the button's release must not pick it up again
     if (this.hand && this.mode !== 'building') this.aimHand()
@@ -1171,7 +1185,8 @@ export class PlotlineScene {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
     const sel = this.opBox.userData as { id?: Id; wallId?: Id; wall?: boolean }
-    const dot = sel.id && this.opBox.children.length ? this.raycaster.intersectObjects(this.opBox.children.filter((c) => c.userData.end), false)[0] : undefined
+    const ends = this.opBox.children.filter((c) => c.userData.end)
+    const dot = sel.id && ends.length ? (this.raycaster.intersectObjects(ends, false)[0] ?? this.dotInReach(e, ends)) : undefined
     if (dot && sel.id && sel.wallId) {
       this.opGrab = { id: sel.id, wallId: sel.wallId, end: dot.object.userData.end, off: 0, moved: false, rigid: e.altKey }
       // a low wall's end moves along the wall's own line (as the plan has it now), at the dot's height
@@ -1638,6 +1653,7 @@ export class PlotlineScene {
       }
     }
     this.pointerDown = { x: e.clientX, y: e.clientY, t: e.timeStamp }
+    if (!this.plc.isLocked) this.pointerNdc = this.ndcOf(e) // a tap has no move before it: the piece in hand aims where the finger lands
     if (this.editingOpenings && this.mode !== 'building') return this.openingDown(e)
     if (this.arranging && this.mode !== 'building') {
       if (!this.hand) this.arrangeDown(e)
@@ -1652,6 +1668,18 @@ export class PlotlineScene {
     if (!this.arranging && !this.editingOpenings) this.pointerDown = this.look2 = null
   }
 
+  /** A finger's press that missed the drawn drag dots: the one within FINGER_REACH_PX of it (a mouse aims at the dot itself). */
+  private dotInReach(e: PointerEvent, dots: THREE.Object3D[]): { object: THREE.Object3D; point: THREE.Vector3 } | undefined {
+    if (e.pointerType === 'mouse') return undefined
+    const r = this.canvas.getBoundingClientRect()
+    const at = dots.map((d) => {
+      const p = d.getWorldPosition(new THREE.Vector3()).project(this.camera)
+      return p.z > 1 ? null : { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height }
+    })
+    const i = nearestWithin(at, { x: e.clientX, y: e.clientY }, FINGER_REACH_PX)
+    return i < 0 ? undefined : { object: dots[i], point: dots[i].getWorldPosition(new THREE.Vector3()) }
+  }
+
   private ndcOf(e: PointerEvent): THREE.Vector2 {
     const r = this.canvas.getBoundingClientRect()
     return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
@@ -1662,7 +1690,8 @@ export class PlotlineScene {
     const ndc = this.ndcOf(e)
     this.raycaster.setFromCamera(ndc, this.camera)
     const pivot = this.selBox.parent
-    const h = pivot && this.raycaster.intersectObjects(this.selBox.children.filter((c) => c.userData.handle), false)[0]
+    const dots = this.selBox.children.filter((c) => c.userData.handle)
+    const h = pivot && (this.raycaster.intersectObjects(dots, false)[0] ?? this.dotInReach(e, dots))
     if (pivot && h) {
       const handle = h.object.userData.handle as Handle
       const box = this.selBox.userData.box as THREE.Box3

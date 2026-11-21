@@ -5,7 +5,7 @@
  */
 .lib { display: flex; flex-direction: column; gap: var(--s-2); min-height: 0; font-size: var(--fs-sm); color: var(--ink); }
 .lib .lib-search {
-  width: 100%; height: var(--control); padding: 0 10px;
+  flex: none; width: 100%; height: var(--control); padding: 0 10px;
   background: var(--surface); color: var(--ink);
   border: 1px solid var(--line); border-radius: var(--r-sm);
   font: inherit; font-size: var(--fs-md);
@@ -49,7 +49,7 @@
 
 /* the staff's own pieces (session 31): Add your own, their rows with a more button, its small menu */
 .lib .lib-add {
-  display: flex; align-items: center; justify-content: flex-start; gap: var(--s-2);
+  flex: none; display: flex; align-items: center; justify-content: flex-start; gap: var(--s-2);
   width: 100%; height: var(--control); padding: 0 var(--s-3);
   background: transparent; color: var(--ink);
   border: 1px dashed var(--line); border-radius: var(--r-sm);
@@ -81,3 +81,11 @@
 .lib-menu .danger { color: var(--danger); }
 .lib-menu p { margin: var(--s-2) var(--s-2) var(--s-1); color: var(--ink); font-size: var(--fs-sm); }
 .lib-menu-row { display: flex; gap: var(--s-1); }
+
+/* a finger (a phone, a tablet): every row a fingertip tall */
+@media (pointer: coarse) {
+  .lib summary, .lib .lib-row, .lib-menu > button, .lib-menu-row > button { height: var(--touch); }
+  .lib-own { grid-template-columns: minmax(0, 1fr) var(--touch); }
+  .lib .lib-more { width: var(--touch); height: var(--touch); }
+  .lib-menu { top: var(--touch); }
+}
