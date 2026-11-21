@@ -71,6 +71,9 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   textures are in metres (`materials.ts`). Settled meshes are drawn as one mesh per material (`batch.ts`; the furniture
   in squares of the plan so pieces behind the camera are left out): on Type A 312 → 102 draw calls a frame on Lite,
   330 → 115 on High. The originals stay, hidden, for picking.
+- No glass uses three's transmission: one transmissive surface in view makes three draw everything opaque a second time
+  each frame (a scanned wall clock's face did: every view drew the flat twice). Windows are a plain dimming (`openings.ts`),
+  a scan's glass is made plain glass at load (`furniture.ts plainGlass`).
 - **Quality tiers** (`render.ts` `TIERS`, picked in `src/viewer/quality.ts`):
 
   | | sun shadow | lamps lit | lamp shadows | corner shading | rests when still | pictures |
