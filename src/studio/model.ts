@@ -308,14 +308,15 @@ export const MERGE_M = 0.01
 function rewire(u: Unit, id: Id, to: Id): Unit {
   const end = (x: Id) => (x === id ? to : x)
   const seen = new Map<string, Wall>()
-  for (const w0 of u.walls) {
+  const keys = u.walls.map((w0) => {
     const w = w0.a === id || w0.b === id ? { ...w0, a: end(w0.a), b: end(w0.b) } : w0
-    if (w.a === w.b) continue
+    if (w.a === w.b) return ''
     const key = wallKey(w.a, w.b)
     const dup = seen.get(key)
     if (!dup || w.openings.length > dup.openings.length) seen.set(key, w)
-  }
-  return { ...u, walls: u.walls.flatMap((w0) => { const w = seen.get(wallKey(end(w0.a), end(w0.b))); return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
+    return key
+  })
+  return { ...u, walls: u.walls.flatMap((w0, i) => { const w = keys[i] ? seen.get(keys[i]) : undefined; return w && w.id === w0.id ? [w] : [] }), vertices: u.vertices.filter((x) => x.id !== id) }
 }
 
 /** Wall `w`'s end `end` moved to `to` along its own line: openings keep their place on the plan. */
@@ -829,6 +830,14 @@ const SIN10 = 0.1736
 const cross = (p: Pt, q: Pt) => p.x * q.y - p.y * q.x
 /** how far a loose end of `w` looks ahead for a wall to join */
 const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
+/** how many wall ends sit on each corner (a wall from a corner to itself twice) */
+function endsAt(u: Unit): Map<Id, number> {
+  const deg = new Map<Id, number>()
+  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
+  return deg
+}
+/** what ahead() would work out from the unit itself: a caller asking for many ends of one version passes them once */
+type Known = { V: Map<Id, Vertex>; deg: Map<Id, number> }
 
 /**
  * What the loose end `id` of wall `w` reaches ahead (founder 2026-10-03: an unjoined wall leaves its room open — no
@@ -841,19 +850,22 @@ const reachOf = (w: Wall) => Math.max(0.15, 1.5 * w.thicknessM)
  * `reach`: how far to look instead (the Issues list's "Extend" fix looks further: the founder sees its ghost first).
  * `gap` = how far short the end stops (of the face, the end, the column).
  */
-export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w)): { r: number; to: Pt; gap: number; also?: { w: Wall; end: Id }; inside?: boolean } | null {
-  const V = new Map(u.vertices.map((v) => [v.id, v]))
+export function ahead(u: Unit, id: Id, w: Wall, reach = reachOf(w), known?: Known): { r: number; to: Pt; gap: number; also?: { w: Wall; end: Id }; inside?: boolean } | null {
+  const V = known?.V ?? new Map(u.vertices.map((v) => [v.id, v]))
   const v = V.get(id)!
   const far = w.a === id ? w.b : w.a
   const d = dirFrom(u, w, far, V) // ahead: away from its own wall
   let best: ReturnType<typeof ahead> = null
   // (each wall's frame from its own two corners: core's wallFrame maps every vertex on each call — s27 fix 2, Sheltech
   // Windflower's Whole floor: 1 400 walls, the import spent 100 s here; the corners' degrees counted once — s27 rows)
-  const deg = new Map<Id, number>()
-  for (const x of u.walls) for (const e of [x.a, x.b]) deg.set(e, (deg.get(e) ?? 0) + 1)
+  const deg = known?.deg ?? endsAt(u)
   for (const x of u.walls) {
     if (x === w) continue
-    const f = wallFrame(x, [V.get(x.a)!, V.get(x.b)!])
+    const A = V.get(x.a)!, B = V.get(x.b)!
+    // (a wall whose box lies farther than this from the end can neither stop it nor lend it an end: most walls stop here)
+    const R = Math.max(Math.max(reach, x.thicknessM) + x.thicknessM / 2 / SIN10, reach + reachOf(x), reach + MERGE_M) + 1e-6
+    if (v.x < Math.min(A.x, B.x) - R || v.x > Math.max(A.x, B.x) + R || v.y < Math.min(A.y, B.y) - R || v.y > Math.max(A.y, B.y) + R) continue
+    const f = wallFrame(x, [A, B])
     const den = cross(d, f.dir)
     const rel = { x: f.origin.x - v.x, y: f.origin.y - v.y }
     const r = Math.abs(den) >= SIN10 ? cross(rel, f.dir) / den : NaN // ahead to x's centre line
@@ -899,12 +911,13 @@ function reachEnds(unit: Unit, ids?: Id[]): { unit: Unit; moved: Id[] } {
   let u = unit
   const moved: Id[] = []
   let byCorner = new Map<Id, Wall[]>()
+  let known: Known = { V: new Map(), deg: new Map() }
   let mapped: Unit | null = null
   for (const id of ids ?? unit.vertices.map((v) => v.id)) {
-    if (mapped !== u) (byCorner = wallsByCorner(u)), (mapped = u)
+    if (mapped !== u) (byCorner = wallsByCorner(u)), (known = { V: new Map(u.vertices.map((v) => [v.id, v])), deg: endsAt(u) }), (mapped = u)
     const mine = byCorner.get(id) ?? []
     // a kept free end (standsAlone) stays put on a whole-unit pass (load / Join walls); dragged, it still joins
-    const best = mine.length === 1 && !(mine[0].standsAlone && !ids) ? ahead(u, id, mine[0]) : null
+    const best = mine.length === 1 && !(mine[0].standsAlone && !ids) ? ahead(u, id, mine[0], undefined, known) : null
     if (!best || best.inside) continue
     u = moveEnd(u, mine[0], id, best.to)
     moved.push(id)
