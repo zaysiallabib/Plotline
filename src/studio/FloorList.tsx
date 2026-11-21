@@ -166,7 +166,7 @@ export function FloorList({ projects, project, drawing, unit, fresh, onStore, on
     const f = newId()
     const q = p && forkFloor(p, slot, id, f)
     if (!p || !q || q === p) return
-    copyKept(id, f)
+    copyKept(id, f, typeof slot === 'number' ? slot : undefined) // that floor's furniture and finishes go with it
     void copyPicture(id, f).then(() => {
       onOpen(
         ps.map((x) => (x === p ? q : x)),

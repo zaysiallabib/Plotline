@@ -51,7 +51,8 @@ import PrintBox from './PrintBox'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, keepApartments, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
 import { STAFF_KEY, baseOf, planOf, readLayout, saveLayout } from '../viewer/arrange'
@@ -666,10 +667,12 @@ export default function StudioApp() {
     return (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
   }
   const storeProjects = (ps: Project[]): boolean => {
+    const before = readProjects()
     if (!saveProjects(ps)) {
       toast('This browser refused to save the project (storage full?)')
       return false
     }
+    keepApartments(before, ps) // a drawing left on one floor keeps what that floor had
     setProjects(ps)
     return true
   }
@@ -738,6 +741,8 @@ export default function StudioApp() {
   // picture back; signed out, offline or no database: nothing is sent, the browser keeps them as before
   const signedIn = useSession()?.user.id
   const [picTick, setPicTick] = useState(0)
+  /** an apartment's furniture or finishes changed in a 3D tab (data/building/apartments.ts): the cloud copy carries them */
+  const [keptTick, setKeptTick] = useState(0)
   const pictureOnline = (id: Id, pic: PlanImage | null | undefined): Promise<unknown> =>
     signedIn && pic
       ? myOrg()
@@ -809,6 +814,7 @@ export default function StudioApp() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === PROJECTS_KEY) setProjects(readProjects())
+      if ([layoutKey(''), finishesKey('')].some((k) => e.key?.startsWith(k))) setKeptTick((n) => n + 1) // an apartment changed in the 3D view: to the cloud with the project
       if (e.key !== DRAFT_KEY || !e.newValue) return
       try {
         const d = JSON.parse(e.newValue) as Partial<Draft> | Draft['unit']
@@ -1223,7 +1229,8 @@ export default function StudioApp() {
       const laid = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
       // and none of the staff's own pieces / finishes: their records go with it (their files online first: lib/library.ts)
       const library = await forShare(laid)
-      const unit = library.length ? { ...laid, library } : laid
+      const finishes = readFinishes(laid.id) // the drawing's picks (Preview 3D): the buyer opens with them (?c= still wins)
+      const unit = { ...laid, ...(library.length ? { library } : {}), ...(finishes ? { finishes } : {}) }
       const me = org && (await session())
       const saved = me ? linkStore(me.user.id).get(cloudItem()?.key ?? '') : undefined // the cloud row it was made from, for the change list
       const token = org ? await shareUnit(org.id, unit, { project: saved?.id, stem: st.unit.id, floor: st.unit.floor }) : await publishUnit(unit, key)
@@ -1249,19 +1256,22 @@ export default function StudioApp() {
       const ps = readProjects()
       const p = (synced(ps) ?? ps).find((x) => x.id === a.id)
       if (!p) return null
-      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units: Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)])) }, Object.keys(p.units)) }
+      // each apartment's furniture and finishes ride with it (`apartments`), so another computer opens them as they were left
+      const units = Object.fromEntries(Object.entries(p.units).map(([id, x]) => [id, withLayout(x)]))
+      return { key: itemKey('project', p.id), kind: 'project', name: p.name, data: withPictures({ ...p, units, apartments: keptFor(Object.keys(p.units)) }, Object.keys(p.units)) }
     }
-    return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withPictures(withLayout(u), [u.id]) } : null
+    return u.vertices.length ? { key: itemKey('unit', u.id), kind: 'unit', name: u.name.trim() || 'Untitled drawing', data: withPictures({ ...withLayout(u), apartments: keptFor([u.id]) }, [u.id]) } : null
   }
-  const cloudChanged = useMemo(() => ({}), [state.unit, projects, active, picTick])
-  /** a project / drawing from the cloud in place of what is open (CloudBar saved that first); its furniture as saved */
+  const cloudChanged = useMemo(() => ({}), [state.unit, projects, active, picTick, keptTick])
+  /** a project / drawing from the cloud in place of what is open (CloudBar saved that first); its furniture and each apartment's records as saved */
   const openFromCloud = (kind: Kind, saved: unknown): boolean => {
-    const data = adoptPictures(saved) // its plan pictures: each drawing fetches its own as it opens (openDrawing)
+    const { data, apartments } = splitKept(adoptPictures(saved)) // its plan pictures: each drawing fetches its own as it opens (openDrawing)
     const s = synced(readProjects()) // the open drawing's last edits stay where it stands
     if (s) saveProjects(s)
     if (kind === 'project') {
       const [p] = parseProjects(JSON.stringify([data]))
       if (!p) return false
+      if (apartments) putKept(Object.keys(p.units), apartments) // (a copy saved before records leaves this browser's as they are)
       for (const u of Object.values(p.units)) saveLayout(u.id, u.furniture)
       const keep = projRef.current?.id === p.id ? projRef.current.drawing : undefined
       setActive({ id: p.id })
@@ -1271,6 +1281,7 @@ export default function StudioApp() {
     }
     if (!isUnit(data)) return false
     setActive(null)
+    if (apartments) putKept([data.id], apartments)
     saveLayout(data.id, data.furniture)
     setNote(null)
     setRestored(null)

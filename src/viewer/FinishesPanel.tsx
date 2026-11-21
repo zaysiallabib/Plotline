@@ -28,6 +28,8 @@ interface Props {
   onReset: () => void
   /** staff (never a buyer link): "Add option" under each group, and their own options editable */
   staff?: boolean
+  /** staff on the flat's own page: where the picks are kept, in words ("Kept for floor 3 only …") */
+  kept?: string | null
 }
 
 function swatchStyle(m: MaterialRef): React.CSSProperties {
@@ -103,7 +105,7 @@ function SurfaceBlock({ surface, keys, cfg, onSelect, onClose }: { surface: Surf
   )
 }
 
-export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff }: Props) {
+export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onCloseSurface, onReset, staff, kept }: Props) {
   /** the Add option form open under this slot, or one of the staff's own options being changed */
   const [form, setForm] = useState<{ slotId: string; edit?: OwnFinish } | null>(null)
   // warm the HTTP cache so the engine's TextureLoader hits it (≤ 200 ms swap after caching)
@@ -190,6 +192,7 @@ export default function FinishesPanel({ slots, cfg, keys, surface, onSelect, onC
       <button className="link" onClick={onReset}>
         Reset to included
       </button>
+      {kept && <p className="muted small">{kept}</p>}
     </section>
   )
 }

@@ -10,6 +10,7 @@ import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
 import { coverOf, floorIn, levelName, projectUnit, roleIn, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
+import { keptAt, placesIn } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
 import { faceWallId, roomKey, wallKey } from '../furnish/finishes'
@@ -27,7 +28,7 @@ import { PlotlineScene, type ArrangeEvent, type OpeningEvent, type PickHit, type
 import { lightsOn, type LightsMode } from '../three/render'
 import { TEST_UNIT } from '../three/testUnit'
 import type { XRControls } from '../three/xr'
-import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, makeDraft, pickUp, planOf, pushStep, readLayout, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
+import { baseOf, deleteHeld, draftState, dropHeld, floorAnswer, forkHere, holdAt, isShareLink, isStaff, keepsFinishes, makeDraft, pickUp, planOf, pushStep, saveFinishes, saveLayout, saveOpenings, setFloorAnswer, turnHeld, undoStep, wallDrag, type FloorAnswer, type Held, type Steps } from './arrange'
 import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
@@ -36,7 +37,7 @@ import { arrivalFace, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
 import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
-import { decodeConfig, encodeConfig, finishKeys, shareUrl, stairUrl } from './share'
+import { encodeConfig, finishKeys, keepConfig, shareUrl, stairUrl, startFinishes } from './share'
 import { appendPin, readPins, removePin, type Pin } from './storage'
 import { LibraryPanel } from '../studio/LibraryPanel'
 import { copyPicture } from '../studio/pictures'
@@ -70,6 +71,8 @@ const STAFF = isStaff(location.search, location.pathname)
 const TOKEN = location.pathname.match(/^\/s\/([^/]+)/)?.[1]
 /** a buyer's link: no way into staff mode from it (no "Staff mode" / Studio link) */
 const SHARED = isShareLink(location.search) || !!TOKEN
+/** staff on the flat's own page: what they pick in Finishes is kept for this apartment (arrange.ts keepsFinishes) */
+const KEEP = keepsFinishes(STAFF, location.search, location.pathname)
 /** this address with `staff=` 1 (the load screen's Staff mode link) or 0 (leave it) */
 const staffHref = (v: string): string => {
   const q = new URLSearchParams(params)
@@ -98,11 +101,11 @@ const REC = recommend(DEVICE, read(local, KEYS.slow))
 const TIER = chosen({ fallback: read(tab, KEYS.fallback), link: params.get('quality'), picked: read(local, KEYS.picked), rec: REC.tier })
 const SWITCHED = read(tab, KEYS.note)
 write(tab, KEYS.note, null)
-/** A new tier takes a fresh page (antialias is fixed when the 3D starts); the finishes chosen ride along in the address. */
+/** A new tier takes a fresh page (antialias is fixed when the 3D starts); a buyer's finishes ride along in the address (staff's are kept for the apartment). */
 const restart = (cfg: Configuration): void => {
   const q = new URLSearchParams(location.search)
   q.delete('quality')
-  if (Object.keys(cfg).length) q.set('c', encodeConfig(cfg))
+  if (!KEEP && Object.keys(cfg).length) q.set('c', encodeConfig(cfg))
   location.replace(`${location.pathname}${q.size ? `?${q}` : ''}`)
 }
 /** this floor was just given its own drawing (arrange.ts forkHere): said once on entering */
@@ -128,9 +131,10 @@ const towerStem = (u: Unit) => {
 }
 /**
  * Floor `n` (`?floor=N`: a flat picked in the Building view, or reached by a stair) puts the flat on floor N if the tower has it there; the JSON
- * keeps its own. A level (ground, basement, rooftop) stands on its tower's floor for it.
+ * keeps its own (no `?floor=` is no floor: never the ground, where a flat with no columns stands in as the tower's base). A level (ground,
+ * basement, rooftop) stands on its tower's floor for it.
  */
-function onFloor(u: Unit | null, n = Number(params.get('floor'))): Unit | null {
+function onFloor(u: Unit | null, n = params.has('floor') ? Number(params.get('floor')) : NaN): Unit | null {
   const t = u && towerOf(u)
   const stem = t && stemIn(t, u)
   if (!u || !t || !stem) return u
@@ -138,19 +142,36 @@ function onFloor(u: Unit | null, n = Number(params.get('floor'))): Unit | null {
   if (level !== undefined) return { ...u, floor: level }
   return t.FLOORS.some((f) => f.floor === n && (f.flats.includes(stem) || f.standIns?.includes(stem))) ? { ...u, floor: n } : u // a stand-in too: the stair to it (takeStair)
 }
+/** the Studio's Preview 3D: without `?floor=` it is the drawing the Studio has open (its own furniture and finishes), not a floor of it */
+const PREVIEW_DRAWING = location.pathname === '/u/preview' && !params.has('floor')
+/** A unit as the viewer shows it: the apartment it is (data/building/apartments.ts), with what it keeps. */
+interface Shown {
+  unit: Unit
+  /** its layout to fall back to (Reset layout): the drawing's own (the Studio's tool F) or its JSON's, presets for rooms without pieces */
+  base: FurniturePlacement[]
+  /** the apartment's key, under which this browser keeps its furniture and finishes; null on a published link (the link is the snapshot) */
+  key: string | null
+  /** what it opens with: its record, else the drawing's (`baseFinishes`); a published link's own */
+  finishes: Configuration
+  baseFinishes: Configuration
+}
 /**
  * A unit as the viewer shows it (the page's, or a floor reached by the stair): on its floor, what a Studio draft / auto-trace
- * / its share link lacks filled in (finishes, area, name: defaults.ts); `base` = its own layout (its JSON's, presets for
- * rooms without pieces), under the one arranged in this browser (Arrange, Studio F) — both through layoutFor, so a room
- * added since gets its presets.
+ * / its share link lacks filled in (finishes, area, name: defaults.ts), as its apartment keeps it — the furniture and
+ * finishes staff left there (Edit furniture, Finishes), else the drawing's own (the Studio's tool F, Preview 3D), else its
+ * JSON's / the presets, all through layoutFor (a room added since gets its presets). A published link (`carried`: the
+ * finishes it was made with) never reads this browser's records.
  */
-function prepare(raw: Unit | null, floor?: number): { unit: Unit; base: FurniturePlacement[] } | null {
+function prepare(raw: Unit | null, floor?: number, carried?: unknown): Shown | null {
   const u = onFloor(raw, floor)
   if (!u) return null
   const rooms = core.deriveRooms(u)
-  const base = layoutFor(u, rooms)
-  const saved = readLayout(u.id)
-  return { unit: { ...withDefaults(u, rooms), furniture: saved ? layoutFor({ ...u, furniture: saved }, rooms) : base }, base }
+  const k = TOKEN ? null : keptAt(u, PREVIEW_DRAWING && floor === undefined ? undefined : u.floor, towerOf(u))
+  const base = layoutFor(k?.base ? { ...u, furniture: k.base } : u, rooms)
+  const unit = { ...withDefaults(u, rooms), furniture: k?.layout ? layoutFor({ ...u, furniture: k.layout }, rooms) : base }
+  const keys = finishKeys(unit, rooms)
+  const kept = (c: unknown) => keepConfig(c, unit.finishSlots, keys) // only what this plan offers
+  return { unit, base, key: k?.key ?? null, finishes: kept(k ? k.finishes : carried), baseFinishes: kept(k?.baseFinishes) }
 }
 /**
  * The load screen's list: the flats as they are; each tower's levels (ground, basements, rooftop) under its name, top
@@ -224,14 +245,21 @@ export default function ViewerApp() {
   // a published link: undefined while it loads, null when the database has no such link (or it is off), 'offline' when
   // the database could not be asked (no network, not set up) — each gets its own page
   const [fetched, setFetched] = useState<Unit | null | undefined | 'offline'>(TOKEN ? undefined : null)
+  /** the finishes the link was made with (the Studio's Share link: the drawing's as Preview 3D showed them) */
+  const carried = useRef<unknown>(undefined)
   useEffect(() => {
     if (TOKEN)
       fetchSharedUnit(TOKEN)
-        .then(async (raw) => (await learnCarried((raw as { library?: unknown } | null)?.library), asUnit(raw))) // its own pieces and finishes first
+        .then(async (raw) => {
+          const r = raw as { library?: unknown; finishes?: unknown } | null
+          await learnCarried(r?.library) // its own pieces and finishes first
+          carried.current = r?.finishes
+          return asUnit(raw)
+        })
         .catch((e) => (console.warn('[plotline] share link', e), 'offline' as const))
         .then(setFetched)
   }, [])
-  const shown = useMemo(() => prepare(TOKEN ? (fetched === 'offline' ? null : (fetched ?? null)) : resolveUnit()), [fetched])
+  const shown = useMemo(() => prepare(TOKEN ? (fetched === 'offline' ? null : (fetched ?? null)) : resolveUnit(), undefined, carried.current), [fetched])
   const unit = shown?.unit ?? null
   useEffect(() => {
     document.title = unit ? pageTitle(unit.name) : fetched === undefined || fetched === 'offline' ? pageTitle() : pageTitle('Not found')
@@ -365,6 +393,8 @@ function AddPanel({ onPick, onEsc, onNote }: { onPick: (assetId: string) => void
 
 /** Arrange (staff): the selected piece, what it allows, turn / delete / undo / reset; Add opens the library; a piece in hand: what and why not. */
 function ArrangePanel(p: {
+  /** where the layout is kept, in words */
+  kept: string | null
   piece: FurniturePlacement | null
   held: HandInfo | null
   adding: boolean
@@ -415,10 +445,11 @@ function ArrangePanel(p: {
         <button className="btn" disabled={!p.canUndo} onClick={p.onUndo}>
           Undo
         </button>
-        <button className="btn" title="Back to the unit’s own layout (undo brings yours back)" onClick={p.onReset}>
+        <button className="btn" title="Back to the drawing’s own layout, as the Studio arranged it (undo brings yours back)" onClick={p.onReset}>
           Reset layout
         </button>
       </div>
+      {p.kept && <div className="muted small">{p.kept}</div>}
     </aside>
   )
 }
@@ -523,9 +554,9 @@ function OpeningPanel(p: {
   )
 }
 
-function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }) {
-  // the unit on show and its own layout (prepare): the page's, then each floor the stair reaches (takeStair) — one 3D for all
-  const [{ unit: given, base }, setFloorUnit] = useState(first)
+function Viewer({ first }: { first: Shown }) {
+  // the unit on show and its apartment (prepare): the page's, then each floor the stair reaches (takeStair) — one 3D for all
+  const [{ unit: given, base, key: apt, baseFinishes }, setFloorUnit] = useState(first)
   // the plan as the 3D shows it: `given`, then whatever Edit openings commits (the scene is rebuilt in place, not re-made)
   const [unit, setPlanUnit] = useState(given)
   const rooms = useMemo(() => core.deriveRooms(unit), [unit])
@@ -572,9 +603,14 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
   }
   /** the one-room / one-wall finish keys this plan offers, with their slot and name (share.ts) */
   const keys = useMemo(() => finishKeys(unit, rooms), [unit, rooms])
-  const [cfg, setCfg] = useState<Configuration>(() => decodeConfig(new URLSearchParams(location.search).get('c'), unit.finishSlots, keys))
+  // the address's choice when it has one, else what the apartment kept (staff's last picks) or the link was made with
+  const [cfg, setCfg] = useState<Configuration>(() => startFinishes(location.search, first.finishes, unit.finishSlots, keys))
   const cfgRef = useRef(cfg)
   cfgRef.current = cfg
+  // staff on the flat's own page: every pick is kept for this apartment at once (a buyer's never: they go to the change list)
+  useEffect(() => {
+    if (KEEP && apt) saveFinishes(apt, cfg, baseFinishes)
+  }, [cfg]) // eslint-disable-line react-hooks/exhaustive-deps
   /** the floor / wall / ceiling clicked while the Finishes panel is open */
   const [surface, setSurface] = useState<Surface | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
@@ -792,8 +828,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
       const k = Number(params.get('pick')) // a level shown from the Studio: its floor picked (a basement: what is above it hidden)
       if (stem && params.has('pick') && Number.isFinite(k)) (setPicked(k), scene.showFloor(k))
     } else if (STAFF && params.get('edit') === 'openings') toggleOpenings() // a built-in unit just made the Studio draft
-    else if (!(STAFF && params.get('edit') === 'furniture')) scene.lockPointer()
-    if (STAFF && params.get('edit') === 'furniture') toggleArrange() // a floor just given its own drawing (walk or dollhouse)
+    else scene.lockPointer()
     if (OWN) showToast(`Floor ${unit.floor} has its own drawing now: what you change here stays on this floor`, 7000)
   }
 
@@ -857,23 +892,11 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
   const pieceOf = (id: Id | null) => steps.current.pieces.find((p) => p.id === id) ?? null
   const showSel = (p: FurniturePlacement | null, refused = false) =>
     scene?.showSelection(p && { id: p.id, quad: pieceQuad(p), refused, axes: resizeAxes(p.assetId) })
-  /** a committed step (drop, turn, undo, reset): saved for this browser and the Studio, shadows and lights follow */
+  /** a committed step (drop, turn, undo, reset): kept for this apartment (the Studio's F shows it while the drawing stands in one place), shadows and lights follow */
   const settle = (h: Steps, show = sel) => {
     h = { ...h, pieces: layoutFor({ ...unit, furniture: h.pieces }, rooms) } // curtains on their windows as they are now
-    const before = steps.current
     steps.current = h
-    const pieces = h.pieces
-    perFloor(
-      () => saveLayout(unit.id, pieces, base),
-      () => ownFloor('furniture', (id) => saveLayout(id, pieces, base)),
-      () => {
-        // Esc on the "which floors?" box: nothing saved, the layout as it was before (as Esc on a piece in hand)
-        steps.current = before
-        scene?.setLayout(before.pieces)
-        showSel(pieceOf(show))
-        redraw()
-      },
-    )
+    if (apt) saveLayout(apt, h.pieces, base) // this apartment's own (founder 2026-11-21): never another floor's, never asked
     scene?.setLayout(h.pieces)
     showSel(pieceOf(show))
     redraw()
@@ -921,12 +944,12 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
       store(HINTED)
     }
   }
-  // ── One floor or all (founder 2026-11-20): on a Studio project's floor whose drawing is on other floors too, the first
-  // staff change (a furniture step, Edit openings) asks, once per project (Studio → Building list: Ask again): this floor
-  // only — it gets its own copy of the drawing and the page opens on that (arrange.ts forkHere) — or all those floors
-  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void; cancel?: () => void } | null>(null)
-  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one`; Esc on the box: `cancel` */
-  const perFloor = (all: () => void, one: () => void, cancel?: () => void) => {
+  // ── One floor or all (founder 2026-11-20): on a Studio project's floor whose drawing is on other floors too, Edit openings
+  // asks, once per project (Studio → Building list: Ask again): this floor only — it gets its own copy of the drawing and the
+  // page opens on that (arrange.ts forkHere) — or all those floors. Furniture and finishes never ask: each apartment's own.
+  const [askFloor, setAskFloor] = useState<{ pid: Id; text: string; k: number; n: number; all: () => void; one: () => void } | null>(null)
+  /** `all` now, unless this floor shares its drawing and he has not said "all floors" for the project; "this floor only": `one` */
+  const perFloor = (all: () => void, one: () => void) => {
     const k = unit.floor
     const sh = STAFF && stem && level === undefined && k !== undefined ? sharedAt(readProjects(), stem, k) : null
     const said = sh && floorAnswer(sh.p.id)
@@ -934,8 +957,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
     if (said === 'one') return one()
     document.exitPointerLock?.()
     const others = sh.slots.filter((s) => s !== k)
-    // a second change before the answer: the answer takes the latest, Esc goes back to before the first
-    setAskFloor((a) => ({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one, cancel: a ? a.cancel : cancel }))
+    setAskFloor({ pid: sh.p.id, text: `${unit.name} is also on floor${others.length === 1 ? '' : 's'} ${slotsText(others)}.`, k: k!, n: sh.slots.length, all, one })
   }
   const answer = (a: FloorAnswer) => {
     if (!askFloor) return
@@ -944,13 +966,12 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
     if (a === 'one') askFloor.one()
     else askFloor.all()
   }
-  /** "this floor only": the copy made, `save` written for it, then this page opens on it with `edit` on */
-  const ownFloor = (edit: 'furniture' | 'openings', save?: (stem: string) => void) => {
+  /** "this floor only": the copy made (with this apartment's furniture and finishes), then the page opens on it with Edit openings on */
+  const ownFloor = () => {
     const f = stem && unit.floor !== undefined ? forkHere(stem, unit.floor) : null
     if (!f) return showToast('This browser would not save the copy (storage full?): nothing changed', 7000)
-    save?.(f.stem)
-    if (edit === 'openings' && !makeDraft(f.unit)) return showToast(OPENINGS_WHY.full, 7000)
-    const to = `/u/${edit === 'openings' ? 'preview' : encodeURIComponent(f.stem)}?floor=${unit.floor}&edit=${edit}&own=1${mode === 'orbit' ? '&view=dollhouse' : ''}`
+    if (!makeDraft(f.unit)) return showToast(OPENINGS_WHY.full, 7000)
+    const to = `/u/preview?floor=${unit.floor}&edit=openings&own=1${mode === 'orbit' ? '&view=dollhouse' : ''}`
     void copyPicture(f.from, f.unit.id).then(() => location.assign(to))
   }
   // ── the piece in hand (ask 10 / 7): it follows the pointer, or the crosshair while walking with the mouse locked, on
@@ -1064,7 +1085,8 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
       const rs = core.deriveRooms(next.unit)
       const by = arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
       arrival.current = by && { at: by.at, face: arrivalFace(next.unit, by) }
-      // the floor he leaves: what was open on it closes; the finishes chosen, the sun, the wind and Clean view stay
+      // the floor he leaves: what was open on it closes; the sun, the wind and Clean view stay, and a buyer's finishes (staff
+      // see that floor's apartment as it was kept)
       letGo()
       scene?.setArrange(false)
       scene?.setOpeningEdit(false)
@@ -1077,6 +1099,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
       setDraft(null)
       setAskFloor(null)
       setFloorUnit(next)
+      if (KEEP) setCfg(next.finishes)
       setPlanUnit(next.unit)
       steps.current = { pieces: next.unit.furniture, past: [] }
       live.current = null
@@ -1231,7 +1254,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
         setEditingOpenings(true)
         scene?.setOpeningEdit(true)
       },
-      () => ownFloor('openings'),
+      ownFloor,
     )
   }
 
@@ -1249,9 +1272,8 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
       const k = e.key.toLowerCase()
       const h = held.current
       if (askFloor && k === 'escape') {
-        // the "which floors?" box: Esc cancels the change it asks about (no answer remembered)
+        // the "which floors?" box: Esc closes it, Edit openings stays off (no answer remembered)
         setAskFloor(null)
-        askFloor.cancel?.()
       } else if (editingOpenings && k === 'z' && (e.ctrlKey || e.metaKey)) {
         if (plan.current.history.past.length) planCommit({ type: 'undo' })
       } else if (editingOpenings && opSel && (k === 'delete' || k === 'backspace')) {
@@ -1355,6 +1377,14 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
   const opWall = opW ? { w: opW, lengthM: core.wallFrame(opW, plan.current.unit.vertices).lengthM } : null
   // the level on the floor picked in the Building view (buyers too: a share link's level stays a buyer's link)
   const walkStem = levelAt(picked)
+  /** staff: where what they change in Finishes / Edit furniture is kept, in words (arrange: never on a published link) */
+  const kept = !apt
+    ? null
+    : apt !== unit.id
+      ? `Kept for ${level !== undefined ? levelName(tower!, level) : `floor ${unit.floor}`} only: it opens like this next time.`
+      : tower && placesIn(tower, unit.id).length > 1
+        ? 'Kept for the drawing: every floor not changed on its own starts from this.'
+        : `Kept for this ${level !== undefined ? 'level' : 'flat'}: it opens like this next time.`
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
       <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
@@ -1535,8 +1565,8 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
             }
           />
           {askFloor && (
-            <div className="glass ask-floor" role="dialog" aria-label="Which floors does this change go to?">
-              <div>{askFloor.text} Change:</div>
+            <div className="glass ask-floor" role="dialog" aria-label="Which floors do these doors and windows change on?">
+              <div>{askFloor.text} Change its doors and windows on:</div>
               <div className="ask-row">
                 <button className="btn primary" onClick={() => answer('one')}>
                   Floor {askFloor.k} only
@@ -1545,7 +1575,9 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
                   All {askFloor.n} floors
                 </button>
               </div>
-              <div className="muted small">Floor {askFloor.k} only: it gets its own copy of the drawing; the other floors stay as they are. Asked once for this project (Studio → Building: Ask again).</div>
+              <div className="muted small">
+                Floor {askFloor.k} only: it gets its own copy of the drawing (walls, doors and windows); the other floors stay as they are. Furniture and finishes are always each floor's own. Asked once for this project (Studio → Building: Ask again).
+              </div>
             </div>
           )}
           {commenting && (
@@ -1586,6 +1618,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
                 {TOKEN && <BuyerName />}
                 <FinishesPanel
                   staff={STAFF}
+                  kept={KEEP ? kept : null}
                   slots={unit.finishSlots}
                   cfg={cfg}
                   keys={keys}
@@ -1624,6 +1657,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
           {arranging && adding && <AddPanel onPick={startPlacing} onEsc={escArrange} onNote={(t) => showToast(t, 6000)} />}
           {arranging && (
             <ArrangePanel
+              kept={kept}
               piece={pieceOf(sel)}
               held={handInfo}
               adding={adding}

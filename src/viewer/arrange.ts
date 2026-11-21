@@ -1,10 +1,12 @@
 /**
  * Arrange (staff only; CLAUDE.md Decisions 2026-09-27): move, turn and resize the flat's furniture in the 3D view with
- * the Studio's rules (src/studio/furniture.ts). Pure glue: who is staff, the layout saved in the browser and shared with
- * the Studio's tool F, the undo stack, and where a drag in the 3D view puts a piece.
+ * the Studio's rules (src/studio/furniture.ts). Pure glue: who is staff, the layout saved for the apartment (one drawing
+ * in one place: data/building/apartments.ts — the Studio's tool F arranges the drawing's own), the undo stack, and where a
+ * drag in the 3D view puts a piece.
  */
 import { newId, vertexById, wallFrame, type FurniturePlacement, type Id, type Pt, type Room, type Unit } from '../core'
-import { PROJECTS_KEY, forkFloor, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
+import { finishesKey, layoutKey } from '../data/building/apartments'
+import { PROJECTS_KEY, forkFloor, keepApartments, parseProjects, sharedAt, stemOf, syncUnit } from '../data/building/projects'
 import { kitAsset, objectKind, placementRange } from '../furnish/kit'
 import { baseOf, deletePiece, hangOn, movePiece, placePiece, surfaceOf, type Move, type WallFace } from '../studio/furniture'
 import { endAlong, isUnit, normalizeUnit, reducer, type StudioState } from '../studio/model'
@@ -38,29 +40,14 @@ export function isStaff(search: string, path: string, store?: Store): boolean {
 /** A buyer's link (Share: `?c=`) never offers staff mode: its load screen has no "Staff mode" or Studio link. */
 export const isShareLink = (search: string): boolean => new URLSearchParams(search).has('c')
 
-/** The arranged layout: the unit's whole FurniturePlacement[], written by Arrange and by the Studio's tool F. */
-export const layoutKey = (unitId: Id): string => `plotline.layout.${unitId}`
+/** The arranged layout and the finishes, per apartment (data/building/apartments.ts): one drawing in one place of its building. */
+export { finishesKey, layoutKey, readFinishes, readLayout, saveFinishes, saveLayout } from '../data/building/apartments'
 
-export function readLayout(unitId: Id, store?: Store): FurniturePlacement[] | null {
-  try {
-    const v = JSON.parse((store ?? localStorage).getItem(layoutKey(unitId)) ?? 'null') as FurniturePlacement[] | null
-    const ok = (p: FurniturePlacement) => p && typeof p.id === 'string' && typeof p.assetId === 'string' && [p.x, p.y, p.rotationDeg].every(Number.isFinite)
-    return Array.isArray(v) && v.length && v.every(ok) ? v : null
-  } catch {
-    return null
-  }
-}
-
-/** Saves the layout; none, or the unit's own (`base`: its JSON's, else the presets) removes the key, so it follows its JSON again. */
-export function saveLayout(unitId: Id, pieces: FurniturePlacement[] | null, base?: FurniturePlacement[], store?: Store): void {
-  try {
-    const s = store ?? localStorage
-    if (!pieces?.length || (base && JSON.stringify(pieces) === JSON.stringify(base))) s.removeItem(layoutKey(unitId))
-    else s.setItem(layoutKey(unitId), JSON.stringify(pieces))
-  } catch (e) {
-    console.warn('[plotline] could not save the layout', e)
-  }
-}
+/**
+ * Who writes an apartment's finishes (founder 2026-11-21): staff on the flat's own page. Never a buyer, never a buyer's
+ * link (`/s/…`, or an address carrying `?c=`: its choice rides in the address and wins there, share.ts startFinishes).
+ */
+export const keepsFinishes = (staff: boolean, search: string, path: string): boolean => staff && !path.startsWith('/s/') && !isShareLink(search)
 
 /** The committed layout and the ones before it (Ctrl+Z). */
 export interface Steps {
@@ -256,8 +243,9 @@ export function makeDraft(unit: Unit, store?: Store): boolean {
 }
 
 // ── One floor or all (founder 2026-11-20: "change a few designs on just one every duplicate changes"): a project floor whose
-// drawing is on other floors too shares that drawing's furniture and openings (both saved by unit id). The first staff
-// change there asks: this floor only — it gets its own copy of the drawing (projects.ts forkFloor) — or every floor with it.
+// drawing is on other floors too shares that drawing's walls and openings. The first opening edit there asks: this floor
+// only — it gets its own copy of the drawing (projects.ts forkFloor) — or every floor with it. Furniture and finishes never
+// ask: they are each apartment's own (founder 2026-11-21, data/building/apartments.ts).
 export type FloorAnswer = 'one' | 'all'
 /** the answer per project, until "Ask again" (Studio → Building list) */
 export const FLOOR_ANSWER_KEY = 'plotline.floorAnswer'
@@ -283,14 +271,24 @@ export function setFloorAnswer(projectId: Id, a: FloorAnswer | null, store?: Sto
   }
 }
 
-/** What this browser keeps for drawing `from` by its id — its arranged layouts and notes, as itself and mirrored — copied to drawing `to`. */
-export function copyKept(from: Id, to: Id, store?: Store): void {
+/**
+ * What this browser keeps for drawing `from` — its notes, and the furniture and finishes of its apartment on `floor`
+ * (that floor's own, else the drawing's: apartments.ts), as itself and mirrored — copied to drawing `to`, a copy for that
+ * one floor ("This floor only"). The floor's own record goes with it: floor `floor` is the copy's now.
+ */
+export function copyKept(from: Id, to: Id, floor?: number, store?: Store): void {
   const s = store ?? localStorage
-  for (const m of [false, true])
-    for (const key of [layoutKey, pinsKey]) {
-      const v = s.getItem(key(stemOf(from, m)))
-      if (v !== null) s.setItem(key(stemOf(to, m)), v)
+  for (const m of [false, true]) {
+    const [a, b] = [stemOf(from, m), stemOf(to, m)]
+    const notes = s.getItem(pinsKey(a))
+    if (notes !== null) s.setItem(pinsKey(b), notes)
+    for (const key of [layoutKey, finishesKey]) {
+      const own = floor === undefined ? null : s.getItem(key(`${a}:${floor}`))
+      const v = own ?? s.getItem(key(a))
+      if (v !== null) s.setItem(key(b), v)
+      if (own !== null) s.removeItem(key(`${a}:${floor}`))
     }
+  }
 }
 
 /**
@@ -306,8 +304,10 @@ export function forkHere(stem: string, k: number, store?: Store): { stem: string
     if (!sh) return null
     const id = newId()
     const p = forkFloor(sh.p, k, sh.unitId, id)
-    s.setItem(PROJECTS_KEY, JSON.stringify(ps.map((x) => (x === sh.p ? p : x))))
-    copyKept(sh.unitId, id, s)
+    const after = ps.map((x) => (x === sh.p ? p : x))
+    copyKept(sh.unitId, id, k, s) // (first: keepApartments may move what is left onto the drawing)
+    s.setItem(PROJECTS_KEY, JSON.stringify(after))
+    keepApartments(ps, after, s)
     return { stem: stemOf(id, stem !== sh.unitId), unit: p.units[id], from: sh.unitId }
   } catch {
     return null
