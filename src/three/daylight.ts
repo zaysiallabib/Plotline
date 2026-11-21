@@ -686,8 +686,9 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
     s.uniforms.mapBias = { value: m.userData.mapBias ?? 0 }
     s.uniforms.lampMap = lampMap
     s.uniforms.lampColor = lampBake.color
+    s.uniforms.dayPiece = { value: m.userData.dayPiece ? 1 : 0 } // lightPiece marks a piece's materials; a uniform: one program with the rooms
     s.vertexShader = `attribute vec2 dayUv;\nvarying vec2 vDayUv;\n${s.vertexShader}`.replace('#include <uv_vertex>', '#include <uv_vertex>\nvDayUv = dayUv;')
-    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nuniform sampler2D lampMap;\nuniform vec3 lampColor;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
+    s.fragmentShader = `${lampBake.on ? '#define LAMP_BAKE\n' : ''}uniform sampler2D dayMap;\nuniform float dayMix;\nuniform vec3 lampOutSky;\nuniform vec3 lampOutGround;\nuniform sampler2D mottleMap;\nuniform float mapBias;\nuniform sampler2D lampMap;\nuniform vec3 lampColor;\nuniform float dayPiece;\nvarying vec2 vDayUv;\n${s.fragmentShader}`
       .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', 'texture2D( map, vMapUv, mapBias )'))
       .replace(
       '#include <aomap_fragment>',
@@ -703,7 +704,9 @@ export function daylit(m: THREE.MeshStandardMaterial): void {
       reflectedLight.indirectDiffuse += mix(lampOutGround, lampOutSky, dayUp) * BRDF_Lambert(material.diffuseColor) * ${LAMP_RANGE.toFixed(1)} * dayRg.g;
       #ifdef LAMP_BAKE
       float lampE = texture2D(lampMap, vDayUv).r;
-      reflectedLight.directDiffuse += BRDF_Lambert(material.diffuseColor) * lampColor * (lampE * lampE * ${LAMP_DIRECT.toFixed(1)});
+      // a piece reads the floor under it: its top takes that light, its sides and underside less (the lamp is overhead)
+      float lampK = mix(1.0, 0.2 + 0.8 * max(2.0 * dayUp - 1.0, 0.0), dayPiece);
+      reflectedLight.directDiffuse += BRDF_Lambert(material.diffuseColor) * lampColor * (lampE * lampE * ${LAMP_DIRECT.toFixed(1)} * lampK);
       #endif
       #if defined(MOTTLE) && defined(USE_MAP)
       reflectedLight.indirectDiffuse *= 1.0 + MOTTLE * (texture2D(mottleMap, vMapUv * MOTTLE_UV, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
