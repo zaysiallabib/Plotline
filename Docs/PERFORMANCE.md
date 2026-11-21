@@ -304,3 +304,7 @@ What changed:
    frames after it goes (it was 3–13 programs: a 0.3–6 s stall right after the screen went).
 9. The code-built pieces, the glass, the pool water and the parking paint carry the same five pictures as every surface;
    a plant's leaves keep a place for their glow and cut-out pictures until their files are read.
+10. **The light copies (stand-ins) are kept in this browser** (IndexedDB `plotline-standins`, beside the page's own copy):
+    the next visit reads a piece's simplified shape instead of making it again — Lite's start screen spent ~0.4 s making
+    them, the Building view's other flats' furniture ~1.7 s. Kept per model (or code-built piece and size) and its shape in
+    numbers: a model file or builder that changes is simplified afresh.

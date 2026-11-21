@@ -176,10 +176,10 @@ const BATCH_MS = 400
  * tower's, 0.3 s for a surface lit by the flat's 12 lamps), and the page waits only when one is first drawn (no
  * KHR_parallel_shader_compile to ask whether it is done). Under the load screen (prepare) every program is asked for every
  * PREP_MS as the flat comes in — made while the page is busy with its models and the tower — and the frame is drawn once
- * behind the screen when none has been new for SETTLE_MS.
+ * behind the screen when a round of asking found none new (SETTLE_MS).
  */
 const PREP_MS = 250
-const SETTLE_MS = 500
+const SETTLE_MS = 250
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000

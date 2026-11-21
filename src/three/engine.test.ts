@@ -14,7 +14,7 @@ import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
-import { buildFurniture, colourOnly } from './furniture'
+import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
 import { EDGE_PLASTER, PICTURES, SPOT_LOOP, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { TIERS } from './render'
 import { buildOpening, CLEAR_GLASS } from './openings'
@@ -513,6 +513,26 @@ describe('one program for every lit surface (session 31 ready lane: the first fr
     } finally {
       lite.on = false
     }
+  })
+})
+
+describe('a stand-in kept in this browser (the next visit reads it, not makes it)', () => {
+  test('its simplified parts go back on the model, the parts it kept as they were (the same shape, shared)', () => {
+    const model = new THREE.Group().add(new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16)), new THREE.Mesh(new THREE.BoxGeometry()))
+    const out = model.clone()
+    ;(out.children[0] as THREE.Mesh).geometry = new THREE.SphereGeometry(1, 8, 4) // as simplified() leaves a cut part
+    const kept = toKept(model, out)
+    expect(kept[1]).toBeNull()
+    const back = fromKept(model, structuredClone(kept))!
+    const [a, b] = back.children as THREE.Mesh[]
+    expect(Array.from(a.geometry.attributes.position.array)).toEqual(Array.from((out.children[0] as THREE.Mesh).geometry.attributes.position.array))
+    expect(Array.from(a.geometry.index!.array)).toEqual(Array.from((out.children[0] as THREE.Mesh).geometry.index!.array))
+    expect(b.geometry).toBe((model.children[1] as THREE.Mesh).geometry)
+    expect((model.children[0] as THREE.Mesh).geometry.attributes.position.count).toBeGreaterThan(a.geometry.attributes.position.count) // the model itself untouched
+  })
+  test('a model with other parts than it was kept for: not used (made again)', () => {
+    const model = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry()))
+    expect(fromKept(model, [null, null])).toBeNull()
   })
 })
 
