@@ -6,7 +6,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import typeB from '../data/units/type-b.json'
 import typeC from '../data/units/type-c.json'
-import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
+import { EXTERIOR_M, ISSUE_COPY, MERGE_M, PARTITION_M, arcPoints, WALL_HEIGHT_M, endAlong, entityPoints, guessKind, idsInBox, initialState, selectionText, shared, isUnit, lengthMoves, normalizeUnit, wallsLook, openSpotsNear, reducer, slug, studioIssues, wallLabelSides, type Action, type Draft, type StudioState } from './model'
 import { AI_KEY, drawnSize, openReview, sheetAxis, sizeCheck, studioReducer } from './review'
 import { mockTraceResult } from './autotraceMock'
 import { AI_KEY_STORAGE } from '../trace/ai'
@@ -1861,5 +1861,28 @@ describe('multi-select (session 27: Shift+click, box, one change for many)', () 
     const t = s.unit.walls.find((w) => w.id === top.id) ?? s.unit.walls[0]
     expect(s.unit.vertices.find((v) => v.id === t.a)!.y).toBeCloseTo(-0.0254)
     expect(t.openings.find((o) => o.id === win.id)!.offsetM).toBeCloseTo(win.offsetM)
+  })
+})
+
+describe('opening a drawing that the joining puts back as it was', () => {
+  // a corner of an imported floor (an ifc-bench house): thick walls with their finish walls 9.5 cm beside them. Its first
+  // load joins it; every load after drops a short piece "drawn over another" and the join puts the very same piece back
+  const unit = (): Unit => ({
+    ...initialState().unit,
+    vertices: [[-1.0138, 13.3558], [-1.0138, 13.2606], [3.1454, -5.7894], [3.1454, 13.2606], [3.2407, 13.3558], [3.2407, 13.2606], [3.2407, -5.7894]].map(([x, y], i) => ({ id: `v${i}`, x, y })),
+    walls: ([[2, 3, 0.4953, 4.4196], [1, 3, 0.4953, 4.4196], [4, 0, 0.3048, 3.048], [5, 6, 0.3048, 3.048], [5, 3, 0.4953, 3.048], [5, 4, 0.4953, 3.048]] as const).map(([a, b, t, h], i) => ({ id: `w${i}`, a: `v${a}`, b: `v${b}`, thicknessM: t, heightM: h, openings: [] })),
+  })
+  it('says nothing and leaves nothing to undo when nothing a person sees changed', () => {
+    const once = reducer(initialState(), { type: 'load-unit', unit: unit() })
+    expect(once.toast?.text).toMatch(/Joined/)
+    const again = reducer(initialState(), { type: 'load-unit', unit: once.unit })
+    expect(again.toast).toBeFalsy()
+    expect(wallsLook(again.unit)).toBe(wallsLook(once.unit))
+  })
+  it('sees through ids and the way a wall was drawn, not through a moved corner', () => {
+    const u = unit()
+    const flipped = { ...u, walls: u.walls.map((w, i) => ({ ...w, id: `x${i}`, a: w.b, b: w.a })) }
+    expect(wallsLook(flipped)).toBe(wallsLook(u))
+    expect(wallsLook({ ...u, vertices: u.vertices.map((v) => (v.id === 'v0' ? { ...v, x: v.x + 0.01 } : v)) })).not.toBe(wallsLook(u))
   })
 })

@@ -78,6 +78,23 @@ describe('svg import', () => {
     expect(deriveRooms(u)).toHaveLength(2)
   })
 
+  test('a flat sheet drawn with pens (a CAD print as SVG): the heavy pen is the walls; thin floor tiles and a wardrobe are not', async () => {
+    // the living room tiled every 45 cm and a 2 × 0.5 m wardrobe in the bedroom, in thin lines: in one pen their lines pair into walls
+    const tiles = Array.from({ length: 9 }, (_, i) => line(300, 300 + 450 * i, 3800, 300 + 450 * i) + line(300 + 400 * i, 300, 300 + 400 * i, 4700)).join('')
+    const wardrobe = line(5000, 4200, 7000, 4200) + line(7000, 4200, 7000, 4700) + line(7000, 4700, 5000, 4700) + line(5000, 4700, 5000, 4200)
+    const k = 0.5523
+    const door = `<path d="M${X(4900)} ${Y(1000)}C${X(4900)} ${Y(1000 + 900 * k)} ${X(4000 + 900 * k)} ${Y(1900)} ${X(4000)} ${Y(1900)}"/>${line(4000, 1000, 4900, 1000)}`
+    const sheet = (heavy: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 210"><g style="stroke:#000;fill:none;stroke-width:${heavy}">${walls}</g><g stroke="rgb(0,0,0)" stroke-width="0.18" fill="none">${tiles}${wardrobe}${door}${windowLines}${dims}</g>${texts()}</svg>`
+    const r = await importSvg(sheet(0.7), 'pens.svg')
+    expect(r.notes.some((n) => n.includes('sorted by pen: the heaviest (0.70 units wide, #000000)'))).toBe(true)
+    const u = r.storeys[0].unit
+    expect(u.walls).toHaveLength(7)
+    expect(u.walls.flatMap((w) => w.openings).map((o) => o.kind).sort()).toEqual(['door', 'window'])
+    expect(deriveRooms(u).map((x) => x.name).sort()).toEqual(['BED ROOM', 'LIVING'])
+    // one pen for everything: nothing to sort by — the tiles and the wardrobe make walls, as before
+    expect((await importSvg(sheet(0.18), 'one-pen.svg')).storeys[0].unit.walls.length).toBeGreaterThan(7)
+  })
+
   test('paths: relative commands, H / V, Z closes a shape, arc flags run together', () => {
     const r = readSvg(`<svg><path d="m10,10h20v10H10z"/><path d="M0 0a5 5 0 015 5"/></svg>`)
     expect(r.loops).toHaveLength(1)

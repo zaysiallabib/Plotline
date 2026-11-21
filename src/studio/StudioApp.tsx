@@ -1016,7 +1016,8 @@ export default function StudioApp() {
       await takeImport(r, name)
     } else {
       await asPicture()
-      if (r) toast(`${where} is now the plan picture (its lines did not make a clean plan) — set the scale (S), then Auto-trace`, { label: 'Read its lines instead', onClick: () => void takeImport(r, name) })
+      // (a page whose lines were not read — no scale on it — has nothing to offer instead)
+      if (r) toast(`${where} is now the plan picture (its lines did not make a clean plan) — set the scale (S), then Auto-trace`, r.storeys[0]?.unit.walls.length ? { label: 'Read its lines instead', onClick: () => void takeImport(r, name) } : undefined)
     }
   }
   const pickPdfPage = async (page: number) => {
