@@ -31,7 +31,8 @@ function loadModel(url: string): Promise<THREE.Group> {
   return p
 }
 
-const triangles = (g: THREE.BufferGeometry): number => (g.index ?? g.attributes.position).count / 3
+/** 0 for a part with no vertices of its own yet (a procedural plant's leaf instances before their shape is set) */
+const triangles = (g: THREE.BufferGeometry): number => ((g.index ?? g.attributes.position)?.count ?? 0) / 3
 const standIns = new Map<string, Promise<THREE.Group>>()
 const simplifier = new SimplifyModifier()
 /** a part this small keeps its own triangles: a knob, a leg's foot (cutting it would only make holes) */
