@@ -38,7 +38,7 @@ a drawing; an architectural IFC before a structural or services one) and the oth
 | What | File | What is in it | Made with (licence) | Tested on |
 |---|---|---|---|---|
 | **Export** | `.json` | The drawing, exactly (Plotline's own file) | Ours | — |
-| **Export as DXF** | `.dxf`, AutoCAD R12, metres | Layers WALLS (closed outlines, corners filled, each wall's height as its thickness), DOORS (each a block: leaf, swing, jambs; a passage a block of its jambs), WINDOWS, COLUMNS, TEXT (names, printed sizes, a raised floor as the text's height), PLOTLINE_ZONES, PLOTLINE_KERBS. Opens in every CAD program. Back in Plotline untouched: exactly; saved again by a CAD program: read from its lines and layers | Plotline's own writer (ours) | All 20 built-in flats and levels written and read back exactly (node); from their lines alone (as a CAD program saves them) 11 of 20 exactly the same — Type A, Type B, Sheltech B, the Sheltech basements, level 1 and roof, Banani typical, DMD basement 1, ground and roof — the others within 1–10 differences (`dxfWrite.test.ts`) |
+| **Export as DXF** | `.dxf`, AutoCAD R12, metres | Layers WALLS (closed outlines, corners filled, each wall's height as its thickness), DOORS (each a block: leaf, swing, jambs; a passage a block of its jambs), WINDOWS, COLUMNS, TEXT (names, printed sizes, a raised floor as the text's height), PLOTLINE_ZONES, PLOTLINE_KERBS, PLOTLINE_AXES_<thickness in 0.1 mm> (each wall's centre line, its height as the line's thickness). Opens in every CAD program. Back in Plotline untouched: exactly; saved again by a CAD program: its walls from their centre lines while they agree with the outlines, else from the outlines | Plotline's own writer (ours) | All 20 built-in flats and levels written and read back exactly (node); from their lines alone (as a CAD program saves them) all 20 exactly the same (`dxfWrite.test.ts`); a wall moved in CAD falls back to the outlines (tested) |
 | **Export 3D model** (also the 3D view: **Edit ▾ → Download 3D model**, staff) | `.glb` | The furnished flat: walls, floors, ceilings, doors, windows, furniture with pictures (at most 1024 px) — not the street or the sky | three.js's glTF exporter (MIT) | Type A: 54 MB (31 MB shapes, 23 MB pictures; it was 63 MB when first measured and 106 MB before the round-2 fix that stopped pieces going in twice), opened again by Plotline's own 3D-model reader. No mesh compression in the browser's exporter: gltf-transform or gltfpack on a computer makes it smaller |
 | **Print plan…** | paper, or a PDF ("Save as PDF" in the print window) | The plan at 1 : 50, 1 : 100 or 1 : 200 on A4–A1: walls, door swings, windows, names, sizes, a title block, a scale bar, a north arrow | Plotline's own sheet (ours) + the browser's print window | Type A on A3 at 1 : 100, as the print page renders it |
 | **Change list → Export CSV** | `.csv` | Every buyer note and finish choice, for a spreadsheet | Ours | (since session 18) |
@@ -69,7 +69,10 @@ a drawing; an architectural IFC before a structural or services one) and the oth
   corrects any layer in one click in the Studio's layer list — kept for the next file with that name. Units come from
   the file's header, else from the drawing's size (a flat is 5–150 m wide, not 5 000–150 000).
 - A Plotline export (its PLOTLINE_ZONES / PLOTLINE_KERBS layers in the file) is read to the letter, even after a CAD
-  program saved it: each wall piece is its outline, its height the outline's thickness, each opening its block.
+  program saved it: each wall is its centre line (PLOTLINE_AXES_<thickness>, its height the line's thickness) while every
+  centre line and every wall outline still agree — a curved ramp's chords, a short wall at a T, a door at a corner come
+  back exactly; a wall moved in the CAD program makes it read each wall piece from its outline instead. Each opening is
+  its block, as narrow as it was drawn.
 
 **DWG.**
 - AutoCAD's own locked file, the one most architects actually send. Its format is not published. The only free reader,
@@ -163,5 +166,6 @@ glb + texture, obj + mtl + texture, fbx + texture, 3ds, kmz, wrl, ply, a Draco g
 its DXF's 75 / 34 / 22; PDF: a 16-page brochure's plan page as the picture, a CAD print read; TIFF read, HEIC refused in
 plain words; DWG through a stand-in converter → the plan; DXF multilines 0 → 5 walls. Exports: Type A as DXF (back
 exactly; lines only 103 / 30 / 21 for 90 / 33 / 27), as GLB (now 54 MB, re-opened), printed on A3 at 1 : 100. The
-lines-only DXF read of all 20 built-in drawings is the table in `src/import/dxfWrite.test.ts` (flats close, levels lose
-their zone lines).
+lines-only DXF read of all 20 built-in drawings is `src/import/dxfWrite.test.ts`: since session 31's formats3 lane every
+one comes back exactly the same (walls per thickness and height, zone lines, openings per kind, closed rooms, names,
+raised floors).

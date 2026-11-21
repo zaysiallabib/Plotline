@@ -2,7 +2,8 @@
  * DXF export: Plotline's own DXF reader reads the export back to the same drawing — untouched, exactly (the comment copy);
  * and from its lines alone, as a CAD program saves it (the comments dropped): the same walls (length per thickness and
  * height), zone lines, openings (per kind), closed rooms with the same names, raised floors — for every built-in flat and
- * level. And the file is a plain R12 DXF.
+ * level, all 20 (formats3: each wall's centre line rides along on PLOTLINE_AXES_<thickness>, read while it agrees with the
+ * outlines; a wall moved in a CAD program is read from its outlines). And the file is a plain R12 DXF.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -41,12 +42,6 @@ function differences(a: Unit, b: Unit): string[] {
   if (A.raised.join('|') !== B.raised.join('|')) out.push(`raised floors: ${A.raised.join(', ')} → ${B.raised.join(', ')}`)
   return out
 }
-/**
- * Not yet the same from their lines alone (session 31, formats2): how many differences each still has — the test fails
- * when one grows. Curved ramp walls (short chords at odd angles), the parking levels' bays and a short wall at a T are
- * what is left; every other drawing reads back the same (formats3: a door 1–3 cm from a corner now comes back — Type B).
- */
-const STILL: Record<string, number> = { 'banani-b1': 3, 'banani-b2': 3, 'banani-ground': 10, 'banani-roof': 2, 'dmd-b2': 2, 'dmd-typical': 2, 'sheltech-a': 3, 'sheltech-ground': 4, 'type-c': 1 }
 /** the file as a CAD program saves it: the comment copy dropped */
 const linesOnly = (dxf: string) => dxf.slice(dxf.indexOf('PLOTLINE-END') + 'PLOTLINE-END'.length).trimStart()
 
@@ -55,7 +50,7 @@ describe('DXF export', () => {
     const text = writeDxf(units.find(([n]) => n === 'type-a')![1])
     expect(text).toMatch(/\$ACADVER\r\n1\r\nAC1009/)
     expect(text).toMatch(/\$INSUNITS\r\n70\r\n6/)
-    for (const l of ['WALLS', 'DOORS', 'WINDOWS', 'COLUMNS', 'TEXT', 'PLOTLINE_ZONES', 'PLOTLINE_KERBS']) expect(text).toContain(`LAYER\r\n2\r\n${l}`)
+    for (const l of ['WALLS', 'DOORS', 'WINDOWS', 'COLUMNS', 'TEXT', 'PLOTLINE_ZONES', 'PLOTLINE_KERBS', 'PLOTLINE_AXES_1270', 'PLOTLINE_AXES_2540']) expect(text).toContain(`LAYER\r\n2\r\n${l}`)
     expect(text).toMatch(/POLYLINE\r\n8\r\nWALLS\r\n66\r\n1\r\n10\r\n0\r\n20\r\n0\r\n30\r\n0\r\n39\r\n3\r\n/) // a wall's height as its thickness
     expect(text.trimEnd().endsWith('EOF')).toBe(true)
     const level = writeDxf(units.find(([n]) => n === 'sheltech-ground')![1])
@@ -72,8 +67,7 @@ describe('DXF export', () => {
       const lines = await importDxf(linesOnly(text), `${name}.dxf`)
       expect(lines.notes[0]).not.toMatch(/not changed since/)
       const diff = differences(u, lines.storeys[0].unit)
-      if (diff.length) console.log(`${name} from its lines alone: ${diff.join('; ')}`)
-      expect(diff.length).toBeLessThanOrEqual(STILL[name] ?? 0)
+      expect(diff).toEqual([])
     })
 
   it('a door block changed in CAD breaks the seal too; a first-version export (its seal over the entities only) still opens exactly', async () => {
@@ -96,5 +90,11 @@ describe('DXF export', () => {
     const edited = text.replace(/(POLYLINE[\s\S]*?VERTEX[\s\S]*?\r\n10\r\n)([-\d.]+)/, (_, a: string, x: string) => `${a}${Number(x) + 0.5}`)
     expect(edited).not.toBe(text)
     expect((await importDxf(edited, 'a.dxf')).notes[0]).not.toMatch(/not changed since/)
+    // a wall moved 30 cm in CAD (its outline's corners): the centre lines no longer agree — every wall is read from its outline
+    const wall = text.indexOf('POLYLINE\r\n8\r\nWALLS'), end = text.indexOf('SEQEND', wall)
+    const moved = text.slice(0, wall) + text.slice(wall, end).replace(/(VERTEX\r\n8\r\nWALLS\r\n10\r\n[-\d.]+\r\n20\r\n)([-\d.]+)/g, (_, v: string, y: string) => `${v}${Number(y) + 0.3}`) + text.slice(end)
+    expect(moved).not.toBe(text)
+    expect((await importDxf(linesOnly(moved), 'a.dxf')).notes).toContain('Walls were changed in a CAD program since the export: read from their outlines.')
+    expect((await importDxf(linesOnly(text), 'a.dxf')).notes.some((n) => /walls read from their centre lines/.test(n))).toBe(true)
   })
 })
