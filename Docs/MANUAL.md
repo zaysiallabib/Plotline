@@ -603,6 +603,9 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   - Rugs, potted plants and small things (a vase, a book) are left out of the other flats: from the street they are not
     seen.
 - Picking a basement hides everything above it; the street and the next buildings stay.
+- **The roof:** a building whose rooftop was not traced still has one — the top floor's slab, a parapet along its outer
+  edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
+  traced rooftop (Sheltech) shows as drawn.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.

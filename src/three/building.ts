@@ -518,7 +518,10 @@ export class Building extends THREE.Group {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         put(k, EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }
-      put(top + 1, EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
+      // its lid: the room and its own walls only (plate's default, every wall of the flat, laid a lattice of beams 3 m over the
+      // whole roof — qa3 P9: "the top floor has no roof", it read as a cut-away)
+      const own = new Set(room.wallIds)
+      put(top + 1, EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M, u.walls.filter((w) => own.has(w.id))).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
     }
 
     // his traced rooftop on the roof slab, in full (the one walked: the scene draws it)
