@@ -25,7 +25,7 @@ const warned = new Set<string>()
 function loadModel(url: string): Promise<THREE.Group> {
   let p = gltfCache.get(url)
   if (!p) {
-    p = loader.loadAsync(url).then((g) => plainGlass(lite.on ? colourOnly(g.scene) : g.scene))
+    p = loader.loadAsync(url).then((g) => (lite.on ? colourOnly(plainGlass(g.scene)) : plainGlass(g.scene)))
     gltfCache.set(url, p)
   }
   return p
@@ -102,12 +102,34 @@ export function plainGlass<T extends THREE.Object3D>(model: T): T {
   return model
 }
 
-/** Lite (three/materials.ts lite): a model's relief and ambient-occlusion maps left off, once per model (its clones share its materials). */
+/**
+ * Lite (three/materials.ts lite): a model's colour picture only, once per model (its clones share its materials) — its relief,
+ * ambient-occlusion, roughness and metal pictures left off (never uploaded; the decoded pictures go with the garbage): its
+ * roughness the material's own number, no metal (a scan's metal picture marks a chrome foot or a handle: a dull grey on Lite).
+ * A scan's "physical" material (sheen, clearcoat: its own shader program) becomes a standard one with the same colour and
+ * picture, and its see-through glass is drawn from the front only (two-sided glass is two programs and two draws): Lite's
+ * furniture shares the rooms' few programs.
+ */
 export function colourOnly<T extends THREE.Object3D>(model: T): T {
+  const plain = new Map<THREE.Material, THREE.MeshStandardMaterial>()
+  const standard = (m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial => {
+    if (!(m as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial) return m
+    let s = plain.get(m)
+    if (!s) {
+      s = new THREE.MeshStandardMaterial().copy(m) // the standard half of it: colour, pictures, roughness, see-through, sides
+      plain.set(m, s)
+    }
+    return s
+  }
   model.traverse((o) => {
-    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshStandardMaterial[]) {
-      if (!m.normalMap && !m.aoMap) continue
-      m.normalMap = m.aoMap = null // never uploaded; the decoded pictures go with the garbage
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh) return
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((x) => standard(x as THREE.MeshStandardMaterial)) : standard(mesh.material as THREE.MeshStandardMaterial)
+    for (const m of [mesh.material].flat() as THREE.MeshStandardMaterial[]) {
+      if (m.transparent && m.side === THREE.DoubleSide) (m.side = THREE.FrontSide), (m.needsUpdate = true)
+      if (!m.normalMap && !m.aoMap && !m.roughnessMap && !m.metalnessMap) continue
+      if (m.metalnessMap) m.metalness = 0
+      m.normalMap = m.aoMap = m.roughnessMap = m.metalnessMap = null
       m.needsUpdate = true
     }
   })
@@ -156,6 +178,9 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       const rebuilt = rebuildsAtSize(asset.id)
       model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await (tris ? standIn(asset.url, tris) : loadModel(asset.url))).clone()
       if (!model) throw new Error('no procedural builder')
+      // a code-built piece is made for each placement (a 3.9 m curtain's pleats, a bed's quilting: 4–11 thousand triangles):
+      // its stand-in made here, the same way
+      if (tris && asset.url.startsWith('procedural:')) model = await simplified(model, tris)
       model.rotation.y = FRONT_FIX[asset.frontAxis] ?? 0
       model.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(model)

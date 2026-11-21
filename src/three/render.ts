@@ -23,8 +23,9 @@ import type { Street } from '../data/building'
 import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
+import { CELL_M } from './batch'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
-import { dayMix, isCovered, LAMP_RANGE, lampOut, openToSky, setLampShare } from './daylight'
+import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
@@ -48,12 +49,16 @@ export type Quality = 'high' | 'low' | 'lite'
  * meshes as one mesh per material once they settle: batch.ts, the same picture.) `sleep`: no frame drawn while nothing can
  * change it (needsFrame), and then no frame loop at all.
  * `extras`: the scanned plants and live mirrors (materials.ts lean). `maxTexture`: the largest picture side sent to the
- * graphics chip (0: the chip's own; three halves a bigger one on upload).
+ * graphics chip (0: the chip's own; three halves a bigger one on upload). `bake`: every lamp's light baked into the rooms
+ * (daylight.ts lampBake) instead of lights in the shader — Lite (session 31 perf): no lamp light at all, every lamp lit.
+ * `standIn`: a scanned piece as its stand-in of about this many triangles (furniture.ts standIn; 0: the scan itself).
+ * `cell`: the furniture's batches, one per material per cell this many metres square (batch.ts; Infinity: one for the flat —
+ * fewest draw calls, every piece drawn every frame: right once the pieces are stand-ins).
  */
-export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number }> = {
-  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0 },
-  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024 },
-  lite: { sun: 0, lamps: 2, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512 },
+export const TIERS: Record<Quality, { sun: number; lamps: number; lampShadows: number; ao: boolean; sleep: boolean; extras: boolean; maxTexture: number; bake: boolean; standIn: number; cell: number }> = {
+  high: { sun: 2048, lamps: 12, lampShadows: 3, ao: true, sleep: false, extras: true, maxTexture: 0, bake: false, standIn: 0, cell: CELL_M },
+  low: { sun: 1024, lamps: 4, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 1024, bake: false, standIn: 4000, cell: Infinity },
+  lite: { sun: 0, lamps: 0, lampShadows: 0, ao: false, sleep: true, extras: false, maxTexture: 512, bake: true, standIn: 1500, cell: Infinity },
 }
 
 /**
@@ -385,6 +390,7 @@ export class Look {
     this.shadows = renderer.shadowMap.enabled = tier.sun > 0 && !switchedOff('shadows')
     this.casters = this.shadows ? tier.lampShadows : 0
     this.maxLamps = tier.lamps
+    lampBake.on = tier.bake // before any room surface compiles (daylight.ts daylit)
     sun.shadow.autoUpdate = false // render(): drawn again when what it sees changed (casterKey)
     renderer.shadowMap.autoUpdate = false // drawn when something it sees changes: render() / casterKey
     renderer.domElement.addEventListener('webglcontextrestored', this.onRestored)
@@ -684,8 +690,14 @@ export class Look {
         ? [{ ...at, y: roomCeiling(room, unit, this.rooms) - Math.max(0.12, 0.8 * h), cd: lampCandela(room.areaSqm), ceiling: true }] // its ceiling as buildRoom's
         : [{ ...at, y: floor + bottomOf(unit.furniture, p) + (lamp.bulbM * h) / kitAsset(p.assetId)!.sizeM.y, cd: lamp.lumens / Math.PI / 100, ceiling: false }]
     })
-    if (!this.leaving) setLampShare(lampShares(this.fixtures, this.rooms, this.links)) // (a floor built for a stair: at swap, into its own atlas)
+    if (!this.leaving) this.shareLamps() // (a floor built for a stair: at swap, into its own atlas)
     this.pickedAt.set(Infinity, 0, 0)
+  }
+
+  /** The lamps into the shown atlas: their bounce by room (setLampShare) and, where the tier bakes them, their own light (setLampDirect). */
+  private shareLamps(): void {
+    setLampShare(lampShares(this.fixtures, this.rooms, this.links))
+    if (lampBake.on) setLampDirect(this.fixtures.map((f): BakedLamp => ({ roomId: f.roomId, x: f.x, y: f.z, h: f.y - f.floor, cd: f.cd, cosCone: Math.cos(f.ceiling ? CEILING_CONE : LAMP_CONE), distance: f.reach + 1.5 })))
   }
 
   /** Arrange changed the layout (move, add, delete, undo): the contact shadows are redrawn (one canvas) and the lamps follow their pieces. */
@@ -766,6 +778,7 @@ export class Look {
     const lit = on && !this.on // just switched on: the shadow-casting lamps draw their maps (off, none were kept up)
     this.on = on
     for (const { light, at } of this.pool) light.intensity = on && at ? at.cd : 0
+    lampBake.color.value.copy(WARM).multiplyScalar(on ? 1 : 0) // the baked lamps (Lite)
     for (const [m, e] of this.glows) m.emissiveIntensity = on ? e * ON_GLOW : 0
     if (lit) for (const { light } of this.pool) light.shadow.needsUpdate = light.castShadow
     this.renderer.shadowMap.needsUpdate ||= lit
@@ -929,7 +942,7 @@ export class Look {
     this.drop()
     this.unitGroup.visible = true
     this.ground.position.y = this.groundY
-    setLampShare(lampShares(this.fixtures, this.rooms, this.links))
+    this.shareLamps()
   }
 
   /** The floor a stair left, if still shown: off screen and freed (its geometry, its context materials, its lights' shadow maps). */

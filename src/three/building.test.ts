@@ -666,6 +666,32 @@ describe('stand-ins: a scanned piece with hundreds of triangles where thousands 
   })
 })
 
+describe('Lite: a model’s colour picture only (session 31 perf: one material program where there were four)', () => {
+  test('colourOnly leaves the colour picture, drops relief, shading, roughness and metal pictures; a metal-mapped part goes dull, not chrome', async () => {
+    const THREE = await import('three')
+    const { colourOnly } = await import('./furniture')
+    const t = () => new THREE.Texture()
+    const m = new THREE.MeshStandardMaterial({ map: t(), normalMap: t(), aoMap: t(), roughnessMap: t(), metalnessMap: t(), metalness: 1, roughness: 1 })
+    const plain = new THREE.MeshStandardMaterial({ color: '#888888', metalness: 1 }) // a metal with no picture keeps its metal
+    colourOnly(new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m), new THREE.Mesh(new THREE.BoxGeometry(), plain)))
+    expect([!!m.map, m.normalMap, m.aoMap, m.roughnessMap, m.metalnessMap, m.metalness]).toEqual([true, null, null, null, null, 0])
+    expect(plain.metalness).toBe(1)
+  })
+  test('a scan’s physical material becomes a standard one (one program fewer), its see-through glass drawn from the front only', async () => {
+    const THREE = await import('three')
+    const { colourOnly, plainGlass } = await import('./furniture')
+    const map = new THREE.Texture()
+    const fabric = new THREE.MeshPhysicalMaterial({ map, sheen: 1, color: '#806040', side: THREE.DoubleSide })
+    const glass = new THREE.MeshPhysicalMaterial({ transmission: 1, side: THREE.DoubleSide })
+    const [a, b] = [new THREE.Mesh(new THREE.BoxGeometry(), fabric), new THREE.Mesh(new THREE.BoxGeometry(), glass)]
+    colourOnly(plainGlass(new THREE.Group().add(a, b)))
+    const fa = a.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    const gl = b.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    expect([fa.type, fa.map === map, fa.color.getHexString(), fa.side]).toEqual(['MeshStandardMaterial', true, '806040', THREE.DoubleSide]) // an opaque two-sided cloth keeps its sides
+    expect([gl.type, gl.transparent, gl.opacity <= 0.15, gl.side]).toEqual(['MeshStandardMaterial', true, true, THREE.FrontSide])
+  })
+})
+
 describe('the rooms behind the glass take none of the walked flat’s lamps (session 31 perf)', () => {
   test('noSpots: every chunk that names spot lights written out with none; the sun, the sky and the rest untouched', async () => {
     const THREE = await import('three')
@@ -694,5 +720,25 @@ describe('the rooms behind the glass take none of the walked flat’s lamps (ses
     expect([...keys].filter((k) => !['outside', 'tower-pane', 'tower-room', 'tower-lift', ''].includes(k))).toEqual([])
     expect(keys.has('outside')).toBe(true)
     b.dispose()
+  })
+})
+
+describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s pleats, a bed’s quilting were 4–11 thousand triangles on Lite)', () => {
+  test('buildFurniture with a budget: a heavy code-built piece comes back near it; without one, as built', async () => {
+    const { buildFurniture } = await import('./furniture')
+    const { PROCEDURAL: KIT } = await import('../furnish/procedural.meta')
+    const tris = (o: import('three').Object3D) => {
+      let n = 0
+      o.traverse((m) => {
+        const g = (m as import('three').Mesh).isMesh ? (m as import('three').Mesh).geometry : null
+        if (g?.attributes.position) n += (g.index ?? g.attributes.position).count / 3
+      })
+      return n
+    }
+    const heavy = await Promise.all(Object.values(KIT).filter((a) => a.url.startsWith('procedural:')).map(async (a) => ({ a, n: tris(await buildFurniture({ id: 'x', assetId: a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 })) })))
+    const big = heavy.sort((p, q) => q.n - p.n)[0]
+    expect(big.n).toBeGreaterThan(4000)
+    const light = tris(await buildFurniture({ id: 'x', assetId: big.a.id, roomId: 'r', x: 0, y: 0, rotationDeg: 0 }, 3.048, 0, undefined, 1500))
+    expect(light).toBeLessThan(big.n / 2)
   })
 })

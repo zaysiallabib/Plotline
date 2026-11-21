@@ -38,7 +38,7 @@ import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, PAINT, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
-import { batch, CELL_M, HIDDEN, unbatch } from './batch'
+import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
 import type { Street } from '../data/building'
@@ -696,7 +696,7 @@ export class PlotlineScene {
     for (const x of [this.staticGroup, this.furnitureGroup, this.ceilingGroup]) {
       if (built !== this.buildToken) return
       x.visible = true
-      batch(x, x === this.staticGroup ? Infinity : CELL_M)
+      batch(x, x === this.staticGroup ? Infinity : TIERS[this.tier].cell)
       x.visible = false
       await frame()
     }
@@ -1189,7 +1189,7 @@ export class PlotlineScene {
     this.adding.set(p.id, p)
     if (building) return
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p), TIERS[this.tier].standIn)
     const now = this.adding.get(p.id)
     this.adding.delete(p.id)
     if (token !== this.buildToken || this.pieceObject(p.id)) return
@@ -1255,7 +1255,7 @@ export class PlotlineScene {
   private async rebuildPiece(old: THREE.Object3D, p: FurniturePlacement, size: string): Promise<void> {
     old.userData.size = size // a newer size supersedes this build
     const token = this.buildToken
-    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p))
+    const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(this.layout, p), TIERS[this.tier].standIn)
     const parent = old.parent
     if (token !== this.buildToken || !parent || old.userData.size !== size) return
     obj.userData.size = size
@@ -1465,7 +1465,7 @@ export class PlotlineScene {
     if (this.holding) return void (this.batchTimer = window.setTimeout(this.settle, BATCH_MS)) // a stair's floor, hidden: batched as it shows
     const still = !this.arranging && !this.hand
     const groups = [this.unsettled.has('static') && this.staticGroup, still && this.unsettled.has('furniture') && this.furnitureGroup, still && this.ceilingGroup]
-    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : CELL_M)
+    for (const g of groups) if (g) batch(g, g === this.staticGroup ? Infinity : TIERS[this.tier].cell)
     this.unsettled.clear()
     this.wake()
   }
@@ -1835,7 +1835,7 @@ export class PlotlineScene {
     )
     let t = performance.now()
     for (const p of byDistance) {
-      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p))
+      const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p), TIERS[this.tier].standIn)
       if (token !== this.buildToken) return // unit changed mid-load
       this.mountPiece(obj, p)
       obj.visible = !p.removed

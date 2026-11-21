@@ -5,8 +5,15 @@ import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
 describe('what each quality tier draws (session 31)', () => {
-  test('Lite: no shadow maps at all, two lamps in the pool, no corner shading', () =>
-    expect(TIERS.lite).toMatchObject({ sun: 0, lamps: 2, lampShadows: 0, ao: false }))
+  test('Lite: no shadow maps at all, no lamp light in the shader (every lamp baked into the rooms), no corner shading', () =>
+    expect(TIERS.lite).toMatchObject({ sun: 0, lamps: 0, lampShadows: 0, ao: false, bake: true }))
+  test('the furniture: High the scans in 8 m cells; Low and Lite stand-ins (Lite the lighter) in one batch per material for the flat', () => {
+    expect([TIERS.high.standIn, TIERS.high.cell]).toEqual([0, 8])
+    expect(TIERS.lite.standIn).toBeGreaterThan(0)
+    expect(TIERS.lite.standIn).toBeLessThan(TIERS.low.standIn)
+    expect([TIERS.low.cell, TIERS.lite.cell]).toEqual([Infinity, Infinity])
+    expect([TIERS.high.bake, TIERS.low.bake]).toEqual([false, false])
+  })
   test('Low: the sun’s 1024 shadow map only (no lamp shadows), four lamps', () => expect(TIERS.low).toMatchObject({ sun: 1024, lamps: 4, lampShadows: 0, ao: false }))
   test('High as before: 2048 sun, twelve lamps, three casting, corner shading', () => expect(TIERS.high).toMatchObject({ sun: 2048, lamps: 12, lampShadows: 3, ao: true }))
   test('scanned plants and live mirrors on High only; pictures at most 512 px on Lite, 1024 on Low, the chip’s own on High', () => {

@@ -53,8 +53,8 @@ function pbr(textureId: string, o: PbrOpt = {}): THREE.MeshStandardMaterial {
         })
         .catch(() => {})
     slot('map', set.albedo, true)
-    slot('roughnessMap', set.roughness)
-    if (!lite.on) slot('normalMap', set.normal) // Lite: colour and roughness only (three/materials.ts lite)
+    if (!lite.on) slot('roughnessMap', set.roughness) // Lite: the colour picture only (three/materials.ts lite)
+    if (!lite.on) slot('normalMap', set.normal)
     if (!lite.on) slot('aoMap', set.ao)
   }
   matCache.set(key, m)

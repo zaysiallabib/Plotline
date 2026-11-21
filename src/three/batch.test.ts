@@ -77,3 +77,15 @@ describe('batch', () => {
     expect(piece.layers.mask).toBe(1)
   })
 })
+
+describe('the panes join a batch (session 31 perf: a flat’s 20 windows were 20 draws a frame)', () => {
+  test('glass marked to merge becomes one mesh; other see-through things stay as they are', () => {
+    const glass = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.3 })
+    glass.userData.merge = true
+    const sheer = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.5 })
+    const g = new THREE.Group().add(box(glass, 0), box(glass, 2), box(sheer, 4))
+    const out = batch(g, Infinity)
+    expect(out.map((m) => m.material)).toEqual([glass])
+    expect(tris(out[0])).toBe(24)
+  })
+})

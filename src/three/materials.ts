@@ -48,9 +48,9 @@ export function setMaxAnisotropy(n: number): void {
 
 /**
  * Lite (render.ts Quality, set by PlotlineScene; procedural.ts re-exports it): the models' pictures are decoded at half
- * size, the street is plain boxes (context.ts), and (session 31) a texture set gives its colour and roughness only — no
- * relief (normal) or ambient-occlusion maps: 28 of Lite's 96 textures on type-a, for a few % of a pixel-bound frame
- * (procedural.ts pbr and furniture.ts's models follow it).
+ * size, the street is plain boxes (context.ts), and (session 31) a texture set gives its colour picture only — no relief
+ * (normal), ambient-occlusion or roughness / metal pictures, their numbers instead: fewer pictures and one material program
+ * where there were four (procedural.ts pbr and furniture.ts's models follow it).
  */
 export const lite = { on: false }
 /**
@@ -158,7 +158,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
     } else {
       const mat = m
       const apply = (slot: 'map' | 'normalMap' | 'roughnessMap' | 'aoMap', url: string | undefined, srgb = false) => {
-        if (!url || (lite.on && (slot === 'normalMap' || slot === 'aoMap'))) return
+        if (!url || (lite.on && slot !== 'map')) return
         texture(url, set.repeatM, srgb, set.repeatYM)
           .then((t) => {
             mat[slot] = t

@@ -76,11 +76,20 @@ zone lines and walls under `LOW_WALL_M` = 1.2 m; the core in no flat), `validate
   a scan's glass is made plain glass at load (`furniture.ts plainGlass`).
 - **Quality tiers** (`render.ts` `TIERS`, picked in `src/viewer/quality.ts`):
 
-  | | sun shadow | lamps lit | lamp shadows | corner shading | rests when still | pictures |
-  |---|---|---|---|---|---|---|
-  | High | 2048 px | 12 | 3 | yes | no | full |
-  | Low | 1024 px | 4 | 0 | no | yes | ≤ 1024 px |
-  | Lite | none indoors | 2 | 0 | no | yes | ≤ 512 px |
+  | | sun shadow | lamps lit | lamp shadows | corner shading | rests when still | pictures | scanned pieces |
+  |---|---|---|---|---|---|---|---|
+  | High | 2048 px | 12 | 3 | yes | no | full | the scans, in 8 m cells |
+  | Low | 1024 px | 4 | 0 | no | yes | ≤ 1024 px | stand-ins ≈ 4 000 triangles, one batch a material |
+  | Lite | none indoors | all, baked | 0 | no | yes | ≤ 512 px, colour only | stand-ins ≈ 1 500 triangles, one batch a material |
+
+  Lite's lamps are no lights at all: `daylight.ts` `setLampDirect` bakes each lamp's light (three's spot light, worked
+  out per atlas texel) into a second atlas the room surfaces and pieces read; Edit furniture bakes it again. Stand-ins:
+  `furniture.ts` `standIn` (meshoptimizer through three's SimplifyModifier, once per model in the page; a code-built piece
+  each time it is built). Lite's models keep their colour picture only and a scan's physical material becomes a standard
+  one (`colourOnly`); every flat's window panes are one batch (`batch.ts`, `userData.merge`). The Building
+  view's rooms behind the glass use stand-ins of ≈ 500 triangles on every tier and take none of the walked flat's lamp
+  lights (`interiors.ts` `noSpots`). `?stats=1` / ⋯ → How fast is it here? reads `PlotlineScene.stats`.
+  Why and the numbers: `Docs/PERFORMANCE.md`.
 
   A slow device steps down once by itself; lost graphics fall back to Lite; no WebGL 2 shows the plan instead.
 - Daylight is measured once per room (`daylight.ts`): brighter by the windows, darker deep inside, darker facing a
