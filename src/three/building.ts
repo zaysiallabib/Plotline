@@ -28,6 +28,8 @@ import { WATER, meterUVs } from './openings'
 
 /** the traced flats' walls are 3.0 m: the plate fills the storey above them */
 const WALL_M = 3
+/** the roof's parapet over the top floor's outer walls (no traced rooftop) */
+const PARAPET_M = 1.1
 /** Look's slab under the current flat (render.ts SLAB_M) */
 const LOOK_SLAB = 0.15
 /**
@@ -356,7 +358,7 @@ export class Building extends THREE.Group {
           // parapet: the walls with open air on one side (outside every flat of the floor below), 1.1 m, no openings
           const others = standIns.filter((o) => o !== s)
           const outside = (p: Pt) => !core.roomAt(p, rooms, u) && !others.some((o) => this.inFlat(o, { x: p.x + this.shift(s).x - this.shift(o).x, y: p.y + this.shift(s).y - this.shift(o).y }))
-          const walls = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0).map((w) => ({ ...w, heightM: 1.1, openings: [] }))
+          const walls = u.walls.filter((w) => outerSide(w, u, (p) => !outside(p)) !== 0).map((w) => ({ ...w, heightM: PARAPET_M, openings: [] }))
           const graph = { vertices: u.vertices, walls }
           put(EXTERIOR_PLASTER, ...walls.map((w) => wallGeometry(w, graph)).filter((g) => !!g).map(at))
           continue
@@ -584,7 +586,7 @@ export class Building extends THREE.Group {
   }
 
   /**
-   * Thin skins just outside floor k's outer walls (stems: what stands on it), in the tower's frame: `band` — accent bands on
+   * Thin skins just outside the outer walls of what stands on floor k (stems; outer to all of them), in the tower's frame: `band` — accent bands on
    * the slab edges above and below its flats (the picked floor's mark); else the whole storey from the slab under it to the
    * one over it — over a balcony's parapet too, so a balcony front washes as a wall does (the hover's wash); a level's walls
    * to their own height (a rooftop's parapet), its kerbs and zone lines have no face.
@@ -592,20 +594,24 @@ export class Building extends THREE.Group {
   private skins(k: number, stems: string[], band: boolean): THREE.BufferGeometry[] {
     const PLATE_M = this.t.FLOOR_M - WALL_M
     const y = this.levelOf(k)
+    const roof = k > topFloor(this.t) // the top floor's flats standing in for the roof: the slab and its parapet
     const geos: THREE.BufferGeometry[] = []
     for (const s of stems) {
       const { unit: u } = this.t.FLATS[s]
       const rooms = this.roomsOf(s)
       const level = this.t.LEVELS?.[s] !== undefined
+      const sh = this.shift(s)
+      // outside means outside all of them: no skin along the wall two flats share (it would cross the roof)
+      const inside = (p: Pt) => !!core.roomAt(p, rooms, u) || stems.some((o) => o !== s && this.inFlat(o, { x: p.x + sh.x - this.shift(o).x, y: p.y + sh.y - this.shift(o).y }))
       for (const w of u.walls) {
         if (!band && !(w.heightM >= (level ? 0.9 : 0.01))) continue // a zone line; on a level a kerb too
-        const side = outerSide(w, u, (p) => !!core.roomAt(p, rooms, u))
+        const side = outerSide(w, u, inside)
         if (!side) continue
         const L = core.wallFrame(w, u.vertices).lengthM
         const t = w.thicknessM / 2
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         if (band) for (const v of [-PLATE_M, WALL_M]) geos.push(at(alongWall(w, u, -t, L + t, v, v + PLATE_M, side * t, side * (t + 0.03))))
-        else geos.push(at(alongWall(w, u, -t, L + t, level ? -UNDER_LEVEL_M : -PLATE_M, level ? Math.min(w.heightM, this.t.FLOOR_M) : WALL_M, side * (t + 0.02), side * (t + 0.025))))
+        else geos.push(at(alongWall(w, u, -t, L + t, level ? -UNDER_LEVEL_M : -PLATE_M, level ? Math.min(w.heightM, this.t.FLOOR_M) : roof ? PARAPET_M : WALL_M, side * (t + 0.02), side * (t + 0.025))))
       }
     }
     return geos
