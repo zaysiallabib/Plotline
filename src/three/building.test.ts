@@ -627,3 +627,16 @@ describe('the Building view: each floor as staff left it (session 31 glow, with 
     }
   })
 })
+
+describe('one draw of the scene a frame (session 31 glow)', () => {
+  test('a scanned model’s see-through glass (the wall clock’s face) is plain glass: nothing makes three draw everything twice', async () => {
+    const THREE = await import('three')
+    const { plainGlass } = await import('./furniture')
+    const glass = new THREE.MeshPhysicalMaterial({ transmission: 1, opacity: 1 })
+    const wood = new THREE.MeshPhysicalMaterial({ color: '#8a6a4a' })
+    const clock = new THREE.Group().add(new THREE.Mesh(new THREE.PlaneGeometry(), glass), new THREE.Mesh(new THREE.BoxGeometry(), wood))
+    plainGlass(clock)
+    expect([glass.transmission, glass.transparent, glass.opacity <= 0.15, glass.depthWrite]).toEqual([0, true, true, false])
+    expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
+  })
+})
