@@ -108,6 +108,10 @@ a drawing; an architectural IFC before a structural or services one) and the oth
   the printed room sizes, else asks for the scale (S). (A page's tables can fool the dimensions: twindo's room pages
   measured 1 : 31–64 for their printed 1 : 16 / 1 : 24.)
 - A room's name is a text in it; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18", "W3") are not.
+- A page with no scale printed as words (no dimension, scale note or room size as text: a Dhaka brochure's plan page
+  whose words are all outlines — Akter Anandita page 9, 232 412 lines) is not read as lines at all: read as metres they
+  make no walls, and reading them took minutes. It opens as the plan picture at once (0.35 s), where Auto-trace reads
+  its names.
 
 **SVG.**
 - The web's drawing format (Illustrator, Inkscape, LibreCAD, QCAD; a CAD drawing often reaches a marketing team as SVG

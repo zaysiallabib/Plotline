@@ -9,6 +9,7 @@
  */
 import { deriveRooms, type Pt } from '../core'
 import { buildPlan, penRoles, quarterArc, sheetScale, type ArcPrim, type Drawing, type Fills, type Seg, type TextPrim } from './plan2d'
+import { emptyUnit } from '../studio/model'
 import type { ImportResult } from './types'
 
 const CHORDS = 8
@@ -193,7 +194,14 @@ export async function importPdf(src: ArrayBuffer | PdfDoc, name: string, pageNo 
   const notes: string[] = [`PDF: ${pages} page(s); page ${pageNo} read: ${segs.length} lines, ${texts.length} texts${pictures ? `, ${pictures} picture(s) ignored` : ''}.`]
   const { scale, note } = sheetScale(segs, texts, (ptPerM) => ` — 1 : ${(1 / (ptPerM * PT)).toFixed(0)} on the sheet`, PT)
   notes.push(note)
-  const pens = penRoles(segs, fills, /not set/.test(note) ? null : scale)
+  if (/not set/.test(note)) {
+    // no scale on the page (no dimension, scale or room size printed as words: a brochure page whose words are drawn as
+    // outlines): its lines read as metres make no walls — and a page of outlined words is tens of thousands of them (a
+    // Dhaka brochure's plan page: minutes). It is a picture to trace; nothing more is read
+    notes.push('Its lines were not read: with no scale printed as words on the page they make no walls — trace it as a picture (S, then Auto-trace).')
+    return { format: 'pdf', storeys: [{ name: 'Floor', elevationM: 0, unit: { ...emptyUnit(), name: name.replace(/\.pdf$/i, '') } }], notes, unitScale: 1, origin: { x: 0, y: 0 } }
+  }
+  const pens = penRoles(segs, fills, scale)
   const drawing: Drawing = { segs: segs.map((g) => ({ ...g, layer: pens.walls.has(g.layer) ? 'WALL' : '' })), arcs, texts, loops: [], scale }
   const plan = buildPlan(drawing, name.replace(/\.pdf$/i, ''))
   notes.push(pens.walls.size ? `Layers: a PDF has none — its lines were sorted by pen: the heaviest (${pens.words}) taken as walls, the rest as doors, windows and the like.` : 'Layers: a PDF has none and its lines are all one pen — walls are any parallel line pair 5–60 cm apart; a door is a quarter-circle swing drawn as a curve.')

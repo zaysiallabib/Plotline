@@ -43,6 +43,24 @@ describe('pdf fixture', () => {
     const pdf = `%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n`
     await expect(importPdf(new TextEncoder().encode(pdf).buffer as ArrayBuffer, 'scan.pdf')).rejects.toThrow('This PDF is a picture')
   })
+
+  test('a page with lines but no scale printed as words (a brochure page whose words are outlines): its lines are not read', async () => {
+    const ink = '0 0 m 400 0 l 400 300 l 0 300 l h S 10 10 m 390 10 l S'
+    const pdf = `%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 500 500] /Contents 4 0 R >> endobj
+4 0 obj << /Length ${ink.length} >> stream
+${ink}
+endstream endobj
+trailer << /Root 1 0 R >>
+%%EOF
+`
+    const r = await importPdf(new TextEncoder().encode(pdf).buffer as ArrayBuffer, 'brochure.pdf')
+    expect(r.notes.some((n) => /lines were not read/.test(n))).toBe(true)
+    expect(r.storeys[0].unit.walls).toEqual([])
+    expect(readsAsPlan(r)).toBe(false) // the Studio opens it as the plan picture, with no "Read its lines instead"
+  })
 })
 
 const SAMPLES = 'E:/dev/ALTERNATIVE FORMAT TEST/samples/pdf-vector'
