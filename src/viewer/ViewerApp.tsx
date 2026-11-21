@@ -569,6 +569,8 @@ function Viewer({ first }: { first: Shown }) {
   /** an automatic quality step (QualityChip): after a reload, or Lite's shadows going off */
   const [qNote, setQNote] = useState(SWITCHED)
   const [loaded, setLoaded] = useState(0)
+  /** the 3D can show its first frame with nothing left to make (PlotlineScene.drawable) */
+  const [drawable, setDrawable] = useState(false)
   const [entered, setEntered] = useState(false)
   /** a finger in use: no "press Enter", "tap" for "click" (Hud useFinger) */
   const finger = useFinger()
@@ -799,9 +801,10 @@ function Viewer({ first }: { first: Shown }) {
       })
       const k = rooms.filter((r) => (need.get(r.id) ?? []).every((id) => seen.has(id))).length
       setLoaded(k)
-      if (k === rooms.length) clearInterval(poll)
+      setDrawable(scene.drawable)
+      if (k === rooms.length && scene.drawable) clearInterval(poll)
     }, 150)
-    const cap = setTimeout(() => setLoaded(rooms.length), 20000) // a stuck download must not block Enter
+    const cap = setTimeout(() => (setLoaded(rooms.length), setDrawable(true)), 20000) // a stuck download must not block Enter
     return () => {
       clearInterval(poll)
       clearTimeout(cap)
@@ -823,13 +826,14 @@ function Viewer({ first }: { first: Shown }) {
     }
   }, [scene, rooms])
 
-  const ready = loaded >= rooms.length
+  const ready = loaded >= rooms.length && drawable
   const readyRef = useRef(ready)
   readyRef.current = ready
 
   const enter = () => {
     if (!scene || !ready) return
     setEntered(true)
+    scene.unveil()
     const e = entrySpawn(shown(), rooms, innerWidth < innerHeight) // an upright phone looks down the room
     if (e) spawn(scene, e.p, e.face)
     if (params.get('view') === 'dollhouse') go('orbit')
@@ -1404,7 +1408,7 @@ function Viewer({ first }: { first: Shown }) {
   }
   return (
     <div className={`viewer${commenting ? ' commenting' : ''}`}>
-      <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}`} />
+      <canvas ref={canvasRef} className={`scene${entered ? '' : ' blurred'}${drawable ? '' : ' waiting'}`} />
 
       {!entered && (
         <div className="load">

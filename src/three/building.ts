@@ -861,6 +861,10 @@ export class Building extends THREE.Group {
     if (this.seen) this.work = this.work.catch((e: unknown) => console.warn('[plotline] tower', e)).finally(() => void (this.progress.furnished ||= performance.now())) // (a failed piece: the tower is no longer busy)
   }
   private work: Promise<void> = Promise.resolve()
+  /** the rooms, pieces and furniture start once `p` settles (PlotlineScene: a page's flat's own furniture in first) */
+  after(p: Promise<unknown>): void {
+    this.work = Promise.all([this.work, p.catch(() => {})]).then(() => {})
+  }
   /**
    * Every other flat's rooms and (not on Lite) the levels' pieces in now: a stair's floor getting ready shows them with it,
    * made ready to draw (PlotlineScene.arrive warm), not in a hitch after — a first visit's trees compiling took 0.4–0.9 s.

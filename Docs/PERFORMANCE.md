@@ -260,3 +260,38 @@ corner shading), so they stay light copies too.
   here, less in Chrome.
 - **None of this was measured on the founder's laptop.** Every number is this PC's card with other runs sharing it. The
   stats card (⋯ → How fast is it here?) is how we get his.
+
+## 6. The first visit: the wait at the start screen (session 31, ready lane)
+
+The founder's wait was the start screen: on High the Building view of Sheltech A showed up 13–18 s after the address was
+opened, cold or warm (a second visit was no faster), Lite 5 s. Timed in the page (`performance.measure`) it split as:
+
+- **Firefox making shader programs: about 12 of the 18 s.** Firefox makes each new program on its graphics process, one
+  after another — about 0.3 s for a surface lit by the flat's 12 lamps (0.1 s without them: the lamps are two thirds of
+  it), 0.1 s for the tower's — and the page stands still until a program it draws is made. The 3D was drawn behind the
+  start screen as it came in, so every program was waited for the moment it first appeared, and many were made twice:
+  a surface whose pictures (colour, relief, roughness, shading) came in one by one was a new program at each step, and
+  everything drawn before the sky's light came in was made again after it. High's Building view on Sheltech held 74–79
+  programs, 24 of them lit by the lamps.
+- **The tower's other flats' rooms built alongside the flat's own furniture** (8 ms of every frame for ~8 s on Sheltech):
+  the flat's models waited behind it — one potted plant's file took 7.5 s to start reading.
+- The flat's own models one after another (each downloaded and read before the next was asked for).
+- The rest is small: the flat built 0.5 s, the tower 0.4 s, the sky's light 0.5 s once its picture is in.
+
+What changed:
+
+1. **Nothing is drawn under the start screen** until it can be drawn without waiting: every quarter second the programs of
+   everything built so far are asked for (none waited on), and once the flat's furniture is in and no program has been new
+   for half a second, the frame is drawn once behind the screen; then the room fades in faintly behind the words and
+   Enter turns blue. The first frame shown has nothing left to make.
+2. **One program for every lit surface**: a surface without a colour, relief, roughness, metal or shading picture of its
+   own gets a blank one (white, or a flat relief) that changes nothing on screen — the shots before and after differ by no
+   more than two runs of the same build do — so surfaces no longer split into a program per mix of pictures, and a picture
+   arriving later changes no program. Lite keeps its colour picture only. Sheltech's Building view on High: 24 → 17 lit
+   programs; a .glb download leaves the blanks out.
+3. **The sky's light has a stand-in** of its exact kind and size until the HDRI is in, so the programs made before it are
+   the ones drawn after (`lightMapHeight`; a test reads the HDRI's width from the file).
+4. **The flat's own furniture comes first**: the tower's other flats' rooms and the grounds' trees start once it is in,
+   and all the flat's models are asked for at once (each piece still goes in nearest first).
+5. On Lite the tower's walls and the flat's share their materials (Lite has no lamp in its shader: the tower's "no lamps"
+   copy was the same program twice).

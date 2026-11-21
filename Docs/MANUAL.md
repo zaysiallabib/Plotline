@@ -99,9 +99,9 @@ and light.
 **The look.** Light frosted stone with dark text over the 3D, thin lines instead of boxes, small spaced capitals for
 labels, and one deep blue for what is picked or on.
 
-**Start screen.** A light stone screen with the room faintly behind it: the project's name in small capitals, the flat's
-name large in a serif letter, its floor and size. A thin dark line fills as the rooms load ("12 of 27 rooms ready").
-Then the blue **Enter** (or the Enter key) takes you in.
+**Start screen.** A light stone screen: the project's name in small capitals, the flat's name large in a serif letter, its
+floor and size. A thin dark line fills as the rooms load ("12 of 27 rooms ready"); when the 3D is ready to show, the room
+fades in faintly behind the words and the blue **Enter** (or the Enter key) takes you in.
 
 - You stand just inside the flat's front door, looking in. A drawing with no door yet puts you in its living room (or
   its first room), never facing a bare wall nor with an AC cut by the top of the picture. A whole floor (both flats and

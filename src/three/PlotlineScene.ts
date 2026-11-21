@@ -33,9 +33,9 @@ import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
 import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
-import { buildFurniture } from './furniture'
+import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, PAINT, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
@@ -171,6 +171,15 @@ const WARM_MS = 1000
 const LOST_FRAME_MS = 2000
 /** a group is batched again (batch.ts) once nothing in it has changed for this long */
 const BATCH_MS = 400
+/**
+ * Firefox makes each new shader program on its graphics process, one after another (session 31, GTX 980: 0.1 s for the
+ * tower's, 0.3 s for a surface lit by the flat's 12 lamps), and the page waits only when one is first drawn (no
+ * KHR_parallel_shader_compile to ask whether it is done). Under the load screen (prepare) every program is asked for every
+ * PREP_MS as the flat comes in — made while the page is busy with its models and the tower — and the frame is drawn once
+ * behind the screen when none has been new for SETTLE_MS.
+ */
+const PREP_MS = 250
+const SETTLE_MS = 500
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000
@@ -230,6 +239,16 @@ export function evenBearings(t: THREE.DataTexture): void {
     }
   }
 }
+
+/** The interior HDRI's width (public/assets/hdri/interior.hdr: engine.test reads it from the file) and Lite's 1/k of it (shrinkHdr). */
+export const HDRI_WIDTH = 1024
+const LITE_HDR_K = 4
+/**
+ * How tall three makes the light map of an equirect HDRI `width` wide (PMREMGenerator: a cube 2^⌊log2(width / 4)⌋ a side,
+ * four of them high) — every lit program is keyed by it. Under the load screen a blank of that kind and size stands in
+ * until the HDRI is in (prepare makes the programs meanwhile); a different size only means those are made twice.
+ */
+export const lightMapHeight = (width: number): number => 4 * 2 ** Math.floor(Math.log2(width / 4))
 
 /**
  * Lite (session 31): the HDRI at 1/k of its width and height (a k × k box mean), so its PMREM is k× smaller — the 1k
@@ -480,6 +499,14 @@ export class PlotlineScene {
    * and the stair core under it drawn, and walking down that flight is the way down. Set BEFORE setUnit. Empty: none.
    */
   down: Id[] = []
+  /** under the load screen (until unveil): nothing drawn, its programs made ahead (prepare) */
+  private veiled = true
+  private prepAt = 0
+  /** when a program was last new (prepare), and when the frame was last drawn behind the load screen */
+  private grewAt = 0
+  private rehearsedAt = -1
+  /** the sky's light and reflections in (loadEnvironment): the frame behind the load screen waits for it */
+  private envIn = false
   /** a stair being taken (arrive): the next floor builds hidden while the one he leaves (`leaving`) stays drawn; he looks, not walks */
   private holding = false
   private leaving: THREE.Group | null = null
@@ -518,6 +545,8 @@ export class PlotlineScene {
     // tone mapping, shadows, hemisphere, post, exterior: see render.ts
     this.look = new Look(this.renderer, this.scene, this.camera, this.sun, opts.quality ?? 'high')
     this.scene.add(this.sun, this.sun.target)
+    const h = lightMapHeight(HDRI_WIDTH / (isLite ? LITE_HDR_K : 1))
+    this.scene.environment = Object.assign(new THREE.DataTexture(null, 3 * Math.max(h / 4, 112), h), { mapping: THREE.CubeUVReflectionMapping }) // (never drawn: the frame waits for the HDRI)
     void this.loadEnvironment()
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
     canvas.addEventListener('webglcontextlost', this.onContextLost)
@@ -641,7 +670,11 @@ export class PlotlineScene {
     yield
     // the rest of the building round it, a floor a step, its street the street (a stair's floor: shown with it, arrive)
     this.building = tower ?? Building.for(unit, this.tier)
+    let flatIn = (): void => {}
     if (this.building && !tower) {
+      // a page's first floor: its tower's other flats' rooms and its grounds' pieces come once this flat's furniture is in —
+      // built alongside (8 ms a frame for ~8 s on Sheltech) they held its models' loading back, and the load screen with it
+      if (!this.holding) this.building.after(new Promise<void>((ok) => (flatIn = ok)))
       this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
       this.building.visible = false
       this.scene.add(this.building)
@@ -675,6 +708,7 @@ export class PlotlineScene {
     this.stairAsked = 0 // a floor reached by the stair (the same scene): its own stair can be taken again
     this.setMode(this.mode)
     this.furnished = this.loadFurniture(unit)
+    void this.furnished.finally(flatIn)
   }
 
   /**
@@ -1051,6 +1085,37 @@ export class PlotlineScene {
     this.wake()
   }
 
+  /**
+   * Under the load screen (session 31 ready lane: drawing the 3D behind it as it came in made every program in the moment it
+   * was first drawn — 12 of Sheltech's 18 s on High): nothing drawn; every PREP_MS the programs of everything built so far
+   * are asked for (Look.compile, none waited on) — the whole scene, hidden floors and other views' parts too, so the first
+   * switch to another view finds them made — and once the flat's furniture is in and no program has been new for SETTLE_MS,
+   * the frame is drawn once behind the screen (the shadow maps' and the corner shading's programs, the pictures and buffers
+   * sent): the first frame shown has nothing left to make.
+   */
+  private prepare(now: number): void {
+    if (now < this.prepAt) return
+    this.prepAt = now + PREP_MS
+    const n = this.renderer.info.programs?.length ?? 0
+    this.look.compile(this.scene)
+    if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
+    if (!this.envIn || !this.ready || !this.loadedAt || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
+    this.renderer.info.reset()
+    this.look.render()
+    this.rehearsedAt = performance.now()
+  }
+
+  /** The load screen may go (ViewerApp): the flat's furniture in, the frame drawn behind it with every program made (prepare). */
+  get drawable(): boolean {
+    return !this.veiled || this.rehearsedAt > this.grewAt
+  }
+
+  /** The load screen went: drawn from now on. */
+  unveil(): void {
+    this.veiled = false
+    this.wake()
+  }
+
   /** The flat built and nothing arrived for `quietMs` (its furniture and pictures are in), or `maxMs` passed. */
   async settled(quietMs = 1500, maxMs = 60_000): Promise<void> {
     const t0 = performance.now()
@@ -1075,6 +1140,8 @@ export class PlotlineScene {
     // (six copies of one marble's, ~7 MB on type-a); with metalness 0 that picture's blue (metalness) is never read, so the
     // roughness picture goes as it is, once — lent as the metalness map for the export only
     const lent: THREE.MeshStandardMaterial[] = []
+    // a blank picture (materials.ts samePictures: it only keeps programs shared) is no picture in the file
+    const blanks: [THREE.MeshStandardMaterial, (typeof PICTURES)[number], THREE.Texture][] = []
     // where each surface and piece reads the daylight atlas (dayUv) means nothing outside Plotline: left out of the file
     const day: [THREE.BufferGeometry, THREE.BufferAttribute][] = []
     for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
@@ -1084,6 +1151,7 @@ export class PlotlineScene {
         if (geo && a) (day.push([geo, a]), geo.deleteAttribute('dayUv'))
         for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
           const st = m as THREE.MeshStandardMaterial
+          for (const k of PICTURES) if (isBlank(st[k])) (blanks.push([st, k, st[k]!]), (st[k] = null))
           if (st.roughnessMap && !st.metalnessMap && st.metalness === 0) lent.push(Object.assign(st, { metalnessMap: st.roughnessMap }))
           if (m.transparent || m.alphaTest > 0) continue
           for (const v of Object.values(m)) if (v instanceof THREE.Texture && !v.userData.mimeType && v.image) (v.userData.mimeType = 'image/jpeg'), marked.push(v)
@@ -1097,6 +1165,7 @@ export class PlotlineScene {
       this.ceilingGroup.visible = ceilings
       for (const t of marked) delete t.userData.mimeType
       for (const m of lent) m.metalnessMap = null
+      for (const [m, k, t] of blanks) m[k] = t
       for (const [geo, a] of day) geo.setAttribute('dayUv', a)
       this.exporting = false
       this.rebatch('static')
@@ -1885,6 +1954,7 @@ export class PlotlineScene {
     const byDistance = [...unit.furniture].sort(
       (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
     )
+    void preloadModels(unit.furniture) // every model on its way at once; each piece still goes in nearest first
     let t = performance.now()
     for (const p of byDistance) {
       const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p), TIERS[this.tier].standIn)
@@ -1923,11 +1993,13 @@ export class PlotlineScene {
     const isLite = this.tier === 'lite'
     const [hdr, sky] = await Promise.all([load(HDRI.interior), isLite ? null : load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
+    const standIn = this.scene.environment
     const pmrem = new THREE.PMREMGenerator(this.renderer)
-    if (hdr && isLite) shrinkHdr(hdr, 4)
+    if (hdr && isLite) shrinkHdr(hdr, LITE_HDR_K)
     if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
+    if (standIn !== this.scene.environment) standIn?.dispose()
     if (sky) {
       clampSun(sky)
       const env = pmrem.fromEquirectangular(sky).texture
@@ -1937,6 +2009,7 @@ export class PlotlineScene {
       this.look.setSky(sky) // windows + dollhouse see a real sky; lighting stays on the interior HDRI
     }
     pmrem.dispose()
+    this.envIn = true
     this.wake()
   }
 
@@ -2379,6 +2452,7 @@ export class PlotlineScene {
     this.wind?.update(dt)
     if (this.hand && this.mode !== 'building') this.aimHand() // the piece in hand stays under the crosshair / pointer as he walks and looks
     const now = performance.now()
+    if (this.veiled) return this.prepare(now)
     const pose = this.poseKey()
     const moved = pose !== this.lastPose
     this.lastPose = pose

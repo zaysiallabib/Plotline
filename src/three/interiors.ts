@@ -23,7 +23,7 @@ import { textureSet } from '../furnish/textures'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { KERB_M, floorGeometry, liftWall, liftedWall, roomCeiling, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
-import { fallbackColor, noSpots, resolveFinishRef, texture } from './materials'
+import { fallbackColor, isBlank, noSpots, resolveFinishRef, texture } from './materials'
 
 /** the sky's light inside a room as seen from the street, × the street's (the eye outside is adapted to the street) */
 export const DAY_INSIDE = 0.35
@@ -248,7 +248,7 @@ function bake(m: THREE.Mesh, room: number, out: THREE.BufferGeometry[]): void {
       index.push(n)
     }
     if (flip) for (let i = 0; i + 2 < index.length; i += 3) [index[i + 1], index[i + 2]] = [index[i + 2], index[i + 1]]
-    const map = mat.map
+    const map = isBlank(mat.map) ? null : mat.map // (a blank multiplies by 1: materials.ts samePictures)
     const pix = map ? pixels(map) : null
     if (map?.matrixAutoUpdate) map.updateMatrix()
     const uv = pix && map ? g.getAttribute(map.channel ? `uv${map.channel}` : 'uv') : undefined

@@ -15,9 +15,10 @@ import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits 
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
-import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
+import { EDGE_PLASTER, PICTURES, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, isClick, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
+import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -466,6 +467,48 @@ describe('textures: one picture per url, Lite’s colour-only sets', () => {
     const g = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), m))
     colourOnly(g)
     expect([m.map, m.roughnessMap, m.normalMap, m.aoMap]).toEqual([map, null, null, null])
+  })
+})
+
+describe('one program for every lit surface (session 31 ready lane: the first frame waits for each program Firefox makes)', () => {
+  // what three keys a standard material's program by, of the pictures: which of them it has
+  const has = (m: THREE.MeshStandardMaterial) => PICTURES.map((k) => !!m[k])
+  test('a flat colour, a textured finish and a scan with its own pictures all have the five: one program, not one per mix', () => {
+    const plain = materialFor({ kind: 'color', color: '#c0ffee' })
+    const scan = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), roughnessMap: new THREE.Texture() })
+    samePictures(scan)
+    for (const m of [plain, scan]) expect(has(m)).toEqual([true, true, true, true, true])
+    expect(PICTURES.filter((k) => isBlank(plain[k]))).toEqual(PICTURES) // nothing of its own: every one blank
+    expect(PICTURES.filter((k) => isBlank(scan[k]))).toEqual(['normalMap', 'metalnessMap', 'aoMap']) // its own two kept
+  })
+  test('the blanks change nothing: white multiplies by 1, the flat relief is (0, 0, 1) exactly', () => {
+    const m = materialFor({ kind: 'color', color: '#123456' })
+    const px = (t: THREE.Texture | null) => Array.from((t!.image as { data: Float32Array }).data)
+    expect(px(m.map)).toEqual([1, 1, 1, 1])
+    expect(px(m.normalMap).slice(0, 3).map((v) => v * 2 - 1)).toEqual([0, 0, 1])
+    expect([m.color.getHexString(), m.roughness, m.metalness]).toEqual(['123456', 0.85, 0])
+  })
+  test('Lite: the colour picture only (its only kind)', () => {
+    lite.on = true
+    try {
+      const m = new THREE.MeshStandardMaterial()
+      samePictures(m)
+      expect(has(m)).toEqual([true, false, false, false, false])
+    } finally {
+      lite.on = false
+    }
+  })
+})
+
+describe('the light map stand-in under the load screen', () => {
+  test('three makes a cube 2^⌊log2(width / 4)⌋ a side, four high: 1024 for the 1k HDRI, 256 for Lite’s quarter', () => {
+    expect([lightMapHeight(1024), lightMapHeight(256), lightMapHeight(2048), lightMapHeight(1500)]).toEqual([1024, 256, 2048, 1024])
+  })
+  test('the HDRIs on disk are the width the stand-in is made for (a new file: change HDRI_WIDTH, or the programs are made twice)', () => {
+    for (const f of ['interior', 'sky']) {
+      const head = readFileSync(`public/assets/hdri/${f}.hdr`).subarray(0, 300).toString('latin1')
+      expect(Number(/\+X (\d+)/.exec(head)?.[1])).toBe(HDRI_WIDTH)
+    }
   })
 })
 

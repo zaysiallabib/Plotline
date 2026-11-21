@@ -61,6 +61,31 @@ export const lite = { on: false }
  */
 export const lean = { on: false }
 
+/** A 1 × 1 picture of one value (floats: 0.5 is exactly a flat relief). */
+function blank(r: number, g: number, b: number): THREE.DataTexture {
+  const t = new THREE.DataTexture(new Float32Array([r, g, b, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType)
+  t.needsUpdate = true
+  return t
+}
+/** samePictures' blanks: white multiplies a colour, roughness, metal or shading by 1; the flat relief is the surface's own normal */
+const BLANK = { white: blank(1, 1, 1), flat: blank(0.5, 0.5, 1) }
+export const isBlank = (t: unknown): boolean => t === BLANK.white || t === BLANK.flat
+export const PICTURES = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap'] as const
+
+/**
+ * Every lit surface and piece draws with the same set of pictures — colour, relief, roughness, metal, shading — a blank one
+ * where it has none of its own (Lite: the colour picture only, its only one): the shader programs no longer split by which
+ * pictures a surface happens to have, and a picture coming in later changes no program. Session 31 ready lane: Firefox makes
+ * a new program in 0.1–0.3 s and the first frame waits for every one of them — High's Building view on Sheltech had 24 lit
+ * programs; the blanks change nothing on screen (× 1, and the flat relief bends no normal). Once per material.
+ */
+export function samePictures(m: THREE.Material): void {
+  const s = m as THREE.MeshStandardMaterial
+  if (!s.isMeshStandardMaterial || s.userData.samePictures) return
+  s.userData.samePictures = true
+  for (const k of lite.on ? (['map'] as const) : PICTURES) if (!s[k]) (s[k] = k === 'normalMap' ? BLANK.flat : BLANK.white), (s.needsUpdate = true)
+}
+
 /**
  * One texture per (url, tile size), every one of a url sharing its picture: one download, one decode and one upload to
  * the graphics chip (three shares a Source across textures with the same sampling), whatever the tile size — the rooms
@@ -101,13 +126,11 @@ export function texture(url: string, repeatM: number, srgb: boolean, repeatYM = 
  */
 const MOTTLE = { url: '/assets/textures/concrete/roughness.jpg', tileM: 3.5, k: 1 }
 function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
-  texture(MOTTLE.url, 1, false)
-    .then((t) => {
-      mottleMap.value = t
-      m.defines = { ...m.defines, MOTTLE: MOTTLE.k.toFixed(2), MOTTLE_UV: (set.repeatM / MOTTLE.tileM).toFixed(4) }
-      m.needsUpdate = true
-    })
-    .catch(() => {}) // already warned; a plain wall
+  m.defines = { ...m.defines, MOTTLE: MOTTLE.k.toFixed(2), MOTTLE_UV: (set.repeatM / MOTTLE.tileM).toFixed(4) } // one program from the start: no picture yet reads as none
+  texture(MOTTLE.url, 1, false).then(
+    (t) => void (mottleMap.value = t),
+    () => {}, // already warned; a plain wall
+  )
 }
 
 /**
@@ -137,9 +160,11 @@ export function fallbackColor(textureId: string): string {
  * One shared material per ref. `edge`: its own copy pushed back in depth (polygon offset), for wall ends and tops that sit
  * edge-on against a face and must lose the depth tie; a clone of the plain one made before its maps load never gets them.
  * `daylit`: the room-surface variant (daylight.ts: indirect light × the unit's daylight atlas); its meshes carry `dayUv`.
- * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots).
+ * `outside`: the Building view's tower variant: none of the walked flat's lamps (noSpots) — on Lite, whose shader has no lamp
+ * at all, the plain material itself (one program for the flat's render and the tower's, not two).
  */
 export function materialFor(ref: MaterialRef, edge = false, daylit = false, outside = false): THREE.MeshStandardMaterial {
+  outside &&= !lite.on
   const key = JSON.stringify(ref) + (edge ? '|edge' : '') + (daylit ? '|day' : '') + (outside ? '|out' : '')
   const cached = matCache.get(key)
   if (cached) return cached
@@ -161,7 +186,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
         if (!url || (lite.on && slot !== 'map')) return
         texture(url, set.repeatM, srgb, set.repeatYM)
           .then((t) => {
-            mat[slot] = t
+            mat[slot] = t // in a blank's place (samePictures): the same program
             if (slot === 'map') mat.color.set(ref.tint ?? '#ffffff').multiply(new THREE.Color(set.tint ?? '#ffffff'))
             if (slot === 'roughnessMap') mat.roughness = 1
             mat.needsUpdate = true
@@ -177,6 +202,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
       if (daylit && set.id === 'plaster_white') m.userData.mapBias = PORE_BLUR
     }
   }
+  samePictures(m)
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
   if (daylit) daylitPatch(m)
   if (outside) {
