@@ -735,7 +735,7 @@ export class Building extends THREE.Group {
    * Lite; every flat's furniture by the walk's presets, nearest first (on Low shown on the storeys nearest the camera only:
    * update) — not on Lite, and only once the Building view has been opened: the walk starts as fast as before.
    */
-  private want(): void {
+  private want(all = true): void {
     const need = (k: keyof Building['started'], ok: boolean, run: () => Promise<void>) => {
       if (!ok || this.started[k]) return
       this.started[k] = true
@@ -743,10 +743,20 @@ export class Building extends THREE.Group {
     }
     need('rooms', true, () => this.furnishRooms())
     need('pieces', this.piecesShown, () => this.furnishPieces())
+    if (!all) return
     need('things', this.seen && this.tier !== 'lite', () => this.furnishThings())
     if (this.seen) this.work = this.work.catch((e: unknown) => console.warn('[plotline] tower', e)).finally(() => void (this.progress.furnished ||= performance.now())) // (a failed piece: the tower is no longer busy)
   }
   private work: Promise<void> = Promise.resolve()
+  /**
+   * Every other flat's rooms and (not on Lite) the levels' pieces in now: a stair's floor getting ready shows them with it,
+   * made ready to draw (PlotlineScene.arrive warm), not in a hitch after — a first visit's trees compiling took 0.4–0.9 s.
+   */
+  ready(): Promise<void> {
+    this.piecesShown = this.tier !== 'lite'
+    this.want(false)
+    return this.work.catch((e: unknown) => console.warn('[plotline] tower', e))
+  }
   private t0 = performance.now()
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
@@ -1040,6 +1050,11 @@ export class Building extends THREE.Group {
     const target = new THREE.Vector3(c.x, this.levelOf(k) + 1.5, c.z)
     const eye = new THREE.Vector3(1, 1, 1).normalize().multiplyScalar(1.25 * Math.hypot(size.x, size.z)).add(target)
     return { target, eye }
+  }
+
+  /** No more rooms or pieces: a stair was taken, this tower goes once the next floor shows (its work would only slow that floor's getting ready). */
+  halt(): void {
+    this.disposed = true
   }
 
   dispose(): void {

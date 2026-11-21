@@ -688,7 +688,8 @@ export class PlotlineScene {
     for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
     if (this.shell) g.add(this.shell)
     this.shell = null
-    this.leavingTower = this.building // stays round the floor he leaves until the new one shows
+    this.leavingTower = this.building // stays round the floor he leaves until the new one shows, as it is
+    this.leavingTower?.halt()
     this.building = null
     this.scene.add(g)
     this.holding = true
@@ -719,6 +720,8 @@ export class PlotlineScene {
       await frame()
     }
     this.unsettled.clear()
+    await (this.building as Building | null)?.ready() // its other flats' rooms and its grounds' pieces in before it shows (warm sends them too)
+    if (built !== this.buildToken) return
     await this.warm(built)
     if (built !== this.buildToken) return
     this.holding = false
