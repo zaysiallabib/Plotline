@@ -822,4 +822,39 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     expect(b.children.some((o) => o.userData.batch)).toBe(false)
     b.dispose()
   })
+
+  test("every tree's leaves of one card and atlas are one instanced mesh round the flat, the trees' own back in the Building view", async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.requestAnimationFrame ??= () => 0
+    const THREE = await import('three')
+    const { Building } = await import('./building')
+    const { HIDDEN } = await import('./batch')
+    const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const card = new THREE.PlaneGeometry(0.1, 0.2), atlas = new THREE.MeshStandardMaterial()
+    const tree = (x: number, n: number) => {
+      const t = new THREE.Group()
+      t.position.set(x, 0, 0)
+      const im = new THREE.InstancedMesh(card, atlas, n)
+      for (let i = 0; i < n; i++) im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, 1 + i, 0))
+      t.add(im)
+      b.add(t)
+      return im
+    }
+    const a1 = tree(0, 3), a2 = tree(5, 2)
+    b.frame('walk', 'low')
+    await new Promise((r) => setTimeout(r, 450))
+    const merged = b.children.filter((o): o is import('three').InstancedMesh => (o as import('three').InstancedMesh).isInstancedMesh && o.layers.mask === 1)
+    expect(merged.length).toBe(1)
+    expect(merged[0].count).toBe(5)
+    expect([a1.layers.mask, a2.layers.mask]).toEqual([1 << HIDDEN, 1 << HIDDEN])
+    const m = new THREE.Matrix4()
+    merged[0].getMatrixAt(3, m) // the second tree's first leaf, where it stood
+    expect(new THREE.Vector3().setFromMatrixPosition(m).toArray()).toEqual([5, 1, 0])
+    b.frame('building', 'low')
+    expect([a1.layers.mask, a2.layers.mask]).toEqual([1, 1])
+    expect(merged[0].parent).toBe(null)
+    expect(card.attributes.position).toBeTruthy() // the trees' card kept
+    b.dispose()
+  })
 })

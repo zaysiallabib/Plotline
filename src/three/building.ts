@@ -641,7 +641,7 @@ export class Building extends THREE.Group {
 
   /** round the flat (walk, Dollhouse): the tower is drawn as one mesh per material (batchAround) */
   private around = false
-  private batched: { batches: THREE.Mesh[]; moved: THREE.Object3D[] } | null = null
+  private batched: { batches: THREE.Mesh[]; leaves: THREE.InstancedMesh[]; moved: THREE.Object3D[] } | null = null
   private batchTimer: ReturnType<typeof setTimeout> | undefined
 
   /**
@@ -659,8 +659,9 @@ export class Building extends THREE.Group {
       this.unbatchAround()
       const before: THREE.Object3D[] = []
       this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
+      const leaves = this.leavesTogether()
       const batches = batch(this, Infinity)
-      this.batched = { batches, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
+      this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
       this.onChange()
     }, AROUND_MS)
   }
@@ -672,7 +673,47 @@ export class Building extends THREE.Group {
     if (!b) return
     this.batched = null
     for (const m of b.batches) (m.removeFromParent(), m.geometry.dispose())
+    for (const m of b.leaves) (m.removeFromParent(), m.dispose()) // (their card geometry is the trees' own)
     for (const o of b.moved) o.layers.set(0)
+  }
+
+  /**
+   * Round the flat: the grounds' instanced leaves (trees, shrubs, planter blades) of one card and one atlas, every tree's,
+   * as ONE instanced mesh (the originals hidden) — Sheltech's ground was ~150 draws of leaves. Only matrices are copied (a
+   * few ms), not leaves laid out as plain geometry: that froze the page for 2–3 s after a stair.
+   */
+  private leavesTogether(): THREE.InstancedMesh[] {
+    const groups = new Map<string, THREE.InstancedMesh[]>()
+    this.updateMatrixWorld(true)
+    this.traverseVisible((o) => {
+      const im = o as THREE.InstancedMesh
+      if (!im.isInstancedMesh || im.layers.mask !== 1 || !im.count || Array.isArray(im.material)) return
+      const key = `${im.geometry.uuid}|${im.material.uuid}|${im.castShadow}|${!!im.instanceColor}`
+      groups.set(key, [...(groups.get(key) ?? []), im])
+    })
+    const inv = this.matrixWorld.clone().invert()
+    const w = new THREE.Matrix4(), m = new THREE.Matrix4(), c = new THREE.Color()
+    const out: THREE.InstancedMesh[] = []
+    for (const list of groups.values()) {
+      if (list.length < 2) continue
+      const all = new THREE.InstancedMesh(list[0].geometry, list[0].material, list.reduce((n, im) => n + im.count, 0))
+      let j = 0
+      for (const im of list) {
+        w.multiplyMatrices(inv, im.matrixWorld)
+        for (let i = 0; i < im.count; i++, j++) {
+          im.getMatrixAt(i, m)
+          all.setMatrixAt(j, m.premultiply(w))
+          if (im.instanceColor) (im.getColorAt(i, c), all.setColorAt(j, c))
+        }
+        im.layers.set(HIDDEN)
+      }
+      all.castShadow = list[0].castShadow
+      all.receiveShadow = list[0].receiveShadow
+      all.computeBoundingSphere()
+      this.add(all)
+      out.push(all)
+    }
+    return out
   }
 
   /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
