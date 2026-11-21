@@ -527,6 +527,7 @@ export class Building extends THREE.Group {
       const room = this.roomsOf(s).find((r) => r.name === name)
       if (!room) continue
       for (const [k, y] of [[0, G], [top + 1, R]]) {
+        if (k === 0 && FLOORS.some((f) => f.floor === 0)) continue // a traced ground floor or the flats' shells stand there: they draw their own stair
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         put(k, EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }

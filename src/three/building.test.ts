@@ -583,6 +583,30 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(freed).toBe(0)
   })
 
+  test('a Studio tower with no traced rooftop: its top floor’s stair and lift run up into a head room on the roof (polish2)', async () => {
+    const { default: bti } = await import('../data/fixtures/autotrace-bti-floor-2026-11-20.json')
+    const u = { ...(bti as unknown as Unit), id: 'bti-floor' }
+    const p = makeProject('p', u, 2, 6, 'none')
+    const t = projectTower(p)
+    expect(t.CORE).toEqual([['bti-floor', 'Stair'], ['bti-floor', 'Lift']]) // (its "Stretcher Uft" is no lift: misread)
+    // the roof: the head room's walls and lid over the stair and the lift — more of it than a roof with no core listed
+    const tower3 = async (tower: Tower, unit: Unit) => {
+      const { Building } = await import('./building')
+      const b = new (Building as unknown as new (u: Unit, t: Tower, s: string, k: number, q: string) => { make(): Generator<void> })(unit, tower, 'bti-floor', 3, 'high')
+      for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+      return b
+    }
+    const roofOf = async (tower: Tower) => {
+      const b = await tower3(tower, { ...u, floor: 3 })
+      let n = 0
+      ;(b as unknown as Group).traverse((o) => void ((o as Mesh).geometry && o.userData.level === 7 && (n += (o as Mesh).geometry.attributes.position.count)))
+      return n
+    }
+    expect(await roofOf(t)).toBeGreaterThan((await roofOf({ ...t, CORE: [] })) + 100)
+    // his own rooftop traced: it draws its own head room, none added
+    expect(projectTower(placeLevel(p, { ...u, id: 'roof' }, 'rooftop', undefined, { x: 0, y: 0 }, 'drawing')).CORE).toEqual([])
+  })
+
   test('every flat but the walked one has rooms behind its windows (the massing floors too); the panes are glass, no card on them', async () => {
     const THREE = await import('three')
     const b = await tower(bti.FLATS['type-a'].unit)
