@@ -267,9 +267,10 @@ corner shading), so they stay light copies too.
 Dollhouse or the Building view, the lawn, the play area, the pool deck, the driveway, the road and the neighbours' walls
 stood evenly sunlit at every hour. On High, round a flat that stands in its building, there is now a second, wide
 shadow picture over the whole site — 100 m round the flat each way, from the street up 100 m, 2048 × 2048 (about 14 cm a
-point) — beside the flat's own sharp one: every surface reads the sharp picture where it reaches (the flat stays exactly as sharp as before) and the wide one past it,
-the two fading into each other over a hand's width so no seam shows. Low and Lite have no second picture: they draw and
-cost exactly what they did.
+point) — beside the flat's own sharp one: every surface reads the sharp picture where it reaches (the flat stays
+exactly as sharp as before) and the wide one past it, the two fading into each other over a hand's width so no seam
+shows. Low and Lite have no second picture: they draw and cost exactly what they did, and so does a flat on its own (a
+Studio draft that is not part of a building: the street under it would have taken a second shadow of it).
 
 **Why a second picture and not a painted-in ground.** Painting the ground's shadow in per hour (the way the daylight is
 painted into the rooms) is also one picture read per pixel, so a frame costs the same either way — but the wide picture
@@ -299,10 +300,14 @@ the off just before it, their median (a card shared with other runs moved both):
 | Building view, a full turn | Type A | 18.84 → 20.46 | +0.06 | 251 → 251 | 277 → 449 |
 
 Within the budget the founder's brief set (≤ +1.5 ms a frame in Walk at a window, ≤ +2 ms in the Dollhouse): Walk
-−0.3 to +0.3 ms, the Dollhouse +0.4 to +1.6 ms, the Building view within ±0.3 ms (8 rounds; single rounds of either jump by up to 10 ms
-when another run takes the card). The draw calls of a frame are the same (the wide picture is not drawn
-while you look); what grows is the redraw when the hour changes (+150 to +530 calls, once). Low and Lite: no change.
-Shots, before | after side by side: `E:/dev/plotline-shots/s31/shade/final/pairs-*.png` — Sheltech A floor 2 at two windows
-at 09:00, 12:00, 15:30 and 17:00, its Dollhouse and Building view at 15:30, Type A floor 2's Dollhouse at 09:00 and 15:30.
-The old single picture also showed its own edge: past it the ground and the walls were lit, so a lit polygon of street
-sat in the middle of a shaded one (Bed 2's window, 15:30 and 17:00); that edge is gone.
+−0.3 to +0.3 ms, the Dollhouse +0.4 to +1.6 ms, the Building view within ±0.3 ms (8 rounds; single rounds of either
+jump by up to 10 ms when another run takes the card). Measured again on the tree merged with the session branch, with
+another lane's browsers on the same card: Walk −0.8 to +1.1 ms, the Dollhouse +0.6 / +1.7 ms, the Building view −1.8 /
+−0.1 ms — the same within that noise. The draw calls of a frame are the same (the wide picture is not drawn while you
+look); what grows is the redraw when the hour changes (+150 to +530 calls, once). Low and Lite: no change (their
+window pictures came out identical to the last byte).
+
+Shots, before | after side by side: `E:/dev/plotline-shots/s31/shade/final/pairs-*.png` — Sheltech A floor 2 at two
+windows at 09:00, 12:00, 15:30 and 17:00, its Dollhouse and Building view at 15:30, Type A floor 2's Dollhouse at 09:00
+and 15:30, a flat on its own. The old single picture also showed its own edge: past it the ground and the walls were
+lit, so a lit polygon of street sat in the middle of a shaded one (Bed 2's window, 15:30 and 17:00); that edge is gone.
