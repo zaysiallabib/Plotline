@@ -700,25 +700,30 @@ export class Building extends THREE.Group {
     this.batchTimer = setTimeout(() => {
       if (!this.around || this.disposed) return
       this.unbatchAround()
-      // the grounds' pieces: their own squares' batches undone (one for the whole tower now), each tree's instanced leaves
-      // laid out as plain leaves (unrolled) so they join it too — Sheltech's ground was ~150 draws of leaves alone
-      for (const { pieces } of this.furnishing) if (pieces) unbatch(pieces)
-      const leaves: THREE.Mesh[] = []
-      const inv = this.matrixWorld.clone().invert()
+      // the grounds' pieces stay in their 8 m squares (a square out of sight is not drawn), but each tree's and planter's
+      // instanced leaves are laid out as plain leaves (unrolled) so they join their square's batch — Sheltech's ground was
+      // ~150 draws of leaves alone
       this.updateMatrixWorld(true)
-      this.traverseVisible((o) => {
-        const im = o as THREE.InstancedMesh
-        if (!im.isInstancedMesh || im.layers.mask !== 1) return
-        const plainLeaves = unrolled(im, inv)
-        if (!plainLeaves) return
-        im.layers.set(HIDDEN)
-        leaves.push(plainLeaves)
-      })
-      if (leaves.length) this.add(...leaves)
+      for (const { pieces } of this.furnishing) {
+        if (!pieces?.visible) continue
+        unbatch(pieces)
+        const inv = pieces.matrixWorld.clone().invert()
+        const leaves: THREE.Mesh[] = []
+        pieces.traverseVisible((o) => {
+          const im = o as THREE.InstancedMesh
+          if (!im.isInstancedMesh || im.layers.mask !== 1) return
+          const plainLeaves = unrolled(im, inv)
+          if (!plainLeaves) return
+          im.layers.set(HIDDEN)
+          leaves.push(plainLeaves)
+        })
+        if (leaves.length) pieces.add(...leaves)
+        batch(pieces, CELL_M)
+        for (const l of leaves) (l.removeFromParent(), l.geometry.dispose()) // (in the squares' batches now)
+      }
       const before: THREE.Object3D[] = []
-      this.traverse((o) => void (o.layers.mask === 1 && !leaves.includes(o as THREE.Mesh) && before.push(o)))
+      this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
       const batches = batch(this, Infinity)
-      for (const l of leaves) (l.removeFromParent(), l.geometry.dispose()) // (merged into the batches)
       this.batched = { batches, moved: [...before.filter((o) => o.layers.mask === 1 << HIDDEN), ...this.instancedHidden()] }
       this.onChange()
     }, AROUND_MS)
@@ -739,7 +744,7 @@ export class Building extends THREE.Group {
     this.batched = null
     for (const m of b.batches) (m.removeFromParent(), m.geometry.dispose())
     for (const o of b.moved) o.layers.set(0)
-    for (const { pieces } of this.furnishing) if (pieces) batch(pieces, CELL_M) // as furnishPieces left them
+    for (const { pieces } of this.furnishing) if (pieces) (unbatch(pieces), batch(pieces, CELL_M)) // as furnishPieces left them: the leaves instanced again
   }
 
   /** The tower's meshes in `o` (`pieces`: a level's outdoor pieces) cast the sun's shadow as built, or none (frame). */
