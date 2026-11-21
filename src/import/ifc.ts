@@ -384,6 +384,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   const groups = new Map<string, GlbGroup & { pos: Float32Array[]; nor: Float32Array[]; idx: Uint32Array[]; n: number }>()
   /** the windows' colours: any see-through one, and how many in all (ImportedShell.glass) */
   const windows = { clear: false, n: 0 }
+  const windowIds = idsOfSet(W.IFCWINDOW)
   let triangles = 0
   let capped = false
   const skipShell = new Set<string>(['IfcSpace', 'IfcOpeningElement', 'IfcSpatialZone', 'IfcAnnotation', 'IfcGrid', 'IfcOpeningStandardCase', 'IfcVirtualElement'])
@@ -454,7 +455,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
     const shell = !skipShell.has(tn) && !furniture.has(mesh.expressID)
-    const win = isA(mesh.expressID, W.IFCWINDOW) || isA(owner, W.IFCWINDOW)
+    const win = windowIds.has(mesh.expressID)
     if (!shell && furniture.has(mesh.expressID)) furnitureSkipped++
     if (!shell && !wantBody) return
     for (let i = 0; i < mesh.geometries.size(); i++) {
@@ -1018,7 +1019,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (outsideLabels) notes.push(`${outsideLabels} room names landed outside any closed room (walls there do not close).`)
   if (broken) notes.push(`${broken} pieces have a shape the IFC reader could not build: they are left out of the outside shape (the plans do not need them).`)
   if (furnitureSkipped) notes.push(`${furnitureSkipped} furniture pieces were skipped (the Studio furnishes rooms itself).`)
-  if (shell) notes.push(`Outside shape: ${shell.triangles.toLocaleString()} triangles in ${glbGroups.length} colours${capped ? ` — capped at ${TRIANGLE_CAP.toLocaleString()}, the rest was left out` : ''}.`)
+  if (shell) notes.push(`Outside shape: ${shell.triangles.toLocaleString()} triangles in ${new Set([...groups.keys()].map((k) => k.replace(/^w\|/, ''))).size} colours${capped ? ` — capped at ${TRIANGLE_CAP.toLocaleString()}, the rest was left out` : ''}.`)
   else notes.push('The file has no solid geometry: no outside shape.')
   notes.push(`Read in ${((Date.now() - t0) / 1000).toFixed(1)} s.`)
 
