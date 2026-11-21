@@ -501,7 +501,7 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
   type Seen = {
     flats: { s: string; k: number; home: string; level: boolean; lamps: { image: { data: Uint8Array } }; scale: { value: number } }[]
     paneMesh: { geometry: { attributes: Record<string, unknown> }; material: { transparent: boolean; blending: number } }
-    lift: { meshes: { geometry: { boundingBox: { min: { y: number }; max: { y: number } } | null; computeBoundingBox(): void } }[] }
+    lift: { meshes: { geometry: { boundingBox: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null; computeBoundingBox(): void } }[] }
   }
   const tower = async (unit: Unit, tier: 'high' | 'low' | 'lite' = 'high') => {
     const { Building } = await import('./building')
@@ -550,6 +550,14 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(span()).toEqual([+(3 * F + 3 - F).toFixed(2), +(3 * F + 3).toFixed(2)]) // floor 5's storey, floor 2's gone
     const on5 = b.flats.filter((f) => f.k === 5)
     expect(on5.map((f) => f.s).sort()).toEqual(['type-b', 'type-c']) // Type A is not on floor 5: both its flats are picked
+    // every side of them: the lift reaches past each outer edge of their plans (their walls' outer faces)
+    const lb = b.lift.meshes[0].geometry.boundingBox!
+    const a = bti.FLATS['type-a'].offset
+    const xs = ['type-b', 'type-c'].map((s) => ({ b: core.unitBounds(bti.FLATS[s].unit), o: bti.FLATS[s].offset }))
+    expect(lb.min.x).toBeLessThan(Math.min(...xs.map(({ b: u, o }) => u.minX + o.x - a.x)))
+    expect(lb.max.x).toBeGreaterThan(Math.max(...xs.map(({ b: u, o }) => u.maxX + o.x - a.x)))
+    expect(lb.min.z).toBeLessThan(Math.min(...xs.map(({ b: u, o }) => u.minY + o.y - a.y)))
+    expect(lb.max.z).toBeGreaterThan(Math.max(...xs.map(({ b: u, o }) => u.maxY + o.y - a.y)))
     for (const f of on5) expect(lamps(f), f.home).toEqual(allLit(f.s))
     const f3 = b.flats.find((f) => f.s === 'type-b' && f.k === 3)!
     expect(lamps(f3)).not.toEqual(allLit('type-b')) // a home's own pattern, not all lit

@@ -759,7 +759,7 @@ export class PlotlineScene {
       if (geo && !kept.has(geo)) geo.dispose()
     })
     this.staticGroup.visible = this.furnitureGroup.visible = true
-    this.ceilingGroup.visible = this.mode !== 'orbit'
+    this.ceilingGroup.visible = this.mode === 'walk'
     if (this.shell) this.shell.visible = true
   }
 
@@ -826,7 +826,7 @@ export class PlotlineScene {
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.armed = null
     this.setTowerHover(null)
-    this.ceilingGroup.visible = mode !== 'orbit' // the Dollhouse looks in from above; the Building view sees the fixtures through the glass
+    this.ceilingGroup.visible = mode === 'walk'
     this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
@@ -990,7 +990,6 @@ export class PlotlineScene {
   /** A basement / his traced ground floor picked in the Building view: the furnished flat above it hidden, and under ground the street plane (building.ts hides its own floors above it). */
   private cutAbove(on: boolean, street = on): void {
     this.staticGroup.visible = this.furnitureGroup.visible = !on
-    this.ceilingGroup.visible = !on && this.mode !== 'orbit'
     this.look.showGround(!street, !on)
   }
 
