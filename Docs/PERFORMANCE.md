@@ -295,3 +295,12 @@ What changed:
    and all the flat's models are asked for at once (each piece still goes in nearest first).
 5. On Lite the tower's walls and the flat's share their materials (Lite has no lamp in its shader: the tower's "no lamps"
    copy was the same program twice).
+6. **The lamps without a shadow map are lit in one loop** (a uniform ends it, so the compiler keeps it a loop): a lit
+   program is a fifth quicker to make, the same light (the shots before and after match within the noise).
+7. **The light map's own programs are made first**, while nothing else waits on the graphics chip (made when the HDRI came
+   in, behind the flat's, they held the page still for 2–3 s).
+8. **Opened straight into the Building view or the Dollhouse, the 3D gets ready as that view**, and the start screen also
+   waits for the grounds' trees and benches and for the plant scans still on their way — nothing new is made in the first
+   frames after it goes (it was 3–13 programs: a 0.3–6 s stall right after the screen went).
+9. The code-built pieces, the glass, the pool water and the parking paint carry the same five pictures as every surface;
+   a plant's leaves keep a place for their glow and cut-out pictures until their files are read.

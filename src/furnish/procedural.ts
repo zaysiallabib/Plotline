@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Reflector } from 'three/addons/objects/Reflector.js'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { pointInPolygon, type Pt } from '../core'
-import { lean, lite, texture, track } from '../three/materials'
+import { lean, lite, samePictures, texture, track } from '../three/materials'
 import { CLEAR_GLASS } from '../three/openings'
 import { TEXTURES } from './textures'
 import type { ObjectKind } from './kit'
@@ -40,6 +40,7 @@ function pbr(textureId: string, o: PbrOpt = {}): THREE.MeshStandardMaterial {
   let m = matCache.get(key)
   if (m) return m
   m = new THREE.MeshStandardMaterial({ color: o.tint ?? '#ffffff', roughness: o.roughness ?? 1, metalness: o.metalness ?? 0 })
+  samePictures(m) // its pictures take the blanks' places as they come: one program (three/materials.ts)
   const set = TEXTURES[textureId]
   if (set) {
     const r = set.repeatM * (o.scale ?? 1)
@@ -60,8 +61,11 @@ function pbr(textureId: string, o: PbrOpt = {}): THREE.MeshStandardMaterial {
   matCache.set(key, m)
   return m
 }
-const flat = (color: string, roughness: number, metalness = 0, extra: THREE.MeshStandardMaterialParameters = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra })
+const flat = (color: string, roughness: number, metalness = 0, extra: THREE.MeshStandardMaterialParameters = {}) => {
+  const m = new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra })
+  samePictures(m)
+  return m
+}
 
 // one material per kind, shared by every instance
 let mats: ReturnType<typeof makeMats> | null = null
@@ -321,6 +325,7 @@ function print(url: string): THREE.MeshStandardMaterial {
   let m = printCache.get(url)
   if (!m) {
     const mat = (m = new THREE.MeshStandardMaterial({ color: '#b9b4ab', roughness: 0.55 }))
+    samePictures(mat)
     mat.userData.ownUV = true
     tex(url, 1, true)
       .then((t) => {
@@ -343,6 +348,7 @@ function painted(id: string): THREE.MeshStandardMaterial {
   if (m) return m
   m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 })
   m.userData.ownUV = true
+  samePictures(m)
   if (typeof globalThis.document?.createElement === 'function') {
     const set = id.slice(0, -2)
     const whole = (canvases[set] ??= new THREE.CanvasTexture(paintArt(set)))
@@ -1365,6 +1371,7 @@ function planterBed(id: string): THREE.Object3D[] {
   })
   const bed = new THREE.Box3(new THREE.Vector3(Math.min(...poly.map((p) => p.x)), 0, Math.min(...poly.map((p) => p.y))), new THREE.Vector3(Math.max(...poly.map((p) => p.x)), onFloor ? PLANTER_TOP - PLANTER_KERB : PLANTER_TOP, Math.max(...poly.map((p) => p.y))))
   const tint = new THREE.Color()
+  samePictures(leafMat, ['emissiveMap']) // (its glow is its colour picture, still to come)
   const ims = kinds.map((ls, kind) => {
     const im = new THREE.InstancedMesh(new THREE.BufferGeometry(), leafMat, ls.length)
     ls.forEach(({ m: mt, v }, i) => {
@@ -1560,6 +1567,7 @@ function atlasLeafMat(dir: string, file: string, onReady: () => void): THREE.Mes
   let m = leafMats.get(key)
   if (!m) {
     const mat = (m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, emissive: '#3d4b2c', emissiveIntensity: leafGlow, roughness: 1, metalness: 0 }))
+    samePictures(mat, ['emissiveMap', 'alphaMap']) // (hidden until the atlas is in: onReady)
     const u = (map: string, ext = 'jpg') => `/assets/models/${dir}/${file}_leaves_${map}_1k.${ext}`
     mat.userData.ready = browser()
       ? Promise.all([tex(u('diff'), 1, true), tex(u('alpha', 'png'), 1, false), lite.on ? null : tex(u('nor_gl'), 1, false), tex(u('arm'), 1, false)]).then(([map, alphaMap, normalMap, roughnessMap]) => {
@@ -1640,6 +1648,7 @@ let barkMat: THREE.MeshStandardMaterial | null = null
 const bark = () => {
   if (!barkMat) {
     const m = (barkMat = new THREE.MeshStandardMaterial({ color: '#d8d2c8', roughness: 1 }))
+    samePictures(m)
     m.userData.ownUV = true
     const u = (map: string) => `/assets/models/tree_shade/jacaranda_tree_branches_${map}_1k.jpg`
     if (browser())

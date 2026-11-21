@@ -696,6 +696,11 @@ function Viewer({ first }: { first: Shown }) {
     })
     s.setLightsMode(lightsSaved())
     s.setTimeOfDay(DEFAULT_HOUR)
+    // opened straight into the Building view or the Dollhouse: the 3D gets ready under the start screen as that view, its own
+    // programs made before it shows (PlotlineScene.prepare)
+    const view = params.get('view')
+    if (view === 'building' && stem) s.setMode('building')
+    else if (view === 'building' || view === 'dollhouse') s.setMode('orbit')
     let alive = true // StrictMode/HMR dispose this scene before the promise settles
     void Promise.resolve(xrEmulation)
       .then(() => navigator.xr?.isSessionSupported('immersive-vr'))

@@ -141,7 +141,7 @@ export function colourOnly<T extends THREE.Object3D>(model: T): T {
 
 /** Every material of a model with the same set of pictures (materials.ts samePictures): once per model (its clones share them). */
 function pictured<T extends THREE.Object3D>(model: T): T {
-  model.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach(samePictures))
+  model.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach((m) => samePictures(m)))
   return model
 }
 
@@ -187,7 +187,6 @@ export async function buildFurniture(p: FurniturePlacement, ceilingM = 3.048, fl
       const rebuilt = rebuildsAtSize(asset.id)
       model = asset.url.startsWith('procedural:') ? buildProcedural(asset.id, rebuilt ? p.sizeM : undefined) : (await (tris ? standIn(asset.url, tris) : loadModel(asset.url))).clone()
       if (!model) throw new Error('no procedural builder')
-      if (asset.url.startsWith('procedural:')) pictured(model) // (its materials shared by kind: once each)
       // a code-built piece is made for each placement (a 3.9 m curtain's pleats, a bed's quilting: 4–11 thousand triangles):
       // its stand-in made here, the same way
       if (tris && asset.url.startsWith('procedural:')) model = await simplified(model, tris)

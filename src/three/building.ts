@@ -34,7 +34,7 @@ import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { lightPiece } from './daylight'
-import { buildFurniture } from './furniture'
+import { buildFurniture, preloadModels } from './furniture'
 import { furnitureGeometry, indoor, inside, interiorMaterial, lampTable, roomsGeometry, setLamp } from './interiors'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
 import { batch, CELL_M, HIDDEN } from './batch'
@@ -877,9 +877,11 @@ export class Building extends THREE.Group {
   /** the other flats' rooms in (want): what a stair's floor waits for — its grounds' pieces come in after it shows (their programs were compiled for the floor before: the same pieces, the same tier) */
   private roomsWork: Promise<void> | null = null
   private t0 = performance.now()
+  /** ms of a frame the tower's filling in may take (pause): 8 while the 3D is drawn; more under the start screen, nothing drawn then (PlotlineScene) */
+  budgetMs = 8
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
-    if (performance.now() - this.t0 > 8) {
+    if (performance.now() - this.t0 > this.budgetMs) {
       await new Promise<void>((ok) => requestAnimationFrame(() => ok()))
       this.t0 = performance.now()
     }
@@ -896,7 +898,20 @@ export class Building extends THREE.Group {
     this.progress.rooms = performance.now()
   }
 
+  /** the levels' outdoor pieces all in (or none to show here): the start screen waits for them (PlotlineScene.drawable) */
+  get piecesIn(): boolean {
+    return !this.piecesShown || this.piecesDone
+  }
+  private piecesDone = false
+
   private async furnishPieces(): Promise<void> {
+    // every level's pieces' models on their way at once (each piece still goes in in order)
+    void preloadModels(
+      this.furnishing.flatMap(({ s }) => {
+        const rooms = this.roomsOf(s)
+        return layoutFor(this.t.FLATS[s].unit, rooms).filter((p) => core.isOutdoor(rooms.find((r) => r.id === p.roomId)?.kind ?? 'shaft'))
+      }),
+    )
     for (const f of this.furnishing) {
       const { s, group } = f
       const pieces = (f.pieces = new THREE.Group())
@@ -925,6 +940,7 @@ export class Building extends THREE.Group {
       this.casts(pieces, true)
       this.batchAround()
     }
+    this.piecesDone = true
   }
 
   private async furnishThings(): Promise<void> {

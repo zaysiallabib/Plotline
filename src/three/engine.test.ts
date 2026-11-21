@@ -15,7 +15,8 @@ import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits 
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
-import { EDGE_PLASTER, PICTURES, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
+import { EDGE_PLASTER, PICTURES, SPOT_LOOP, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
+import { TIERS } from './render'
 import { buildOpening, CLEAR_GLASS } from './openings'
 import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
@@ -487,6 +488,21 @@ describe('one program for every lit surface (session 31 ready lane: the first fr
     expect(px(m.map)).toEqual([1, 1, 1, 1])
     expect(px(m.normalMap).slice(0, 3).map((v) => v * 2 - 1)).toEqual([0, 0, 1])
     expect([m.color.getHexString(), m.roughness, m.metalness]).toEqual(['123456', 0.85, 0])
+  })
+  test('a code-built piece (procedural): the same five from the start — a picture that comes later changes no program', () => {
+    const mats = new Set<THREE.MeshStandardMaterial>()
+    for (const id of ['sofa_3seat', 'dining_table', 'kitchen_counter_styled', 'wardrobe_2door', 'bench_timber']) buildProcedural(id)?.traverse((o) => [(o as THREE.Mesh).material ?? []].flat().forEach((m) => (m as THREE.MeshStandardMaterial).isMeshStandardMaterial && mats.add(m as THREE.MeshStandardMaterial)))
+    expect(mats.size).toBeGreaterThan(3)
+    for (const m of mats) expect(has(m)).toEqual([true, true, true, true, true])
+  })
+  test('the lamps without a shadow map are lit in one loop the compiler keeps (its end a uniform), the shadowed ones one by one', () => {
+    const c = THREE.ShaderChunk.lights_fragment_begin
+    expect(c).toContain('for ( int i = 0; i < NUM_SPOT_LIGHT_SHADOWS; i ++ ) {') // unrolled by three: a shadow map is named by its number
+    expect(c).toContain(SPOT_LOOP)
+    expect(c).not.toContain('for ( int i = 0; i < NUM_SPOT_LIGHTS; i ++ ) {')
+    expect(THREE.ShaderChunk.lights_pars_begin).toContain('uniform int spotLoop;')
+    // min(spotLoop, the scene's count) is the scene's own count: spotLoop must be over any pool (lamps + a parking level's downlights)
+    expect(THREE.ShaderLib.physical.uniforms.spotLoop.value).toBeGreaterThan(2 * TIERS.high.lamps + 8)
   })
   test('Lite: the colour picture only (its only kind)', () => {
     lite.on = true

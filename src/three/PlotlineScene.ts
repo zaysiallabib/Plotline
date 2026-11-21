@@ -35,7 +35,7 @@ import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, close
 import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, loading, materialFor, resolveFinish, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
@@ -507,6 +507,7 @@ export class PlotlineScene {
   private rehearsedAt = -1
   /** the sky's light and reflections in (loadEnvironment): the frame behind the load screen waits for it */
   private envIn = false
+  private pmrem: THREE.PMREMGenerator | null = null
   /** a stair being taken (arrive): the next floor builds hidden while the one he leaves (`leaving`) stays drawn; he looks, not walks */
   private holding = false
   private leaving: THREE.Group | null = null
@@ -524,6 +525,7 @@ export class PlotlineScene {
     this.tier = opts.quality ?? 'high'
     const isLite = (lite.on = this.tier === 'lite')
     lean.on = !TIERS[this.tier].extras
+    for (const m of [...PANES, PAINT]) samePictures(m) // the glass, the water and the bay paint (made before the tier is known) drawn as every surface is
     // high-performance: a two-chip laptop draws on its graphics card, not the chip built into the processor
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isLite, powerPreference: 'high-performance' })
     this.renderer.localClippingEnabled = true // the outside shape's dollhouse cut
@@ -547,6 +549,13 @@ export class PlotlineScene {
     this.scene.add(this.sun, this.sun.target)
     const h = lightMapHeight(HDRI_WIDTH / (isLite ? LITE_HDR_K : 1))
     this.scene.environment = Object.assign(new THREE.DataTexture(null, 3 * Math.max(h / 4, 112), h), { mapping: THREE.CubeUVReflectionMapping }) // (never drawn: the frame waits for the HDRI)
+    // the light map's own programs made now, while nothing else waits on the graphics chip: made when the HDRI came in, behind
+    // the flat's, they held the page still for 2–3 s (the programs of a size are kept: loadEnvironment makes none)
+    this.pmrem = new THREE.PMREMGenerator(this.renderer)
+    const w = HDRI_WIDTH / (isLite ? LITE_HDR_K : 1)
+    const blankSky = new THREE.DataTexture(new Uint16Array(w * 4), w, 1, THREE.RGBAFormat, THREE.HalfFloatType) // (one row high: the same programs)
+    this.pmrem.fromEquirectangular(blankSky).dispose()
+    blankSky.dispose()
     void this.loadEnvironment()
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
     canvas.addEventListener('webglcontextlost', this.onContextLost)
@@ -675,6 +684,7 @@ export class PlotlineScene {
       // a page's first floor: its tower's other flats' rooms and its grounds' pieces come once this flat's furniture is in —
       // built alongside (8 ms a frame for ~8 s on Sheltech) they held its models' loading back, and the load screen with it
       if (!this.holding) this.building.after(new Promise<void>((ok) => (flatIn = ok)))
+      if (this.veiled) this.building.budgetMs = 40 // nothing drawn under the start screen: its rooms and trees in larger steps
       this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
       this.building.visible = false
       this.scene.add(this.building)
@@ -1089,17 +1099,21 @@ export class PlotlineScene {
    * Under the load screen (session 31 ready lane: drawing the 3D behind it as it came in made every program in the moment it
    * was first drawn — 12 of Sheltech's 18 s on High): nothing drawn; every PREP_MS the programs of everything built so far
    * are asked for (Look.compile, none waited on) — the whole scene, hidden floors and other views' parts too, so the first
-   * switch to another view finds them made — and once the flat's furniture is in and no program has been new for SETTLE_MS,
+   * switch to another view finds them made — and once the flat's furniture, its pictures and plant scans (materials.ts loading)
+   * and its grounds' trees and benches are in and no program has been new for SETTLE_MS,
    * the frame is drawn once behind the screen (the shadow maps' and the corner shading's programs, the pictures and buffers
    * sent): the first frame shown has nothing left to make.
    */
   private prepare(now: number): void {
-    if (now < this.prepAt) return
+    if (now < this.prepAt || !this.ready) return // (before the flat is built its lamps are not there: every program would be made again)
     this.prepAt = now + PREP_MS
     const n = this.renderer.info.programs?.length ?? 0
-    this.look.compile(this.scene)
+    // what has a shape (a plant's leaves before their file is read have none: a program of their own, never drawn)
+    const parts: THREE.Object3D[] = []
+    this.scene.traverse((o) => void ((o as THREE.Mesh).geometry?.attributes.position?.count && parts.push(o)))
+    this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
     if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
-    if (!this.envIn || !this.ready || !this.loadedAt || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
+    if (!this.envIn || !this.loadedAt || loading.size || !(this.building?.piecesIn ?? true) || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
     this.renderer.info.reset()
     this.look.render()
     this.rehearsedAt = performance.now()
@@ -1113,6 +1127,7 @@ export class PlotlineScene {
   /** The load screen went: drawn from now on. */
   unveil(): void {
     this.veiled = false
+    if (this.building) this.building.budgetMs = 8
     this.wake()
   }
 
@@ -1605,6 +1620,7 @@ export class PlotlineScene {
   dispose(): void {
     this.disposed = true
     clearTimeout(this.batchTimer)
+    this.pmrem?.dispose()
     this.renderer.setAnimationLoop(null)
     this.ro.disconnect()
     window.removeEventListener('keydown', this.onKey)
@@ -1994,7 +2010,8 @@ export class PlotlineScene {
     const [hdr, sky] = await Promise.all([load(HDRI.interior), isLite ? null : load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
     const standIn = this.scene.environment
-    const pmrem = new THREE.PMREMGenerator(this.renderer)
+    const pmrem = this.pmrem ?? new THREE.PMREMGenerator(this.renderer)
+    this.pmrem = null
     if (hdr && isLite) shrinkHdr(hdr, LITE_HDR_K)
     if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
