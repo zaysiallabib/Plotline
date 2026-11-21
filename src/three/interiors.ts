@@ -23,7 +23,8 @@ import { textureSet } from '../furnish/textures'
 import { bottomOf, layoutFor } from '../studio/furniture'
 import { KERB_M, floorGeometry, liftWall, liftedWall, roomCeiling, wallGeometry, wallLift } from './details'
 import { buildFurniture } from './furniture'
-import { fallbackColor, noSpots, resolveFinishRef, texture } from './materials'
+import { EXTERIOR_PLASTER, fallbackColor, noSpots, resolveFinishRef, texture } from './materials'
+import { nightPatch } from './daylight'
 
 /** the sky's light inside a room as seen from the street, × the street's (the eye outside is adapted to the street) */
 export const DAY_INSIDE = 0.35
@@ -178,8 +179,12 @@ export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floor
   const slots = finishSlotsFor(u, rooms)
   const colour = (r: Room, t: 'floor' | 'wall' | 'ceiling', wallId?: string) => refColour(resolveFinishRef(slots, cfg, r.id, t, wallId))
   const cols = await Promise.all(rooms.map((r) => Promise.all([colour(r, 'floor'), colour(r, 'ceiling')])))
+  const slab = await refColour(EXTERIOR_PLASTER)
   const out: THREE.BufferGeometry[] = []
   rooms.forEach((r, i) => {
+    // a balcony: its floor only, in the slab's own colour (by day it reads as the shell did), lit as outdoors by day and at
+    // night a little by the room it opens from (setLamp `outdoor`, building.ts SPILL)
+    if (floors && r.kind === 'balcony') out.push(plainPart(floorGeometry(r, u), i, slab))
     if (!indoor(r)) return
     if (floors) out.push(plainPart(floorGeometry(r, u), i, cols[i][0]))
     const c = floorGeometry(r, u)
@@ -304,11 +309,12 @@ export function lampTable(rooms: number): THREE.DataTexture {
   return t
 }
 
-/** Room i's lamp in the table: lit `level` (0–1), its colour `tint` (0–1). */
-export function setLamp(t: THREE.DataTexture, i: number, level: number, tint: number): void {
+/** Room i's lamp in the table: lit `level` (0–1), its colour `tint` (0–1); `outdoor` (a balcony): the sky's whole light, not a room's share. */
+export function setLamp(t: THREE.DataTexture, i: number, level: number, tint: number, outdoor = false): void {
   const d = t.image.data as Uint8Array
   d[i * 4] = Math.round(255 * THREE.MathUtils.clamp(level, 0, 1))
   d[i * 4 + 1] = Math.round(255 * THREE.MathUtils.clamp(tint, 0, 1))
+  d[i * 4 + 2] = outdoor ? 255 : 0
   t.needsUpdate = true
 }
 
@@ -321,14 +327,16 @@ export function interiorMaterial(lamps: THREE.DataTexture, scale: { value: numbe
   // pulled a little toward the eye: a floor lies in its plate's top, and must win it from the street too
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })
   m.onBeforeCompile = (s) => {
+    nightPatch(s, undefined, 'vTowerOut') // a balcony at night: the city's light as on the shell round it (daylight.ts nightOut)
     Object.assign(s.uniforms, { towerLamps: { value: lamps }, towerLampScale: scale, towerDay: inside.day, towerSun: inside.sun })
-    s.vertexShader = `attribute float towerRoom;\nuniform sampler2D towerLamps;\nuniform float towerLampScale;\nvarying vec3 vTowerLamp;\n${s.vertexShader}`.replace(
+    s.vertexShader = `attribute float towerRoom;\nuniform sampler2D towerLamps;\nuniform float towerLampScale;\nvarying vec3 vTowerLamp;\nvarying float vTowerOut;\n${s.vertexShader}`.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
       vec4 towerL = texelFetch(towerLamps, ivec2(int(towerRoom + 0.5), 0), 0);
+      vTowerOut = towerL.b;
       vTowerLamp = towerLampScale * towerL.r * (towerL.g < 0.5 ? vec3(1.0, 0.62, 0.3) : towerL.g < 0.84 ? vec3(1.0, 0.78, 0.52) : vec3(0.88, 0.86, 0.8));`,
     )
-    s.fragmentShader = `uniform float towerDay;\nuniform float towerSun;\nvarying vec3 vTowerLamp;\n${s.fragmentShader}`
+    s.fragmentShader = `uniform float towerDay;\nuniform float towerSun;\nvarying vec3 vTowerLamp;\nvarying float vTowerOut;\n${s.fragmentShader}`
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
@@ -338,8 +346,8 @@ export function interiorMaterial(lamps: THREE.DataTexture, scale: { value: numbe
       .replace(
         '#include <lights_fragment_end>',
         `#include <lights_fragment_end>
-        reflectedLight.indirectDiffuse *= towerDay;
-        reflectedLight.indirectSpecular *= towerDay;
+        reflectedLight.indirectDiffuse *= mix(towerDay, 1.0, vTowerOut); // a balcony is outdoors: the sky's whole light
+        reflectedLight.indirectSpecular *= mix(towerDay, 1.0, vTowerOut);
         reflectedLight.directDiffuse *= towerSun;
         reflectedLight.directSpecular *= towerSun;`,
       )

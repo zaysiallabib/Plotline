@@ -20,15 +20,17 @@ export function shareUrl(loc: { origin: string; pathname: string; search: string
 }
 
 /**
- * The address of a floor reached by the stair (ViewerApp takeStair): this page on that floor, so a reload lands there — the
- * stem and `?floor=`, what only the first arrival asked for dropped (the Building view's pick, an editor, an export), the
- * rest kept (a link's quality, a share link's finishes); from a published link (`/s/…`) still a buyer's link (`c=`).
+ * The address of a floor a trip reaches (ViewerApp travel: a stair, a flat or level picked in the Building view): this page
+ * on that floor, so a reload lands there — the stem and `?floor=`, what only the first arrival asked for dropped (the
+ * Building view's pick, an editor, an export), the rest kept (a link's quality, a share link's finishes); from a published
+ * link (`/s/…`) still a buyer's link (`c=`). `dollhouse`: a flat picked in the Building view opens in its Dollhouse again.
  */
-export function stairUrl(search: string, stem: string, floor: number, shared: boolean): string {
+export function stairUrl(search: string, stem: string, floor: number, shared: boolean, dollhouse = false): string {
   const q = new URLSearchParams(search)
   for (const k of ['view', 'pick', 'edit', 'own', 'export']) q.delete(k)
   q.set('floor', String(floor))
   if (shared && !q.has('c')) q.set('c', '')
+  if (dollhouse) q.set('view', 'dollhouse')
   return `/u/${encodeURIComponent(stem)}?${q}`
 }
 

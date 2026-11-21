@@ -618,6 +618,9 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .arrange { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
 .arrange-name { font-size: var(--fs-md); font-weight: 500; }
 .arrange-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+/* a phone's one row and its grip (below); a computer shows the whole panel */
+.arrange-grip, .arrange-head { display: none; }
+.arrange-body { display: contents; }
 /* the dock stands between that panel and the small map, never over either */
 .viewer:has(.arrange) .dock { left: calc(var(--panel-w) + 2 * var(--edge)); right: calc(var(--panel-w) + 2 * var(--edge)); }
 /* Edit openings: width / height / sill in feet-inches */
@@ -628,7 +631,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
 .hand-tag { position: absolute; z-index: 6; left: 0; top: 0; max-width: 340px; padding: var(--s-2) var(--s-3); font-size: var(--fs-sm); line-height: var(--lh); pointer-events: none; }
 .hand-tag.at-dot { left: 50%; top: calc(50% + var(--s-5)); transform: translateX(-50%); }
 .dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--ink-2); pointer-events: none; }
-.library { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--arrange-h) + var(--s-2)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); max-height: calc(100% - var(--arrange-h) - var(--dock-top) - 2 * var(--edge)); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+/* the library: over the Edit furniture panel, its top never above the room's name card (Hud's --name-bottom; qa3 P5: it covered the size line) */
+.library { position: absolute; z-index: 3; left: calc(var(--safe-l) + var(--edge)); bottom: calc(var(--safe-b) + var(--edge) + var(--arrange-h) + var(--s-2)); width: var(--panel-w); max-width: calc(100% - 2 * var(--edge)); max-height: calc(100% - var(--safe-b) - var(--edge) - var(--arrange-h) - 2 * var(--s-2) - var(--name-bottom, var(--dock-top))); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
 /* one floor or all (staff, a project floor whose drawing is on other floors too): top middle, under the bar's line */
 .ask-floor { position: absolute; z-index: 5; left: 50%; top: var(--dock-top); translate: -50% 0; width: max-content; max-width: min(440px, calc(100% - 2 * var(--edge))); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); line-height: var(--lh); animation: appear var(--dur) var(--ease) both; }
 .ask-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
@@ -747,7 +751,19 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .dock:has(.sun-card) > :not(.sun-card) { visibility: hidden; }
   /* staff's editors: full width over the bar; the library a sheet like the others (Edit furniture steps away under it) */
   .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; }
-  .library { padding: 0 var(--s-3) calc(var(--s-3) + var(--safe-b)); }
+  .arrange:has(> .arrange-grip) { padding: 0 var(--s-3) var(--s-3); gap: var(--s-2); }
+  /* Edit furniture on a phone (qa3 P15: the panel and the bar hid the lower 42 % of the room): one row — what is picked and
+     Done, or Add — the turn / delete / undo / reset buttons behind the grip above it, so the floor and its pieces stay under a thumb */
+  .arrange-grip { display: block; position: relative; flex: none; width: 100%; height: var(--s-5); padding: 0; border: 0; background: none; cursor: pointer; }
+  .arrange-grip::before { content: ''; position: absolute; left: 50%; top: var(--s-2); width: var(--s-6); height: var(--s-1); translate: -50% 0; border-radius: var(--s-1); background: var(--line); }
+  .arrange.open .arrange-grip::before { background: var(--ink-2); }
+  .arrange-head { display: flex; align-items: center; gap: var(--s-3); }
+  .arrange-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: 500; }
+  .arrange-head > .btn { flex: none; min-width: calc(2 * var(--touch)); }
+  .arrange:not(.open) > .arrange-body { display: none; }
+  .arrange.open > .arrange-body { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-2); }
+  .arrange-body > .arrange-name, .arrange-add { display: none; }
+  .library { padding: 0 var(--s-3) calc(var(--s-3) + var(--safe-b)); max-height: min(70dvh, calc(100dvh - var(--name-bottom, 0px) - var(--s-2))); }
   .library > .panel-head { margin: 0; padding-left: var(--s-1); }
   .viewer:has(.arrange) .dock { visibility: hidden; }
   /* the piece in hand: the Edit panel says what and where; a tag beside the finger would only run off the screen's edge */

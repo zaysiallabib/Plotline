@@ -56,6 +56,8 @@ export interface PickHit {
   point: { x: number; y: number; z: number }
   /** wall/opening: (u along wall from vertex a, v height); floor/ceiling: plan (x, y); furniture: local (x, z) */
   localOffset?: { u: number; v: number }
+  /** a piece: the room's floor the same ray reaches behind it (floorBehind) — a Dollhouse click on a bed or a rug drops you there */
+  under?: { x: number; y: number; z: number }
 }
 /** orbit = the dollhouse; building = the whole tower from outside (building.ts) */
 export type SceneMode = 'walk' | 'orbit' | 'building'
@@ -214,6 +216,12 @@ export function pickedAt(h: THREE.Intersection, piece = false): THREE.Object3D |
   while (o && !o.userData.kind) o = o.parent
   if (piece && o?.userData.kind !== 'furniture' && PANES.includes((h.object as THREE.Mesh).material as THREE.MeshStandardMaterial)) return null
   return o
+}
+
+/** Behind the piece hits[i] (a bed, a rug): the first room floor further along the same ray, or null (qa3 P16: a Dollhouse click there did nothing). */
+export function floorBehind(hits: THREE.Intersection[], i: number, piece = false): THREE.Vector3 | null {
+  for (let j = i + 1; j < hits.length; j++) if (pickedAt(hits[j], piece)?.userData.kind === 'floor') return hits[j].point
+  return null
 }
 
 export function evenBearings(t: THREE.DataTexture): void {
@@ -678,12 +686,12 @@ export class PlotlineScene {
   }
 
   /**
-   * A floor reached by the stair (ViewerApp takeStair) with no freeze on a first visit (session 31): built hidden while the
+   * A floor reached by the stair (ViewerApp travel) with no freeze on a first visit (session 31): built hidden while the
    * floor he leaves stays on screen and he can look round, its furniture mounted and batched, then made ready to draw a
-   * little a frame (warm), then shown in one frame with him at `at`, facing `yaw`. Resolves once shown, or once another
-   * unit came first.
+   * little a frame (warm), then shown in one frame with him at `at`, facing `yaw`, in `mode` (a flat picked in the
+   * Building view: its Dollhouse; Back to the tower: the Building view). Resolves once shown, or once another unit came first.
    */
-  async arrive(unit: Unit, at: Pt, yaw: number): Promise<void> {
+  async arrive(unit: Unit, at: Pt, yaw: number, mode: SceneMode = 'walk'): Promise<void> {
     this.drop()
     const g = (this.leaving = new THREE.Group())
     for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
@@ -735,6 +743,12 @@ export class PlotlineScene {
     if (this.windMonth) this.setWind(this.windMonth)
     this.stairAsked = 0 // its own stair can be taken again
     this.spawnAt(at, yaw)
+    if (mode !== 'walk') this.setMode(mode)
+  }
+
+  /** the tower on screen: while a floor gets ready (arrive), the one round the floor still shown */
+  private get shown(): Building | null {
+    return this.holding ? this.leavingTower : this.building
   }
 
   /**
@@ -845,8 +859,10 @@ export class PlotlineScene {
     this.look.setLights(lightsOn(this.lightsMode, altDeg))
     const sky = skyLight(altDeg)
     const how = [sky.night, sky.exposure, lightsOn(this.lightsMode, altDeg), TIERS[this.tier].ao, this.renderer.shadowMap.enabled] as const
-    if (this.mode === 'building') this.building?.setSun(this.sun, ...how)
-    else this.building?.setNight(...how) // round the flat: its panes, rooms and lamps by the hour (Look fits the shadow)
+    const b = this.shown
+    if (b !== this.building) this.building?.setNight(...how) // a floor getting ready: its tower lit for the hour; the sun stays fitted to the one on screen
+    if (this.mode === 'building') b?.setSun(this.sun, ...how)
+    else b?.setNight(...how) // round the flat: its panes, rooms and lamps by the hour (Look fits the shadow)
   }
 
   /** The flat's lamps: auto (on once the sun is under 5°), on or off (render.ts lightsOn). */
@@ -878,7 +894,7 @@ export class PlotlineScene {
     this.cutAbove(false) // a basement shown in the Building view: what stood above it is back
     this.armed = null
     this.setTowerHover(null)
-    this.ceilingGroup.visible = mode === 'walk'
+    if (!this.holding) this.ceilingGroup.visible = mode === 'walk'
     this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
@@ -889,7 +905,7 @@ export class PlotlineScene {
     if (mode !== 'walk') {
       if (this.plc.isLocked) this.plc.unlock()
       this.rig.position.set(0, 0, 0)
-      const b = mode === 'building' ? this.building : null
+      const b = mode === 'building' ? this.shown : null
       const v = b?.view(b.floor)
       b?.highlight(b.floor)
       this.camera.position.copy(v?.eye ?? this.center.clone().add(new THREE.Vector3(this.radius, this.radius * 1.3, this.radius)))
@@ -910,7 +926,7 @@ export class PlotlineScene {
    * flat's slab, would hang in mid-air in it (the floor below takes the shadow).
    */
   private aroundFlat(): void {
-    const b = this.holding ? this.leavingTower : this.building // (a stair's floor getting ready: the one still shown)
+    const b = this.shown
     b?.frame(this.mode, this.tier)
     this.look.setStreetY(b?.streetY ?? null)
     const catcher = this.scene.children.find((o) => (o as THREE.Mesh).material instanceof THREE.ShadowMaterial) as THREE.Mesh | undefined
@@ -965,7 +981,7 @@ export class PlotlineScene {
 
   /** Building view: the floor list's row under the mouse washes its storey on the tower too (null: back to what the mouse is over there, if anything). */
   hoverFloor(k: number | null): void {
-    this.building?.hover(k ?? this.towerHover?.k ?? null)
+    this.shown?.hover(k ?? this.towerHover?.k ?? null)
     this.wake()
   }
 
@@ -973,7 +989,7 @@ export class PlotlineScene {
   private towerAt(x: number, y: number): TowerHit | null {
     const r = this.canvas.getBoundingClientRect()
     this.raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), this.camera)
-    return this.building?.pickAt(this.raycaster) ?? null
+    return this.shown?.pickAt(this.raycaster) ?? null
   }
 
   /** The hover's wash and card follow h; the card hears every change of floor or flat (with the pointer's spot), nothing else. */
@@ -981,7 +997,7 @@ export class PlotlineScene {
     const was = this.towerHover
     this.towerHover = h
     if (h?.k === was?.k && h?.flat?.stem === was?.flat?.stem) return
-    this.building?.hover(h?.k ?? null)
+    this.shown?.hover(h?.k ?? null)
     this.wake()
     this.hoverCb?.(h && at ? { ...h, ...at } : null)
   }
@@ -1033,7 +1049,7 @@ export class PlotlineScene {
   showFloor(k: number): void {
     this.wake()
     const b = this.building
-    if (!b || this.mode !== 'building') return
+    if (!b || this.mode !== 'building' || this.holding) return // (a floor getting ready: the tower shown stays as it is)
     const dy = b.levelOf(k) + 1.5 - this.orbit.target.y
     this.orbit.target.y += dy
     this.camera.position.y += dy
@@ -1043,7 +1059,7 @@ export class PlotlineScene {
 
   /** A basement / his traced ground floor picked in the Building view: the furnished flat above it hidden, and under ground the street plane (building.ts hides its own floors above it). */
   private cutAbove(on: boolean, street = on): void {
-    this.staticGroup.visible = this.furnitureGroup.visible = !on
+    if (!this.holding) this.staticGroup.visible = this.furnitureGroup.visible = !on // (a floor getting ready stays hidden: drop shows it)
     this.look.showGround(!street, !on)
   }
 
@@ -2222,7 +2238,7 @@ export class PlotlineScene {
     // three's raycaster ignores `visible`: skip the hidden ceilings (and what hangs from them) in the dollhouse
     const targets = [this.staticGroup, this.ceilingGroup, this.furnitureGroup].filter((g) => g.visible)
     const hits = this.raycaster.intersectObjects(targets, true)
-    for (const h of hits) {
+    for (const [i, h] of hits.entries()) {
       const o = pickedAt(h, piece)
       if (!o) continue
       let { kind, id, wallId, objectKind } = o.userData as { kind: PickKind; id: Id; wallId?: Id; objectKind: ObjectKind }
@@ -2246,6 +2262,8 @@ export class PlotlineScene {
       } else if (kind === 'furniture') {
         const l = o.worldToLocal(P.clone())
         hit.localOffset = { u: l.x, v: l.z }
+        const f = floorBehind(hits, i, piece)
+        if (f) hit.under = { x: f.x, y: f.y, z: f.z }
       } else {
         hit.localOffset = { u: P.x, v: P.z }
       }
@@ -2331,12 +2349,13 @@ export class PlotlineScene {
     const dt = Math.min(raw, 0.1)
     if (this.mode !== 'walk') {
       this.orbit.update()
-      if (this.mode === 'building' && this.building) {
-        this.camera.position.y = Math.max(this.camera.position.y, this.building.minCameraY)
-        this.building.update(this.camera.position) // the nearest flats first; Low's furnished storeys
+      const b = this.mode === 'building' ? this.shown : null
+      if (b) {
+        this.camera.position.y = Math.max(this.camera.position.y, b.minCameraY)
+        b.update(this.camera.position) // the nearest flats first; Low's furnished storeys
       }
       // the site's blocks between the camera and the tower / the flat are cut away (context.siteCut)
-      const reach = this.mode === 'building' && this.building ? this.building.box.getSize(SIZE).length() / 2 : this.radius
+      const reach = b ? b.box.getSize(SIZE).length() / 2 : this.radius
       siteCut.value = Math.max(0, this.camera.position.distanceTo(this.orbit.target) - reach)
     } else if (this.ready && !this.holding) {
       const k = this.keys

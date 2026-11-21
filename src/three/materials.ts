@@ -9,7 +9,7 @@ import * as THREE from 'three'
 import type { Configuration, FinishSlot, Id, MaterialRef, RoomKind } from '../core'
 import { roomKey, slotFor, wallKey } from '../furnish/finishes'
 import { textureSet, type TextureSet } from '../furnish/textures'
-import { daylit as daylitPatch, mottleMap } from './daylight'
+import { daylit as daylitPatch, mottleMap, nightPatch } from './daylight'
 
 /**
  * The flat's lamps (render.ts's pool of spot lights) light its own rooms only. What is outside them — the street and its
@@ -178,9 +178,14 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
     }
   }
   if (edge) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+  m.userData.nightOut = key.startsWith(OUTER) // the walked flat's outer faces take the city's night light, as the tower's (daylight.ts nightOut)
   if (daylit) daylitPatch(m)
   if (outside) {
-    m.onBeforeCompile = (s) => void ((s.vertexShader = noSpots(s.vertexShader)), (s.fragmentShader = noSpots(s.fragmentShader)))
+    m.onBeforeCompile = (s) => {
+      nightPatch(s) // the tower at night: the sky's glow and the street's lamps (qa3 P10)
+      s.vertexShader = noSpots(s.vertexShader)
+      s.fragmentShader = noSpots(s.fragmentShader)
+    }
     m.customProgramCacheKey = () => 'outside'
   }
   matCache.set(key, m)
@@ -190,6 +195,7 @@ export function materialFor(ref: MaterialRef, edge = false, daylit = false, outs
 /** Rendered outer walls, slab edges, the tower: the interior plaster scan, warmer and darker than the warm-white paint (#f4f1ea) so the
  * outside face reads as a different, weathered surface through a window. Flat #d9d4cb read as a cream sheet in every pane (wave 10). */
 export const EXTERIOR_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#dbd3c6' }
+const OUTER = JSON.stringify(EXTERIOR_PLASTER)
 /** Wall ends and tops (edge variant): the warm-white paint. A thick outer wall's end cap shows inside the room it stops at
  * (Bath-1 beside its thinner wall); in the weathered exterior tint it read as a dirty tan strip. */
 export const EDGE_PLASTER: MaterialRef = { kind: 'pbr', textureId: 'plaster_white', tint: '#f4f1ea' }

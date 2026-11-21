@@ -534,7 +534,7 @@ export default function StudioApp() {
   const pointed = hover && (hover.hit?.kind === 'label' ? hover.hit.id : roomAt(hover.m, rooms, unit)?.id)
   const pin = [pointed, state.selection.length === 1 ? state.selection[0] : null].find((id) => !!id && baseNames.get(id)?.look === -1)
   const names = useMemo(() => (pin ? roomNames(unit.roomLabels, rooms, toScreen, pin) : baseNames), [baseNames, pin]) // eslint-disable-line react-hooks/exhaustive-deps
-  const flatTags = useMemo(() => flatNames(flats, rooms, unit, toScreen), [flats, rooms, unit, toScreen])
+  const flatTags = useMemo(() => flatNames(flats, rooms, unit, toScreen, [...names.values()].flatMap((n) => (n.rect ? [n.rect] : []))), [flats, rooms, unit, toScreen, names])
   /** what no badge may cover: the room names shown and the flats' names */
   const nameRects = useMemo(() => [...names.values()].flatMap((n) => (n.rect ? [n.rect] : [])).concat(flatTags.map((f) => f.rect)), [names, flatTags])
   const now = () => Date.now()

@@ -518,7 +518,10 @@ export class Building extends THREE.Group {
         const at = (g: THREE.BufferGeometry) => g.translate(this.shift(s).x, y, this.shift(s).y)
         put(k, EXTERIOR_PLASTER, ...[...new Set(room.wallIds)].flatMap((id) => u.walls.filter((w) => w.id === id)).map((w) => wallGeometry(w, u)).filter((g) => !!g).map(at))
       }
-      put(top + 1, EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
+      // its lid: the room and its own walls only (plate's default, every wall of the flat, laid a lattice of beams 3 m over the
+      // whole roof — qa3 P9: "the top floor has no roof", it read as a cut-away)
+      const own = new Set(room.wallIds)
+      put(top + 1, EXTERIOR_PLASTER, ...plate(u, [room], R + FLOOR_M, PLATE_M, u.walls.filter((w) => own.has(w.id))).map((g) => g.translate(this.shift(s).x, 0, this.shift(s).y)))
     }
 
     // his traced rooftop on the roof slab, in full (the one walked: the scene draws it)
@@ -981,7 +984,7 @@ export class Building extends THREE.Group {
   private lightFlat(f: Inside): void {
     const how = f.k === this.picked && this.pickedStems.includes(f.s) ? 'picked' : f.level ? 'level' : 'home'
     const rooms = this.roomsOf(f.s)
-    flatLamps(f.home, rooms, how).forEach((v, i) => setLamp(f.lamps, i, v, hash01(`${f.home}|${rooms[i].id}|tint`)))
+    flatLamps(f.home, rooms, how).forEach((v, i) => setLamp(f.lamps, i, v, hash01(`${f.home}|${rooms[i].id}|tint`), rooms[i].kind === 'balcony'))
     f.scale.value = how === 'picked' ? (this.lampsOn ? 1 : 0) : this.night
   }
 
@@ -1233,8 +1236,12 @@ export const furnishes = (tier: Quality, k: number, near: Set<number> | null, pi
  * flat's by the night pattern (roomLight, the same on every visit); a balcony, a shaft, an open zone: none.
  */
 export function flatLamps(home: string, rooms: Room[], how: 'picked' | 'level' | 'home'): number[] {
-  return rooms.map((r) => (!indoor(r) ? 0 : how === 'home' ? roomLight(home, r.id) : ALWAYS_LIT))
+  const lit = rooms.map((r) => (!indoor(r) ? 0 : how === 'home' ? roomLight(home, r.id) : ALWAYS_LIT))
+  // a balcony: a little of the light of the lit room it opens from (qa3 P10: the lamps' light spilling onto it)
+  return rooms.map((r, i) => (r.kind !== 'balcony' ? lit[i] : SPILL * Math.max(0, ...rooms.map((o, j) => (o.wallIds.some((id) => r.wallIds.includes(id)) ? lit[j] : 0)))))
 }
+/** how much of the brightest lit room next to it a balcony gets at night: its light through the door and windows onto the floor outside */
+export const SPILL = 0.35
 
 /**
  * A lift (the picked flat's, the hover's): its skins drawn three times after everything else — their depth (nothing drawn),

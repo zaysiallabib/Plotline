@@ -25,7 +25,7 @@ import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
 import { CELL_M } from './batch'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
-import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
+import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
@@ -925,6 +925,7 @@ export class Look {
     setGlassSky(room ? PANE_ROOM : THREE.MathUtils.lerp(lum(this.tint), lum(this.dome.horizon.value), k.night))
     setLeafGlow(k.fill + 0.1 * lamp)
     streetNight.value = STREET_LIT * k.night
+    nightOut.glow.value = k.night / k.exposure // the city's light on what stands outside, as seen (daylight.ts nightOut)
     this.sunI = this.sun.intensity
     // the catcher draws its colour wherever the sun's map says shadow: under the horizon that is everywhere (a brown plane)
     ;(this.catcher.material as THREE.ShadowMaterial).opacity = 0.35 * THREE.MathUtils.smoothstep(altDeg, 0, 3)
@@ -1006,6 +1007,7 @@ export class Look {
   }
 
   render(): void {
+    nightOut.streetY.value = this.ground.position.y // (the street's level: the tower's, a level's, this flat's)
     const under = this.camera.getWorldPosition(this.v).y < this.topY
     this.sky.position.copy(this.v)
     this.indoor.visible = under
