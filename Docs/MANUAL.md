@@ -277,9 +277,9 @@ flat, and a flat of a project you made in the Studio, §6) stands in that buildi
 Building view: look out of a window and you see the floors above and below with their windows and slab edges, and down
 on the building's own ground — its lawns, driveway, parking, pool or play area — then the street. A ground floor,
 basement or rooftop you walk has the building above or below it too. In the Dollhouse the floors above yours are left
-out, so you still look in from above. On **Lite** only the ground and the floors just above and below yours are drawn
-(what a window shows most); on **Low** your building throws no sun-shadow (the neighbours still do); **High** draws all
-of it with its shadows.
+out, so you still look in from above. On **Lite** only the ground (its lawns, paving, pool and play area, without the
+trees, benches and play things) and the floors just above and below yours are drawn (what a window shows most); on
+**Low** your building throws no sun-shadow (the neighbours still do); **High** draws all of it with its shadows.
 
 The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
@@ -322,7 +322,7 @@ steps aside while Finishes or Comment is open.
   shading, **no shadows and no sun patches inside the flat** (rooms are still brighter by their windows; the sun still
   lights the street, the Dollhouse and Building views, and an open lawn, pool deck or roof terrace you stand on), 2
   lamps lit at night, the street as plain blocks under a plain blue sky, pictures at half size, no potted-plant models,
-  plain mirrors, and of your building only the ground and the floors just above and below yours. Nothing is drawn while
+  plain mirrors, and of your building only the ground (no trees or play things) and the floors just above and below yours. Nothing is drawn while
   nothing changes (with Wind on its lines keep drifting). Same walls, furniture and finishes.
 
 **When the 3D cannot run**

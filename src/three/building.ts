@@ -27,6 +27,7 @@ import { bottomOf, layoutFor } from '../studio/furniture'
 import { buildStreet, haze } from './context'
 import { KERB_M, bayLineGeometry, bayMarkings, floorGeometry, liftWall, liftedWall, poolBasin, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift } from './details'
 import { lightPiece } from './daylight'
+import { batch, CELL_M } from './batch'
 import { buildFurniture } from './furniture'
 import { ROOF_M, SITE_REACH_M, TIERS, towerLevel, type Quality } from './render'
 import { CONCRETE, EXTERIOR_PLASTER, PAINT as BAY_PAINT, materialFor, resolveFinishRef, zoneFinishRef } from './materials'
@@ -224,7 +225,7 @@ export class Building extends THREE.Group {
    */
   readonly streetY: number
   /** the level groups still to furnish, and whether the tower was disposed meanwhile */
-  private furnishing: { s: string; group: THREE.Group }[] = []
+  private furnishing: { s: string; group: THREE.Group; pieces?: THREE.Group }[] = []
   private disposed = false
   private readonly stem: string
   private readonly street: THREE.Group
@@ -245,6 +246,9 @@ export class Building extends THREE.Group {
   private readonly lidY: number
   /** frame(): the tower casts the sun's shadow (furniture loaded later follows) */
   private shadows = true
+  /** frame(): the levels' outdoor pieces are shown; furnish() has started */
+  private piecesShown = true
+  private furnished = false
 
   /** null when `unit` is not a flat of a tower; it sits on unit.floor (the viewer sets that from ?floor=), else the first floor listing it. */
   static for(unit: Unit): Building | null {
@@ -411,7 +415,6 @@ export class Building extends THREE.Group {
     this.mark.raycast = () => {}
     this.add(this.mark)
     this.highlight(floor)
-    void this.furnish()
   }
 
   /** y of floor k's finished floor (0 = ground, top + 1 = roof): frameOf. */
@@ -438,6 +441,11 @@ export class Building extends THREE.Group {
     const around = mode !== 'building'
     this.visible = true // (built hidden for a stair's floor: shown with it)
     this.shadows = !around || TIERS[tier].towerShadows
+    // the levels' pieces (trees, benches, play things): not round the flat on Lite, its zones only — they were ~1.5 ms of a
+    // Lite frame at 9× pixels round a Sheltech flat (Firefox pays per draw call: ~150 leaf clusters); the Building view has them
+    this.piecesShown = !(around && tier === 'lite')
+    if (this.piecesShown && !this.furnished) void this.furnish()
+    for (const { pieces } of this.furnishing) if (pieces) pieces.visible = this.piecesShown
     for (const o of this.children) {
       if (o === this.street) continue
       delete o.userData.cut
@@ -445,6 +453,7 @@ export class Building extends THREE.Group {
       this.casts(o)
     }
   }
+
 
   /** The tower's meshes in `o` cast the sun's shadow as built, or none (frame). */
   private casts(o: THREE.Object3D): void {
@@ -553,10 +562,17 @@ export class Building extends THREE.Group {
   /**
    * The outdoor pieces of the levels drawn in full (their own layout by kind: furnish presets, studio/furniture.ts
    * layoutFor) through the walk view's furniture loader, one at a time after the tower is shown: it opens as fast as the
-   * shells did and fills in. Interiors stay empty (not seen from outside).
+   * shells did and fills in. Interiors stay empty (not seen from outside). A level's pieces, all in, are drawn as one mesh
+   * per material per 8 m square (batch.ts, as the flat's furniture): a ground floor's trees, benches and planters are
+   * ~200 meshes (session 31: Lite 101 → 169 draw calls a frame round a Sheltech flat before they were batched).
    */
   private async furnish(): Promise<void> {
-    for (const { s, group } of this.furnishing) {
+    this.furnished = true
+    for (const f of this.furnishing) {
+      const { s, group } = f
+      const pieces = (f.pieces = new THREE.Group())
+      pieces.visible = this.piecesShown
+      group.add(pieces)
       const { unit: u } = this.t.FLATS[s]
       const rooms = this.roomsOf(s)
       const byId = new Map(rooms.map((r) => [r.id, r]))
@@ -568,9 +584,13 @@ export class Building extends THREE.Group {
         if (this.disposed) return
         obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
         lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
-        group.add(obj)
+        pieces.add(obj)
         this.casts(obj)
       }
+      // batched with the shadow flags they were built with; frame's rule on top (casts)
+      pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
+      batch(pieces, CELL_M)
+      this.casts(pieces)
     }
   }
 
@@ -657,7 +677,7 @@ export class Building extends THREE.Group {
   dispose(): void {
     this.disposed = true
     // the furniture shares its models' geometry with the loader's cache (and the walk view): not ours to free
-    for (const { group } of this.furnishing) group.children.filter((o) => o.userData.kind === 'furniture').forEach((o) => o.removeFromParent())
+    for (const { pieces } of this.furnishing) pieces?.children.filter((o) => o.userData.kind === 'furniture').forEach((o) => o.removeFromParent())
     this.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
     this.street.traverse((o) => ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose())
     this.own.forEach((m) => m.dispose())
