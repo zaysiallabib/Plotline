@@ -632,7 +632,8 @@ and only the screen empties.
 - **Left:** **Plotline STUDIO** (opens the front page; the mouse over STUDIO says this browser is in staff mode), then
   the drawing's fields: **Unit name**, **Project**, **Floor** (numbers only), **Area** (sft). They look like plain words
   until the mouse is over one. An empty name box shows in grey the name Preview 3D will use ("Type A", **Floor plan A**
-  for a whole floor, else "Untitled unit"). Narrower than about 1000 px, Project and Area step aside.
+  for a whole floor, else "Untitled unit"); Export, Export as DXF and Share link name the file and the buyer's link the same
+  way (floor-plan-a.dxf). Narrower than about 1000 px, Project and Area step aside.
 - After the fields, when signed in: where your work stands online (**Saving…**, **Saved · just now**, …; "Accounts"
   below).
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
