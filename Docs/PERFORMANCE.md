@@ -265,9 +265,9 @@ corner shading), so they stay light copies too.
 
 **What changed.** Until now only the flat's own surroundings were in the sun's shadow picture: out of a window, in the
 Dollhouse or the Building view, the lawn, the play area, the pool deck, the driveway, the road and the neighbours' walls
-stood evenly sunlit at every hour. On High there is now a second, wide shadow picture over the whole site — 100 m round
-the flat each way, from the street up 100 m, 2048 × 2048 (about 14 cm a point) — beside the flat's own sharp one: every
-surface reads the sharp picture where it reaches (the flat stays exactly as sharp as before) and the wide one past it,
+stood evenly sunlit at every hour. On High, round a flat that stands in its building, there is now a second, wide
+shadow picture over the whole site — 100 m round the flat each way, from the street up 100 m, 2048 × 2048 (about 14 cm a
+point) — beside the flat's own sharp one: every surface reads the sharp picture where it reaches (the flat stays exactly as sharp as before) and the wide one past it,
 the two fading into each other over a hand's width so no seam shows. Low and Lite have no second picture: they draw and
 cost exactly what they did.
 
