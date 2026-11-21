@@ -637,6 +637,7 @@ had.
 - Click inside a closed room. A box opens: **Room name**, **Kind** (guessed from the name, §8), **Printed size** (what
   the sheet prints, e.g. `12'-0" × 14'-2"`; leave it empty if none — the tool never fills it for you), **Floor level**,
   **Ramp** (tick it, type the far end's level, pick the direction). **Save**, or **Remove** to take the name off.
+  **Esc** closes the box without saving, wherever you are in it (the name, a level, the Ramp tick box, the Kind list).
 - **Clicked where no closed room is?** R looks at the walls round your click. If one wall end there stops a little short,
   R joins it (one Ctrl+Z) and opens the box. Otherwise it says which end keeps the room open, how far short and where,
   and rings it ("Not closed yet: the wall end 2'-3" up-left of your click (ringed) stops 0'-7" short of the wall ahead —
@@ -1197,7 +1198,6 @@ Things that are confusing or not finished. Each one is a job on the list.
   the 3D view.
 - Room names overlap on crowded plans (and in capitals at 30 % zoom); coloured areas (lawn, driveway) cover much of the
   picture under them; checks written for flats show on levels ("No entry door on an outer wall", the Area number).
-- Esc with the Ramp tick box focused does not close the room box.
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
 - Renaming a project does not change the Project box of drawings made before.
 

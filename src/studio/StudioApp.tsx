@@ -2038,6 +2038,8 @@ export default function StudioApp() {
         e.preventDefault()
         return jsonRef.current?.click()
       }
+      // Esc anywhere in the room box (its name, a level, the Ramp tick box, Save) closes it, as Esc elsewhere does
+      if (e.key === 'Escape' && popover && t.closest('.popover')) return setPopover(null)
       if (typing) return
       if (e.key === 'Escape' && trace === 'pick') return cancelTrace.current()
       if (e.key === 'Escape' && activeRef.current) return setActiveKey(null)
@@ -2592,10 +2594,8 @@ export default function StudioApp() {
                     setPopover({ ...popover, name: e.target.value, kind: popover.kindTouched ? popover.kind : guessKind(e.target.value) })
                   }
                   onKeyDown={(e) => {
-                    e.stopPropagation()
                     if (e.key.toLowerCase() === holdRef.current?.key) return e.preventDefault() // the held R's key repeat types nothing
                     if (e.key === 'Enter') savePopover()
-                    if (e.key === 'Escape') setPopover(null)
                   }}
                 />
               </label>
@@ -2608,10 +2608,7 @@ export default function StudioApp() {
                 <input
                   value={popover.printedSize}
                   onChange={(e) => setPopover({ ...popover, printedSize: e.target.value })}
-                  onKeyDown={(e) => {
-                    e.stopPropagation()
-                    if (e.key === 'Enter') savePopover()
-                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && savePopover()}
                 />
               </label>
               <LevelFields levelM={popover.levelM} slope={popover.slope} dirs={popover.dirs} onChange={(p) => setPopover({ ...popover, ...p })} />

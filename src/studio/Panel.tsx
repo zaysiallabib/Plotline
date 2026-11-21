@@ -71,7 +71,7 @@ function LevelInput({ valueM, onCommit, placeholder }: { valueM?: number; onComm
     setBad(false)
     if (m !== valueM) onCommit(m)
   }
-  return <input className={bad ? 'bad' : ''} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => (e.key === 'Enter' && e.currentTarget.blur(), e.stopPropagation())} />
+  return <input className={bad ? 'bad' : ''} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }
 
 const ARROWS = ['↑', '→', '↓', '←']
