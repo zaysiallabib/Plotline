@@ -559,7 +559,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
   day and by night, from every side; at night its lamps are on too (the **Lights** button turns them off). No lines, no
   colour: the floor under the mouse turns brighter too, but less. Pick another floor and the light moves to it.
 - **Every window is a home.** Behind every window of every flat are its real rooms: the floors, the ceilings and the
-  walls in their paint, and the furniture the walk lays out (beds, sofas, tables, wardrobes, curtains). The glass is real
+  walls in their paint, and the furniture the walk lays out (beds, sofas, tables, wardrobes, curtains) — each floor as
+  staff left it: floor 5's blue bedroom is blue from the street, floor 4's next to it white. The glass is real
   glass in an aluminium frame, mirroring the sky's haze at a slant; your own flat's furnished rooms show through its
   glass too. By day the rooms read a little darker than the street, with sun patches on the floors; at night about half
   the rooms have a lamp on — warm, neutral or cool, some flats all dark — the same ones every time you look. The ground
@@ -1294,9 +1295,9 @@ Things that are confusing or not finished. Each one is a job on the list.
   from the room list; jumping to a lawn can leave you in a corner facing a wall.
 - Furniture moved in 3D while the Studio is open in another tab can be overwritten by the Studio (on a floor plan that is
   on one floor only: there F and the 3D view share one layout).
-- In the Building view the other flats show their rooms and furniture as the floor plan lays them out: a flat whose
-  finishes or furniture were changed for that floor alone shows the change only once opened. Rugs, potted plants and
-  small things (a vase, a book) are left out of the other flats.
+- In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
+  floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
+  things (a vase, a book) are left out of the other flats.
 - A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
   buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides

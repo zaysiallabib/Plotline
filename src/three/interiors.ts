@@ -16,7 +16,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
-import type { MaterialRef, Room, Unit } from '../core'
+import type { Configuration, MaterialRef, Room, Unit } from '../core'
 import { finishSlotsFor } from '../furnish/finishes'
 import { kitAsset, placementSize } from '../furnish/kit'
 import { textureSet } from '../furnish/textures'
@@ -169,11 +169,13 @@ const merge = (gs: THREE.BufferGeometry[]): THREE.BufferGeometry | null => {
  * A drawing's rooms (its own frame, floor at 0): each indoor room's floor (`floors`: a level draws its own, building.ts
  * addLevel), its ceiling a centimetre under the slab above (`wallM`: where the shell's plate starts) and the room side of
  * every wall — each a lining LINING_M in front of the wall's face, its openings cut, standing on its floors as the level's
- * walls do — in the room's default finishes; the room's number (its index in `rooms`) on every vertex. null: no indoor room.
+ * walls do — in the finishes `cfg` picks (a floor's own record: data/building/apartments.ts; none: the plan's defaults), a wall
+ * face by its own pick; the room's number (its index in `rooms`) on every vertex. null: no indoor room.
  */
-export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floors = true): Promise<THREE.BufferGeometry | null> {
+export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floors = true, cfg: Configuration = {}): Promise<THREE.BufferGeometry | null> {
   const slots = finishSlotsFor(u, rooms)
-  const cols = await Promise.all(rooms.map((r) => Promise.all((['floor', 'wall', 'ceiling'] as const).map((t) => refColour(resolveFinishRef(slots, {}, r.id, t))))))
+  const colour = (r: Room, t: 'floor' | 'wall' | 'ceiling', wallId?: string) => refColour(resolveFinishRef(slots, cfg, r.id, t, wallId))
+  const cols = await Promise.all(rooms.map((r) => Promise.all([colour(r, 'floor'), colour(r, 'ceiling')])))
   const out: THREE.BufferGeometry[] = []
   rooms.forEach((r, i) => {
     if (!indoor(r)) return
@@ -186,7 +188,7 @@ export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floor
     for (let k = 0; k + 2 < idx.length; k += 3) [idx[k + 1], idx[k + 2]] = [idx[k + 2], idx[k + 1]] // facing down
     c.setIndex(idx)
     c.deleteAttribute('normal')
-    out.push(plainPart(c, i, cols[i][2]))
+    out.push(plainPart(c, i, cols[i][1]))
   })
   const lined = { vertices: u.vertices, walls: u.walls.map((w) => ({ ...w, thicknessM: w.thicknessM + 2 * LINING_M })) }
   for (const w of lined.walls) {
@@ -205,7 +207,7 @@ export async function roomsGeometry(u: Unit, rooms: Room[], wallM: number, floor
     liftWall(g, w, u, l)
     for (const grp of g.groups) {
       const r = grp.materialIndex === 0 && a ? front : grp.materialIndex === 1 && b ? back : null
-      if (r && grp.count) out.push(plainPart(slice(g, grp.start, grp.count), rooms.indexOf(r), cols[rooms.indexOf(r)][1]))
+      if (r && grp.count) out.push(plainPart(slice(g, grp.start, grp.count), rooms.indexOf(r), await colour(r, 'wall', w.id)))
     }
     g.dispose()
   }

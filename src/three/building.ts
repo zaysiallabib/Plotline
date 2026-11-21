@@ -20,6 +20,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as core from '../core'
 import type { MaterialRef, Opening, Pt, Room, Unit, Wall } from '../core'
 import { floorIn, stemIn, streetOf, topFloor, towerOf, voidsOver, type Tower } from '../data/building'
+import { keptAt } from '../data/building/apartments'
 import type { Rect } from '../data/building/demo-tower'
 import { finishSlotsFor } from '../furnish/finishes'
 import { bottomOf, layoutFor } from '../studio/furniture'
@@ -575,7 +576,7 @@ export class Building extends THREE.Group {
       return this.disposed
     }
     for (const f of insideOrder(this.flats, this.eye)) {
-      const g = await this.drawing(f.s).rooms
+      const g = await this.drawing(f).rooms
       if (this.disposed) return
       if (g) this.show(f, 'rooms', g)
       if (await pause()) return
@@ -600,7 +601,7 @@ export class Building extends THREE.Group {
     }
     if (this.tier !== 'lite')
       for (const f of insideOrder(this.flats, this.eye)) {
-        const g = await this.drawing(f.s, pause).things
+        const g = await this.drawing(f, pause).things
         if (this.disposed) return
         if (g) this.show(f, 'things', g)
         if (await pause()) return
@@ -608,13 +609,17 @@ export class Building extends THREE.Group {
     this.progress.furnished = performance.now()
   }
 
-  /** Drawing s's rooms (and, given `pause`, its furniture), made once for every floor it stands on; a level draws its own floors. */
-  private drawing(s: string, pause?: () => Promise<boolean>): { rooms?: Promise<THREE.BufferGeometry | null>; things?: Promise<THREE.BufferGeometry | null> } {
-    let d = this.drawn.get(s)
-    if (!d) this.drawn.set(s, (d = {}))
-    const { unit: u } = this.t.FLATS[s]
-    d.rooms ??= roomsGeometry(u, this.roomsOf(s), WALL_M, this.t.LEVELS?.[s] === undefined)
-    if (pause) d.things ??= furnitureGeometry(u, this.roomsOf(s), pause)
+  /** Flat f's rooms (and, given `pause`, its furniture), made once for every floor that keeps the same; a level draws its own floors. */
+  private drawing(f: Inside, pause?: () => Promise<boolean>): { rooms?: Promise<THREE.BufferGeometry | null>; things?: Promise<THREE.BufferGeometry | null> } {
+    const { unit: u } = this.t.FLATS[f.s]
+    // as the walk opens that floor (ViewerApp prepare): its own furniture and finishes staff left there, else the drawing's,
+    // else the plan's — floors that keep the same share one geometry
+    const k = keptAt(u, f.k, this.t)
+    const key = `${f.s}|${JSON.stringify([k.layout, k.finishes])}`
+    let d = this.drawn.get(key)
+    if (!d) this.drawn.set(key, (d = {}))
+    d.rooms ??= roomsGeometry(u, this.roomsOf(f.s), WALL_M, this.t.LEVELS?.[f.s] === undefined, k.finishes)
+    if (pause) d.things ??= furnitureGeometry(k.layout ? { ...u, furniture: k.layout } : u, this.roomsOf(f.s), pause)
     return d
   }
 

@@ -599,3 +599,31 @@ describe('the Building view: rooms behind every window, the picked flat lit (ses
     expect(flatLamps('type-b|4', rooms, 'home')).toEqual(rooms.map((r) => (shut(r) ? 0 : roomLight('type-b|4', r.id))))
   })
 })
+
+describe('the Building view: each floor as staff left it (session 31 glow, with the kept records)', () => {
+  test('a floor whose finishes or furniture staff changed has rooms of its own behind its windows; the others share the plan’s', async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    const store = new Map<string, string>()
+    const had = g.localStorage
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) }
+    try {
+      const b = bti.FLATS['type-b'].unit
+      // floor 5's Type B painted Slate Blue (Finishes → Wall paint, kept for floor 5 only); floor 6's bed moved
+      store.set(`plotline.finishes.${b.id}:5`, JSON.stringify({ s_wall_paint: 'fo_paint_slate_blue' }))
+      const { layoutFor } = await import('../studio/furniture')
+      const moved = layoutFor(b, core.deriveRooms(b)).map((p, i) => (i === 0 ? { ...p, x: p.x + 0.3 } : p))
+      store.set(`plotline.layout.${b.id}:6`, JSON.stringify(moved))
+      const { Building } = await import('./building')
+      const t = Building.for(bti.FLATS['type-a'].unit)! as unknown as { flats: { s: string; k: number }[]; drawing(f: unknown): unknown; drawn: Map<string, unknown>; dispose(): void }
+      const of = (s: string, k: number) => t.drawing(t.flats.find((f) => f.s === s && f.k === k))
+      expect(of('type-b', 4)).toBe(of('type-b', 7)) // the plan's: one geometry for both floors
+      expect(of('type-b', 5)).not.toBe(of('type-b', 4)) // the slate blue walls: its own
+      expect(of('type-b', 6)).not.toBe(of('type-b', 4)) // the moved bed: its own
+      expect(of('type-b', 6)).not.toBe(of('type-b', 5))
+      expect(of('type-c', 5)).toBe(of('type-c', 4)) // its neighbour on floor 5 is untouched
+      t.dispose()
+    } finally {
+      g.localStorage = had
+    }
+  })
+})
