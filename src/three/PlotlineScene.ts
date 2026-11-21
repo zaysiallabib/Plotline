@@ -1156,6 +1156,12 @@ export class PlotlineScene {
   private prepare(now: number): void {
     if (now < this.prepAt || !this.ready) return // (before the flat is built its lamps are not there: every program would be made again)
     this.prepAt = now + PREP_MS
+    // the batches made as soon as what they batch is in, not BATCH_MS / AROUND_MS on (nothing moves under the screen): the
+    // flat's once its furniture is, the tower's once its rooms and pieces are — drawn behind the screen, their buffers go to
+    // the graphics chip there (made after it, the first frame after Enter sent ~150 of them: 95 ms, session 31 start lane)
+    if (this.loadedAt && this.unsettled.size) (clearTimeout(this.batchTimer), this.settle())
+    const b = this.building
+    if (b?.piecesIn && b.progress.rooms) b.settleNow()
     const n = this.renderer.info.programs?.length ?? 0
     // what has a shape (a plant's leaves before their file is read have none: a program of their own, never drawn)
     const parts: THREE.Object3D[] = []
@@ -1163,10 +1169,7 @@ export class PlotlineScene {
     this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
     if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
     if (!this.envIn || !this.loadedAt || loading.size || !(this.building?.piecesIn ?? true) || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
-    // the batches made now, not 0.4 s on (settle, the tower's batchAround): drawn here, their buffers go to the graphics chip
-    // behind the screen — made after it, the first frame after Enter sent ~150 of them (95 ms, session 31 start lane)
-    if (this.unsettled.size) (clearTimeout(this.batchTimer), this.settle())
-    this.building?.settleNow()
+    this.building?.settleNow() // (its rooms still coming: what is in, batched for this frame)
     this.renderer.info.reset()
     this.look.render()
     this.rehearsedAt = performance.now()
