@@ -729,16 +729,20 @@ function Viewer({ first }: { first: Shown }) {
     scene.down = tower && stem ? stairsDown(tower, stem, given.floor ?? floorIn(tower, stem), given.furniture.filter(isStair)) : [] // the hole and the flight below
     const a = arrival.current
     arrival.current = null
-    const shown = () => {
+    const arrived = () => {
       if (!going.current) return
       going.current = null // "Floor 3 …" stood there until now: the floor is ready, its first frame comes next
       redraw()
     }
     // a floor reached by the stair: made ready while the one he leaves stays on screen (no freeze), then he stands at its stair
-    if (a) void scene.arrive(given, a.at, yawFor(a.face)).then(shown)
+    if (a) void scene.arrive(given, a.at, yawFor(a.face)).then(arrived)
     else {
       scene.setUnit(given)
-      shown()
+      // under the start screen, walking in: the 3D gets ready looking where Enter will put him (the first frame then sends
+      // nothing new: what that view sees is what was drawn behind the screen — PlotlineScene.prepare)
+      const e = !entered && !params.has('view') && !params.has('edit') && entrySpawn(shown(), rooms, innerWidth < innerHeight)
+      if (e) spawn(scene, e.p, e.face)
+      arrived()
     }
   }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
   // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)
