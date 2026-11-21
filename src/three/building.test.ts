@@ -818,3 +818,29 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     b.dispose()
   })
 })
+
+describe('the grounds’ leaves join the tower’s batches round the flat (session 31 perf: Sheltech’s ground was ~150 draws of leaves)', () => {
+  test('unrolled: every instance laid out in place with its tint as vertex colours; the material’s copy draws them and glows with the original', async () => {
+    const THREE = await import('three')
+    const { unrolled } = await import('./building')
+    const mat = new THREE.MeshStandardMaterial({ alphaTest: 0.5, side: THREE.DoubleSide, emissiveIntensity: 1 })
+    const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.1, 0.2), mat, 3)
+    for (let i = 0; i < 3; i++) {
+      im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(i, 0, 0))
+      im.setColorAt(i, new THREE.Color(0.1 * (i + 1), 0.5, 0.2))
+    }
+    im.updateMatrixWorld(true)
+    const out = unrolled(im, new THREE.Matrix4())!
+    const g = out.geometry
+    expect(g.index!.count / 3).toBe(3 * 2)
+    g.computeBoundingBox()
+    expect([+g.boundingBox!.min.x.toFixed(2), +g.boundingBox!.max.x.toFixed(2)]).toEqual([-0.05, 2.05])
+    const col = g.attributes.color
+    expect(+col.getX(0).toFixed(2)).toBe(0.1)
+    expect(+col.getX(col.count - 1).toFixed(2)).toBe(0.3)
+    const t = out.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    expect([t.vertexColors, t.alphaTest, t.side]).toEqual([true, 0.5, THREE.DoubleSide])
+    mat.emissiveIntensity = 0.2 // the hour changed (procedural.ts setLeafGlow)
+    expect(t.emissiveIntensity).toBe(0.2)
+  })
+})
