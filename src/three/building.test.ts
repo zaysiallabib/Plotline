@@ -791,3 +791,30 @@ describe('a code-built piece as a stand-in too (session 31 perf: a curtain’s p
     expect(light).toBeLessThan(big.n / 2)
   })
 })
+
+describe('round the flat the tower is a handful of draws (session 31 perf: the context lane took Walk / High 94 → 127 draws on Type A)', () => {
+  test('once settled the tower shows as one mesh per material; the Building view gets it back one by one (its cut, lift and picking)', async () => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.requestAnimationFrame ??= () => 0
+    const { Building } = await import('./building')
+    const { HIDDEN } = await import('./batch')
+    const b = Building.for(bti.FLATS['type-a'].unit, 'low')!
+    for (const _ of b.make()); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const drawn = () => {
+      let n = 0
+      b.traverseVisible((o) => void ((o as import('three').Mesh).isMesh && o.layers.mask === 1 && n++))
+      return n
+    }
+    b.frame('walk', 'low')
+    const one = drawn()
+    await new Promise((r) => setTimeout(r, 450))
+    const batched = drawn()
+    expect(batched).toBeLessThan(one / 3)
+    b.frame('building', 'low')
+    let hidden = 0
+    b.traverse((o) => void (o.layers.mask === 1 << HIDDEN && hidden++))
+    expect(hidden).toBe(0) // every piece back on its own
+    expect(b.children.some((o) => o.userData.batch)).toBe(false)
+    b.dispose()
+  })
+})
