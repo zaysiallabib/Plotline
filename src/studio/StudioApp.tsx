@@ -290,6 +290,8 @@ function rastersOf(im: HTMLImageElement): { gray: Gray; rgb: NonNullable<TraceJo
   return { gray: { width: c.width, height: c.height, data }, rgb: { width: c.width, height: c.height, data: rgba } }
 }
 
+/** what the Studio calls a drawing (its name box, Preview 3D): its own name, else "Type A" / "Floor plan A" / "Untitled unit" — its files and its buyer link too */
+const nameOf = (u: Unit): string => titleOf(u, deriveRooms(u))
 const download = (name: string, text: string, type = 'application/json') => {
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([text], { type }))
@@ -1116,7 +1118,7 @@ export default function StudioApp() {
     const n = issues.filter((i) => i.level === 'error').length
     if (n && !(await ask(`This unit has ${n} error${n === 1 ? '' : 's'}. Export anyway?\n${traced}`, 'Export anyway'))) return
     console.log(`[plotline] ${traced} (${st.timer.elapsedMs} ms)`)
-    const name = st.unit.name.trim() || 'Untitled unit'
+    const name = nameOf(st.unit)
     // (s27 AI-prep: with this trace's Check-these rows — their sheet boxes and answers; Import leaves them out)
     // (s27 export: at once — a row whose answers are still being worked out goes in with its box, no answers and answersPending)
     const p = st.planImage
@@ -1161,7 +1163,7 @@ export default function StudioApp() {
     const u = stateRef.current.unit
     if (!u.walls.length) return toast('Nothing drawn yet to export')
     const { writeDxf } = await import('../import/dxfWrite')
-    const name = u.name.trim() || 'Untitled unit'
+    const name = nameOf(u)
     download(`${slug(name)}.dxf`, writeDxf(u), 'application/dxf')
     toast(`Saved ${slug(name)}.dxf — metres, layers WALLS, DOORS, WINDOWS, COLUMNS, TEXT, PLOTLINE_ZONES, PLOTLINE_KERBS`)
   }
@@ -1226,7 +1228,7 @@ export default function StudioApp() {
     setSharing(true)
     try {
       const st = stateRef.current
-      const laid = withLayout({ ...st.unit, name: st.unit.name.trim() || 'Untitled unit' }) // the buyer's browser has no arranged layout: bake it in
+      const laid = withLayout({ ...st.unit, name: nameOf(st.unit) }) // the buyer's browser has no arranged layout: bake it in
       // and none of the staff's own pieces / finishes: their records go with it (their files online first: lib/library.ts)
       const library = await forShare(laid)
       const finishes = readFinishes(laid.id) // the drawing's picks (Preview 3D): the buyer opens with them (?c= still wins)

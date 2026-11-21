@@ -731,6 +731,9 @@ export class PlotlineScene {
     this.drop()
     const g = (this.leaving = new THREE.Group())
     for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
+    // the next floor is built into these: hidden from its first wall on (drop shows them) — drawn meanwhile in the old
+    // floor's daylight, its walls flashed white over the floor he leaves (session 31 QA3)
+    this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false
     if (this.shell) g.add(this.shell)
     this.shell = null
     this.leavingTower = this.building // stays round the floor he leaves until the new one shows, as it is
