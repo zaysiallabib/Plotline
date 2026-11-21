@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly } from './furniture'
 import { EDGE_PLASTER, lean, lite, materialFor, resolveFinishRef, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, isClick, pickedAt, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, isClick, nearestWithin, pickedAt, shrinkHdr } from './PlotlineScene'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
 // and off the floor like a real export, so buildFurniture's centring, grounding, front turn and scaling are measured.
@@ -516,5 +516,16 @@ describe('a drag dot is never huge on screen (session 31 tidy: on a phone near a
     expect(dotScale(0.075, 1, 50, 1000, 44) * across(1, 1000)).toBeCloseTo(44, 6) // 161 px → 44
     expect(dotScale(0.075, 0.6, 50, 844, dotMaxPx(390, 844)) * across(0.6, 844)).toBeCloseTo(27.3, 1) // the phone
     expect(dotScale(0.075, 0, 50, 1000, 44)).toBeGreaterThan(0) // the camera on the dot: tiny, not NaN
+  })
+})
+
+describe('a finger takes a drag dot within half a fingertip (session 31 phonestaff: the 27 px dots were smaller than a thumb)', () => {
+  test('the nearest dot within reach; none beyond it; one behind the camera never', () => {
+    const dots = [{ x: 100, y: 100 }, { x: 130, y: 100 }, null]
+    expect(nearestWithin(dots, { x: 112, y: 100 }, FINGER_REACH_PX)).toBe(0) // 12 px off the first, 18 off the second
+    expect(nearestWithin(dots, { x: 120, y: 104 }, FINGER_REACH_PX)).toBe(1)
+    expect(nearestWithin(dots, { x: 100, y: 123 }, FINGER_REACH_PX)).toBe(-1) // 23 px: out of reach
+    expect(nearestWithin([null], { x: 0, y: 0 }, FINGER_REACH_PX)).toBe(-1)
+    expect(FINGER_REACH_PX * 2).toBe(44) // a fingertip: the --touch size
   })
 })

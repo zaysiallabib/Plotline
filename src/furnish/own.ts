@@ -120,6 +120,24 @@ export function pictureRefusal(p: { bytes: number; type: string }): string | nul
  */
 export const furnitureScale = (maxM: number): number => (maxM <= 12 ? 1 : maxM <= 1200 ? 0.01 : 0.001)
 
+/** A unit a file that names none may have been drawn in, as a person picks it: its name, metres per unit. */
+export type UnitReading = { unit: 'Inches' | 'Centimetres' | 'Millimetres'; m: number }
+const READINGS: UnitReading[] = [
+  { unit: 'Inches', m: 0.0254 },
+  { unit: 'Centimetres', m: 0.01 },
+  { unit: 'Millimetres', m: 0.001 },
+]
+/**
+ * An OBJ or STL names no unit. When its longest side read as metres is no piece of furniture (over 12 m, where
+ * furnitureScale stops reading metres, or under 5 cm), the starting size is a guess the person must see: the units
+ * that make the piece 15 cm to 5 m long, inches first (an 84" sofa read as centimetres was an 84 cm one). [] when none
+ * does (the person types the size); null when metres it is, as before.
+ */
+export function unitReadings(longestM: number): UnitReading[] | null {
+  if (longestM >= 0.05 && longestM <= 12) return null
+  return READINGS.filter((r) => longestM * r.m >= 0.15 && longestM * r.m <= 5)
+}
+
 /** The box measured in the file's axes (x, y up, z) as the piece's own size facing `front`: width, height, depth. */
 export const facing = (box: Size3, front: Front): Size3 => (front.endsWith('x') ? { x: box.z, y: box.y, z: box.x } : { ...box })
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { pointInPolygon, type Unit } from '../core'
 import typeA from '../data/units/type-a.json'
-import { AXO_TILT, AXO_TURN, FLOORS, fitName, hull, moment, planOf, project, shadowOf } from './story'
+import { AXO_TILT, AXO_TURN, FLOORS, fitLabel, fitName, hull, moment, NAME_SCALES, planOf, project, shadowOf, sheetName } from './story'
 
 const plan = planOf(typeA as unknown as Unit)
 
@@ -78,6 +78,23 @@ describe('the drawing maths', () => {
     expect(fitName('LIVING ROOM', upTo(20))).toEqual(['LIVING ROOM'])
     expect(fitName('DINING & FAMILY LIVING', upTo(14))).toEqual(['DINING &', 'FAMILY LIVING'])
     expect(fitName('BATH-3', upTo(4))).toBeNull()
+  })
+  it('a name that fits at no size is tried smaller twice before it is left out (Bath-3, a shaft on a phone)', () => {
+    const upTo = (n: number) => (lines: string[], k: number) => lines.every((t) => t.length * k <= n)
+    expect(fitLabel('LIVING ROOM', NAME_SCALES, upTo(20))).toEqual({ lines: ['LIVING ROOM'], k: 1 })
+    expect(fitLabel('BATH-3', NAME_SCALES, upTo(5))).toEqual({ lines: ['BATH-3'], k: 0.8 })
+    expect(fitLabel('BATH-3', NAME_SCALES, upTo(4))).toEqual({ lines: ['BATH-3'], k: 0.64 })
+    expect(fitLabel('DINING & FAMILY LIVING', NAME_SCALES, upTo(10))).toEqual({ lines: ['DINING &', 'FAMILY LIVING'], k: 0.64 })
+    expect(fitLabel('BATH-3', NAME_SCALES, upTo(3))).toBeNull()
+  })
+  it('names a room as the sheet prints it, and the rooms the sheet gives no size too', () => {
+    expect(sheetName('Veranda (living)')).toBe('Veranda')
+    expect(sheetName('AOD (west)')).toBe('AOD')
+    expect(sheetName('Dining & family living')).toBe('Dining & family living')
+    expect(sheetName('(west)')).toBe('(west)')
+    const names = plan.labels.map((l) => l.name)
+    expect(names).toContain('AOD')
+    expect(plan.labels.find((l) => l.name === 'AOD')!.size).toBe('')
   })
   it('the sun: at noon on the equinox in Dhaka a shadow points due north, tan(latitude) long per metre', () => {
     const d = shadowOf(0, 0, 0) // north straight up the plan

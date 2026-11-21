@@ -91,6 +91,8 @@
 }
 @media (pointer: coarse) {
   :root { --control: var(--touch); }
+  /* a key's name on a button ("Turn 90° (R)"): a finger has no keys */
+  .key { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --dur: 0ms; --dur-fast: 0ms; --dur-slow: 0ms; }

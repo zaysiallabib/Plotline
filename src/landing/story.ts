@@ -29,7 +29,7 @@ export interface Plan {
   openings: { f: Frame; t: number; o: Opening }[]
   /** the slab under a floor: the rooms' polygons and the outer walls' rectangles grown by OVER (their union) */
   slab: Pt[][]
-  /** printed rooms: name, size, and the room's inner outline (a name that does not fit inside it is left out) */
+  /** printed rooms: name (as the sheet prints it), size ('' when the sheet gives none), and the room's inner outline */
   labels: { x: number; y: number; name: string; size: string; room: Pt[] }[]
   b: Bounds
   c: Pt
@@ -86,7 +86,7 @@ export function planOf(u: Pick<Unit, 'vertices' | 'walls' | 'roomLabels' | 'name
     if (outside) slab.push(strip(f, -ea - OVER, L + eb + OVER, t + OVER))
   }
   const inner = new Map(rooms.map((r) => [r.id, roomInnerPolygon(r, u)]))
-  const labels = u.roomLabels.filter((l) => l.printedSize && inner.has(l.id)).map((l) => ({ x: l.x, y: l.y, name: l.name, size: l.printedSize!.replace(/ × /, ' x '), room: inner.get(l.id)! }))
+  const labels = u.roomLabels.filter((l) => inner.has(l.id)).map((l) => ({ x: l.x, y: l.y, name: sheetName(l.name), size: l.printedSize?.replace(/ × /, ' x ') ?? '', room: inner.get(l.id)! }))
   const b = unitBounds(u)
   const c = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }
   // a peristyle: columns round the plan's edge, about every 2.6 m, kept where a floor stands over them
@@ -174,8 +174,11 @@ export function project(k: Cam, p: Pt, z: number, turn = 0): Pt {
   return { x: k.ox + k.s * (dx * Math.cos(th) - dy * Math.sin(th)), y: k.oy + k.s * (yr * Math.cos(k.ph) - z * Math.sin(k.ph)) }
 }
 
+/** A room's name as the architect's sheet prints it: Plotline's "which one" in brackets left off ("Veranda (living)" → "Veranda"). */
+export const sheetName = (name: string): string => name.replace(/\s*\([^)]*\)\s*$/, '') || name
+
 /** The scale and offset that fit these points (plan, height, turn) into a w × h box seen at (th, ph), centred. */
-export function fit(c: Pt, pts: [Pt, number, number][], th: number, ph: number, w: number, h: number): { s: number; dx: number; dy: number } {
+export function fit(c: Pt, pts: [Pt, number, number][], th: number, ph: number, w: number, h: number): { s: number; dx: number; dy: number; h: number } {
   const k: Cam = { th, ph, s: 1, ox: 0, oy: 0, c }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const [p, z, turn] of pts) {
@@ -183,7 +186,7 @@ export function fit(c: Pt, pts: [Pt, number, number][], th: number, ph: number, 
     x0 = Math.min(x0, q.x), x1 = Math.max(x1, q.x), y0 = Math.min(y0, q.y), y1 = Math.max(y1, q.y)
   }
   const s = Math.min(w / (x1 - x0), h / (y1 - y0))
-  return { s, dx: (-(x0 + x1) / 2) * s, dy: (-(y0 + y1) / 2) * s }
+  return { s, dx: (-(x0 + x1) / 2) * s, dy: (-(y0 + y1) / 2) * s, h: (y1 - y0) * s }
 }
 
 /** Convex hull (monotone chain) of a few points; positive signed area, like every subpath a course fills. */
@@ -249,6 +252,8 @@ export interface Box {
   w: number
   h: number
   dpr: number
+  /** the drawing hangs from the box's top instead of standing in its middle (a phone: right under the words) */
+  top?: boolean
 }
 
 /** Heights in the tower (m): three steps, the colonnade, a slab, a course of wall, the roof plate. */
@@ -397,6 +402,17 @@ function sheet(g: G, P: Plan, ink: Inks, s: number, dpr: number, alpha: number):
   g.restore()
 }
 
+/** The sizes a room's name is tried at before it is left out: as printed, then smaller twice (a bath, a shaft). */
+export const NAME_SCALES = [1, 0.8, 0.64]
+/** A room name at the first of `scales` where it fits on one line or two (fitName); null when it fits at none. */
+export function fitLabel(text: string, scales: number[], fits: (lines: string[], k: number) => boolean): { lines: string[]; k: number } | null {
+  for (const k of scales) {
+    const lines = fitName(text, (l) => fits(l, k))
+    if (lines) return { lines, k }
+  }
+  return null
+}
+
 /** A room name in one line, else in two (the most even break first), the first way that `fits`; null when none does. */
 export function fitName(text: string, fits: (lines: string[]) => boolean): string[] | null {
   const w = text.split(' ')
@@ -426,31 +442,37 @@ function floorPlan(g: G, P: Plan, ink: Inks, s: number, notes: number): void {
   g.scale(1 / s, 1 / s)
   g.textAlign = 'center'
   g.textBaseline = 'middle'
-  const name = Math.max(0.3 * s, 8.5)
-  const size = Math.max(0.26 * s, 8)
-  const sizeFont = `400 ${size}px ${ink.sans}`
+  const name0 = Math.max(0.3 * s, 8.5)
+  const size0 = Math.max(0.26 * s, 8)
+  const fonts = (k: number) => ({ name: name0 * k, size: size0 * k, nameFont: `500 ${name0 * k}px ${ink.sans}`, sizeFont: `400 ${size0 * k}px ${ink.sans}` })
   for (const l of P.labels) {
-    g.font = sizeFont
-    g.letterSpacing = '0px'
-    const sw = g.measureText(l.size).width
-    g.font = `500 ${name}px ${ink.sans}`
-    g.letterSpacing = `${name * 0.12}px`
-    const tall = (n: number) => n * name * 1.2 + size * 1.2
-    // the words (names over the size) must sit inside the room with a little air
-    const fits = (lines: string[]) => {
+    const tall = (n: number, k: number) => n * name0 * k * 1.2 + (l.size ? size0 * k * 1.2 : 0)
+    // the words (names over the size) must sit inside the room with a little air; a small room tries smaller letters
+    const fits = (lines: string[], k: number) => {
+      const F = fonts(k)
+      g.font = F.sizeFont
+      g.letterSpacing = '0px'
+      const sw = l.size ? g.measureText(l.size).width : 0
+      g.font = F.nameFont
+      g.letterSpacing = `${F.name * 0.12}px`
       const hw = Math.max(sw, ...lines.map((t) => g.measureText(t).width)) / 2 / s + 0.1
-      const hh = tall(lines.length) / 2 / s + 0.05
+      const hh = tall(lines.length, k) / 2 / s + 0.05
       return [-1, 1].every((a) => [-1, 1].every((b2) => pointInPolygon({ x: l.x + a * hw, y: l.y + b2 * hh }, l.room)))
     }
-    const lines = fitName(l.name.toUpperCase(), fits)
-    if (!lines) continue
-    const y = l.y * s - tall(lines.length) / 2
+    const got = fitLabel(l.name.toUpperCase(), NAME_SCALES, fits)
+    if (!got) continue
+    const { lines, k } = got
+    const F = fonts(k)
+    const y = l.y * s - tall(lines.length, k) / 2
+    g.font = F.nameFont
+    g.letterSpacing = `${F.name * 0.12}px`
     g.fillStyle = ink.ink
-    lines.forEach((t, i) => g.fillText(t, l.x * s, y + (i + 0.5) * name * 1.2))
-    g.font = sizeFont
+    lines.forEach((t, i) => g.fillText(t, l.x * s, y + (i + 0.5) * F.name * 1.2))
+    if (!l.size) continue
+    g.font = F.sizeFont
     g.letterSpacing = '0px'
     g.fillStyle = ink.muted
-    g.fillText(l.size, l.x * s, y + lines.length * name * 1.2 + size * 0.6)
+    g.fillText(l.size, l.x * s, y + lines.length * F.name * 1.2 + F.size * 0.6)
   }
   g.restore()
 }
@@ -591,8 +613,10 @@ export function draw(g: G, P: Plan, m: Moment, box: Box, ink: Inks): void {
   const F2 = fit(c, floorPts, AXO_TURN, AXO_TILT, box.w * 0.86, box.h * 0.86)
   const F3 = fit(c, towerPts, AXO_TURN, AXO_TILT, box.w * 0.92, box.h * 0.9)
   const mix = (a: number, b2: number, t: number) => a + (b2 - a) * t
-  const at = (f: (F: { s: number; dx: number; dy: number }) => number) => mix(mix(f(F1), f(F2), m.tilt), f(F3), m.zoom)
-  const k: Cam = { th: m.th, ph: m.ph, s: at((F) => F.s), ox: box.x + box.w / 2 + at((F) => F.dx), oy: box.y + box.h / 2 + at((F) => F.dy), c }
+  const at = (f: (F: ReturnType<typeof fit>) => number) => mix(mix(f(F1), f(F2), m.tilt), f(F3), m.zoom)
+  // hung from the top: the box as tall as the drawing needs (its own margins kept), so no gap opens under the words
+  const midY = box.top ? Math.min(box.h, at((F) => F.h) / 0.9) / 2 : box.h / 2
+  const k: Cam = { th: m.th, ph: m.ph, s: at((F) => F.s), ox: box.x + box.w / 2 + at((F) => F.dx), oy: box.y + midY + at((F) => F.dy), c }
   const screen = () => g.setTransform(dpr, 0, 0, dpr, 0, 0)
   const A3 = clamp01(m.lift * 1.6)
   // act III's ground: the plot, a hairline round the steps

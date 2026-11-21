@@ -29,16 +29,20 @@ function story(root: HTMLElement): () => void {
   let raf = 0
   let last = -1
   let box: Box = { x: 0, y: 0, w: 0, h: 0, dpr: 1 }
+  /** phone: where each act's words end (px from the stage's top); the drawing hangs under the words on screen */
+  let ends = [0, 0, 0]
   const size = (): void => {
     const W = stage.clientWidth
     const H = stage.clientHeight
     const dpr = Math.min(devicePixelRatio || 1, 2)
     cv.width = Math.round(W * dpr)
     cv.height = Math.round(H * dpr)
-    // desktop: the drawing stands right of the words; phone: under them, full width
-    const words = stage.querySelector<HTMLElement>('.hero')!.getBoundingClientRect()
+    // desktop: the drawing stands right of the words; phone: under them, full width, under each act's own words (act I's
+    // are the tallest: under them acts II and III left a gap) — an act not laid out (reduced motion) counts as act I's
     const top = stage.getBoundingClientRect().top
-    box = W >= 900 ? { x: W * 0.4, y: 64, w: W * 0.6 - 48, h: H - 96, dpr } : { x: 16, y: words.bottom - top + 8, w: W - 32, h: H - (words.bottom - top) - 24, dpr }
+    const hero = stage.querySelector<HTMLElement>('.hero')!.getBoundingClientRect().bottom
+    ends = [...stage.querySelectorAll<HTMLElement>('.cap')].map((e) => (e.getBoundingClientRect().height ? e.getBoundingClientRect().bottom : hero) - top + 8)
+    box = W >= 900 ? { x: W * 0.4, y: 64, w: W * 0.6 - 48, h: H - 96, dpr } : { x: 16, y: ends[0], w: W - 32, h: H - ends[0] - 24, dpr, top: true }
     last = -1
   }
   const frame = (): void => {
@@ -51,7 +55,13 @@ function story(root: HTMLElement): () => void {
     last = p
     root.style.setProperty('--p', p.toFixed(4))
     stage.dataset.act = String(actAt(p))
-    draw(g, plan, moment(p), box, ink)
+    const m = moment(p)
+    if (box.top) {
+      // the words' end follows the camera: act I's while the sheet lies flat, act II's as it tilts, act III's as it zooms out
+      const y = ends[0] + (ends[1] - ends[0]) * m.tilt + (ends[2] - ends[1]) * m.zoom
+      box = { ...box, y, h: box.h + box.y - y }
+    }
+    draw(g, plan, m, box, ink)
   }
   const kick = (): void => {
     raf ||= requestAnimationFrame(frame)

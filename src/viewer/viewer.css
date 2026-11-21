@@ -677,7 +677,8 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .menu,
   .rooms-list,
   .sun-card,
-  .ask-floor {
+  .ask-floor,
+  .library {
     position: fixed;
     z-index: 10;
     left: 0;
@@ -709,13 +710,16 @@ html:has(.viewer), body:has(.viewer) { overscroll-behavior: none; }
   .hud.rest > .hud-tr { pointer-events: auto; }
   .sun-card { gap: var(--s-3); }
   /* while a sheet is up the bar and the dock step away, so nothing shows through it (its × or ⌄ closes it; a tap outside closes a menu) */
-  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor)) .toolbar,
+  .viewer:has(:is(.panel, .menu, .sun-card, .ask-floor, .library)) :is(.toolbar, .arrange),
   .viewer:has(:is(.panel, .menu, .ask-floor)) .dock,
   .dock:has(.sun-card) > :not(.sun-card) { visibility: hidden; }
-  /* staff's editors (a phone is not their tool yet): full width over the bar, the library at the top */
+  /* staff's editors: full width over the bar; the library a sheet like the others (Edit furniture steps away under it) */
   .arrange { left: var(--edge); right: var(--edge); width: auto; bottom: calc(var(--bar-bottom) + var(--bar-h) + var(--s-2)); max-height: 40vh; overflow: auto; }
-  .library { left: var(--edge); right: var(--edge); width: auto; top: calc(var(--safe-t) + var(--edge)); bottom: auto; max-height: 40vh; }
+  .library { padding: 0 var(--s-3) calc(var(--s-3) + var(--safe-b)); }
+  .library > .panel-head { margin: 0; padding-left: var(--s-1); }
   .viewer:has(.arrange) .dock { visibility: hidden; }
+  /* the piece in hand: the Edit panel says what and where; a tag beside the finger would only run off the screen's edge */
+  .viewer:has(.arrange) .hand-tag { display: none; }
   .load-mark { left: calc(var(--safe-l) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); }
   .load-corner { right: calc(var(--safe-r) + var(--s-4)); top: calc(var(--safe-t) + var(--s-4)); gap: var(--s-4); }
   .unit-name { font-size: var(--fs-3xl); }

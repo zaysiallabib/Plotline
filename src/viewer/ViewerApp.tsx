@@ -342,11 +342,23 @@ const BuyerName = () => (
   </label>
 )
 
-/** The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point where it goes. */
+/**
+ * The staff library (studio/LibraryPanel.tsx, the Studio's too): search, pieces by room and kind; pick one, then point
+ * where it goes. A phone: a bottom sheet (its grip or × closes it), and the search box waits for a tap — typing into it at
+ * once would raise the on-screen keyboard over the list.
+ */
 function AddPanel({ onPick, onEsc, onNote }: { onPick: (assetId: string) => void; onEsc: () => void; onNote: (text: string) => void }) {
+  const finger = useFinger()
   return (
-    <aside className="glass library">
-      <LibraryPanel onPick={onPick} focus onEsc={onEsc} onNote={onNote} />
+    <aside className="glass library" aria-label="Library">
+      <Grip onClose={onEsc} />
+      <header className="panel-head">
+        <span className="label">Library</span>
+        <button className="x" aria-label="Close the library" title="Close (Esc)" onClick={onEsc}>
+          ×
+        </button>
+      </header>
+      <LibraryPanel onPick={onPick} focus={!finger} onEsc={onEsc} onNote={(t) => onNote(`${t} ${finger ? 'Tap' : 'Click'} where it goes.`)} />
     </aside>
   )
 }
@@ -373,7 +385,7 @@ function ArrangePanel(p: {
             {p.held.adding ? 'Placing' : 'Moving'}: {p.held.label}
           </div>
           <div className={`small ${p.held.error ? 'refused' : 'muted'}`}>
-            {p.held.error ?? (p.held.ready ? (finger ? 'Tap to put it here' : `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}`) : 'Point at the floor, a wall or the ceiling')}
+            {p.held.error ?? (finger ? 'Tap the floor, a wall or the ceiling where it goes' : p.held.ready ? `Click to put it here · R turns · Esc ${p.held.adding ? 'cancels' : 'puts it back'}` : 'Point at the floor, a wall or the ceiling')}
           </div>
         </>
       ) : p.piece && s ? (
@@ -460,6 +472,7 @@ function OpeningPanel(p: {
 }) {
   const o = p.opening
   const lw = p.wall
+  const finger = useFinger()
   return (
     <aside className="glass arrange">
       {lw ? (
@@ -494,7 +507,7 @@ function OpeningPanel(p: {
         </>
       ) : (
         <div className="muted small">
-          Click a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill. Or click a low wall (railing, planter edge, kerb): drag an end dot to make it longer or shorter, drag the wall to move it across.
+          {finger ? 'Tap' : 'Click'} a door, window, slider or passage. Drag it along its wall; drag a dot to resize it — the side dots for width, the top dot for height, a window's bottom dot for its sill. Or {finger ? 'tap' : 'click'} a low wall (railing, planter edge, kerb): drag an end dot to make it longer or shorter, drag the wall to move it across.
         </div>
       )}
       <div className="arrange-row">
@@ -904,7 +917,7 @@ function Viewer({ first }: { first: { unit: Unit; base: FurniturePlacement[] } }
     setSel(null)
     setCommenting(false)
     if (!arranging && !stored(HINTED)) {
-      showToast('Edit furniture: click a piece to move, turn, resize or delete it — or Add one from the library', 6000)
+      showToast(`Edit furniture: ${finger ? 'tap' : 'click'} a piece to move, turn, resize or delete it — or Add one from the library`, 6000)
       store(HINTED)
     }
   }

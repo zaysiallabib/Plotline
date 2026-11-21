@@ -128,7 +128,7 @@ export function LibraryPanel({ onPick, picked, focus, onEsc, onNote }: { onPick:
           onClose={() => setDialog(null)}
           onSaved={(m, where) => {
             const text = `${m.label}: ${SAVED[where]}.`
-            if (dialog === true && onNote) onNote(`${text} Click where it goes.`)
+            if (dialog === true && onNote) onNote(text) // the 3D view adds where to click (or tap) it in
             else setNote(text)
             if (dialog === true) pick(m.id) // in hand at once: point where it goes
           }}

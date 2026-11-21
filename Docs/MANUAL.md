@@ -43,7 +43,11 @@ What someone who has never seen Plotline sees first: the product told as a short
 
 - At the top: the name, one line, the blue **See a flat** button (opens flat Type A in 3D) and **Open the Studio**.
 - Beside them (under them on a phone) lies a real floor plan: flat Type A on a sheet of paper, drawn as the architect's
-  sheet draws it, with its room names, sizes and north point.
+  sheet draws it, with its room names, sizes and north point. Names read as a sheet prints them ("Veranda", not
+  "Veranda (living)"); a room the sheet gives no size (a shaft, the lift core) shows its name alone. A name too big for
+  its room goes on two lines, then in smaller letters twice, and only then is left out (on a phone the smallest baths
+  and verandas still are). On a phone the drawing hangs right under the words of each part of the story, so no empty
+  band opens between them as the words get shorter.
 - Scroll down and the story plays with your scroll: the sheet tips back, the walls rise out of the plan with their doors
   and windows cut in, the floor lifts onto a row of columns and more floors stack into a tower, each turned a little more
   than the one under it. The roof closes it and a June morning's sun casts its shadow (true to the flat's north). Scroll
@@ -352,11 +356,16 @@ steps aside while Finishes or Comment is open.
 - **On its side, or a tablet:** a short screen lets the start screen scroll. From 721 to 1080 px wide the bar stays at
   the top with the room's name just under it.
 - A touch-screen computer works both ways; the hint follows whichever you used last.
-- **Staff on a phone:** Edit → Furniture works (drag a piece with a finger to move it, drag the empty room to look; the
-  piece's tag says "Tap puts it down · the panel turns or removes it"), but a computer is still the tool for it. The
-  panel speaks of fingers — **Turn 90°** (no "(R)"), "Tap a piece…", "Tap to put it here" — and a picked piece's resize
-  dots are never bigger than a fingertip (7 % of the screen's short side, at most 44 px), so they no longer cover a
-  picture on the wall up close.
+- **Staff on a phone:** Edit → Furniture and Edit → Openings work with a thumb, though a computer is still the
+  better tool. Tap a piece to pick it, drag it to move it, drag the empty room to look. Its resize dots are drawn small
+  (7 % of the screen's short side, at most 44 px, so they never cover a picture on the wall up close) but a thumb takes a
+  dot anywhere within half a fingertip of it. **Add** opens the library as a sheet from the bottom, with **×** and a grip
+  to close it; the search box waits for your tap (so the keyboard does not jump up over the list) and every row is a
+  fingertip tall. Tap a piece in it, then tap the floor, a wall or the ceiling where it goes: the Edit panel says so
+  ("Tap the floor, a wall or the ceiling where it goes", or in red why not there); it lands where your finger did.
+  Finishes, Comment and the menus cover the Edit panel while they are up. The panels speak of fingers — **Turn 90°** (no
+  "(R)"), "Tap a piece…", "Tap a door, window…" — and no button anywhere names a key under a finger (the Studio's
+  **Delete wall**, **Copy wall**, **Turn 90°** drop their "(Del)", "(Ctrl+D)", "(R)" on a touch screen).
 
 **In VR:** hold the trigger to aim at the floor, let go to jump there. The thumbstick left / right turns you 45°.
 
@@ -412,7 +421,7 @@ The same list in the 3D view (**Edit ▾ → Furniture → Add**) and in the Stu
 - **A search box on top**, ready to type into in the 3D view (in the Studio click it first: there the letters pick
   tools). Any word shrinks the list as you type: a name (*sofa*, *lamp*), an everyday word (*almirah*, *chula*,
   *jaynamaz*, *geyser*), or a room (*balcony*, *kitchen*, *office*); plurals work. **Enter** takes the first piece. One
-  **Esc** empties the box and leaves it (in the 3D view it also closes the library).
+  **Esc** empties the box and leaves it (in the 3D view it also closes the library, as its **×** does).
 - **Without a search:** **Recent** (your last six), then the groups with how many pieces each holds — **Living** 28,
   **Dining** 15, **Bedroom** 32, **Office** 6, **Kitchen** 16, **Bath** 8, **Lights & AC** 9, **Greenery** 17,
   **Outdoor** 11, **Lobby & gym** 6, **Decor** 28 — 154 pieces in all (some are in two groups: the hand-wash basin under
@@ -451,8 +460,13 @@ exactly like the built-in ones.
    or **On a table** (like the table lamp); **Real size** — type one side (6'2", 1.9 m or 190 cm) and Enter, the other two
    follow so it never squashes; **It gives light** (ticked by itself for the kind "Lamp or light": it lights the room at
    night).
-4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click to place it
-   (the line goes as soon as the piece is down).
+   An **OBJ or STL names no unit**. When its numbers cannot be metres (bigger than 12 m or smaller than 5 cm), Plotline
+   does not fill in a size it would have to guess: it says "This file names no unit. It looks like:" with the units that
+   make it a piece of furniture, each with the width it gives — **Inches · 7'-0"**, **Centimetres · 2'-9"** for a sofa
+   drawn 84 across. The size boxes show the first in grey; pick one, or type the real size of one side, and **Add to the
+   library** can be pressed. When only one unit fits (an 1800-wide cabinet: millimetres) it is picked already, as before.
+4. **Add to the library.** A line says where it is kept, and the piece is in your hand: point and click (on a phone,
+   tap) to place it (the line goes as soon as the piece is down).
 
 It is listed on top of the library under **Your own** (and in its group), marked **yours**, with **⋯**: **Rename**;
 **Change size** (pieces already placed take the new size at once); **Remove…** (asks once; pieces already placed stay —
