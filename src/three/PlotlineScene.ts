@@ -647,6 +647,8 @@ export class PlotlineScene {
     // sun's wide shadow counted as it will be (on round a flat in its tower). Not in the constructor: a scene let go at once
     // (React mounts the viewer twice in development) held the next one up 2.5 s with its own
     if (!this.prewarmed) (this.prewarmed = true), this.look.prewarm(standIns(lite.on), this.street !== null)
+    // its models on their way while it is built (0.85 s on Lite; loadFurniture asked for them only after)
+    if (!keepView) void preloadModels(unit.furniture)
     this.ready = false
     const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
     for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
@@ -1161,6 +1163,10 @@ export class PlotlineScene {
     this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
     if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
     if (!this.envIn || !this.loadedAt || loading.size || !(this.building?.piecesIn ?? true) || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
+    // the batches made now, not 0.4 s on (settle, the tower's batchAround): drawn here, their buffers go to the graphics chip
+    // behind the screen — made after it, the first frame after Enter sent ~150 of them (95 ms, session 31 start lane)
+    if (this.unsettled.size) (clearTimeout(this.batchTimer), this.settle())
+    this.building?.settleNow()
     this.renderer.info.reset()
     this.look.render()
     this.rehearsedAt = performance.now()

@@ -666,22 +666,33 @@ export class Building extends THREE.Group {
    */
   private batchAround(): void {
     clearTimeout(this.batchTimer)
+    this.pending = false
     if (!this.around || this.disposed) return
-    this.batchTimer = setTimeout(() => {
-      if (!this.around || this.disposed) return
-      this.unbatchAround()
-      const before: THREE.Object3D[] = []
-      this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
-      const leaves = this.leavesMerged ? this.leavesTogether() : []
-      const batches = batch(this, Infinity)
-      this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
-      this.onChange()
-    }, AROUND_MS)
+    this.pending = true
+    this.batchTimer = setTimeout(this.batchNow, AROUND_MS)
+  }
+  /** a batchAround waiting for its AROUND_MS */
+  private pending = false
+  private batchNow = (): void => {
+    this.pending = false
+    if (!this.around || this.disposed) return
+    this.unbatchAround()
+    const before: THREE.Object3D[] = []
+    this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
+    const leaves = this.leavesMerged ? this.leavesTogether() : []
+    const batches = batch(this, Infinity)
+    this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
+    this.onChange()
+  }
+  /** A batchAround waiting: made now (PlotlineScene, before the frame drawn behind the start screen: its buffers sent there). */
+  settleNow(): void {
+    if (this.pending) (clearTimeout(this.batchTimer), this.batchNow())
   }
 
   /** the tower one by one again (frame, a flat's rooms or pieces coming in, the Building view) */
   private unbatchAround(): void {
     clearTimeout(this.batchTimer)
+    this.pending = false
     const b = this.batched
     if (!b) return
     this.batched = null

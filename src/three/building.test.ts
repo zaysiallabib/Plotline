@@ -864,6 +864,12 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     await new Promise((r) => setTimeout(r, 450))
     const batched = drawn()
     expect(batched).toBeLessThan(one / 3)
+    // (session 31 start lane) a batch still waiting is made at once when asked (before the frame behind the start screen)
+    b.frame('building', 'low')
+    b.frame('walk', 'low')
+    expect(drawn()).toBe(one)
+    b.settleNow()
+    expect(drawn()).toBe(batched)
     // (session 31 start lane) placed again in the same view (Enter, a Rooms jump): the batches stand, nothing is made again
     const kept = b.children.filter((o) => o.userData.batch)
     b.frame('walk', 'low')
