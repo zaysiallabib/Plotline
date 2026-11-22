@@ -197,6 +197,8 @@ interface Note {
   link?: { label: string; onClick: () => void }
   /** something refused or went wrong: it stays until × (or the next message, or a change to the drawing) — newcomer lane s31 */
   error?: boolean
+  /** the drawing as it was when the error came: a later change hides it */
+  on?: unknown
 }
 /** `end`: an opening's end handle (resize); `corner`: a column's corner dot k (that corner alone) or side k; `face`: a wall's face dot (its thickness, that side); `aim`: a ramp arrow's head */
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; corner?: { k: number; side: boolean }; face?: 1 | -1; aim?: boolean } & CornerDrag
@@ -526,7 +528,7 @@ export default function StudioApp() {
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
   /** an error message: it stays until dismissed (Note.error) */
-  const showError = useCallback((text: string) => setNote({ text, error: true }), [])
+  const showError = useCallback((text: string) => setNote({ text, error: true, on: stateRef.current.unit }), [])
   const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
@@ -553,7 +555,7 @@ export default function StudioApp() {
   // ----- reducer toasts → note
   useEffect(() => {
     if (state.toast) {
-      setNote({ text: state.toast.text, error: state.toast.error })
+      setNote({ text: state.toast.text, error: state.toast.error, on: state.unit })
       dispatch({ type: 'clear-toast' })
     }
   }, [state.toast])
@@ -564,7 +566,7 @@ export default function StudioApp() {
     return () => clearTimeout(id)
   }, [note])
   // an error message goes once the drawing changes: he acted on it
-  useEffect(() => setNote((n) => (n?.error ? null : n)), [state.unit])
+  useEffect(() => setNote((n) => (n?.error && n.on !== state.unit ? null : n)), [state.unit])
 
   // ----- plan image element
   useEffect(() => {
