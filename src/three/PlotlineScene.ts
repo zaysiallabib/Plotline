@@ -37,7 +37,7 @@ import { buildFurniture, preloadModels, warmStandins } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
+import { Look, type LookKept, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
@@ -413,6 +413,24 @@ export function clampSun(t: THREE.DataTexture): void {
 export const sameDrawing = (a: Unit, b: Unit): boolean =>
   a.vertices === b.vertices && a.walls === b.walls && a.pillars === b.pillars && a.roomLabels === b.roomLabels && a.northDeg === b.northDeg && a.site === b.site && !a.shell && !b.shell
 
+/**
+ * A flat built from `from` (its unit, its stairs down) and furnished with `layout` serves `unit` with `down` as it stands: the
+ * same drawing, the same stairs down, the same furniture — re-placed for another floor of it (arrive's again) or shown again
+ * when it was kept (back). Its slab above is checked apart (the rooms it covers, or the slab itself).
+ */
+export const servesFloor = (from: { unit: Unit; down: string }, layout: FurniturePlacement[], unit: Unit, down: string): boolean =>
+  sameDrawing(from.unit, unit) && from.down === down && JSON.stringify(unit.furniture) === JSON.stringify(layout)
+
+/**
+ * The flats a page holds after a stair from one drawing to another (session 31 open lane): the one on screen and the one it
+ * left (`left`; null: not whole, or another floor of the same drawing), the one kept before let go — unless that one was just
+ * shown again (`restored`: it is the one on screen now). Two at most, the older dropped.
+ */
+export function afterTrip<T>(kept: T | null, left: T | null, restored: boolean): { keep: T | null; free: T | null } {
+  if (!left) return { keep: restored ? null : kept, free: null }
+  return { keep: left, free: restored ? null : kept }
+}
+
 /** Each room under the slab above (by its middle) or not: all the daylight bake reads of `cover` (daylight.ts isCovered, openToSky). */
 export const roomsUnder = (rooms: Room[], cover: Pt[][]): string => rooms.map((r) => +cover.some((c) => core.pointInPolygon(r.centroid, c))).join('')
 
@@ -440,6 +458,32 @@ function bayNumber(text: string): THREE.MeshStandardMaterial {
   m = new THREE.MeshStandardMaterial({ color: '#e9e7e1', map, transparent: true, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
   bayNumbers.set(text, m)
   return m
+}
+
+/** A flat of another drawing kept whole and hidden after a stair left it (PlotlineScene.kept, afterTrip): its parts and everything built with them. */
+interface KeptFlat {
+  from: { unit: Unit; cover: Pt[][]; down: string }
+  layout: FurniturePlacement[]
+  cfg: Configuration
+  /** its static, ceiling and furniture groups' children, each in a group of its own, in that order (arrive's `leaving`) */
+  parts: THREE.Group
+  shell: THREE.Group | null
+  unit: Unit
+  rooms: Room[]
+  stairs: FurniturePlacement[]
+  wells: (Well & { stair: FurniturePlacement })[]
+  lifts: Map<Id, WallLift>
+  solid: Pick<Unit, 'vertices' | 'walls'>
+  top: number
+  floors: THREE.Mesh[]
+  surfaces: Surface[]
+  wallFrames: Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>
+  center: THREE.Vector3
+  radius: number
+  days: Map<string, Daylight>
+  dayKeep: Map<string, BakeKeep>
+  day: Daylight | null
+  look: LookKept
 }
 
 interface Surface {
@@ -620,8 +664,11 @@ export class PlotlineScene {
    * The drawing on screen's daylight, each floor's own (the neighbours shade a lower floor more), under its cover: a floor
    * visited again bakes nothing; per cover, what one bake leaves the next (BakeKeep). Both go when the drawing changes.
    */
-  private readonly days = new Map<string, Daylight>()
-  private readonly dayKeep = new Map<string, BakeKeep>()
+  private days = new Map<string, Daylight>()
+  private dayKeep = new Map<string, BakeKeep>()
+  /** the flat of another drawing shown before this one, kept whole and hidden (KeptFlat); the one a stair is leaving, if whole */
+  private kept: KeptFlat | null = null
+  private leavingFlat: Omit<KeptFlat, 'look'> | null = null
   /** the holes setUnit opened (down, where the hole lies inside its room's floor), with the stair as it stood then */
   private wells: (Well & { stair: FurniturePlacement })[] = []
   /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
@@ -717,7 +764,7 @@ export class PlotlineScene {
   /** setUnit's work in steps a stair's floor takes a frame apart (arrive): walls and rooms · the daylight bake · its maps and finishes · the slab, lights and street · the furniture. */
   private *build(unit: Unit, keepView: boolean): Generator<void> {
     this.wake()
-    if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days.clear(), this.dayKeep.clear())
+    if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days = new Map()), (this.dayKeep = new Map()) // (a kept flat keeps the old)
     this.asked = new WeakMap() // (its lamps: every program's)
     this.builtFrom = { unit, cover: this.cover, down: this.down.join() }
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
@@ -852,10 +899,15 @@ export class PlotlineScene {
     // its tower): its walls, rooms, furniture and lamps stay as built and batched — only its daylight and the tower round it
     // are made (replace). Session 31: a typical floor's own build was ~1 s of a 1.8 s trip
     const from = this.builtFrom
-    const again = !!from && this.ready && !this.adding.size && !this.arranging && !this.hand && sameDrawing(from.unit, unit) && from.down === this.down.join() && this.coverPrint(from.cover) === this.coverPrint(this.cover) && JSON.stringify(unit.furniture) === JSON.stringify(this.layout)
+    const settled = this.ready && !this.adding.size && !this.arranging && !this.hand
+    const again = settled && !!from && servesFloor(from, this.layout, unit, this.down.join()) && this.coverPrint(from.cover) === this.coverPrint(this.cover)
+    const whole = settled && !this.holding // the flat on screen as built, no other floor coming in: a stair may keep it
+    // the last other drawing's flat, kept (rooftop → floor 6, Level 1 → floor 2): shown again as it was, under the same slab
+    const back = !again && whole && !!this.kept && servesFloor(this.kept.from, this.kept.layout, unit, this.down.join()) && JSON.stringify(this.kept.from.cover) === JSON.stringify(this.cover)
     if (!again) {
       const g = (this.leaving = new THREE.Group())
       for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
+      this.leavingFlat = whole && this.builtFrom ? this.flatNow(g) : null
       // the next floor is built into these: hidden from its first wall on (drop shows them) — drawn meanwhile in the old
       // floor's daylight, its walls flashed white over the floor he leaves (session 31 QA3)
       this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false
@@ -872,7 +924,7 @@ export class PlotlineScene {
     const token = ++this.buildToken // (a unit given meanwhile wins: clearStatic counts on)
     await frame() // the page's own work for the new floor (its rooms, its HUD) in a frame of its own
     if (token !== this.buildToken) return
-    const steps = again ? this.replace(unit) : this.build(unit, false)
+    const steps = again ? this.replace(unit) : back ? this.restore(unit) : this.build(unit, false)
     steps.next()
     const built = this.buildToken
     // the rest ~30 ms a frame (the daylight bake pauses after each surface it lights)
@@ -881,11 +933,18 @@ export class PlotlineScene {
       const t = performance.now()
       while (!(done = !!steps.next().done) && performance.now() - t < 30);
     }
-    if (again) {
-      // (its finishes changed meanwhile — a floor kept in another colour: the groups unbatched for it batched again, on screen)
+    if (again || back) {
+      // (its finishes changed meanwhile — a floor kept in another colour: the groups unbatched for it batched again; a kept
+      // flat's hidden, so shown for it: batch.ts reads only what is visible)
       clearTimeout(this.batchTimer)
-      if (this.unsettled.has('static')) batch(this.staticGroup, Infinity)
-      if (this.unsettled.size) for (const x of [this.furnitureGroup, this.ceilingGroup]) batch(x, TIERS[this.tier].cell)
+      const batchSeen = (x: THREE.Group, cell: number) => {
+        const v = x.visible
+        x.visible = true
+        batch(x, cell)
+        x.visible = v
+      }
+      if (this.unsettled.has('static')) batchSeen(this.staticGroup, Infinity)
+      if (this.unsettled.size) for (const x of [this.furnitureGroup, this.ceilingGroup]) batchSeen(x, TIERS[this.tier].cell)
     } else {
       await this.furnished
       // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
@@ -903,12 +962,11 @@ export class PlotlineScene {
     this.unsettled.clear()
     await (this.building as Building | null)?.ready() // its other flats' rooms and its grounds' pieces in before it shows (warm sends them too)
     if (built !== this.buildToken) return
-    await this.warm(built, again ? [this.look.unitGroup] : [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup]) // (re-placed: the flat is drawn already)
+    await this.warm(built, again || back ? [this.look.unitGroup] : [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup]) // (re-placed or kept: the flat was drawn before)
     if (built !== this.buildToken) return
     this.holding = false
-    this.drop()
+    this.drop(this.look.swap(!!this.leavingFlat), back) // the floor he leaves: kept whole if it was (another drawing), else freed
     setDaylight(this.day)
-    this.look.swap()
     if (this.windMonth) this.setWind(this.windMonth)
     this.stairAsked = 0 // its own stair can be taken again
     this.spawnAt(at, yaw)
@@ -1017,22 +1075,77 @@ export class PlotlineScene {
   private onePixel: { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; cam: THREE.OrthographicCamera } | null = null
 
   /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
-  private drop(): void {
+  private drop(look: LookKept | null = null, restored = false): void {
     this.leavingTower?.dispose()
     this.leavingTower = null
     const g = this.leaving
+    const left = this.leavingFlat && look ? { ...this.leavingFlat, look } : null
+    this.leavingFlat = null
     if (!g) return
     this.leaving = null
     g.removeFromParent()
-    const kept = new Set<THREE.BufferGeometry>()
-    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) x.traverse((o) => void ((o as THREE.Mesh).geometry && kept.add((o as THREE.Mesh).geometry)))
-    g.traverse((o) => {
-      const geo = (o as THREE.Mesh).geometry
-      if (geo && !kept.has(geo)) geo.dispose()
-    })
+    // two flats at most: the one shown and the last other drawing's (afterTrip)
+    const { keep, free } = afterTrip(this.kept, left, restored)
+    this.kept = keep
+    if (free) this.free(free)
+    if (!left) this.freeParts(g)
     this.staticGroup.visible = this.furnitureGroup.visible = true
     this.ceilingGroup.visible = this.mode === 'walk'
     if (this.shell) this.shell.visible = true
+  }
+
+  /** The flat on screen as it is (its parts moved into `parts` by arrive): what a stair back to its drawing shows again (restore). */
+  private flatNow(parts: THREE.Group): Omit<KeptFlat, 'look'> {
+    return {
+      from: this.builtFrom!, layout: this.layout, cfg: this.cfg, parts, shell: this.shell, unit: this.unit!, rooms: this.rooms, stairs: this.stairs,
+      wells: this.wells, lifts: this.lifts, solid: this.solid, top: this.top, floors: [...this.floors], surfaces: [...this.surfaces],
+      wallFrames: new Map(this.wallFrames), center: this.center.clone(), radius: this.radius, days: this.days, dayKeep: this.dayKeep, day: this.day,
+    }
+  }
+
+  /**
+   * arrive's work for the kept flat's drawing (session 31 open lane: rooftop → floor 6, Level 1 → floor 2 built the flat in
+   * full, 1.4–1.95 s): its parts back, hidden, as they were built and batched, its lamps and slab (Look.restore); then as a
+   * stair between floors of one drawing (replace) — its daylight (kept per floor) and the tower round it.
+   */
+  private *restore(unit: Unit): Generator<void> {
+    this.wake()
+    const k = this.kept!
+    this.kept = null // (on screen soon: afterTrip)
+    const [s, c, f] = k.parts.children
+    this.staticGroup.add(...s.children)
+    this.ceilingGroup.add(...c.children)
+    this.furnitureGroup.add(...f.children)
+    this.shell = k.shell
+    if (k.shell) this.scene.add(Object.assign(k.shell, { visible: false })) // (shown with it: drop)
+    ;[this.unit, this.rooms, this.stairs, this.wells, this.lifts, this.solid, this.top, this.radius] = [k.unit, k.rooms, k.stairs, k.wells, k.lifts, k.solid, k.top, k.radius]
+    this.floors.splice(0, Infinity, ...k.floors)
+    this.surfaces.splice(0, Infinity, ...k.surfaces)
+    this.wallFrames.clear()
+    for (const [id, w] of k.wallFrames) this.wallFrames.set(id, w)
+    this.center.copy(k.center)
+    ;[this.days, this.dayKeep, this.day, this.builtFrom, this.layout] = [k.days, k.dayKeep, k.day, k.from, k.layout]
+    this.look.restore(k.look)
+    this.asked = new WeakMap()
+    if (!sameConfig(k.cfg, this.cfg)) (this.applyMaterials(), this.rebatch('static')) // (kept in other finishes than this floor's)
+    yield
+    yield* this.replace(unit)
+  }
+
+  /** A kept flat let go: its parts' geometry (but what a flat still held shares), its lamps, slab and street (Look.free). */
+  private free(k: KeptFlat): void {
+    this.freeParts(k.parts)
+    this.look.free(k.look)
+  }
+
+  /** `g`'s geometry freed, but for what the flat shown or the one kept shares with it (a piece's model, cloned per piece). */
+  private freeParts(g: THREE.Object3D): void {
+    const held = new Set<THREE.BufferGeometry>()
+    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.kept?.parts]) x?.traverse((o) => void ((o as THREE.Mesh).geometry && held.add((o as THREE.Mesh).geometry)))
+    g.traverse((o) => {
+      const geo = (o as THREE.Mesh).geometry
+      if (geo && !held.has(geo)) geo.dispose()
+    })
   }
 
   /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
@@ -1886,6 +1999,8 @@ export class PlotlineScene {
     this.showOpening(null)
     this.wind?.dispose()
     this.drop()
+    if (this.kept) this.free(this.kept)
+    this.kept = null
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()

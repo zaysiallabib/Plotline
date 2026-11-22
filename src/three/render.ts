@@ -512,6 +512,27 @@ export const forcedScale = (): number | null => {
   return v >= 0.25 && v <= 2 ? v : null
 }
 
+/**
+ * A floor's own part of the 3D set aside (Look.hold): its slab, roof, lamps (the pool and the fixtures they show), contact
+ * shadows and street in `group` (its roof last), and what was worked out with them — what a stair back to its drawing shows
+ * again (Look.restore), or what goes when it is freed.
+ */
+export interface LookKept {
+  group: THREE.Group
+  pool: { light: THREE.SpotLight; at: Fixture | null }[]
+  contact: THREE.Mesh | null
+  street: THREE.Group | null
+  fixtures: Fixture[]
+  rooms: Room[]
+  links: [Id, Id, number][]
+  openSky: Pt[][]
+  topY: number
+  wells: Well[]
+  groundY: number
+  fitBox: THREE.Box3
+  catcherAt: THREE.Vector3
+}
+
 export class Look {
   private readonly composer: EffectComposer | null = null
   private readonly ao: GTAOPass | null = null
@@ -703,14 +724,7 @@ export class Look {
    */
   setUnit(unit: Unit, rooms: Room[], cover: Pt[][] = [], street: Street | null = { walls: core.unitBounds(unit) }, wells: Well[] = [], hold = false): void {
     this.drop() // a floor a stair left, still shown: gone now
-    if (hold) {
-      // a stair taken (PlotlineScene.arrive): the floor shown until now stays on screen as it is, this one is built hidden
-      const roof = new THREE.Group().add(...this.indoor.children) // the walker is under the ceiling: its roof stays
-      const group = new THREE.Group().add(...this.unitGroup.children.filter((o) => o !== this.indoor), roof)
-      this.leaving = { group, pool: this.pool, contact: this.contact, street: this.street }
-      ;[this.pool, this.contact, this.street] = [[], null, null]
-      this.scene.add(group)
-    }
+    if (hold) this.hold() // a stair taken (PlotlineScene.arrive): the floor shown until now stays on screen as it is, this one is built hidden
     this.unitGroup.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext()
     this.unitGroup.clear()
@@ -808,16 +822,7 @@ export class Look {
     const streetY = -(unit.floor ?? 2) * STOREY_M - 0.2
     this.groundY = streetY > 0 ? streetY : Math.min(streetY, lowest - 0.05)
     if (!hold) this.ground.position.y = this.groundY // (hold: at swap — the street of the floor still shown stays under it)
-    // the planes under the flat are open over a well that goes down past them (the ground floor's stair to the basements)
-    const openOver = (m: THREE.Mesh, size: number, deeper: Well[]) => {
-      if (!deeper.length && !m.userData.holed) return
-      m.geometry.dispose()
-      m.geometry = planeGeometry(size, deeper.map((w) => w.poly), m.position.x, m.position.z)
-      if (m === this.ground) streetShape(m.geometry) // (the street's program: context.ts)
-      m.userData.holed = deeper.length > 0
-    }
-    openOver(this.ground, 600, wells.filter((w) => w.bottom < this.groundY))
-    openOver(this.catcher, 200, wells)
+    this.openPlanes()
     this.fitBox.set(new THREE.Vector3(b.minX - 0.5, lowest - SLAB_M - 0.05, b.minY - 0.5), new THREE.Vector3(b.maxX + 0.5, this.topY + SLAB_M + 0.05, b.maxY + 0.5))
     this.contact = buildContactShadows(this.unshadowed(unit), b)
     if (this.contact) this.unitGroup.add(this.contact)
@@ -1182,22 +1187,74 @@ export class Look {
   }
 
   /** the floor a stair leaves (setUnit `hold`): its slab, roof, lights, contact shadows and street, drawn as they were until swap() */
-  private leaving: { group: THREE.Group; pool: Look['pool']; contact: THREE.Mesh | null; street: THREE.Group | null } | null = null
+  private leaving: LookKept | null = null
 
   /** The floor setUnit built with `hold` on screen, in one frame: the one the stair left freed, the street plane at this one's level. */
-  swap(): void {
+  /** the planes under the flat open over a well that goes down past them (the ground floor's stair to the basements) */
+  private openPlanes(): void {
+    const openOver = (m: THREE.Mesh, size: number, deeper: Well[]) => {
+      if (!deeper.length && !m.userData.holed) return
+      m.geometry.dispose()
+      m.geometry = planeGeometry(size, deeper.map((w) => w.poly), m.position.x, m.position.z)
+      if (m === this.ground) streetShape(m.geometry) // (the street's program: context.ts)
+      m.userData.holed = deeper.length > 0
+    }
+    openOver(this.ground, 600, this.wells.filter((w) => w.bottom < this.groundY))
+    openOver(this.catcher, 200, this.wells)
+  }
+
+  /** The floor shown now stays on screen as it is while the next one is made hidden (setUnit's `hold`, restore): all of it set aside. */
+  private hold(): void {
+    const roof = new THREE.Group().add(...this.indoor.children) // the walker is under the ceiling: its roof stays
+    const group = new THREE.Group().add(...this.unitGroup.children.filter((o) => o !== this.indoor), roof)
+    const { pool, contact, street, fixtures, rooms, links, openSky, topY, wells, groundY } = this
+    this.leaving = { group, pool, contact, street, fixtures, rooms, links, openSky, topY, wells, groundY, fitBox: this.fitBox.clone(), catcherAt: this.catcher.position.clone() }
+    ;[this.pool, this.contact, this.street] = [[], null, null]
+    this.scene.add(group)
+  }
+
+  /**
+   * A flat kept whole (PlotlineScene's kept flat: swap(true) handed it back) on again, hidden until swap(), the floor shown
+   * now held as setUnit's `hold` holds it: its slab, roof, lamps, contact shadows and street as they were — nothing made.
+   */
+  restore(k: LookKept): void {
     this.drop()
+    this.hold()
+    this.unitGroup.clear()
+    const roof = k.group.children.at(-1)! // (last, as hold set it aside: indoor's)
+    this.unitGroup.add(...k.group.children.slice(0, -1))
+    this.indoor.add(...roof.children)
+    this.unitGroup.add(this.indoor)
+    ;[this.pool, this.contact, this.street, this.fixtures, this.rooms, this.links, this.openSky, this.topY, this.wells, this.groundY] = [k.pool, k.contact, k.street, k.fixtures, k.rooms, k.links, k.openSky, k.topY, k.wells, k.groundY]
+    this.fitBox.copy(k.fitBox)
+    this.catcher.position.copy(k.catcherAt)
+    this.openPlanes()
+    this.pickedAt.set(Infinity, 0, 0) // (its lamps assigned again as it shows)
+    this.unitGroup.visible = false
+  }
+
+  /** The flat shown from now on; `keep`: the one it replaces handed back whole (PlotlineScene keeps it: restore), else freed. */
+  swap(keep = false): LookKept | null {
+    const l = keep ? this.leaving : null
+    if (l) (this.leaving = null), l.group.removeFromParent()
+    else this.drop()
     this.unitGroup.visible = true
     this.ground.position.y = this.groundY
     this.fitWide()
     this.shareLamps()
+    return l
   }
 
-  /** The floor a stair left, if still shown: off screen and freed (its geometry, its context materials, its lights' shadow maps). */
+  /** The floor a stair left, if still shown: off screen and freed (free). */
   private drop(): void {
     const l = this.leaving
     if (!l) return
     this.leaving = null
+    this.free(l)
+  }
+
+  /** A floor's slab, roof, lamps, contact shadows and street let go: its geometry, its context materials, its lights' shadow maps. */
+  free(l: LookKept): void {
     l.group.removeFromParent()
     l.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext(l.contact, l.street)

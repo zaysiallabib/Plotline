@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly, fromKept, liteTextures, toKept } from './furniture'
 import { EDGE_PLASTER, MORE_PICTURES, PICTURES, PICTURE_ROOM, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { type PmremInside, askedAs, clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, shrinkHdr } from './PlotlineScene'
+import { type PmremInside, askedAs, clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, servesFloor, afterTrip, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
@@ -739,6 +739,21 @@ describe('a stair to the next floor of the same drawing re-places the flat (sess
     expect(sameDrawing(u, { ...u, northDeg: u.northDeg + 90 })).toBe(false)
     const shell = { id: 's', name: 'shape', baseY: 0 }
     expect(sameDrawing({ ...u, shell }, { ...u, shell })).toBe(false)
+  })
+  test('a flat serves a floor of its drawing with the same stairs down and the same furniture (re-placed, or shown again when kept)', () => {
+    const from = { unit: { ...u, floor: 6 }, down: 's1' }
+    expect(servesFloor(from, u.furniture, { ...u, floor: 6 }, 's1')).toBe(true)
+    expect(servesFloor(from, u.furniture, { ...u, floor: 2 }, 's1')).toBe(true) // another floor of it
+    expect(servesFloor(from, u.furniture, { ...u, walls: [...u.walls] }, 's1')).toBe(false) // its own walls: another drawing
+    expect(servesFloor(from, u.furniture, u, '')).toBe(false) // no stair down there (the bottom floor)
+    expect(servesFloor(from, [...u.furniture, { id: 'a chair moved' } as never], u, 's1')).toBe(false) // staff kept other furniture there
+  })
+  test('the flats a page holds after a stair to another drawing: two at most — the one shown and the one it left, the older let go', () => {
+    expect(afterTrip(null, 'typical', false)).toEqual({ keep: 'typical', free: null }) // floor 6 → rooftop: floor 6 kept
+    expect(afterTrip('typical', 'rooftop', true)).toEqual({ keep: 'rooftop', free: null }) // rooftop → floor 6: shown again, the rooftop kept
+    expect(afterTrip('rooftop', 'typical', false)).toEqual({ keep: 'typical', free: 'rooftop' }) // floor 2 → Level 1: the rooftop goes
+    expect(afterTrip('level1', null, false)).toEqual({ keep: 'level1', free: null }) // floor 2 → floor 3 (one drawing): nothing left behind
+    expect(afterTrip<string>(null, null, false)).toEqual({ keep: null, free: null })
   })
   test('the same finishes whatever object carries them (a new floor hands a new one): nothing to swap, the batches stay', () => {
     expect(sameConfig({ a: '1', b: '2' }, { b: '2', a: '1' })).toBe(true)
