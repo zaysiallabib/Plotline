@@ -27,3 +27,12 @@ describe('a .dwg through the converter', () => {
     await expect(convertDwg(bytes, 'a.dwg', '/api/dwg')).rejects.toThrow(/could not be reached/)
   })
 })
+
+describe('a .dwg with no converter set up (no CloudConvert key)', () => {
+  it('is refused with how to save it as DXF in the three common programs, so nobody is stuck', async () => {
+    const { lockedFormatOf } = await import('./index')
+    const m = lockedFormatOf('Floor 2.DWG')!
+    expect(m).toMatch(/save it as DXF and drop the \.dxf/)
+    for (const how of ['AutoCAD: type SAVEAS', 'DraftSight: File → Save As → DXF', 'LibreCAD (free) opens the .dwg']) expect(m).toContain(how)
+  })
+})

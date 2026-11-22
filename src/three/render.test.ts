@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lensFov, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -327,5 +327,17 @@ describe('the ambient occlusion’s smoothing pass made in 0.06 s, not 0.6 (sess
     expect(out).toContain('uniform int pdSamples;')
     expect(out.replace('\nuniform int pdSamples;', '').replace('i < pdSamples;', 'i < SAMPLES;')).toBe(fs)
     expect(() => keptLoop('void main() {}')).toThrow() // three changed it: said at once, not a silent 0.6 s
+  })
+})
+
+describe('the WC lens (a WC under 2 m², spawn.ts TINY_HFOV) follows the window', () => {
+  const across = (vDeg: number, aspect: number) => THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(vDeg) / 2) * aspect))
+  test('60° across a 16:10 screen, and still 60° across once the window is dragged to 21:9 or 4:3 (the same WC in the frame)', () => {
+    for (const aspect of [1.6, 21 / 9, 4 / 3]) expect(across(lensFov(60, aspect, 50), aspect)).toBeCloseTo(60, 6)
+    expect(lensFov(60, 1.6, 50)).toBeCloseTo(39.7, 1)
+  })
+  test('never wider than the walk: a window made tall and narrow (a phone upright) gets the walk lens back', () => {
+    expect(lensFov(60, 0.46, 50)).toBe(50)
+    expect(lensFov(60, 1.6, 50)).toBeLessThan(50)
   })
 })

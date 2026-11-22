@@ -44,7 +44,7 @@ export const IMPORT_ACCEPT = [...Object.keys(IMPORT_EXTENSIONS), 'zip', ...(DWG_
  * only free reader is GPL (cannot ship), Autodesk's converter is a desktop program — "Save as DXF" loses nothing a plan needs.
  */
 export const LOCKED_FORMATS: Record<string, string> = {
-  dwg: "AutoCAD's own .dwg cannot be read here. In AutoCAD (or any free DWG viewer): Save as → DXF, then drop the .dxf — nothing a plan needs is lost. An IFC export works too.",
+  dwg: "AutoCAD's own .dwg cannot be read here: save it as DXF and drop the .dxf — nothing a plan needs is lost. AutoCAD: type SAVEAS, pick \"AutoCAD DXF\" under Files of type. DraftSight: File → Save As → DXF. No CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. An IFC export works too.",
   rvt: 'Revit keeps .rvt locked. In Revit: File → Export → IFC, then drop the .ifc (every storey, wall, room and the outside shape come with it).',
   rfa: 'A Revit family (.rfa) is not a building. Export the project as IFC and drop the .ifc.',
   pln: 'ArchiCAD keeps .pln locked. In ArchiCAD: File → Save as → IFC, then drop the .ifc.',

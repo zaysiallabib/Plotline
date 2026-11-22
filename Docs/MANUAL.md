@@ -152,8 +152,9 @@ jump is framed so a wall AC is neither cut by the top of the picture nor hidden 
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
 picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
 shown from its door through a narrower lens, looking down at the WC as one does from a WC's door, the basin beside the door
-at the edge of the picture; walk out of it and the lens widens back to the usual one in about a third of a second (on a
-phone held upright the picture is narrow already and stays as it is). In the Building view the same place names the
+at the edge of the picture; make the window wider or narrower while you stand there and the lens keeps the same picture;
+walk out of it and the lens widens back to the usual one in about a third of a second (on a phone held upright the
+picture is narrow already and stays as it is). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 
@@ -851,7 +852,8 @@ had.
 | Two openings overlapping | Trim / Remove |
 | Walls crossing | Join here / End it here |
 | A room with no name | Type the name |
-| A room name outside any room | (by hand) |
+| A room name outside any room | (by hand: close the room round it) |
+| Two names in one room ("Bath shares a room with Hall") | **Bath → room below · 5.8 m²** / **Hall → room below · 5.8 m²** — which of the two is the room next door (through its door when it has one); the other keeps this room. Neither is marked as the first choice: the file cannot tell. No unnamed room beside it: **Draw a zone line** — the plan goes there with the Wall tool on Zone line; draw it where the two rooms meet, from a wall or a line's end to the next |
 | Walls standing loose inside a room | Join with a zone line |
 
 - **Check these** — after Auto-trace, what it was unsure of (next section).
@@ -1045,7 +1047,8 @@ so a colleague who opens the project gets it under the walls; buyers never get i
   sign in with that email; **Take back** cancels an unused invite), **Make owner / Make staff** (a company always keeps
   one owner), **Remove** (asks first; they reach nothing of the company's any more, what they saved stays; nobody removes
   themself).
-- **Links** — every buyer link made from what is open: which flat and floor, when, by whom, how often buyers opened it
+- **Links** — every buyer link made from what is open, by the Studio's Share link or by **Share** in the 3D view of one of
+  its floors (once it has saved to the cloud): which flat and floor, when, by whom, how often buyers opened it
   (your company's own opens not counted), how many notes and choices came back, whether it is off. **Copy link**;
   **Turn off** (asks first; the link stops for good, what buyers wrote stays in the Change list; to share again, make a
   new link).
@@ -1084,9 +1087,9 @@ picture can still be dropped later to see the sheet behind. Every format and how
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary (two names the file gives one outline — a bath and its hall — stay a row in Issues that asks which room is which, below), a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
 | **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
-| **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with "Save as DXF" |
+| **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with how to save it as DXF — AutoCAD: type SAVEAS, pick "AutoCAD DXF" under Files of type; DraftSight: File → Save As → DXF; no CAD program: LibreCAD (free) opens the .dwg, then File → Save As → DXF. Drop the .dxf: nothing a plan needs is lost |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
 | **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now: the Building view shows it round your flat and the walk sees its facade through the windows. A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
 | **Locked files** `.rvt` `.pln` `.skp` `.max` `.blend` `.dwf` (and `.dwg` while off) | Refused, with the one-click export to ask for: Revit / ArchiCAD → IFC; SketchUp / 3ds Max / Blender → glTF, OBJ or FBX; AutoCAD → DXF |
