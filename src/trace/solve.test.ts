@@ -6,7 +6,7 @@ import type { Unit } from '../core'
 import { truthLines, registerTruth } from './eval'
 import { FIXTURES, SHOTS, loadPgm, loadPpm, writeUnitOverlay } from './evalio'
 import { findHints, greenMask } from './hints'
-import { KNOBS, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
+import { KNOBS, areasIn, buildGraph, pick, prepare, dropForeignStubs, findStairs, glassMask, mergeUnread, nameLike, namePieces, namesBeside, pickTraces, prepareTraces, previewFlat, solveTraces, tableRow, titleAreas, type SolveInputs } from './solve'
 import { glazing } from './walls'
 import { turnOf, turnRaster } from './raster'
 import { oracleText } from './roomsEval'
@@ -516,6 +516,18 @@ function twoFlats(): { g: Gray; text: TextTrace } {
   return { g, text: { items } }
 }
 
+describe("how many flats an area stamp names (newcomer lane s31: BTI's 2nd floor came out one flat)", () => {
+  test('one per area joined by &, +, and or a comma; one area, or areas not so joined, is one', () => {
+    expect(areasIn('2703 SFT & 674 SFT')).toBe(2) // BTI 2nd floor's title: the big flat and the two small ones
+    expect(areasIn('Unit A 1340 sft and Unit B 1315 sft')).toBe(2)
+    expect(areasIn('1500 SFT + 1490 SFT, 1475 SFT')).toBe(3)
+    expect(areasIn('TYPE-A ±2736 SFT')).toBe(1)
+    expect(areasIn('2,703 SFT')).toBe(1) // (a thousands comma is no list)
+    expect(areasIn('Net 1650 SFT Gross 1980 SFT')).toBe(1)
+    expect(areasIn('Size : 2700')).toBe(1)
+  })
+})
+
 describe('Level 4: the whole floor in one click; one flat = the same flat wherever it is clicked', () => {
   const { g, text } = twoFlats()
   const p = prepareTraces(g, { text }, {})
@@ -530,6 +542,8 @@ describe('Level 4: the whole floor in one click; one flat = the same flat wherev
     expect(deriveRooms(r.unit).filter((x) => !r.unit.roomLabels.find((l) => l.id === x.id)?.flat).map((x) => x.name)).toEqual(['Lobby'])
     expect(r.stats.flats?.map((f) => f.name).sort()).toEqual(['Flat 1', 'Flat 2'])
     expect(r.stats.printed?.filter((x) => x.flat === 'Flat 2').map((x) => x.name).sort()).toEqual(['Bed 1', 'Living', 'Toilet'])
+    // (each pin is Auto-trace's: the Studio says "Flat (from Auto-trace)", never "moved by hand" — newcomer lane s31)
+    expect(r.unit.roomLabels.filter((l) => l.flat !== undefined).every((l) => l.flatFrom === 'trace')).toBe(true)
   })
 
   // (the click beside the party wall is nearer A's BED-1 than B's own: the pick from the click took B's bed for the next
