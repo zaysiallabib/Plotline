@@ -31,7 +31,7 @@ import { LANDING_M, isStair, stairHole, stairSpot, treadBelow } from '../furnish
 import { buildProcedural, lean, lite } from '../furnish/procedural'
 import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
-import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
+import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyCeiling, storeyTop, STOREY_WALL_M, wallGeometry, wallLift, wellParts, type WallLift } from './details'
 import { bakeSteps, daylit, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
@@ -154,7 +154,6 @@ const WALK_FOV = 50
 const VIEW_FOV = 65
 const WALK_RADIUS = 0.3
 /** A wall this tall is a storey wall (not a parapet, a screen, a planter edge): under the slab above it reaches it. */
-const STOREY_WALL_M = 2.4
 /** The tallest step the walker takes, up or down (canStep). */
 const MAX_STEP_M = 0.8
 const UP = new THREE.Vector3(0, 1, 0)
@@ -469,6 +468,8 @@ export class PlotlineScene {
   private stairAsked = 0
   /** the storey's top (details.ts storeyTop): the slab above, where a covered storey wall reaches */
   private top = 3.048
+  /** the storey's ceiling (details.ts storeyCeiling): where the Dollhouse cuts the outside shape */
+  private ceiling = 3.048
   /** each wall's floors (details.ts wallLift) */
   private lifts = new Map<Id, WallLift>()
   /** the walls that stop the walker (not the flush lines and kerbs): what a blocked step slides along */
@@ -706,6 +707,7 @@ export class PlotlineScene {
     this.lifts = new Map(unit.walls.map((w) => [w.id, wallLift(w, unit, this.rooms)]))
     this.solid = { vertices: unit.vertices, walls: unit.walls.filter((w) => w.heightM > KERB_M) }
     this.top = storeyTop(unit, this.rooms) || 3.048
+    this.ceiling = storeyCeiling(unit, this.rooms) || this.top
     if (unit.shell) void this.showShell(unit.shell, this.buildToken)
     for (const wall of unit.walls) this.buildWall(wall, unit)
     for (const room of this.rooms) this.buildRoom(room, unit)
@@ -1057,7 +1059,7 @@ export class PlotlineScene {
     this.armed = null
     this.setTowerHover(null)
     if (!this.holding) this.ceilingGroup.visible = mode === 'walk'
-    this.shellClip.constant = mode === 'orbit' ? this.top + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's top
+    this.shellClip.constant = mode === 'orbit' ? this.ceiling + 0.05 : 1e6 // the dollhouse looks in from above: the shape stops at the storey's ceiling (its slab above goes)
     this.orbit.enabled = mode !== 'walk'
     if (mode !== 'walk') this.orbit.connect(this.canvas)
     else if (this.orbit.domElement) this.orbit.disconnect()

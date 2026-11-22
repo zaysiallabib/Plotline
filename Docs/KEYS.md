@@ -41,7 +41,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or down the flight you see through the opening in the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
-| Click a room's floor | Drops you into that room — a click on a bed, a rug or another piece too (not while Finishes is open) | Dollhouse | everyone | §2 |
+| Click a room's floor | Drops you into that room — a click on a bed, a rug or another piece too (not while Finishes is open); in the stair room, at its door looking at the flight | Dollhouse | everyone | §2 |
 | Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
 | Click a floor on the tower | Opens the flat there in its Dollhouse, walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open — in the same 3D, no new page; Back returns to the tower | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
@@ -59,7 +59,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
 | **Enter VR** / **Exit VR** | Into / out of the headset | the bar, only with a headset connected | everyone | §2 In VR |
-| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there — the flat's own rooms, not the stair, lifts or lift lobby (walk there). In the Building view it names the picked floor | top left | everyone | §2 Top left |
+| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there — the flat's own rooms, then under BUILDING the stair (you stand at its door looking at the flight) and the lift lobby. In the Building view it names the picked floor | top left | everyone | §2 Top left |
 | Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back what faded while the mouse rested (3 s still: all but the room's name fades) | Walk | everyone | §2 Resting |
 | The hint | The keys for what you are doing; fades after a few seconds, back when it changes or when the mouse rests where it was | bottom middle | everyone | §2 The hint |
 | A short message | Answers what you just did ("Link copied …"); fades by itself | bottom middle, above the hint | everyone | §2 |
@@ -152,7 +152,8 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | A page in **Which page is the floor plan?** · **×** / Esc | Uses that page (a clean line drawing opens as the drawing, anything else becomes the plan picture) · closes the box | a PDF of several pages | §5 Bring in the architect's file |
 | **Use it as a picture instead** / **Read its lines instead** | Takes the same page the other way | the message after a PDF page | §5 Bring in the architect's file |
 | **Use its scale and position** | A picture the same size as one already scaled: no scale to set, the drawings sit over each other (15 seconds) | the message after loading a picture | §6 |
-| **Start over** · **×** | Asks first ("The drawing, its picture and its furniture go. Undo cannot bring them back.": **Start over** in red empties the Studio for good, **Cancel** / **Esc** keeps it; a project's drawing is not asked about, it stays in the project) · hides the message | the "Draft restored" message | §5 |
+| **Start over** · **×** | Asks first ("The drawing, its picture and its furniture go. Undo cannot bring them back.": **Start over** in red empties the Studio for good, **Cancel** / **Esc** keeps it; a project's drawing — also one left on screen after **Close** — is not asked about, it stays in the project and a message says so) · hides the message | the "Draft restored" message | §5 |
+| **×** on a message with a red dot | Hides a message about something refused or gone wrong (it stays until then, the next message, or a change to the drawing) | the message at the bottom of the plan | §5 |
 | **V** · **S** · **W** · **A** · **O** · **R** · **C** · **F** | Select · Scale · Wall · Arc · Opening · Room · Column · Furniture; all but V and S locked until the scale is set ("set the scale first (S)") | the tool strip on the left | §5 The tools |
 | Hold **W**, **O** or **R** | The tool works while held; let go and you are back on the tool you had (a quick tap just switches) | any tool | §5 The tools |
 | Shift + a tool letter | Does not switch the tool (Shift+H is the door swing) | — | — |
@@ -190,7 +191,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | Selection — several: the wall types, **Height (all of them)**, **Width**, **Stands alone**; the openings' kind, width, height, sill; **Delete them all** | Changes them all at once ("mixed" = they differ) | right-hand panel | §5 The right-hand panel |
 | Selection — an opening: **Door / Sliding door / Window / Passage**, **Width**, **Height**, **Sill**, **From corner A**, **From corner B**; for a door **Hinge**, **Swing** | Changes one opening | right-hand panel | §5 The right-hand panel |
 | Selection — a column: **Width (across)**, **Depth (up–down)**, **Delete** | Its size | right-hand panel | §5 C — Column |
-| Selection — a room name: **Room name**, **Kind**, **Flat** (by its doors · a flat · Not in a flat · New flat · Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Changes one room's name and details | right-hand panel | §5 Auto-trace and Check these |
+| Selection — a room name: **Room name**, **Kind**, **Flat** (by its doors / from Auto-trace / moved by hand: a flat · Not in a flat · New flat · Back to: by its doors), **Printed size**, **Floor level**, **Ramp**, **Delete** | Changes one room's name and details | right-hand panel | §5 Auto-trace and Check these |
 | Selection — a piece (F): **X (m)**, **Y (m)**, **Turn 90° (R)**, **Delete**, **W / D / H (m)**, **Height from floor (m)**, **Reset to preset**, **Reset all** | Changes one piece; lays a room (or all) out automatically again | right-hand panel | §5 F — Furniture |
 | **Add a piece** (F): the library, **+ Add your own…**, **⋯** on your own pieces | A new piece; click the plan to put it there (curtains: beside an opening) | right-hand panel | §3 The library |
 | Check these: a room's line · a row | Shows / folds its rows · goes to it on the plan | right-hand panel, after Auto-trace | §5 Auto-trace and Check these |

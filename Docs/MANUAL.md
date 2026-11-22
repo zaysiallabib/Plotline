@@ -145,9 +145,12 @@ A button that is on (a panel open, an editor on) has a light blue wash and blue 
 **Top left: the room.** Its floor in small capitals, its name in the serif, its printed size and area under it, on a
 soft frosted rectangle whose edges fade out, so the words read over any wall, by day and by night. **Click it** for the
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list.
-The list holds the flat's own rooms (a level's: its rooms and areas): the stair, the lifts and the lift lobby are not
-in it — to take the stair, walk out through the flat's front door into the lobby and on into the stair room (below,
-"Stairs between floors"). A
+The list holds the flat's own rooms (a level's: its rooms and areas), then, under **BUILDING** at the bottom, the
+building's stair and lift lobby: click the stair and you stand just inside the stair room's door looking at the flight
+(then walk up or down it, or use **Up to …** / **Down to …**, below "Stairs between floors"); click the lift lobby and you
+stand in the lobby. Where your flat's floor has its stair drawn with the other flat (BTI's Type A, whose stair is in Type
+B's drawing) the stair row takes you there, on the same floor, without a new page. Walking out through the flat's front
+door into the lobby and on into the stair room still works. A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
 picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
@@ -209,7 +212,8 @@ remembers it: the next flat opened in the same tab starts clean too.
   Dollhouse and the Building view see wider.
 
 **Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it — a
-bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece (not while
+bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece; a click in the
+stair room puts you at its door looking at the flight (not while
 Finishes is open: then the click picks that floor's finish).
 
 **Finishes panel**
@@ -680,6 +684,11 @@ furniture go. Undo cannot bring them back." — **Start over** (red) empties the
 keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list)
 and only the screen empties.
 
+**Messages at the bottom.** What was done ("Joined 1 overlapping wall — Ctrl+Z undoes") fades after about 5 seconds
+(longer for a long one). Something refused or gone wrong ("A zone line takes no doors or windows", "Could not read the
+file …") has a small red dot before it and stays until you click its **×**, the next message comes, or you change the
+drawing.
+
 ### Top bar
 
 - **Left:** **Plotline STUDIO** (opens the front page; the mouse over STUDIO says this browser is in staff mode), then
@@ -709,7 +718,8 @@ and only the screen empties.
 | Account | **Sign in** / your email | Your account, your company's projects, members and buyer links ("Accounts" below). Only with the online database |
 
 **Loading the plan picture.** With nothing drawn, the middle says **Start with a plan**: a dashed box (drop the picture
-on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6). Pictures:
+on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6; while the Building list is open on the right the card is there
+instead, once). Pictures:
 PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says
 how to get a JPEG. The brochure PDF and the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them —
 can be dropped there too.
@@ -765,9 +775,9 @@ had.
   (5") / thick (10").
 - **What the cursor sticks to** (the status bar says which, before the first corner too): a corner, a wall's centre line
   ("wall — will split"), a column's centre, corners and sides, and a thick wall's two faces. **Shift** = no sticking.
-- A wall cannot start or end on a wall where a door or a window sits: the click says "An opening sits on that spot —
-  move it first" and puts no corner down (the next click starts the wall instead). End it beside the opening, or first
-  narrow or slide the opening with V (a veranda's railing meeting a bedroom's window wall).
+- A wall started or ended on a wall where a door or a window sits (a veranda's railing meeting a bedroom's window wall)
+  puts its corner there all the same: the opening is cut back to the new wall's face, keeping its larger side, and the
+  message says "The opening there was cut back to meet it — Ctrl+Z undoes".
 - **Walls that touch are joined** (founder 2026-10-09: "a wall touches another wall, that is it, it is a box"): a wall
   touching a column anywhere closes the room there (the room goes round the column); a wall stopping on another wall's
   face joins it; a wall end put down a little short — up to 6 inches, or that wall's thickness — is carried on to it
@@ -830,7 +840,8 @@ had.
 
 ### The right-hand panel
 
-- **Steps** — the checklist; it ticks itself, the next step marked with a blue dot.
+- **Steps** — the checklist; it ticks itself, the next step marked with a blue dot. A drawing read from an architect's
+  file (IFC, DXF, PDF lines) is in real sizes: **1 Load plan** and **2 Set scale** are ticked from the start.
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
   / Kerb / Zone line, width, height, **Stands alone** — a screen or decoration wall not meant to close a room, length,
   copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
@@ -889,11 +900,13 @@ more room. Each flat is tinted with its name written once above it.
 - **To use the sheet's name:** R, click inside one of its rooms, type **Type A ±2736 sft**, Save — it names the flat, not
   the room; V on it shows the check ("Names the flat Type A: its 17 rooms add up to 1857 sft, printed ±2736 sft").
   Click inside the room away from its name, so the box opens empty (§5 R). After **Whole floor** too: Auto-trace has put
-  every room in its flat by hand (V on a room says **Flat (moved by hand)** even where you moved nothing), and the name
-  renames that flat.
-- **Two flats came out as one** (Whole floor made the BTI 2nd floor's big flat and its two small top flats one "Flat 1"):
-  V, click a room name of the second flat, **Flat → New flat (Flat 2)**; then click each of its other rooms' names and pick
-  **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
+  every room in its flat (V on a room says **Flat (from Auto-trace)**; once you pick another it says **Flat (moved by
+  hand)**), and the name renames that flat.
+- **How many flats:** Whole floor counts the flats the sheet prints — its flat labels and area figures, one flat per area
+  in a title that lists several ("2703 SFT & 674 SFT" on the BTI 2nd floor: its big flat and the two small ones, three
+  flats), more where more kitchens than labels are read.
+- **Two flats came out as one** (a sheet whose labels were not read): V, click a room name of the second flat, **Flat →
+  New flat (Flat 2)**; then click each of its other rooms' names and pick **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
 - **A room in the wrong flat:** V, click the room's name, pick the right one in **Flat**; **Not in a flat** takes it out;
   **New flat** starts another with just that room; **Back to: by its doors** undoes a hand pick. An untinted room inside
   a flat usually has no door (add it with O — the 3D needs it too) or none at all (pick its flat by hand).
@@ -981,10 +994,10 @@ bed covers or a dark page's streaks that come out as short loose walls (V, Del).
 buttons fill in a few at a time — the row you click first, then what is in view ("Working out the rows' fixes — 320
 rows left…"). The page stays usable; Export saves at once, rows still being worked out marked `"answersPending": true`.
 
-**Keep the list while you answer it.** In a project the Check these rows live with the drawing while it is open in the
-Studio: opening another floor's drawing or another project, then coming back, leaves Check these empty ("Auto-trace (top
-bar) lists here what it is unsure of."; the Issues stay). Answer the rows first, or **⋯ → Export** to keep them in a
-file.
+**The list stays with its drawing.** In a project each drawing keeps its own Check these rows: open another floor's
+drawing (Draw, Open) and come back with **Open**, or reload the page, and the rows are there as you left them — the
+ones you answered gone, the rest waiting. They go with the project when it is saved online. Delete the drawing and its
+rows go with it. Outside a project the open drawing keeps its rows as before; **⋯ → Export** keeps them in a file.
 
 **Your answers are kept as a record.** Every row is kept with the open drawing (and in the Export file) with its **picture
 box** — the piece of the sheet an AI helper would be shown — and its buttons. Every button you click (Looks right and
@@ -1113,7 +1126,9 @@ browser only (an exported drawing file names it but does not hold it); Lite skip
 says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
 windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
 window openings instead, with the rooms behind it and their lights at night. Windows with see-through glass stay as
-the file drew them. A shape read before this change keeps its windows: drop the file again.
+the file drew them. A shape read before this change keeps its windows: drop the file again. In the 3D view's
+**Dollhouse** the shape stops at the floor's ceiling (the top of its lowest full-height walls), so its slab above — an
+IFC house's upper floor — never hides the rooms; Walk and the Building view show it whole.
 
 ### Give the drawing back: DXF, 3D model, printed plan
 
@@ -1171,9 +1186,10 @@ little; it is on no floor until you give it some.
 
 **Under the list:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
 asks first). **The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open
-it again with **Building** → **Or open a project**, a list of your projects by name). After Close the drawing you were on
-stays on the screen outside the project: **Start over** then asks as for any drawing ("The drawing, its picture and its
-furniture go"), but the project keeps its own copy — answer **Start over** to begin the next thing on an empty Studio.
+it again with **Building** → **Or open a project**, a list of your projects by name; a reload keeps it closed). After
+Close the drawing you were on stays on the screen and is still the project's copy: what you change on it goes into the
+project. **Start over** then empties the Studio without asking and says so ("An empty Studio — the project BTI Demo
+Tower keeps its copy of Floor plan A").
 **Show building** opens the stacked building in a new tab (start screen, then the tower); a floor with no drawing yet is
 filled with the one below it.
 
@@ -1401,23 +1417,12 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
   Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
-- A project closed with **Close** is open again the next time the Studio opens on that drawing (a reload brings back its
-  floor list).
-- Check these rows go when you open another drawing of the project and come back (§5, "Keep the list while you answer
-  it").
-- The Steps list leaves **2 Set scale** unticked on an architect's file, which is in real sizes from the start.
-- With nothing drawn and the floor list open, the New project card shows twice (in the middle and in the list).
 
 **Projects and the 3D**
 - Outside a project only one Studio drawing exists: opening another plan from the 3D view (Edit plan, Edit openings)
   replaces yours after one question. Inside a project nothing is asked.
 - A whole-floor drawing knows its flats only in the Studio: a buyer link and the Building view treat the whole floor as
   one flat, and finishes go per room and wall, not per flat.
-- The Rooms list leaves out the stair, lifts and lift lobby, so the stair is reached only on foot (out of the front door,
-  through the lobby); on a big whole floor that is a long walk with W A S D and floor clicks.
-- An IFC house's Dollhouse: the file's own outside shape keeps the slab above the ground floor over its rooms, so from
-  above you see the slab (with the stair's hole), not the rooms (fzk_house; **Remove outside shape** in the Studio takes
-  it away, with its facade).
 - "Which floors?" is asked only on a Studio project's flat floors: a built-in tower's flat, or one level drawing on two
   floors, changes everywhere (use **This floor only** in the floor list first). **Floor 2 only** reopens the page on the
   copy, from the entrance. The old one-plan way does not know about own copies (use the floor list).

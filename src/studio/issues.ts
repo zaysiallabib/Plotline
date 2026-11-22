@@ -583,7 +583,7 @@ const noNewIssues = (before: StudioIssue[], after: StudioIssue[]): boolean => {
 }
 
 // (Level 4: with the flat it was read in — the room joins that flat whatever its doors)
-const labelOf = (p: PrintedRoom): Omit<RoomLabel, 'id' | 'x' | 'y'> => ({ name: p.name, kind: p.kind as RoomKind, ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat } : {}) })
+const labelOf = (p: PrintedRoom): Omit<RoomLabel, 'id' | 'x' | 'y'> => ({ name: p.name, kind: p.kind as RoomKind, ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat, flatFrom: 'trace' as const } : {}) })
 
 /** "Close it": corners and loose ends this far from the printed name are tried (m) … */
 export const CLOSE_R_M = 5

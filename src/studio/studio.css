@@ -270,6 +270,8 @@
   animation: studio-fade var(--dur) var(--ease) both;
 }
 .toast:not(:has(button)) { padding-right: var(--s-4); }
+/* an error message (something refused): the Issues list's red dot before it, and its × — it stays until dismissed */
+.toast.error::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--sev-red); }
 .toast + .toast { bottom: 76px; }
 
 /* a PDF of several pages: "Which page is the floor plan?" — its pages as small sheets of paper, centred on the sheet */

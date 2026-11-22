@@ -9,7 +9,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore 
 import * as THREE from 'three'
 import * as core from '../core'
 import type { Configuration, FinishSlot, FurniturePlacement, Id, Opening, OpeningKind, Pt, Room, Unit, Wall } from '../core'
-import { coverOf, floorIn, levelName, projectUnit, roleIn, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
+import { coverOf, floorIn, levelName, projectUnit, roleIn, stairOnFloor, stairsDown, stairTo, stemIn, streetOf, topFloor, towerOf, type Tower } from '../data/building'
 import { keptAt, placesIn } from '../data/building/apartments'
 import { readProjects, sharedAt, slotsText } from '../data/building/projects'
 import { arriveBy, isStair, isStairRoom } from '../furnish/stairs'
@@ -34,7 +34,7 @@ import FinishesPanel, { type Surface } from './FinishesPanel'
 import Hud, { floorTitle, Grip, StatsPanel, useFinger, type HandInfo } from './Hud'
 import Minimap, { mapOf } from './Minimap'
 import { NotesList, PinLayer, tagOf, type Draft } from './Notes'
-import { arrivalFace, entrySpawn, listedRooms, roomView, yawFor } from './spawn'
+import { arrivalFace, coreRooms, entrySpawn, listedRooms, roomView, stairView, yawFor } from './spawn'
 import SunPill, { WindChips } from './SunPill'
 import { withDefaults } from './defaults'
 import { chosen, KEYS, local, lower, NAME, probeDevice, QUALITIES, read, recommend, tab, write, type Quality } from './quality'
@@ -146,7 +146,8 @@ function onFloor(u: Unit | null, n = params.has('floor') ? Number(params.get('fl
 /** the Studio's Preview 3D: without `?floor=` it is the drawing the Studio has open (its own furniture and finishes), not a floor of it */
 const PREVIEW_DRAWING = location.pathname === '/u/preview' && !params.has('floor')
 /** A trip to floor `floor` of the tower (ViewerApp travel): its unit, the stair point he arrives by (none: its entry), the view it opens in. */
-type Trip = { stem: string; floor: number; at?: Pt; view: SceneMode }
+/** `door`: arrive at the door of the stair room at `at`, looking at the flight (the Rooms list's core group: spawn stairView) */
+type Trip = { stem: string; floor: number; at?: Pt; view: SceneMode; door?: boolean }
 /** A unit as the viewer shows it: the apartment it is (data/building/apartments.ts), with what it keeps. */
 interface Shown {
   unit: Unit
@@ -773,6 +774,10 @@ function Viewer({ first }: { first: Shown }) {
     }
   }, [scene, given]) // eslint-disable-line react-hooks/exhaustive-deps
   // a click in the 3D, with this render's plan (a floor reached by the stair has its own rooms)
+  const stairRoomAt = (p: { x: number; z: number }) => {
+    const r = core.roomAt({ x: p.x, y: p.z }, rooms, unit)
+    return r && isStairRoom(r) && r.kind !== 'lobby' ? r : null
+  }
   useEffect(() => {
     if (!scene) return
     const s = scene
@@ -790,6 +795,9 @@ function Viewer({ first }: { first: Shown }) {
       } else if (room && keys.has(room)) {
         setSurface({ roomKey: room, wallKey: face && keys.has(face) ? face : undefined })
         return true
+      } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.kind === 'furniture') && stairRoomAt(hit.under ?? hit.point)) {
+        // a stair room — its floor, or the stair itself (its well leaves little floor to click): at its door, looking at the flight
+        jump(stairRoomAt(hit.under ?? hit.point)!)
       } else if (modeRef.current === 'orbit' && (hit.kind === 'floor' || hit.under)) {
         // dollhouse → click a room floor drops back into walk mode there, keeping the orbit heading (§3.2); a bed or a rug:
         // the floor the click reaches behind it
@@ -1160,9 +1168,13 @@ function Viewer({ first }: { first: Shown }) {
         history.pushState({ trip: to }, '', stairUrl(location.search, to.stem, to.floor, SHARED, to.view === 'orbit'))
       }
       const rs = core.deriveRooms(next.unit)
-      const by = to.at && arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
+      const at = to.door && to.at && core.roomAt(to.at, rs, next.unit)
+      const door = at ? stairView(at, next.unit) : null
+      const by = !door && to.at && arriveBy(next.unit, rs, to.at, to.floor > myFloor ? 'below' : 'above')
       const e = by ? null : entrySpawn(next.unit, rs, innerWidth < innerHeight) // (an upright phone looks down the room, as on Enter)
-      const a = (arrival.current = by
+      const a = (arrival.current = door
+        ? { at: door.p, face: door.face, view: to.view } // (level: arrive takes no pitch)
+        : by
         ? { at: by.at, face: arrivalFace(next.unit, by), view: to.view }
         : { at: e?.p ?? rs[0]?.centroid ?? { x: 0, y: 0 }, face: e?.face ?? { x: 0, y: -1 }, view: to.view })
       // the floor he leaves: what was open on it closes; the sun, the wind and Clean view stay, and a buyer's finishes (staff
@@ -1208,6 +1220,22 @@ function Viewer({ first }: { first: Shown }) {
     addEventListener('popstate', pop)
     return () => removeEventListener('popstate', pop)
   })
+  /** the Rooms list's jump (and its core group's): a stair room from its door looking at the flight, any other room as roomView frames it */
+  const jump = (r: Room) => {
+    const v = isStairRoom(r) && r.kind !== 'lobby' ? stairView(r, shown()) : roomView(r, shown()) // the arranged layout, deleted pieces out
+    // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
+    scene?.shutLeaf(v.closeLeaf ?? null)
+    if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene?.shutLeaf(null), { once: true })
+    if (scene) spawn(scene, v.p, v.face, v.pitch, v.hfov) // (a WC under 2 m²: a narrower lens, eased back as he walks out)
+    setMode('walk')
+  }
+  // the building's core in the Rooms list (newcomer lane s31: the stair was in no list): this drawing's stairs and lift lobby,
+  // and where its floor's stair is drawn with another flat (BTI's Type A, Sheltech's Type B) that stair, in this same 3D
+  const building = useMemo(() => {
+    const own = coreRooms(rooms)
+    const near = own[0]?.centroid ?? rooms[0]?.centroid
+    return { own, away: !own.some((r) => isStairRoom(r) && r.kind !== 'lobby') && tower && stem && near ? stairOnFloor(tower, stem, myFloor, near) : null }
+  }, [rooms, tower, stem, myFloor])
   const stairWays = useMemo(() => {
     if (mode !== 'walk' || !room || !isStairRoom(room) || !tower || !stem) return []
     const s = unit.furniture.find((p) => p.roomId === room.id && isStair(p))
@@ -1578,14 +1606,11 @@ function Viewer({ first }: { first: Shown }) {
             onEnterVR={xr ? toggleVR : null}
             toast={toast}
             going={going.current?.line ?? null}
-            onJump={(r) => {
-              const v = roomView(r, shown()) // the arranged layout, deleted pieces out
-              // a leaf that would fill the first frame is shut for it; the next jump, key or click opens it again
-              scene.shutLeaf(v.closeLeaf ?? null)
-              if (v.closeLeaf) for (const e of ['keydown', 'pointerdown']) addEventListener(e, () => scene.shutLeaf(null), { once: true })
-              spawn(scene, v.p, v.face, v.pitch, v.hfov) // (a WC under 2 m²: a narrower lens, eased back as he walks out)
-              setMode('walk')
-            }}
+            onJump={jump}
+            core={[
+              ...building.own.map((r) => ({ id: r.id, name: r.name, note: r.printedSize ?? `${r.areaSqm.toFixed(1)} m²`, go: () => jump(r) })),
+              ...(building.away ? [{ id: 'stair', name: building.away.name, note: '', go: () => travel({ stem: building.away!.stem, floor: myFloor, at: building.away!.at, view: 'walk', door: true }, here()) }] : []),
+            ]}
             onMode={go}
             onToggleFinishes={toggleFinishes}
             onToggleComment={toggleComment}
