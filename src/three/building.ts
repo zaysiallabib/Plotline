@@ -367,6 +367,9 @@ export class Building extends THREE.Group {
   private piecesShown = true
   private seen = false
   private readonly started = { rooms: false, pieces: false, things: false }
+  /** framed once (on screen, or round the flat under the start screen): what waits for it (furnishPieces) */
+  private onScreen: () => void = () => {}
+  private readonly framedOnce = new Promise<void>((ok) => (this.onScreen = ok))
   /** what the tier draws inside (furnishes): rooms everywhere; furniture on every storey (High), the nearest (Low), none (Lite) */
   private readonly tier: Quality
   /** the flats with rooms behind their windows (every one but the walked flat), each with its meshes once built */
@@ -642,6 +645,7 @@ export class Building extends THREE.Group {
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
     // stand. Unmade and made again they held the page 150–190 ms, 0.4 s after Enter (session 31 start lane)
+    this.onScreen() // (a later tower's copies of the grounds' pieces come now: furnishPieces)
     if (this.batched && this.framed === `${mode}|${tier}`) return
     this.framed = `${mode}|${tier}`
     const around = mode !== 'building'
@@ -1004,6 +1008,8 @@ export class Building extends THREE.Group {
       pieces.visible = this.piecesShown
       group.add(pieces)
       const made = keptIn(PIECES, this.t).get(s)
+      if (made) await this.framedOnce // as their building did, after a stair's floor shows: sent with it (warm), its trip took ~0.2 s longer
+      if (this.disposed) return
       if (made)
         for (const o of made) {
           const c = o.clone() // (its shapes and materials shared; the first tower's were batched away: shown again)
