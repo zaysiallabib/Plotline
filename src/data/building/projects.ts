@@ -13,6 +13,7 @@ import { deriveRooms, mirrorUnit, roomPolygon, runsUp, unitBounds } from '../../
 import type { Id, Pillar, Pt, Shell, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
+import type { Review } from '../../studio/review'
 import { placesIn, settleOn } from './apartments'
 
 export const PROJECTS_KEY = 'plotline.projects'
@@ -51,6 +52,11 @@ export interface Project {
   shell?: Shell
   /** an imported building's storey floor heights (m above the lowest floor) by slot ('0', '1', '-1', 'R'); absent: every floor FLOOR_M */
   elevations?: Record<string, number>
+  /**
+   * Each drawing's "Check these" list (studio/review.ts Review), kept with it: opening another floor's drawing and coming
+   * back finds its rows again (manual walk s31: they went). By drawing id; absent: none kept.
+   */
+  reviews?: Record<Id, Review>
 }
 
 export interface ProjectPlan {
@@ -317,11 +323,25 @@ export function setSlot(p: Project, s: Slot, u: Unit | null): Project {
   return { ...p, units, flats, floors, levels }
 }
 
-/** `p` without drawing `unitId`: off every floor, out of `units`. */
+/** `p` without drawing `unitId`: off every floor, out of `units` (and its Check these list). */
 export function removeDrawing(p: Project, unitId: Id): Project {
   const q = removeFlat(p, unitId) ?? { ...p, flats: {}, floors: [] }
   const units = Object.fromEntries(Object.entries(q.units).filter(([id]) => id !== unitId))
-  return { ...q, units, levels: (q.levels ?? []).filter((l) => l.unitId !== unitId) }
+  const reviews = q.reviews && Object.fromEntries(Object.entries(q.reviews).filter(([id]) => id !== unitId))
+  return { ...q, units, levels: (q.levels ?? []).filter((l) => l.unitId !== unitId), ...(reviews ? { reviews } : {}) }
+}
+
+/** `ps` with drawing `id`'s Check these list as the Studio holds it now (null: none — it goes), in the project that has that drawing; null when nothing changed. */
+export function keepReview(ps: Project[], id: Id, r: Review | null): Project[] | null {
+  const now = r && r.items.length ? JSON.stringify(r) : undefined
+  let changed = false
+  const out = ps.map((p) => {
+    if (!p.units[id] || (p.reviews?.[id] ? JSON.stringify(p.reviews[id]) : undefined) === now) return p
+    changed = true
+    const { [id]: _, ...rest } = p.reviews ?? {}
+    return { ...p, reviews: now ? { ...rest, [id]: r! } : rest }
+  })
+  return changed ? out : null
 }
 
 /** The floors drawing `unitId` is on in `p`, top down (slotsOf's order). */

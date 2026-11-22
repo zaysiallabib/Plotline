@@ -985,10 +985,10 @@ bed covers or a dark page's streaks that come out as short loose walls (V, Del).
 buttons fill in a few at a time — the row you click first, then what is in view ("Working out the rows' fixes — 320
 rows left…"). The page stays usable; Export saves at once, rows still being worked out marked `"answersPending": true`.
 
-**Keep the list while you answer it.** In a project the Check these rows live with the drawing while it is open in the
-Studio: opening another floor's drawing or another project, then coming back, leaves Check these empty ("Auto-trace (top
-bar) lists here what it is unsure of."; the Issues stay). Answer the rows first, or **⋯ → Export** to keep them in a
-file.
+**The list stays with its drawing.** In a project each drawing keeps its own Check these rows: open another floor's
+drawing (Draw, Open) and come back with **Open**, or reload the page, and the rows are there as you left them — the
+ones you answered gone, the rest waiting. They go with the project when it is saved online. Delete the drawing and its
+rows go with it. Outside a project the open drawing keeps its rows as before; **⋯ → Export** keeps them in a file.
 
 **Your answers are kept as a record.** Every row is kept with the open drawing (and in the Export file) with its **picture
 box** — the piece of the sheet an AI helper would be shown — and its buttons. Every button you click (Looks right and
@@ -1409,8 +1409,6 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Renaming a project does not change the Project box of drawings made before.
 - A project closed with **Close** is open again the next time the Studio opens on that drawing (a reload brings back its
   floor list).
-- Check these rows go when you open another drawing of the project and come back (§5, "Keep the list while you answer
-  it").
 - The Steps list leaves **2 Set scale** unticked on an architect's file, which is in real sizes from the start.
 - With nothing drawn and the floor list open, the New project card shows twice (in the middle and in the list).
 

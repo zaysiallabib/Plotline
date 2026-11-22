@@ -33,7 +33,7 @@ import {
   type Target,
   type Tool,
 } from './model'
-import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer } from './review'
+import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import type { FixesIn, FixesOut } from './fixes.worker'
@@ -51,7 +51,7 @@ import PrintBox from './PrintBox'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, keepApartments, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, keepApartments, keepReview, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -661,12 +661,16 @@ export default function StudioApp() {
   }
   const project = (active && projects.find((p) => p.id === active.id)) || null
   const [listOpen, setListOpen] = useState(() => !!active)
-  /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing; null: nothing changed */
+  /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing (its Check these list
+   *  with it: keepReview); null: nothing changed */
   const synced = (ps: Project[]): Project[] | null => {
-    const u = stateRef.current.unit
+    const { unit: u, review } = stateRef.current
     const d = projRef.current?.drawing
     const a = syncUnit(ps, u)
-    return (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
+    const b = (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
+    // (its rows' buttons are worked out again on the plan when it opens: not kept)
+    const lean = (r: Review): Review => ({ ...r, items: r.items.map(({ box: _b, answers: _a, answersPending: _p, ...i }) => i) })
+    return (d && keepReview(b ?? ps, d, review?.unitId === u.id ? lean(review) : null)) || b
   }
   const storeProjects = (ps: Project[]): boolean => {
     const before = readProjects()
@@ -704,6 +708,7 @@ export default function StudioApp() {
     dispatch({ type: 'set-plan-image', image: null })
     if (!u) return dispatch({ type: 'reset' })
     dispatch({ type: 'load-unit', unit: withLayout(u) })
+    dispatch({ type: 'keep-review', review: ps.find((p) => p.id === a?.id)?.reviews?.[u.id] ?? null }) // its Check these rows, as left
     void getPicture(u.id)
       .catch(() => undefined)
       .then(async (pic) => (await pictureFromCloud(u.id, pic).catch(() => null)) ?? pic) // a colleague's picture (lib/pictures.ts)
