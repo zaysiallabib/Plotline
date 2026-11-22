@@ -10,7 +10,7 @@ import typeB from '../data/units/type-b.json'
 import { streetOf, towerOf } from '../data/building'
 import * as THREE from 'three'
 import { lite } from '../furnish/procedural'
-import { BAY, blockParts, buildStreet, contactShadows, madeUpStreet, neighbourBlocks, plainShade, STOREY } from './context'
+import { BAY, blockParts, buildStreet, contactShadows, madeUpStreet, neighbourBlocks, plainShade, STOREY, streetMaterial, streetShape } from './context'
 import { TEST_UNIT } from './testUnit'
 
 const base = typeA as unknown as Unit
@@ -237,6 +237,37 @@ describe('Lite’s street: plain boxes, one mesh', () => {
     expect(sw).toBeGreaterThan(ne)
     expect(ne).toBe(0.7)
     expect(plainShade(new THREE.Vector3(0, 1, 0))).toBeGreaterThan(sw)
+  })
+})
+
+describe('the street is one program: blocks, roads and the ground (streetMaterial)', () => {
+  const as = (m: THREE.MeshStandardMaterial) => [m.customProgramCacheKey(), String(m.onBeforeCompile), m.vertexColors, !!m.map, !!m.emissiveMap, m.transparent, m.side].join('|')
+  test('High: a block (its facade and lit windows), a road and the ground draw alike — one shader, the same pictures, vertex colours', () => {
+    const block = streetMaterial({ map: new THREE.Texture(), emissiveMap: new THREE.Texture(), emissive: '#ffffff', roughness: 0.92 })
+    const road = streetMaterial({ color: '#5b5955', roughness: 0.95 })
+    const ground = streetMaterial({ color: '#86817a', roughness: 0.95 })
+    expect(as(road)).toBe(as(block))
+    expect(as(ground)).toBe(as(block))
+    expect(as(block).startsWith('street|')).toBe(true)
+    expect(road.emissive.getHex()).toBe(0) // a road glows nowhere (its white picture × black)
+  })
+  test('Lite: its street (blocks and roads in one mesh) and the ground draw alike; every vertex carries a colour, a cut box and a lamp place', () => {
+    const street = streetOf(towerOf(base)!, 'type-a')
+    lite.on = true
+    try {
+      const meshes: THREE.Mesh[] = []
+      buildStreet(base, street, 0).traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh)))
+      meshes.push(new THREE.Mesh(streetShape(new THREE.PlaneGeometry(600, 600)), streetMaterial({ color: '#86817a', roughness: 0.95 }))) // Look's ground
+      expect(meshes).toHaveLength(2)
+      for (const mesh of meshes) {
+        expect(as(mesh.material as THREE.MeshStandardMaterial)).toBe(as(meshes[0].material as THREE.MeshStandardMaterial))
+        for (const a of ['color', 'bmin', 'bmax', 'roadLamp']) expect(mesh.geometry.getAttribute(a)?.count).toBe(mesh.geometry.getAttribute('position').count)
+      }
+      const ground = meshes[1].geometry
+      expect([ground.getAttribute('bmin').getX(0), ground.getAttribute('roadLamp').getY(0), ground.getAttribute('color').getX(0)]).toEqual([1e6, 1e4, 1]) // never cut, never pooled, its colour its material's
+    } finally {
+      lite.on = false
+    }
   })
 })
 

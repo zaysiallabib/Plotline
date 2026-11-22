@@ -1,7 +1,9 @@
 /** Project first (founder 2026-10-05): the floors said first, any drawing on any floor. The older flows: three/building.test.ts. */
 import { describe, expect, test } from 'vitest'
 import type { Unit } from '../../core'
-import { drawingName, forkFloor, makeProject, newProject, parseFloors, planOf, projectTower, removeDrawing, setSlot, sharedAt, slotsOf, slotsText, type Project, type Slot } from './projects'
+import { drawingName, forkFloor, keepReview, makeProject, newProject, parseFloors, parseProjects, planOf, projectTower, removeDrawing, setSlot, sharedAt, slotsOf, slotsText, type Project, type Slot } from './projects'
+import { initialState } from '../../studio/model'
+import { studioReducer, type Review } from '../../studio/review'
 
 /** a drawing: one closed room w × h m */
 const box = (id: string, w = 10, h = 8): Unit => {
@@ -168,5 +170,32 @@ describe('one floor on its own: a drawing on floors 1-4, floor 2 forked (founder
     expect(sharedAt([forkFloor(p, 2, 'a', 'f')], 'f', 2)).toBeNull() // forked: on its own
     expect(sharedAt([makeProject('q', box('m'), 2, 3, 'left')], 'm-m', 3)?.unitId).toBe('m')
     expect(slotsText(['R', 4, 0, -1, 2])).toBe('B1, G, 2, 4, Roof')
+  })
+})
+
+describe('the Check these list kept with each drawing (manual walk s31: it went when another floor was opened and back)', () => {
+  const u = box('floor-plan-a')
+  const p = setSlot(newProject('p', 'Tower', { basements: 0, floors: 4, rooftop: false }), 2, u)
+  // Auto-trace gave the drawing a new id: the list names that one (review.unitId), the project keeps it under the drawing's
+  const r = { unitId: 'traced', items: [{ id: 'r1', at: { x: 1, y: 2 }, kind: 'other', message: 'Bath 3: its printed size could not be read — type it' }], stats: { walls: 4, rooms: 1, labelled: 1 } } as unknown as Review
+
+  test('kept with its drawing, saved and read back as the browser stores it, opened again on the drawing', () => {
+    const ps = keepReview([p], u.id, r)!
+    expect(ps[0].reviews?.[u.id]).toEqual(r)
+    expect(keepReview(ps, u.id, r)).toBeNull() // nothing changed: no save
+    const back = parseProjects(JSON.stringify(ps))[0]
+    expect(back.reviews?.[u.id]).toEqual(r)
+    // the Studio opens the drawing (load-unit) and gets its rows back, bound to the drawing as it opened
+    const s = studioReducer(studioReducer(initialState(), { type: 'load-unit', unit: back.units[u.id] }), { type: 'keep-review', review: back.reviews![u.id] })
+    expect(s.review?.unitId).toBe(s.unit.id)
+    expect(s.review?.items.map((i) => i.message)).toEqual(['Bath 3: its printed size could not be read — type it'])
+  })
+
+  test('an emptied list, or the drawing deleted, takes its rows with it; a drawing in no project keeps none', () => {
+    const ps = keepReview([p], u.id, r)!
+    expect(keepReview(ps, u.id, null)![0].reviews).toEqual({})
+    expect(keepReview(ps, u.id, { ...r, items: [] })![0].reviews).toEqual({})
+    expect(removeDrawing(ps[0], u.id).reviews).toEqual({})
+    expect(keepReview([p], 'not-in-it', r)).toBeNull()
   })
 })

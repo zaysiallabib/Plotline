@@ -116,6 +116,8 @@ export interface RoomLabel {
    * through them; '' = in no flat. Absent = the flat its doors give (the usual case). Flats themselves are never stored.
    */
   flat?: string
+  /** who pinned `flat`: 'trace' = Auto-trace (Whole floor, a flat clicked); absent = a person (the Studio's Flat pick) */
+  flatFrom?: 'trace'
 }
 
 /** DERIVED by core.deriveRooms — never authored, never persisted. */

@@ -17,9 +17,27 @@ const loader = new GLTFLoader()
 // halves them on upload — PlotlineScene's maxTextureSize). Most of a model's memory is its four 1k maps.
 loader.register((parser) => {
   const t = parser.textureLoader as THREE.ImageBitmapLoader
-  if (lite.on && t.isImageBitmapLoader) t.setOptions({ ...t.options, resizeWidth: 512, resizeHeight: 512, resizeQuality: 'medium' })
-  return { name: 'plotline_lite' }
+  if (!lite.on) return { name: 'plotline_lite' }
+  if (t.isImageBitmapLoader) t.setOptions({ ...t.options, resizeWidth: 512, resizeHeight: 512, resizeQuality: 'medium' })
+  const { materials = [] } = parser.json as { materials?: LiteMaterial[] }
+  const colour = liteTextures(materials)
+  return {
+    name: 'plotline_lite',
+    // Lite draws a model's colour and glow pictures only (colourOnly): its relief, shading, roughness and metal ones are not
+    // downloaded at all (2–3 of a scan's 4 files, each decoded: session 31 open lane) — its metal 0 then, as colourOnly sets it
+    loadTexture: (i: number) => (colour.has(i) ? null : (Promise.resolve(null) as unknown as Promise<THREE.Texture>)), // (three takes a null picture as none: assignTexture)
+    extendMaterialParams: (i: number, params: { metalness?: number }) => {
+      if (materials[i]?.pbrMetallicRoughness?.metallicRoughnessTexture) params.metalness = 0
+      return Promise.resolve()
+    },
+  }
 })
+
+/** a glTF material's picture slots (as the file lists them) */
+export type LiteMaterial = { pbrMetallicRoughness?: { baseColorTexture?: { index: number }; metallicRoughnessTexture?: { index: number } }; emissiveTexture?: { index: number } }
+/** The pictures (glTF texture numbers) Lite downloads of a model: its materials' colour and glow ones (colourOnly keeps those). */
+export const liteTextures = (materials: LiteMaterial[]): Set<number> =>
+  new Set(materials.flatMap((m) => [m.pbrMetallicRoughness?.baseColorTexture?.index, m.emissiveTexture?.index].filter((i): i is number => i !== undefined)))
 const gltfCache = new Map<string, Promise<THREE.Group>>()
 const warned = new Set<string>()
 
@@ -60,12 +78,27 @@ export function standIn(url: string, tris: number): Promise<THREE.Group> {
 /** simplified(g, tris), read from this browser where it was kept for this model (`key`) and shape, else made and kept */
 async function keptSimplified<T extends THREE.Object3D>(g: T, key: string, tris: number): Promise<T> {
   const at = `${key}|${shapeOf(g)}` // (a model file or builder changed: its counts change, the old copy is not used)
-  const kept = await keptParts<Kept | undefined>('readonly', (s) => s.get(at)).catch(() => undefined)
+  const known = await keptKeys
+  const kept = known && !known.has(at) ? undefined : await keptParts<Kept | undefined>('readonly', (s) => s.get(at)).catch(() => undefined)
   const read = kept && fromKept(g, kept)
   if (read) return read
   const out = await simplified(g, tris)
-  if (out !== g) void keptParts('readwrite', (s) => s.put(toKept(g, out), at)).catch(() => {})
+  if (out !== g) void keptParts('readwrite', (s) => s.put(toKept(g, out), at)).then(() => known?.add(at), () => {})
   return out
+}
+
+/** what this browser keeps (keptParts), by key, read once as the page starts (warmStandins); null: not read — each one asked */
+let keptKeys: Promise<Set<IDBValidKey> | null> = Promise.resolve(null)
+let keysAsked = false
+/**
+ * The page's 3D starts: the database of light copies opened and its keys read now, before the first model is in — a model it
+ * keeps nothing for (all of a first visit's; on a second, those within the budget, never kept: half of Lite's ~100) is
+ * simplified without asking it, and the first ask does not wait for the database to open (session 31 open lane).
+ */
+export function warmStandins(): void {
+  if (keysAsked) return
+  keysAsked = true
+  keptKeys = keptParts<IDBValidKey[]>('readonly', (s) => s.getAllKeys()).then((k) => new Set(k), () => null)
 }
 
 /** A model's shape in numbers: its parts, vertices and triangles (a stand-in kept for it is used only while they match). */
@@ -74,8 +107,10 @@ const shapeOf = (g: THREE.Object3D): string => {
   g.traverse((o) => void ((o as THREE.Mesh).isMesh && (n++, (v += (o as THREE.Mesh).geometry.attributes.position?.count ?? 0), (t += triangles((o as THREE.Mesh).geometry)))))
   return `${n}.${v}.${t}`
 }
+/** a part's shape as numbers: its index (null: none) and its attributes (name, array, size, normalized) */
+export type Part = { index: Uint16Array | Uint32Array | null; attrs: [string, Float32Array | Int16Array | Uint16Array | Int8Array | Uint8Array, number, boolean][] }
 /** a stand-in kept in this browser: per part of the model (in its order) its simplified shape, or null where it kept its own */
-export type Kept = (null | { index: Uint16Array | Uint32Array; attrs: [string, Float32Array | Int16Array | Uint16Array | Int8Array | Uint8Array, number, boolean][] })[]
+export type Kept = (null | (Part & { index: Uint16Array | Uint32Array }))[]
 const meshesOf = (g: THREE.Object3D) => {
   const out: THREE.Mesh[] = []
   g.traverse((o) => void ((o as THREE.Mesh).isMesh && out.push(o as THREE.Mesh)))
@@ -98,11 +133,56 @@ export function fromKept<T extends THREE.Object3D>(g: T, kept: Kept): T | null {
   parts.forEach((m, i) => {
     const k = kept[i]
     if (!k) return
-    const geo = new THREE.BufferGeometry().setIndex(new THREE.BufferAttribute(k.index, 1))
-    for (const [name, array, size, normalized] of k.attrs) geo.setAttribute(name, new THREE.BufferAttribute(array, size, normalized))
-    m.geometry = geo
+    m.geometry = partGeometry(k)
   })
   return c
+}
+const partGeometry = ({ index, attrs }: Part): THREE.BufferGeometry => {
+  const geo = new THREE.BufferGeometry()
+  if (index) geo.setIndex(new THREE.BufferAttribute(index, 1))
+  for (const [name, array, size, normalized] of attrs) geo.setAttribute(name, new THREE.BufferAttribute(array, size, normalized))
+  return geo
+}
+
+/** simplify.worker.ts's messages: a part to cut to about `keep` of its `tris` triangles; back its cut shape (or why not) */
+export type CutIn = { id: number; part: Part; keep: number; tris: number }
+export type CutOut = { id: number; part?: Part; error?: string }
+/** the page's one simplifying worker (null: none — no Worker here, the tests; or it failed: the page simplifies, as before) */
+let cutter: Worker | null | undefined
+const cuts = new Map<number, (g: THREE.BufferGeometry | null) => void>()
+let cutId = 0
+const startCutter = (): Worker | null => {
+  if (typeof Worker === 'undefined') return null
+  const w = new Worker(new URL('./simplify.worker.ts', import.meta.url), { type: 'module' })
+  w.onmessage = ({ data }: MessageEvent<CutOut>) => {
+    const done = cuts.get(data.id)
+    cuts.delete(data.id)
+    done?.(data.part ? partGeometry(data.part) : null)
+  }
+  w.onerror = () => {
+    cutter = null // (its parts made here)
+    for (const done of cuts.values()) done(null)
+    cuts.clear()
+  }
+  return w
+}
+/** One part cut to about `keep` of its `tris` triangles: in the worker (copies of its arrays sent), else here. */
+async function cut(geo: THREE.BufferGeometry, keep: number, tris: number): Promise<THREE.BufferGeometry> {
+  const here = () => {
+    const g = geo.index ? geo : mergeVertices(geo)
+    return simplifier.modify(g, Math.round(g.attributes.position.count * (1 - keep / tris)))
+  }
+  if (cutter === undefined) cutter = startCutter()
+  const attrs = Object.entries(geo.attributes)
+  const w = cutter
+  if (!w || attrs.some(([, a]) => (a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) || Object.keys(geo.morphAttributes).length) return here()
+  const part: Part = { index: (geo.index?.array.slice() as Uint16Array | Uint32Array | undefined) ?? null, attrs: attrs.map(([n, a]) => [n, (a as THREE.BufferAttribute).array.slice() as Part['attrs'][number][1], a.itemSize, a.normalized]) }
+  const id = cutId++
+  const out = await new Promise<THREE.BufferGeometry | null>((ok) => {
+    cuts.set(id, ok)
+    w.postMessage({ id, part, keep, tris } satisfies CutIn, [...(part.index ? [part.index.buffer] : []), ...part.attrs.map((a) => a[1].buffer)])
+  })
+  return out ?? here()
 }
 let partsDb: Promise<IDBDatabase> | null = null
 /** IndexedDB `plotline-standins` (its own, as studio/shells.ts: the library's database keeps its version); none here (the tests): rejects */
@@ -132,13 +212,13 @@ export async function simplified<T extends THREE.Object3D>(g: T, tris: number): 
   const c = g.clone()
   const parts: THREE.Mesh[] = []
   c.traverse((o) => void ((o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh)))
-  for (const m of parts) {
-    const t = triangles(m.geometry)
-    if (t < SMALL_PART || m.geometry.groups.length) continue
-    const geo = m.geometry.index ? m.geometry : mergeVertices(m.geometry)
-    const keep = Math.max(SMALL_PART / 4, Math.round((t * tris) / n))
-    m.geometry = await simplifier.modify(geo, Math.round(geo.attributes.position.count * (1 - keep / t)))
-  }
+  await Promise.all(
+    parts.map(async (m) => {
+      const t = triangles(m.geometry)
+      if (t < SMALL_PART || m.geometry.groups.length) return
+      m.geometry = await cut(m.geometry, Math.max(SMALL_PART / 4, Math.round((t * tris) / n)), t)
+    }),
+  )
   return c
 }
 

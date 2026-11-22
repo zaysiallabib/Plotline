@@ -777,6 +777,19 @@ export function storeyTop(unit: Unit, rooms: Room[]): number {
 }
 
 /**
+ * The storey's ceiling: the lowest top of its storey-high walls (STOREY_WALL_M up; a low wall, a kerb or a parapet is
+ * none) — where the slab above starts. The Dollhouse cuts an architect's outside shape there (PlotlineScene shellClip):
+ * an IFC house's own upper-floor slab lay between the 2.5 m inner walls' tops and the 2.7 m outer walls' (fzk_house),
+ * over every room (newcomer lane s31). No such wall: storeyTop.
+ */
+export function storeyCeiling(unit: Unit, rooms: Room[]): number {
+  const tops = unit.walls.filter((w) => w.heightM >= STOREY_WALL_M).map((w) => Math.max(...wallLift(w, unit, rooms).foot) + w.heightM)
+  return tops.length ? Math.min(...tops) : storeyTop(unit, rooms)
+}
+/** a wall this high or higher reaches the storey's slab (a low wall, a planter edge, a parapet does not) */
+export const STOREY_WALL_M = 2.4
+
+/**
  * May the roof lay a beam of its slab over wall `w` (render.ts)? When a ROOM is on a side (`sides`: the faces either side
  * of it) — its roof, or in a flat the storey above, is there: a veranda's rail is that slab's edge — or when the wall
  * reaches the storey's top `topY` (it carries the slab edge). A wall with only zones, voids or the outside round it and

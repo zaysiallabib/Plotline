@@ -58,6 +58,8 @@ export type StudioAction =
   | Action
   /** the auto-trace result becomes the unit: one undo step; its review list comes with it */
   | { type: 'auto-trace'; result: AutoTraceResult }
+  /** a project drawing just opened (load-unit) gets back the list kept with it (projects.ts keepReview) */
+  | { type: 'keep-review'; review: Review | null }
   /** "Looks right": a review item leaves the list */
   | { type: 'dismiss-review'; id: string }
   /** the Width field while tracing: the chain's next walls get this thickness (m) */
@@ -196,6 +198,8 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
       return s.review ? { ...s, review: { ...s.review, items: s.review.items.filter((i) => i.id !== a.id) } } : s
     case 'restore':
       return { ...reducer(s, a), review: a.draft.review ?? null }
+    case 'keep-review':
+      return { ...s, review: a.review && { ...a.review, unitId: s.unit.id } }
     case 'chain-thickness':
       return s.chain && a.thicknessM > 0 ? { ...s, chain: { ...s.chain, thicknessM: a.thicknessM } } : s
     case 'spring-back': {
@@ -255,7 +259,7 @@ function nameInside(u: Unit, printed: PrintedRoom[]): { unit: Unit; sized: Revie
   st.forEach((x, i) => {
     if (x.s !== 'unnamed' || x.d > 0) return
     const p = printed[i]
-    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat } : {}) }
+    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat, flatFrom: 'trace' as const } : {}) }
     const l = labels.find((y) => y.id === x.room.id)
     const at = l ?? insidePoint(x.room, u, rooms)
     if (!at) return

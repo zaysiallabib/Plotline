@@ -404,3 +404,90 @@ mostly DMD's grey walls and Banani's thin walls, where the trace itself fails), 
 thin-line low walls round verandas and the foliage edges of planters that are no room of their own, and the passages with
 nothing drawn across them. The red marks left on the BTI sheet are mostly the AC ledges' fins at the top, which stop at a
 dashed grille — real loose ends until a person closes them or keeps them standing alone.
+
+## Session 31 newcomer lane (2026-11-22): how many flats Whole floor finds
+
+**Why.** A newcomer with only the manuals ran Whole floor on the BTI 2nd floor (`img_3`): its big flat and its two small
+top flats came out as ONE "Flat 1", and he needed 9 picks to split them. Level 4 (above) had found three; the s27 "flats 2"
+rule since caps the floor at the flats its labels name, and this sheet's only label is its title, "2703 SFT & 674 SFT",
+read as one untyped stamp = one flat — so the first seed's flood took the whole floor, lobby and both small flats.
+
+**The rule (one line, `solve.ts areasIn`, tested in `solve.test.ts`):** an untyped area stamp names one flat per area it
+prints joined by "&", "+", "and" or a comma ("2703 SFT & 674 SFT" = 2; "2,703 SFT" = 1; "Net 1650 SFT Gross 1980 SFT" = 1).
+With 2 labels and 3 kitchens read the floor may have 3 flats, and a flat that took a second kitchen is picked again with
+it as a rival — the three flats split where their floods meet, the lift lobby in none.
+
+**How it was measured.** Every whole-floor sheet in `Demo drawings/` that the s25 batches and the Level 0 list mark with
+two or more flats (49 sheets, `E:/dev/tmp/s31/newcomer/floors/floors.json`, the sheet's own flat count from the batch
+tables). Node (`src/trace/eval/flats27.test.ts`, fixtures decoded in Firefox): Whole floor before (s31/redesign 2860fd0)
+and after, the flats deriveFlats gives. Firefox, the founder's path (`E:/dev/tmp/s31/newcomer/floors/fx.mjs`, the calm
+harness: drop the sheet, S on its printed length, Auto-trace, Whole floor), after: the panel's per-flat count lines ("Flat
+2: 21 of the 22 room names read on it …") — one line per flat that has a name read, so a flat with none read is not
+counted there. Log and shots: `E:/dev/plotline-shots/s31/newcomer/floors/` (`after.log`, `after-<sheet>.png`). The
+calm lane's Firefox run of the 15 sheets it shares (`E:/dev/tmp/s31/calm/fx-after*.out`) is the Firefox "before": the
+same counts on every one but BTI `img_3` (one flat there).
+
+| Sheet | Flats on the sheet | Node before | Node after | Firefox after (count lines) |
+|---|---|---|---|---|
+| btibd-img2 | 2 | 2 | 2 | 2 (Flat 2, Flat 1) |
+| btibd-img3 | 3 | 1 | 3 | 3 (Flat 2, Flat 1, Flat 3) | **changed**
+| sheltech-l2 | 2 | 2 | 2 | 2 (Type A, Type B) |
+| sheltech-l3 | 2 | 2 | 2 | 2 (Type WO, Type A) |
+| sheltech-l4 | 2 | 2 | 2 | 2 (Type A, Type B) |
+| sheltech-l5 | 2 | 2 | 2 | 2 (Type A, Type B) |
+| sheltech-l6 | 2 | 2 | 2 | 2 (Type A, Type B) |
+| sheltech-banani-l26 | 2 | 1 | 1 | 1 (Unit A) |
+| sheltech-banani-l7 | 1 | 1 | 1 | 1 (Unit A & B) |
+| sheltech-banani-l8 | 1 | 1 | 1 | 1 (Unit A) |
+| sheltech-banani-l913 | 1 | 1 | 1 | 1 (Unit A) |
+| sheltech-dmd-l314 | 3 | 1 | 1 | 0 (no names read) |
+| rangs-majestic-typical | 2 | 2 | 2 | 2 (Flat 2, Flat 1) |
+| rangs-sanctuary-4th10th-6th8th | 2 | 2 | 2 | 2 (Flat 2, Flat 1) |
+| rangs-sanctuary-b2-1st | 5 | 1 | 1 | 1 (Flat 1) |
+| rangs-ixora-a1a2 | 2 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| rangs-ixora-db | 2 | 2 | 2 | 2 (Flat 2, Flat 1) |
+| rangs-ixora-ef | 2 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| rangs-noorani-ab-2nd4th | 2 | 3 | 3 | 3 (Flat 1, Flat 2, Flat 3) |
+| rangs-noorani-ab-3rd7th | 2 | 4 | 4 | 4 (Flat 1, Flat 2, Flat 3, Flat 4) |
+| rangs-whitelake-ab-fl2 | 2 | 2 | 2 | 2 (Flat 1, Type A) |
+| rangs-whitelake-ab-fl3 | 2 | 2 | 2 | 2 (Type B, Type A) |
+| rangs-whitelake-ab-fl4 | 2 | 2 | 2 | 2 (Type A, Type DB) |
+| rangs-whitelake-ab-odd | 2 | 2 | 2 | 2 (Type A, Type B) |
+| rangs-whitelake-ab-even | 2 | 2 | 2 | 2 (Type A, Type B) |
+| sheltech-windflower-t1 | 6 | 5 | 5 | 5 (Flat 3, Type F, Type AC, Flat 1, Flat 2) |
+| sheltech-windflower-t2 | 6 | 1 | 1 | 1 (Flat 1) |
+| sheltech-kanakchapa-l4 | 7 | 7 | 7 | 7 (Type G, Type F, Type E, Type C, Type A, Flat 1, Flat 2) |
+| sheltech-waterlily-typical | 3 | 3 | 3 | 3 (Type C, Flat 1, Type A) |
+| sheltech-waterlily-l2 | 3 | 3 | 3 | 3 (Type C, Type B, Type AL) |
+| sheltech-nurjahan-typical | 2 | 1 | 1 | 1 (Flat 1) |
+| assure-tilottoma-typical | 4 | 1 | 1 | 1 (Type A) |
+| assure-hermitage-typical | 1 | 1 | 1 | 1 (Flat 1) |
+| cpdl-charukabya-typical | 2 | 2 | 2 | 2 (Flat 1, Unit B) |
+| cpdl-lareina-typical | 2 | 1 | 1 | 2 (Flat 1, Flat 2) |
+| cpdl-jheenuk-typical | 3 | 1 | 1 | 0 (no names read) |
+| finlay-chayaneer-typical | 3 | 3 | 3 | 0 (no names read) |
+| finlay-dilruba-a3470 | 2 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| finlay-dilruba-a3495 | 2 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| finlay-nirvana-typical | 2 | 2 | 2 | 2 (Unit B, Unit A) |
+| finlay-jahanara-typical | 2 | 2 | 2 | 2 (Type B, Type A) |
+| finlay-palmspring-tower1 | 4 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| arkam-metropark-typical | 7 | 1 | 1 | 0 (no names read) |
+| assort-muksud-typical | 2 | 2 | 2 | 2 (Type A, Type B) |
+| foysal-smartgarden-typical | 2 | 2 | 2 | 2 (Unit A, Unit B) |
+| nessa-hasnahena-typical | 2 | 2 | 2 | 2 (Flat 1, Flat 2) |
+| eh-sapphire-typ02 | 3 | 3 | 3 | 2 (Flat 3, Flat 1) |
+| mir-jahanenur-typ | 2 | 2 | 2 | 2 (Unit A, Unit B) |
+| mir-shohag-unitab | 2 | 2 | 2 | 1 (Flat 1) |
+
+**Right flat count — node before 35, node after 36, Firefox after 34 of 49.** The rule changed one sheet, BTI `img_3`: 1 → 3 flats (Flat 1 = west small
+flat, Flat 2 = the 2703 sft flat, Flat 3 = east small flat; lobby, stair and lifts in none). No other sheet moved in node;
+in Firefox every sheet the calm run also measured gave the same count.
+
+**Left, and why (not one rule):** most of the 13 sheets still wrong are trace failures, not splitting — DMD (grey walls), Jheenuk
+(0 rooms traced), Tilottoma (10 walls), Metro Park (5 rooms), Windflower T2 and Nurjahan (8–10 rooms): too few rooms for any
+flat rule. Banani L2-6: its "UNIT B" label is read but Unit A's is not, and a stamp beside typed labels counts as a misread
+one (s27, Kanakchapa's legend) — one flat. Palm Spring (2 of 4) and Sanctuary B2/1st (1 of 5 studios): flats joined through
+corridors whose doors were not read, with fewer kitchens read than flats. Noorani 2nd/4th and 3rd/7th (3 and 4 of 2): each
+flat split by a door not found. The next lane: count living / dining / master bed prints with the kitchens when the labels
+run out, and a lobby whose name was not read (BTI's) as core when it touches the stair.
+

@@ -33,7 +33,7 @@ import {
   type Target,
   type Tool,
 } from './model'
-import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer } from './review'
+import { AI_KEY, ANSWERS_KEY, LOOKS_RIGHT, SHOW_ME, STRIPS_KEY, TRACKER_KEY, answerId, logAnswer, openReview, studioReducer, type Review } from './review'
 import type { AutoTraceResult, Gray } from '../trace/types'
 import type { Preview, TraceIn, TraceJob, TraceMsg } from './autotrace.worker'
 import type { FixesIn, FixesOut } from './fixes.worker'
@@ -52,7 +52,7 @@ import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, keepApartments, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -196,6 +196,10 @@ interface Popover {
 interface Note {
   text: string
   link?: { label: string; onClick: () => void }
+  /** something refused or went wrong: it stays until × (or the next message, or a change to the drawing) — newcomer lane s31 */
+  error?: boolean
+  /** the drawing as it was when the error came: a later change hides it */
+  on?: unknown
 }
 /** `end`: an opening's end handle (resize); `corner`: a column's corner dot k (that corner alone) or side k; `face`: a wall's face dot (its thickness, that side); `aim`: a ramp arrow's head */
 type Drag = { hit: Hit; sx: number; sy: number; m: Pt; moved: boolean; orig: Map<Id, Pt>; end?: 'a' | 'b'; corner?: { k: number; side: boolean }; face?: 1 | -1; aim?: boolean } & CornerDrag
@@ -526,6 +530,8 @@ export default function StudioApp() {
   }
 
   const toast = useCallback((text: string, link?: Note['link']) => setNote({ text, link }), [])
+  /** an error message: it stays until dismissed (Note.error) */
+  const showError = useCallback((text: string) => setNote({ text, error: true, on: stateRef.current.unit }), [])
   const [cursor, setCursor] = useState<string | null>(null)
   const toM = useCallback((sx: number, sy: number): Pt => screenToM(frame, { x: sx, y: sy }), [frame])
   const toPx = useCallback((sx: number, sy: number): Pt => screenToPx(frame, { x: sx, y: sy }), [frame])
@@ -552,16 +558,18 @@ export default function StudioApp() {
   // ----- reducer toasts → note
   useEffect(() => {
     if (state.toast) {
-      setNote({ text: state.toast.text })
+      setNote({ text: state.toast.text, error: state.toast.error, on: state.unit })
       dispatch({ type: 'clear-toast' })
     }
   }, [state.toast])
   useEffect(() => {
-    if (!note) return
+    if (!note || note.error) return
     // an offer stays long enough to read and click; a long answer (a refused .dwg's how-to) long enough to read
     const id = setTimeout(() => setNote(null), note.link ? 15000 : Math.max(5000, note.text.length * 60))
     return () => clearTimeout(id)
   }, [note])
+  // an error message goes once the drawing changes: he acted on it
+  useEffect(() => setNote((n) => (n?.error && n.on !== state.unit ? null : n)), [state.unit])
 
   // ----- plan image element
   useEffect(() => {
@@ -664,17 +672,21 @@ export default function StudioApp() {
   }
   const project = (active && projects.find((p) => p.id === active.id)) || null
   const [listOpen, setListOpen] = useState(() => !!active)
-  /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing; null: nothing changed */
+  /** `ps` with the Studio's unit as it is now wherever it stands, and as the open project drawing (its Check these list
+   *  with it: keepReview); null: nothing changed */
   const synced = (ps: Project[]): Project[] | null => {
-    const u = stateRef.current.unit
+    const { unit: u, review } = stateRef.current
     const d = projRef.current?.drawing
     const a = syncUnit(ps, u)
-    return (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
+    const b = (d && d !== u.id ? syncUnit(a ?? ps, { ...u, id: d }) : null) ?? a
+    // (its rows' buttons are worked out again on the plan when it opens: not kept)
+    const lean = (r: Review): Review => ({ ...r, items: r.items.map(({ box: _b, answers: _a, answersPending: _p, ...i }) => i) })
+    return (d && keepReview(b ?? ps, d, review?.unitId === u.id ? lean(review) : null)) || b
   }
   const storeProjects = (ps: Project[]): boolean => {
     const before = readProjects()
     if (!saveProjects(ps)) {
-      toast('This browser refused to save the project (storage full?)')
+      showError('This browser refused to save the project (storage full?)')
       return false
     }
     keepApartments(before, ps) // a drawing left on one floor keeps what that floor had
@@ -707,6 +719,7 @@ export default function StudioApp() {
     dispatch({ type: 'set-plan-image', image: null })
     if (!u) return dispatch({ type: 'reset' })
     dispatch({ type: 'load-unit', unit: withLayout(u) })
+    dispatch({ type: 'keep-review', review: ps.find((p) => p.id === a?.id)?.reviews?.[u.id] ?? null }) // its Check these rows, as left
     void getPicture(u.id)
       .catch(() => undefined)
       .then(async (pic) => (await pictureFromCloud(u.id, pic).catch(() => null)) ?? pic) // a colleague's picture (lib/pictures.ts)
@@ -725,6 +738,14 @@ export default function StudioApp() {
     const ps = readProjects()
     setProjects(ps)
     const live = stateRef.current.unit.id
+    // Close: the drawing stays on screen as the project's copy — under the drawing's own id (Auto-trace gave the one on
+    // screen a new one), so what is done to it next still goes into that project and Start over knows it is kept there
+    const d = projRef.current?.drawing
+    if (!id && d && d !== live) {
+      const st = stateRef.current
+      dispatch({ type: 'load-unit', unit: { ...st.unit, id: d } })
+      dispatch({ type: 'keep-review', review: st.review?.unitId === live ? st.review : null })
+    }
     setActive(id ? { id, ...(ps.find((p) => p.id === id)?.units[live] ? { drawing: live } : {}) } : null)
     if (id) setListOpen(true)
   }
@@ -739,7 +760,7 @@ export default function StudioApp() {
   useEffect(() => {
     const pi = state.planImage
     const d = projRef.current?.drawing
-    if (d && pi?.dataUrl.startsWith('data:')) putPicture(d, pi).catch(() => toast('This browser would not keep the plan picture: load it again when you come back to this drawing'))
+    if (d && pi?.dataUrl.startsWith('data:')) putPicture(d, pi).catch(() => showError('This browser would not keep the plan picture: load it again when you come back to this drawing'))
   }, [state.planImage]) // eslint-disable-line react-hooks/exhaustive-deps
   // ----- plan pictures online (lib/pictures.ts): signed in to a company, each drawing's picture goes to the company's
   // folder once and the saved project / drawing names it (picTick: save again), so a colleague who opens it gets the
@@ -869,9 +890,9 @@ export default function StudioApp() {
       if (CONVERTED_PICTURE.test(file.name))
         return void toPlanPicture(file).then(
           (f) => loadImage(f),
-          (e: unknown) => toast(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`),
+          (e: unknown) => showError(`Couldn't open ${file.name}: ${e instanceof Error ? e.message : String(e)}`),
         )
-      const fail = () => toast("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
+      const fail = () => showError("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
       if (file.size > MAX_IMAGE_BYTES || !/^image\/(png|jpeg|webp)$/.test(file.type)) return fail()
       const reader = new FileReader()
       reader.onerror = fail
@@ -921,7 +942,7 @@ export default function StudioApp() {
       } catch {
         parsed = null
       }
-      if (!isUnit(parsed)) return toast('That file is not a Plotline unit')
+      if (!isUnit(parsed)) return showError('That file is not a Plotline unit')
       const u = normalizeUnit({ ...parsed, review: undefined } as typeof parsed) // (an Export's Check-these rows stay out of the unit)
       const src = u.planImage?.src
       fitOnUnit.current = !src
@@ -954,7 +975,7 @@ export default function StudioApp() {
     } catch (e) {
       setReading(null)
       if (stop.signal.aborted) return toast(`Stopped reading ${file.name}`)
-      return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+      return showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
     setReading(null)
     lastRead.current = { file, siblings }
@@ -982,12 +1003,12 @@ export default function StudioApp() {
     try {
       doc = await (await import('../import/pdf')).openPdf(await file.arrayBuffer())
     } catch (e) {
-      return toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+      return showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
     // (the last PDF stays open while its message offers "as a picture" / "its lines": the next one closes it)
     void openPdfDoc.current?.loadingTask.destroy()
     openPdfDoc.current = doc
-    if (doc.numPages === 1) return readPdfPage(file.name, doc, 1).catch((e) => toast(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
+    if (doc.numPages === 1) return readPdfPage(file.name, doc, 1).catch((e) => showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`))
     setNote(null)
     setPdfPick({ name: file.name, doc, busy: null })
   }
@@ -1011,7 +1032,7 @@ export default function StudioApp() {
       const canvas = await pdf.renderPage(doc, page, 4000)
       const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/webp', 0.92))
       if (stopped.aborted) return
-      if (!blob) return toast('This browser could not turn the page into a picture')
+      if (!blob) return showError('This browser could not turn the page into a picture')
       loadImage(new File([blob], `${name.replace(/\.pdf$/i, '')} p${page}.webp`, { type: 'image/webp' }))
     }
     const where = doc.numPages > 1 ? `Page ${page}` : name
@@ -1027,7 +1048,7 @@ export default function StudioApp() {
   const pickPdfPage = async (page: number) => {
     if (!pdfPick) return
     setPdfPick({ ...pdfPick, busy: page })
-    await readPdfPage(pdfPick.name, pdfPick.doc, page).catch((e) => toast(`Could not read page ${page}: ${e instanceof Error ? e.message : String(e)}`))
+    await readPdfPage(pdfPick.name, pdfPick.doc, page).catch((e) => showError(`Could not read page ${page}: ${e instanceof Error ? e.message : String(e)}`))
     closePdf()
   }
   /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
@@ -1041,13 +1062,13 @@ export default function StudioApp() {
         await putShell(id, r.shell.glb)
         shell = { id, name: r.shell.name, baseY: 0, triangles: r.shell.triangles, ...(r.shell.glass && { glass: r.shell.glass }) } // (solid window glass: the 3D draws its own)
       } catch {
-        toast('This browser would not keep the outside shape (storage full?)')
+        showError('This browser would not keep the outside shape (storage full?)')
       }
     }
     const at = (u: Unit, elevationM: number): Unit => (shell ? { ...u, shell: { ...shell, baseY: elevationM } } : u)
     setNote(null)
     if (!r.storeys.length) {
-      if (!shell) return toast(`Nothing to use in ${fileName}`)
+      if (!shell) return showError(`Nothing to use in ${fileName}`)
       const u = stateRef.current.unit
       const b = u.vertices.length ? unitBounds(u) : null
       dispatch({ type: 'set-shell', shell: { ...shell, offset: b ? { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } : { x: 0, y: 0 } } })
@@ -1104,7 +1125,7 @@ export default function StudioApp() {
    */
   const onDropped = async (dropped: DropFile[]) => {
     const files = dropped.length > 1 || dropped.some((f) => /\.zip$/i.test(f.path)) ? await expandZips(dropped).catch(() => null) : dropped
-    if (!files) return toast("That .zip could not be opened")
+    if (!files) return showError("That .zip could not be opened")
     if (!files.length) return
     const name = (p: string) => p.split('/').pop() ?? p
     const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
@@ -1361,7 +1382,7 @@ export default function StudioApp() {
     }
     const fail = (why: string) => {
       stop()
-      toast(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`)
+      showError(`Auto-trace could not finish (${why.replace(/^autoTrace:\s*/, '')}). Nothing was changed.`)
     }
     // (before the click Esc / Cancel just leave pick mode)
     cancelTrace.current = stop
@@ -1653,8 +1674,8 @@ export default function StudioApp() {
           if (!align) return setAlign({ p: scaleStart, m: { x: at.x, y: at.y } })
           const fit = fitSheet(align.p, align.m, scaleStart, at)
           setAlign(null)
-          if (!fit) return toast('Those two corners are too close together. Pick two far apart and try again.')
-          if (fit.turnDeg > 3) return toast(`Those corners do not match: the picture would have to turn ${Math.round(fit.turnDeg)}°. Try again with two corners you are sure of.`)
+          if (!fit) return showError('Those two corners are too close together. Pick two far apart and try again.')
+          if (fit.turnDeg > 3) return showError(`Those corners do not match: the picture would have to turn ${Math.round(fit.turnDeg)}°. Try again with two corners you are sure of.`)
           dispatch({ type: 'set-scale', pxPerM: fit.pxPerM, originPx: fit.originPx })
           if (state.planImage) fitView({ minX: 0, minY: 0, maxX: state.planImage.naturalW, maxY: state.planImage.naturalH })
           dispatch({ type: 'set-tool', tool: 'select' }) // done: out of the tool, so the next click is not a new line-up
@@ -2312,8 +2333,11 @@ export default function StudioApp() {
   }
 
   const startOver = async () => {
-    // a project drawing is kept in its project (only the screen empties); a draft of no project goes for good: asked first
-    if (!projRef.current?.drawing && !(await ask('Start over? The drawing, its picture and its furniture go. Undo cannot bring them back.', 'Start over', true))) return
+    // a project drawing is kept in its project (only the screen empties) — also one still on screen after its project's
+    // Close (newcomer lane s31: it asked as if all would go): said once; a draft of no project goes for good: asked first
+    const keeper = !projRef.current?.drawing && projectWith(readProjects(), stateRef.current.unit.id)
+    if (!projRef.current?.drawing && !keeper && !(await ask('Start over? The drawing, its picture and its furniture go. Undo cannot bring them back.', 'Start over', true))) return
+    if (keeper) toast(`An empty Studio — the project ${keeper.name} keeps its copy of ${stateRef.current.unit.name.trim() || 'this drawing'}`)
     const a = projRef.current
     if (a?.drawing) setActive({ id: a.id }) // the project drawing keeps what it had; the empty Studio is not it
     localStorage.removeItem(DRAFT_KEY)
@@ -2569,7 +2593,7 @@ export default function StudioApp() {
                     </div>
                   )}
                 </div>
-                {!project && !unit.vertices.length && !missingPlan && (
+                {!project && !listOpen && !unit.vertices.length && !missingPlan && (
                   <>
                     <span className="or">or</span>
                     <NewProject onCreate={createProject} />
@@ -2691,11 +2715,16 @@ export default function StudioApp() {
             </div>
           )}
           {note && (
-            <div className="toast">
+            <div className={note.error ? 'toast error' : 'toast'} role={note.error ? 'alert' : 'status'}>
               {note.text}
               {note.link && (
                 <button className="link" onClick={note.link.onClick}>
                   {note.link.label}
+                </button>
+              )}
+              {note.error && (
+                <button className="x" title="Hide this message" onClick={() => setNote(null)}>
+                  ×
                 </button>
               )}
             </div>

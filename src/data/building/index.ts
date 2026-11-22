@@ -196,6 +196,27 @@ export function voidsOver(t: Tower, k: number): Pt[][] {
 }
 
 /**
+ * The stair of floor `k` that unit `stem` has none of: the stair room of another drawing on that floor (its flats, then its
+ * levels and stand-ins) nearest `near` (`stem`'s frame) — BTI's Type A, whose stair is drawn with Type B. Its name, its
+ * drawing and its middle in that drawing's frame (the Rooms list's core group goes there: ViewerApp travel). null: none.
+ */
+export function stairOnFloor(t: Tower, stem: string, k: number, near: Pt): { stem: string; name: string; at: Pt } | null {
+  const f = t.FLOORS.find((x) => x.floor === k)
+  const me = t.FLATS[stem]?.offset
+  if (!f || !me) return null
+  let best: { d: number; stem: string; name: string; at: Pt } | null = null
+  for (const s of [...f.flats, ...(f.standIns ?? [])]) {
+    if (s === stem) continue
+    const { unit, offset } = t.FLATS[s]
+    for (const r of core.deriveRooms(unit).filter(isStairRoom)) {
+      const d = Math.hypot(r.centroid.x + offset.x - near.x - me.x, r.centroid.y + offset.y - near.y - me.y)
+      if (!best || d < best.d) best = { d, stem: s, name: r.name, at: r.centroid }
+    }
+  }
+  return best && { stem: best.stem, name: best.name, at: best.at }
+}
+
+/**
  * Where a stair leads (founder 2026-11-20: climbing a stair must reach the floor above): from unit `stem` on floor `k`, at
  * plan point `at` (its own frame: the stair), one floor `dir` (+1 up, −1 down) — the unit on that floor with a stair room
  * at that point (its flats first, then its levels and stand-ins; else the nearest stair room, its middle within 3 m) and

@@ -322,9 +322,12 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
   const stats = state.review?.unitId === unit.id ? state.review.stats : null
   const count = stats && roomCount(unit, rooms, stats, flats)
   const errors = issues.filter((i) => i.level === 'error').length
+  // a drawing whose walls stand with no picture under them came in real sizes (an IFC / DXF / PDF file's lines, a
+  // drawing made by hand): nothing to load or scale (newcomer lane s31: an IFC's Steps waited on "2 Set scale")
+  const real = !state.planImage && !unit.planImage && unit.walls.length > 0
   const steps: [string, boolean][] = [
-    ['1 Load plan', !!state.planImage],
-    ['2 Set scale', !!unit.planImage],
+    ['1 Load plan', !!state.planImage || real],
+    ['2 Set scale', !!unit.planImage || real],
     ['3 Trace walls', unit.walls.length > 0],
     ['4 Wall thickness', unit.walls.some((w) => w.thicknessM >= 0.2)],
     ['5 Openings', unit.walls.some((w) => w.openings.length > 0)],
@@ -750,7 +753,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
   let k = flats.length + 1
   while (flats.some((f) => f.name === `Flat ${k}`)) k++
   const pickFlat = (v: string) =>
-    dispatch({ type: 'update-label', id: l.id, patch: { flat: v === 'auto' ? undefined : v === 'none' ? '' : v === 'new' ? `Flat ${k}` : v.slice(2) } })
+    dispatch({ type: 'update-label', id: l.id, patch: { flat: v === 'auto' ? undefined : v === 'none' ? '' : v === 'new' ? `Flat ${k}` : v.slice(2), flatFrom: undefined } })
   return (
     <div className="props">
       <Row label="Room name">
@@ -760,7 +763,7 @@ function Selection({ state, dispatch, rooms, flats }: { state: StudioState; disp
         <KindSelect value={l.kind} onChange={(kind) => dispatch({ type: 'update-label', id: l.id, patch: { kind } })} />
       </Row>
       {room && (
-        <Row label={l.flat === undefined ? 'Flat (by its doors)' : 'Flat (moved by hand)'}>
+        <Row label={l.flat === undefined ? 'Flat (by its doors)' : l.flatFrom === 'trace' ? 'Flat (from Auto-trace)' : 'Flat (moved by hand)'}>
           <select value={inFlat ? `f:${inFlat.name}` : 'none'} onChange={(ev) => pickFlat(ev.target.value)}>
             {flats.map((f) => (
               <option key={f.key} value={`f:${f.name}`}>
