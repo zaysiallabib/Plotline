@@ -262,10 +262,11 @@
 .toast {
   position: absolute; bottom: var(--s-5); left: 50%; z-index: 5; transform: translateX(-50%);
   display: flex; align-items: center; gap: var(--s-3);
-  max-width: calc(100% - 2 * var(--s-5)); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  /* one line while it fits; a long answer (a refused .dwg's how-to) wraps at a reading width instead of running off */
+  width: max-content; max-width: min(calc(100% - 2 * var(--s-5)), calc(9 * var(--s-8))); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow);
-  font-size: var(--fs-md); white-space: nowrap;
+  font-size: var(--fs-md); line-height: var(--lh);
   animation: studio-fade var(--dur) var(--ease) both;
 }
 .toast:not(:has(button)) { padding-right: var(--s-4); }

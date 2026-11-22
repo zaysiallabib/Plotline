@@ -158,6 +158,12 @@ function studioStep(s: StudioState, a: StudioAction): StudioState {
         id: newId(),
         name: r.name || s.unit.name,
         projectName: r.projectName || s.unit.projectName,
+        // what a sheet never tells the tracer stays as the drawing had it: its floor (a project's Draw set it), true north,
+        // site and outside shape (manual walk s31: the Floor box went from 2 to – on Auto-trace)
+        floor: s.unit.floor,
+        northDeg: s.unit.northDeg,
+        site: s.unit.site,
+        shell: s.unit.shell,
         planImage: r.planImage && { ...r.planImage, src: s.planImage?.name ?? r.planImage.src },
       })
       // drag-begin = the reducer's commit minus the unit: the unit before the trace goes on the undo stack, redo clears;

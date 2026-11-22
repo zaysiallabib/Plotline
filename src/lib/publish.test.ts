@@ -6,7 +6,8 @@ const calls: { fn: string; unit: Record<string, unknown>; at?: unknown; key?: st
 let org: { id: string } | null = null
 let answer: string | null = 'k1'
 let refuse = false
-vi.mock('./auth', () => ({ myOrg: async () => org }))
+let me: { user: { id: string } } | null = null
+vi.mock('./auth', () => ({ myOrg: async () => org, session: async () => me }))
 vi.mock('./library', () => ({ forShare: async () => [] }))
 vi.mock('./ask', () => ({ askText: async () => answer }))
 vi.mock('./supabase', () => {
@@ -64,5 +65,18 @@ describe('a buyer link (lib/publish): the flat as given, opening with the finish
     refuse = true
     await expect(publishLink(flat, null)).rejects.toBeInstanceOf(WrongKey)
     expect(store.has('plotline.staffKey')).toBe(false)
+  })
+  it("a link made in the 3D view names the cloud row its drawing was saved in (the Studio's keys): its project's — a mirrored flat too — else its own; signed out or never saved: none", async () => {
+    const { savedIn } = await import('./publish')
+    expect(await savedIn('flat_a')).toBeUndefined() // signed out
+    me = { user: { id: 'u1' } }
+    const drawing = { id: 'flat_a', vertices: [], walls: [], roomLabels: [] }
+    store.set('plotline.projects', JSON.stringify([{ id: 'p1', name: 'Tower', units: { flat_a: drawing }, flats: { flat_a: { unitId: 'flat_a', offset: { x: 0, y: 0 } } }, floors: [{ from: 2, to: 8, flats: ['flat_a'] }] }]))
+    store.set('plotline.cloud.u1', JSON.stringify({ 'project:p1': { id: 'c-tower', version: 3, hash: 'h' }, 'unit:loose': { id: 'c-loose', version: 1, hash: 'h' } }))
+    expect(await savedIn('flat_a')).toBe('c-tower')
+    expect(await savedIn('flat_a-m')).toBe('c-tower')
+    expect(await savedIn('loose')).toBe('c-loose')
+    expect(await savedIn('never_saved')).toBeUndefined()
+    me = null
   })
 })

@@ -513,3 +513,54 @@ describe('s31 calm: the plan reads as a drawing — one badge per spot, grey onl
     expect(new Set(parts.map((g) => g.key)).size).toBe(3)
   })
 })
+
+describe('s31 review: two names in one room (an architect file gives a bath and its hall one outline) — one click says which room is which', () => {
+  /** a W × 3 m strip of rooms split at x = 2, 4 …; `doors[k]`: the k-th partition has a door; Bath and Hall both stand at (3, 1.5) */
+  function strip(doors: boolean[]): Unit {
+    const xs = [0, ...doors.map((_, k) => 2 * (k + 1)), 2 * (doors.length + 1)]
+    const top = xs.map((x, k) => v(`t${k}`, x, 0)), bot = xs.map((x, k) => v(`b${k}`, x, 3))
+    const walls = [
+      ...xs.slice(1).map((_, k) => w(`top${k}`, `t${k}`, `t${k + 1}`, k === 1 ? [door('d', 0.5)] : [])),
+      ...xs.slice(1).map((_, k) => w(`bot${k}`, `b${k}`, `b${k + 1}`)),
+      w('left', 'b0', 't0'),
+      w('right', `t${xs.length - 1}`, `b${xs.length - 1}`),
+      ...doors.map((d, k) => w(`part${k}`, `t${k + 1}`, `b${k + 1}`, d ? [door(`p${k}`, 1)] : [])),
+    ]
+    const at = { x: 3, y: 1.5 }
+    return { ...emptyUnit(), id: 'u', name: 'test', vertices: [...top, ...bot], walls, roomLabels: [{ id: 'bath', name: 'Bath', kind: 'bath', ...at }, { id: 'hall', name: 'Hall', kind: 'other', ...at }] }
+  }
+  const outside = (u: Unit) => studioIssues(u, deriveRooms(u)).filter((i) => i.code === 'label-outside-any-room' || i.code === 'unlabelled-room')
+
+  it('the row names both, and offers the room through the door for either name — none first; each click leaves every name in its own room', () => {
+    // the middle room holds both names; the room left is through a door, the room right (the neighbour flat's) is not
+    const u = strip([true, false])
+    const { marks, fixes } = marked(u)
+    const m = markOf(marks, 'label-outside-any-room')
+    const [me, other] = m.issue!.ids[0] === 'bath' ? ['Bath', 'Hall'] : ['Hall', 'Bath']
+    expect(m.message).toBe(`${me} shares a room with ${other}`)
+    const f = fixes.get(m.key)!.fixes
+    expect(f.map((x) => x.label)).toEqual([`${me} → room left · 6.0 m²`, `${other} → room left · 6.0 m²`])
+    expect(f.every((x) => x.choice && !x.draw)).toBe(true)
+    for (const x of f) {
+      const after = applyAndUndo(u, m, x.label)
+      expect(outside(after).map((i) => i.code)).toEqual(['unlabelled-room']) // only the room right, the other flat's: nobody's name was put there
+      const R = deriveRooms(after)
+      expect(R.find((r) => r.id === 'bath')!.centroid.x === 1 || R.find((r) => r.id === 'hall')!.centroid.x === 1).toBe(true)
+    }
+  })
+
+  it('no door to any room beside it: every unnamed room beside it is offered (two at most)', () => {
+    const { marks, fixes } = marked(strip([false, false]))
+    const f = fixes.get(markOf(marks, 'label-outside-any-room').key)!.fixes
+    expect(f.map((x) => x.label.replace(/^\w+ /, ''))).toEqual(['→ room left · 6.0 m²', '→ room left · 6.0 m²', '→ room right · 6.0 m²', '→ room right · 6.0 m²'])
+  })
+
+  it('one open room, nothing beside it unnamed: it asks for the zone line, the plan unchanged until it is drawn', () => {
+    const u = strip([])
+    const open = { ...u, roomLabels: u.roomLabels.map((l) => ({ ...l, x: l.id === 'bath' ? 0.5 : 1.5 })) } // (a 2 m room; apart: no same spot is needed)
+    const { marks, fixes } = marked(open)
+    const f = fixes.get(markOf(marks, 'label-outside-any-room').key)!.fixes
+    expect(f).toHaveLength(1)
+    expect(f[0]).toMatchObject({ label: 'Draw a zone line', draw: 'zone', actions: [] })
+  })
+})

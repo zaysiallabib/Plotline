@@ -4,11 +4,24 @@
  * Every call makes a new link (append-only: a client keeps seeing what he was sent). Signed in to a company: made as its
  * member (lib/auth); else the old staff key, asked for once per browser (until the founder deletes it: Docs/SETUP_ACCOUNTS.md).
  */
-import type { Configuration, Unit } from '../core'
+import type { Configuration, Id, Unit } from '../core'
+import { projectWith, readProjects } from '../data/building/projects'
 import { askText } from './ask'
-import { myOrg } from './auth'
+import { myOrg, session } from './auth'
+import { itemKey, linkStore } from './cloud'
 import { forShare } from './library'
 import { RpcError, publishUnit, shareUnit } from './supabase'
+
+/**
+ * The cloud row this browser saved drawing `unitId` in — its Studio project's, else the loose drawing's own (the keys the
+ * Studio's autosave uses) — or undefined (signed out, never saved): a link made in the 3D view names it, so the Studio's
+ * Links list shows that link with the ones made in the Studio.
+ */
+export async function savedIn(unitId: Id): Promise<string | undefined> {
+  const me = await session()
+  const p = me && projectWith(readProjects(), unitId)
+  return me ? linkStore(me.user.id).get(itemKey(p ? 'project' : 'unit', p ? p.id : unitId))?.id : undefined
+}
 
 /** the staff key, kept in this browser once typed (ChangeList reads it too) */
 export const PUBLISH_KEY = 'plotline.staffKey'
