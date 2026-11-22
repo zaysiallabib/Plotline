@@ -53,6 +53,12 @@ const KEPT = new WeakSet<THREE.BufferGeometry>()
 const SHELLS = new WeakMap<Tower, Map<string, THREE.BufferGeometry>>()
 const LEVELS = new WeakMap<Tower, Map<string, [MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry][]>>()
 const STREETS = new WeakMap<Tower, Map<string, { group: THREE.Group; y: number }>>()
+/**
+ * Each traced level's outdoor pieces as the page's first tower built them (furnishPieces): a later tower (a stair's floor)
+ * shows copies sharing their shapes. Built again for every floor a stair reached, their code-built trees and benches were
+ * new shapes each time, never freed — Sheltech A on High held ~350–600 more after every stair (session 31 open lane).
+ */
+const PIECES = new WeakMap<Tower, Map<string, THREE.Object3D[]>>()
 const keptIn = <T>(m: WeakMap<Tower, Map<string, T>>, t: Tower): Map<string, T> => m.get(t) ?? m.set(t, new Map()).get(t)!
 const keep = (o: THREE.Object3D) => o.traverse((x) => void ((x as THREE.Mesh).geometry && KEPT.add((x as THREE.Mesh).geometry)))
 /** round the flat the tower is batched this long after the last thing came in (batchAround) */
@@ -991,22 +997,36 @@ export class Building extends THREE.Group {
       const pieces = (f.pieces = new THREE.Group())
       pieces.visible = this.piecesShown
       group.add(pieces)
-      const { unit: u } = this.t.FLATS[s]
-      const rooms = this.roomsOf(s)
-      const byId = new Map(rooms.map((r) => [r.id, r]))
-      const ps = layoutFor(u, rooms)
-      for (const p of ps) {
-        const r = byId.get(p.roomId)
-        if (p.removed || !r || !core.isOutdoor(r.kind)) continue
-        const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
-        if (this.disposed) return
-        obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
-        lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
-        pieces.add(obj)
-        this.casts(obj, true)
-        this.onChange()
-        if (await this.pause()) return
+      const made = keptIn(PIECES, this.t).get(s)
+      if (made)
+        for (const o of made) {
+          const c = o.clone() // (its shapes and materials shared; the first tower's were batched away: shown again)
+          c.traverse((x) => ((x.raycast = () => {}), x.layers.mask === 1 << HIDDEN && x.layers.set(0)))
+          pieces.add(c)
+          this.casts(c, true)
+        }
+      else {
+        const { unit: u } = this.t.FLATS[s]
+        const rooms = this.roomsOf(s)
+        const byId = new Map(rooms.map((r) => [r.id, r]))
+        const ps = layoutFor(u, rooms)
+        const built: THREE.Object3D[] = []
+        for (const p of ps) {
+          const r = byId.get(p.roomId)
+          if (p.removed || !r || !core.isOutdoor(r.kind)) continue
+          const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
+          if (this.disposed) return
+          obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
+          lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
+          pieces.add(obj)
+          built.push(obj)
+          this.casts(obj, true)
+          this.onChange()
+          if (await this.pause()) return
+        }
+        keptIn(PIECES, this.t).set(s, built)
       }
+      this.onChange()
       // one mesh per material per 8 m square (batch.ts, as the flat's furniture; Sheltech's ground: ~220 meshes → ~55, the
       // leaf clusters stay their own), with the shadow flags they were built with; frame's rule on top (casts)
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
