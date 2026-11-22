@@ -1117,7 +1117,9 @@ browser only (an exported drawing file names it but does not hold it); Lite skip
 says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
 windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
 window openings instead, with the rooms behind it and their lights at night. Windows with see-through glass stay as
-the file drew them. A shape read before this change keeps its windows: drop the file again.
+the file drew them. A shape read before this change keeps its windows: drop the file again. In the 3D view's
+**Dollhouse** the shape stops at the floor's ceiling (the top of its lowest full-height walls), so its slab above — an
+IFC house's upper floor — never hides the rooms; Walk and the Building view show it whole.
 
 ### Give the drawing back: DXF, 3D model, printed plan
 
@@ -1417,9 +1419,6 @@ Things that are confusing or not finished. Each one is a job on the list.
   replaces yours after one question. Inside a project nothing is asked.
 - A whole-floor drawing knows its flats only in the Studio: a buyer link and the Building view treat the whole floor as
   one flat, and finishes go per room and wall, not per flat.
-- An IFC house's Dollhouse: the file's own outside shape keeps the slab above the ground floor over its rooms, so from
-  above you see the slab (with the stair's hole), not the rooms (fzk_house; **Remove outside shape** in the Studio takes
-  it away, with its facade).
 - "Which floors?" is asked only on a Studio project's flat floors: a built-in tower's flat, or one level drawing on two
   floors, changes everywhere (use **This floor only** in the floor list first). **Floor 2 only** reopens the page on the
   copy, from the entrance. The old one-plan way does not know about own copies (use the floor list).

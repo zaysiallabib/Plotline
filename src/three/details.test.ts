@@ -8,7 +8,7 @@ import sheltechA from '../data/units/sheltech-a.json'
 import sheltechB from '../data/units/sheltech-b.json'
 import * as core from '../core'
 import type { Pt, Unit } from '../core'
-import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, WELL_INSET, bayMarkings, junctionShade, carriesRoof, floorGeometry, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyTop, wallGeometry, wallLift, wellParts, type SkirtingRun } from './details'
+import { GAP_PREFIX, SHADE_A, SHADE_M, WATER_DROP_M, WELL_INSET, bayMarkings, junctionShade, carriesRoof, floorGeometry, isSteps, stepGeometry, buildSkirtings, casingPlan, closeGaps, liftWall, liftedWall, roomCeiling, pillarParts, poolBasin, raiseHeads, skirtingRuns, stepFaces, storeyCeiling, storeyTop, wallGeometry, wallLift, wellParts, type SkirtingRun } from './details'
 import sheltechRoof from '../data/units/sheltech-roof.json'
 import bananiRoof from '../data/units/banani-roof.json'
 import draft from '../data/fixtures/founder-sheltech-a-draft.json'
@@ -582,6 +582,23 @@ describe('a level with zones, flush lines and a free-standing screen', () => {
     expect(wallLift(a, TEST_UNIT, core.deriveRooms(TEST_UNIT))).toEqual({ base: [0, 0], foot: [0, 0] })
     expect(storeyTop(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toBe(Math.max(...TEST_UNIT.walls.map((w) => w.heightM)))
     expect(storeyTop(u, rooms)).toBeCloseTo(3, 6)
+  })
+
+  test("the storey's ceiling: the lowest top of its storey-high walls — the Dollhouse cuts an IFC house's slab there (newcomer lane s31)", () => {
+    // fzk_house: inner walls 2.5 m to the slab's underside, outer walls 2.7 m to its top; a 1 m parapet is no storey wall
+    const v = (id: string, x: number, y: number) => ({ id, x, y })
+    const w = (id: string, a: string, b: string, heightM: number) => ({ id, a, b, thicknessM: 0.2, heightM, openings: [] })
+    const house = {
+      ...TEST_UNIT,
+      vertices: [v('a', 0, 0), v('b', 8, 0), v('c', 8, 6), v('d', 0, 6), v('m', 4, 0), v('n', 4, 6), v('p', 9, 0), v('q', 9, 6)],
+      walls: [w('ab', 'a', 'm', 2.7), w('mb', 'm', 'b', 2.7), w('bc', 'b', 'c', 2.7), w('cn', 'c', 'n', 2.7), w('nd', 'n', 'd', 2.7), w('da', 'd', 'a', 2.7), w('mn', 'm', 'n', 2.5), w('pq', 'p', 'q', 1)],
+      roomLabels: [],
+    } as Unit
+    const rs = core.deriveRooms(house)
+    expect(storeyTop(house, rs)).toBeCloseTo(2.7, 6)
+    expect(storeyCeiling(house, rs)).toBeCloseTo(2.5, 6)
+    expect(storeyCeiling(TEST_UNIT, core.deriveRooms(TEST_UNIT))).toBeCloseTo(Math.min(...TEST_UNIT.walls.filter((x) => x.heightM >= 2.4).map((x) => x.heightM)), 6)
+    expect(storeyCeiling({ ...house, walls: [w('pq', 'p', 'q', 1)] }, [])).toBeCloseTo(1, 6) // no storey wall: its top
   })
 
   test('levels: a step along a flush line gets a riser on the line, from the lower floor to the upper, facing down-side', () => {
