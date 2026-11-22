@@ -4,7 +4,7 @@ One table per screen. How each one works in detail: [MANUAL.md](MANUAL.md), the 
 Rule: when a key or a button is added, changed or removed, this file changes in the same commit (as MANUAL.md does).
 **Who:** staff = the developer's team (a browser becomes staff the first time it opens the Studio, or with `?staff=1`);
 buyer = someone on a buyer link; everyone = both. On a buyer link (`/s/…`) nobody is staff, even in a staff browser:
-no staff row below shows there. Checked against the product on 2026-11-21.
+no staff row below shows there. Checked against the product on 2026-11-21; walked from zero with only the manuals on 2026-11-22.
 
 ## Everywhere
 
@@ -49,7 +49,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **Walk** · **Dollhouse** · **Building** | The view switch; the one you are in is white | the bar, top right | everyone | §2 The bar |
 | **Finishes** / **F** | Opens / closes Finishes (closes Comment); in Clean view also brings everything back | the bar | everyone | §2 Finishes panel |
 | **Comment** / **C** | Comment on / off (closes Finishes): click anything to leave a note; in Clean view also brings everything back | the bar | everyone | §2 Notes |
-| **Share** | Copies a link that opens with the finishes you chose; staff with the online database: a buyer link (`/s/…`) of this flat on its floor, with its own finishes and furniture (asks once for the staff key when not signed in) | the bar | everyone | §2 The bar |
+| **Share** | Copies a link that opens with the finishes you chose; staff with the online database: a buyer link (`/s/…`) of this flat on its floor, with its own finishes and furniture (asks once for the staff key when not signed in); without the database a Studio drawing's link opens only in this browser | the bar | everyone | §2 The bar |
 | **Edit ▾ → Furniture** | Edit furniture: move, turn, resize, delete, add | the bar | staff | §3 Edit furniture |
 | **Edit ▾ → Openings** | Edit openings: doors, windows, sliders, passages, low walls | the bar | staff | §3 Edit openings |
 | **Edit ▾ → Plan (Studio) ↗** | Opens this flat or level in the Studio, in a new tab | the bar | staff | §3 |
@@ -59,7 +59,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
 | **Enter VR** / **Exit VR** | Into / out of the headset | the bar, only with a headset connected | everyone | §2 In VR |
-| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there. In the Building view it names the picked floor | top left | everyone | §2 Top left |
+| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there — the flat's own rooms, not the stair, lifts or lift lobby (walk there). In the Building view it names the picked floor | top left | everyone | §2 Top left |
 | Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back what faded while the mouse rested (3 s still: all but the room's name fades) | Walk | everyone | §2 Resting |
 | The hint | The keys for what you are doing; fades after a few seconds, back when it changes or when the mouse rests where it was | bottom middle | everyone | §2 The hint |
 | A short message | Answers what you just did ("Link copied …"); fades by itself | bottom middle, above the hint | everyone | §2 |
@@ -180,7 +180,7 @@ no staff row below shows there. Checked against the product on 2026-11-21.
 | Drag a dot on a picked thing | A wall's face dot: its thickness on that side (V) · a column's side or corner dot (V, C) · an opening's end dot: its width (V, O) · curtains' end dot: that side (F) · a ramp's arrow head: its direction (V) · the Site's north arrow (its round dot moves it) | V, C, O, F, Site open | §5 The tools, Site |
 | **Draw a** (W): **Wall**, **Low wall**, **Kerb**, **Zone line**, **Low wall height** | What the next wall is | right-hand panel | §5 W — Wall |
 | **Place an opening** (O): **Door 2'-6"**, **Door 3'-0"**, **Window 4'**, **Window 6'**, **Slider 6'**, **Slider 8'**, **Passage**, **Glass wall**, **Width** | What the next click on a wall puts in | right-hand panel | §5 O — Opening |
-| Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the direction arrows, **Save**, **Remove** | Names a room | R, click in a closed room | §5 R — Room |
+| Room box: **Room name**, **Kind**, **Printed size**, **Floor level**, **Ramp**, **To level**, the direction arrows, **Save**, **Remove** | Names a room; clicked on a room's name it opens that name, elsewhere in a named room it opens empty and adds a second name (a flat's "Type A ±2703 sft") | R, click in a closed room | §5 R — Room |
 | **Steps** | The checklist; ticks itself, the next step marked with a blue dot | right-hand panel | §5 The right-hand panel |
 | **What was read from the file** · **Dismiss** | The file's unit, what was guessed, what it lacked | right-hand panel, after an architect's file | §5 Bring in the architect's file |
 | **Layers** · a layer's box (**Plotline decides**, Walls, Kerbs, Zone lines, Doors, Windows, Columns, Room names, Dimensions, Leave out) | Says what a DXF / SVG layer holds: the file is read again, the choice kept for every next file | right-hand panel, under What was read from the file | §5 Bring in the architect's file |
