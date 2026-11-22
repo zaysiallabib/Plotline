@@ -2262,6 +2262,13 @@ export default function StudioApp() {
   }
   const applyFix = (f: Fix) => {
     // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
+    // a line he draws ("Draw a zone line"): the W tool with that type, at the mark; the plan is unchanged until he draws
+    if (f.draw) {
+      dispatch({ type: 'set-tool', tool: 'wall' })
+      dispatch({ type: 'pick-wall', wall: f.draw })
+      setActiveKey(null)
+      return toast(`${WALL_TYPES[f.draw].label} picked: click a wall, then the wall across, where the two rooms meet (Esc ends it)`)
+    }
     const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
     if (row) return answer(row.review!.id, answerId(f.label))
     dispatch({ type: 'apply-fix', actions: f.actions, label: f.label })

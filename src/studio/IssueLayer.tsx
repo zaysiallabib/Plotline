@@ -200,7 +200,7 @@ export function IssueLayer({ marks, fixes, toScreen, width, height, active, hot,
           {!!f?.fixes.length && (
             <div className="fixes">
               {f.fixes.map((x, i) => (
-                <button key={x.label} className={i ? '' : 'primary'} title={x.title} onClick={() => onFix(x)}>
+                <button key={x.label} className={i || x.choice ? '' : 'primary'} title={x.title} onClick={() => onFix(x)}>
                   {x.label}
                 </button>
               ))}

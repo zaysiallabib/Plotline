@@ -57,6 +57,10 @@ a drawing; an architectural IFC before a structural or services one) and the oth
   the floor above, a room whose wall the file put on another storey — is closed by flush zone lines (drawn as nothing)
   along the file's own outline of it, where no wall stands; the railing or parapet itself is in the outside shape. Kept
   only when it leaves fewer things to check (or as many, with fewer names outside a room).
+- Two of its rooms in one open space are split the same way along the file's own outlines — all at once, then name by
+  name. What the file cannot settle — a bath and its hall given the very same outline (Smiley West, seven flats) — is
+  never guessed: the Issues row "Bath shares a room with Hall" offers the unnamed room next door for either name (one
+  click), or, with none beside it, **Draw a zone line** with the Wall tool ready.
 
 **DXF (Drawing Exchange Format).**
 - AutoCAD's open version of DWG; any drawing program writes it. A plan in DXF is lines, polylines, arcs, repeated symbols

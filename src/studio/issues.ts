@@ -70,6 +70,11 @@ function reachOf(u: Unit, m: Mark, rooms: () => Room[]): number {
     const me = rooms().find((x) => x.id === r.entityId)
     about = me ? rooms().flatMap((x, k) => (x === me || x.wallIds.some((w) => me.wallIds.includes(w)) ? [k] : [])) : []
   } else if (i?.code === 'island-in-room') about = [rooms().findIndex((x) => x.id === i.ids[0])]
+  else if (i?.code === 'label-outside-any-room') {
+    // a name sharing a room: that room and the rooms beside it, one of which it may be (placeFixes)
+    const me = rooms()[roomIndexAt(at, rooms(), outlinesOf(rooms(), u))]
+    about = me ? rooms().flatMap((x, k) => (x === me || x.wallIds.some((w) => me.wallIds.includes(w)) ? [k] : [])) : []
+  }
   const pts = about.flatMap((k) => (k >= 0 ? outlinesOf(rooms(), u)[k] : []))
   return Math.max(LOCAL_M, ...pts.map((p) => Math.max(Math.abs(p.x - at.x), Math.abs(p.y - at.y)) + 1))
 }
@@ -87,6 +92,10 @@ export interface Fix {
   title: string
   actions: Action[]
   ghost: Ghost[]
+  /** one of several equal answers to a question the file cannot settle ("which room is the bath?"): none is shown as the first choice */
+  choice?: true
+  /** changes nothing: picks the W tool with this type at the mark, and the person draws the line (a zone line nothing else places) */
+  draw?: WallType
 }
 
 export interface Mark {
@@ -169,6 +178,43 @@ function runOf(u: Unit, id: Id, w: Wall): Id[] {
   return out
 }
 
+/** The room a name outside any room of its own stands in, and the other name that room is called by; null = in no closed room. */
+function sharedWith(u: Unit, rooms: Room[], l: RoomLabel): { here: Room; owner: RoomLabel } | null {
+  const here = rooms[roomIndexAt(l, rooms, outlinesOf(rooms, u))]
+  const owner = here && here.id !== l.id ? u.roomLabels.find((x) => x.id === here.id) : undefined
+  return owner ? { here, owner } : null
+}
+
+/**
+ * A name sharing a room with another (an architect's file giving a bath and its hall one outline: Smiley West ×7): which
+ * room is it? Each unnamed room next to theirs — those through a door when there are any, two at most — offered for
+ * either name ("Bath → room below"), the other keeping this room. The file cannot tell, so none is the first choice; with
+ * no unnamed room beside them the person draws the zone line between them (`draw`).
+ */
+function placeFixes(u: Unit, l: RoomLabel): Fix[] {
+  const rooms = deriveRooms(u)
+  const s = sharedWith(u, rooms, l)
+  if (!s) return []
+  const { here, owner } = s
+  const W = new Map(u.walls.map((w) => [w.id, w]))
+  const named = new Set(u.roomLabels.map((x) => x.id))
+  const nexts = rooms.filter((r) => !named.has(r.id) && r.wallIds.some((w) => here.wallIds.includes(w)))
+  const door = (r: Room) => r.wallIds.some((w) => here.wallIds.includes(w) && !!W.get(w)?.openings.some((o) => o.kind !== 'window'))
+  const out: Fix[] = (nexts.some(door) ? nexts.filter(door) : nexts).slice(0, 2).flatMap((n) => {
+    const at = insidePoint(n, u, rooms)
+    if (!at) return []
+    const where = `room ${sideOf(here, n)}`, sqm = (r: Room) => `${r.areaSqm.toFixed(1)} m²`
+    return [l, owner].map((x): Fix => ({
+      label: `${x.name} → ${where} · ${sqm(n)}`,
+      title: `${x.name} is the ${sqm(n)} ${where}${door(n) ? ', through its door' : ''}; ${x === l ? owner.name : l.name} keeps this ${sqm(here)} room`,
+      actions: [{ type: 'update-label', id: x.id, patch: { x: at.x, y: at.y } }],
+      ghost: [{ kind: 'area', pts: roomPolygon(n, u) }],
+      choice: true,
+    }))
+  })
+  return [...out, { label: 'Draw a zone line', title: `Nothing in the file divides this room: draw the line between ${l.name} and ${owner.name} with the Wall tool (a zone line: nothing in 3D), from wall to wall`, actions: [], ghost: [], draw: 'zone' }]
+}
+
 /** One issue's mark (number still unset). */
 function issueMark(u: Unit, rooms: Room[], i: StudioIssue): Omit<Mark, 'n'> {
   const base = { key: issueKey(i), issue: i, message: i.message, severity: BREAKS.has(i.code) ? ('red' as const) : ('amber' as const), at: null as Pt | null }
@@ -219,6 +265,8 @@ function issueMark(u: Unit, rooms: Room[], i: StudioIssue): Omit<Mark, 'n'> {
     case 'label-outside-any-room': {
       const l = u.roomLabels.find((x) => x.id === i.ids[0])
       if (!l) return base
+      const owner = sharedWith(u, rooms, l)?.owner
+      if (owner) return { ...base, at: { x: l.x, y: l.y }, message: `${l.name} shares a room with ${owner.name}` }
       const spot = openSpotsNear(u, rooms, l)[0]
       return { ...base, at: { x: l.x, y: l.y }, message: `${i.message}: ${l.name}`, ...(spot ? { hint: spot } : {}) }
     }
@@ -477,6 +525,10 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
       const join: Fix = { label: 'Join here', title: 'Split both walls at the crossing so they share one corner', actions: dragTo([], [P.a, P.b]), ghost: [{ kind: 'ring', at: c.at }] }
       if (!over) return [join]
       return [{ label: 'End it here', title: `End the wall at the crossing (the ${ft(over.d)} past it goes)`, actions: dragTo([{ id: over.id, ...c.at }]), ghost: [{ kind: 'cut', from: c.at, to: V.get(over.id)! }, { kind: 'ring', at: c.at }] }, join]
+    }
+    case 'label-outside-any-room': {
+      const l = u.roomLabels.find((x) => x.id === i.ids[0])
+      return l ? placeFixes(u, l) : []
     }
     default:
       return []
@@ -790,7 +842,10 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
     }
     const i = m.issue
     if (!i) continue
-    const fixes = candidates(u, i).filter((f) => closes(sub, f.actions, i, near()))
+    // (a line to draw changes nothing yet: offered only when nothing else closes it)
+    const all = candidates(u, i)
+    let fixes = all.filter((f) => !f.draw && closes(sub, f.actions, i, near()))
+    if (!fixes.length) fixes = all.filter((f) => f.draw)
     if (fixes.length || m.nameAt) out.set(m.key, { fixes, ...(m.nameAt ? { nameAt: m.nameAt } : {}) })
   }
   return out

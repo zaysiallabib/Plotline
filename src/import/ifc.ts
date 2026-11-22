@@ -938,11 +938,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     // zone lines (flush, drawn as nothing), so each room gets its own face: first where two of the rooms' own outlines run
     // together (the separation the architect drew between them) and no wall stands; then, for rooms still sharing a face,
     // the outlines of all but the biggest of them (an outline's other edges follow walls, columns and voids and can cut
-    // slivers). Each step is kept only when it leaves fewer rows to check (studioIssues): never more work for a person.
+    // slivers); then, name by name, the outline of each still sharing one. Each step is kept only when it leaves fewer rows to
+    // check (studioIssues): never more work for a person. What none of them places, the Studio's row asks (issues.ts).
     const lines: WallDraft[] = []
     const seen = new Set<string>()
+    const keyOf = (a: Pt, b: Pt) => [a, b].map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).sort().join('|')
     const add = (a: Pt, b: Pt) => {
-      const key = [a, b].map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).sort().join('|')
+      const key = keyOf(a, b)
       if (onWall(unit, a, b) || seen.has(key)) return
       seen.add(key)
       lines.push({ pts: [a, b], thicknessM: ZONE_LINE_M, heightM: 0, openings: [] })
@@ -963,7 +965,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       // (or as many, and fewer of the file's names outside a room)
       const out = (u: Unit) => validate(u).filter((i) => i.code === 'label-outside-any-room').length
       if (rows(next) < rows(unit) || (rows(next) === rows(unit) && out(next) < out(unit))) unit = next
-      else lines.length = kept
+      else for (const l of lines.splice(kept)) seen.delete(keyOf(l.pts[0], l.pts[1])) // (a later try may take them again)
     }
     const open = sharing()
     openPlan += open.length
@@ -975,6 +977,13 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       tryLines(() => {
         for (const inside of sharing()) for (const l of [...inside].sort((p, q) => area(q) - area(p)).slice(1)) for (const [a, b] of outlineOf.get(l.id) ?? []) add(a, b)
       })
+      // a name still sharing a room: its own outline alone, name by name (all at once, one bad outline sank the rest —
+      // Molio's reception in the hall, the digital hub's second lounge); a bath and hall the file outlines alike stay rows
+      const polys = deriveRooms(unit).map((r) => roomPolygon(r, unit))
+      for (const i of validate(unit)) {
+        const l = i.code === 'label-outside-any-room' && unit.roomLabels.find((x) => x.id === i.ids[0])
+        if (l && polys.some((poly) => pointInPolygon(l, poly))) tryLines(() => (outlineOf.get(l.id) ?? []).forEach(([a, b]) => add(a, b)))
+      }
     }
     // a room the file outlines that no walls close — a balcony edged by a railing, a roof terrace, a stair open to the
     // floor above: its own outline where no wall stands, as zone lines (the railing itself is in the outside shape)
