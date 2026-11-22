@@ -6,7 +6,7 @@ import { buildProcedural } from './procedural'
 import { arriveBy, HOLE_REACH, isStair, isStairRoom, LANDING_M, stairArrival, stairHole, stairSpot, treadBelow } from './stairs'
 import { layoutFor } from '../studio/furniture'
 import { stairOnFloor, stairsDown, stairTo, type Tower } from '../data/building'
-import { arrivalFace, coreRooms, DOOR_LEAF_MAX, listedRooms, STAIR_PITCH, stairView } from '../viewer/spawn'
+import { arrivalFace, coreRooms, DOOR_LEAF_MAX, listedRooms, roomView, STAIR_PITCH, stairView } from '../viewer/spawn'
 import { frameShares } from '../viewer/frame'
 import * as bti from '../data/building/demo-tower'
 import * as sheltech from '../data/building/sheltech-tower'
@@ -235,6 +235,11 @@ describe('the stair in the Rooms list (newcomer lane s31: a newcomer spent 20 mi
       const door = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => w.openings.filter((o) => o.kind !== 'window').map((o) => { const f = core.wallFrame(w, u.vertices); return { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) } }))
       expect(Math.min(...door.map((d) => Math.hypot(d.x - v.p.x, d.y - v.p.y))), stem).toBeLessThan(1) // just inside its door
     }
+    // a stair room too small for a drawn stair (the Sheltech ground floor's): the room's own view, not a bare corner from the door
+    const g = laid(ground)
+    const small = g.rooms.find((r) => r.id === 'r_stair')!
+    expect(g.u.furniture.some((p) => p.roomId === small.id && isStair(p))).toBe(false)
+    expect(stairView(small, g.u)).toEqual(roomView(small, g.u))
   })
   test("a flat whose floor's stair is drawn with another flat reaches that one (BTI Type A: Type B's stair, on its own floor)", () => {
     const T = bti as unknown as Tower

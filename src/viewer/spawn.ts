@@ -83,7 +83,8 @@ export const STAIR_PITCH = (-10 * Math.PI) / 180
 /**
  * A jump to a stair room (the Rooms list's core group, a Dollhouse click in it): just inside its door from the rest of the
  * floor (the widest; a door from another stair room last), STAIR_IN in — less where that would stand on the stair — looking
- * at the flight (its stair piece; none drawn: the room's middle), STAIR_PITCH down. No door: the room's own view (roomView).
+ * at the flight (its stair piece), STAIR_PITCH down. No stair drawn (a room too small for one: the Sheltech ground floor's)
+ * or no door: the room's own view (roomView) — from the door at the room's middle it saw a bare corner.
  */
 export function stairView(room: Room, unit: Unit): View {
   const rooms = core.deriveRooms(unit)
@@ -105,10 +106,9 @@ export function stairView(room: Room, unit: Unit): View {
     })
     .sort((a, b) => Number(a.fromStair) - Number(b.fromStair) || b.widthM - a.widthM)
   const d = doors[0]
-  if (!d) return roomView(room, unit)
+  if (!d || !stair) return roomView(room, unit)
   const p = [STAIR_IN, 0.45, 0.3].map((m) => add(d.c, d.n, d.t / 2 + m)).find((q) => core.pointInPolygon(q, poly) && !(stair && stairSpot(stair, q))) ?? add(d.c, d.n, d.t / 2 + 0.3)
-  const target = stair ?? room.centroid
-  const to = { x: target.x - p.x, y: target.y - p.y }
+  const to = { x: stair.x - p.x, y: stair.y - p.y }
   const len = Math.hypot(to.x, to.y)
   return { p, face: len > 0.5 ? { x: to.x / len, y: to.y / len } : d.n, pitch: STAIR_PITCH }
 }
