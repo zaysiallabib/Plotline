@@ -268,7 +268,10 @@ export function Panel({ state, dispatch, rooms, flats, issues, marks, fixes, act
                   onClick={(e) => {
                     e.stopPropagation()
                     if (m.review) onAnswer(m.review.id, answerId(x.label))
-                    else onFix(x)
+                    else {
+                      if (x.draw) onOpen(m) // (a line he draws: the plan goes there first)
+                      onFix(x)
+                    }
                   }}
                 >
                   {x.label}

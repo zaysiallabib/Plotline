@@ -37,7 +37,7 @@ import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
+import { Look, SITE_REACH_M, TIERS, forcedScale, lensFov, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
@@ -1115,14 +1115,13 @@ export class PlotlineScene {
     this.camera.quaternion.setFromEuler(new THREE.Euler(pitchRad, yawRad, 0, 'YXZ'))
     // a narrower lens for this view (a WC under 2 m², spawn.ts TINY_HFOV): that many degrees across a wide screen, never wider
     // than the walk's; eased back to the walk's as he leaves the room (tick)
-    const fov = hfovDeg ? Math.min(WALK_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hfovDeg) / 2) / this.camera.aspect))) : WALK_FOV
-    this.lens = fov < WALK_FOV && this.unit ? { roomId: core.roomAt(p, this.rooms, this.unit)?.id ?? null } : null
-    this.camera.fov = fov
+    this.lens = hfovDeg && this.unit ? { roomId: core.roomAt(p, this.rooms, this.unit)?.id ?? null, hfovDeg } : null
+    this.camera.fov = this.lens ? lensFov(this.lens.hfovDeg, this.camera.aspect, WALK_FOV) : WALK_FOV
     this.camera.updateProjectionMatrix()
   }
 
-  /** a view's narrower lens (spawnAt) and the room it is for: walking out of it eases the walk's back */
-  private lens: { roomId: Id | null } | null = null
+  /** a view's narrower lens (spawnAt), the room it is for and how wide it is across: walking out of it eases the walk's back; a resize in it keeps it (resize) */
+  private lens: { roomId: Id | null; hfovDeg: number } | null = null
 
   /** Shuts the leaf of door `openingId` (a first frame's `closeLeaf`) and reopens the one shut before; null reopens only. */
   shutLeaf(openingId: Id | null): void {
@@ -1771,6 +1770,8 @@ export class PlotlineScene {
     this.renderer.setSize(w, h, false)
     this.look.setSize(w, h)
     this.camera.aspect = w / h
+    // standing in the room a narrower lens is for (a WC under 2 m²): the same width across at the new shape
+    if (this.lens && this.unit && core.roomAt(this.walker, this.rooms, this.unit)?.id === this.lens.roomId) this.camera.fov = lensFov(this.lens.hfovDeg, w / h, WALK_FOV)
     this.camera.updateProjectionMatrix()
   }
 

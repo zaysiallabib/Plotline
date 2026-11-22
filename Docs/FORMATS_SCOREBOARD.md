@@ -29,6 +29,22 @@ services or structural model, a test file of single shapes). *refused*: the Stud
 
 Left out: 69 git-lfs pointers (130-byte stand-ins for files not downloaded in this copy of the corpus).
 
+## Session 31, review — what the file cannot place, the person places in one click
+
+After formats3, 9 names on the ifc-bench buildings stood in no room of their own. Now:
+- **The digital hub's second lounge** (1 → 0): its room is split along the file's own outline of it, name by name — the
+  importer tried every sharing room's outline at once, one bad outline sank them all, and a refused try kept the next
+  one from using the same lines. Firefox (the founder's path, `E:/dev/tmp/s31/review/score.mjs`): digital hub 1 → 0
+  names outside a room, 55 → 54 rows, read 1.3 s. Every other ifc-bench file reads exactly as before (node, all 27
+  files: walls, rooms, names, crossings, rows unchanged).
+- **Smiley West's first floor** (7, the file gives each flat's bath and hall one identical outline): still 7 at the
+  drop — the file cannot tell which room is the bath, so nothing is guessed. Each Issues row now reads "BAD / WC-3-1
+  shares a room with FLUR-3-3" and offers the unnamed room next door for either name (the one through a door), neither
+  as the first choice: **7 clicks and the floor is clean** — 40 of 40 rooms named, no name outside a room (Firefox, shots
+  `E:/dev/plotline-shots/s31/review/smiley-*.png`).
+- **Molio's reception in the hall** (1): no unnamed room beside it, and its outline does not close against the walls; the
+  row offers **Draw a zone line** (the plan goes there with the Wall tool on Zone line).
+
 ## Session 31, formats3 — the rest of the way
 
 Before: `s31/redesign` 734c599 (run `before`: every file read exactly as formats2 left it — the speed lane changed no

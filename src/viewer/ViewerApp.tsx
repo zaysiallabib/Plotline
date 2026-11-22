@@ -941,9 +941,10 @@ function Viewer({ first }: { first: Shown }) {
     // out, the finishes kept for it (floor 3's beige, not the floor plan's: the Studio's ⋯ → Share link carries those), its
     // buyers' picks and notes in the change list. Else (a buyer, no database) this address with these finishes, as before
     if (STAFF && !SHARED && sharingConfigured) {
-      const { publishLink, WrongKey } = await import('../lib/publish') // (the walk never loads it)
+      const { publishLink, savedIn, WrongKey } = await import('../lib/publish') // (the walk never loads it)
       try {
-        const url = await publishLink({ ...shown(), name: unit.name }, fullCfg, async () => ({ stem: unit.id, floor: unit.floor }))
+        // (named as the Studio names its links: the project's cloud row, the drawing, the floor — so its Links list shows it)
+        const url = await publishLink({ ...shown(), name: unit.name }, fullCfg, async () => ({ project: await savedIn(unit.id), stem: unit.id, floor: unit.floor }))
         if (!url) return
         await navigator.clipboard?.writeText(url).catch(() => {})
         showToast(`Buyer link copied: ${stem && unit.floor !== undefined ? floorWord({ stem, floor: unit.floor }) : 'this flat'} with exactly these finishes and furniture.`, 6000)

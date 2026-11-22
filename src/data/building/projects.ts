@@ -370,6 +370,9 @@ export function forkFloor(p: Project, s: Slot, unitId: Id, forkId: Id): Project 
   return prune({ ...p, units, flats, floors })
 }
 
+/** The first project holding drawing `unitId` — or its mirrored copy (`<id>-m`), or a level of it — or undefined. */
+export const projectWith = (ps: Project[], unitId: Id): Project | undefined => ps.find((p) => p.units[unitId] ?? p.units[unitId.replace(/-m$/, '')])
+
 /**
  * The 3D view's question: the first project whose floor `k` holds flat `stem`, its drawing, and every floor that drawing is
  * on — only when that is more than this floor (a change to it changes them all); else null.
