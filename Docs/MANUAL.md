@@ -188,7 +188,10 @@ remembers it: the next flat opened in the same tab starts clean too.
     the new one is complete — its furniture, its plants, its pictures and the other flats' rooms round it all in — then
     the picture changes in one go; the grounds' trees and play things seen from its windows come in just after. The
     first time you reach a floor with new kinds of furniture or lamps, the picture moves in small steps for a few seconds
-    while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. The time of day, the wind, Clean view and the quality stay, and so do a buyer's
+    while the graphics card learns them (it no longer stops for seconds); after that, that floor comes at once. Going
+    back to a floor of the drawing you just left — the rooftop and down to floor 6 again, Level 1 and back up to floor 2 —
+    takes under a second: the page keeps the last other drawing's flat ready (two flats at most, the one you see and that
+    one). The time of day, the wind, Clean view and the quality stay, and so do a buyer's
     finishes; staff see the new floor's flat with its own finishes, as they were last left there (below, "Every flat keeps
     its own"). Anything open on the floor you leave (Edit furniture, Edit openings, a note being written) closes.
   - The address changes to that floor (`/u/<flat or level>?floor=4`), so a reload opens it, and the browser's **Back** and **Forward** take
