@@ -27,7 +27,7 @@ import { CELL_M } from './batch'
 import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
 import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
-import { EXTERIOR_PLASTER, materialFor } from './materials'
+import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
 import { meterUVs, PANES, setGlassSky } from './openings'
 
 /**
@@ -436,6 +436,17 @@ export type LightsMode = 'auto' | 'on' | 'off'
 export const lightsOn = (mode: LightsMode, altDeg: number): boolean => (mode === 'auto' ? altDeg < 5 : mode === 'on')
 
 /**
+ * three's ambient-occlusion smoothing shader (PoissonDenoiseShader) with its sample loop counted by a uniform `pdSamples`, not
+ * the SAMPLES define: the compiler keeps it a loop instead of copying its body out per sample (Look). Throws if three's
+ * text changed (render.test.ts): a silent miss would bring the 0.6 s back.
+ */
+export function keptLoop(fs: string): string {
+  const loop = 'for (int i = 0; i < SAMPLES; i++) {'
+  if (!fs.includes(loop) || !fs.includes('uniform int index;')) throw new Error('three’s smoothing shader changed: keptLoop needs a look')
+  return fs.replace('uniform int index;', 'uniform int index;\nuniform int pdSamples;').replace(loop, 'for (int i = 0; i < pdSamples; i++) {')
+}
+
+/**
  * The lamps that cast shadows: those in the camera's room first, then the nearest to the camera; `k` of them (fewer only
  * if there are fewer lamps). Indices into `lamps`.
  */
@@ -642,6 +653,11 @@ export class Look {
       )
       ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1, thickness: 0.5, scale: 1, samples: 16 })
       ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
+      // its 16 samples kept a loop (session 31 start lane): written with a fixed count the compiler copied the loop out 16
+      // times, normals rebuilt from depth in each — Firefox took 0.6–0.7 s to make that one program; with the count a number
+      // it takes 0.06 s, and draws the same bytes (measured: the two outputs equal, pixel for pixel)
+      ao.pdMaterial.fragmentShader = keptLoop(ao.pdMaterial.fragmentShader)
+      ao.pdMaterial.uniforms.pdSamples = { value: 16 }
       ao.blendIntensity = 0.9
       ao.enabled = !switchedOff('ao')
       this.composer.addPass(ao)
@@ -1011,9 +1027,10 @@ export class Look {
     obj.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
       if (!m?.isMeshStandardMaterial || this.glows.has(m)) return
+      const map = m.emissiveMap && !isBlank(m.emissiveMap) // (a blank one: materials.ts samePictures, no glow of its own)
       // a scan's shades / bulbs with no glow of their own (the chandelier's "lamps" material): lit as a linen shade is
-      if (!m.emissiveMap && m.emissive.getHex() === 0 && /^lamps?_|shade|bulb/i.test(m.name)) m.emissive.set('#ffd6a0').multiplyScalar(0.35)
-      if (!m.emissiveMap && m.emissive.getHex() === 0) return
+      if (!map && m.emissive.getHex() === 0 && /^lamps?_|shade|bulb/i.test(m.name)) m.emissive.set('#ffd6a0').multiplyScalar(0.35)
+      if (!map && m.emissive.getHex() === 0) return
       if (m.emissive.getHex() === 0) m.emissive.set('#fff0dc') // an emissive map with no factor (the fan's light kit): it never glowed
       this.glows.set(m, m.emissiveIntensity)
       m.emissiveIntensity = this.on ? m.emissiveIntensity * ON_GLOW : 0
@@ -1178,6 +1195,34 @@ export class Look {
     l.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose?.())
     this.disposeContext(l.contact, l.street)
     for (const s of l.pool) s.light.dispose()
+  }
+
+  /**
+   * The flat's programs asked for before the flat is built (session 31 start lane): Firefox makes them one after another on
+   * its graphics process, which has nothing else to do while the page reads the flat's models — asked for once the flat was
+   * built, they started 1.3 s later and the start screen waited for every one. `parts`: one stand-in of each kind of lit
+   * surface (PlotlineScene), lit by as many lamps as the pool will have (a program knows its lights by their count only); then
+   * the passes after the scene (the ambient occlusion and its smoothing: 0.6 s of the 5) as their full-screen triangle draws
+   * them — no lights, into a target. Asked for, never drawn: a draw would wait for every one of them (6 s, measured).
+   */
+  prewarm(parts: THREE.Object3D, tower: boolean): void {
+    const wide = this.wide?.visible
+    if (this.wide) this.wide.visible = tower // (setStreetY: on round a flat in its tower)
+    const lamps = Array.from({ length: this.maxLamps }, (_, i) => Object.assign(new THREE.SpotLight(), { castShadow: i < this.casters }))
+    if (lamps.length) this.scene.add(...lamps)
+    this.compile(parts)
+    if (lamps.length) this.scene.remove(...lamps)
+    for (const l of lamps) l.dispose()
+    if (this.wide) this.wide.visible = !!wide
+    if (!this.composer || !this.ao) return
+    this.ao.setGBuffer(this.composer.readBuffer.depthTexture!) // (as render sets it: its programs' defines)
+    const tri = new THREE.BufferGeometry() // three's full-screen triangle (Pass.js): a position and a uv, no normal
+    tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3))
+    tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2))
+    const rt = this.renderer.getRenderTarget()
+    this.renderer.setRenderTarget(this.composer.readBuffer)
+    for (const m of [this.ao.gtaoMaterial, this.ao.pdMaterial, this.ao.copyMaterial, this.ao.blendMaterial]) this.renderer.compile(new THREE.Mesh(tri, m), this.camera)
+    this.renderer.setRenderTarget(rt)
   }
 
   /**

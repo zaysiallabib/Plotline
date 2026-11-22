@@ -765,8 +765,12 @@ describe('one draw of the scene a frame (session 31 glow)', () => {
     const wood = new THREE.MeshPhysicalMaterial({ color: '#8a6a4a' })
     const clock = new THREE.Group().add(new THREE.Mesh(new THREE.PlaneGeometry(), glass), new THREE.Mesh(new THREE.BoxGeometry(), wood))
     plainGlass(clock)
-    expect([glass.transmission, glass.transparent, glass.opacity <= 0.15, glass.depthWrite]).toEqual([0, true, true, false])
-    expect([wood.transmission, wood.transparent]).toEqual([0, false]) // the rest as it was
+    const [face, frame] = clock.children as InstanceType<typeof THREE.Mesh>[]
+    const pane = face.material as InstanceType<typeof THREE.MeshStandardMaterial>
+    // (session 31 start lane) a standard pane seen from the front, as the windows' glass: one program with them, not two of its own
+    expect([pane.type, (pane as InstanceType<typeof THREE.MeshPhysicalMaterial>).transmission, pane.transparent, pane.opacity <= 0.15, pane.depthWrite, pane.side]).toEqual(['MeshStandardMaterial', undefined, true, true, false, THREE.FrontSide])
+    expect(frame.material).toBe(wood) // the rest as it was
+    expect([wood.transmission, wood.transparent]).toEqual([0, false])
   })
 })
 
@@ -926,6 +930,22 @@ describe('round the flat the tower is a handful of draws (session 31 perf: the c
     await new Promise((r) => setTimeout(r, 450))
     const batched = drawn()
     expect(batched).toBeLessThan(one / 3)
+    // (session 31 start lane) a batch still waiting is made at once when asked (before the frame behind the start screen)
+    b.frame('building', 'low')
+    b.frame('walk', 'low')
+    expect(drawn()).toBe(one)
+    const adding = b as unknown as { addingPieces: boolean }
+    adding.addingPieces = true // a level's pieces still coming in (furnishPieces): the tower waits, so they get their own 8 m batches
+    b.settleNow()
+    expect(drawn()).toBe(one)
+    adding.addingPieces = false
+    b.settleNow()
+    expect(drawn()).toBe(batched)
+    // (session 31 start lane) placed again in the same view (Enter, a Rooms jump): the batches stand, nothing is made again
+    const kept = b.children.filter((o) => o.userData.batch)
+    b.frame('walk', 'low')
+    expect(b.children.filter((o) => o.userData.batch)).toEqual(kept)
+    expect(drawn()).toBe(batched)
     b.frame('building', 'low')
     let hidden = 0
     b.traverse((o) => void (o.layers.mask === 1 << HIDDEN && hidden++))

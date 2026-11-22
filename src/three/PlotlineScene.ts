@@ -32,10 +32,10 @@ import { buildProcedural, lean, lite } from '../furnish/procedural'
 import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
-import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
+import { bakeSteps, daylit, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, PAINT, PICTURES, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
@@ -182,6 +182,31 @@ const BATCH_MS = 400
  */
 const PREP_MS = 250
 const SETTLE_MS = 250
+/**
+ * One stand-in of each kind of lit surface a flat draws (materials.ts samePictures, daylight.ts daylit): a room's surface (the
+ * plain ones share its program); on High and Low also a two-sided piece or leaf, the glass and the instanced leaves — their
+ * programs asked for by Look.prewarm as the first flat is built. Never freed: a program goes with its last material.
+ */
+function standIns(isLite: boolean): THREE.Group {
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2))
+  // materials of their own, never the shared ones (materialFor's): three draws opaque surfaces in the order their materials
+  // were made — a tower wall's made first drew the tower behind the flat's walls before them (Lite's Walk +0.5 ms, measured)
+  const room = new THREE.MeshStandardMaterial()
+  samePictures(room)
+  daylit(room)
+  const g = new THREE.Group().add(new THREE.Mesh(geo, room))
+  if (isLite) return g // (Lite's pieces and glass are drawn as the rooms or plainer: no stand-in of theirs would match)
+  const two = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide })
+  const glass = new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false })
+  for (const m of [two, glass]) samePictures(m)
+  const leaves = new THREE.InstancedMesh(geo, two, 1)
+  leaves.setColorAt(0, new THREE.Color())
+  return g.add(new THREE.Mesh(geo, two), new THREE.Mesh(geo, glass), leaves)
+}
+
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
 const LOST_MS = 5000
@@ -526,6 +551,8 @@ export class PlotlineScene {
   down: Id[] = []
   /** under the load screen (until unveil): nothing drawn, its programs made ahead (prepare) */
   private veiled = true
+  /** the first flat's programs asked for (build: Look.prewarm) */
+  private prewarmed = false
   private prepAt = 0
   /** when a program was last new (prepare), and when the frame was last drawn behind the load screen */
   private grewAt = 0
@@ -647,6 +674,12 @@ export class PlotlineScene {
     this.builtFrom = { unit, cover: this.cover, down: this.down.join() }
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
+    // the page's first flat: its programs asked for now, made while it is built and its models come in (Look.prewarm) — the
+    // sun's wide shadow counted as it will be (on round a flat in its tower). Not in the constructor: a scene let go at once
+    // (React mounts the viewer twice in development) held the next one up 2.5 s with its own
+    if (!this.prewarmed) (this.prewarmed = true), this.look.prewarm(standIns(lite.on), this.street !== null)
+    // its models on their way while it is built (0.85 s on Lite; loadFurniture asked for them only after)
+    if (!keepView) void preloadModels(unit.furniture)
     this.ready = false
     const kept = keepView ? [this.furnitureGroup, this.ceilingGroup].flatMap((g) => g.children.filter((o) => o.userData.kind === 'furniture').map((o) => [g, o] as const)) : []
     for (const [, o] of kept) o.removeFromParent() // out of clearStatic's reach
@@ -1220,6 +1253,12 @@ export class PlotlineScene {
   private prepare(now: number): void {
     if (now < this.prepAt || !this.ready) return // (before the flat is built its lamps are not there: every program would be made again)
     this.prepAt = now + PREP_MS
+    // the batches made as soon as what they batch is in, not BATCH_MS / AROUND_MS on (nothing moves under the screen): the
+    // flat's once its furniture is, the tower's once its rooms and pieces are — drawn behind the screen, their buffers go to
+    // the graphics chip there (made after it, the first frame after Enter sent ~150 of them: 95 ms, session 31 start lane)
+    if (this.loadedAt && this.unsettled.size) (clearTimeout(this.batchTimer), this.settle())
+    const b = this.building
+    if (b?.piecesIn && b.progress.rooms) b.settleNow()
     const n = this.renderer.info.programs?.length ?? 0
     // what has a shape (a plant's leaves before their file is read have none: a program of their own, never drawn)
     const parts: THREE.Object3D[] = []
@@ -1227,6 +1266,7 @@ export class PlotlineScene {
     this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
     if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
     if (!this.envIn || !this.loadedAt || loading.size || !(this.building?.piecesIn ?? true) || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
+    this.building?.settleNow() // (its rooms still coming: what is in, batched for this frame)
     this.renderer.info.reset()
     this.look.render()
     this.rehearsedAt = performance.now()
@@ -1269,7 +1309,9 @@ export class PlotlineScene {
     // roughness picture goes as it is, once — lent as the metalness map for the export only
     const lent: THREE.MeshStandardMaterial[] = []
     // a blank picture (materials.ts samePictures: it only keeps programs shared) is no picture in the file
-    const blanks: [THREE.MeshStandardMaterial, (typeof PICTURES)[number], THREE.Texture][] = []
+    const blanks: [THREE.MeshPhysicalMaterial, (typeof PICTURES)[number] | (typeof MORE_PICTURES)[number], THREE.Texture][] = []
+    // and a two-sided solid piece's alpha test that never cuts (samePictures): no alpha test in the file
+    const solid: THREE.Material[] = []
     // where each surface and piece reads the daylight atlas (dayUv) means nothing outside Plotline: left out of the file
     const day: [THREE.BufferGeometry, THREE.BufferAttribute][] = []
     for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup])
@@ -1278,8 +1320,9 @@ export class PlotlineScene {
         const a = geo?.getAttribute?.('dayUv') as THREE.BufferAttribute | undefined
         if (geo && a) (day.push([geo, a]), geo.deleteAttribute('dayUv'))
         for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
-          const st = m as THREE.MeshStandardMaterial
-          for (const k of PICTURES) if (isBlank(st[k])) (blanks.push([st, k, st[k]!]), (st[k] = null))
+          const st = m as THREE.MeshPhysicalMaterial
+          for (const k of [...PICTURES, ...MORE_PICTURES]) if (isBlank(st[k])) (blanks.push([st, k, st[k]!]), (st[k] = null))
+          if (m.userData.solid && m.alphaTest === SOLID_CUT) (solid.push(m), (m.alphaTest = 0))
           if (st.roughnessMap && !st.metalnessMap && st.metalness === 0) lent.push(Object.assign(st, { metalnessMap: st.roughnessMap }))
           if (m.transparent || m.alphaTest > 0) continue
           for (const v of Object.values(m)) if (v instanceof THREE.Texture && !v.userData.mimeType && v.image) (v.userData.mimeType = 'image/jpeg'), marked.push(v)
@@ -1294,6 +1337,7 @@ export class PlotlineScene {
       for (const t of marked) delete t.userData.mimeType
       for (const m of lent) m.metalnessMap = null
       for (const [m, k, t] of blanks) m[k] = t
+      for (const m of solid) m.alphaTest = SOLID_CUT
       for (const [geo, a] of day) geo.setAttribute('dayUv', a)
       this.exporting = false
       this.rebatch('static')

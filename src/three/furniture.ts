@@ -158,15 +158,21 @@ export const preloadModels = (ps: FurniturePlacement[]): Promise<unknown> =>
  * A scan's see-through glass (KHR_materials_transmission: the wall clock's face) as plain glass, once per model: while one
  * transmissive surface is in view three draws everything opaque a second time each frame for its refraction picture — the
  * whole flat, and the tower round it in the Building view, twice for a clock face (session 31 glow: 2 draws of every
- * mesh on every tier). The walk's panes made the same choice (openings.ts GLASS).
+ * mesh on every tier). The walk's panes made the same choice (openings.ts GLASS). Session 31 start lane: a standard material
+ * seen from the front, as the panes are (Lite did so already) — the physical two-sided glass was two programs of its own
+ * (three draws its back faces, then its front), 0.7 s of Firefox's making on High; nothing physical is left in it.
  */
 export function plainGlass<T extends THREE.Object3D>(model: T): T {
+  const glass = new Map<THREE.Material, THREE.MeshStandardMaterial>()
+  const plain = (m: THREE.MeshPhysicalMaterial): THREE.Material => {
+    if (!(m.transmission > 0)) return m
+    let s = glass.get(m)
+    if (!s) glass.set(m, (s = Object.assign(new THREE.MeshStandardMaterial().copy(m), { transparent: true, opacity: Math.min(m.opacity, 0.15), depthWrite: false, side: THREE.FrontSide })))
+    return s
+  }
   model.traverse((o) => {
-    for (const m of [(o as THREE.Mesh).material ?? []].flat() as THREE.MeshPhysicalMaterial[]) {
-      if (!(m.transmission > 0)) continue
-      Object.assign(m, { transmission: 0, transparent: true, opacity: Math.min(m.opacity, 0.15), depthWrite: false })
-      m.needsUpdate = true
-    }
+    const mesh = o as THREE.Mesh
+    if (mesh.isMesh) mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => plain(m as THREE.MeshPhysicalMaterial)) : plain(mesh.material as THREE.MeshPhysicalMaterial)
   })
   return model
 }

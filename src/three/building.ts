@@ -634,6 +634,10 @@ export class Building extends THREE.Group {
    * been opened (the walk starts as fast as before). The Building view: all of it, casting as built (highlight cuts).
    */
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
+    // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
+    // stand. Unmade and made again they held the page 150–190 ms, 0.4 s after Enter (session 31 start lane)
+    if (this.batched && this.framed === `${mode}|${tier}`) return
+    this.framed = `${mode}|${tier}`
     const around = mode !== 'building'
     this.unbatchAround()
     this.around = around
@@ -674,6 +678,8 @@ export class Building extends THREE.Group {
   private leavesMerged = false
   private batched: { batches: THREE.Mesh[]; leaves: THREE.InstancedMesh[]; moved: THREE.Object3D[] } | null = null
   private batchTimer: ReturnType<typeof setTimeout> | undefined
+  /** the view and tier frame() last set */
+  private framed = ''
 
   /**
    * Round the flat the tower does not change while it is looked at (the Building view's cut, lift and picking need its pieces
@@ -684,22 +690,38 @@ export class Building extends THREE.Group {
    */
   private batchAround(): void {
     clearTimeout(this.batchTimer)
+    this.pending = false
     if (!this.around || this.disposed) return
-    this.batchTimer = setTimeout(() => {
-      if (!this.around || this.disposed) return
-      this.unbatchAround()
-      const before: THREE.Object3D[] = []
-      this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
-      const leaves = this.leavesMerged ? this.leavesTogether() : []
-      const batches = batch(this, Infinity)
-      this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
-      this.onChange()
-    }, AROUND_MS)
+    this.pending = true
+    this.batchTimer = setTimeout(this.batchNow, AROUND_MS)
+  }
+  /** a batchAround waiting for its AROUND_MS */
+  private pending = false
+  /** furnishPieces is adding a level's pieces (batchNow waits) */
+  private addingPieces = false
+  private batchNow = (): void => {
+    this.pending = false
+    if (!this.around || this.disposed) return
+    // a level's pieces still coming in: merged into the whole tower now, they missed their own 8 m batches (batched away from
+    // them) and ended in the tower's one uncullable mesh — Sheltech's Walk drew 29 k triangles more (session 31 start lane)
+    if (this.addingPieces) return this.batchAround()
+    this.unbatchAround()
+    const before: THREE.Object3D[] = []
+    this.traverse((o) => void (o.layers.mask === 1 && before.push(o)))
+    const leaves = this.leavesMerged ? this.leavesTogether() : []
+    const batches = batch(this, Infinity)
+    this.batched = { batches, leaves, moved: before.filter((o) => o.layers.mask === 1 << HIDDEN) }
+    this.onChange()
+  }
+  /** A batchAround waiting: made now (PlotlineScene, before the frame drawn behind the start screen: its buffers sent there). */
+  settleNow(): void {
+    if (this.pending) (clearTimeout(this.batchTimer), this.batchNow())
   }
 
   /** the tower one by one again (frame, a flat's rooms or pieces coming in, the Building view) */
   private unbatchAround(): void {
     clearTimeout(this.batchTimer)
+    this.pending = false
     const b = this.batched
     if (!b) return
     this.batched = null
@@ -959,6 +981,7 @@ export class Building extends THREE.Group {
     )
     for (const f of this.furnishing) {
       const { s, group } = f
+      this.addingPieces = true
       const pieces = (f.pieces = new THREE.Group())
       pieces.visible = this.piecesShown
       group.add(pieces)
@@ -983,6 +1006,7 @@ export class Building extends THREE.Group {
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))
       batch(pieces, CELL_M)
       this.casts(pieces, true)
+      this.addingPieces = false
       this.batchAround()
     }
     this.piecesDone = true

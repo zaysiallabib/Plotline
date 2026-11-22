@@ -226,9 +226,9 @@ const NM = new THREE.Matrix3()
 const C1 = new THREE.Color()
 const C2 = new THREE.Color()
 
-/** A material whose colour stands for the surface: drawn solid (not glass, a see-through sheer, an alpha-cut leaf or a mirror's own shader). */
+/** A material whose colour stands for the surface: drawn solid (not glass, a see-through sheer, an alpha-cut leaf or a mirror's own shader; a two-sided piece's alpha test that never cuts and its blank mask, materials.ts samePictures, are solid). */
 const solid = (m: THREE.Material | undefined): m is THREE.MeshStandardMaterial =>
-  !!m && m.visible && !!(m as THREE.MeshStandardMaterial).color && !(m.transparent && m.opacity < 0.9) && !m.alphaTest && !(m as THREE.MeshStandardMaterial).alphaMap && !(m as THREE.MeshPhysicalMaterial).transmission
+  !!m && m.visible && !!(m as THREE.MeshStandardMaterial).color && !(m.transparent && m.opacity < 0.9) && !(m.alphaTest && !m.userData.solid) && !((m as THREE.MeshStandardMaterial).alphaMap && !isBlank((m as THREE.MeshStandardMaterial).alphaMap)) && !(m as THREE.MeshPhysicalMaterial).transmission
 
 /** Mesh m (world matrix set: the drawing's frame) into interior parts of room `room`: every solid material's triangles, its colour × its picture at each vertex × its vertex colours. */
 function bake(m: THREE.Mesh, room: number, out: THREE.BufferGeometry[]): void {

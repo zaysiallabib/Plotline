@@ -15,7 +15,7 @@ import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits 
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
-import { EDGE_PLASTER, PICTURES, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
+import { EDGE_PLASTER, MORE_PICTURES, PICTURES, PICTURE_ROOM, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
 import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
@@ -529,6 +529,66 @@ describe('one program for every lit surface (session 31 ready lane: the first fr
     } finally {
       lite.on = false
     }
+  })
+  // three's chunks the shared patch rewrites (daylight.ts daylit), as onBeforeCompile gets them
+  const patched = (m: THREE.MeshStandardMaterial) => {
+    const s = { uniforms: {} as Record<string, THREE.IUniform>, vertexShader: '#include <uv_vertex>\n#include <project_vertex>', fragmentShader: '#include <map_fragment>\n#include <alphatest_fragment>\n#include <aomap_fragment>\n#include <lights_physical_fragment>' }
+    m.onBeforeCompile(s as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer)
+    return s
+  }
+  test('High (start lane): a door frame, the glass and a room surface share the rooms’ patch, its daylight left out on the first two', () => {
+    const [frame, room] = [materialFor({ kind: 'color', color: '#a0a0a0' }), materialFor({ kind: 'color', color: '#a0a0a0' }, false, true)]
+    const glass = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.2 })
+    samePictures(glass)
+    for (const m of [frame, room, glass]) expect(m.customProgramCacheKey()).toBe('daylit')
+    expect([frame, room, glass].map((m) => patched(m).uniforms.dayOn.value)).toEqual([0, 1, 0])
+    const f = patched(frame).fragmentShader
+    expect(f).toContain('float dayK = mix(1.0, mix(') // dayOn 0: the light × 1, as unpatched
+    expect(f).not.toMatch(/alphaTest\b/) // the alpha test reads dayCut
+    expect(isBlank(frame.emissiveMap)).toBe(true) // a glow picture: white × its glow colour (black) — nothing
+    const own = new THREE.MeshStandardMaterial()
+    const mine = () => {}
+    own.onBeforeCompile = mine // a shader of its own (water's ripple, a mirror) is left alone
+    samePictures(own)
+    expect(own.onBeforeCompile).toBe(mine)
+  })
+  test('High: a two-sided solid piece gets the leaves’ alpha test and mask, never cutting; a leaf keeps its own cut', () => {
+    const cloth = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide })
+    const leaf = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 })
+    for (const m of [cloth, leaf]) samePictures(m)
+    expect([cloth.alphaTest, leaf.alphaTest]).toEqual([SOLID_CUT, 0.5])
+    expect([isBlank(cloth.alphaMap), isBlank(leaf.alphaMap)]).toEqual([true, true])
+    expect([patched(cloth).uniforms.dayCut.value, patched(leaf).uniforms.dayCut.value]).toEqual([-1, 0.5])
+    // a curtain made one-sided, then turned two-sided (procedural.ts drape): looked at again
+    const curtain = new THREE.MeshStandardMaterial()
+    samePictures(curtain)
+    curtain.side = THREE.DoubleSide
+    samePictures(curtain)
+    expect([curtain.alphaTest, isBlank(curtain.alphaMap)]).toEqual([SOLID_CUT, true])
+    // a picture that may be see-through (a .png) would have its shadow cut where it is clear: no alpha test
+    const png = Object.assign(new THREE.Texture(), { userData: { mimeType: 'image/png' } })
+    const decal = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, map: png })
+    samePictures(decal)
+    expect([decal.alphaTest, decal.alphaMap]).toEqual([0, null])
+    // a physical one (the fan, a scan's shiny leaves): the same, and a shine picture — the fan and the scans one program
+    const fan = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide })
+    const scan = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, specularIntensity: 0.71 })
+    for (const m of [fan, scan]) samePictures(m)
+    expect([fan.alphaTest, isBlank(fan.alphaMap), isBlank(fan.emissiveMap), isBlank(fan.specularIntensityMap)]).toEqual([SOLID_CUT, true, true, true])
+    expect([scan.alphaTest, isBlank(scan.alphaMap), isBlank(scan.specularIntensityMap), scan.specularIntensity]).toEqual([0.5, true, true, 0.71])
+    expect([fan.aoMap, scan.aoMap]).toEqual([null, null]) // (7 pictures: a program of 8 would not build on High)
+    // one with more pictures of its own: its blanks give way, never past 7
+    const t = () => new THREE.Texture()
+    const busy = new THREE.MeshPhysicalMaterial({ side: THREE.DoubleSide, map: t(), normalMap: t(), roughnessMap: t(), metalnessMap: t(), aoMap: t(), emissiveMap: t() })
+    samePictures(busy)
+    expect([...PICTURES, ...MORE_PICTURES].filter((k) => busy[k]).length).toBe(PICTURE_ROOM)
+  })
+  test('High: the plaster’s cloudiness is a number, not a define — the painted walls draw with the rooms’ program', () => {
+    const wall = materialFor({ kind: 'pbr', textureId: 'plaster_white', tint: '#eeeeee' }, false, true)
+    const floor = materialFor({ kind: 'pbr', textureId: 'concrete' }, false, true)
+    expect(wall.defines?.MOTTLE).toBeUndefined()
+    expect([wall.customProgramCacheKey(), floor.customProgramCacheKey()]).toEqual(['daylit', 'daylit'])
+    expect([patched(wall).uniforms.mottleK.value, patched(floor).uniforms.mottleK.value]).toEqual([1, 0])
   })
   test('Lite: the colour picture only (its only kind)', () => {
     lite.on = true

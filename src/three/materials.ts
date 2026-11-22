@@ -71,6 +71,14 @@ function blank(r: number, g: number, b: number): THREE.DataTexture {
 const BLANK = { white: blank(1, 1, 1), flat: blank(0.5, 0.5, 1) }
 export const isBlank = (t: unknown): boolean => t === BLANK.white || t === BLANK.flat
 export const PICTURES = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap'] as const
+/** Past the five, on High and Low (samePictures): the glow picture of every lit surface, a cut-out's mask, a physical scan's shine. */
+export const MORE_PICTURES = ['emissiveMap', 'alphaMap', 'specularIntensityMap'] as const
+/** A two-sided solid piece's alpha test (samePictures): above 0, so it is drawn with the leaves' program, and never cutting (daylight.ts dayCut). */
+export const SOLID_CUT = 1e-6
+/** the most pictures a lit surface reads (samePictures): 16 a program may, 9 of them the light's on High */
+export const PICTURE_ROOM = 7
+/** a picture that may be see-through somewhere (a .png): an alpha test, even the solid one, would cut its shadow there */
+const seeThrough = (t: THREE.Texture | null): boolean => !!t && !isBlank(t) && (t.userData.mimeType === 'image/png' || /\.png(\?|$)/i.test((t.image as { src?: string } | null)?.src ?? ''))
 
 /**
  * Every lit surface and piece draws with the same set of pictures — colour, relief, roughness, metal, shading — a blank one
@@ -78,13 +86,32 @@ export const PICTURES = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'ao
  * pictures a surface happens to have, and a picture coming in later changes no program. Session 31 ready lane: Firefox makes
  * a new program in 0.1–0.3 s and the first frame waits for every one of them — High's Building view on Sheltech had 24 lit
  * programs; the blanks change nothing on screen (× 1, and the flat relief bends no normal). Once per material.
+ * Session 31 start lane, High and Low: also a glow picture, and the rooms' patch with its daylight left out (daylight.ts
+ * daylit, `on` false) where it has no shader of its own — a door frame, the glass, a scan drew with programs of their own; a
+ * two-sided solid one (a lamp's shade, a curtain, a trunk) gets an alpha test that never cuts and a mask, as the leaves
+ * have; a physical one (the fan, a scan's shiny leaves) also a shine picture: one program for the flat's one-sided surfaces,
+ * one for its two-sided ones and leaves, one for the physical scans, one for its glass — Walk on High made 14, 0.3 s each.
+ * A program may read 16 pictures and on High the light takes 9 (the sky's, the daylight, the plaster's cloud, the sun's two
+ * shadows, three lamps' and one more of three's own: measured, a physical program of 8 would not build): a surface keeps 7 —
+ * a physical one no blank shading picture (no scan here has one), and past 7 the blanks give way (PICTURE_ROOM).
+ * Called again once a material turns two-sided (procedural.ts drape): only that part is looked at again.
  */
 export function samePictures(m: THREE.Material, also: readonly ('emissiveMap' | 'alphaMap')[] = []): void {
-  const s = m as THREE.MeshStandardMaterial
-  if (!s.isMeshStandardMaterial || s.userData.samePictures) return
+  const s = m as THREE.MeshPhysicalMaterial
+  if (!s.isMeshStandardMaterial) return
+  const blank = (k: (typeof PICTURES)[number] | (typeof MORE_PICTURES)[number]) => !s[k] && ((s[k] = k === 'normalMap' ? BLANK.flat : BLANK.white), (s.needsUpdate = true))
+  if (!lite.on && s.side === THREE.DoubleSide && !s.transparent && !(s.alphaTest > 0) && !seeThrough(s.map)) (s.alphaTest = SOLID_CUT), (s.userData.solid = true)
+  if (!lite.on && s.alphaTest > 0) blank('alphaMap')
+  if (s.userData.samePictures) return
   s.userData.samePictures = true
   // `also`: a glow or a cut-out picture still to come (a leaf's): a blank holds its place until it does
-  for (const k of [...(lite.on ? (['map'] as const) : PICTURES), ...also]) if (!s[k]) (s[k] = k === 'normalMap' ? BLANK.flat : BLANK.white), (s.needsUpdate = true)
+  if (lite.on) return void [...(['map'] as const), ...also].forEach(blank)
+  for (const k of [...PICTURES, 'emissiveMap', ...also] as const) if (!(s.isMeshPhysicalMaterial && k === 'aoMap')) blank(k)
+  if (s.isMeshPhysicalMaterial) blank('specularIntensityMap')
+  // a surface with more pictures of its own than that (none here yet): its blanks give way, the glow's first
+  for (const k of ['emissiveMap', 'specularIntensityMap', 'alphaMap'] as const)
+    if ([...PICTURES, ...MORE_PICTURES].filter((x) => s[x]).length > PICTURE_ROOM && isBlank(s[k])) (s[k] = null), k === 'alphaMap' && s.userData.solid && ((s.alphaTest = 0), (s.userData.solid = false))
+  if (s.onBeforeCompile === THREE.Material.prototype.onBeforeCompile) daylitPatch(s, false)
 }
 
 /**
@@ -127,7 +154,7 @@ export function texture(url: string, repeatM: number, srgb: boolean, repeatYM = 
  */
 const MOTTLE = { url: '/assets/textures/concrete/roughness.jpg', tileM: 3.5, k: 1 }
 function mottle(m: THREE.MeshStandardMaterial, set: TextureSet): void {
-  m.defines = { ...m.defines, MOTTLE: MOTTLE.k.toFixed(2), MOTTLE_UV: (set.repeatM / MOTTLE.tileM).toFixed(4) } // one program from the start: no picture yet reads as none
+  m.userData.mottle = { k: MOTTLE.k, uv: Number((set.repeatM / MOTTLE.tileM).toFixed(4)) } // numbers (daylight.ts daylit): the rooms' program; no picture yet reads as none
   texture(MOTTLE.url, 1, false).then(
     (t) => void (mottleMap.value = t),
     () => {}, // already warned; a plain wall
