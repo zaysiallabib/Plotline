@@ -382,6 +382,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // ---------- meshes: the shell + each wall / column / space body ----------
   const bodies = new Map<number, Body>()
   const groups = new Map<string, GlbGroup & { pos: Float32Array[]; nor: Float32Array[]; idx: Uint32Array[]; n: number }>()
+  /** the windows' colours: any see-through one, and how many in all (ImportedShell.glass) */
+  const windows = { clear: false, n: 0 }
+  const windowIds = idsOfSet(W.IFCWINDOW)
   let triangles = 0
   let capped = false
   const skipShell = new Set<string>(['IfcSpace', 'IfcOpeningElement', 'IfcSpatialZone', 'IfcAnnotation', 'IfcGrid', 'IfcOpeningStandardCase', 'IfcVirtualElement'])
@@ -452,6 +455,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const owner = ownerOf(mesh.expressID)
     const wantBody = isA(owner, W.IFCWALL) || isA(owner, W.IFCCURTAINWALL) || isA(owner, W.IFCCOLUMN)
     const shell = !skipShell.has(tn) && !furniture.has(mesh.expressID)
+    const win = windowIds.has(mesh.expressID)
     if (!shell && furniture.has(mesh.expressID)) furnitureSkipped++
     if (!shell && !wantBody) return
     for (let i = 0; i < mesh.geometries.size(); i++) {
@@ -465,9 +469,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         continue
       }
       const c = g.color
-      const key = `${c.x.toFixed(3)},${c.y.toFixed(3)},${c.z.toFixed(3)},${c.w.toFixed(3)}`
+      if (win) (windows.n++, (windows.clear ||= c.w < 0.99))
+      const key = `${win ? 'w|' : ''}${c.x.toFixed(3)},${c.y.toFixed(3)},${c.z.toFixed(3)},${c.w.toFixed(3)}`
       let grp = groups.get(key)
-      if (!grp) groups.set(key, (grp = { color: [c.x, c.y, c.z, c.w], positions: new Float32Array(0), normals: new Float32Array(0), indices: new Uint32Array(0), pos: [], nor: [], idx: [], n: 0 }))
+      if (!grp) groups.set(key, (grp = { color: [c.x, c.y, c.z, c.w], positions: new Float32Array(0), normals: new Float32Array(0), indices: new Uint32Array(0), pos: [], nor: [], idx: [], n: 0, ...(win ? { window: true } : {}) }))
       for (let k = 0; k < wm.I.length; k++) wm.I[k] += grp.n
       grp.pos.push(wm.P), grp.nor.push(wm.N), grp.idx.push(wm.I)
       grp.n += wm.P.length / 3
@@ -495,13 +500,14 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     return out
   }
   const glbGroups: GlbGroup[] = [...groups.values()].map((g) => ({
+    ...(g.window ? { window: true } : {}),
     color: g.color,
     positions: concat(g.pos, (n) => new Float32Array(n)),
     normals: concat(g.nor, (n) => new Float32Array(n)),
     indices: concat(g.idx, (n) => new Uint32Array(n)),
   }))
   const shellName = fileName.replace(/\.[^.]+$/, '')
-  const shell = glbGroups.length ? { ...writeGlb(glbGroups, shellName), name: shellName } : undefined
+  const shell = glbGroups.length ? { ...writeGlb(glbGroups, shellName), name: shellName, ...(windows.n && !windows.clear ? { glass: 'opaque' as const } : {}) } : undefined
   const bodyMesh = (id: number, wantInside: boolean): Body | null => {
     try {
       const fm = api.GetFlatMesh(model, id)
@@ -856,6 +862,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let nibs = 0
   let openPlan = 0
   let zoneLines = 0
+  let outlined = 0
   let touches = 0
   for (const [k, s] of storeys.entries()) {
     progress(`floor ${k + 1} of ${storeys.length}`, 0.7 + (0.3 * k) / storeys.length) // (each floor is joined and checked: on a big building the longest part)
@@ -953,7 +960,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
       more()
       if (lines.length === kept) return
       const next = build([...d.walls, ...lines])
-      if (rows(next) < rows(unit)) unit = next
+      // (or as many, and fewer of the file's names outside a room)
+      const out = (u: Unit) => validate(u).filter((i) => i.code === 'label-outside-any-room').length
+      if (rows(next) < rows(unit) || (rows(next) === rows(unit) && out(next) < out(unit))) unit = next
       else lines.length = kept
     }
     const open = sharing()
@@ -967,6 +976,14 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
         for (const inside of sharing()) for (const l of [...inside].sort((p, q) => area(q) - area(p)).slice(1)) for (const [a, b] of outlineOf.get(l.id) ?? []) add(a, b)
       })
     }
+    // a room the file outlines that no walls close — a balcony edged by a railing, a roof terrace, a stair open to the
+    // floor above: its own outline where no wall stands, as zone lines (the railing itself is in the outside shape)
+    const before = lines.length
+    tryLines(() => {
+      const polys = deriveRooms(unit).map((r) => roomPolygon(r, unit))
+      for (const l of unit.roomLabels) if (!polys.some((poly) => pointInPolygon(l, poly))) for (const [a, b] of outlineOf.get(l.id) ?? []) add(a, b)
+    })
+    outlined += lines.length - before
     zoneLines += lines.length
     touches += joinedBy.get(unit) ?? 0 // (the floor kept, not the zone lines tried and dropped)
     snapped += last.snapped
@@ -992,7 +1009,8 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (noBody) notes.push(`${noBody} walls had neither a centre line nor a body and were left out.`)
   if (multi) notes.push(`${multi} walls run through more than one storey and stand on each of them.`)
   if (snapped) notes.push(`${snapped} wall ends stopped a few centimetres short of (or ran past) the wall they meet: each was moved onto that wall's centre line${nibs ? `; ${nibs} pieces shorter than ${MIN_PIECE_M * 100} cm left by that were removed` : ''}.`)
-  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines ? `${zoneLines} zone lines (flush, drawn as nothing) were added where the file draws their boundary, so each name has its own room` : 'no zone line along the file\'s own room outlines left fewer things to check, so none was added (the Issues list says where)'}.`)
+  if (openPlan) notes.push(`${openPlan} open-plan rooms held two or more of the file's room names in one space: ${zoneLines - outlined ? `${zoneLines - outlined} zone lines (flush, drawn as nothing) were added where the file draws their boundary, so each name has its own room` : 'no zone line along the file\'s own room outlines left fewer things to check, so none was added (the Issues list says where)'}.`)
+  if (outlined) notes.push(`${outlined} zone lines (flush, drawn as nothing) close rooms the walls leave open along the file's own room outlines — a balcony edged by a railing, a roof terrace, a stair open to the floor above; the outside shape shows what stands there.`)
   if (areaNames.length) notes.push(`${areaNames.length} of the file's spaces hold other rooms (a gross area, a zone) and were left out as room names: ${[...new Set(areaNames)].slice(0, 4).join(', ')}${areaNames.length > 4 ? ', …' : ''}.`)
   if (touches) notes.push(`${touches} wall ends that touched another wall without a shared corner were joined to it.`)
   if (hung) notes.push(`${hung} doors / windows had no opening cut in a wall (the file lacks IfcRelVoidsElement): each was hung on the nearest wall by its own body.`)
@@ -1001,7 +1019,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   if (outsideLabels) notes.push(`${outsideLabels} room names landed outside any closed room (walls there do not close).`)
   if (broken) notes.push(`${broken} pieces have a shape the IFC reader could not build: they are left out of the outside shape (the plans do not need them).`)
   if (furnitureSkipped) notes.push(`${furnitureSkipped} furniture pieces were skipped (the Studio furnishes rooms itself).`)
-  if (shell) notes.push(`Outside shape: ${shell.triangles.toLocaleString()} triangles in ${glbGroups.length} colours${capped ? ` — capped at ${TRIANGLE_CAP.toLocaleString()}, the rest was left out` : ''}.`)
+  if (shell) notes.push(`Outside shape: ${shell.triangles.toLocaleString()} triangles in ${new Set([...groups.keys()].map((k) => k.replace(/^w\|/, ''))).size} colours${capped ? ` — capped at ${TRIANGLE_CAP.toLocaleString()}, the rest was left out` : ''}.`)
   else notes.push('The file has no solid geometry: no outside shape.')
   notes.push(`Read in ${((Date.now() - t0) / 1000).toFixed(1)} s.`)
 

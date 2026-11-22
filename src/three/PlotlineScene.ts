@@ -32,7 +32,7 @@ import { buildProcedural, lean, lite } from '../furnish/procedural'
 import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
-import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type Daylight } from './daylight'
+import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, EXTERIOR_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
@@ -352,6 +352,23 @@ export function clampSun(t: THREE.DataTexture): void {
   }
 }
 
+/**
+ * Two units of one drawing — a flat on two floors of its tower (data/building places the one drawing on every floor it stands
+ * on): the same walls, rooms, columns, north and site, the same objects. A floor given its own walls (an opening kept for
+ * that floor only) is another drawing; one with the architect's outside shape never counts (the shape stands per floor).
+ */
+export const sameDrawing = (a: Unit, b: Unit): boolean =>
+  a.vertices === b.vertices && a.walls === b.walls && a.pillars === b.pillars && a.roomLabels === b.roomLabels && a.northDeg === b.northDeg && a.site === b.site && !a.shell && !b.shell
+
+/** Each room under the slab above (by its middle) or not: all the daylight bake reads of `cover` (daylight.ts isCovered, openToSky). */
+export const roomsUnder = (rooms: Room[], cover: Pt[][]): string => rooms.map((r) => +cover.some((c) => core.pointInPolygon(r.centroid, c))).join('')
+
+/** Two configurations alike: the same choice for every slot (the viewer hands a new object on every render of a new floor). */
+export const sameConfig = (a: Configuration, b: Configuration): boolean => {
+  const k = Object.keys(a)
+  return k.length === Object.keys(b).length && k.every((x) => a[x] === b[x])
+}
+
 const bayNumbers = new Map<string, THREE.MeshStandardMaterial>()
 /** A bay number's paint (one canvas per number, shared by every level that has it). */
 function bayNumber(text: string): THREE.MeshStandardMaterial {
@@ -544,6 +561,14 @@ export class PlotlineScene {
   private leaving: THREE.Group | null = null
   /** the furniture of the unit last built, all mounted (loadFurniture) */
   private furnished: Promise<void> = Promise.resolve()
+  /** what the flat on screen was built from (build): the next floor of its drawing is re-placed, not built again (arrive) */
+  private builtFrom: { unit: Unit; cover: Pt[][]; down: string } | null = null
+  /**
+   * The drawing on screen's daylight, each floor's own (the neighbours shade a lower floor more), under its cover: a floor
+   * visited again bakes nothing; per cover, what one bake leaves the next (BakeKeep). Both go when the drawing changes.
+   */
+  private readonly days = new Map<string, Daylight>()
+  private readonly dayKeep = new Map<string, BakeKeep>()
   /** the holes setUnit opened (down, where the hole lies inside its room's floor), with the stair as it stood then */
   private wells: (Well & { stair: FurniturePlacement })[] = []
   /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
@@ -641,6 +666,8 @@ export class PlotlineScene {
   /** setUnit's work in steps a stair's floor takes a frame apart (arrive): walls and rooms · the daylight bake · its maps and finishes · the slab, lights and street · the furniture. */
   private *build(unit: Unit, keepView: boolean): Generator<void> {
     this.wake()
+    if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days.clear(), this.dayKeep.clear())
+    this.builtFrom = { unit, cover: this.cover, down: this.down.join() }
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
     // the page's first flat: its programs asked for now, made while it is built and its models come in (Look.prewarm) — the
@@ -695,7 +722,7 @@ export class PlotlineScene {
     }
     yield
     // indirect light × where the sky reaches (daylight.ts)
-    const day = yield* bakeSteps(unit, this.rooms, this.cover, this.blocks)
+    const day = yield* this.bake(unit)
     yield
     for (const s of this.surfaces) {
       const kind = s.mesh.userData.kind as 'wall' | 'floor' | 'ceiling' | undefined // skirting has none: it follows its floor
@@ -767,24 +794,31 @@ export class PlotlineScene {
    */
   async arrive(unit: Unit, at: Pt, yaw: number, mode: SceneMode = 'walk'): Promise<void> {
     this.drop()
-    const g = (this.leaving = new THREE.Group())
-    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
-    // the next floor is built into these: hidden from its first wall on (drop shows them) — drawn meanwhile in the old
-    // floor's daylight, its walls flashed white over the floor he leaves (session 31 QA3)
-    this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false
-    if (this.shell) g.add(this.shell)
-    this.shell = null
+    // the next floor of the drawing on screen, furnished alike (a stair between typical floors, another floor of it picked on
+    // its tower): its walls, rooms, furniture and lamps stay as built and batched — only its daylight and the tower round it
+    // are made (replace). Session 31: a typical floor's own build was ~1 s of a 1.8 s trip
+    const from = this.builtFrom
+    const again = !!from && this.ready && !this.adding.size && !this.arranging && !this.hand && sameDrawing(from.unit, unit) && from.down === this.down.join() && this.coverPrint(from.cover) === this.coverPrint(this.cover) && JSON.stringify(unit.furniture) === JSON.stringify(this.layout)
+    if (!again) {
+      const g = (this.leaving = new THREE.Group())
+      for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
+      // the next floor is built into these: hidden from its first wall on (drop shows them) — drawn meanwhile in the old
+      // floor's daylight, its walls flashed white over the floor he leaves (session 31 QA3)
+      this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false
+      if (this.shell) g.add(this.shell)
+      this.shell = null
+      this.scene.add(g)
+    }
     this.leavingTower = this.building // stays round the floor he leaves until the new one shows, as it is
     this.leavingTower?.halt()
     this.building = null
-    this.scene.add(g)
     this.holding = true
     this.walker = { ...at } // the furniture nearest him first; his eye stays where it is until the floor shows (tick)
     const frame = () => new Promise((r) => requestAnimationFrame(r))
     const token = ++this.buildToken // (a unit given meanwhile wins: clearStatic counts on)
     await frame() // the page's own work for the new floor (its rooms, its HUD) in a frame of its own
     if (token !== this.buildToken) return
-    const steps = this.build(unit, false)
+    const steps = again ? this.replace(unit) : this.build(unit, false)
     steps.next()
     const built = this.buildToken
     // the rest ~30 ms a frame (the daylight bake pauses after each surface it lights)
@@ -793,22 +827,29 @@ export class PlotlineScene {
       const t = performance.now()
       while (!(done = !!steps.next().done) && performance.now() - t < 30);
     }
-    await this.furnished
-    // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
-    await Promise.race([Promise.allSettled([...loading]), new Promise((r) => setTimeout(r, 15_000))])
-    // batched now as it will be drawn, a group a frame (batch.ts reads only what is visible)
-    clearTimeout(this.batchTimer)
-    for (const x of [this.staticGroup, this.furnitureGroup, this.ceilingGroup]) {
-      if (built !== this.buildToken) return
-      x.visible = true
-      batch(x, x === this.staticGroup ? Infinity : TIERS[this.tier].cell)
-      x.visible = false
-      await frame()
+    if (again) {
+      // (its finishes changed meanwhile — a floor kept in another colour: the groups unbatched for it batched again, on screen)
+      clearTimeout(this.batchTimer)
+      if (this.unsettled.has('static')) batch(this.staticGroup, Infinity)
+      if (this.unsettled.size) for (const x of [this.furnitureGroup, this.ceilingGroup]) batch(x, TIERS[this.tier].cell)
+    } else {
+      await this.furnished
+      // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
+      await Promise.race([Promise.allSettled([...loading]), new Promise((r) => setTimeout(r, 15_000))])
+      // batched now as it will be drawn, a group a frame (batch.ts reads only what is visible)
+      clearTimeout(this.batchTimer)
+      for (const x of [this.staticGroup, this.furnitureGroup, this.ceilingGroup]) {
+        if (built !== this.buildToken) return
+        x.visible = true
+        batch(x, x === this.staticGroup ? Infinity : TIERS[this.tier].cell)
+        x.visible = false
+        await frame()
+      }
     }
     this.unsettled.clear()
     await (this.building as Building | null)?.ready() // its other flats' rooms and its grounds' pieces in before it shows (warm sends them too)
     if (built !== this.buildToken) return
-    await this.warm(built)
+    await this.warm(built, again ? [this.look.unitGroup] : [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup]) // (re-placed: the flat is drawn already)
     if (built !== this.buildToken) return
     this.holding = false
     this.drop()
@@ -818,6 +859,45 @@ export class PlotlineScene {
     this.stairAsked = 0 // its own stair can be taken again
     this.spawnAt(at, yaw)
     if (mode !== 'walk') this.setMode(mode)
+  }
+
+  /**
+   * arrive's work for the next floor of the drawing on screen (sameDrawing, furnished alike): the flat's walls, rooms, furniture
+   * and lamps stay as they were built and batched; its daylight (each floor its own: bake) and the tower round it are new.
+   */
+  private *replace(unit: Unit): Generator<void> {
+    this.wake()
+    this.unit = closeGaps(raiseHeads(unit)) // (as build: its floor is what changed)
+    this.blocks = neighbours(this.unit, this.street ?? { walls: core.unitBounds(this.unit) })
+    this.day = yield* this.bake(this.unit)
+    yield
+    this.building = Building.for(this.unit, this.tier)
+    if (this.building) {
+      this.building.onChange = this.wake
+      this.building.visible = false
+      this.scene.add(this.building)
+      yield* this.building.make()
+    }
+    yield
+    // under another slab (the top floor under the roof): its own roof, soffits and lights over it (Look; the walls and rooms
+    // are built alike: coverPrint)
+    if (JSON.stringify(this.cover) !== JSON.stringify(this.builtFrom!.cover)) {
+      this.look.setUnit(present(this.unit), this.rooms, this.cover, this.building ? null : (this.street ?? { walls: core.unitBounds(this.unit) }), this.wells, true)
+      this.builtFrom = { ...this.builtFrom!, cover: this.cover }
+    }
+    this.setTimeOfDay(this.hour) // the new tower lit for the hour (the sun stays fitted to the one on screen)
+  }
+
+  /** `unit`'s daylight (daylight.ts): kept for the drawing on screen per floor and the rooms under the slab above (days), else baked a region a step. */
+  private *bake(unit: Unit): Generator<void, Daylight> {
+    const cover = roomsUnder(this.rooms, this.cover) // (all the bake reads of the slab above)
+    const key = `${unit.floor}|${cover}`
+    const kept = this.days.get(key)
+    if (kept) return kept
+    const keep = this.dayKeep.get(cover) ?? this.dayKeep.set(cover, {}).get(cover)!
+    const day = yield* bakeSteps(unit, this.rooms, this.cover, this.blocks, keep)
+    this.days.set(key, day)
+    return day
   }
 
   /** the tower on screen: while a floor gets ready (arrive), the one round the floor still shown */
@@ -832,10 +912,10 @@ export class PlotlineScene {
    * most — the 15–27 new ones all in the first frame were the 3–6 s freeze. A see-through two-sided material is two programs
    * (three draws its back faces, then its front): one side a frame. Nothing new (a floor like the last): one frame.
    */
-  private async warm(token: number): Promise<void> {
+  private async warm(token: number, groups: THREE.Object3D[]): Promise<void> {
     const twoPass = (m: THREE.Material) => m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass
     const todo: { o: THREE.Mesh; side?: THREE.Side }[] = []
-    for (const g of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup, ...(this.building ? [this.building] : [])]) // (the tower: its street's facades too)
+    for (const g of [...groups, ...(this.building ? [this.building] : [])]) // (the tower: its street's facades too)
       g.traverse((o) => {
         const m = (o as THREE.Mesh).material
         if (!m || !o.layers.test(this.camera.layers)) return
@@ -903,6 +983,9 @@ export class PlotlineScene {
 
   /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
   setConfiguration(cfg: Configuration): void {
+    // the same choices (a new floor's render hands a new object): nothing to swap, and the batches stay (a stair's floor
+    // re-placed keeps them: arrive)
+    if (sameConfig(cfg, this.cfg)) return
     this.wake()
     this.cfg = cfg
     this.applyMaterials()
@@ -962,6 +1045,7 @@ export class PlotlineScene {
     }
     const tower = mode === 'building' || this.mode === 'building'
     this.mode = mode
+    this.lens = null
     this.camera.fov = mode === 'walk' ? WALK_FOV : VIEW_FOV
     this.camera.updateProjectionMatrix()
     if (mode === 'walk') siteCut.value = 0 // inside the flat: every block stands
@@ -1018,14 +1102,23 @@ export class PlotlineScene {
   }
 
   /** Walker to plan point p looking along yawRad (0 = plan −y, i.e. world −Z; positive turns left), pitchRad down when < 0. Switches to walk mode. */
-  spawnAt(p: Pt, yawRad: number, pitchRad = 0): void {
+  spawnAt(p: Pt, yawRad: number, pitchRad = 0, hfovDeg?: number): void {
     this.walker = { ...p }
     this.floorY = this.walkLevel(p)
     this.yaw = yawRad
     this.moveTarget = null
     this.setMode('walk')
     this.camera.quaternion.setFromEuler(new THREE.Euler(pitchRad, yawRad, 0, 'YXZ'))
+    // a narrower lens for this view (a WC under 2 m², spawn.ts TINY_HFOV): that many degrees across a wide screen, never wider
+    // than the walk's; eased back to the walk's as he leaves the room (tick)
+    const fov = hfovDeg ? Math.min(WALK_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hfovDeg) / 2) / this.camera.aspect))) : WALK_FOV
+    this.lens = fov < WALK_FOV && this.unit ? { roomId: core.roomAt(p, this.rooms, this.unit)?.id ?? null } : null
+    this.camera.fov = fov
+    this.camera.updateProjectionMatrix()
   }
+
+  /** a view's narrower lens (spawnAt) and the room it is for: walking out of it eases the walk's back */
+  private lens: { roomId: Id | null } | null = null
 
   /** Shuts the leaf of door `openingId` (a first frame's `closeLeaf`) and reopens the one shut before; null reopens only. */
   shutLeaf(openingId: Id | null): void {
@@ -1987,6 +2080,25 @@ export class PlotlineScene {
     })
   }
 
+  /**
+   * What the slab above (`cover`) changes in the flat's own walls, rooms and furniture (build): each room under it or not (its
+   * ceiling, a zone covered), each wall's top (slabOver). Two floors of a drawing with the same print are built alike —
+   * the top floor under the roof as the ones under it, where its walls stop at the storey's top anyway (arrive re-places it).
+   */
+  private coverPrint(cover: Pt[][]): string {
+    const shown = this.cover
+    this.cover = cover
+    // a wall's top as built: the slab's, else its own — the same where it stops at the storey's top anyway (a level foot)
+    const top = (w: Wall) => {
+      const t = this.slabOver(w)
+      const [a, b] = this.lifts.get(w.id)!.foot
+      return t !== undefined ? t.toFixed(3) : a === b ? (a + w.heightM).toFixed(3) : 'own'
+    }
+    const print = roomsUnder(this.rooms, cover) + '|' + this.unit!.walls.map(top).join()
+    this.cover = shown
+    return print
+  }
+
   /** The floor level at a plan point (core.floorLevelAt: the smallest face round it; 0 outside every face). */
   private levelAt(p: Pt): number {
     return this.unit && this.rooms.some((r) => r.levelM || r.slope) ? core.floorLevelAt(this.unit, p.x, p.y, this.rooms) : 0
@@ -2527,6 +2639,14 @@ export class PlotlineScene {
       // the eye follows the floor: eased (≈ 0.1 s), so a step is climbed like a stair and a ramp is walked, never a jump
       this.floorY += (this.walkLevel(this.walker) - this.floorY) * (1 - Math.exp(-dt / 0.1))
       this.rig.position.set(this.walker.x, this.floorY, this.walker.y)
+      // out of the room a narrower lens was for (spawnAt): the walk's again, eased over ~0.3 s
+      if (this.lens && this.unit && core.roomAt(this.walker, this.rooms, this.unit)?.id !== this.lens.roomId) {
+        const c = this.camera
+        c.fov += (WALK_FOV - c.fov) * (1 - Math.exp(-dt / 0.1))
+        if (WALK_FOV - c.fov < 0.05) (c.fov = WALK_FOV), (this.lens = null)
+        c.updateProjectionMatrix()
+        this.wake()
+      }
     }
     WATER.normalMap!.offset.x += dt * 0.012 // the pools' ripple drifts
     this.wind?.update(dt)

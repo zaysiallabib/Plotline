@@ -37,6 +37,8 @@ export interface ImportedShell {
   bounds: { min: [number, number, number]; max: [number, number, number] }
   /** triangles, for the notes and the lite tier */
   triangles: number
+  /** its windows' glass is solid in the file (no see-through colour on any window): the 3D draws its own glass there (core Shell.glass) */
+  glass?: 'opaque'
 }
 
 export interface ImportResult {

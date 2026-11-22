@@ -16,7 +16,7 @@
  * The layer → meaning table (roleOf) is what the notes show staff.
  */
 import { FT, deriveRooms, flatTypeOf, newId, pointInPolygon, roomPolygon, validate } from '../core'
-import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Wall } from '../core'
+import type { Opening, OpeningKind, Pillar, Pt, Room, RoomLabel, Unit, ValidationIssue, Vertex, Wall } from '../core'
 import { EXTERIOR_M, PARTITION_M, WALL_HEIGHT_M, ZONE_LINE_M, emptyUnit, guessKind, initialState, normalizeUnit, openingDefaults, reducer } from '../studio/model'
 import { parseArea, parseDims, parseSide } from '../trace/text'
 
@@ -29,6 +29,7 @@ export type Role = 'wall' | 'kerb' | 'zone' | 'door' | 'window' | 'column' | 'te
  * name; the first row that matches wins (a wall's hatch before any hatch, furniture before a door word inside it).
  */
 const LAYER_TABLE: [RegExp, Role][] = [
+  [/^PLOTLINE_AXES/, 'ignore'], // Plotline's own walls' centre lines: read apart (buildPlan), never as lines to pair
   [/ZONES?$|ZONE[-_ ]?LINE/, 'zone'], // Plotline's PLOTLINE_ZONES: flush lines between zones
   [/KERB|CURB/, 'kerb'], // Plotline's PLOTLINE_KERBS
   [/(WALL|WAND|MUR|PARED|MUUR).*(HATCH|PATT|POCHE|SCHRAFF)|(HATCH|PATT|POCHE|SCHRAFF).*(WALL|WAND|MUR)/, 'wall'], // the walls' hatching: its edges are the faces
@@ -160,7 +161,7 @@ interface Piece {
 
 interface WallDraft extends Piece {
   /** gap: a bare gap between two pieces, not yet confirmed by a block, a swing or glass lines */
-  openings: { kind: OpeningKind; t0: number; t1: number; hinge?: 'a' | 'b'; swing?: 'in' | 'out'; gap?: boolean }[]
+  openings: { kind: OpeningKind; t0: number; t1: number; hinge?: 'a' | 'b'; swing?: 'in' | 'out'; gap?: boolean; exact?: boolean }[]
 }
 
 const sub = (p: Pt, q: Pt): Pt => ({ x: p.x - q.x, y: p.y - q.y })
@@ -372,27 +373,33 @@ function meetEnds(walls: WallDraft[]): void {
   }
 }
 
-/** The wall whose band holds point p (within half thickness + slack), closest first. */
-function wallAt(walls: WallDraft[], p: Pt, slack = 0.05): WallDraft | null {
+/** The wall whose band holds point p (within half thickness + slack), closest first; `along`: one whose length holds p before one it only reaches past its end. */
+function wallAt(walls: WallDraft[], p: Pt, slack = 0.05, along = false): WallDraft | null {
   let best: { w: WallDraft; d: number } | null = null
   for (const w of walls) {
     const d = Math.abs(dot(sub(p, w.a), w.n))
     const t = dot(p, w.dir)
-    if (d <= w.thick / 2 + slack && t >= w.t0 - slack && t <= w.t1 + slack && (!best || d < best.d)) best = { w, d }
+    if (d > w.thick / 2 + slack || t < w.t0 - slack || t > w.t1 + slack) continue
+    const score = d + (along && (t < w.t0 || t > w.t1) ? 1 : 0)
+    if (!best || score < best.d) best = { w, d: score }
   }
   return best?.w ?? null
 }
 
-/** An opening put on `w` over [t0, t1]: joins an existing one there (keeps the surer kind) or adds; clamped inside the wall. */
-function putOpening(w: WallDraft, o: WallDraft['openings'][number]): boolean {
+/**
+ * An opening put on `w` over [t0, t1]: joins an existing one there (keeps the surer kind) or adds; clamped inside the wall.
+ * `exact` (a block with its jambs, in Plotline's own export): it keeps its own extent — the gap it fills may run on to a
+ * corner where the wall's last piece was too short to draw (a door 1–3 cm from a corner), and that stays wall.
+ */
+function putOpening(w: WallDraft, o: WallDraft['openings'][number], exact = false): boolean {
   const t0 = Math.max(w.t0, o.t0), t1 = Math.min(w.t1, o.t1)
-  if (t1 - t0 < MIN_GAP) return false
+  if (t1 - t0 < (exact ? 0.01 : MIN_GAP)) return false
   const hit = w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
   if (hit) {
-    if (hit.kind === 'passage' || (hit.kind === 'window' && o.kind !== 'passage')) Object.assign(hit, { ...o, gap: false, t0: Math.min(hit.t0, t0), t1: Math.max(hit.t1, t1) })
+    if (hit.kind === 'passage' || (hit.kind === 'window' && o.kind !== 'passage')) Object.assign(hit, { ...o, gap: false, exact, t0: exact ? t0 : Math.min(hit.t0, t0), t1: exact ? t1 : Math.max(hit.t1, t1) })
     return true
   }
-  w.openings.push({ ...o, t0, t1 })
+  w.openings.push({ ...o, t0, t1, exact })
   return true
 }
 
@@ -507,6 +514,50 @@ function roomPolygons(loops: Pt[][], wallLength: number): RoomMode | null {
 }
 
 const stripText = (s: string): string => s.replace(/\s+/g, ' ').trim()
+/** Plotline's own export: a wall's centre line, on a layer named for its thickness in tenths of a millimetre */
+const AXES = /^PLOTLINE_AXES_(\d+)$/i
+
+/**
+ * Whether the centre lines of Plotline's own export still agree with the wall outlines (no wall moved, added or taken
+ * away in a CAD program): every outline lies on a centre line — each corner of it within half that wall's thickness
+ * across and no further past an end than the reach into the wall it meets (the thickest half thickness) — and every
+ * centre line is drawn all along (each 5 cm of it inside an outline or under an opening's block): a wall moved, made
+ * longer or shorter in CAD breaks it. File units; `s` file units → metres.
+ */
+function axesAgree(axes: Seg[], outlines: Loop[], blocks: Seg[], s: number): boolean {
+  const thick = (g: Seg) => Number(AXES.exec(g.layer)![1]) / 1e4 / s
+  const reach = Math.max(...axes.map(thick)) / 2 + 0.01 / s
+  const holds = (g: Seg, p: Pt) => {
+    const L = len(sub(g.b, g.a))
+    if (L < 1e-9) return false
+    const d = { x: (g.b.x - g.a.x) / L, y: (g.b.y - g.a.y) / L }
+    const t = dot(sub(p, g.a), d)
+    return Math.abs(crossZ(d, sub(p, g.a))) <= thick(g) / 2 + 0.01 / s && t >= -reach && t <= L + reach
+  }
+  for (const l of outlines) if (!axes.some((g) => l.pts.every((p) => holds(g, p)))) return false
+  const boxes = new Map<string, { x0: number; y0: number; x1: number; y1: number }>()
+  for (const g of blocks) {
+    const k = `${g.block}#${g.inst}`
+    const b = boxes.get(k) ?? boxes.set(k, { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }).get(k)!
+    for (const p of [g.a, g.b]) (b.x0 = Math.min(b.x0, p.x)), (b.y0 = Math.min(b.y0, p.y)), (b.x1 = Math.max(b.x1, p.x)), (b.y1 = Math.max(b.y1, p.y))
+  }
+  const e = 0.01 / s
+  const shapes = [...outlines.map((l) => ({ l, ...l.pts.reduce((b, p) => ({ x0: Math.min(b.x0, p.x), y0: Math.min(b.y0, p.y), x1: Math.max(b.x1, p.x), y1: Math.max(b.y1, p.y) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }) })), ...[...boxes.values()].map((b) => ({ l: null, ...b }))]
+  // (on an outline's edge counts: two pieces meet there)
+  const onEdge = (p: Pt, pts: Pt[]) =>
+    pts.some((q, i) => {
+      const r = pts[(i + 1) % pts.length], L = len(sub(r, q))
+      const t = L ? Math.max(0, Math.min(1, dot(sub(p, q), sub(r, q)) / (L * L))) : 0
+      return len(sub(p, { x: q.x + (r.x - q.x) * t, y: q.y + (r.y - q.y) * t })) <= e
+    })
+  const covered = (p: Pt) => shapes.some((x) => p.x >= x.x0 - e && p.x <= x.x1 + e && p.y >= x.y0 - e && p.y <= x.y1 + e && (!x.l || pointInPolygon(p, x.l.pts) || onEdge(p, x.l.pts)))
+  return axes.every((g) => {
+    const n = Math.max(1, Math.ceil(len(sub(g.b, g.a)) / (0.05 / s)))
+    return Array.from({ length: n + 1 }, (_, i) => ({ x: g.a.x + ((g.b.x - g.a.x) * i) / n, y: g.a.y + ((g.b.y - g.a.y) * i) / n })).every(covered)
+  })
+}
+/** texts in a room that are no room's name: a stair's arrow, a door / window tag */
+const NOT_A_NAME = /^(UP|DN|DOWN)$|^(D|W|WIN|WN)\s*[-_]?\s*\d{1,3}[A-Z]?$/i
 
 export function buildPlan(d: Drawing, name: string): Plan2dResult {
   const notes: string[] = []
@@ -554,6 +605,15 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     if (pick) rects.push({ ...pick, thick: snapThick(pick.thick) }), used.add(i)
   }
   const segs = d.segs.filter((g) => g.loop === undefined || !used.has(g.loop)).map((g) => ({ a: P(g.a), b: P(g.b), h: heightOf(g), role: role(g), layer: g.layer, block: g.block, inst: g.inst }))
+  // Plotline's own export draws each wall's centre line too (PLOTLINE_AXES_<thickness, 0.1 mm>, its height as the line's
+  // thickness): while they agree with the outlines (no wall moved in a CAD program) the walls are those lines to the letter
+  // — a curved ramp's chords, a short wall at a T, a door at a corner come back exactly; else the outlines are read
+  const axisLines = d.own ? d.segs.filter((g) => AXES.test(g.layer)) : []
+  const axes =
+    axisLines.length && axesAgree(axisLines, d.loops.filter((l) => role(l) === 'wall' || role(l) === 'kerb'), d.segs.filter((g) => g.inst !== undefined), s)
+      ? axisLines.map((g) => piece(P(g.a), P(g.b), Number(AXES.exec(g.layer)![1]) / 1e4, heightOf(g)))
+      : null
+  if (axisLines.length) notes.push(axes ? `${axes.length} walls read from their centre lines, exactly as exported.` : 'Walls were changed in a CAD program since the export: read from their outlines.')
   // (a line on a text / room layer is geometry too: a plan drawn as room polygons)
   const wallLines = segs.filter((g) => (g.role === 'wall' || g.role === 'kerb' || g.role === 'unknown' || g.role === 'text') && !(inColumn(g.a) && inColumn(g.b)))
   const explicit = wallLines.filter((g) => g.role === 'wall' || g.role === 'kerb')
@@ -563,9 +623,9 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     wallLoops.map((l) => l.pts.map(P)),
     (explicit.length ? explicit : wallLines).reduce((acc, g) => acc + len(sub(g.b, g.a)), 0) + rects.reduce((acc, p) => acc + 2 * (p.t1 - p.t0), 0),
   )
-  let pieces = roomMode ? roomMode.pieces : [...rects, ...pairWalls(explicit.length ? explicit : wallLines)]
-  if (roomMode) notes.push(`Read as room outlines (${roomMode.rooms} rooms): one wall between neighbouring outlines, the outer edges as exterior walls.`)
-  if (!explicit.length && !rects.length && !roomMode) {
+  let pieces = axes ?? (roomMode ? roomMode.pieces : [...rects, ...pairWalls(explicit.length ? explicit : wallLines)])
+  if (roomMode && !axes) notes.push(`Read as room outlines (${roomMode.rooms} rooms): one wall between neighbouring outlines, the outer edges as exterior walls.`)
+  if (!explicit.length && !rects.length && !roomMode && !axes) {
     // no layer says which pairs are walls (a PDF, a one-layer DXF): keep the plan's main thicknesses — the ones whose
     // total length is at least a tenth of the longest-running one, and the two standard ones; furniture, stairs and hatching pair at odd gaps
     const total = new Map<number, number>()
@@ -575,13 +635,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     pieces = pieces.filter((p) => main.has(p.thick))
     notes.push(`No wall layer found: walls were taken from parallel line pairs 5–60 cm apart of the plan's main thicknesses (${[...main].sort((p, q) => q - p).map((t) => `${Math.round(t * 1000)} mm`).join(', ') || 'none'}).`)
   }
-  let walls = mergeCollinear(pieces, roomMode ? MIN_GAP : MAX_GAP, d.own)
+  // (centre lines are the walls as they were: each its own, none merged — a curve's chords stay chords)
+  let walls: WallDraft[] = axes ? axes.map((p) => ({ ...p, openings: [] })) : mergeCollinear(pieces, roomMode ? MIN_GAP : MAX_GAP, d.own)
 
   // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
   // line itself, merged with the paired pieces so fragments of one edge become one wall
   let singles = 0
   const singlePieces: Piece[] = []
-  for (const g of roomMode ? [] : explicit) {
+  for (const g of roomMode || axes ? [] : explicit) {
     const L = len(sub(g.b, g.a))
     if (L < 0.4) continue // (a shorter one is a jamb / end cap)
     const { dir, n } = folded(g.a, g.b)
@@ -603,13 +664,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
       if (v === w || v.thick <= w.thick || Math.abs(crossZ(w.dir, v.dir)) > PAR) continue
       if (Math.abs(dot(sub(w.a, v.a), v.n)) + w.thick / 2 <= v.thick / 2 + 0.01 && dot(w.a, v.dir) >= v.t0 - 0.01 && dot(w.b, v.dir) <= v.t1 + 0.01) inside.add(w)
     }
-  const kept = walls.filter((w) => !inside.has(w))
+  const kept = axes ? walls : walls.filter((w) => !inside.has(w))
   // zone lines (a zone layer: Plotline's own export) are the line itself — flush, drawn as nothing, no faces to pair
-  const zones = mergeCollinear(segs.filter((g) => g.role === 'zone').map((g) => piece(g.a, g.b, ZONE_LINE_M, 0)), MIN_GAP).map((w) => ({ ...w, openings: [] }))
+  const zonePieces = segs.filter((g) => g.role === 'zone').map((g) => piece(g.a, g.b, ZONE_LINE_M, 0))
+  const zones = (axes ? zonePieces : mergeCollinear(zonePieces, MIN_GAP)).map((w) => ({ ...w, openings: [] }))
   if (zones.length) notes.push(`${zones.length} zone lines (flush, drawn as nothing) from the zone layer.`)
-  const bridges = bridgeGaps(kept)
+  const bridges = axes ? 0 : bridgeGaps(kept)
   if (bridges) notes.push(`${bridges} doorway(s) between walls of different thickness bridged.`)
-  meetEnds(kept)
+  if (!axes) meetEnds(kept)
   let jogDoors = 0
   for (const j of roomMode?.doors ?? []) {
     const w = wallAt(kept, { x: (j.a.x + j.b.x) / 2, y: (j.a.y + j.b.y) / 2 }, 0.1)
@@ -653,19 +715,19 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   // apart as it is wide — say exactly where it stands (its leaf and swing reach off the wall); a block without them, by
   // its extent along the wall. A block in no wall (a wall all of glass, all passage, one door wide): its jambs give a wall
   // piece with that opening.
-  const insts = new Map<string, { role: Role; block: string; pts: Pt[]; arc?: ArcPrim; h?: number }>()
+  const insts = new Map<string, { role: Role; block: string; pts: Pt[]; tall: Pt[]; arc?: ArcPrim; h?: number }>()
   for (const g of segs) {
     if (g.inst === undefined || (g.role !== 'door' && g.role !== 'window')) continue
     const k = `${g.block}#${g.inst}`
-    const b = insts.get(k) ?? insts.set(k, { role: g.role, block: g.block ?? '', pts: [] }).get(k)!
+    const b = insts.get(k) ?? insts.set(k, { role: g.role, block: g.block ?? '', pts: [], tall: [] }).get(k)!
     b.pts.push(g.a, g.b)
-    if (g.h) b.h = Math.max(b.h ?? 0, g.h) // (its jambs' thickness: the wall's height)
+    if (g.h) (b.h = Math.max(b.h ?? 0, g.h)), b.tall.push(g.a, g.b) // (its jambs' thickness: the wall's height)
   }
   for (const a of d.arcs) {
     const b = a.inst !== undefined ? insts.get(`${a.block}#${a.inst}`) : undefined
     if (b && isSwing(a)) b.arc = a
   }
-  const jambsOf = (pts: Pt[]): [Pt, Pt, number] | null => {
+  const jambsOf = (pts: Pt[], minSpan = MIN_GAP): [Pt, Pt, number] | null => {
     const jambs: { m: Pt; L: number; dir: Pt }[] = []
     for (let i = 0; i + 1 < pts.length; i += 2) {
       const L = len(sub(pts[i + 1], pts[i]))
@@ -675,7 +737,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     for (const [i, j] of jambs.entries())
       for (const k of jambs.slice(i + 1)) {
         const span = sub(k.m, j.m)
-        if (Math.abs(j.L - k.L) > 0.01 || Math.abs(crossZ(j.dir, k.dir)) > PAR || Math.abs(dot(span, j.dir)) > 0.01 || len(span) < MIN_GAP) continue
+        if (Math.abs(j.L - k.L) > 0.01 || Math.abs(crossZ(j.dir, k.dir)) > PAR || Math.abs(dot(span, j.dir)) > 0.01 || len(span) < minSpan) continue
         if (!pair || len(span) > len(sub(pair[1], pair[0]))) pair = [j.m, k.m, j.L]
       }
     return pair
@@ -684,23 +746,38 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   let glassWalls = 0
   const placed = new Set<ArcPrim>()
   for (const b of insts.values()) {
-    const jambs = jambsOf(b.pts)
+    // (Plotline's own export: the jambs are the lines carrying the wall's height — an opening of any width)
+    const jambs = d.own && b.tall.length >= 4 ? jambsOf(b.tall, 0.01) : jambsOf(b.pts)
     const at = jambs ? { x: (jambs[0].x + jambs[1].x) / 2, y: (jambs[0].y + jambs[1].y) / 2 } : { x: b.pts.reduce((acc, p) => acc + p.x, 0) / b.pts.length, y: b.pts.reduce((acc, p) => acc + p.y, 0) / b.pts.length }
-    let w = jambs ? wallAt(kept, at, 0.05) : wallAt(kept, at, 0.3)
+    let w = jambs ? wallAt(kept, at, 0.05, !!d.own) : wallAt(kept, at, 0.3)
     if (w && jambs && Math.abs(crossZ(w.dir, sub(jambs[1], jambs[0]))) > 0.05 * len(sub(jambs[1], jambs[0]))) w = null // (a wall across it, not along)
     if (!w && jambs && d.own) {
-      w = { ...piece(jambs[0], jambs[1], snapThick(jambs[2]), b.h), openings: [] }
-      kept.push(w)
-      glassWalls++
+      // a wall on the block's line that ends at one of its jambs runs on through it (a door right at a corner: the wall's
+      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage)
+      const J = [jambs[0], jambs[1]]
+      const on = kept.find((v) => Math.abs(snapThick(jambs[2]) - v.thick) <= SNAP_THICK && Math.abs((v.h ?? -1) - (b.h ?? -1)) <= 0.01 && J.every((p) => Math.abs(dot(sub(p, v.a), v.n)) <= 0.01) && J.some((p) => [v.a, v.b].some((E) => len(sub(E, p)) <= 0.05)))
+      if (on) {
+        const ts = [on.t0, on.t1, ...J.map((p) => dot(p, on.dir))]
+        const at = (t: number): Pt => ({ x: on.a.x + on.dir.x * (t - on.t0), y: on.a.y + on.dir.y * (t - on.t0) })
+        const [a, c] = [at(Math.min(...ts)), at(Math.max(...ts))]
+        Object.assign(on, { a, b: c, t0: dot(a, on.dir), t1: dot(c, on.dir) })
+        w = on
+      } else {
+        w = { ...piece(jambs[0], jambs[1], snapThick(jambs[2]), b.h), openings: [] }
+        kept.push(w)
+        glassWalls++
+      }
     }
     if (!w) continue
     const ts = (jambs ? [jambs[0], jambs[1]] : b.pts).map((p) => dot(p, w.dir))
     const t0 = Math.min(...ts), t1 = Math.max(...ts)
     const kind: OpeningKind = /SLID/i.test(b.block) ? 'slider' : /PASS/i.test(b.block) ? 'passage' : b.role === 'window' ? 'window' : 'door'
-    if ((kind === 'door' && t1 - t0 > 4) || t1 - t0 < MIN_GAP) continue
+    // (an exact block — Plotline's own, with its jambs — may be narrow: a curved glass wall's pane on each chord)
+    const exact = !!jambs && !!d.own
+    if ((kind === 'door' && t1 - t0 > 4) || t1 - t0 < (exact ? 0.01 : MIN_GAP)) continue
     const swing = kind === 'door' && b.arc ? swingOn(b.arc, w) : null
     if (swing) placed.add(b.arc!)
-    if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) })) blockOpenings++
+    if (putOpening(w, { kind, t0, t1, ...(swing ? { hinge: swing.hinge, swing: swing.swing } : {}) }, exact)) blockOpenings++
   }
   // door swings drawn on their own (not in a block that placed them): a quarter arc hinged on a wall
   let doorArcs = 0
@@ -726,6 +803,14 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   // Plotline's own export marks every opening with a block: there a bare gap between two pieces of a wall is where one
   // wall ends and another begins, not an opening
   const marked = !!d.own
+  // a corner: its own for each wall end, but the walls read from centre lines share theirs where they met (a curve's chords)
+  const at = new Map<string, Vertex>()
+  const corner = (p: Pt): Vertex => {
+    const k = `${p.x},${p.y}`
+    const v = (axes && at.get(k)) || { id: newId(), ...p }
+    if (!at.has(k) || !axes) unit0.vertices.push(v), at.set(k, v)
+    return v
+  }
   for (const w0 of [...kept, ...zones]) {
     const gaps = marked ? w0.openings.filter((o) => o.gap) : []
     const cuts = [w0.t0, ...gaps.flatMap((o) => [o.t0, o.t1]), w0.t1]
@@ -733,13 +818,12 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
       const at = (t: number): Pt => ({ x: w0.a.x + w0.dir.x * (t - w0.t0), y: w0.a.y + w0.dir.y * (t - w0.t0) })
       const w = { ...w0, a: at(cuts[k]), b: at(cuts[k + 1]), t0: cuts[k], t1: cuts[k + 1] }
       if (Math.abs(w.t1 - w.t0) < 1e-3) continue // (a wall whose ends a join moved past each other runs the other way: kept)
-      const a = { id: newId(), ...shift(w.a) }, b = { id: newId(), ...shift(w.b) }
-      unit0.vertices.push(a, b)
+      const a = corner(shift(w.a)), b = corner(shift(w.b))
       const openings: Opening[] = []
       for (const o of w0.openings.filter((x) => !gaps.includes(x)).sort((p, q) => p.t0 - q.t0)) {
         const defaults = openingDefaults(o.kind, false)
         const t0 = Math.max(w.t0, o.t0), t1 = Math.min(w.t1, o.t1)
-        if (t1 - t0 < MIN_GAP || (openings.length && openings[openings.length - 1].offsetM + openings[openings.length - 1].widthM > t0 - w.t0)) continue
+        if (t1 - t0 < (o.exact ? 0.01 : MIN_GAP) || (openings.length && openings[openings.length - 1].offsetM + openings[openings.length - 1].widthM > t0 - w.t0)) continue
         openings.push({ id: newId(), kind: o.kind, offsetM: t0 - w.t0, widthM: t1 - t0, heightM: defaults.heightM, sillM: defaults.sillM, ...(o.kind === 'door' ? { hinge: o.hinge, swing: o.swing } : {}) })
       }
       unit0.walls.push({ id: newId(), a: a.id, b: b.id, thicknessM: w.thick, heightM: w.h ?? usualH, openings })
@@ -780,6 +864,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     // number ("12", "P-3": a parking bay, a room number) does (core guessKind reads a bay)
     const number = /^\s*([A-Z]-?)?\d{1,4}\s*$/i.test(t.text)
     if ((!/[A-Za-z]{2}/.test(t.text) || /\d\s*['"′″’]|\d\s*(mm|cm|m|ft|in)\b/i.test(t.text)) && !flat && !number) continue
+    // a stair's arrow ("UP", "DN") and a door / window tag ("D-16", "Win-18", "W3") name no room
+    if (NOT_A_NAME.test(t.text)) continue
     if (!room) {
       outside++
       continue
@@ -986,14 +1072,70 @@ export function settleImport(unit: Unit): { unit: Unit; joined: number } {
   return { unit: n.unit, joined: joined + n.joined }
 }
 
+/**
+ * Which pens draw the walls (session 31, formats2; SVG too since formats3). A layerless CAD print (a PDF, a flat SVG) draws walls with its heaviest pen and often fills them grey
+ * or black: the stroked pens at least PEN_HEAVY times as wide as the plan's usual line (the length-weighted median) that
+ * draw at least PEN_SHARE of all its lines, and the fills of a grey (not white, not a colour) that do — when the page's
+ * scale is known and the filled shapes are wall-thin (on average under FILL_THIN_M across: a room shaded grey is no wall).
+ * None (one pen for everything, a coloured drawing): nothing is sorted, every line pair counts as before.
+ */
+const PEN_HEAVY = 2.5
+const PEN_SHARE = 0.03
+const FILL_THIN_M = 0.6
+/** per fill pen: the filled shapes' area and outline length, page points */
+export type Fills = Map<string, { area: number; outline: number }>
+/** a grey or black, not white: '#c0c0c0', '64,64,64', a gray level */
+const grey = (c: string): boolean => {
+  const rgb = /^#?([0-9a-f]{6})$/i.test(c) ? [0, 2, 4].map((i) => parseInt(c.replace('#', '').slice(i, i + 2), 16)) : c.split(',').map(Number)
+  if (rgb.some((x) => !Number.isFinite(x))) return false
+  const [r, g, b] = rgb.length === 1 ? [rgb[0], rgb[0], rgb[0]] : rgb
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) < 240
+}
+export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | null = null, unit = 'pt'): { walls: Set<string>; words: string } {
+  const length = new Map<string, number>()
+  for (const g of segs) length.set(g.layer, (length.get(g.layer) ?? 0) + Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y))
+  const total = [...length.values()].reduce((a, b) => a + b, 0)
+  const strokes = [...length].filter(([p]) => p.startsWith('pen ')).map(([p, L]) => ({ p, L, w: Number(p.split(' ')[1]) })).sort((a, b) => a.w - b.w)
+  const strokeTotal = strokes.reduce((a, x) => a + x.L, 0)
+  let acc = 0
+  const median = strokes.find((x) => (acc += x.L) >= strokeTotal / 2)?.w ?? 0
+  const walls = new Set<string>()
+  for (const x of strokes) if (median > 0 && x.w >= PEN_HEAVY * median && x.L >= PEN_SHARE * total) walls.add(x.p)
+  // (a long thin shape's mean width is twice its area over its outline)
+  const thin = (p: string) => {
+    const f = fills.get(p)
+    return !!scale && !!f && f.outline > 0 && ((2 * f.area) / f.outline) * scale <= FILL_THIN_M
+  }
+  for (const [p, L] of length) if (p.startsWith('fill ') && grey(p.slice(5)) && L >= PEN_SHARE * total && thin(p)) walls.add(p)
+  const words = [...walls].map((p) => (p.startsWith('fill') ? `filled ${p.split(' ')[1]}` : `${p.split(' ')[1]} ${unit} ${p.split(' ')[2]}`)).join(', ')
+  return { walls, words }
+}
+
 // ---------- what PDF and SVG share: a sheet with no scale, door swings drawn as curves ----------
 
 /**
- * A drawing without a scale (a PDF, an SVG): the printed dimensions measured against their lines when three agree; else
- * the printed room sizes against the drawing's box (rooms take about half a plan); else 1 with a "set it with S" note.
- * `sheet`: what the found ratio means on paper, for the note (a PDF knows its points).
+ * A scale printed on the sheet — `1/4" = 1'-0"`, `1" = 10'`, `1:100`, `SCALE 1 : 50` — as how many times smaller the
+ * paper draws it (48, 120, 100, 50); else null.
  */
-export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: number) => string = () => ''): { scale: number; note: string } {
+export function printedScale(text: string): number | null {
+  const t = text.replace(/^\s*scale\s*:?\s*/i, '').trim()
+  const metric = /^1\s*:\s*(\d{1,4})$/.exec(t)
+  const imperial = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*"\s*=\s*(\d+)\s*'(?:\s*-?\s*0\s*")?$/.exec(t)
+  const inches = (s: string) => s.split(/\s+/).reduce((a, p) => a + (p.includes('/') ? +p.split('/')[0] / +p.split('/')[1] : +p), 0)
+  const n = metric ? +metric[1] : imperial ? (+imperial[2] * 12) / inches(imperial[1]) : null
+  return n !== null && Number.isFinite(n) && n >= 2 ? n : null
+}
+
+/**
+ * A drawing without a scale (a PDF, an SVG): the scale printed on the sheet, when the file's unit on paper is known
+ * (`paperM`: a PDF point is 1/72 inch) and the sheet prints one value (a sheet of several scales says nothing; a page's
+ * tables can fool the dimensions — twindo's room pages measured 1 : 31–64 for their printed 1 : 16 / 1 : 24); else the
+ * printed dimensions measured against their lines when three agree; else the printed room sizes against the drawing's
+ * box (rooms take about half a plan); else 1 with a "set it with S" note. `sheet`: what the found ratio means on paper.
+ */
+export function sheetScale(segs: Seg[], texts: TextPrim[], sheet: (unitsPerM: number) => string = () => '', paperM = 0): { scale: number; note: string } {
+  const printed = paperM ? [...new Set(texts.map((t) => printedScale(t.text)).filter((n) => n !== null))] : []
+  if (printed.length === 1) return { scale: printed[0] * paperM, note: `Scale: as printed on the sheet, 1 : ${+printed[0].toFixed(1)}.` }
   const dims = scaleFromDimensions(segs, texts)
   if (dims) return { scale: 1 / dims.ptPerM, note: `Scale: from ${dims.agreed} printed dimensions that agree${sheet(dims.ptPerM)}.` }
   const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }

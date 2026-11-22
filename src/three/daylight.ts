@@ -266,16 +266,25 @@ function blur(F: Float32Array, nu: number, nv: number): Float32Array {
  * Bake every room surface of the unit (pure: no GL). `blocks`: what stands round the building (context.ts neighbours,
  * height over the street): a window facing one sees its wall where it would see sky.
  */
-export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = []): Daylight {
-  const steps = bakeSteps(unit, rooms, cover, blocks)
+export function bakeDaylight(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = [], keep: BakeKeep = {}): Daylight {
+  const steps = bakeSteps(unit, rooms, cover, blocks, keep)
   for (;;) {
     const s = steps.next()
     if (s.done) return s.value
   }
 }
 
-/** bakeDaylight's work, pausing after each region it lights: a floor reached by the stair bakes a little a frame (PlotlineScene.arrive). */
-export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = []): Generator<void, Daylight> {
+/**
+ * What one bake leaves for the next of the same drawing under the same cover (another floor of it, PlotlineScene arrive): the
+ * rooms' light with an open view, as if no neighbour stood round — the same on every floor (only the neighbours' shade
+ * depends on the floor's height), half of a bake with neighbours in view.
+ */
+export interface BakeKeep {
+  open?: Map<Id, number>
+}
+
+/** bakeDaylight's work, pausing after each region it lights: a floor reached by the stair bakes a little a frame (PlotlineScene.arrive). `keep`: BakeKeep, read and filled. */
+export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks: { plan: Pt[]; heightM: number }[] = [], keep: BakeKeep = {}): Generator<void, Daylight> {
   const t0 = performance.now()
   const floorM = (unit.floor ?? 2) * 3.2 + 0.2 // over the street, as core.sheltered and the 3D
   const frames = new Map(unit.walls.map((w) => [w.id, core.wallFrame(w, unit.vertices)]))
@@ -441,7 +450,8 @@ export function* bakeSteps(unit: Unit, rooms: Room[], cover: Pt[][] = [], blocks
   // each room's share of the light it would have with an open view (SHADE_*): baked again without them, if any is in view
   const dim = new Map<Id, number>()
   if ([...apertures.values()].some((l) => l.some((a) => a.obs))) {
-    for (const [id, v] of (yield* irradiance(true)).m2) if (v > 0) dim.set(id, THREE.MathUtils.clamp(((m2.get(id) ?? 0) / v) ** SHADE_GAMMA, SHADE_LO, 1))
+    keep.open ??= (yield* irradiance(true)).m2
+    for (const [id, v] of keep.open) if (v > 0) dim.set(id, THREE.MathUtils.clamp(((m2.get(id) ?? 0) / v) ** SHADE_GAMMA, SHADE_LO, 1))
   }
 
   // floor / ceiling texels outside the room (under its walls): the nearest inside value, so filtering at the edge never reads garbage

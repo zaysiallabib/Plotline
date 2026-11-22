@@ -146,3 +146,12 @@ describe('deriveFlats', () => {
     expect(core.deriveFlats(u, [...rooms].reverse()).map((f) => [f.name, [...f.roomIds].sort()])).toEqual(core.deriveFlats(u, rooms).map((f) => [f.name, [...f.roomIds].sort()]))
   })
 })
+
+describe('runsUp: the core rooms a roof carries a head room over (session 31 polish2)', () => {
+  test('a stair, a lift, its lobby and hoistway; not a lobby on its own, a bath or a shaft of air', () => {
+    const r = (name: string, kind: RoomKind = 'other') => core.runsUp({ name, kind })
+    expect(['Stair', 'Staircase', 'Stairs', 'Lift', 'Lift lobby', 'LIFT CORE', 'Hoistway', 'Elevator'].map((n) => r(n))).toEqual(Array(8).fill(true))
+    expect(r('Lift', 'shaft')).toBe(true)
+    expect([r('Lobby'), r('Stretcher Uft'), r('Stair', 'bath'), r('Aod', 'shaft'), r('Upstairs bedroom', 'bed')]).toEqual([false, false, false, false, false])
+  })
+})

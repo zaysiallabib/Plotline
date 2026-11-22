@@ -17,7 +17,7 @@ import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
 import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
 import { EDGE_PLASTER, MORE_PICTURES, PICTURES, PICTURE_ROOM, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, shrinkHdr } from './PlotlineScene'
+import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
@@ -691,5 +691,31 @@ describe('a finger takes a drag dot within half a fingertip (session 31 phonesta
     expect(nearestWithin(dots, { x: 100, y: 123 }, FINGER_REACH_PX)).toBe(-1) // 23 px: out of reach
     expect(nearestWithin([null], { x: 0, y: 0 }, FINGER_REACH_PX)).toBe(-1)
     expect(FINGER_REACH_PX * 2).toBe(44) // a fingertip: the --touch size
+  })
+})
+
+describe('a stair to the next floor of the same drawing re-places the flat (session 31 polish2: typical floors 1.8 → ~1 s on High)', () => {
+  const u = typeA as unknown as Unit
+  test('one drawing on two floors: the same walls, rooms, columns and site objects; a floor with its own walls, a mirrored copy or an outside shape is another', () => {
+    expect(sameDrawing({ ...u, floor: 3 }, { ...u, floor: 4, furniture: [] })).toBe(true)
+    expect(sameDrawing(u, { ...u, walls: [...u.walls] })).toBe(false) // an opening kept for that floor only: its own walls
+    expect(sameDrawing(u, { ...u, vertices: u.vertices.map((v) => ({ ...v, x: -v.x })) })).toBe(false)
+    expect(sameDrawing(u, { ...u, northDeg: u.northDeg + 90 })).toBe(false)
+    const shell = { id: 's', name: 'shape', baseY: 0 }
+    expect(sameDrawing({ ...u, shell }, { ...u, shell })).toBe(false)
+  })
+  test('the same finishes whatever object carries them (a new floor hands a new one): nothing to swap, the batches stay', () => {
+    expect(sameConfig({ a: '1', b: '2' }, { b: '2', a: '1' })).toBe(true)
+    expect(sameConfig({ a: '1' }, { a: '1', b: '2' })).toBe(false)
+    expect(sameConfig({ a: '1', b: '2' }, { a: '1', b: '3' })).toBe(false)
+    expect(sameConfig({}, {})).toBe(true)
+  })
+  test('what the bake reads of the slab above: each room under it by its middle', () => {
+    const rooms = deriveRooms(u)
+    const all = [[{ x: -1e3, y: -1e3 }, { x: 1e3, y: -1e3 }, { x: 1e3, y: 1e3 }, { x: -1e3, y: 1e3 }]]
+    expect(roomsUnder(rooms, all)).toBe('1'.repeat(rooms.length))
+    expect(roomsUnder(rooms, [])).toBe('0'.repeat(rooms.length))
+    // two slabs that differ but cover the same rooms read alike (the top floor under the roof: its daylight kept per floor)
+    expect(roomsUnder(rooms, [...all, [{ x: 5e3, y: 0 }, { x: 6e3, y: 0 }, { x: 6e3, y: 1 }]])).toBe(roomsUnder(rooms, all))
   })
 })

@@ -38,6 +38,10 @@ export const LOW_WALL_M = 1.2
 
 export const isCore = (r: Pick<Room, 'kind' | 'name'>): boolean => CORE_KINDS.has(r.kind) || isOutdoor(r.kind) || (r.kind === 'other' && CORE_NAME.test(r.name))
 
+const RUNS_UP = /\b(stairs?|staircase|lifts?|hoistway|elevators?)\b/i
+/** A room of the core that runs up floor to floor — a stair, a lift, its lobby or hoistway — the part a tower's roof carries a head room over. */
+export const runsUp = (r: Pick<Room, 'kind' | 'name'>): boolean => (r.kind === 'other' || r.kind === 'shaft') && RUNS_UP.test(r.name)
+
 export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'>, rooms: Room[]): Flat[] {
   const pin = new Map(unit.roomLabels.map((l) => [l.id, l.flat]))
   // union-find over the rooms the door walk may take

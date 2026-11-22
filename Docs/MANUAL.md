@@ -126,7 +126,7 @@ Everything else opens from these and closes again with **Esc**.
 | Walk · Dollhouse · Building (one switch; the view you are in is white) | O: Walk ↔ Dollhouse; B: Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to one) |
 | Finishes | F | The panel on the right: floor, wall and ceiling options. While it is open, a click on a floor, wall or ceiling chooses for that one room or wall. **×**, F or Esc closes it |
 | Comment | C | The Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns |
-| Share | — | Copies a link that opens with the finishes you chose |
+| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
 | ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
@@ -139,7 +139,10 @@ soft frosted rectangle whose edges fade out, so the words read over any wall, by
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
-picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). In the Building view the same place names the
+picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
+shown from its door through a narrower lens, looking down at the WC as one does from a WC's door, the basin beside the door
+at the edge of the picture; walk out of it and the lens widens back to the usual one in about a third of a second (on a
+phone held upright the picture is narrow already and stays as it is). In the Building view the same place names the
 floor you picked: "Floor 2 · Type A · 2703 sft", the flats of another floor, or "Ground floor", "Basement 1",
 "Rooftop".
 
@@ -321,9 +324,12 @@ trees, benches and play things) and the floors just above and below yours are dr
 **The sun's shadow outside (High).** In a flat that stands in its building, look out of a window, open the Dollhouse
 or the Building view: the shadows of your building and of the neighbours lie across the lawn, the play area, the pool
 deck, the driveway and the road, and on the neighbours' walls, as far as the haze — and they move as you drag the hour.
+The grounds' trees, benches and play things throw theirs too (on the ground and the deck round them, never into your
+flat: a tree's shadow falls outside it).
 The narrow gap to the next building is in its shade most of the day, as on a real Dhaka street. On **Low** only your
 flat and what stands right round it take the sun's shadow, and on **Lite** nothing does; further out the ground and the
-road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building).
+road stay evenly sunlit there, as they do round a flat on its own (a Studio draft that is not part of a building). Where
+that shadow ends, it fades into the sunlit ground over a metre or two, so no hard bright patch shows on the street.
 
 The neighbouring buildings and roads are seen in Walk, Dollhouse and Building. They throw the sun's
 shadow onto the flat and darken the rooms that face them: a bedroom looking at a wall 3 m away is dimmer than a room
@@ -625,7 +631,8 @@ The whole tower, floor by floor: point at a floor to see which it is, open a fla
 - Picking a basement hides everything above it; the street and the next buildings stay.
 - **The roof:** a building whose rooftop was not traced still has one — the top floor's slab, a parapet along its outer
   edge, the stair and lift head room with the water tanks on it, and the roof garden its data lists (the Demo tower). A
-  traced rooftop (Sheltech) shows as drawn.
+  building made in the Studio gets the head room over the rooms its top floor's drawing names a stair or a lift ("Stair",
+  "Lift", "Lift lobby") — name them so on the plan. A traced rooftop (Sheltech) shows as drawn.
 - **Top left** names the picked floor: "Floor 2" over "Type A · 2703 sft", the flats of another floor, or "Ground
   floor", "Basement 1", "Rooftop".
 - **Walk this level** (the blue button under the floors) shows for a ground floor, basement, rooftop or common floor.
@@ -1040,10 +1047,10 @@ picture can still be dropped later to see the sheet behind. Every format and how
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens. Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
-| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"). An SVG has no scale: the printed dimensions give it — check with S |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens. Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
+| **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with "Save as DXF" |
-| **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
+| **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
 | **3D model** `.glb` `.gltf` `.obj` `.fbx` `.dae` `.stl` `.3dm` `.3ds` `.kmz` `.wrl` `.ply` | The building's **outside shape** only (no rooms), attached to the drawing open now: the Building view shows it round your flat and the walk sees its facade through the windows. A model with its pictures (or a `.gltf` with its `.bin`) in other files: drop the whole folder or a `.zip`, or pick the files together |
 | **Locked files** `.rvt` `.pln` `.skp` `.max` `.blend` `.dwf` (and `.dwg` while off) | Refused, with the one-click export to ask for: Revit / ArchiCAD → IFC; SketchUp / 3ds Max / Blender → glTF, OBJ or FBX; AutoCAD → DXF |
 | A **folder**, a **.zip** or several files | The best file opens (an IFC first, then a 3D model, then a DXF / PDF; an architectural IFC before a structural one); the rest are its pictures and data. A zip of pictures opens its first picture |
@@ -1063,7 +1070,10 @@ words (Wände, MURS, PUERTAS, FINESTRE, KOLOM…).
 until its walls sit on yours), **Turn (deg)**, **Floor height (m)** (how high this drawing's floor is inside it), each one
 Ctrl+Z; **Remove outside shape**. In a project every drawing shares the building's shape. The model is kept in this
 browser only (an exported drawing file names it but does not hold it); Lite skips a shape over 500 000 triangles and
-says so.
+says so. An IFC whose windows came with solid glass (no see-through colour on any window, as some exports give): its
+windows are left out of the shape and the Building view and the windows round your flat draw real glass in your flats'
+window openings instead, with the rooms behind it and their lights at night. Windows with see-through glass stay as
+the file drew them. A shape read before this change keeps its windows: drop the file again.
 
 ### Give the drawing back: DXF, 3D model, printed plan
 
@@ -1073,11 +1083,12 @@ From the ⋯ menu, what a developer or their architect asks for:
   **WALLS** (closed outlines; each wall's height rides along as its thickness, so a CAD program shows the walls in 3D),
   **DOORS** (leaf, swing and the two jambs; a wide opening with no door is a block of its two jambs), **WINDOWS**,
   **COLUMNS**, **TEXT** (names and sizes; a raised floor's name sits at that height), **PLOTLINE_ZONES** (a level's flush
-  lines) and **PLOTLINE_KERBS** (walls of 20 cm or less). Dropped back untouched it opens exactly as it was ("Written by
-  Plotline and not changed since"). Saved again by a CAD program it is read from its lines and layers ("Exported by
-  Plotline … read to the letter"): 10 of the 20 built-in flats and levels come back exactly the same, Type A among them;
-  the rest within a few lines — curved ramp walls, parking bays, a door right at a corner
-  ([FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md)).
+  lines), **PLOTLINE_KERBS** (walls of 20 cm or less) and **PLOTLINE_AXES_…** (each wall's centre line, one layer per
+  thickness — leave them in the file). Dropped back untouched it opens exactly as it was ("Written by Plotline and not
+  changed since"). Saved again by a CAD program it is read from its lines and layers ("… walls read from their centre
+  lines, exactly as exported"): all 20 built-in flats and levels come back exactly the same, curved ramps and parking
+  bays included. A wall moved, made longer or shorter in the CAD program: the walls are read from their outlines instead
+  ("Walls were changed in a CAD program since the export") ([FORMATS_SCOREBOARD.md](FORMATS_SCOREBOARD.md)).
 - **Export 3D model** — the 3D view opens in a new tab and, once every room has arrived, saves the furnished flat as one
   `.glb` (walls, floors, ceilings, doors, windows, furniture with their pictures; not the street or the sky): about 55 MB
   (Type A 54 MB). Blender, 3ds Max, SketchUp and any glTF viewer open it; a render artist who wants it smaller runs it
@@ -1359,12 +1370,14 @@ Things that are confusing or not finished. Each one is a job on the list.
 - In the Building view the other flats show each floor as this browser keeps it (its own finishes and furniture, else the
   floor plan's); a floor changed in another browser shows here once its project is opened. Rugs, potted plants and small
   things (a vase, a book) are left out of the other flats.
-- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). A
-  buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's), not one floor's.
+- A flat's own furniture and finishes go online only through the Studio (open it once after a 3D tour, signed in). The
+  Studio's buyer link (**⋯ → Share link**) carries the floor plan's own furniture and finishes (Preview 3D's); for one
+  floor's own, press **Share** in that floor's 3D view (staff, with the online database).
 - In 3D, walls higher than 1.2 m cannot be moved; sliding a low wall whose end meets the middle of another wall slides
   that piece's doors and windows with it.
-- Two different "share" buttons: **Share** in the 3D view (a link with your finishes) and **⋯ → Share link** in the
-  Studio (the real buyer link that feeds the change list). The same thing has two names in places: "Slider" (3D) /
+- Two different "share" buttons: **Share** in the 3D view (staff with the online database: a buyer link of that floor's
+  flat as it stands; otherwise a link with your finishes) and **⋯ → Share link** in the Studio (a buyer link of the floor
+  plan as Preview 3D shows it). Both feed the change list. The same thing has two names in places: "Slider" (3D) /
   "Sliding door" (Studio panel); "Reset layout" (3D) / "Reset to preset" (Studio).
 - One-room finishes: the clicked floor or wall is not outlined in 3D (only the panel names it); the Studio cannot set
   them; two rooms of one floor group with different floors get no threshold strip in their doorway.

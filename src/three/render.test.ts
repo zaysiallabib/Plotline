@@ -1,7 +1,7 @@
 /** The sky's light by the sun's altitude, the lamps' auto rule and the shadow-casting pick (render.ts): pure, no WebGL. */
 import * as THREE from 'three'
 import { describe, expect, test } from 'vitest'
-import { aoSize, assignPool, DAY_EXPOSURE, drawWide, fitSunBox, keptLoop, lampCandela, lampShares, lightsOn, LITE_PIXELS, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M } from './render'
+import { aoSize, assignPool, DAY_EXPOSURE, drawWide, EDGE_FADE, EDGE_FADE_Z, widenEdge, fitSunBox, keptLoop, lampCandela, lampShares, lightsOn, LITE_PIXELS, markSharp, NIGHT_EXPOSURE, pickCasters, pixelRatioFor, SITE_REACH_M, skyLight, sunLit, TIERS, towerLevel, twilight, WIDE_EVERY, WIDE_M, WIDE_UP_M, wideOnly } from './render'
 import { LAMP_RANGE } from './daylight'
 import type { Room } from '../core'
 
@@ -255,6 +255,60 @@ describe('the sun’s two shadow maps (session 31 shade: the grounds and the roa
     expect(drawn([...Array(10).fill(true), false, false])).toEqual([3, 7, 10]) // two frames out of date, then at rest at once
     expect(drawn([true, false, false])).toEqual([1]) // one change (an hour picked): one frame later
     expect(drawn([false, false])).toEqual([])
+  })
+  test('the grounds’ trees and benches round the flat cast into the wide map only, never the sharp one nor a lamp’s (wideOnly, polish2)', () => {
+    const lit = () => {
+      const l = new THREE.DirectionalLight()
+      l.position.set(0, 10, 0)
+      l.updateMatrixWorld()
+      l.shadow.updateMatrices(l) // (three's own, before it draws a map: its frustum over the origin)
+      return l.shadow.getFrustum()
+    }
+    const sun = new THREE.DirectionalLight()
+    markSharp(sun)
+    sun.position.set(0, 10, 0)
+    sun.updateMatrixWorld()
+    sun.shadow.updateMatrices(sun)
+    const [sharp, wide] = [sun.shadow.getFrustum(), lit()]
+    const lamp = new THREE.SpotLight()
+    lamp.position.set(0, 10, 0)
+    lamp.updateMatrixWorld()
+    lamp.shadow.updateMatrices(lamp)
+    markSharp(lamp)
+    const tree = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(1, 4, 1)), new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), undefined, 3))
+    const meshes = tree.children as THREE.Mesh[]
+    for (const m of meshes) (m.updateMatrixWorld(), expect([m.intersectsFrustum(sharp), m.intersectsFrustum(wide)]).toEqual([true, true]))
+    wideOnly(tree, true)
+    for (const m of meshes) expect([m.intersectsFrustum(sharp), m.intersectsFrustum(lamp.shadow.getFrustum()), m.intersectsFrustum(wide)]).toEqual([false, false, true])
+    wideOnly(tree, false) // (the Building view: as built)
+    for (const m of meshes) expect([m.intersectsFrustum(sharp), m.intersectsFrustum(wide)]).toEqual([true, true])
+  })
+  test('one map only (Low; a flat on its own): the box widened, its shadow fading into lit over the margin, the flat clear of it (polish2)', () => {
+    for (const [az, alt] of hours) {
+      const { cam } = fitted(flat, az, alt)
+      const near = cam.near, far = cam.far, width = cam.right - cam.left
+      widenEdge(cam)
+      const uvz = (x: number, y: number, z: number) => {
+        const c = new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse).applyMatrix4(cam.projectionMatrix)
+        return [(c.x + 1) / 2, (c.y + 1) / 2, (c.z + 1) / 2]
+      }
+      // every corner of the flat's box stays out of the fading margin: lit exactly as before
+      for (let i = 0; i < 8; i++) {
+        const [u, v, z] = uvz(i & 1 ? flat.max.x : flat.min.x, i & 2 ? flat.max.y : flat.min.y, i & 4 ? flat.max.z : flat.min.z)
+        for (const t of [u, v]) expect(Math.min(t, 1 - t)).toBeGreaterThanOrEqual(EDGE_FADE - 1e-6)
+        expect(1 - z).toBeGreaterThanOrEqual(EDGE_FADE_Z - 1e-6)
+      }
+      expect(cam.near).toBe(near)
+      const band = EDGE_FADE * (cam.right - cam.left) // the fade across, in metres
+      expect(band).toBeGreaterThan(0.8)
+      expect(band).toBeLessThan(3)
+      expect(EDGE_FADE_Z * (cam.far - near)).toBeLessThan(3.5) // and in depth
+      expect(cam.far).toBeGreaterThan(far)
+      expect(cam.right - cam.left).toBeLessThan(width * 1.1) // ≤ 10 % coarser
+    }
+    expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('float sharpOrLit(')
+    expect(THREE.ShaderChunk.lights_fragment_begin).toContain('#elif NUM_DIR_LIGHT_SHADOWS == 1 && UNROLLED_LOOP_INDEX == 0')
+    expect(THREE.ShaderChunk.lights_fragment_begin).toContain('? sharpOrLit( getShadow( directionalShadowMap[ i ],')
   })
   test('three’s light chunks read the wide map past the sharp one, and light 1 lights nothing (wideChunks)', () => {
     expect(THREE.ShaderChunk.shadowmap_pars_fragment).toContain('float sharpOrWide(')

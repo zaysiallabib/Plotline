@@ -7,7 +7,7 @@ import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { deriveRooms, validate, wallFrame } from '../core'
 import { importIfc, sharedEdges } from './ifc'
-import { readGlbJson } from './glb'
+import { readGlbJson, WINDOW } from './glb'
 
 const CERT = 'E:/dev/ALTERNATIVE FORMAT TEST/Certification-datasets-main'
 const BENCH = 'E:/dev/ALTERNATIVE FORMAT TEST/ifc-bench/projects'
@@ -67,6 +67,15 @@ describe('ifc import', () => {
     expect(w.openings[0].sillM).toBeCloseTo(0.5, 1)
     expect(r.shell?.triangles).toBeGreaterThan(0)
   })
+  it.skipIf(!present(WALL_FILE) || !present(`${BENCH}/fzk_house/arc.ifc`))('a window drawn with solid glass: its parts named in the shape and the shell says so; see-through glass: nothing said (polish2)', async () => {
+    const mats = (r: Awaited<ReturnType<typeof load>>) => (readGlbJson(r.shell!.glb).json.materials as { name?: string; pbrMetallicRoughness: { baseColorFactor: number[] } }[])
+    const solid = await load(WALL_FILE) // its window: plain white, solid
+    expect(solid.shell?.glass).toBe('opaque')
+    expect(mats(solid).filter((m) => m.name === WINDOW)).toHaveLength(1)
+    const clear = await load(`${BENCH}/fzk_house/arc.ifc`) // its glass a see-through green
+    expect(clear.shell?.glass).toBeUndefined()
+    expect(mats(clear).filter((m) => m.name === WINDOW).some((m) => m.pbrMetallicRoughness.baseColorFactor[3] < 0.99)).toBe(true)
+  })
 
   it.skipIf(!present(WALL_FILE))('says how far it is: stages in plain words, fractions that only grow, to the last floor', async () => {
     const seen: [string, number][] = []
@@ -100,10 +109,11 @@ describe('ifc import', () => {
           expect(o.offsetM + o.widthM).toBeLessThanOrEqual(L + 1e-6)
         }
       }
-      // the scene has four outer walls only (no front / back): its two spaces are named, the rooms cannot close
-      expect(u.walls).toHaveLength(4)
+      // the scene has four outer walls only (no front / back): its two spaces are named and close along their own
+      // outlines where the file has no wall (zone lines, drawn as nothing — the outside shape shows what stands there)
+      expect(u.walls.filter((w) => w.heightM > 0).length).toBeGreaterThanOrEqual(4) // (split where a zone line meets them)
       expect(u.roomLabels.map((l) => l.name).sort()).toEqual(['entry hall', 'living room'])
-      expect(deriveRooms(u).length).toBeGreaterThanOrEqual(0)
+      expect(deriveRooms(u).filter((x) => u.roomLabels.some((l) => l.id === x.id)).map((x) => x.name).sort()).toEqual(['entry hall', 'living room'])
       expect(validate(u).filter((i) => i.code === 'opening-out-of-bounds')).toHaveLength(0)
       expect(r.shell).toBeDefined()
       const { json, binLength } = readGlbJson(r.shell!.glb)

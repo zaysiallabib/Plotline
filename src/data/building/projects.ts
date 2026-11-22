@@ -9,7 +9,7 @@
  * or east wall line (core mirrorUnit, ids + `-m`) — so a unit stands at most once as itself and once mirrored.
  * Pure: storage is read / written only by the helpers at the bottom.
  */
-import { deriveRooms, mirrorUnit, roomPolygon, unitBounds } from '../../core'
+import { deriveRooms, mirrorUnit, roomPolygon, runsUp, unitBounds } from '../../core'
 import type { Id, Pillar, Pt, Shell, Unit } from '../../core'
 import { FLOOR_M, type Rect } from './demo-tower'
 import type { Tower } from './index'
@@ -471,7 +471,11 @@ export function projectTower(p: Project): Tower {
   if (!bs.length) bs.push([-4, -4, 4, 4])
   const [x0, y0, x1, y1] = [Math.min(...bs.map((b) => b[0])) - 2, Math.min(...bs.map((b) => b[1])) - 2, Math.max(...bs.map((b) => b[2])) + 2, Math.max(...bs.map((b) => b[3])) + 2]
   const plot: Pt[] = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
-  return { FLOOR_M, FLATS, FLOORS, CORE: [], GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}) }
+  // no traced rooftop: the top floor's own stair and lift rooms run up into a head room on the roof (building.ts), as the Demo
+  // tower's listed core does; a traced rooftop draws its own
+  const topF = FLOORS.find((f) => f.floor === top)
+  const CORE: Tower['CORE'] = roof ? [] : [...new Set([...(topF?.flats ?? []), ...(topF?.standIns ?? [])])].flatMap((s) => [...new Set(deriveRooms(FLATS[s].unit).filter(runsUp).map((r) => r.name))].map((n): [string, string] => [s, n]))
+  return { FLOOR_M, FLATS, FLOORS, CORE, GROUND: { plot, roads: [], gardens: [], ramp: [], bays: [], blocks: [], columns }, ROOF: { gardens: [], tanks: [] }, LEVELS, ...(ELEVATIONS ? { ELEVATIONS } : {}) }
 }
 
 /** The tower's floor heights by floor number (the rooftop = top + 1) from an imported building's storey elevations; undefined when the project has none. */

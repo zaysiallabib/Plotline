@@ -5,7 +5,9 @@
  * a slider a block SLIDER-n, a passage a block PASSAGE-n: its two jambs), WINDOWS (a block WIN-n: three glass lines and the
  * jambs), COLUMNS (closed polylines), TEXT
  * (room names, printed sizes under them; a name's raised floor as the text's elevation), PLOTLINE_ZONES (the flush lines
- * between zones: parking bays, lawn edges), PLOTLINE_KERBS (walls of 20 cm or less, outlined like walls). Every wall
+ * between zones: parking bays, lawn edges), PLOTLINE_KERBS (walls of 20 cm or less, outlined like walls),
+ * PLOTLINE_AXES_<thickness in tenths of a mm> (each wall's centre line, its height as the line's thickness: read to the
+ * letter while it still agrees with the outlines — a curved ramp's chords, a short wall at a T, a door at a corner). Every wall
  * outline carries its height as its thickness (group 39, the extrusion CAD keeps), so a file saved by a CAD program reads
  * back to the same walls, heights, zone lines, openings and named rooms (dxfWrite.test.ts, the 20 built-in drawings).
  *
@@ -67,6 +69,9 @@ const NOTE_H = 0.14
 
 export function writeDxf(unit: Unit): string {
   const sheet = sheetOf(unit)
+  const V = new Map(unit.vertices.map((v) => [v.id, v]))
+  const axes = unit.walls.filter((w) => w.heightM > 0 && V.has(w.a) && V.has(w.b)).map((w) => ({ w, layer: `PLOTLINE_AXES_${Math.round(w.thicknessM * 1e4)}` }))
+  const layers: [string, number][] = [...LAYERS, ...[...new Set(axes.map((x) => x.layer))].sort().map((l): [string, number] => [l, 8])]
   const out: (string | number)[] = []
   const g = (code: number, value: string | number) => out.push(code, typeof value === 'number' ? +value.toFixed(6) : value)
   const X = (p: Pt) => p.x
@@ -97,8 +102,8 @@ export function writeDxf(unit: Unit): string {
   g(0, 'TABLE'), g(2, 'LTYPE'), g(70, 1)
   g(0, 'LTYPE'), g(2, 'CONTINUOUS'), g(70, 0), g(3, 'Solid line'), g(72, 65), g(73, 0), g(40, 0)
   g(0, 'ENDTAB')
-  g(0, 'TABLE'), g(2, 'LAYER'), g(70, LAYERS.length)
-  for (const [name, colour] of LAYERS) g(0, 'LAYER'), g(2, name), g(70, 0), g(62, colour), g(6, 'CONTINUOUS')
+  g(0, 'TABLE'), g(2, 'LAYER'), g(70, layers.length)
+  for (const [name, colour] of layers) g(0, 'LAYER'), g(2, name), g(70, 0), g(62, colour), g(6, 'CONTINUOUS')
   g(0, 'ENDTAB')
   g(0, 'ENDSEC')
   // blocks: one per opening, drawn where it stands (base point 0,0, inserted at 0,0)
@@ -128,6 +133,8 @@ export function writeDxf(unit: Unit): string {
   sheet.walls.forEach((w, i) => poly(sheet.wallHeights[i] <= KERB_M ? 'PLOTLINE_KERBS' : 'WALLS', w, sheet.wallHeights[i]))
   for (const c of sheet.columns) poly('COLUMNS', c)
   for (const [a, c] of sheet.zones) line('PLOTLINE_ZONES', a, c)
+  // (each wall's centre line: a two-point polyline, its height as its thickness, group 39)
+  for (const { w, layer } of axes) open(layer, [V.get(w.a)!, V.get(w.b)!], w.heightM)
   for (const [name, layer] of inserts) g(0, 'INSERT'), g(8, layer), g(2, name), g(10, 0), g(20, 0), g(30, 0)
   for (const t of sheet.texts) text(t.at, t.text, t.size === 'name' ? NAME_H : NOTE_H, t.levelM)
   g(0, 'ENDSEC')
