@@ -1009,7 +1009,8 @@ so a colleague who opens the project gets it under the walls; buyers never get i
   sign in with that email; **Take back** cancels an unused invite), **Make owner / Make staff** (a company always keeps
   one owner), **Remove** (asks first; they reach nothing of the company's any more, what they saved stays; nobody removes
   themself).
-- **Links** — every buyer link made from what is open: which flat and floor, when, by whom, how often buyers opened it
+- **Links** — every buyer link made from what is open, by the Studio's Share link or by **Share** in the 3D view of one of
+  its floors (once it has saved to the cloud): which flat and floor, when, by whom, how often buyers opened it
   (your company's own opens not counted), how many notes and choices came back, whether it is off. **Copy link**;
   **Turn off** (asks first; the link stops for good, what buyers wrote stays in the Change list; to share again, make a
   new link).
