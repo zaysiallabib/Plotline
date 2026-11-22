@@ -53,6 +53,12 @@ const KEPT = new WeakSet<THREE.BufferGeometry>()
 const SHELLS = new WeakMap<Tower, Map<string, THREE.BufferGeometry>>()
 const LEVELS = new WeakMap<Tower, Map<string, [MaterialRef | THREE.Material | 'panes', THREE.BufferGeometry][]>>()
 const STREETS = new WeakMap<Tower, Map<string, { group: THREE.Group; y: number }>>()
+/**
+ * Each traced level's outdoor pieces as the page's first tower built them (furnishPieces): a later tower (a stair's floor)
+ * shows copies sharing their shapes. Built again for every floor a stair reached, their code-built trees and benches were
+ * new shapes each time, never freed — Sheltech A on High held ~350–600 more after every stair (session 31 open lane).
+ */
+const PIECES = new WeakMap<Tower, Map<string, THREE.Object3D[]>>()
 const keptIn = <T>(m: WeakMap<Tower, Map<string, T>>, t: Tower): Map<string, T> => m.get(t) ?? m.set(t, new Map()).get(t)!
 const keep = (o: THREE.Object3D) => o.traverse((x) => void ((x as THREE.Mesh).geometry && KEPT.add((x as THREE.Mesh).geometry)))
 /** round the flat the tower is batched this long after the last thing came in (batchAround) */
@@ -361,6 +367,9 @@ export class Building extends THREE.Group {
   private piecesShown = true
   private seen = false
   private readonly started = { rooms: false, pieces: false, things: false }
+  /** framed once (on screen, or round the flat under the start screen): what waits for it (furnishPieces) */
+  private onScreen: () => void = () => {}
+  private readonly framedOnce = new Promise<void>((ok) => (this.onScreen = ok))
   /** what the tier draws inside (furnishes): rooms everywhere; furniture on every storey (High), the nearest (Low), none (Lite) */
   private readonly tier: Quality
   /** the flats with rooms behind their windows (every one but the walked flat), each with its meshes once built */
@@ -636,6 +645,7 @@ export class Building extends THREE.Group {
   frame(mode: 'walk' | 'orbit' | 'building', tier: Quality): void {
     // the same view again, settled (Enter or a Rooms jump places him: PlotlineScene.setMode): nothing changes — its batches
     // stand. Unmade and made again they held the page 150–190 ms, 0.4 s after Enter (session 31 start lane)
+    this.onScreen() // (a later tower's copies of the grounds' pieces come now: furnishPieces)
     if (this.batched && this.framed === `${mode}|${tier}`) return
     this.framed = `${mode}|${tier}`
     const around = mode !== 'building'
@@ -922,6 +932,8 @@ export class Building extends THREE.Group {
     }
     need('rooms', true, () => this.furnishRooms())
     this.roomsWork ??= this.work
+    // the pieces' models downloaded meanwhile, not after the rooms: Sheltech's grounds waited ~0.3–1.9 s for theirs (session 31 open lane)
+    if (this.piecesShown && !this.started.pieces) this.preloadPieces()
     need('pieces', this.piecesShown, () => this.furnishPieces())
     if (!all) return
     need('things', this.seen && this.tier !== 'lite', () => this.furnishThings())
@@ -946,10 +958,16 @@ export class Building extends THREE.Group {
   private t0 = performance.now()
   /** ms of a frame the tower's filling in may take (pause): 8 while the 3D is drawn; more under the start screen, nothing drawn then (PlotlineScene) */
   budgetMs = 8
+  /**
+   * Nothing drawn yet (under the start screen, PlotlineScene): a share of the work done waits for the page's next task, not the
+   * next frame — there, while Firefox makes the flat's programs, a frame came every 0.1–0.3 s and the grounds' pieces waited
+   * 0.3–1.2 s for four or five of them (session 31 open lane).
+   */
+  unseen = false
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
     if (performance.now() - this.t0 > this.budgetMs) {
-      await new Promise<void>((ok) => requestAnimationFrame(() => ok()))
+      await new Promise<void>((ok) => (this.unseen ? setTimeout(ok, 0) : requestAnimationFrame(() => ok())))
       this.t0 = performance.now()
     }
     return this.disposed
@@ -971,36 +989,57 @@ export class Building extends THREE.Group {
   }
   private piecesDone = false
 
-  private async furnishPieces(): Promise<void> {
-    // every level's pieces' models on their way at once (each piece still goes in in order)
+  /** every level's pieces' models on their way at once (each piece still goes in in order, once the flat's furniture is in) */
+  private preloadPieces(): void {
     void preloadModels(
       this.furnishing.flatMap(({ s }) => {
         const rooms = this.roomsOf(s)
         return layoutFor(this.t.FLATS[s].unit, rooms).filter((p) => core.isOutdoor(rooms.find((r) => r.id === p.roomId)?.kind ?? 'shaft'))
       }),
     )
+  }
+
+  private async furnishPieces(): Promise<void> {
+    this.preloadPieces() // (asked for already: want)
     for (const f of this.furnishing) {
       const { s, group } = f
       this.addingPieces = true
       const pieces = (f.pieces = new THREE.Group())
       pieces.visible = this.piecesShown
       group.add(pieces)
-      const { unit: u } = this.t.FLATS[s]
-      const rooms = this.roomsOf(s)
-      const byId = new Map(rooms.map((r) => [r.id, r]))
-      const ps = layoutFor(u, rooms)
-      for (const p of ps) {
-        const r = byId.get(p.roomId)
-        if (p.removed || !r || !core.isOutdoor(r.kind)) continue
-        const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
-        if (this.disposed) return
-        obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
-        lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
-        pieces.add(obj)
-        this.casts(obj, true)
-        this.onChange()
-        if (await this.pause()) return
+      const made = keptIn(PIECES, this.t).get(s)
+      if (made) await this.framedOnce // as their building did, after a stair's floor shows: sent with it (warm), its trip took ~0.2 s longer
+      if (this.disposed) return
+      if (made)
+        for (const o of made) {
+          const c = o.clone() // (its shapes and materials shared; the first tower's were batched away: shown again)
+          c.traverse((x) => ((x.raycast = () => {}), x.layers.mask === 1 << HIDDEN && x.layers.set(0)))
+          pieces.add(c)
+          this.casts(c, true)
+          if (await this.pause()) return // (a stair's floor still coming in: its frames stay short)
+        }
+      else {
+        const { unit: u } = this.t.FLATS[s]
+        const rooms = this.roomsOf(s)
+        const byId = new Map(rooms.map((r) => [r.id, r]))
+        const ps = layoutFor(u, rooms)
+        const built: THREE.Object3D[] = []
+        for (const p of ps) {
+          const r = byId.get(p.roomId)
+          if (p.removed || !r || !core.isOutdoor(r.kind)) continue
+          const obj = await buildFurniture(p, roomCeiling(r, u, rooms), core.roomLevelAt(r, u, p.x, p.y), bottomOf(ps, p))
+          if (this.disposed) return
+          obj.traverse((o) => (o.raycast = () => {})) // not a flat: a click goes through
+          lightPiece(obj, [0, 0]) // its materials read the daylight atlas (the walk's pieces share them): here its neutral corner, lit as before
+          pieces.add(obj)
+          built.push(obj)
+          this.casts(obj, true)
+          this.onChange()
+          if (await this.pause()) return
+        }
+        keptIn(PIECES, this.t).set(s, built)
       }
+      this.onChange()
       // one mesh per material per 8 m square (batch.ts, as the flat's furniture; Sheltech's ground: ~220 meshes → ~55, the
       // leaf clusters stay their own), with the shadow flags they were built with; frame's rule on top (casts)
       pieces.traverse((o) => void (o.userData.casts !== undefined && (o.castShadow = o.userData.casts)))

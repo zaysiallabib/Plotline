@@ -33,11 +33,11 @@ import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyCeiling, storeyTop, STOREY_WALL_M, wallGeometry, wallLift, wellParts, type WallLift } from './details'
 import { bakeSteps, daylit, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
-import { buildFurniture, preloadModels } from './furniture'
+import { buildFurniture, preloadModels, warmStandins } from './furniture'
 import { bottomOf } from '../studio/furniture'
 import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
-import { Look, SITE_REACH_M, TIERS, forcedScale, lensFov, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
+import { Look, type LookKept, SITE_REACH_M, TIERS, forcedScale, lensFov, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
 import { SEASON_TINT, WindFlow } from './wind'
 import { neighbours, siteCut } from './context'
@@ -177,10 +177,11 @@ const BATCH_MS = 400
  * tower's, 0.3 s for a surface lit by the flat's 12 lamps), and the page waits only when one is first drawn (no
  * KHR_parallel_shader_compile to ask whether it is done). Under the load screen (prepare) every program is asked for every
  * PREP_MS as the flat comes in — made while the page is busy with its models and the tower — and the frame is drawn once
- * behind the screen when a round of asking found none new (SETTLE_MS).
+ * behind the screen once everything is in (each round asks only for what is new: askedAs).
  */
 const PREP_MS = 250
-const SETTLE_MS = 250
+/** the most of a frame under the load screen the pictures may take on their way to the graphics chip (sendPictures) */
+const SEND_MS = 12
 /**
  * One stand-in of each kind of lit surface a flat draws (materials.ts samePictures, daylight.ts daylit): a room's surface (the
  * plain ones share its program); on High and Low also a two-sided piece or leaf, the glass and the instanced leaves — their
@@ -205,6 +206,17 @@ function standIns(isLite: boolean): THREE.Group {
   leaves.setColorAt(0, new THREE.Color())
   return g.add(new THREE.Mesh(geo, two), new THREE.Mesh(geo, glass), leaves)
 }
+
+/**
+ * What a part's program is made from, as far as it can change while the flat comes in (PlotlineScene.prepare asks again only
+ * when it does): its shape (a plant's leaves given theirs, a simplified copy), its instance colours, its materials and their
+ * versions (a picture arrived, a setting changed).
+ */
+export const askedAs = (o: { geometry: { id: number }; material: { uuid: string; version: number } | { uuid: string; version: number }[]; instanceColor?: unknown }): string =>
+  `${o.geometry.id}|${o.instanceColor ? 1 : 0}|${[o.material].flat().map((m) => `${m.uuid}.${m.version}`).join()}`
+
+/** the longest the light map waits for the rest of the 3D under the load screen (loadEnvironment): a stuck download must not hold the sky */
+const ENV_WAIT_MS = 15_000
 
 /** The GPU gave up: its context lost, out of memory, or not back LOST_MS after a loss. */
 export type GpuFailure = 'lost' | 'memory' | 'gone'
@@ -270,6 +282,43 @@ export function evenBearings(t: THREE.DataTexture): void {
       }
     }
   }
+}
+
+/** what askPmrem reaches inside three's PMREMGenerator (engine.test checks a three upgrade still has them) */
+export interface PmremInside {
+  _setSize(cubeSize: number): void
+  _allocateTargets(): THREE.WebGLRenderTarget
+  _compileMaterial(m: THREE.Material): void
+  _ggxMaterial: THREE.ShaderMaterial | null
+}
+/**
+ * The light map's two programs (an equirect HDRI `width` wide into its cube, then the GGX filter) asked for, never drawn —
+ * as fromEquirectangular will draw them, into its half-float target. Drawn on a blank sky (session 31 ready lane), the page
+ * stood still 0.4 s while Firefox made the filter's program (session 31 open lane: every tier's start); asked for, it is made
+ * while the page builds the flat. A three without these parts: drawn on a blank sky, as before.
+ */
+export function askPmrem(renderer: THREE.WebGLRenderer, pmrem: THREE.PMREMGenerator, width: number): void {
+  const p = pmrem as unknown as PmremInside
+  if (typeof p._setSize !== 'function' || typeof p._allocateTargets !== 'function' || typeof p._compileMaterial !== 'function') {
+    const blankSky = new THREE.DataTexture(new Uint16Array(width * 4), width, 1, THREE.RGBAFormat, THREE.HalfFloatType) // (one row high: the same programs)
+    pmrem.fromEquirectangular(blankSky).dispose()
+    return blankSky.dispose()
+  }
+  p._setSize(width / 4) // (fromEquirectangular's size for an equirect this wide)
+  const target = p._allocateTargets()
+  const rt = renderer.getRenderTarget()
+  renderer.setRenderTarget(target) // a program knows the target it draws into: its colour space and tone mapping
+  // and the shape it draws: three's own asks on a shape with no position, another program than the one it draws (r186)
+  const shape = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3))
+  const cam = new THREE.OrthographicCamera()
+  const ask = (m: THREE.Material) => void renderer.compile(new THREE.Mesh(shape, m), cam)
+  p._compileMaterial = ask
+  pmrem.compileEquirectangularShader()
+  Reflect.deleteProperty(p, '_compileMaterial') // (three's own again)
+  if (p._ggxMaterial) ask(p._ggxMaterial)
+  renderer.setRenderTarget(rt)
+  target.dispose()
+  shape.dispose()
 }
 
 /** The interior HDRI's width (public/assets/hdri/interior.hdr: engine.test reads it from the file) and Lite's 1/k of it (shrinkHdr). */
@@ -363,6 +412,24 @@ export function clampSun(t: THREE.DataTexture): void {
 export const sameDrawing = (a: Unit, b: Unit): boolean =>
   a.vertices === b.vertices && a.walls === b.walls && a.pillars === b.pillars && a.roomLabels === b.roomLabels && a.northDeg === b.northDeg && a.site === b.site && !a.shell && !b.shell
 
+/**
+ * A flat built from `from` (its unit, its stairs down) and furnished with `layout` serves `unit` with `down` as it stands: the
+ * same drawing, the same stairs down, the same furniture — re-placed for another floor of it (arrive's again) or shown again
+ * when it was kept (back). Its slab above is checked apart (the rooms it covers, or the slab itself).
+ */
+export const servesFloor = (from: { unit: Unit; down: string }, layout: FurniturePlacement[], unit: Unit, down: string): boolean =>
+  sameDrawing(from.unit, unit) && from.down === down && JSON.stringify(unit.furniture) === JSON.stringify(layout)
+
+/**
+ * The flats a page holds after a stair from one drawing to another (session 31 open lane): the one on screen and the one it
+ * left (`left`; null: not whole, or another floor of the same drawing), the one kept before let go — unless that one was just
+ * shown again (`restored`: it is the one on screen now). Two at most, the older dropped.
+ */
+export function afterTrip<T>(kept: T | null, left: T | null, restored: boolean): { keep: T | null; free: T | null } {
+  if (!left) return { keep: restored ? null : kept, free: null }
+  return { keep: left, free: restored ? null : kept }
+}
+
 /** Each room under the slab above (by its middle) or not: all the daylight bake reads of `cover` (daylight.ts isCovered, openToSky). */
 export const roomsUnder = (rooms: Room[], cover: Pt[][]): string => rooms.map((r) => +cover.some((c) => core.pointInPolygon(r.centroid, c))).join('')
 
@@ -390,6 +457,32 @@ function bayNumber(text: string): THREE.MeshStandardMaterial {
   m = new THREE.MeshStandardMaterial({ color: '#e9e7e1', map, transparent: true, roughness: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })
   bayNumbers.set(text, m)
   return m
+}
+
+/** A flat of another drawing kept whole and hidden after a stair left it (PlotlineScene.kept, afterTrip): its parts and everything built with them. */
+interface KeptFlat {
+  from: { unit: Unit; cover: Pt[][]; down: string }
+  layout: FurniturePlacement[]
+  cfg: Configuration
+  /** its static, ceiling and furniture groups' children, each in a group of its own, in that order (arrive's `leaving`) */
+  parts: THREE.Group
+  shell: THREE.Group | null
+  unit: Unit
+  rooms: Room[]
+  stairs: FurniturePlacement[]
+  wells: (Well & { stair: FurniturePlacement })[]
+  lifts: Map<Id, WallLift>
+  solid: Pick<Unit, 'vertices' | 'walls'>
+  top: number
+  floors: THREE.Mesh[]
+  surfaces: Surface[]
+  wallFrames: Map<Id, { origin: Pt; dir: Pt; normal: Pt; lengthM: number }>
+  center: THREE.Vector3
+  radius: number
+  days: Map<string, Daylight>
+  dayKeep: Map<string, BakeKeep>
+  day: Daylight | null
+  look: LookKept
 }
 
 interface Surface {
@@ -572,8 +665,11 @@ export class PlotlineScene {
    * The drawing on screen's daylight, each floor's own (the neighbours shade a lower floor more), under its cover: a floor
    * visited again bakes nothing; per cover, what one bake leaves the next (BakeKeep). Both go when the drawing changes.
    */
-  private readonly days = new Map<string, Daylight>()
-  private readonly dayKeep = new Map<string, BakeKeep>()
+  private days = new Map<string, Daylight>()
+  private dayKeep = new Map<string, BakeKeep>()
+  /** the flat of another drawing shown before this one, kept whole and hidden (KeptFlat); the one a stair is leaving, if whole */
+  private kept: KeptFlat | null = null
+  private leavingFlat: Omit<KeptFlat, 'look'> | null = null
   /** the holes setUnit opened (down, where the hole lies inside its room's floor), with the stair as it stood then */
   private wells: (Well & { stair: FurniturePlacement })[] = []
   /** the neighbours round the flat (context.ts neighbours), outline + height: the daylight bake and the wind's shelter read them */
@@ -584,6 +680,7 @@ export class PlotlineScene {
     opts: { quality?: Quality } = {},
   ) {
     this.tier = opts.quality ?? 'high'
+    warmStandins() // (the light copies this browser keeps: their keys read before the first model is in)
     const isLite = (lite.on = this.tier === 'lite')
     lean.on = !TIERS[this.tier].extras
     for (const m of [...PANES, PAINT]) samePictures(m) // the glass, the water and the bay paint (made before the tier is known) drawn as every surface is
@@ -614,10 +711,7 @@ export class PlotlineScene {
     // the light map's own programs made now, while nothing else waits on the graphics chip: made when the HDRI came in, behind
     // the flat's, they held the page still for 2–3 s (the programs of a size are kept: loadEnvironment makes none)
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    const w = HDRI_WIDTH / (isLite ? LITE_HDR_K : 1)
-    const blankSky = new THREE.DataTexture(new Uint16Array(w * 4), w, 1, THREE.RGBAFormat, THREE.HalfFloatType) // (one row high: the same programs)
-    this.pmrem.fromEquirectangular(blankSky).dispose()
-    blankSky.dispose()
+    askPmrem(this.renderer, this.pmrem, HDRI_WIDTH / (isLite ? LITE_HDR_K : 1))
     void this.loadEnvironment()
     canvas.addEventListener('webglcontextrestored', this.onContextRestored)
     canvas.addEventListener('webglcontextlost', this.onContextLost)
@@ -671,7 +765,8 @@ export class PlotlineScene {
   /** setUnit's work in steps a stair's floor takes a frame apart (arrive): walls and rooms · the daylight bake · its maps and finishes · the slab, lights and street · the furniture. */
   private *build(unit: Unit, keepView: boolean): Generator<void> {
     this.wake()
-    if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days.clear(), this.dayKeep.clear())
+    if (!this.builtFrom || !sameDrawing(this.builtFrom.unit, unit)) (this.days = new Map()), (this.dayKeep = new Map()) // (a kept flat keeps the old)
+    this.asked = new WeakMap() // (its lamps: every program's)
     this.builtFrom = { unit, cover: this.cover, down: this.down.join() }
     unit = raiseHeads(unit) // a window on a 1.1 m wall: the wall reaches the storey, as the bake, the curtains and the ceiling see it
     unit = closeGaps(unit) // two wall ends in line with a gap: a cased opening on a stand-in wall (same rooms)
@@ -755,7 +850,9 @@ export class PlotlineScene {
       // a page's first floor: its tower's other flats' rooms and its grounds' pieces come once this flat's furniture is in —
       // built alongside (8 ms a frame for ~8 s on Sheltech) they held its models' loading back, and the load screen with it
       if (!this.holding) this.building.after(new Promise<void>((ok) => (flatIn = ok)))
-      if (this.veiled) this.building.budgetMs = 40 // nothing drawn under the start screen: its rooms and trees in larger steps
+      // nothing drawn under the start screen: its rooms and trees in larger steps — its frames are ~50 ms there while Firefox
+      // makes the flat's programs, and the grounds' pieces waited 9 of them (0.45 s on Sheltech A; session 31 open lane)
+      if (this.veiled) (this.building.budgetMs = 100), (this.building.unseen = true)
       this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
       this.building.visible = false
       this.scene.add(this.building)
@@ -804,10 +901,15 @@ export class PlotlineScene {
     // its tower): its walls, rooms, furniture and lamps stay as built and batched — only its daylight and the tower round it
     // are made (replace). Session 31: a typical floor's own build was ~1 s of a 1.8 s trip
     const from = this.builtFrom
-    const again = !!from && this.ready && !this.adding.size && !this.arranging && !this.hand && sameDrawing(from.unit, unit) && from.down === this.down.join() && this.coverPrint(from.cover) === this.coverPrint(this.cover) && JSON.stringify(unit.furniture) === JSON.stringify(this.layout)
+    const settled = this.ready && !this.adding.size && !this.arranging && !this.hand
+    const again = settled && !!from && servesFloor(from, this.layout, unit, this.down.join()) && this.coverPrint(from.cover) === this.coverPrint(this.cover)
+    const whole = settled && !this.holding // the flat on screen as built, no other floor coming in: a stair may keep it
+    // the last other drawing's flat, kept (rooftop → floor 6, Level 1 → floor 2): shown again as it was, under the same slab
+    const back = !again && whole && !!this.kept && servesFloor(this.kept.from, this.kept.layout, unit, this.down.join()) && JSON.stringify(this.kept.from.cover) === JSON.stringify(this.cover)
     if (!again) {
       const g = (this.leaving = new THREE.Group())
       for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) g.add(Object.assign(new THREE.Group().add(...x.children), { visible: x.visible }))
+      this.leavingFlat = whole && this.builtFrom ? this.flatNow(g) : null
       // the next floor is built into these: hidden from its first wall on (drop shows them) — drawn meanwhile in the old
       // floor's daylight, its walls flashed white over the floor he leaves (session 31 QA3)
       this.staticGroup.visible = this.ceilingGroup.visible = this.furnitureGroup.visible = false
@@ -824,7 +926,7 @@ export class PlotlineScene {
     const token = ++this.buildToken // (a unit given meanwhile wins: clearStatic counts on)
     await frame() // the page's own work for the new floor (its rooms, its HUD) in a frame of its own
     if (token !== this.buildToken) return
-    const steps = again ? this.replace(unit) : this.build(unit, false)
+    const steps = again ? this.replace(unit) : back ? this.restore(unit) : this.build(unit, false)
     steps.next()
     const built = this.buildToken
     // the rest ~30 ms a frame (the daylight bake pauses after each surface it lights)
@@ -833,11 +935,18 @@ export class PlotlineScene {
       const t = performance.now()
       while (!(done = !!steps.next().done) && performance.now() - t < 30);
     }
-    if (again) {
-      // (its finishes changed meanwhile — a floor kept in another colour: the groups unbatched for it batched again, on screen)
+    if (again || back) {
+      // (its finishes changed meanwhile — a floor kept in another colour: the groups unbatched for it batched again; a kept
+      // flat's hidden, so shown for it: batch.ts reads only what is visible)
       clearTimeout(this.batchTimer)
-      if (this.unsettled.has('static')) batch(this.staticGroup, Infinity)
-      if (this.unsettled.size) for (const x of [this.furnitureGroup, this.ceilingGroup]) batch(x, TIERS[this.tier].cell)
+      const batchSeen = (x: THREE.Group, cell: number) => {
+        const v = x.visible
+        x.visible = true
+        batch(x, cell)
+        x.visible = v
+      }
+      if (this.unsettled.has('static')) batchSeen(this.staticGroup, Infinity)
+      if (this.unsettled.size) for (const x of [this.furnitureGroup, this.ceilingGroup]) batchSeen(x, TIERS[this.tier].cell)
     } else {
       await this.furnished
       // and every picture and scan its rooms and pieces asked for: it shows whole (15 s at most, as takeStair's models)
@@ -855,12 +964,11 @@ export class PlotlineScene {
     this.unsettled.clear()
     await (this.building as Building | null)?.ready() // its other flats' rooms and its grounds' pieces in before it shows (warm sends them too)
     if (built !== this.buildToken) return
-    await this.warm(built, again ? [this.look.unitGroup] : [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup]) // (re-placed: the flat is drawn already)
+    await this.warm(built, again || back ? [this.look.unitGroup] : [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.look.unitGroup]) // (re-placed or kept: the flat was drawn before)
     if (built !== this.buildToken) return
     this.holding = false
-    this.drop()
+    this.drop(this.look.swap(!!this.leavingFlat), back) // the floor he leaves: kept whole if it was (another drawing), else freed
     setDaylight(this.day)
-    this.look.swap()
     if (this.windMonth) this.setWind(this.windMonth)
     this.stairAsked = 0 // its own stair can be taken again
     this.spawnAt(at, yaw)
@@ -969,22 +1077,77 @@ export class PlotlineScene {
   private onePixel: { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; cam: THREE.OrthographicCamera } | null = null
 
   /** The floor a stair left (arrive), if still on screen: gone, its geometry freed but for what the floor shown now shares (a piece's model). */
-  private drop(): void {
+  private drop(look: LookKept | null = null, restored = false): void {
     this.leavingTower?.dispose()
     this.leavingTower = null
     const g = this.leaving
+    const left = this.leavingFlat && look ? { ...this.leavingFlat, look } : null
+    this.leavingFlat = null
     if (!g) return
     this.leaving = null
     g.removeFromParent()
-    const kept = new Set<THREE.BufferGeometry>()
-    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup]) x.traverse((o) => void ((o as THREE.Mesh).geometry && kept.add((o as THREE.Mesh).geometry)))
-    g.traverse((o) => {
-      const geo = (o as THREE.Mesh).geometry
-      if (geo && !kept.has(geo)) geo.dispose()
-    })
+    // two flats at most: the one shown and the last other drawing's (afterTrip)
+    const { keep, free } = afterTrip(this.kept, left, restored)
+    this.kept = keep
+    if (free) this.free(free)
+    if (!left) this.freeParts(g)
     this.staticGroup.visible = this.furnitureGroup.visible = true
     this.ceilingGroup.visible = this.mode === 'walk'
     if (this.shell) this.shell.visible = true
+  }
+
+  /** The flat on screen as it is (its parts moved into `parts` by arrive): what a stair back to its drawing shows again (restore). */
+  private flatNow(parts: THREE.Group): Omit<KeptFlat, 'look'> {
+    return {
+      from: this.builtFrom!, layout: this.layout, cfg: this.cfg, parts, shell: this.shell, unit: this.unit!, rooms: this.rooms, stairs: this.stairs,
+      wells: this.wells, lifts: this.lifts, solid: this.solid, top: this.top, floors: [...this.floors], surfaces: [...this.surfaces],
+      wallFrames: new Map(this.wallFrames), center: this.center.clone(), radius: this.radius, days: this.days, dayKeep: this.dayKeep, day: this.day,
+    }
+  }
+
+  /**
+   * arrive's work for the kept flat's drawing (session 31 open lane: rooftop → floor 6, Level 1 → floor 2 built the flat in
+   * full, 1.4–1.95 s): its parts back, hidden, as they were built and batched, its lamps and slab (Look.restore); then as a
+   * stair between floors of one drawing (replace) — its daylight (kept per floor) and the tower round it.
+   */
+  private *restore(unit: Unit): Generator<void> {
+    this.wake()
+    const k = this.kept!
+    this.kept = null // (on screen soon: afterTrip)
+    const [s, c, f] = k.parts.children
+    this.staticGroup.add(...s.children)
+    this.ceilingGroup.add(...c.children)
+    this.furnitureGroup.add(...f.children)
+    this.shell = k.shell
+    if (k.shell) this.scene.add(Object.assign(k.shell, { visible: false })) // (shown with it: drop)
+    ;[this.unit, this.rooms, this.stairs, this.wells, this.lifts, this.solid, this.top, this.radius] = [k.unit, k.rooms, k.stairs, k.wells, k.lifts, k.solid, k.top, k.radius]
+    this.floors.splice(0, Infinity, ...k.floors)
+    this.surfaces.splice(0, Infinity, ...k.surfaces)
+    this.wallFrames.clear()
+    for (const [id, w] of k.wallFrames) this.wallFrames.set(id, w)
+    this.center.copy(k.center)
+    ;[this.days, this.dayKeep, this.day, this.builtFrom, this.layout] = [k.days, k.dayKeep, k.day, k.from, k.layout]
+    this.look.restore(k.look)
+    this.asked = new WeakMap()
+    if (!sameConfig(k.cfg, this.cfg)) (this.applyMaterials(), this.rebatch('static')) // (kept in other finishes than this floor's)
+    yield
+    yield* this.replace(unit)
+  }
+
+  /** A kept flat let go: its parts' geometry (but what a flat still held shares), its lamps, slab and street (Look.free). */
+  private free(k: KeptFlat): void {
+    this.freeParts(k.parts)
+    this.look.free(k.look)
+  }
+
+  /** `g`'s geometry freed, but for what the flat shown or the one kept shares with it (a piece's model, cloned per piece). */
+  private freeParts(g: THREE.Object3D): void {
+    const held = new Set<THREE.BufferGeometry>()
+    for (const x of [this.staticGroup, this.ceilingGroup, this.furnitureGroup, this.kept?.parts]) x?.traverse((o) => void ((o as THREE.Mesh).geometry && held.add((o as THREE.Mesh).geometry)))
+    g.traverse((o) => {
+      const geo = (o as THREE.Mesh).geometry
+      if (geo && !held.has(geo)) geo.dispose()
+    })
   }
 
   /** slotId (or a room / wall-face key, finishes.ts roomKey / wallKey) → optionId. Swaps materials only. */
@@ -1046,6 +1209,7 @@ export class PlotlineScene {
 
   setMode(mode: SceneMode): void {
     this.wake()
+    this.asked = new WeakMap() // (its lights and shadows: every program's)
     if (this.mode === 'walk' && mode !== 'walk') {
       this.yaw = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ').y
     }
@@ -1247,12 +1411,17 @@ export class PlotlineScene {
    * was first drawn — 12 of Sheltech's 18 s on High): nothing drawn; every PREP_MS the programs of everything built so far
    * are asked for (Look.compile, none waited on) — the whole scene, hidden floors and other views' parts too, so the first
    * switch to another view finds them made — and once the flat's furniture, its pictures and plant scans (materials.ts loading)
-   * and its grounds' trees and benches are in and no program has been new for SETTLE_MS,
-   * the frame is drawn once behind the screen (the shadow maps' and the corner shading's programs, the pictures and buffers
+   * and its grounds' trees and benches are in, the frame is drawn once behind the screen — at once, not at the next round — (the shadow maps' and the corner shading's programs, the pictures and buffers
    * sent): the first frame shown has nothing left to make.
    */
   private prepare(now: number): void {
-    if (now < this.prepAt || !this.ready) return // (before the flat is built its lamps are not there: every program would be made again)
+    if (!this.ready) return // (before the flat is built its lamps are not there: every program would be made again)
+    this.sendPictures()
+    const built = !!this.loadedAt && (this.building?.piecesIn ?? true)
+    if (built) this.envGo() // (the light map once all but the last pictures are in: loadEnvironment)
+    const allIn = this.envIn && built && !loading.size
+    // everything in and not drawn since a program was new: drawn now, not at the next round (up to PREP_MS later)
+    if (now < this.prepAt && !(allIn && this.rehearsedAt <= this.grewAt)) return
     this.prepAt = now + PREP_MS
     // the batches made as soon as what they batch is in, not BATCH_MS / AROUND_MS on (nothing moves under the screen): the
     // flat's once its furniture is, the tower's once its rooms and pieces are — drawn behind the screen, their buffers go to
@@ -1261,16 +1430,46 @@ export class PlotlineScene {
     const b = this.building
     if (b?.piecesIn && b.progress.rooms) b.settleNow()
     const n = this.renderer.info.programs?.length ?? 0
-    // what has a shape (a plant's leaves before their file is read have none: a program of their own, never drawn)
+    // what has a shape (a plant's leaves before their file is read have none: a program of their own, never drawn), and only
+    // what is new or changed since the last round (askedAs): asking three again for every part of the flat and the tower each
+    // round held the page ~0.1 s a round (session 31 open lane)
     const parts: THREE.Object3D[] = []
-    this.scene.traverse((o) => void ((o as THREE.Mesh).geometry?.attributes.position?.count && parts.push(o)))
-    this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
+    this.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.geometry?.attributes.position?.count || !mesh.material) return
+      const as = askedAs(mesh)
+      if (this.asked.get(o) === as) return
+      this.asked.set(o, as)
+      parts.push(o)
+      for (const m of [mesh.material].flat()) for (const v of Object.values(m)) if (v instanceof THREE.Texture) this.unsent.add(v)
+    })
+    if (parts.length) this.look.compile({ traverse: (f: (o: THREE.Object3D) => void) => parts.forEach(f), traverseVisible: () => {} } as unknown as THREE.Object3D)
     if ((this.renderer.info.programs?.length ?? 0) !== n) this.grewAt = now
-    if (!this.envIn || !this.loadedAt || loading.size || !(this.building?.piecesIn ?? true) || now - this.grewAt < SETTLE_MS || this.rehearsedAt > this.grewAt) return
+    if (!allIn || this.rehearsedAt > this.grewAt) return
+    this.sendPictures(Infinity) // (the last few, just in)
     this.building?.settleNow() // (its rooms still coming: what is in, batched for this frame)
     this.renderer.info.reset()
-    this.look.render()
+    this.look.render(true)
     this.rehearsedAt = performance.now()
+  }
+
+  /** what prepare asked three for, each part as it was then (askedAs); all asked again after a view or a flat changed the lights */
+  private asked = new WeakMap<THREE.Object3D, string>()
+  /** the pictures of what prepare asked for, not yet on the graphics chip (sendPictures) */
+  private readonly unsent = new Set<THREE.Texture>()
+  /**
+   * Under the load screen, SEND_MS a frame: the pictures of what prepare asked for to the graphics chip as they come in (one
+   * still loading waits for its next frame). Sent with the frame behind the screen they were its 0.4–0.75 s on High (Sheltech
+   * A: 186 pictures; session 31 open lane), after everything else.
+   */
+  private sendPictures(ms = SEND_MS): void {
+    const t0 = performance.now()
+    for (const t of this.unsent) {
+      if (performance.now() - t0 > ms) return
+      if (!t.version) continue // (its picture not in yet; a drawn target's never: three draws it, it is not sent)
+      this.unsent.delete(t)
+      this.renderer.initTexture(t)
+    }
   }
 
   /** The load screen may go (ViewerApp): the flat's furniture in, the frame drawn behind it with every program made (prepare). */
@@ -1281,7 +1480,8 @@ export class PlotlineScene {
   /** The load screen went: drawn from now on. */
   unveil(): void {
     this.veiled = false
-    if (this.building) this.building.budgetMs = 8
+    this.envGo() // (Enter pressed before it was drawn: the 20 s cap of a stuck download)
+    if (this.building) (this.building.budgetMs = 8), (this.building.unseen = false)
     this.wake()
   }
 
@@ -1802,6 +2002,8 @@ export class PlotlineScene {
     this.showOpening(null)
     this.wind?.dispose()
     this.drop()
+    if (this.kept) this.free(this.kept)
+    this.kept = null
     this.clearStatic()
     this.selFoot.geometry.dispose()
     ;(this.selFoot.material as THREE.Material).dispose()
@@ -2165,6 +2367,9 @@ export class PlotlineScene {
     }
     this.loadedAt ||= performance.now()
   }
+  /** the light map may be drawn (loadEnvironment): everything else under the load screen in (prepare), or the screen gone */
+  private envGo: () => void = () => {}
+  private readonly envMay = new Promise<void>((ok) => (this.envGo = ok))
 
   private mountPiece(obj: THREE.Object3D, p: FurniturePlacement): void {
     this.wake()
@@ -2188,16 +2393,22 @@ export class PlotlineScene {
     const isLite = this.tier === 'lite'
     const [hdr, sky] = await Promise.all([load(HDRI.interior), isLite ? null : load(HDRI.sky)])
     if (this.disposed) return // a disposed renderer must not touch the shared GL context again
+    if (hdr && isLite) shrinkHdr(hdr, LITE_HDR_K)
+    if (hdr) evenBearings(hdr)
+    if (sky) clampSun(sky)
+    // the light map drawn once everything else under the load screen is in (prepare): a draw waits for every program asked
+    // before it, and Firefox is making the flat's and the tower's meanwhile (2–3 s on High) — drawn as the HDRI came in, the
+    // page stood still 0.3 s on Lite, 1.1–1.5 s on High, instead of reading the models and building the tower's rooms
+    // (session 31 open lane)
+    await Promise.race([this.envMay, new Promise((ok) => setTimeout(ok, ENV_WAIT_MS))])
+    if (this.disposed) return
     const standIn = this.scene.environment
     const pmrem = this.pmrem ?? new THREE.PMREMGenerator(this.renderer)
     this.pmrem = null
-    if (hdr && isLite) shrinkHdr(hdr, LITE_HDR_K)
-    if (hdr) evenBearings(hdr)
     this.scene.environment = hdr ? pmrem.fromEquirectangular(hdr).texture : pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     hdr?.dispose()
     if (standIn !== this.scene.environment) standIn?.dispose()
     if (sky) {
-      clampSun(sky)
       const env = pmrem.fromEquirectangular(sky).texture
       for (const m of PANES) m.envMap = env // panes reflect the sky; no sky: they keep scene.environment
       Object.assign(this.look.paneEnvs, { sky: env, room: this.scene.environment ?? undefined })

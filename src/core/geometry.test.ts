@@ -8,6 +8,7 @@ import {
   printedSizeCheck,
   roomAt,
   roomInnerPolygon,
+  roomPolygon,
   signedArea,
   triangulate,
   unitBounds,
@@ -31,6 +32,25 @@ const lShape = [P(0, 0), P(6, 0), P(6, 3), P(3, 3), P(3, 6), P(0, 6)]
 const chamfered = [P(0, 0), P(5, 0), P(5, 3), P(4, 4), P(0, 4)]
 const concave = [P(0, 0), P(6, 0), P(6, 4), P(4, 4), P(4, 1), P(2, 1), P(2, 4), P(0, 4)]
 const collinear = [P(0, 0), P(2, 0), P(4, 0), P(4, 3), P(4, 3), P(0, 3)]
+
+describe('roomPolygon reads the vertex list as it is now (its places kept per list: vertexIn)', () => {
+  test('a list changed in place after a first read: a vertex moved, replaced, added before the others, a new id in its place', () => {
+    const vertices = [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 4, y: 0 }, { id: 'c', x: 4, y: 3 }]
+    const g = { vertices }
+    expect(roomPolygon({ loop: ['a', 'b', 'c'] }, g)).toEqual([P(0, 0), P(4, 0), P(4, 3)])
+    vertices[1].x = 5
+    expect(roomPolygon({ loop: ['b'] }, g)).toEqual([P(5, 0)])
+    vertices[2] = { id: 'c', x: 9, y: 9 }
+    expect(roomPolygon({ loop: ['c'] }, g)).toEqual([P(9, 9)])
+    vertices.unshift({ id: 'z', x: 1, y: 1 })
+    expect(roomPolygon({ loop: ['z', 'a', 'c'] }, g)).toEqual([P(1, 1), P(0, 0), P(9, 9)])
+    vertices[0] = { id: 'y', x: 2, y: 2 }
+    expect(roomPolygon({ loop: ['y'] }, g)).toEqual([P(2, 2)])
+    expect(() => roomPolygon({ loop: ['z'] }, g)).toThrow()
+    expect(roomPolygon({ loop: ['a', 'j'], joinPts: { j: P(7, 7) } }, g)).toEqual([P(0, 0), P(7, 7)]) // a join point: no vertex
+    expect(roomPolygon({ loop: ['a'] }, { vertices: [{ id: 'a', x: 3, y: 3 }] })).toEqual([P(3, 3)]) // another list: its own
+  })
+})
 
 describe('triangulate', () => {
   test.each([

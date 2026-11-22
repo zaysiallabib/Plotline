@@ -588,3 +588,130 @@ nothing measurable.
 - Sheltech A on High still has one 156–231 ms frame right after Enter (the session branch has a 136–166 ms one at the same
   moment besides the 0.43 s one that is gone); Type A has none over 100 ms.
 - 29 programs, not 15 (above).
+
+## 10. The last of the start screen, Lite's first visit, a stair back to another drawing (session 31, open lane)
+
+Asked: Sheltech A on High ready for Enter in 5.0 s or less on a first visit and no frame over 100 ms in the 5 s after Enter
+on either flat; Lite in 3.0 s or less on a first visit, 2.5 s on a second; a stair from another drawing (rooftop → floor 6,
+Level 1 → floor 2) in 1.2 s or less on High; nothing slower anywhere, the same picture.
+
+**What the page was waiting on**, timed in the page and read from Firefox's own profiler (a startup profile of one visit,
+thread by thread: the page's, and the one where Firefox runs the page's WebGL):
+
+- **0.4 s standing still at the start, on every tier:** the light map's programs were made by drawing a blank sky (§7), and
+  a draw waits for its programs — the GGX filter's took 0.4 s, with the page stopped.
+- **When the HDRI came in, 0.3 s on Lite and 1.1–1.5 s on High standing still:** its light map's draw waited for every
+  program asked for before it (the flat's, still being made); the flat's models were not read meanwhile.
+- **0.25–0.35 s of the flat's build** was "which room is this point in": each room's outline read its corners through a
+  new map of all the drawing's corners, thousands of times (the daylight bake, the walls' two sides).
+- **Every quarter second under the screen** three was asked again for the program of every part of the flat and tower.
+- **The frame behind the screen sent every picture** (127 on Type A, 186 on Sheltech A: 0.3–0.75 s), after all the rest.
+- **Lite downloaded and decoded every model's relief, roughness and shading pictures** and threw them away (it draws a
+  model's colour only), and simplified ~80 models on the page's own thread (0.25–0.3 s).
+- **On High, Firefox's WebGL thread makes programs for ~2.9 s without a break**, from about 1 s after the page starts
+  (the flat's 12 lamps in every lit program at ~0.3 s each, the tower's, the light map's filter): the floor for High.
+- **The 100–250 ms frame as Enter is pressed on Sheltech A** was the sun's wide shadow (the grounds' trees and benches,
+  §8) drawn for the first time: it is drawn on a frame at rest, so the frame behind the screen — everything new — left it
+  out, and the first frame after Enter sent the buffers of the ~280 parts that cast only into it.
+- **A stair back to another drawing built the flat in full** (walls, rooms, furniture, their grouping, daylight).
+- **Every stair left ~350–600 shapes behind on High:** each floor's tower built the grounds' code-built trees and benches
+  again and never freed them (the geometry count after 11 stairs on Sheltech: 4 483).
+
+**What changed:**
+
+1. The light map's programs are asked for and never drawn (on a shape with a position, as three draws them: three's own
+   asks on one without, and gets another program); the HDRI is drawn into it last, once the flat, the tower and its
+   grounds are in.
+2. A room's outline reads its corners from a list kept per drawing (looked up afresh when the list changed).
+3. Under the screen each round asks three only for what is new or changed; the pictures go to the graphics chip 12 ms a
+   frame as they come in; the tower's rooms and trees work in larger steps and wait for the page's next task, not the next
+   frame (frames come every 0.1–0.3 s there while Firefox makes programs); the frame behind the screen is drawn as soon as
+   everything is in, and draws the wide shadow too. The grounds' pieces' models download with the flat's.
+4. Lite: a model's colour and glow pictures only are downloaded; the furniture is simplified in a worker; which light
+   copies this browser keeps is read once at the start (a model it keeps nothing for is not asked about).
+5. The street round the tower — blocks, roads and the ground — is one program (three of the tower's six on High, two on
+   Lite): hazed, cut by its box, pooled by its road lamps at night; what a surface lacks is neutral.
+6. **A stair keeps the flat it leaves** when that is another drawing: hidden, out of the scene, whole. A stair back to it
+   (the same stairs down, furniture and slab above) shows it again as a stair between floors of one drawing does — only
+   its daylight (kept per floor) and the tower round it are made. Two flats at most: the one on screen and the last other
+   drawing's; the older is freed.
+7. The grounds' pieces are built once a page; a later tower shows copies sharing their shapes, once its floor shows.
+
+**The waits** — opening the address until Enter can be pressed (Walk) or the Building view shows; the built site
+(`vite preview`), this PC with the founder's own Firefox and other lanes' runs on the same card and processor, so single
+visits moved by ±0.5 s; the session branch before this lane (c32a7a6) and this lane turn about, 4 visits before and 3–6
+after per row; median (lowest–highest):
+
+| flat | tier | view | cold: before → after (s) | warm: before → after (s) | longest frame in the 5 s after Enter (ms) |
+|---|---|---|---|---|---|
+| Sheltech A | High | Walk | 5.7 (5.6–6.0) → **5.8 (5.3–6.5)** | 5.1 (4.8–5.6) → **5.2 (4.8–5.5)** | 252 → **80** |
+| Type A | High | Walk | 5.1 (4.9–5.4) → **5.1 (4.3–5.3)** | 4.4 (4.1–4.6) → **4.4 (4.0–4.9)** | 79 → 95 |
+| Sheltech A | Lite | Walk | 3.8 (3.7–4.1) → **2.8 (2.6–2.9)** | 3.2 (3.0–3.3) → **2.1 (2.1–2.2)** | 61 → 57 |
+| Type A | Lite | Walk | 3.8 (3.6–3.9) → **2.7 (2.6–2.8)** | 2.8 (2.8–3.1) → **2.0 (1.9–2.0)** | 99 → 57 |
+| Sheltech A | High | Building | 6.1 (5.7–6.5) → **5.7 (5.3–5.7)** | 5.4 (5.1–5.6) → **4.9 (4.2–5.3)** | |
+| Type A | High | Building | 5.2 (4.5–6.2) → **4.4 (4.3–4.8)** | 4.2 (3.9–4.5) → **4.0 (3.6–4.3)** | |
+| Sheltech A | Lite | Building | 4.8 (4.5–5.0) → **3.6 (3.3–3.7)** | 3.5 (3.3–3.6) → **2.7 (2.5–2.7)** | |
+| Type A | Lite | Building | 3.7 (3.5–3.8) → **2.7 (2.6–2.8)** | 2.9 (2.8–4.3) → **1.9 (1.8–2.0)** | |
+
+(This PC was busier than in §9: the session branch's Sheltech A Walk on High measured 5.3 s cold there, 5.6–6.0 here.)
+Inside the page, the page's own work under the screen fell by about a second on High (the flat built 0.75–1.0 → 0.5–0.7 s,
+the light map's 1.1–1.5 s wait gone, the last frame 0.8–1.0 → 0.25–0.4 s), but on High the screen still waits for
+Firefox's WebGL thread to finish making the programs (~2.9 s from ~1 s in, measured in the profiler before and after):
+the Walk view on High is no sooner on this PC; the Building view is (0.4–0.8 s).
+
+**Programs** (Walk; the Building view the same): High 29 → 27 on both flats (the street's three are one); Low 23 → 21 (Type
+A), 23/24 → 21/22 (Sheltech A); Lite 18 → 17 (Type A), 19 → 18 (Sheltech A), 21 → 20 in Sheltech A's Building view.
+
+**A stair** (High, dev server, the Sheltech route, click to the new floor's name; before and after in one session):
+
+| trip | before (s) | after (s) |
+|---|---|---|
+| Floor 2 → Level 1 (first visit) | 1.65 | 1.51 |
+| Level 1 → Floor 2 (back: its flat kept) | 1.75 | **0.61** |
+| Floor 2 → 3 → 4 → 5 → 6 (one drawing) | 1.14, 0.97, 1.04, 1.05 | 0.78, 0.94, 1.00, 0.81 |
+| Floor 6 → Rooftop (first visit) | 1.06 | 0.74 |
+| Rooftop → Floor 6 (back) | 1.98, 1.71 | **0.73, 0.67** |
+| Floor 6 → Rooftop again (back) | 1.00 | **0.42** |
+| Floor 6 → Floor 5 | 1.27 | 0.61 |
+
+The route the earlier lanes timed (from the ground floor down to Basement 2, up to the roof and back to floor 6), before →
+after in one session: Basement 1 1.39 → 1.03, Basement 2 0.83 → 0.53, back up to Basement 1 0.66 → **0.22** (kept),
+Ground floor 2.47 → 1.08, Level 1 1.46 → 1.47, Floor 2 (its first furnished visit) 2.34 → 1.77, Floors 3–6 0.92–1.01 →
+0.82–0.88, Rooftop 1.03 → 0.75, back to Floor 6 1.67 → **0.51** s; geometries at the end 4 433 → 1 144.
+
+Earlier runs the same day: the way back 0.83–0.88 s (Level 1 → Floor 2), 0.68–0.95 s (Rooftop → Floor 6), 0.44–0.51 s
+(Floor 6 → Rooftop again). Lite: 0.39 s, 0.44–0.47 s, 0.21 s; Low: 0.45 s, 0.36–0.43 s, 0.43 s. The same picture: floors 6
+and 2 reached back against the same floors opened by their address, four directions at 15:30 — mean 0.12–0.6 of 255, at
+most 0.94 % of pixels off by more than 8 (as two runs of one build). Shots `E:/dev/plotline-shots/s31/open/same-high-*.png`.
+
+**Memory** (three's own count, `renderer.info.memory`, after the 11 stairs above): before 4 483 geometries and 201 pictures
+on the graphics chip, after **1 107 and 210** — the kept flat holds ~340 geometries and ~10 pictures more than a freed one,
+and the grounds' pieces no longer pile up with every stair.
+
+**Nothing slower once it shows** — the 3D's own draw (synced), median of 3 turns, 1440 × 900, two rounds turn about (ms):
+
+| flat | tier | Walk 15:30 | Walk 21:00 | Dollhouse | Building |
+|---|---|---|---|---|---|
+| Type A | Lite | 5.9, 6.0 → 6.6, 4.6 | 6.0, 6.4 → 6.9, 6.2 | 5.9, 5.8 → 5.5, 6.2 | 6.6, 7.7 → 6.2, 7.0 |
+| Type A | Low | 8.2, 10.1 → 7.6, 8.5 | 8.2, 7.6 → 7.8, 8.0 | 8.1, 7.9 → 8.9, 8.1 | 10.2, 8.1 → 9.0, 8.2 |
+| Type A | High | 14.6, 14.1 → 14.6, 13.9 | 16.2, 13.9 → 14.5, 14.5 | 13.9, 15.0 → 13.7, 13.3 | 15.0, 17.5 → 15.8, 15.6 |
+| Sheltech A | Lite | 5.8, 6.4 → 6.7, 6.1 | 6.1, 7.5 → 4.7, 5.7 | 6.0, 6.2 → 5.9, 5.4 | 12.2, 13.0 → 9.3, 9.8 |
+| Sheltech A | Low | 8.6, 8.7 → 8.3, 8.5 | 8.1, 11.6 → 8.8, 8.2 | 11.6, 14.2 → 10.2, 11.8 | 15.0, 17.5 → 12.9, 14.4 |
+| Sheltech A | High | 14.8, 15.5 → 15.6, 14.0 | 15.2, 15.9 → 14.5, 14.4 | 18.9, 19.1 → 17.4, 17.7 | 21.9, 21.6 → 19.1, 20.8 |
+
+The same draw calls (Sheltech A's Walk on High 128 → 124: the old race of the grounds' benches). **The same picture:** the
+start lane's views and close-ups (Walk by day and at night on both flats, the clock, fan, curtain, lamp, a plant and a door,
+the Building view, Lite) differ from before by a mean of 0.02–0.56 of 255, at most 0.5 % of pixels by more than 8 (run
+noise); Lite's walk identical; the street at night (Sheltech A's Building view at 21:00 on High: 0.09 / 0.01 %; on Lite, and
+Type A's walk on Lite: identical). Shots `E:/dev/plotline-shots/s31/open/look-*.png`.
+
+**Left, honestly:**
+- Sheltech A on High, Walk: not 5.0 s on this busy PC (5.8 s median, the session branch 5.7 s beside it). The page now waits
+  only for Firefox's WebGL thread making the programs one after another (~2.9 s, from ~1 s in); fewer would need fewer
+  lamps in the lit programs (the founder's 12) or the light map shipped ready-made (its filter's program is 0.4 s of it).
+  The Enter frame is gone: no frame over 100 ms in the 5 s after Enter, either flat, any run.
+- Lite: 2.6–2.9 s first visit, 1.9–2.2 s second (asked 3.0 / 2.5), Walk and Type A's Building view; Sheltech A's Building
+  view on Lite 3.3–3.7 s (it waits for the grounds' trees, which Lite's walk does not show).
+- The first visit to another drawing (Level 1, the rooftop, a floor's first furnished visit) still builds its flat; only
+  the way back is instant. The models are not downloaded nearest first: Enter waits for every model of the flat, so their
+  order cannot shorten the wait.
