@@ -51,7 +51,7 @@ import PrintBox from './PrintBox'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, keepApartments, keepReview, newProject, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -727,6 +727,14 @@ export default function StudioApp() {
     const ps = readProjects()
     setProjects(ps)
     const live = stateRef.current.unit.id
+    // Close: the drawing stays on screen as the project's copy — under the drawing's own id (Auto-trace gave the one on
+    // screen a new one), so what is done to it next still goes into that project and Start over knows it is kept there
+    const d = projRef.current?.drawing
+    if (!id && d && d !== live) {
+      const st = stateRef.current
+      dispatch({ type: 'load-unit', unit: { ...st.unit, id: d } })
+      dispatch({ type: 'keep-review', review: st.review?.unitId === live ? st.review : null })
+    }
     setActive(id ? { id, ...(ps.find((p) => p.id === id)?.units[live] ? { drawing: live } : {}) } : null)
     if (id) setListOpen(true)
   }
@@ -2306,8 +2314,11 @@ export default function StudioApp() {
   }
 
   const startOver = async () => {
-    // a project drawing is kept in its project (only the screen empties); a draft of no project goes for good: asked first
-    if (!projRef.current?.drawing && !(await ask('Start over? The drawing, its picture and its furniture go. Undo cannot bring them back.', 'Start over', true))) return
+    // a project drawing is kept in its project (only the screen empties) — also one still on screen after its project's
+    // Close (newcomer lane s31: it asked as if all would go): said once; a draft of no project goes for good: asked first
+    const keeper = !projRef.current?.drawing && projectWith(readProjects(), stateRef.current.unit.id)
+    if (!projRef.current?.drawing && !keeper && !(await ask('Start over? The drawing, its picture and its furniture go. Undo cannot bring them back.', 'Start over', true))) return
+    if (keeper) toast(`An empty Studio — the project ${keeper.name} keeps its copy of ${stateRef.current.unit.name.trim() || 'this drawing'}`)
     const a = projRef.current
     if (a?.drawing) setActive({ id: a.id }) // the project drawing keeps what it had; the empty Studio is not it
     localStorage.removeItem(DRAFT_KEY)
@@ -2545,7 +2556,7 @@ export default function StudioApp() {
                   </button>
                   {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
                 </div>
-                {!project && !unit.vertices.length && !missingPlan && (
+                {!project && !listOpen && !unit.vertices.length && !missingPlan && (
                   <>
                     <span className="or">or</span>
                     <NewProject onCreate={createProject} />

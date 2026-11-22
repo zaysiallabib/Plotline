@@ -713,7 +713,8 @@ and only the screen empties.
 | Account | **Sign in** / your email | Your account, your company's projects, members and buyer links ("Accounts" below). Only with the online database |
 
 **Loading the plan picture.** With nothing drawn, the middle says **Start with a plan**: a dashed box (drop the picture
-on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6). Pictures:
+on it, or anywhere on the page, or click **Choose plan image…**) and, beside it, the **New project** card (§6; while the Building list is open on the right the card is there
+instead, once). Pictures:
 PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says
 how to get a JPEG. The brochure PDF and the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them —
 can be dropped there too.
@@ -1177,9 +1178,10 @@ little; it is on no floor until you give it some.
 
 **Under the list:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
 asks first). **The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open
-it again with **Building** → **Or open a project**, a list of your projects by name). After Close the drawing you were on
-stays on the screen outside the project: **Start over** then asks as for any drawing ("The drawing, its picture and its
-furniture go"), but the project keeps its own copy — answer **Start over** to begin the next thing on an empty Studio.
+it again with **Building** → **Or open a project**, a list of your projects by name; a reload keeps it closed). After
+Close the drawing you were on stays on the screen and is still the project's copy: what you change on it goes into the
+project. **Start over** then empties the Studio without asking and says so ("An empty Studio — the project BTI Demo
+Tower keeps its copy of Floor plan A").
 **Show building** opens the stacked building in a new tab (start screen, then the tower); a floor with no drawing yet is
 filled with the one below it.
 
@@ -1407,10 +1409,7 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
   Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
-- A project closed with **Close** is open again the next time the Studio opens on that drawing (a reload brings back its
-  floor list).
 - The Steps list leaves **2 Set scale** unticked on an architect's file, which is in real sizes from the start.
-- With nothing drawn and the floor list open, the New project card shows twice (in the middle and in the list).
 
 **Projects and the 3D**
 - Outside a project only one Studio drawing exists: opening another plan from the 3D view (Edit plan, Edit openings)
