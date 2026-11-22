@@ -125,6 +125,18 @@ describe('deriveFlats', () => {
     expect(core.deriveFlats(u, [...rooms].reverse()).map((f) => f.name)).toEqual(['Type A', 'Flat 1'])
   })
 
+  test('a "Type B ±674 sft" label put in a room of a flat Whole floor pinned as "Flat 2" names that flat (R on one of its rooms, manual walk s31)', () => {
+    const u = floor([null, null, 'door', 'door', null, null], [{ flat: 'Flat 1' }, { flat: 'Flat 1' }, { flat: 'Flat 1' }, { flat: '' }, { flat: 'Flat 2' }, { flat: 'Flat 2' }, { flat: 'Flat 2' }])
+    u.roomLabels.push({ id: 'tb', name: 'Type B ±674 sft', kind: 'other', x: 21, y: 1 })
+    expect(core.deriveFlats(u, core.deriveRooms(u)).map((f) => [f.name, f.roomIds, f.printedSqft])).toEqual([
+      ['Flat 1', ['r0', 'r1', 'r2'], undefined],
+      ['Type B', ['r4', 'r5', 'r6'], 674],
+    ])
+    // a room moved by hand to the flat by its new name joins it
+    u.roomLabels[3].flat = 'Type B'
+    expect(flatsOf(u)[1]).toEqual(['Type B', ['r3', 'r4', 'r5', 'r6']])
+  })
+
   test('Level 4: a room added later beside a pinned flat (no pin of its own) joins it by its door; one whose doors lead into two pinned flats stays loose', () => {
     // r0 (the bath) unpinned, its door into pinned r1: joins Type A; the lobby (r3) is core, not loose
     const u = floor(undefined, [{ kind: 'balcony' }, { flat: 'Type A' }, { flat: 'Type A' }, {}, { flat: 'Type B' }, { flat: 'Type B' }, { flat: 'Type B' }])

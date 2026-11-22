@@ -1498,6 +1498,13 @@ describe('auto-trace import and its review list', () => {
     expect(openReview(redone)).toHaveLength(3)
   })
 
+  it('keeps what the sheet cannot say: the floor a project gave the drawing, true north, the site (manual walk s31)', () => {
+    const site = { lat: 23.79, lon: 90.4, buildings: [], roads: [] }
+    const before = run(traceRect(), { type: 'set-plan-image', image: plan }, { type: 'set-meta', patch: { floor: 2, northDeg: 40, site } })
+    const after = studioReducer(before, { type: 'auto-trace', result: mockTraceResult() })
+    expect(after.unit).toMatchObject({ floor: 2, northDeg: 40, site })
+  })
+
   it('stays editable like a hand trace: a corner moves, a label renames, both undo', () => {
     const { after } = traced()
     const v = after.unit.vertices[0]
