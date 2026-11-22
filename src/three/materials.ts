@@ -70,6 +70,8 @@ function blank(r: number, g: number, b: number): THREE.DataTexture {
 /** samePictures' blanks: white multiplies a colour, roughness, metal or shading by 1; the flat relief is the surface's own normal */
 const BLANK = { white: blank(1, 1, 1), flat: blank(0.5, 0.5, 1) }
 export const isBlank = (t: unknown): boolean => t === BLANK.white || t === BLANK.flat
+/** the white blank (× 1): the street's roads and ground in its program's picture slots (context.ts streetMaterial) */
+export const WHITE_PICTURE = BLANK.white
 export const PICTURES = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap'] as const
 /** Past the five, on High and Low (samePictures): the glow picture of every lit surface, a cut-out's mask, a physical scan's shine. */
 export const MORE_PICTURES = ['emissiveMap', 'alphaMap', 'specularIntensityMap'] as const

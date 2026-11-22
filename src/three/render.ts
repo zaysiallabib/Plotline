@@ -24,7 +24,7 @@ import { kitAsset, lightOf, placementSize } from '../furnish/kit'
 import { bottomOf } from '../studio/furniture'
 import { setLeafGlow } from '../furnish/procedural'
 import { CELL_M } from './batch'
-import { buildContactShadows, buildStreet, haze, hazed, outdoorFill, setHaze, STREET_LIT, streetNight } from './context'
+import { buildContactShadows, buildStreet, haze, outdoorFill, setHaze, STREET_LIT, streetMaterial, streetNight, streetShape } from './context'
 import { dayMix, isCovered, LAMP_RANGE, lampBake, lampOut, nightOut, openToSky, setLampDirect, setLampShare, type BakedLamp } from './daylight'
 import { carriesRoof, junctionShade, roomCeiling, storeyTop, wallLift } from './details'
 import { EXTERIOR_PLASTER, isBlank, materialFor } from './materials'
@@ -530,8 +530,8 @@ export class Look {
     new THREE.ShadowMaterial({ color: '#2a2018', opacity: 0.35, depthWrite: false }),
   )
   private readonly ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2),
-    hazed(new THREE.MeshStandardMaterial({ color: '#86817a', roughness: 0.95 })), // paving; a tiled texture reads as carpet from 20 m up
+    streetShape(new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2)),
+    streetMaterial({ color: '#86817a', roughness: 0.95 }), // paving; a tiled texture reads as carpet from 20 m up. The street's program (no cut, no lamp)
   )
   /** per unit (context.ts): contact shadows under the furniture; the street (in `indoor`: none around the dollhouse) */
   private contact: THREE.Mesh | null = null
@@ -813,6 +813,7 @@ export class Look {
       if (!deeper.length && !m.userData.holed) return
       m.geometry.dispose()
       m.geometry = planeGeometry(size, deeper.map((w) => w.poly), m.position.x, m.position.z)
+      if (m === this.ground) streetShape(m.geometry) // (the street's program: context.ts)
       m.userData.holed = deeper.length > 0
     }
     openOver(this.ground, 600, wells.filter((w) => w.bottom < this.groundY))

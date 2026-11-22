@@ -13,7 +13,7 @@ import { kitAsset, placementSize, type KitCategory } from '../furnish/kit'
 import { footprint } from '../furnish/presets'
 import { lean, lite } from '../furnish/procedural'
 import { nightPatch } from './daylight'
-import { noSpots } from './materials'
+import { noSpots, WHITE_PICTURE } from './materials'
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number }
 
@@ -476,6 +476,32 @@ export function blockParts(k: Block, at: Pt, r: () => number, lines = false): Pa
   return parts
 }
 
+/** a box nothing is ever near: hazed's cut never takes what carries it (a road, the ground) */
+const FAR = new THREE.Vector3(1e6, 1e6, 1e6)
+/**
+ * What the street's one program (streetMaterial) reads on every vertex, neutral where `g` has none of its own: white (its
+ * colour is its material's), a box nothing is ever near (never cut), a lamp place no road lamp's pool reaches.
+ */
+export function streetShape(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const n = g.getAttribute('position').count
+  if (!g.getAttribute('color')) g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(1), 3))
+  if (!g.getAttribute('bmin')) boxed(g, FAR, FAR)
+  if (!g.getAttribute('roadLamp')) g.setAttribute('roadLamp', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [0, NO_LAMP, 0]).flat(), 3))
+  return g
+}
+/** a lamp place this far across its road: no pool reaches it (exp of minus a hundred million) */
+const NO_LAMP = 1e4
+/**
+ * The street's one program (session 31 open lane: the blocks, the roads and the ground the tower stands on were three of its
+ * six on High — 0.1 s of Firefox's making each): every street surface is hazed, cut by its box and pooled by its road's lamps
+ * at night, its colour its material's times its vertex colours; what one lacks is neutral (streetShape), and on High and Low
+ * a road or the ground carries a white picture and no glow where a block has its facade and lit windows. Lite: no pictures.
+ */
+export function streetMaterial(p: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+  const pictures = lite.on ? {} : { map: WHITE_PICTURE, emissiveMap: WHITE_PICTURE, emissive: '#000000' }
+  return roadLamps(hazed(new THREE.MeshStandardMaterial({ ...pictures, ...p, vertexColors: true }), true))
+}
+
 /** Its box on every vertex of `g`: hazed's cut takes a block away whole. */
 function boxed(g: THREE.BufferGeometry, min: THREE.Vector3, max: THREE.Vector3): THREE.BufferGeometry {
   const n = g.getAttribute('position').count
@@ -528,7 +554,7 @@ function roadLamps(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
       #include <lights_physical_fragment>`,
     )
   }
-  m.customProgramCacheKey = () => 'road-lamps'
+  m.customProgramCacheKey = () => 'street' // (hazed's cut under it: one source, the street's)
   return m
 }
 
@@ -579,7 +605,7 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
   const group = new THREE.Group()
   geos.forEach((list, v) => {
     if (!list.length) return
-    const mesh = new THREE.Mesh(mergeGeometries(list)!, hazed(new THREE.MeshStandardMaterial({ map: facadeTexture(v), emissiveMap: litTexture(v), emissive: '#ffffff', vertexColors: true, roughness: 0.92 }), true))
+    const mesh = new THREE.Mesh(streetShape(mergeGeometries(list)!), streetMaterial({ map: facadeTexture(v), emissiveMap: litTexture(v), emissive: '#ffffff', roughness: 0.92 }))
     mesh.castShadow = mesh.receiveShadow = true
     group.add(mesh)
     list.forEach((g) => g.dispose())
@@ -587,7 +613,7 @@ export function buildStreet(unit: Unit, street: Street, groundY: number): THREE.
   const all = [...(street.roads ?? []), ...roads]
   const strips = roadStrips(all, groundY + 0.05).map((g, i) => rectLamps(g, all[i]))
   if (strips.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(strips)!, roadLamps(hazed(new THREE.MeshStandardMaterial({ color: '#5b5955', roughness: 0.95 }))))
+    const mesh = new THREE.Mesh(streetShape(mergeGeometries(strips)!), streetMaterial({ color: '#5b5955', roughness: 0.95 }))
     mesh.receiveShadow = true
     strips.forEach((g) => g.dispose())
     group.add(mesh)
@@ -627,7 +653,7 @@ function plainStreet(blocks: Block[], roads: Bounds[], groundY: number): THREE.G
   ]
   const group = new THREE.Group()
   if (!geos.length) return group
-  const mesh = new THREE.Mesh(mergeGeometries(geos)!, hazed(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), true))
+  const mesh = new THREE.Mesh(streetShape(mergeGeometries(geos)!), streetMaterial({ roughness: 0.92 }))
   mesh.castShadow = mesh.receiveShadow = true
   geos.forEach((g) => g.dispose())
   return group.add(mesh)
@@ -654,7 +680,7 @@ export function buildSite(unit: Unit, groundY: number): THREE.Group {
       return boxed(g, g.boundingBox!.min, g.boundingBox!.max)
     })
   if (blocks.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(blocks)!, hazed(new THREE.MeshStandardMaterial({ color: BLOCK, roughness: 0.92 }), true))
+    const mesh = new THREE.Mesh(streetShape(mergeGeometries(blocks)!), streetMaterial({ color: BLOCK, roughness: 0.92 }))
     mesh.castShadow = mesh.receiveShadow = true
     blocks.forEach((g) => g.dispose())
     group.add(mesh)
@@ -672,7 +698,7 @@ export function buildSite(unit: Unit, groundY: number): THREE.Group {
     }),
   )
   if (strips.length) {
-    const mesh = new THREE.Mesh(mergeGeometries(strips)!, roadLamps(hazed(new THREE.MeshStandardMaterial({ color: ROAD, roughness: 0.95 }))))
+    const mesh = new THREE.Mesh(streetShape(mergeGeometries(strips)!), streetMaterial({ color: ROAD, roughness: 0.95 }))
     mesh.receiveShadow = true
     strips.forEach((g) => g.dispose())
     group.add(mesh)
