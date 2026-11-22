@@ -555,7 +555,8 @@ export default function StudioApp() {
   }, [state.toast])
   useEffect(() => {
     if (!note) return
-    const id = setTimeout(() => setNote(null), note.link ? 15000 : 5000) // an offer stays long enough to read and click
+    // an offer stays long enough to read and click; a long answer (a refused .dwg's how-to) long enough to read
+    const id = setTimeout(() => setNote(null), note.link ? 15000 : Math.max(5000, note.text.length * 60))
     return () => clearTimeout(id)
   }, [note])
 
@@ -2261,7 +2262,6 @@ export default function StudioApp() {
     aiNote(rowId, null)
   }
   const applyFix = (f: Fix) => {
-    // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
     // a line he draws ("Draw a zone line"): the W tool with that type, at the mark; the plan is unchanged until he draws
     if (f.draw) {
       dispatch({ type: 'set-tool', tool: 'wall' })
@@ -2269,6 +2269,7 @@ export default function StudioApp() {
       setActiveKey(null)
       return toast(`${WALL_TYPES[f.draw].label} picked: click a wall, then the wall across, where the two rooms meet (Esc ends it)`)
     }
+    // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
     const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
     if (row) return answer(row.review!.id, answerId(f.label))
     dispatch({ type: 'apply-fix', actions: f.actions, label: f.label })
