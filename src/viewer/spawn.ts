@@ -4,6 +4,7 @@ import type { FurniturePlacement, Id, Pt, Room, Unit } from '../core'
 import { isLevel } from '../furnish/finishes'
 import { heightRange, kitAsset, objectKind, placementRange, placementSize, type KitAsset } from '../furnish/kit'
 import { footprint, isCommonCore } from '../furnish/presets'
+import { isStair, isStairRoom, stairSpot } from '../furnish/stairs'
 import { EYE, RAY, boxInFrame, floorShare, frameHits, frameShares, pieceInFrame, project, swings } from './frame'
 
 const add = (a: Pt, b: Pt, s: number): Pt => ({ x: a.x + b.x * s, y: a.y + b.y * s })
@@ -62,6 +63,54 @@ export function listedRooms(unit: Unit, rooms: Room[]): Room[] {
   take(of('balcony'))
   take(listed)
   return [...out]
+}
+
+/**
+ * The building's core in the Rooms list, a group of its own under the flat's rooms (newcomer lane s31: the stair was in no
+ * list and a newcomer spent 20 minutes finding it): the stair rooms, then the lift lobbies, each by its name — not the lifts
+ * or shafts themselves, nor a level's lobby (levelRooms lists it among its rooms).
+ */
+export function coreRooms(rooms: Room[]): Room[] {
+  const level = isLevel(rooms)
+  const stairs = rooms.filter((r) => isStairRoom(r) && r.kind !== 'lobby' && r.areaSqm >= 1)
+  const lobbies = rooms.filter((r) => !stairs.includes(r) && r.areaSqm >= 1 && (r.kind === 'lobby' ? !level : r.kind === 'other' && /\blobby\b/i.test(r.name)))
+  return [...stairs, ...lobbies]
+}
+
+/** how far into a stair room from its door the jump stands (STAIR_IN), and looks down at the flight */
+export const STAIR_IN = 0.6
+export const STAIR_PITCH = (-10 * Math.PI) / 180
+/**
+ * A jump to a stair room (the Rooms list's core group, a Dollhouse click in it): just inside its door from the rest of the
+ * floor (the widest; a door from another stair room last), STAIR_IN in — less where that would stand on the stair — looking
+ * at the flight (its stair piece; none drawn: the room's middle), STAIR_PITCH down. No door: the room's own view (roomView).
+ */
+export function stairView(room: Room, unit: Unit): View {
+  const rooms = core.deriveRooms(unit)
+  const poly = core.roomPolygon(room, unit)
+  const stair = unit.furniture.find((p) => p.roomId === room.id && isStair(p))
+  const doors = unit.walls
+    .filter((w) => room.wallIds.includes(w.id))
+    .flatMap((w) => {
+      const f = core.wallFrame(w, unit.vertices)
+      return w.openings
+        .filter((o) => o.kind !== 'window')
+        .map((o) => {
+          const c = add(f.origin, f.dir, o.offsetM + o.widthM / 2)
+          const s = core.pointInPolygon(add(c, f.normal, w.thicknessM / 2 + 0.1), poly) ? 1 : -1
+          const n = { x: f.normal.x * s, y: f.normal.y * s }
+          const other = core.roomAt(add(c, n, -(w.thicknessM / 2 + 0.1)), rooms, unit)
+          return { c, n, t: w.thicknessM, widthM: o.widthM, fromStair: !!other && isStairRoom(other) }
+        })
+    })
+    .sort((a, b) => Number(a.fromStair) - Number(b.fromStair) || b.widthM - a.widthM)
+  const d = doors[0]
+  if (!d) return roomView(room, unit)
+  const p = [STAIR_IN, 0.45, 0.3].map((m) => add(d.c, d.n, d.t / 2 + m)).find((q) => core.pointInPolygon(q, poly) && !(stair && stairSpot(stair, q))) ?? add(d.c, d.n, d.t / 2 + 0.3)
+  const target = stair ?? room.centroid
+  const to = { x: target.x - p.x, y: target.y - p.y }
+  const len = Math.hypot(to.x, to.y)
+  return { p, face: len > 0.5 ? { x: to.x / len, y: to.y / len } : d.n, pitch: STAIR_PITCH }
 }
 
 /** A LEVEL (furnish/finishes.ts isLevel) is entered and listed by its own rules (levelEntry, levelRooms); a flat keeps its own. */

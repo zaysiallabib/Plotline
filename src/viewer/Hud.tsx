@@ -154,6 +154,9 @@ interface Props {
   /** a stair being taken (ViewerApp takeStair): "Floor 3 …" stands in the hint's place, not fading, while that floor loads */
   going?: string | null
   onJump: (room: Room) => void
+  /** the Rooms list's last group, "Building": the core's stairs and lift lobby (a stair: its door, looking at the flight; one
+   *  drawn with another flat of the floor: that one); none: no group */
+  core?: { id: string; name: string; note: string; go: () => void }[]
   onMode: (mode: SceneMode) => void
   onToggleFinishes: () => void
   onToggleComment: () => void
@@ -478,6 +481,26 @@ export default function Hud(p: Props) {
                 <span className="muted">{x.printedSize ?? `${x.areaSqm.toFixed(1)} m²`}</span>
               </button>
             ))}
+            {!!p.core?.length && (
+              <>
+                <div className="menu-rule" />
+                <div className="menu-head label">Building</div>
+                {p.core.map((x) => (
+                  <button
+                    key={x.id}
+                    className={`menu-row${x.id === r?.id ? ' on' : ''}`}
+                    role="menuitem"
+                    onClick={() => {
+                      x.go()
+                      setOpen(null)
+                    }}
+                  >
+                    <span>{x.name}</span>
+                    <span className="muted">{x.note}</span>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>

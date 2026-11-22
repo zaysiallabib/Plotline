@@ -145,9 +145,12 @@ A button that is on (a panel open, an editor on) has a light blue wash and blue 
 **Top left: the room.** Its floor in small capitals, its name in the serif, its printed size and area under it, on a
 soft frosted rectangle whose edges fade out, so the words read over any wall, by day and by night. **Click it** for the
 list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list.
-The list holds the flat's own rooms (a level's: its rooms and areas): the stair, the lifts and the lift lobby are not
-in it — to take the stair, walk out through the flat's front door into the lobby and on into the stair room (below,
-"Stairs between floors"). A
+The list holds the flat's own rooms (a level's: its rooms and areas), then, under **BUILDING** at the bottom, the
+building's stair and lift lobby: click the stair and you stand just inside the stair room's door looking at the flight
+(then walk up or down it, or use **Up to …** / **Down to …**, below "Stairs between floors"); click the lift lobby and you
+stand in the lobby. Where your flat's floor has its stair drawn with the other flat (BTI's Type A, whose stair is in Type
+B's drawing) the stair row takes you there, on the same floor, without a new page. Walking out through the flat's front
+door into the lobby and on into the stair room still works. A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
 picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
@@ -209,7 +212,8 @@ remembers it: the next flat opened in the same tab starts clean too.
   Dollhouse and the Building view see wider.
 
 **Moving in Dollhouse:** drag to turn, scroll to zoom, right-drag to slide. Click a room's floor to drop into it — a
-bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece (not while
+bed, a rug or another piece on it too: you land on the floor where the click meets it behind the piece; a click in the
+stair room puts you at its door looking at the flight (not while
 Finishes is open: then the click picks that floor's finish).
 
 **Finishes panel**
@@ -1413,8 +1417,6 @@ Things that are confusing or not finished. Each one is a job on the list.
   replaces yours after one question. Inside a project nothing is asked.
 - A whole-floor drawing knows its flats only in the Studio: a buyer link and the Building view treat the whole floor as
   one flat, and finishes go per room and wall, not per flat.
-- The Rooms list leaves out the stair, lifts and lift lobby, so the stair is reached only on foot (out of the front door,
-  through the lobby); on a big whole floor that is a long walk with W A S D and floor clicks.
 - An IFC house's Dollhouse: the file's own outside shape keeps the slab above the ground floor over its rooms, so from
   above you see the slab (with the stair's hole), not the rooms (fzk_house; **Remove outside shape** in the Studio takes
   it away, with its facade).

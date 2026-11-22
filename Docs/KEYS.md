@@ -41,7 +41,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **Up to …** / **Down to …** | Takes the stair: the floor above / below comes into the same 3D, no new page ("Floor 4 …" at the bottom while it gets ready), you stand at its stair (walking up the second flight, or down the flight you see through the opening in the floor, does the same) | bottom middle, standing in a stair room of a building | everyone | §2 Moving in Walk |
 | The browser's **Back** / **Forward** | Takes the last stair back down / up again, without a new page | after a stair | everyone | §2 Moving in Walk |
 | Drag · wheel · right-drag | Turn · zoom · slide the view | Dollhouse, Building | everyone | §2, §4 |
-| Click a room's floor | Drops you into that room — a click on a bed, a rug or another piece too (not while Finishes is open) | Dollhouse | everyone | §2 |
+| Click a room's floor | Drops you into that room — a click on a bed, a rug or another piece too (not while Finishes is open); in the stair room, at its door looking at the flight | Dollhouse | everyone | §2 |
 | Point at the tower | Shows the storey under the mouse a little brighter and names it in a card beside the mouse: the floor, the flat and its size, what a click does | Building | everyone | §4 |
 | Click a floor on the tower | Opens the flat there in its Dollhouse, walks a ground floor / basement / rooftop / common floor, or picks a floor with nothing to open — in the same 3D, no new page; Back returns to the tower | Building | everyone | §4 |
 | **O** | Walk ↔ Dollhouse (from the Building view: Walk) | any view | everyone | §2 The bar |
@@ -59,7 +59,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **H** · the eye (last button) · **⋯ → Clean view** | Clean view on / off: everything on screen goes but a faint dot top right; remembered for the browser tab | any view | everyone | §2 Clean view |
 | The faint dot (top right) | Brings everything back (or **H**, **Esc**, a tap) | Clean view | everyone | §2 Clean view |
 | **Enter VR** / **Exit VR** | Into / out of the headset | the bar, only with a headset connected | everyone | §2 In VR |
-| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there — the flat's own rooms, not the stair, lifts or lift lobby (walk there). In the Building view it names the picked floor | top left | everyone | §2 Top left |
+| The room's name (top left) | Click it for the list of rooms (yours is the white row); click a room to jump there — the flat's own rooms, then under BUILDING the stair (you stand at its door looking at the flight) and the lift lobby. In the Building view it names the picked floor | top left | everyone | §2 Top left |
 | Moving the mouse, a click, the wheel, any key but W A S D / arrows / Shift | Brings back what faded while the mouse rested (3 s still: all but the room's name fades) | Walk | everyone | §2 Resting |
 | The hint | The keys for what you are doing; fades after a few seconds, back when it changes or when the mouse rests where it was | bottom middle | everyone | §2 The hint |
 | A short message | Answers what you just did ("Link copied …"); fades by itself | bottom middle, above the hint | everyone | §2 |

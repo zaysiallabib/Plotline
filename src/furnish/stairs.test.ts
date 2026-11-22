@@ -5,8 +5,8 @@ import type { FurniturePlacement, Pt, Unit } from '../core'
 import { buildProcedural } from './procedural'
 import { arriveBy, HOLE_REACH, isStair, isStairRoom, LANDING_M, stairArrival, stairHole, stairSpot, treadBelow } from './stairs'
 import { layoutFor } from '../studio/furniture'
-import { stairsDown, stairTo, type Tower } from '../data/building'
-import { arrivalFace, DOOR_LEAF_MAX } from '../viewer/spawn'
+import { stairOnFloor, stairsDown, stairTo, type Tower } from '../data/building'
+import { arrivalFace, coreRooms, DOOR_LEAF_MAX, listedRooms, STAIR_PITCH, stairView } from '../viewer/spawn'
 import { frameShares } from '../viewer/frame'
 import * as bti from '../data/building/demo-tower'
 import * as sheltech from '../data/building/sheltech-tower'
@@ -204,5 +204,43 @@ describe('the way down drawn (session 31): a hole in the floor at a stair that l
     const B = bti as unknown as Tower
     expect(down(B, 'type-b', 1)).toBe(0) // BTI's first floor: no ground level traced under it
     expect([2, 3, 8].map((k) => down(B, 'type-b', k))).toEqual([1, 1, 1])
+  })
+})
+
+describe('the stair in the Rooms list (newcomer lane s31: a newcomer spent 20 minutes finding it)', () => {
+  const laid = (u0: unknown) => {
+    const u = u0 as Unit
+    const rooms = core.deriveRooms(u)
+    return { u: { ...u, furniture: layoutFor(u, rooms) }, rooms }
+  }
+  test("the core is its own group: the stairs, then the lift lobby — never the lifts, and none of it among the flat's rooms", () => {
+    const { u, rooms } = laid(bti.FLATS['type-b'].unit)
+    expect(coreRooms(rooms).map((r) => r.name)).toEqual(['Stair', 'Lift lobby'])
+    expect(listedRooms(u, rooms).some((r) => /stair|lift/i.test(r.name))).toBe(false)
+    expect(coreRooms(laid(bti.FLATS['type-a'].unit).rooms).map((r) => r.name)).toEqual(['Lift lobby']) // its lift core is no place to stand
+    // a level lists its lobbies with its rooms: the group adds its stairs
+    expect(coreRooms(laid(ground).rooms).map((r) => r.name).sort()).toEqual(['Stair', 'Stair (to the basements)'])
+  })
+  test('a stair is jumped to from its door, looking at the flight, standing on the floor', () => {
+    for (const [stem, t] of [['type-b', bti], ['sheltech-a', sheltech]] as const) {
+      const { u, rooms } = laid((t.FLATS as Record<string, { unit: Unit }>)[stem].unit)
+      const r = rooms.find((x) => x.name === 'Stair')!
+      const s = u.furniture.find((p) => p.roomId === r.id && isStair(p))!
+      const v = stairView(r, u)
+      expect(core.roomAt(v.p, rooms, u)?.id, stem).toBe(r.id)
+      expect(stairSpot(s, v.p), stem).toBeNull() // not on a tread nor over the well
+      const to = { x: s.x - v.p.x, y: s.y - v.p.y }
+      expect((to.x * v.face.x + to.y * v.face.y) / Math.hypot(to.x, to.y), stem).toBeGreaterThan(0.99) // at the stair
+      expect(v.pitch).toBe(STAIR_PITCH)
+      const door = u.walls.filter((w) => r.wallIds.includes(w.id)).flatMap((w) => w.openings.filter((o) => o.kind !== 'window').map((o) => { const f = core.wallFrame(w, u.vertices); return { x: f.origin.x + f.dir.x * (o.offsetM + o.widthM / 2), y: f.origin.y + f.dir.y * (o.offsetM + o.widthM / 2) } }))
+      expect(Math.min(...door.map((d) => Math.hypot(d.x - v.p.x, d.y - v.p.y))), stem).toBeLessThan(1) // just inside its door
+    }
+  })
+  test("a flat whose floor's stair is drawn with another flat reaches that one (BTI Type A: Type B's stair, on its own floor)", () => {
+    const T = bti as unknown as Tower
+    const lobby = core.deriveRooms(bti.FLATS['type-a'].unit).find((r) => r.name === 'Lift lobby')!
+    expect(stairOnFloor(T, 'type-a', 2, lobby.centroid)).toMatchObject({ stem: 'type-b', name: 'Stair' })
+    expect(stairOnFloor(T, 'type-c', 5, lobby.centroid)).toMatchObject({ stem: 'type-b', name: 'Stair' })
+    expect(stairOnFloor(T, 'type-a', 9, lobby.centroid)).toBeNull() // no floor 9
   })
 })
