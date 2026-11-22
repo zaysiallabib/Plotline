@@ -212,7 +212,7 @@ function placeFixes(u: Unit, l: RoomLabel): Fix[] {
       choice: true,
     }))
   })
-  return [...out, { label: 'Draw a zone line', title: `Nothing in the file divides this room: draw the line between ${l.name} and ${owner.name} with the Wall tool (a zone line: nothing in 3D), from wall to wall`, actions: [], ghost: [], draw: 'zone' }]
+  return [...out, { label: 'Draw a zone line', title: `Nothing in the file divides this room: draw the line between ${l.name} and ${owner.name} with the Wall tool where they meet (a zone line: nothing in 3D)`, actions: [], ghost: [], draw: 'zone' }]
 }
 
 /** One issue's mark (number still unset). */

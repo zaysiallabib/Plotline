@@ -831,7 +831,7 @@ had.
 | Walls crossing | Join here / End it here |
 | A room with no name | Type the name |
 | A room name outside any room | (by hand: close the room round it) |
-| Two names in one room ("Bath shares a room with Hall") | **Bath → room below · 5.8 m²** / **Hall → room below · 5.8 m²** — which of the two is the room next door (through its door when it has one); the other keeps this room. Neither is marked as the first choice: the file cannot tell. No unnamed room beside it: **Draw a zone line** — the plan goes there with the Wall tool on Zone line; click a wall, then the wall across, where the two rooms meet |
+| Two names in one room ("Bath shares a room with Hall") | **Bath → room below · 5.8 m²** / **Hall → room below · 5.8 m²** — which of the two is the room next door (through its door when it has one); the other keeps this room. Neither is marked as the first choice: the file cannot tell. No unnamed room beside it: **Draw a zone line** — the plan goes there with the Wall tool on Zone line; draw it where the two rooms meet, from a wall or a line's end to the next |
 | Walls standing loose inside a room | Join with a zone line |
 
 - **Check these** — after Auto-trace, what it was unsure of (next section).

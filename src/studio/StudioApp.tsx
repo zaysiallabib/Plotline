@@ -2267,7 +2267,7 @@ export default function StudioApp() {
       dispatch({ type: 'set-tool', tool: 'wall' })
       dispatch({ type: 'pick-wall', wall: f.draw })
       setActiveKey(null)
-      return toast(`${WALL_TYPES[f.draw].label} picked: click a wall, then the wall across, where the two rooms meet (Esc ends it)`)
+      return toast(`${WALL_TYPES[f.draw].label} picked: draw it where the two rooms meet, from a wall or a line's end to the next (Esc ends it)`)
     }
     // a row's fix on the plan's popover (the row's own mark, or the issue it sits on): that row's answer
     const row = activeKey ? marks.find((m) => m.review && (m.twinOf ?? m.key) === activeKey && [...(fixes?.get(m.key)?.fixes ?? []), ...(fixes?.get(activeKey)?.fixes ?? [])].includes(f)) : undefined
