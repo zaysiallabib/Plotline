@@ -21,6 +21,11 @@ only what is seen from outside and through the windows.
 **.zip** or several files dropped at once are opened as one: the best file is read (an IFC first, then a 3D model, then
 a drawing; an architectural IFC before a structural or services one) and the others are its pictures and data.
 
+**To try them:** the empty Studio's **Try a sample ▾** opens eight small real buildings' files, at least one of each kind,
+in one click (`public/samples/`, each free to pass on, its source in `public/samples/MANIFEST.md`). All 53 real
+buildings' files fetched from the internet on 2026-11-22 — 21 IFC, 10 DXF, 10 PDF, 6 SVG, 6 3D models — and how each one
+reads in Firefox today, with what fails and why: [SAMPLES.md](SAMPLES.md).
+
 | File | Made by | What Plotline gets | Read with (licence) | Tested on (Firefox unless said) |
 |---|---|---|---|---|
 | **IFC** `.ifc`, `.ifczip` | Revit, ArchiCAD, Vectorworks, Allplan, Tekla, SketchUp Pro, Blender (Bonsai), FreeCAD | Every storey's walls, doors, windows, columns, named rooms and floor heights, true north **and** the exact outside shape — a whole project in one drop | **web-ifc** 0.0.79 (MPL-2.0), in the background with a progress box and **Cancel**; `.ifczip` unzipped by fflate (MIT, inside three.js) | buildingSMART's test files (IFC2x3, IFC4, IFC4.3) and 20 public buildings (node, session 29); a 1.7 MB house (0.9 s), a 64 MB and a 74 MB building (7 and 10 storeys) with the page answering throughout |
@@ -110,7 +115,11 @@ a drawing; an architectural IFC before a structural or services one) and the oth
 - A PDF has no scale of its own: Plotline takes the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`, `SCALE 1 : 50`;
   a sheet that prints two different scales says nothing), else the printed dimensions measured against their lines, else
   the printed room sizes, else asks for the scale (S). (A page's tables can fool the dimensions: twindo's room pages
-  measured 1 : 31–64 for their printed 1 : 16 / 1 : 24.)
+  measured 1 : 31–64 for their printed 1 : 16 / 1 : 24.) The word before the scale may be a European sheet's — `Scala
+  1:100`, `M 1:50`, `Maßstab`, `Échelle`, `Escala`, `Schaal`, `Skala` — and the scale may run on into the title block's
+  next words (`1 : 100 Datum: 09.04.2013`): since session 31's samples lane, which found two such sheets among the 53
+  samples (a Hannover flat now opens as a drawing; Casa Steiner reads its lines on request). Of the 888 PDF pages we have
+  (the corpus, the Dhaka brochures, the samples) no other page reads differently.
 - A room's name is a text in it; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18", "W3") are not.
 - A page with no scale printed as words (no dimension, scale note or room size as text: a Dhaka brochure's plan page
   whose words are all outlines — Akter Anandita page 9, 232 412 lines) is not read as lines at all: read as metres they
@@ -125,8 +134,10 @@ a drawing; an architectural IFC before a structural or services one) and the oth
 - An SVG whose groups name no layers (a CAD print saved as SVG) is sorted by pen with the PDF's rule, one rule for both
   (`plan2d.ts` penRoles): the stroke widths at least 2.5 × the usual line's and grey fills of wall-thin shapes are the
   walls; thin floor tiles, furniture and dimension lines no longer pair into walls. One pen for everything: as before.
-- No public SVG floor plan could be fetched for the test (online ones are diagrams or non-commercial); the test used a
-  real DXF plan written out as CAD programs write SVG. Its read matched the DXF's.
+- The first test used a real DXF plan written out as CAD programs write SVG; its read matched the DXF's. Since
+  2026-11-22, six real SVG floor plans from Wikimedia Commons are in [SAMPLES.md](SAMPLES.md): the one drawn as an
+  architect's sheet (thick walls, door swings) opens as a drawing; the others are diagrams with single-line walls and
+  words drawn as outlines, or scans traced into one outline, and come out as scattered pieces of wall.
 
 **What we do not read, and why.**
 - Revit `.rvt`, ArchiCAD `.pln`, SketchUp `.skp`, Allplan: locked, no free reader; each saves IFC in one click.

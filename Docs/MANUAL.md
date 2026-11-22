@@ -21,6 +21,8 @@ What a developer does first:
 1. **Make the project:** Studio → **⋯** → **New project** — its name, basements, floors and rooftop (§6).
 2. **Bring in each floor plan:** in the floor list on the right click **Draw** beside a floor, drop the sheet (a picture,
    a PDF, or the architect's IFC / DXF) on the Studio and set the scale with **S** (§5). An IFC makes every floor at once.
+   No file of your own yet? **Try a sample ▾** under the dashed box of an empty Studio opens a real building's IFC, DXF,
+   PDF, SVG or 3D model from the internet in one click (§5).
 3. **Trace it:** **Auto-trace** → **Whole floor**, then answer **Check these** on the right (§5).
 4. **Name the flats and give the plan its floors:** check the flat names written on the plan (part two flats that came
    out as one with **V → Flat → New flat**), name each with **R** inside one of its rooms ("Type A ±2703 sft"), then
@@ -692,7 +694,8 @@ and only the screen empties.
 - **Right:** **↶ Undo** / **↷ Redo**, **Auto-trace** (once a plan picture is in), **Preview 3D** (the blue button: your
   drawing in the 3D view, in a new tab), **Building** (shows / hides the project's floor list, §6), and **⋯**.
 - While the Studio is empty, **Choose plan image…** in the middle is the blue button and Preview 3D is plain: there is
-  only ever one blue button.
+  only ever one blue button. With no wall drawn yet (an empty Studio, or only a 3D model's outside shape), Preview 3D
+  says "Nothing drawn yet to show in 3D" instead of opening a 3D page with nothing to build.
 
 **⋯** opens a menu in four parts (Esc or a click elsewhere closes it):
 
@@ -713,6 +716,16 @@ on it, or anywhere on the page, or click **Choose plan image…**) and, beside i
 PNG, JPG, WEBP or TIFF, up to 10 MB; an iPhone's HEIC photo only in a browser that opens it (Safari), else a message says
 how to get a JPEG. The brochure PDF and the architect's IFC, DXF, PDF, SVG or 3D model — or a folder or .zip of them —
 can be dropped there too.
+
+**Try a sample ▾** (under the dashed box) lists eight real buildings' files found on the internet and free to pass on —
+at least one of each kind Plotline reads, each with its kind and size ("IFC · 415 KB"); rest the mouse on one for who
+made it and its licence. Click one and it opens exactly as if you had dropped it: the two IFCs make their floors (the
+flat opens with its 7 named rooms), the DXFs and the SVG open as a drawing, the school PDF opens as a drawing at its
+printed 1 : 200, Casa Steiner's PDF becomes the plan picture (its message offers **Read its lines instead**), and the 3D
+model (a brick apartment building) gives only the outside shape — it shows under **Outside shape** on the right and waits
+for a drawing to stand round. Esc or a click elsewhere closes the list. Where each came from: `public/samples/MANIFEST.md`.
+All 53 files of that hunt, and how each one reads today, are listed in [SAMPLES.md](SAMPLES.md) — they sit on the office
+PC in `E:/dev/ALTERNATIVE FORMAT TEST/samples-2026-11-22/`; drop any of them on the Studio to see it yourself.
 
 **The status bar** (bottom): on the left what the tool does, in one short line (the whole sentence when the mouse is
 over it); in the middle, while you draw or drag, the length, the angle and what the point sticks to; on the right how
@@ -1084,6 +1097,7 @@ it without asking the map again. Map and buildings © OpenStreetMap contributors
 Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose plan
 image…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
 picture can still be dropped later to see the sheet behind. Every format and how it was tested: [FORMATS.md](FORMATS.md).
+To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("Loading the plan picture" above).
 
 | File | What happens |
 |---|---|

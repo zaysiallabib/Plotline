@@ -131,7 +131,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | Saving… · Saved · just now · Offline · will retry · Someone else saved · Not saved: … | Where your work stands online; click it for the account card | top bar, signed in | §5 Accounts |
 | **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo | top bar; any tool, not in a text box | §5 Top bar |
 | **Auto-trace** | Traces the flats: point at a flat and click it, or **Whole floor** | top bar, once a plan picture is in | §5 Auto-trace and Check these |
-| **Preview 3D** | Your drawing in the 3D view, in a new tab (the blue button; plain while the Studio is empty) | top bar | §5 Top bar |
+| **Preview 3D** | Your drawing in the 3D view, in a new tab (the blue button; plain while the Studio is empty; with no wall drawn it says so instead) | top bar | §5 Top bar |
 | **Building** | Shows / hides the project's floor list (or starts a project) | top bar | §6 |
 | **⋯** | The menu: Drawing · Building · Buyers · Account; Esc or a click elsewhere closes it | top bar, right | §5 Top bar |
 | **⋯ → Import…** · **Ctrl+O** | Opens a drawing file, or the architect's own (.ifc, .ifczip, .dxf, .dwg once turned on, .pdf, .svg, .glb, .gltf, .obj, .fbx, .dae, .stl, .3dm, .3ds, .kmz, .wrl, .ply), or a .zip; several files at once (a model with its pictures). Ctrl+O works in a text box too | any time | §5 Bring in the architect's file |
@@ -146,6 +146,7 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **⋯ → Change list ↗** | Opens `/changes` in a new tab | ⋯, with the online database | §1 |
 | **⋯ → Sign in** / your email | Opens the account card | ⋯, with the online database | §5 Accounts |
 | Drop a picture or a file on the page · **Choose plan image…** | A plan picture (PNG, JPG, WEBP or TIFF, up to 10 MB) goes under the drawing; a drawing or architect's file opens | any time; the "Start with a plan" box | §5 Top bar |
+| **Try a sample ▾** · a sample in its list · Esc / a click elsewhere | Lists real buildings' files free to pass on (IFC, DXF, PDF, SVG, a 3D model; kind and size beside each) · opens that one exactly as if it had been dropped · closes the list | the "Start with a plan" box | §5 Top bar |
 | **New project** card: **Name**, **Basements**, **Floors above ground**, **Rooftop**, **Create project** (Enter) | Starts a project | beside the "Start with a plan" box, or the floor list | §6 |
 | **Whole floor** · **Cancel** | Traces every flat of the floor with the lobby, stair and lifts · stops Auto-trace | the Auto-trace box at the top of the plan | §5 Auto-trace and Check these |
 | **Cancel** | Stops reading an architect's file; nothing changes | the "Reading …" box at the top | §5 Bring in the architect's file |
