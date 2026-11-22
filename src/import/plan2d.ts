@@ -1115,11 +1115,14 @@ export function penRoles(segs: Seg[], fills: Fills = new Map(), scale: number | 
 
 /**
  * A scale printed on the sheet — `1/4" = 1'-0"`, `1" = 10'`, `1:100`, `SCALE 1 : 50` — as how many times smaller the
- * paper draws it (48, 120, 100, 50); else null.
+ * paper draws it (48, 120, 100, 50); else null. The word may be a European sheet's (`Scala 1:100`, `M 1:50`, `Maßstab`,
+ * `Échelle`, `Escala`, `Schaal`, `Skala`: the languages the layer table reads) and a metric scale may run on into the title
+ * block's next words (`1 : 100 Datum: 09.04.2013`). Of 888 PDF pages (the format corpus, the Dhaka brochures, the
+ * 2026-11-22 samples) only those two sheets read differently for it (session 31 samples lane).
  */
 export function printedScale(text: string): number | null {
-  const t = text.replace(/^\s*scale\s*:?\s*/i, '').trim()
-  const metric = /^1\s*:\s*(\d{1,4})$/.exec(t)
+  const t = text.replace(/^\s*(?:scale|scala|escala|[eé]chelle|ma(?:ß|ss)stab|m|schaal|skala)\.?\s*:?\s*/i, '').trim()
+  const metric = /^1\s*:\s*(\d{1,4})(?:\s+\D.*)?$/.exec(t)
   const imperial = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*"\s*=\s*(\d+)\s*'(?:\s*-?\s*0\s*")?$/.exec(t)
   const inches = (s: string) => s.split(/\s+/).reduce((a, p) => a + (p.includes('/') ? +p.split('/')[0] / +p.split('/')[1] : +p), 0)
   const n = metric ? +metric[1] : imperial ? (+imperial[2] * 12) / inches(imperial[1]) : null

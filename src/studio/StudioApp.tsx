@@ -48,6 +48,7 @@ import { getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import PdfPages from './PdfPages'
 import PrintBox from './PrintBox'
+import { SAMPLES, sampleLine, type Sample } from './samples'
 import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
@@ -328,6 +329,8 @@ export default function StudioApp() {
   const lastRead = useRef<{ file: File; siblings?: Map<string, Blob> } | null>(null)
   /** an architect's file being read: its name, what the reader is doing, how far (null: not known), and Cancel */
   const [reading, setReading] = useState<{ name: string; stage: string; fraction: number | null; stop: AbortController } | null>(null)
+  /** Try a sample's list: opens under its button, or over it when the window is too short */
+  const [samplesOpen, setSamplesOpen] = useState<false | 'down' | 'up'>(false)
   /** a PDF of several pages waiting for "which page is the plan?" (PdfPages), and the page being read after a click */
   const [pdfPick, setPdfPick] = useState<{ name: string; doc: PdfDoc; busy: number | null } | null>(null)
   const openPdfDoc = useRef<PdfDoc | null>(null)
@@ -1132,6 +1135,13 @@ export default function StudioApp() {
     onFile(asFile(usable))
   }
   const onFiles = (list: FileList | null) => void onDropped([...(list ?? [])].map((f) => ({ path: f.name, data: f })))
+  /** Try a sample: the file from public/samples, opened as if it had been dropped */
+  const trySample = async (s: Sample) => {
+    setSamplesOpen(false)
+    const r = await fetch(`/samples/${s.file}`).catch(() => null)
+    if (!r?.ok) return toast(`Could not fetch the sample ${s.name}`)
+    await onDropped([{ path: s.file, data: new File([await r.blob()], s.file) }])
+  }
   if (import.meta.env.DEV) Object.assign(window, { __plotlineStudio: { takeImport } }) // browser tests feed a read file's result in without the file
 
   const exportJson = useCallback(async () => {
@@ -1179,7 +1189,8 @@ export default function StudioApp() {
     },
     [toast],
   )
-  const preview = useCallback(() => previewWith(''), [previewWith])
+  // (nothing drawn: the 3D page had nothing to build and broke — "the page broke" — e.g. right after a 3D model sample)
+  const preview = useCallback(() => (stateRef.current.unit.walls.length ? previewWith('') : toast('Nothing drawn yet to show in 3D — drop a plan or trace one first')), [previewWith, toast])
   // ⋯ → Export as DXF (import/dxfWrite.ts) / Export 3D model (the 3D view makes it: PlotlineScene.exportGlb) / Print plan…
   const exportDxf = async () => {
     const u = stateRef.current.unit
@@ -2563,6 +2574,24 @@ export default function StudioApp() {
                     Choose plan image…
                   </button>
                   {!missingPlan && <p className="small muted">or drop an IFC / DXF / PDF / SVG / 3D model, a folder or a .zip</p>}
+                  {!missingPlan && (
+                    // (a press elsewhere moves the focus out and closes it; Esc too)
+                    <div className="samples" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setSamplesOpen(false)} onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setSamplesOpen(false))}>
+                      <button className={samplesOpen ? 'on' : ''} aria-expanded={!!samplesOpen} title="Open a real building's file from the internet, free to pass on: one of each kind Plotline reads" onClick={(e) => setSamplesOpen(samplesOpen ? false : e.currentTarget.getBoundingClientRect().bottom + SAMPLES.length * 32 + 48 > innerHeight ? 'up' : 'down')}>
+                        Try a sample ▾
+                      </button>
+                      {samplesOpen && (
+                        <div className={`menu ${samplesOpen}`} role="menu">
+                          {SAMPLES.map((s) => (
+                            <button key={s.file} className="menu-row" role="menuitem" title={s.credit} onClick={() => void trySample(s)}>
+                              <span>{s.name}</span>
+                              <span className="keys">{sampleLine(s)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {!project && !listOpen && !unit.vertices.length && !missingPlan && (
                   <>

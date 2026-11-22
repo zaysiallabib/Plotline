@@ -118,6 +118,15 @@ describe('a scale printed on the sheet', () => {
     expect(printedScale('SCALE 1 : 50')).toBe(50)
     for (const t of [`10'-8 1/2"`, '12:30', 'Room-1', `1/4"`, '1:1']) expect(printedScale(t)).toBeNull()
   })
+  test("a European sheet's word for scale, and a scale that runs on into the title block's next words", () => {
+    expect(printedScale('Scala 1:100')).toBe(100) // Casa Steiner (Archicad, Italian)
+    expect(printedScale('M 1:50')).toBe(50)
+    expect(printedScale('Maßstab: 1:200')).toBe(200)
+    expect(printedScale('Échelle 1:50')).toBe(50)
+    expect(printedScale('Escala 1:75')).toBe(75)
+    expect(printedScale('1 : 100 Datum: 09.04.2013')).toBe(100) // Pagenstraße 2, Hannover
+    for (const t of ['11:22:02', '1:100/50', 'Room 1:1', 'Scala', 'Maßstab 1:1', 'Datum 1:100']) expect(printedScale(t)).toBeNull()
+  })
   test('a sheet that prints one scale is read at it, before its dimensions; two different scales say nothing', () => {
     const pt = 0.0254 / 72
     const seg = (x0: number, x1: number, y: number) => ({ a: { x: x0, y }, b: { x: x1, y }, layer: '' })
