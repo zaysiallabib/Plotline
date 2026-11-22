@@ -902,9 +902,11 @@ more room. Each flat is tinted with its name written once above it.
   Click inside the room away from its name, so the box opens empty (§5 R). After **Whole floor** too: Auto-trace has put
   every room in its flat (V on a room says **Flat (from Auto-trace)**; once you pick another it says **Flat (moved by
   hand)**), and the name renames that flat.
-- **Two flats came out as one** (Whole floor made the BTI 2nd floor's big flat and its two small top flats one "Flat 1"):
-  V, click a room name of the second flat, **Flat → New flat (Flat 2)**; then click each of its other rooms' names and pick
-  **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
+- **How many flats:** Whole floor counts the flats the sheet prints — its flat labels and area figures, one flat per area
+  in a title that lists several ("2703 SFT & 674 SFT" on the BTI 2nd floor: its big flat and the two small ones, three
+  flats), more where more kitchens than labels are read.
+- **Two flats came out as one** (a sheet whose labels were not read): V, click a room name of the second flat, **Flat →
+  New flat (Flat 2)**; then click each of its other rooms' names and pick **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
 - **A room in the wrong flat:** V, click the room's name, pick the right one in **Flat**; **Not in a flat** takes it out;
   **New flat** starts another with just that room; **Back to: by its doors** undoes a hand pick. An untinted room inside
   a flat usually has no door (add it with O — the 3D needs it too) or none at all (pick its flat by hand).

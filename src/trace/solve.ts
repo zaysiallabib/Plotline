@@ -33,7 +33,7 @@ import { FACES, thinFaces, withWalls, type ThinFaces } from './faces'
 import { roomsOnTracks, type RoomsOnTracks } from './merge'
 import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineInk, normalPolarity, outlinedWalls, sheetTurn, threshold, turnOf, turnRaster, type Turn } from './raster'
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
-import { classifyRoom, nameKey, normaliseName, parseDims, trimName } from './text'
+import { classifyRoom, nameKey, normaliseName, parseArea, parseDims, trimName } from './text'
 import { trackThin } from './track'
 import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
 import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
@@ -2400,6 +2400,13 @@ function selectFlat(p: Prepared, pick: Pt | null, taken: Taken | null = null, ri
   return { at: pick, rooms: flat, touched: picked.touched, inFlood: picked.inFlood, region: picked.region, open: !!picked.open, byRooms: !!byRooms, fits: byRooms?.fits ?? [], others: byRooms?.others ?? [], foreign }
 }
 
+/**
+ * How many flats an untyped area stamp names: one per area it prints joined by "&", "+", "and" or a comma — BTI's 2nd
+ * floor title "2703 SFT & 674 SFT" names two kinds of flat (manual walk s31: counted as one, the floor's three flats came
+ * out one "Flat 1"). One area, or areas not so joined ("1650 SFT NET 1980 SFT GROSS"), is one.
+ */
+export const areasIn = (text: string): number => Math.max(1, text.split(/\s*(?:&|\+|\band\b|,(?!\d))\s*/i).filter((s) => parseArea(s) !== null).length)
+
 /** A flat of the floor (floorParts): its selection and its region — its faces or the floor its flood reached (pre-shift m). */
 type Part = Sel & { has: (p: Pt) => boolean }
 const withRegion = (d: Draft, s: Sel): Part => {
@@ -2458,7 +2465,7 @@ export function floorParts(p: Prepared): Part[] {
   for (const it of p.flatLabels) {
     const ls = letters(it)
     if (!ls.length) {
-      untyped++
+      untyped += areasIn(it.text)
       continue
     }
     const same = named.filter((g) => g.some((x) => ls.includes(x)))

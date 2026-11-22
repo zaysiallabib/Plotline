@@ -15,7 +15,7 @@ import type { Gray, TextTrace } from '../types'
 const env = process.env
 const FIX = env.FLATS27_FIX ?? 'E:/dev/tmp/s27/flats/fixtures/'
 const OUT = env.FLATS27_OUT ?? 'E:/dev/tmp/s27/flats/out/'
-const TEXT = 'E:/dev/tmp/s27/flats/text/'
+const TEXT = env.FLATS27_TEXT ?? 'E:/dev/tmp/s27/flats/text/'
 const TESS = 'E:/dev/tmp/wave19/reader/tess/'
 const TEXT_SOURCES = ['../text.ts', '../sizes.ts'].map((f) => readFileSync(new URL(f, import.meta.url)))
 
