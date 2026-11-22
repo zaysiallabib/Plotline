@@ -14,10 +14,10 @@ import { roomKey, wallKey } from '../furnish/finishes'
 import { KIT, kitAsset, objectKind, placementSize, rebuildsAtSize, resizeLimits } from '../furnish/kit'
 import { footprint, furnish } from '../furnish/presets'
 import { buildProcedural, PROCEDURAL } from '../furnish/procedural'
-import { buildFurniture, colourOnly, fromKept, toKept } from './furniture'
+import { buildFurniture, colourOnly, fromKept, liteTextures, toKept } from './furniture'
 import { EDGE_PLASTER, MORE_PICTURES, PICTURES, PICTURE_ROOM, SOLID_CUT, isBlank, lean, lite, materialFor, resolveFinishRef, samePictures, texture } from './materials'
 import { buildOpening, CLEAR_GLASS } from './openings'
-import { clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, shrinkHdr } from './PlotlineScene'
+import { type PmremInside, askedAs, clampSun, dotMaxPx, dotScale, evenBearings, FINGER_REACH_PX, HDRI_WIDTH, isClick, lightMapHeight, nearestWithin, pickedAt, floorBehind, roomsUnder, sameConfig, sameDrawing, shrinkHdr } from './PlotlineScene'
 import { readFileSync } from 'node:fs'
 
 // No network in Node: a scan "loads" as a box of its kit size (its width along glTF z for a '+x' front), off-centre
@@ -622,9 +622,45 @@ describe('a stand-in kept in this browser (the next visit reads it, not makes it
   })
 })
 
+describe('Lite downloads a model’s colour and glow pictures only (liteTextures)', () => {
+  test('of a scan’s colour, relief, roughness-metal and shading pictures it keeps the colour; a glow picture too; none listed: none', () => {
+    const scan = { pbrMetallicRoughness: { baseColorTexture: { index: 0 }, metallicRoughnessTexture: { index: 2 } }, normalTexture: { index: 1 }, occlusionTexture: { index: 2 } }
+    const lamp = { pbrMetallicRoughness: { baseColorTexture: { index: 3 } }, emissiveTexture: { index: 4 } }
+    expect([...liteTextures([scan, lamp, {}])].sort()).toEqual([0, 3, 4])
+    expect(liteTextures([]).size).toBe(0)
+  })
+})
+
+describe('the load screen asks again only for what changed (askedAs)', () => {
+  test('the same part asks nothing; a material changed, a new shape, instance colours, another material: asked again', () => {
+    const m = new THREE.MeshStandardMaterial()
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(), m)
+    const first = askedAs(mesh)
+    expect(askedAs(mesh)).toBe(first)
+    m.needsUpdate = true // a picture arrived
+    const second = askedAs(mesh)
+    expect(second).not.toBe(first)
+    mesh.geometry = new THREE.BoxGeometry() // its simplified copy
+    expect(askedAs(mesh)).not.toBe(second)
+    const leaves = new THREE.InstancedMesh(new THREE.BoxGeometry(), m, 2)
+    const bare = askedAs(leaves)
+    leaves.setColorAt(0, new THREE.Color())
+    expect(askedAs(leaves)).not.toBe(bare)
+    const two = new THREE.Mesh(mesh.geometry, [m, new THREE.MeshBasicMaterial()])
+    expect(askedAs(two)).not.toBe(askedAs(mesh))
+  })
+})
+
 describe('the light map stand-in under the load screen', () => {
   test('three makes a cube 2^⌊log2(width / 4)⌋ a side, four high: 1024 for the 1k HDRI, 256 for Lite’s quarter', () => {
     expect([lightMapHeight(1024), lightMapHeight(256), lightMapHeight(2048), lightMapHeight(1500)]).toEqual([1024, 256, 2048, 1024])
+  })
+  test('three still has the PMREM parts askPmrem reaches (else it draws a blank sky and the page waits 0.4 s for the filter): the GGX filter made at the size an equirect sets', () => {
+    const p = new THREE.PMREMGenerator({} as THREE.WebGLRenderer) as unknown as PmremInside
+    for (const f of [p._setSize, p._allocateTargets, p._compileMaterial]) expect(typeof f).toBe('function')
+    p._setSize(HDRI_WIDTH / 4)
+    p._allocateTargets().dispose()
+    expect(p._ggxMaterial).toBeInstanceOf(THREE.ShaderMaterial)
   })
   test('the HDRIs on disk are the width the stand-in is made for (a new file: change HDRI_WIDTH, or the programs are made twice)', () => {
     for (const f of ['interior', 'sky']) {

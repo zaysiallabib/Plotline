@@ -38,6 +38,24 @@ export const AREA_EPS = 1e-6
 
 export const vertexMap = (vs: Vertex[]): Map<Id, Vertex> => new Map(vs.map((v) => [v.id, v]))
 
+/** each vertex list's places by id (vertexIn): made once per list, not once per question */
+const places = new WeakMap<Vertex[], Map<Id, number>>()
+/**
+ * The vertex `id` of list `vs` (undefined: none). roomPolygon is asked for the same unit's rooms thousands of times (roomAt,
+ * the 3D's daylight bake) and made a map of every vertex each time: ~0.25–0.35 s of the 3D's start (session 31 open lane).
+ * The places are read back against the list as it is: a list changed in place (a vertex replaced, added, taken out) is
+ * looked up afresh, never answered from an old one.
+ */
+export function vertexIn(vs: Vertex[], id: Id): Vertex | undefined {
+  let at = places.get(vs)
+  let i = at?.get(id)
+  if (at && i !== undefined && vs[i]?.id === id) return vs[i]
+  if (at && i === undefined && at.size === vs.length && !vs.some((v) => v.id === id)) return undefined // (a join point's id: never a vertex)
+  places.set(vs, (at = new Map(vs.map((v, k) => [v.id, k]))))
+  i = at.get(id)
+  return i === undefined ? undefined : vs[i]
+}
+
 /** A column's four corners in order around: its `corners`, else its rectangle from the top-left, clockwise on screen. */
 export const pillarCorners = (p: Pillar): Pt[] =>
   p.corners ?? [
@@ -248,9 +266,8 @@ export function wallPieces(wall: Wall, lengthM: number): WallPiece[] {
 }
 
 export function roomPolygon(room: Pick<Room, 'loop' | 'joinPts'>, graph: Pick<Unit, 'vertices'>): Pt[] {
-  const vs = vertexMap(graph.vertices)
   return room.loop.map((id) => {
-    const v = vs.get(id) ?? room.joinPts?.[id]
+    const v = vertexIn(graph.vertices, id) ?? room.joinPts?.[id]
     if (!v) throw new Error(`vertex ${id} not found`)
     return { x: v.x, y: v.y }
   })

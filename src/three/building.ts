@@ -922,6 +922,8 @@ export class Building extends THREE.Group {
     }
     need('rooms', true, () => this.furnishRooms())
     this.roomsWork ??= this.work
+    // the pieces' models downloaded meanwhile, not after the rooms: Sheltech's grounds waited ~0.3–1.9 s for theirs (session 31 open lane)
+    if (this.piecesShown && !this.started.pieces) this.preloadPieces()
     need('pieces', this.piecesShown, () => this.furnishPieces())
     if (!all) return
     need('things', this.seen && this.tier !== 'lite', () => this.furnishThings())
@@ -971,14 +973,18 @@ export class Building extends THREE.Group {
   }
   private piecesDone = false
 
-  private async furnishPieces(): Promise<void> {
-    // every level's pieces' models on their way at once (each piece still goes in in order)
+  /** every level's pieces' models on their way at once (each piece still goes in in order, once the flat's furniture is in) */
+  private preloadPieces(): void {
     void preloadModels(
       this.furnishing.flatMap(({ s }) => {
         const rooms = this.roomsOf(s)
         return layoutFor(this.t.FLATS[s].unit, rooms).filter((p) => core.isOutdoor(rooms.find((r) => r.id === p.roomId)?.kind ?? 'shaft'))
       }),
     )
+  }
+
+  private async furnishPieces(): Promise<void> {
+    this.preloadPieces() // (asked for already: want)
     for (const f of this.furnishing) {
       const { s, group } = f
       this.addingPieces = true
