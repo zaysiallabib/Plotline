@@ -5,7 +5,8 @@ Everything a person can do in Plotline and where to click, in plain words. Every
 [SOURCES.md](SOURCES.md). The architect's files Plotline reads and writes: [FORMATS.md](FORMATS.md).
 
 Rule: whenever a button, key or page is added, changed or removed, this file and KEYS.md change in the same commit.
-Checked against the product on 2026-11-21 (branch `s31/redesign`).
+Checked against the product on 2026-11-21 (branch `s31/redesign`); walked from zero, with only README and these
+manuals, on 2026-11-22.
 
 ## Start here
 
@@ -18,10 +19,17 @@ Plotline has three screens:
 What a developer does first:
 
 1. **Make the project:** Studio → **⋯** → **New project** — its name, basements, floors and rooftop (§6).
-2. **Bring in each floor plan:** drop the sheet (a picture, a PDF, or the architect's IFC / DXF) on the Studio and set the scale with **S** (§5).
+2. **Bring in each floor plan:** in the floor list on the right click **Draw** beside a floor, drop the sheet (a picture,
+   a PDF, or the architect's IFC / DXF) on the Studio and set the scale with **S** (§5). An IFC makes every floor at once.
 3. **Trace it:** **Auto-trace** → **Whole floor**, then answer **Check these** on the right (§5).
-4. **Walk it:** **Preview 3D**; arrange the furniture (**Edit ▾ → Furniture**), set the site and true north (**⋯ → Site**) (§2, §3, §5).
-5. **Send it to buyers:** **⋯ → Share link**; what they choose and write comes back in the **Change list** (§1, §5).
+4. **Name the flats and give the plan its floors:** check the flat names written on the plan (part two flats that came
+   out as one with **V → Flat → New flat**), name each with **R** inside one of its rooms ("Type A ±2703 sft"), then
+   type its floors in the **Floor plans** box above the list (`2-8`) and **Apply** (§5 "Flats in a drawing", §6).
+5. **Walk it:** **Preview 3D** (one floor) or **Show building** (the tower); arrange the furniture (**Edit ▾ →
+   Furniture**), set the site and true north (**⋯ → Site**) (§2, §3, §4, §5).
+6. **Send it to buyers:** **⋯ → Share link**; what they choose and write comes back in the **Change list** (§1, §5).
+   Both need the online database: without it the Studio's **⋯** has no Buyers part at all (README, "The online
+   database").
 
 **Two kinds of people.** A **buyer** looks, chooses finishes and leaves notes — nothing else. **Staff** can also move
 furniture, change doors and windows, and use the Studio. A browser becomes staff the first time it opens the Studio, or
@@ -126,7 +134,7 @@ Everything else opens from these and closes again with **Esc**.
 | Walk · Dollhouse · Building (one switch; the view you are in is white) | O: Walk ↔ Dollhouse; B: Building | Walk inside at eye height · the whole plan from above with the roof off · the whole tower (only when the flat belongs to one) |
 | Finishes | F | The panel on the right: floor, wall and ceiling options. While it is open, a click on a floor, wall or ceiling chooses for that one room or wall. **×**, F or Esc closes it |
 | Comment | C | The Comment panel on the right: click anything to leave a note on it; your notes are listed there. Finishes and Comment take turns |
-| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in |
+| Share | — | Copies a link that opens with the finishes you chose. Staff, with the online database: a buyer link (`/s/…`) of this flat on its floor, with the finishes and furniture kept for it (floor 3's beige, not the floor plan's); its buyers' picks and notes reach the change list. It asks once for the staff key when you are not signed in. Without the online database the link of a drawing made in the Studio (Preview 3D, a project's floor) opens only in this browser — anywhere else it says "This flat isn't here."; a built-in flat's link (`/u/type-a?c=…`) opens anywhere |
 | Enter VR | — | Only when a VR headset is connected |
 | Edit ▾ (staff) | — | Furniture, Openings, Plan (Studio), Download 3D model (§3) |
 | ⋯ | — | **Clean view** (H), **Quality**: Lite · Low · High, and **How fast is it here?** (not on a buyer link) |
@@ -136,7 +144,10 @@ A button that is on (a panel open, an editor on) has a light blue wash and blue 
 
 **Top left: the room.** Its floor in small capitals, its name in the serif, its printed size and area under it, on a
 soft frosted rectangle whose edges fade out, so the words read over any wall, by day and by night. **Click it** for the
-list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list. A
+list of rooms (your room is the white row) and click a room to jump there; Esc or a click elsewhere closes the list.
+The list holds the flat's own rooms (a level's: its rooms and areas): the stair, the lifts and the lift lobby are not
+in it — to take the stair, walk out through the flat's front door into the lobby and on into the stair room (below,
+"Stairs between floors"). A
 jump is framed so a wall AC is neither cut by the top of the picture nor hidden under the bar — where the best picture of
 the room would cut one, it looks a little lower, turns a little or looks a little higher until the AC is out of the
 picture or wholly in it (none of the 79 jumps on the built-in flats cuts one). A WC smaller than 2 m² (Type A's H. toilet) is
@@ -732,6 +743,11 @@ had.
 - Click both ends of a size printed on the plan and type it (`14'-5"`, `14.4` or `4.4m`). No size printed (ground floors,
   basements, rooftops)? Use anything whose length you know: the plot's width from the land papers is the one to trust (a
   door or a drawn car was 4–6 % off in our test; a parking bay is about 8' × 16', a single door about 3'-3").
+- **Only room sizes printed** (most brochure sheets: "BED-2 15'-0"X11'-10"", no dimension line): a room's size runs
+  between the inside faces of its walls. Pick a plain rectangular room, zoom in with the wheel until its two walls fill
+  the plan (at a whole floor's 30 % a click 2 px off is a 1 % error), click the inside face of one wall, then straight
+  across on the inside face of the other, and type the number for that side — the longer number for the longer side
+  (BTI's Bed-2: 15'-0" from wall to wall across, 11'-10" up and down). The status bar then shows the scale (1 px = … m).
 - **Lining a picture up with a drawing that has none** (a built-in Banani / dmd level, an opened file): drop the picture,
   press **S**, then 4 clicks — a corner on the picture, the same corner in the drawing, then another corner far away,
   likewise. The picture jumps under the drawing at the right size and "Done" shows. Wrong? **Ctrl+Z** and again. The
@@ -748,6 +764,9 @@ had.
   (5") / thick (10").
 - **What the cursor sticks to** (the status bar says which, before the first corner too): a corner, a wall's centre line
   ("wall — will split"), a column's centre, corners and sides, and a thick wall's two faces. **Shift** = no sticking.
+- A wall cannot start or end on a wall where a door or a window sits: the click says "An opening sits on that spot —
+  move it first" and puts no corner down (the next click starts the wall instead). End it beside the opening, or first
+  narrow or slide the opening with V (a veranda's railing meeting a bedroom's window wall).
 - **Walls that touch are joined** (founder 2026-10-09: "a wall touches another wall, that is it, it is a box"): a wall
   touching a column anywhere closes the room there (the room goes round the column); a wall stopping on another wall's
   face joins it; a wall end put down a little short — up to 6 inches, or that wall's thickness — is carried on to it
@@ -777,6 +796,9 @@ had.
   the sheet prints, e.g. `12'-0" × 14'-2"`; leave it empty if none — the tool never fills it for you), **Floor level**,
   **Ramp** (tick it, type the far end's level, pick the direction). **Save**, or **Remove** to take the name off.
   **Esc** closes the box without saving, wherever you are in it (the name, a level, the Ramp tick box, the Kind list).
+- **A room that has a name already:** click ON its name and the box opens with that name to change. Clicked elsewhere in
+  the room, the box opens empty and **Save** puts a second name in that room — that is how a flat's "Type A" name goes
+  in (below, "Flats in a drawing"); to rename the room itself, click its name (or V, click the name, type on the right).
 - **Clicked where no closed room is?** R looks at the walls round your click. If one wall end there stops a little short,
   R joins it (one Ctrl+Z) and opens the box. Otherwise it says which end keeps the room open, how far short and where,
   and rings it ("Not closed yet: the wall end 2'-3" up-left of your click (ringed) stops 0'-7" short of the wall ahead —
@@ -852,7 +874,11 @@ would take glows (its closed rooms and the open floor round them). Then:
     still goes into the flat it shares most walls with.
   - Each flat comes out tinted and named by its printed type (**Type A**, **Unit A**, "Unit A & B" when the sheet says
     so), else **Flat 1, Flat 2…** from west to east.
+  - It takes about half a minute to read a sheet before "Point at a flat" shows (the BTI 2nd floor: 31 s), then a few
+    seconds for the floor.
 - **Cancel** in the box stops it.
+- The trace replaces the walls and names; the drawing keeps its own name, project, floor, true north, site and outside
+  shape.
 
 **Flats in a drawing.** Once rooms are named, the Studio finds the flats by itself: rooms joined by a door, passage,
 sliding door, zone line or a wall lower than 1.2 m are one flat (a window joins nothing); lobbies, stairs, lifts, shafts,
@@ -860,6 +886,12 @@ gym / community / guard rooms and outdoor areas belong to no flat; a group count
 more room. Each flat is tinted with its name written once above it.
 - **To use the sheet's name:** R, click inside one of its rooms, type **Type A ±2736 sft**, Save — it names the flat, not
   the room; V on it shows the check ("Names the flat Type A: its 17 rooms add up to 1857 sft, printed ±2736 sft").
+  Click inside the room away from its name, so the box opens empty (§5 R). After **Whole floor** too: Auto-trace has put
+  every room in its flat by hand (V on a room says **Flat (moved by hand)** even where you moved nothing), and the name
+  renames that flat.
+- **Two flats came out as one** (Whole floor made the BTI 2nd floor's big flat and its two small top flats one "Flat 1"):
+  V, click a room name of the second flat, **Flat → New flat (Flat 2)**; then click each of its other rooms' names and pick
+  **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
 - **A room in the wrong flat:** V, click the room's name, pick the right one in **Flat**; **Not in a flat** takes it out;
   **New flat** starts another with just that room; **Back to: by its doors** undoes a hand pick. An untinted room inside
   a flat usually has no door (add it with O — the 3D needs it too) or none at all (pick its flat by hand).
@@ -947,7 +979,12 @@ bed covers or a dark page's streaks that come out as short loose walls (V, Del).
 buttons fill in a few at a time — the row you click first, then what is in view ("Working out the rows' fixes — 320
 rows left…"). The page stays usable; Export saves at once, rows still being worked out marked `"answersPending": true`.
 
-**Your answers are kept as a record.** Every row is saved with the drawing (and in the Export file) with its **picture
+**Keep the list while you answer it.** In a project the Check these rows live with the drawing while it is open in the
+Studio: opening another floor's drawing or another project, then coming back, leaves Check these empty ("Auto-trace (top
+bar) lists here what it is unsure of."; the Issues stay). Answer the rows first, or **⋯ → Export** to keep them in a
+file.
+
+**Your answers are kept as a record.** Every row is kept with the open drawing (and in the Export file) with its **picture
 box** — the piece of the sheet an AI helper would be shown — and its buttons. Every button you click (Looks right and
 Show me too) is added to a list that is never changed afterwards: the sheet, the row, the button, the time. **⋯ →
 Export answers** saves it. A name typed with Name it is not kept yet.
@@ -1047,7 +1084,7 @@ picture can still be dropped later to see the sheet behind. Every format and how
 
 | File | What happens |
 |---|---|
-| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens. Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
+| **IFC** `.ifc`, `.ifczip` (Revit, ArchiCAD, …: a building model with its walls, doors and rooms) | One storey opens as the drawing. Several make a whole **project** in one go — basements, ground, floors, rooftop — each storey its own drawing, the outside shape saved once for the building; the first floor above ground opens (a house's: its attic — click **Open** beside **Ground floor** in the list for the main rooms). Walls the file leaves touching are joined, two of its rooms in one open space are split by flush zone lines where the file draws their boundary, a room the walls leave open (a balcony edged only by a railing, a roof terrace, a stair open to the floor above) is closed by flush zone lines along the file's own outline of it — the railing itself shows in the outside shape — and a space that only holds other rooms (a gross area) gives no room name — "What was read from the file" says how many of each |
 | **DXF** `.dxf`, **SVG** `.svg` (a drawing made of lines) | One floor's walls, openings and room names read from the file, to check and finish as usual. A DXF's walls may be line pairs, polylines, hatches or multilines; an SVG's groups are its layers ("Walls", "A-WALL"); an SVG with no named groups (a CAD print saved as SVG) has its lines sorted by pen like a PDF — the heaviest pen and grey wall fills are the walls. An SVG has no scale: the printed dimensions give it — check with S |
 | **DWG** `.dwg` (AutoCAD's own) | Once DWG is turned on ([SETUP_FORMATS.md](SETUP_FORMATS.md)): sent to an online converter, back as a DXF ("converting the DWG to DXF"); 10 a day. Not turned on: refused with "Save as DXF" |
 | **PDF** `.pdf` (a brochure, or a print from the drawing program) | Several pages: **Which page is the floor plan?** — click it (× or Esc closes). A page whose lines make a clean plan opens as the drawing — a PDF has no layers, so its lines are sorted by pen: the heaviest pen and grey wall fills are the walls ("What was read from the file" names them); the scale printed on the sheet (`1/4" = 1'-0"`, `1:100`) is the scale, else the printed dimensions measured against their lines — check with S; a stair's "UP" / "DN" and a door or window tag ("D-16", "Win-18") never name a room; a page with no scale printed as words (a brochure page whose words are drawn as outlines) opens straight as the plan picture, its lines not read; any other page becomes the **plan picture** for S and Auto-trace. The message offers the other way: **Use it as a picture instead** / **Read its lines instead** |
@@ -1131,8 +1168,11 @@ little; it is on no floor until you give it some.
 
 **Under the list:** **Open now** (the open drawing's name, to rename it) and **Delete this drawing** (it leaves every floor;
 asks first). **The project itself** (top of the list): **Rename**, **Delete** (asks first), **Close** (nothing is lost; open
-it again with **Building** → **Or open a project**). **Show building** opens the stacked building in a new tab; a floor
-with no drawing yet is filled with the one below it.
+it again with **Building** → **Or open a project**, a list of your projects by name). After Close the drawing you were on
+stays on the screen outside the project: **Start over** then asks as for any drawing ("The drawing, its picture and its
+furniture go"), but the project keeps its own copy — answer **Start over** to begin the next thing on an empty Studio.
+**Show building** opens the stacked building in a new tab (start screen, then the tower); a floor with no drawing yet is
+filled with the one below it.
 
 **One floor different from the others**
 - A drawing on several floors is ONE drawing: change its walls, doors or windows in the Studio and every floor with it
@@ -1152,8 +1192,9 @@ with no drawing yet is filled with the one below it.
   its furniture and finishes become the plan's own, which F then shows.
 - **A building from an IFC** has one drawing per storey from the start: nothing repeats, nothing to answer.
 
-Whatever was open before you started the project becomes one of its drawings when you open a floor (Use drawing… puts it
-on floors).
+Whatever was open before you started (or opened) the project becomes one of its drawings when you open a floor (Use
+drawing… puts it on floors); the list says so meanwhile ("The plan open now is not one of this project's drawings yet").
+A drawing that belongs to another project stays in that one (the list says the same line about it: it is not added).
 
 **The old way, one plan:** **Building** with no project open → **Put only this plan into a building…** → "Use this plan
 as" **A flat** (floors N to M, a mirrored neighbour), **Ground floor**, **Basement**, **Common floor** or **Rooftop**,
@@ -1325,8 +1366,12 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Whole floor's flat count is right on most test sheets but not all: two flats can come out as one where the floor
   reaches between them other than through the lobby (Eastern Housing Sapphire through its open-to-sky void; Sheltech
   Windflower Tower 1's Type F and B), and flats whose labels were not read are missed or merged (Rangs Sanctuary's five
-  studios, Arkam Metro Park's seven, Windflower's red TYPE-W labels). Check the flat names after Whole floor; part them
-  with **New flat**. The second drawing on a sheet (BTI 3rd floor's "4th, 6th & 8th floor" strip) is not traced.
+  studios, Arkam Metro Park's seven, Windflower's red TYPE-W labels; the BTI 2nd floor's 2703 sft flat and its two
+  674 sft flats came out as one "Flat 1", 2026-11-22). Check the flat names after Whole floor; part them with **New
+  flat** (§5, "Flats in a drawing"). The second drawing on a sheet (BTI 3rd floor's "4th, 6th & 8th floor" strip) is not
+  traced.
+- The BTI 2nd floor's lift lobby and its top-left veranda (railing lines only) come out open; that veranda's railing
+  meets the bedroom's window wall, where a new wall cannot end (§5 W).
 - A flat without a printed type is "Flat 1, 2 …", counted west to east, so a mirrored drawing counts the other way; a
   room moved by hand to "Flat 2" goes with the number.
 - Auto-trace puts the printed "TYPE-A ±2736 SFT" on the drawing only when it stands in a closed room of the flat; in an
@@ -1351,13 +1396,25 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Zoomed out, a small room's name can be hidden until the mouse is over it; coloured areas (lawn, driveway) cover much of the
   picture under them; checks written for flats show on levels ("No entry door on an outer wall", the Area number).
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
+  Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
+- A project closed with **Close** is open again the next time the Studio opens on that drawing (a reload brings back its
+  floor list).
+- Check these rows go when you open another drawing of the project and come back (§5, "Keep the list while you answer
+  it").
+- The Steps list leaves **2 Set scale** unticked on an architect's file, which is in real sizes from the start.
+- With nothing drawn and the floor list open, the New project card shows twice (in the middle and in the list).
 
 **Projects and the 3D**
 - Outside a project only one Studio drawing exists: opening another plan from the 3D view (Edit plan, Edit openings)
   replaces yours after one question. Inside a project nothing is asked.
 - A whole-floor drawing knows its flats only in the Studio: a buyer link and the Building view treat the whole floor as
   one flat, and finishes go per room and wall, not per flat.
+- The Rooms list leaves out the stair, lifts and lift lobby, so the stair is reached only on foot (out of the front door,
+  through the lobby); on a big whole floor that is a long walk with W A S D and floor clicks.
+- An IFC house's Dollhouse: the file's own outside shape keeps the slab above the ground floor over its rooms, so from
+  above you see the slab (with the stair's hole), not the rooms (fzk_house; **Remove outside shape** in the Studio takes
+  it away, with its facade).
 - "Which floors?" is asked only on a Studio project's flat floors: a built-in tower's flat, or one level drawing on two
   floors, changes everywhere (use **This floor only** in the floor list first). **Floor 2 only** reopens the page on the
   copy, from the entrance. The old one-plan way does not know about own copies (use the floor list).
@@ -1437,7 +1494,7 @@ screen.
 | What you see | Why | What to do |
 |---|---|---|
 | **Nothing stands at this address.** | The address is mistyped, or the page has moved. | **Go to the front page**, or check the address. |
-| **This flat isn't here.** | A `/u/…` address names a flat that does not exist (an old or mistyped link). | Ask whoever sent it for a fresh link. Staff: check the name against §1. |
+| **This flat isn't here.** | A `/u/…` address names a flat that does not exist (an old or mistyped link), or a link of a Studio drawing opened in another browser (without the online database it lives only in the browser that made it). | Ask whoever sent it for a fresh link. Staff: check the name against §1. |
 | **Nothing was sent from the Studio.** | `/u/preview` opened in a browser where the Studio never pressed **Preview 3D**. | **Open the Studio**, then **Preview 3D**. |
 | **This link no longer opens a flat.** | A buyer link (`/s/…`) was turned off, has expired, or never existed. | Buyer: ask your sales contact for a fresh link. Staff: make one with ⋯ → **Share link**. |
 | **The flat could not be fetched.** | A buyer link could not reach the online database: no internet, or the database is not set up on this site. | Check the connection, **Try again**. If it keeps happening: [SETUP_SUPABASE_ON_VERCEL.md](SETUP_SUPABASE_ON_VERCEL.md). |
