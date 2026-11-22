@@ -3083,6 +3083,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
     // pinned so: its doors would join it to the one flat whose door was found — Foysal's lobby came out Unit A's "Kitchen 1")
     if (i < 0 && sels.length > 1 && p.inCore({ x: l.x + shift.x, y: l.y + shift.y })) {
       l.flat = ''
+      l.flatFrom = 'trace'
       continue
     }
     const f = i < 0 ? finals.find((r) => r.id === l.id) : undefined
@@ -3090,7 +3091,7 @@ export function pickTraces(p: Prepared, pickPx?: Px, whole = false, chosen?: Ret
       const d = sels.map((s) => Math.min(...roomPolygon(f, u).map((v) => distToRooms(p.draft, s.rooms, { x: v.x + shift.x, y: v.y + shift.y }))))
       if (Math.min(...d) <= 0.3) i = d.indexOf(Math.min(...d))
     }
-    if (i >= 0) l.flat = flatNames[i]
+    if (i >= 0) Object.assign(l, { flat: flatNames[i], flatFrom: 'trace' })
   }
   // a printed size the reader saw but could not read: the human types it (its guess, when the drawing confirmed the
   // guessed rectangle, is offered — never taken as the printed size)

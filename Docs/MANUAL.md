@@ -684,6 +684,11 @@ furniture go. Undo cannot bring them back." — **Start over** (red) empties the
 keeps everything. A drawing of a project is not asked about: it stays in its project (open it again from the floor list)
 and only the screen empties.
 
+**Messages at the bottom.** What was done ("Joined 1 overlapping wall — Ctrl+Z undoes") fades after about 5 seconds
+(longer for a long one). Something refused or gone wrong ("A zone line takes no doors or windows", "Could not read the
+file …") has a small red dot before it and stays until you click its **×**, the next message comes, or you change the
+drawing.
+
 ### Top bar
 
 - **Left:** **Plotline STUDIO** (opens the front page; the mouse over STUDIO says this browser is in staff mode), then
@@ -770,9 +775,9 @@ had.
   (5") / thick (10").
 - **What the cursor sticks to** (the status bar says which, before the first corner too): a corner, a wall's centre line
   ("wall — will split"), a column's centre, corners and sides, and a thick wall's two faces. **Shift** = no sticking.
-- A wall cannot start or end on a wall where a door or a window sits: the click says "An opening sits on that spot —
-  move it first" and puts no corner down (the next click starts the wall instead). End it beside the opening, or first
-  narrow or slide the opening with V (a veranda's railing meeting a bedroom's window wall).
+- A wall started or ended on a wall where a door or a window sits (a veranda's railing meeting a bedroom's window wall)
+  puts its corner there all the same: the opening is cut back to the new wall's face, keeping its larger side, and the
+  message says "The opening there was cut back to meet it — Ctrl+Z undoes".
 - **Walls that touch are joined** (founder 2026-10-09: "a wall touches another wall, that is it, it is a box"): a wall
   touching a column anywhere closes the room there (the room goes round the column); a wall stopping on another wall's
   face joins it; a wall end put down a little short — up to 6 inches, or that wall's thickness — is carried on to it
@@ -835,7 +840,8 @@ had.
 
 ### The right-hand panel
 
-- **Steps** — the checklist; it ticks itself, the next step marked with a blue dot.
+- **Steps** — the checklist; it ticks itself, the next step marked with a blue dot. A drawing read from an architect's
+  file (IFC, DXF, PDF lines) is in real sizes: **1 Load plan** and **2 Set scale** are ticked from the start.
 - **Selection** — the details of what you picked, to type exact values: a *corner* (position); a *wall* (Wall / Low wall
   / Kerb / Zone line, width, height, **Stands alone** — a screen or decoration wall not meant to close a room, length,
   copy, delete); an *opening* (Door / Sliding door / Window / Passage, width, height, sill, distance from each corner;
@@ -894,8 +900,8 @@ more room. Each flat is tinted with its name written once above it.
 - **To use the sheet's name:** R, click inside one of its rooms, type **Type A ±2736 sft**, Save — it names the flat, not
   the room; V on it shows the check ("Names the flat Type A: its 17 rooms add up to 1857 sft, printed ±2736 sft").
   Click inside the room away from its name, so the box opens empty (§5 R). After **Whole floor** too: Auto-trace has put
-  every room in its flat by hand (V on a room says **Flat (moved by hand)** even where you moved nothing), and the name
-  renames that flat.
+  every room in its flat (V on a room says **Flat (from Auto-trace)**; once you pick another it says **Flat (moved by
+  hand)**), and the name renames that flat.
 - **Two flats came out as one** (Whole floor made the BTI 2nd floor's big flat and its two small top flats one "Flat 1"):
   V, click a room name of the second flat, **Flat → New flat (Flat 2)**; then click each of its other rooms' names and pick
   **Flat 2**; then name it with R as above. The floor list shows the flats under the drawing's name.
@@ -1409,7 +1415,6 @@ Things that are confusing or not finished. Each one is a job on the list.
 - Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
   Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
-- The Steps list leaves **2 Set scale** unticked on an architect's file, which is in real sizes from the start.
 
 **Projects and the 3D**
 - Outside a project only one Studio drawing exists: opening another plan from the 3D view (Edit plan, Edit openings)

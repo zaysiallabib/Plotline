@@ -259,7 +259,7 @@ function nameInside(u: Unit, printed: PrintedRoom[]): { unit: Unit; sized: Revie
   st.forEach((x, i) => {
     if (x.s !== 'unnamed' || x.d > 0) return
     const p = printed[i]
-    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat } : {}) }
+    const patch = { name: p.name, kind: p.kind as RoomLabel['kind'], ...(p.printedSize ? { printedSize: p.printedSize } : {}), ...(p.flat ? { flat: p.flat, flatFrom: 'trace' as const } : {}) }
     const l = labels.find((y) => y.id === x.room.id)
     const at = l ?? insidePoint(x.room, u, rooms)
     if (!at) return

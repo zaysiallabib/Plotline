@@ -47,6 +47,33 @@ describe('studio reducer', () => {
     expect(s.history.past).toHaveLength(6) // scale + 5 placements
   })
 
+  it('a wall ended inside a window: the window is cut back to its face and the corner goes there (newcomer lane s31: refused)', () => {
+    let s = traceRect()
+    const top = s.unit.walls[0]
+    s = reducer(s, { type: 'add-opening', wallId: top.id, t: 0.5, kind: 'window', widthM: 1.5 }) // 1.25 → 2.75 m along the top wall
+    s = reducer(s, { type: 'pick-wall', wall: 'low' })
+    s = run(s, { type: 'chain-start', at: { x: 2.2, y: 2, tolM: TOL } }, { type: 'chain-add', at: { x: 2.2, y: 0.01, tolM: TOL } })
+    expect(s.toast?.text).toBe('The opening there was cut back to meet it — Ctrl+Z undoes')
+    expect(s.toast?.error).toBeUndefined()
+    const end = s.unit.vertices.find((v) => Math.abs(v.x - 2.2) < 1e-9 && Math.abs(v.y) < 1e-9)!
+    expect(end).toBeDefined() // the railing ends on the wall line where it was drawn
+    const rail = s.unit.walls.find((w) => w.heightM < 2)!
+    const left = s.unit.walls.find((w) => w.b === end.id)!
+    expect(left.openings).toHaveLength(1) // the window keeps its larger side, up to the railing's face
+    expect(left.openings[0].offsetM).toBeCloseTo(1.25)
+    expect(left.openings[0].offsetM + left.openings[0].widthM).toBeCloseTo(2.2 - rail.thicknessM / 2)
+    expect(s.unit.walls.find((w) => w.a === end.id)!.openings).toHaveLength(0)
+    expect(reducer(s, { type: 'undo' }).unit.walls.find((w) => w.id === top.id)!.openings[0].widthM).toBeCloseTo(1.5)
+  })
+
+  it('a refusal is an error message: it stays until dismissed (the Studio shows it with ×)', () => {
+    const s = reducer(traceRect(), { type: 'add-opening', wallId: 'nope', t: 0.5, kind: 'door' })
+    const z = reducer(initialState(), { type: 'chain-start', at: { x: 0, y: 0, tolM: TOL } })
+    expect(reducer(z, { type: 'chain-add', at: { x: 0, y: 0, tolM: TOL } }).toast).toBeNull() // (the same corner: nothing to say)
+    expect(reducer(s, { type: 'toast', text: 'Hi' }).toast?.error).toBeUndefined()
+    expect(reducer(s, { type: 'toast', text: 'No', error: true }).toast?.error).toBe(true)
+  })
+
   it('splits a wall when a vertex lands mid-span and keeps openings in place', () => {
     let s = traceRect()
     const top = s.unit.walls[0]
@@ -74,13 +101,16 @@ describe('studio reducer', () => {
     expect(studioIssues(s.unit, deriveRooms(s.unit)).filter((i) => i.level === 'error')).toHaveLength(0)
   })
 
-  it('refuses to split through an opening', () => {
+  it('a wall started on a door: the door is cut back to its face (it used to refuse, newcomer lane s31)', () => {
     let s = traceRect()
     s = reducer(s, { type: 'add-opening', wallId: s.unit.walls[0].id, t: 0.5 })
-    const before = s.unit
+    const door = s.unit.walls[0].openings[0]
     s = reducer(s, { type: 'chain-start', at: { x: 2, y: 0, tolM: TOL } })
-    expect(s.unit).toBe(before)
-    expect(s.toast?.text).toMatch(/opening/i)
+    expect(s.unit.walls).toHaveLength(5) // the top wall split at x = 2
+    const kept = s.unit.walls.flatMap((w) => w.openings)
+    expect(kept).toHaveLength(1)
+    expect(kept[0].widthM).toBeCloseTo(door.widthM / 2 - PARTITION_M / 2) // one side of it, up to the new wall's face
+    expect(s.toast?.text).toMatch(/cut back/)
   })
 
   it('undo returns to earlier states one placement at a time; redo restores', () => {

@@ -131,7 +131,8 @@ export interface StudioState {
   wallType?: WallType
   /** the W tool's low-wall height typed before drawing (a 6' boundary wall, a 7' screen); absent = WALL_TYPES.low */
   lowWallM?: number
-  toast: { text: string; key: number } | null
+  /** `error`: something refused — it stays until dismissed (StudioApp); else it fades */
+  toast: { text: string; key: number; error?: boolean } | null
   dragBlocked: boolean
   exported: boolean
   /** the "Drag any corner with V" tip after the first closed loop, once per session (not in the Draft) */
@@ -251,7 +252,7 @@ export type Action =
   | { type: 'timer-input'; now: number }
   | { type: 'timer-tick'; now: number; hidden: boolean }
   | { type: 'exported' }
-  | { type: 'toast'; text: string }
+  | { type: 'toast'; text: string; error?: boolean }
   | { type: 'clear-toast' }
 
 export function emptyUnit(): Unit {
@@ -1128,17 +1129,23 @@ function splitWall(unit: Unit, wall: Wall, t: number): { unit: Unit; vertexId: I
   return { unit: { ...unit, vertices: [...unit.vertices, v], walls }, vertexId: v.id }
 }
 
-/** Resolve a plan point to a vertex id: an existing vertex within tol, a split of a wall within tol, or a new vertex. */
-function resolveTarget(unit: Unit, at: Target): { unit: Unit; id: Id; existing: boolean } | string {
+/**
+ * Resolve a plan point to a vertex id: an existing vertex within tol, a split of a wall within tol, or a new vertex. A
+ * spot inside a door or window of that wall: the opening is cut back to the face of the wall drawn to it (`half` its
+ * thickness — trimAt, as a dropped corner's join does) and the corner goes there (`trimmed`; newcomer lane s31: a railing
+ * ending on a veranda's window wall was refused).
+ */
+function resolveTarget(unit: Unit, at: Target, half = PARTITION_M / 2): { unit: Unit; id: Id; existing: boolean; trimmed?: boolean } | string {
   const near = unit.vertices.find((v) => Math.hypot(v.x - at.x, v.y - at.y) <= at.tolM)
   if (near) return { unit, id: near.id, existing: true }
   const nw = nearestWall(at, unit)
   if (nw && nw.distanceM <= at.tolM) {
     const len = wallLen(unit, nw.wall)
     if (nw.t * len > at.tolM && (1 - nw.t) * len > at.tolM) {
-      const r = splitWall(unit, nw.wall, nw.t)
+      const t = trimAt(unit, nw.wall, nw.t * len, half)
+      const r = splitWall(t.unit, t.wall, nw.t)
       if (typeof r === 'string') return r
-      return { unit: r.unit, id: r.vertexId, existing: true }
+      return { unit: r.unit, id: r.vertexId, existing: true, ...(t.trimmed ? { trimmed: true } : {}) }
     }
   }
   const v: Vertex = { id: newId(), x: at.x, y: at.y }
@@ -1271,7 +1278,11 @@ function commit(s: StudioState, unit: Unit, extra: Partial<StudioState> = {}): S
     history: { past: [...s.history.past.slice(-(HISTORY_CAP - 1)), s.unit], future: [] },
   }
 }
-const withToast = (s: StudioState, text: string): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1 } })
+const withToast = (s: StudioState, text: string, error = false): StudioState => ({ ...s, toast: { text, key: (s.toast?.key ?? 0) + 1, ...(error ? { error } : {}) } })
+/** a refusal: the message stays until dismissed (newcomer lane s31: "An opening sits on that spot" went before it was read) */
+const refuse = (s: StudioState, text: string): StudioState => withToast(s, text, true)
+/** resolveTarget cut a door or window back to the new wall's face */
+const TRIMMED = 'The opening there was cut back to meet it — Ctrl+Z undoes'
 const noted = (s: StudioState, notes: string[]): StudioState => (notes.length ? withToast(s, notes.join(' · ')) : s)
 /** a wall of type `wall` (`heightM` instead of the type's own) from one `thicknessM` wide: a zone line is ZONE_LINE_M thin, a wall out of one a partition again */
 const chainType = (thicknessM: number, wall: WallType, heightM?: number): { thicknessM: number; heightM: number } =>
@@ -1281,12 +1292,12 @@ const joinedToast = (n: number, trimmed = 0) =>
 
 function chainAdd(s: StudioState, at: Target): StudioState {
   if (!s.chain) return s
-  const r = resolveTarget(s.unit, at)
-  if (typeof r === 'string') return withToast(s, r)
+  const r = resolveTarget(s.unit, at, s.chain.thicknessM / 2)
+  if (typeof r === 'string') return refuse(s, r)
   const last = s.chain.ids[s.chain.ids.length - 1]
   if (r.id === last) return s
   const u = addWall(r.unit, last, r.id, s.chain.thicknessM, at.tolM, s.chain.heightM)
-  if (typeof u === 'string') return withToast(s, u)
+  if (typeof u === 'string') return refuse(s, u)
   // overlap = joined: an end inside another wall's body ends there, a crossed wall is split; a straight run heals; an end
   // stopping short of a wall / column within reach is carried on to it (founder 2026-10-09: "it is a box") (settle)
   const j = settle(u, [last, r.id], true)
@@ -1295,7 +1306,7 @@ function chainAdd(s: StudioState, at: Target): StudioState {
   const ids = all.filter((id) => j.unit.vertices.some((v) => v.id === id)) // a healed corner is no chain corner any more
   const end = ids[ids.length - 1]
   const stop = r.existing || closes || !end || degree(j.unit, end) > 1
-  const next = noted(commit(s, j.unit, { chain: stop ? null : { ...s.chain, ids }, selection: [] }), j.notes)
+  const next = noted(commit(s, j.unit, { chain: stop ? null : { ...s.chain, ids }, selection: [] }), r.trimmed ? [TRIMMED, ...j.notes] : j.notes)
   return closes && !s.loopTipShown ? { ...withToast(next, 'Drag any corner with V to adjust it'), loopTipShown: true } : next
 }
 
@@ -1329,11 +1340,12 @@ export function reducer(s: StudioState, a: Action): StudioState {
     }
 
     case 'chain-start': {
-      const r = resolveTarget(s.unit, a.at)
-      if (typeof r === 'string') return withToast(s, r)
       const wall = a.wall ?? s.wallType ?? 'wall'
-      const chain = { ids: [r.id], ...chainType(s.chain?.thicknessM ?? PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined) }
-      return r.unit === s.unit ? { ...s, chain, selection: [] } : commit(s, r.unit, { chain, selection: [] })
+      const type = chainType(s.chain?.thicknessM ?? PARTITION_M, wall, wall === 'low' ? s.lowWallM : undefined)
+      const r = resolveTarget(s.unit, a.at, type.thicknessM / 2)
+      if (typeof r === 'string') return refuse(s, r)
+      const chain = { ids: [r.id], ...type }
+      return r.unit === s.unit ? { ...s, chain, selection: [] } : noted(commit(s, r.unit, { chain, selection: [] }), r.trimmed ? [TRIMMED] : [])
     }
     case 'pick-wall': {
       const lowWallM = a.lowWallM ?? s.lowWallM
@@ -1343,7 +1355,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const ids = new Set(a.ids)
       const walls = s.unit.walls.filter((w) => ids.has(w.id))
       if (!walls.length) return s
-      if (a.wall === 'zone' && walls.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line carries none')
+      if (a.wall === 'zone' && walls.some((w) => w.openings.length)) return refuse(s, 'Remove its doors / windows first: a zone line carries none')
       // its own height when it is that type already (a 7' screen stays 7'), else the W tool's low-wall height / the type's
       const t = (w: Wall) => chainType(w.thicknessM, a.wall, a.heightM ?? (wallTypeOf(w.heightM) === a.wall ? w.heightM : a.wall === 'low' ? s.lowWallM : undefined))
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...t(w) } : w)) })
@@ -1407,7 +1419,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       // ponytail: an arc is short straight walls; rooms, doors, snapping, 3D and the tracer stay straight-wall only — true arcs later if ever
       const pts = arcPoints(a.a, a.b, a.via)
       const r0 = resolveTarget(s.unit, a.a)
-      if (typeof r0 === 'string') return withToast(s, r0)
+      if (typeof r0 === 'string') return refuse(s, r0)
       let u = r0.unit
       const ids = [r0.id]
       for (const p of pts.slice(1, -1)) {
@@ -1416,7 +1428,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
         ids.push(v.id)
       }
       const r1 = resolveTarget(u, a.b)
-      if (typeof r1 === 'string') return withToast(s, r1)
+      if (typeof r1 === 'string') return refuse(s, r1)
       u = r1.unit
       ids.push(r1.id)
       const wall = s.wallType ?? 'wall'
@@ -1424,7 +1436,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const before = new Set(u.walls.map((w) => w.id)) // (a wall its ends split is not one of its pieces)
       for (let i = 0; i + 1 < ids.length; i++) {
         const next = addWall(u, ids[i], ids[i + 1], t.thicknessM, a.a.tolM, t.heightM)
-        if (typeof next === 'string') return withToast(s, next)
+        if (typeof next === 'string') return refuse(s, next)
         u = next
       }
       const made = new Set(u.walls.filter((w) => !before.has(w.id)).map((w) => w.id))
@@ -1476,7 +1488,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const kind = a.kind ?? s.lastOpeningKind
       const widthM = a.widthM ?? (kind === s.lastOpeningKind ? s.lastOpeningWidthM : undefined)
       const { opening: placed, error } = openingAt(s.unit, wall, a.t, kind, a.tolM ?? 0, deriveRooms(s.unit), widthM, a.kind === undefined && s.glassPick)
-      if (error) return withToast(s, error)
+      if (error) return refuse(s, error)
       const walls = s.unit.walls.map((w) => (w.id === wall.id ? { ...w, openings: [...w.openings, placed] } : w))
       return commit(s, fullHeightIfOpenings({ ...s.unit, walls }), { selection: [placed.id], lastOpeningKind: kind, lastOpeningWidthM: widthM })
     }
@@ -1496,9 +1508,9 @@ export function reducer(s: StudioState, a: Action): StudioState {
         if (typeof placed === 'string') refused.push(placed)
         else u = replaceOpening(u, f.wall.id, placed)
       }
-      if (u === s.unit) return refused.length ? withToast(s, refused[0]) : s
+      if (u === s.unit) return refused.length ? refuse(s, refused[0]) : s
       const t = commit(s, u) // editing one never changes the O tool's pick
-      return refused.length ? withToast(t, `${refused.length} not changed: ${refused[0]}`) : t
+      return refused.length ? refuse(t, `${refused.length} not changed: ${refused[0]}`) : t
     }
     case 'drag-opening': {
       const f = findOpening(s.unit, a.id)
@@ -1537,7 +1549,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const ids = new Set([a.id].flat())
       const ws = s.unit.walls.filter((w) => ids.has(w.id))
       if (!ws.length) return s
-      if (a.patch.heightM === 0 && ws.some((w) => w.openings.length)) return withToast(s, 'Remove its doors / windows first: a zone line (height 0) carries none')
+      if (a.patch.heightM === 0 && ws.some((w) => w.openings.length)) return refuse(s, 'Remove its doors / windows first: a zone line (height 0) carries none')
       return commit(s, { ...s.unit, walls: s.unit.walls.map((w) => (ids.has(w.id) ? { ...w, ...a.patch } : w)) })
     }
     case 'set-wall-length': {
@@ -1595,7 +1607,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
         const f = findOpening(u, id)
         if (!f || (moved.has(f.wall.a) && moved.has(f.wall.b))) continue // its wall moves with it: it stays put on it
         const placed = placeOpening(f.wall, wallLen(u, f.wall), { ...f.opening, offsetM: f.opening.offsetM + a.dx + a.dy })
-        if (typeof placed === 'string') return withToast(s, placed)
+        if (typeof placed === 'string') return refuse(s, placed)
         u = replaceOpening(u, f.wall.id, placed)
       }
       const r = settle(u, [...moved])
@@ -1635,7 +1647,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       // a field cleared (no level, no ramp, no printed size, no flat pinned) leaves the label, not an `undefined` in it
       const set = (l: RoomLabel): RoomLabel => {
         const n = { ...l, ...a.patch }
-        for (const k of ['levelM', 'slope', 'printedSize', 'flat'] as const) if (n[k] === undefined) delete n[k]
+        for (const k of ['levelM', 'slope', 'printedSize', 'flat', 'flatFrom'] as const) if (n[k] === undefined) delete n[k]
         return n
       }
       const roomLabels = s.unit.roomLabels.map((l) => (l.id === a.id ? set(l) : l))
@@ -1695,7 +1707,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
               ? liftPiece(s.unit, rooms, pieces, p.id, a.mountY)
               : movePiece(s.unit, rooms, pieces, p.id, { x: a.x + p.x - picked.x, y: a.y + p.y - picked.y }, (a.rotationDeg ?? picked.rotationDeg) + p.rotationDeg - picked.rotationDeg)
       if (!r) return s
-      if (r.error) return withToast(s, r.error)
+      if (r.error) return refuse(s, r.error)
       const q = r.piece
       if (Math.hypot(q.x - p.x, q.y - p.y) < 1e-9 && q.rotationDeg === p.rotationDeg && JSON.stringify(q.sizeM) === JSON.stringify(p.sizeM) && q.mountY === p.mountY) return s
       // the first move writes the whole preset layout: that is what Export and Preview 3D then carry
@@ -1710,7 +1722,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
       const rooms = deriveRooms(s.unit)
       const r = placePiece(s.unit, rooms, layoutFor(s.unit, rooms), a.assetId, a, a.rotationDeg, a.id)
       if (!r) return s
-      return r.error ? withToast(s, r.error) : commit(s, { ...s.unit, furniture: r.furniture }, { selection: [a.id] })
+      return r.error ? refuse(s, r.error) : commit(s, { ...s.unit, furniture: r.furniture }, { selection: [a.id] })
     }
     case 'reset-furniture': {
       if (!s.unit.furniture.length) return s
@@ -1780,7 +1792,7 @@ export function reducer(s: StudioState, a: Action): StudioState {
     case 'exported':
       return { ...s, exported: true, timer: { ...s.timer, stopped: true } }
     case 'toast':
-      return withToast(s, a.text)
+      return withToast(s, a.text, a.error)
     case 'clear-toast':
       return { ...s, toast: null }
   }

@@ -83,7 +83,7 @@ describe('flats of real drawings', () => {
     const s0 = reducer(initialState(), { type: 'load-unit', unit: sheltechLevel2() })
     const bed2 = s0.unit.roomLabels.find((l) => l.id === 'b-r_bed2')!
     expect(bed2.name).toBe('Bed 2')
-    const s1 = reducer(s0, { type: 'update-label', id: bed2.id, patch: { flat: 'Flat 2' } })
+    const s1 = reducer(s0, { type: 'update-label', id: bed2.id, patch: { flat: 'Flat 2', flatFrom: undefined } })
     const flats = (u: Unit) => deriveFlats(u, deriveRooms(u))
     expect(flats(s1.unit)[1].roomIds).toContain(bed2.id)
     expect(flats(s1.unit)[0].roomIds).not.toContain(bed2.id)
@@ -91,6 +91,10 @@ describe('flats of real drawings', () => {
     const s2 = reducer(s1, { type: 'update-label', id: bed2.id, patch: { flat: undefined } })
     expect('flat' in s2.unit.roomLabels.find((l) => l.id === bed2.id)!).toBe(false)
     expect(flats(s2.unit)).toEqual(flats(s0.unit))
+
+    // (the Selection panel's pick is a person's: an Auto-trace pin's mark goes with it — "Flat (moved by hand)")
+    const traced = { ...s0, unit: { ...s0.unit, roomLabels: s0.unit.roomLabels.map((l) => (l.id === bed2.id ? { ...l, flat: 'Flat 1', flatFrom: 'trace' as const } : l)) } }
+    expect(reducer(traced, { type: 'update-label', id: bed2.id, patch: { flat: 'Flat 2', flatFrom: undefined } }).unit.roomLabels.find((l) => l.id === bed2.id)).not.toHaveProperty('flatFrom')
   })
 
   test("the founder's auto-trace drafts of Type A: one flat each", () => {

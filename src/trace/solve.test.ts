@@ -530,6 +530,8 @@ describe('Level 4: the whole floor in one click; one flat = the same flat wherev
     expect(deriveRooms(r.unit).filter((x) => !r.unit.roomLabels.find((l) => l.id === x.id)?.flat).map((x) => x.name)).toEqual(['Lobby'])
     expect(r.stats.flats?.map((f) => f.name).sort()).toEqual(['Flat 1', 'Flat 2'])
     expect(r.stats.printed?.filter((x) => x.flat === 'Flat 2').map((x) => x.name).sort()).toEqual(['Bed 1', 'Living', 'Toilet'])
+    // (each pin is Auto-trace's: the Studio says "Flat (from Auto-trace)", never "moved by hand" — newcomer lane s31)
+    expect(r.unit.roomLabels.filter((l) => l.flat !== undefined).every((l) => l.flatFrom === 'trace')).toBe(true)
   })
 
   // (the click beside the party wall is nearer A's BED-1 than B's own: the pick from the click took B's bed for the next
