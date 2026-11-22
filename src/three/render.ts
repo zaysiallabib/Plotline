@@ -83,6 +83,14 @@ export function pixelRatioFor(tier: Quality, dpr: number, w: number, h: number, 
 }
 
 /**
+ * A narrower lens (a WC under 2 m²: spawn.ts TINY_HFOV): the vertical field of view (°) that shows `hfovDeg` across a screen
+ * of `aspect` (width / height), never wider than `maxDeg` (the walk's). Asked again on every resize while he stands there,
+ * so a window dragged wider or narrower keeps the same WC in the frame.
+ */
+export const lensFov = (hfovDeg: number, aspect: number, maxDeg: number): number =>
+  Math.min(maxDeg, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hfovDeg) / 2) / aspect)))
+
+/**
  * Floor k of the flat's tower round the flat on `floor` (founder 2026-11-21: "i went to the 1st floor and i couldn't see the
  * playground on the ground floor"): drawn in the walk on every tier as TIERS.tower says — all, or (Lite) the ground and the
  * storeys within one of the flat's; under the ground only from the ground or a basement (nothing else sees one); in the
