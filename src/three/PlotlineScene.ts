@@ -32,10 +32,10 @@ import { buildProcedural, lean, lite } from '../furnish/procedural'
 import { STAIR_RISE } from '../furnish/procedural.meta'
 import { HDRI } from '../furnish/textures'
 import { GAP_PREFIX, KERB_M, bayLineGeometry, bayMarkings, buildSkirtings, closeGaps, dressOpening, floorGeometry, liftWall, liftedWall, pillarParts, poolBasin, raiseHeads, roomCeiling, stepFaces, stepGeometry, storeyTop, wallGeometry, wallLift, wellParts, type WallLift } from './details'
-import { bakeSteps, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
+import { bakeSteps, daylit, isCovered, lightPiece, mapDaylight, pieceDayUv, setDaylight, type BakeKeep, type Daylight } from './daylight'
 import { buildFurniture, preloadModels } from './furniture'
 import { bottomOf } from '../studio/furniture'
-import { CONCRETE, EDGE_PLASTER, EXTERIOR_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
+import { CONCRETE, EDGE_PLASTER, MORE_PICTURES, PAINT, PICTURES, SOLID_CUT, isBlank, litePlain, loading, materialFor, resolveFinish, samePictures, setMaxAnisotropy, zoneFinishRef } from './materials'
 import { PANES, WATER } from './openings'
 import { Look, SITE_REACH_M, TIERS, forcedScale, lightsOn, needsFrame, pixelRatioFor, skyLight, slowFrames, type LightsMode, type Quality, type Well } from './render'
 import { batch, HIDDEN, unbatch } from './batch'
@@ -184,16 +184,20 @@ const PREP_MS = 250
 const SETTLE_MS = 250
 /**
  * One stand-in of each kind of lit surface a flat draws (materials.ts samePictures, daylight.ts daylit): a room's surface (the
- * plain ones share its program) and the tower's walls; on High and Low also a two-sided piece or leaf, the glass and the
- * instanced leaves — their programs asked for by Look.prewarm as the first flat is built. Never freed: a program goes with
- * its last material.
+ * plain ones share its program); on High and Low also a two-sided piece or leaf, the glass and the instanced leaves — their
+ * programs asked for by Look.prewarm as the first flat is built. Never freed: a program goes with its last material.
  */
 function standIns(isLite: boolean): THREE.Group {
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3))
   geo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3))
   geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2))
-  const g = new THREE.Group().add(...[materialFor({ kind: 'color', color: '#ffffff' }, false, true), materialFor(EXTERIOR_PLASTER, false, false, true)].map((m) => new THREE.Mesh(geo, m)))
+  // materials of their own, never the shared ones (materialFor's): three draws opaque surfaces in the order their materials
+  // were made — a tower wall's made first drew the tower behind the flat's walls before them (Lite's Walk +0.5 ms, measured)
+  const room = new THREE.MeshStandardMaterial()
+  samePictures(room)
+  daylit(room)
+  const g = new THREE.Group().add(new THREE.Mesh(geo, room))
   if (isLite) return g // (Lite's pieces and glass are drawn as the rooms or plainer: no stand-in of theirs would match)
   const two = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide })
   const glass = new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false })

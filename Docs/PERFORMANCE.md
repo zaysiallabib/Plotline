@@ -450,3 +450,141 @@ directions each at 15:30 — mean difference 0.1–0.6 of 255, at most 0.9 % of 
 build differ as much). Shots `E:/dev/plotline-shots/s31/polish2/same-high-*.png`. Left: coming back into the typical
 floors from another drawing (the rooftop, Level 1) still builds the flat in full (~1.4–1.9 s); keeping the last drawing's
 flat built while another is shown would take that to ~1 s, at the cost of holding two flats in memory.
+
+## 9. The start screen on High under 6 s: fewer programs, asked for sooner (session 31, start lane)
+
+After §7 the start screen on High still took 7–9 s on this PC. Timed program by program in the page (each one waited for on
+its own as Firefox finished it), almost all of it was Firefox making shader programs one after another — **5.2 s** on Type
+A: 12–14 programs lit by the flat's 12 lamps at 0.28–0.42 s each, six for the tower and the street at 0.08–0.12 s, the
+ambient occlusion's smoothing pass alone 0.6–0.7 s, the plain ones 5–12 ms. And the first of them was asked for only once
+the flat was built, so Firefox's graphics process sat idle while the page built the flat and read its models.
+
+**What this Firefox cannot do.** It does not offer `KHR_parallel_shader_compile` (15 WebGL extensions, that one not among
+them), so it can neither make programs side by side nor say whether one is done. three's `compileAsync` uses that extension
+where it is offered; here its "is it ready?" answers yes at once, so it waits for nothing — it would bring nothing. A program
+asked for and not waited on still holds the graphics process: three new ones asked for after Enter froze the next frame
+0.86 s (measured), so programs cannot be made "in the background" after Enter without a visible freeze of their own length —
+the tower's six stay before Enter. **A second visit** makes them about as slowly: the same programs in the same browser took
+2.99 s against 3.46 s on the first visit — Firefox keeps no finished program between visits; what a second visit saves is
+the downloads and the kept simplified furniture (§7).
+
+What changed:
+
+1. **One program for each kind of lit surface.** Surfaces that differed only by a picture or a setting they do not use now
+   share one; what a surface lacks gets a neutral value (a blank picture multiplies by 1, a number is 0), so nothing on
+   screen changes:
+   - door frames, door leaves, the glass and the plant scans take the rooms' own shader with its daylight left out (a
+     number at 0: their light × 1) — they were programs of their own;
+   - the painted walls' faint cloudiness is a number, not a switch in the shader's text (the walls were a program of their
+     own);
+   - every lit surface carries a glow picture, blank where it does not glow (the lamp glow and the tower's furnished rooms
+     tell a blank picture from a real one);
+   - a two-sided solid piece (a curtain, a lamp shade, chair legs) carries the leaves' alpha test, set never to cut, and a
+     blank mask: two-sided pieces and leaves are one program;
+   - the fan and the physical plant scans (each with a shine of its own) are one program;
+   - the clock's glass is a plain pane seen from the front, as the windows' glass (two-sided see-through glass is two
+     programs: three draws its back faces first, then its front);
+   - the empty boxes that size a pot before its plant scan is in are not drawn (their empty shape made a program).
+   A program may read 16 pictures and on High the light takes 9 (the sky's light, the daylight, the plaster's cloud, the
+   sun's two shadows, three lamps' shadows and one of three's own), so a surface keeps at most 7 — blanks give way first;
+   the baked lamps' picture is declared only on Lite, where it is read (a declared picture counts, used or not).
+2. **Asked for as the flat starts building**, not after: one stand-in of each kind (a room's surface, a two-sided piece,
+   the glass, the instanced leaves), lit by as many lamps as the flat will have, and the ambient occlusion's passes. Asked
+   for, never drawn — a draw waits for every program asked for before it (6 s, measured). The stand-ins have materials of
+   their own: three draws solid surfaces in the order their materials were made, and stand-ins taken from the shared
+   materials made the tower's walls first — drawn before the flat's walls in front of them, then painted over (Lite's Walk
+   0.4–0.9 ms slower, found by the frame runs and fixed).
+3. **The smoothing pass made in 0.06 s instead of 0.7.** three counts its 16 samples with a fixed number, so the compiler
+   copied the loop out 16 times, rebuilding the surface's direction from depth in each; counted by a uniform it stays a
+   loop. Its output is the same, byte for byte (both drawn from the same frame and compared).
+4. **No hitch after Enter.** Pressing Enter places you, which re-framed the tower round the flat: its merged meshes were
+   thrown away and merged again 0.4 s later in one 150–190 ms piece of work (the "~0.15 s stall on the first Walk frame"
+   of §7). Framing the same view again now keeps them. And the flat's and the tower's merged meshes are made as soon as
+   what they merge is in (not 0.4 s after), so the frame behind the screen sends their buffers — made after it, the first
+   frame after Enter sent ~150 of them.
+5. **The flat's models start downloading as the flat starts building** (before: once it was built).
+
+**The programs, Walk on High** (after a full turn by day and at night; each named by what makes it differ):
+
+| kind | before (Type A / Sheltech A) | after (both) | what |
+|---|---|---|---|
+| lit by the flat's 12 lamps (0.3 s each) | 12 / 14 | **5** | one-sided surfaces (rooms, furniture, door and window frames) · two-sided pieces and leaves · the glass (windows, shower screen, water, clock) · the planters' and shrubs' leaves (one mesh, many leaves) · the fan and the physical plant scans |
+| the tower and the street, no lamps (0.1 s each) | 6 | **6** | the tower's walls · its panes · the rooms behind them · the street's blocks · the roads · the ground |
+| plain, unlit (5–10 ms each) | 11 / 10 | **10** | the sky dome (before its photo is in, then with it) · the sun's shadow catcher · contact shadows · corner shading (front, back) · the tower's lift glow · overlays |
+| shadow maps (6–15 ms each) | 4 / 5 | **3** | one-sided · two-sided and leaves · instanced leaves |
+| after the scene | 5 | **5** | ambient occlusion (0.06–0.1 s) · its smoothing (0.06 s, was 0.6–0.7) · copy · blend · output |
+| **all** | **38 / 40** | **29** | |
+
+Asked for: 15 or fewer. It is 29: the 18–20 that cost something are down to 11, and what is left is plain, shadow and
+after-the-scene programs of 5–15 ms each — merging those would change how some things blend (the see-through corner
+shading drawn in one pass instead of two) for no time. The tower's six into fewer would save ~0.3 s more but needs every
+tower surface to carry vertex colours: not done. Lite in Walk: 19 → 18 (Type A), 19 → 19 (Sheltech A).
+
+**The waits, before → after** — from opening the address until Enter can be pressed (Walk) or the Building view shows (it
+opens by itself); the built site as Vercel serves it (`vite preview`), this PC with other lanes' browsers on the same card;
+cold: a new browser profile, warm: the address opened again; before and after turn about, two rounds each (both shown):
+
+| flat | tier | view | cold: before → after (s) | warm: before → after (s) |
+|---|---|---|---|---|
+| Sheltech A | High | Walk | 10.7, 9.7 → **5.6, 5.6** | 8.8, 9.5 → **5.0, 5.2** |
+| Type A | High | Walk | 8.8, 9.4 → **4.8, 5.2** | 8.2, 8.1 → **4.3, 4.6** |
+| Sheltech A | High | Building | 9.6, 10.0 → **5.9, 5.9** | 9.2, 9.5 → **4.9, 5.2** |
+| Type A | High | Building | 8.6, 8.7 → **4.7, 5.1** | 7.9, 8.8 → **4.1, 4.4** |
+| Sheltech A | Lite | Walk | 3.9, 4.0 → 3.7, 4.2 | 3.0, 3.3 → 2.9, 3.1 |
+| Type A | Lite | Walk | 5.7, 5.4 → 3.7, 3.8 | 3.0, 3.0 → 2.9, 2.8 |
+| Sheltech A | Lite | Building | 4.4, 4.4 → 4.7, 5.3 | 3.9, 3.6 → 3.6, 3.8 |
+| Type A | Lite | Building | 3.7, 3.7 → 3.6, 3.5 | 2.9, 2.8 → 2.8, 2.8 |
+
+(This PC was busier than in §7: §7's "after" Walk on High measured 7.4–8.1 s then and 8.8–10.7 s today, as "before" here.)
+**The longest frame in the 5 s after the start screen goes** (Walk on High): before 143–218 ms, every time 0.43–0.46 s after
+Enter (the tower's merge); after 47–90 ms, once 155 ms right as Enter is pressed (70 ms in: the page building its controls).
+
+**After the merge with polish2 and formats3** (the session branch at 29cbef5 as "before", this lane merged into it as
+"after"; built site, one round, the card quieter than above):
+
+| flat | tier | view | cold: before → after (s) | warm: before → after (s) |
+|---|---|---|---|---|
+| Sheltech A | High | Walk | 8.6 → **5.3** | 7.5 → **4.5** |
+| Type A | High | Walk | 7.3 → **4.7** | 6.9 → **3.8** |
+| Sheltech A | High | Building | 8.3 → **5.3** | 7.6 → **4.6** |
+| Type A | High | Building | 7.4 → **4.4** | 6.9 → **3.8** |
+| Sheltech A / Type A | Lite | Walk | 3.7 / 3.5 → 3.6 / 3.5 | 2.8 / 2.8 → 2.7 / 2.7 |
+| Sheltech A / Type A | Lite | Building | 4.4 / 3.5 → 4.4 / 3.5 | 3.2 / 2.7 → 3.4 / 2.7 |
+
+Same look as the session branch on every shot (walk by day and night, the Building view, Lite, and close-ups of the clock,
+fan, curtain, pendant, plant and a door, by day and at night: as close as two runs of one build). Programs: 29 on both.
+
+**The stairs** (polish2's route on High, Sheltech A from Basement 2 to the roof, `trips.mjs`): the floors of one drawing
+(3 → 4 → 5 → 6) still make no program and take the same time (0.86–0.96 s before, 0.86–0.96 s after); Level 1 1.67 → 1.37 s
+(its longest frame 362 → 130 ms), Floor 2 2.99 → 2.15 s (419 → 267 ms); the programs after the whole route 51 → 36.
+
+**Nothing slower once it shows** — the 3D's own draw (synced), median of 3 turns, 1440 × 900, two rounds turn about; the
+card was shared with other lanes, so single readings move by 2–5 ms on High:
+
+| flat | tier | Walk 15:30 (ms) | Walk 21:00 | Dollhouse | Building |
+|---|---|---|---|---|---|
+| Type A | High | 13.4, 13.2 → 18.8*, 13.6 | 13.5, 14.7 → 14.5, 13.8 | 12.3, 13.0 → 13.6, 12.2 | 14.5, 15.5 → 14.3, 13.9 |
+| Sheltech A | High | 19.0*, 13.2 → 13.8, 13.6 | 14.5, 13.2 → 14.1, 13.7 | 23.1*, 16.3 → 16.8, 16.7 | 19.1, 22.0 → 19.4, 18.5 |
+| Type A | Low | 7.9, 7.5 → 7.7, 7.7 | 7.8, 7.4 → 7.8, 7.8 | 7.7, 7.3 → 7.7, 7.8 | 8.8, 8.1 → 7.9, 7.9 |
+| Sheltech A | Low | 8.2, 7.8 → 8.7, 8.2 † | 7.8, 8.1 → 9.0, 8.4 † | 10.0, 9.6 → 10.6, 9.8 | 11.0, 11.1 → 10.8, 11.1 |
+| Type A | Lite | 5.7, 5.4 → 5.2, 5.9 | 5.7, 5.3 → 5.4, 5.8 | 5.3, 5.0 → 4.4, 4.9 | 7.3, 6.9 → 7.1, 7.0 |
+| Sheltech A | Lite | 5.7, 5.2 → 6.4, 6.0 ‡ | 5.5, 5.2 → 5.9, 5.7 ‡ | 5.8, 5.1 → 5.7, 5.0 | 8.7, 8.6 → 8.5, 8.2 |
+
+(* one turn's outlier, the next round level. † the tower merged the grounds' benches into its one uncullable mesh in
+those runs — +4 draws, +29 k triangles: a race of the old tree met more often since the screen goes sooner; fixed after
+(the tower waits while a level's pieces come in), the same draws as before in 3 of 3 checks. ‡ the tower's walls drawn before
+the flat's (point 2): after the fix, against the merged session branch, Sheltech A's Walk on Lite 5.16, 5.16 → 5.22, 5.12 ms; Type A's
+5.0, 5.1, 5.2, 5.3 → 5.4, 5.3, 5.4, 5.2 (15:30 and 21:00, two rounds) — within what two runs of one tree differ by here.) The smoothing
+pass's loop, turned about in one page (the only change that could cost the graphics chip time): Type A 17.2 / 17.4,
+23.4 / 24.2, 22.9 / 19.7, 20.4 / 22.7 ms kept / unrolled; Sheltech A 13.9 / 15.5, 14.0 / 17.7, 25.2 / 24.7, 15.5 / 14.2 —
+nothing measurable.
+
+**Left, honestly:**
+- Asked for: Enter ready in 5 s or less cold on High. Type A: 4.4–5.2 s, yes. Sheltech A: 5.3–5.6 s cold, 4.5–5.2 warm —
+  not quite; what is left is Firefox's serial work at the end (the last programs, every picture and buffer sent with the
+  frame behind the screen: 0.9 s) after the grounds' pieces come in. The tower's six programs in fewer would take ~0.3 s.
+- Asked for: Lite in 3 s or less. A second visit is (2.7–2.8 s in Walk); a first is 3.5–3.7 s, as before — its time is the
+  page's start, the flat's build and the furniture's download and simplification, not programs (18–19 of them).
+- Sheltech A on High still has one 156–231 ms frame right after Enter (the session branch has a 136–166 ms one at the same
+  moment besides the 0.43 s one that is gone); Type A has none over 100 ms.
+- 29 programs, not 15 (above).

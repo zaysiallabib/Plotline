@@ -761,7 +761,8 @@ export function daylit(m: THREE.MeshStandardMaterial, on = true): void {
       float lampK = mix(1.0, 0.2 + 0.8 * max(2.0 * dayUp - 1.0, 0.0), dayPiece);
       reflectedLight.directDiffuse += BRDF_Lambert(material.diffuseColor) * lampColor * (lampE * lampE * ${LAMP_DIRECT.toFixed(1)} * lampK);
       #endif
-      #ifdef USE_MAP
+      // the plaster's cloud: never on Lite (materials.ts mottle), so left out of Lite's shader as it was
+      #if defined(USE_MAP) && !defined(LAMP_BAKE)
       if (mottleK > 0.0) reflectedLight.indirectDiffuse *= 1.0 + mottleK * (texture2D(mottleMap, vMapUv * mottleUv, 2.0).r - textureLod(mottleMap, vec2(0.5), 16.0).r);
       #endif`,
     )
