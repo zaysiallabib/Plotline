@@ -191,8 +191,7 @@ function sharedWith(u: Unit, rooms: Room[], l: RoomLabel): { here: Room; owner: 
  * either name ("Bath → room below"), the other keeping this room. The file cannot tell, so none is the first choice; with
  * no unnamed room beside them the person draws the zone line between them (`draw`).
  */
-function placeFixes(u: Unit, l: RoomLabel): Fix[] {
-  const rooms = deriveRooms(u)
+function placeFixes(u: Unit, l: RoomLabel, rooms: Room[]): Fix[] {
   const s = sharedWith(u, rooms, l)
   if (!s) return []
   const { here, owner } = s
@@ -404,8 +403,8 @@ const dragTo = (moves: { id: Id; x: number; y: number }[], ids = moves.map((m) =
   { type: 'drag-end', ids },
 ]
 
-/** Candidate fixes for one issue (unchecked). */
-function candidates(u: Unit, i: StudioIssue): Fix[] {
+/** Candidate fixes for one issue (unchecked); `rooms`: deriveRooms(u), asked once per list (a long floor's rows all ask). */
+function candidates(u: Unit, i: StudioIssue, rooms: () => Room[] = () => deriveRooms(u)): Fix[] {
   const V = new Map(u.vertices.map((v) => [v.id, v]))
   const W = new Map(u.walls.map((w) => [w.id, w]))
   switch (i.code) {
@@ -528,7 +527,7 @@ function candidates(u: Unit, i: StudioIssue): Fix[] {
     }
     case 'label-outside-any-room': {
       const l = u.roomLabels.find((x) => x.id === i.ids[0])
-      return l ? placeFixes(u, l) : []
+      return l ? placeFixes(u, l, rooms()) : []
     }
     default:
       return []
@@ -843,7 +842,7 @@ export function fixesOf(u: Unit, marks: Mark[], issues: StudioIssue[], printed: 
     const i = m.issue
     if (!i) continue
     // (a line to draw changes nothing yet: offered only when nothing else closes it)
-    const all = candidates(u, i)
+    const all = candidates(u, i, roomsNow)
     let fixes = all.filter((f) => !f.draw && closes(sub, f.actions, i, near()))
     if (!fixes.length) fixes = all.filter((f) => f.draw)
     if (fixes.length || m.nameAt) out.set(m.key, { fixes, ...(m.nameAt ? { nameAt: m.nameAt } : {}) })
