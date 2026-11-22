@@ -1335,7 +1335,7 @@ export class PlotlineScene {
     this.sendPictures(Infinity) // (the last few, just in)
     this.building?.settleNow() // (its rooms still coming: what is in, batched for this frame)
     this.renderer.info.reset()
-    this.look.render()
+    this.look.render(true)
     this.rehearsedAt = performance.now()
   }
 

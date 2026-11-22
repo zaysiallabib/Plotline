@@ -1085,7 +1085,13 @@ export class Look {
     this.ao?.setSize(...aoSize(w, h, this.renderer.getPixelRatio()))
   }
 
-  render(): void {
+  /**
+   * `whole` (the frame drawn behind the start screen, PlotlineScene.prepare): the wide map too, though everything is new —
+   * else first drawn by the first frame after Enter, which sent the buffers of everything casting only into it (Sheltech A's
+   * grounds: ~280 trees' and benches' parts, a 100–230 ms frame; session 31 open lane).
+   */
+  render(whole = false): void {
+    if (whole) this.wideWaited = WIDE_EVERY
     nightOut.streetY.value = this.ground.position.y // (the street's level: the tower's, a level's, this flat's)
     const under = this.camera.getWorldPosition(this.v).y < this.topY
     this.sky.position.copy(this.v)
