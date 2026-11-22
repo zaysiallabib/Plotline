@@ -954,10 +954,16 @@ export class Building extends THREE.Group {
   private t0 = performance.now()
   /** ms of a frame the tower's filling in may take (pause): 8 while the 3D is drawn; more under the start screen, nothing drawn then (PlotlineScene) */
   budgetMs = 8
+  /**
+   * Nothing drawn yet (under the start screen, PlotlineScene): a share of the work done waits for the page's next task, not the
+   * next frame — there, while Firefox makes the flat's programs, a frame came every 0.1–0.3 s and the grounds' pieces waited
+   * 0.3–1.2 s for four or five of them (session 31 open lane).
+   */
+  unseen = false
   /** a frame's share of the work done: wait for the next one; true: the tower is gone */
   private pause = async (): Promise<boolean> => {
     if (performance.now() - this.t0 > this.budgetMs) {
-      await new Promise<void>((ok) => requestAnimationFrame(() => ok()))
+      await new Promise<void>((ok) => (this.unseen ? setTimeout(ok, 0) : requestAnimationFrame(() => ok())))
       this.t0 = performance.now()
     }
     return this.disposed
@@ -1004,6 +1010,7 @@ export class Building extends THREE.Group {
           c.traverse((x) => ((x.raycast = () => {}), x.layers.mask === 1 << HIDDEN && x.layers.set(0)))
           pieces.add(c)
           this.casts(c, true)
+          if (await this.pause()) return // (a stair's floor still coming in: its frames stay short)
         }
       else {
         const { unit: u } = this.t.FLATS[s]

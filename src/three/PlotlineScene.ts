@@ -850,7 +850,7 @@ export class PlotlineScene {
       if (!this.holding) this.building.after(new Promise<void>((ok) => (flatIn = ok)))
       // nothing drawn under the start screen: its rooms and trees in larger steps — its frames are ~50 ms there while Firefox
       // makes the flat's programs, and the grounds' pieces waited 9 of them (0.45 s on Sheltech A; session 31 open lane)
-      if (this.veiled) this.building.budgetMs = 100
+      if (this.veiled) (this.building.budgetMs = 100), (this.building.unseen = true)
       this.building.onChange = this.wake // a flat's rooms or furniture in: a sleeping frame loop (Low, Lite) draws it
       this.building.visible = false
       this.scene.add(this.building)
@@ -1479,7 +1479,7 @@ export class PlotlineScene {
   unveil(): void {
     this.veiled = false
     this.envGo() // (Enter pressed before it was drawn: the 20 s cap of a stuck download)
-    if (this.building) this.building.budgetMs = 8
+    if (this.building) (this.building.budgetMs = 8), (this.building.unseen = false)
     this.wake()
   }
 
