@@ -43,7 +43,16 @@ const RUNS_UP = /\b(stairs?|staircase|lifts?|hoistway|elevators?)\b/i
 export const runsUp = (r: Pick<Room, 'kind' | 'name'>): boolean => (r.kind === 'other' || r.kind === 'shaft') && RUNS_UP.test(r.name)
 
 export function deriveFlats(unit: Pick<Unit, 'vertices' | 'walls' | 'roomLabels'>, rooms: Room[]): Flat[] {
-  const pin = new Map(unit.roomLabels.map((l) => [l.id, l.flat]))
+  // a "Type A" label standing in a pinned room names that pinned flat (Whole floor pins every room it traces to "Flat N":
+  // R → "Type A ±2703 sft" in one of its rooms renames it, as it names a flat found by its doors — manual walk, s31)
+  const renamed = new Map<string, string>()
+  for (const l of unit.roomLabels) {
+    const name = flatTypeOf(l)
+    const r = name && roomAt(l, rooms, unit)
+    const p = r && unit.roomLabels.find((x) => x.id === r.id)?.flat
+    if (name && p && !renamed.has(p)) renamed.set(p, name)
+  }
+  const pin = new Map(unit.roomLabels.map((l) => [l.id, l.flat && (renamed.get(l.flat) ?? l.flat)]))
   // union-find over the rooms the door walk may take
   const up = new Map<Id, Id>()
   for (const r of rooms) if (pin.get(r.id) === undefined && !isCore(r)) up.set(r.id, r.id)
