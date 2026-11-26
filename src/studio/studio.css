@@ -278,27 +278,41 @@
 .toast.error::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--sev-red); }
 .toast + .toast { bottom: 76px; }
 
-/* a PDF of several pages: "Which page is the floor plan?" — its pages as small sheets of paper, centred on the sheet */
+/* a drawing set (SetPanel): every page and drawing listed by kind, centred on the sheet; a kept drawing shown big (sheet-view) */
 .pages-sheet {
   position: absolute; inset: var(--s-6); z-index: 7; margin: auto;
-  width: min(880px, calc(100% - 2 * var(--s-6))); height: max-content; max-height: calc(100% - 2 * var(--s-6)); overflow: auto;
-  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4) var(--s-5) var(--s-5); border-radius: var(--r-lg);
+  width: min(960px, calc(100% - 2 * var(--s-6))); height: max-content; max-height: calc(100% - 2 * var(--s-6)); overflow: auto;
+  display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4) var(--s-5) 0; border-radius: var(--r-lg);
 }
 .pages-sheet h2 { margin: var(--s-2) 0 0; font-size: var(--fs-2xl); }
-.pages-sheet p { margin: 0 0 var(--s-2); font-size: var(--fs-sm); }
-.pages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: var(--s-5) var(--s-4); }
-.pages button { display: flex; flex-direction: column; gap: var(--s-2); width: 100%; height: auto; padding: 0; border: 0; background: none; text-align: left; }
-.pages button:hover:not(:disabled), .pages button.on { background: none; }
-.pages .page {
-  display: flex; align-items: center; justify-content: center; height: 176px; padding: var(--s-2); overflow: hidden;
-  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm);
-  transition: border-color var(--dur-fast) var(--ease);
+.pages-sheet p { margin: 0 0 var(--s-2); font-size: var(--fs-sm); max-width: 72ch; }
+.set-reading { color: var(--ink-2); }
+.set-group h3 { margin: var(--s-3) 0 0; padding-bottom: var(--s-2); }
+.set-group h3 span { margin-left: var(--s-1); color: var(--ink-2); }
+.set-group ol { list-style: none; margin: 0; padding: 0; }
+.set-group li {
+  display: grid; grid-template-columns: 16px 96px minmax(0, 1fr) 168px 112px; align-items: center; gap: var(--s-3);
+  padding: var(--s-2) 0; border-top: 1px solid var(--hairline);
 }
-.pages .page img { display: block; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: var(--shadow-sm); }
-.pages button:hover:not(:disabled) .page { border-color: var(--accent-line); }
-.pages button.on .page { border-color: var(--accent); }
-.pages button.on .label { color: var(--accent); }
-.pages button.on:disabled { opacity: 1; }
+.set-group li:not(.on) :is(.what, .thumb img) { opacity: 0.5; }
+.set-group .thumb {
+  width: 96px; height: 64px; padding: var(--s-1); display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); transition: border-color var(--dur-fast) var(--ease);
+}
+.set-group .thumb:hover:not(:disabled) { background: var(--surface-2); border-color: var(--accent-line); }
+.set-group .thumb img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.set-group .what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.set-group .what > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-group .what strong { font-weight: 500; }
+.set-group .what .muted { font-size: var(--fs-xs); }
+.set-group .which.bad { border-color: var(--danger); }
+.set-foot {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--s-2); margin: var(--s-2) calc(-1 * var(--s-5)) 0;
+  padding: var(--s-3) var(--s-5) var(--s-4); background: var(--surface); border-top: 1px solid var(--line);
+}
+.set-foot .muted { flex: 1; font-size: var(--fs-sm); }
+.sheet-view { width: min(1280px, calc(100% - 2 * var(--s-6))); padding-bottom: var(--s-5); }
+.sheet-view img { display: block; max-width: 100%; max-height: calc(100vh - 240px); margin: 0 auto; object-fit: contain; }
 
 /* Print the plan (PrintBox.tsx): the sheet as it will print, paper and scale under it */
 .print-box {
@@ -497,6 +511,13 @@ ul.notes { margin: 0; padding-left: var(--s-4); display: grid; gap: var(--s-1); 
 .slots .lbl { font-weight: 500; }
 .slots .dwg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
 .slots .flats { grid-column: 2; font-size: var(--fs-xs); color: var(--muted); }
+.floors .kept { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-4); border-top: 1px solid var(--hairline); }
+.floors .kept h4 { margin: 0; font-size: var(--fs-2xs); font-weight: 500; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+.floors .kept ul { list-style: none; margin: 0 calc(-1 * var(--s-2)); padding: 0; display: grid; gap: 2px; }
+.floors .kept button { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: var(--s-2); width: 100%; height: auto; padding: var(--s-2); background: transparent; border: 0; border-radius: var(--r-sm); text-align: left; font-weight: 400; }
+.floors .kept button:hover { background: var(--hover); }
+.floors .kept .lbl { font-weight: 500; }
+.floors .kept .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
 .slots .acts { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--s-2); }
 .slots .acts select { flex: 1; }
 
