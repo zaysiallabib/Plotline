@@ -228,7 +228,16 @@ describe("a set's floors stacked on what they share (session 31 levels: each dra
     const other: Unit = { ...box('o', 3, 2), vertices: box('o', 3, 2).vertices.map((v) => ({ ...v, x: v.x + 0.37, y: v.y + 0.61 })) }
     expect(alignPlans(ground, other)).toBeNull()
     const cols = (d: number) => [[0, 0], [6, 0], [12, 0], [0, 9], [12, 9]].map(([x, y], i) => ({ id: `c${i}`, x: x + d, y: y + d, wM: 0.4, hM: 0.4 }))
-    expect(alignPlans({ ...ground, pillars: cols(0) }, { ...other, pillars: cols(-2) })).toMatchObject({ by: 'columns', offset: { x: 2, y: 2 } })
+    // columns propose a shift the walls then judge; with no walls drawn (a column layout) the columns place it
+    expect(alignPlans({ ...ground, walls: [], pillars: cols(0) }, { ...other, walls: [], pillars: cols(-2) })).toMatchObject({ by: 'columns', offset: { x: 2, y: 2 } })
+  })
+  test("the files' own frame (one CAD model) wins when its walls fit nearly as well as the best shift: it is exact, not refined", () => {
+    const ground = floor('g', { x: 0, y: 0 }, [[7, 0, 7, 9]])
+    const upper = floor('f1', { x: -3.25, y: 1.7 }, [[2, 0, 2, 9]])
+    // the model says 4 cm more: the same walls, 4 cm apart (the upper floor's walls drawn a little off its lower ones)
+    expect(alignPlans(ground, upper, { x: 3.29, y: -1.7 })).toMatchObject({ by: 'frame', offset: { x: 3.29, y: -1.7 } })
+    // a frame far off (another page's placement): the walls decide
+    expect(alignPlans(ground, upper, { x: 8, y: 8 })).toMatchObject({ by: 'walls' })
   })
   test('a stack of floors: each finds the floor it shares most with (the roof its top floor, not the ground); a stranger stays put', () => {
     const ground = floor('g', { x: 0, y: 0 }, [[7, 0, 7, 9]], 16, 9) // a wider ground floor (a shop front)

@@ -215,7 +215,7 @@ const SCHEDULE = /\bSCHEDULES?\b|\bPLANILLAS?\b|\bCUADRO DE\b|\b(?:TUR|FENSTER|R
 const ELEV = /\bELEVATIONS?\b|\bELEVACION(?:ES)?\b|\bALZADOS?\b|\bFACHADAS?\b|\bANSICHT(?:EN)?\b|\b(?:NORD|SUD|SUED|OST|WEST)ANSICHT\b|\bFASSADEN?\b|\bFACADES?\b|\bPROSPETT[OI]\b|\bAANZICHT(?:EN)?\b|\bGEVELS?\b/
 const INTERIOR = /\bINTERIOR\b|\bINTERNAL\b|\bKITCHEN\b|\bBATH(?:ROOM)?\b|\bW\.?C\.?\b|\bTOILET\b|\bWATER CLOSET\b|\bPOWDER\b|\bLAUNDRY\b|\bUTILITY\b|\bCLOSET\b|\bPANTRY\b|\bCABINET|\bVANITY\b|\bSHOWER\b|\bENSUITE\b|\bBEDROOM\b|\bLIVING\b|\bDINING\b|\bFIREPLACE\b|\bMILLWORK\b|\bCOCINA\b|\bBANO\b|\bKUCHE\b/
 const SECTION = /\bSECTIONS?\b|\bCROSS[- ]SECTION\b|\bCORTES?\b|\bSECCION(?:ES)?\b|\bSCHNITT(?:E)?\b|\bCOUPES?\b|\bDOORSNEDE\b|\bSEZION[EI]\b/
-const SITE = /\bSITE (?:PLAN|SURVEY|LAYOUT|MAP|ANALYSIS)\b|^SITE$|\bLOCATION (?:PLAN|MAP)\b|\bVICINITY MAP\b|\bKEY (?:PLAN|MAP)\b|\bPLOT PLAN\b|\bMASTER ?PLAN\b|\bLANDSCAPE PLAN\b|\bLAGEPLAN\b|\bPLAN DE (?:MASSE|SITUATION)\b|\b(?:PLANTA|PLANO) DE (?:UBICACION|EMPLAZAMIENTO|SITUACION|CONJUNTO)\b|\bEMPLAZAMIENTO\b|\bUBICACION\b|\bPLANIMETRIA\b|\bSITUATIE\b/
+const SITE = /\bSITE ?(?:PLAN|SURVEY|LAYOUT|MAP|ANALYSIS)\b|^SITE$|\bLOCATION (?:PLAN|MAP)\b|\bVICINITY MAP\b|\bKEY (?:PLAN|MAP)\b|\bPLOT PLAN\b|\bMASTER ?PLAN\b|\bLANDSCAPE PLAN\b|\bLAGEPLAN\b|\bPLAN DE (?:MASSE|SITUATION)\b|\b(?:PLANTA|PLANO) DE (?:UBICACION|EMPLAZAMIENTO|SITUACION|CONJUNTO)\b|\bEMPLAZAMIENTO\b|\bUBICACION\b|\bPLANIMETRIA\b|\bSITUATIE\b/
 const PLAN = /(?<![-\w])PLANS?\b|\bPLANTAS?\b|\bGRUNDRISS(?:E)?\b|\bPIANTA\b|\bPLATTEGROND\b|\bLAYOUT\b|\bFLOOR ?PLAN\b/
 const USE: [RegExp, string][] = [
   [/\bREFLECTED\b|\bCEILING\b|\bR\.?C\.?P\b/, 'ceiling'],
@@ -271,6 +271,36 @@ export function kindOfTitle(raw: string): Omit<View, 'box' | 'by' | 'scale'> | n
   }
   if (NOTES.test(t)) return { kind: 'title', title }
   return null
+}
+
+/**
+ * What a file of a set is (session 31 levels: a folder of DXFs / SVGs is a set — one drawing a file): its biggest title
+ * inside ("Internal walls, first floor", "East Elevation") or its file name with the short codes architects name files by
+ * ("GF", "1F", "RF", "TYP", "B1", "E-1" an elevation, "S-2" a section, a sheet number "A-101"), whichever names more; a
+ * plan's floors from either. Neither: a plan when its lines make two or more closed rooms, else other. `texts`: the file's
+ * words biggest first (ImportResult.texts).
+ */
+export function fileView(name: string, texts: { text: string }[], rooms = 0): Pick<View, 'kind' | 'title' | 'level' | 'facade' | 'mark' | 'use' | 'by'> {
+  const base = name.replace(/\.[^.]+$/, '')
+  const said = norm(base.replace(/[_.]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2'))
+    .replace(/\bG\.?F\b/g, 'GROUND FLOOR')
+    .replace(/\b(\d{1,2})\s?F\b/g, '$1 FLOOR')
+    .replace(/\bR\.?F\b/g, 'ROOF')
+    .replace(/\bTYP\b/g, 'TYPICAL FLOOR')
+    .replace(/^E\s?-?\s?(\d{1,2})$/, 'ELEVATION $1')
+    .replace(/^S\s?-?\s?(\d{1,2})$/, 'SECTION $1')
+  const byName = kindOfTitle(said) ?? (levelOf(said) ? { kind: 'plan' as const, title: base, level: levelOf(said)! } : null)
+  const t = texts.map((x) => x.text).find((x) => !notATitle(x) && kindOfTitle(x) && kindOfTitle(x)!.kind !== 'title')
+  const byText = t ? kindOfTitle(t) : null
+  const byNo = SHEET_NO.test(said.replace(/\s+/g, '')) ? kindOfNumber(said.replace(/\s+/g, '')) : null
+  // the inside's title when it names a floor or the name names nothing; else the name, with the inside's floor or side
+  const pick = byText && (byText.level || byText.facade || !byName) ? byText : byName ? { ...byName, ...(byText?.kind === byName.kind && byText.level && !byName.level ? { level: byText.level } : {}) } : null
+  if (pick) {
+    const facade = pick.kind === 'elevation' && !pick.facade ? (kindOfTitle(`${said} ELEVATION`)?.facade ?? byText?.facade) : pick.facade
+    return { ...pick, title: pick === byText ? t! : base, ...(facade ? { facade } : {}), by: 'words' }
+  }
+  if (byNo) return { kind: byNo, title: base, by: 'number' }
+  return { kind: rooms >= 2 ? 'plan' : 'other', title: base, by: 'shape' }
 }
 
 /** a note, a sentence, a dimension: never a view's title */
@@ -706,6 +736,8 @@ export interface SetPick {
   slots?: SetSlot[] | null
   /** ticked or not by the person */
   tick?: boolean | null
+  /** its closed rooms, when it was read already (a DXF / SVG of the set): of two plans for one floor the richer is ticked */
+  rooms?: number
 }
 /** the kinds kept with the project as pictures when the set is built (plans become drawings; details, title pages and the rest are left out) */
 export const KEPT: SheetKind[] = ['elevation', 'section', 'site', 'schedule', 'interior']
@@ -727,14 +759,21 @@ export function setChoices(picks: SetPick[], floors = 0): { slots: SetSlot[]; ti
   // diagram); in a set where none does, only the first is ticked (on the ground) — the person types the others' floors
   const named = picks.some((p, i) => p.kind === 'plan' && (p.slots ?? auto[i]).length)
   let first = true
-  const out = picks.map((p, i) => {
-    if (p.kind !== 'plan') return { slots: [] as SetSlot[], tick: p.tick ?? KEPT.includes(p.kind) }
+  const out: { slots: SetSlot[]; tick: boolean }[] = []
+  // (in the set's order, but a plan read already with more rooms first: "Internal walls, first floor" before "External walls")
+  const order = picks.map((_, i) => i).sort((a, b) => (picks[b].rooms ?? 0) - (picks[a].rooms ?? 0) || a - b)
+  for (const i of order) {
+    const p = picks[i]
+    if (p.kind !== 'plan') {
+      out[i] = { slots: [], tick: p.tick ?? KEPT.includes(p.kind) }
+      continue
+    }
     const slots = p.slots ?? auto[i]
     const tick = p.tick ?? (!p.use && (slots.length ? slots.some((s) => !claimed.has(s)) : !named && first))
     if (!slots.length && tick && p.tick == null) first = false
     if (tick) for (const s of slots) claimed.add(s)
-    return { slots, tick }
-  })
+    out[i] = { slots, tick }
+  }
   // a ticked plan with no floor named goes on the lowest floor still free, from the ground up
   for (const o of out)
     if (o.tick && !o.slots.length && picks[out.indexOf(o)].kind === 'plan') {

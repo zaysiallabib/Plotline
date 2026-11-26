@@ -10,7 +10,7 @@
  * sizes, else "set it with S". A pure reader — a small XML tokenizer, no DOM — so it runs in the tests and anywhere.
  */
 import type { Pt } from '../core'
-import { ROLE_WORDS, buildPlan, guessScale, penRoles, bezierArc, roleOf, sheetScale, type ArcPrim, type Drawing, type Fills, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
+import { ROLE_WORDS, bezierArc, bigTexts, buildPlan, guessScale, penRoles, previewPath, roleOf, sheetScale, type ArcPrim, type Drawing, type Fills, type LayerRoles, type Loop, type Seg, type TextPrim } from './plan2d'
 import type { ImportResult } from './types'
 
 // ---------- XML ----------
@@ -444,5 +444,5 @@ export async function importSvg(src: string, name: string, mine?: LayerRoles): P
   const drawing: Drawing = { segs, arcs: r.arcs, texts: r.texts, loops: r.loops, scale, layerRoles: mine }
   const plan = buildPlan(drawing, name.replace(/\.svg$/i, ''))
   notes.push(...plan.notes)
-  return { format: 'svg', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, ...(list.length ? { layers: list } : {}) }
+  return { format: 'svg', storeys: [{ name: 'Floor', elevationM: 0, unit: plan.unit }], notes, unitScale: scale, origin: plan.origin, ...(list.length ? { layers: list } : {}), texts: bigTexts(r.texts), preview: previewPath(r.segs, r.arcs, scale, plan.origin) }
 }

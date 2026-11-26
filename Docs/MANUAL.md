@@ -1189,6 +1189,17 @@ swings make a plan, a ruled table a schedule, a page of words a title page). A p
 side by side, five kitchen elevations) is split into them, each its own row with its own picture and scale. Reading takes
 a few seconds (a 25-page set about 4 s); the line "Reading page 7 of 25…" counts.
 
+**A folder of DXF or SVG files is a set too** — drop the folder, its .zip, or the files picked together (PDFs may be among
+them). Each file is one drawing, read as a file dropped alone is (your layer and unit choices hold), its kind and floor from
+the biggest title written in it ("Internal walls, ground floor", "East Elevation") or from its name, with the short names
+architects give files: `GF` ground, `1F` / `2F` floor 1 / 2, `RF` roof, `TYP` typical, `B1` basement, `E-1` an elevation,
+`S-2` a section, a sheet number like `A-201`. Nothing said: a plan when its lines make two or more rooms, else Other. Its
+picture in the list is drawn from its lines; a kept elevation keeps that picture. A drawing saved both ways in the folder
+("Ground.dxf" and "Ground.pdf") is read once, from the DXF; a DWG beside its DXF is left out. Of two plans of one floor
+(the external walls only, and the whole floor) the one with more rooms becomes the floor's drawing. The files of one CAD
+model share its coordinates, so the floors stand over each other exactly as drawn. One DXF or SVG dropped alone opens as
+before.
+
 The list, grouped by kind — each row: a tick, the drawing's picture, its title as printed with "Page 7 · A1.3 · 1 : 48"
 under it, its kind, and its floors (a plan), side (an elevation) or mark (a section):
 - **Plans** — each ticked one becomes the drawing of its floors. The floors come from the title: G (ground), B1, 2, 2–8,

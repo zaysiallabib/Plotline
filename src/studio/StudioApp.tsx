@@ -1058,14 +1058,19 @@ export default function StudioApp() {
    * pages, a page of several drawings, an elevation alone — opens the Set panel (SetPanel): every page read for what it is,
    * the plans built onto their floors in one go, or one drawing opened alone. A drawing opened alone whose lines make a
    * plan (two or more closed rooms) opens as the drawing; else it becomes the plan picture to trace (a brochure page is a
-   * photo, or a picture with its words turned into outlines). Either way the message offers the other.
+   * photo, or a picture with its words turned into outlines). Either way the message offers the other. A DXF or SVG among
+   * them (a folder of an architect's files: session 31 levels) is one drawing of the set, read when the list opens.
    */
-  const openPdfFiles = async (files: File[]) => {
+  const openPdfFiles = async (files: File[], folder?: string) => {
     const pdf = await import('../import/pdf')
     const docs: SetFile[] = []
     for (const file of files) {
+      if (!/\.pdf$/i.test(file.name)) {
+        docs.push({ name: file.name, file, ...(folder ? { folder } : {}) })
+        continue
+      }
       try {
-        docs.push({ name: file.name, doc: await pdf.openPdf(await file.arrayBuffer()) })
+        docs.push({ name: file.name, doc: await pdf.openPdf(await file.arrayBuffer()), ...(folder ? { folder } : {}) })
       } catch (e) {
         showError(`Could not read ${file.name}: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -1073,9 +1078,9 @@ export default function StudioApp() {
     if (!docs.length) return
     // (the last PDFs stay open while a message offers "as a picture" / "its lines": the next ones close them)
     for (const d of openPdfDocs.current) void d.loadingTask.destroy()
-    openPdfDocs.current = docs.map((d) => d.doc)
-    if (docs.length === 1 && docs[0].doc.numPages === 1) {
-      const { name, doc } = docs[0]
+    openPdfDocs.current = docs.flatMap((d) => (d.doc ? [d.doc] : []))
+    if (docs.length === 1 && docs[0].doc && docs[0].doc.numPages === 1) {
+      const { name, doc } = docs[0] as { name: string; doc: PdfDoc }
       const one = await (async () => {
         const { readSheet } = await import('../import/sheets')
         return readSheet(await pdf.readSheetPage(doc, 1)).views
@@ -1089,6 +1094,8 @@ export default function StudioApp() {
   }
   const openPdfFile = (file: File) => openPdfFiles([file])
   const closeSet = useCallback(() => setSetFiles(null), [])
+  /** a DXF / SVG of a set read as one dropped alone is (its layers and unit as the person set them) */
+  const readSetFile = useCallback((file: File) => importFile(file, { layerRoles: readLayerRoles(), unitScale: stored<Record<string, number>>(READ_IN_KEY)[file.name] }), [])
   const readPdfPage = async (name: string, doc: PdfDoc, page: number, frame: Box | null = null, printed?: number) => {
     const stop = new AbortController()
     setReading({ name, stage: doc.numPages > 1 ? `page ${page}` : 'the page', fraction: null, stop })
@@ -1123,7 +1130,9 @@ export default function StudioApp() {
   /** one drawing of the set opened alone, as the page picker did */
   const openOne = (row: SetRow, files: SetFile[]) => {
     closeSet()
-    void readPdfPage(files[row.file].name, files[row.file].doc, row.page, row.frame, row.view.scale).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
+    const doc = files[row.file].doc
+    if (!doc) return void (row.read ? takeImport(row.read, files[row.file].name) : importArchitect(files[row.file].file!))
+    void readPdfPage(files[row.file].name, doc, row.page, row.frame, row.view.scale).catch((e) => showError(`Could not read page ${row.page}: ${e instanceof Error ? e.message : String(e)}`))
   }
   /**
    * Build the project from the set (Stage 1): each ticked plan becomes a drawing on its floors — its own lines when they
@@ -1134,7 +1143,7 @@ export default function StudioApp() {
    * link) puts the projects back as they were.
    */
   const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null) => {
-    const name = files[0].name.replace(/\.[^.]+$/, '')
+    const name = files[0].folder ?? files[0].name.replace(/\.[^.]+$/, '')
     const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
     const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
     const all = [...plans.flatMap((r) => r.slots)]
@@ -1164,7 +1173,13 @@ export default function StudioApp() {
     let p = into && was ? { ...into, plan: { basements: Math.max(was.basements, shape.basements), floors: Math.max(was.floors, shape.floors), rooftop: was.rooftop || shape.rooftop } } : newProject(newId(), name, shape)
     const made: Id[] = [] // the pictures this build keeps (Undo deletes them)
     const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
-      const { canvas, pxPerPt } = await pdf.renderView(files[r.file].doc, r.page, r.frame, px)
+      const doc = files[r.file].doc
+      if (!doc) {
+        // a DXF / SVG: its lines drawn (a kept elevation of a folder set)
+        const canvas = (await import('./SetPanel')).drawPreview(r.read?.preview ?? '', px)
+        return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.[^.]+$/, '')}.webp` }, pxPerPt: 0 }
+      }
+      const { canvas, pxPerPt } = await pdf.renderView(doc, r.page, r.frame, px)
       return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
     }
     let first: Id | null = null
@@ -1179,14 +1194,16 @@ export default function StudioApp() {
       for (const [i, r] of plans.entries()) {
         if (stop.signal.aborted) return toast('Stopped building the project')
         setReading({ name, stage: `drawing ${i + 1} of ${plans.length + kept.length}`, fraction: i / (plans.length + kept.length), stop })
-        reads.push(await pdf.importPdf(files[r.file].doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null))
+        const doc = files[r.file].doc
+        reads.push(doc ? await pdf.importPdf(doc, files[r.file].name, r.page, r.frame, r.view.scale).catch(() => null) : (r.read ?? null))
       }
       const sure = (x: ImportResult | null): x is ImportResult => !!x && !!x.storeys[0]?.unit.walls.length && !x.notes.some((n) => /^Scale: [^.]*guessed|^Scale not set/.test(n))
       const rank = (r: SetChoice) => Math.min(...r.slots.map((s) => (s === 'R' ? 1e3 : s)))
       const order = plans.map((_, i) => i).filter((i) => sure(reads[i])).sort((a, b) => rank(plans[a]) - rank(plans[b]) || +pdf.readsAsPlan(reads[b]!) - +pdf.readsAsPlan(reads[a]!))
       const ref = order[0] !== undefined ? reads[order[0]]! : null
+      // (one PDF's pages share its page frame; an architect's DXF / SVG files share the drawing's model frame)
       const hint = (x: ImportResult, r: SetChoice): Pt | undefined =>
-        ref && r.file === plans[order[0]].file && Math.abs(x.unitScale - ref.unitScale) < 1e-6 * ref.unitScale ? { x: (x.origin.x - ref.origin.x) * x.unitScale, y: -(x.origin.y - ref.origin.y) * x.unitScale } : undefined
+        ref && (r.file === plans[order[0]].file || (!!r.read && !!plans[order[0]].read)) && Math.abs(x.unitScale - ref.unitScale) < 1e-6 * ref.unitScale ? { x: (x.origin.x - ref.origin.x) * x.unitScale, y: -(x.origin.y - ref.origin.y) * x.unitScale } : undefined
       // (added to a project: its drawn floors stand where they are, and the set stacks on them)
       const there = into ? Object.entries(projectTower(into).FLATS).filter(([stem, f]) => !stem.endsWith('-m') && f.unit.walls.length) : []
       const stack = stackFloors([...there.map(([, f]) => ({ unit: f.unit, at: f.offset })), ...order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: there.length ? undefined : hint(reads[i]!, plans[i]) }))]).slice(there.length)
@@ -1197,7 +1214,8 @@ export default function StudioApp() {
         if (at && (there.length || i !== order[0])) stacked++
         let u: Unit
         let offset: Pt = { x: 0, y: 0 }
-        if (read && pdf.readsAsPlan(read)) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
+        // (a DXF / SVG plan is its own lines whatever it makes: the file's lines are exact)
+        if (read && (r.read ? read.storeys[0]?.unit.walls.length : pdf.readsAsPlan(read))) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
         else {
           // its lines make no plan: the drawing's picture, to trace — scaled when the sheet's scale is known (printed 1 : n, or
           // its dimensions agree), lined up on the floors it stacks on (its picture's pixel for the building frame's origin)
@@ -1352,9 +1370,18 @@ export default function StudioApp() {
     const name = (p: string) => p.split('/').pop() ?? p
     const asFile = (f: DropFile) => (f.data instanceof File && f.data.name === name(f.path) ? f.data : new File([f.data], name(f.path), { type: MIME[f.path.toLowerCase().split('.').pop() ?? ''] ?? '' }))
     const main = mainFile(files.map((f) => f.path))
-    // a drawing set: several PDFs (and nothing that holds more, an IFC or a model) are listed together in the Set panel
-    const pdfs = files.filter((f) => /\.pdf$/i.test(f.path)).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
-    if (main && /\.pdf$/i.test(main) && pdfs.length > 1) return void openPdfFiles(pdfs.map(asFile))
+    // a drawing set: several PDFs, DXFs or SVGs — a folder of the architect's files — and nothing that holds more (an IFC, a
+    // model) are listed together in the Set panel; of one drawing saved both ways ("Ground.dxf", "Ground.pdf") the DXF is read
+    const kind = (p: string) => ['dxf', 'svg', 'pdf'].indexOf(p.toLowerCase().split('.').pop() ?? '')
+    const twins = new Map<string, DropFile>()
+    for (const f of files.filter((f) => kind(f.path) >= 0)) {
+      const k = name(f.path).replace(/\.[^.]+$/, '').toLowerCase()
+      const had = twins.get(k)
+      if (!had || kind(f.path) < kind(had.path)) twins.set(k, f)
+    }
+    const sheets = [...twins.values()].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
+    const folder = files[0].path.includes('/') ? files[0].path.split('/')[0] : undefined
+    if (main && kind(main) >= 0 && sheets.length > 1) return void openPdfFiles(sheets.map(asFile), folder)
     if (main) return void importArchitect(asFile(files.find((f) => f.path === main)!), files.length > 1 ? siblingsOf(files, main) : undefined)
     const usable = files.find((f) => /\.(png|jpe?g|webp|tiff?|heic|heif|json)$/i.test(f.path)) ?? files.find((f) => lockedFormatOf(f.path)) ?? files[0]
     onFile(asFile(usable))
@@ -2854,7 +2881,7 @@ export default function StudioApp() {
           {printOpen && <PrintBox unit={unit} onClose={() => setPrintOpen(false)} />}
           {setFiles && (
             <Suspense fallback={null}>
-              <SetPanel files={setFiles} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} />
+              <SetPanel files={setFiles} onRead={readSetFile} onOpenOne={openOne} onBuild={(rows, files, storeys) => void buildSet(rows, files, storeys)} onClose={closeSet} />
             </Suspense>
           )}
           {sheetView && (

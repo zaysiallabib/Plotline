@@ -234,13 +234,12 @@ export const ALIGN_SHARE = 0.25
  * (where the files' own frames put it: one CAD model, one page layout) are scored by how much of `mine`'s wall length then
  * lies on `ref`'s walls (parallel, centre lines within 15 cm), the best refined to its matched walls. Floors share their
  * outer walls, the stair and lift shafts and the columns' lines; a floor sharing under ALIGN_SHARE of the smaller plan's walls
- * (or a tenth of the bigger's) is not placed (null: the person types it). Translation only: a set's plans are drawn the same way up.
+ * (or a tenth of the bigger's) is not placed (null: the person types it). The columns' shift (alignColumns) is one more candidate, scored the same way; the
+ * files' own frame wins when it scores within 3 % of the best (by 'frame': not refined, it is exact). Translation only: a set's
+ * plans are drawn the same way up.
  */
-export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 'columns' | 'walls'; share: number; errM?: number } | null {
-  if ((ref.pillars?.length ?? 0) >= MIN_COLUMNS && (mine.pillars?.length ?? 0) >= MIN_COLUMNS) {
-    const c = alignColumns(ref.pillars!, mine.pillars!)
-    if (c) return { offset: c.offset, by: 'columns', share: c.matched / Math.min(ref.pillars!.length, mine.pillars!.length) }
-  }
+export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 'columns' | 'walls' | 'frame'; share: number; errM?: number } | null {
+  const cols = (ref.pillars?.length ?? 0) >= MIN_COLUMNS && (mine.pillars?.length ?? 0) >= MIN_COLUMNS ? alignColumns(ref.pillars!, mine.pillars!) : null
   const lines = (u: Unit) => {
     const V = new Map(u.vertices.map((v) => [v.id, v]))
     return u.walls.flatMap((w) => {
@@ -252,7 +251,7 @@ export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 
     }).sort((p, q) => q.L - p.L).slice(0, 300) // ponytail: the 300 longest walls carry a floor's place (an IFC storey has thousands)
   }
   const R = lines(ref), M = lines(mine)
-  if (!R.length || !M.length) return null
+  if (!R.length || !M.length) return cols ? { offset: cols.offset, by: 'columns', share: cols.matched / Math.min(ref.pillars!.length, mine.pillars!.length) } : null
   // how much of mine's wall length lies on ref's walls when shifted by `o`; with each matched pair's normal and miss (for refining)
   const fit = (o: Pt) => {
     let on = 0
@@ -283,13 +282,18 @@ export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 
       const v = votes.get(k) ?? votes.set(k, { o, n: 0 }).get(k)!
       v.n++
     }
-  const cands = [...votes.values()].sort((a, b) => b.n - a.n).slice(0, 40).map((v) => v.o)
-  if (hint) cands.unshift(hint)
-  let best: { o: Pt; on: number; pairs: { n: Pt; e: number; w: number }[] } | null = null
-  for (const o of cands) {
-    const f = fit(o)
-    if (!best || f.on > best.on + 1e-6) best = { o, ...f }
+  // the files' own frame, the columns' shift and the 40 most voted, each scored by the walls it puts on walls
+  const cands: { o: Pt; by: 'columns' | 'walls' | 'frame' }[] = [...(hint ? [{ o: hint, by: 'frame' as const }] : []), ...(cols ? [{ o: cols.offset, by: 'columns' as const }] : []), ...[...votes.values()].sort((a, b) => b.n - a.n).slice(0, 40).map((v) => ({ o: v.o, by: 'walls' as const }))]
+  type Scored = { o: Pt; by: 'columns' | 'walls' | 'frame'; on: number; pairs: { n: Pt; e: number; w: number }[] }
+  let best = null as Scored | null
+  let framed = null as Scored | null
+  for (const c of cands) {
+    const f = { ...c, ...fit(c.o) }
+    if (c.by === 'frame') framed = f
+    if (!best || f.on > best.on + 1e-6) best = f
   }
+  // (the files' own frame, when it puts nearly as much on the walls as the best: one CAD model's coordinates are exact)
+  if (best && framed && framed.on >= 0.97 * best.on) best = framed
   const total = (ls: typeof R) => ls.reduce((s, l) => s + l.L, 0)
   const share = best ? best.on / Math.min(total(R), total(M)) : 0
   // (and a tenth of the bigger one's: a small plan fits some corner of anything)
@@ -298,13 +302,13 @@ export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 
   let [sxx, sxy, syy, bx, by] = [0, 0, 0, 0, 0]
   for (const { n, e, w } of best.pairs) (sxx += w * n.x * n.x), (sxy += w * n.x * n.y), (syy += w * n.y * n.y), (bx -= w * n.x * e), (by -= w * n.y * e)
   const det = sxx * syy - sxy * sxy
-  const dd = Math.abs(det) > 1e-9 ? { x: (bx * syy - by * sxy) / det, y: (by * sxx - bx * sxy) / det } : { x: 0, y: 0 }
+  const dd = best.by !== 'frame' && Math.abs(det) > 1e-9 ? { x: (bx * syy - by * sxy) / det, y: (by * sxx - bx * sxy) / det } : { x: 0, y: 0 }
   const r4 = (x: number) => Math.round(x * 1e4) / 1e4
   const offset = { x: r4(best.o.x + dd.x), y: r4(best.o.y + dd.y) }
   // (how far its matched walls still miss, root mean square, m)
   const after = fit(offset).pairs
   const errM = Math.sqrt(after.reduce((s, p) => s + p.w * p.e * p.e, 0) / Math.max(1e-9, after.reduce((s, p) => s + p.w, 0)))
-  return { offset, by: 'walls', share: Math.round(share * 100) / 100, errM: Math.round(errM * 1000) / 1000 }
+  return { offset, by: best.by, share: Math.round(share * 100) / 100, errM: Math.round(errM * 1000) / 1000 }
 }
 
 /**

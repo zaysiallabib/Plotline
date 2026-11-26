@@ -1234,6 +1234,33 @@ export function bezierArc(p0: Pt, p1: Pt, p2: Pt, p3: Pt): { c: Pt; r: number; a
 }
 
 /**
+ * A file's lines as one SVG path in the plan frame (metres, y down, from `origin`, to the centimetre): a set's list draws its
+ * picture from it, and a kept elevation of a DXF / SVG set is kept as that picture. ponytail: the 40 000 longest lines, arcs
+ * as six chords — a picture, not the drawing.
+ */
+export function previewPath(segs: Seg[], arcs: ArcPrim[], scale: number, origin: Pt): string {
+  const P = (p: Pt) => `${Math.round((p.x - origin.x) * scale * 100) / 100} ${Math.round(-(p.y - origin.y) * scale * 100) / 100}`
+  const lines: [Pt, Pt][] = segs.map((g) => [g.a, g.b])
+  for (const a of arcs) {
+    let sweep = a.a1 - a.a0
+    while (sweep <= 0) sweep += 2 * Math.PI
+    const at = (k: number): Pt => ({ x: a.c.x + a.r * Math.cos(a.a0 + (sweep * k) / 6), y: a.c.y + a.r * Math.sin(a.a0 + (sweep * k) / 6) })
+    for (let k = 0; k < 6; k++) lines.push([at(k), at(k + 1)])
+  }
+  const kept = lines.length > 40000 ? lines.sort((p, q) => len(sub(q[1], q[0])) - len(sub(p[1], p[0]))).slice(0, 40000) : lines
+  return kept.map(([a, b]) => `M${P(a)}L${P(b)}`).join('')
+}
+
+/** a file's words for ImportResult.texts: its biggest 40, one line each, dimensions left out */
+export const bigTexts = (texts: TextPrim[]): { text: string; height: number }[] =>
+  texts
+    .filter((t) => !t.layer.startsWith('DIM:'))
+    .flatMap((t) => t.text.split('\n').map((line) => ({ text: stripText(line), height: t.height })))
+    .filter((t) => t.text)
+    .sort((a, b) => b.height - a.height)
+    .slice(0, 40)
+
+/**
  * The lines of a printed sheet that are drawing symbols, not the building (session 31 levels: in the farmhouse set's build
  * its elevation markers and its stair's break line became wall pieces). A symbol is drawn at a size on PAPER whatever the
  * drawing's scale (`paper`: metres of paper per file unit — a PDF point is 0.0254 / 72):

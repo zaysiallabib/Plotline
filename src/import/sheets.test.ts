@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Pt } from '../core'
 import type { ArcPrim, Seg } from './plan2d'
-import { drawingArea, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, storeysOf, type SheetPage, type SheetText } from './sheets'
+import { drawingArea, fileView, kindOfNumber, kindOfTitle, levelOf, parseSlots, readSheet, setChoices, sheetNumberOf, shapeKind, slotsFor, slotsWords, storeysOf, type SheetPage, type SheetText } from './sheets'
 
 /** a text: its start at (x, y) on its baseline, as wide as its letters */
 const T = (text: string, x: number, y: number, h = 12): SheetText => {
@@ -245,6 +245,25 @@ describe('the set', () => {
     expect(setChoices([{ kind: 'plan', level: null }, { kind: 'plan', level: null }])).toEqual([{ slots: [0], tick: true }, { slots: [], tick: false }])
     expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR') }, { kind: 'plan', level: null, tick: true }]).map((x) => x.slots)).toEqual([[0], [1]])
     expect(setChoices([{ kind: 'plan', level: levelOf('GROUND FLOOR'), slots: [2, 3] }]).map((x) => x.slots)).toEqual([[2, 3]])
+  })
+  test('a folder of DXF / SVG files: each file by its title inside or its name (GF, 1F, RF, TYP, B1, E-1, S-2, A-201)', () => {
+    const fv = (name: string, words: string[] = [], rooms = 0) => fileView(name, words.map((text) => ({ text })), rooms)
+    // Loughborough's matched pair of houses: words drawn in the file, the name says the side
+    expect(fv('Internal_Ground.dxf', ['West House (209)', 'East House (207)', 'Internal walls, ground floor', '209_Kitchen'])).toMatchObject({ kind: 'plan', level: { at: [0] } })
+    expect(fv('External_First.dxf', ['West', 'House', 'External walls, first floor', '1:50'])).toMatchObject({ kind: 'plan', level: { at: [1] } })
+    expect(fv('Elevation_East.dxf', ['East', 'House', '(207)', 'Elevation'])).toMatchObject({ kind: 'elevation', facade: 'east' })
+    expect(fv('Siteplan.dxf', ['Site plan, neighbouring dwellings,'])).toMatchObject({ kind: 'site' })
+    expect(['GF', '1F', 'RF', 'TYP', 'B1', 'tower 3F plan', 'Level 2'].map((n) => fv(`${n}.dxf`).level)).toEqual([{ at: [0] }, { at: [1] }, { at: ['R'] }, { at: [], typical: true }, { at: [-1] }, { at: [3] }, { at: [2] }])
+    expect(['E-1', 'S-2', 'A-101', 'A-201'].map((n) => fv(`${n}.dxf`).kind)).toEqual(['elevation', 'section', 'plan', 'elevation'])
+    // nothing said: its lines decide
+    expect([fv('drawing.dxf', [], 5).kind, fv('drawing.dxf', [], 1).kind]).toEqual(['plan', 'other'])
+  })
+  test('of two plans of one floor read already, the one with more rooms becomes its drawing', () => {
+    const c = setChoices([
+      { kind: 'plan', level: levelOf('External walls, first floor'), rooms: 0 },
+      { kind: 'plan', level: levelOf('Internal walls, first floor'), rooms: 11 },
+    ])
+    expect(c.map((x) => x.tick)).toEqual([false, true])
   })
   test('floors in short and back: "B1, G, 2–8, Roof"', () => {
     const ss = [-1, 0, 2, 3, 4, 5, 6, 7, 8, 'R'] as const

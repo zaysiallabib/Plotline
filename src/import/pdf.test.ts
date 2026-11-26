@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { deriveRooms, validate } from '../core'
 import { importPdf, readsAsPlan } from './pdf'
-import { bezierArc, buildPlan, penRoles, printedScale, sheetScale, sheetSymbols, type ArcPrim, type Seg } from './plan2d'
+import { bezierArc, bigTexts, buildPlan, penRoles, previewPath, printedScale, sheetScale, sheetSymbols, type ArcPrim, type Seg } from './plan2d'
 
 const bytes = (path: string): ArrayBuffer => {
   const b = readFileSync(path)
@@ -227,5 +227,18 @@ describe("the sheet's symbols are not walls (session 31 levels: the farmhouse se
     const swing: ArcPrim = { c: { x: 1, y: 0.1 }, r: 0.9, a0: 0, a1: Math.PI / 4, layer: '' }
     const r = buildPlan({ segs: [...face(-0.1), ...face(0.1)], arcs: [swing], loops: [], texts: [], scale: 1 }, 'door45')
     expect(r.unit.walls.flatMap((w) => w.openings).map((o) => o.kind)).toEqual(['door'])
+  })
+})
+
+describe('a DXF / SVG of a set: its words and its picture', () => {
+  test('its words biggest first, dimensions left out, one line each; its lines as one path in the plan frame', () => {
+    const t = (text: string, height: number, layer = 'TEXT') => ({ at: { x: 0, y: 0 }, text, height, layer })
+    expect(bigTexts([t('209_Kitchen', 0.12), t('Internal walls,\nground floor', 0.16), t('3200', 0.5, 'DIM:A-DIMS')])).toEqual([
+      { text: 'Internal walls,', height: 0.16 },
+      { text: 'ground floor', height: 0.16 },
+      { text: '209_Kitchen', height: 0.12 },
+    ])
+    // a line from (2, 5) to (4, 5) in millimetres from the origin (1, 6): plan metres, y down
+    expect(previewPath([{ a: { x: 2000, y: 5000 }, b: { x: 4000, y: 5000 }, layer: '' }], [], 0.001, { x: 1000, y: 6000 })).toBe('M1 1L3 1')
   })
 })
