@@ -126,3 +126,23 @@ tile_floor_ceramic AO map as its colour and marble_floor_white's roughness, 800 
 | deck_boards | texture | https://polyhaven.com/a/wooden_planks | Dario Barresi, Charlotte Baglioni | CC0 | 2026-10-04 | textures/deck_boards/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `deck` zones (wood_floor_deck first: a glossy orange ipe on the roofs) | 1958076 |
 | rubber_gym | texture | https://polyhaven.com/a/rubber_tiles | Amal Kumar | CC0 | 2026-10-04 | textures/rubber_gym/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — gym floor | 1714677 |
 | soil | texture | https://polyhaven.com/a/farm_soil | Amal Kumar | CC0 | 2026-10-04 | textures/soil/{albedo.jpg,normal.jpg,roughness.jpg,ao.jpg} — `planter` zones | 3587235 |
+
+### Added session 31 (facade: what an outer wall is clad in)
+
+1K JPG maps (Poly Haven through api.polyhaven.com/files: Diffuse → albedo, nor_gl → normal, Rough → roughness; ambientCG's
+1K-JPG zip), re-encoded small in a browser canvas (albedo q80, normal q82, roughness q70), no AO (a facade is seen from
+the street). Licence pages read 2026-11-27: Poly Haven "Our assets are all licensed as CC0"; ambientCG "All assets are
+released under the Creative Commons CC0 license". The script: E:/dev/tmp/s31/facade/tools/process.mjs (not in the repo).
+
+| id | type | source | author | license | checked | file(s) | bytes |
+|---|---|---|---|---|---|---|---|
+| brick_red | texture | https://polyhaven.com/a/large_red_bricks | Rob Tuytel | CC0 | 2026-11-27 | textures/brick_red/{albedo.jpg,normal.jpg,roughness.jpg} — clean orange-red brick, 2 m a repeat | 562818 |
+| brick_painted | texture | https://polyhaven.com/a/whitewashed_brick | Rob Tuytel | CC0 | 2026-11-27 | textures/brick_painted/{albedo.jpg,normal.jpg,roughness.jpg} — its colour taken out (grey-white bricks and mortar, ×1.08) so an option tints it: white painted, grey | 463780 |
+| stone_blocks | texture | https://polyhaven.com/a/stone_tile_wall | Charlotte Baglioni | CC0 | 2026-11-27 | textures/stone_blocks/{albedo.jpg,normal.jpg,roughness.jpg} — light stone blocks (cladding, a plinth) | 291833 |
+| timber_slats | texture | https://polyhaven.com/a/synthetic_wood | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/timber_slats/{albedo.jpg,normal.jpg,roughness.jpg} — vertical composite slats with dark gaps (Dhaka's timber-look panels) | 304724 |
+| timber_clapboard | texture | https://ambientcg.com/view?id=WoodSiding007 | ambientCG (Lennart Demes) | CC0 | 2026-11-27 | textures/timber_clapboard/{albedo.jpg,normal.jpg,roughness.jpg} — lap siding, 13 boards a 2 m repeat (sized from the boards: ambientCG gives no size); from the 1K-JPG zip (Color, NormalGL, Roughness) | 417723 |
+| metal_seam | texture | https://polyhaven.com/a/box_profile_metal_sheet | Amal Kumar | CC0 | 2026-11-27 | textures/metal_seam/{albedo.jpg,normal.jpg,roughness.jpg} — its red taken out and lightened (×2.1) to a zinc grey: zinc rib panels | 285057 |
+| metal_corrugated | texture | https://polyhaven.com/a/corrugated_iron_02 | Jenelle van Heerden, Sergej Majboroda | CC0 | 2026-11-27 | textures/metal_corrugated/{albedo.jpg,normal.jpg,roughness.jpg} — galvanised corrugated sheet | 402602 |
+| concrete_fair | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_fair/{albedo.jpg,normal.jpg,roughness.jpg} — fair-faced concrete | 202239 |
+| concrete_precast | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/concrete_precast/{albedo.jpg,normal.jpg,roughness.jpg} — the same scan with a 13 mm panel joint drawn in every 2.71 × 1.355 m (colour ×0.45, a groove in the relief, matte): precast panels | 225582 |
+| panel_grid | texture | https://polyhaven.com/a/concrete_wall_008 | Dario Barresi, Charlotte Baglioni | CC0 | 2026-11-27 | textures/panel_grid/{albedo.jpg,normal.jpg,roughness.jpg} — the scan flattened to an even light grey (12 % of its variation, roughness 0.42) with 10 mm joints every 1.2 × 0.8 m: flat fibre-cement / composite panels, tinted by the options | 108866 |
