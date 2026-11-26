@@ -30,8 +30,6 @@ export interface WallOpts {
   partitionM?: number
   /** enlarge the raster first (1 = never). Default: 2 when walls are under ~6 px thick (low-res sheets), else 1. */
   upscale?: number
-  /** the door-arc contrast window's radius, raster px (default 3); ×f on a raster enlarged f× first */
-  arcRadiusPx?: number
   /** drop walls whose lighter side is less than this many grey levels above their centre (foliage, textures). */
   minContrast?: number
   /**
@@ -414,7 +412,9 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     // enlarged histogram can lock onto the columns
     const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
     const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
-    const t = traceWalls(big, { ...opts, upscale: 1, arcRadiusPx: (opts.arcRadiusPx ?? 3) * f, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
+    // (the door-arc window stays 3 px on the enlarged raster: his ×f window — the same paper as at native size — moved
+    // Water Lily's living room open in Firefox, s31 p2trace; arcInk takes a radius should a sheet ever need it)
+    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
     const sc = (s: WallSeg): WallSeg => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })
     return {
@@ -431,7 +431,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }
   }
   if (opts.tracker === 'tracks') {
-    const tt = traceTracks(gray, { halfPx: opts.halfPx, arcRadiusPx: opts.arcRadiusPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast, frameBands: opts.upscale === undefined })
+    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast, frameBands: opts.upscale === undefined })
     const t = trackWalls(tt)
     const angled = angledWalls(gray, t.walls, opts)
     return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, pillars: tt.pillars, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }

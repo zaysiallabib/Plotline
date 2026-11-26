@@ -121,8 +121,6 @@ export interface Gap {
 }
 
 export interface TrackOpts {
-  /** the door-arc contrast window's radius, raster px (walls.ts arcInk; default 3) */
-  arcRadiusPx?: number
   /** the partition's half width, px (default: walls.ts wallHalfWidth of the sheet) */
   halfPx?: number
   /** plant pixels (the colour image's green, hints.ts greenMask) — whitened before anything is traced */
@@ -613,7 +611,7 @@ export function traceTracks(gray0: Gray, opts: TrackOpts = {}): TrackTrace {
   const gaps: Gap[] = []
   const seen = new Set<string>()
   // arc ink outside every wall body, each pixel judged once (the door probe asks the same pixels many times)
-  const arcAt0 = arcInk(gray, 18, opts.arcRadiusPx), arcMemo = new Uint8Array(W * H)
+  const arcAt0 = arcInk(gray), arcMemo = new Uint8Array(W * H)
   const grayAt = (x: number, y: number) => gray.data[Math.min(H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))]
   const inWall = wallBodies(tracks, W, H)
   const arcAt = (x: number, y: number) => {

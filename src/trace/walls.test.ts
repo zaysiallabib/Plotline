@@ -23,7 +23,7 @@ test('the counted arc contrast agrees with a sorted-median reference, ties inclu
     }
 })
 
-test.each([2, 3])('the arc contrast covers the same paper on a sheet enlarged %s× (from Maheer\'s Plotline 2.0)', (scale) => {
+test.each([2, 3])('the arc contrast window takes a radius: on a sheet enlarged %s× a window that much wider covers the same paper (from Maheer\'s Plotline 2.0; the tracer keeps 3 px — measured)', (scale) => {
   const small: Gray = { width: 100, height: 80, data: new Uint8Array(100 * 80).fill(255) }
   for (let y = 0; y < small.height; y++) for (let x = 40; x <= 42; x++) small.data[y * small.width + x] = 235
   const width = small.width * scale, height = small.height * scale, big: Gray = { width, height, data: new Uint8Array(width * height) }
