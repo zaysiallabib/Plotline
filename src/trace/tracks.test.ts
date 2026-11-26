@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { deriveRooms } from '../core'
-import { KNOBS, solveTraces } from './solve'
+import { KNOBS, prepareTraces, solveTraces } from './solve'
 import { classifyGap, traceTracks, trackWalls } from './tracks'
-import { traceWalls } from './walls'
+import { arcInk, traceWalls } from './walls'
 import type { Gray } from './types'
 
 const K = 50 // px per m
@@ -20,6 +20,34 @@ test('a coloured pane drawn just inside the wall face is a window; colour far of
   expect(kind()).toBe('unknown')
 })
 
+test('a faint door needs the same swing at two weak cuts with its leaf drawn; a closed fixture, rings and a part-arc stay out (from Maheer\'s Plotline 2.0)', () => {
+  const run = (shape: 'door' | 'circle' | 'rings' | 'broken') => {
+    const width = 180, height = 180, g: Gray = { width, height, data: new Uint8Array(width * height).fill(210) }
+    const a = { x: 45, y: 45 }, b = { x: 90, y: 45 }
+    for (const r of shape === 'rings' ? [38, 45, 52] : [45])
+      for (let i = 0; i <= 600; i++) {
+        const t = ((shape === 'circle' ? Math.PI * 2 : shape === 'broken' ? Math.PI / 5 : Math.PI / 2) * i) / 600
+        g.data[Math.round(a.y + r * Math.sin(t)) * width + Math.round(a.x + r * Math.cos(t))] = 196
+      }
+    if (shape === 'door') for (let y = a.y; y <= a.y + 45; y++) g.data[y * width + a.x] = 196
+    const grayAt = (x: number, y: number) => g.data[Math.round(y) * width + Math.round(x)] ?? 255
+    const memo = (delta: number) => {
+      const at = arcInk(g, delta), cache = new Uint8Array(width * height)
+      return (x: number, y: number) => {
+        const xx = Math.round(x), yy = Math.round(y)
+        if (xx < 0 || yy < 0 || xx >= width || yy >= height) return false
+        const i = yy * width + xx
+        if (!cache[i]) cache[i] = at(xx, yy) ? 2 : 1
+        return cache[i] === 2
+      }
+    }
+    const strong = memo(18), faint: [ReturnType<typeof arcInk>, ReturnType<typeof arcInk>] = [memo(12), memo(8)]
+    return { old: classifyGap(a, b, 6, K, strong, grayAt, undefined, width, height).kind, now: classifyGap(a, b, 6, K, strong, grayAt, undefined, width, height, true, false, faint).kind }
+  }
+  expect(run('door')).toEqual({ old: 'unknown', now: 'door' })
+  for (const shape of ['circle', 'rings', 'broken'] as const) expect(run(shape).now, shape).not.toBe('door')
+}, 20000)
+
 /** A blank sheet w × h m with a 1 m margin; P(x, y) m → px. */
 function sheet(wM: number, hM: number): { g: Gray; P: (x: number, y: number) => { x: number; y: number }; box: (x0: number, y0: number, x1: number, y1: number, grey?: number) => void } {
   const width = Math.round((wM + 2) * K), height = Math.round((hM + 2) * K)
@@ -34,6 +62,31 @@ function sheet(wM: number, hM: number): { g: Gray; P: (x: number, y: number) => 
 /** a horizontal wall at y (centre), x0 → x1, th m thick; a vertical one at x */
 const hw = (box: ReturnType<typeof sheet>['box'], y: number, x0: number, x1: number, th: number) => box(x0, y - th / 2, x1, y + th / 2)
 const vw = (box: ReturnType<typeof sheet>['box'], x: number, y0: number, y1: number, th: number) => box(x - th / 2, y0, x + th / 2, y1)
+
+test('a faint door is still read after the rooms are fitted; a blank gap is not a door (from Maheer\'s Plotline 2.0)', () => {
+  const run = (withArc: boolean) => {
+    const { g, P, box } = sheet(8, 4)
+    hw(box, 0, 0, 1, 0.127), hw(box, 0, 2, 8, 0.127), hw(box, 4, 0, 8, 0.127)
+    vw(box, 0, 0, 4, 0.127), vw(box, 4, 0, 4, 0.127), vw(box, 8, 0, 4, 0.127)
+    if (withArc) {
+      const c = P(1, 0.0635)
+      for (let i = 0; i <= 500; i++) {
+        const t = ((Math.PI / 2) * i) / 500
+        g.data[Math.round(c.y + K * Math.sin(t)) * g.width + Math.round(c.x + K * Math.cos(t))] = 246
+      }
+      for (let y = Math.round(c.y); y <= Math.round(c.y + K); y++) g.data[y * g.width + Math.round(c.x)] = 246
+    }
+    const items = [
+      { text: 'BED 1', kind: 'room' as const, roomKind: 'bed' as const, box: { ...P(2, 2), w: 12, h: 8 }, conf: 1, source: 'ocr' as const },
+      { text: 'BED 2', kind: 'room' as const, roomKind: 'bed' as const, box: { ...P(6, 2), w: 12, h: 8 }, dims: { aM: 3.873, bM: 3.873 }, conf: 1, source: 'ocr' as const },
+    ]
+    const p = prepareTraces(g, { text: { items } }, { pxPerM: K })
+    return { rooms: p.draft.rooms.length, fits: p.fits.length, doors: p.trace.openings.filter((o) => o.kind === 'door').length }
+  }
+  expect(run(false)).toMatchObject({ doors: 0 })
+  expect(run(true)).toMatchObject({ rooms: 2, doors: 1 })
+  expect(run(true).fits).toBeGreaterThan(0)
+}, 20000)
 
 describe('wall tracks on synthetic rasters', () => {
   test('a flush thickness step: one wall per part, each exactly on its ink, touching and joined — nothing side by side', () => {

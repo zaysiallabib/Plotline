@@ -35,8 +35,10 @@ import { colourPage, dashMask, edt, furnitureMask, hatchMask, lightWalls, lineIn
 import { calibrateScale, darkMaxOf, fitRooms, type RoomFit, type Side } from './rooms'
 import { classifyRoom, nameKey, normaliseName, parseArea, parseDims, trimName } from './text'
 import { trackThin } from './track'
-import { circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
-import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
+import { arcInk, circle3, glazing, inkThreshold, segPieces, thicknessOf, traceWalls, wallHalfWidth } from './walls'
+import { classifyGap } from './tracks'
+import { endDoors } from './doorEnds'
+import type { AutoTraceOpts, AutoTraceResult, AutoTraceStats, Gray, HintTrace, OpeningGuess, PrintedRoom, Px, ReviewItem, RoomHint, TableRow, TextItem, TextTrace, WallSeg, WallTrace } from './types'
 
 /** Tuning knobs (metres unless said otherwise). */
 export const KNOBS = {
@@ -2084,6 +2086,46 @@ export function solveTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOpts
 }
 
 /**
+ * The doors a faint scan hides (from Maheer's Plotline 2.0), after the rooms are fitted, at the final scale and full
+ * resolution: each undecided gap read again with four contrast cuts (a very faint swing kept at low confidence), and
+ * double-action doors swinging about a wall's tip (doorEnds.ts). `exclude`: pixels never arc ink (the planters).
+ */
+export function refineOpenings(trace: WallTrace, gray: Gray, k: number, glass?: Uint8Array, exclude?: Uint8Array): WallTrace {
+  if (trace.walls.length < 2 && !trace.openings.some((o) => o.kind === 'unknown')) return trace
+  const { width: W, height: H } = gray
+  const ink = [18, 12, 8, 6].map((delta) => {
+    const at = arcInk(gray, delta), memo = new Uint8Array(W * H)
+    return (x: number, y: number) => {
+      const xx = Math.round(x), yy = Math.round(y)
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) return false
+      const i = yy * W + xx
+      if (exclude?.[i]) return false
+      if (!memo[i]) memo[i] = at(xx, yy) ? 2 : 1
+      return memo[i] === 2
+    }
+  })
+  const at = (x: number, y: number) => gray.data[Math.max(0, Math.min(H - 1, Math.round(y))) * W + Math.max(0, Math.min(W - 1, Math.round(x)))]
+  const thickness = trace.walls.map((w) => w.thicknessPx).sort((a, b) => a - b)
+  const th = thickness[thickness.length >> 1] ?? PARTITION_M * k
+  const openings = trace.openings.map((o) => {
+    if (o.kind !== 'unknown' || d2(o.a, o.b) > 3 * k) return o
+    let result = classifyGap(o.a, o.b, o.thicknessPx ?? th, k, ink[0], at, glass, W, H, true, false, [ink[1], ink[2]])
+    if (result.kind === 'unknown') {
+      // a very faint scan: a whole swing alone with its leaf at both weak cuts, kept uncertain
+      const faint = classifyGap(o.a, o.b, o.thicknessPx ?? th, k, () => false, at, undefined, W, H, true, false, [ink[2], ink[3]])
+      if (faint.kind === 'door' && faint.conf >= 0.9) result = { ...faint, conf: 0.6 }
+    }
+    return result.kind === 'unknown' ? o : { ...o, ...result }
+  })
+  const ends = endDoors({ ...trace, openings }, k, [ink[1], ink[2]])
+  const same = (a: OpeningGuess, b: OpeningGuess) => {
+    const tol = Math.max(a.thicknessPx ?? 0, b.thicknessPx ?? 0) + 2
+    return (d2(a.a, b.a) < tol && d2(a.b, b.b) < tol) || (d2(a.a, b.b) < tol && d2(a.b, b.a) < tol)
+  }
+  return { ...trace, openings: [...openings.filter((o) => o.kind !== 'unknown' || !ends.some((e) => same(o, e))), ...ends] }
+}
+
+/**
  * A bank of two or more small dimensioned rooms side by side, each printed with the same capacity ("8 PERSONS") and no
  * flat's room name: lifts whose LIFT word was not read — the building's core, kept out of every flat (from Maheer's
  * Plotline 2.0). Their capacity labels' centres, metres.
@@ -2252,6 +2294,7 @@ export function prepareTraces(gray: Gray, inputs: SolveInputs, opts: AutoTraceOp
       trace = { ...trace, walls: merged.walls, openings: merged.openings }
     }
   }
+  if (tracker === 'tracks') trace = refineOpenings(trace, plan, pxPerM, ink.glass, plants)
   // (on the sheet as drawn: the text pass erases thin ink inside label boxes, and an AOD's label box often covers its grille)
   const thin = tracker === 'tracks' && trace.tracks ? closeThinFaces(gray, trace, pxPerM, text, fits, avoid, inputs.green, furniture, ink.glass) : null
   // (a glass front faces.ts drew: a window floor to top, the child of a wall of its own — Level 1)
