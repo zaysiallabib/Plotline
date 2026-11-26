@@ -1113,6 +1113,11 @@ it without asking the map again. Map and buildings © OpenStreetMap contributors
 Instead of a picture to trace, drop the architect's own file on the Studio (or ⋯ → **Import…** / **Choose plan
 image…**). Its walls ARE the drawing, so there is no picture behind it (the status bar says "no picture lined up"); a
 picture can still be dropped later to see the sheet behind. Every format and how it was tested: [FORMATS.md](FORMATS.md).
+Dropped (or imported) onto a drawing, a file asks first: "Replace the drawing on screen with *file*? Undo brings it
+back." — **Replace**, and one **Ctrl+Z** (or ↶ Undo) gives the drawing that was there back, on its picture as before and
+with its Check these rows; **Cancel** keeps it. The same for a Plotline file (.json). A whole building (an IFC of several
+storeys) makes a project of its own: a drawing open in a project stays in its project; one open in no project is
+replaced, and it says so before ("Make a project of *file*'s 5 floors? The drawing on screen is in no project…").
 To see each kind without a file of your own: **Try a sample ▾** in the empty Studio ("Loading the plan picture" above).
 
 | File | What happens |
@@ -1477,7 +1482,8 @@ Things that are confusing or not finished. Each one is a job on the list.
   the 3D view.
 - Zoomed out, a small room's name can be hidden until the mouse is over it; coloured areas (lawn, driveway) cover much of the
   picture under them; checks written for flats show on levels ("No entry door on an outer wall", the Area number).
-- Undo does not reach past closing the browser or switching drawings; the tracing timer starts again for each drawing.
+- Undo does not reach past closing the browser or switching drawings (an imported file over a drawing is one step back);
+  the tracing timer starts again for each drawing.
   Ctrl+Z right after opening the Studio again does nothing.
 - Renaming a project does not change the Project box of drawings made before.
 

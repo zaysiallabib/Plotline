@@ -956,6 +956,23 @@ describe('wall length keeps neighbours straight; detach, re-join, delete', () =>
       expect(studioReducer(undone, { type: 'undo' }).unit.walls).toEqual([]) // then the unit before the trace
     })
 
+    it('an imported file over a drawing is one undo step: Ctrl+Z gives the drawing back, its Check these rows too; opening another drawing (fresh) starts its own history', () => {
+      // (from Maheer's Plotline 2.0: "Replace your current drawing… Ctrl+Z restores your drawing")
+      const traced = studioReducer(initialState(), { type: 'auto-trace', result: { ...mockTraceResult(), unit: poly([[0, 0], [4, 0], [4, 3], [0, 3]]).unit } })
+      const file = poly([[0, 0], [6, 0], [6, 5], [0, 5]]).unit
+      const imported = reducer(traced, { type: 'load-unit', unit: file })
+      expect(imported.unit.vertices.map((v) => v.x).sort()).toEqual([0, 0, 6, 6])
+      expect(imported.history.past.at(-1)).toBe(traced.unit) // the file and its join: one step
+      const back = reducer(imported, { type: 'undo' })
+      expect(back.unit).toBe(traced.unit)
+      expect(back.review?.unitId).toBe(back.unit.id) // its rows show again
+      expect(reducer(back, { type: 'redo' }).unit).toBe(imported.unit)
+      // onto an empty Studio, as before: nothing to bring back
+      expect(reducer(initialState(), { type: 'load-unit', unit: file }).history.past).toEqual([])
+      // another floor of a project opened: its own history, the last floor's out of reach
+      expect(reducer(traced, { type: 'load-unit', unit: file, fresh: true }).history.past).toEqual([])
+    })
+
     /** a unit from points: walls [from, to, thickness] */
     const build = (pts: Record<string, [number, number]>, walls: [string, string, number][]): Unit => ({
       ...initialState().unit,
@@ -1610,11 +1627,13 @@ describe('auto-trace import and its review list', () => {
     expect(a.h).toBeCloseTo(b.h, 9)
   })
 
-  it('the review list survives a draft restore; load-unit and reset drop it', () => {
+  it('the review list survives a draft restore; load-unit hides it (kept for its Undo) and reset drops it', () => {
     const { after } = traced()
     const d: Draft = { unit: after.unit, planImage: after.planImage, view: after.view, timer: after.timer, review: after.review }
     expect(openReview(studioReducer(initialState(), { type: 'restore', draft: d }))).toHaveLength(3)
-    expect(studioReducer(after, { type: 'load-unit', unit: typeA as unknown as Unit }).review).toBeUndefined()
+    const loaded = studioReducer(after, { type: 'load-unit', unit: typeA as unknown as Unit })
+    expect(openReview(loaded)).toEqual([])
+    expect(openReview(studioReducer(loaded, { type: 'undo' }))).toHaveLength(3)
     expect(studioReducer(after, { type: 'reset' }).review).toBeUndefined()
   })
 

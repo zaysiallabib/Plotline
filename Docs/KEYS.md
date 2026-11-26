@@ -129,7 +129,8 @@ no staff row below shows there. Checked against the product on 2026-11-21; walke
 | **Plotline STUDIO** | Opens the front page (the mouse over STUDIO: this browser is in staff mode) | top bar, left | §5 Top bar |
 | **Unit name**, **Project**, **Floor**, **Area** (sft) | The drawing's fields; click and type (Floor: numbers only). Under about 1000 px wide Project and Area step aside | top bar | §5 Top bar |
 | Saving… · Saved · just now · Offline · will retry · Someone else saved · Not saved: … | Where your work stands online; click it for the account card | top bar, signed in | §5 Accounts |
-| **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo | top bar; any tool, not in a text box | §5 Top bar |
+| **↶** / **↷** · **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) | Undo / Redo (a file dropped over a drawing is one step: Undo brings the drawing back) | top bar; any tool, not in a text box | §5 Top bar |
+| **Replace** · **Cancel** | A file dropped onto a drawing asks first: "Replace the drawing on screen with *file*? Undo brings it back." (Enter / Esc) | over a drawing | §5 Bring in the architect's file |
 | **Auto-trace** | Traces the flats: point at a flat and click it, or **Whole floor** | top bar, once a plan picture is in | §5 Auto-trace and Check these |
 | **Preview 3D** | Your drawing in the 3D view, in a new tab (the blue button; plain while the Studio is empty; with no wall drawn it says so instead) | top bar | §5 Top bar |
 | **Building** | Shows / hides the project's floor list (or starts a project) | top bar | §6 |

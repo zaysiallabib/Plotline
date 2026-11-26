@@ -28,6 +28,7 @@ import {
   snapRampDir,
   studioIssues,
   wallLabelSides,
+  hasDrawing,
   type Draft,
   type PlanImage,
   type StudioState,
@@ -465,7 +466,7 @@ export default function StudioApp() {
         const m = byKey.get(data.key)
         if (!left || (m && (m.twinOf ?? m.key) === activeRef.current) || performance.now() - shown > 500) publish()
       }
-      w.postMessage({ type: 'job', seq, unit, marks: todo, issues, printed: state.review?.stats.printed, rooms } satisfies FixesIn)
+      w.postMessage({ type: 'job', seq, unit, marks: todo, issues, printed: state.review?.unitId === unit.id ? state.review.stats.printed : undefined, rooms } satisfies FixesIn)
       if (activeRef.current) w.postMessage({ type: 'first', key: activeRef.current } satisfies FixesIn)
     }
     const id = window.setTimeout(start, 150)
@@ -725,7 +726,7 @@ export default function StudioApp() {
     setAlign(null)
     dispatch({ type: 'set-plan-image', image: null })
     if (!u) return dispatch({ type: 'reset' })
-    dispatch({ type: 'load-unit', unit: withLayout(u) })
+    dispatch({ type: 'load-unit', unit: withLayout(u), fresh: true })
     dispatch({ type: 'keep-review', review: ps.find((p) => p.id === a?.id)?.reviews?.[u.id] ?? null }) // its Check these rows, as left
     void getPicture(u.id)
       .catch(() => undefined)
@@ -750,7 +751,7 @@ export default function StudioApp() {
     const d = projRef.current?.drawing
     if (!id && d && d !== live) {
       const st = stateRef.current
-      dispatch({ type: 'load-unit', unit: { ...st.unit, id: d } })
+      dispatch({ type: 'load-unit', unit: { ...st.unit, id: d }, fresh: true })
       dispatch({ type: 'keep-review', review: st.review?.unitId === live ? st.review : null })
     }
     setActive(id ? { id, ...(ps.find((p) => p.id === id)?.units[live] ? { drawing: live } : {}) } : null)
@@ -942,6 +943,8 @@ export default function StudioApp() {
     [fitView],
   )
 
+  /** an imported floor over the drawing on screen: asked first ("Undo brings it back": load-unit keeps the history) */
+  const replaceAsked = (name: string): Promise<boolean> => (hasDrawing(stateRef.current.unit) ? ask(`Replace the drawing on screen with ${name}? Undo brings it back.`, 'Replace') : Promise.resolve(true))
   const importJson = useCallback(
     async (file: File) => {
       let parsed: unknown
@@ -951,6 +954,7 @@ export default function StudioApp() {
         parsed = null
       }
       if (!isUnit(parsed)) return showError('That file is not a Plotline unit')
+      if (!(await replaceAsked(file.name))) return
       const u = normalizeUnit({ ...parsed, review: undefined } as typeof parsed) // (an Export's Check-these rows stay out of the unit)
       const src = u.planImage?.src
       fitOnUnit.current = !src
@@ -972,7 +976,7 @@ export default function StudioApp() {
    * basements (below 0 or named so) under the ground floor, floors 1..n, the top one the rooftop when its name says so or
    * it holds no room — with the shape saved once for the building, and the first floor above ground opened.
    */
-  const importArchitect = async (file: File, siblings?: Map<string, Blob>) => {
+  const importArchitect = async (file: File, siblings?: Map<string, Blob>, again = false) => {
     if (/\.pdf$/i.test(file.name)) return openPdfFile(file)
     const stop = new AbortController()
     setNote(null)
@@ -987,7 +991,7 @@ export default function StudioApp() {
     }
     setReading(null)
     lastRead.current = { file, siblings }
-    await takeImport(r, file.name)
+    await takeImport(r, file.name, again)
   }
   /** a person says what a layer holds ('auto': Plotline decides): kept in this browser for every next file, this one read again */
   const onLayerRole = (layer: string, role: LayerRole | 'auto') => {
@@ -999,7 +1003,7 @@ export default function StudioApp() {
     } catch {
       /* no storage: this read only */
     }
-    if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings)
+    if (lastRead.current) void importArchitect(lastRead.current.file, lastRead.current.siblings, true)
   }
   /**
    * A PDF, or several dropped together. One page holding one floor plan is read at once, as before. Anything more — a set of
@@ -1144,9 +1148,16 @@ export default function StudioApp() {
     if (!pic) return showError('This drawing’s picture is not in this browser')
     setSheetView({ title, dataUrl: pic.dataUrl })
   }
-  /** what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name */
-  const takeImport = async (r: ImportResult, fileName: string) => {
+  /**
+   * what a read file gave, into the Studio (importArchitect above); `fileName`: for the project's name. Over a drawing it
+   * asks first (one floor: Ctrl+Z brings the drawing back); `again`: the same file read again (a layer's role changed), no question
+   */
+  const takeImport = async (r: ImportResult, fileName: string, again = false) => {
     if (import.meta.env.DEV) Object.assign(window, { __plotlineLastImport: r }) // the formats scoreboard reads what the drop gave
+    if (!again && r.storeys.length === 1 && !(await replaceAsked(fileName))) return
+    // a whole building becomes a project of its own: a drawing open in a project stays there, one open in none would go
+    const loose = r.storeys.length > 1 && !projRef.current && hasDrawing(stateRef.current.unit)
+    if (loose && !(await ask(`Make a project of ${fileName}'s ${r.storeys.length} floors? The drawing on screen is in no project and is replaced (Export it first to keep a copy).`, 'Make the project', true))) return
     setImportLayers(r.layers ?? null)
     let shell: Shell | undefined
     if (r.shell) {
@@ -1402,7 +1413,7 @@ export default function StudioApp() {
     setRestored(null)
     setMissingPlan(null)
     dispatch({ type: 'set-plan-image', image: null })
-    dispatch({ type: 'load-unit', unit: data })
+    dispatch({ type: 'load-unit', unit: data, fresh: true })
     requestAnimationFrame(() => fitView()) // after the render that holds it (no picture: nothing else fits the view)
     void pictureFromCloud(data.id, null)
       .catch(() => null)
