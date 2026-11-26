@@ -136,8 +136,9 @@ describe('an IFC reads as it read before the speed-up', () => {
 
 const PINNED: Record<string, [string, string]> = {
   'duplex/arc.ifc': ['a7183dfdb236df40', 'a7183dfdb236df40'], // (s31 bigifc: its foundation's "names no rooms" note said once, the walls unchanged)
-  'fzk_house/arc.ifc': ['d7b9a2a932441f5c', 'd7b9a2a932441f5c'],
-  'city_house_munich/arc.ifc': ['09f1e40ef1bc26f9', '09f1e40ef1bc26f9'],
+  // (s31 bigifc: their German room names get their kinds — Schlafzimmer a bedroom, Bad a bath —; walls and names unchanged)
+  'fzk_house/arc.ifc': ['a424b5f5ee9ea62b', 'a424b5f5ee9ea62b'],
+  'city_house_munich/arc.ifc': ['bc267be7720262db', 'bc267be7720262db'],
   'fixtures/autotrace-bti-floor-2026-11-20.json': ['dae0408aebf3902c', 'b8df5c02ace179c7'],
   'fixtures/founder-autotrace-type-a-2026-10-06.json': ['f1dc554e237be1da', 'a05cc86392ce384b'],
   'fixtures/founder-banani-unit-a-2026-10-09.json': ['1d6f3042c3bf9c8f', '1d6f3042c3bf9c8f'],

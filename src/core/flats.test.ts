@@ -167,3 +167,17 @@ describe('runsUp: the core rooms a roof carries a head room over (session 31 pol
     expect([r('Lobby'), r('Stretcher Uft'), r('Stair', 'bath'), r('Aod', 'shaft'), r('Upstairs bedroom', 'bed')]).toEqual([false, false, false, false, false])
   })
 })
+
+describe("a European IFC's core (s31 bigifc): its stair, lift and corridor belong to no flat", () => {
+  test('Treppenhaus, Aufzug, Trappenhuis, Hiss, Escalier, Ascensore, Gang are the core and run up (Gang does not); a Flur (a flat\'s hall) is not', () => {
+    const core1 = (name: string) => core.isCore({ name, kind: 'other' })
+    expect(['Treppenhaus', 'Treppenlauf', 'Aufzug', 'Stiegenhaus', 'Trappenhuis', 'Hiss', 'Escalier', 'Ascensore', 'Gang', 'Laubengang'].map(core1)).toEqual(Array(10).fill(true))
+    expect(['Flur-3-3', 'Vorr.', 'Zimmer', 'Scaled model room'].map(core1)).toEqual([false, false, false, false])
+    expect(['Treppenhaus', 'Aufzug', 'Hissi', 'Escaleras'].map((n) => core.runsUp({ name: n, kind: 'other' }))).toEqual([true, true, true, true])
+    expect(core.runsUp({ name: 'Gang', kind: 'other' })).toBe(false)
+  })
+  test('two flats joined through a Gang are two flats, not one', () => {
+    const u = floor(['door', 'door', 'door', 'door', 'door', 'door'], [{}, {}, {}, { name: 'Gang' }])
+    expect(flatsOf(u).map(([n]) => n)).toEqual(['Flat 1', 'Flat 2'])
+  })
+})

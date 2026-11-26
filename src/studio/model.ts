@@ -1866,7 +1866,28 @@ export function guessKind(name: string): RoomKind {
   if (has('closet', 'walk in', 'walk-in')) return 'closet'
   if (has('shaft', 'aod', 'duct')) return 'shaft' // lift lobby / stair / lift core stay 'other': 'shaft' renders open to the sky
   if (has('utility', 'store', 'help')) return 'utility'
-  return 'other'
+  return europeanKind(n) ?? 'other'
+}
+
+/**
+ * An architect's file from elsewhere (s31 bigifc): a European IFC's rooms ("Zimmer", "BAD / WC-3-1", "Wohnküche", "Slaapkamer")
+ * were all 'other', so no bedroom and no flat was found on any floor. The commonest room words of the languages the layer
+ * table reads (German, Dutch, French, Spanish, Italian, Swedish, Finnish) — asked only after every English word, so no name
+ * that had a kind changes. A room in another language stays 'other': name it in the Studio (R).
+ */
+function europeanKind(n: string): RoomKind | null {
+  const has = (...ws: string[]) => ws.some((w) => n.includes(w))
+  if (has('esszimmer', 'eetkamer', 'matsal', 'salle à manger', 'comedor', 'sala da pranzo')) return 'dining'
+  if (has('arbeitszimmer', 'büro', 'buero', 'werkkamer', 'arbetsrum', 'työhuone', 'bureau', 'despacho')) return 'study'
+  if (has('wohnzimmer', 'wohnküche', 'wohnkueche', 'wohnen', 'woonkamer', 'vardagsrum', 'olohuone', 'séjour', 'sejour', 'salon', 'soggiorno', 'sala de estar')) return 'living'
+  if (has('zimmer', 'schlafen', 'slaapkamer', 'sovrum', 'makuuhuone', 'chambre', 'dormitorio', 'habitación', 'habitacion', 'camera da letto') || /\bkind\b/.test(n)) return 'bed'
+  if (has('küche', 'kueche', 'keuken', 'kök', 'keittiö', 'cuisine', 'cocina', 'cucina')) return 'kitchen'
+  if (/\b(bad|bäder|badkamer|badrum|kylpyhuone|dusche|douche|salle de bain|salle d'eau|baño|bagno|toilette)\b/.test(n)) return 'bath'
+  if (has('ankleide', 'garderobe', 'inloopkast', 'dressing')) return 'closet'
+  if (has('terrasse', 'balkon', 'loggia', 'parveke', 'balcon', 'terraza', 'balcone', 'terrazzo')) return 'balcony'
+  if (has('schacht', 'koker', 'schakt', 'gaine', 'cavedio')) return 'shaft'
+  if (has('abstell', 'lager', 'berging', 'förråd', 'varasto', 'cellier', 'trastero', 'ripostiglio')) return 'utility'
+  return null
 }
 
 /** Face bounding box as `14'-0" × 16'-0"`. */
