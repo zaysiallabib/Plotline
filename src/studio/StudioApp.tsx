@@ -356,6 +356,11 @@ export default function StudioApp() {
   // Auto-trace: 'pick' = waiting for the click inside the flat; then the running stage; cancelTrace stops either
   const [trace, setTrace] = useState<'pick' | { stage: string; fraction: number } | null>(null)
   const cancelTrace = useRef(() => setTrace(null))
+  // "Set the scale and trace again" (from Maheer's Plotline 2.0): the next length typed in the S tool traces the plan again at it
+  const retrace = useRef(false)
+  useEffect(() => void (state.tool !== 'scale' && (retrace.current = false)), [state.tool])
+  /** pictures being opened: a later one (or another drawing) makes an earlier one's load stale */
+  const picking = useRef(0)
   // pick mode: the sheet's preparing stage (null = ready), the flat a click at the pointer picks, the hover / click senders
   const [prep, setPrep] = useState<string | null>(null)
   const [flatPreview, setFlatPreview] = useState<Preview | null>(null)
@@ -742,6 +747,9 @@ export default function StudioApp() {
     const u = id ? ps.find((p) => p.id === a?.id)?.units[id] : undefined
     if (a) setActive({ id: a.id, ...(u ? { drawing: u.id } : {}) })
     opening.current = u?.id ?? null
+    // (a trace or a picture still on its way belongs to the drawing it was started on — from Maheer's Plotline 2.0)
+    cancelTrace.current()
+    picking.current++
     setNote(null)
     setRestored(null)
     setMissingPlan(null)
@@ -926,6 +934,8 @@ export default function StudioApp() {
         )
       const fail = () => showError("Couldn't open that image. Use PNG, JPG, WEBP or TIFF under 10 MB.")
       if (file.size > MAX_IMAGE_BYTES || !/^image\/(png|jpeg|webp)$/.test(file.type)) return fail()
+      // (only the last picture dropped lands, and only on the drawing it was dropped on — from Maheer's Plotline 2.0)
+      const seq = ++picking.current
       const reader = new FileReader()
       reader.onerror = fail
       reader.onload = () => {
@@ -933,6 +943,7 @@ export default function StudioApp() {
         const im = new Image()
         im.onerror = fail
         im.onload = () => {
+          if (seq !== picking.current) return
           fitOnLoad.current = true
           setMissingPlan(null)
           const scaled = !!stateRef.current.unit.planImage
@@ -1480,8 +1491,9 @@ export default function StudioApp() {
   // ----- auto-trace: pick mode starts the worker reading the sheet at once (text, walls, the whole graph); a hover
   // previews the flat a click there picks; the click picks it on the same prepared sheet → the result replaces the unit
   // (one undo step)
-  const startAutoTrace = async () => {
-    if (!img || (unit.walls.length && !(await ask('Replace your current trace? Ctrl+Z brings it back.', 'Replace')))) return
+  /** `pxPerM`: the scale just set for "Set the scale and trace again" (he asked to replace the trace: no question) */
+  const startAutoTrace = async (pxPerM?: number) => {
+    if (!img || (!pxPerM && unit.walls.length && !(await ask('Replace your current trace? Ctrl+Z brings it back.', 'Replace')))) return
     let aiKey: string | undefined
     let tracker: TraceJob['tracker']
     try {
@@ -1577,7 +1589,7 @@ export default function StudioApp() {
     }
     setPrep('starting')
     setTrace('pick')
-    const job = { pxPerM: unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
+    const job = { pxPerM: pxPerM ?? unit.planImage?.pxPerM, aiKey, tracker, mock: MOCK_TRACE }
     const bitmap = typeof OffscreenCanvas === 'undefined' ? null : await createImageBitmap(img).catch(() => null)
     if (bitmap) send({ type: 'prepare', job: { ...job, bitmap } }, [bitmap])
     else {
@@ -2212,6 +2224,12 @@ export default function StudioApp() {
     const m = parseLength(field.len)
     if (m == null) return setField({ ...field, error: 'Try 14\'-5", 14.4 or 4.4m' })
     if (m <= 0 || m > 100) return setField({ ...field, error: 'That length looks wrong' })
+    if (field.purpose === 'scale' && field.pxLen && retrace.current) {
+      retrace.current = false
+      setField(null)
+      dispatch({ type: 'set-tool', tool: 'select' })
+      return void startAutoTrace(field.pxLen / m)
+    }
     if (field.purpose === 'scale' && field.pxLen) {
       if (unit.walls.length && unit.planImage && !(await ask('Changing scale after tracing moves the image under your walls. Continue?', 'Continue'))) {
         return setField(null)
@@ -2606,7 +2624,7 @@ export default function StudioApp() {
         canRedo={!!state.history.future.length}
         onUndo={() => dispatch({ type: 'undo' })}
         onRedo={() => dispatch({ type: 'redo' })}
-        autoTrace={state.planImage ? { disabled: !img || !!trace, onClick: startAutoTrace } : null}
+        autoTrace={state.planImage ? { disabled: !img || !!trace, onClick: () => void startAutoTrace() } : null}
         errors={errors}
         quiet={empty}
         untitled={untitled}
@@ -2961,6 +2979,17 @@ export default function StudioApp() {
           readIn={readIn}
           onReadIn={(pick) => void onReadIn(pick)}
           onLayerRole={onLayerRole}
+          onRetrace={
+            img && !trace
+              ? () => {
+                  retrace.current = true
+                  setScaleStart(null)
+                  setField(null)
+                  dispatch({ type: 'set-tool', tool: 'scale' })
+                  toast('Click the two ends of a length you know and type it — the plan is traced again at that scale')
+                }
+              : undefined
+          }
         />
       </div>
 
