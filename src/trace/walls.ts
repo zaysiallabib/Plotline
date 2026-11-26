@@ -30,6 +30,8 @@ export interface WallOpts {
   partitionM?: number
   /** enlarge the raster first (1 = never). Default: 2 when walls are under ~6 px thick (low-res sheets), else 1. */
   upscale?: number
+  /** the door-arc contrast window's radius, raster px (default 3); ×f on a raster enlarged f× first */
+  arcRadiusPx?: number
   /** drop walls whose lighter side is less than this many grey levels above their centre (foliage, textures). */
   minContrast?: number
   /**
@@ -412,7 +414,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     // enlarged histogram can lock onto the columns
     const halfBig = opts.halfPx ? opts.halfPx * f : Math.min(half0! * f, wallHalfWidth(edt(threshold(big, inkThreshold(big, opts)), big.width, big.height), big.width, big.height))
     const up = (m?: Uint8Array) => m && upMask(m, gray.width, gray.height, big.width, big.height)
-    const t = traceWalls(big, { ...opts, upscale: 1, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
+    const t = traceWalls(big, { ...opts, upscale: 1, arcRadiusPx: (opts.arcRadiusPx ?? 3) * f, halfPx: halfBig, plant: up(opts.plant), glass: up(opts.glass) })
     const k = 1 / f
     const sc = (s: WallSeg): WallSeg => ({ ...s, a: scalePx(s.a, k), b: scalePx(s.b, k), ...(s.mid ? { mid: scalePx(s.mid, k) } : {}), thicknessPx: s.thicknessPx * k })
     return {
@@ -429,7 +431,7 @@ export function traceWalls(gray: Gray, opts: WallOpts = {}): WallTrace {
     }
   }
   if (opts.tracker === 'tracks') {
-    const tt = traceTracks(gray, { halfPx: opts.halfPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast, frameBands: opts.upscale === undefined })
+    const tt = traceTracks(gray, { halfPx: opts.halfPx, arcRadiusPx: opts.arcRadiusPx, plant: opts.plant, glass: opts.glass, darkMax: opts.darkMax, minContrast: opts.minContrast, frameBands: opts.upscale === undefined })
     const t = trackWalls(tt)
     const angled = angledWalls(gray, t.walls, opts)
     return { walls: [...t.walls, ...angled], openings: t.openings, tracks: { lines: { tracks: tt.tracks, joins: tt.joins, gaps: tt.gaps, blocks: tt.blocks, pillars: tt.pillars, classes: tt.classes, pxPerM: tt.pxPerM }, angled } }
@@ -525,16 +527,19 @@ function angledWalls(gray0: Gray, axis: WallSeg[], opts: WallOpts): WallSeg[] {
  * bath floor stands out against the floor's median grey; the floor's own stripes (lighter than the fill) and the fill
  * itself do not — the max-based line ink marks every fill pixel next to a white stripe. Evaluated on demand (probes only).
  */
-export function arcInk(g: Gray, delta = 18): (x: number, y: number) => boolean {
+export function arcInk(g: Gray, delta = 18, radiusPx = 3): (x: number, y: number) => boolean {
   const { width: w, height: h, data } = g
-  const win = new Uint8Array(49)
+  // the window's median ≥ the pixel + delta ⇔ at most half the window is darker than that cut: counted, not sorted; the
+  // radius grows with an enlarged raster so the window covers the same paper (from Maheer's Plotline 2.0)
+  const radius = Math.max(1, Math.round(radiusPx)), middle = ((2 * radius + 1) ** 2) >> 1
   return (x, y) => {
     const xi = Math.round(x), yi = Math.round(y)
-    if (xi < 3 || yi < 3 || xi >= w - 3 || yi >= h - 3) return false
-    let n = 0
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) win[n++] = data[(yi + dy) * w + xi + dx]
-    win.sort()
-    return data[yi * w + xi] <= win[24] - delta
+    if (xi < radius || yi < radius || xi >= w - radius || yi >= h - radius) return false
+    const cut = data[yi * w + xi] + delta
+    if (cut > 255) return false
+    let below = 0
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) if (data[(yi + dy) * w + xi + dx] < cut && ++below > middle) return false
+    return true
   }
 }
 
