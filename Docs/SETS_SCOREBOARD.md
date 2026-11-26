@@ -285,7 +285,7 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
 |---|---|---|---|---|
 | 1 | title | title | left out | yes |
 | 2 | plan:G · plan:G | plan:G · plan:G | → G · left out | yes |
-| 3 | plan:2 | plan:2 | → 2 | yes |
+| 3 | plan:2 | plan:2 | → 1 | yes |
 
 ### Backcountry house plan (twindo, US)
 
@@ -376,7 +376,7 @@ Shots: `lboro-set.png`, `lboro-built.png`, `lboro-building.png` (two storeys sta
 |---|---|---|---|---|
 | 6 | site | other | left out | no |
 | 7 | plan:G | plan:G | → G | yes |
-| 8 | plan:typ | plan:typ | → 1 | yes |
+| 8 | plan:typ | plan:typ | → 1,2,3,4,5,6,7,8 | yes |
 | 9 | plan:R | plan:R | → Roof | yes |
 | 13 | other | plan:R | left out | no |
 | 1, 2, 3, 4, 5, 10, 11, 12, 14 | title / other (photos, words, covers) | title / other | left out | yes |

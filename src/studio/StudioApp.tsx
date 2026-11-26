@@ -592,7 +592,9 @@ export default function StudioApp() {
   // ----- reducer toasts → note
   useEffect(() => {
     if (state.toast) {
-      setNote({ text: state.toast.text, error: state.toast.error, on: state.unit })
+      const t = state.toast
+      // (an offer on screen — Build the project's Undo, "Use it as a picture instead" — is not lost: the drawing's own message joins it)
+      setNote((n) => (n?.link && !n.error && !t.error ? { ...n, text: `${n.text}. ${t.text}` } : { text: t.text, error: t.error, on: state.unit }))
       dispatch({ type: 'clear-toast' })
     }
   }, [state.toast])
