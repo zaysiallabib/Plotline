@@ -679,6 +679,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   let curved = 0
   let noBody = 0
   let fromParts = 0
+  let wideColumns = 0
   let bent = 0
   const draftsByStorey = new Map<number, { walls: WallDraft[]; pillars: Pillar[]; labels: RoomLabel[]; noSpace: boolean }>()
   const draftOf = (s: Storey) => {
@@ -857,7 +858,9 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     const pillar: Pillar = { id: newId(), x: (x0 + x1) / 2, y: (y0 + y1) / 2, wM: x1 - x0, hM: y1 - y0 }
     const axisAligned = h.every((p) => (Math.abs(p.x - x0) < 0.005 || Math.abs(p.x - x1) < 0.005) && (Math.abs(p.y - y0) < 0.005 || Math.abs(p.y - y1) < 0.005))
     if (h.length === 4 && !axisAligned) pillar.corners = h.map((p) => ({ x: p.x, y: p.y }))
-    if (pillar.wM > 0.02 && pillar.hM > 0.02) for (const { s } of storeysFor(body, storeyOf(id))) draftOf(s).pillars.push({ ...pillar, id: newId() })
+    // (a "column" wider than a wall both ways is no column — LTU A-House: two of 13 × 9 m drawn as black blocks; the outside shape shows them)
+    if (Math.min(pillar.wM, pillar.hM) > MAX_THICK_M) wideColumns++
+    else if (pillar.wM > 0.02 && pillar.hM > 0.02) for (const { s } of storeysFor(body, storeyOf(id))) draftOf(s).pillars.push({ ...pillar, id: newId() })
   }
 
   // ---------- spaces ----------
@@ -866,6 +869,16 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   const outlineOf = new Map<Id, [Pt, Pt][]>() // label → the space's exact floor outline (edges)
   const floorOf = new Map<Id, [Pt, Pt, Pt][]>() // label → the space's floor triangles
   const areaNames: string[] = []
+  // a space with no name of its own: its IfcZone's, else the storey's name and a number ("Space" only for a storey with none)
+  const zoneOf = new Map<number, string>()
+  for (const r of idsOf(W.IFCRELASSIGNSTOGROUP)) {
+    const rel = line(r)
+    const g = rel.RelatingGroup && line(rel.RelatingGroup.value)
+    const zone = g?.type === W.IFCZONE && String(val(g.LongName) ?? val(g.Name) ?? '').trim()
+    if (zone) for (const o of rel.RelatedObjects ?? []) zoneOf.set(o.value, zone)
+  }
+  const numbered = new Map<Storey, number>()
+  let byZone = 0
   for (const id of idsOf(W.IFCSPACE)) {
     const s = storeyOf(id)
     if (!s) continue
@@ -874,7 +887,10 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     if (!body) continue
     const at = body.inside ?? (minRect(body.pts)?.centre ?? null)
     if (!at) continue
-    const name = String(val(sp.LongName) || val(sp.Name) || 'Space').trim()
+    const own = String(val(sp.LongName) || val(sp.Name) || '').trim()
+    const zone = !own && zoneOf.get(id)
+    if (zone) byZone++
+    const name = own || zone || `${s.name.trim() || 'Space'} · ${numbered.set(s, (numbered.get(s) ?? 0) + 1).get(s)}`
     const lvl = (body.insideY ?? body.minY) - (s.z - baseY)
     const label: RoomLabel = { id: newId(), name, kind: guessKind(name), x: at.x, y: at.y, ...(Math.abs(lvl) > 0.05 && Math.abs(lvl) < 3 ? { levelM: lvl } : {}) }
     draftOf(s).labels.push(label)
@@ -889,6 +905,7 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
   // ---------- the units ----------
   const result: ImportedStorey[] = []
   const counts: string[] = []
+  const nameless: string[] = []
   let snapped = 0
   let nibs = 0
   let openPlan = 0
@@ -1038,12 +1055,16 @@ function readModel(W: WebIfc, api: Api, model: number, fileName: string, t0: num
     counts.push(
       `${s.name} (floor at ${fmt(s.z - baseY)} m): ${unit.walls.length} walls, ${openings} openings, ${unit.pillars?.length ?? 0} columns, ${closed} closed rooms (${labelled} named), ${n('dangling-vertex')} loose wall ends, ${n('label-outside-any-room')} names outside any room, ${n('walls-intersect')} crossings left.`,
     )
-    if (d.noSpace && d.walls.length) counts.push(`${s.name}: the file names no rooms (IfcSpace) on this floor; the rooms stay "Space N".`)
+    if (d.noSpace && d.walls.length) nameless.push(s.name)
     result.push({ name: s.name, elevationM: s.z - baseY, unit })
   }
 
   notes.push(`${storeys.length} storey${storeys.length === 1 ? '' : 's'}: ${storeys.map((s) => `${s.name} at ${fmt(s.z - baseY)} m`).join(', ')}.`)
   notes.push(...counts)
+  // (said once, not per floor nor per room: the Issues list holds them as one row on a big floor)
+  if (nameless.length) notes.push(`${nameless.length === storeys.length ? 'No floor' : nameless.join(', ')} ${nameless.length === storeys.length ? 'of the file names its rooms' : nameless.length === 1 ? 'names no rooms' : 'name no rooms'} (no IfcSpace): the rooms stay "Space N" — Issues → "rooms with no name" names them by floor and number in one click.`)
+  if (byZone || numbered.size) notes.push(`${[byZone && `${byZone} rooms with no name of their own took their zone's name`, numbered.size && `${[...numbered.values()].reduce((a, b) => a + b, 0)} took their floor's name and a number`].filter(Boolean).join('; ')}.`)
+  if (wideColumns) notes.push(`${wideColumns} columns are wider than a wall both ways (over ${MAX_THICK_M} m): no column, left out of the plans (the outside shape shows them).`)
   if (fromParts) notes.push(`${fromParts} glass fronts (curtain walls) turn a corner: each was read as the straight runs of its panels, one glass wall per run.`)
   if (bent) notes.push(`${bent} walls are no straight wall and have no straight parts: they are left out of the plans (the outside shape shows them).`)
   if (noAxis) notes.push(`${noAxis} walls had no centre line in the file: their line was taken from the body's footprint.`)

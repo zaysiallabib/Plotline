@@ -135,7 +135,7 @@ describe('an IFC reads as it read before the speed-up', () => {
 })
 
 const PINNED: Record<string, [string, string]> = {
-  'duplex/arc.ifc': ['28f757ae961bf761', '28f757ae961bf761'],
+  'duplex/arc.ifc': ['a7183dfdb236df40', 'a7183dfdb236df40'], // (s31 bigifc: its foundation's "names no rooms" note said once, the walls unchanged)
   'fzk_house/arc.ifc': ['d7b9a2a932441f5c', 'd7b9a2a932441f5c'],
   'city_house_munich/arc.ifc': ['09f1e40ef1bc26f9', '09f1e40ef1bc26f9'],
   'fixtures/autotrace-bti-floor-2026-11-20.json': ['dae0408aebf3902c', 'b8df5c02ace179c7'],
