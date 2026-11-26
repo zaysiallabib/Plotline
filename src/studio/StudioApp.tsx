@@ -46,7 +46,7 @@ import { UNTRUSTED, askRow, rowPicture, type AiNote } from './localAI'
 import { ProjectPanel } from './ProjectPanel'
 import { NorthArrow, SitePanel } from './SitePanel'
 import { FloorList, NewProject } from './FloorList'
-import { getPicture, putPicture } from './pictures'
+import { deletePicture, getPicture, putPicture } from './pictures'
 import { putShell } from './shells'
 import type { SetChoice, SetFile, SetRow } from './SetPanel'
 import type { Storeys } from '../import/sheets'
@@ -56,7 +56,7 @@ import { CONVERTED_PICTURE, toPlanPicture } from '../import/picture'
 import type { PdfDoc } from '../import/pdf'
 import type { Box } from '../import/sheets'
 import { IMPORT_ACCEPT, expandZips, filesOfDrop, importFile, importFormatOf, lockedFormatOf, mainFile, siblingsOf, type DropFile, type ImportResult, type ImportedStorey, type LayerRole, type LayerRoles } from '../import'
-import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, stackFloors, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
+import { PROJECTS_KEY, drawingName, keepApartments, keepReview, newProject, planOf as planOfProject, projectWith, parseProjects, projectTower, readProjects, saveProjects, setSlot, slotLabel, slotsOf, slotsText, stackFloors, syncUnit, type Project, type ProjectPlan, type Slot } from '../data/building/projects'
 import { finishesKey, keptFor, layoutKey, putKept, readFinishes, splitKept } from '../data/building/apartments'
 import { floorIn, roleIn, stemIn } from '../data/building'
 import { HARD, snapMove, snapPoint, type Snap } from './snap'
@@ -71,7 +71,7 @@ import TopBar from './TopBar'
 import KeysSheet from './KeysSheet'
 import { fitSheet, frameOf, mToPx, mToScreen, screenToM, screenToPx } from './transform'
 import './studio.css'
-import { ask, askText } from '../lib/ask'
+import { ask, askChoice, askText } from '../lib/ask'
 
 const DRAFT_KEY = 'plotline.studio.draft'
 /** the Set panel and what it reads (sheets.ts, the 2D engine's scale words) load when a set is first dropped */
@@ -1129,18 +1129,40 @@ export default function StudioApp() {
    * Build the project from the set (Stage 1): each ticked plan becomes a drawing on its floors — its own lines when they
    * make a plan, else its picture to trace (scaled when the sheet prints its scale); each ticked elevation, section, site
    * plan, schedule or interior elevation is kept with the project as a picture (Project.sheets). The project's floors are
-   * the floors read; its first drawing opens.
+   * the floors read; its first drawing opens. With a project open it asks first: add the floors to it (a floor that has a
+   * drawing already is replaced only after a yes; the set stacks on its floors) or make a new project. Undo (the message's
+   * link) puts the projects back as they were.
    */
   const buildSet = async (rows: SetChoice[], files: SetFile[], storeys: Storeys | null = null) => {
-    closeSet()
-    const pdf = await import('../import/pdf')
-    const stop = new AbortController()
-    const name = files[0].name.replace(/\.pdf$/i, '')
+    const name = files[0].name.replace(/\.[^.]+$/, '')
     const plans = rows.filter((r) => r.kind === 'plan' && r.used && r.slots.length)
     const kept = rows.filter((r) => r.kind !== 'plan' && r.used)
     const all = [...plans.flatMap((r) => r.slots)]
     const numbers = all.filter((s): s is number => typeof s === 'number')
-    let p = newProject(newId(), name, { basements: Math.max(0, storeys?.basements ?? 0, ...numbers.map((s) => -s)), floors: Math.max(1, storeys?.floors ?? 0, ...numbers), rooftop: all.includes('R') })
+    const shape = { basements: Math.max(0, storeys?.basements ?? 0, ...numbers.map((s) => -s)), floors: Math.max(1, storeys?.floors ?? 0, ...numbers), rooftop: all.includes('R') }
+    // where it goes: the open project (asked), else a new one; a drawing open in no project is replaced (asked, as an import does)
+    const before = fresh()
+    const prev = projRef.current
+    const open = prev ? before.find((x) => x.id === prev.id) : undefined
+    const loose = !open && hasDrawing(stateRef.current.unit) ? { unit: stateRef.current.unit, pic: stateRef.current.planImage } : null
+    let into: Project | null = null
+    const skip = new Set<Slot>()
+    if (open) {
+      const i = await askChoice(`Add the set's floors (${slotsText(all) || 'none'}) to the project open now, ${open.name}? Or make a new project of ${name}.`, ['New project', 'Add to this project'])
+      if (i === null) return
+      if (i === 1) {
+        into = open
+        const taken = slotsOf(open).filter((r) => r.unitIds.length && all.includes(r.slot))
+        if (taken.length && !(await ask(`${taken.map((r) => r.label).join(', ')} ${taken.length === 1 ? 'has' : 'have'} a drawing in ${open.name} already. Put the set's drawing there instead? (The other drawing is kept, on no floor; Undo brings it all back.)`, 'Replace')))
+          for (const r of taken) skip.add(r.slot)
+      }
+    } else if (loose && !(await ask(`Build ${name}? The drawing on screen is in no project and is replaced (Undo brings it back).`, 'Build the project'))) return
+    closeSet()
+    const pdf = await import('../import/pdf')
+    const stop = new AbortController()
+    const was = into && planOfProject(into)
+    let p = into && was ? { ...into, plan: { basements: Math.max(was.basements, shape.basements), floors: Math.max(was.floors, shape.floors), rooftop: was.rooftop || shape.rooftop } } : newProject(newId(), name, shape)
+    const made: Id[] = [] // the pictures this build keeps (Undo deletes them)
     const pictureOf = async (r: SetChoice, px: number): Promise<{ pic: PlanImage; pxPerPt: number }> => {
       const { canvas, pxPerPt } = await pdf.renderView(files[r.file].doc, r.page, r.frame, px)
       return { pic: { dataUrl: canvas.toDataURL('image/webp', 0.9), naturalW: canvas.width, naturalH: canvas.height, name: `${files[r.file].name.replace(/\.pdf$/i, '')} p${r.page}.webp` }, pxPerPt }
@@ -1165,12 +1187,14 @@ export default function StudioApp() {
       const ref = order[0] !== undefined ? reads[order[0]]! : null
       const hint = (x: ImportResult, r: SetChoice): Pt | undefined =>
         ref && r.file === plans[order[0]].file && Math.abs(x.unitScale - ref.unitScale) < 1e-6 * ref.unitScale ? { x: (x.origin.x - ref.origin.x) * x.unitScale, y: -(x.origin.y - ref.origin.y) * x.unitScale } : undefined
-      const stack = stackFloors(order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: hint(reads[i]!, plans[i]) })))
+      // (added to a project: its drawn floors stand where they are, and the set stacks on them)
+      const there = into ? Object.entries(projectTower(into).FLATS).filter(([stem, f]) => !stem.endsWith('-m') && f.unit.walls.length) : []
+      const stack = stackFloors([...there.map(([, f]) => ({ unit: f.unit, at: f.offset })), ...order.map((i) => ({ unit: reads[i]!.storeys[0].unit, hint: there.length ? undefined : hint(reads[i]!, plans[i]) }))]).slice(there.length)
       const placeOf = new Map(order.map((i, k) => [i, stack[k]]))
       for (const [i, r] of plans.entries()) {
         const read = reads[i]
         const at = placeOf.get(i)
-        if (at && i !== order[0]) stacked++
+        if (at && (there.length || i !== order[0])) stacked++
         let u: Unit
         let offset: Pt = { x: 0, y: 0 }
         if (read && pdf.readsAsPlan(read)) (u = read.storeys[0].unit), (offset = at?.offset ?? offset)
@@ -1184,10 +1208,13 @@ export default function StudioApp() {
           const originPx = read && at ? { x: (read.origin.x - r.frame.x0) * pxPerPt - d.x * pxPerM, y: (r.frame.y1 - read.origin.y) * pxPerPt - d.y * pxPerM } : { x: 0, y: 0 }
           u = { ...emptyUnit(), ...(pxPerM ? { planImage: { src: pic.name, pxPerM, originPx } } : {}) }
           await putPicture(u.id, pic)
+          made.push(u.id)
           pictures++
         }
-        u = { ...u, name: drawingName(p, r.slots[0]), projectName: name }
-        for (const s of r.slots) p = setSlot(p, s, u, offset)
+        u = { ...u, name: drawingName(p, r.slots[0]), projectName: p.name }
+        const free = r.slots.filter((s) => !skip.has(s))
+        for (const s of free) p = setSlot(p, s, u, offset)
+        if (!free.length) p = { ...p, units: { ...p.units, [u.id]: u } } // (its floors kept theirs: it waits on no floor)
         first ??= u.id
       }
       for (const [i, r] of kept.entries()) {
@@ -1195,6 +1222,7 @@ export default function StudioApp() {
         setReading({ name, stage: `drawing ${plans.length + i + 1} of ${plans.length + kept.length}`, fraction: (plans.length + i) / (plans.length + kept.length), stop })
         const id = newId()
         await putPicture(id, (await pictureOf(r, 2400)).pic)
+        made.push(id)
         const which = r.which ?? (r.kind === 'elevation' ? r.view.facade : r.kind === 'section' ? r.view.mark : undefined)
         p = { ...p, sheets: [...(p.sheets ?? []), { id, kind: r.kind, title: r.view.title || `Page ${r.page}`, ...(which ? { which } : {}), ...(r.view.scale ? { scale: r.view.scale } : {}), file: files[r.file].name, page: r.page }] }
       }
@@ -1203,12 +1231,26 @@ export default function StudioApp() {
     } finally {
       setReading((x) => (x?.stop === stop ? null : x))
     }
-    const ps = [...fresh(), p]
+    const ps = into ? before.map((x) => (x.id === p.id ? p : x)) : [...before, p]
     if (!storeProjects(ps)) return
     setActive({ id: p.id })
     setListOpen(true)
     if (first) openDrawing(ps, first)
-    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}, ${kept.length} kept with the project — the list on the right`)
+    // Undo: the projects as they were, the drawing that was open opened again (one in no project loaded back), this build's pictures gone
+    const undo = () => {
+      if (!storeProjects(before)) return
+      for (const id of made) void deletePicture(id).catch(() => {})
+      if (prev && before.some((x) => x.id === prev.id)) {
+        setActive(prev)
+        openDrawing(before, prev.drawing ?? null)
+      } else {
+        setActive(null)
+        openDrawing(before, null)
+        if (loose) dispatch({ type: 'set-plan-image', image: loose.pic }), dispatch({ type: 'load-unit', unit: loose.unit, fresh: true })
+      }
+      toast(into ? `${name}'s floors taken out of ${into.name}` : `The project ${name} is gone`)
+    }
+    toast(`${name}: ${plans.length} drawing${plans.length === 1 ? '' : 's'} on their floors${into ? ` of ${into.name}` : ''}${pictures ? ` (${pictures} as pictures to trace)` : ''}${stacked ? `, ${stacked} stacked on the floor${stacked === 1 ? '' : 's'} they share walls with` : ''}, ${kept.length} kept with the project — the list on the right`, { label: 'Undo', onClick: undo })
   }
   useEffect(() => {
     if (!sheetView) return

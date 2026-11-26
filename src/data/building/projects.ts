@@ -311,10 +311,12 @@ export function alignPlans(ref: Unit, mine: Unit, hint?: Pt): { offset: Pt; by: 
  * A set's floors stacked (lowest first): the first is the building's frame (offset 0); then, again and again, the floor that
  * shares most with a floor already placed is aligned on it (alignPlans) — an upper floor finds the floor under it even when
  * it shares little with the ground. `hint`: where its file puts it in the first floor's frame (one CAD model, one page
- * layout). null: it shares too little with every placed floor (left where its own frame puts it, for the person to move).
+ * layout). `at`: a floor already standing in the building (a set added to an open project): those are the frame instead.
+ * null: it shares too little with every placed floor (left where its own frame puts it, for the person to move).
  */
-export function stackFloors(floors: { unit: Unit; hint?: Pt }[]): ({ offset: Pt; share: number; errM?: number; on: number } | null)[] {
-  const out: ({ offset: Pt; share: number; errM?: number; on: number } | null)[] = floors.map((_, i) => (i === 0 ? { offset: { x: 0, y: 0 }, share: 1, on: 0 } : null))
+export function stackFloors(floors: { unit: Unit; hint?: Pt; at?: Pt }[]): ({ offset: Pt; share: number; errM?: number; on: number } | null)[] {
+  const fixed = floors.some((f) => f.at)
+  const out: ({ offset: Pt; share: number; errM?: number; on: number } | null)[] = floors.map((f, i) => (f.at || (!fixed && i === 0) ? { offset: f.at ?? { x: 0, y: 0 }, share: 1, on: i } : null))
   const tried = new Map<string, ReturnType<typeof alignPlans>>()
   for (;;) {
     let best: { j: number; i: number; a: NonNullable<ReturnType<typeof alignPlans>> } | null = null

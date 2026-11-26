@@ -244,6 +244,11 @@ describe("a set's floors stacked on what they share (session 31 levels: each dra
     expect(st[2]!.offset.y).toBeCloseTo(-0.5, 3)
     expect(st[2]!.on).toBe(1) // on floor 1, which it shares most with
     expect(st[3]).toBeNull()
+    // the set added to a project that has its ground floor already (at its own place in the building): the set's floors stack on it
+    const added = stackFloors([{ unit: ground, at: { x: 5, y: 5 } }, { unit: upper }])
+    expect(added[0]!.offset).toEqual({ x: 5, y: 5 })
+    expect(added[1]!.offset.x).toBeCloseTo(4, 3)
+    expect(added[1]!.offset.y).toBeCloseTo(4, 3)
   })
   test('a drawing put on its floors at its place: a floor of flats and a level both carry it, the tower draws it there', () => {
     const p0 = newProject('p', 'House', { basements: 0, floors: 2, rooftop: true })
