@@ -757,9 +757,10 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const at = jambs ? { x: (jambs[0].x + jambs[1].x) / 2, y: (jambs[0].y + jambs[1].y) / 2 } : { x: b.pts.reduce((acc, p) => acc + p.x, 0) / b.pts.length, y: b.pts.reduce((acc, p) => acc + p.y, 0) / b.pts.length }
     let w = jambs ? wallAt(kept, at, 0.05, !!d.own) : wallAt(kept, at, 0.3)
     if (w && jambs && Math.abs(crossZ(w.dir, sub(jambs[1], jambs[0]))) > 0.05 * len(sub(jambs[1], jambs[0]))) w = null // (a wall across it, not along)
-    if (!w && jambs && d.own) {
+    if (!w && jambs) {
       // a wall on the block's line that ends at one of its jambs runs on through it (a door right at a corner: the wall's
-      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage)
+      // last piece beyond it was too short to draw); else the jambs make a wall of their own (all glass, all passage) —
+      // in any DXF, not only Plotline's own (session 31 p2port: the plain-CAD flats 78 → 114 of 116 rooms named)
       const J = [jambs[0], jambs[1]]
       const on = kept.find((v) => Math.abs(snapThick(jambs[2]) - v.thick) <= SNAP_THICK && Math.abs((v.h ?? -1) - (b.h ?? -1)) <= 0.01 && J.every((p) => Math.abs(dot(sub(p, v.a), v.n)) <= 0.01) && J.some((p) => [v.a, v.b].some((E) => len(sub(E, p)) <= 0.05)))
       if (on) {

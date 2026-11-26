@@ -203,6 +203,18 @@ describe('dxf fixtures', () => {
     expect(ops.map((o) => [o.kind, +o.widthM.toFixed(3)])).toEqual([['window', 0.9]])
   })
 
+  test('a side all of sliding glass (a door block standing in no wall, meeting the walls either side) closes its room', async () => {
+    // a 4 x 3 m room of 125 mm walls (line pairs) with no top wall: a block "SLIDE" (its two jambs and a panel line on layer
+    // 0) placed on A-DOOR from the left wall's inner face to the right one's
+    const L = (a: number, b: number, c: number, e: number, layer = 'A-WALL') => ['0', 'LINE', '8', layer, '10', a, '20', b, '11', c, '21', e]
+    const walls = [...L(0, 0, 4000, 0), ...L(125, 125, 3875, 125), ...L(0, 0, 0, 3000), ...L(125, 125, 125, 3000), ...L(4000, 0, 4000, 3000), ...L(3875, 125, 3875, 3000)]
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'SLIDE', '10', 0, '20', 0, ...L(0, 0, 0, 125, '0'), ...L(3750, 0, 3750, 125, '0'), ...L(0, 62, 3750, 62, '0'), '0', 'ENDBLK', '0', 'ENDSEC']
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [...walls, '0', 'INSERT', '2', 'SLIDE', '8', 'A-DOOR', '10', 125, '20', 2875]).replace('0\nSECTION\n2\nENTITIES', [...blocks, '0', 'SECTION', '2', 'ENTITIES'].join('\n'))
+    const u = (await importDxf(text, 'glass-side.dxf')).storeys[0].unit
+    expect(deriveRooms(u).filter((x) => x.areaSqm >= 1)).toHaveLength(1)
+    expect(u.walls.flatMap((w) => w.openings).map((o) => o.kind)).toEqual(['slider'])
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
   })
