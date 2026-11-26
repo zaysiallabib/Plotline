@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import type { Gray } from './types'
 import { loadPgm } from './evalio'
-import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, stretch, textHeights, uprightStrip, type OcrWord } from './text'
+import { boxBack, boxTo, cleanForOcr, cropGray, darkGround, findTables, findTextLines, groupWords, nameOk, normaliseName, parseArea, nameStrip, readInFaces, readText, roomName, wholeArea, rotateCCW, rotateCW, splitNames, STRICT_DELTA, stretch, textHeights, uprightStrip, type OcrWord } from './text'
 
 // ---------------------------------------------------------------- a 5 × 7 block font, enough for plan labels
 const F: Record<string, string> = {
@@ -192,6 +192,31 @@ describe.skipIf(!existsSync(`${TESS}eng.traineddata`))('the passes read (node te
     const g = loadPgm(fileURLToPath(new URL('../data/fixtures/metric-room.pgm', import.meta.url)))!
     const trace = await readText(g, { cachePath: TESS, workers: 1 })
     expect(trace.items.find((item) => item.roomKind === 'kitchen')?.dims, JSON.stringify(trace.items)).toEqual({ aM: 4.4, bM: 3.2 })
+  })
+  test('the face pass places a name at its printed line in an L-shaped room, beside another room of the same name (from Maheer\'s Plotline 2.0)', async () => {
+    const g = paper(290, 240)
+    const right = print(g, 'KITCHEN', 45, 27, 16)
+    print(g, 'KITCHEN', 80, 78, 16) // in the cut-out: the neighbouring room's
+    const box = { x: 80, y: 78, w: right - 45, h: 16 }
+    const face = [{ x: 10, y: 10 }, { x: 260, y: 10 }, { x: 260, y: 58 }, { x: 54, y: 58 }, { x: 54, y: 220 }, { x: 10, y: 220 }]
+    const labels = await readInFaces(g, [face], { glyphPx: 16, items: [{ text: 'KITCHEN', box, kind: 'room', roomKind: 'kitchen', conf: 1, source: 'ocr' }] }, 40, { workers: 1, cachePath: TESS })
+    expect(labels).toHaveLength(1)
+    expect(labels[0].roomKind).toBe('kitchen')
+    expect(Math.abs(labels[0].box.x - 45)).toBeLessThan(4)
+    expect(Math.abs(labels[0].box.y - 27)).toBeLessThan(4)
+    expect(Math.abs(labels[0].box.x + labels[0].box.w - right)).toBeLessThan(6)
+  })
+  test.each(['cw', 'ccw'] as const)('a sideways bedroom name is read again in its own strip (%s; from Maheer\'s Plotline 2.0)', async (turn) => {
+    const side = 200, upright = paper(side, side)
+    print(upright, 'BED 2', 60, 82, 14)
+    const g = turn === 'cw' ? rotateCCW(upright) : rotateCW(upright)
+    const box = boxBack({ x: 56, y: 77, w: 72, h: 23 }, turn, side, side)
+    const face = [{ x: 10, y: 10 }, { x: 190, y: 10 }, { x: 190, y: 190 }, { x: 10, y: 190 }]
+    const rejected = [{ box, angle: turn === 'cw' ? (90 as const) : (-90 as const), reason: 'name-unread' as const }]
+    const out = await readInFaces(g, [face], { items: [], glyphPx: 14, rejected }, 40, { workers: 1, cachePath: TESS })
+    expect(out).toHaveLength(1)
+    expect(normaliseName(out[0].text)).toBe('BED 2')
+    expect(out[0].box).toEqual(box)
   })
   test('a 45 px title figure beside 9 px room names: both read', async () => {
     const g = paper(1000, 360)

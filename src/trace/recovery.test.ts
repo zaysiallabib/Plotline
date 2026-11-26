@@ -4,6 +4,7 @@
  */
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { Gray, TextItem } from './types'
+import { normaliseName, readInFaces } from './text'
 import { capacityCores, prepare, solveTraces } from './solve'
 import { deriveRooms } from '../core'
 
@@ -74,4 +75,23 @@ test('an OPEN KITCHEN printed with its work-zone size inside a living room: the 
   const run = (text: string) => solveTraces(gray, { walls: { walls, openings: [] }, text: { items: [living, { ...kitchen, text }] } }, { pxPerM: K }).unit.roomLabels.filter((l) => l.kind !== 'other').map((l) => l.name)
   expect(run('OPEN KITCHEN')).toContain('Living')
   expect(run('KITCHEN')).toContain('Kitchen')
+})
+
+// the face pass (text.ts readInFaces): a name-unread strip inside a face read again, a core word only on two agreeing reads
+const square = [{ x: 20, y: 20 }, { x: 100, y: 20 }, { x: 100, y: 100 }, { x: 20, y: 100 }]
+const strip = { box: { x: 40, y: 50, w: 40, h: 12 }, angle: 0 as const, reason: 'name-unread' as const }
+test('a shaft name in mixed case is recovered from its strip on two agreeing reads', async () => {
+  control.replies = ['', '', 'Hostway', 'Hoistway', 'Hoistway']
+  const out = await readInFaces(blank(), [square], { items: [], glyphPx: 8, rejected: [strip] }, 30)
+  expect(out).toHaveLength(1)
+  expect(normaliseName(out[0].text)).toBe('HOISTWAY')
+  expect(out[0]).toMatchObject({ kind: 'room', roomKind: 'other' })
+})
+test('one uncertain core read names nothing', async () => {
+  control.replies = ['', '', 'Hoistway', 'noise', 'noise']
+  expect(await readInFaces(blank(), [square], { items: [], glyphPx: 8, rejected: [strip] }, 30)).toEqual([])
+})
+test('a strip outside the face cannot name it', async () => {
+  control.replies = ['', '', 'Hoistway', 'Hoistway', 'Hoistway']
+  expect(await readInFaces(blank(), [square], { items: [], glyphPx: 8, rejected: [{ ...strip, box: { ...strip.box, x: 120 } }] }, 30)).toEqual([])
 })

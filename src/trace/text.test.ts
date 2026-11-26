@@ -13,11 +13,21 @@ import { askAi, buildMontage, montageItems, parseAiAnswer, parseMontageAnswer, s
 import { FIXTURES, SHOTS, loadPgm, writePng } from './evalio'
 import { sameLabel, scoreText } from './textEval'
 import { H as SIZE_H, band, capBand, confirmed, decode, lcsMatches, readSizes, renderFont, tessConfirms } from './sizes'
-import { applyTables, chunkWords, classifyRoom, cleanForOcr, findTables, findTextLines, inTable, groupWords, numberMarks, numberRows, plusNumber, splitStack, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
+import { applyTables, chunkWords, classifyRoom, cleanForOcr, cropInFace, findTables, findTextLines, inTable, groupWords, numberMarks, numberRows, plusNumber, splitStack, itemFromAi, normaliseName, ownGlyphs, parseArea, parseDims, readText, readTypes, reaskList, reaskReason, snapRoomWords, trimName, type OcrWord } from './text'
 import { guessKind } from '../studio/model'
 
 const ft = (f: number, i = 0) => (f + i / 12) * FT
 const INCH = 0.0254
+
+test('a face crop is masked to its own outline: an L-shaped room never reads the neighbour inside its bounding box; the sheet is untouched (from Maheer\'s Plotline 2.0)', () => {
+  const g: Gray = { width: 12, height: 12, data: new Uint8Array(144).fill(80) }
+  const poly = [{ x: 1, y: 1 }, { x: 11, y: 1 }, { x: 11, y: 4 }, { x: 4, y: 4 }, { x: 4, y: 11 }, { x: 1, y: 11 }]
+  const crop = cropInFace(g, { x: 1, y: 1, w: 10, h: 10 }, poly)
+  expect(crop.data[1 * 10 + 7]).toBe(80)
+  expect(crop.data[7 * 10 + 1]).toBe(80)
+  expect(crop.data[7 * 10 + 7]).toBe(255)
+  expect(g.data.every((v) => v === 80)).toBe(true)
+})
 
 test('a joined LI read as U is undone only into an exact room word (from Maheer\'s Plotline 2.0)', () => {
   expect(normaliseName('UVING')).toBe('LIVING')
