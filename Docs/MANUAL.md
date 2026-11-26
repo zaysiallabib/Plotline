@@ -1004,7 +1004,10 @@ read in pieces along one line ("DINING" + "AMILY" + "f LOUNGE"). Size tables bes
 numbered legends "01. LIVING …") give each room its size, and their words never count as rooms. Two names in one closed
 space: the larger printed room names it. A reading names a room only when its words are the sheet's room words (one
 letter off at most): a garbled reading leaves "Space N" with its row. Guessed names ("Toilet 3" from a drawn WC) are
-numbered west to east and never take a printed room's number.
+numbered west to east and never take a printed room's number. A misread name keeps its number ("KlTCHEN-02" names
+Kitchen-02, "T0ILET 2" Toilet 2); sizes printed in metres, centimetres or millimetres with the unit written once ("440 x
+320 cm", "4.4m x 3.2") are read in metres. A pale scan (light grey lines on white, no real black anywhere) is turned to
+full contrast before anything is read; a normal sheet is left as it is.
 
 **What it reads as walls:** solid black walls; hollow walls (two thin lines with paper between, when most of the sheet's
 walls are drawn so); grey bands between two thin lines; white or cream walls between coloured floors (a second pass when

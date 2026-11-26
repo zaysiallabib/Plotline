@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { traceWalls } from './walls'
 import { loadPgm } from './evalio'
+import { normalPolarity } from './raster'
 import type { Gray } from './types'
 
 function stepped(k: number, ink: number) {
@@ -22,11 +23,22 @@ function stepped(k: number, ink: number) {
 }
 
 describe('a wall that changes thickness', () => {
-  test('the Sheltech Level 2 crop keeps the short wall at the lift junction (the toilet is not joined to the lift)', () => {
+  test('a pale scan is stretched to full contrast; paper grain and a solid grey panel keep their tones (from Maheer\'s Plotline 2.0)', () => {
+    const width = 300, height = 200
+    const panel = { width, height, data: new Uint8Array(width * height).fill(250) }
+    for (let y = 40; y < 160; y++) panel.data.fill(180, y * width + 90, y * width + 210)
+    expect(normalPolarity(panel)).toBe(panel)
+    const noise = { width, height, data: panel.data.map((_, i) => 235 + (i % 20)) }
+    expect(normalPolarity(noise)).toBe(noise)
+  })
+  test.each(['original', 'faded'])('the %s Sheltech Level 2 crop keeps the short wall at the lift junction (the toilet is not joined to the lift)', (variant) => {
     // Firefox-decoded crop of Demo drawings/Sheltech/Level 2.jpg, x355..515, y330..475: the wall at x434..444 joins y404
-    // to y423, then goes on as a thin jamb
+    // to y423, then goes on as a thin jamb; faded = his own fade (grey 180..250: no ink under the 160 cap at all)
     const g = loadPgm(fileURLToPath(new URL('../data/fixtures/stepped-junction.pgm', import.meta.url)))!
-    const result = traceWalls(g, { tracker: 'tracks', halfPx: (0.127 * 27.075658723705732) / 2 })
+    const input = variant === 'faded' ? { ...g, data: g.data.map((v) => Math.round(180 + (v * 70) / 255)) } : g
+    const normalized = normalPolarity(input)
+    if (variant === 'original') expect(normalized).toBe(g)
+    const result = traceWalls(normalized, { tracker: 'tracks', halfPx: (0.127 * 27.075658723705732) / 2 })
     const riser = result.walls.filter((w) => Math.abs(w.a.x - w.b.x) < 2 && w.a.x > 79 && w.a.x < 90 && Math.min(w.a.y, w.b.y) < 80 && Math.max(w.a.y, w.b.y) > 93)
     expect(riser.length).toBe(1)
   })

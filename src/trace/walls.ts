@@ -9,7 +9,7 @@
  *   → junction snapping + free-end extension → gaps between facing free ends = OpeningGuess (door arc / window lines test).
  */
 import { bandWalls, coveredByBands } from './bands'
-import { edt, otsu, thin, threshold } from './raster'
+import { WALL_INK_CAP, edt, otsu, thin, threshold } from './raster'
 import { scaleTracks, traceTracks, trackWalls } from './tracks'
 import type { Gray, OpeningGuess, Px, WallSeg, WallTrace } from './types'
 
@@ -46,7 +46,7 @@ export interface WallOpts {
   glass?: Uint8Array
 }
 
-const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: 160, minContrast: 60 }
+const DEF = { coreFrac: 0.7, blobFrac: 4, minCompFrac: 6, partitionM: 0.127, inkCap: WALL_INK_CAP, minContrast: 60 }
 
 export const inkThreshold = (g: Gray, o: WallOpts) => o.darkMax ?? Math.min(otsu(g), o.inkCap ?? DEF.inkCap)
 

@@ -1,6 +1,8 @@
 /** Raster primitives for walls.ts: threshold, exact distance transform, thinning. Pure, typed arrays only. */
 import type { Gray } from './types'
 
+export const WALL_INK_CAP = 160
+
 /** Otsu's threshold over the grey histogram (the grey that best splits ink from paper). */
 export function otsu(g: Gray): number {
   const h = new Float64Array(256)
@@ -141,7 +143,8 @@ export function thin(m: Uint8Array, w: number, h: number): void {
  * turned over, so everything after it sees dark ink on light paper. A dark page = median grey under 110 whose light
  * pixels are a minority and thin — a white panel on a dark page (a plan printed on a card) is not line work: most of its
  * light pixels lie deep inside it. A plan printed on a dark page as a light panel (Palm Spring's grey card, Azmary's navy,
- * Jahan Lodge's stripes) keeps its tones and gets the page made paper instead (paperPage). Anything else comes back as it is.
+ * Jahan Lodge's stripes) keeps its tones and gets the page made paper instead (paperPage). On light paper, recover faded linework before OCR
+ * and wall detection.
  */
 export function normalPolarity(g: Gray): Gray {
   const { width: w, height: h, data } = g
@@ -149,7 +152,7 @@ export function normalPolarity(g: Gray): Gray {
   for (let i = 0; i < data.length; i++) hist[data[i]]++
   let med = 0
   for (let n = hist[0]; n < data.length / 2; ) n += hist[++med]
-  if (med >= 110) return g
+  if (med >= 110) return med >= 215 ? restoreFadedInk(g, hist) : g
   const light = new Uint8Array(data.length)
   let nLight = 0
   for (let i = 0; i < data.length; i++) if (data[i] > med + 60) (light[i] = 1), nLight++
@@ -164,6 +167,45 @@ export function normalPolarity(g: Gray): Gray {
   const out = new Uint8Array(data.length)
   for (let i = 0; i < out.length; i++) out[i] = 255 - data[i]
   return { width: w, height: h, data: out }
+}
+
+/** A pale scan can have clear wall strokes while even its darkest ink misses the tracer's thresholds. */
+function restoreFadedInk(g: Gray, hist: Float64Array): Gray {
+  const { width, height, data } = g
+  const tail = Math.max(1, Math.ceil(data.length * 0.005))
+  let ink = 0, paper = 255
+  for (let n = hist[0]; n < tail; ) n += hist[++ink]
+  if (ink <= WALL_INK_CAP) return g
+  for (let n = hist[255]; n < tail; ) n += hist[--paper]
+  const range = paper - ink
+  if (range < 45) return g
+
+  // Require dark strokes with lighter paper on both sides. A grey panel or an
+  // almost blank sheet with a few specks should keep its original contrast.
+  const dark = ink + range * 0.2, light = paper - range * 0.2
+  const radius = Math.min(32, Math.max(8, Math.round(Math.min(width, height) * 0.02)))
+  const along = Math.floor(radius / 2)
+  // Each pair samples along a stroke and across it (horizontal, vertical, and both diagonals).
+  const axes = [
+    [along, radius * width], [along * width, radius],
+    [along * (width + 1), radius * (width - 1)], [along * (width - 1), radius * (width + 1)],
+  ]
+  let darkSamples = 0, strokes = 0
+  const step = Math.max(1, Math.floor(Math.sqrt(data.length / 65000)))
+  for (let y = radius; y < height - radius; y += step) {
+    for (let x = radius; x < width - radius; x += step) {
+      const i = y * width + x
+      if (data[i] > dark) continue
+      darkSamples++
+      if (axes.some(([a, b]) => data[i - a] <= dark && data[i + a] <= dark && data[i - b] >= light && data[i + b] >= light)) strokes++
+    }
+  }
+  if (strokes < 12 || strokes < darkSamples * 0.2) return g
+  const levels = new Uint8ClampedArray(256)
+  for (let i = 0; i < levels.length; i++) levels[i] = (i - ink) * 255 / range
+  const out = new Uint8Array(data.length)
+  for (let i = 0; i < data.length; i++) out[i] = levels[data[i]]
+  return { ...g, data: out }
 }
 
 /** 4-connected: the pixels of `m` reached from `seeds` */
