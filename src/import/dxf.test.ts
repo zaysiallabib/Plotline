@@ -129,6 +129,41 @@ describe('dxf fixtures', () => {
     expect(splinePoints(ctrl, undefined, 3, [{ x: 0, y: 0 }, { x: 4, y: 0 }])).toHaveLength(2) // or its fit points
   })
 
+  // Maheer's Plotline 2.0 (src/dxf/dxf.test.ts "imports straight and rectangular CAD opening symbols as one opening each")
+  test('a door drawn as a plain line (a straight polyline) and a window as a narrow rectangle: one opening each, between their ends', async () => {
+    const pl = (layer: string, closed: number, pts: number[][]) => ['0', 'LWPOLYLINE', '8', layer, '90', pts.length, '70', closed, ...pts.flatMap(([x, y]) => ['10', x, '20', y])]
+    const text = dxfOf(['9', '$INSUNITS', '70', 4], [
+      ...['0', 'LINE', '8', 'WALL', '10', 0, '20', 0, '11', 6000, '21', 6000],
+      ...pl('DOOR', 0, [[1000, 1000], [1300, 1300], [1600, 1600]]),
+      ...pl('WIN', 1, [[2960, 3040], [3040, 2960], [4040, 3960], [3960, 4040]]),
+    ])
+    const u = (await importDxf(text, 'symbols.dxf')).storeys[0].unit
+    const V = new Map(u.vertices.map((v) => [v.id, v]))
+    // each opening's middle on the plan (y down, origin at the walls' top-left: file (x, y) → (x, 6 − y) m)
+    const at = u.walls.flatMap((w) => {
+      const a = V.get(w.a)!, b = V.get(w.b)!, L = Math.hypot(b.x - a.x, b.y - a.y)
+      return w.openings.map((o) => ({ kind: o.kind, width: o.widthM, x: a.x + ((b.x - a.x) * (o.offsetM + o.widthM / 2)) / L, y: a.y + ((b.y - a.y) * (o.offsetM + o.widthM / 2)) / L }))
+    })
+    expect(at.map((o) => o.kind).sort()).toEqual(['door', 'window'])
+    const door = at.find((o) => o.kind === 'door')!, win = at.find((o) => o.kind === 'window')!
+    expect(door.width).toBeCloseTo(0.6 * Math.SQRT2, 3)
+    expect([door.x, door.y]).toEqual([expect.closeTo(1.3, 3), expect.closeTo(4.7, 3)])
+    expect(win.width).toBeCloseTo(Math.SQRT2, 3)
+    expect([win.x, win.y]).toEqual([expect.closeTo(3.5, 3), expect.closeTo(2.5, 3)])
+  })
+
+  test('a door line over a bare gap names it (the gap keeps its width); 1.5 m or wider it is a slider', async () => {
+    // a 6 m wall of two faces 125 mm apart with a 900 mm and a 1800 mm gap; a door line in each, a little shorter than its gap
+    const face = (y: number) => [[0, 1000], [1900, 3000], [4800, 6000]].flatMap(([a, b]) => ['0', 'LINE', '8', 'A-WALL', '10', a, '20', y, '11', b, '21', y])
+    const line = (a: number, b: number) => ['0', 'LINE', '8', 'A-DOOR', '10', a, '20', 62, '11', b, '21', 62]
+    const u = (await importDxf(dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), ...line(1050, 1850), ...line(3050, 4750)]), 'gaps.dxf')).storeys[0].unit
+    const ops = u.walls.flatMap((w) => w.openings).sort((p, q) => p.widthM - q.widthM)
+    expect(ops.map((o) => [o.kind, +o.widthM.toFixed(3)])).toEqual([['door', 0.9], ['slider', 1.8]])
+    // on a layer of doors and windows the plain lines are glass (its doors come with swings)
+    const glass = (await importDxf(dxfOf(['9', '$INSUNITS', '70', 4], [...face(0), ...face(125), ...line(3050, 4750).map((v) => (v === 'A-DOOR' ? 'DOORSWINDOWS' : v))]), 'mixed.dxf')).storeys[0].unit
+    expect(glass.walls.flatMap((w) => w.openings).map((o) => o.kind).sort()).toEqual(['passage', 'window'])
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
   })

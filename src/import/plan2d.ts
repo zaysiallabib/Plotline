@@ -42,6 +42,9 @@ const LAYER_TABLE: [RegExp, Role][] = [
   [/TEXT|TXT|TEKST|ROOM|RAUM|NAME|LABEL|ANNO|BESCHRIFT|AREA/, 'text'],
 ]
 
+/** a layer name that speaks of windows (it may speak of doors first: "DOORSWINDOWS") */
+const WINDOW_WORDS = LAYER_TABLE.find(([, r]) => r === 'window')![0]
+
 /** a person's correction: a layer's name (in capitals) → what it holds, kept for the next file (the Studio's layer list) */
 export type LayerRoles = Record<string, Role>
 
@@ -787,6 +790,50 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const o = w && swingOn(a, w)
     if (w && o && putOpening(w, o)) doorArcs++
   }
+  // a door / window drawn as a plain line along its wall (a narrow rectangle's long sides are two such lines), on a door
+  // or window layer and in no block: the opening runs between its ends (from Maheer's Plotline 2.0, buildUnit.ts
+  // openingMarks: 25 cm – 4 m, within max(25 cm, twice the wall's thickness) of its line, a door 1.5 m or wider a slider).
+  // It cuts an opening only where the wall has none, or names a bare gap it lies in (the gap keeps its width).
+  const marks: { w: WallDraft; window: boolean; t0: number; t1: number }[] = []
+  // (a layer of doors AND windows — "DOORSWINDOWS" — draws its doors with swings: its plain lines are glass)
+  const glassToo = (layer: string) => !d.layerRoles?.[layer.toUpperCase()] && WINDOW_WORDS.test(layer.toUpperCase())
+  for (const g of segs) {
+    if (g.inst !== undefined || (g.role !== 'door' && g.role !== 'window')) continue
+    const L = len(sub(g.b, g.a))
+    if (L < 0.25 || L > 4) continue
+    const { dir } = folded(g.a, g.b)
+    const mid = { x: (g.a.x + g.b.x) / 2, y: (g.a.y + g.b.y) / 2 }
+    let w: WallDraft | null = null
+    let near = Infinity
+    for (const v of kept) {
+      const off = Math.abs(dot(sub(mid, v.a), v.n))
+      const t = [dot(g.a, v.dir), dot(g.b, v.dir)]
+      if (Math.abs(crossZ(v.dir, dir)) > 0.25 || off > Math.max(0.25, 2 * v.thick) || Math.min(...t) < v.t0 - 0.01 || Math.max(...t) > v.t1 + 0.01 || off >= near) continue
+      w = v
+      near = off
+    }
+    if (w) marks.push({ w, window: g.role === 'window' || glassToo(g.layer), t0: Math.min(dot(g.a, w.dir), dot(g.b, w.dir)), t1: Math.max(dot(g.a, w.dir), dot(g.b, w.dir)) })
+  }
+  // (the pieces of one polyline, a rectangle's two long sides: one mark)
+  const order = new Map(kept.map((w, i) => [w, i]))
+  marks.sort((p, q) => order.get(p.w)! - order.get(q.w)! || +p.window - +q.window || p.t0 - q.t0)
+  const merged: typeof marks = []
+  for (const m of marks) {
+    const last = merged.at(-1)
+    if (last && last.w === m.w && last.window === m.window && m.t0 <= last.t1 + 0.01) last.t1 = Math.max(last.t1, m.t1)
+    else merged.push({ ...m })
+  }
+  let lineMarks = 0
+  for (const { w, window, t0, t1 } of merged) {
+    const kind = (width: number): OpeningKind => (window ? 'window' : width >= 1.5 ? 'slider' : 'door')
+    const hit = w.openings.find((x) => x.t0 < t1 && t0 < x.t1)
+    if (hit) {
+      if (hit.kind === 'passage') (hit.kind = kind(hit.t1 - hit.t0)), (hit.gap = false), lineMarks++
+      continue
+    }
+    if (putOpening(w, { kind: kind(t1 - t0), t0, t1 })) lineMarks++
+  }
+  if (lineMarks) notes.push(`${lineMarks} door / window line(s) on a door or window layer made or named an opening.`)
 
   if (glassWalls) notes.push(`${glassWalls} door / window / passage block(s) standing in no wall taken as walls of that opening (a wall all of glass, all passage).`)
 
