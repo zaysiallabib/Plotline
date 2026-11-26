@@ -747,7 +747,7 @@ step marked with a blue dot, and it follows what you dropped:
 | A CAD or IFC file, a PDF page read from its lines | 1 Read the file · 2 Check its size (only when the DXF names no unit, or a wrong one: pick the unit in **Read in**, and it ticks) · Check · Preview 3D · Share — nothing to scale or trace |
 | A plan picture — also a floor of a set that came in as a picture | 1 Load plan · 2 Set scale · 3 Trace walls · 4 Wall thickness · 5 Openings · 6 Rooms · 7 Check · 8 Share |
 
-**Check** ticks when something is drawn and nothing red is left in Issues. **Preview 3D** ticks once you have looked at the
+**Check** ticks when something is drawn and Issues holds no error that stops it from being built, as before (a red loose wall end can stay: it is worth fixing, it leaves a room open in 3D). **Preview 3D** ticks once you have looked at the
 drawing in 3D (**Preview 3D**, or **Show building**). **Share** ticks once it has gone out; under it, **Buyer link** (with
 the online database), **DXF**, **3D model** and **Print** do what ⋯ → Share link, Export as DXF, Export 3D model and Print
 plan… do, and ⋯ → **Export** (the Plotline file) ticks it too.
