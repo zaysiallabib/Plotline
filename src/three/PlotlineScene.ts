@@ -1549,8 +1549,29 @@ export class PlotlineScene {
 
   currentRoomId(): Id | null {
     if (!this.ready || !this.unit) return null
-    return core.roomAt(this.walker, this.rooms, this.unit)?.id ?? null
+    // (asked every frame by the minimap and the room name: answered again only when the walker moved — from Maheer's Plotline 2.0)
+    const { x, y } = this.walker, last = this.roomQuery
+    if (last && last.token === this.buildToken && last.x === x && last.y === y) return last.id
+    const id = core.roomAt(this.walker, this.rooms, this.unit)?.id ?? null
+    this.roomQuery = { token: this.buildToken, x, y, id }
+    return id
   }
+  private roomQuery: { token: number; x: number; y: number; id: Id | null } | null = null
+
+  /** The camera's eye and heading in plan metres (x, y = world x, z): the minimap and the viewer read these, not three.js. */
+  viewEye(): Pt {
+    const p = this.camera.getWorldPosition(this.viewVector)
+    return { x: p.x, y: p.z }
+  }
+  viewHeading(): Pt {
+    const d = this.camera.getWorldDirection(this.viewVector)
+    return { x: d.x, y: d.z }
+  }
+  /** A world point on screen (normalised device coordinates, z < 1 in front): pins and chips. The vector is reused by the next call. */
+  projectPoint(p: { x: number; y: number; z: number }): Readonly<{ x: number; y: number; z: number }> {
+    return this.viewVector.set(p.x, p.y, p.z).project(this.camera)
+  }
+  private readonly viewVector = new THREE.Vector3()
 
   /** Enter pointer lock (mouse look). Must be called from a user gesture; dblclick on the canvas does this too. Never while arranging or editing openings, never under a finger. */
   lockPointer(): void {
@@ -2348,16 +2369,16 @@ export class PlotlineScene {
   private async loadFurniture(unit: Unit): Promise<void> {
     const token = this.buildToken
     this.layout = unit.furniture
-    const byDistance = [...unit.furniture].sort(
-      (a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y),
-    )
-    void preloadModels(unit.furniture) // every model on its way at once; each piece still goes in nearest first
+    // (a deleted piece is not built at all — placePieces builds it if it comes back; from Maheer's Plotline 2.0)
+    const kept = unit.furniture.filter((p) => !p.removed)
+    const byDistance = kept.sort((a, b) => Math.hypot(a.x - this.walker.x, a.y - this.walker.y) - Math.hypot(b.x - this.walker.x, b.y - this.walker.y))
+    void preloadModels(kept) // every model on its way at once; each piece still goes in nearest first
     let t = performance.now()
     for (const p of byDistance) {
       const obj = await buildFurniture(p, this.ceilingOf(p.roomId), this.floorOf(p), bottomOf(unit.furniture, p), TIERS[this.tier].standIn)
       if (token !== this.buildToken) return // unit changed mid-load
+      if (this.pieceObject(p.id)) continue // (built meanwhile by placePieces: a piece brought back while loading)
       this.mountPiece(obj, p)
-      obj.visible = !p.removed
       // a stair's floor (arrive): a frame every ~30 ms of building, the floor he leaves drawn in between
       if (this.holding && performance.now() - t > 30) {
         await new Promise((r) => requestAnimationFrame(r))
