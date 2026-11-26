@@ -920,7 +920,7 @@ would take glows (its closed rooms and the open floor round them). Then:
 - **Set the scale and trace again** (under the "Traced … · scale from …" line in Check these) shows when you ran
   Auto-trace before setting the scale, so it guessed it (from the printed sizes, the printed area or the wall
   thickness). Click it, click the two ends of a length you know on the picture, type the length, Enter: the plan is
-  traced again at that scale (point at a flat or **Whole floor** as before). Ctrl+Z brings the earlier trace back.
+  traced again at that scale (point at a flat or **Whole floor** as before). Ctrl+Z brings the earlier trace back (twice when the message says walls were joined: the joining is its own step).
 - If you open another drawing while Auto-trace runs, it stops ("Auto-trace cancelled"): a trace never lands on a
   drawing it was not started on, and only the last picture you dropped is the plan picture.
 
