@@ -164,6 +164,24 @@ describe('dxf fixtures', () => {
     expect(glass.walls.flatMap((w) => w.openings).map((o) => o.kind).sort()).toEqual(['passage', 'window'])
   })
 
+  // Maheer's Plotline 2.0 fixture (src/data/fixtures/two-room-floor.dxf): the floor as ONE closed outline, the partition as
+  // two single lines either side of a door line, a window line on the outline; truth 7 walls, 2 rooms, 2 openings
+  test('one closed outline and single partition lines: 7 walls, 2 rooms, a door and a window', async () => {
+    const u = (await importDxf(fixture('two-room-floor'), 'two-room-floor.dxf')).storeys[0].unit
+    expect(u.walls).toHaveLength(7)
+    expect(deriveRooms(u).map((x) => x.name).sort()).toEqual(['BEDROOM', 'LIVING ROOM'])
+    expect(u.walls.flatMap((w) => w.openings).map((o) => [o.kind, +o.widthM.toFixed(3)]).sort()).toEqual([['door', 0.9], ['window', 1.6]])
+    expect(validate(u).filter((i) => i.level === 'error')).toEqual([])
+  })
+
+  test('a plan of room outlines still reads a single partition line (it splits its room)', async () => {
+    const rect = (x0: number, y0: number, x1: number, y1: number) => ['0', 'LWPOLYLINE', '8', 'A-WALL', '90', 4, '70', 1, '10', x0, '20', y0, '10', x1, '20', y0, '10', x1, '20', y1, '10', x0, '20', y1]
+    const text = dxfOf(['9', '$INSUNITS', '70', 6], [...rect(0, 0, 4, 3), ...rect(4.2, 0, 8.2, 3), '0', 'LINE', '8', 'A-WALL', '10', 6.2, '20', 0, '11', 6.2, '21', 3])
+    const r = await importDxf(text, 'outlines.dxf')
+    expect(r.notes.some((n) => /Read as room outlines \(2 rooms\)/.test(n))).toBe(true)
+    expect(deriveRooms(r.storeys[0].unit).filter((x) => x.areaSqm >= 1)).toHaveLength(3)
+  })
+
   test('a file that is not a DXF is refused in plain words', async () => {
     await expect(importDxf('hello', 'x.dxf')).rejects.toThrow()
   })

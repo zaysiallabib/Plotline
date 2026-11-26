@@ -607,7 +607,7 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     const pick = on(long) ? long : on(short) ? short : null
     if (pick) rects.push({ ...pick, thick: snapThick(pick.thick) }), used.add(i)
   }
-  const segs = d.segs.filter((g) => g.loop === undefined || !used.has(g.loop)).map((g) => ({ a: P(g.a), b: P(g.b), h: heightOf(g), role: role(g), layer: g.layer, block: g.block, inst: g.inst }))
+  const segs = d.segs.filter((g) => g.loop === undefined || !used.has(g.loop)).map((g) => ({ a: P(g.a), b: P(g.b), h: heightOf(g), role: role(g), layer: g.layer, block: g.block, inst: g.inst, closed: g.loop !== undefined }))
   // Plotline's own export draws each wall's centre line too (PLOTLINE_AXES_<thickness, 0.1 mm>, its height as the line's
   // thickness): while they agree with the outlines (no wall moved in a CAD program) the walls are those lines to the letter
   // — a curved ramp's chords, a short wall at a T, a door at a corner come back exactly; else the outlines are read
@@ -642,10 +642,12 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
   let walls: WallDraft[] = axes ? axes.map((p) => ({ ...p, openings: [] })) : mergeCollinear(pieces, roomMode ? MIN_GAP : MAX_GAP, d.own)
 
   // wall-layer lines no pair covered (the outer face of a plan drawn as room polygons): walls of PARTITION_M on the
-  // line itself, merged with the paired pieces so fragments of one edge become one wall
+  // line itself, merged with the paired pieces so fragments of one edge become one wall; in a plan of room outlines,
+  // the open lines (a partition drawn as one line splits its room)
   let singles = 0
   const singlePieces: Piece[] = []
-  for (const g of roomMode || axes ? [] : explicit) {
+  for (const g of axes ? [] : explicit) {
+    if (roomMode && g.closed) continue
     const L = len(sub(g.b, g.a))
     if (L < 0.4) continue // (a shorter one is a jamb / end cap)
     const { dir, n } = folded(g.a, g.b)
@@ -657,7 +659,8 @@ export function buildPlan(d: Drawing, name: string): Plan2dResult {
     singlePieces.push(piece(g.a, g.b, PARTITION_M))
     singles++
   }
-  if (singles) walls = mergeCollinear([...pieces, ...singlePieces], MAX_GAP, d.own)
+  // (room outlines keep their own walls; the lines among them merge across a doorway like any plan's)
+  if (singles) walls = roomMode ? [...walls, ...mergeCollinear(singlePieces, MAX_GAP, d.own)] : mergeCollinear([...pieces, ...singlePieces], MAX_GAP, d.own)
   if (singles) notes.push(`${singles} wall-layer line(s) had no parallel partner: taken as ${(PARTITION_M / FT) * 12}" walls on the line itself.`)
 
   // a thin wall lying inside a thicker wall's band is that wall's own detail (window lines, a plaster line)
